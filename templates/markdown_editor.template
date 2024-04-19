@@ -40,10 +40,20 @@
 		<div class="mdEditor" id="md"></div>
 	</div>
 
+	<div>
+		<input id="encrypt" type="password" name="encrpyt" value=""><br>
+	</div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+	<script src="/js/vim/vim.min.js"></script>
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
 	<script>
+
+	vim.open({
+		//debug : true
+	});
 
 	window.onload = function (){
 		if (isPCDevice()){
@@ -61,6 +71,7 @@
 		var content = document.getElementById('editor').value;
 		var title = document.getElementById("title").value;
 		var tags = document.getElementById("tags").value;
+		var encrypt = document.getElementById("encrypt").value;
 		var auth_type= document.querySelector('input[name="auth_type"]:checked').value;
 		console.log("auth_type=",auth_type);
 
@@ -75,11 +86,18 @@
 			}
 		};
 
+		if (encrypt.length != 0){
+			var en = aesEncrypt(content, encrypt)
+			content = en
+			console.log("content=%s",content)
+		}
+
 		var formData = new FormData();
 		formData.append('title', title);
 		formData.append('content', content);
 		formData.append('auth_type', auth_type);
 		formData.append('tags', tags);
+		formData.append('encrypt', encrypt);
 		xhr.open('POST', '/save', true);
 		xhr.send(formData);
 	}

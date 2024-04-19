@@ -1,13 +1,14 @@
 
-modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog")
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption")
 prename="go_blog_pkgs"
 
-cd ..
+cur_path=$(dirname $0)
+pkgs_path=$(dirname $cur_path)/go_blog_pkgs
+pkgs_path=$(realpath $pkgs_path)
 
-base_path=$(pwd)/$prename
-mkdir -p $base_path
+mkdir -p $pkgs_path
 for m in ${modules[@]};do
-	cd $base_path
+	cd $pkgs_path
 	p=$(realpath $m)
 	mkdir -p $p
 	echo "$m OK"

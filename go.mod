@@ -26,6 +26,10 @@ replace comment => ./go_blog_pkgs/comment
 
 replace blog => ./go_blog_pkgs/blog
 
+replace email => ./go_blog_pkgs/email
+
+replace encryption => ./go_blog_pkgs/encryption
+
 require (
 	blog v0.0.0-00010101000000-000000000000
 	comment v0.0.0-00010101000000-000000000000

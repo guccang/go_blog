@@ -10,6 +10,16 @@
 			float : right;
 			margin-right:10px;	
 		 }
+
+
+		.div1 {
+			position :absolute;
+			left:50%;
+			top:50%;
+			transform: translate(-50%,-50%);
+			border: 1px solid #000000;
+		}
+
 		</style>
 	</head>
 

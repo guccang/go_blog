@@ -93,6 +93,7 @@ func AddBlog(udb *module.UploadedBlogData) int{
 		AccessNum  : 0,
 		AuthType   : auth_type,
 		Tags	   : tags,
+		Encrypt	   : udb.Encrypt,
 	}
 	Blogs[title] = &b
 	db.SaveBlog(&b)

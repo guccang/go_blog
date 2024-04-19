@@ -14,6 +14,7 @@ import(
 	"auth"
 	"regexp"
 	"module"
+	//"encryption"
 )
 
 
@@ -23,6 +24,15 @@ func Info(){
 
 type handle_content struct{
 	content string
+}
+
+func LogRemoteAddr(msg string,r *h.Request) {
+	remoteAddr := r.RemoteAddr
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+    if xForwardedFor != "" {
+		remoteAddr = xForwardedFor
+    }
+	log.DebugF("RemoteAddr %s %s",remoteAddr,msg)
 }
 
 func checkLogin(r *h.Request) int{
@@ -41,6 +51,7 @@ func checkLogin(r *h.Request) int{
 }
 
 func HandleEditor(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleEditor",r)
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
 		return
@@ -51,6 +62,7 @@ func HandleEditor(w h.ResponseWriter, r *h.Request){
 
 
 func  HandleLink(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleLink",r)
 	if checkLogin(r) != 0{
 		h.Redirect(w,r,"/index",302)
 		return
@@ -59,6 +71,7 @@ func  HandleLink(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleStatics(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleStatics",r)
 	filename:= r.URL.Query().Get("filename")
 	if filename == "" {
 		h.Error(w, "Filepath parameter is missing", h.StatusBadRequest)
@@ -95,6 +108,7 @@ func HandleStatics(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleSave(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleSave",r)
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
 		return
@@ -135,13 +149,40 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received content:%s",tags)
+	log.DebugF("Received tags:%s",tags)
+
+	// encrypt 
+	encryptionKey := r.FormValue("encrypt")
+	encrypt := 0
+	log.DebugF("Received title=%s encrypt:%s",title,encryptionKey)
+
+	// 
+	if encryptionKey != "" {
+		encrypt = 1
+/*
+		// aes加密
+		log.DebugF("encryption key=%s",encryptionKey)
+		content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
+
+		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
+		log.DebugF("encryption content_decrypt=%s",content_encrypt)
+		if content_decrypt != content {
+			w.Write([]byte(fmt.Sprintf("save error  aes not match error!")))
+			return
+		}
+		fmt.Printf("content encrypt=%s\n",content)
+		// 邮件备份密码,todo
+		content = content_encrypt
+*/
+	}
+	
 	
 	ubd := module.UploadedBlogData {
 		Title : title,
 		Content : content,
 		AuthType : auth_type,
 		Tags : tags,
+		Encrypt: encrypt,
 	}
 
 	ret := control.AddBlog(&ubd)
@@ -155,6 +196,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleHelp(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleHelp",r)
 	blogname := config.GetHelpBlogName()	
 	if blogname == "" {
 		blogname = "help"
@@ -180,6 +222,7 @@ func HandleHelp(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleGet(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleGet",r)
 	blogname := r.URL.Query().Get("blogname")
 	if blogname == "" {
 		h.Error(w, "blogname parameter is missing", h.StatusBadRequest)
@@ -204,6 +247,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleComment(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleComment",r)
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
@@ -252,6 +296,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleModify(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleModify",r)
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
 		return
@@ -280,17 +325,45 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 	// tags
 	tags := r.FormValue("tags")
 	log.DebugF("Received content:%s",tags)
-	
 
+	// 内容
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
 	log.DebugF("Received content:%s", content)
 
+
+	// 加密
+	encryptionKey := r.FormValue("encrypt")
+	encrypt := 0
+	log.DebugF("Received title=%s encrypt:%s",title,encrypt)
+
+	if encryptionKey != "" {
+		encrypt = 1
+/*
+		// aes加密
+		log.DebugF("encryption key=%s",encryptionKey)
+		content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
+
+		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
+		log.DebugF("encryption content_decrypt=%s",content_encrypt)
+		if content_decrypt != content {
+			w.Write([]byte(fmt.Sprintf("save error  aes not match error! ret=%s")))
+			return
+		}
+		fmt.Printf("content encrypt=%s\n",content)
+
+		content = content_encrypt
+*/
+		// 邮件备份密码,todo
+	}
+	
+
 	ubd := module.UploadedBlogData {
-		Title : title,
-		Content : content,
-		AuthType : auth_type,
-		Tags : tags,
+		Title		: title,
+		Content		: content,
+		AuthType	: auth_type,
+		Tags		: tags,
+		Encrypt		: encrypt,
 	}
 
 	ret := control.ModifyBlog(&ubd)
@@ -302,6 +375,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 
 
 func HandleSearch(w h.ResponseWriter,r *h.Request){
+	LogRemoteAddr("HandleSearch",r)
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
 		return
@@ -317,6 +391,7 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 }
 
 func HandleLogin(w h.ResponseWriter,r *h.Request){
+	LogRemoteAddr("HandleLogin",r)
 
 	r.ParseMultipartForm(32 << 20) // 32MB
 
@@ -352,6 +427,7 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 }
 
 func HandleIndex(w h.ResponseWriter,r *h.Request){
+	LogRemoteAddr("HandleIndex",r)
 	view.PageIndex(w)
 }
 

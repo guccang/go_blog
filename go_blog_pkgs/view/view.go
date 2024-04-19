@@ -45,6 +45,7 @@ type EditorData struct{
 	AUTHTYPE	string
 	TAGS		string
 	COMMENTS	[]CommentDatas	
+	ENCRYPT		string
 }
 
 
@@ -172,6 +173,7 @@ func PageEditor(w h.ResponseWriter){
 		CONTENT:"# input content",
 		AUTHTYPE:"private",
 		TAGS:"",
+		ENCRYPT:"",
 	}
 
 	err = tmpl.Execute(w,data)
@@ -209,6 +211,11 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 		return
 	}
 	
+
+	encrypt_str := ""
+	if blog.Encrypt == 1 {
+		encrypt_str = "aes"
+	}
 	
 	data := EditorData{
 		TITLE:blog.Title,
@@ -216,6 +223,7 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 		CTIME : blog.CreateTime,
 		AUTHTYPE:auth_type_string,
 		TAGS : blog.Tags,
+		ENCRYPT:encrypt_str,
 	}
 
 	bc := control.GetBlogComments(blogname)

@@ -6,8 +6,6 @@
     <title>GUCCANG/GET</title>
 	<style>
 		@import url("/css/editor.css");
-		.radio-left {
-		}	
 	</style>
 </head>
 <body id="body" class="th_black">
@@ -27,7 +25,7 @@
 	<div style="height:32px;" ></div>
 
 	<div class="center-fix-div">
-		<textarea id="editor-inner" class="hide th_black" name="content">{{.CONTENT}}</textarea>
+		<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
 		<div id="md" class="md"></div>
 	</div>
 
@@ -40,9 +38,11 @@
 		{{else}}
 		<input class="radio-left" type="radio" name="auth_type" value="private">private</input>
 		<input class="radio-left" type="radio" name="auth_type" value="public" checked>public</input> 
-
 		{{end}}
-
+		{{ if eq "aes" .ENCRYPT }}
+		<input id="encrypt" type="password" name="encrypt" value=""></input> 
+		<button id="comment-show" type="button" onclick="onDecrypt()">解密</button>
+		{{end}}
 	</div>
 
 	{{ if eq "public" .AUTHTYPE }}
@@ -58,24 +58,44 @@
 	</div>
 
 	<div id="div-comment" class="hide">
-			<label>"用户名:"</label>
+			<label>用户名:</label>
 			<input id="input-owner" type="text" value="" ><br>
-			<label>"邮箱:"</label>
+			<label>邮箱:</label>
 			<input id="input-mail" type="text" value="" ><br>
-			<label>"密码:"</label>
+			<label>密码:</label>
 			<input id="input-pwd" type="password" value="" ><br>
-			<label>"留言:"</label>
+			<label>留言:</label>
 			<input id="input-comment" type="text" value="" ><br>
 			<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
 	</div>
 	<div style="height:32px;"></div>
 	{{end}}
 
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+	<script src="/js/vim/vim.min.js"></script>
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script>
+
+	vim.open({
+		//debug : true
+	});
+
+	function onDecrypt(){
+		aesTest()
+		var e = document.getElementById('editor-inner')
+		var k = document.getElementById('encrypt').value
+		var content =  e.innerHTML
+		
+		console.log(content,k)
+		var txt = aesDecrypt(content,k)
+		console.log(txt)
+		e.innerHTML = txt
+
+		mdRender(txt)
+		
+	}
 
 	function onShowComment(){
 		var bnt = document.getElementById("comment-show")
@@ -181,6 +201,11 @@
 		var content = document.getElementById('editor-inner').value;
 		var title = document.getElementById("title").innerText;
 		var tags = document.getElementById("tags").value;
+		var key = "" 
+        if (document.getElementById("encrypt") != null) {
+			key = document.getElementById("encrypt").value
+		}
+
 		var auth_type = document.querySelector('input[name="auth_type"]:checked').value;
 		console.log("auth_type=",auth_type);
 
@@ -194,11 +219,18 @@
 			}
 		};
 
+
+		if (key.length != 0) {
+			var en = aesEncrypt(content, key)
+			content = en
+		}
+
 		var formData = new FormData();
 		formData.append('title', title);
 		formData.append('content', content);
 		formData.append('auth_type', auth_type);
 		formData.append('tags', tags);
+		formData.append('encrypt', key);
 		xhr.open('POST', '/modify', true);
 		xhr.send(formData);
 	}

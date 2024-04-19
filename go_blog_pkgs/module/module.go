@@ -16,6 +16,7 @@ type UploadedBlogData struct {
 	Content string
 	AuthType int
 	Tags	string
+	Encrypt int
 }
 	
 // blog数据
@@ -29,6 +30,7 @@ type Blog struct{
 	AccessNum int
 	AuthType  int
 	Tags	  string
+	Encrypt   int
 }
 
 // 用户
@@ -58,6 +60,3 @@ type BlogComments struct {
 func Info(){
 	fmt.Println("info module v1.0")
 }
-
-
-

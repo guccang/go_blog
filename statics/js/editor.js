@@ -49,5 +49,52 @@ function checkTime() {
 var intervalId = setInterval(checkTime, 5000);
 
 
+//
+// aes-cbc  crypt-js
+var data = "小红帽"
+var keys = [
+  "1234", 
+  "16bit secret key", 
+  "16bit secret key1234567", 
+  "16bit secret key12345678",
+  "16bit secret key16bit secret ke",
+  "16bit secret key16bit secret key",
+  "16bit secret key16bit secret key1",
+]
 
+// 加密
+function aesEncrypt(data, key) {
+  if (key.length > 32) {
+    key = key.slice(0, 32);
+  }
+  var cypherKey = CryptoJS.enc.Utf8.parse(key);
+  CryptoJS.pad.ZeroPadding.pad(cypherKey, 4);
 
+  var iv = CryptoJS.SHA256(key).toString();
+  var cfg = { iv: CryptoJS.enc.Utf8.parse(iv) };
+  return CryptoJS.AES.encrypt(data, cypherKey, cfg).toString();
+}
+
+// 解密
+function aesDecrypt(data,key){
+  if (key.length > 32) {
+    key = key.slice(0, 32);
+  }
+	var cypherKey = CryptoJS.enc.Utf8.parse(key);
+	CryptoJS.pad.ZeroPadding.pad(cypherKey, 4);
+    var iv = CryptoJS.SHA256(key).toString();
+	var cfg = { iv: CryptoJS.enc.Utf8.parse(iv) };
+	var decrypt = CryptoJS.AES.decrypt({ciphertext:CryptoJS.enc.Base64.parse(data)},cypherKey,cfg)
+	var txt = CryptoJS.enc.Utf8.stringify(decrypt)
+	return txt
+}
+
+// 加密解密测试
+function aesTest(){
+	for (let i = 0; i < keys.length; i++) {
+		var en = aesEncrypt(data, keys[i])
+		console.log("en",en)
+		var de = aesDecrypt(en,keys[i])
+		console.log("de",de)
+	}
+}
