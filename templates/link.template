@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title> go html template list test </title>
+		<style>
+		 @import url(/css/link.css);
+		 .right-label{
+			float : right;
+			margin-right:10px;	
+		 }
+		</style>
+	</head>
+
+	<body class="th_black">
+		<div class="top-fix-div">
+			<img src="/logo/logo.png" width=64></img>
+			<a href="/editor" style="font-size: 32px;">创建博客</a>
+			<div class="separator"></div>
+			<input id="search" type="text" class="custom-wh"></input>
+			<button type="button" onclick="onSearch()">搜索</button>
+		</div>
+		<div style="height:100px;" ></div>
+		<div class="separator"></div>
+
+		{{range .Items}}
+			<p><a href="{{.URL}}">{{.DESC}}</a></p>
+		{{end}}
+
+		<div class="bottom-fix-div">
+		<label class="right-label">{{.BLOGS_NUMBER}}</label>
+		<label class="right-label">{{.VERSION}}</label>
+		</div>
+
+		<script>
+		function onSearch(){
+			console.log("onclick");
+			var match = document.getElementById('search').value;
+
+			var xhr = new XMLHttpRequest();
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState == 4 && xhr.status == 200) {
+					// 处理服务器的响应
+					console.log(xhr.responseText);
+					window.location.href=xhr.responseURL
+				}
+			};
+			xhr.open('GET', '/search?match='+match, true);
+			xhr.send();
+		}
+		</script>
+
+
+		
+	</body>
+</html>

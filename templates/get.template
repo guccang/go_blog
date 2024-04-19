@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor</title>
+	<style>
+		@import url("/css/editor.css");
+		.radio-left {
+		}	
+	</style>
+</head>
+<body id="body" class="th_black">
+
+    <!-- Markdown编辑器容器 -->
+	<div class="top-fix-div">
+		<a href="/link" style="font-size: 32px;">主页</a><br>
+		<div class="separator"></div>
+		<label id="title">{{.TITLE}}</label>
+		<label id="ctime">{{.CTIME}}</label>
+	</div>
+
+	<div style="height:64px;" ></div>
+	<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
+	<div class="separator"></div>
+	<div style="height:32px;" ></div>
+
+	<div class="center-fix-div">
+		<textarea id="editor-inner" class="hide th_black" name="content">{{.CONTENT}}</textarea>
+		<div id="md" class="md"></div>
+	</div>
+
+	<div class="bottom-fix-div">
+		<button class="left-button" id="editor-button" type="button" onclick="submitContent()">修改</button>
+
+		{{if eq "private" .AUTHTYPE }}
+		<input class="radio-left" type="radio" name="auth_type" value="private" checked>private</input>
+		<input class="radio-left" type="radio" name="auth_type" value="public">public</input> 
+		{{else}}
+		<input class="radio-left" type="radio" name="auth_type" value="private">private</input>
+		<input class="radio-left" type="radio" name="auth_type" value="public" checked>public</input> 
+		{{end}}
+
+	</div>
+
+	<script src="/js/marked/marked.min.js"></script>
+	<script src="/js/editor.js"></script>
+	<script src="/js/utils.js"></script>
+	<script>
+
+	function onEditor(){
+		// PC端
+		if (isPCDevice()){
+			var e = document.getElementById('editor-inner')
+			var d = document.getElementById('md')
+			var ebnt = document.getElementById('editor-button')
+			var bnt = document.getElementById('toggle-button')
+			// 切换到编辑页面 
+			var bntName = bnt.innerText
+				if (bntName=="编辑"){ 
+					// 显示editor和md页面
+					d.setAttribute("class", "mdEditor"); 
+					e.setAttribute("class", "editor th_black");
+					ebnt.setAttribute("class","left-button");
+					bnt.innerText = "预览"
+					// 更新编辑框大小
+				    e.style.height = (d.clientHeight) + 'px';
+				}else{
+					// 隐藏editor显示md
+					d.setAttribute("class", "md"); 
+					e.setAttribute("class", "hide th_black");
+					//ebnt.setAttribute("class","hide");
+					bnt.innerText = "编辑"
+				}
+		}else{
+			// 移动端
+			var e = document.getElementById('editor-inner')
+			var d = document.getElementById('md')
+			var ebnt = document.getElementById('editor-button')
+			var bnt = document.getElementById('toggle-button')
+				// 切换到编辑页面 
+			var bntName = bnt.innerText
+				if (bntName=="编辑"){ 
+					// 显示editor和md页面
+					d.setAttribute("class", "hide"); 
+					e.setAttribute("class", "editorfullscreen th_black");
+					ebnt.setAttribute("class","left-button");
+					bnt.innerText = "预览"
+				}else{
+					// 隐藏editor显示md
+					d.setAttribute("class", "md"); 
+					e.setAttribute("class", "hide th_black");
+					ebnt.setAttribute("class","hide");
+					bnt.innerText = "编辑"
+				}
+			
+		}
+	}
+
+	function submitContent() {
+		var content = document.getElementById('editor-inner').value;
+		var title = document.getElementById("title").innerText;
+		var auth_type = document.querySelector('input[name="auth_type"]:checked').value;
+		console.log("auth_type=",auth_type);
+
+		// 使用XMLHttpRequest发送数据
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4 && xhr.status == 200) {
+				// 处理服务器的响应
+				console.log(xhr.responseText);
+				alert(xhr.responseText)
+			}
+		};
+
+		var formData = new FormData();
+		formData.append('title', title);
+		formData.append('content', content);
+		formData.append('auth_type', auth_type);
+		xhr.open('POST', '/modify', true);
+		xhr.send(formData);
+	}
+
+      // 获取textarea元素
+	   var textarea = document.getElementById('editor-inner');
+        // 监听输入事件
+        textarea.addEventListener('input', function () {
+            // 重置textarea的高度以适应内容
+            this.style.height = 'auto';
+			var d = document.getElementById('md')
+            //this.style.height = (this.scrollHeight) + 'px';
+            this.style.height = (d.clientHeight) + 'px';
+		
+			// marked 重新渲染
+			// PC Device
+			if (isPCDevice()){
+				mdRender(textarea.value)	
+			}
+	})
+
+		window.onload = function(){
+			// md渲染
+			mdRender(textarea.value)
+			// 时间-black
+			checkTime()
+		}
+
+	</script>
+
+</body>
+</html>

@@ -1,0 +1,99 @@
+
+@import url("th.css");
+
+.right-button {
+    float: right;
+	height : 33px;
+}
+
+.left-button {
+    float: left;
+	height : 33px;
+}
+
+.separator {
+    border-top: 3px solid gray; /* 设置上边框 */
+    margin-top: 5px;           /* 添加一些上外边距 */
+    margin-bottom: 5px;        /* 添加一些下外边距 */
+	width : 100%;
+}
+
+.top-fix-div {
+	position : fixed;
+	left : 5px;
+	top : 0;
+}
+
+.center-fix-div{
+	left : 0;
+}
+
+.bottom-fix-div{
+	position : fixed;
+	left : 0;
+	bottom: 0;
+}
+
+.hide {
+	display : none;
+}
+
+.left-div {
+	float : left;
+}
+
+.right-div{
+	float :right;
+}
+
+.none_div{
+	overflow:none;
+}
+
+.editor {
+            min-height: 666px;
+            resize: none;
+            width: 50%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 3px solid #ccc;
+            font-size: 16px;
+			overflow-y:hidden;
+}
+
+.mdEditor{
+            min-height: 666px;
+            resize: none;
+            width: 50%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 3px solid #ccc;
+            font-size: 15px;
+			float : right;
+}
+
+.md {
+			min-height: 666px;
+            resize: none;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 3px solid #ccc;
+            font-size: 15px;
+			float : left;
+}
+
+.editorfullscreen {
+            min-height: 666px;
+            resize: none;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 3px solid #ccc;
+            font-size: 16px;
+}
+
+.body {
+	background-image:linear-gradient(to left,#cfd9df 0%,#e2ebf0 100%);
+}
+

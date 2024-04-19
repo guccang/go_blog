@@ -1,0 +1,39 @@
+@import url("th.css");
+
+.separator {
+	border-top: 3px solid gray; /* 设置上边框 */
+	margin-top: 5px;           /* 添加一些上外边距 */
+	margin-bottom: 5px;        /* 添加一些下外边距 */
+}
+
+.custom-wh {
+	width: 200px;
+	height: 30px;
+}
+
+.top-fix-div {
+	position : fixed;
+	left : 5px;
+	top : 0;
+	//background-color:rgba(255, 99, 71, 0.5);
+	//background-color:#8fd3f4;
+	//background-image:linear-gradient(to left,#84fab0 0%,#8fd3f4 100%);
+	//background-image:linear-gradient(to left,#cfd9df 0%,#e2ebf0 100%);
+	width:100%;
+}
+
+
+.bottom-fix-div{
+	position : fixed;
+	left : 0;
+	bottom: 0;
+}
+
+.body{
+	//background-image:linear-gradient(to left,#84fab0 0%,#8fd3f4 100%);
+	background-image:linear-gradient(to left,#cfd9df 0%,#e2ebf0 100%);
+	//background-image:linear-gradient(to left,#fdfbfb 0%,#ebedee 100%);
+	//background-image:linear-gradient(to left,#e6e9f0 0%,#eef1f5 100%);
+}
+
+

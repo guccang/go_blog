@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor</title>
+	<style>
+		@import url("/css/editor.css");
+	</style>
+</head>
+<body id="body" class="th_black">
+
+    <!-- Markdown编辑器容器 -->
+	<div class="top-fix-div">
+		<a href="/link" style="font-size: 32px;">主页</a><br>
+		<div class="separator"></div>
+		<label id="title">{{.TITLE}}</label>
+		<label id="ctime">{{.CTIME}}</label>
+	</div>
+
+	<div style="height:64px;" ></div>
+
+	<div class="center-fix-div">
+		<textarea id="editor-inner" class="hide th_black" name="content">{{.CONTENT}}</textarea>
+		<div id="md" class="md"></div>
+	</div>
+
+	<script src="/js/marked/marked.min.js"></script>
+	<script src="/js/editor.js"></script>
+	<script src="/js/utils.js"></script>
+	<script>
+
+	window.onload = function(){
+		// 获取textarea元素
+		var textarea = document.getElementById('editor-inner');
+		// md渲染
+		mdRender(textarea.value)
+		// 时间-black
+		checkTime()
+	}
+
+	</script>
+
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor</title>
+
+	<style>
+		@import url(/css/editor.css);
+	</style>
+
+</head>
+<body class="th_black" id="body">
+
+    <!-- Markdown编辑器容器 -->
+	<div class="top-fix-div">
+		<a href="/link" style="font-size: 32px;">主页</a>
+		<div class="separator"></div>
+		<label>NAME</label>
+		<input id="title" type="text" name="title" value="{{.TITLE}}">
+		{{ if eq "private" .AUTHTYPE  }}
+		<input type="radio" name="auth_type" value="private" checked>private</input> 
+		<input type="radio" name="auth_type" value="public">public</input> 
+		{{ else }}
+		<input type="radio" name="auth_type" value="private">private</input> 
+		<input type="radio" name="auth_type" value="public" checked>public</input> 
+		{{end}}
+
+	</div>
+
+	<div style="height:84px;" ></div>
+	<button class="right-button" type="button" onclick="submitContent()">提交</button>
+	<div class="separator"></div>
+	<div style="height:32px;" ></div>
+
+	<div class="center-fix-div">
+		<textarea class="editor th_black" id="editor" name="content">{{.CONTENT}}</textarea>
+		<div class="mdEditor" id="md"></div>
+	</div>
+
+	<script src="/js/marked/marked.min.js"></script>
+	<script src="/js/editor.js"></script>
+	<script src="/js/utils.js"></script>
+	<script>
+
+	window.onload = function (){
+		if (isPCDevice()){
+			mdRender(textarea.value)
+		}else{
+			var editor = document.getElementById("editor");
+			var md = document.getElementById("md");
+			md.setAttribute("class","hide");
+			editor.setAttribute("class","editorfullscreen");
+		}
+		checkTime()
+	}
+
+	function submitContent() {
+		var content = document.getElementById('editor').value;
+		var title = document.getElementById("title").value;
+		var auth_type= document.querySelector('input[name="auth_type"]:checked').value;
+		console.log("auth_type=",auth_type);
+
+		// 使用XMLHttpRequest发送数据
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4 && xhr.status == 200) {
+				// 处理服务器的响应
+				//console.log(xhr.responseText);
+				alert(xhr.responseText)
+				//window.location.href=xhr.responseURL
+			}
+		};
+
+		var formData = new FormData();
+		formData.append('title', title);
+		formData.append('content', content);
+		formData.append('auth_type', auth_type);
+		xhr.open('POST', '/save', true);
+		xhr.send(formData);
+	}
+
+      // 获取textarea元素
+	   var textarea = document.getElementById('editor');
+        // 监听输入事件
+        textarea.addEventListener('input', function () {
+            // 重置textarea的高度以适应内容
+            this.style.height = 'auto';
+            //this.style.height = (this.scrollHeight) + 'px';
+			var md = document.getElementById("md");
+            this.style.height = (md.clientHeight) + 'px';
+			mdRender(textarea.value)
+	})
+
+	</script>
+
+</body>
+</html>

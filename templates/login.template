@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor</title>
+	<style>	
+.left-button {
+    float: left;
+}
+
+.separator {
+    border-top: 3px solid gray; /* 设置上边框 */
+    margin-top: 5px;           /* 添加一些上外边距 */
+    margin-bottom: 5px;        /* 添加一些下外边距 */
+}
+
+
+#editor {
+            min-height: 555px;
+            resize: none;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 3px solid #ccc;
+            font-size: 16px;
+}
+
+.label {
+	width : 88px;
+	display : inline-block;
+}
+	</style>
+</head>
+<body style="background-color:#f0f0f0">
+
+	<label class="label">ACCOUNT</label>
+	<input id="account" type="text" name="title">
+	<br>
+	<label class="label">PWD</label>
+	<input id="pwd" type="password" name="title">
+	<br>
+	<button class="left-button" type="button" onclick="submitContent()">登录</button>
+
+	<script>
+	function submitContent() {
+		var account = document.getElementById('account').value;
+		var pwd = document.getElementById("pwd").value;
+
+		// 使用XMLHttpRequest发送数据
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4 ) {
+				// 处理服务器的响应
+				if (xhr.status == 200){
+					console.log(xhr.responseText);
+					window.location.href=xhr.responseURL
+				}else{
+					alert(xhr.responseText)
+				}
+			}
+		};
+
+		console.log(account)
+		console.log(pwd)
+		var formData = new FormData();
+		formData.append('account', account);
+		formData.append('password', pwd);
+		xhr.open('POST', '/login', true);
+		xhr.send(formData);
+	}
+
+	</script>
+
+</body>
+</html>
