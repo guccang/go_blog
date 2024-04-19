@@ -3,6 +3,8 @@ p=$(dirname $0)
 p=$(realpath "$p")
 
 base_path=$(dirname $p)
+echo "base_path=$base_path"
+
 
 run_path=$1
 if [ "$run_path" == "" ]; then
@@ -37,7 +39,7 @@ cp -r $base_path/templates $bin_path
 
 cp -r $base_path/statics $bin_path
 
-cp $base_path/redis/redis_6666.conf $bin_path/redis
+#cp $base_path/redis/redis_6666.conf $bin_path/redis
 
 echo "Install OKKKKKK"
 echo "run_path $run_path"

@@ -32,6 +32,7 @@ bypy_remote_path="/go_blogs"
 find $p/ -name "*.go"  | xargs zip $name 
 find $p/ -name "*.mod" | xargs zip -u $name
 
+zip -u $name $p/blog.conf
 zip -u $name $p/scripts/*.sh -r
 zip -u $name $p/templates/* -r
 zip -u $name $p/statics/js/* -r

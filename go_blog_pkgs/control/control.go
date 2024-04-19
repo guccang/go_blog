@@ -68,10 +68,11 @@ func AddBlog(udb *module.UploadedBlogData) int{
 	title := udb.Title
 	content := udb.Content
 	auth_type := udb.AuthType
+	tags := udb.Tags
 
 	add_date_suffix := config.IsTitleAddDateSuffix(title)
 	if add_date_suffix == 1 {
-		str:=time.Now().Format("2006-01-02-15-04-05")
+		str:=time.Now().Format("2006-01-02")
 		title = fmt.Sprintf("%s_%s",title,str)
 	}
 
@@ -93,6 +94,7 @@ func AddBlog(udb *module.UploadedBlogData) int{
 		ModifyNum  : 0,
 		AccessNum  : 0,
 		AuthType   : auth_type,
+		Tags	   : tags,
 	}
 	Blogs[title] = &b
 	db.SaveBlog(&b)
@@ -104,6 +106,7 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	title := udb.Title
 	content := udb.Content
 	auth_type := udb.AuthType
+	tags := udb.Tags
 
 	b, ok := Blogs[title]
 	if !ok {
@@ -117,6 +120,7 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	b.ModifyTime = strTime()
 	b.ModifyNum += 1
 	b.AuthType = auth_type
+	b.Tags = tags
 	db.SaveBlog(b)
 	return 0
 }
@@ -150,18 +154,48 @@ func GetMatch(match string) []*module.Blog{
 			match = match[space_index+1:]
 		}else{
 			// 所有的$private/$public
-			match = " "
+			match = ""
 		}
 	}
+
+	// tags
+	match_tag := ""
+	if strings.HasPrefix(match,"$") && len(match)>1  {
+		space_index := strings.Index(match," ")
+		if space_index != -1 {
+			 match_tag = match[1:space_index]
+			 match = match[space_index+1:]
+		 }else{
+			 match_tag = match[1:]
+			 match = ""
+		}
+	}
+
 	s := make([]*module.Blog,0)
 	for _,b := range Blogs {
+
+		// auth
 		if auth_type != -1 && b.AuthType != auth_type {
 			continue
 		}
+
+		// tag
+		if match_tag!="" && false == strings.Contains(strings.ToLower(b.Tags),strings.ToLower(match_tag)) {
+			continue
+		}
+
+		// match all
+		if match == "" {
+			s = append(s,b)
+			continue
+		}
+		
+		// title match
 		if strings.Contains(strings.ToLower(b.Title),strings.ToLower(match)) {
 			s = append(s,b)
 			continue
 		}	
+		// content match
 		if strings.Contains(strings.ToLower(b.Content),strings.ToLower(match)){
 			s = append(s,b)
 			continue

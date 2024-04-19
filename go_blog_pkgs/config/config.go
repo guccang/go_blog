@@ -42,8 +42,10 @@ func GetHttpTemplatePath() string{
     if templates_path == ""{
 		exePath,_:= os.Executable()
 		templates_path = filepath.Dir(exePath)
+		return filepath.Join(templates_path,"templates")
+	}else{
+		return templates_path
 	}
-	return filepath.Join(templates_path,"templates")
 }
 
 func GetHttpStaticPath() string{
@@ -51,8 +53,10 @@ func GetHttpStaticPath() string{
     if statics_path == "" {
 		exePath,_:= os.Executable()
 		statics_path = filepath.Dir(exePath)
+		return filepath.Join(statics_path,"statics")
+	}else{
+		return statics_path
 	}
-	return filepath.Join(statics_path,"statics")
 }
 
 func GetExePath() string{
@@ -118,3 +122,6 @@ func GetDownLoadPath()string{
 	return GetConfig("download_path")
 }
 	
+func GetHelpBlogName() string{
+	return GetConfig("help_blog_name")
+}

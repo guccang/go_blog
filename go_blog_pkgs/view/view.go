@@ -9,6 +9,8 @@ import(
 	"path/filepath"
 	"control"
 	"module"
+	"strings"
+	"sort"
 )
 
 func Info(){
@@ -22,9 +24,10 @@ type LinkData struct{
 }
 
 type LinkDatas struct{
-	Items []LinkData
+	LINKS []LinkData
 	VERSION string
 	BLOGS_NUMBER int
+	TAGS []string
 }
 
 type EditorData struct{
@@ -32,6 +35,7 @@ type EditorData struct{
 	CONTENT string
 	CTIME string
 	AUTHTYPE string
+	TAGS string
 }
 
 
@@ -54,22 +58,60 @@ func Notify(msg string,w h.ResponseWriter){
 	fmt.Println("view Notify",msg)
 }
 
-func PageSearch(match string,w h.ResponseWriter ){
 
-	blogs := control.GetMatch(match)
+func getLinks(blogs []*module.Blog) *LinkDatas{
 
 	datas := LinkDatas{}
 	datas.VERSION = config.GetVersion()
 	datas.BLOGS_NUMBER = len(blogs)
 
-	for _,k := range blogs{
+
+	all_tags := make(map[string]int)
+	all_tags["private"] = 0
+	all_tags["public"] = 0
+
+	for _,b := range blogs{
 		ld := LinkData {
-			URL:fmt.Sprintf("/get?blogname=%s",k.Title),
-			DESC:k.Title,
+			URL:fmt.Sprintf("/get?blogname=%s",b.Title),
+			DESC:b.Title,
 		}
-		datas.Items = append(datas.Items,ld)
+		datas.LINKS = append(datas.LINKS,ld)
+
+		if b.AuthType == module.EAuthType_private {
+			all_tags["private"] = all_tags["private"] + 1
+		}else{
+			all_tags["public"] = all_tags["public"] + 1
+		}
+		
+		tags := strings.Split(b.Tags,"|")
+		for _,tag := range tags {
+			if tag == "" {
+				continue
+			}
+			cnt,ok := all_tags[tag]
+			if !ok {
+				all_tags[tag] = 1
+			}else{
+				all_tags[tag] = cnt + 1
+			}
+		}
 	}
-	
+
+	for tag,_ := range all_tags {
+		tags_str := fmt.Sprintf("$%s",tag)
+		datas.TAGS = append(datas.TAGS,tags_str)
+	}
+	sort.Strings(datas.TAGS)
+
+	return &datas
+}
+
+func PageSearch(match string,w h.ResponseWriter ){
+
+	blogs := control.GetMatch(match)
+
+	datas := getLinks(blogs)
+
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))
 	if err != nil{
@@ -89,17 +131,7 @@ func PageLink(w h.ResponseWriter){
 	
 	blogs := control.GetAll()
 
-	datas := LinkDatas{}
-	datas.VERSION = config.GetVersion()
-	datas.BLOGS_NUMBER = len(blogs)
-
-	for _,k := range blogs{
-		ld := LinkData {
-			URL:fmt.Sprintf("/get?blogname=%s",k.Title),
-			DESC:k.Title,
-		}
-		datas.Items = append(datas.Items,ld)
-	}
+	datas := getLinks(blogs)
 	
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))
@@ -130,6 +162,7 @@ func PageEditor(w h.ResponseWriter){
 		TITLE:"input title",
 		CONTENT:"# input content",
 		AUTHTYPE:"private",
+		TAGS:"",
 	}
 	err = tmpl.Execute(w,data)
 	if err != nil{
@@ -172,6 +205,7 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 		CONTENT:blog.Content,
 		CTIME : blog.CreateTime,
 		AUTHTYPE:auth_type_string,
+		TAGS : blog.Tags,
 	}
 
 	err = tmpl.Execute(w,data)
@@ -198,6 +232,5 @@ func PageIndex(w h.ResponseWriter){
 		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
 		return
 	}
-
 
 }

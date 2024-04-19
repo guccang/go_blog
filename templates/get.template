@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Editor</title>
+    <title>GUCCANG/GET</title>
 	<style>
 		@import url("/css/editor.css");
 		.radio-left {
@@ -18,9 +18,10 @@
 		<div class="separator"></div>
 		<label id="title">{{.TITLE}}</label>
 		<label id="ctime">{{.CTIME}}</label>
+		<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 	</div>
 
-	<div style="height:64px;" ></div>
+	<div style="height:88px;" ></div>
 	<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
 	<div class="separator"></div>
 	<div style="height:32px;" ></div>
@@ -100,6 +101,7 @@
 	function submitContent() {
 		var content = document.getElementById('editor-inner').value;
 		var title = document.getElementById("title").innerText;
+		var tags = document.getElementById("tags").value;
 		var auth_type = document.querySelector('input[name="auth_type"]:checked').value;
 		console.log("auth_type=",auth_type);
 
@@ -117,6 +119,7 @@
 		formData.append('title', title);
 		formData.append('content', content);
 		formData.append('auth_type', auth_type);
+		formData.append('tags', tags);
 		xhr.open('POST', '/modify', true);
 		xhr.send(formData);
 	}

@@ -132,12 +132,16 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	if auth_type_string == "public" {
 		auth_type = module.EAuthType_public
 	}
-	
 
+	// tags
+	tags := r.FormValue("tags")
+	log.DebugF("Received content:%s",tags)
+	
 	ubd := module.UploadedBlogData {
 		Title : title,
 		Content : content,
 		AuthType : auth_type,
+		Tags : tags,
 	}
 
 	ret := control.AddBlog(&ubd)
@@ -146,8 +150,33 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	if ret==0 {
 		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d",ret)))
 	}else{
-		w.Write([]byte(fmt.Sprintf("save failed! ret=%d",ret)))
+		w.Write([]byte(fmt.Sprintf("save failed! has same title blog ret=%d",ret)))
 	}
+}
+
+func HandleHelp(w h.ResponseWriter, r *h.Request){
+	blogname := config.GetHelpBlogName()	
+	if blogname == "" {
+		blogname = "help"
+	}
+
+	log.DebugF("help blogname=",blogname)
+
+	usepublic := 0
+	// 权限检测成功使用private模板,可修改数据
+	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
+	if checkLogin(r) !=0 {
+		// 判定blog访问权限
+		auth_type := control.GetBlogAuthType(blogname)
+		if auth_type == module.EAuthType_private {
+			h.Redirect(w,r,"/index",302)
+			return
+		}else{
+			usepublic = 1
+		}
+	}
+
+	view.PageGetBlog(blogname,w,usepublic)
 }
 
 func HandleGet(w h.ResponseWriter, r *h.Request){
@@ -200,6 +229,11 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 		auth_type = module.EAuthType_public
 	}
 
+	// tags
+	tags := r.FormValue("tags")
+	log.DebugF("Received content:%s",tags)
+	
+
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
 	log.DebugF("Received content:%s", content)
@@ -208,6 +242,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 		Title : title,
 		Content : content,
 		AuthType : auth_type,
+		Tags : tags,
 	}
 
 	ret := control.ModifyBlog(&ubd)
@@ -223,8 +258,13 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		h.Redirect(w,r,"/index",302)
 		return
 	}
-
 	match := r.URL.Query().Get("match")
+
+	if match == "$help" {
+		h.Redirect(w,r,"/help",302)
+		return
+	}
+
 	view.PageSearch(match,w)
 }
 
@@ -289,6 +329,7 @@ func Init() int{
 	h.HandleFunc("/search",HandleSearch)
 	h.HandleFunc("/login",HandleLogin)
 	h.HandleFunc("/index",HandleIndex)
+	h.HandleFunc("/help",HandleHelp)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))

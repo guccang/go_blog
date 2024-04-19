@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Editor</title>
+    <title>GUCCANG/MarkdownEditor</title>
 
 	<style>
 		@import url(/css/editor.css);
@@ -17,7 +17,9 @@
 		<a href="/link" style="font-size: 32px;">主页</a>
 		<div class="separator"></div>
 		<label>NAME</label>
-		<input id="title" type="text" name="title" value="{{.TITLE}}">
+		<input id="title" type="text" name="title" value="{{.TITLE}}"><br>
+		<label>TAGS</label>
+		<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 		{{ if eq "private" .AUTHTYPE  }}
 		<input type="radio" name="auth_type" value="private" checked>private</input> 
 		<input type="radio" name="auth_type" value="public">public</input> 
@@ -58,6 +60,7 @@
 	function submitContent() {
 		var content = document.getElementById('editor').value;
 		var title = document.getElementById("title").value;
+		var tags = document.getElementById("tags").value;
 		var auth_type= document.querySelector('input[name="auth_type"]:checked').value;
 		console.log("auth_type=",auth_type);
 
@@ -76,6 +79,7 @@
 		formData.append('title', title);
 		formData.append('content', content);
 		formData.append('auth_type', auth_type);
+		formData.append('tags', tags);
 		xhr.open('POST', '/save', true);
 		xhr.send(formData);
 	}

@@ -62,6 +62,7 @@ func SaveBlog(blog *module.Blog){
 	values["modifynum"] = blog.ModifyNum
 	values["accessnum"] = blog.AccessNum
 	values["authtype"] = blog.AuthType
+	values["tags"] = blog.Tags
 	err := db.client.HMSet(key,values).Err()
 	if err != nil {
 		log.ErrorF("saveblog error key=%s err=%s",key,err.Error())
@@ -91,6 +92,8 @@ func toBlog(m map[string]string)*module.Blog{
 	if !ok { an_s = "0"}
 	auth_s,ok := m["authtype"]
 	if !ok { auth_s = "0" }
+	tags,ok := m["tags"]
+	if !ok { tags = "" }
 
 	mn,_ := strconv.Atoi(mn_s)
 	an,_ := strconv.Atoi(an_s)
@@ -105,6 +108,7 @@ func toBlog(m map[string]string)*module.Blog{
 		ModifyNum:mn,
 		AccessNum:an,
 		AuthType:auth,
+		Tags : tags,
 	}
 	return &b
 }

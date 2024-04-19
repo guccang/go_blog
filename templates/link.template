@@ -3,7 +3,7 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
-		<title> go html template list test </title>
+		<title> GUCCANG/MAIN </title>
 		<style>
 		 @import url(/css/link.css);
 		 .right-label{
@@ -18,13 +18,18 @@
 			<img src="/logo/logo.png" width=64></img>
 			<a href="/editor" style="font-size: 32px;">创建博客</a>
 			<div class="separator"></div>
-			<input id="search" type="text" class="custom-wh"></input>
+			<input id="search" type="text" class="custom-wh" list="search_list"></input>
+			<datalist id="search_list">
+				{{range .TAGS}}
+					<option>{{.}}</option>
+				{{end}}
+			</datalist>
 			<button type="button" onclick="onSearch()">搜索</button>
 		</div>
-		<div style="height:100px;" ></div>
+		<div style="height:128px;" ></div>
 		<div class="separator"></div>
 
-		{{range .Items}}
+		{{range .LINKS}}
 			<p><a href="{{.URL}}">{{.DESC}}</a></p>
 		{{end}}
 

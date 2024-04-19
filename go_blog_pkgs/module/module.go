@@ -15,6 +15,7 @@ type UploadedBlogData struct {
 	Title string
 	Content string
 	AuthType int
+	Tags	string
 }
 	
 // blog数据
@@ -27,6 +28,7 @@ type Blog struct{
 	ModifyNum int
 	AccessNum int
 	AuthType  int
+	Tags	  string
 }
 
 // 用户
