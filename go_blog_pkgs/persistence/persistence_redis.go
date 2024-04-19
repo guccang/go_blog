@@ -10,6 +10,8 @@ import(
 	"config"
 	"ioutils"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 type DbRedis struct{
@@ -173,4 +175,145 @@ func saveToFile(blog *module.Blog){
 	}
 	ioutils.RmAndSaveFile(full,content)
 
+}
+
+func SaveBlogComments(bc *module.BlogComments){
+	log.DebugF("SaveBlogComments title=%s comments_len=%d",bc.Title,len(bc.Comments))	
+
+	key := fmt.Sprintf("comments@%s",bc.Title)
+	values := make(map[string]interface{})
+	s := "\x01"
+	// save new keys
+	for _,c := range bc.Comments {
+		value := fmt.Sprintf("Idx=%d%sowner=%s%sct=%s%smt=%s%smsg=%s%smail=%s",
+				c.Idx,s,
+				c.Owner,s,
+				c.CreateTime,s,
+				c.ModifyTime,s,
+				c.Msg,s,
+				c.Mail)
+		idx_str := fmt.Sprintf("%d",c.Idx)
+		values[idx_str] = value
+	}
+	err := db.client.HMSet(key,values).Err()
+	if err != nil {
+		log.ErrorF("saveblogcomments error key=%s err=%s",key,err.Error())
+	}else{
+		log.DebugF("redis saveblogcomments success key=%s title=%s",key,bc.Title)
+	}
+}
+
+func GetAllBlogComments() map[string]*module.BlogComments {
+	// todo 
+	keys,err := db.client.Keys("comments@*").Result()
+	if err !=nil {
+		log.ErrorF("getcomments error keys=comments@* err=%s",err.Error())
+		return nil
+	}
+
+	bcs := make(map[string]*module.BlogComments)
+
+	for _,key := range keys {
+		m ,err := db.client.HGetAll(key).Result()
+		if err!=nil {
+				log.ErrorF("getComments error key=%s err=%s",key,err.Error())
+				continue
+		}
+		log.DebugF("getComments success key=%s",key)
+		title := key[strings.Index(key,"@")+1:]
+		toBlogComments(title,m,bcs)
+	}
+
+	return bcs
+}
+
+func toBlogComments(title string,m map[string]string,bcs map[string]*module.BlogComments){
+
+	bc,ok := bcs[title]
+	if !ok {
+		bc = &module.BlogComments {
+			Title : title,
+		}
+		bcs[title] = bc
+	}
+
+	for _,v := range m {
+		owner := ""
+		msg  := ""
+		ct   := ""
+		mt   := ""
+		mail := ""
+		idx  := -1
+
+		// analy the hash value, split by ASCII 0x01 which is can not print
+		tokens := strings.Split(v,"\x01")
+		log.DebugF("toBlogComments v=%s tokens_len=%d",v,len(tokens))
+		for _,t := range tokens {
+			kv := strings.Split(t,"=")
+			if len(kv) >= 2 {
+				k := kv[0]
+				v := t[strings.Index(t,"=")+1:]
+				log.DebugF("k=%s v=%s",k,v)
+
+				if strings.ToLower(k) == "owner" {
+					owner = v
+				}else if strings.ToLower(k) == "msg" {
+				msg  = v
+				}else if strings.ToLower(k) == "ct"  {
+					ct   = v
+				}else if strings.ToLower(k) == "mt"  {
+					mt   = v
+				}else if strings.ToLower(k) == "mail"  {
+					mail   = v
+				}else if strings.ToLower(k) == "idx" {
+					the_idx,err := strconv.Atoi(v)
+					if err != nil {
+						log.ErrorF("split idx conv to int error %s the_idx=%d",err.Error(),the_idx)
+					}else{
+						idx = the_idx
+					}
+				} 
+
+			}else{
+				log.ErrorF("split tokens %s error kv <= 2",t)
+			}
+
+		}
+
+		if idx < 0 {
+			log.ErrorF("toBlogComments idx<0 idx=%d",idx)
+			continue
+		}
+
+		c := module.Comment {
+			Owner: owner,
+			Msg : msg,
+			CreateTime : ct,
+			ModifyTime : mt,
+			Mail : mail,
+			Idx : idx,
+		}
+		bc.Comments = append(bc.Comments,&c)
+	}
+
+
+	// sort by c.Idx
+	sort.SliceStable(bc.Comments,func(i,j int) bool {
+		return bc.Comments[i].Idx < bc.Comments[j].Idx
+	})
+
+	showBlogComments(bc)
+}
+
+
+
+func showBlogComments(cs *module.BlogComments){
+	log.DebugF("title=%s",cs.Title)	
+	for _,c := range cs.Comments {
+		log.DebugF("Idx=%d",c.Idx)	
+		log.DebugF("owner=%s",c.Owner)	
+		log.DebugF("msg=%s",c.Msg)	
+		log.DebugF("ct=%s",c.CreateTime)	
+		log.DebugF("mt=%s",c.ModifyTime)	
+	}
 }

@@ -203,6 +203,54 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 	view.PageGetBlog(blogname,w,usepublic)
 }
 
+func HandleComment(w h.ResponseWriter, r *h.Request){
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	// 设置请求体大小限制
+	r.ParseMultipartForm(1 << 20) // 1MB
+
+	// 获取单个字段值
+	title := r.FormValue("title")
+    pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
+    reg := regexp.MustCompile(pattern)
+	match := reg.MatchString(title)
+	if !match {
+		w.Write([]byte(fmt.Sprintf("save failed! title is invalied")))
+		return
+	}
+
+	log.DebugF("comment title:%s",title)
+	
+	owner := r.FormValue("owner")
+	pwd := r.FormValue("pwd")
+	mail :=  r.FormValue("mail")
+	comment := r.FormValue("comment")
+
+	if owner == "" {
+		// ipPort
+		owner = r.RemoteAddr
+	}
+
+	if pwd == "" {
+		// 
+		pwd = r.RemoteAddr
+	}
+
+	if mail == "" {
+	}
+
+	if comment == "" {
+		w.Write([]byte(fmt.Sprintf("save failed! comment is invalied")))
+		return 
+	}
+
+	control.AddComment(title,comment,owner,pwd,mail)
+
+}
+
 func HandleModify(w h.ResponseWriter, r *h.Request){
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
@@ -330,6 +378,7 @@ func Init() int{
 	h.HandleFunc("/login",HandleLogin)
 	h.HandleFunc("/index",HandleIndex)
 	h.HandleFunc("/help",HandleHelp)
+	h.HandleFunc("/comment",HandleComment)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))

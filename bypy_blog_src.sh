@@ -1,6 +1,10 @@
 # 上传数据到百度网盘
 
-modify_cnt=`find ./ -name "*" -mtime -1 | wc -l`
+p=$(dirname $0)
+p=$(realpath $p)
+echo $p
+
+modify_cnt=`find $p -name "*" -mtime -1 | wc -l`
 echo modify_cnt=$modify_cnt
 if [ $modify_cnt -le 0 ];then
 	exit 0
@@ -11,7 +15,7 @@ logpath=~/.bypy/bypy.log
 date=`date +%F-%H-%M-%S`
 echo $date
 
-msg=`find ./ -name "*" -mtime -1`
+msg=`find $p -name "*" -mtime -1`
 echo "$date modify files $msg" >> "$logpath"
 
 source /etc/profile.d/conda.sh
@@ -20,9 +24,6 @@ conda activate py310
 
 bypy info
 
-p=$(dirname $0)
-p=$(realpath $p)
-echo $p
 cd $p
 
 
@@ -45,7 +46,7 @@ bypy upload "$name"  "$bypy_remote_path"
 
 mkdir -p ~/.bypy
 
-echo "$date bypy upload $name to $bypy_remote_path success" >> "$logpath"
+echo "$0 $date bypy upload $name to $bypy_remote_path success" >> "$logpath"
 
 # clear zip of remove three days ago
 rm_cnt=`find $p -name "blog_src_*.zip" -mtime +3 | wc -l`

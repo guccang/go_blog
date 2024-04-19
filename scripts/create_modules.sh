@@ -1,5 +1,5 @@
 
-modules=("http" "module" "control" "view" "http_template" "persistence" "protocol" "mylog" "config" "ioutils" "login" "auth")
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog")
 prename="go_blog_pkgs"
 
 cd ..

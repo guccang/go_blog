@@ -37,6 +37,24 @@ type User struct {
 	Password string
 }
 
+
+// 评论
+type Comment struct {
+	Owner string
+	Msg  string
+	CreateTime string
+	ModifyTime string
+	Idx  int
+	Pwd string
+	Mail string
+}
+// 博客评论
+type BlogComments struct {
+	Title string
+	Comments[] *Comment
+}
+
+
 func Info(){
 	fmt.Println("info module v1.0")
 }

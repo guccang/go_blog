@@ -30,12 +30,21 @@ type LinkDatas struct{
 	TAGS []string
 }
 
+type CommentDatas struct {
+	IDX		int
+	OWNER	string
+	MSG		string
+	CTIME	string
+	MAIL	string
+}
+
 type EditorData struct{
-	TITLE string
-	CONTENT string
-	CTIME string
-	AUTHTYPE string
-	TAGS string
+	TITLE		string
+	CONTENT		string
+	CTIME		string
+	AUTHTYPE	string
+	TAGS		string
+	COMMENTS	[]CommentDatas	
 }
 
 
@@ -164,6 +173,7 @@ func PageEditor(w h.ResponseWriter){
 		AUTHTYPE:"private",
 		TAGS:"",
 	}
+
 	err = tmpl.Execute(w,data)
 	if err != nil{
 		log.Debug(err.Error())
@@ -206,6 +216,20 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 		CTIME : blog.CreateTime,
 		AUTHTYPE:auth_type_string,
 		TAGS : blog.Tags,
+	}
+
+	bc := control.GetBlogComments(blogname)
+	if bc != nil {
+		for _,c := range bc.Comments {
+			cd := CommentDatas {
+				IDX : c.Idx,
+				OWNER: c.Owner,
+				MSG : c.Msg,
+				CTIME: c.CreateTime,
+				MAIL: c.Mail,
+			}
+			data.COMMENTS = append(data.COMMENTS,cd)
+		}
 	}
 
 	err = tmpl.Execute(w,data)

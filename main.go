@@ -7,13 +7,13 @@ import(
 	"view"
 	"control"
 	"http"
-	"http_template"
-	"protocol"
 	"persistence"
 	"config"
 	log "mylog"
 	"ioutils"
 	"login"
+	"comment"
+	"blog"
 )
 
 func main(){
@@ -31,12 +31,12 @@ func main(){
 	view.Info()
 	control.Info()
 	http.Info()
-	http_template.Info()
-	protocol.Info()
 	persistence.Info()
 	log.Info()
 	config.Info()
 	ioutils.Info()
+	blog.Info()
+	comment.Info()
 
 	// Init 
 	config.Init(args[1])
@@ -45,7 +45,7 @@ func main(){
 	login.Init()
 	blogs_txt_dir := config.GetBlogsPath()
 	control.ImportBlogsFromPath(blogs_txt_dir)
-	persistence.SaveBlogs(control.Blogs)
+	persistence.SaveBlogs(blog.Blogs)
 
 	log.Debug("go_blog started")
 

@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"strings"
 	log "mylog"
+	"strconv"
 )
 
 func Info(){
@@ -124,4 +125,13 @@ func GetDownLoadPath()string{
 	
 func GetHelpBlogName() string{
 	return GetConfig("help_blog_name")
+}
+
+func GetMaxBlogComments() int {
+	str_cnt := GetConfig("max_blog_comments")
+	cnt,_:= strconv.Atoi(str_cnt)
+	if cnt <= 0 {
+		cnt = 100
+	}
+	return cnt
 }

@@ -40,14 +40,93 @@
 		{{else}}
 		<input class="radio-left" type="radio" name="auth_type" value="private">private</input>
 		<input class="radio-left" type="radio" name="auth_type" value="public" checked>public</input> 
+
 		{{end}}
 
 	</div>
 
+	{{ if eq "public" .AUTHTYPE }}
+	<button id="comment-show" type="button" onclick="onShowComment()">显示评论</button>
+	<div id="comments" class="hide">
+			<label>所有评论:</label><br>
+			<div class="separator"></div>
+			{{range .COMMENTS}}
+			<label>{{.MSG}} ({{.IDX}})</label><br>
+			<label>commit by {{.OWNER}}({{.MAIL}}) at {{.CTIME}} </label><br>
+			<div class="separator"></div>
+			{{end}}
+	</div>
+
+	<div id="div-comment" class="hide">
+			<label>"用户名:"</label>
+			<input id="input-owner" type="text" value="" ><br>
+			<label>"邮箱:"</label>
+			<input id="input-mail" type="text" value="" ><br>
+			<label>"密码:"</label>
+			<input id="input-pwd" type="password" value="" ><br>
+			<label>"留言:"</label>
+			<input id="input-comment" type="text" value="" ><br>
+			<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
+	</div>
+	<div style="height:32px;"></div>
+	{{end}}
+
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script>
+
+	function onShowComment(){
+		var bnt = document.getElementById("comment-show")
+		var comments = document.getElementById("comments")
+		var div_comment =  document.getElementById("div-comment")
+		var bntName = bnt.innerText
+		if (bntName=="显示评论"){ 
+			// 显示editor和md页面
+			comments.setAttribute("class", ""); 
+			div_comment.setAttribute("class","")
+			bnt.innerText = "折叠评论"
+		}else{
+			// 隐藏editor显示md
+			comments.setAttribute("class", "hide"); 
+			div_comment.setAttribute("class","hide")
+			bnt.innerText = "显示评论"
+		}
+	}
+
+	function onCommitComment(){
+		console.log("onCommitComment");
+		var title = document.getElementById("title").innerText
+		var comment = document.getElementById("input-comment").value;	
+		var owner= document.getElementById("input-owner").value
+		var pwd = document.getElementById("input-pwd").value
+		pwd = CryptoJS.MD5(pwd).toString();
+
+		var mail = document.getElementById("input-mail").value
+		console.log("title=",title);
+		console.log("owner=",owner);
+		console.log("mail=",mail);
+		console.log("comment=",comment);
+
+		// 使用XMLHttpRequest发送数据
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4 && xhr.status == 200) {
+				// 处理服务器的响应
+				alert(xhr.responseText)
+			}
+		};
+
+		var formData = new FormData();
+		formData.append('title', title);
+		formData.append('owner', owner);
+		formData.append('pwd', pwd);
+		formData.append('mail', mail);
+		formData.append('comment', comment);
+		xhr.open('POST', '/comment', true);
+		xhr.send(formData);
+	}
 
 	function onEditor(){
 		// PC端

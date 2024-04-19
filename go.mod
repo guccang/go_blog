@@ -10,10 +10,6 @@ replace view => ./go_blog_pkgs/view
 
 replace http => ./go_blog_pkgs/http
 
-replace http_template => ./go_blog_pkgs/http_template
-
-replace protocol => ./go_blog_pkgs/protocol
-
 replace mylog => ./go_blog_pkgs/mylog
 
 replace config => ./go_blog_pkgs/config
@@ -26,17 +22,21 @@ replace auth => ./go_blog_pkgs/auth
 
 replace login => ./go_blog_pkgs/login
 
+replace comment => ./go_blog_pkgs/comment
+
+replace blog => ./go_blog_pkgs/blog
+
 require (
+	blog v0.0.0-00010101000000-000000000000
+	comment v0.0.0-00010101000000-000000000000
 	config v0.0.0-00010101000000-000000000000
 	control v0.0.0-00010101000000-000000000000
 	http v0.0.0-00010101000000-000000000000
-	http_template v0.0.0-00010101000000-000000000000
 	ioutils v0.0.0-00010101000000-000000000000
 	login v0.0.0-00010101000000-000000000000
 	module v0.0.0-00010101000000-000000000000
 	mylog v0.0.0-00010101000000-000000000000
 	persistence v0.0.0-00010101000000-000000000000
-	protocol v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
 )
 
