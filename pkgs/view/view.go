@@ -69,6 +69,7 @@ func Notify(msg string,w h.ResponseWriter){
 }
 
 
+
 func getLinks(blogs []*module.Blog,showall bool) *LinkDatas{
 
 	datas := LinkDatas{}
@@ -134,6 +135,38 @@ func PageSearch(match string,w h.ResponseWriter ){
 		h.Error(w,"Failed to render template link.template",h.StatusInternalServerError)
 		return
 	}
+}
+
+func PageTags(w h.ResponseWriter,tag string){
+
+	blogs := control.GetMatch("$"+tag)	
+
+	// 只展示public
+	public_blogs := make([]*module.Blog,0)
+	for _,b := range blogs {
+		if b.AuthType != module.EAuthType_public {
+			continue
+		}
+
+		public_blogs = append(public_blogs,b)
+	}
+
+	datas := getLinks(public_blogs,true)
+
+	exeDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"tags.template"))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse tags.template",h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w,datas)
+	if err != nil{
+		h.Error(w,"Failed to render template tags.template",h.StatusInternalServerError)
+		return
+	}
+
 }
 
 func PageLink(w h.ResponseWriter){
@@ -276,3 +309,23 @@ func PageIndex(w h.ResponseWriter){
 	}
 
 }
+
+func PageD3(w h.ResponseWriter){
+
+	tempDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,"d3.template"))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse get.template",h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w,nil)
+	if err != nil{
+		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
+		return
+	}
+
+}
+
+

@@ -15,9 +15,16 @@ func Info(){
 
 var datas = make(map[string]string)
 var autodatesuffix = make([]string,0)
+var publictags = make([]string,0)
+var config_path = ""
 
 func Init(filePath string){
-	loadConfig(filePath)
+	config_path = filePath
+	loadConfig(config_path)
+}
+
+func GetConfigPath() string{
+	return config_path
 }
 
 func ReloadConfig(filePath string){
@@ -34,6 +41,12 @@ func loadConfig(filePath string){
 	if ok {
 		arr := strings.Split(datetitles,"|")
 		autodatesuffix = arr
+	}
+
+	tags,ok := datas["publictags"] 
+	if ok {
+		arr := strings.Split(tags,"|")
+		publictags = arr
 	}
 }
 
@@ -114,9 +127,18 @@ func readConfigFile(filePath string) (map[string]string, error) {
 
 
 func GetVersion() string{
-	return "Version1.0"
+	return "Version5.0"
 }
 
+
+func IsPublicTag(tag string) int {
+	for _,v := range publictags{
+		if v == tag {
+			return 1
+		}
+	}
+	return 0
+}
 
 func IsTitleAddDateSuffix(title string)int{
 	for _,v := range autodatesuffix {

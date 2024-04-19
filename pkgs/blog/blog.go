@@ -8,6 +8,7 @@ import (
 	"time"
 	"config"
 	"sort"
+	"strings"
 )
 
 func Info(){
@@ -189,4 +190,55 @@ func UpdateAccessTime(blog *module.Blog){
 func GetBlogAuthType(blogname string) int {
 	blog := GetBlog(blogname)
 	return blog.AuthType
+}
+
+func IsPublicTag(tag string) int {
+	return config.IsPublicTag(tag)
+}
+
+func TagReplace(from string,to string) {
+	for _,b := range Blogs {
+
+		if !strings.Contains(strings.ToLower(b.Tags),strings.ToLower(from)) {
+			continue
+		}
+
+		if from == b.Tags {
+			b.Tags = to
+		}else{
+			newTags := ""
+			tags := strings.Split(b.Tags,"|")
+			for _,tag := range tags {
+				if from == tag {
+					// if to == "" delete tag
+					if to != "" {
+						newTags =  newTags + to + "|"
+					}
+				}else{
+					newTags = newTags + tag + "|"
+				}
+			}
+			// remove last "|"
+			newTags = newTags[:len(newTags)-1]
+			log.MessageF("blog change tag from %s to %s",b.Tags,newTags)
+			b.Tags = newTags
+		}
+
+		// remove same tags
+		tags := strings.Split(b.Tags,"|")	
+		usedTags := make(map[string]bool)
+		newTags := ""
+		for _,tag := range tags {
+			_,ok := usedTags[tag]
+			if !ok {
+				usedTags[tag] = true
+			}else{
+				continue
+			}
+			newTags = newTags + tag + "|"
+		}
+		newTags = newTags[:len(newTags)-1]
+		b.Tags = newTags
+		db.SaveBlog(b)
+	}	
 }

@@ -9,12 +9,10 @@ func Info(){
 }
 
 // Login Session
-var Sessions = make(map[string]string)
-var Sessions_a = make(map[string]string)
+var Sessions = make([]string,0)
 
 // Page Session
 var PageSessions = make(map[string]string)
-
 var tmpSession = ""
 
 func GetTmpSession()string{
@@ -23,21 +21,16 @@ func GetTmpSession()string{
 
 func AddSession(account string) string{
 	RemoveSession(account)
-
 	s := genSession()
-	Sessions[s] = account
-	Sessions_a[account] = s
+	Sessions = append(Sessions,s)
 	tmpSession = s
 	return s
 }
 
 func RemoveSession(account string){
-	s,ok := Sessions_a[account]
-	if !ok{
-		return
+	if len(Sessions) > 1 {
+		Sessions = Sessions[1:]
 	}
-	delete(Sessions_a,account)
-	delete(Sessions,s)
 }
 
 func genSession()string{
@@ -46,12 +39,12 @@ func genSession()string{
 
 // Check login session
 func CheckLoginSession(s string) int {
-	_,ok := Sessions[s]
-	if !ok {
-		return 1
+	for _, session := range Sessions {
+		if s == session {
+			return 0
+		}
 	}
-
-	return 0
+	return 1
 }
 
 

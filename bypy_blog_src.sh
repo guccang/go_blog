@@ -4,7 +4,7 @@ p=$(dirname $0)
 p=$(realpath $p)
 echo $p
 
-modify_cnt=`find $p -name "*" -mtime -1 | grep -Ev "\.git|\.zip|bin|bin_guest|\.png" |  wc -l`
+modify_cnt=`find $p -name "*" -mtime -1 -type f | grep -Ev "\.git|\.zip|bin|bin_guest|\.png" |  wc -l`
 echo modify_cnt=$modify_cnt
 if [ $modify_cnt -le 0 ];then
 	exit 0
@@ -15,7 +15,7 @@ logpath=~/.bypy/bypy.log
 date=`date +%F-%H-%M-%S`
 echo $date
 
-msg=`find $p -name "*" -mtime -1 | grep -Ev "\.git|\.zip|bin|bin_guest|\.png"`
+msg=`find $p -name "*" -mtime -1 -type f | grep -Ev "\.git|\.zip|bin|bin_guest|\.png"`
 echo "$date modify files $msg"
 echo "$date modify files $msg" >> "$logpath"
 

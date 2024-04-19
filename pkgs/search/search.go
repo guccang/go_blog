@@ -7,6 +7,7 @@ import (
 	"time"
 	"blog"
 	log "mylog"
+	"config"
 )
 
 
@@ -56,6 +57,18 @@ func Search(match string) []*module.Blog{
 		if strings.ToLower(tag) == strings.ToLower("encrypt") {
 			return matchEncrypt()
 		}
+		if strings.ToLower(tag) == strings.ToLower("reload") {
+			if len(tokens) != 2 {
+				return nil
+			}
+			reload(tokens[1])
+		}
+		if strings.ToLower(tag) == strings.ToLower("tag") {
+			if len(tokens) < 2 {
+				return nil
+			}
+			tagChange(tokens)
+		}
 	}else{
 			// begin with other
 			return matchOther(tokens)	
@@ -89,6 +102,14 @@ func matchTags(tag string, matches []string) []*module.Blog{
 	sortblogs(s)
 
 	return s
+}
+
+func reload(name string) {
+	if name == "cfg" {
+		config_path := config.GetConfigPath()
+		config.ReloadConfig(config_path);
+		log.MessageF("reload cfg %s",config_path)
+	}
 }
 
 func matchOther(matches []string) []*module.Blog {
@@ -182,4 +203,18 @@ func matchEncrypt() []*module.Blog{
 	sortblogs(s)
 
 	return s
+}
+
+func tagChange(tokens []string){
+	from := ""
+	to   := ""
+
+	if len(tokens) == 3 {
+		from = tokens[1]
+		to = tokens[2]
+	}else if len(tokens) == 2{
+		from = tokens[1]
+	}
+
+	blog.TagReplace(from,to)
 }

@@ -42,10 +42,10 @@ echo "$date bypy upload $name to $bypy_remote_path success"
 echo "$date bypy upload $name to $bypy_remote_path success" >> $logpath
 
 # clear zip of remove three days ago
-rm_cnt=`find $p -name "${prename}_*.zip" -mtime +3 | wc -l`
+rm_cnt=`find $p -name "*.zip" -mtime +3 | grep "$prename" |wc -l`
 if [ $rm_cnt -gt 0 ];then
-	msg=`find $p -name "${prename}_*.zip" -mtime +3`
+	msg=`find $p -name "*.zip" -mtime +3 | grep "$prename"`
 	echo "$date bypy remove zip $msg" >> "$logpath"
 
-	find $p -name "${pre_name}_*.zip" -mtime +3 | xargs rm -rf
+	find $p -name "*.zip" -mtime +3 | grep "$prename" |xargs rm -rf
 fi

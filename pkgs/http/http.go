@@ -195,6 +195,20 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	}
 }
 
+
+func HandleD3(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleHelp",r)
+	// 权限检测成功使用private模板,可修改数据
+	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
+	if checkLogin(r) !=0 {
+		h.Redirect(w,r,"/index",302)
+		return
+	}
+
+	view.PageD3(w)
+
+}
+
 func HandleHelp(w h.ResponseWriter, r *h.Request){
 	LogRemoteAddr("HandleHelp",r)
 	blogname := config.GetHelpBlogName()	
@@ -356,7 +370,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 	// 内容
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
-	log.DebugF("Received content:%s", content)
+	//log.DebugF("Received content:%s", content)
 
 
 	// 加密
@@ -434,6 +448,27 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 	view.PageSearch(match,w)
 }
 
+func HandleTag(w h.ResponseWriter,r *h.Request){
+	LogRemoteAddr("HandleTag",r)
+
+	r.ParseMultipartForm(32 << 20) // 32MB
+
+	tag := r.FormValue("tag")
+	
+	isTagPublic := config.IsPublicTag(tag);
+	if isTagPublic != 1 {
+		if checkLogin(r) !=0 {
+			h.Redirect(w,r,"/index",302)
+			return
+		}
+	}
+
+	// 展示所有public tag
+	view.PageTags(w,tag)
+}
+
+
+
 func HandleLogin(w h.ResponseWriter,r *h.Request){
 	LogRemoteAddr("HandleLogin",r)
 
@@ -500,6 +535,8 @@ func Init() int{
 	h.HandleFunc("/index",HandleIndex)
 	h.HandleFunc("/help",HandleHelp)
 	h.HandleFunc("/comment",HandleComment)
+	h.HandleFunc("/d3",HandleD3)
+	h.HandleFunc("/tag",HandleTag)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))

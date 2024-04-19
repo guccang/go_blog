@@ -69,3 +69,7 @@ func DeleteBlog(title string) int {
 func GetRecentlyTimedBlog(title string) *module.Blog{
 	return blog.GetRecentlyTimedBlog(title)
 }
+
+func TagReplace(from string, to string) {
+	blog.TagReplace(from,to)
+}

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title> GUCCANG/MAIN </title>
+		<style>
+		 @import url(/css/link.css);
+		 .right-label{
+			float : right;
+			margin-right:10px;	
+		 }
+		</style>
+	</head>
+
+	<body class="th_black">
+		<div class="top-fix-div">
+			<img src="/logo/logo.png" width=64></img>
+			<div class="separator"></div>
+		</div>
+		<div style="height:64px;" ></div>
+		{{range .LINKS}}
+			<p><a href="{{.URL}}">{{.DESC}}</a></p>
+		{{end}}
+	</body>
+</html>
