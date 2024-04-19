@@ -87,6 +87,8 @@
 		//debug : true
 	});
 
+	PageHistoryBack()
+
 	function onDecrypt(){
 		aesTest()
 		var e = document.getElementById('editor-inner')

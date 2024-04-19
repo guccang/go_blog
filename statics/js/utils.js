@@ -12,3 +12,15 @@ function isMobileDevice(){
 function isPCDevice(){
 	return isMobileDevice() == 0
 }
+
+function PageHistoryBack(){
+	document.addEventListener('keydown', function(event) {
+		console.log(`key=${event.key},code=${event.code}`);
+        if (event.ctrlKey && event.key === "ArrowLeft"){
+                javascript:history.back(-1);
+        }
+        if (event.ctrlKey && event.key === "ArrowRight"){
+                javascript:history.forward();
+        }
+    });
+}

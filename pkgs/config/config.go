@@ -127,7 +127,7 @@ func readConfigFile(filePath string) (map[string]string, error) {
 
 
 func GetVersion() string{
-	return "Version5.0"
+	return "Version6.0"
 }
 
 

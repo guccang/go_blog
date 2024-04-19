@@ -3,7 +3,7 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCANG/MAIN </title>
+		<title> GUCCANG/LINK </title>
 		<style>
 		 @import url(/css/link.css);
 		 .right-label{
@@ -48,6 +48,7 @@
 		<label class="right-label">{{.VERSION}}</label>
 		</div>
 
+		<script src="/js/utils.js"></script>
 		<script>
 		function onSearch(){
 			console.log("onclick");
@@ -64,6 +65,18 @@
 			xhr.open('GET', '/search?match='+match, true);
 			xhr.send();
 		}
+
+		PageHistoryBack()
+
+		document.addEventListener('keydown', function(event) {
+			console.log(`key=${event.key},code=${event.code}`);
+			if (event.key === "Enter") {
+				event.preventDefault();
+				onSearch()
+			}
+		});
+
+
 		</script>
 
 

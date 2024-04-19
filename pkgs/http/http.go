@@ -429,6 +429,12 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		h.Redirect(w,r,"/help",302)
 		return
 	}
+	if match == "@main" {
+		h.Redirect(w,r,"/link",302)
+		return
+	}
+
+
 
 	if tokens[0] == "@c" {
 		if len(tokens) != 2 {

@@ -55,6 +55,8 @@
 		//debug : true
 	});
 
+	PageHistoryBack()
+
 	window.onload = function (){
 		if (isPCDevice()){
 			mdRender(textarea.value)
