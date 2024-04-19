@@ -51,17 +51,6 @@ var intervalId = setInterval(checkTime, 5000);
 
 //
 // aes-cbc  crypt-js
-var data = "小红帽"
-var keys = [
-  "1234", 
-  "16bit secret key", 
-  "16bit secret key1234567", 
-  "16bit secret key12345678",
-  "16bit secret key16bit secret ke",
-  "16bit secret key16bit secret key",
-  "16bit secret key16bit secret key1",
-]
-
 // 加密
 function aesEncrypt(data, key) {
   if (key.length > 32) {
@@ -85,10 +74,22 @@ function aesDecrypt(data,key){
     var iv = CryptoJS.SHA256(key).toString();
 	var cfg = { iv: CryptoJS.enc.Utf8.parse(iv) };
 	var decrypt = CryptoJS.AES.decrypt({ciphertext:CryptoJS.enc.Base64.parse(data)},cypherKey,cfg)
-	var txt = CryptoJS.enc.Utf8.stringify(decrypt)
+	var txt = decrypt.toString(CryptoJS.enc.Utf8)
 	return txt
 }
 
+
+var data = "小红帽"
+var keys = [
+  "Guccang@123456",
+  "1234", 
+  "16bit secret key", 
+  "16bit secret key1234567", 
+  "16bit secret key12345678",
+  "16bit secret key16bit secret ke",
+  "16bit secret key16bit secret key",
+  "16bit secret key16bit secret key1",
+]
 // 加密解密测试
 function aesTest(){
 	for (let i = 0; i < keys.length; i++) {

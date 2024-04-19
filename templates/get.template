@@ -30,7 +30,7 @@
 	</div>
 
 	<div class="bottom-fix-div">
-		<button class="left-button" id="editor-button" type="button" onclick="submitContent()">修改</button>
+		<button class="left-button" id="editor-button" type="button" onclick="submitFirst()">修改</button>
 
 		{{if eq "private" .AUTHTYPE }}
 		<input class="radio-left" type="radio" name="auth_type" value="private" checked>private</input>
@@ -71,6 +71,11 @@
 	<div style="height:32px;"></div>
 	{{end}}
 
+
+	<div class="right-button">
+	<button id="delete-button" type="button" onclick="onDelete()">删除</button>
+	</div>
+
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script src="/js/vim/vim.min.js"></script>
 	<script src="/js/marked/marked.min.js"></script>
@@ -88,7 +93,8 @@
 		var k = document.getElementById('encrypt').value
 		var content =  e.innerHTML
 		
-		console.log(content,k)
+		console.log("content=",content)
+		console.log("encrypt=",k)
 		var txt = aesDecrypt(content,k)
 		console.log(txt)
 		e.innerHTML = txt
@@ -113,6 +119,28 @@
 			div_comment.setAttribute("class","hide")
 			bnt.innerText = "显示评论"
 		}
+	}
+
+	function onDelete(){
+		if (confirm("delete confirmation. Do you really want to delete this blog?")) {
+			var title = document.getElementById("title").innerText;
+			console.log("delete title=",title);
+			// 使用XMLHttpRequest发送数据
+			var xhr = new XMLHttpRequest();
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState == 4 && xhr.status == 200) {
+					// 处理服务器的响应
+					console.log(xhr.responseText);
+					alert(xhr.responseText)
+				}
+			};
+			var formData = new FormData();
+			formData.append('title', title);
+			xhr.open('POST', '/delete', true);
+			xhr.send(formData);
+		} else {
+			alert("Operation cancelled.");
+		}	
 	}
 
 	function onCommitComment(){
@@ -197,6 +225,18 @@
 		}
 	}
 
+	function submitFirst(){
+        if (document.getElementById("encrypt") != null) {
+			if (confirm("First confirmation. Do you really want to proceed?")) {
+				submitContent();
+			} else {
+				alert("Operation cancelled.");
+			}	
+		}else{
+				submitContent();
+		}
+	}
+
 	function submitContent() {
 		var content = document.getElementById('editor-inner').value;
 		var title = document.getElementById("title").innerText;
@@ -223,6 +263,7 @@
 		if (key.length != 0) {
 			var en = aesEncrypt(content, key)
 			content = en
+			key = 'use_aes_cbc'
 		}
 
 		var formData = new FormData();

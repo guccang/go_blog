@@ -1,5 +1,5 @@
 
-modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption")
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search")
 prename="go_blog_pkgs"
 
 cur_path=$(dirname $0)

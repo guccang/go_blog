@@ -14,6 +14,7 @@ import(
 	"login"
 	"comment"
 	"blog"
+	"search"
 )
 
 func main(){
@@ -37,6 +38,7 @@ func main(){
 	ioutils.Info()
 	blog.Info()
 	comment.Info()
+	search.Info()
 
 	// Init 
 	config.Init(args[1])

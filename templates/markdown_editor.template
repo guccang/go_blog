@@ -67,7 +67,9 @@
 		checkTime()
 	}
 
+
 	function submitContent() {
+		aesTest()
 		var content = document.getElementById('editor').value;
 		var title = document.getElementById("title").value;
 		var tags = document.getElementById("tags").value;
@@ -86,10 +88,12 @@
 			}
 		};
 
+
 		if (encrypt.length != 0){
 			var en = aesEncrypt(content, encrypt)
 			content = en
 			console.log("content=%s",content)
+			encrypt="use_aes_cbc"
 		}
 
 		var formData = new FormData();

@@ -2,33 +2,35 @@ module go_blog
 
 go 1.20
 
-replace module => ./go_blog_pkgs/module
+replace module => ./pkgs/module
 
-replace control => ./go_blog_pkgs/control
+replace control => ./pkgs/control
 
-replace view => ./go_blog_pkgs/view
+replace view => ./pkgs/view
 
-replace http => ./go_blog_pkgs/http
+replace http => ./pkgs/http
 
-replace mylog => ./go_blog_pkgs/mylog
+replace mylog => ./pkgs/mylog
 
-replace config => ./go_blog_pkgs/config
+replace config => ./pkgs/config
 
-replace persistence => ./go_blog_pkgs/persistence
+replace persistence => ./pkgs/persistence
 
-replace ioutils => ./go_blog_pkgs/ioutils
+replace ioutils => ./pkgs/ioutils
 
-replace auth => ./go_blog_pkgs/auth
+replace auth => ./pkgs/auth
 
-replace login => ./go_blog_pkgs/login
+replace login => ./pkgs/login
 
-replace comment => ./go_blog_pkgs/comment
+replace comment => ./pkgs/comment
 
-replace blog => ./go_blog_pkgs/blog
+replace blog => ./pkgs/blog
 
-replace email => ./go_blog_pkgs/email
+replace email => ./pkgs/email
 
-replace encryption => ./go_blog_pkgs/encryption
+replace encryption => ./pkgs/encryption
+
+replace search => ./pkgs/search
 
 require (
 	blog v0.0.0-00010101000000-000000000000
@@ -41,6 +43,7 @@ require (
 	module v0.0.0-00010101000000-000000000000
 	mylog v0.0.0-00010101000000-000000000000
 	persistence v0.0.0-00010101000000-000000000000
+	search v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
 )
 
