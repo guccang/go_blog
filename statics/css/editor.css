@@ -1,14 +1,45 @@
 
 @import url("th.css");
 
-.right-button {
-    float: right;
-	height : 33px;
+.container {
+	margin-top:0px;
+	max-height:90vh;
+	max-width:100%;
 }
 
-.left-button {
-    float: left;
+.buttons-container {
+	display: flex;
+	justify-content: flex-end;
+	width: 100%;
+}
+
+.editor-container {
+	display: flex;
+	//justify-content: space-between;
+	width: 100%;
+}
+
+.right-button {
+	top:0;
+	left:0;
+	transform: translateY(-50%);
 	height : 33px;
+	width : 66px;
+}
+
+
+.left-button {
+	top:0;
+	transform: translateY(-50%);
+	height : 33px;
+	width  : 66px;
+}
+
+.bottom-button{
+	top:0;
+	transform: translateY(-50%);
+	height : 33px;
+	width  : 66px;
 }
 
 .separator {
@@ -18,20 +49,14 @@
 	width : 100%;
 }
 
-.top-fix-div {
-	position : fixed;
-	left : 5px;
-	top : 0;
-}
-
 .center-fix-div{
 	left : 0;
 }
 
-.bottom-fix-div{
-	position : fixed;
-	left : 0;
-	bottom: 0;
+.bottom-container{
+	display : flex;
+	justify-content:flex-end;
+	width : 100%;
 }
 
 .hide {
@@ -91,9 +116,5 @@
             box-sizing: border-box;
             border: 3px solid #ccc;
             font-size: 16px;
-}
-
-.body {
-	background-image:linear-gradient(to left,#cfd9df 0%,#e2ebf0 100%);
 }
 

@@ -69,6 +69,9 @@ func Search(match string) []*module.Blog{
 			}
 			tagChange(tokens)
 		}
+		if strings.ToLower(tag) == strings.ToLower("timed") {
+			return tagTimed(tokens)
+		}
 	}else{
 			// begin with other
 			return matchOther(tokens)	
@@ -147,12 +150,29 @@ func ismatch(b *module.Blog,matches []string) int{
 		return 1
 	}
 
+	tType := "-tTitle"
+
+	onlyMatchTitle := 0
+	if len(matches) >= 2  {
+		if strings.ToLower(matches[0]) == strings.ToLower(tType) {
+			// 只匹配标题
+			onlyMatchTitle = 1
+		}
+	}
+
 	// 匹配title and content
 	for _,match := range matches {
+		if strings.ToLower(match) == strings.ToLower(tType) {
+			continue
+		}
 		// title match
 		if strings.Contains(strings.ToLower(b.Title),strings.ToLower(match)) {
 			return 1;
 		}	
+		if onlyMatchTitle == 1 {
+			continue
+		}
+
 		// content match
 		if strings.Contains(strings.ToLower(b.Content),strings.ToLower(match)){
 			return 1;
@@ -217,4 +237,21 @@ func tagChange(tokens []string){
 	}
 
 	blog.TagReplace(from,to)
+}
+
+
+func tagTimed(tokens []string) []*module.Blog{
+	s := make([]*module.Blog,0)
+	for _,b := range blog.Blogs {
+		// not timed
+		if config.IsTitleContainsDateSuffix(b.Title) != 1 {
+			continue
+		}
+		if ismatch(b,tokens[1:]) == 0 {
+			continue
+		}
+		s = append(s,b)
+	}
+	sortblogs(s)
+	return s
 }

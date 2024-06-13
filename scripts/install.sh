@@ -25,10 +25,12 @@ mkdir -p $bin_path
 mkdir -p $bin_path/blogs_txt
 mkdir -p $bin_path/redis
 
-if [ -e $run_path/blog.conf ]; then
+conf_path=$bin_path/blogs_txt
+
+if [ -e $conf_path/sys_conf.md ]; then
 	:
 else
-	cp $base_path/blog.conf $bin_path 
+	cp $base_path/sys_conf.md $conf_path
 fi
 
 cp $base_path/go_blog $bin_path
@@ -38,8 +40,6 @@ cp -r $base_path/scripts/* $bin_path
 cp -r $base_path/templates $bin_path
 
 cp -r $base_path/statics $bin_path
-
-#cp $base_path/redis/redis_6666.conf $bin_path/redis
 
 echo "Install OKKKKKK"
 echo "run_path $run_path"

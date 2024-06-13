@@ -3,9 +3,8 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCANG/LINK </title>
+		<title> GUCCANG/Shared </title>
 		<style>
-		 @import url(/css/styles.css);
 		 @import url(/css/link.css);
 		 .right-label{
 			float : right;
@@ -21,36 +20,27 @@
 			border: 1px solid #000000;
 		}
 
-		.container {
-			width : 30%;
-			min-width : 30%;
-		}
-
 		</style>
 	</head>
 
-	<body>
-		<div class="top-sidebar-cotainer">
-		  <div class="top-sidebar" >
-			<a href="/link">
-				<img class="img-cycle" src="/logo/logo.png" width=88></img>
-			</a>
+	<body class="th_black">
+		<div class="top-fix-div">
+			<img src="/logo/logo.png" width=64></img>
 			<a href="/editor" style="font-size: 32px;">创建博客</a>
+			<div class="separator"></div>
 			<input id="search" type="text" class="custom-wh" list="search_list"></input>
 			<datalist id="search_list">
 				{{range .TAGS}}
 					<option>{{.}}</option>
 				{{end}}
 			</datalist>
-			<button type="button" onclick="onSearch()">搜索</button>
-		  </div>
 		</div>
+		<div style="height:128px;" ></div>
+		<div class="separator"></div>
 
-		<div class="container">
 		{{range .LINKS}}
 			<p><a href="{{.URL}}">{{.DESC}}</a></p>
 		{{end}}
-		</div>
 
 		<div class="bottom-fix-div">
 		<label class="right-label">{{.BLOGS_NUMBER}}</label>
@@ -59,21 +49,6 @@
 
 		<script src="/js/utils.js"></script>
 		<script>
-		function onSearch(){
-			console.log("onclick");
-			var match = document.getElementById('search').value;
-
-			var xhr = new XMLHttpRequest();
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState == 4 && xhr.status == 200) {
-					// 处理服务器的响应
-					console.log(xhr.responseText);
-					window.location.href=xhr.responseURL
-				}
-			};
-			xhr.open('GET', '/search?match='+match, true);
-			xhr.send();
-		}
 
 		PageHistoryBack()
 

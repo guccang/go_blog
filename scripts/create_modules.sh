@@ -1,9 +1,14 @@
 
-modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search")
-prename="go_blog_pkgs"
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search" "share")
+prename="pkgs"
 
-cur_path=$(dirname $0)
-pkgs_path=$(dirname $cur_path)/go_blog_pkgs
+cur_path=$(realpath $0)
+echo $cur_path
+cur_path=$(dirname $cur_path)
+echo $cur_path
+cur_path=$(dirname $cur_path)
+echo $cur_path
+pkgs_path=$(dirname $cur_path)/pkgs
 pkgs_path=$(realpath $pkgs_path)
 
 mkdir -p $pkgs_path

@@ -1,4 +1,7 @@
 
+
+cp ./*.pem ./bin
+
 cd ./bin
 
 sh ./stop.sh

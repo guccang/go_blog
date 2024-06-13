@@ -1,0 +1,228 @@
+/* styles.css */
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f0f0f0;
+    margin: 0;
+}
+
+.container {
+	margin-top: 10%;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 95%; /* Adjust the width */
+    max-width: 90%; /* Set a maximum width */
+    min-width: 30%; /* Set a minimum width */
+    height: auto; /* Adjust the height */
+    max-height: 72vh; /* Set a maximum height */
+    overflow-y: auto; /* Enable scrolling if content exceeds max height */
+    transition: margin-left 0.5s ease;
+}
+
+h1 {
+    text-align: center;
+}
+
+input[type="text"] {
+    width: calc(100% - 22px);
+    padding: 5px;
+    margin-bottom: 5px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #218838;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    //justify-content: space-between;
+    justify-content: flex-begin; 
+    align-items: center;
+}
+
+li:last-child {
+    border-bottom: none;
+}
+
+li .delete-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    align-items: center;
+}
+
+li:last-child {
+    border-bottom: none;
+}
+
+li .delete-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    width: 60px;  /* Fixed width */
+    height: 30px; /* Fixed height */
+    cursor: pointer;
+    border-radius: 5px;
+    text-align: center;
+    line-height: 30px; /* Vertically center the text */
+    display: inline-block;
+}
+
+li .delete-btn:hover {
+    background-color: #c82333;
+}
+
+.completed {
+    text-decoration: line-through;
+    color: gray;
+}
+
+img {
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	max-width : 100%;
+	max-height: 100%;
+}
+
+.custom-radio {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.custom-radio input[type="radio"] {
+    display: none;
+}
+
+.radio-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    display: inline-block;
+    position: relative;
+    margin-right: 10px;
+    transition: border 0.3s;
+}
+
+.custom-radio input[type="radio"]:checked + .radio-btn {
+    border-color: #28a745;
+}
+
+.radio-btn .checkmark {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    background-color: #28a745;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.custom-radio input[type="radio"]:checked + .radio-btn .checkmark {
+    display: block;
+}
+
+.img-cycle {
+	border-radius : 50%;
+}
+
+.top-sidebar {
+    position: fixed;
+    left: 0px;
+    top: 0;
+    width: 100%;
+    height: 128px;
+    background-color: #f4f4f4;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: left 0.5s ease;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* sidebar左侧放置,可以折叠 */
+.sidebar {
+    position: relative;
+    left: 0px;
+    top: 0;
+    width: 128px;
+    height: 100%;
+    background-color: #f4f4f4;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: left 0.5s ease;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* 可点击的气泡,用于显示隐藏sidebar */
+.bubble {
+    position: fixed;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    background-color: #007BFF;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    transition: left 0.5s ease;
+}
+
+/* sidebar container 默认隐藏*/
+.sidebar-container{
+    position: relative;
+	height : 100%;
+}
+
+.top-sidebar-container {
+	position: relative;
+	width : 100%;
+}
+
+/* 给sidebar-container增加open属性后操作,将控件隐藏 */
+.sidebar-container.open .sidebar {
+    left: -150%;
+}
+
+/* 给sidebar-container增加open属性后操作,bubble移动一点，方便点击 */
+.sidebar-container.open .bubble {
+    left: 10px;
+}
+
+.container.open {
+	margin-left : -150px;
+}

@@ -160,6 +160,7 @@ func GetBlogs()map[string]*module.Blog{
 	blogs := make(map[string]*module.Blog)
 
 	for _,key := range keys {
+		log.DebugF("getblog key=%s",key)
 		m ,err := db.client.HGetAll(key).Result()
 		if err!=nil {
 				log.ErrorF("getblog error key=%s err=%s",key,err.Error())

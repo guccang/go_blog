@@ -22,7 +22,7 @@ func main(){
 	for _,arg := range args {
 		fmt.Println(arg);
 	}
-	if len(args) !=2 {
+	if len(args) <2 {
 		fmt.Println("need blog.conf path");
 		return
 	}
@@ -51,7 +51,13 @@ func main(){
 
 	log.Debug("go_blog started")
 
-	http.Run()
+	certFile := ""
+	keyFile := ""
+	if len(args) == 4 {
+		certFile = args[2]
+		keyFile = args[3]
+	}
+	http.Run(certFile,keyFile)
 
 	log.Debug("go_blog exit")
 }

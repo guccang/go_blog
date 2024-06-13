@@ -134,9 +134,14 @@ func DeleteBlog(title string) int {
 		return 1
 	}
 
-	ret := db.DeleteBlog(title)
+	ret := config.IsSysFile(title)
 	if ret == 1 {
 		return 2
+	}
+
+	ret = db.DeleteBlog(title)
+	if ret == 1 {
+		return 3 
 	}
 
 	delete(Blogs,title)

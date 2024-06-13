@@ -5,76 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/GET</title>
 	<style>
+		@import url("/css/styles.css");
 		@import url("/css/editor.css");
-	</style>
+		.container {
+			margin-top : 1%;
+			margin-left : 10px;
+			max-height: 92vh;
+		}
+		input[type="text"] {
+			height : 33px;
+			width : 66px;
+		}
+		.img-cycle {
+			left : 100px;
+		}
+		</style>
 </head>
 <body id="body" class="th_black">
 
     <!-- Markdown编辑器容器 -->
-	<div class="top-fix-div">
-		<a href="/link" style="font-size: 32px;">主页</a><br>
-		<div class="separator"></div>
-		<label id="title">{{.TITLE}}</label>
-		<label id="ctime">{{.CTIME}}</label>
-		<input id="tags" type="text" name="tags" value="{{.TAGS}}">
+	<div id="sidebar-container" class="sidebar-container">
+		<div id="sidebar" class="sidebar">
+			<img class="img-cycle" src="/logo/logo.png" width=88></img>
+			<a href="/link" style="font-size: 32px;">主页</a><br>
+			<div class="separator"></div>
+			<label id="title">{{.TITLE}}</label>
+			<div class="separator"></div>
+			<label id="ctime">{{.CTIME}}</label>
+			<div class="separator"></div>
+			<label id="ctime">Tag</label>
+			<input id="tags" type="text" name="tags" value="{{.TAGS}}">
+		</div>
+		<div class="bubble" id="bubble">
+			&#9776;
+		</div>
 	</div>
 
-	<div style="height:88px;" ></div>
-	<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
-	<div class="separator"></div>
-	<div style="height:32px;" ></div>
 
-	<div class="center-fix-div">
-		<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
-		<div id="md" class="md"></div>
-	</div>
+	<div class="container">
 
-	<div class="bottom-fix-div">
-		<button class="left-button" id="editor-button" type="button" onclick="submitFirst()">修改</button>
+		<div class="buttons-container">
+		<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
+		</div>
+		<div class="editor-container">
+			<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
+			<div id="md" class="md"></div>
+		</div>
+		<div class="bottom-container">
 
 		{{if eq "private" .AUTHTYPE }}
-		<input class="radio-left" type="radio" name="auth_type" value="private" checked>private</input>
-		<input class="radio-left" type="radio" name="auth_type" value="public">public</input> 
+			<label class="custom-radio">
+				<input class="radio-left" type="radio" name="auth_type" value="private" checked>
+				<span class="radio-btn"><i class="checkmark"></i></span>
+				private
+			</label>
+			<label class="custom-radio">
+				<input class="radio-left" type="radio" name="auth_type" value="public" >
+				<span class="radio-btn"><i class="checkmark"></i></span>
+				public
+			</label>
 		{{else}}
-		<input class="radio-left" type="radio" name="auth_type" value="private">private</input>
-		<input class="radio-left" type="radio" name="auth_type" value="public" checked>public</input> 
+			<label class="custom-radio">
+				<input class="radio-left" type="radio" name="auth_type" value="private" >
+				<span class="radio-btn"><i class="checkmark"></i></span>
+				private
+			</label>
+			<label class="custom-radio">
+				<input class="radio-left" type="radio" name="auth_type" value="public" checked>
+				<span class="radio-btn"><i class="checkmark"></i></span>
+				public
+			</label>
 		{{end}}
 		{{ if eq "aes" .ENCRYPT }}
-		<input id="encrypt" type="password" name="encrypt" value=""></input> 
-		<button id="comment-show" type="button" onclick="onDecrypt()">解密</button>
+			<input id="encrypt" type="password" name="encrypt" value=""></input> 
+			<button id="comment-show" type="button" onclick="onDecrypt()">解密</button>
 		{{end}}
-	</div>
+			<button id="editor-button" class="bottom-button" onclick="submitFirst()">修改</button>
+			<button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
 
-	{{ if eq "public" .AUTHTYPE }}
-	<button id="comment-show" type="button" onclick="onShowComment()">显示评论</button>
-	<div id="comments" class="hide">
-			<label>所有评论:</label><br>
-			<div class="separator"></div>
-			{{range .COMMENTS}}
-			<label>{{.MSG}} ({{.IDX}})</label><br>
-			<label>commit by {{.OWNER}}({{.MAIL}}) at {{.CTIME}} </label><br>
-			<div class="separator"></div>
+		</div>
+
+		<div class="bottom-fix-div">
+
+			{{ if eq "public" .AUTHTYPE }}
+			<button id="comment-show" class="left-button" onclick="onShowComment()">显示评论</button>
+			<div id="comments" class="hide">
+				<label>所有评论:</label><br>
+				<div class="separator"></div>
+				{{range .COMMENTS}}
+				<label>{{.MSG}} ({{.IDX}})</label><br>
+				<label>commit by {{.OWNER}}({{.MAIL}}) at {{.CTIME}} </label><br>
+				<div class="separator"></div>
+				{{end}}
+			</div>
+
+			<div id="div-comment" class="hide">
+				<label>用户名:</label>
+				<input id="input-owner" type="text" value="" ><br>
+				<label>邮箱:</label>
+				<input id="input-mail" type="text" value="" ><br>
+				<label>密码:</label>
+				<input id="input-pwd" type="password" value="" ><br>
+				<label>留言:</label>
+				<input id="input-comment" type="text" value="" ><br>
+				<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
+			</div>
+			<div style="height:32px;"></div>
 			{{end}}
+		</div>
 	</div>
 
-	<div id="div-comment" class="hide">
-			<label>用户名:</label>
-			<input id="input-owner" type="text" value="" ><br>
-			<label>邮箱:</label>
-			<input id="input-mail" type="text" value="" ><br>
-			<label>密码:</label>
-			<input id="input-pwd" type="password" value="" ><br>
-			<label>留言:</label>
-			<input id="input-comment" type="text" value="" ><br>
-			<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
-	</div>
-	<div style="height:32px;"></div>
-	{{end}}
 
-
-	<div class="right-button">
-	<button id="delete-button" type="button" onclick="onDelete()">删除</button>
-	</div>
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script src="/js/vim/vim.min.js"></script>
@@ -86,6 +127,17 @@
 	vim.open({
 		//debug : true
 	});
+
+document.addEventListener("DOMContentLoaded", function() {
+    var bubble = document.getElementById("bubble");
+    var side_container = document.querySelector(".sidebar-container");
+	var container = document.querySelector(".container");
+
+    bubble.addEventListener("click", function() {
+        side_container.classList.toggle("open");
+		container.classList.toggle("open");
+    });
+});
 
 	PageHistoryBack()
 

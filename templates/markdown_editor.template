@@ -6,43 +6,75 @@
     <title>GUCCANG/MarkdownEditor</title>
 
 	<style>
+		@import url(/css/styles.css);
 		@import url(/css/editor.css);
+		.container {
+			margin-top : 1%;
+			margin-left : 10px;
+		}
+		.editor {
+			min-height: 70hv;
+		}
+		.mdEditor {
+			min-height: 70hv;
+		}
+		
+		input[type="text"] {
+			width:66px;
+			height:16px;
+		}
 	</style>
 
 </head>
 <body class="th_black" id="body">
 
     <!-- Markdown编辑器容器 -->
-	<div class="top-fix-div">
+	<div class="sidebar">
+		<img class="img-cycle" src="/logo/logo.png" class="center-img" width=88></img>
 		<a href="/link" style="font-size: 32px;">主页</a>
 		<div class="separator"></div>
 		<label>NAME</label>
-		<input id="title" type="text" name="title" value="{{.TITLE}}"><br>
+		<input id="title" type="text" name="title" value="{{.TITLE}}">
 		<label>TAGS</label>
 		<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 		{{ if eq "private" .AUTHTYPE  }}
-		<input type="radio" name="auth_type" value="private" checked>private</input> 
-		<input type="radio" name="auth_type" value="public">public</input> 
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="private" checked>
+			<span class="radio-btn"><i class="checkmark"></i></span>
+			private
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="public">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+			public	
+		</label>
 		{{ else }}
-		<input type="radio" name="auth_type" value="private">private</input> 
-		<input type="radio" name="auth_type" value="public" checked>public</input> 
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="private">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+			private
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="public" checked>
+			<span class="radio-btn"><i class="checkmark"></i></span>
+			public	
+		</label>
 		{{end}}
 
 	</div>
 
-	<div style="height:84px;" ></div>
-	<button class="right-button" type="button" onclick="submitContent()">提交</button>
-	<div class="separator"></div>
-	<div style="height:32px;" ></div>
+	<div class="container">
+		<div class="buttons-container">
+			<button class="left-button" onclick="submitContent()">提交</button>
+		</div>
+		<div style="height:1px;" ></div>
 
-	<div class="center-fix-div">
-		<textarea class="editor th_black" id="editor" name="content">{{.CONTENT}}</textarea>
-		<div class="mdEditor" id="md"></div>
-	</div>
-
-	<div>
+		<div class="center-fix-div">
+			<textarea class="editor th_black" id="editor" name="content">{{.CONTENT}}</textarea>
+			<div class="mdEditor" id="md"></div>
+		</div>
 		<input id="encrypt" type="password" name="encrpyt" value=""><br>
-	</div>
+	<div>
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script src="/js/vim/vim.min.js"></script>
@@ -101,7 +133,7 @@
 		var formData = new FormData();
 		formData.append('title', title);
 		formData.append('content', content);
-		formData.append('auth_type', auth_type);
+		formData.append('authtype', auth_type);
 		formData.append('tags', tags);
 		formData.append('encrypt', encrypt);
 		xhr.open('POST', '/save', true);

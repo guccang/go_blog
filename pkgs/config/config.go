@@ -17,6 +17,7 @@ var datas = make(map[string]string)
 var autodatesuffix = make([]string,0)
 var publictags = make([]string,0)
 var config_path = ""
+var sys_files = make([]string,0)
 
 func Init(filePath string){
 	config_path = filePath
@@ -48,6 +49,13 @@ func loadConfig(filePath string){
 		arr := strings.Split(tags,"|")
 		publictags = arr
 	}
+
+	sysfiles,ok := datas["sysfiles"]
+	if ok {
+		arr := strings.Split(sysfiles,"|")
+		sys_files = arr
+	}
+	
 }
 
 func GetConfig(name string)(string){
@@ -131,8 +139,18 @@ func GetVersion() string{
 }
 
 
+func IsSysFile(name string) int {
+	for _,v := range sys_files{
+		if v == name {
+			return 1
+		}
+	}
+	return 0
+}
+
 func IsPublicTag(tag string) int {
 	for _,v := range publictags{
+		log.DebugF("IsPublicTag %s %s",v,tag)
 		if v == tag {
 			return 1
 		}
@@ -143,6 +161,15 @@ func IsPublicTag(tag string) int {
 func IsTitleAddDateSuffix(title string)int{
 	for _,v := range autodatesuffix {
 		if v == title {
+			return 1
+		}
+	}
+	return 0
+}
+
+func IsTitleContainsDateSuffix(title string)int{
+	for _,v := range autodatesuffix {
+		if strings.Contains(strings.ToLower(title),strings.ToLower(v)) {
 			return 1
 		}
 	}
@@ -169,7 +196,7 @@ func GetMaxBlogComments() int {
 func GetRecyclePath() string{
 	path := GetConfig("recycle_path")
 	if path == "" {
-		path ="~/.go_blog_recycle"
+		path =".go_blog_recycle"
 	}
 	return path
 }

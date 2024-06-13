@@ -11,6 +11,7 @@ import(
 	"module"
 	"strings"
 	"sort"
+	"share"
 )
 
 func Info(){
@@ -68,6 +69,35 @@ func Notify(msg string,w h.ResponseWriter){
 	fmt.Println("view Notify",msg)
 }
 
+
+func getShareLinks() *LinkDatas{
+	datas := LinkDatas{}
+
+	sharedblogs := share.SharedBlogs
+	sharedtags  := share.SharedTags
+
+	total_shared_data := len(sharedblogs) + len(sharedtags)
+	datas.VERSION = fmt.Sprintf("%s|%d",config.GetVersion(),total_shared_data)
+	datas.BLOGS_NUMBER = total_shared_data
+
+	for _,b := range sharedblogs {
+		ld := LinkData {
+			URL:b.URL,
+			DESC:b.Title,
+		}
+		datas.LINKS = append(datas.LINKS,ld)
+	}
+
+	for _,t := range sharedtags {
+		ld := LinkData {
+			URL:t.URL,
+			DESC:fmt.Sprintf("Tag-%s",t.Tag),
+		}
+		datas.LINKS = append(datas.LINKS,ld)
+	}
+
+	return &datas
+}
 
 
 func getLinks(blogs []*module.Blog,showall bool) *LinkDatas{
@@ -328,4 +358,56 @@ func PageD3(w h.ResponseWriter){
 
 }
 
+// 将blogname设置为分享
+func PageShareBlog(w h.ResponseWriter,blogname string){
+	blog := control.GetBlog(blogname)
+	if blog == nil {
+		h.Error(w, fmt.Sprintf("blogname=%s not find",blogname),h.StatusBadRequest)
+		return
+	}
+	url,pwd := share.AddSharedBlog(blogname)
+	w.Write([]byte(fmt.Sprintf("PageShareBlog \n url=%s \n pwd=%s ",url,pwd)))
+}
 
+// 将tag设置为分享
+func PageShareTag(w h.ResponseWriter, tag string){
+	url,pwd := share.AddSharedTag(tag)
+	w.Write([]byte(fmt.Sprintf("PageShareTag\n url=%s \n pwd=%s",url,pwd)))
+}
+
+// 返回所有分享
+func PageShowAllShare(w h.ResponseWriter){
+	tempDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,"share.template"))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse sharetemplate",h.StatusInternalServerError)
+		return
+	}
+
+	shareddatas := getShareLinks()
+	
+	err = tmpl.Execute(w,shareddatas)
+	if err != nil{
+		h.Error(w,"Failed to render template share.template",h.StatusInternalServerError)
+		return
+	}
+}
+
+// todolist
+func PageToDoList(w h.ResponseWriter){
+	tempDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,"todolist.template"))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse todolist.template",h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w,nil)
+	if err != nil{
+		h.Error(w,"Failed to render template todolist.template",h.StatusInternalServerError)
+		return
+	}
+
+}

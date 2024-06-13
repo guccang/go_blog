@@ -15,6 +15,8 @@ import(
 	"regexp"
 	"module"
 	"strings"
+	"strconv"
+	"share"
 )
 
 
@@ -235,6 +237,53 @@ func HandleHelp(w h.ResponseWriter, r *h.Request){
 	view.PageGetBlog(blogname,w,usepublic)
 }
 
+// 使用@share c blogname 标签获取分享链接和密码
+// 访问分享，使用链接和密码
+func HandleGetShare(w h.ResponseWriter,r *h.Request){
+  r.ParseMultipartForm(32 << 20) // 32MB
+  // t
+  t,_:= strconv.Atoi(r.URL.Query().Get("t"))
+  name := r.URL.Query().Get("name")
+  pwd := r.URL.Query().Get("pwd")
+    
+  if t == 0 {
+    // blog
+	blog := share.GetSharedBlog(name)
+    if blog == nil {
+		h.Error(w, "HandleGetShared error blogname", h.StatusBadRequest)
+		return
+	}
+    if blog.Pwd != pwd {
+		h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
+		return
+	}
+    cnt := share.ModifyCntSharedBlog(name,-1)
+    if cnt < 0 {
+		h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
+		return
+	}
+    usepublic := 1
+    view.PageGetBlog(name,w,usepublic)
+  }else if t == 1 {
+	// tag
+    tag := share.GetSharedTag(name)
+    if tag == nil {
+		h.Error(w, "HandleGetShared error tagname", h.StatusBadRequest)
+		return
+	}
+    if tag.Pwd != pwd {
+		h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
+		return
+	}
+    cnt := share.ModifyCntSharedTag(name,-1)
+    if cnt < 0 {
+		h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
+		return
+	}
+    view.PageTags(w,name)
+  }
+}
+
 func HandleGet(w h.ResponseWriter, r *h.Request){
 	LogRemoteAddr("HandleGet",r)
 	blogname := r.URL.Query().Get("blogname")
@@ -424,18 +473,18 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 	match := r.URL.Query().Get("match")
 
 
+	// 直接显示help
 	tokens := strings.Split(match," ")
 	if match == "@help" {
 		h.Redirect(w,r,"/help",302)
 		return
 	}
+    // 直接显示主页
 	if match == "@main" {
 		h.Redirect(w,r,"/link",302)
 		return
 	}
-
-
-
+	// 创建timed blog
 	if tokens[0] == "@c" {
 		if len(tokens) != 2 {
 			h.Error(w, "@c titlename need", h.StatusBadRequest)
@@ -450,7 +499,25 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		view.PageEditor(w,title,content)
 		return
 	}
+	// 分享private连接
+	if tokens[0] == "@share" && len(tokens)>=2 {
+		// 创建分享
+		if tokens[1] == "c" && len(tokens)>=3 {
+			blogname := tokens[2]
+			view.PageShareBlog(w,blogname)
+		}
+		if tokens[1] == "t" && len(tokens)>=3{
+			tag := tokens[2]
+			view.PageShareTag(w,tag)
+		}
+		// 显示所有创建的分享
+		if tokens[1] == "all" {
+			view.PageShowAllShare(w)
+		}
+		return
+	}
 
+	// 通用搜索逻辑
 	view.PageSearch(match,w)
 }
 
@@ -462,6 +529,7 @@ func HandleTag(w h.ResponseWriter,r *h.Request){
 	tag := r.FormValue("tag")
 	
 	isTagPublic := config.IsPublicTag(tag);
+	log.DebugF("HandleTag %s %d",tag,isTagPublic)
 	if isTagPublic != 1 {
 		if checkLogin(r) !=0 {
 			h.Redirect(w,r,"/index",302)
@@ -472,8 +540,6 @@ func HandleTag(w h.ResponseWriter,r *h.Request){
 	// 展示所有public tag
 	view.PageTags(w,tag)
 }
-
-
 
 func HandleLogin(w h.ResponseWriter,r *h.Request){
 	LogRemoteAddr("HandleLogin",r)
@@ -516,6 +582,11 @@ func HandleIndex(w h.ResponseWriter,r *h.Request){
 	view.PageIndex(w)
 }
 
+func HandleToDoList(w h.ResponseWriter,r *h.Request){
+	LogRemoteAddr("HandleToDoList",r)
+	view.PageToDoList(w)
+}
+
 
 func basicAuth(next h.Handler) h.Handler {
     return h.HandlerFunc(func(w h.ResponseWriter, r *h.Request) {
@@ -543,6 +614,8 @@ func Init() int{
 	h.HandleFunc("/comment",HandleComment)
 	h.HandleFunc("/d3",HandleD3)
 	h.HandleFunc("/tag",HandleTag)
+	h.HandleFunc("/getshare",HandleGetShare)
+	h.HandleFunc("/todolist",HandleToDoList)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
@@ -551,10 +624,15 @@ func Init() int{
 	return 0
 }
 
-func Run() int{
+func Run(certFile string,keyFile string) int{
 	Init()
 	port := config.GetConfig("port")
-	h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
+	//h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
+	if len(certFile)<=0 || len(keyFile) <=0 {
+		h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
+	}else{
+		h.ListenAndServeTLS(fmt.Sprintf(":%s",port),certFile,keyFile,nil)
+	}
 	return 0;
 }
 
