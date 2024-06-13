@@ -1,7 +1,3 @@
-# 如何使用 
- 此链接为go_blog搭建的私人博客,访问此页面,有具体的版本介绍以及如何部署和使用。  
- http://blog.guccang.cn/tag?tag=blog
----
 # 功能列表
 
 ## 1. 登录 **OK**
@@ -55,7 +51,7 @@
    1. public 被访问时, 邮件通知
    2. 每天统计blog访问量，发送到邮箱中去
 
-## 25. 所有配置都是用blog实现。重启也是用search窗口实现。重新加载配置文件也是。<span style="color: red;"> **DOING** </span>
+## 25. 所有配置都是用blog实现。重启也是用search窗口实现。重新加载配置文件也是。 **OK**
 
 ## 26. 增加按照时间查找blog的功能 @time c/m/a 正则表达式时间  创建修改访问时间的blog <span style="color: red;"> **DOING** </span>
 
@@ -82,6 +78,20 @@
 ## 37. searchButton响应键盘回车事件，不用鼠标点击了，search框输入完成后直接敲击回车完成搜索。 **OK**
 
 ## 38. 增加监听CTR+LEFT/RIGHT按键，用于返回上一历史页面。**OK**
+
+## 39. 增加@timed标签  显示自动添加时间的所有blog  每日任务|锻炼等等blog.config中title_auto_add_date_suffix配置的 **OK**
+
+## 40. 增加系统文件配置 sysfiles=sys_conf 默认设置,sys_conf为服务器启动所需配置，设置用户密码，redis ip端口一起其他配置。支持sys_conf直接修改，sys_conf无法删除。修改sys_conf后，使用@reload cfg 重新加载，完成配置文件修改和加载都在网页中实现。 **OK**
+
+## 41. 分享功能，可以将private的博客，分享出去，需要密码访问。 将private的tag飞翔出去，需要密码访问。 **OK**
+
+## 42. 时间轴页面开发+google-earth  页面优化 <span style="color: red;"> **DOING** </span>
+
+## 43. -ttitle 每日任务_2024 只显示标题包含每日任务_2024的博客 **OK**
+
+## 44. 美化html页面，使用css  **OK**
+
+## 45. 美化html页面, 使用sidebar布局 增加移动动画效果，img大小自适应 **OK**
 ---
 ## 问题
 1. 20240204增加分享博客到外部后，导致13权限控制问题，导致分享的博客应用的数据呗权限系统拦截，目前没有优雅的解决方案。
