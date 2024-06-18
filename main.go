@@ -15,6 +15,8 @@ import(
 	"comment"
 	"blog"
 	"search"
+	"share"
+	"cooperation"
 )
 
 func main(){
@@ -39,6 +41,8 @@ func main(){
 	blog.Info()
 	comment.Info()
 	search.Info()
+	share.Info()
+	cooperation.Info()
 
 	// Init 
 	config.Init(args[1])
@@ -47,6 +51,7 @@ func main(){
 	login.Init()
 	blogs_txt_dir := config.GetBlogsPath()
 	control.ImportBlogsFromPath(blogs_txt_dir)
+	cooperation.Init()
 	persistence.SaveBlogs(blog.Blogs)
 
 	log.Debug("go_blog started")

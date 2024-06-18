@@ -34,11 +34,14 @@ replace search => ./pkgs/search
 
 replace share => ./pkgs/share
 
+replace cooperation => ./pkgs/cooperation
+
 require (
 	blog v0.0.0-00010101000000-000000000000
 	comment v0.0.0-00010101000000-000000000000
 	config v0.0.0-00010101000000-000000000000
 	control v0.0.0-00010101000000-000000000000
+	cooperation v0.0.0-00010101000000-000000000000
 	http v0.0.0-00010101000000-000000000000
 	ioutils v0.0.0-00010101000000-000000000000
 	login v0.0.0-00010101000000-000000000000
@@ -46,6 +49,7 @@ require (
 	mylog v0.0.0-00010101000000-000000000000
 	persistence v0.0.0-00010101000000-000000000000
 	search v0.0.0-00010101000000-000000000000
+	share v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
 )
 
@@ -55,5 +59,4 @@ require (
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.30.0 // indirect
-	share v0.0.0-00010101000000-000000000000 // indirect
 )

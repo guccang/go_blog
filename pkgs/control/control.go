@@ -33,8 +33,8 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	return blog.ModifyBlog(udb)
 }
 
-func GetAll(cnt int) []*module.Blog {
-	return blog.GetAll(cnt)
+func GetAll(cnt int,flag int) []*module.Blog {
+	return blog.GetAll(cnt,flag)
 }
 
 func GetMatch(match string) []*module.Blog{

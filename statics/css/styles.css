@@ -178,7 +178,7 @@ img {
     height: 100%;
     background-color: #f4f4f4;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    transition: left 0.5s ease;
+    transition: left 0.5s ease,visibility 0.5s ease;
     padding: 20px;
     box-sizing: border-box;
 }
@@ -202,6 +202,7 @@ img {
     transition: left 0.5s ease;
 }
 
+
 /* sidebar container 默认隐藏*/
 .sidebar-container{
     position: relative;
@@ -214,8 +215,14 @@ img {
 }
 
 /* 给sidebar-container增加open属性后操作,将控件隐藏 */
+.sidebar-container.open {
+    left: -150%;
+}
+
+/* 给sidebar-container增加open属性后操作,将控件隐藏 */
 .sidebar-container.open .sidebar {
     left: -150%;
+	visibility : hidden;
 }
 
 /* 给sidebar-container增加open属性后操作,bubble移动一点，方便点击 */
@@ -226,3 +233,22 @@ img {
 .container.open {
 	margin-left : -150px;
 }
+
+.link-with-dot {
+    position: relative;
+    padding-left: 20px; /* Adjust padding to make space for the dot */
+    text-decoration: none;
+}
+
+.link-with-dot .dot {
+    position: absolute;
+	left:0%;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px; /* Size of the dot */
+    height: 16px; /* Size of the dot */
+    background-color: green; /* Color of the dot */
+    border-radius: 50%;
+}
+
+

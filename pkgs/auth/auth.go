@@ -13,17 +13,11 @@ var Sessions = make([]string,0)
 
 // Page Session
 var PageSessions = make(map[string]string)
-var tmpSession = ""
-
-func GetTmpSession()string{
-	return tmpSession
-}
 
 func AddSession(account string) string{
 	RemoveSession(account)
 	s := genSession()
 	Sessions = append(Sessions,s)
-	tmpSession = s
 	return s
 }
 

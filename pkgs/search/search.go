@@ -48,11 +48,14 @@ func Search(match string) []*module.Blog{
 		tag := begin_token[1:]
 		log.DebugF("tag=%s token=%s",tag,begin_token)
 		if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
-			private := 1
+			auth_type := module.EAuthType_private
 			if tag == "public" {
-				private = 0
+				auth_type = module.EAuthType_public
 			}
-			return matchBlogsWithPublicPrivate(private,tokens[1:])
+			return matchBlogsWithAuthType(auth_type,tokens[1:])
+		} 
+		if strings.ToLower(tag) == strings.ToLower("cooperation"){
+			return matchBlogsWithAuthType(module.EAuthType_cooperation,tokens[1:])
 		} 
 		if strings.ToLower(tag) == strings.ToLower("encrypt") {
 			return matchEncrypt()
@@ -181,17 +184,11 @@ func ismatch(b *module.Blog,matches []string) int{
 	return 0
 }
 
-func matchBlogsWithPublicPrivate(private int,matches []string) []*module.Blog{
-	auth_type := module.EAuthType_public
-
-	if private == 1 {
-		auth_type = module.EAuthType_private
-	}
-
+func matchBlogsWithAuthType(auth_type int,matches []string) []*module.Blog{
 	s := make([]*module.Blog,0)
 	for _,b := range blog.Blogs {
 		// auth
-		if  b.AuthType != auth_type {
+		if  (b.AuthType & auth_type) == 0 {
 			continue
 		}
 
@@ -255,3 +252,4 @@ func tagTimed(tokens []string) []*module.Blog{
 	sortblogs(s)
 	return s
 }
+

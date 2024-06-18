@@ -9,6 +9,7 @@ import (
 	"config"
 	"sort"
 	"strings"
+	"regexp"
 )
 
 func Info(){
@@ -24,9 +25,14 @@ func strTime() string{
 func Init(){
 	log.Debug("module Init")
 	blogs := db.GetBlogs()
+
 	if blogs!=nil{
 		for _,b := range blogs{
+			if b.Encrypt == 1 {
+				b.AuthType = module.EAuthType_encrypt
+			}
 			Blogs[b.Title] = b
+			//log.DebugF("blog title=%s auth=%d",b.Title,b.AuthType)
 		}
 	}
 	log.DebugF("getblogs number=%d",len(blogs))
@@ -99,6 +105,9 @@ func AddBlog(udb *module.UploadedBlogData) int{
 		Tags	   : tags,
 		Encrypt	   : udb.Encrypt,
 	}
+	if b.Encrypt == 1 {
+		b.AuthType = module.EAuthType_encrypt
+	}
 	Blogs[title] = &b
 	db.SaveBlog(&b)
 	return 0
@@ -164,11 +173,14 @@ func GetRecentlyTimedBlog(title string) *module.Blog {
 	return nil
 }
 
-func GetAll(num int) []*module.Blog {
+func GetAll(num int,flag int) []*module.Blog {
 	s := make([]*module.Blog,0)
 	for _,b := range Blogs{
-	s = append(s,b)
+		log.DebugF("flag=%d b.AuthType=%d",flag,b.AuthType)
+		if (flag & b.AuthType) != 0 {
+			s = append(s,b)
 		}
+	}
 	sort.Slice(s,func(i,j int) bool {
 		ti,_ := time.Parse("2006-01-02 15:04:05",s[i].ModifyTime)
 		tj,_ := time.Parse("2006-01-02 15:04:05",s[j].ModifyTime)
@@ -246,4 +258,66 @@ func TagReplace(from string,to string) {
 		b.Tags = newTags
 		db.SaveBlog(b)
 	}	
+}
+
+func GetURLBlogNames(blogname string) []string {
+	names := make([]string,0)
+	
+	blog := GetBlog(blogname)
+	if blog == nil {
+		return names
+	}
+
+	linkPattern := regexp.MustCompile(`\[(.*?)\]\(/get\?blogname=(.*?)\)`)
+	tokens := strings.Split(blog.Content,"\n")
+	for line_no,t := range tokens {
+		log.DebugF("line_no=%d %s",line_no,t)
+		
+		// 匹配并提取博客名称
+	    if linkMatches := linkPattern.FindStringSubmatch(t); linkMatches != nil {
+			names = append(names,linkMatches[2])
+		}
+	}
+
+	return names
+}
+
+func SetSameAuth(blogname string){
+	blog := GetBlog(blogname)
+	if blog == nil {
+		return
+	}
+
+	names := GetURLBlogNames(blogname)
+
+	for _,name := range names {
+		b := GetBlog(name)
+		if b != nil {
+			b.AuthType = blog.AuthType
+			db.SaveBlog(b)
+		}
+	}
+}
+
+func AddAuthType(blogname string,flag int){
+	blog := GetBlog(blogname)
+	if blog == nil {
+		return
+	}
+
+	blog.AuthType |= flag
+	db.SaveBlog(blog)
+}
+
+func DelAuthType(blogname string, flag int){
+	blog := GetBlog(blogname)
+	if blog == nil {
+		return
+	}
+
+	blog.AuthType &= ^flag
+	if blog.AuthType == 0 {
+		blog.AuthType = module.EAuthType_private
+	}
+	db.SaveBlog(blog)
 }

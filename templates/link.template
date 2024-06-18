@@ -22,7 +22,7 @@
 		}
 
 		.container {
-			width : 30%;
+			width : 50%;
 			min-width : 30%;
 		}
 
@@ -48,7 +48,14 @@
 
 		<div class="container">
 		{{range .LINKS}}
-			<p><a href="{{.URL}}">{{.DESC}}</a></p>
+			{{ if eq 0 .COOPERATION }}
+				<p><a class="link-with-dot" href="{{.URL}}">{{.DESC}}</a></p>
+			{{else}}
+				<p><a class="link-with-dot" href="{{.URL}}">
+					{{.DESC}}
+					<span class="dot"></span>
+				</a></p>
+			{{end}}
 		{{end}}
 		</div>
 

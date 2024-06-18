@@ -6,8 +6,11 @@ import(
 
 // blog权限
 const (
-	EAuthType_private = iota
-	EAuthType_public 
+	EAuthType_private = 1
+	EAuthType_public  = 2
+	EAuthType_encrypt = 4
+	EAuthType_cooperation = 8
+	EAuthType_all     = 0xffff
 )
 
 // 网页上传的数据集合
@@ -37,6 +40,15 @@ type Blog struct{
 type User struct {
 	Account string
 	Password string
+}
+
+// 协作用户
+type Cooperation struct {
+	Account  string
+	Password string
+	CreateTime string
+	Blogs	 string 
+    Tags	 string
 }
 
 

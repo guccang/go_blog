@@ -9,7 +9,7 @@
 		@import url("/css/editor.css");
 		.container {
 			margin-top : 1%;
-			margin-left : -150px;
+			margin-left : 10px;
 			max-height: 92vh;
 		}
 		.center-img {
@@ -18,6 +18,9 @@
 		input[type="text"] {
 			height : 33px;
 			width : 66px;
+		}
+		.img-cycle {
+			left : 100px;
 		}
 		</style>
 </head>

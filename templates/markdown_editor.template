@@ -73,7 +73,9 @@
 			<textarea class="editor th_black" id="editor" name="content">{{.CONTENT}}</textarea>
 			<div class="mdEditor" id="md"></div>
 		</div>
+<!--
 		<input id="encrypt" type="password" name="encrpyt" value=""><br>
+-->
 	<div>
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
@@ -107,7 +109,11 @@
 		var content = document.getElementById('editor').value;
 		var title = document.getElementById("title").value;
 		var tags = document.getElementById("tags").value;
-		var encrypt = document.getElementById("encrypt").value;
+		var encrypt_ele = document.getElementById("encrypt")
+		var encrypt = ""
+		if (encrypt_ele != null){
+			encrypt = encrypt_ele.value
+		}
 		var auth_type= document.querySelector('input[name="auth_type"]:checked').value;
 		console.log("auth_type=",auth_type);
 

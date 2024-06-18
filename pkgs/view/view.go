@@ -12,6 +12,7 @@ import(
 	"strings"
 	"sort"
 	"share"
+	"cooperation"
 )
 
 func Info(){
@@ -22,6 +23,7 @@ func Info(){
 type LinkData struct{
 	URL string
 	DESC string
+	COOPERATION int
 }
 
 type LinkDatas struct{
@@ -84,6 +86,7 @@ func getShareLinks() *LinkDatas{
 		ld := LinkData {
 			URL:b.URL,
 			DESC:b.Title,
+			COOPERATION:0,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -92,6 +95,7 @@ func getShareLinks() *LinkDatas{
 		ld := LinkData {
 			URL:t.URL,
 			DESC:fmt.Sprintf("Tag-%s",t.Tag),
+			COOPERATION:0,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -100,7 +104,7 @@ func getShareLinks() *LinkDatas{
 }
 
 
-func getLinks(blogs []*module.Blog,showall bool) *LinkDatas{
+func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 
 	datas := LinkDatas{}
 	datas.VERSION = fmt.Sprintf("%s|%d",config.GetVersion(),control.GetBlogsNum())
@@ -112,14 +116,21 @@ func getLinks(blogs []*module.Blog,showall bool) *LinkDatas{
 	for _,b := range blogs{
 
 		// not show encrypt blog
-		if b.Encrypt == 1 && !showall {
+		if (b.AuthType &  flag) == 0 {
 			continue
+		}
+
+		if session != "" && cooperation.IsCooperation(session) {
+			if cooperation.CanEditBlog(session,b.Title) != 0 {
+				continue
+			}
 		}
 
 
 		ld := LinkData {
 			URL:fmt.Sprintf("/get?blogname=%s",b.Title),
 			DESC:b.Title,
+			COOPERATION:(b.AuthType & module.EAuthType_cooperation),
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 
@@ -146,11 +157,16 @@ func getLinks(blogs []*module.Blog,showall bool) *LinkDatas{
 	return &datas
 }
 
-func PageSearch(match string,w h.ResponseWriter ){
+func PageSearch(match string,w h.ResponseWriter,session string){
 
 	blogs := control.GetMatch(match)
-
-	datas := getLinks(blogs,true)
+	is_cooperation := cooperation.IsCooperation(session)
+	flag := module.EAuthType_all
+	if is_cooperation {
+		flag = module.EAuthType_public | module.EAuthType_cooperation
+	}
+	
+	datas := getLinks(blogs,flag,session)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))
@@ -171,17 +187,10 @@ func PageTags(w h.ResponseWriter,tag string){
 
 	blogs := control.GetMatch("$"+tag)	
 
+	flag := module.EAuthType_public
 	// 只展示public
-	public_blogs := make([]*module.Blog,0)
-	for _,b := range blogs {
-		if b.AuthType != module.EAuthType_public {
-			continue
-		}
 
-		public_blogs = append(public_blogs,b)
-	}
-
-	datas := getLinks(public_blogs,true)
+	datas := getLinks(blogs,flag,"")
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"tags.template"))
@@ -199,11 +208,12 @@ func PageTags(w h.ResponseWriter,tag string){
 
 }
 
-func PageLink(w h.ResponseWriter){
+func PageLink(w h.ResponseWriter,flag int,session string){
 	
-	blogs := control.GetAll(100)
+	blogs := control.GetAll(100,flag)
+	log.DebugF("blogs cnt=%d",len(blogs))
 
-	datas := getLinks(blogs,false)
+	datas := getLinks(blogs,flag,session)
 	
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))
@@ -411,3 +421,64 @@ func PageToDoList(w h.ResponseWriter){
 	}
 
 }
+
+func PageAddCooperation(w h.ResponseWriter,account string){
+	ret,c := cooperation.CreateCooperation(account)
+	if ret != 0 {
+		h.Error(w, fmt.Sprintf("cooperation %s exit ret=%d c.pwd=%s",account,ret,c.Password),h.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("create cooperation \n account=%s \n pwd=%s ",c.Account,c.Password)))
+}
+
+func PageDelCooperation(w h.ResponseWriter,account string){
+	ret := cooperation.DelCooperation(account)
+	w.Write([]byte(fmt.Sprintf("delete cooperation \n account=%s ret=%d",account,ret)))
+}
+
+func PageShowCooperation(w h.ResponseWriter){
+	cooperations := cooperation.Cooperations
+	str := "All Cooperations:"
+	for _,c := range cooperations {
+		c_str := fmt.Sprintf("account=%s pwd=%s ct=%v",c.Account,c.Password,c.CreateTime)
+		str = fmt.Sprintf("%s \n %s ",str,c_str)
+	}
+	w.Write([]byte(str))
+}
+
+func PageAddCooperationBlog(w h.ResponseWriter,account string, blogname string) {
+	ret := cooperation.AddCanEditBlog(account,blogname)
+	if ret != 0 {
+		h.Error(w, fmt.Sprintf("cooperation addblog account=%s blog=%s ret=%d",account,blogname,ret),h.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("cooperation addblog \n account=%s \n blog=%s ",account,blogname)))
+}
+
+func PageDelCooperationBlog(w h.ResponseWriter,account string, blogname string) {
+	ret := cooperation.DelCanEditBlog(account,blogname)
+	if ret != 0 {
+		h.Error(w, fmt.Sprintf("cooperation delblog %s ret=%d",account,ret),h.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("cooperation delblog \n account=%s \n blog=%s ",account,blogname)))
+}
+
+func PageAddCooperationTag(w h.ResponseWriter,account string, tag string) {
+	ret := cooperation.AddCanEditTag(account,tag)
+	if ret != 0 {
+		h.Error(w, fmt.Sprintf("cooperation addtag account=%s tag=%s ret=%d",account,tag,ret),h.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("cooperation addtag \n account=%s \n blog=%s ",account,tag)))
+}
+
+func PageDelCooperationTag(w h.ResponseWriter,account string, tag string) {
+	ret := cooperation.DelCanEditTag(account,tag)
+	if ret != 0 {
+		h.Error(w, fmt.Sprintf("cooperation deltag account=%s tag=%s ret=%d",account,tag,ret),h.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("cooperation deltag \n account=%s \n blog=%s ",account,tag)))
+}
+

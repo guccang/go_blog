@@ -17,6 +17,7 @@ import(
 	"strings"
 	"strconv"
 	"share"
+	"cooperation"
 )
 
 
@@ -37,8 +38,20 @@ func LogRemoteAddr(msg string,r *h.Request) {
 	log.DebugF("RemoteAddr %s %s",remoteAddr,msg)
 }
 
+func getsession(r *h.Request) string{
+	session,err:= r.Cookie("session")
+	if err != nil {
+		return ""
+	}
+	return session.Value
+}
+
+func IsCooperation(r *h.Request) bool {
+	session := getsession(r)
+	return cooperation.IsCooperation(session)
+}
+
 func checkLogin(r *h.Request) int{
-	//session := r.URL.Query().Get("session")
 	session,err:= r.Cookie("session")
 	if err != nil {
 		log.ErrorF("not find cookie session err=%s",err.Error())
@@ -69,7 +82,14 @@ func  HandleLink(w h.ResponseWriter, r *h.Request){
 		h.Redirect(w,r,"/index",302)
 		return
 	}
-	view.PageLink(w)
+	
+	session := getsession(r)
+	is_cooperation := cooperation.IsCooperation(session)
+	flag := module.EAuthType_all
+	if is_cooperation {
+		flag = module.EAuthType_cooperation | module.EAuthType_public
+	}
+	view.PageLink(w,flag,session)
 }
 
 func HandleStatics(w h.ResponseWriter, r *h.Request){
@@ -148,6 +168,9 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	if auth_type_string == "public" {
 		auth_type = module.EAuthType_public
 	}
+	if IsCooperation(r) {
+		auth_type |= module.EAuthType_cooperation
+	}
 
 	// tags
 	tags := r.FormValue("tags")
@@ -187,11 +210,22 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 		Encrypt: encrypt,
 	}
 
+	if IsCooperation(r) {
+		if config.IsTitleAddDateSuffix(title) == 1 {
+			w.Write([]byte(fmt.Sprintf("save failed! cooperation auth error, timed blog not support")))
+			return
+		}
+	}
+
 	ret := control.AddBlog(&ubd)
 
 	// 响应客户端
 	if ret==0 {
 		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d",ret)))
+		if IsCooperation(r) {
+			session := getsession(r)
+			cooperation.AddCanEditBlogBySession(session,title)
+		}
 	}else{
 		w.Write([]byte(fmt.Sprintf("save failed! has same title blog ret=%d",ret)))
 	}
@@ -306,6 +340,19 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		}
 	}
 
+	session := getsession(r)
+	if cooperation.IsCooperation(session) {
+		// 判定blog访问权限
+		auth_type := control.GetBlogAuthType(blogname)
+		if auth_type == module.EAuthType_private {
+			h.Redirect(w,r,"/index",302)
+			return
+		}
+		if cooperation.CanEditBlog(session,blogname) != 0 {
+			usepublic = 1
+		}	
+	}
+
 	view.PageGetBlog(blogname,w,usepublic)
 }
 
@@ -359,7 +406,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 }
 
 func HandleDelete(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleModify",r)
+	LogRemoteAddr("HandleDelete",r)
 	if checkLogin(r) !=0 {
 		h.Redirect(w,r,"/index",302)
 		return
@@ -425,7 +472,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 	// 加密
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s",title,encrypt)
+	log.DebugF("Received title=%s encrypt:%s session:%s",title,encrypt,getsession(r))
 
 	if encryptionKey != "" {
 		encrypt = 1
@@ -458,6 +505,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 
 	ret := control.ModifyBlog(&ubd)
 
+
 	// 响应客户端
 	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d",ret)))
 
@@ -471,6 +519,8 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		return
 	}
 	match := r.URL.Query().Get("match")
+	session := getsession(r)
+	is_cooperation := cooperation.IsCooperation(session)
 
 
 	// 直接显示help
@@ -486,6 +536,10 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 	}
 	// 创建timed blog
 	if tokens[0] == "@c" {
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return
+		}
 		if len(tokens) != 2 {
 			h.Error(w, "@c titlename need", h.StatusBadRequest)
 			return
@@ -501,6 +555,11 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 	}
 	// 分享private连接
 	if tokens[0] == "@share" && len(tokens)>=2 {
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return
+		}
+	
 		// 创建分享
 		if tokens[1] == "c" && len(tokens)>=3 {
 			blogname := tokens[2]
@@ -512,13 +571,67 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		}
 		// 显示所有创建的分享
 		if tokens[1] == "all" {
-			view.PageShowAllShare(w)
+			if false == is_cooperation {
+				view.PageShowAllShare(w)
+			}else{
+				w.Write([]byte("not support operation (showAllShare)!!!"))		
+			}
+		}
+		return
+	}
+	// 创建协作账号
+	if tokens[0] == "@cooperation" && len(tokens) >= 2{
+		log.DebugF("cooperation opt=%s",tokens[1])
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return
+		}
+	
+		// 创建
+		if tokens[1] == "c" && len(tokens) == 3{
+			account := tokens[2]
+			view.PageAddCooperation(w,account)
+		}
+		// 删除
+		if tokens[1] == "d" && len(tokens) == 3{
+			account := tokens[2]
+			view.PageDelCooperation(w,account)
+		}
+		// 显示
+		if tokens[1] == "all" && len(tokens) == 2{
+			if false == is_cooperation {
+				view.PageShowCooperation(w)
+			}else{
+				w.Write([]byte("not support operation (showCooperation)!!!"))		
+			}
+		}
+		// add edit blog
+		if tokens[1] == "addblog" && len(tokens) == 4{
+			account := tokens[2]
+			blog := tokens[3]
+			view.PageAddCooperationBlog(w,account,blog)
+		}
+		if tokens[1] == "delblog" && len(tokens) == 4{
+			account := tokens[2]
+			blog := tokens[3]
+			view.PageDelCooperationBlog(w,account,blog)
+		}
+		// add edit tag
+		if tokens[1] == "addtag" && len(tokens) == 4{
+			account := tokens[2]
+			tag := tokens[3]
+			view.PageAddCooperationTag(w,account,tag)
+		}
+		if tokens[1] == "deltag" && len(tokens) == 4{
+			account := tokens[2]
+			tag := tokens[3]
+			view.PageDelCooperationTag(w,account,tag)
 		}
 		return
 	}
 
 	// 通用搜索逻辑
-	view.PageSearch(match,w)
+	view.PageSearch(match,w,session)
 }
 
 func HandleTag(w h.ResponseWriter,r *h.Request){
@@ -561,8 +674,12 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 	log.DebugF("account=%s pwd=%s",account,pwd)
 	session , ret:= login.Login(account,pwd)
 	if ret != 0 {
-		h.Error(w,"Error account or pwd",h.StatusBadRequest)
-		return
+		session,ret = cooperation.CooperationLogin(account,pwd)
+		if ret != 0 {
+			h.Error(w,"Error account or pwd",h.StatusBadRequest)
+			return
+		}
+		log.DebugF("cooperation login ok account=%s pwd=%s",account,pwd)
 	}
 
 	// set cookie
@@ -573,7 +690,7 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 	}
 	h.SetCookie(w, cookie)
 	
-	log.DebugF("login success account=%s pwd=%s session=%s",account,pwd,session)
+	log.DebugF("login success account=%s pwd=%s session=%s iscooperation=%d",account,pwd,session,cooperation.IsCooperation(session))
 	h.Redirect(w, r,"/link", 302)
 }
 

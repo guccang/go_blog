@@ -1,10 +1,8 @@
 
-modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search" "share")
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search" "share" "cooperation")
 prename="pkgs"
 
 cur_path=$(realpath $0)
-echo $cur_path
-cur_path=$(dirname $cur_path)
 echo $cur_path
 cur_path=$(dirname $cur_path)
 echo $cur_path

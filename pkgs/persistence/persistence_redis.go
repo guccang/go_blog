@@ -354,3 +354,83 @@ func showBlogComments(cs *module.BlogComments){
 		log.DebugF("mt=%s",c.ModifyTime)	
 	}
 }
+
+func toCooperation(m map[string]string) *module.Cooperation{
+	now :=  strTime()
+	ct,ok := m["ct"]
+	if !ok { ct = now }
+	account,ok := m["account"]
+	if !ok { return nil }
+	pwd,ok :=m["pwd"]
+	if !ok { return nil }
+	tags, ok := m["tags"]
+	if !ok { tags = "" }
+	blogs, ok := m["blogs"]
+	if !ok { blogs = "" }
+
+
+	c := &module.Cooperation{
+		Account:account,
+		Password:pwd,
+		CreateTime:ct,
+		Tags : tags,
+		Blogs : blogs,
+	}
+	return c
+}
+
+func DelCooperation(account string)int{
+	key := fmt.Sprintf("cooperation@%s",account)
+	err := db.client.Del(key).Err()
+	if err != nil {
+		log.ErrorF("delete cooperation error key=%s err=%s",key,err.Error())
+		return  1
+	}
+
+	log.DebugF("delete account=%s",key)
+
+	return 0
+}
+
+func SaveCooperation(account string,pwd string,blogs string,tags string) int {
+	key := fmt.Sprintf("cooperation@%s",account)
+	values := make(map[string]interface{})
+	values["account"] = account
+	values["pwd"] = pwd
+	values["ct"] = strTime()
+	values["blogs"] = blogs
+	values["tags"] = tags
+	err := db.client.HMSet(key,values).Err()
+	if err != nil {
+		log.ErrorF("savecooperation error key=%s err=%s",key,err.Error())
+		return 1
+	}
+	log.DebugF("redis savecooperation success account=%s pwd=%s",key,pwd)
+	return 0
+}
+
+func GetCooperations()map[string]*module.Cooperation{
+    keys,err := db.client.Keys("cooperation@*").Result()
+	if err !=nil {
+		log.ErrorF("getblogs error keys=cooperation@* err=%s",err.Error())
+		return nil
+	}
+
+	cooperations := make(map[string]*module.Cooperation)
+
+	for _,key := range keys {
+		log.DebugF("getcooperation key=%s",key)
+		m ,err := db.client.HGetAll(key).Result()
+		if err!=nil {
+				log.ErrorF("getcooperation error key=%s err=%s",key,err.Error())
+				continue
+		}
+		log.DebugF("getcooperation success key=%s",key)
+		c := toCooperation(m)
+		cooperations[c.Account] = c
+	}
+
+	return cooperations
+}
+
+
