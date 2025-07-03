@@ -13,6 +13,7 @@ import(
 	"sort"
 	"share"
 	"cooperation"
+	"time"
 )
 
 func Info(){
@@ -24,10 +25,12 @@ type LinkData struct{
 	URL string
 	DESC string
 	COOPERATION int
+	ACCESS_TIME string
 }
 
 type LinkDatas struct{
 	LINKS []LinkData
+	RECENT_LINKS []LinkData
 	VERSION string
 	BLOGS_NUMBER int
 	TAGS []string
@@ -51,7 +54,22 @@ type EditorData struct{
 	ENCRYPT		string
 }
 
+type TodolistData struct {
+	DATE string
+}
 
+// YearPlanData contains data for rendering the year plan template
+type YearPlanData struct {
+	YEAR         int
+	YEAR_OVERVIEW string
+	MONTH_PLANS  []string
+}
+
+// MonthGoalData contains data for rendering the month goal template
+type MonthGoalData struct {
+	CURRENT_YEAR  int
+	CURRENT_MONTH int
+}
 
 func Notify(msg string,w h.ResponseWriter){
 	tmpDir := config.GetHttpTemplatePath()
@@ -131,6 +149,7 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 			URL:fmt.Sprintf("/get?blogname=%s",b.Title),
 			DESC:b.Title,
 			COOPERATION:(b.AuthType & module.EAuthType_cooperation),
+			ACCESS_TIME:b.AccessTime,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 
@@ -153,6 +172,46 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 		datas.TAGS = append(datas.TAGS,tags_str)
 	}
 	sort.Strings(datas.TAGS)
+
+	// 处理最近访问的博客
+	recent := make([]LinkData, len(datas.LINKS))
+	copy(recent, datas.LINKS)
+	
+	// 根据访问时间排序，最新访问的在前
+	sort.Slice(recent, func(i, j int) bool {
+		// 如果访问时间为空，则放在最后
+		if recent[i].ACCESS_TIME == "" {
+			return false
+		}
+		if recent[j].ACCESS_TIME == "" {
+			return true
+		}
+		
+		// 使用time.Parse解析时间字符串为时间对象，然后比较Unix时间戳
+		ti, errI := time.Parse("2006-01-02 15:04:05", recent[i].ACCESS_TIME)
+		tj, errJ := time.Parse("2006-01-02 15:04:05", recent[j].ACCESS_TIME)
+		
+		// 如果解析出错，则按原字符串比较
+		if errI != nil || errJ != nil {
+			return recent[i].ACCESS_TIME > recent[j].ACCESS_TIME
+		}
+		
+		// 使用Unix时间戳比较，更晚的时间排在前面
+		if ti.Unix() != tj.Unix() {
+			return ti.Unix() > tj.Unix()
+		}
+		
+		// 如果访问时间相同，则按标题字母顺序排序，确保排序稳定性
+		return recent[i].DESC < recent[j].DESC
+	})
+	
+	// 最多取6个最近访问的博客
+	var MAX_RECENT_LINKS = 9
+	if len(recent) > MAX_RECENT_LINKS {
+		datas.RECENT_LINKS = recent[:MAX_RECENT_LINKS]
+	} else {
+		datas.RECENT_LINKS = recent
+	}
 
 	return &datas
 }
@@ -210,7 +269,8 @@ func PageTags(w h.ResponseWriter,tag string){
 
 func PageLink(w h.ResponseWriter,flag int,session string){
 	
-	blogs := control.GetAll(100,flag)
+	blog_num := config.GetMainBlogNum()
+	blogs := control.GetAll(blog_num,flag)
 	log.DebugF("blogs cnt=%d",len(blogs))
 
 	datas := getLinks(blogs,flag,session)
@@ -218,7 +278,7 @@ func PageLink(w h.ResponseWriter,flag int,session string){
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))
 	if err != nil{
-		log.Debug(err.Error())
+		log.ErrorF(err.Error())
 		h.Error(w,"Failed to parse link.template",h.StatusInternalServerError)
 		return
 	}
@@ -282,7 +342,7 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 	if usepublic != 0 {
 		template_name = "get_public.template"
 	}
-	if blog.AuthType == module.EAuthType_public {
+	if (blog.AuthType & module.EAuthType_public) != 0 {
 		auth_type_string = "public"
 	}
 
@@ -325,6 +385,7 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 
 	err = tmpl.Execute(w,data)
 	if err != nil{
+		log.Debug(err.Error())
 		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
 		return
 	}
@@ -344,10 +405,29 @@ func PageIndex(w h.ResponseWriter){
 	
 	err = tmpl.Execute(w,nil)
 	if err != nil{
+		log.Debug(err.Error())
 		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
 		return
 	}
 
+}
+
+
+func PageDemo(w h.ResponseWriter,template_name string){
+	tempDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,template_name))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse demo template",h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w,nil)
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
+		return
+	}
 }
 
 func PageD3(w h.ResponseWriter){
@@ -362,6 +442,7 @@ func PageD3(w h.ResponseWriter){
 	
 	err = tmpl.Execute(w,nil)
 	if err != nil{
+		log.Debug(err.Error())
 		h.Error(w,"Failed to render template get.template",h.StatusInternalServerError)
 		return
 	}
@@ -404,24 +485,6 @@ func PageShowAllShare(w h.ResponseWriter){
 	}
 }
 
-// todolist
-func PageToDoList(w h.ResponseWriter){
-	tempDir := config.GetHttpTemplatePath()
-	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,"todolist.template"))
-	if err != nil{
-		log.Debug(err.Error())
-		h.Error(w,"Failed to parse todolist.template",h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w,nil)
-	if err != nil{
-		h.Error(w,"Failed to render template todolist.template",h.StatusInternalServerError)
-		return
-	}
-
-}
-
 func PageAddCooperation(w h.ResponseWriter,account string){
 	ret,c := cooperation.CreateCooperation(account)
 	if ret != 0 {
@@ -429,6 +492,7 @@ func PageAddCooperation(w h.ResponseWriter,account string){
 		return
 	}
 	w.Write([]byte(fmt.Sprintf("create cooperation \n account=%s \n pwd=%s ",c.Account,c.Password)))
+	log.DebugF("PageAddCooperation account=%s ret=%d",account,ret)
 }
 
 func PageDelCooperation(w h.ResponseWriter,account string){
@@ -481,4 +545,216 @@ func PageDelCooperationTag(w h.ResponseWriter,account string, tag string) {
 	}
 	w.Write([]byte(fmt.Sprintf("cooperation deltag \n account=%s \n blog=%s ",account,tag)))
 }
+
+
+func getsession(r *h.Request) string{
+	session,err:= r.Cookie("session")
+	if err != nil {
+		return ""
+	}
+	return session.Value
+}
+
+func PageSearchNormal(match string,w h.ResponseWriter,r *h.Request) int{
+	session := getsession(r)
+	is_cooperation := cooperation.IsCooperation(session)
+
+	// 直接显示help
+	tokens := strings.Split(match," ")
+	if match == "@help" {
+		h.Redirect(w,r,"/help",302)
+		return 0
+	}
+    // 直接显示主页
+	if match == "@main" {
+		h.Redirect(w,r,"/link",302)
+		return 0
+	}
+	// 创建timed blog
+	if tokens[0] == "@c" {
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return 0
+		}
+		if len(tokens) != 2 {
+			h.Error(w, "@c titlename need", h.StatusBadRequest)
+			return 0
+		}
+		title := tokens[1]
+		content := ""
+		b := control.GetRecentlyTimedBlog(title)
+		if b != nil {
+			content = b.Content
+		}
+		PageEditor(w,title,content)
+		return 0
+	}
+	// 分享private连接
+	if tokens[0] == "@share" && len(tokens)>=2 {
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return 0
+		}
+	
+		// 创建分享
+		if tokens[1] == "c" && len(tokens)>=3 {
+			blogname := tokens[2]
+			PageShareBlog(w,blogname)
+		}
+		if tokens[1] == "t" && len(tokens)>=3{
+			tag := tokens[2]
+			PageShareTag(w,tag)
+		}
+		// 显示所有创建的分享
+		if tokens[1] == "all" {
+			if false == is_cooperation {
+				PageShowAllShare(w)
+			}else{
+				w.Write([]byte("not support operation (showAllShare)!!!"))		
+			}
+		}
+		return 0
+	}
+	// 创建协作账号
+	if tokens[0] == "@cooperation" && len(tokens) >= 2{
+		log.DebugF("cooperation opt=%s",tokens[1])
+		if is_cooperation {
+			h.Error(w, "@c auth not support", h.StatusBadRequest)
+			return 0 
+		}
+	
+		// 创建
+		if tokens[1] == "c" && len(tokens) == 3{
+			account := tokens[2]
+			PageAddCooperation(w,account)
+		}
+		// 删除
+		if tokens[1] == "d" && len(tokens) == 3{
+			account := tokens[2]
+			PageDelCooperation(w,account)
+		}
+		// 显示
+		if tokens[1] == "all" && len(tokens) == 2{
+			if false == is_cooperation {
+				PageShowCooperation(w)
+			}else{
+				w.Write([]byte("not support operation (showCooperation)!!!"))		
+			}
+		}
+		// add edit blog
+		if tokens[1] == "addblog" && len(tokens) == 4{
+			account := tokens[2]
+			blog := tokens[3]
+			PageAddCooperationBlog(w,account,blog)
+		}
+		if tokens[1] == "delblog" && len(tokens) == 4{
+			account := tokens[2]
+			blog := tokens[3]
+			PageDelCooperationBlog(w,account,blog)
+		}
+		// add edit tag
+		if tokens[1] == "addtag" && len(tokens) == 4{
+			account := tokens[2]
+			tag := tokens[3]
+			PageAddCooperationTag(w,account,tag)
+		}
+		if tokens[1] == "deltag" && len(tokens) == 4{
+			account := tokens[2]
+			tag := tokens[3]
+			PageDelCooperationTag(w,account,tag)
+		}
+		return 0
+	}
+
+	// 继续其他search
+	return 1
+}
+
+
+// timestamp
+func PageTimeStamp(w h.ResponseWriter){
+	tempDir := config.GetHttpTemplatePath()
+	tmpl,err:=t.ParseFiles(filepath.Join(tempDir,"timestamp.template"))
+	if err != nil{
+		log.Debug(err.Error())
+		h.Error(w,"Failed to parse timestamp.template",h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w,nil)
+	if err != nil{
+		h.Error(w,"Failed to render template timestamp.template",h.StatusInternalServerError)
+		return
+	}
+}
+
+func PageTodolist(w h.ResponseWriter, date string) {
+	data := TodolistData{
+		DATE: date,
+	}
+
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "todolist.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse todolist.template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render template todolist.template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageYearPlan renders the year plan page
+func PageYearPlan(w h.ResponseWriter, year int) {
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "yearplan.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse yearplan template", h.StatusInternalServerError)
+		return
+	}
+	
+	// Initialize data with just the year
+	data := YearPlanData{
+		YEAR:        year,
+		MONTH_PLANS: make([]string, 12), // Initialize with 12 empty strings for months
+	}
+	
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render yearplan template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageMonthGoal renders the month goal page
+func PageMonthGoal(w h.ResponseWriter, year int, month int) {
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "monthgoal.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse monthgoal template", h.StatusInternalServerError)
+		return
+	}
+	
+	// Initialize data with current year and month
+	data := MonthGoalData{
+		CURRENT_YEAR:  year,
+		CURRENT_MONTH: month,
+	}
+	
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render monthgoal template", h.StatusInternalServerError)
+		return
+	}
+}
+
 

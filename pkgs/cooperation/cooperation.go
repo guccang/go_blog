@@ -88,10 +88,22 @@ func CreateCooperation(account string) (int,*module.Cooperation){
 }
 
 func DelCooperation(account string) int{
+	c , ok := Cooperations[account]
+	if !ok {
+		return 1
+	}
+
+	b_tokens := strings.Split(c.Blogs," ")
+	for _,t := range b_tokens {
+		if t != "" {
+			blog.DelAuthType(t,module.EAuthType_cooperation)
+		}
+	}
+
 	delete(Cooperations,account)
 	ret := db.DelCooperation(account)
 	log.DebugF("DelCooperation account=%s ret=%d",account,ret)
-	return ret
+	return 0
 }
 
 
@@ -118,6 +130,27 @@ func AddCanEditBlog(account string,blogname string) int {
 		log.DebugF("URL blogname=%s",name)
 		c.Blogs = fmt.Sprintf("%s %s",c.Blogs,name)
 	}
+
+	// 去重
+	tokens := strings.Split(c.Blogs," ")
+	if len(tokens) > 0 {
+		m := make(map[string]int)
+		for _,t := range tokens {
+			cnt,ok := m[t] 
+			if !ok { 
+				m[t] = 1
+			}else{
+				m[t] = cnt + 1
+			}
+		}
+
+		c.Blogs = ""
+		for t,_ := range m {
+			c.Blogs = fmt.Sprintf("%s %s",c.Blogs,t)
+			log.DebugF("c.Blogs %s",c.Blogs)
+		}
+	}
+
 	blog.SetSameAuth(blogname)
 	blog.AddAuthType(blogname,module.EAuthType_cooperation)
 

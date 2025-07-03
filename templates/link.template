@@ -3,99 +3,90 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title> GUCCANG/LINK </title>
-		<style>
-		 @import url(/css/styles.css);
-		 @import url(/css/link.css);
-		 .right-label{
-			float : right;
-			margin-right:10px;	
-		 }
-
-
-		.div1 {
-			position :absolute;
-			left:50%;
-			top:50%;
-			transform: translate(-50%,-50%);
-			border: 1px solid #000000;
-		}
-
-		.container {
-			width : 50%;
-			min-width : 30%;
-		}
-
-		</style>
+    	<link rel="stylesheet" href="/css/link.css">
 	</head>
 
 	<body>
 		<div class="top-sidebar-cotainer">
 		  <div class="top-sidebar" >
 			<a href="/link">
-				<img class="img-cycle" src="/logo/logo.png" width=88></img>
+				<div class="img-cycle">G</div>
 			</a>
-			<a href="/editor" style="font-size: 32px;">创建博客</a>
-			<input id="search" type="text" class="custom-wh" list="search_list"></input>
+			<a href="/editor" style="font-size: 24px;">创建博客</a>
+			<a href="/todolist" style="font-size: 24px;" onclick="navigateToTodolist(event)">每日任务</a>
+			<a href="/monthgoal" style="font-size: 24px;">月度计划</a>
+			<a href="/yearplan" style="font-size: 24px;">年度计划</a>
+			<div class="search-container">
+				<input id="search" type="text" placeholder="搜索博客或标签..." list="search_list">
 			<datalist id="search_list">
 				{{range .TAGS}}
 					<option>{{.}}</option>
 				{{end}}
 			</datalist>
-			<button type="button" onclick="onSearch()">搜索</button>
+				<button type="button" class="search-btn" onclick="onSearch()">搜索</button>
+			</div>
+			<button class="view-toggle" onclick="toggleView()" title="切换视图">
+				<i id="view-icon">📑</i>
+				<span id="view-text">网格视图</span>
+			</button>
 		  </div>
+		</div>
+
+		<!-- 最近查看区域 -->
+		<div class="recent-section">
+			<h2 class="section-title">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 5px;">
+					<path d="M12 7V12L16 14M12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+				最近查看
+			</h2>
+			<div class="recent-container">
+			{{if .RECENT_LINKS}}
+				{{range .RECENT_LINKS}}
+					<div class="recent-card-circle">
+						<a href="{{.URL}}" class="circle-link">
+							<div class="circle-avatar">
+								<span class="circle-text" data-title="{{.DESC}}"></span>
+							</div>
+							<span class="circle-title">{{.DESC}}</span>
+							{{ if ne 0 .COOPERATION }}
+							<span class="dot-indicator"></span>
+							{{end}}
+						</a>
+					</div>
+				{{end}}
+			{{else}}
+				<div class="empty-recent">暂无最近查看记录</div>
+			{{end}}
+			</div>
 		</div>
 
 		<div class="container">
 		{{range .LINKS}}
+			<div class="link-card">
 			{{ if eq 0 .COOPERATION }}
-				<p><a class="link-with-dot" href="{{.URL}}">{{.DESC}}</a></p>
+					<a class="link-with-dot" href="{{.URL}}">{{.DESC}}</a>
 			{{else}}
-				<p><a class="link-with-dot" href="{{.URL}}">
+					<a class="link-with-dot" href="{{.URL}}">
 					{{.DESC}}
 					<span class="dot"></span>
-				</a></p>
+					</a>
 			{{end}}
+			</div>
 		{{end}}
 		</div>
 
+		<a href="/editor" class="create-btn" title="创建新博客">+</a>
+
 		<div class="bottom-fix-div">
-		<label class="right-label">{{.BLOGS_NUMBER}}</label>
-		<label class="right-label">{{.VERSION}}</label>
+		<span class="right-label">博客数量: {{.BLOGS_NUMBER}}</span>
+		<span class="right-label">版本: {{.VERSION}}</span>
 		</div>
 
 		<script src="/js/utils.js"></script>
-		<script>
-		function onSearch(){
-			console.log("onclick");
-			var match = document.getElementById('search').value;
-
-			var xhr = new XMLHttpRequest();
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState == 4 && xhr.status == 200) {
-					// 处理服务器的响应
-					console.log(xhr.responseText);
-					window.location.href=xhr.responseURL
-				}
-			};
-			xhr.open('GET', '/search?match='+match, true);
-			xhr.send();
-		}
-
-		PageHistoryBack()
-
-		document.addEventListener('keydown', function(event) {
-			console.log(`key=${event.key},code=${event.code}`);
-			if (event.key === "Enter") {
-				event.preventDefault();
-				onSearch()
-			}
-		});
-
-
-		</script>
-
-
+		<script src="/js/link.js"></script>
 		
 	</body>
 </html>

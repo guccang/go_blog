@@ -1,21 +1,11 @@
 
 .th{
-	//background-image:linear-gradient(to left,#84fab0 0%,#8fd3f4 100%); // color
-	//background-image:linear-gradient(to left,#cfd9df 0%,#e2ebf0 100%);	 // white01
-	//background-image:linear-gradient(to left,#fdfbfb 0%,#ebedee 100%); // white02
-	//background-image:linear-gradient(to left,#e6e9f0 0%,#eef1f5 100%); // white03
-  // background-image: url('/pics/yuanshen-background.jpg');
   background-repeat: no-repeat;
   background-attachment: fixed;
   background-size: cover;
 }
 
 .th_black{
-	//background-image:linear-gradient(to right,#7f7f7f 0%,#304352 200%);	 // black
-	//background-color : #7f7f7f;
-	//background-color : #9b949c;
-	//background-color : #d3d3d4;
-	// background-image: url('/pics/yuanshen-background.jpg');
 	background-repeat: no-repeat;
 	background-attachment: fixed;
 	background-size: cover;

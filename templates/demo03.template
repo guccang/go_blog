@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guccang's Personal Website</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 0;
+            background-color: #f4ecd8;
+            color: #5b4636;
+        }
+        header {
+            background-color: #7f5846;
+            color: #f4ecd8;
+            padding: 20px 0;
+            text-align: center;
+            font-family: 'Georgia', serif;
+        }
+        nav {
+            display: flex;
+            justify-content: center;
+            padding: 10px 0;
+            background-color: #8c6d5a;
+            font-family: 'Georgia', serif;
+        }
+        nav a {
+            color: #f4ecd8;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 18px;
+        }
+        nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .intro {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .blog-posts {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        @media (min-width: 768px) {
+            .blog-posts {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        .blog-post {
+            background-color: #ffffff;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ddd;
+        }
+        .blog-post h3 {
+            font-family: 'Georgia', serif;
+            color: #7f5846;
+        }
+        .blog-post p {
+            font-family: 'Georgia', serif;
+            color: #5b4636;
+        }
+        .blog-post a {
+            color: #7f5846;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .blog-post a:hover {
+            text-decoration: underline;
+        }
+        footer {
+            text-align: center;
+            padding: 20px 0;
+            background-color: #7f5846;
+            color: #f4ecd8;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Guccang's Personal Website</h1>
+    <p>Game Designer</p>
+</header>
+
+<nav>
+    <a href="#intro">简介</a>
+    <a href="#blog">博客文章</a>
+    <a href="#contact">联系方式</a>
+</nav>
+
+<div class="container">
+    <section id="intro" class="intro">
+        <h2>关于我</h2>
+        <p>大家好！我是Guccang，一名热爱创造与创新的游戏设计师。我喜欢探索新技术和设计理念，以打造令人难忘的游戏体验。</p>
+    </section>
+
+    <section id="blog" class="blog-posts">
+        <h2>博客文章</h2>
+        <div class="blog-post">
+            <h3>文章标题 1</h3>
+            <p>这里是文章内容的摘要部分，点击阅读更多。</p>
+            <a href="#">阅读更多</a>
+        </div>
+        <div class="blog-post">
+            <h3>文章标题 2</h3>
+            <p>这里是文章内容的摘要部分，点击阅读更多。</p>
+            <a href="#">阅读更多</a>
+        </div>
+        <!-- 添加更多博客文章 -->
+    </section>
+</div>
+
+<footer id="contact">
+    <p>联系方式: guccang@example.com</p>
+</footer>
+
+</body>
+</html>
+

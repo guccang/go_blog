@@ -21,7 +21,7 @@ func DebugF(f string,a ...any){
 	fmt.Printf("[DEBUG] %s %s\n",strTime(),str)
 }
 
-func MessageF(f string,a ...any){
+func InfoF(f string,a ...any){
 	str := fmt.Sprintf(f,a...)
 	fmt.Printf("[MESSAGE] %s %s\n",strTime(),str)
 }

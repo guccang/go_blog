@@ -178,16 +178,17 @@ img {
     height: 100%;
     background-color: #f4f4f4;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    transition: left 0.5s ease,visibility 0.5s ease;
+    transition: left 0.5s ease;
     padding: 20px;
     box-sizing: border-box;
+	pointer-events: auto; 
 }
 
 /* 可点击的气泡,用于显示隐藏sidebar */
 .bubble {
     position: fixed;
-    left: -8px;
-    top: 50%;
+    left: -5px;
+    top: 66%;
     transform: translateY(-50%);
     width: 30px;
     height: 30px;
@@ -200,38 +201,41 @@ img {
     cursor: pointer;
     box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     transition: left 0.5s ease;
+	pointer-events: auto; 
 }
 
 
-/* sidebar container 默认隐藏*/
+/* sidebar container 默认显示*/
 .sidebar-container{
     position: relative;
 	height : 100%;
+    transition: left 10s ease;
+	pointer-events: none; /* 使容器不响应点击 */
 }
 
 .top-sidebar-container {
 	position: relative;
 	width : 100%;
+    transition: left 0.5s ease;
 }
 
-/* 给sidebar-container增加open属性后操作,将控件隐藏 */
-.sidebar-container.open {
+/* 给sidebar-container增加hide-sidebar属性后操作,将控件隐藏 */
+.sidebar-container.hide-sidebar {
+    left: -10px;
+}
+
+/* 给sidebar-container增加hide-sidebar属性后操作,将控件隐藏 */
+.sidebar-container.hide-sidebar .sidebar {
     left: -150%;
 }
 
-/* 给sidebar-container增加open属性后操作,将控件隐藏 */
-.sidebar-container.open .sidebar {
-    left: -150%;
-	visibility : hidden;
-}
-
-/* 给sidebar-container增加open属性后操作,bubble移动一点，方便点击 */
-.sidebar-container.open .bubble {
+/* 给sidebar-container增加hide 属性后操作,bubble移动一点，方便点击 */
+.sidebar-container.hide-sidebar .bubble {
     left: 10px;
 }
 
-.container.open {
-	margin-left : -150px;
+.container.hide-sidebar {
+	margin-left : -100px;
 }
 
 .link-with-dot {

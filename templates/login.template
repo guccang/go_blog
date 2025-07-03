@@ -4,89 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/LOGIN</title>
-	<style>	
-.left-button {
-    float: left;
-}
-
-.separator {
-    border-top: 3px solid gray; /* 设置上边框 */
-    margin-top: 5px;           /* 添加一些上外边距 */
-    margin-bottom: 5px;        /* 添加一些下外边距 */
-}
-
-
-#editor {
-            min-height: 555px;
-            resize: none;
-            width: 100%;
-            padding: 10px;
-            box-sizing: border-box;
-            border: 3px solid #ccc;
-            font-size: 16px;
-}
-
-.label {
-	width : 88px;
-	display : inline-block;
-}
-
-.center {
-	top:50%;
-	left:50%;
-}
-
-.div1 {
-	position :absolute;
-	left:50%;
-	top:50%;
-	transform: translate(-50%,-50%);
-	border: 1px solid #000000;
-}
-
-	</style>
+    <link rel="stylesheet" href="/css/login.css">
 </head>
-<body style="background-color:#f0f0f0">
+<body>
+    <div class="background-animation" id="background-animation"></div>
+    
+    <div class="login-container">
+        <div class="login-logo">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+        </div>
+        <h1 class="login-title">登录</h1>
+        <div class="error-message" id="error-message"></div>
+        
+        <div class="form-group">
+            <label for="account">账号</label>
+            <input type="text" id="account" placeholder="请输入账号" autocomplete="username">
+            <span class="icon">👤</span>
+        </div>
+        
+        <div class="form-group">
+            <label for="pwd">密码</label>
+            <input type="password" id="pwd" placeholder="请输入密码" autocomplete="current-password">
+            <span class="icon">🔒</span>
+        </div>
+        
+        <button class="login-button" type="button" onclick="submitContent()">登 录</button>
+    </div>
 
-	<div class="div1">
-	<label class="label">ACCOUNT</label>
-	<input id="account" type="text" name="title">
-	<br>
-	<label class="label">PWD</label>
-	<input id="pwd" type="password" name="title">
-	<br>
-	<button class="left-button" type="button" onclick="submitContent()">登录</button>
-	</div>
-
-	<script>
-	function submitContent() {
-		var account = document.getElementById('account').value;
-		var pwd = document.getElementById("pwd").value;
-
-		// 使用XMLHttpRequest发送数据
-		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4 ) {
-				// 处理服务器的响应
-				if (xhr.status == 200){
-					console.log(xhr.responseText);
-					window.location.href=xhr.responseURL
-				}else{
-					alert(xhr.responseText)
-				}
-			}
-		};
-
-		console.log(account)
-		console.log(pwd)
-		var formData = new FormData();
-		formData.append('account', account);
-		formData.append('password', pwd);
-		xhr.open('POST', '/login', true);
-		xhr.send(formData);
-	}
-
-	</script>
-
+    <script src="/js/login.js"></script>
 </body>
 </html>

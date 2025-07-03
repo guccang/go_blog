@@ -4,161 +4,97 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/MarkdownEditor</title>
-
-	<style>
-		@import url(/css/styles.css);
-		@import url(/css/editor.css);
-		.container {
-			margin-top : 1%;
-			margin-left : 10px;
-		}
-		.editor {
-			min-height: 70hv;
-		}
-		.mdEditor {
-			min-height: 70hv;
-		}
-		
-		input[type="text"] {
-			width:66px;
-			height:16px;
-		}
-	</style>
-
+    <link rel="stylesheet" href="/css/markdown_editor.css">
 </head>
 <body class="th_black" id="body">
-
-    <!-- Markdown编辑器容器 -->
-	<div class="sidebar">
-		<img class="img-cycle" src="/logo/logo.png" class="center-img" width=88></img>
-		<a href="/link" style="font-size: 32px;">主页</a>
-		<div class="separator"></div>
-		<label>NAME</label>
-		<input id="title" type="text" name="title" value="{{.TITLE}}">
-		<label>TAGS</label>
-		<input id="tags" type="text" name="tags" value="{{.TAGS}}">
-		{{ if eq "private" .AUTHTYPE  }}
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <button class="sidebar-toggle" id="sidebar-toggle">&#10094;</button>
+        <div class="top-sidebar-cotainer">
+            <div class="top-sidebar">
+                <a href="/link">
+                    <div class="img-cycle">G</div>
+                </a>
+            </div>
+        </div>
+        <a href="/link" style="font-size: 24px;">主页</a>
+        <div class="separator"></div>
+        <label for="title">文章标题</label>
+        <input id="title" type="text" name="title" value="{{.TITLE}}" placeholder="输入文章标题...">
+        <label for="tags">标签</label>
+        <input id="tags" type="text" name="tags" value="{{.TAGS}}" placeholder="用|分隔多个标签...">
+        
+        {{ if eq "private" .AUTHTYPE }}
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="private" checked>
 			<span class="radio-btn"><i class="checkmark"></i></span>
-			private
+            私有
 		</label>
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="public">
 			<span class="radio-btn"><i class="checkmark"></i></span>
-			public	
+            公开
 		</label>
 		{{ else }}
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="private">
 			<span class="radio-btn"><i class="checkmark"></i></span>
-			private
+            私有
 		</label>
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="public" checked>
 			<span class="radio-btn"><i class="checkmark"></i></span>
-			public	
+            公开
 		</label>
 		{{end}}
 
+        <div class="separator"></div>
+        <div style="margin-top: auto;">
+            <label for="encrypt">加密 (可选)</label>
+            <input id="encrypt" type="text" name="encrypt" placeholder="输入加密密码...">
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container" id="container">
+        <!-- Toolbar -->
+        <div class="editor-toolbar">
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btn-bold" title="粗体 (Ctrl+B)">B</button>
+                <button class="toolbar-btn" id="btn-italic" title="斜体 (Ctrl+I)">I</button>
+                <button class="toolbar-btn" id="btn-heading" title="标题">H</button>
+                <button class="toolbar-btn" id="btn-link" title="链接 (Ctrl+L)">🔗</button>
+                <button class="toolbar-btn" id="btn-image" title="图片">📷</button>
+                <button class="toolbar-btn" id="btn-code" title="代码块">{"}</button>
+                <button class="toolbar-btn" id="btn-list" title="列表">📋</button>
+                <button class="toolbar-btn" id="btn-quote" title="引用">❝</button>
 	</div>
 
-	<div class="container">
-		<div class="buttons-container">
-			<button class="left-button" onclick="submitContent()">提交</button>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btn-toggle-view" title="切换视图">📑</button>
+                <button class="btn-primary" id="btn-save" onclick="submitContent()">保存</button>
+            </div>
 		</div>
-		<div style="height:1px;" ></div>
-
-		<div class="center-fix-div">
-			<textarea class="editor th_black" id="editor" name="content">{{.CONTENT}}</textarea>
+        
+        <!-- Editor and Preview -->
+        <div class="editor-content" id="editor-content">
+            <div class="editor-wrapper" id="editor-wrapper">
+                <textarea class="editor th_black" id="editor" name="content" spellcheck="false">{{.CONTENT}}</textarea>
+            </div>
+            <div class="preview-wrapper" id="preview-wrapper">
 			<div class="mdEditor" id="md"></div>
 		</div>
-<!--
-		<input id="encrypt" type="password" name="encrpyt" value=""><br>
--->
-	<div>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
 
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
+    <script src="/js/crypto/crypto-js.min.js"></script>
 	<script src="/js/vim/vim.min.js"></script>
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
-	<script>
-
-	vim.open({
-		//debug : true
-	});
-
-	PageHistoryBack()
-
-	window.onload = function (){
-		if (isPCDevice()){
-			mdRender(textarea.value)
-		}else{
-			var editor = document.getElementById("editor");
-			var md = document.getElementById("md");
-			md.setAttribute("class","hide");
-			editor.setAttribute("class","editorfullscreen");
-		}
-		checkTime()
-	}
-
-
-	function submitContent() {
-		aesTest()
-		var content = document.getElementById('editor').value;
-		var title = document.getElementById("title").value;
-		var tags = document.getElementById("tags").value;
-		var encrypt_ele = document.getElementById("encrypt")
-		var encrypt = ""
-		if (encrypt_ele != null){
-			encrypt = encrypt_ele.value
-		}
-		var auth_type= document.querySelector('input[name="auth_type"]:checked').value;
-		console.log("auth_type=",auth_type);
-
-		// 使用XMLHttpRequest发送数据
-		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4 && xhr.status == 200) {
-				// 处理服务器的响应
-				//console.log(xhr.responseText);
-				alert(xhr.responseText)
-				//window.location.href=xhr.responseURL
-			}
-		};
-
-
-		if (encrypt.length != 0){
-			var en = aesEncrypt(content, encrypt)
-			content = en
-			console.log("content=%s",content)
-			encrypt="use_aes_cbc"
-		}
-
-		var formData = new FormData();
-		formData.append('title', title);
-		formData.append('content', content);
-		formData.append('authtype', auth_type);
-		formData.append('tags', tags);
-		formData.append('encrypt', encrypt);
-		xhr.open('POST', '/save', true);
-		xhr.send(formData);
-	}
-
-      // 获取textarea元素
-	   var textarea = document.getElementById('editor');
-        // 监听输入事件
-        textarea.addEventListener('input', function () {
-            // 重置textarea的高度以适应内容
-            this.style.height = 'auto';
-            //this.style.height = (this.scrollHeight) + 'px';
-			var md = document.getElementById("md");
-            this.style.height = (md.clientHeight) + 'px';
-			mdRender(textarea.value)
-	})
-
-	</script>
-
+	<script src="/js/markdown_editor.js"></script>
 </body>
 </html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月度工作目标 - GUCCANG</title>
+    <link rel="stylesheet" href="/css/flatpickr.min.css">
+    <script src="/js/flatpickr"></script>
+    <script src="js/zh.js"></script>
+    <script src="/js/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/css/monthgoal.css">
+</head>
+<body>
+    <div class="page-wrapper">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <a href="/link" class="logo">
+                <div class="img-cycle">G</div>
+            </a>
+            <div class="sidebar-title">月度工作目标</div>
+            <a href="/link" class="back-link">返回首页</a>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 页面头部 -->
+            <div class="page-header">
+                <div class="header-left">
+                    <h1 class="page-title">{{.CURRENT_YEAR}}年{{.CURRENT_MONTH}}月工作目标</h1>
+                </div>
+                <div class="month-picker">
+                    <input type="number" id="yearInput" value="{{.CURRENT_YEAR}}" min="2020" max="2100" placeholder="年份">
+                    <select id="monthSelect">
+                        <option value="1" {{if eq .CURRENT_MONTH 1}}selected{{end}}>1月</option>
+                        <option value="2" {{if eq .CURRENT_MONTH 2}}selected{{end}}>2月</option>
+                        <option value="3" {{if eq .CURRENT_MONTH 3}}selected{{end}}>3月</option>
+                        <option value="4" {{if eq .CURRENT_MONTH 4}}selected{{end}}>4月</option>
+                        <option value="5" {{if eq .CURRENT_MONTH 5}}selected{{end}}>5月</option>
+                        <option value="6" {{if eq .CURRENT_MONTH 6}}selected{{end}}>6月</option>
+                        <option value="7" {{if eq .CURRENT_MONTH 7}}selected{{end}}>7月</option>
+                        <option value="8" {{if eq .CURRENT_MONTH 8}}selected{{end}}>8月</option>
+                        <option value="9" {{if eq .CURRENT_MONTH 9}}selected{{end}}>9月</option>
+                        <option value="10" {{if eq .CURRENT_MONTH 10}}selected{{end}}>10月</option>
+                        <option value="11" {{if eq .CURRENT_MONTH 11}}selected{{end}}>11月</option>
+                        <option value="12" {{if eq .CURRENT_MONTH 12}}selected{{end}}>12月</option>
+                    </select>
+                    <button class="search-btn" onclick="loadMonthGoal()">查看</button>
+                </div>
+            </div>
+
+            <!-- 页签导航 -->
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="overview">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" fill="currentColor"/>
+                    </svg>
+                    月度总结
+                </button>
+                <button class="tab-btn" data-tab="tasks">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" fill="currentColor"/>
+                    </svg>
+                    月度任务
+                </button>
+                <button class="tab-btn" data-tab="weeks">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z" fill="currentColor"/>
+                    </svg>
+                    周目标详情
+                </button>
+                <button class="tab-btn" data-tab="daily">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
+                    </svg>
+                    每日任务
+                </button>
+            </div>
+
+            <!-- 页签容器 -->
+            <div class="tab-container">
+                <!-- 月度总结页签 -->
+                <div class="tab-content active" id="overview-content">
+                    <div class="content-header">
+                        <h3>月度总结</h3>
+                        <div class="content-actions">
+                            <button class="action-btn preview-btn" onclick="toggleOverviewPreview()">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="currentColor"/>
+                                </svg>
+                                预览
+                            </button>
+                            <button class="action-btn save-btn" onclick="saveMonthOverview()">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" fill="currentColor"/>
+                                </svg>
+                                保存
+                            </button>
+                        </div>
+                    </div>
+                    <div class="editor-container">
+                        <div class="editor-area active">
+                            <textarea id="month-overview-content" placeholder="在这里输入月度总结...支持Markdown格式"></textarea>
+                        </div>
+                        <div class="preview-area" id="overview-preview">
+                            <!-- 预览内容将在这里显示 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 月度任务页签 -->
+                <div class="tab-content" id="tasks-content">
+                    <div class="content-header">
+                        <h3>月度任务管理</h3>
+                        <div class="content-actions">
+                            <button class="action-btn add-btn" onclick="showAddTaskModal()">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+                                </svg>
+                                添加任务
+                            </button>
+                        </div>
+                    </div>
+                    <div class="tasks-list" id="tasks-list">
+                        <div class="no-tasks">暂无任务</div>
+                    </div>
+                </div>
+
+                <!-- 周目标详情页签 -->
+                <div class="tab-content" id="weeks-content">
+                    <div class="content-header">
+                        <h3>周目标详情</h3>
+                    </div>
+                    <div class="week-tabs-container">
+                        <div class="week-tabs" id="week-tabs">
+                            <!-- 周页签将在这里动态生成 -->
+                        </div>
+                    </div>
+                    <div class="week-content-area" id="week-content-area">
+                        <!-- 周内容将在这里显示 -->
+                    </div>
+                </div>
+
+                <!-- 每日任务页签 - 直接嵌入todolist页面 -->
+                <div class="tab-content" id="daily-content">
+                    <div class="content-header">
+                        <h3>每日任务管理</h3>
+                        <div class="content-actions">
+                            <a href="/todolist" target="_blank" class="action-btn">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" fill="currentColor"/>
+                                </svg>
+                                新窗口打开
+                            </a>
+                        </div>
+                    </div>
+                    <div class="iframe-container">
+                        <iframe id="todolist-iframe" src="/todolist" frameborder="0" width="100%" height="800px"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务模态框 -->
+    <div class="modal" id="task-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">添加任务</h3>
+                <span class="close" onclick="closeTaskModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="task-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task-title">任务标题</label>
+                            <input type="text" id="task-title" name="title" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-priority">优先级</label>
+                            <select id="task-priority" name="priority">
+                                <option value="low">低</option>
+                                <option value="medium" selected>中</option>
+                                <option value="high">高</option>
+                                <option value="urgent">紧急</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-description">任务描述</label>
+                        <textarea id="task-description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task-status">状态</label>
+                            <select id="task-status" name="status">
+                                <option value="pending" selected>待办</option>
+                                <option value="in_progress">进行中</option>
+                                <option value="completed">已完成</option>
+                                <option value="cancelled">已取消</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-due-date">截止日期</label>
+                            <input type="date" id="task-due-date" name="due_date">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/js/monthgoal.js"></script>
+</body>
+</html> 

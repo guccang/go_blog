@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"regexp"
+	"encoding/json"
 )
 
 func Info(){
@@ -131,7 +132,12 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	b.Content = content
 	b.ModifyTime = strTime()
 	b.ModifyNum += 1
-	b.AuthType = auth_type
+	if (b.AuthType &  module.EAuthType_cooperation) != 0 {
+		// 非cooperation编辑修改后，会移除这个标记，导致无法访问。
+		b.AuthType = auth_type | module.EAuthType_cooperation
+	}else{
+		b.AuthType = auth_type
+	}
 	b.Tags = tags
 	db.SaveBlog(b)
 	return 0
@@ -237,7 +243,7 @@ func TagReplace(from string,to string) {
 			}
 			// remove last "|"
 			newTags = newTags[:len(newTags)-1]
-			log.MessageF("blog change tag from %s to %s",b.Tags,newTags)
+			log.InfoF("blog change tag from %s to %s",b.Tags,newTags)
 			b.Tags = newTags
 		}
 
@@ -320,4 +326,118 @@ func DelAuthType(blogname string, flag int){
 		blog.AuthType = module.EAuthType_private
 	}
 	db.SaveBlog(blog)
+}
+
+// 年度计划相关数据结构
+type YearPlanData struct {
+	YearOverview string                 `json:"yearOverview"`
+	MonthPlans   []string               `json:"monthPlans"`
+	Year         int                    `json:"year"`
+	Tasks        map[string]interface{} `json:"tasks"` // 存储每月任务列表
+}
+
+// 获取年度计划
+func GetYearPlan(year int) (*YearPlanData, error) {
+	// 构建标题
+	planTitle := fmt.Sprintf("年计划_%d", year)
+	
+	// 尝试获取博客
+	blog := GetBlog(planTitle)
+	if blog == nil {
+		return nil, fmt.Errorf("未找到年份 %d 的计划", year)
+	}
+	
+	// 解析内容
+	var planData YearPlanData
+	err := json.Unmarshal([]byte(blog.Content), &planData)
+	if err != nil {
+		return nil, fmt.Errorf("解析计划数据失败: %v", err)
+	}
+	
+	// 检查是否包含任务数据
+	log.DebugF("获取年计划 - 年份: %d, 任务数据大小: %d", year, len(planData.Tasks))
+	
+	// 初始化任务映射（如果为空）
+	if planData.Tasks == nil {
+		planData.Tasks = make(map[string]interface{})
+		log.DebugF("初始化空任务映射")
+	}
+	
+	// 检查原始JSON中是否存在tasks字段
+	var rawData map[string]interface{}
+	if err := json.Unmarshal([]byte(blog.Content), &rawData); err == nil {
+		if tasks, ok := rawData["tasks"].(map[string]interface{}); ok && len(tasks) > 0 {
+			if len(planData.Tasks) == 0 {
+				planData.Tasks = tasks
+				log.DebugF("从原始JSON中恢复任务数据, 大小: %d", len(tasks))
+			}
+		}
+	}
+	
+	return &planData, nil
+}
+
+// 保存年度计划
+func SaveYearPlan(planData *YearPlanData) error {
+	// 验证数据
+	if planData.Year < 2020 || planData.Year > 2100 {
+		return fmt.Errorf("无效的年份: %d", planData.Year)
+	}
+	
+	if len(planData.MonthPlans) != 12 {
+		return fmt.Errorf("月度计划数量不正确，应为12个月")
+	}
+	
+	// 记录传入的任务数据
+	log.DebugF("保存计划 - 年份: %d, 任务数据大小: %d", planData.Year, len(planData.Tasks))
+	for month, tasks := range planData.Tasks {
+		if tasksArray, ok := tasks.([]interface{}); ok {
+			log.DebugF("月份 %s 的任务数量: %d", month, len(tasksArray))
+		}
+	}
+	
+	// 构建标题
+	planTitle := fmt.Sprintf("年计划_%d", planData.Year)
+	
+	// 序列化数据
+	content, err := json.Marshal(planData)
+	if err != nil {
+		return fmt.Errorf("序列化计划数据失败: %v", err)
+	}
+	
+	// 检查是否已存在
+	blog := GetBlog(planTitle)
+	
+	// 上传数据
+	udb := module.UploadedBlogData{
+		Title:    planTitle,
+		Content:  string(content),
+		AuthType: module.EAuthType_private, // 默认为私有
+		Tags:     "年计划",                 // 添加标签方便查找
+	}
+	
+	var ret int
+	if blog == nil {
+		// 新建博客
+		ret = AddBlog(&udb)
+		log.DebugF("新建年计划博客: %s", planTitle)
+	} else {
+		// 更新博客
+		ret = ModifyBlog(&udb)
+		log.DebugF("更新年计划博客: %s", planTitle)
+	}
+	
+	if ret != 0 {
+		return fmt.Errorf("保存计划失败，错误码: %d", ret)
+	}
+	
+	// 验证保存是否成功
+	savedPlan, err := GetYearPlan(planData.Year)
+	if err != nil {
+		log.ErrorF("无法验证保存的计划: %v", err)
+	} else {
+		log.DebugF("验证 - 保存后的任务数据大小: %d", len(savedPlan.Tasks))
+	}
+	
+	return nil
 }

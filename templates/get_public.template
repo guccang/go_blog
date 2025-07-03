@@ -4,322 +4,83 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/GET_PUBLIC</title>
-	<style>
-		@import url("/css/styles.css");
-		@import url("/css/editor.css");
-		.container {
-			margin-top : 1%;
-			margin-left : 10px;
-			max-height: 92vh;
-		}
-		.center-img {
-			border-radius : 50%;
-		}
-		input[type="text"] {
-			height : 33px;
-			width : 66px;
-		}
-		.img-cycle {
-			left : 100px;
-		}
-		</style>
+    <link rel="stylesheet" href="/css/get_public.css">
 </head>
-<body id="body" class="th_black">
 
-    <!-- Markdown编辑器容器 -->
+<body id="body" class="th_black">
+    <!-- Sidebar -->
 	<div id="sidebar-container" class="sidebar-container">
 		<div id="sidebar" class="sidebar">
-			<img class="img-cycle" src="/logo/logo.png" class="center-img" width=88></img>
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/link" style="font-size: 24px;">主页</a>
+            <div class="separator"></div>
+            <h2 id="title">{{.TITLE}}</h2>
 			<div class="separator"></div>
-			<label id="title">{{.TITLE}}</label>
+            <p id="ctime">{{.CTIME}}</p>
 			<div class="separator"></div>
-			<label id="ctime">{{.CTIME}}</label>
+            <label for="tags">标签</label>
+			<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 			<div class="separator"></div>
-			<label >{{.TAGS}}</label>
+            <a href="/link" class="btn-primary" style="text-align: center; margin-top: auto;">返回首页</a>
 		</div>
-		<div class="bubble" id="bubble">
-			&#9776;
-		</div>
+        <div class="bubble" id="bubble">&#9776;</div>
 	</div>
 
-
+    <!-- Main Content -->
 	<div class="container">
-
 		<div class="editor-container">
 			<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
 			<div id="md" class="md"></div>
 		</div>
-		<div class="bottom-container">
 
 		<div class="bottom-fix-div">
 			{{ if eq "public" .AUTHTYPE }}
-			<button id="comment-show" class="left-button" onclick="onShowComment()">显示评论</button>
+                <button id="comment-show" class="btn-primary left-button" onclick="onShowComment()">显示评论</button>
 			<div id="comments" class="hide">
-				<label>所有评论:</label><br>
+                    <h3>所有评论</h3>
 				<div class="separator"></div>
 				{{range .COMMENTS}}
-				<label>{{.MSG}} ({{.IDX}})</label><br>
-				<label>commit by {{.OWNER}}({{.MAIL}}) at {{.CTIME}} </label><br>
+                        <div class="comment-item">
+                            <p>{{.MSG}} ({{.IDX}})</p>
+                            <small>由 {{.OWNER}}({{.MAIL}}) 于 {{.CTIME}} 发表</small>
 				<div class="separator"></div>
+                        </div>
 				{{end}}
 			</div>
 
 			<div id="div-comment" class="hide">
-				<label>用户名:</label>
-				<input id="input-owner" type="text" value="" ><br>
-				<label>邮箱:</label>
-				<input id="input-mail" type="text" value="" ><br>
-				<label>密码:</label>
-				<input id="input-pwd" type="password" value="" ><br>
-				<label>留言:</label>
-				<input id="input-comment" type="text" value="" ><br>
-				<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
+                    <h3>发表评论</h3>
+                    <div class="comment-form">
+                        <label for="input-owner">用户名:</label>
+                        <input id="input-owner" type="text" placeholder="请输入用户名">
+                        
+                        <label for="input-mail">邮箱:</label>
+                        <input id="input-mail" type="text" placeholder="请输入邮箱">
+                        
+                        <label for="input-pwd">密码:</label>
+                        <input id="input-pwd" type="password" placeholder="用于管理评论">
+                        
+                        <label for="input-comment">留言:</label>
+                        <input id="input-comment" type="text" placeholder="请输入评论内容">
+                        
+                        <button id="commit-comment" class="btn-primary" type="button" onclick="onCommitComment()">提交评论</button>
+                    </div>
 			</div>
-			<div style="height:32px;"></div>
 			{{end}}
 		</div>
 	</div>
 
-
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>
 	<script src="/js/vim/vim.min.js"></script>
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
-	<script>
-
-	vim.open({
-		//debug : true
-	});
-
-document.addEventListener("DOMContentLoaded", function() {
-    var bubble = document.getElementById("bubble");
-    var side_container = document.querySelector(".sidebar-container");
-	var container = document.querySelector(".container");
-
-    bubble.addEventListener("click", function() {
-        side_container.classList.toggle("open");
-		container.classList.toggle("open");
-    });
-});
-
-	PageHistoryBack()
-
-	function onDecrypt(){
-		aesTest()
-		var e = document.getElementById('editor-inner')
-		var k = document.getElementById('encrypt').value
-		var content =  e.innerHTML
-		
-		console.log("content=",content)
-		console.log("encrypt=",k)
-		var txt = aesDecrypt(content,k)
-		console.log(txt)
-		e.innerHTML = txt
-
-		mdRender(txt)
-		
-	}
-
-	function onShowComment(){
-		var bnt = document.getElementById("comment-show")
-		var comments = document.getElementById("comments")
-		var div_comment =  document.getElementById("div-comment")
-		var bntName = bnt.innerText
-		if (bntName=="显示评论"){ 
-			// 显示editor和md页面
-			comments.setAttribute("class", ""); 
-			div_comment.setAttribute("class","")
-			bnt.innerText = "折叠评论"
-		}else{
-			// 隐藏editor显示md
-			comments.setAttribute("class", "hide"); 
-			div_comment.setAttribute("class","hide")
-			bnt.innerText = "显示评论"
-		}
-	}
-
-	function onDelete(){
-		if (confirm("delete confirmation. Do you really want to delete this blog?")) {
-			var title = document.getElementById("title").innerText;
-			console.log("delete title=",title);
-			// 使用XMLHttpRequest发送数据
-			var xhr = new XMLHttpRequest();
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState == 4 && xhr.status == 200) {
-					// 处理服务器的响应
-					console.log(xhr.responseText);
-					alert(xhr.responseText)
-				}
-			};
-			var formData = new FormData();
-			formData.append('title', title);
-			xhr.open('POST', '/delete', true);
-			xhr.send(formData);
-		} else {
-			alert("Operation cancelled.");
-		}	
-	}
-
-	function onCommitComment(){
-		console.log("onCommitComment");
-		var title = document.getElementById("title").innerText
-		var comment = document.getElementById("input-comment").value;	
-		var owner= document.getElementById("input-owner").value
-		var pwd = document.getElementById("input-pwd").value
-		pwd = CryptoJS.MD5(pwd).toString();
-
-		var mail = document.getElementById("input-mail").value
-		console.log("title=",title);
-		console.log("owner=",owner);
-		console.log("mail=",mail);
-		console.log("comment=",comment);
-
-		// 使用XMLHttpRequest发送数据
-		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4 && xhr.status == 200) {
-				// 处理服务器的响应
-				alert(xhr.responseText)
-			}
-		};
-
-		var formData = new FormData();
-		formData.append('title', title);
-		formData.append('owner', owner);
-		formData.append('pwd', pwd);
-		formData.append('mail', mail);
-		formData.append('comment', comment);
-		xhr.open('POST', '/comment', true);
-		xhr.send(formData);
-	}
-
-	function onEditor(){
-		// PC端
-		if (isPCDevice()){
-			var e = document.getElementById('editor-inner')
-			var d = document.getElementById('md')
-			var ebnt = document.getElementById('editor-button')
-			var bnt = document.getElementById('toggle-button')
-			// 切换到编辑页面 
-			var bntName = bnt.innerText
-				if (bntName=="编辑"){ 
-					// 显示editor和md页面
-					d.setAttribute("class", "mdEditor"); 
-					e.setAttribute("class", "editor th_black");
-					ebnt.setAttribute("class","left-button");
-					bnt.innerText = "预览"
-					// 更新编辑框大小
-				    e.style.height = (d.clientHeight) + 'px';
-				}else{
-					// 隐藏editor显示md
-					d.setAttribute("class", "md"); 
-					e.setAttribute("class", "hide th_black");
-					//ebnt.setAttribute("class","hide");
-					bnt.innerText = "编辑"
-				}
-		}else{
-			// 移动端
-			var e = document.getElementById('editor-inner')
-			var d = document.getElementById('md')
-			var ebnt = document.getElementById('editor-button')
-			var bnt = document.getElementById('toggle-button')
-				// 切换到编辑页面 
-			var bntName = bnt.innerText
-				if (bntName=="编辑"){ 
-					// 显示editor和md页面
-					d.setAttribute("class", "hide"); 
-					e.setAttribute("class", "editorfullscreen th_black");
-					ebnt.setAttribute("class","left-button");
-					bnt.innerText = "预览"
-				}else{
-					// 隐藏editor显示md
-					d.setAttribute("class", "md"); 
-					e.setAttribute("class", "hide th_black");
-					ebnt.setAttribute("class","hide");
-					bnt.innerText = "编辑"
-				}
-			
-		}
-	}
-
-	function submitFirst(){
-        if (document.getElementById("encrypt") != null) {
-			if (confirm("First confirmation. Do you really want to proceed?")) {
-				submitContent();
-			} else {
-				alert("Operation cancelled.");
-			}	
-		}else{
-				submitContent();
-		}
-	}
-
-	function submitContent() {
-		var content = document.getElementById('editor-inner').value;
-		var title = document.getElementById("title").innerText;
-		var tags = document.getElementById("tags").value;
-		var key = "" 
-        if (document.getElementById("encrypt") != null) {
-			key = document.getElementById("encrypt").value
-		}
-
-		var auth_type = document.querySelector('input[name="auth_type"]:checked').value;
-		console.log("auth_type=",auth_type);
-
-		// 使用XMLHttpRequest发送数据
-		var xhr = new XMLHttpRequest();
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4 && xhr.status == 200) {
-				// 处理服务器的响应
-				console.log(xhr.responseText);
-				alert(xhr.responseText)
-			}
-		};
-
-
-		if (key.length != 0) {
-			var en = aesEncrypt(content, key)
-			content = en
-			key = 'use_aes_cbc'
-		}
-
-		var formData = new FormData();
-		formData.append('title', title);
-		formData.append('content', content);
-		formData.append('auth_type', auth_type);
-		formData.append('tags', tags);
-		formData.append('encrypt', key);
-		xhr.open('POST', '/modify', true);
-		xhr.send(formData);
-	}
-
-      // 获取textarea元素
-	   var textarea = document.getElementById('editor-inner');
-        // 监听输入事件
-        textarea.addEventListener('input', function () {
-            // 重置textarea的高度以适应内容
-            this.style.height = 'auto';
-			var d = document.getElementById('md')
-            //this.style.height = (this.scrollHeight) + 'px';
-            this.style.height = (d.clientHeight) + 'px';
-		
-			// marked 重新渲染
-			// PC Device
-			if (isPCDevice()){
-				mdRender(textarea.value)	
-			}
-	})
-
-		window.onload = function(){
-			// md渲染
-			mdRender(textarea.value)
-			// 时间-black
-			checkTime()
-		}
-
-	</script>
-
+	<script src="/js/get_public.js"></script>
+	
 </body>
 </html>

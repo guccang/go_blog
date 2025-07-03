@@ -9,7 +9,7 @@ import (
 )
 
 func Info(){
-	log.MessageF("info share v8.0")
+	log.InfoF("info share v8.0")
 }
 
 

@@ -1,19 +1,257 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ToDo List</title>
-    <link rel="stylesheet" href="/css/styles.css">
+    <title>每日任务 - GUCCANG</title>
+    <!-- 添加 flatpickr 库 -->
+    <link rel="stylesheet" href="/css/flatpickr.min.css">
+    <script src="/js/flatpickr"></script>
+    <script src="js/zh.js"></script>
+    <link rel="stylesheet" href="/css/todolist.css">
 </head>
 <body>
+    <header class="page-header">
     <div class="container">
-        <h1>ToDo List</h1>
-        <input type="text" id="taskInput" placeholder="Enter a new task">
-        <button onclick="addTask()">Add Task</button>
-        <ul id="taskList"></ul>
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">每日任务</h1>
+            <a href="/editor" class="header-link">创建博客</a>
+            <div class="date-picker-container">
+                <input type="date" class="date-picker" id="datePicker">
+                <div id="status-indicator" class="status-indicator read-write">可编辑模式</div>
     </div>
-    <script src="js/todolist.js"></script>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">添加新任务</h2>
+            </div>
+            <div class="card-body">
+                <div class="todo-input-container">
+                    <div class="todo-input">
+                        <input type="text" id="newTodo" placeholder="输入新的每日任务...">
+                    </div>
+                    <div class="time-input-container">
+                        <div class="time-input-group">
+                            <div class="time-input-label">
+                                <span>小时</span>
+                                <span id="hours_value">0</span>
+                            </div>
+                            <div class="time-input-controls">
+                                <div class="time-input-display" id="hours_display" 
+                                    onwheel="adjustTimeWithWheel(event, 'hours', 1, 0, 24)"
+                                    ontouchstart="handleTouchStart(event, 'hours', 1, 0, 24)"
+                                    ontouchmove="handleTouchMove(event)"
+                                    ontouchend="handleTouchEnd(event)">0</div>
+                            </div>
+                        </div>
+                        <div class="time-input-group">
+                            <div class="time-input-label">
+                                <span>分钟</span>
+                                <span id="minutes_value">0</span>
+                            </div>
+                            <div class="time-input-controls">
+                                <div class="time-input-display" id="minutes_display" 
+                                    onwheel="adjustTimeWithWheel(event, 'minutes', 5, 0, 59)"
+                                    ontouchstart="handleTouchStart(event, 'minutes', 5, 0, 59)"
+                                    ontouchmove="handleTouchMove(event)"
+                                    ontouchend="handleTouchEnd(event)">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="add-btn" onclick="addTodoAndClearCache()">添加任务</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">今日任务</h2>
+                <div class="today-summary" id="todaySummary">
+                    <!-- 任务总时长统计信息 -->
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="time-range-settings">
+                    <div class="time-range-label">工作时间范围:</div>
+                    <div class="time-range-input">
+                        <div class="time-range-group">
+                            <span class="time-range-group-label">开始:</span>
+                            <div class="time-selector">
+                                <select id="startHour" class="time-select">
+                                    <option value="05">05</option>
+                                    <option value="06">06</option>
+                                    <option value="07">07</option>
+                                    <option value="08">08</option>
+                                    <option value="09" selected>09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                </select>
+                                <span class="time-separator">:</span>
+                                <select id="startMinute" class="time-select">
+                                    <option value="00">00</option>
+                                    <option value="15">15</option>
+                                    <option value="30" selected>30</option>
+                                    <option value="45">45</option>
+                                </select>
+                            </div>
+                        </div>
+                        <span class="time-range-separator">至</span>
+                        <div class="time-range-group">
+                            <span class="time-range-group-label">结束:</span>
+                            <div class="time-selector">
+                                <select id="endHour" class="time-select">
+                                    <option value="05">05</option>
+                                    <option value="06">06</option>
+                                    <option value="07">07</option>
+                                    <option value="08">08</option>
+                                    <option value="09">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18" selected>18</option>
+                                    <option value="19">19</option>
+                                </select>
+                                <span class="time-separator">:</span>
+                                <select id="endMinute" class="time-select">
+                                    <option value="00">00</option>
+                                    <option value="15">15</option>
+                                    <option value="30" selected>30</option>
+                                    <option value="45">45</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="time-range-apply" onclick="applyTimeRange()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 6px;">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
+                        </svg>
+                        应用
+                    </button>
+                </div>
+                
+                <div class="todo-list-container" id="todoList">
+                    <!-- Todo items will be inserted here -->
+                </div>
+                
+                <!-- Progress bar moved to the bottom of the card body -->
+                <div class="progress-bar-container" id="progressBarContainer">
+                    <!-- Progress bar will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="section-header">
+            <h2 class="section-title">历史记录</h2>
+            <button class="toggle-section-btn collapsed" id="toggleHistoryBtn" onclick="console.log('Inline click handler called'); toggleHistoryManually();">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="toggle-icon">
+                    <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                </svg>
+                <span class="toggle-text">展开</span>
+            </button>
+        </div>
+        <div class="history-list collapsed" id="historyList">
+            <!-- History items will be inserted here -->
+        </div>
+
+        <!-- 添加周时间统计 -->
+        <h2 class="section-title">周时间统计</h2>
+        <div class="weekly-stats-container" id="weeklyStatsContainer">
+            <div class="weekly-stats-header">
+                <button class="week-nav-btn" id="prevWeekBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M15.41 7.41L14 6L8 12L14 18L15.41 16.59L10.83 12L15.41 7.41Z" fill="currentColor"/>
+                    </svg>
+                    上一周
+                </button>
+                <div class="current-week-display" id="currentWeekDisplay">2023年第1周</div>
+                <button class="week-nav-btn" id="nextWeekBtn">
+                    下一周
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 6L8.59 7.41L13.17 12L8.59 16.59L10 18L16 12L10 6Z" fill="currentColor"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="weekly-stats-chart" id="weeklyStatsChart">
+                <!-- 图表将在这里生成 -->
+            </div>
+            <div class="weekly-stats-summary" id="weeklyStatsSummary">
+                <!-- 总结信息将在这里生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Daily Todo Modal -->
+    <div id="dailyTodoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalDate" class="modal-title">日期详情</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-summary">
+                    <div class="modal-stat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M19 3H5C3.9 3 3 3.9 3 5V19C3 20.1 3.9 21 5 21H19C20.1 21 21 20.1 21 19V5C21 3.9 20.1 3 19 3ZM9 17H7V10H9V17ZM13 17H11V7H13V17ZM17 17H15V13H17V17Z" fill="currentColor"/>
+                        </svg>
+                        <span>总任务: </span>
+                        <span id="modalTotalTasks">0</span>
+                    </div>
+                    <div class="modal-stat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="var(--success-color)"/>
+                        </svg>
+                        <span>已完成: </span>
+                        <span id="modalCompletedTasks">0</span>
+                    </div>
+                    <div class="modal-stat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM12.5 7H11V13L16.2 16.2L17 14.9L12.5 12.2V7Z" fill="currentColor"/>
+                        </svg>
+                        <span>总时间: </span>
+                        <span id="modalTotalTime">0小时0分钟</span>
+                    </div>
+                </div>
+                <div class="modal-todos" id="modalTodoList">
+                    <!-- Todo items will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Button -->
+    <a href="#" class="create-btn" title="快速添加任务" onclick="document.getElementById('newTodo').focus(); return false;">+</a>
+
+    <!-- Bottom Info Bar -->
+    <div class="bottom-fix-div">
+        <span class="right-label" id="total-todos">总任务数: 0</span>
+        <span class="right-label" id="completed-todos">已完成: 0</span>
+    </div>
+
+    <script>
+        // 将模板变量传递给JavaScript
+        const templateDate = "{{.DATE}}";
+    </script>
+    <script src="/js/todolist.js"></script>
 </body>
 </html>
-

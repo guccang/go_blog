@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间戳与日期转换</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        input {
+            margin: 10px 0;
+            padding: 5px;
+            width: 300px;
+        }
+        button {
+            padding: 5px 10px;
+            margin: 5px;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            width: fit-content;
+        }
+		.help {
+			visibility : hidden;
+		}
+    </style>
+</head>
+<body>
+    <h1>时间戳与日期转换工具</h1>
+
+    <!-- 输入时间戳 -->
+    <label for="timestampInput">输入 Unix 时间戳（毫秒）：</label><br>
+    <input type="number" id="timestampInput" placeholder="例如：1633052800000">
+    <button onclick="convertTimestampToDate()">转换为日期</button><br>
+
+    <!-- 输入日期字符串 -->
+    <label for="dateInput">输入日期字符串：</label><br>
+    <input type="text" id="dateInput" placeholder="例如：2021-10-01T00:00:00+08:00" value="2022-10-06T16:06:06+08:00"></input>
+    <button onclick="convertDateToTimestamp()">转换为时间戳</button><br>
+
+    <!-- 显示转换结果 -->
+    <div class="result" id="result_date"></div>
+    <div class="result" id="result_stamp"></div>
+    <textarea class="help" id="help">
+		在日期和时间的表示中，`T` 和 `Z` 是 ISO 8601 标准格式的一部分，用于表示日期和时间。
+
+### `T` 的含义
+
+- `T` 是 "Time"（时间）的缩写。
+- 在日期和时间之间，`T` 充当分隔符，表示后面的内容是时间部分。
+
+例如，`2021-10-01T00:00:00` 中的 `T` 表示日期 `2021-10-01` 和时间 `00:00:00` 的分隔符。
+
+### `Z` 的含义
+
+- `Z` 代表 UTC 时间（协调世界时，Universal Time Coordinated），也称为零时区时间（Zulu time）。
+- `Z` 表示时间是以零时区（UTC+0）为基准的，没有任何时区偏移。
+
+例如，`2021-10-01T00:00:00Z` 表示的时间是 **2021年10月1日 00:00:00**，在 **UTC 时间**。
+
+### 其他时区的表示方法
+
+如果时间是以其他时区为基准的，ISO 8601 标准会在时间后面添加时区的偏移量，而不是用 `Z`。
+
+例如：
+- `2021-10-01T00:00:00+08:00` 表示东八区（UTC+8）的时间。
+- `2021-10-01T00:00:00-05:00` 表示西五区（UTC-5）的时间。
+
+### 总结
+
+- **`T`**：在日期和时间之间的分隔符，表示后面的内容是时间。
+- **`Z`**：表示时间是 UTC 时间（零时区时间），没有时区偏移。
+	</textarea>
+
+	<div class="mdEditor" id="md"></div>
+
+	
+	<script src="/js/marked/marked.min.js"></script>
+	<script src="/js/editor.js"></script>
+	<script src="/js/utils.js"></script>
+    <script>
+		function rendermd(){
+			var content = document.getElementById('help').value
+			mdRender(content)
+		}
+
+
+		window.onload = function (){
+			rendermd()
+		}
+        // 时间戳转换为日期字符串
+        function convertTimestampToDate() {
+            const timestamp = document.getElementById('timestampInput').value;
+            if (timestamp) {
+                const date = new Date(parseInt(timestamp, 10));
+                const formattedDate = date.toISOString(); // ISO 格式化
+                document.getElementById('result_date').innerText= `日期格式：${formattedDate}`;
+            } else {
+                document.getElementById('result_date').innerText= '请输入有效的时间戳！';
+            }
+        }
+
+        // 日期字符串转换为时间戳
+        function convertDateToTimestamp() {
+            const dateString = document.getElementById('dateInput').value;
+            if (dateString) {
+                const date = new Date(dateString);
+                const timestamp = date.getTime();
+                if (!isNaN(timestamp)) {
+                    document.getElementById('result_stamp').innerText= `Unix 时间戳：${timestamp}`;
+                } else {
+                    document.getElementById('result_stamp').innerText= '请输入有效的日期字符串！';
+                }
+            } else {
+                document.getElementById('result_stamp').innerText= '请输入有效的日期字符串！';
+            }
+        }
+    </script>
+</body>
+</html>
+

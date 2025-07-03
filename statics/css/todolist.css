@@ -1,0 +1,2128 @@
+        :root {
+            --primary-color: #f8f0e3;
+            --secondary-color: #eadbc8;
+            --accent-color: #e76f51;
+            --accent-hover: #f4a261;
+            --text-color: #433520;
+            --text-light: #665c4f;
+            --text-muted: #887e70;
+            --bg-color: #faf6f0;
+            --card-bg: #ffffff;
+            --lighter-bg: #f5efe6;
+            --border-color: #ddd0c0;
+            --success-color: #6b9080;
+            --warning-color: #e9c46a;
+            --danger-color: #e63946;
+            --code-bg: #f0e6d9;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+            --border-radius: 8px;
+            --box-shadow: 0 2px 10px var(--shadow-color);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Arial', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding-bottom: 60px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px 15px;
+        }
+
+        .page-header {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            padding: 15px 0;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .page-header .container {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .img-cycle {
+            border-radius: 50%;
+            margin-right: 20px;
+            transition: all 0.3s ease;
+            border: 3px solid var(--accent-color);
+            box-shadow: 0 4px 8px var(--shadow-color);
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--accent-color);
+            background-color: var(--card-bg);
+            font-family: 'Arial', sans-serif;
+            letter-spacing: 2px;
+        }
+
+        .img-cycle:hover {
+            transform: scale(1.1) rotate(5deg);
+            background-color: var(--accent-color);
+            color: white;
+            box-shadow: 0 6px 12px var(--shadow-color);
+        }
+
+        .page-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .date-picker-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .date-picker {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            background-color: var(--lighter-bg);
+            color: var(--text-color);
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .date-picker:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .home-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 8px 16px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .home-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .home-btn:before {
+            content: "←";
+            font-size: 1.1rem;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .status-indicator:before {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .status-indicator.read-only {
+            background-color: rgba(233, 196, 106, 0.15);
+            color: var(--warning-color);
+        }
+        
+        .status-indicator.read-only:before {
+            background-color: var(--warning-color);
+        }
+        
+        .status-indicator.read-write {
+            background-color: rgba(107, 144, 128, 0.15);
+            color: var(--success-color);
+        }
+        
+        .status-indicator.read-write:before {
+            background-color: var(--success-color);
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            margin-bottom: 20px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px var(--shadow-color);
+        }
+
+        .card-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-color);
+            margin: 0;
+        }
+
+        .card-body {
+            padding: 0;
+        }
+
+        .todo-input-container {
+            padding: 20px;
+        }
+
+        .todo-input {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .todo-input input[type="text"] {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            transition: var(--transition);
+        }
+
+        .todo-input input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(231, 111, 81, 0.1);
+        }
+
+        .time-input-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .time-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .time-input-label {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-right: 0;
+        }
+
+        .time-input {
+            width: 60px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 0.95rem;
+            text-align: center;
+            color: var(--text-color);
+            transition: var(--transition);
+        }
+
+        .time-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .add-btn {
+            padding: 12px 20px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .add-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(231, 111, 81, 0.25);
+        }
+
+        .todo-list {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            overflow: hidden;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            transition: var(--transition);
+            position: relative;
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .todo-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+            background-color: var(--accent-color);
+            opacity: 0;
+            transition: opacity 0.3s ease, width 0.3s ease;
+        }
+
+        .todo-item:hover::before {
+            opacity: 1;
+            width: 5px;
+        }
+
+        .todo-item:last-child {
+            border-bottom: none;
+        }
+
+        .todo-item:hover {
+            background-color: rgba(0, 0, 0, 0.01);
+        }
+
+        .todo-checkbox {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-radius: 4px;
+            margin-right: 15px;
+            position: relative;
+            cursor: pointer;
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+
+        .todo-checkbox:checked {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .todo-checkbox:checked:after {
+            content: '✓';
+            position: absolute;
+            color: white;
+            font-size: 14px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .todo-checkbox:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(231, 111, 81, 0.2);
+        }
+
+        .todo-content-wrapper {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .todo-content {
+            font-size: 1rem;
+            color: var(--text-color);
+            word-break: break-word;
+            transition: var(--transition);
+            display: block;
+        }
+
+        .todo-content.completed {
+            text-decoration: line-through;
+            color: var(--text-muted);
+        }
+
+        .todo-time {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            margin-top: 5px;
+            display: inline-block;
+            font-weight: 500;
+        }
+        
+        .todo-completed .todo-time {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+
+        .todo-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 15px;
+        }
+
+        .todo-time-input-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+            padding: 6px 10px;
+        }
+
+        .todo-time-input {
+            width: 40px;
+            padding: 4px 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            text-align: center;
+            color: var(--text-color);
+        }
+
+        .todo-time-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .todo-time-update-btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .todo-time-update-btn:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .delete-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background-color: rgba(244, 67, 54, 0.1);
+            color: var(--danger-color);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: var(--transition);
+            opacity: 0.7;
+        }
+
+        .todo-item:hover .delete-btn {
+            opacity: 1;
+        }
+
+        .delete-btn:hover {
+            background-color: rgba(244, 67, 54, 0.2);
+        }
+
+        .section-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text-color);
+            margin: 30px 0 15px;
+            position: relative;
+            padding-left: 15px;
+        }
+
+        .section-title::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 5px;
+            height: 20px;
+            background-color: var(--accent-color);
+            border-radius: 3px;
+        }
+
+        /* 添加section-header样式 */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 30px 0 15px;
+        }
+
+        .section-header .section-title {
+            margin: 0;
+        }
+
+        .toggle-section-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background-color: var(--lighter-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-color);
+        }
+
+        .toggle-section-btn:hover {
+            background-color: var(--primary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 2px 5px var(--shadow-color);
+        }
+
+        .toggle-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-section-btn.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+
+        .history-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            transition: max-height 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+            max-height: 2000px;
+            overflow: hidden;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .history-list.collapsed {
+            max-height: 0;
+            opacity: 0;
+            transform: translateY(-10px);
+            margin: 0;
+            padding: 0;
+        }
+
+        .history-item {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            box-shadow: var(--box-shadow);
+            border-top: 3px solid var(--accent-color);
+            margin-bottom: 15px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px var(--shadow-color);
+        }
+
+        .history-date {
+            font-weight: 600;
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .history-stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+
+        .history-stat svg {
+            color: var(--text-color);
+            flex-shrink: 0;
+        }
+
+        /* 任务统计样式 */
+        .tasks-stat {
+            margin-bottom: 4px;
+        }
+
+        .task-total {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .task-completed {
+            color: var(--success-color);
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .task-percentage {
+            color: var(--accent-color);
+            margin-left: 5px;
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        /* 时间统计样式 */
+        .time-stat {
+            color: var(--text-muted);
+        }
+
+        .time-completed {
+            color: var(--success-color);
+            font-weight: 500;
+        }
+
+        .time-separator {
+            margin: 0 5px;
+            opacity: 0.6;
+        }
+
+        .time-total {
+            font-weight: 500;
+        }
+
+        .empty-history {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .history-summary {
+                gap: 8px;
+            }
+            
+            .history-stat {
+                font-size: 0.85rem;
+            }
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 320px;
+        }
+        
+        .toast {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            padding: 12px 16px;
+            border-radius: var(--border-radius);
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+            display: flex;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+            transition: opacity 0.3s ease;
+            border-left: 4px solid var(--accent-color);
+            width: 100%;
+        }
+        
+        .toast.success { 
+            border-color: var(--success-color);
+        }
+        
+        .toast.error { 
+            border-color: var(--danger-color);
+        }
+        
+        .toast.warning { 
+            border-color: var(--warning-color);
+        }
+        
+        .toast:before {
+            content: "";
+            display: block;
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: contain;
+        }
+        
+        .toast.success:before {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%234caf50'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
+        }
+        
+        .toast.error:before {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f44336'%3E%3Cpath d='M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E");
+        }
+        
+        .toast.warning:before {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff9800'%3E%3Cpath d='M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z'/%3E%3C/svg%3E");
+        }
+        
+        .toast-message {
+            margin-left: 10px;
+        }
+
+        @keyframes slideIn {
+            from { 
+                transform: translateX(100%); 
+                opacity: 0; 
+            }
+            to { 
+                transform: translateX(0); 
+                opacity: 1; 
+            }
+        }
+
+        /* Responsive styles */
+        @media (max-width: 768px) {
+            .page-header .container {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .date-picker-container {
+                width: 100%;
+                margin-left: 0;
+            }
+            
+            .todo-input {
+                flex-direction: column;
+            }
+            
+            .add-btn {
+                width: 100%;
+            }
+            
+            .todo-item {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            
+            .todo-actions {
+                width: 100%;
+                margin-left: 35px;
+                margin-top: 10px;
+            }
+            
+            .todo-time-input-container {
+                flex: 1;
+            }
+            
+            .history-list {
+                grid-template-columns: 1fr;
+            }
+            
+            .toast-container {
+                left: 20px;
+                right: 20px;
+                max-width: none;
+            }
+            
+            .today-summary {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+                margin-top: 5px;
+            }
+            
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .time-input-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .time-input-group {
+                width: 100%;
+            }
+        }
+
+        /* Bottom info bar and create button */
+        .bottom-fix-div {
+            background-color: var(--primary-color);
+            padding: 10px 20px;
+            text-align: right;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            box-shadow: 0 -2px 8px var(--shadow-color);
+            z-index: 90;
+        }
+
+        .right-label {
+            margin-left: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .create-btn {
+            position: fixed;
+            right: 30px;
+            bottom: 60px;
+            background-color: var(--accent-color);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 10px var(--shadow-color);
+            transition: all 0.3s;
+            text-decoration: none;
+            z-index: 95;
+        }
+
+        .create-btn:hover {
+            transform: scale(1.1) translateY(-5px);
+            background-color: var(--accent-hover);
+            box-shadow: 0 8px 15px var(--shadow-color);
+        }
+
+        @media (max-width: 768px) {
+            .create-btn {
+                right: 20px;
+                bottom: 70px;
+            }
+        }
+
+        .page-header a {
+            color: var(--text-color);
+            text-decoration: none;
+            font-weight: bold;
+            transition: var(--transition);
+        }
+
+        .page-header a:hover {
+            color: var(--accent-color);
+            transform: translateY(-2px);
+        }
+
+        .header-link {
+            font-size: 24px;
+            margin-left: 20px;
+        }
+
+        /* Time control buttons */
+        .time-control-buttons {
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+            margin-top: 8px;
+            padding: 0 5px;
+        }
+        
+        .time-control-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 1px 3px var(--shadow-color);
+        }
+        
+        .time-control-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 3px 5px var(--shadow-color);
+        }
+        
+        /* New time input styles */
+        .time-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+            padding: 12px 15px;
+        }
+
+        .time-input-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .time-input-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+
+        .time-input-label span:last-child {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .time-input-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .time-input-display {
+            min-width: 40px;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--accent-color);
+            background-color: var(--card-bg);
+            padding: 5px 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px var(--shadow-color);
+            cursor: ns-resize; /* Add cursor indicator for scrollable element */
+            user-select: none; /* Prevent text selection when scrolling */
+            touch-action: none; /* Prevent default touch actions */
+        }
+
+        /* Remove the time input buttons styles since we're using mouse wheel instead */
+        .time-input-buttons {
+            display: none;
+        }
+
+        /* Todo item time controls */
+        .todo-time-slider-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+            align-items: flex-start;
+            flex: 1;
+            max-height: 0;
+            overflow: hidden;
+            padding: 0;
+            transition: all 0.3s ease;
+            margin-top: 5px;
+            opacity: 0;
+        }
+        
+        .todo-time-slider-container.expanded {
+            max-height: 200px;
+            padding: 10px 15px;
+            opacity: 1;
+        }
+        
+        .todo-time-slider-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 100px;
+            max-width: 150px;
+        }
+        
+        .todo-time-slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+        
+        .todo-time-slider-value {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+        
+        .todo-time-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .edit-time-btn {
+            background-color: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 3px;
+            transition: var(--transition);
+            margin-left: 8px;
+        }
+        
+        .edit-time-btn:hover {
+            background-color: var(--border-color);
+            color: var(--text-color);
+        }
+        
+        .todo-time-update-btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-left: auto;
+            white-space: nowrap;
+            align-self: flex-end;
+            margin-top: auto;
+            box-shadow: 0 1px 3px var(--shadow-color);
+        }
+        
+        .todo-time-update-btn:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 3px 5px var(--shadow-color);
+        }
+
+        /* Timeline styles */
+        .timeline-container {
+            display: none;
+        }
+
+        .timeline-scale {
+            display: none;
+        }
+
+        .timeline-marker {
+            display: none;
+        }
+
+        .todo-items-container {
+            flex: 1;
+            position: relative;
+            min-height: 300px;
+        }
+
+        .timeline-header {
+            display: none;
+        }
+
+        .todo-time-position {
+            display: none;
+        }
+
+        .time-indicator {
+            display: none;
+        }
+
+        /* Integrated view styles */
+        .integrated-view {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .timeline-container {
+            flex: 1;
+            min-width: 300px;
+            max-width: 400px;
+            background: var(--bg-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .todo-list-container {
+            position: relative;
+            background: var(--bg-color);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            min-height: 300px;
+            display: flex;
+        }
+
+        .todo-items-container {
+            flex: 1;
+            position: relative;
+            min-height: 300px;
+            padding-right: 20px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        /* Improved progress bar styles */
+        .progress-bar-container {
+            width: 100%;
+            position: relative;
+            margin: 20px 0 0 0;
+            min-height: 50px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: var(--border-color);
+            border-radius: 4px;
+            position: relative;
+            margin: 30px 0 10px 0;
+        }
+
+        .progress-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 0%;
+            background-color: var(--accent-color);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-time-markers {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -25px;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+        .progress-marker {
+            position: relative;
+            font-size: 0.85rem;
+            color: var(--text-color);
+            background-color: var(--lighter-bg);
+            padding: 3px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px var(--shadow-color);
+            z-index: 10;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .progress-total {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.85rem;
+            color: var(--accent-color);
+            font-weight: 500;
+            text-align: center;
+            background-color: var(--lighter-bg);
+            padding: 5px 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px var(--shadow-color);
+            white-space: nowrap;
+            z-index: 5;
+        }
+
+        /* Remove the old mobile styles since we're using a horizontal layout for all devices */
+        @media (max-width: 768px) {
+            .progress-bar-container {
+                margin-bottom: 15px;
+            }
+            
+            .progress-bar {
+                height: 8px;
+                margin: 25px 0 8px 0;
+            }
+            
+            .progress-marker {
+                font-size: 0.8rem;
+                min-width: 60px;
+            }
+            
+            .progress-total {
+                font-size: 0.8rem;
+            }
+        }
+
+        .timeline-scale {
+            width: 60px;
+            position: relative;
+            margin-right: 15px;
+            border-right: 1px solid var(--border-color);
+            padding-right: 10px;
+            min-height: 500px; /* Ensure minimum height for proper scaling */
+        }
+
+        .timeline-marker {
+            position: absolute;
+            right: 0;
+            width: 100%;
+            text-align: right;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            transform: translateY(-50%);
+        }
+
+        .timeline-marker::after {
+            content: '';
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            width: 8px;
+            height: 1px;
+            background-color: var(--border-color);
+        }
+
+        .todo-items-container {
+            flex: 1;
+            position: relative;
+            min-height: 500px; /* Match timeline scale height */
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 10px 10px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 15px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .timeline-start-time {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .timeline-end-time {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .todo-item:last-child {
+            border-bottom: none;
+        }
+
+        .todo-item:hover {
+            background: var(--hover-color);
+        }
+
+        .todo-item.completed {
+            opacity: 0.7;
+        }
+
+        .todo-content-wrapper {
+            flex: 1;
+            margin: 0 15px;
+        }
+
+        .todo-content {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .todo-time {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--accent-color);
+            font-size: 14px;
+        }
+
+        .todo-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .edit-time-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .edit-time-btn:hover {
+            background: var(--hover-color);
+            color: var(--accent-color);
+        }
+
+        .delete-btn {
+            padding: 5px 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .delete-btn:hover {
+            background: var(--hover-color);
+            color: #ff4444;
+        }
+
+        @media (max-width: 768px) {
+            .integrated-view {
+                flex-direction: column;
+            }
+
+            .timeline-container,
+            .todo-list-container {
+                max-width: none;
+            }
+        }
+
+        .todo-time-position {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .time-indicator {
+            position: absolute;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background-color: var(--accent-color);
+            opacity: 0.5;
+            transition: all 0.3s ease;
+        }
+
+        .todo-item:hover .time-indicator {
+            opacity: 0.8;
+            width: 6px;
+        }
+
+        .todo-item.completed .time-indicator {
+            background-color: var(--success-color);
+        }
+
+        /* 移除集成视图样式 */
+        .integrated-view {
+            display: none;
+        }
+
+        .timeline-container {
+            display: none;
+        }
+
+        /* Time range settings */
+        .time-range-settings {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+        }
+
+        .time-range-label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .time-range-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .time-range-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .time-range-group-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-left: 2px;
+            display: none; /* Hidden by default, shown on mobile */
+        }
+
+        .time-selector {
+            display: flex;
+            align-items: center;
+            background-color: var(--card-bg);
+            border-radius: 4px;
+            padding: 2px;
+            box-shadow: 0 1px 3px var(--shadow-color);
+        }
+
+        .time-select {
+            border: none;
+            background-color: transparent;
+            padding: 5px;
+            font-size: 0.9rem;
+            color: var(--text-color);
+            cursor: pointer;
+            width: 45px;
+            text-align: center;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23665c4f' d='M6 8.825L1.175 4 2.238 2.938 6 6.7l3.763-3.762L10.825 4z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 5px center;
+            padding-right: 20px;
+        }
+
+        .time-select:focus {
+            outline: none;
+        }
+
+        .time-separator {
+            font-weight: bold;
+            color: var(--text-muted);
+            margin: 0 2px;
+        }
+
+        .time-range-separator {
+            font-weight: bold;
+            color: var(--text-muted);
+            margin: 0 5px;
+        }
+
+        .time-range-apply {
+            padding: 8px 16px;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 2px 5px var(--shadow-color);
+            min-width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .time-range-apply:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px var(--shadow-color);
+        }
+
+        .time-range-apply:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 3px var(--shadow-color);
+        }
+
+        /* Mobile responsiveness for time range settings */
+        @media (max-width: 768px) {
+            .time-range-settings {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+
+            .time-range-input {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .time-range-group {
+                flex: 1;
+            }
+
+            .time-range-group-label {
+                display: block; /* Show labels on mobile */
+            }
+
+            .time-selector {
+                flex: 1;
+                justify-content: center;
+            }
+
+            .time-range-separator {
+                margin: 0 10px;
+            }
+
+            .time-range-apply {
+                width: 100%;
+                margin-top: 5px;
+            }
+        }
+
+        /* Remove timeline and integrated view styles */
+        .timeline-container,
+        .timeline-scale,
+        .timeline-marker,
+        .timeline-header,
+        .todo-time-position,
+        .time-indicator,
+        .integrated-view,
+        .timeline-task,
+        .timeline-task-content,
+        .timeline-task-time,
+        .timeline-empty {
+            display: none;
+        }
+
+        /* 周时间统计样式 */
+        .weekly-stats-container {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            margin-bottom: 30px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+        }
+
+        .weekly-stats-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .current-week-display {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            padding: 5px 10px;
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .week-number {
+            margin-bottom: 2px;
+        }
+
+        .week-date-range {
+            font-size: 0.8rem;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+
+        .week-nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background-color: var(--lighter-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: var(--transition);
+            color: var(--text-color);
+        }
+
+        .week-nav-btn:hover {
+            background-color: var(--primary-color);
+            transform: translateY(-2px);
+            box-shadow: 0 2px 5px var(--shadow-color);
+        }
+
+        .weekly-stats-chart {
+            height: 200px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            padding: 0 10px;
+        }
+
+        .day-bar-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 12%;
+        }
+
+        .day-bar {
+            width: 100%;
+            background-color: var(--accent-color);
+            border-radius: 5px 5px 0 0;
+            position: relative;
+            transition: height 0.3s ease;
+            min-height: 4px;
+        }
+
+        .day-bar:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .day-label {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .day-name {
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .day-date {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+
+        .day-time {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--accent-color);
+            color: white;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .day-bar:hover .day-time {
+            opacity: 1;
+        }
+
+        .weekly-stats-summary {
+            background-color: var(--lighter-bg);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .weekly-stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+            flex: 1;
+            padding: 10px;
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: 0 1px 3px var(--shadow-color);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .weekly-stat-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px var(--shadow-color);
+        }
+
+        .weekly-stat-value {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stat-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background-color: rgba(231, 111, 81, 0.1);
+            border-radius: 50%;
+            padding: 4px;
+        }
+
+        .weekly-stat-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* 响应式样式 */
+        @media (max-width: 768px) {
+            .weekly-stats-chart {
+                height: 180px;
+            }
+
+            .weekly-stats-summary {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .weekly-stat-item {
+                min-width: 100%;
+            }
+
+            .day-time {
+                font-size: 0.75rem;
+                padding: 2px 4px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .weekly-stats-header {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .current-week-display {
+                order: -1;
+                margin-bottom: 5px;
+            }
+        }
+
+        /* 任务详细信息弹窗 */
+        .day-info-popup {
+            position: absolute;
+            top: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--accent-color);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+            z-index: 10;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+            min-width: 120px;
+        }
+
+        .day-info-popup::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid var(--accent-color);
+        }
+
+        .day-bar:hover .day-info-popup {
+            opacity: 1;
+        }
+
+        .popup-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 3px 0;
+        }
+
+        .popup-label {
+            font-size: 0.75rem;
+            opacity: 0.9;
+            margin-right: 8px;
+        }
+
+        .popup-value {
+            font-weight: 600;
+        }
+
+        /* 任务数量指示器 */
+        .task-count {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 5px;
+            margin-bottom: 3px;
+            box-shadow: 0 1px 3px var(--shadow-color);
+            position: relative;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+
+        .day-bar-container:hover .task-count {
+            transform: scale(1.1);
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        /* 调整响应式样式 */
+        @media (max-width: 768px) {
+            .day-info-popup {
+                top: -90px;
+                padding: 5px 8px;
+                font-size: 0.75rem;
+                min-width: 100px;
+            }
+            
+            .task-count {
+                width: 20px;
+                height: 20px;
+                font-size: 0.75rem;
+            }
+        }
+
+        /* 今日任务总时长统计 */
+        .today-summary {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .time-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .time-stat-icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .time-stat-value {
+            font-weight: 600;
+        }
+
+        .total-time {
+            color: var(--text-color);
+        }
+
+        .completed-time {
+            color: var(--success-color);
+        }
+
+        /* 突出显示今日任务 */
+        .todo-item.today {
+            background-color: rgba(231, 111, 81, 0.05);
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .todo-item.today:hover {
+            background-color: rgba(231, 111, 81, 0.1);
+        }
+
+        /* 任务排序控制 */
+        .todo-order-controls {
+            opacity: 0;
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+
+        .todo-item:hover .todo-order-controls {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .order-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .order-btn:hover {
+            color: var(--accent-color);
+            transform: scale(1.2);
+        }
+
+        /* Drag and drop styles */
+        .todo-item.dragging {
+            opacity: 0.5;
+            background-color: var(--lighter-bg);
+        }
+
+        /* Week refresh button */
+        .week-refresh-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            padding: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .week-refresh-btn:hover {
+            color: var(--accent-color);
+        }
+
+        .week-refresh-btn svg {
+            transition: transform 0.5s ease;
+        }
+
+        .week-refresh-btn:hover svg {
+            transform: rotate(180deg);
+        }
+
+        /* Daily Todo Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            overflow: auto;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            margin: 5% auto;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        .modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 18px;
+        }
+
+        .close-modal {
+            color: var(--text-muted);
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .close-modal:hover {
+            color: var(--accent-color);
+        }
+
+        .modal-body {
+            padding: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .modal-summary {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: var(--lighter-bg);
+            border-radius: 8px;
+        }
+
+        .modal-stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+
+        .modal-todos {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .modal-todo-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            background-color: var(--lighter-bg);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .modal-todo-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-todo-item.completed {
+            background-color: var(--lighter-bg);
+            opacity: 0.8;
+        }
+
+        .modal-todo-item.completed .modal-todo-content {
+            text-decoration: line-through;
+            color: var(--text-muted);
+        }
+
+        .modal-todo-content {
+            flex-grow: 1;
+            margin: 0 10px;
+        }
+
+        .modal-todo-time {
+            color: var(--accent-color);
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .modal-todo-time svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Make weekly chart bars clickable */
+        .day-bar-container {
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .day-bar-container:hover {
+            transform: translateY(-5px);
+        }
+
+        .day-bar {
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* Make history items clickable with better UI indication */
+        .history-item {
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }

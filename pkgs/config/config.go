@@ -9,8 +9,14 @@ import (
 	"strconv"
 )
 
+var blog_version = "Version11.0"
+
 func Info(){
-	fmt.Println("info config v1.0")
+	fmt.Println("info config v11.0")
+}
+
+func GetVersion() string{
+	return  blog_version
 }
 
 var datas = make(map[string]string)
@@ -134,10 +140,6 @@ func readConfigFile(filePath string) (map[string]string, error) {
 }
 
 
-func GetVersion() string{
-	return "Version6.0"
-}
-
 
 func IsSysFile(name string) int {
 	for _,v := range sys_files{
@@ -188,6 +190,15 @@ func GetMaxBlogComments() int {
 	str_cnt := GetConfig("max_blog_comments")
 	cnt,_:= strconv.Atoi(str_cnt)
 	if cnt <= 0 {
+		cnt = 100
+	}
+	return cnt
+}
+
+func GetMainBlogNum() int {
+	str_cnt := GetConfig("main_show_blogs")
+	cnt,_:=strconv.Atoi(str_cnt)
+	if cnt <= 0{
 		cnt = 100
 	}
 	return cnt

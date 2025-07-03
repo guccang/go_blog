@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>年度计划</title>
+    <link rel="stylesheet" href="/css/yearplan.css">
+</head>
+<body>
+    <header class="page-header">
+        <div class="container">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">年度计划</h1>
+            <a href="/link" class="header-link">返回首页</a>
+            <div class="year-picker-container">
+                <input id="search-year" type="number" placeholder="输入年份..." min="2020" max="2100">
+                <button type="button" class="search-btn" onclick="loadYearPlan()">查找</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 年度计划总览 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <span id="current-year">{{.YEAR}}</span>年计划总览
+                </h2>
+                <div class="card-header-actions">
+                    <button id="toggle-preview-btn" class="action-btn preview-btn" onclick="toggleOverviewPreview()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                        </svg>
+                        预览
+                    </button>
+                    <button id="save-btn" class="action-btn save-btn" onclick="savePlan()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 6px;">
+                            <path d="M5 21h14a2 2 0 002-2V8l-5-5H5a2 2 0 00-2 2v14a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        保存计划
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="overview-container">
+                    <div id="overview-editor" class="overview-editor active">
+                        <textarea id="year-overview-content" placeholder="在此输入年度计划总览...">{{.YEAR_OVERVIEW}}</textarea>
+                    </div>
+                    <div id="overview-preview" class="overview-preview">
+                        <!-- 预览内容将通过JavaScript渲染 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 月度计划列表 -->
+        <div class="section-header">
+            <h2 class="section-title">月度计划详情</h2>
+        </div>
+        
+        <div class="month-grid">
+            <!-- 一月 -->
+            <div class="month-card" data-month="1">
+                <div class="month-header">
+                    <h3>一月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(1)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-1-editor" class="month-editor active">
+                            <textarea id="month-1-content" placeholder="在此输入一月计划...">{{index .MONTH_PLANS 0}}</textarea>
+                        </div>
+                        <div id="month-1-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-1-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 二月 -->
+            <div class="month-card" data-month="2">
+                <div class="month-header">
+                    <h3>二月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(2)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(2)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(2)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-2-editor" class="month-editor active">
+                            <textarea id="month-2-content" placeholder="在此输入二月计划...">{{index .MONTH_PLANS 1}}</textarea>
+                        </div>
+                        <div id="month-2-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-2-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 三月 -->
+            <div class="month-card" data-month="3">
+                <div class="month-header">
+                    <h3>三月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(3)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(3)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(3)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-3-editor" class="month-editor active">
+                            <textarea id="month-3-content" placeholder="在此输入三月计划...">{{index .MONTH_PLANS 2}}</textarea>
+                        </div>
+                        <div id="month-3-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-3-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 四月 -->
+            <div class="month-card" data-month="4">
+                <div class="month-header">
+                    <h3>四月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(4)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(4)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(4)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-4-editor" class="month-editor active">
+                            <textarea id="month-4-content" placeholder="在此输入四月计划...">{{index .MONTH_PLANS 3}}</textarea>
+                        </div>
+                        <div id="month-4-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-4-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 五月 -->
+            <div class="month-card" data-month="5">
+                <div class="month-header">
+                    <h3>五月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(5)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(5)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(5)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-5-editor" class="month-editor active">
+                            <textarea id="month-5-content" placeholder="在此输入五月计划...">{{index .MONTH_PLANS 4}}</textarea>
+                        </div>
+                        <div id="month-5-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-5-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 六月 -->
+            <div class="month-card" data-month="6">
+                <div class="month-header">
+                    <h3>六月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(6)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(6)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(6)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-6-editor" class="month-editor active">
+                            <textarea id="month-6-content" placeholder="在此输入六月计划...">{{index .MONTH_PLANS 5}}</textarea>
+                        </div>
+                        <div id="month-6-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-6-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 七月 -->
+            <div class="month-card" data-month="7">
+                <div class="month-header">
+                    <h3>七月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(7)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(7)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(7)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-7-editor" class="month-editor active">
+                            <textarea id="month-7-content" placeholder="在此输入七月计划...">{{index .MONTH_PLANS 6}}</textarea>
+                        </div>
+                        <div id="month-7-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-7-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 八月 -->
+            <div class="month-card" data-month="8">
+                <div class="month-header">
+                    <h3>八月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(8)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(8)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(8)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-8-editor" class="month-editor active">
+                            <textarea id="month-8-content" placeholder="在此输入八月计划...">{{index .MONTH_PLANS 7}}</textarea>
+                        </div>
+                        <div id="month-8-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-8-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 九月 -->
+            <div class="month-card" data-month="9">
+                <div class="month-header">
+                    <h3>九月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(9)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(9)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(9)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-9-editor" class="month-editor active">
+                            <textarea id="month-9-content" placeholder="在此输入九月计划...">{{index .MONTH_PLANS 8}}</textarea>
+                        </div>
+                        <div id="month-9-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-9-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 十月 -->
+            <div class="month-card" data-month="10">
+                <div class="month-header">
+                    <h3>十月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(10)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(10)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(10)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-10-editor" class="month-editor active">
+                            <textarea id="month-10-content" placeholder="在此输入十月计划...">{{index .MONTH_PLANS 9}}</textarea>
+                        </div>
+                        <div id="month-10-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-10-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 十一月 -->
+            <div class="month-card" data-month="11">
+                <div class="month-header">
+                    <h3>十一月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(11)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(11)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(11)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-11-editor" class="month-editor active">
+                            <textarea id="month-11-content" placeholder="在此输入十一月计划...">{{index .MONTH_PLANS 10}}</textarea>
+                        </div>
+                        <div id="month-11-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-11-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 十二月 -->
+            <div class="month-card" data-month="12">
+                <div class="month-header">
+                    <h3>十二月</h3>
+                    <div class="month-actions">
+                        <button class="action-btn preview-btn month-preview-btn" onclick="toggleMonthPreview(12)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 6C7.6 6 3.8 8.8 2 12C3.8 15.2 7.6 18 12 18C16.4 18 20.2 15.2 22 12C20.2 8.8 16.4 6 12 6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                            预览
+                        </button>
+                        <button class="action-btn toggle-tasks-btn" onclick="toggleMonthTasks(12)">
+                            <svg class="toggle-icon" viewBox="0 0 24 24" width="18" height="18">
+                                <path d="M16.59 8.59L12 13.17L7.41 8.59L6 10L12 16L18 10L16.59 8.59Z" fill="currentColor"/>
+                            </svg>
+                            <span class="toggle-tasks-text">显示任务</span>
+                        </button>
+                        <button class="action-btn add-task-btn" onclick="showAddTaskModal(12)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 4px;">
+                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            添加任务
+                        </button>
+                    </div>
+                </div>
+                <div class="month-content">
+                    <div class="month-content-container">
+                        <div id="month-12-editor" class="month-editor active">
+                            <textarea id="month-12-content" placeholder="在此输入十二月计划...">{{index .MONTH_PLANS 11}}</textarea>
+                        </div>
+                        <div id="month-12-preview" class="month-preview">
+                            <!-- 预览内容将通过JavaScript渲染 -->
+                        </div>
+                    </div>
+                    <div id="month-12-tasks" class="tasks-container collapsed">
+                        <!-- 任务列表将通过JavaScript动态添加 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务添加/编辑模态框 -->
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3 id="modal-title">添加任务</h3>
+            <form id="task-form">
+                <input type="hidden" id="task-month" value="">
+                <input type="hidden" id="task-id" value="">
+                
+                <div class="form-group">
+                    <label for="task-name">任务名称</label>
+                    <input type="text" id="task-name" required placeholder="输入任务名称">
+                </div>
+                
+                <div class="form-group">
+                    <label for="task-description">任务详情</label>
+                    <textarea id="task-description" placeholder="输入任务详情..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="task-status">状态</label>
+                    <select id="task-status">
+                        <option value="pending">未开始</option>
+                        <option value="in-progress">进行中</option>
+                        <option value="completed">已完成</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="task-priority">优先级</label>
+                    <select id="task-priority">
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                    </select>
+                </div>
+                
+                <div class="form-group form-actions">
+                    <button type="button" id="delete-task-btn" class="delete-btn">删除任务</button>
+                    <button type="submit" class="save-btn">保存任务</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 提示容器 -->
+    <div id="toast-container"></div>
+
+    <!-- 底部信息栏 -->
+    <div class="bottom-fix-div">
+        <span class="right-label" id="total-tasks">总任务数: 0</span>
+        <span class="right-label" id="completed-tasks">已完成: 0</span>
+    </div>
+
+    <script src="/js/utils.js"></script>
+	<script src="/js/marked/marked.min.js"></script>
+    <script src="/js/editor.js"></script>
+    <script src="/js/yearplan.js"></script>
+</body>
+</html> 

@@ -114,7 +114,7 @@ func reload(name string) {
 	if name == "cfg" {
 		config_path := config.GetConfigPath()
 		config.ReloadConfig(config_path);
-		log.MessageF("reload cfg %s",config_path)
+		log.InfoF("reload cfg %s",config_path)
 	}
 }
 

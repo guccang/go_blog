@@ -14,12 +14,13 @@ import(
 	"auth"
 	"regexp"
 	"module"
-	"strings"
 	"strconv"
 	"share"
 	"cooperation"
+	"todolist"
+	"strings"
+	"yearplan"
 )
-
 
 func Info(){
 	log.Debug("info http v1.0")
@@ -73,6 +74,17 @@ func HandleEditor(w h.ResponseWriter, r *h.Request){
 	}
 	view.PageEditor(w,"","")
 }
+
+func HandleDemo(w h.ResponseWriter, r *h.Request){
+	LogRemoteAddr("HandleDemo",r)
+	if checkLogin(r) !=0 {
+		h.Redirect(w,r,"/index",302)
+		return
+	}
+	tmp_name:= r.URL.Query().Get("tmp_name")
+	view.PageDemo(w,tmp_name)
+}
+
 
 
 
@@ -150,7 +162,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
     reg := regexp.MustCompile(pattern)
 	match := reg.MatchString(title)
 	if !match {
-		w.Write([]byte(fmt.Sprintf("save failed! title is invalied")))
+		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
 		return
 	}
 
@@ -192,7 +204,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
 		log.DebugF("encryption content_decrypt=%s",content_encrypt)
 		if content_decrypt != content {
-			w.Write([]byte(fmt.Sprintf("save error  aes not match error!")))
+			h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
 			return
 		}
 		fmt.Printf("content encrypt=%s\n",content)
@@ -212,7 +224,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 
 	if IsCooperation(r) {
 		if config.IsTitleAddDateSuffix(title) == 1 {
-			w.Write([]byte(fmt.Sprintf("save failed! cooperation auth error, timed blog not support")))
+			h.Error(w, "save failed! cooperation auth error,timed blog not support", h.StatusBadRequest)
 			return
 		}
 	}
@@ -227,7 +239,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 			cooperation.AddCanEditBlogBySession(session,title)
 		}
 	}else{
-		w.Write([]byte(fmt.Sprintf("save failed! has same title blog ret=%d",ret)))
+		h.Error(w, "save failed! has same title blog", h.StatusBadRequest)
 	}
 }
 
@@ -326,31 +338,60 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		return
 	}	
 
+	// 检查是否是 todolist 博客，如果是则重定向到 todolist 页面
+	if strings.HasPrefix(blogname, "todolist-") {
+		// 从blogname中解析出日期，格式为todolist-YYYY-MM-DD
+		date := strings.TrimPrefix(blogname, "todolist-")
+		// 验证日期格式是否正确
+		if len(date) == 10 && date[4] == '-' && date[7] == '-' {
+			// 重定向到todolist页面，并传递date参数
+			h.Redirect(w, r, fmt.Sprintf("/todolist?date=%s", date), 302)
+			return
+		}
+		// 如果日期格式不正确，则使用默认重定向
+		h.Redirect(w, r, "/todolist", 302)
+		return
+	}
+
+	// 检查是否是 yearplan 博客，如果是则重定向到 yearplan 页面
+	if strings.HasPrefix(blogname, "年计划_") {
+		// 重定向到yearplan页面，并传递date参数
+		date := strings.TrimPrefix(blogname, "年计划_")
+		h.Redirect(w, r, fmt.Sprintf("/yearplan?year=%s", date), 302)
+		return
+	}
+
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
 	if checkLogin(r) !=0 {
 		// 判定blog访问权限
+		session := getsession(r)
 		auth_type := control.GetBlogAuthType(blogname)
-		if auth_type == module.EAuthType_private {
-			h.Redirect(w,r,"/index",302)
-			return
+		if cooperation.IsCooperation(session) {
+			// 判定blog访问权限
+			auth_type := control.GetBlogAuthType(blogname)
+			if (auth_type & module.EAuthType_cooperation) != 0 {
+				if cooperation.CanEditBlog(session,blogname) != 0 {
+					if (auth_type & module.EAuthType_public) == 0 {
+						h.Redirect(w,r,"/index",302)
+						return
+					}
+				}
+			}
 		}else{
-			usepublic = 1
+			if (auth_type & module.EAuthType_private) != 0 {
+				h.Redirect(w,r,"/index",302)
+				return
+			}
 		}
-	}
 
-	session := getsession(r)
-	if cooperation.IsCooperation(session) {
-		// 判定blog访问权限
-		auth_type := control.GetBlogAuthType(blogname)
-		if auth_type == module.EAuthType_private {
+		if (auth_type & module.EAuthType_public) != 0 {
+			usepublic = 1
+		}else{
 			h.Redirect(w,r,"/index",302)
 			return
 		}
-		if cooperation.CanEditBlog(session,blogname) != 0 {
-			usepublic = 1
-		}	
 	}
 
 	view.PageGetBlog(blogname,w,usepublic)
@@ -372,7 +413,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
     reg := regexp.MustCompile(pattern)
 	match := reg.MatchString(title)
 	if !match {
-		w.Write([]byte(fmt.Sprintf("save failed! title is invalied")))
+		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
 		return
 	}
 
@@ -397,7 +438,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 	}
 
 	if comment == "" {
-		w.Write([]byte(fmt.Sprintf("save failed! comment is invalied")))
+		h.Error(w, "save failed! comment is invalied!", h.StatusBadRequest)
 		return 
 	}
 
@@ -484,7 +525,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
 		log.DebugF("encryption content_decrypt=%s",content_encrypt)
 		if content_decrypt != content {
-			w.Write([]byte(fmt.Sprintf("save error  aes not match error! ret=%s")))
+			h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
 			return
 		}
 		fmt.Printf("content encrypt=%s\n",content)
@@ -519,119 +560,12 @@ func HandleSearch(w h.ResponseWriter,r *h.Request){
 		return
 	}
 	match := r.URL.Query().Get("match")
-	session := getsession(r)
-	is_cooperation := cooperation.IsCooperation(session)
-
-
-	// 直接显示help
-	tokens := strings.Split(match," ")
-	if match == "@help" {
-		h.Redirect(w,r,"/help",302)
-		return
+	ret := view.PageSearchNormal(match,w,r)
+	if ret != 0 {
+		// 通用搜索逻辑
+		session := getsession(r)
+		view.PageSearch(match,w,session)
 	}
-    // 直接显示主页
-	if match == "@main" {
-		h.Redirect(w,r,"/link",302)
-		return
-	}
-	// 创建timed blog
-	if tokens[0] == "@c" {
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return
-		}
-		if len(tokens) != 2 {
-			h.Error(w, "@c titlename need", h.StatusBadRequest)
-			return
-		}
-		title := tokens[1]
-		content := ""
-		b := control.GetRecentlyTimedBlog(title)
-		if b != nil {
-			content = b.Content
-		}
-		view.PageEditor(w,title,content)
-		return
-	}
-	// 分享private连接
-	if tokens[0] == "@share" && len(tokens)>=2 {
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return
-		}
-	
-		// 创建分享
-		if tokens[1] == "c" && len(tokens)>=3 {
-			blogname := tokens[2]
-			view.PageShareBlog(w,blogname)
-		}
-		if tokens[1] == "t" && len(tokens)>=3{
-			tag := tokens[2]
-			view.PageShareTag(w,tag)
-		}
-		// 显示所有创建的分享
-		if tokens[1] == "all" {
-			if false == is_cooperation {
-				view.PageShowAllShare(w)
-			}else{
-				w.Write([]byte("not support operation (showAllShare)!!!"))		
-			}
-		}
-		return
-	}
-	// 创建协作账号
-	if tokens[0] == "@cooperation" && len(tokens) >= 2{
-		log.DebugF("cooperation opt=%s",tokens[1])
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return
-		}
-	
-		// 创建
-		if tokens[1] == "c" && len(tokens) == 3{
-			account := tokens[2]
-			view.PageAddCooperation(w,account)
-		}
-		// 删除
-		if tokens[1] == "d" && len(tokens) == 3{
-			account := tokens[2]
-			view.PageDelCooperation(w,account)
-		}
-		// 显示
-		if tokens[1] == "all" && len(tokens) == 2{
-			if false == is_cooperation {
-				view.PageShowCooperation(w)
-			}else{
-				w.Write([]byte("not support operation (showCooperation)!!!"))		
-			}
-		}
-		// add edit blog
-		if tokens[1] == "addblog" && len(tokens) == 4{
-			account := tokens[2]
-			blog := tokens[3]
-			view.PageAddCooperationBlog(w,account,blog)
-		}
-		if tokens[1] == "delblog" && len(tokens) == 4{
-			account := tokens[2]
-			blog := tokens[3]
-			view.PageDelCooperationBlog(w,account,blog)
-		}
-		// add edit tag
-		if tokens[1] == "addtag" && len(tokens) == 4{
-			account := tokens[2]
-			tag := tokens[3]
-			view.PageAddCooperationTag(w,account,tag)
-		}
-		if tokens[1] == "deltag" && len(tokens) == 4{
-			account := tokens[2]
-			tag := tokens[3]
-			view.PageDelCooperationTag(w,account,tag)
-		}
-		return
-	}
-
-	// 通用搜索逻辑
-	view.PageSearch(match,w,session)
 }
 
 func HandleTag(w h.ResponseWriter,r *h.Request){
@@ -699,11 +633,6 @@ func HandleIndex(w h.ResponseWriter,r *h.Request){
 	view.PageIndex(w)
 }
 
-func HandleToDoList(w h.ResponseWriter,r *h.Request){
-	LogRemoteAddr("HandleToDoList",r)
-	view.PageToDoList(w)
-}
-
 
 func basicAuth(next h.Handler) h.Handler {
     return h.HandlerFunc(func(w h.ResponseWriter, r *h.Request) {
@@ -715,6 +644,71 @@ func basicAuth(next h.Handler) h.Handler {
     })
 }
 
+func HandleTimeStamp(w h.ResponseWriter, r *h.Request){
+	view.PageTimeStamp(w);
+}
+
+func HandleTodolist(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleTodolist", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		// If no date provided, use today's date
+		date = time.Now().Format("2006-01-02")
+	}
+
+	view.PageTodolist(w, date)
+}
+
+// HandleYearPlan renders the year plan page
+func HandleYearPlan(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleYearPlan", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	// Get the current year
+	year := r.URL.Query().Get("year")
+	// string to int
+	yearInt, err := strconv.Atoi(year)
+	if err != nil {
+		yearInt = time.Now().Year()
+	}	
+
+	// Render the yearplan template
+	view.PageYearPlan(w, yearInt)
+}
+
+// HandleMonthGoal renders the month goal page
+func HandleMonthGoal(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleMonthGoal", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	// Get the current year and month
+	year := r.URL.Query().Get("year")
+	month := r.URL.Query().Get("month")
+	
+	yearInt, err := strconv.Atoi(year)
+	if err != nil {
+		yearInt = time.Now().Year()
+	}
+	
+	monthInt, err := strconv.Atoi(month)
+	if err != nil {
+		monthInt = int(time.Now().Month())
+	}
+
+	// Render the monthgoal template
+	view.PageMonthGoal(w, yearInt, monthInt)
+}
 
 func Init() int{
 	h.HandleFunc("/link",HandleLink)
@@ -732,7 +726,28 @@ func Init() int{
 	h.HandleFunc("/d3",HandleD3)
 	h.HandleFunc("/tag",HandleTag)
 	h.HandleFunc("/getshare",HandleGetShare)
-	h.HandleFunc("/todolist",HandleToDoList)
+	h.HandleFunc("/demo",HandleDemo)
+	h.HandleFunc("/timestamp",HandleTimeStamp)
+	h.HandleFunc("/todolist", HandleTodolist)
+	h.HandleFunc("/api/todos", todolist.HandleTodos)
+	h.HandleFunc("/api/todos/toggle", todolist.HandleToggleTodo)
+	h.HandleFunc("/api/todos/time", todolist.HandleUpdateTodoTime)
+	h.HandleFunc("/api/todos/history", todolist.HandleHistoricalTodos)
+	h.HandleFunc("/api/todos/order", todolist.HandleUpdateTodoOrder)
+	h.HandleFunc("/yearplan", HandleYearPlan)
+	h.HandleFunc("/monthgoal", HandleMonthGoal)
+	h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)
+	h.HandleFunc("/api/saveplan", yearplan.HandleSavePlan)
+	
+	// 月度工作目标相关路由
+	h.HandleFunc("/api/monthgoal", yearplan.HandleGetMonthGoal)
+	h.HandleFunc("/api/savemonthgoal", yearplan.HandleSaveMonthGoal)
+	h.HandleFunc("/api/weekgoal", yearplan.HandleGetWeekGoal)
+	h.HandleFunc("/api/saveweekgoal", yearplan.HandleSaveWeekGoal)
+	h.HandleFunc("/api/addtask", yearplan.HandleAddTask)
+	h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
+	h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
+	h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
