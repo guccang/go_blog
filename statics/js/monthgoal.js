@@ -121,31 +121,6 @@ function toggleOverviewPreview() {
     }
 }
 
-// 初始化周页签
-function initializeWeekTabs() {
-    const weekTabsContainer = document.getElementById('week-tabs');
-    const weeksInMonth = getWeeksInMonth(currentYear, currentMonth);
-    
-    weekTabsContainer.innerHTML = '';
-    
-    for (let week = 1; week <= weeksInMonth; week++) {
-        const weekTab = document.createElement('div');
-        weekTab.className = `week-tab ${week === 1 ? 'active' : ''}`;
-        weekTab.textContent = `第${week}周`;
-        weekTab.setAttribute('data-week', week);
-        
-        weekTab.addEventListener('click', function() {
-            selectWeek(week);
-        });
-        
-        weekTabsContainer.appendChild(weekTab);
-    }
-    
-    if (weeksInMonth > 0) {
-        selectWeek(1);
-    }
-}
-
 // 获取月份的周数
 function getWeeksInMonth(year, month) {
     const firstDay = new Date(year, month - 1, 1);
@@ -155,41 +130,95 @@ function getWeeksInMonth(year, month) {
     return Math.ceil(daysInMonth / 7);
 }
 
+// 计算年度周数
+function getWeekOfYear(date) {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+}
+
+// 获取指定月份的年度周数范围
+function getYearWeeksForMonth(year, month) {
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    
+    const firstWeek = getWeekOfYear(firstDay);
+    const lastWeek = getWeekOfYear(lastDay);
+    
+    const weeks = [];
+    for (let week = firstWeek; week <= lastWeek; week++) {
+        weeks.push(week);
+    }
+    
+    return weeks;
+}
+
+// 初始化周页签
+function initializeWeekTabs() {
+    const weekTabsContainer = document.getElementById('week-tabs');
+    const yearWeeks = getYearWeeksForMonth(currentYear, currentMonth);
+    
+    weekTabsContainer.innerHTML = '';
+    
+    yearWeeks.forEach((yearWeek, index) => {
+        const weekTab = document.createElement('div');
+        weekTab.className = `week-tab ${index === 0 ? 'active' : ''}`;
+        weekTab.textContent = `第${yearWeek}周`;
+        weekTab.setAttribute('data-week', yearWeek);
+        weekTab.setAttribute('data-month-week', index + 1); // 保留月内周数用于后端API
+        
+        weekTab.addEventListener('click', function() {
+            selectWeek(yearWeek, index + 1);
+        });
+        
+        weekTabsContainer.appendChild(weekTab);
+    });
+    
+    if (yearWeeks.length > 0) {
+        selectWeek(yearWeeks[0], 1);
+    }
+}
+
 // 选择周
-function selectWeek(week) {
-    currentWeek = week;
+function selectWeek(yearWeek, monthWeek) {
+    currentWeek = monthWeek; // 保留月内周数用于后端API
     
     // 更新周页签状态
     document.querySelectorAll('.week-tab').forEach(tab => {
         tab.classList.remove('active');
     });
-    document.querySelector(`[data-week="${week}"]`).classList.add('active');
+    document.querySelector(`[data-week="${yearWeek}"]`).classList.add('active');
     
-    // 加载周目标
-    loadWeekGoal(week);
+    // 加载周目标，传递年度周数用于显示
+    loadWeekGoal(monthWeek, yearWeek);
 }
 
 // 加载周目标详情
 function loadWeekGoals() {
-    loadWeekGoal(currentWeek);
+    const activeTab = document.querySelector('.week-tab.active');
+    if (activeTab) {
+        const yearWeek = parseInt(activeTab.getAttribute('data-week'));
+        const monthWeek = parseInt(activeTab.getAttribute('data-month-week'));
+        loadWeekGoal(monthWeek, yearWeek);
+    }
 }
 
 // 加载周目标
-async function loadWeekGoal(week) {
+async function loadWeekGoal(monthWeek, yearWeek) {
     const contentArea = document.getElementById('week-content-area');
     
     contentArea.innerHTML = `
         <div class="week-content">
             <div class="week-header">
-                <h4 class="week-title">${currentYear}年${currentMonth}月第${week}周目标</h4>
+                <h4 class="week-title">${currentYear}年第${yearWeek}周目标</h4>
                 <div class="week-actions">
-                    <button class="action-btn preview-btn" onclick="toggleWeekPreview(${week})">
+                    <button class="action-btn preview-btn" onclick="toggleWeekPreview(${monthWeek})">
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="currentColor"/>
                         </svg>
                         预览
                     </button>
-                    <button class="action-btn save-btn" onclick="saveWeekGoal(${week})">
+                    <button class="action-btn save-btn" onclick="saveWeekGoal(${monthWeek}, ${yearWeek})">
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z" fill="currentColor"/>
                         </svg>
@@ -197,10 +226,10 @@ async function loadWeekGoal(week) {
                     </button>
                 </div>
             </div>
-            <div class="week-editor active" id="week-editor-${week}">
-                <textarea class="week-textarea" id="week-content-${week}" placeholder="在这里输入第${week}周的目标...支持Markdown格式"></textarea>
+            <div class="week-editor active" id="week-editor-${monthWeek}">
+                <textarea class="week-textarea" id="week-content-${monthWeek}" placeholder="在这里输入第${yearWeek}周的目标...支持Markdown格式"></textarea>
             </div>
-            <div class="week-preview" id="week-preview-${week}">
+            <div class="week-preview" id="week-preview-${monthWeek}">
                 <!-- 预览内容将在这里显示 -->
             </div>
         </div>
@@ -208,14 +237,14 @@ async function loadWeekGoal(week) {
     
     // 加载周目标内容
     try {
-        const response = await fetch(`/api/weekgoal?year=${currentYear}&month=${currentMonth}&week=${week}`);
+        const response = await fetch(`/api/weekgoal?year=${currentYear}&month=${currentMonth}&week=${monthWeek}`);
         const data = await response.json();
         
         if (response.ok && data.success) {
-            document.getElementById(`week-content-${week}`).value = data.data.content || '';
+            document.getElementById(`week-content-${monthWeek}`).value = data.data.content || '';
         } else if (response.status === 404) {
             // 周目标不存在，初始化为空
-            document.getElementById(`week-content-${week}`).value = '';
+            document.getElementById(`week-content-${monthWeek}`).value = '';
         } else {
             throw new Error(data.message || '加载失败');
         }
@@ -226,10 +255,10 @@ async function loadWeekGoal(week) {
 }
 
 // 切换周预览
-function toggleWeekPreview(week) {
-    const editorArea = document.getElementById(`week-editor-${week}`);
-    const previewArea = document.getElementById(`week-preview-${week}`);
-    const content = document.getElementById(`week-content-${week}`).value;
+function toggleWeekPreview(monthWeek) {
+    const editorArea = document.getElementById(`week-editor-${monthWeek}`);
+    const previewArea = document.getElementById(`week-preview-${monthWeek}`);
+    const content = document.getElementById(`week-content-${monthWeek}`).value;
     
     if (editorArea.classList.contains('active')) {
         // 切换到预览模式
@@ -249,8 +278,8 @@ function toggleWeekPreview(week) {
 }
 
 // 保存周目标
-async function saveWeekGoal(week) {
-    const content = document.getElementById(`week-content-${week}`).value;
+async function saveWeekGoal(monthWeek, yearWeek) {
+    const content = document.getElementById(`week-content-${monthWeek}`).value;
     
     try {
         const response = await fetch('/api/saveweekgoal', {
@@ -261,7 +290,7 @@ async function saveWeekGoal(week) {
             body: JSON.stringify({
                 year: currentYear,
                 month: currentMonth,
-                week: week,
+                week: monthWeek,
                 content: content
             })
         });
@@ -269,7 +298,7 @@ async function saveWeekGoal(week) {
         const data = await response.json();
         
         if (response.ok && data.status === 'success') {
-            showToast(`第${week}周目标保存成功`, 'success');
+            showToast(`第${yearWeek}周目标保存成功`, 'success');
         } else {
             showToast('保存失败: ' + (data.message || '未知错误'), 'error');
         }
