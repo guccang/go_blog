@@ -757,4 +757,22 @@ func PageMonthGoal(w h.ResponseWriter, year int, month int) {
 	}
 }
 
+// PageStatistics renders the statistics page
+func PageStatistics(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "statistics.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse statistics.template: %s", err.Error())
+		h.Error(w, "Failed to parse statistics template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render statistics.template: %s", err.Error())
+		h.Error(w, "Failed to render statistics template", h.StatusInternalServerError)
+		return
+	}
+}
+
 

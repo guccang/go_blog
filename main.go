@@ -17,6 +17,7 @@ import(
 	"search"
 	"share"
 	"cooperation"
+	"statistics"
 )
 
 func main(){
@@ -43,6 +44,7 @@ func main(){
 	search.Info()
 	share.Info()
 	cooperation.Info()
+	statistics.Info()
 
 	// Init 
 	config.Init(args[1])

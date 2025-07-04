@@ -6,6 +6,7 @@ import (
 	"blog"
 	"comment"
 	"search"
+	"statistics"
 )
 
 func Info(){
@@ -15,6 +16,7 @@ func Info(){
 func Init(){
 	comment.Init()
 	blog.Init()
+	statistics.Init()
 }
 
 func ImportBlogsFromPath(dir string){
@@ -72,4 +74,21 @@ func GetRecentlyTimedBlog(title string) *module.Blog{
 
 func TagReplace(from string, to string) {
 	blog.TagReplace(from,to)
+}
+
+// 统计相关功能
+func GetStatistics() *statistics.Statistics {
+	return statistics.GetStatistics()
+}
+
+func RecordBlogAccess(blogTitle, ip, userAgent string) {
+	statistics.RecordBlogAccess(blogTitle, ip, userAgent)
+}
+
+func RecordUserLogin(account, ip string, success bool) {
+	statistics.RecordUserLogin(account, ip, success)
+}
+
+func ClearStatisticsCache() {
+	statistics.ClearCache()
 }

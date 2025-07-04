@@ -36,6 +36,13 @@ replace share => ./pkgs/share
 
 replace cooperation => ./pkgs/cooperation
 
+replace statistics => ./pkgs/statistics
+
+replace todolist => ./pkgs/todolist
+
+replace yearplan => ./pkgs/yearplan
+
+
 require (
 	blog v0.0.0-00010101000000-000000000000
 	comment v0.0.0-00010101000000-000000000000
@@ -50,6 +57,9 @@ require (
 	persistence v0.0.0-00010101000000-000000000000
 	search v0.0.0-00010101000000-000000000000
 	share v0.0.0-00010101000000-000000000000
+	statistics v0.0.0-00010101000000-000000000000
+	todolist v0.0.0-00010101000000-000000000000
+	yearplan v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
 )
 

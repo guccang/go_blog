@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG/统计分析</title>
+    <link rel="stylesheet" href="/css/statistics.css">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body id="body" class="th_black" style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    <!-- Sidebar -->
+    <div id="sidebar-container" class="sidebar-container">
+        <div id="sidebar" class="sidebar">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/link" style="font-size: 24px;">主页</a>
+            <div class="separator"></div>
+            <h2 id="title">统计分析</h2>
+            <div class="separator"></div>
+            <p id="last-update">数据更新时间: <span id="update-time">加载中...</span></p>
+            <div class="separator"></div>
+            <div class="button-group">
+                <button id="refresh-button" class="bottom-button" onclick="refreshStatistics()">刷新数据</button>
+                <button id="export-button" class="bottom-button" onclick="exportStatistics()">导出数据</button>
+            </div>
+        </div>
+        <div class="bubble" id="bubble">&#9776;</div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container" style="max-width: 1400px; margin: 0 auto; padding: 20px;">
+        <!-- 加载提示 -->
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <p>正在加载统计数据...</p>
+        </div>
+
+        <!-- 统计概览 -->
+        <div id="overview" class="overview-section hide">
+            <h2>📊 数据概览</h2>
+            <div class="overview-cards">
+                <div class="card">
+                    <div class="card-icon">📝</div>
+                    <div class="card-content">
+                        <h3 id="total-blogs">0</h3>
+                        <p>博客总数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">👁️</div>
+                    <div class="card-content">
+                        <h3 id="total-access">0</h3>
+                        <p>总访问次数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">✏️</div>
+                    <div class="card-content">
+                        <h3 id="total-edits">0</h3>
+                        <p>总修改次数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💬</div>
+                    <div class="card-content">
+                        <h3 id="total-comments">0</h3>
+                        <p>评论总数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔐</div>
+                    <div class="card-content">
+                        <h3 id="total-logins">0</h3>
+                        <p>登录次数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🌐</div>
+                    <div class="card-content">
+                        <h3 id="unique-visitors">0</h3>
+                        <p>独立访客</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🏷️</div>
+                    <div class="card-content">
+                        <h3 id="total-tags">0</h3>
+                        <p>标签总数</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🤝</div>
+                    <div class="card-content">
+                        <h3 id="cooperation-users">0</h3>
+                        <p>协作用户</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 博客统计 -->
+        <div id="blog-stats" class="stats-section hide">
+            <h2>📝 博客统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-chart" id="blog-type-chart"></div>
+                    <h4>博客类型分布</h4>
+                    <ul id="blog-type-list">
+                        <li>公开博客: <span id="public-blogs">0</span></li>
+                        <li>私有博客: <span id="private-blogs">0</span></li>
+                        <li>加密博客: <span id="encrypt-blogs">0</span></li>
+                        <li>协作博客: <span id="cooperation-blogs">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>时间统计</h4>
+                    <ul id="blog-time-stats">
+                        <li>今日新增: <span id="today-new-blogs">0</span></li>
+                        <li>本周新增: <span id="week-new-blogs">0</span></li>
+                        <li>本月新增: <span id="month-new-blogs">0</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 访问统计 -->
+        <div id="access-stats" class="stats-section hide">
+            <h2>👁️ 访问统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>访问趋势</h4>
+                    <ul id="access-trends">
+                        <li>今日访问: <span id="today-access">0</span></li>
+                        <li>本周访问: <span id="week-access">0</span></li>
+                        <li>本月访问: <span id="month-access">0</span></li>
+                        <li>平均访问: <span id="average-access">0</span></li>
+                        <li>零访问博客: <span id="zero-access-blogs">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>🔥 热门博客 (TOP 10)</h4>
+                    <div id="top-accessed-blogs" class="ranking-list"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>🕒 最近访问</h4>
+                    <div id="recent-access-blogs" class="ranking-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑统计 -->
+        <div id="edit-stats" class="stats-section hide">
+            <h2>✏️ 编辑统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>编辑趋势</h4>
+                    <ul id="edit-trends">
+                        <li>今日修改: <span id="today-edits">0</span></li>
+                        <li>本周修改: <span id="week-edits">0</span></li>
+                        <li>本月修改: <span id="month-edits">0</span></li>
+                        <li>平均修改: <span id="average-edits">0</span></li>
+                        <li>从未修改: <span id="never-edited-blogs">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>🔄 最常修改博客</h4>
+                    <div id="top-edited-blogs" class="ranking-list"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>📝 最近修改</h4>
+                    <div id="recent-edited-blogs" class="ranking-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户活动统计 -->
+        <div id="user-stats" class="stats-section hide">
+            <h2>🔐 用户活动</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>登录统计</h4>
+                    <ul id="login-stats">
+                        <li>今日登录: <span id="today-logins">0</span></li>
+                        <li>本周登录: <span id="week-logins">0</span></li>
+                        <li>本月登录: <span id="month-logins">0</span></li>
+                        <li>平均每日: <span id="average-daily-logins">0</span></li>
+                        <li>最近登录: <span id="last-login-time">暂无</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- IP访问统计 -->
+        <div id="ip-stats" class="stats-section hide">
+            <h2>🌐 IP访问统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>访客统计</h4>
+                    <ul id="visitor-stats">
+                        <li>独立访客: <span id="unique-visitors-detail">0</span></li>
+                        <li>今日独立访客: <span id="today-unique-visitors">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>🎯 最活跃IP</h4>
+                    <div id="top-active-ips" class="ranking-list"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>🕒 最近访问IP</h4>
+                    <div id="recent-access-ips" class="ranking-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评论统计 -->
+        <div id="comment-stats" class="stats-section hide">
+            <h2>💬 评论统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>评论概况</h4>
+                    <ul id="comment-overview">
+                        <li>有评论博客: <span id="blogs-with-comments">0</span></li>
+                        <li>今日新增: <span id="today-new-comments">0</span></li>
+                        <li>本周新增: <span id="week-new-comments">0</span></li>
+                        <li>本月新增: <span id="month-new-comments">0</span></li>
+                        <li>平均评论数: <span id="average-comments">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>📈 最多评论博客</h4>
+                    <div id="top-commented-blogs" class="ranking-list"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>👥 活跃评论用户</h4>
+                    <div id="active-comment-users" class="ranking-list"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>💭 最新评论</h4>
+                    <div id="recent-comments" class="comment-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 标签统计 -->
+        <div id="tag-stats" class="stats-section hide">
+            <h2>🏷️ 标签统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>标签概况</h4>
+                    <ul id="tag-overview">
+                        <li>公开标签: <span id="public-tags">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>🔥 热门标签</h4>
+                    <div id="hot-tags" class="tag-cloud"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>🕒 最近使用标签</h4>
+                    <div id="recent-used-tags" class="tag-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间分析 -->
+        <div id="time-analysis" class="stats-section hide">
+            <h2>⏰ 时间分析</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>📅 创建时间分布</h4>
+                    <div id="creation-time-chart" class="chart-container"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>🕐 访问时段分布</h4>
+                    <div id="access-hour-chart" class="chart-container"></div>
+                </div>
+                <div class="stat-item">
+                    <h4>🎯 活跃时段排行</h4>
+                    <div id="active-time-slots" class="ranking-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 内容统计 -->
+        <div id="content-stats" class="stats-section hide">
+            <h2>📄 内容统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>内容概况</h4>
+                    <ul id="content-overview">
+                        <li>总字符数: <span id="total-characters">0</span></li>
+                        <li>平均文章长度: <span id="average-article-length">0</span></li>
+                        <li>空内容博客: <span id="empty-content-blogs">0</span></li>
+                    </ul>
+                </div>
+                <div class="stat-item">
+                    <h4>📏 最长文章</h4>
+                    <div id="longest-article">
+                        <p><strong>标题:</strong> <span id="longest-title">暂无</span></p>
+                        <p><strong>长度:</strong> <span id="longest-length">0</span> 字符</p>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <h4>📏 最短文章</h4>
+                    <div id="shortest-article">
+                        <p><strong>标题:</strong> <span id="shortest-title">暂无</span></p>
+                        <p><strong>长度:</strong> <span id="shortest-length">0</span> 字符</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统统计 -->
+        <div id="system-stats" class="stats-section hide">
+            <h2>⚙️ 系统统计</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <h4>系统信息</h4>
+                    <ul id="system-info">
+                        <li>系统运行时间: <span id="system-uptime">计算中...</span></li>
+                        <li>数据大小: <span id="data-size">计算中...</span></li>
+                        <li>静态文件数: <span id="static-files">0</span></li>
+                        <li>模板文件数: <span id="template-files">0</span></li>
+                        <li>今日操作数: <span id="today-operations">0</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/statistics.js"></script>
+</body>
+</html> 

@@ -18,6 +18,7 @@
 			<a href="/todolist" style="font-size: 24px;" onclick="navigateToTodolist(event)">每日任务</a>
 			<a href="/monthgoal" style="font-size: 24px;">月度计划</a>
 			<a href="/yearplan" style="font-size: 24px;">年度计划</a>
+			<a href="/statistics" style="font-size: 24px;">📊 访问统计</a>
 			<div class="search-container">
 				<input id="search" type="text" placeholder="搜索博客或标签..." list="search_list">
 			<datalist id="search_list">

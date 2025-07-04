@@ -20,6 +20,7 @@ import(
 	"todolist"
 	"strings"
 	"yearplan"
+	"encoding/json"
 )
 
 func Info(){
@@ -394,6 +395,17 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		}
 	}
 
+	// 记录博客访问
+	if blogname != "" {
+		remoteAddr := r.RemoteAddr
+		xForwardedFor := r.Header.Get("X-Forwarded-For")
+		if xForwardedFor != "" {
+			remoteAddr = xForwardedFor
+		}
+		userAgent := r.Header.Get("User-Agent")
+		control.RecordBlogAccess(blogname, remoteAddr, userAgent)
+	}
+
 	view.PageGetBlog(blogname,w,usepublic)
 }
 
@@ -606,15 +618,28 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 	}	
 
 	log.DebugF("account=%s pwd=%s",account,pwd)
+	
+	// 获取用户IP
+	remoteAddr := r.RemoteAddr
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	if xForwardedFor != "" {
+		remoteAddr = xForwardedFor
+	}
+	
 	session , ret:= login.Login(account,pwd)
 	if ret != 0 {
 		session,ret = cooperation.CooperationLogin(account,pwd)
 		if ret != 0 {
+			// 记录失败的登录
+			control.RecordUserLogin(account, remoteAddr, false)
 			h.Error(w,"Error account or pwd",h.StatusBadRequest)
 			return
 		}
 		log.DebugF("cooperation login ok account=%s pwd=%s",account,pwd)
 	}
+	
+	// 记录成功的登录
+	control.RecordUserLogin(account, remoteAddr, true)
 
 	// set cookie
 	cookie := &h.Cookie{
@@ -710,6 +735,50 @@ func HandleMonthGoal(w h.ResponseWriter, r *h.Request) {
 	view.PageMonthGoal(w, yearInt, monthInt)
 }
 
+// HandleStatistics renders the statistics page
+func HandleStatistics(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleStatistics", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	view.PageStatistics(w)
+}
+
+// HandleStatisticsAPI returns statistics data as JSON
+func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleStatisticsAPI", r)
+	if checkLogin(r) != 0 {
+		w.WriteHeader(h.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	if r.Method != h.MethodGet {
+		w.WriteHeader(h.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	stats := control.GetStatistics()
+	if stats == nil {
+		w.WriteHeader(h.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to get statistics"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(h.StatusOK)
+	
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		log.ErrorF("Failed to encode statistics: %v", err)
+		w.WriteHeader(h.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to encode statistics"})
+		return
+	}
+}
+
 func Init() int{
 	h.HandleFunc("/link",HandleLink)
 	h.HandleFunc("/editor",HandleEditor)
@@ -748,6 +817,10 @@ func Init() int{
 	h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
 	h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
 	h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
+	
+	// 统计相关路由
+	h.HandleFunc("/statistics", HandleStatistics)
+	h.HandleFunc("/api/statistics", HandleStatisticsAPI)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
