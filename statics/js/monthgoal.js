@@ -48,6 +48,12 @@ async function loadMonthGoal() {
     currentYear = parseInt(year);
     currentMonth = parseInt(month);
     
+    // 更新页面标题
+    const pageTitle = document.querySelector('.page-title');
+    if (pageTitle) {
+        pageTitle.textContent = `${currentYear}年${currentMonth}月工作目标`;
+    }
+    
     try {
         const response = await fetch(`/api/monthgoal?year=${year}&month=${month}`);
         const data = await response.json();
@@ -62,9 +68,16 @@ async function loadMonthGoal() {
         } else {
             throw new Error(data.message || '加载失败');
         }
+        
+        // 重新初始化周页签，重新计算年度周数
+        initializeWeekTabs();
+        
     } catch (error) {
         console.error('加载月度目标失败:', error);
         showToast('加载月度目标失败', 'error');
+        
+        // 即使加载失败，也要重新初始化周页签
+        initializeWeekTabs();
     }
 }
 
