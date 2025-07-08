@@ -26,6 +26,7 @@ type LinkData struct{
 	DESC string
 	COOPERATION int
 	ACCESS_TIME string
+	TAGS []string
 }
 
 type LinkDatas struct{
@@ -105,6 +106,7 @@ func getShareLinks() *LinkDatas{
 			URL:b.URL,
 			DESC:b.Title,
 			COOPERATION:0,
+			TAGS:[]string{},
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -114,6 +116,7 @@ func getShareLinks() *LinkDatas{
 			URL:t.URL,
 			DESC:fmt.Sprintf("Tag-%s",t.Tag),
 			COOPERATION:0,
+			TAGS:[]string{},
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -145,11 +148,23 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 		}
 
 
+		// 处理博客标签
+		var blogTags []string
+		if b.Tags != "" {
+			tags := strings.Split(b.Tags, "|")
+			for _, tag := range tags {
+				if tag != "" {
+					blogTags = append(blogTags, tag)
+				}
+			}
+		}
+		
 		ld := LinkData {
 			URL:fmt.Sprintf("/get?blogname=%s",b.Title),
 			DESC:b.Title,
 			COOPERATION:(b.AuthType & module.EAuthType_cooperation),
 			ACCESS_TIME:b.AccessTime,
+			TAGS:blogTags,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 
@@ -168,8 +183,7 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 	}
 
 	for tag,_ := range all_tags {
-		tags_str := fmt.Sprintf("$%s",tag)
-		datas.TAGS = append(datas.TAGS,tags_str)
+		datas.TAGS = append(datas.TAGS,tag)
 	}
 	sort.Strings(datas.TAGS)
 
@@ -775,4 +789,48 @@ func PageStatistics(w h.ResponseWriter) {
 	}
 }
 
+// PagePublic renders the public blogs page
+func PagePublic(w h.ResponseWriter) {
+	// 获取所有public标签的博客
+	blogs := control.GetMatch("@public")
+	
+	// 只展示public权限的博客
+	flag := module.EAuthType_public
+	
+	// 获取链接数据
+	datas := getLinks(blogs, flag, "")
+	
+	// 渲染模板
+	exeDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "public.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse public.template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, datas)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render template public.template", h.StatusInternalServerError)
+		return
+	}
+}
 
+// PageExercise renders the exercise page
+func PageExercise(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse exercise.template: %s", err.Error())
+		h.Error(w, "Failed to parse exercise template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render exercise.template: %s", err.Error())
+		h.Error(w, "Failed to render exercise template", h.StatusInternalServerError)
+		return
+	}
+}

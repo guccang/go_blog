@@ -70,40 +70,94 @@
 			<button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
 		</div>
 
-		<div class="bottom-fix-div">
-			{{ if eq "public" .AUTHTYPE }}
-			<button id="comment-show" class="left-button" onclick="onShowComment()">显示评论</button>
-			<div id="comments" class="hide">
-                    <h3>所有评论</h3>
-				<div class="separator"></div>
-				{{range .COMMENTS}}
-                        <div class="comment-item">
-                            <p>{{.MSG}} ({{.IDX}})</p>
-                            <small>由 {{.OWNER}}({{.MAIL}}) 于 {{.CTIME}} 发表</small>
-				<div class="separator"></div>
-                        </div>
-				{{end}}
+		<div class="comments-section">
+			<div class="comments-header">
+				<h3 class="comments-title">💬 评论区</h3>
+				<button id="comment-show" class="comments-toggle-btn expanded" onclick="onShowComment()">
+					<span id="toggle-text">收起评论</span>
+					<span id="toggle-icon">▲</span>
+				</button>
 			</div>
+			
+			<div id="comments-container">
+				<style>
+					/* 确保评论表单输入框可见和可交互 */
+					.comment-form input,
+					.comment-form textarea {
+						pointer-events: auto !important;
+						user-select: text !important;
+						-webkit-user-select: text !important;
+						-moz-user-select: text !important;
+					}
+				</style>
+				<!-- 评论列表 -->
+				<div id="comments" class="comments-list">
+					{{if .COMMENTS}}
+						{{range .COMMENTS}}
+						<div class="comment-card">
+							<div class="comment-header">
+								<div class="comment-author">
+									<div class="author-avatar">{{slice .OWNER 0 1}}</div>
+									<div class="author-info">
+										<div class="author-name">{{.OWNER}}</div>
+										{{if .MAIL}}<div class="author-email">{{.MAIL}}</div>{{end}}
+									</div>
+								</div>
+								<div class="comment-meta">
+									<span class="comment-time">{{.CTIME}}</span>
+									<span class="comment-index">#{{.IDX}}</span>
+								</div>
+							</div>
+							<div class="comment-content">
+								<p>{{.MSG}}</p>
+							</div>
+						</div>
+						{{end}}
+					{{else}}
+						<div class="no-comments">
+							<div class="no-comments-icon">💭</div>
+							<p>还没有评论，来发表第一条评论吧！</p>
+						</div>
+					{{end}}
+				</div>
 
-			<div id="div-comment" class="hide">
-                    <h3>发表评论</h3>
-                    <div class="comment-form">
-                        <label for="input-owner">用户名:</label>
-                        <input id="input-owner" type="text" placeholder="请输入用户名">
-                        
-                        <label for="input-mail">邮箱:</label>
-                        <input id="input-mail" type="text" placeholder="请输入邮箱">
-                        
-                        <label for="input-pwd">密码:</label>
-                        <input id="input-pwd" type="password" placeholder="用于管理评论">
-                        
-                        <label for="input-comment">留言:</label>
-                        <input id="input-comment" type="text" placeholder="请输入评论内容">
-                        
-				<button id="commit-comment" type="button" onclick="onCommitComment()">提交评论</button>
+				<!-- 发表评论 -->
+				<div id="div-comment" class="comment-form-container">
+					<h4 class="comment-form-title">✍️ 发表评论</h4>
+					<form class="comment-form" onsubmit="return false;">
+						<div class="form-row">
+							<div class="form-group">
+								<label for="input-owner">用户名 *</label>
+								<input id="input-owner" type="text" placeholder="请输入您的用户名" required>
+								<small id="username-hint" class="form-hint">💡 用户名将作为您的身份标识</small>
+							</div>
+							<div class="form-group">
+								<label for="input-mail">邮箱</label>
+								<input id="input-mail" type="email" placeholder="请输入邮箱（可选）">
+							</div>
+						</div>
+						<div class="form-group">
+							<label for="input-pwd">身份密码</label>
+							<input id="input-pwd" type="password" placeholder="用于确认您的身份">
+							<small class="form-hint">💡 已注册用户名必须输入正确密码才能评论</small>
+						</div>
+						<div class="form-group">
+							<label for="input-comment">评论内容 *</label>
+							<textarea id="input-comment" rows="4" placeholder="请输入您的评论内容..." required></textarea>
+							<div class="comment-input-footer">
+								<small class="form-hint">支持换行，请文明发言</small>
+								<span class="char-count"><span id="char-counter">0</span>/500</span>
+							</div>
+						</div>
+						<div class="form-actions">
+							<button id="commit-comment" type="button" onclick="onCommitComment()" class="submit-btn">
+								<span class="btn-icon">📝</span>
+								<span class="btn-text">发表评论</span>
+							</button>
+						</div>
+					</form>
+				</div>
 			</div>
-                </div>
-			{{end}}
 		</div>
 	</div>
 

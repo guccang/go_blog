@@ -153,7 +153,7 @@
             border-radius: 2px;
         }
         
-        input[type="text"], input[type="password"] {
+        .sidebar input[type="text"], .sidebar input[type="password"] {
             width: 100%;
             padding: 10px;
             background-color: var(--card-bg);
@@ -165,7 +165,7 @@
             transition: all 0.3s;
         }
         
-        input[type="text"]:focus, input[type="password"]:focus {
+        .sidebar input[type="text"]:focus, .sidebar input[type="password"]:focus {
             outline: none;
             box-shadow: 0 0 0 2px var(--accent-color);
             border-color: var(--accent-color);
@@ -283,10 +283,13 @@
             border-radius: 4px;
             overflow: hidden;
             margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
         }
         
         .editor {
             width: 100%;
+            flex: 1;
             min-height: 60vh;
             padding: 20px;
             background-color: var(--card-bg);
@@ -301,7 +304,8 @@
             box-shadow: 0 2px 5px var(--shadow-color);
         }
         
-        .md {
+        .md, .mdEditor {
+            flex: 1;
             min-height: 60vh;
             padding: 20px;
             background-color: var(--card-bg);
@@ -313,7 +317,7 @@
         }
         
         /* Markdown styling */
-        .md h1, .md h2, .md h3, .md h4 {
+        .md h1, .md h2, .md h3, .md h4, .mdEditor h1, .mdEditor h2, .mdEditor h3, .mdEditor h4 {
             margin-top: 1.5em;
             margin-bottom: 0.5em;
             color: var(--text-color);
@@ -321,35 +325,35 @@
             padding-bottom: 5px;
         }
         
-        .md h1 { font-size: 2em; }
-        .md h2 { font-size: 1.75em; }
-        .md h3 { font-size: 1.5em; }
-        .md h4 { font-size: 1.25em; }
+        .md h1, .mdEditor h1 { font-size: 2em; }
+        .md h2, .mdEditor h2 { font-size: 1.75em; }
+        .md h3, .mdEditor h3 { font-size: 1.5em; }
+        .md h4, .mdEditor h4 { font-size: 1.25em; }
         
-        .md p {
+        .md p, .mdEditor p {
             margin-bottom: 1em;
         }
         
-        .md a {
+        .md a, .mdEditor a {
             color: var(--accent-color);
             text-decoration: none;
         }
         
-        .md a:hover {
+        .md a:hover, .mdEditor a:hover {
             text-decoration: underline;
             color: var(--accent-hover);
         }
         
-        .md ul, .md ol {
+        .md ul, .md ol, .mdEditor ul, .mdEditor ol {
             margin-left: 2em;
             margin-bottom: 1em;
         }
         
-        .md li {
+        .md li, .mdEditor li {
             margin-bottom: 0.5em;
         }
         
-        .md blockquote {
+        .md blockquote, .mdEditor blockquote {
             border-left: 4px solid var(--accent-color);
             padding-left: 1em;
             margin-left: 0;
@@ -360,7 +364,7 @@
             border-radius: 0 4px 4px 0;
         }
         
-        .md pre {
+        .md pre, .mdEditor pre {
             background-color: var(--code-bg);
             padding: 1em;
             border-radius: 4px;
@@ -369,7 +373,7 @@
             border: 1px solid var(--border-color);
         }
         
-        .md code {
+        .md code, .mdEditor code {
             font-family: 'Consolas', monospace;
             background-color: var(--code-bg);
             padding: 2px 5px;
@@ -377,26 +381,26 @@
             color: #5a3e2b;
         }
         
-        .md img {
+        .md img, .mdEditor img {
             max-width: 100%;
             height: auto;
             margin: 1em 0;
             border-radius: 4px;
         }
         
-        .md table {
+        .md table, .mdEditor table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 1em;
         }
         
-        .md th, .md td {
+        .md th, .md td, .mdEditor th, .mdEditor td {
             border: 1px solid var(--border-color);
             padding: 8px 12px;
             text-align: left;
         }
         
-        .md th {
+        .md th, .mdEditor th {
             background-color: var(--secondary-color);
         }
         
@@ -407,70 +411,329 @@
             margin-bottom: 20px;
         }
         
-        .bottom-fix-div {
-            margin-top: 20px;
-            border-top: 1px solid var(--border-color);
-            padding-top: 20px;
+        /* 评论区域样式 */
+        .comments-section {
+            margin-top: 30px;
+            border-top: 2px solid var(--border-color);
+            padding-top: 30px;
         }
         
-        #comments {
-            background-color: var(--card-bg);
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 15px;
-            max-height: 400px;
-            overflow-y: auto;
+        .comments-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background-color: var(--lighter-bg);
+            border-radius: 8px;
             border: 1px solid var(--border-color);
-            box-shadow: 0 2px 5px var(--shadow-color);
         }
         
-        #comments label {
-            display: block;
-            margin-bottom: 5px;
+        .comments-title {
+            margin: 0;
+            font-size: 1.4rem;
+            color: var(--text-color);
+            font-weight: 600;
         }
         
-        .comment-item {
-            margin-bottom: 1em;
-        }
-        
-        .comment-item small {
-            color: #7d6e5d;
-            font-size: 0.85em;
-        }
-        
-        #div-comment {
-            background-color: var(--card-bg);
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 15px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 2px 5px var(--shadow-color);
-        }
-        
-        #div-comment label {
-            display: inline-block;
-            width: 80px;
-            margin-bottom: 10px;
-        }
-        
-        #div-comment input {
-            width: calc(100% - 90px);
-            margin-bottom: 10px;
-        }
-        
-        #commit-comment {
+        .comments-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
             background-color: var(--accent-color);
             color: white;
             border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
-            margin-top: 10px;
+            font-weight: 500;
             transition: all 0.3s ease;
         }
         
-        #commit-comment:hover {
+        .comments-toggle-btn:hover {
             background-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+        
+        #toggle-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        .comments-toggle-btn.expanded #toggle-icon {
+            transform: rotate(180deg);
+        }
+        
+        #comments-container {
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        /* 评论列表样式 */
+        .comments-list {
+            margin-bottom: 30px;
+        }
+        
+        .comment-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            transition: all 0.3s ease;
+        }
+        
+        .comment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px var(--shadow-color);
+        }
+        
+        .comment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        
+        .comment-author {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .author-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+            text-transform: uppercase;
+        }
+        
+        .author-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .author-name {
+            font-weight: 600;
+            color: var(--text-color);
+            font-size: 14px;
+        }
+        
+        .author-email {
+            font-size: 12px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+        
+        .comment-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            font-size: 12px;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+        
+        .comment-time {
+            font-size: 11px;
+        }
+        
+        .comment-index {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+        
+        .comment-content {
+            margin-top: 8px;
+        }
+        
+        .comment-content p {
+            margin: 0;
+            line-height: 1.6;
+            color: var(--text-color);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        /* 无评论状态 */
+        .no-comments {
+            text-align: center;
+            padding: 40px 20px;
+            background-color: var(--lighter-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        
+        .no-comments-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .no-comments p {
+            margin: 0;
+            color: var(--text-color);
+            opacity: 0.7;
+            font-size: 14px;
+        }
+        
+        /* 评论表单样式 */
+        .comment-form-container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 8px var(--shadow-color);
+        }
+        
+        .comment-form-title {
+            margin: 0 0 20px 0;
+            font-size: 1.2rem;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+        
+        .comment-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .comment-form .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .comment-form .form-group label {
+            font-weight: 600;
+            color: var(--text-color);
+            font-size: 14px;
+        }
+        
+        .comment-form .form-group input,
+        .comment-form .form-group textarea {
+            width: 100% !important;
+            padding: 12px 15px !important;
+            border: 2px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            background-color: var(--bg-color) !important;
+            color: var(--text-color) !important;
+            font-size: 14px !important;
+            transition: all 0.3s ease !important;
+            font-family: inherit !important;
+            box-sizing: border-box !important;
+            margin-bottom: 0 !important;
+            pointer-events: auto !important;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            -moz-user-select: text !important;
+        }
+        
+        .comment-form .form-group input:focus,
+        .comment-form .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(231, 111, 81, 0.1);
+        }
+        
+        .comment-form .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            line-height: 1.5;
+        }
+        
+        .form-hint {
+            color: var(--text-color);
+            opacity: 0.7;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        
+        .form-hint.new-user {
+            color: var(--success-color);
+            opacity: 1;
+        }
+        
+        .form-hint.existing-user {
+            color: var(--warning-color);
+            opacity: 1;
+        }
+        
+        .comment-input-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+        
+        .char-count {
+            color: var(--text-color);
+            opacity: 0.7;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        
+        .char-count.warning {
+            color: var(--warning-color);
+        }
+        
+        .char-count.danger {
+            color: var(--danger-color);
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding-top: 10px;
+        }
+        
+        .submit-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(231, 111, 81, 0.3);
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(231, 111, 81, 0.4);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-icon {
+            font-size: 16px;
         }
         
         .hide {
@@ -516,6 +779,18 @@
             to { opacity: 0; }
         }
         
+        /* 动画效果 */
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
         /* Responsive design */
         @media (max-width: 768px) {
             .sidebar-container {
@@ -531,14 +806,41 @@
                 margin-left: 15px;
             }
             
-            #div-comment label {
-                display: block;
-                width: 100%;
+            /* 评论区响应式 */
+            .comments-header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
             }
             
-            #div-comment input {
-                width: 100%;
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 15px;
             }
+            
+            .comment-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+            
+            .comment-meta {
+                align-items: flex-start;
+                flex-direction: row;
+                gap: 10px;
+            }
+            
+            .author-avatar {
+                width: 35px;
+                height: 35px;
+                font-size: 14px;
+            }
+            
+            .comment-form-container {
+                padding: 20px;
+            }
+            
+
             
             .editorfullscreen {
                 min-height: 300px !important;
@@ -558,6 +860,8 @@
                 min-height: 300px;
                 width: 100%;
                 box-sizing: border-box;
+                flex-direction: column;
+                gap: 10px;
             }
             
             body {
@@ -591,6 +895,11 @@
             
             .md, .editor {
                 padding: 15px;
+            }
+            
+            .editor-container {
+                flex-direction: column;
+                gap: 10px;
             }
         }
         

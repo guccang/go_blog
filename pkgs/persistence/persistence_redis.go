@@ -409,6 +409,220 @@ func SaveCooperation(account string,pwd string,blogs string,tags string) int {
 	return 0
 }
 
+// 评论用户管理相关函数
+func SaveCommentUser(user *module.CommentUser) {
+	key := fmt.Sprintf("comment_user@%s", user.UserID)
+	values := make(map[string]interface{})
+	values["user_id"] = user.UserID
+	values["username"] = user.Username
+	values["email"] = user.Email
+	values["avatar"] = user.Avatar
+	values["register_time"] = user.RegisterTime
+	values["last_active"] = user.LastActive
+	values["comment_count"] = user.CommentCount
+	values["reputation"] = user.Reputation
+	values["status"] = user.Status
+	values["is_verified"] = user.IsVerified
+	
+	err := db.client.HMSet(key, values).Err()
+	if err != nil {
+		log.ErrorF("SaveCommentUser error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("SaveCommentUser success key=%s", key)
+	}
+}
+
+func SaveCommentSession(session *module.CommentSession) {
+	key := fmt.Sprintf("comment_session@%s", session.SessionID)
+	values := make(map[string]interface{})
+	values["session_id"] = session.SessionID
+	values["user_id"] = session.UserID
+	values["ip"] = session.IP
+	values["user_agent"] = session.UserAgent
+	values["create_time"] = session.CreateTime
+	values["expire_time"] = session.ExpireTime
+	values["is_active"] = session.IsActive
+	
+	err := db.client.HMSet(key, values).Err()
+	if err != nil {
+		log.ErrorF("SaveCommentSession error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("SaveCommentSession success key=%s", key)
+	}
+}
+
+func SaveUsernameReservation(reservation *module.UsernameReservation) {
+	key := fmt.Sprintf("username_reservation@%s", reservation.Username)
+	values := make(map[string]interface{})
+	values["username"] = reservation.Username
+	values["user_id"] = reservation.UserID
+	values["reserve_time"] = reservation.ReserveTime
+	values["is_temporary"] = reservation.IsTemporary
+	
+	err := db.client.HMSet(key, values).Err()
+	if err != nil {
+		log.ErrorF("SaveUsernameReservation error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("SaveUsernameReservation success key=%s", key)
+	}
+}
+
+func GetAllCommentUsers() map[string]*module.CommentUser {
+	keys, err := db.client.Keys("comment_user@*").Result()
+	if err != nil {
+		log.ErrorF("GetAllCommentUsers error keys=comment_user@* err=%s", err.Error())
+		return nil
+	}
+	
+	users := make(map[string]*module.CommentUser)
+	
+	for _, key := range keys {
+		m, err := db.client.HGetAll(key).Result()
+		if err != nil {
+			log.ErrorF("GetAllCommentUsers error key=%s err=%s", key, err.Error())
+			continue
+		}
+		
+		user := toCommentUser(m)
+		if user != nil {
+			users[user.UserID] = user
+			log.DebugF("GetAllCommentUsers success key=%s", key)
+		}
+	}
+	
+	return users
+}
+
+func GetAllUsernameReservations() map[string]*module.UsernameReservation {
+	keys, err := db.client.Keys("username_reservation@*").Result()
+	if err != nil {
+		log.ErrorF("GetAllUsernameReservations error keys=username_reservation@* err=%s", err.Error())
+		return nil
+	}
+	
+	reservations := make(map[string]*module.UsernameReservation)
+	
+	for _, key := range keys {
+		m, err := db.client.HGetAll(key).Result()
+		if err != nil {
+			log.ErrorF("GetAllUsernameReservations error key=%s err=%s", key, err.Error())
+			continue
+		}
+		
+		reservation := toUsernameReservation(m)
+		if reservation != nil {
+			reservations[reservation.Username] = reservation
+		}
+	}
+	
+	return reservations
+}
+
+func GetAllCommentSessions() map[string]*module.CommentSession {
+	keys, err := db.client.Keys("comment_session@*").Result()
+	if err != nil {
+		log.ErrorF("GetAllCommentSessions error keys=comment_session@* err=%s", err.Error())
+		return nil
+	}
+	
+	sessions := make(map[string]*module.CommentSession)
+	
+	for _, key := range keys {
+		m, err := db.client.HGetAll(key).Result()
+		if err != nil {
+			log.ErrorF("GetAllCommentSessions error key=%s err=%s", key, err.Error())
+			continue
+		}
+		
+		session := toCommentSession(m)
+		if session != nil {
+			sessions[session.SessionID] = session
+		}
+	}
+	
+	return sessions
+}
+
+func DeleteCommentSession(sessionID string) {
+	key := fmt.Sprintf("comment_session@%s", sessionID)
+	err := db.client.Del(key).Err()
+	if err != nil {
+		log.ErrorF("DeleteCommentSession error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("DeleteCommentSession success key=%s", key)
+	}
+}
+
+func DeleteUsernameReservation(username string) {
+	key := fmt.Sprintf("username_reservation@%s", username)
+	err := db.client.Del(key).Err()
+	if err != nil {
+		log.ErrorF("DeleteUsernameReservation error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("DeleteUsernameReservation success key=%s", key)
+	}
+}
+
+func toCommentUser(m map[string]string) *module.CommentUser {
+	userID, ok := m["user_id"]
+	if !ok {
+		return nil
+	}
+	
+	commentCount, _ := strconv.Atoi(m["comment_count"])
+	reputation, _ := strconv.Atoi(m["reputation"])
+	status, _ := strconv.Atoi(m["status"])
+	isVerified, _ := strconv.ParseBool(m["is_verified"])
+	
+	return &module.CommentUser{
+		UserID:       userID,
+		Username:     m["username"],
+		Email:        m["email"],
+		Avatar:       m["avatar"],
+		RegisterTime: m["register_time"],
+		LastActive:   m["last_active"],
+		CommentCount: commentCount,
+		Reputation:   reputation,
+		Status:       status,
+		IsVerified:   isVerified,
+	}
+}
+
+func toUsernameReservation(m map[string]string) *module.UsernameReservation {
+	username, ok := m["username"]
+	if !ok {
+		return nil
+	}
+	
+	isTemporary, _ := strconv.ParseBool(m["is_temporary"])
+	
+	return &module.UsernameReservation{
+		Username:    username,
+		UserID:      m["user_id"],
+		ReserveTime: m["reserve_time"],
+		IsTemporary: isTemporary,
+	}
+}
+
+func toCommentSession(m map[string]string) *module.CommentSession {
+	sessionID, ok := m["session_id"]
+	if !ok {
+		return nil
+	}
+	
+	isActive, _ := strconv.ParseBool(m["is_active"])
+	
+	return &module.CommentSession{
+		SessionID:  sessionID,
+		UserID:     m["user_id"],
+		IP:         m["ip"],
+		UserAgent:  m["user_agent"],
+		CreateTime: m["create_time"],
+		ExpireTime: m["expire_time"],
+		IsActive:   isActive,
+	}
+}
+
 func GetCooperations()map[string]*module.Cooperation{
     keys,err := db.client.Keys("cooperation@*").Result()
 	if err !=nil {

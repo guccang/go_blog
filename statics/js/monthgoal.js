@@ -8,6 +8,21 @@ let currentTaskId = null;
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
+    // 从URL参数获取年份和月份
+    const urlParams = new URLSearchParams(window.location.search);
+    const yearParam = urlParams.get('year');
+    const monthParam = urlParams.get('month');
+    
+    if (yearParam) {
+        currentYear = parseInt(yearParam);
+        document.getElementById('yearInput').value = currentYear;
+    }
+    
+    if (monthParam) {
+        currentMonth = parseInt(monthParam);
+        document.getElementById('monthSelect').value = currentMonth;
+    }
+    
     initializeTabSystem();
     loadMonthGoal();
     initializeWeekTabs();

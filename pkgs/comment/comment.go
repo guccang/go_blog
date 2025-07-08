@@ -20,6 +20,9 @@ func strTime() string{
 
 // 加载评论数据
 func Init() {
+	// 初始化用户管理器
+	InitUserManager()
+	
 	all_datas := db.GetAllBlogComments()
 	if all_datas != nil {
 		for _,c := range all_datas {
@@ -58,6 +61,86 @@ func AddComment(title string,msg string,owner string,pwd string,mail string) int
 	bc.Comments = append(bc.Comments,&c)
 	db.SaveBlogComments(bc)
 	return 0
+}
+
+// 添加带用户身份验证的评论
+func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, string) {
+	// 验证会话
+	user, err := UserManager.ValidateSession(sessionID)
+	if err != nil {
+		return 1, err.Error()
+	}
+	
+	// 检查用户是否可以评论
+	canComment, reason := UserManager.CanUserComment(user.UserID)
+	if !canComment {
+		return 2, reason
+	}
+	
+	// 获取或创建博客评论集合
+	bc, ok := Comments[title]
+	if !ok {
+		bc = &module.BlogComments{Title: title}
+		Comments[title] = bc
+	}
+	
+	// 检查评论数量限制
+	cur_cnt := len(bc.Comments)
+	if cur_cnt > config.GetMaxBlogComments() {
+		log.ErrorF("AddCommentWithAuth error comments max limits max=%d", config.GetMaxBlogComments())
+		return 3, "评论数量已达上限"
+	}
+	
+	// 创建评论
+	comment := module.Comment{
+		Owner:       user.Username,
+		Msg:         msg,
+		CreateTime:  strTime(),
+		ModifyTime:  strTime(),
+		Idx:         len(bc.Comments),
+		Pwd:         "", // 使用用户身份，不需要密码
+		Mail:        user.Email,
+		UserID:      user.UserID,
+		SessionID:   sessionID,
+		IP:          ip,
+		UserAgent:   userAgent,
+		IsAnonymous: false,
+		IsVerified:  user.IsVerified,
+	}
+	
+	bc.Comments = append(bc.Comments, &comment)
+	db.SaveBlogComments(bc)
+	
+	// 更新用户评论计数
+	UserManager.IncrementUserCommentCount(user.UserID)
+	
+	log.DebugF("AddCommentWithAuth success: user=%s title=%s", user.Username, title)
+	return 0, "评论发表成功"
+}
+
+// 创建匿名用户会话并发表评论
+func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int, string) {
+	// 创建匿名用户会话
+	session, err := UserManager.CreateAnonymousSession(username, email, ip, userAgent)
+	if err != nil {
+		return 1, err.Error()
+	}
+	
+	// 使用新会话发表评论
+	return AddCommentWithAuth(title, msg, session.SessionID, ip, userAgent)
+}
+
+// 创建带密码验证的用户会话并发表评论
+func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent string) (int, string, string) {
+	// 创建或验证用户会话
+	session, _, err := UserManager.CreateOrAuthenticateSession(username, email, password, ip, userAgent)
+	if err != nil {
+		return 1, err.Error(), ""
+	}
+	
+	// 使用会话发表评论
+	ret, message := AddCommentWithAuth(title, msg, session.SessionID, ip, userAgent)
+	return ret, message, session.SessionID
 }
 
 // 修改

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG/锻炼管理</title>
+    <link rel="stylesheet" href="/css/exercise.css">
+</head>
+
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-sidebar-container">
+        <div class="top-sidebar">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/link" style="font-size: 18px;">主页</a>
+            <a href="/exercise" style="font-size: 18px; color: var(--accent-color);">💪 锻炼管理</a>
+            
+            <div class="date-picker-container">
+                <input type="date" id="datePicker" class="date-picker">
+                <button class="today-btn" onclick="goToToday()">今天</button>
+            </div>
+            
+            <div class="nav-buttons">
+                <button class="nav-btn" onclick="showExerciseView()">📝 锻炼记录</button>
+                <button class="nav-btn" onclick="showTemplateView()">📋 模板管理</button>
+                <button class="nav-btn" onclick="showCollectionView()">📚 集合管理</button>
+                <button class="nav-btn" onclick="showProfileView()">👤 个人信息</button>
+                <button class="nav-btn" onclick="showStatsView()">📊 统计分析</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主要内容区域 -->
+    <div class="main-content">
+        <!-- 锻炼记录视图 -->
+        <div id="exerciseView" class="content-view">
+            <div class="page-header">
+                <h1 class="page-title">锻炼记录</h1>
+                <p class="page-date" id="currentDate"></p>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="updateAllExerciseCalories()">🔄 更新所有锻炼卡路里</button>
+                </div>
+            </div>
+
+            <!-- 快速添加区域 -->
+            <div class="quick-add-section">
+                <h3>快速添加锻炼</h3>
+                <div class="quick-add-form">
+                    <select id="collectionSelect" class="form-select">
+                        <option value="">选择集合</option>
+                    </select>
+                    <button class="btn-primary" onclick="addFromCollection()">从集合添加</button>
+                    <select id="templateSelect" class="form-select">
+                        <option value="">选择模板</option>
+                    </select>
+                    <button class="btn-primary" onclick="addFromTemplate()">从模板添加</button>
+                    <button class="btn-secondary" onclick="showAddForm()">自定义添加</button>
+                </div>
+            </div>
+
+            <!-- 添加/编辑表单 -->
+            <div id="exerciseForm" class="exercise-form" style="display: none;">
+                <h3 id="formTitle">添加锻炼</h3>
+                <form id="exerciseFormElement">
+                    <input type="hidden" id="exerciseId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseName">锻炼名称*</label>
+                            <input type="text" id="exerciseName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="exerciseType">锻炼类型*</label>
+                            <select id="exerciseType" required>
+                                <option value="">选择类型</option>
+                                <option value="cardio">有氧运动</option>
+                                <option value="strength">力量训练</option>
+                                <option value="flexibility">柔韧性训练</option>
+                                <option value="sports">运动项目</option>
+                                <option value="other">其他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseDuration">持续时间(分钟)*</label>
+                            <input type="number" id="exerciseDuration" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="exerciseIntensity">运动强度*</label>
+                            <select id="exerciseIntensity" required>
+                                <option value="">选择强度</option>
+                                <option value="low">低强度</option>
+                                <option value="medium">中等强度</option>
+                                <option value="high">高强度</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseWeight">负重 (kg)</label>
+                            <input type="number" id="exerciseWeight" min="0" step="0.5" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="exerciseNotes">备注</label>
+                            <input type="text" id="exerciseNotes">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exerciseCalories">消耗卡路里</label>
+                            <div class="calories-input-group">
+                                <input type="number" id="exerciseCalories" min="0" placeholder="自动计算">
+                                <button type="button" class="btn-secondary" onclick="calculateCalories()">计算</button>
+                            </div>
+                            <div class="met-display" id="exerciseMETDisplay" style="display: none;">
+                                <span class="met-info">MET: <strong id="exerciseMETValue">--</strong></span>
+                                <span class="met-description" id="exerciseMETDescription">--</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <div class="weight-info">
+                                <small>💡 负重将加到体重上用于卡路里计算</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-primary">保存</button>
+                        <button type="button" class="btn-secondary" onclick="hideAddForm()">取消</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 锻炼列表 -->
+            <div class="exercise-list">
+                <h3>今日锻炼</h3>
+                <div id="exerciseItems" class="exercise-items">
+                    <!-- 锻炼项目将在这里动态加载 -->
+                </div>
+                <div id="exerciseEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-icon">💪</div>
+                    <h3>还没有锻炼记录</h3>
+                    <p>开始添加你的第一个锻炼项目吧！</p>
+                </div>
+            </div>
+
+            <!-- 每日统计 -->
+            <div class="daily-stats">
+                <h3>今日统计</h3>
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-number" id="todayDuration">0</div>
+                        <div class="stat-label">锻炼时间(分钟)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="todayCalories">0</div>
+                        <div class="stat-label">消耗卡路里</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="todayCount">0</div>
+                        <div class="stat-label">锻炼项目</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模板管理视图 -->
+        <div id="templateView" class="content-view" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">模板管理</h1>
+                <p class="page-description">创建和管理锻炼模板，方便快速添加常用锻炼</p>
+                <div class="header-actions">
+                    <button class="btn-secondary" onclick="updateAllTemplateCalories()">🔄 更新所有模板卡路里</button>
+                </div>
+            </div>
+
+            <!-- 添加模板表单 -->
+            <div class="template-form">
+                <h3 id="templateFormTitle">添加模板</h3>
+                <form id="templateFormElement">
+                    <input type="hidden" id="templateId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="templateName">模板名称*</label>
+                            <input type="text" id="templateName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="templateType">锻炼类型*</label>
+                            <select id="templateType" required>
+                                <option value="">选择类型</option>
+                                <option value="cardio">有氧运动</option>
+                                <option value="strength">力量训练</option>
+                                <option value="flexibility">柔韧性训练</option>
+                                <option value="sports">运动项目</option>
+                                <option value="other">其他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="templateDuration">持续时间(分钟)*</label>
+                            <input type="number" id="templateDuration" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="templateIntensity">运动强度*</label>
+                            <select id="templateIntensity" required>
+                                <option value="">选择强度</option>
+                                <option value="low">低强度</option>
+                                <option value="medium">中等强度</option>
+                                <option value="high">高强度</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="templateWeight">负重 (kg)</label>
+                            <input type="number" id="templateWeight" min="0" step="0.5" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="templateNotes">备注</label>
+                            <input type="text" id="templateNotes">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="templateCalories">消耗卡路里</label>
+                            <div class="calories-input-group">
+                                <input type="number" id="templateCalories" min="0" placeholder="自动计算">
+                                <button type="button" class="btn-secondary" onclick="calculateTemplateCalories()">计算</button>
+                            </div>
+                            <div class="met-display" id="templateMETDisplay" style="display: none;">
+                                <span class="met-info">MET: <strong id="templateMETValue">--</strong></span>
+                                <span class="met-description" id="templateMETDescription">--</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <div class="weight-info">
+                                <small>💡 负重将加到体重上用于卡路里计算</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-primary">保存模板</button>
+                        <button type="button" class="btn-secondary" onclick="resetTemplateForm()">重置</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 模板列表 -->
+            <div class="template-list">
+                <h3>我的模板</h3>
+                <div id="templateItems" class="template-items">
+                    <!-- 模板项目将在这里动态加载 -->
+                </div>
+                <div id="templateEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-icon">📋</div>
+                    <h3>还没有锻炼模板</h3>
+                    <p>创建模板可以快速添加常用的锻炼项目</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模板集合管理视图 -->
+        <div id="collectionView" class="content-view" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">模板集合管理</h1>
+                <p class="page-description">创建和管理模板集合，将多个模板组合在一起，方便批量添加锻炼</p>
+            </div>
+
+            <!-- 添加集合表单 -->
+            <div class="collection-form">
+                <h3 id="collectionFormTitle">添加集合</h3>
+                <form id="collectionFormElement">
+                    <input type="hidden" id="collectionId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="collectionName">集合名称*</label>
+                            <input type="text" id="collectionName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="collectionDescription">集合描述</label>
+                            <input type="text" id="collectionDescription">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>选择模板*</label>
+                        <div id="templateCheckboxes" class="template-checkboxes">
+                            <!-- 模板复选框将在这里动态加载 -->
+                        </div>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-primary">保存集合</button>
+                        <button type="button" class="btn-secondary" onclick="resetCollectionForm()">重置</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 集合列表 -->
+            <div class="collection-list">
+                <h3>我的集合</h3>
+                <div id="collectionItems" class="collection-items">
+                    <!-- 集合项目将在这里动态加载 -->
+                </div>
+                <div id="collectionEmpty" class="empty-state" style="display: none;">
+                    <div class="empty-icon">📚</div>
+                    <h3>还没有模板集合</h3>
+                    <p>创建集合可以将多个模板组合在一起，方便批量添加锻炼</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 个人信息管理视图 -->
+        <div id="profileView" class="content-view" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">个人信息管理</h1>
+                <p class="page-description">设置您的基本信息，用于精确计算锻炼消耗的卡路里</p>
+            </div>
+
+            <!-- 个人信息表单 -->
+            <div class="profile-form">
+                <h3>基本信息</h3>
+                <form id="profileFormElement">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="profileName">姓名*</label>
+                            <input type="text" id="profileName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileGender">性别*</label>
+                            <select id="profileGender" required>
+                                <option value="">选择性别</option>
+                                <option value="male">男</option>
+                                <option value="female">女</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="profileWeight">体重 (kg)*</label>
+                            <input type="number" id="profileWeight" min="20" max="300" step="0.1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileHeight">身高 (cm)</label>
+                            <input type="number" id="profileHeight" min="100" max="250" step="0.1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="profileAge">年龄</label>
+                            <input type="number" id="profileAge" min="10" max="120">
+                        </div>
+                        <div class="form-group">
+                            <label>&nbsp;</label>
+                            <div class="bmi-display" id="bmiDisplay">
+                                <span class="bmi-label">BMI(18.5-29): </span>
+                                <span class="bmi-value">--</span>
+                                <span class="bmi-status">--</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-primary">保存信息</button>
+                        <button type="button" class="btn-secondary" onclick="resetProfileForm()">重置</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 卡路里计算说明 -->
+            <div class="calorie-info">
+                <h3>卡路里计算公式</h3>
+                <div class="formula-card">
+                    <div class="formula">
+                        <strong>卡路里 (kcal) = MET × 体重 (kg) × 时间 (小时)</strong>
+                    </div>
+                    <div class="formula-description">
+                        <p><strong>MET (代谢当量)</strong>：表示运动强度，静坐时MET=1，数值越大消耗越高</p>
+                        <p><strong>时间</strong>：自动从分钟转换为小时（如30分钟=0.5小时）</p>
+                        <p><strong>体重</strong>：以公斤为单位，影响总卡路里消耗</p>
+                        <p><strong>💡 智能计算</strong>：添加锻炼或模板时，如果您设置了体重将使用您的体重计算；如果未设置体重，系统将使用标准体重70kg进行计算</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MET值参考表 -->
+            <div class="met-reference">
+                <h3>MET值参考</h3>
+                <div id="metValuesTable" class="met-table">
+                    <!-- MET值表格将在这里动态加载 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计分析视图 -->
+        <div id="statsView" class="content-view" style="display: none;">
+            <div class="page-header">
+                <h1 class="page-title">统计分析</h1>
+                <p class="page-description">查看锻炼数据统计和趋势分析</p>
+            </div>
+
+            <!-- 统计周期选择 -->
+            <div class="stats-controls">
+                <div class="period-buttons">
+                    <button class="period-btn active" data-period="week" onclick="changePeriod('week')">本周</button>
+                    <button class="period-btn" data-period="month" onclick="changePeriod('month')">本月</button>
+                    <button class="period-btn" data-period="year" onclick="changePeriod('year')">本年</button>
+                </div>
+                <div class="date-controls">
+                    <input type="number" id="statsYear" class="year-input" min="2020" max="2030">
+                    <select id="statsMonth" class="month-select" style="display: none;">
+                        <option value="1">1月</option>
+                        <option value="2">2月</option>
+                        <option value="3">3月</option>
+                        <option value="4">4月</option>
+                        <option value="5">5月</option>
+                        <option value="6">6月</option>
+                        <option value="7">7月</option>
+                        <option value="8">8月</option>
+                        <option value="9">9月</option>
+                        <option value="10">10月</option>
+                        <option value="11">11月</option>
+                        <option value="12">12月</option>
+                    </select>
+                    <button class="btn-primary" onclick="updateStats()">更新</button>
+                </div>
+            </div>
+
+            <!-- 统计数据展示 -->
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <div class="stat-number" id="statsTotalDays">0</div>
+                    <div class="stat-label">总天数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statsExerciseDays">0</div>
+                    <div class="stat-label">锻炼天数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statsTotalDuration">0</div>
+                    <div class="stat-label">总时长(分钟)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statsTotalCalories">0</div>
+                    <div class="stat-label">总卡路里</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statsConsistency">0%</div>
+                    <div class="stat-label">坚持率</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="statsWeeklyAvg">0</div>
+                    <div class="stat-label">周平均(分钟)</div>
+                </div>
+            </div>
+
+            <!-- 锻炼类型分布 -->
+            <div class="type-stats">
+                <h3>锻炼类型分布</h3>
+                <div id="typeStatsChart" class="type-chart">
+                    <!-- 类型统计图表将在这里显示 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/js/exercise.js"></script>
+</body>
+</html> 

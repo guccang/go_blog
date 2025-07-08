@@ -36,9 +36,8 @@
 		</div>
 
 		<div class="bottom-fix-div">
-			{{ if eq "public" .AUTHTYPE }}
-                <button id="comment-show" class="btn-primary left-button" onclick="onShowComment()">显示评论</button>
-			<div id="comments" class="hide">
+                <button id="comment-show" class="btn-primary left-button" onclick="onShowComment()">收起评论</button>
+			<div id="comments">
                     <h3>所有评论</h3>
 				<div class="separator"></div>
 				{{range .COMMENTS}}
@@ -50,7 +49,7 @@
 				{{end}}
 			</div>
 
-			<div id="div-comment" class="hide">
+			<div id="div-comment">
                     <h3>发表评论</h3>
                     <div class="comment-form">
                         <label for="input-owner">用户名:</label>
@@ -59,8 +58,8 @@
                         <label for="input-mail">邮箱:</label>
                         <input id="input-mail" type="text" placeholder="请输入邮箱">
                         
-                        <label for="input-pwd">密码:</label>
-                        <input id="input-pwd" type="password" placeholder="用于管理评论">
+                        <label for="input-pwd">身份密码:</label>
+                        <input id="input-pwd" type="password" placeholder="用于确认您的身份">
                         
                         <label for="input-comment">留言:</label>
                         <input id="input-comment" type="text" placeholder="请输入评论内容">
@@ -68,7 +67,6 @@
                         <button id="commit-comment" class="btn-primary" type="button" onclick="onCommitComment()">提交评论</button>
                     </div>
 			</div>
-			{{end}}
 		</div>
 	</div>
 

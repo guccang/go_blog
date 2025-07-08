@@ -42,6 +42,8 @@ replace todolist => ./pkgs/todolist
 
 replace yearplan => ./pkgs/yearplan
 
+replace exercise => ./pkgs/exercise
+
 
 require (
 	blog v0.0.0-00010101000000-000000000000
@@ -61,6 +63,7 @@ require (
 	todolist v0.0.0-00010101000000-000000000000
 	yearplan v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
+	exercise v0.0.0-00010101000000-000000000000
 )
 
 require (

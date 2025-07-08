@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG/PUBLIC</title>
+    <link rel="stylesheet" href="/css/public.css">
+</head>
+
+<body>
+    <div class="top-sidebar-cotainer">
+        <div class="top-sidebar">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/link" style="font-size: 24px;">主页</a>
+            <a href="/public" style="font-size: 24px; color: var(--accent-color);">公开博客</a>
+            <div class="search-container">
+                <input id="search" type="text" placeholder="搜索公开博客..." list="search_list">
+                <datalist id="search_list">
+                    {{range .TAGS}}
+                        <option>{{.}}</option>
+                    {{end}}
+                </datalist>
+                <button type="button" class="search-btn">搜索</button>
+            </div>
+            <button class="view-toggle" title="切换视图">
+                <i id="view-icon">📑</i>
+                <span id="view-text">网格视图</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 页面标题 -->
+    <div class="page-header">
+        <h1 class="page-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 8px;">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
+                <path d="M12 6C8.69 6 6 8.69 6 12C6 15.31 8.69 18 12 18C15.31 18 18 15.31 18 12C18 8.69 15.31 6 12 6ZM12 16C9.79 16 8 14.21 8 12C8 9.79 9.79 8 12 8C14.21 8 16 9.79 16 12C14.21 16 12 16Z" fill="currentColor"/>
+            </svg>
+            公开博客
+        </h1>
+        <p class="page-description">展示所有公开标签的博客文章</p>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="stats-section">
+        <div class="stat-card">
+            <div class="stat-number">{{.BLOGS_NUMBER}}</div>
+            <div class="stat-label">公开博客</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{len .TAGS}}</div>
+            <div class="stat-label">公开标签</div>
+        </div>
+    </div>
+
+    <!-- 标签筛选 -->
+    <div class="filter-section">
+        <h3 class="filter-title">按标签筛选</h3>
+        <div class="tag-filters">
+            <button class="tag-filter active" data-tag="all">全部</button>
+            {{range .TAGS}}
+                <button class="tag-filter" data-tag="{{.}}">{{.}}</button>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- 博客列表 -->
+    <div class="container" id="blog-container">
+        {{range .LINKS}}
+            <div class="link-card" data-tags="{{range .TAGS}}{{.}} {{end}}">
+                <a class="link-with-dot" href="{{.URL}}">
+                    <div class="blog-title">{{.DESC}}</div>
+                    {{if .ACCESS_TIME}}
+                        <div class="blog-time">访问时间: {{.ACCESS_TIME}}</div>
+                    {{end}}
+                    {{if .TAGS}}
+                        <div class="blog-tags">
+                            {{range .TAGS}}
+                                <span class="tag">{{.}}</span>
+                            {{end}}
+                        </div>
+                    {{end}}
+                </a>
+            </div>
+        {{end}}
+    </div>
+
+    <!-- 空状态 -->
+    <div class="empty-state" id="empty-state" style="display: none;">
+        <div class="empty-icon">📝</div>
+        <h3>暂无公开博客</h3>
+        <p>当前没有找到符合条件的公开博客</p>
+    </div>
+
+    <div class="bottom-fix-div">
+        <span class="right-label">公开博客数量: {{.BLOGS_NUMBER}}</span>
+        <span class="right-label">版本: {{.VERSION}}</span>
+    </div>
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/public.js"></script>
+</body>
+</html> 

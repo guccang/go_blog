@@ -60,6 +60,18 @@ func AddComment(title string,msg string,owner string,pwd string,mail string){
 	comment.AddComment(title,msg,owner,pwd,mail)
 }
 
+func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, string) {
+	return comment.AddCommentWithAuth(title, msg, sessionID, ip, userAgent)
+}
+
+func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int, string) {
+	return comment.AddAnonymousComment(title, msg, username, email, ip, userAgent)
+}
+
+func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent string) (int, string, string) {
+	return comment.AddCommentWithPassword(title, msg, username, email, password, ip, userAgent)
+}
+
 func GetBlogsNum() int {
 	return blog.GetBlogsNum()
 }

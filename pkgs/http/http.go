@@ -21,6 +21,8 @@ import(
 	"strings"
 	"yearplan"
 	"encoding/json"
+	"exercise"
+	"comment"
 )
 
 func Info(){
@@ -362,6 +364,39 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		return
 	}
 
+	// 检查是否是 exercise 博客，如果是则重定向到 exercise 页面
+	if strings.HasPrefix(blogname, "exercise-") {
+		// 从blogname中解析出日期，格式为exercise-YYYY-MM-DD
+		date := strings.TrimPrefix(blogname, "exercise-")
+		// 验证日期格式是否正确
+		if len(date) == 10 && date[4] == '-' && date[7] == '-' {
+			// 重定向到exercise页面，并传递date参数
+			h.Redirect(w, r, fmt.Sprintf("/exercise?date=%s", date), 302)
+			return
+		}
+		// 如果日期格式不正确，则使用默认重定向
+		h.Redirect(w, r, "/exercise", 302)
+		return
+	}
+
+	// 检查是否是 月度目标 博客，如果是则重定向到 monthgoal 页面
+	if strings.HasPrefix(blogname, "月度目标_") {
+		// 从blogname中解析出年月，格式为月度目标_YYYY-MM
+		yearMonth := strings.TrimPrefix(blogname, "月度目标_")
+		// 验证年月格式是否正确
+		if len(yearMonth) == 7 && yearMonth[4] == '-' {
+			// 解析年份和月份
+			year := yearMonth[:4]
+			month := yearMonth[5:]
+			// 重定向到monthgoal页面，并传递year和month参数
+			h.Redirect(w, r, fmt.Sprintf("/monthgoal?year=%s&month=%s", year, month), 302)
+			return
+		}
+		// 如果格式不正确，则使用默认重定向
+		h.Redirect(w, r, "/monthgoal", 302)
+		return
+	}
+
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
@@ -432,30 +467,124 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 	log.DebugF("comment title:%s",title)
 	
 	owner := r.FormValue("owner")
-	pwd := r.FormValue("pwd")
-	mail :=  r.FormValue("mail")
+	mail := r.FormValue("mail")
 	comment := r.FormValue("comment")
-
-	if owner == "" {
-		// ipPort
-		owner = r.RemoteAddr
-	}
-
-	if pwd == "" {
-		// 
-		pwd = r.RemoteAddr
-	}
-
-	if mail == "" {
-	}
+	sessionID := r.FormValue("session_id") // 新增会话ID参数
 
 	if comment == "" {
 		h.Error(w, "save failed! comment is invalied!", h.StatusBadRequest)
 		return 
 	}
 
-	control.AddComment(title,comment,owner,pwd,mail)
+	// 获取用户IP和UserAgent
+	ip := r.RemoteAddr
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	if xForwardedFor != "" {
+		ip = xForwardedFor
+	}
+	userAgent := r.Header.Get("User-Agent")
 
+	// 优先使用身份验证的评论系统
+	if sessionID != "" {
+		// 使用已有会话发表评论
+		ret, msg := control.AddCommentWithAuth(title, comment, sessionID, ip, userAgent)
+		if ret == 0 {
+			w.WriteHeader(h.StatusOK)
+			w.Write([]byte(msg))
+		} else {
+			h.Error(w, msg, h.StatusBadRequest)
+		}
+		return
+	}
+
+	// 如果没有会话ID且提供了用户名，使用密码验证机制
+	if owner != "" {
+		password := r.FormValue("pwd") // 获取密码
+		
+		if password != "" {
+			// 使用密码验证创建会话
+			ret, msg, newSessionID := control.AddCommentWithPassword(title, comment, owner, mail, password, ip, userAgent)
+			if ret == 0 {
+				// 构造包含会话ID的响应
+				response := map[string]interface{}{
+					"success":    true,
+					"message":    msg,
+					"session_id": newSessionID,
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(h.StatusOK)
+				json.NewEncoder(w).Encode(response)
+			} else {
+				h.Error(w, msg, h.StatusBadRequest)
+			}
+		} else {
+			// 没有密码，创建匿名用户会话
+			ret, msg := control.AddAnonymousComment(title, comment, owner, mail, ip, userAgent)
+			if ret == 0 {
+				w.WriteHeader(h.StatusOK)
+				w.Write([]byte(msg))
+			} else {
+				h.Error(w, msg, h.StatusBadRequest)
+			}
+		}
+		return
+	}
+
+	// 兜底：使用原有的简单评论系统（保持向后兼容）
+	if owner == "" {
+		owner = ip // 使用IP作为默认用户名
+	}
+	
+	pwd := r.FormValue("pwd")
+	if pwd == "" {
+		pwd = ip // 使用IP作为默认密码
+	}
+
+	control.AddComment(title, comment, owner, pwd, mail)
+	w.WriteHeader(h.StatusOK)
+	w.Write([]byte("评论提交成功"))
+}
+
+// 检查用户名信息的API（返回使用该用户名的用户数量）
+func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleCheckUsername", r)
+	
+	if r.Method != h.MethodGet {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+	
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(h.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "用户名参数缺失",
+		})
+		return
+	}
+	
+	// 获取使用该用户名的用户列表
+	users := comment.UserManager.GetUsersByUsername(username)
+	userCount := len(users)
+	
+	response := map[string]interface{}{
+		"success":    true,
+		"available":  userCount == 0,
+		"username":   username,
+		"user_count": userCount,
+	}
+	
+	if userCount == 0 {
+		response["message"] = "新用户名，可直接使用"
+	} else {
+		response["message"] = "该用户名已被注册，请输入密码进行身份验证"
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(h.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 func HandleDelete(w h.ResponseWriter, r *h.Request){
@@ -746,6 +875,30 @@ func HandleStatistics(w h.ResponseWriter, r *h.Request) {
 	view.PageStatistics(w)
 }
 
+// HandlePublic renders the public blogs page
+func HandlePublic(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandlePublic", r)
+	// 公开页面不需要登录验证
+	view.PagePublic(w)
+}
+
+// HandleExercise renders the exercise page
+func HandleExercise(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleExercise", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		// If no date provided, use today's date
+		date = time.Now().Format("2006-01-02")
+	}
+	
+	view.PageExercise(w)
+}
+
 // HandleStatisticsAPI returns statistics data as JSON
 func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleStatisticsAPI", r)
@@ -780,6 +933,11 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 }
 
 func Init() int{
+	// Initialize todolist before registering handlers
+	if err := todolist.InitTodoList(); err != nil {
+		log.ErrorF("Failed to initialize todolist: %v", err)
+	}
+	
 	h.HandleFunc("/link",HandleLink)
 	h.HandleFunc("/editor",HandleEditor)
 	h.HandleFunc("/statics",HandleStatics)
@@ -792,6 +950,7 @@ func Init() int{
 	h.HandleFunc("/index",HandleIndex)
 	h.HandleFunc("/help",HandleHelp)
 	h.HandleFunc("/comment",HandleComment)
+	h.HandleFunc("/api/check-username", HandleCheckUsername)
 	h.HandleFunc("/d3",HandleD3)
 	h.HandleFunc("/tag",HandleTag)
 	h.HandleFunc("/getshare",HandleGetShare)
@@ -821,6 +980,25 @@ func Init() int{
 	// 统计相关路由
 	h.HandleFunc("/statistics", HandleStatistics)
 	h.HandleFunc("/api/statistics", HandleStatisticsAPI)
+	
+	// 公开博客页面路由
+	h.HandleFunc("/public", HandlePublic)
+	
+	// 锻炼相关路由
+	h.HandleFunc("/exercise", HandleExercise)
+	h.HandleFunc("/api/exercises", exercise.HandleExercises)
+	h.HandleFunc("/api/exercises/toggle", exercise.HandleToggleExercise)
+	h.HandleFunc("/api/exercise-templates", exercise.HandleTemplates)
+	h.HandleFunc("/api/exercise-stats", exercise.HandleExerciseStats)
+	h.HandleFunc("/api/exercise-collections", exercise.HandleCollections)
+	h.HandleFunc("/api/exercise-collections/add", exercise.HandleAddFromCollection)
+	h.HandleFunc("/api/exercise-collections/details", exercise.HandleGetCollectionDetails)
+	h.HandleFunc("/api/exercise-profile", exercise.HandleUserProfile)
+	h.HandleFunc("/api/exercise-calculate-calories", exercise.HandleCalculateCalories)
+	h.HandleFunc("/api/exercise-met-values", exercise.HandleMETValues)
+	h.HandleFunc("/api/exercise-get-met-value", exercise.HandleGetMETValue)
+	h.HandleFunc("/api/exercise-update-template-calories", exercise.HandleUpdateTemplateCalories)
+	h.HandleFunc("/api/exercise-update-exercise-calories", exercise.HandleUpdateExerciseCalories)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))

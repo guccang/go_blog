@@ -72,6 +72,15 @@ func HandleTodos(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // Check if controller is initialized
+    if controller == nil {
+        log.ErrorF("HandleTodos: controller is nil")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
+        return
+    }
+
     switch r.Method {
     case http.MethodGet:
         controller.HandleGetTodos(w, r)
@@ -106,6 +115,15 @@ func HandleToggleTodo(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // Check if controller is initialized
+    if controller == nil {
+        log.ErrorF("HandleToggleTodo: controller is nil")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
+        return
+    }
+
     controller.HandleToggleTodo(w, r)
 }
 
@@ -126,6 +144,15 @@ func HandleUpdateTodoTime(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusMethodNotAllowed)
         json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+        return
+    }
+
+    // Check if controller is initialized
+    if controller == nil {
+        log.ErrorF("HandleUpdateTodoTime: controller is nil")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
         return
     }
 
@@ -152,6 +179,15 @@ func HandleHistoricalTodos(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // Check if controller is initialized
+    if controller == nil {
+        log.ErrorF("HandleHistoricalTodos: controller is nil")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
+        return
+    }
+
     controller.HandleGetHistoricalTodos(w, r)
 }
 
@@ -172,6 +208,15 @@ func HandleUpdateTodoOrder(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusMethodNotAllowed)
         json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+        return
+    }
+
+    // Check if controller is initialized
+    if controller == nil {
+        log.ErrorF("HandleUpdateTodoOrder: controller is nil")
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
         return
     }
 

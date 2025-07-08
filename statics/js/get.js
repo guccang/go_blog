@@ -59,17 +59,22 @@ function onDecrypt() {
 
 function onShowComment() {
 	const btn = document.getElementById('comment-show');
-	const comments = document.getElementById('comments');
-	const divComment = document.getElementById('div-comment');
+	const toggleText = document.getElementById('toggle-text');
+	const toggleIcon = document.getElementById('toggle-icon');
+	const commentsContainer = document.getElementById('comments-container');
 	
-	if (btn.innerText === '显示评论') {
-		comments.classList.remove('hide');
-		divComment.classList.remove('hide');
-		btn.innerText = '折叠评论';
+	if (commentsContainer.classList.contains('hide')) {
+		// 显示评论
+		commentsContainer.classList.remove('hide');
+		toggleText.textContent = '收起评论';
+		toggleIcon.textContent = '▲';
+		btn.classList.add('expanded');
 	} else {
-		comments.classList.add('hide');
-		divComment.classList.add('hide');
-		btn.innerText = '显示评论';
+		// 隐藏评论
+		commentsContainer.classList.add('hide');
+		toggleText.textContent = '显示评论';
+		toggleIcon.textContent = '▼';
+		btn.classList.remove('expanded');
 	}
 }
 
@@ -103,43 +108,190 @@ function onCommitComment() {
 	const comment = document.getElementById('input-comment').value;
 	const owner = document.getElementById('input-owner').value;
 	const mail = document.getElementById('input-mail').value;
-	let pwd = document.getElementById('input-pwd').value;
+	const password = document.getElementById('input-pwd').value;
 	
 	// Validate form
-	if (!owner || !comment) {
+	if (!owner.trim() || !comment.trim()) {
 		showToast('请填写用户名和评论内容', 'error');
 		return;
 	}
 	
-	// Hash password
-	pwd = CryptoJS.MD5(pwd).toString();
+	// Check character limit
+	if (comment.length > 500) {
+		showToast('评论内容不能超过500个字符', 'error');
+		return;
+	}
+	
+	// 检查用户名是否已被注册，如果是则必须提供密码
+	if (window.currentUsernameStatus && window.currentUsernameStatus.user_count > 0 && !password.trim()) {
+		showToast('该用户名已被注册，请输入密码进行身份验证', 'error');
+		return;
+	}
+	
+	// Disable submit button to prevent double submission
+	const submitBtn = document.getElementById('commit-comment');
+	const originalText = submitBtn.innerHTML;
+	submitBtn.disabled = true;
+	submitBtn.innerHTML = '<span class="btn-icon">⏳</span><span class="btn-text">提交中...</span>';
+	
+	// Check if username is available and submit comment
+	checkUsernameAndSubmit(title, comment, owner, mail, submitBtn, originalText);
+}
 
-	// Send data
+// 检查用户名可用性并提交评论
+function checkUsernameAndSubmit(title, comment, owner, mail, submitBtn, originalText) {
+	// 获取现有会话ID（如果有）
+	const sessionID = getCommentSessionID(owner);
+	
+	if (sessionID) {
+		// 使用现有会话提交评论
+		submitCommentWithSession(title, comment, sessionID, submitBtn, originalText);
+	} else {
+		// 获取密码（如果用户填写了）
+		const password = document.getElementById('input-pwd').value;
+		
+		// 使用密码验证机制提交评论
+		submitCommentWithPassword(title, comment, owner, mail, password, submitBtn, originalText);
+	}
+}
+
+// 使用会话ID提交评论
+function submitCommentWithSession(title, comment, sessionID, submitBtn, originalText) {
+	const xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == 4) {
+			handleCommentSubmitResponse(xhr, submitBtn, originalText);
+		}
+	};
+	
+	const formData = new FormData();
+	formData.append('title', title);
+	formData.append('comment', comment);
+	formData.append('session_id', sessionID);
+	xhr.open('POST', '/comment', true);
+	xhr.send(formData);
+}
+
+// 使用密码验证机制提交评论
+function submitCommentWithPassword(title, comment, owner, mail, password, submitBtn, originalText) {
 	const xhr = new XMLHttpRequest();
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == 4) {
 			if (xhr.status == 200) {
-				showToast('评论提交成功', 'success');
-				// Clear form
-				document.getElementById('input-comment').value = '';
-				// Refresh to see new comment
-				setTimeout(() => {
-					location.reload();
-				}, 1500);
-			} else {
-				showToast('评论提交失败: ' + xhr.responseText, 'error');
+				// 尝试从响应中提取会话ID并保存
+				try {
+					const response = JSON.parse(xhr.responseText);
+					if (response.session_id) {
+						saveCommentSessionID(owner, response.session_id);
+						showToast('评论提交成功！已保存身份信息', 'success');
+					}
+				} catch (e) {
+					// 响应不是JSON格式，说明是普通文本响应
+					showToast('评论提交成功！', 'success');
+				}
 			}
+			handleCommentSubmitResponse(xhr, submitBtn, originalText);
 		}
 	};
 	
 	const formData = new FormData();
 	formData.append('title', title);
 	formData.append('owner', owner);
-	formData.append('pwd', pwd);
+	formData.append('mail', mail);
+	formData.append('pwd', password); // 添加密码字段
+	formData.append('comment', comment);
+	xhr.open('POST', '/comment', true);
+	xhr.send(formData);
+}
+
+// 作为匿名用户提交评论
+function submitCommentAsAnonymous(title, comment, owner, mail, submitBtn, originalText) {
+	const xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == 4) {
+			if (xhr.status == 200) {
+				// 尝试从响应中提取会话ID并保存
+				try {
+					const response = JSON.parse(xhr.responseText);
+					if (response.session_id) {
+						saveCommentSessionID(owner, response.session_id);
+					}
+				} catch (e) {
+					// 响应不是JSON格式，忽略
+				}
+			}
+			handleCommentSubmitResponse(xhr, submitBtn, originalText);
+		}
+	};
+	
+	const formData = new FormData();
+	formData.append('title', title);
+	formData.append('owner', owner);
 	formData.append('mail', mail);
 	formData.append('comment', comment);
 	xhr.open('POST', '/comment', true);
 	xhr.send(formData);
+}
+
+// 处理评论提交响应
+function handleCommentSubmitResponse(xhr, submitBtn, originalText) {
+	// Re-enable submit button
+	submitBtn.disabled = false;
+	submitBtn.innerHTML = originalText;
+	
+	if (xhr.status == 200) {
+		// 清空表单
+		document.getElementById('input-comment').value = '';
+		document.getElementById('input-owner').value = '';
+		document.getElementById('input-mail').value = '';
+		document.getElementById('input-pwd').value = '';
+		updateCharCount('');
+		
+		// 刷新页面查看新评论
+		setTimeout(() => {
+			location.reload();
+		}, 1500);
+	} else {
+		showToast('评论提交失败: ' + xhr.responseText, 'error');
+	}
+}
+
+// 获取本地存储的评论会话ID
+function getCommentSessionID(username) {
+	try {
+		const sessions = JSON.parse(localStorage.getItem('commentSessions') || '{}');
+		return sessions[username] || null;
+	} catch (e) {
+		return null;
+	}
+}
+
+// 保存评论会话ID到本地存储
+function saveCommentSessionID(username, sessionID) {
+	try {
+		const sessions = JSON.parse(localStorage.getItem('commentSessions') || '{}');
+		sessions[username] = sessionID;
+		localStorage.setItem('commentSessions', JSON.stringify(sessions));
+		
+		// 设置过期时间（7天）
+		const expiry = Date.now() + (7 * 24 * 60 * 60 * 1000);
+		localStorage.setItem('commentSessionsExpiry', expiry.toString());
+	} catch (e) {
+		console.warn('无法保存评论会话ID:', e);
+	}
+}
+
+// 清理过期的会话ID
+function cleanupExpiredSessions() {
+	try {
+		const expiry = localStorage.getItem('commentSessionsExpiry');
+		if (expiry && Date.now() > parseInt(expiry)) {
+			localStorage.removeItem('commentSessions');
+			localStorage.removeItem('commentSessionsExpiry');
+		}
+	} catch (e) {
+		console.warn('清理过期会话时出错:', e);
+	}
 }
 
 function onEditor() {
@@ -290,6 +442,12 @@ window.onload = function() {
 	
 	// 添加返回按钮
 	addBackButton();
+	
+	// 初始化评论功能
+	initCommentFeatures();
+	
+	// 清理过期的评论会话
+	cleanupExpiredSessions();
 }
 
 // 添加返回按钮
@@ -309,4 +467,117 @@ function addBackButton() {
 	// 添加到按钮容器内，而不是编辑器容器内
 	const buttonsContainer = document.querySelector('.buttons-container');
 	buttonsContainer.insertBefore(backButton, buttonsContainer.firstChild);
+}
+
+// 字符计数功能
+function updateCharCount(text) {
+	const charCounter = document.getElementById('char-counter');
+	const charCount = document.querySelector('.char-count');
+	
+	if (charCounter && charCount) {
+		const length = text.length;
+		charCounter.textContent = length;
+		
+		// 更新颜色提示
+		charCount.classList.remove('warning', 'danger');
+		if (length > 400) {
+			charCount.classList.add('danger');
+		} else if (length > 300) {
+			charCount.classList.add('warning');
+		}
+	}
+}
+
+// 初始化评论相关事件监听器
+function initCommentFeatures() {
+	const commentTextarea = document.getElementById('input-comment');
+	
+	if (commentTextarea) {
+		// 添加字符计数监听器
+		commentTextarea.addEventListener('input', function() {
+			updateCharCount(this.value);
+		});
+		
+		// 添加回车键支持（Ctrl+Enter提交）
+		commentTextarea.addEventListener('keydown', function(e) {
+			if (e.ctrlKey && e.key === 'Enter') {
+				onCommitComment();
+			}
+		});
+		
+		// 初始化字符计数
+		updateCharCount(commentTextarea.value);
+	}
+	
+	// 添加表单验证提示
+	const requiredInputs = document.querySelectorAll('#input-owner, #input-comment');
+	requiredInputs.forEach(input => {
+		input.addEventListener('blur', function() {
+			if (this.hasAttribute('required') && !this.value.trim()) {
+				this.style.borderColor = 'var(--danger-color)';
+			} else {
+				this.style.borderColor = 'var(--border-color)';
+			}
+		});
+		
+		input.addEventListener('input', function() {
+			if (this.style.borderColor === 'var(--danger-color)' && this.value.trim()) {
+				this.style.borderColor = 'var(--border-color)';
+			}
+		});
+	});
+	
+	// 用户名实时检查
+	const ownerInput = document.getElementById('input-owner');
+	if (ownerInput) {
+		ownerInput.addEventListener('input', function() {
+			clearTimeout(window.usernameCheckTimeout);
+			window.usernameCheckTimeout = setTimeout(checkUsernameStatus, 500);
+		});
+	}
+}
+
+// 检查用户名状态并显示提示
+function checkUsernameStatus() {
+	const ownerInput = document.getElementById('input-owner');
+	const usernameHint = document.getElementById('username-hint');
+	const passwordGroup = document.getElementById('input-pwd').closest('.form-group');
+	const passwordLabel = passwordGroup ? passwordGroup.querySelector('label') : null;
+	const username = ownerInput.value.trim();
+	
+	if (username.length < 2) {
+		if (usernameHint) usernameHint.textContent = '';
+		window.currentUsernameStatus = null;
+		if (passwordLabel) passwordLabel.textContent = '身份密码';
+		return;
+	}
+	
+	const xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == 4 && xhr.status == 200) {
+			try {
+				const response = JSON.parse(xhr.responseText);
+				if (response.success && usernameHint) {
+					// 保存状态供表单验证使用
+					window.currentUsernameStatus = response;
+					
+					usernameHint.textContent = response.message;
+					
+					// 根据用户数量改变提示颜色和密码字段标签
+					if (response.user_count === 0) {
+						usernameHint.className = 'form-hint new-user';
+						if (passwordLabel) passwordLabel.textContent = '身份密码（可选）';
+					} else {
+						usernameHint.className = 'form-hint existing-user';
+						if (passwordLabel) passwordLabel.textContent = '身份密码 *';
+					}
+				}
+			} catch (e) {
+				console.error('解析用户名检查响应失败:', e);
+			}
+		}
+	};
+	
+	xhr.open('GET', `/api/check-username?username=${encodeURIComponent(username)}`, true);
+	xhr.send();
 }
