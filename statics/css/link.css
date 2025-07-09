@@ -511,3 +511,40 @@ body {
 .recent-card-circle:nth-child(8n+6) .circle-avatar { background-color: #6b9080; }
 .recent-card-circle:nth-child(8n+7) .circle-avatar { background-color: #a8dadc; }
 .recent-card-circle:nth-child(8n+8) .circle-avatar { background-color: #457b9d; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  margin-right: 18px;
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 18px;
+}
+.nav-item:hover {
+  background: #ffe5d0;
+  color: var(--accent-color);
+}
+.nav-icon {
+  font-size: 22px;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+}
+.nav-text {
+  font-size: 16px;
+  color: #3d2c1e;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+}
+@media (max-width: 768px) {
+  .nav-text {
+    display: none;
+  }
+  .nav-item {
+    margin-right: 10px;
+    padding: 6px 6px;
+  }
+}

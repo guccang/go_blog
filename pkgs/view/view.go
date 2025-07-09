@@ -789,6 +789,66 @@ func PageStatistics(w h.ResponseWriter) {
 	}
 }
 
+// PageReading renders the reading page
+func PageReading(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse reading.template: %s", err.Error())
+		h.Error(w, "Failed to parse reading template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render reading.template: %s", err.Error())
+		h.Error(w, "Failed to render reading template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageBookDetail renders the book detail page
+func PageBookDetail(w h.ResponseWriter, book *module.Book) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "book_detail.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse book_detail.template: %s", err.Error())
+		h.Error(w, "Failed to parse book detail template", h.StatusInternalServerError)
+		return
+	}
+	
+	data := struct {
+		Book *module.Book
+	}{
+		Book: book,
+	}
+	
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.ErrorF("Failed to render book_detail.template: %s", err.Error())
+		h.Error(w, "Failed to render book detail template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageReadingDashboard renders the reading dashboard page
+func PageReadingDashboard(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading_dashboard.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse reading_dashboard.template: %s", err.Error())
+		h.Error(w, "Failed to parse reading dashboard template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render reading_dashboard.template: %s", err.Error())
+		h.Error(w, "Failed to render reading dashboard template", h.StatusInternalServerError)
+		return
+	}
+}
+
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter) {
 	// 获取所有public标签的博客

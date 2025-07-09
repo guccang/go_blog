@@ -14,13 +14,14 @@
 			<a href="/link">
 				<div class="img-cycle">G</div>
 			</a>
-			<a href="/editor" style="font-size: 24px;">创建博客</a>
-			<a href="/todolist" style="font-size: 24px;" onclick="navigateToTodolist(event)">每日任务</a>
-			<a href="/monthgoal" style="font-size: 24px;">月度计划</a>
-			<a href="/yearplan" style="font-size: 24px;">年度计划</a>
-			<a href="/exercise" style="font-size: 24px;">💪 锻炼管理</a>
-			<a href="/statistics" style="font-size: 24px;">📊 访问统计</a>
-			<a href="/public" style="font-size: 24px;">🌐 公开博客</a>
+			<a href="/editor" class="nav-item"><span class="nav-icon">📝</span><span class="nav-text">创建博客</span></a>
+			<a href="/todolist" class="nav-item" onclick="navigateToTodolist(event)"><span class="nav-icon">✅</span><span class="nav-text">每日任务</span></a>
+			<a href="/monthgoal" class="nav-item"><span class="nav-icon">📅</span><span class="nav-text">月度计划</span></a>
+			<a href="/yearplan" class="nav-item"><span class="nav-icon">📆</span><span class="nav-text">年度计划</span></a>
+			<a href="/exercise" class="nav-item"><span class="nav-icon">💪</span><span class="nav-text">锻炼管理</span></a>
+			<a href="/reading" class="nav-item"><span class="nav-icon">📚</span><span class="nav-text">读书记录</span></a>
+			<a href="/statistics" class="nav-item"><span class="nav-icon">📊</span><span class="nav-text">访问统计</span></a>
+			<a href="/public" class="nav-item"><span class="nav-icon">🌐</span><span class="nav-text">公开博客</span></a>
 			<div class="search-container">
 				<input id="search" type="text" placeholder="搜索博客或标签..." list="search_list">
 			<datalist id="search_list">

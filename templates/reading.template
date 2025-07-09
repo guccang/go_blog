@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📚 我的读书空间 - GUCCANG</title>
+    <link rel="stylesheet" href="/css/reading.css">
+</head>
+<body id="body" class="th_black">
+    <!-- Sidebar -->
+    <div id="sidebar-container" class="sidebar-container">
+        <div id="sidebar" class="sidebar">
+            <a href="/link">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/link" style="font-size: 24px;">主页</a>
+            <div class="separator"></div>
+            
+            <!-- 统计面板 -->
+            <div class="stats-panel">
+                <h3>📊 阅读统计</h3>
+                <div class="stat-item">
+                    <span class="stat-label">总书籍:</span>
+                    <span id="total-books" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">阅读中:</span>
+                    <span id="reading-books" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">已完成:</span>
+                    <span id="finished-books" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">总页数:</span>
+                    <span id="total-pages" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">笔记数:</span>
+                    <span id="total-notes" class="stat-value">0</span>
+                </div>
+            </div>
+            
+            <div class="separator"></div>
+            
+            <!-- 筛选面板 -->
+            <div class="filter-panel">
+                <h3>🔍 筛选</h3>
+                <div class="filter-group">
+                    <label>状态:</label>
+                    <select id="status-filter">
+                        <option value="">全部</option>
+                        <option value="unstart">未开始</option>
+                        <option value="reading">阅读中</option>
+                        <option value="finished">已完成</option>
+                        <option value="paused">暂停</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>分类:</label>
+                    <select id="category-filter">
+                        <option value="">全部分类</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>评分:</label>
+                    <select id="rating-filter">
+                        <option value="">全部</option>
+                        <option value="5">⭐⭐⭐⭐⭐</option>
+                        <option value="4">⭐⭐⭐⭐</option>
+                        <option value="3">⭐⭐⭐</option>
+                        <option value="2">⭐⭐</option>
+                        <option value="1">⭐</option>
+                    </select>
+                </div>
+                
+                <!-- 排序面板 -->
+                <div class="separator"></div>
+                <h3>📊 排序</h3>
+                <div class="filter-group">
+                    <label>排序方式:</label>
+                    <select id="sort-by">
+                        <option value="add_time">添加时间</option>
+                        <option value="title">书名</option>
+                        <option value="author">作者</option>
+                        <option value="rating">评分</option>
+                        <option value="progress">阅读进度</option>
+                        <option value="status">阅读状态</option>
+                        <option value="pages">总页数</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>排序顺序:</label>
+                    <select id="sort-order">
+                        <option value="desc">降序 ↓</option>
+                        <option value="asc">升序 ↑</option>
+                    </select>
+                </div>
+                
+                <button id="clear-filters" class="btn-secondary">清除筛选</button>
+            </div>
+        </div>
+        <div class="bubble" id="bubble">&#9776;</div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- 顶部操作栏 -->
+        <div class="top-bar">
+            <div class="search-section">
+                <input type="text" id="search-input" placeholder="搜索书名、作者或内容..." class="search-input">
+                <button id="search-btn" class="btn-primary">🔍 搜索</button>
+            </div>
+            <div class="action-section">
+                <button id="add-book-btn" class="btn-primary">📚 添加书籍</button>
+                <button id="import-url-btn" class="btn-secondary">🔗 URL导入</button>
+                <a href="/reading-dashboard" class="btn-secondary">📊 仪表板</a>
+            </div>
+        </div>
+
+        <!-- 书籍网格 -->
+        <div id="books-grid" class="books-grid">
+            <!-- 书籍卡片将通过JavaScript动态生成 -->
+        </div>
+
+        <!-- 空状态 -->
+        <div id="empty-state" class="empty-state hide">
+            <div class="empty-icon">📚</div>
+            <h3>还没有添加任何书籍</h3>
+            <p>点击"添加书籍"开始记录您的阅读之旅</p>
+            <button id="add-first-book" class="btn-primary">添加第一本书</button>
+        </div>
+    </div>
+
+    <!-- 添加书籍模态框 -->
+    <div id="add-book-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📚 添加新书籍</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-book-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="book-title">书名 *</label>
+                            <input type="text" id="book-title" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="book-author">作者 *</label>
+                            <input type="text" id="book-author" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="book-isbn">ISBN</label>
+                            <input type="text" id="book-isbn">
+                        </div>
+                        <div class="form-group">
+                            <label for="book-publisher">出版社</label>
+                            <input type="text" id="book-publisher">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="book-publish-date">出版日期</label>
+                            <input type="date" id="book-publish-date">
+                        </div>
+                        <div class="form-group">
+                            <label for="book-total-pages">总页数</label>
+                            <input type="number" id="book-total-pages" min="1">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="book-cover-url">封面图片URL</label>
+                        <input type="url" id="book-cover-url">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="book-description">简介</label>
+                        <textarea id="book-description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="book-category">分类标签</label>
+                            <input type="text" id="book-category" placeholder="用逗号分隔，如：技术,编程">
+                        </div>
+                        <div class="form-group">
+                            <label for="book-tags">自定义标签</label>
+                            <input type="text" id="book-tags" placeholder="用逗号分隔，如：实用,进阶">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="book-source-url">来源URL</label>
+                        <input type="url" id="book-source-url" placeholder="豆瓣、亚马逊等链接">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" data-dismiss="modal">取消</button>
+                <button type="submit" form="add-book-form" class="btn-primary">添加书籍</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- URL导入模态框 -->
+    <div id="import-url-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔗 从URL导入书籍</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="import-url">书籍链接</label>
+                    <input type="url" id="import-url" placeholder="粘贴豆瓣、亚马逊等书籍页面链接">
+                    <small class="form-hint">支持豆瓣读书、亚马逊、当当网等主流图书网站</small>
+                </div>
+                <div id="import-preview" class="import-preview hide">
+                    <h4>预览信息</h4>
+                    <div id="preview-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" data-dismiss="modal">取消</button>
+                <button id="parse-url-btn" class="btn-primary">解析URL</button>
+                <button id="confirm-import-btn" class="btn-success hide">确认导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/js/reading.js"></script>
+</body>
+</html> 

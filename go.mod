@@ -1,6 +1,6 @@
 module go_blog
 
-go 1.20
+go 1.21
 
 replace module => ./pkgs/module
 
@@ -44,9 +44,10 @@ replace yearplan => ./pkgs/yearplan
 
 replace exercise => ./pkgs/exercise
 
+replace reading => ./pkgs/reading
 
 require (
-	blog v0.0.0-00010101000000-000000000000
+	blog v0.0.0
 	comment v0.0.0-00010101000000-000000000000
 	config v0.0.0-00010101000000-000000000000
 	control v0.0.0-00010101000000-000000000000
@@ -54,22 +55,23 @@ require (
 	http v0.0.0-00010101000000-000000000000
 	ioutils v0.0.0-00010101000000-000000000000
 	login v0.0.0-00010101000000-000000000000
-	module v0.0.0-00010101000000-000000000000
+	module v0.0.0
 	mylog v0.0.0-00010101000000-000000000000
 	persistence v0.0.0-00010101000000-000000000000
 	search v0.0.0-00010101000000-000000000000
 	share v0.0.0-00010101000000-000000000000
 	statistics v0.0.0-00010101000000-000000000000
-	todolist v0.0.0-00010101000000-000000000000
-	yearplan v0.0.0-00010101000000-000000000000
 	view v0.0.0-00010101000000-000000000000
-	exercise v0.0.0-00010101000000-000000000000
 )
 
 require (
 	auth v0.0.0-00010101000000-000000000000 // indirect
+	exercise v0.0.0-00010101000000-000000000000 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.30.0 // indirect
+	reading v0.0.0-00010101000000-000000000000 // indirect
+	todolist v0.0.0-00010101000000-000000000000 // indirect
+	yearplan v0.0.0-00010101000000-000000000000 // indirect
 )

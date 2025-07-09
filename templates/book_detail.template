@@ -1,0 +1,2161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Book.Title}} - 读书详情</title>
+    <link rel="stylesheet" href="/css/reading.css">
+    <link rel="stylesheet" href="/css/styles.css">
+    <script src="/js/marked/marked.min.js"></script>
+    <style>
+        .book-detail-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #faf6f0;
+            min-height: 100vh;
+        }
+        
+        .book-header {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 30px;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #ddd0c0;
+        }
+        
+        .book-cover-large {
+            width: 200px;
+            height: 300px;
+            background: linear-gradient(135deg, #e76f51 0%, #f4a261 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+            flex-shrink: 0;
+            border: 2px solid #ddd0c0;
+        }
+        
+        .book-cover-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        
+        .book-info {
+            flex: 1;
+        }
+        
+        .book-title-large {
+            font-size: 28px;
+            font-weight: bold;
+            color: #433520;
+            margin-bottom: 10px;
+        }
+        
+        .book-author-large {
+            font-size: 18px;
+            color: #8b7355;
+            margin-bottom: 20px;
+        }
+        
+        .book-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .meta-label {
+            font-weight: bold;
+            color: #433520;
+            min-width: 80px;
+        }
+        
+        .meta-value {
+            color: #8b7355;
+        }
+        
+        .book-description {
+            background: #f5efe6;
+            padding: 20px;
+            border-radius: 8px;
+            line-height: 1.6;
+            color: #433520;
+            border: 1px solid #ddd0c0;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #ddd0c0;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            color: #8b7355;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            color: #e76f51;
+            border-bottom-color: #e76f51;
+        }
+        
+        .tab-content {
+            display: none;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #ddd0c0;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .progress-section {
+            margin-bottom: 30px;
+        }
+        
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar-large {
+            height: 12px;
+            background: #f5efe6;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 1px solid #ddd0c0;
+        }
+        
+        .progress-fill-large {
+            height: 100%;
+            background: linear-gradient(90deg, #e76f51, #f4a261);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .progress-input {
+            width: 80px;
+            padding: 5px 10px;
+            border: 1px solid #ddd0c0;
+            border-radius: 4px;
+            text-align: center;
+            background-color: #ffffff;
+        }
+        
+        .progress-unit {
+            font-size: 16px;
+            color: #8b7355;
+            font-weight: bold;
+            margin-left: -5px;
+        }
+        
+        .quick-progress {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .quick-progress-label {
+            font-size: 14px;
+            color: #8b7355;
+            margin-right: 5px;
+        }
+        
+        .btn-quick {
+            padding: 4px 8px;
+            border: 1px solid #ddd0c0;
+            border-radius: 4px;
+            background: #f5efe6;
+            color: #433520;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-quick:hover {
+            background: #e76f51;
+            color: white;
+            border-color: #e76f51;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #e76f51;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #f4a261;
+        }
+        
+        .btn-success {
+            background: #6b9080;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #5a7c6f;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            line-height: 1.4;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+        
+        .btn-warning:hover {
+            background: #e67e22;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        
+        .book-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: flex-end;
+            width: 100%;
+            padding: 10px 0;
+        }
+        
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal.hide {
+            display: none;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #ddd0c0;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: #433520;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #8b7355;
+        }
+        
+        .modal-close:hover {
+            color: #e76f51;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #ddd0c0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        
+        /* 封面预览样式 */
+        .cover-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5efe6;
+            border-radius: 4px;
+            border: 1px solid #ddd0c0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .preview-label {
+            font-size: 12px;
+            color: #8b7355;
+            font-weight: 500;
+        }
+        
+        .preview-error {
+            font-size: 12px;
+            color: #e63946;
+        }
+        
+        /* URL输入组样式 */
+        .url-input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .url-input-group .form-input {
+            flex: 1;
+        }
+        
+        .test-url-btn {
+            padding: 8px 12px;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+        
+        .notes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .note-item {
+            background: #f5efe6;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #e76f51;
+        }
+        
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .note-header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .note-location {
+            font-size: 12px;
+            color: #8b7355;
+        }
+        
+        .note-actions,
+        .insight-actions {
+            display: flex;
+            gap: 5px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .note-item:hover .note-actions,
+        .insight-item:hover .insight-actions {
+            opacity: 1;
+        }
+        
+        .btn-action {
+            padding: 4px 6px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+            background: transparent;
+        }
+        
+        .btn-action:hover {
+            transform: scale(1.1);
+        }
+        
+        .btn-action.btn-edit {
+            color: #f39c12;
+        }
+        
+        .btn-action.btn-edit:hover {
+            background: rgba(243, 156, 18, 0.1);
+        }
+        
+        .btn-action.btn-delete {
+            color: #e74c3c;
+        }
+        
+        .btn-action.btn-delete:hover {
+            background: rgba(231, 76, 60, 0.1);
+        }
+        
+        .note-content {
+            line-height: 1.6;
+            color: #433520;
+        }
+        
+        .insights-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .insight-item {
+            background: #f5efe6;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #e9c46a;
+        }
+        
+        .insight-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .insight-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .insight-title {
+            font-weight: bold;
+            color: #433520;
+        }
+        
+        .insight-rating {
+            color: #e9c46a;
+        }
+        
+        .insight-content {
+            line-height: 1.6;
+            color: #433520;
+            margin-bottom: 10px;
+        }
+        
+        .insight-takeaway {
+            background: #eadbc8;
+            padding: 10px;
+            border-radius: 4px;
+            font-style: italic;
+            color: #8b7355;
+        }
+        
+        /* Markdown内容样式 */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
+            color: #433520;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            font-weight: bold;
+        }
+        
+        .markdown-content h1 { font-size: 1.8em; }
+        .markdown-content h2 { font-size: 1.6em; }
+        .markdown-content h3 { font-size: 1.4em; }
+        .markdown-content h4 { font-size: 1.2em; }
+        .markdown-content h5 { font-size: 1.1em; }
+        .markdown-content h6 { font-size: 1em; }
+        
+        .markdown-content p {
+            margin: 0.8em 0;
+        }
+        
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 0.8em 0;
+            padding-left: 2em;
+        }
+        
+        .markdown-content li {
+            margin: 0.3em 0;
+        }
+        
+        .markdown-content blockquote {
+            margin: 1em 0;
+            padding: 0.5em 1em;
+            border-left: 4px solid #e76f51;
+            background: #f5efe6;
+            color: #8b7355;
+            font-style: italic;
+        }
+        
+        .markdown-content code {
+            background: #f5efe6;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            color: #e76f51;
+            border: 1px solid #ddd0c0;
+        }
+        
+        .markdown-content pre {
+            background: #f5efe6;
+            padding: 1em;
+            border-radius: 4px;
+            overflow-x: auto;
+            border: 1px solid #ddd0c0;
+            margin: 1em 0;
+        }
+        
+        .markdown-content pre code {
+            background: none;
+            padding: 0;
+            border: none;
+            color: #433520;
+        }
+        
+        .markdown-content strong {
+            color: #433520;
+            font-weight: bold;
+        }
+        
+        .markdown-content em {
+            color: #8b7355;
+            font-style: italic;
+        }
+        
+        .markdown-content a {
+            color: #e76f51;
+            text-decoration: none;
+        }
+        
+        .markdown-content a:hover {
+            color: #f4a261;
+            text-decoration: underline;
+        }
+        
+        .markdown-content hr {
+            border: none;
+            border-top: 2px solid #ddd0c0;
+            margin: 2em 0;
+        }
+        
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }
+        
+        .markdown-content th,
+        .markdown-content td {
+            border: 1px solid #ddd0c0;
+            padding: 0.5em;
+            text-align: left;
+        }
+        
+        .markdown-content th {
+            background: #f5efe6;
+            font-weight: bold;
+            color: #433520;
+        }
+        
+        /* Markdown提示样式 */
+        .markdown-tip {
+            font-size: 12px;
+            color: #8b7355;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #f5efe6;
+            border-radius: 4px;
+            border-left: 3px solid #e76f51;
+        }
+        
+        .markdown-tip code {
+            background: #eadbc8;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-size: 11px;
+        }
+        
+        .add-form {
+            background: #f5efe6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd0c0;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #433520;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd0c0;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #ffffff;
+        }
+        
+        .form-textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd0c0;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #ffffff;
+            resize: vertical;
+            line-height: 1.5;
+            font-family: inherit;
+        }
+        
+        .form-textarea:focus {
+            outline: none;
+            border-color: #e76f51;
+            box-shadow: 0 0 0 3px rgba(231, 111, 81, 0.1);
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .form-col {
+            flex: 1;
+        }
+        
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #e76f51;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(231, 111, 81, 0.3);
+            white-space: nowrap;
+            display: inline-block;
+            width: auto;
+        }
+        
+        .back-btn:hover {
+            background: #f4a261;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(231, 111, 81, 0.4);
+        }
+        
+        .back-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(231, 111, 81, 0.3);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #8b7355;
+        }
+        
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        @media (max-width: 768px) {
+            .book-header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .book-cover-large {
+                width: 150px;
+                height: 225px;
+                margin: 0 auto;
+            }
+            
+            .book-meta {
+                grid-template-columns: 1fr;
+            }
+            
+            .tabs {
+                overflow-x: auto;
+            }
+            
+            .progress-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .quick-progress {
+                justify-content: center;
+                margin-top: 15px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+            }
+            
+            .back-btn {
+                top: 15px;
+                left: 15px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+        <!-- 隐藏的数据容器，用于传递后端数据给JavaScript -->
+        <div id="book-data" 
+             data-book-id="{{.Book.ID}}"
+             data-current-page="{{.Book.CurrentPage}}" 
+             data-total-pages="{{.Book.TotalPages}}"
+             data-book-rating="{{.Book.Rating}}"
+             data-book-title="{{.Book.Title}}"
+             data-book-author="{{.Book.Author}}"
+             data-book-isbn="{{.Book.ISBN}}"
+             data-book-publisher="{{.Book.Publisher}}"
+             data-book-publish-date="{{.Book.PublishDate}}"
+             data-book-cover-url="{{.Book.CoverUrl}}"
+             data-book-description="{{.Book.Description}}"
+             data-book-source-url="{{.Book.SourceUrl}}"
+             data-book-category="{{range $i, $cat := .Book.Category}}{{if $i}}, {{end}}{{$cat}}{{end}}"
+             data-book-tags="{{range $i, $tag := .Book.Tags}}{{if $i}}, {{end}}{{$tag}}{{end}}"
+             style="display: none;">
+        </div>
+    <button class="back-btn" onclick="window.history.back()">← 返回书库</button>
+    
+    <div class="book-detail-container">
+        <!-- 书籍头部信息 -->
+        <div class="book-header">
+            <div class="book-cover-large" id="book-cover-container">
+                {{if .Book.CoverUrl}}
+                    <img src="{{.Book.CoverUrl}}" alt="{{.Book.Title}}" 
+                         onerror="try { handleImageError(this); } catch(e) { console.error('Error in handleImageError:', e); this.style.display='none'; }" 
+                         onload="console.log('封面图片加载成功')"
+                         style="width: 100%; height: 100%; object-fit: cover;">
+                {{else}}
+                    <div style="font-size: 48px; color: white; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">📚</div>
+                {{end}}
+            </div>
+            <div class="book-info">
+                <h1 class="book-title-large">{{.Book.Title}}</h1>
+                <p class="book-author-large">{{.Book.Author}}</p>
+                
+                <div class="book-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">状态:</span>
+                        <span class="meta-value status-{{.Book.Status}}">
+                            {{if eq .Book.Status "unstart"}}未开始
+                            {{else if eq .Book.Status "reading"}}阅读中
+                            {{else if eq .Book.Status "finished"}}已完成
+                            {{else if eq .Book.Status "paused"}}暂停
+                            {{else}}未知{{end}}
+                        </span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">出版社:</span>
+                        <span class="meta-value">{{.Book.Publisher}}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">ISBN:</span>
+                        <span class="meta-value">{{.Book.ISBN}}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">页数:</span>
+                        <span class="meta-value">{{.Book.TotalPages}}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">评分:</span>
+                        <span class="meta-value" id="book-rating">
+                            {{if .Book.Rating}}
+                                {{.Book.Rating}}
+                            {{else}}
+                                未评分
+                            {{end}}
+                        </span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">分类:</span>
+                        <span class="meta-value">
+                            {{range $i, $cat := .Book.Category}}
+                                {{if $i}}, {{end}}{{$cat}}
+                            {{end}}
+                        </span>
+                    </div>
+                </div>
+                
+                {{if .Book.Description}}
+                <div class="book-description">
+                    {{.Book.Description}}
+                </div>
+                {{end}}
+            </div>
+        </div>
+        
+        <!-- 标签页 -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('progress')">阅读进度</button>
+            <button class="tab" onclick="switchTab('notes')">读书笔记</button>
+            <button class="tab" onclick="switchTab('insights')">读书心得</button>
+        </div>
+        
+        <!-- 阅读进度标签页 -->
+        <div id="progress-tab" class="tab-content active">
+            <div class="progress-section">
+                <div class="progress-info">
+                    <span>阅读进度</span>
+                    <span id="progress-text">0%</span>
+                </div>
+                <div class="progress-bar-large">
+                    <div class="progress-fill-large" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-controls">
+                    <input type="number" class="progress-input" id="current-progress" value="0" min="0" max="100" step="1" placeholder="输入百分比">
+                    <span class="progress-unit">%</span>
+                    <button class="btn btn-primary" onclick="updateProgress()">更新进度</button>
+                    <button class="btn btn-success" onclick="markAsFinished()">标记完成</button>
+                </div>
+                
+                <div class="quick-progress">
+                    <span class="quick-progress-label">快捷设置：</span>
+                    <button class="btn-quick" onclick="setQuickProgress(25)">25%</button>
+                    <button class="btn-quick" onclick="setQuickProgress(50)">50%</button>
+                    <button class="btn-quick" onclick="setQuickProgress(75)">75%</button>
+                    <button class="btn-quick" onclick="setQuickProgress(100)">100%</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 读书笔记标签页 -->
+        <div id="notes-tab" class="tab-content">
+            <div class="add-form">
+                <h3>添加笔记</h3>
+                <form id="add-note-form">
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label class="form-label">章节</label>
+                            <input type="text" class="form-input" id="note-chapter" placeholder="例如：第一章">
+                        </div>
+                        <div class="form-col">
+                            <label class="form-label">页码</label>
+                            <input type="number" class="form-input" id="note-page" placeholder="页码">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">笔记内容</label>
+                        <textarea class="form-textarea" id="note-content" placeholder="记录你的想法、摘录或总结..." rows="4"></textarea>
+                        <div class="markdown-tip">
+                            💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>`代码`</code> <code>- 列表</code> <code>&gt; 引用</code>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">添加笔记</button>
+                </form>
+            </div>
+            
+            <div class="notes-list" id="notes-list">
+                <div class="empty-state">
+                    <i>📝</i>
+                    <p>还没有笔记，开始记录你的阅读心得吧！</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 读书心得标签页 -->
+        <div id="insights-tab" class="tab-content">
+            <div class="add-form">
+                <h3>添加心得</h3>
+                <form id="add-insight-form">
+                    <div class="form-group">
+                        <label class="form-label">心得标题</label>
+                        <input type="text" class="form-input" id="insight-title" placeholder="给你的心得起个标题">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label class="form-label">评分</label>
+                            <select class="form-input" id="insight-rating">
+                                <option value="1">⭐</option>
+                                <option value="2">⭐⭐</option>
+                                <option value="3">⭐⭐⭐</option>
+                                <option value="4">⭐⭐⭐⭐</option>
+                                <option value="5">⭐⭐⭐⭐⭐</option>
+                            </select>
+                        </div>
+                        <div class="form-col">
+                            <label class="form-label">类型</label>
+                            <select class="form-input" id="insight-type">
+                                <option value="summary">总结</option>
+                                <option value="reflection">反思</option>
+                                <option value="analysis">分析</option>
+                                <option value="application">应用</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">心得内容</label>
+                        <textarea class="form-textarea" id="insight-content" placeholder="分享你的深度思考和感悟..." rows="5"></textarea>
+                        <div class="markdown-tip">
+                            💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>`代码`</code> <code>## 标题</code> <code>- 列表</code> <code>&gt; 引用</code>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">关键收获</label>
+                        <textarea class="form-textarea" id="insight-takeaway" placeholder="这本书给你带来了什么启发或改变？" rows="3"></textarea>
+                        <div class="markdown-tip">
+                            💡 支持 <strong>Markdown</strong> 格式：记录关键收获和启发
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">添加心得</button>
+                </form>
+            </div>
+            
+            <div class="insights-list" id="insights-list">
+                <div class="empty-state">
+                    <i>💡</i>
+                    <p>还没有心得，分享你的深度思考吧！</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 编辑书籍模态框 -->
+    <div id="edit-book-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ 编辑书籍</h3>
+                <button class="modal-close" onclick="hideEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-book-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-book-title">书名 *</label>
+                            <input type="text" id="edit-book-title" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-book-author">作者 *</label>
+                            <input type="text" id="edit-book-author" class="form-input" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-book-isbn">ISBN</label>
+                            <input type="text" id="edit-book-isbn" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-book-publisher">出版社</label>
+                            <input type="text" id="edit-book-publisher" class="form-input">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-book-publish-date">出版日期</label>
+                            <input type="date" id="edit-book-publish-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-book-total-pages">总页数</label>
+                            <input type="number" id="edit-book-total-pages" class="form-input" min="1">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-book-cover-url">封面图片URL</label>
+                        <div class="url-input-group">
+                            <input type="url" id="edit-book-cover-url" class="form-input" placeholder="请输入图片URL">
+                            <button type="button" class="btn btn-secondary test-url-btn" onclick="previewCoverImage()">测试</button>
+                        </div>
+                        <div id="cover-preview" class="cover-preview hide">
+                            <div class="preview-label">预览：</div>
+                            <img id="preview-img" style="max-width: 100px; max-height: 150px; border-radius: 4px;">
+                            <div id="preview-error" class="preview-error hide">❌ 图片加载失败</div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-book-description">简介</label>
+                        <textarea id="edit-book-description" class="form-textarea" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-book-category">分类标签</label>
+                            <input type="text" id="edit-book-category" class="form-input" placeholder="用逗号分隔，如：技术,编程">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-book-tags">自定义标签</label>
+                            <input type="text" id="edit-book-tags" class="form-input" placeholder="用逗号分隔，如：实用,进阶">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="edit-book-source-url">来源URL</label>
+                        <input type="url" id="edit-book-source-url" class="form-input" placeholder="豆瓣、亚马逊等链接">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideEditModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditBook()">保存修改</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 全局变量
+        // 从数据容器获取书籍基本信息
+        const bookDataElement = document.getElementById('book-data');
+        const bookId = bookDataElement.getAttribute('data-book-id');
+        const totalPages = parseInt(bookDataElement.getAttribute('data-total-pages')) || 0;
+        
+        // 处理图片加载错误
+        function handleImageError(img) {
+            try {
+                const imgSrc = img ? img.src : 'unknown';
+                console.log('封面图片加载失败:', imgSrc);
+                
+                // 检查img和其父元素是否存在
+                if (!img || !img.parentElement) {
+                    console.error('图片元素或其父容器不存在');
+                    return;
+                }
+                
+                const container = img.parentElement;
+                if (!container) {
+                    console.error('父容器不存在，无法替换图片');
+                    return;
+                }
+                
+                // 创建替换的图标元素
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'image-error-placeholder';
+                iconDiv.style.cssText = `
+                    font-size: 48px;
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 100%;
+                    height: 100%;
+                    background: linear-gradient(135deg, #e76f51, #f4a261);
+                    border-radius: 8px;
+                    flex-direction: column;
+                    gap: 8px;
+                `;
+                
+                // 添加图标和提示文字
+                const icon = document.createElement('div');
+                icon.style.fontSize = '48px';
+                icon.textContent = '📚';
+                
+                const text = document.createElement('div');
+                text.style.cssText = `
+                    font-size: 12px;
+                    color: rgba(255, 255, 255, 0.8);
+                    text-align: center;
+                    font-weight: 500;
+                `;
+                text.textContent = '封面加载失败';
+                
+                iconDiv.appendChild(icon);
+                iconDiv.appendChild(text);
+                
+                // 清空父容器并添加图标
+                container.innerHTML = '';
+                container.appendChild(iconDiv);
+                
+                console.log('已替换为默认图标');
+                
+            } catch (error) {
+                console.error('handleImageError 发生错误:', error);
+                
+                // 如果出现错误，尝试简单的处理方式
+                if (img && img.style) {
+                    img.style.display = 'none';
+                }
+                
+                // 尝试在父容器中显示简单的替代内容
+                try {
+                    const container = img.parentElement;
+                    if (container) {
+                        container.innerHTML = '<div style="font-size: 48px; color: white; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #e76f51; border-radius: 8px;">📚</div>';
+                    }
+                } catch (e) {
+                    console.error('备用处理方式也失败:', e);
+                }
+            }
+        }
+        
+        // 检查图片URL有效性
+        function checkImageUrl(url) {
+            if (!url || url.trim() === '') {
+                return false;
+            }
+            
+            // 基本的URL格式检查
+            try {
+                const urlObj = new URL(url);
+                
+                // 检查协议
+                if (!['http:', 'https:'].includes(urlObj.protocol)) {
+                    console.warn('图片URL协议不支持:', urlObj.protocol);
+                    return false;
+                }
+                
+                // 检查是否为常见的图片文件扩展名
+                const pathname = urlObj.pathname.toLowerCase();
+                const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+                const hasImageExtension = imageExtensions.some(ext => pathname.endsWith(ext));
+                
+                // 如果没有图片扩展名，检查是否为常见的图片服务域名
+                if (!hasImageExtension) {
+                    const hostname = urlObj.hostname.toLowerCase();
+                    const imageServices = [
+                        'bkimg.cdn.bcebos.com',
+                        'img.douban.com',
+                        'images.amazon.com',
+                        'cover.read.duokan.com',
+                        'img1.doubanio.com',
+                        'img2.doubanio.com',
+                        'img3.doubanio.com',
+                        'img9.doubanio.com'
+                    ];
+                    
+                    const isKnownImageService = imageServices.some(service => hostname.includes(service));
+                    if (!isKnownImageService) {
+                        console.warn('图片URL可能不是有效的图片链接 (无图片扩展名且非已知图片服务):', url);
+                    }
+                }
+                
+                return true;
+            } catch (e) {
+                console.warn('无效的图片URL格式:', url, e.message);
+                return false;
+            }
+        }
+        
+        // 预加载图片（带重试机制）
+        function preloadImage(url, callback, retryCount = 0) {
+            const maxRetries = 2;
+            const retryDelay = 1000; // 1秒后重试
+            
+            try {
+                if (!checkImageUrl(url)) {
+                    console.warn('图片URL格式无效:', url);
+                    if (callback) callback(false);
+                    return;
+                }
+                
+                // 检查常见的图片URL问题
+                if (url.includes('bkimg.cdn.bcebos.com') || url.includes('baike.baidu.com')) {
+                    console.warn('检测到百度图片链接，可能存在跨域或防盗链问题:', url);
+                }
+                
+                const img = new Image();
+                let isCompleted = false;
+                
+                // 成功加载处理
+                img.onload = function() {
+                    if (isCompleted) return;
+                    isCompleted = true;
+                    
+                    console.log('图片预加载成功:', url);
+                    if (callback) callback(true);
+                };
+                
+                // 加载失败处理
+                img.onerror = function() {
+                    if (isCompleted) return;
+                    isCompleted = true;
+                    
+                    console.warn(`图片预加载失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, url);
+                    
+                    // 重试逻辑
+                    if (retryCount < maxRetries) {
+                        console.log(`${retryDelay}ms后重试...`);
+                        setTimeout(() => {
+                            preloadImage(url, callback, retryCount + 1);
+                        }, retryDelay);
+                    } else {
+                        console.error('图片预加载最终失败:', url);
+                        if (callback) callback(false);
+                    }
+                };
+                
+                // 设置超时，避免无限等待
+                const timeoutId = setTimeout(() => {
+                    if (isCompleted) return;
+                    isCompleted = true;
+                    
+                    console.warn(`图片加载超时 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, url);
+                    
+                    // 重试逻辑
+                    if (retryCount < maxRetries) {
+                        console.log(`${retryDelay}ms后重试...`);
+                        setTimeout(() => {
+                            preloadImage(url, callback, retryCount + 1);
+                        }, retryDelay);
+                    } else {
+                        console.error('图片加载最终超时:', url);
+                        if (callback) callback(false);
+                    }
+                }, 8000); // 8秒超时
+                
+                // 尝试加载图片
+                img.src = url;
+                
+            } catch (error) {
+                console.error('preloadImage 发生错误:', error, 'URL:', url);
+                if (callback) callback(false);
+            }
+        }
+        
+        // 快捷设置进度
+        function setQuickProgress(percent) {
+            document.getElementById('current-progress').value = percent;
+            updateProgress();
+        }
+        
+        // 将页数转换为百分比
+        function pageToPercent(page) {
+            return totalPages > 0 ? (page / totalPages) * 100 : 0;
+        }
+        
+        // 将百分比转换为页数
+        function percentToPage(percent) {
+            return Math.round((percent / 100) * totalPages);
+        }
+        
+        // 编辑书籍功能
+        function editBook() {
+            showEditModal();
+        }
+        
+        // 删除书籍功能
+        async function deleteBook() {
+            if (!confirm('确定要删除这本书吗？此操作不可恢复，将同时删除所有相关的笔记和心得。')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/books?book_id=${bookId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('删除书籍失败');
+                }
+                
+                showToast('书籍已成功删除！', 'success');
+                
+                // 等待一下再跳转
+                setTimeout(() => {
+                    window.location.href = '/reading';
+                }, 1500);
+                
+            } catch (error) {
+                console.error('删除书籍失败:', error);
+                showToast('删除书籍失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 预览封面图片
+        function previewCoverImage() {
+            try {
+                const urlInput = document.getElementById('edit-book-cover-url');
+                const preview = document.getElementById('cover-preview');
+                const previewImg = document.getElementById('preview-img');
+                const previewError = document.getElementById('preview-error');
+                
+                // 检查所有必需的元素是否存在
+                if (!urlInput || !preview || !previewImg || !previewError) {
+                    console.error('预览相关的DOM元素不存在');
+                    return;
+                }
+                
+                const url = urlInput.value.trim();
+                
+                if (!url) {
+                    preview.classList.add('hide');
+                    return;
+                }
+                
+                previewError.classList.add('hide');
+                preview.classList.remove('hide');
+                
+                preloadImage(url, (success) => {
+                    // 再次检查元素是否存在（防止异步回调时元素被移除）
+                    if (!previewImg || !previewError) {
+                        console.error('预览元素在回调时不存在');
+                        return;
+                    }
+                    
+                    if (success) {
+                        previewImg.src = url;
+                        previewImg.style.display = 'block';
+                        previewError.classList.add('hide');
+                    } else {
+                        previewImg.style.display = 'none';
+                        previewError.classList.remove('hide');
+                    }
+                });
+            } catch (error) {
+                console.error('previewCoverImage 发生错误:', error);
+            }
+        }
+        
+        // 更新主页面封面图片
+        function updateMainCoverImage(newUrl) {
+            const container = document.getElementById('book-cover-container');
+            
+            if (!container) {
+                console.error('封面容器不存在');
+                return;
+            }
+            
+            if (!newUrl || newUrl.trim() === '') {
+                // 如果没有URL，显示默认图标
+                container.innerHTML = '<div style="font-size: 48px; color: white; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">📚</div>';
+                return;
+            }
+            
+            // 预加载新图片
+            preloadImage(newUrl, (success) => {
+                if (!container) return; // 再次检查容器是否存在
+                
+                if (success) {
+                    // 图片加载成功，更新显示
+                    const imgHtml = `<img src="${newUrl.replace(/"/g, '&quot;')}" alt="书籍封面" style="width: 100%; height: 100%; object-fit: cover;" onerror="handleImageError(this)">`;
+                    container.innerHTML = imgHtml;
+                } else {
+                    // 图片加载失败，显示默认图标
+                    container.innerHTML = '<div style="font-size: 48px; color: white; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">📚</div>';
+                }
+            });
+        }
+        
+        // 显示编辑模态框
+        function showEditModal() {
+            const modal = document.getElementById('edit-book-modal');
+            
+            // 填充当前书籍信息
+            const bookData = document.getElementById('book-data');
+            document.getElementById('edit-book-title').value = bookData.getAttribute('data-book-title') || '';
+            document.getElementById('edit-book-author').value = bookData.getAttribute('data-book-author') || '';
+            document.getElementById('edit-book-isbn').value = bookData.getAttribute('data-book-isbn') || '';
+            document.getElementById('edit-book-publisher').value = bookData.getAttribute('data-book-publisher') || '';
+            document.getElementById('edit-book-publish-date').value = bookData.getAttribute('data-book-publish-date') || '';
+            document.getElementById('edit-book-total-pages').value = bookData.getAttribute('data-total-pages') || '';
+            document.getElementById('edit-book-cover-url').value = bookData.getAttribute('data-book-cover-url') || '';
+            document.getElementById('edit-book-description').value = bookData.getAttribute('data-book-description') || '';
+            document.getElementById('edit-book-category').value = bookData.getAttribute('data-book-category') || '';
+            document.getElementById('edit-book-tags').value = bookData.getAttribute('data-book-tags') || '';
+            document.getElementById('edit-book-source-url').value = bookData.getAttribute('data-book-source-url') || '';
+            
+            modal.classList.remove('hide');
+            
+            // 添加点击外部关闭功能
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    hideEditModal();
+                }
+            });
+            
+            // 添加ESC键关闭功能
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !modal.classList.contains('hide')) {
+                    hideEditModal();
+                }
+            });
+        }
+        
+        // 隐藏编辑模态框
+        function hideEditModal() {
+            const modal = document.getElementById('edit-book-modal');
+            modal.classList.add('hide');
+            
+            // 清除URL中的edit参数
+            const url = new URL(window.location);
+            url.searchParams.delete('edit');
+            window.history.replaceState({}, '', url);
+        }
+        
+        // 提交编辑书籍
+        async function submitEditBook() {
+            const bookData = {
+                title: document.getElementById('edit-book-title').value,
+                author: document.getElementById('edit-book-author').value,
+                isbn: document.getElementById('edit-book-isbn').value,
+                publisher: document.getElementById('edit-book-publisher').value,
+                publish_date: document.getElementById('edit-book-publish-date').value,
+                total_pages: parseInt(document.getElementById('edit-book-total-pages').value) || 0,
+                cover_url: document.getElementById('edit-book-cover-url').value,
+                description: document.getElementById('edit-book-description').value,
+                category: document.getElementById('edit-book-category').value.split(',').map(s => s.trim()).filter(s => s),
+                tags: document.getElementById('edit-book-tags').value.split(',').map(s => s.trim()).filter(s => s),
+                source_url: document.getElementById('edit-book-source-url').value
+            };
+            
+            if (!bookData.title || !bookData.author) {
+                showToast('请填写书名和作者', 'error');
+                return;
+            }
+            
+            try {
+                showToast('正在保存修改...', 'info');
+                
+                const response = await fetch(`/api/books?book_id=${bookId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bookData)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+                
+                showToast('书籍信息已成功更新！', 'success');
+                
+                // 更新页面显示的信息，而不是刷新整个页面
+                const result = await response.json();
+                if (result.book) {
+                    // 更新封面图片
+                    updateMainCoverImage(result.book.cover_url);
+                    
+                    // 更新书籍标题
+                    const titleElement = document.querySelector('.book-title-large');
+                    if (titleElement) titleElement.textContent = result.book.title;
+                    
+                    // 更新作者
+                    const authorElement = document.querySelector('.book-author-large');
+                    if (authorElement) authorElement.textContent = result.book.author;
+                    
+                    // 更新其他元信息
+                    const metaValues = document.querySelectorAll('.meta-value');
+                    if (metaValues.length >= 6) {
+                        metaValues[1].textContent = result.book.publisher || '';
+                        metaValues[2].textContent = result.book.isbn || '';
+                        metaValues[3].textContent = result.book.total_pages || '';
+                        if (result.book.category && result.book.category.length > 0) {
+                            metaValues[5].textContent = result.book.category.join(', ');
+                        }
+                    }
+                    
+                    // 更新简介
+                    const descElement = document.querySelector('.book-description');
+                    if (descElement) {
+                        if (result.book.description) {
+                            descElement.textContent = result.book.description;
+                            descElement.style.display = 'block';
+                        } else {
+                            descElement.style.display = 'none';
+                        }
+                    }
+                }
+                
+                hideEditModal();
+                
+            } catch (error) {
+                console.error('更新书籍失败:', error);
+                showToast('更新书籍失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 标签页切换
+        function switchTab(tabName) {
+            // 隐藏所有标签页
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // 显示选中的标签页
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            // 加载对应数据
+            if (tabName === 'notes') {
+                loadNotes();
+            } else if (tabName === 'insights') {
+                loadInsights();
+            }
+        }
+        
+        // 更新阅读进度
+        async function updateProgress() {
+            const progressPercent = parseFloat(document.getElementById('current-progress').value);
+            if (progressPercent < 0 || progressPercent > 100) {
+                alert('进度百分比超出范围（0-100）');
+                return;
+            }
+            
+            // 将百分比转换为页数
+            const currentPage = percentToPage(progressPercent);
+            
+            try {
+                const response = await fetch(`/api/books/progress?book_id=${bookId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_page: currentPage
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('更新进度失败');
+                }
+                
+                // 更新进度条和文本
+                document.getElementById('progress-fill').style.width = progressPercent + '%';
+                document.getElementById('progress-text').textContent = progressPercent.toFixed(1) + '%';
+                
+                showToast(`进度更新成功！(${currentPage}/${totalPages}页)`, 'success');
+                
+            } catch (error) {
+                console.error('更新进度失败:', error);
+                showToast('更新进度失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 标记为完成
+        async function markAsFinished() {
+            try {
+                const response = await fetch(`/api/books/finish?book_id=${bookId}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('标记完成失败');
+                }
+                
+                // 更新页面状态
+                document.getElementById('current-progress').value = 100;
+                document.getElementById('progress-fill').style.width = '100%';
+                document.getElementById('progress-text').textContent = '100%';
+                
+                showToast('恭喜完成这本书！', 'success');
+                
+            } catch (error) {
+                console.error('标记完成失败:', error);
+                showToast('标记完成失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 加载笔记
+        async function loadNotes() {
+            try {
+                const response = await fetch(`/api/books/notes?book_id=${bookId}`);
+                if (!response.ok) {
+                    throw new Error('加载笔记失败');
+                }
+                
+                const notes = await response.json();
+                displayNotes(notes);
+                
+            } catch (error) {
+                console.error('加载笔记失败:', error);
+            }
+        }
+        
+        // 显示笔记
+        function displayNotes(notes) {
+            const notesList = document.getElementById('notes-list');
+            
+            if (!notes || notes.length === 0) {
+                notesList.innerHTML = `
+                    <div class="empty-state">
+                        <i>📝</i>
+                        <p>还没有笔记，开始记录你的阅读心得吧！</p>
+                        <p class="markdown-tip">💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>\`代码\`</code> 等</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            notesList.innerHTML = notes.map(note => `
+                <div class="note-item" data-note-id="${note.id}">
+                    <div class="note-header">
+                        <span class="note-location">${note.chapter || ''}${note.page ? ' - 第' + note.page + '页' : ''}</span>
+                        <div class="note-header-right">
+                            <span class="note-time">${formatDate(note.create_time)}</span>
+                            <div class="note-actions">
+                                <button class="btn-action btn-edit" onclick="editNote('${note.id}', '${note.chapter || ''}', ${note.page || 0}, \`${escapeForJS(note.content)}\`)" title="编辑">✏️</button>
+                                <button class="btn-action btn-delete" onclick="deleteNote('${note.id}')" title="删除">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="note-content markdown-content">${renderMarkdown(note.content)}</div>
+                </div>
+            `).join('');
+        }
+        
+        // 加载心得
+        async function loadInsights() {
+            try {
+                const response = await fetch(`/api/books/insights?book_id=${bookId}`);
+                if (!response.ok) {
+                    throw new Error('加载心得失败');
+                }
+                
+                const insights = await response.json();
+                displayInsights(insights);
+                
+            } catch (error) {
+                console.error('加载心得失败:', error);
+            }
+        }
+        
+        // 显示心得
+        function displayInsights(insights) {
+            const insightsList = document.getElementById('insights-list');
+            
+            if (!insights || insights.length === 0) {
+                insightsList.innerHTML = `
+                    <div class="empty-state">
+                        <i>💡</i>
+                        <p>还没有心得，分享你的深度思考吧！</p>
+                        <p class="markdown-tip">💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>\`代码\`</code> <code>- 列表</code> 等</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            insightsList.innerHTML = insights.map(insight => `
+                <div class="insight-item" data-insight-id="${insight.id}">
+                    <div class="insight-header">
+                        <div class="insight-header-left">
+                            <span class="insight-title">${insight.title}</span>
+                            <span class="insight-rating">${'⭐'.repeat(insight.rating)}</span>
+                        </div>
+                        <div class="insight-actions">
+                            <button class="btn-action btn-edit" onclick="editInsight('${insight.id}', \`${escapeForJS(insight.title)}\`, ${insight.rating}, \`${escapeForJS(insight.content)}\`, \`${escapeForJS(insight.key_takeaways ? insight.key_takeaways[0] || '' : '')}\`)" title="编辑">✏️</button>
+                            <button class="btn-action btn-delete" onclick="deleteInsight('${insight.id}')" title="删除">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="insight-content markdown-content">${renderMarkdown(insight.content)}</div>
+                    ${insight.key_takeaways && insight.key_takeaways[0] ? `<div class="insight-takeaway markdown-content">关键收获: ${renderMarkdown(insight.key_takeaways[0])}</div>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        // 添加笔记表单提交
+        document.getElementById('add-note-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const noteData = {
+                chapter: document.getElementById('note-chapter').value,
+                page: parseInt(document.getElementById('note-page').value) || 0,
+                content: document.getElementById('note-content').value
+            };
+            
+            if (!noteData.content.trim()) {
+                alert('请输入笔记内容');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/books/notes?book_id=${bookId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(noteData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('添加笔记失败');
+                }
+                
+                // 清空表单
+                this.reset();
+                
+                // 重新加载笔记
+                loadNotes();
+                
+                showToast('笔记添加成功！', 'success');
+                
+            } catch (error) {
+                console.error('添加笔记失败:', error);
+                showToast('添加笔记失败: ' + error.message, 'error');
+            }
+        });
+        
+        // 添加心得表单提交
+        document.getElementById('add-insight-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const insightData = {
+                title: document.getElementById('insight-title').value,
+                rating: parseInt(document.getElementById('insight-rating').value),
+                type: document.getElementById('insight-type').value,
+                content: document.getElementById('insight-content').value,
+                takeaway: document.getElementById('insight-takeaway').value
+            };
+            
+            if (!insightData.title.trim() || !insightData.content.trim()) {
+                alert('请输入标题和内容');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/books/insights?book_id=${bookId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(insightData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('添加心得失败');
+                }
+                
+                // 清空表单
+                this.reset();
+                
+                // 重新加载心得
+                loadInsights();
+                
+                showToast('心得添加成功！', 'success');
+                
+            } catch (error) {
+                console.error('添加心得失败:', error);
+                showToast('添加心得失败: ' + error.message, 'error');
+            }
+        });
+        
+        // 笔记编辑和删除功能
+        
+        // 编辑笔记
+        function editNote(noteId, chapter, page, content) {
+            // 显示编辑模态框
+            showEditNoteModal(noteId, chapter, page, content);
+        }
+        
+        // 删除笔记
+        async function deleteNote(noteId) {
+            if (!confirm('确定要删除这条笔记吗？此操作不可恢复。')) {
+                return;
+            }
+            
+            try {
+                showToast('正在删除笔记...', 'info');
+                
+                const response = await fetch(`/api/books/notes?book_id=${bookId}&note_id=${noteId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('删除笔记失败');
+                }
+                
+                showToast('笔记删除成功！', 'success');
+                
+                // 重新加载笔记
+                loadNotes();
+                
+            } catch (error) {
+                console.error('删除笔记失败:', error);
+                showToast('删除笔记失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 心得编辑和删除功能
+        
+        // 编辑心得
+        function editInsight(insightId, title, rating, content, takeaway) {
+            // 显示编辑模态框
+            showEditInsightModal(insightId, title, rating, content, takeaway);
+        }
+        
+        // 删除心得
+        async function deleteInsight(insightId) {
+            if (!confirm('确定要删除这条心得吗？此操作不可恢复。')) {
+                return;
+            }
+            
+            try {
+                showToast('正在删除心得...', 'info');
+                
+                const response = await fetch(`/api/books/insights?book_id=${bookId}&insight_id=${insightId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('删除心得失败');
+                }
+                
+                showToast('心得删除成功！', 'success');
+                
+                // 重新加载心得
+                loadInsights();
+                
+            } catch (error) {
+                console.error('删除心得失败:', error);
+                showToast('删除心得失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 显示编辑笔记模态框
+        function showEditNoteModal(noteId, chapter, page, content) {
+            // 这里可以复用添加笔记的表单，或创建新的编辑表单
+            // 暂时使用简单的prompt实现
+            const newChapter = prompt('编辑章节:', chapter || '');
+            if (newChapter === null) return;
+            
+            const newPageStr = prompt('编辑页码:', page || '');
+            if (newPageStr === null) return;
+            const newPage = parseInt(newPageStr) || 0;
+            
+            const newContent = prompt('编辑笔记内容:', content || '');
+            if (newContent === null) return;
+            
+            updateNote(noteId, newChapter, newPage, newContent);
+        }
+        
+        // 显示编辑心得模态框
+        function showEditInsightModal(insightId, title, rating, content, takeaway) {
+            // 暂时使用简单的prompt实现
+            const newTitle = prompt('编辑心得标题:', title || '');
+            if (newTitle === null) return;
+            
+            const newRatingStr = prompt('编辑评分 (1-5):', rating || '');
+            if (newRatingStr === null) return;
+            const newRating = parseInt(newRatingStr) || 1;
+            if (newRating < 1 || newRating > 5) {
+                alert('评分必须在1-5之间');
+                return;
+            }
+            
+            const newContent = prompt('编辑心得内容:', content || '');
+            if (newContent === null) return;
+            
+            const newTakeaway = prompt('编辑关键收获:', takeaway || '');
+            if (newTakeaway === null) return;
+            
+            updateInsight(insightId, newTitle, newRating, newContent, newTakeaway);
+        }
+        
+        // 更新笔记
+        async function updateNote(noteId, chapter, page, content) {
+            try {
+                showToast('正在更新笔记...', 'info');
+                
+                const response = await fetch(`/api/books/notes?book_id=${bookId}&note_id=${noteId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chapter: chapter,
+                        page: page,
+                        content: content
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('更新笔记失败');
+                }
+                
+                showToast('笔记更新成功！', 'success');
+                
+                // 重新加载笔记
+                loadNotes();
+                
+            } catch (error) {
+                console.error('更新笔记失败:', error);
+                showToast('更新笔记失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 更新心得
+        async function updateInsight(insightId, title, rating, content, takeaway) {
+            try {
+                showToast('正在更新心得...', 'info');
+                
+                const response = await fetch(`/api/books/insights?book_id=${bookId}&insight_id=${insightId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        rating: rating,
+                        content: content,
+                        takeaway: takeaway
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('更新心得失败');
+                }
+                
+                showToast('心得更新成功！', 'success');
+                
+                // 重新加载心得
+                loadInsights();
+                
+            } catch (error) {
+                console.error('更新心得失败:', error);
+                showToast('更新心得失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 显示Toast通知
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 4px;
+                color: white;
+                font-size: 14px;
+                z-index: 10000;
+                opacity: 0;
+                transform: translateX(100%);
+                transition: all 0.3s ease;
+            `;
+            
+            if (type === 'success') {
+                toast.style.background = '#6b9080';
+            } else if (type === 'error') {
+                toast.style.background = '#e63946';
+            } else {
+                toast.style.background = '#e76f51';
+            }
+            
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // 显示动画
+            setTimeout(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(0)';
+            }, 100);
+            
+            // 自动消失
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 3000);
+        }
+        
+        // Markdown渲染函数
+        function renderMarkdown(text) {
+            if (!text) return '';
+            
+            try {
+                // 检查marked库是否可用
+                if (typeof marked === 'undefined') {
+                    console.warn('Marked库未加载，使用纯文本显示');
+                    return escapeHtml(text).replace(/\n/g, '<br>');
+                }
+                
+                // 配置marked选项
+                marked.setOptions({
+                    breaks: true,        // 支持换行
+                    gfm: true,          // 支持GitHub风格的markdown
+                    sanitize: false,    // 不过滤HTML（注意安全性）
+                    smartypants: true   // 智能标点符号
+                });
+                
+                // 渲染markdown
+                return marked.parse(text);
+                
+            } catch (error) {
+                console.error('Markdown渲染失败:', error);
+                // 降级到纯文本显示
+                return escapeHtml(text).replace(/\n/g, '<br>');
+            }
+        }
+        
+        // HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // JavaScript字符串转义函数
+        function escapeForJS(text) {
+            if (!text) return '';
+            return text.replace(/\\/g, '\\\\')
+                      .replace(/`/g, '\\`')
+                      .replace(/\$/g, '\\$')
+                      .replace(/'/g, "\\'")
+                      .replace(/"/g, '\\"')
+                      .replace(/\n/g, '\\n')
+                      .replace(/\r/g, '\\r');
+        }
+        
+        // 格式化日期
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('zh-CN');
+        }
+        
+        // 全局错误处理
+        window.addEventListener('error', function(event) {
+            console.error('全局错误捕获:', event.error);
+            return true; // 阻止错误进一步传播
+        });
+        
+        // 全局未处理的Promise错误
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('未处理的Promise错误:', event.reason);
+            event.preventDefault(); // 阻止错误进一步传播
+        });
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 从页面数据中获取书籍信息
+            const bookData = document.getElementById('book-data');
+            const currentPage = parseInt(bookData.getAttribute('data-current-page')) || 0;
+            const bookRating = parseFloat(bookData.getAttribute('data-book-rating')) || 0;
+            
+            // 初始化进度条和百分比显示
+            const progress = pageToPercent(currentPage);
+            
+            // 设置进度条
+            document.getElementById('progress-fill').style.width = progress + '%';
+            
+            // 设置进度文本
+            document.getElementById('progress-text').textContent = progress.toFixed(1) + '%';
+            
+            // 设置输入框的初始值
+            document.getElementById('current-progress').value = progress.toFixed(1);
+            
+            // 初始化评分显示
+            if (bookRating > 0) {
+                const stars = '⭐'.repeat(Math.round(bookRating));
+                const ratingElement = document.getElementById('book-rating');
+                ratingElement.innerHTML = bookRating.toFixed(1) + ' ' + stars;
+            }
+            
+            // 默认加载笔记
+            loadNotes();
+            
+            // 检查是否有编辑参数
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('edit') === 'true') {
+                showEditModal();
+            }
+        });
+    </script>
+</body>
+</html> 
