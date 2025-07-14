@@ -894,3 +894,67 @@ func PageExercise(w h.ResponseWriter) {
 		return
 	}
 }
+
+// PageLifeCountdown renders the life countdown page
+func PageLifeCountdown(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "lifecountdown.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse lifecountdown.template: %s", err.Error())
+		h.Error(w, "Failed to parse lifecountdown template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render lifecountdown.template: %s", err.Error())
+		h.Error(w, "Failed to render lifecountdown template", h.StatusInternalServerError)
+		return
+	}
+}
+
+func PageDiaryPasswordInput(w h.ResponseWriter, blogname string) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "diary_password.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse diary_password.template", h.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		BLOGNAME string
+	}{
+		BLOGNAME: blogname,
+	}
+
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render template diary_password.template", h.StatusInternalServerError)
+		return
+	}
+}
+
+func PageDiaryPasswordError(w h.ResponseWriter, blogname string) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "diary_password_error.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse diary_password_error.template", h.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		BLOGNAME string
+	}{
+		BLOGNAME: blogname,
+	}
+
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render template diary_password_error.template", h.StatusInternalServerError)
+		return
+	}
+}

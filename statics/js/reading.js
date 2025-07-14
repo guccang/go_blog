@@ -155,6 +155,8 @@ async function loadBooksData() {
         allBooks = data.books || [];
         filteredBooks = [...allBooks];
         
+        console.log('成功加载书籍数据，共', allBooks.length, '本书:', allBooks);
+        
         updateCategoryFilter();
         applyFilters(); // 应用当前筛选条件
         updateEmptyState();
@@ -615,6 +617,7 @@ async function deleteBookFromCard(bookId, event) {
     }
     
     try {
+        console.log('开始删除书籍，书籍ID:', bookId, '书籍信息:', book);
         showToast('正在删除书籍...', 'info');
         
         const response = await fetch(`/api/books?book_id=${bookId}`, {
@@ -622,14 +625,31 @@ async function deleteBookFromCard(bookId, event) {
         });
         
         if (!response.ok) {
-            throw new Error('删除书籍失败');
+            const errorText = await response.text();
+            console.error('删除书籍失败，状态码:', response.status, '错误信息:', errorText);
+            
+            // 尝试解析后端返回的具体错误信息
+            let detailedError = errorText;
+            try {
+                const errorData = JSON.parse(errorText);
+                detailedError = errorData.error || errorData.message || errorText;
+            } catch (e) {
+                // 如果不是JSON格式，直接使用原始错误文本
+                detailedError = errorText;
+            }
+            
+            throw new Error(detailedError);
         }
         
+        const responseData = await response.json();
+        console.log('书籍删除成功，响应:', responseData);
         showToast('书籍已成功删除！', 'success');
         
         // 重新加载数据
-        loadBooksData();
-        loadStatistics();
+        setTimeout(() => {
+            loadBooksData();
+            loadStatistics();
+        }, 500);
         
     } catch (error) {
         console.error('删除书籍失败:', error);

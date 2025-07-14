@@ -2,7 +2,6 @@ package reading
 
 import (
 	"module"
-	db "persistence"
 	log "mylog"
 	"time"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"errors"
 	"sort"
+	"encoding/json"
+	"blog"
 )
 
 func Info() {
@@ -115,16 +116,51 @@ func AddBook(title, author, isbn, publisher, publishDate, coverUrl, description,
 }
 
 func GetBook(bookID string) *module.Book {
+	// 从blog系统获取单本书数据
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				Book *module.Book `json:"book"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil && data.Book != nil && data.Book.ID == bookID {
+				return data.Book
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，则从原有Redis加载（兼容性）
 	return Books[bookID]
 }
 
 func GetAllBooks() map[string]*module.Book {
-	return Books
+	// 从blog系统获取reading数据
+	books := make(map[string]*module.Book)
+	
+	// 遍历所有blog，查找reading_book_开头的
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			// 解析JSON内容
+			var data struct {
+				Book *module.Book `json:"book"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil && data.Book != nil {
+				books[data.Book.ID] = data.Book
+			}
+		}
+	}
+	
+	// 如果blog中没有数据，则从原有Redis加载（兼容性）
+	if len(books) == 0 {
+		return Books
+	}
+	
+	return books
 }
 
 func UpdateBook(bookID string, updates map[string]interface{}) error {
-	book, exists := Books[bookID]
-	if !exists {
+	// 先从blog系统获取书籍信息，确保我们有最新的数据
+	book := GetBook(bookID)
+	if book == nil {
 		return errors.New("书籍不存在")
 	}
 
@@ -163,42 +199,69 @@ func UpdateBook(bookID string, updates map[string]interface{}) error {
 		book.Rating = rating
 	}
 
+	// 更新内存中的数据
+	Books[bookID] = book
 	saveBook(book)
 	log.DebugF("更新书籍成功: %s", bookID)
 	return nil
 }
 
 func DeleteBook(bookID string) error {
-	_, exists := Books[bookID]
-	if !exists {
+	// 先从blog系统获取书籍信息，确保我们有完整的数据
+	book := GetBook(bookID)
+	if book == nil {
 		return errors.New("书籍不存在")
 	}
 
-	// 删除相关数据
+	// 构建blog标题用于删除
+	blogTitle := fmt.Sprintf("reading_book_%s.md", book.Title)
+	
+	log.DebugF("准备删除书籍blog: %s (书籍ID: %s)", blogTitle, bookID)
+	
+	// 首先检查blog是否存在
+	existingBlog := blog.GetBlog(blogTitle)
+	if existingBlog == nil {
+		log.ErrorF("要删除的blog不存在: %s，可能已经被手动删除", blogTitle)
+		// 如果blog不存在，直接删除内存数据即可
+	} else {
+		log.DebugF("找到要删除的blog: %s", blogTitle)
+		
+		// 从blog系统删除 - 这是关键步骤
+		result := blog.DeleteBlog(blogTitle)
+		if result != 0 {
+			var errorMsg string
+			switch result {
+			case 1:
+				errorMsg = "blog不存在"
+			case 2:
+				errorMsg = "该文件被标记为系统文件，无法删除"
+			case 3:
+				errorMsg = "数据库删除失败"
+			default:
+				errorMsg = fmt.Sprintf("未知错误 (错误码: %d)", result)
+			}
+			log.ErrorF("从blog系统删除书籍失败: %s, %s", blogTitle, errorMsg)
+			return fmt.Errorf("删除书籍失败：%s", errorMsg)
+		}
+		
+		log.DebugF("从blog系统删除书籍成功: %s", blogTitle)
+	}
+
+	// 删除内存中的相关数据
 	delete(Books, bookID)
 	delete(ReadingRecords, bookID)
 	delete(BookNotes, bookID)
 	
 	// 删除所有相关的心得（从内存中删除）
+	deletedInsights := 0
 	for insightID, insight := range BookInsights {
 		if insight.BookID == bookID {
 			delete(BookInsights, insightID)
+			deletedInsights++
 		}
 	}
 
-	// 从数据库删除
-	db.DeleteBook(fmt.Sprintf("book@%s", bookID))
-	db.DeleteBook(fmt.Sprintf("reading_record@%s", bookID))
-	db.DeleteBook(fmt.Sprintf("book_notes@%s", bookID))
-	
-	// 删除所有相关的心得（需要遍历删除，因为心得的key是用心得ID，不是bookID）
-	for insightID, insight := range BookInsights {
-		if insight.BookID == bookID {
-			db.DeleteBook(fmt.Sprintf("book_insight@%s", insightID))
-		}
-	}
-
-	log.DebugF("删除书籍成功: %s", bookID)
+	log.DebugF("删除书籍成功: %s - %s (同时删除了 %d 条心得)", bookID, book.Title, deletedInsights)
 	return nil
 }
 
@@ -280,6 +343,19 @@ func UpdateReadingProgress(bookID string, currentPage int, notes string) error {
 }
 
 func GetReadingRecord(bookID string) *module.ReadingRecord {
+	// 从blog系统获取阅读记录
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingRecord *module.ReadingRecord `json:"reading_record"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil && data.ReadingRecord != nil && data.ReadingRecord.BookID == bookID {
+				return data.ReadingRecord
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，则从原有Redis加载（兼容性）
 	return ReadingRecords[bookID]
 }
 
@@ -313,22 +389,41 @@ func AddBookNote(bookID, noteType, chapter, content string, page int, tags []str
 }
 
 func GetBookNotes(bookID string) []*module.BookNote {
+	// 从blog系统获取笔记数据
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				Book      *module.Book        `json:"book"`
+				BookNotes []*module.BookNote `json:"book_notes"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				// 检查是否是该书的数据
+				if data.Book != nil && data.Book.ID == bookID {
+					var bookNotes []*module.BookNote
+					// 过滤出属于该书的笔记
+					for _, note := range data.BookNotes {
+						if note.BookID == bookID {
+							bookNotes = append(bookNotes, note)
+						}
+					}
+					return bookNotes
+				}
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，则从原有Redis加载（兼容性）
 	notes := BookNotes[bookID]
 	if notes == nil {
 		return []*module.BookNote{}
 	}
-	
-	// 按创建时间排序
-	sort.Slice(notes, func(i, j int) bool {
-		return notes[i].CreateTime > notes[j].CreateTime
-	})
-	
 	return notes
 }
 
 func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error {
-	notes := BookNotes[bookID]
-	if notes == nil {
+	// 先从blog系统加载最新数据
+	notes := GetBookNotes(bookID)
+	if notes == nil || len(notes) == 0 {
 		return errors.New("笔记不存在")
 	}
 
@@ -359,6 +454,8 @@ func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error
 	}
 	targetNote.UpdateTime = strTime()
 
+	// 更新内存中的数据
+	BookNotes[bookID] = notes
 	saveBookNotes(bookID)
 	log.DebugF("更新笔记成功: %s", noteID)
 	return nil
@@ -366,23 +463,33 @@ func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error
 
 // 删除笔记
 func DeleteBookNote(bookID, noteID string) error {
-	notes := BookNotes[bookID]
-	if notes == nil {
+	// 先从blog系统加载最新数据
+	notes := GetBookNotes(bookID)
+	if notes == nil || len(notes) == 0 {
 		return errors.New("笔记不存在")
 	}
 
 	// 查找并删除笔记
-	for i, note := range notes {
+	found := false
+	var updatedNotes []*module.BookNote
+	for _, note := range notes {
 		if note.ID == noteID {
-			// 从切片中删除元素
-			BookNotes[bookID] = append(notes[:i], notes[i+1:]...)
-			saveBookNotes(bookID)
-			log.DebugF("删除笔记成功: %s", noteID)
-			return nil
+			found = true
+			// 跳过这个笔记，相当于删除
+		} else {
+			updatedNotes = append(updatedNotes, note)
 		}
 	}
 
-	return errors.New("笔记不存在")
+	if !found {
+		return errors.New("笔记不存在")
+	}
+
+	// 更新内存中的数据
+	BookNotes[bookID] = updatedNotes
+	saveBookNotes(bookID)
+	log.DebugF("删除笔记成功: %s", noteID)
+	return nil
 }
 
 // 读书感悟功能
@@ -419,26 +526,70 @@ func AddBookInsight(bookID, title, content string, keyTakeaways, applications []
 }
 
 func GetBookInsights(bookID string) []*module.BookInsight {
+	// 从blog系统获取感悟数据
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookInsights []*module.BookInsight `json:"book_insights"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				// 筛选该书的感悟
+				var insights []*module.BookInsight
+				for _, insight := range data.BookInsights {
+					if insight.BookID == bookID {
+						insights = append(insights, insight)
+					}
+				}
+				return insights
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，则从原有Redis加载（兼容性）
 	var insights []*module.BookInsight
 	for _, insight := range BookInsights {
 		if insight.BookID == bookID {
 			insights = append(insights, insight)
 		}
 	}
-	
-	// 按创建时间排序
-	sort.Slice(insights, func(i, j int) bool {
-		return insights[i].CreateTime > insights[j].CreateTime
-	})
-	
 	return insights
 }
 
 // 更新心得
 func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
-	insight, exists := BookInsights[insightID]
-	if !exists {
-		return errors.New("心得不存在")
+	// 先从blog系统查找心得
+	var insight *module.BookInsight
+	var bookID string
+	
+	// 遍历所有书籍数据查找指定的心得
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookInsights []*module.BookInsight `json:"book_insights"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, ins := range data.BookInsights {
+					if ins.ID == insightID {
+						insight = ins
+						bookID = ins.BookID
+						break
+					}
+				}
+				if insight != nil {
+					break
+				}
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，从内存中查找
+	if insight == nil {
+		var exists bool
+		insight, exists = BookInsights[insightID]
+		if !exists {
+			return errors.New("心得不存在")
+		}
+		bookID = insight.BookID
 	}
 
 	// 更新字段
@@ -451,8 +602,9 @@ func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
 	if rating, ok := updates["rating"].(int); ok {
 		insight.Rating = rating
 		// 更新书籍评分
-		if book := Books[insight.BookID]; book != nil && rating > 0 {
+		if book := GetBook(bookID); book != nil && rating > 0 {
 			book.Rating = float64(rating)
+			Books[bookID] = book
 			saveBook(book)
 		}
 	}
@@ -467,6 +619,8 @@ func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
 	}
 	insight.UpdateTime = strTime()
 
+	// 更新内存中的数据
+	BookInsights[insightID] = insight
 	saveBookInsight(insight)
 	log.DebugF("更新心得成功: %s", insightID)
 	return nil
@@ -474,16 +628,49 @@ func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
 
 // 删除心得
 func DeleteBookInsight(insightID string) error {
-	_, exists := BookInsights[insightID]
-	if !exists {
-		return errors.New("心得不存在")
+	// 先查找心得并获取bookID
+	var foundInsight *module.BookInsight
+	var targetBookID string
+	
+	// 从blog系统查找心得
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookInsights []*module.BookInsight `json:"book_insights"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, insight := range data.BookInsights {
+					if insight.ID == insightID {
+						foundInsight = insight
+						targetBookID = insight.BookID
+						break
+					}
+				}
+				if foundInsight != nil {
+					break
+				}
+			}
+		}
+	}
+	
+	// 如果blog中没有找到，从内存中查找
+	if foundInsight == nil {
+		var exists bool
+		foundInsight, exists = BookInsights[insightID]
+		if !exists {
+			return errors.New("心得不存在")
+		}
+		targetBookID = foundInsight.BookID
 	}
 
 	// 从内存中删除
 	delete(BookInsights, insightID)
 	
-	// 从数据库删除
-	db.DeleteBook(fmt.Sprintf("book_insight@%s", insightID))
+	// 通过saveBook保存更新后的数据
+	if book := GetBook(targetBookID); book != nil {
+		Books[targetBookID] = book
+		saveBook(book)
+	}
 	
 	log.DebugF("删除心得成功: %s", insightID)
 	return nil
@@ -573,61 +760,184 @@ func getTotalNotesCount() int {
 
 // 数据持久化函数
 func saveBook(book *module.Book) {
-	db.SaveBook(book)
+	// 将书籍数据保存到blog系统
+	title := fmt.Sprintf("reading_book_%s.md", book.Title)
+	
+	// 构建完整的书籍数据（包括相关记录）
+	data := map[string]interface{}{
+		"book": book,
+	}
+	
+	// 添加阅读记录
+	if record, exists := ReadingRecords[book.ID]; exists {
+		data["reading_record"] = record
+	}
+	
+	// 添加笔记
+	if notes, exists := BookNotes[book.ID]; exists {
+		data["book_notes"] = notes
+	}
+	
+	// 添加心得
+	var insights []*module.BookInsight
+	for _, insight := range BookInsights {
+		if insight.BookID == book.ID {
+			insights = append(insights, insight)
+		}
+	}
+	if len(insights) > 0 {
+		data["book_insights"] = insights
+	}
+	
+	// 添加阅读计划（包含该书籍的计划）
+	var plans []*module.ReadingPlan
+	for _, plan := range ReadingPlans {
+		for _, targetBookID := range plan.TargetBooks {
+			if targetBookID == book.ID {
+				plans = append(plans, plan)
+				break
+			}
+		}
+	}
+	if len(plans) > 0 {
+		data["reading_plans"] = plans
+	}
+	
+	// 添加阅读目标
+	var goals []*module.ReadingGoal
+	for _, goal := range ReadingGoals {
+		goals = append(goals, goal)
+	}
+	if len(goals) > 0 {
+		data["reading_goals"] = goals
+	}
+	
+	// 添加书籍收藏夹（包含该书籍的收藏夹）
+	var collections []*module.BookCollection
+	for _, collection := range BookCollections {
+		for _, bookID := range collection.BookIDs {
+			if bookID == book.ID {
+				collections = append(collections, collection)
+				break
+			}
+		}
+	}
+	if len(collections) > 0 {
+		data["book_collections"] = collections
+	}
+	
+	// 添加阅读时间记录
+	if records, exists := ReadingTimeRecords[book.ID]; exists {
+		data["reading_time_records"] = map[string][]*module.ReadingTimeRecord{
+			book.ID: records,
+		}
+	}
+	
+	// 序列化为JSON
+	content, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.ErrorF("序列化书籍数据失败: %v", err)
+		return
+	}
+	
+	// 检查是否已存在，决定使用AddBlog还是ModifyBlog
+	udb := &module.UploadedBlogData{
+		Title:   title,
+		Content: string(content),
+		AuthType: module.EAuthType_private,
+	}
+	
+	if _, exists := blog.Blogs[title]; exists {
+		blog.ModifyBlog(udb)
+	} else {
+		blog.AddBlog(udb)
+	}
 }
 
 func saveReadingRecord(record *module.ReadingRecord) {
-	db.SaveReadingRecord(record)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	if book, exists := Books[record.BookID]; exists {
+		saveBook(book)
+	}
 }
 
 func saveBookNotes(bookID string) {
-	notes := BookNotes[bookID]
-	db.SaveBookNotes(bookID, notes)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	if book, exists := Books[bookID]; exists {
+		saveBook(book)
+	}
 }
 
 func saveBookInsight(insight *module.BookInsight) {
-	db.SaveBookInsight(insight)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	if book, exists := Books[insight.BookID]; exists {
+		saveBook(book)
+	}
 }
 
 func loadBooks() {
-	// 从数据库加载书籍数据
-	books := db.GetAllBooks()
-	if books != nil {
-		for _, book := range books {
-			Books[book.ID] = book
+	// 从blog系统加载书籍数据
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				Book *module.Book `json:"book"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil && data.Book != nil {
+				Books[data.Book.ID] = data.Book
+			}
 		}
 	}
 	log.DebugF("加载书籍数量: %d", len(Books))
 }
 
 func loadReadingRecords() {
-	// 从数据库加载阅读记录
-	records := db.GetAllReadingRecords()
-	if records != nil {
-		for _, record := range records {
-			ReadingRecords[record.BookID] = record
+	// 从blog系统加载阅读记录
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingRecord *module.ReadingRecord `json:"reading_record"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil && data.ReadingRecord != nil {
+				ReadingRecords[data.ReadingRecord.BookID] = data.ReadingRecord
+			}
 		}
 	}
 	log.DebugF("加载阅读记录数量: %d", len(ReadingRecords))
 }
 
 func loadBookNotes() {
-	// 从数据库加载笔记
-	allNotes := db.GetAllBookNotes()
-	if allNotes != nil {
-		for bookID, notes := range allNotes {
-			BookNotes[bookID] = notes
+	// 从blog系统加载笔记
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookNotes []*module.BookNote `json:"book_notes"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				// 需要找到对应的bookID
+				var bookData struct {
+					Book *module.Book `json:"book"`
+				}
+				if err := json.Unmarshal([]byte(b.Content), &bookData); err == nil && bookData.Book != nil {
+					BookNotes[bookData.Book.ID] = data.BookNotes
+				}
+			}
 		}
 	}
 	log.DebugF("加载笔记数量: %d", getTotalNotesCount())
 }
 
 func loadBookInsights() {
-	// 从数据库加载感悟
-	insights := db.GetAllBookInsights()
-	if insights != nil {
-		for _, insight := range insights {
-			BookInsights[insight.ID] = insight
+	// 从blog系统加载感悟
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookInsights []*module.BookInsight `json:"book_insights"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, insight := range data.BookInsights {
+					BookInsights[insight.ID] = insight
+				}
+			}
 		}
 	}
 	log.DebugF("加载感悟数量: %d", len(BookInsights))
@@ -666,15 +976,32 @@ func GetReadingPlan(planID string) *module.ReadingPlan {
 }
 
 func GetAllReadingPlans() []*module.ReadingPlan {
-	plans := make([]*module.ReadingPlan, 0, len(ReadingPlans))
-	for _, plan := range ReadingPlans {
-		plans = append(plans, plan)
+	// 从blog系统获取阅读计划数据
+	var plans []*module.ReadingPlan
+	
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				plans = append(plans, data.ReadingPlans...)
+			}
+		}
 	}
 	
-	// 按创建时间倒序
-	sort.Slice(plans, func(i, j int) bool {
-		return plans[i].CreateTime > plans[j].CreateTime
-	})
+	// 如果blog中没有数据，则从原有Redis加载（兼容性）
+	if len(plans) == 0 {
+		plans = make([]*module.ReadingPlan, 0, len(ReadingPlans))
+		for _, plan := range ReadingPlans {
+			plans = append(plans, plan)
+		}
+		
+		// 按创建时间倒序
+		sort.Slice(plans, func(i, j int) bool {
+			return plans[i].CreateTime > plans[j].CreateTime
+		})
+	}
 	
 	return plans
 }
@@ -740,12 +1067,33 @@ func AddReadingGoal(year, month int, targetType string, targetValue int) (*modul
 }
 
 func GetReadingGoals(year, month int) []*module.ReadingGoal {
-	goals := make([]*module.ReadingGoal, 0)
-	for _, goal := range ReadingGoals {
-		if goal.Year == year && (month == 0 || goal.Month == month) {
-			goals = append(goals, goal)
+	// 从blog系统获取阅读目标数据
+	var goals []*module.ReadingGoal
+	
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingGoals []*module.ReadingGoal `json:"reading_goals"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, goal := range data.ReadingGoals {
+					if goal.Year == year && (month == 0 || goal.Month == month) {
+						goals = append(goals, goal)
+					}
+				}
+			}
 		}
 	}
+	
+	// 如果blog中没有数据，则从原有Redis加载（兼容性）
+	if len(goals) == 0 {
+		for _, goal := range ReadingGoals {
+			if goal.Year == year && (month == 0 || goal.Month == month) {
+				goals = append(goals, goal)
+			}
+		}
+	}
+	
 	return goals
 }
 
@@ -961,14 +1309,27 @@ func GetBookCollection(collectionID string) *module.BookCollection {
 }
 
 func GetAllBookCollections() []*module.BookCollection {
-	collections := make([]*module.BookCollection, 0, len(BookCollections))
-	for _, collection := range BookCollections {
-		collections = append(collections, collection)
+	// 从blog系统获取书籍收藏数据
+	var collections []*module.BookCollection
+	
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookCollections []*module.BookCollection `json:"book_collections"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				collections = append(collections, data.BookCollections...)
+			}
+		}
 	}
 	
-	sort.Slice(collections, func(i, j int) bool {
-		return collections[i].CreateTime > collections[j].CreateTime
-	})
+	// 如果blog中没有数据，则从原有Redis加载（兼容性）
+	if len(collections) == 0 {
+		collections = make([]*module.BookCollection, 0, len(BookCollections))
+		for _, collection := range BookCollections {
+			collections = append(collections, collection)
+		}
+	}
 	
 	return collections
 }
@@ -1168,39 +1529,69 @@ func getReadingTimeStats() map[string]interface{} {
 
 // 新的数据加载函数
 func loadReadingPlans() {
-	plans := db.GetAllReadingPlans()
-	if plans != nil {
-		for _, plan := range plans {
-			ReadingPlans[plan.ID] = plan
+	// 从blog系统加载阅读计划
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, plan := range data.ReadingPlans {
+					ReadingPlans[plan.ID] = plan
+				}
+			}
 		}
 	}
 	log.DebugF("加载阅读计划数量: %d", len(ReadingPlans))
 }
 
 func loadReadingGoals() {
-	goals := db.GetAllReadingGoals()
-	if goals != nil {
-		for _, goal := range goals {
-			ReadingGoals[goal.ID] = goal
+	// 从blog系统加载阅读目标
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingGoals []*module.ReadingGoal `json:"reading_goals"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, goal := range data.ReadingGoals {
+					ReadingGoals[goal.ID] = goal
+				}
+			}
 		}
 	}
 	log.DebugF("加载阅读目标数量: %d", len(ReadingGoals))
 }
 
 func loadBookCollections() {
-	collections := db.GetAllBookCollections()
-	if collections != nil {
-		for _, collection := range collections {
-			BookCollections[collection.ID] = collection
+	// 从blog系统加载书籍收藏夹
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				BookCollections []*module.BookCollection `json:"book_collections"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for _, collection := range data.BookCollections {
+					BookCollections[collection.ID] = collection
+				}
+			}
 		}
 	}
 	log.DebugF("加载书籍收藏夹数量: %d", len(BookCollections))
 }
 
 func loadReadingTimeRecords() {
-	records := db.GetAllReadingTimeRecords()
-	if records != nil {
-		ReadingTimeRecords = records
+	// 从blog系统加载阅读时间记录
+	for title, b := range blog.Blogs {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingTimeRecords map[string][]*module.ReadingTimeRecord `json:"reading_time_records"`
+			}
+			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
+				for bookID, records := range data.ReadingTimeRecords {
+					ReadingTimeRecords[bookID] = records
+				}
+			}
+		}
 	}
 	totalRecords := 0
 	for _, recordList := range ReadingTimeRecords {
@@ -1211,17 +1602,39 @@ func loadReadingTimeRecords() {
 
 // 新的数据保存函数
 func saveReadingPlan(plan *module.ReadingPlan) {
-	db.SaveReadingPlan(plan)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	// 这里需要找到相关的书籍来保存
+	for _, bookID := range plan.TargetBooks {
+		if book, exists := Books[bookID]; exists {
+			saveBook(book)
+			break // 只需要保存一个相关书籍即可
+		}
+	}
 }
 
 func saveReadingGoal(goal *module.ReadingGoal) {
-	db.SaveReadingGoal(goal)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	// 这里需要找到相关的书籍来保存
+	for _, book := range Books {
+		saveBook(book)
+		break // 只需要保存一个书籍即可
+	}
 }
 
 func saveBookCollection(collection *module.BookCollection) {
-	db.SaveBookCollection(collection)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	// 这里需要找到相关的书籍来保存
+	for _, bookID := range collection.BookIDs {
+		if book, exists := Books[bookID]; exists {
+			saveBook(book)
+			break // 只需要保存一个相关书籍即可
+		}
+	}
 }
 
 func saveReadingTimeRecord(record *module.ReadingTimeRecord) {
-	db.SaveReadingTimeRecord(record)
+	// 通过saveBook函数保存，因为它会保存完整的书籍数据
+	if book, exists := Books[record.BookID]; exists {
+		saveBook(book)
+	}
 } 

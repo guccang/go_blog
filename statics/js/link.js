@@ -2,14 +2,57 @@
 			var match = document.getElementById('search').value;
 			if (match.trim() === '') return;
 
+			// Check if it's a reload command
+			var isReloadCommand = match.toLowerCase().startsWith('@reload');
+
 			var xhr = new XMLHttpRequest();
 			xhr.onreadystatechange = function() {
 				if (xhr.readyState == 4 && xhr.status == 200) {
-					window.location.href = xhr.responseURL;
+					if (isReloadCommand) {
+						// Show browser notification for reload completion
+						showReloadNotification();
+						// Clear the search input
+						document.getElementById('search').value = '';
+						// Still redirect to show the reload confirmation
+						setTimeout(function() {
+							window.location.href = xhr.responseURL;
+						}, 1000);
+					} else {
+						window.location.href = xhr.responseURL;
+					}
 				}
 			};
 			xhr.open('GET', '/search?match=' + encodeURIComponent(match), true);
 			xhr.send();
+		}
+
+		function showReloadNotification() {
+			// Try to use browser notification API
+			if ("Notification" in window) {
+				if (Notification.permission === "granted") {
+					new Notification("系统重新加载完成", {
+						body: "配置文件已重新加载完成！",
+						icon: "/statics/logo/favicon.ico"
+					});
+				} else if (Notification.permission !== "denied") {
+					Notification.requestPermission().then(function(permission) {
+						if (permission === "granted") {
+							new Notification("系统重新加载完成", {
+								body: "配置文件已重新加载完成！",
+								icon: "/statics/logo/favicon.ico"
+							});
+						}
+					});
+				}
+			}
+			
+			// Fallback: show a toast notification
+			if (typeof showToast === 'function') {
+				showToast('系统重新加载完成！', 'success');
+			} else {
+				// Simple alert as last resort
+				alert('系统重新加载完成！');
+			}
 		}
 
 		PageHistoryBack()

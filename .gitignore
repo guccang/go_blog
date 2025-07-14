@@ -6,3 +6,7 @@
 statics/mcu/core-rz-1712473251-15338
 *.zip
 *.exe
+blogs_txt/
+.go_blog_recycle/
+.cursor/
+.cursorignore

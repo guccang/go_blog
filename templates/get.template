@@ -64,8 +64,10 @@
         
 		<div class="bottom-container">
 		{{ if eq "aes" .ENCRYPT }}
-                <input id="encrypt" type="password" name="encrypt" placeholder="输入解密密码">
-                <button id="decrypt-button" type="button" onclick="onDecrypt()">解密</button>
+			<div class="decrypt-container">
+				<input id="encrypt" type="password" name="encrypt" placeholder="输入解密密码">
+				<button id="decrypt-button" class="decrypt-btn" type="button" onclick="onDecrypt()">🔓 解密</button>
+			</div>
 		{{end}}
 			<button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
 		</div>

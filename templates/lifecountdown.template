@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⏰ 人生倒计时 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/css/lifecountdown.css">
+</head>
+<body>
+    <!-- 返回导航 -->
+    <div class="nav-back">
+        <a href="/link" class="back-btn">
+            <i class="fas fa-home"></i> 返回主页
+        </a>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>人生倒计时可视化</h1>
+            <p class="subtitle">基于80年预期寿命（29,220天）的时间分配可视化 - 每一刻都是不可再生的珍贵资源</p>
+        </header>
+        
+        <!-- 用户设置面板 -->
+        <div class="settings-panel">
+            <h3><i class="fas fa-cog"></i> 个人设置</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>当前年龄:</label>
+                    <input type="range" id="age-slider" min="1" max="100" value="25">
+                    <span id="age-value">25岁</span>
+                </div>
+                <div class="setting-item">
+                    <label>预期寿命:</label>
+                    <input type="range" id="lifespan-slider" min="60" max="120" value="80">
+                    <span id="lifespan-value">80岁</span>
+                </div>
+                <div class="setting-item">
+                    <label>每日睡眠:</label>
+                    <input type="range" id="sleep-slider" min="4" max="12" step="0.5" value="8">
+                    <span id="sleep-value">8小时</span>
+                </div>
+                <div class="setting-item">
+                    <label>每日阅读:</label>
+                    <input type="range" id="reading-slider" min="0" max="4" step="0.5" value="1">
+                    <span id="reading-value">1小时</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-heartbeat"></i>
+                    <h2 class="card-title">人生倒计时</h2>
+                </div>
+                <div class="countdown">
+                    <div class="countdown-number" id="total-days">29,220</div>
+                    <div class="countdown-label">总天数（80年）</div>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">已使用天数</div>
+                        <div class="stat-value" id="days-lived">9,125</div>
+                        <div class="stat-label" id="age-info">（25岁）</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">剩余天数</div>
+                        <div class="stat-value" id="days-left">20,095</div>
+                        <div class="stat-label" id="years-left">（55年）</div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-book-open"></i>
+                    <h2 class="card-title">阅读人生</h2>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="booksChart"></canvas>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn" id="btn-fast">
+                        <i class="fas fa-bolt"></i> 快速阅读（周/本）
+                    </button>
+                    <button class="btn btn-alt" id="btn-slow">
+                        <i class="fas fa-turtle"></i> 慢速阅读（3月/本）
+                    </button>
+                </div>
+                
+                <div class="books-container" id="books-container">
+                    <!-- 书籍将通过JS生成 -->
+                </div>
+                
+                <div class="insights">
+                    <h3 class="insights-title">黄金时间（18-45岁）</h3>
+                    <p>这是你最具创造力和精力的<span id="golden-years">27</span>年，共 <span class="highlight" id="golden-days">9,862</span>天。</p>
+                    <p>充分利用这段时间学习、成长和创造，它将奠定你一生的基础。</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="ai-section">
+            <div class="ai-header">
+                <i class="fas fa-robot ai-icon"></i>
+                <h2 class="ai-title">AI时代，我们还需要读书吗？</h2>
+            </div>
+            
+            <div class="ai-content">
+                <div class="ai-pros">
+                    <h3><i class="fas fa-check-circle"></i> AI 的强大优势</h3>
+                    <ul class="ai-list">
+                        <li><i class="fas fa-database"></i> 海量知识存储：掌握远超人类记忆容量的信息</li>
+                        <li><i class="fas fa-bolt"></i> 即时问题解答：复杂问题秒级响应</li>
+                        <li><i class="fas fa-graduation-cap"></i> 学习效率提升：快速总结、翻译、生成学习资料</li>
+                        <li><i class="fas fa-sync-alt"></i> 持续更新：随时获取最新知识和研究成果</li>
+                    </ul>
+                </div>
+                
+                <div class="ai-cons">
+                    <h3><i class="fas fa-exclamation-triangle"></i> AI 的固有局限</h3>
+                    <ul class="ai-list">
+                        <li><i class="fas fa-brain"></i> 缺乏真正理解：无法建立深层逻辑联系</li>
+                        <li><i class="fas fa-heart"></i> 无情感体验：不能感受文学艺术的情感冲击</li>
+                        <li><i class="fas fa-lightbulb"></i> 创造力缺失：无法超越已有知识进行突破性创新</li>
+                        <li><i class="fas fa-question-circle"></i> 价值观真空：缺乏人类道德判断和价值观塑造</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="conclusion">
+                <p>📚 <span class="highlight">AI不会让读书过时，而是让深度阅读更有价值</span> - 未来属于那些<br>善于思考、创造并懂得利用AI的"超级思考者"。</p>
+            </div>
+        </div>
+        
+        <!-- 详细数据表格 -->
+        <div class="details-section">
+            <h3>📋 详细数据</h3>
+            <div class="data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>时间类型</th>
+                            <th>天数</th>
+                            <th>百分比</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody id="time-table-body">
+                        <!-- 数据行将在这里动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <footer>
+            <p>数据说明：基于<span id="footer-lifespan">80</span>年预期寿命（<span id="footer-total-days">29,220</span>天）的平均值计算 | 睡眠按每天<span id="footer-sleep">8</span>小时计算 | 黄金时间：18-45岁</p>
+            <p>© 2024 人生倒计时可视化 | 珍惜时间，创造价值</p>
+        </footer>
+    </div>
+
+    <script src="/js/lifecountdown.js"></script>
+</body>
+</html> 

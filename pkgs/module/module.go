@@ -10,6 +10,7 @@ const (
 	EAuthType_public  = 2
 	EAuthType_encrypt = 4
 	EAuthType_cooperation = 8
+	EAuthType_diary   = 16  // 日记博客，需要密码保护
 	EAuthType_all     = 0xffff
 )
 

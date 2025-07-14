@@ -91,6 +91,12 @@ func AddBlog(udb *module.UploadedBlogData) int{
 		return 1
 	}
 
+	// 检查是否是日记博客，如果是则自动设置为日记权限
+	if config.IsDiaryBlog(title) {
+		auth_type |= module.EAuthType_diary
+		log.DebugF("检测到日记博客，设置日记权限: %s", title)
+	}
+
 	log.DebugF("add blog %s",title)
 	// add
 	now := strTime()
@@ -127,6 +133,12 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	}
 
 	log.DebugF("modify blog %s",title)
+
+	// 检查是否是日记博客，如果是则保持日记权限
+	if config.IsDiaryBlog(title) {
+		auth_type |= module.EAuthType_diary
+		log.DebugF("保持日记博客权限: %s", title)
+	}
 
 	// modify
 	b.Content = content

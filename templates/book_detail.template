@@ -1101,6 +1101,119 @@
             </div>
         </div>
     </div>
+
+    <!-- 编辑笔记模态框 -->
+    <div id="edit-note-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📝 编辑笔记</h3>
+                <button class="modal-close" onclick="hideEditNoteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-note-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-note-chapter">章节</label>
+                            <input type="text" id="edit-note-chapter" class="form-input" placeholder="例如：第一章">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-note-page">页码</label>
+                            <input type="number" id="edit-note-page" class="form-input" placeholder="页码">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-note-content">笔记内容</label>
+                        <div class="edit-content-container">
+                            <textarea id="edit-note-content" class="form-textarea" rows="6" placeholder="记录你的想法、摘录或总结..."></textarea>
+                            <div class="markdown-preview" id="edit-note-preview"></div>
+                        </div>
+                        <div class="edit-controls">
+                            <button type="button" class="btn-toggle" onclick="toggleNotePreview()">预览</button>
+                            <div class="markdown-tip">
+                                💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>`代码`</code> <code>- 列表</code> <code>&gt; 引用</code>
+                                <br>💡 快捷键：<code>ESC</code> 取消，<code>Ctrl+Enter</code> 保存，<code>F2</code> 切换预览
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideEditNoteModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditNote()">保存修改</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑心得模态框 -->
+    <div id="edit-insight-modal" class="modal hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>💡 编辑心得</h3>
+                <button class="modal-close" onclick="hideEditInsightModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-insight-form">
+                    <div class="form-group">
+                        <label for="edit-insight-title">心得标题</label>
+                        <input type="text" id="edit-insight-title" class="form-input" placeholder="给你的心得起个标题">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-insight-rating">评分</label>
+                            <select id="edit-insight-rating" class="form-input">
+                                <option value="1">⭐</option>
+                                <option value="2">⭐⭐</option>
+                                <option value="3">⭐⭐⭐</option>
+                                <option value="4">⭐⭐⭐⭐</option>
+                                <option value="5">⭐⭐⭐⭐⭐</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-insight-type">类型</label>
+                            <select id="edit-insight-type" class="form-input">
+                                <option value="summary">总结</option>
+                                <option value="reflection">反思</option>
+                                <option value="analysis">分析</option>
+                                <option value="application">应用</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-insight-content">心得内容</label>
+                        <div class="edit-content-container">
+                            <textarea id="edit-insight-content" class="form-textarea" rows="6" placeholder="分享你的深度思考和感悟..."></textarea>
+                            <div class="markdown-preview" id="edit-insight-preview"></div>
+                        </div>
+                        <div class="edit-controls">
+                            <button type="button" class="btn-toggle" onclick="toggleInsightPreview()">预览</button>
+                            <div class="markdown-tip">
+                                💡 支持 <strong>Markdown</strong> 格式：<code>**粗体**</code> <code>*斜体*</code> <code>`代码`</code> <code>## 标题</code> <code>- 列表</code> <code>&gt; 引用</code>
+                                <br>💡 快捷键：<code>ESC</code> 取消，<code>Ctrl+Enter</code> 保存，<code>F2</code> 切换预览
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-insight-takeaway">关键收获</label>
+                        <div class="edit-content-container">
+                            <textarea id="edit-insight-takeaway" class="form-textarea" rows="4" placeholder="这本书给你带来了什么启发或改变？"></textarea>
+                            <div class="markdown-preview" id="edit-takeaway-preview"></div>
+                        </div>
+                        <div class="edit-controls">
+                            <button type="button" class="btn-toggle" onclick="toggleTakeawayPreview()">预览</button>
+                            <div class="markdown-tip">
+                                💡 支持 <strong>Markdown</strong> 格式：记录关键收获和启发
+                                <br>💡 快捷键：<code>ESC</code> 取消，<code>Ctrl+Enter</code> 保存，<code>F2</code> 切换预览
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideEditInsightModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditInsight()">保存修改</button>
+            </div>
+        </div>
+    </div>
     
     <script>
         // 全局变量
@@ -1339,14 +1452,21 @@
             }
             
             try {
+                console.log('开始删除书籍，书籍ID:', bookId);
+                showToast('正在删除书籍...', 'info');
+                
                 const response = await fetch(`/api/books?book_id=${bookId}`, {
                     method: 'DELETE'
                 });
                 
                 if (!response.ok) {
-                    throw new Error('删除书籍失败');
+                    const errorText = await response.text();
+                    console.error('删除书籍失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`删除书籍失败: ${response.status} ${errorText}`);
                 }
                 
+                const responseData = await response.json();
+                console.log('书籍删除成功，响应:', responseData);
                 showToast('书籍已成功删除！', 'success');
                 
                 // 等待一下再跳转
@@ -1652,16 +1772,21 @@
         // 加载笔记
         async function loadNotes() {
             try {
+                console.log('开始加载笔记，书籍ID:', bookId);
                 const response = await fetch(`/api/books/notes?book_id=${bookId}`);
                 if (!response.ok) {
-                    throw new Error('加载笔记失败');
+                    const errorText = await response.text();
+                    console.error('加载笔记失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`加载笔记失败: ${response.status} ${errorText}`);
                 }
                 
                 const notes = await response.json();
+                console.log('成功加载笔记:', notes);
                 displayNotes(notes);
                 
             } catch (error) {
                 console.error('加载笔记失败:', error);
+                showToast('加载笔记失败: ' + error.message, 'error');
             }
         }
         
@@ -1680,36 +1805,82 @@
                 return;
             }
             
-            notesList.innerHTML = notes.map(note => `
-                <div class="note-item" data-note-id="${note.id}">
-                    <div class="note-header">
-                        <span class="note-location">${note.chapter || ''}${note.page ? ' - 第' + note.page + '页' : ''}</span>
-                        <div class="note-header-right">
-                            <span class="note-time">${formatDate(note.create_time)}</span>
-                            <div class="note-actions">
-                                <button class="btn-action btn-edit" onclick="editNote('${note.id}', '${note.chapter || ''}', ${note.page || 0}, \`${escapeForJS(note.content)}\`)" title="编辑">✏️</button>
-                                <button class="btn-action btn-delete" onclick="deleteNote('${note.id}')" title="删除">🗑️</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="note-content markdown-content">${renderMarkdown(note.content)}</div>
-                </div>
-            `).join('');
+            // 清空现有内容
+            notesList.innerHTML = '';
+            
+            // 使用DOM API创建元素，避免字符串转义问题
+            notes.forEach(note => {
+                const noteItem = document.createElement('div');
+                noteItem.className = 'note-item';
+                noteItem.setAttribute('data-note-id', note.id);
+                
+                const noteHeader = document.createElement('div');
+                noteHeader.className = 'note-header';
+                
+                const noteLocation = document.createElement('span');
+                noteLocation.className = 'note-location';
+                noteLocation.textContent = (note.chapter || '') + (note.page ? ' - 第' + note.page + '页' : '');
+                
+                const noteHeaderRight = document.createElement('div');
+                noteHeaderRight.className = 'note-header-right';
+                
+                const noteTime = document.createElement('span');
+                noteTime.className = 'note-time';
+                noteTime.textContent = formatDate(note.create_time);
+                
+                const noteActions = document.createElement('div');
+                noteActions.className = 'note-actions';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-action btn-edit';
+                editBtn.title = '编辑';
+                editBtn.textContent = '✏️';
+                editBtn.onclick = () => editNote(note.id, note.chapter || '', note.page || 0, note.content);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-action btn-delete';
+                deleteBtn.title = '删除';
+                deleteBtn.textContent = '🗑️';
+                deleteBtn.onclick = () => deleteNote(note.id);
+                
+                noteActions.appendChild(editBtn);
+                noteActions.appendChild(deleteBtn);
+                
+                noteHeaderRight.appendChild(noteTime);
+                noteHeaderRight.appendChild(noteActions);
+                
+                noteHeader.appendChild(noteLocation);
+                noteHeader.appendChild(noteHeaderRight);
+                
+                const noteContent = document.createElement('div');
+                noteContent.className = 'note-content markdown-content';
+                noteContent.innerHTML = renderMarkdown(note.content);
+                
+                noteItem.appendChild(noteHeader);
+                noteItem.appendChild(noteContent);
+                
+                notesList.appendChild(noteItem);
+            });
         }
         
         // 加载心得
         async function loadInsights() {
             try {
+                console.log('开始加载心得，书籍ID:', bookId);
                 const response = await fetch(`/api/books/insights?book_id=${bookId}`);
                 if (!response.ok) {
-                    throw new Error('加载心得失败');
+                    const errorText = await response.text();
+                    console.error('加载心得失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`加载心得失败: ${response.status} ${errorText}`);
                 }
                 
                 const insights = await response.json();
+                console.log('成功加载心得:', insights);
                 displayInsights(insights);
                 
             } catch (error) {
                 console.error('加载心得失败:', error);
+                showToast('加载心得失败: ' + error.message, 'error');
             }
         }
         
@@ -1728,22 +1899,77 @@
                 return;
             }
             
-            insightsList.innerHTML = insights.map(insight => `
-                <div class="insight-item" data-insight-id="${insight.id}">
-                    <div class="insight-header">
-                        <div class="insight-header-left">
-                            <span class="insight-title">${insight.title}</span>
-                            <span class="insight-rating">${'⭐'.repeat(insight.rating)}</span>
-                        </div>
-                        <div class="insight-actions">
-                            <button class="btn-action btn-edit" onclick="editInsight('${insight.id}', \`${escapeForJS(insight.title)}\`, ${insight.rating}, \`${escapeForJS(insight.content)}\`, \`${escapeForJS(insight.key_takeaways ? insight.key_takeaways[0] || '' : '')}\`)" title="编辑">✏️</button>
-                            <button class="btn-action btn-delete" onclick="deleteInsight('${insight.id}')" title="删除">🗑️</button>
-                        </div>
-                    </div>
-                    <div class="insight-content markdown-content">${renderMarkdown(insight.content)}</div>
-                    ${insight.key_takeaways && insight.key_takeaways[0] ? `<div class="insight-takeaway markdown-content">关键收获: ${renderMarkdown(insight.key_takeaways[0])}</div>` : ''}
-                </div>
-            `).join('');
+            // 清空现有内容
+            insightsList.innerHTML = '';
+            
+            // 使用DOM API创建元素，避免字符串转义问题
+            insights.forEach(insight => {
+                const insightItem = document.createElement('div');
+                insightItem.className = 'insight-item';
+                insightItem.setAttribute('data-insight-id', insight.id);
+                
+                const insightHeader = document.createElement('div');
+                insightHeader.className = 'insight-header';
+                
+                const insightHeaderLeft = document.createElement('div');
+                insightHeaderLeft.className = 'insight-header-left';
+                
+                const insightTitle = document.createElement('span');
+                insightTitle.className = 'insight-title';
+                insightTitle.textContent = insight.title;
+                
+                const insightRating = document.createElement('span');
+                insightRating.className = 'insight-rating';
+                insightRating.textContent = '⭐'.repeat(insight.rating);
+                
+                insightHeaderLeft.appendChild(insightTitle);
+                insightHeaderLeft.appendChild(insightRating);
+                
+                const insightActions = document.createElement('div');
+                insightActions.className = 'insight-actions';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-action btn-edit';
+                editBtn.title = '编辑';
+                editBtn.textContent = '✏️';
+                editBtn.onclick = () => editInsight(
+                    insight.id, 
+                    insight.title, 
+                    insight.rating, 
+                    insight.type || 'summary', 
+                    insight.content, 
+                    (insight.key_takeaways && insight.key_takeaways[0]) ? insight.key_takeaways[0] : ''
+                );
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-action btn-delete';
+                deleteBtn.title = '删除';
+                deleteBtn.textContent = '🗑️';
+                deleteBtn.onclick = () => deleteInsight(insight.id);
+                
+                insightActions.appendChild(editBtn);
+                insightActions.appendChild(deleteBtn);
+                
+                insightHeader.appendChild(insightHeaderLeft);
+                insightHeader.appendChild(insightActions);
+                
+                const insightContent = document.createElement('div');
+                insightContent.className = 'insight-content markdown-content';
+                insightContent.innerHTML = renderMarkdown(insight.content);
+                
+                insightItem.appendChild(insightHeader);
+                insightItem.appendChild(insightContent);
+                
+                // 添加关键收获
+                if (insight.key_takeaways && insight.key_takeaways[0]) {
+                    const insightTakeaway = document.createElement('div');
+                    insightTakeaway.className = 'insight-takeaway markdown-content';
+                    insightTakeaway.innerHTML = '关键收获: ' + renderMarkdown(insight.key_takeaways[0]);
+                    insightItem.appendChild(insightTakeaway);
+                }
+                
+                insightsList.appendChild(insightItem);
+            });
         }
         
         // 添加笔记表单提交
@@ -1847,6 +2073,7 @@
             }
             
             try {
+                console.log('开始删除笔记，笔记ID:', noteId, '书籍ID:', bookId);
                 showToast('正在删除笔记...', 'info');
                 
                 const response = await fetch(`/api/books/notes?book_id=${bookId}&note_id=${noteId}`, {
@@ -1854,13 +2081,16 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('删除笔记失败');
+                    const errorText = await response.text();
+                    console.error('删除笔记失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`删除笔记失败: ${response.status} ${errorText}`);
                 }
                 
+                console.log('笔记删除成功');
                 showToast('笔记删除成功！', 'success');
                 
                 // 重新加载笔记
-                loadNotes();
+                setTimeout(() => loadNotes(), 500);
                 
             } catch (error) {
                 console.error('删除笔记失败:', error);
@@ -1871,9 +2101,9 @@
         // 心得编辑和删除功能
         
         // 编辑心得
-        function editInsight(insightId, title, rating, content, takeaway) {
+        function editInsight(insightId, title, rating, type, content, takeaway) {
             // 显示编辑模态框
-            showEditInsightModal(insightId, title, rating, content, takeaway);
+            showEditInsightModal(insightId, title, rating, type, content, takeaway);
         }
         
         // 删除心得
@@ -1883,6 +2113,7 @@
             }
             
             try {
+                console.log('开始删除心得，心得ID:', insightId, '书籍ID:', bookId);
                 showToast('正在删除心得...', 'info');
                 
                 const response = await fetch(`/api/books/insights?book_id=${bookId}&insight_id=${insightId}`, {
@@ -1890,13 +2121,16 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('删除心得失败');
+                    const errorText = await response.text();
+                    console.error('删除心得失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`删除心得失败: ${response.status} ${errorText}`);
                 }
                 
+                console.log('心得删除成功');
                 showToast('心得删除成功！', 'success');
                 
                 // 重新加载心得
-                loadInsights();
+                setTimeout(() => loadInsights(), 500);
                 
             } catch (error) {
                 console.error('删除心得失败:', error);
@@ -1906,69 +2140,214 @@
         
         // 显示编辑笔记模态框
         function showEditNoteModal(noteId, chapter, page, content) {
-            // 这里可以复用添加笔记的表单，或创建新的编辑表单
-            // 暂时使用简单的prompt实现
-            const newChapter = prompt('编辑章节:', chapter || '');
-            if (newChapter === null) return;
+            const modal = document.getElementById('edit-note-modal');
             
-            const newPageStr = prompt('编辑页码:', page || '');
-            if (newPageStr === null) return;
-            const newPage = parseInt(newPageStr) || 0;
+            // 设置当前编辑的笔记ID
+            modal.setAttribute('data-note-id', noteId);
             
-            const newContent = prompt('编辑笔记内容:', content || '');
-            if (newContent === null) return;
+            // 填充表单数据
+            document.getElementById('edit-note-chapter').value = chapter || '';
+            document.getElementById('edit-note-page').value = page || '';
+            document.getElementById('edit-note-content').value = content || '';
             
-            updateNote(noteId, newChapter, newPage, newContent);
+            // 清空预览区域
+            document.getElementById('edit-note-preview').innerHTML = '';
+            
+            // 显示模态框
+            modal.classList.remove('hide');
+            
+            // 焦点到第一个输入框
+            document.getElementById('edit-note-chapter').focus();
+            
+            // 添加键盘事件监听器
+            addEditNoteKeyboardListeners();
         }
         
         // 显示编辑心得模态框
-        function showEditInsightModal(insightId, title, rating, content, takeaway) {
-            // 暂时使用简单的prompt实现
-            const newTitle = prompt('编辑心得标题:', title || '');
-            if (newTitle === null) return;
+        function showEditInsightModal(insightId, title, rating, type, content, takeaway) {
+            const modal = document.getElementById('edit-insight-modal');
             
-            const newRatingStr = prompt('编辑评分 (1-5):', rating || '');
-            if (newRatingStr === null) return;
-            const newRating = parseInt(newRatingStr) || 1;
-            if (newRating < 1 || newRating > 5) {
-                alert('评分必须在1-5之间');
+            // 设置当前编辑的心得ID
+            modal.setAttribute('data-insight-id', insightId);
+            
+            // 填充表单数据
+            document.getElementById('edit-insight-title').value = title || '';
+            document.getElementById('edit-insight-rating').value = rating || 1;
+            document.getElementById('edit-insight-type').value = type || 'summary';
+            document.getElementById('edit-insight-content').value = content || '';
+            document.getElementById('edit-insight-takeaway').value = takeaway || '';
+            
+            // 清空预览区域
+            document.getElementById('edit-insight-preview').innerHTML = '';
+            document.getElementById('edit-takeaway-preview').innerHTML = '';
+            
+            // 显示模态框
+            modal.classList.remove('hide');
+            
+            // 焦点到第一个输入框
+            document.getElementById('edit-insight-title').focus();
+            
+            // 添加键盘事件监听器
+            addEditInsightKeyboardListeners();
+        }
+        
+        // 隐藏编辑笔记模态框
+        function hideEditNoteModal() {
+            const modal = document.getElementById('edit-note-modal');
+            modal.classList.add('hide');
+            
+            // 清空表单
+            document.getElementById('edit-note-form').reset();
+            document.getElementById('edit-note-preview').innerHTML = '';
+            
+            // 移除键盘事件监听器
+            removeEditNoteKeyboardListeners();
+        }
+        
+        // 隐藏编辑心得模态框
+        function hideEditInsightModal() {
+            const modal = document.getElementById('edit-insight-modal');
+            modal.classList.add('hide');
+            
+            // 清空表单
+            document.getElementById('edit-insight-form').reset();
+            document.getElementById('edit-insight-preview').innerHTML = '';
+            document.getElementById('edit-takeaway-preview').innerHTML = '';
+            
+            // 移除键盘事件监听器
+            removeEditInsightKeyboardListeners();
+        }
+        
+        // 提交编辑笔记
+        function submitEditNote() {
+            const modal = document.getElementById('edit-note-modal');
+            const noteId = modal.getAttribute('data-note-id');
+            
+            const chapter = document.getElementById('edit-note-chapter').value;
+            const page = parseInt(document.getElementById('edit-note-page').value) || 0;
+            const content = document.getElementById('edit-note-content').value;
+            
+            if (!content.trim()) {
+                showToast('请输入笔记内容', 'error');
                 return;
             }
             
-            const newContent = prompt('编辑心得内容:', content || '');
-            if (newContent === null) return;
+            updateNote(noteId, chapter, page, content);
+            hideEditNoteModal();
+        }
+        
+        // 提交编辑心得
+        function submitEditInsight() {
+            const modal = document.getElementById('edit-insight-modal');
+            const insightId = modal.getAttribute('data-insight-id');
             
-            const newTakeaway = prompt('编辑关键收获:', takeaway || '');
-            if (newTakeaway === null) return;
+            const title = document.getElementById('edit-insight-title').value;
+            const rating = parseInt(document.getElementById('edit-insight-rating').value);
+            const type = document.getElementById('edit-insight-type').value;
+            const content = document.getElementById('edit-insight-content').value;
+            const takeaway = document.getElementById('edit-insight-takeaway').value;
             
-            updateInsight(insightId, newTitle, newRating, newContent, newTakeaway);
+            if (!title.trim() || !content.trim()) {
+                showToast('请输入标题和内容', 'error');
+                return;
+            }
+            
+            updateInsight(insightId, title, rating, type, content, takeaway);
+            hideEditInsightModal();
+        }
+        
+        // 切换笔记预览
+        function toggleNotePreview() {
+            const textarea = document.getElementById('edit-note-content');
+            const preview = document.getElementById('edit-note-preview');
+            const button = event.target;
+            
+            if (preview.style.display === 'block') {
+                // 隐藏预览，显示编辑
+                preview.style.display = 'none';
+                textarea.style.display = 'block';
+                button.textContent = '预览';
+            } else {
+                // 显示预览，隐藏编辑
+                preview.innerHTML = renderMarkdown(textarea.value);
+                preview.style.display = 'block';
+                textarea.style.display = 'none';
+                button.textContent = '编辑';
+            }
+        }
+        
+        // 切换心得预览
+        function toggleInsightPreview() {
+            const textarea = document.getElementById('edit-insight-content');
+            const preview = document.getElementById('edit-insight-preview');
+            const button = event.target;
+            
+            if (preview.style.display === 'block') {
+                // 隐藏预览，显示编辑
+                preview.style.display = 'none';
+                textarea.style.display = 'block';
+                button.textContent = '预览';
+            } else {
+                // 显示预览，隐藏编辑
+                preview.innerHTML = renderMarkdown(textarea.value);
+                preview.style.display = 'block';
+                textarea.style.display = 'none';
+                button.textContent = '编辑';
+            }
+        }
+        
+        // 切换关键收获预览
+        function toggleTakeawayPreview() {
+            const textarea = document.getElementById('edit-insight-takeaway');
+            const preview = document.getElementById('edit-takeaway-preview');
+            const button = event.target;
+            
+            if (preview.style.display === 'block') {
+                // 隐藏预览，显示编辑
+                preview.style.display = 'none';
+                textarea.style.display = 'block';
+                button.textContent = '预览';
+            } else {
+                // 显示预览，隐藏编辑
+                preview.innerHTML = renderMarkdown(textarea.value);
+                preview.style.display = 'block';
+                textarea.style.display = 'none';
+                button.textContent = '编辑';
+            }
         }
         
         // 更新笔记
         async function updateNote(noteId, chapter, page, content) {
             try {
+                console.log('开始更新笔记，笔记ID:', noteId, '书籍ID:', bookId);
                 showToast('正在更新笔记...', 'info');
+                
+                const requestData = {
+                    chapter: chapter,
+                    page: page,
+                    content: content
+                };
+                console.log('更新笔记请求数据:', requestData);
                 
                 const response = await fetch(`/api/books/notes?book_id=${bookId}&note_id=${noteId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        chapter: chapter,
-                        page: page,
-                        content: content
-                    })
+                    body: JSON.stringify(requestData)
                 });
                 
                 if (!response.ok) {
-                    throw new Error('更新笔记失败');
+                    const errorText = await response.text();
+                    console.error('更新笔记失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`更新笔记失败: ${response.status} ${errorText}`);
                 }
                 
+                console.log('笔记更新成功');
                 showToast('笔记更新成功！', 'success');
                 
                 // 重新加载笔记
-                loadNotes();
+                setTimeout(() => loadNotes(), 500);
                 
             } catch (error) {
                 console.error('更新笔记失败:', error);
@@ -1977,31 +2356,39 @@
         }
         
         // 更新心得
-        async function updateInsight(insightId, title, rating, content, takeaway) {
+        async function updateInsight(insightId, title, rating, type, content, takeaway) {
             try {
+                console.log('开始更新心得，心得ID:', insightId, '书籍ID:', bookId);
                 showToast('正在更新心得...', 'info');
+                
+                const requestData = {
+                    title: title,
+                    rating: rating,
+                    type: type,
+                    content: content,
+                    takeaway: takeaway
+                };
+                console.log('更新心得请求数据:', requestData);
                 
                 const response = await fetch(`/api/books/insights?book_id=${bookId}&insight_id=${insightId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        title: title,
-                        rating: rating,
-                        content: content,
-                        takeaway: takeaway
-                    })
+                    body: JSON.stringify(requestData)
                 });
                 
                 if (!response.ok) {
-                    throw new Error('更新心得失败');
+                    const errorText = await response.text();
+                    console.error('更新心得失败，状态码:', response.status, '错误信息:', errorText);
+                    throw new Error(`更新心得失败: ${response.status} ${errorText}`);
                 }
                 
+                console.log('心得更新成功');
                 showToast('心得更新成功！', 'success');
                 
                 // 重新加载心得
-                loadInsights();
+                setTimeout(() => loadInsights(), 500);
                 
             } catch (error) {
                 console.error('更新心得失败:', error);
@@ -2121,6 +2508,80 @@
             event.preventDefault(); // 阻止错误进一步传播
         });
         
+        // 键盘事件监听器变量
+        let editNoteKeyboardHandler = null;
+        let editInsightKeyboardHandler = null;
+        
+        // 添加编辑笔记键盘事件监听器
+        function addEditNoteKeyboardListeners() {
+            editNoteKeyboardHandler = function(event) {
+                // ESC键关闭模态框
+                if (event.key === 'Escape') {
+                    hideEditNoteModal();
+                    return;
+                }
+                
+                // Ctrl+Enter 或 Cmd+Enter 保存
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    submitEditNote();
+                    return;
+                }
+                
+                // F2 切换预览
+                if (event.key === 'F2') {
+                    event.preventDefault();
+                    toggleNotePreview();
+                    return;
+                }
+            };
+            
+            document.addEventListener('keydown', editNoteKeyboardHandler);
+        }
+        
+        // 移除编辑笔记键盘事件监听器
+        function removeEditNoteKeyboardListeners() {
+            if (editNoteKeyboardHandler) {
+                document.removeEventListener('keydown', editNoteKeyboardHandler);
+                editNoteKeyboardHandler = null;
+            }
+        }
+        
+        // 添加编辑心得键盘事件监听器
+        function addEditInsightKeyboardListeners() {
+            editInsightKeyboardHandler = function(event) {
+                // ESC键关闭模态框
+                if (event.key === 'Escape') {
+                    hideEditInsightModal();
+                    return;
+                }
+                
+                // Ctrl+Enter 或 Cmd+Enter 保存
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    submitEditInsight();
+                    return;
+                }
+                
+                // F2 切换预览
+                if (event.key === 'F2') {
+                    event.preventDefault();
+                    toggleInsightPreview();
+                    return;
+                }
+            };
+            
+            document.addEventListener('keydown', editInsightKeyboardHandler);
+        }
+        
+        // 移除编辑心得键盘事件监听器
+        function removeEditInsightKeyboardListeners() {
+            if (editInsightKeyboardHandler) {
+                document.removeEventListener('keydown', editInsightKeyboardHandler);
+                editInsightKeyboardHandler = null;
+            }
+        }
+        
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
             // 从页面数据中获取书籍信息
@@ -2155,7 +2616,33 @@
             if (urlParams.get('edit') === 'true') {
                 showEditModal();
             }
+            
+            // 为模态框添加点击外部关闭功能
+            addModalClickOutsideListeners();
         });
+        
+        // 添加模态框点击外部关闭功能
+        function addModalClickOutsideListeners() {
+            // 编辑笔记模态框
+            const editNoteModal = document.getElementById('edit-note-modal');
+            if (editNoteModal) {
+                editNoteModal.addEventListener('click', function(e) {
+                    if (e.target === editNoteModal) {
+                        hideEditNoteModal();
+                    }
+                });
+            }
+            
+            // 编辑心得模态框
+            const editInsightModal = document.getElementById('edit-insight-modal');
+            if (editInsightModal) {
+                editInsightModal.addEventListener('click', function(e) {
+                    if (e.target === editInsightModal) {
+                        hideEditInsightModal();
+                    }
+                });
+            }
+        }
     </script>
 </body>
 </html> 

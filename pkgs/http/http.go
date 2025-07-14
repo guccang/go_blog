@@ -24,6 +24,7 @@ import(
 	"exercise"
 	"comment"
 	"sort"
+	"lifecountdown"
 )
 
 func Info(){
@@ -342,6 +343,32 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		return
 	}	
 
+	// 检查是否是日记博客，如果是则需要密码验证
+	if config.IsDiaryBlog(blogname) {
+		// 检查是否提供了密码
+		diaryPassword := r.URL.Query().Get("diary_pwd")
+		if diaryPassword == "" {
+			// 没有提供密码，显示密码输入页面
+			view.PageDiaryPasswordInput(w, blogname)
+			return
+		}
+		
+		// 验证密码（这里使用简单的密码验证，实际应用中应该使用更安全的方式）
+		expectedPassword := config.GetConfig("diary_password")
+		if expectedPassword == "" {
+			expectedPassword = "diary123" // 默认密码
+		}
+		
+		if diaryPassword != expectedPassword {
+			// 密码错误，返回错误页面
+			view.PageDiaryPasswordError(w, blogname)
+			return
+		}
+		
+		// 密码正确，继续处理
+		log.DebugF("日记博客密码验证成功: %s", blogname)
+	}
+
 	// 检查是否是 todolist 博客，如果是则重定向到 todolist 页面
 	if strings.HasPrefix(blogname, "todolist-") {
 		// 从blogname中解析出日期，格式为todolist-YYYY-MM-DD
@@ -395,6 +422,15 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		}
 		// 如果格式不正确，则使用默认重定向
 		h.Redirect(w, r, "/monthgoal", 302)
+		return
+	}
+
+	// 检查是否是 reading_book 博客，如果是则重定向到 reading 页面
+	if strings.HasPrefix(blogname, "reading_book_") {
+		// 从blogname中解析出书名，格式为reading_book_书名.md
+		bookTitle := strings.TrimSuffix(strings.TrimPrefix(blogname, "reading_book_"), ".md")
+		// 重定向到reading页面，并传递book参数
+		h.Redirect(w, r, fmt.Sprintf("/reading?book=%s", bookTitle), 302)
 		return
 	}
 
@@ -884,6 +920,23 @@ func HandleReading(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	
+	// 检查是否有book参数，如果有则跳转到书籍详情页面
+	bookTitle := r.URL.Query().Get("book")
+	if bookTitle != "" {
+		// 根据书名查找书籍ID
+		books := control.GetAllBooks()
+		for _, book := range books {
+			if book.Title == bookTitle {
+				// 跳转到书籍详情页面
+				h.Redirect(w, r, fmt.Sprintf("/reading/book/%s", book.ID), 302)
+				return
+			}
+		}
+		// 如果没找到对应的书籍，重定向到reading页面
+		h.Redirect(w, r, "/reading", 302)
+		return
+	}
+	
 	view.PageReading(w)
 }
 
@@ -1070,19 +1123,35 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		// 删除书籍
 		bookID := r.URL.Query().Get("book_id")
 		if bookID == "" {
+			log.ErrorF("删除书籍失败: 缺少book_id参数")
 			h.Error(w, "Book ID is required", h.StatusBadRequest)
 			return
 		}
 		
+		log.DebugF("收到删除书籍请求: book_id=%s", bookID)
+		
+		// 先检查书籍是否存在
+		book := control.GetBook(bookID)
+		if book == nil {
+			log.ErrorF("删除书籍失败: 书籍不存在, book_id=%s", bookID)
+			h.Error(w, "书籍不存在", h.StatusBadRequest)
+			return
+		}
+		log.DebugF("找到要删除的书籍: %s - %s", book.ID, book.Title)
+		
 		err := control.DeleteBook(bookID)
 		if err != nil {
+			log.ErrorF("删除书籍失败: book_id=%s, error=%v", bookID, err)
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
 		
+		log.DebugF("书籍删除成功: book_id=%s", bookID)
+		
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Book deleted successfully",
+			"book_id": bookID,
 		}
 		json.NewEncoder(w).Encode(response)
 		
@@ -1783,6 +1852,11 @@ func Init() int{
 	h.HandleFunc("/api/advanced-reading-statistics", HandleAdvancedReadingStatisticsAPI)
 	h.HandleFunc("/api/export-reading-data", HandleExportReadingDataAPI)
 
+	// 人生倒计时相关路由
+	h.HandleFunc("/lifecountdown", HandleLifeCountdown)
+	h.HandleFunc("/api/lifecountdown", HandleLifeCountdownAPI)
+	h.HandleFunc("/api/lifecountdown/config", HandleLifeCountdownConfigAPI)
+
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
 	h.Handle("/", h.StripPrefix("/", fs))
@@ -2113,4 +2187,142 @@ func HandleExportReadingDataAPI(w h.ResponseWriter, r *h.Request) {
 		"success": true,
 		"data":    data,
 	})
+}
+
+// 人生倒计时页面处理函数
+func HandleLifeCountdown(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLifeCountdown", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	view.PageLifeCountdown(w)
+}
+
+// 人生倒计时API处理函数
+func HandleLifeCountdownAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLifeCountdownAPI", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case h.MethodPost:
+		// 计算人生倒计时数据
+		var config lifecountdown.UserConfig
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
+			return
+		}
+		
+		data := lifecountdown.CalculateLifeCountdown(config)
+		
+		response := map[string]interface{}{
+			"success": true,
+			"data":    data,
+		}
+		json.NewEncoder(w).Encode(response)
+		
+	case h.MethodGet:
+		// 获取书籍列表用于可视化
+		booksMap := control.GetAllBooks()
+		bookTitles := make([]string, 0, len(booksMap))
+		
+		for _, book := range booksMap {
+			if book != nil && book.Title != "" {
+				bookTitles = append(bookTitles, book.Title)
+			}
+		}
+		
+		// 如果没有书籍，使用默认列表
+		if len(bookTitles) == 0 {
+			bookTitles = []string{
+				"时间简史", "活着", "百年孤独", "思考快与慢", "人类简史", 
+				"原则", "三体", "1984", "深度工作", "认知觉醒", "心流", 
+				"经济学原理", "创新者", "未来简史", "影响力", "黑天鹅",
+				"毛泽东传", "邓小平传", "红楼梦", "西游记", "水浒传",
+				"三国演义", "论语", "孟子", "老子", "庄子", "史记",
+			}
+		}
+		
+		log.DebugF("获取书籍列表: 共%d本书", len(bookTitles))
+		
+		response := map[string]interface{}{
+			"success": true,
+			"books":   bookTitles,
+		}
+		json.NewEncoder(w).Encode(response)
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
+}
+
+// 人生倒计时配置API处理函数
+func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLifeCountdownConfigAPI", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case h.MethodGet:
+		// 获取保存的配置
+		blog := control.GetBlog("lifecountdown.md")
+		if blog == nil {
+			// 如果配置不存在，返回默认配置
+			defaultConfig := map[string]interface{}{
+				"currentAge": 25,
+				"expectedLifespan": 80,
+				"dailySleepHours": 8.0,
+				"dailyStudyHours": 2.0,
+				"dailyReadingHours": 1.0,
+				"dailyWorkHours": 8.0,
+				"averageBookWords": 150000,
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"config": defaultConfig,
+				"isDefault": true,
+			})
+			return
+		}
+		
+		// 尝试解析保存的配置
+		var config map[string]interface{}
+		if err := json.Unmarshal([]byte(blog.Content), &config); err != nil {
+			// 解析失败，返回默认配置
+			defaultConfig := map[string]interface{}{
+				"currentAge": 25,
+				"expectedLifespan": 80,
+				"dailySleepHours": 8.0,
+				"dailyStudyHours": 2.0,
+				"dailyReadingHours": 1.0,
+				"dailyWorkHours": 8.0,
+				"averageBookWords": 150000,
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"config": defaultConfig,
+				"isDefault": true,
+			})
+			return
+		}
+		
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"config": config,
+			"isDefault": false,
+		})
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
 }

@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人生倒计时 - 时间可视化</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #2c3e50, #4a235a);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4, #a1c4fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .card-header i {
+            font-size: 1.8rem;
+            margin-right: 15px;
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .countdown {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .countdown-number {
+            font-size: 4rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #ff9a9e, #a1c4fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 10px 0;
+        }
+        
+        .countdown-label {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 5px 0;
+            color: #ff9a9e;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .insights {
+            margin-top: 30px;
+            padding: 25px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            border-left: 4px solid #a1c4fd;
+        }
+        
+        .insights-title {
+            font-size: 1.4rem;
+            margin-bottom: 15px;
+            color: #a1c4fd;
+        }
+        
+        .books-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+        
+        .book {
+            width: 50px;
+            height: 70px;
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4);
+            border-radius: 4px;
+            position: relative;
+            transform: rotate(2deg);
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+        
+        .book:hover {
+            transform: rotate(0) scale(1.1);
+            z-index: 10;
+        }
+        
+        .book:nth-child(2n) {
+            background: linear-gradient(45deg, #a1c4fd, #c2e9fb);
+            transform: rotate(-1deg);
+        }
+        
+        .book:nth-child(3n) {
+            background: linear-gradient(45deg, #d4fc79, #96e6a1);
+            transform: rotate(3deg);
+        }
+        
+        .book-title {
+            position: absolute;
+            bottom: 5px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 0.5rem;
+            color: #000;
+            font-weight: bold;
+            padding: 0 2px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 50px;
+            background: linear-gradient(45deg, #ff9a9e, #fad0c4);
+            color: #2c3e50;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .btn-alt {
+            background: linear-gradient(45deg, #a1c4fd, #c2e9fb);
+        }
+        
+        .ai-section {
+            margin-top: 50px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+            padding: 30px;
+            border-top: 3px solid #00adb5;
+        }
+        
+        .ai-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .ai-icon {
+            font-size: 2.5rem;
+            color: #00adb5;
+        }
+        
+        .ai-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        
+        .ai-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .ai-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .ai-pros, .ai-cons {
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        .ai-pros {
+            background: rgba(0, 173, 181, 0.15);
+            border: 1px solid rgba(0, 173, 181, 0.3);
+        }
+        
+        .ai-cons {
+            background: rgba(255, 107, 107, 0.15);
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+        
+        .ai-list {
+            list-style-type: none;
+            margin-top: 15px;
+        }
+        
+        .ai-list li {
+            padding: 10px 0;
+            border-bottom: 1px dashed rgba(255,255,255,0.1);
+            display: flex;
+            gap: 10px;
+        }
+        
+        .ai-list li i {
+            color: #00adb5;
+            min-width: 20px;
+        }
+        
+        .ai-cons .ai-list li i {
+            color: #ff6b6b;
+        }
+        
+        .conclusion {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 600;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .highlight {
+            color: #fad0c4;
+            font-weight: 700;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>人生倒计时可视化</h1>
+            <p class="subtitle">基于80年预期寿命（29,220天）的时间分配可视化 - 每一刻都是不可再生的珍贵资源</p>
+        </header>
+        
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-heartbeat"></i>
+                    <h2 class="card-title">人生倒计时</h2>
+                </div>
+                <div class="countdown">
+                    <div class="countdown-number">29,220</div>
+                    <div class="countdown-label">总天数（80年）</div>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">已使用天数</div>
+                        <div class="stat-value" id="days-lived">10,950</div>
+                        <div class="stat-label">（假设30岁）</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">剩余天数</div>
+                        <div class="stat-value" id="days-left">18,270</div>
+                        <div class="stat-label">（50年）</div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-book-open"></i>
+                    <h2 class="card-title">阅读人生</h2>
+                </div>
+                
+                <div class="chart-container">
+                    <canvas id="booksChart"></canvas>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn" id="btn-fast">
+                        <i class="fas fa-bolt"></i> 快速阅读（周/本）
+                    </button>
+                    <button class="btn btn-alt" id="btn-slow">
+                        <i class="fas fa-turtle"></i> 慢速阅读（3月/本）
+                    </button>
+                </div>
+                
+                <div class="books-container" id="books-container">
+                    <!-- 书籍将通过JS生成 -->
+                </div>
+                
+                <div class="insights">
+                    <h3 class="insights-title">黄金时间（18-45岁）</h3>
+                    <p>这是你最具创造力和精力的27年，共 <span class="highlight">9,862天</span>。</p>
+                    <p>充分利用这段时间学习、成长和创造，它将奠定你一生的基础。</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="ai-section">
+            <div class="ai-header">
+                <i class="fas fa-robot ai-icon"></i>
+                <h2 class="ai-title">AI时代，我们还需要读书吗？</h2>
+            </div>
+            
+            <div class="ai-content">
+                <div class="ai-pros">
+                    <h3><i class="fas fa-check-circle"></i> AI 的强大优势</h3>
+                    <ul class="ai-list">
+                        <li><i class="fas fa-database"></i> 海量知识存储：掌握远超人类记忆容量的信息</li>
+                        <li><i class="fas fa-bolt"></i> 即时问题解答：复杂问题秒级响应</li>
+                        <li><i class="fas fa-graduation-cap"></i> 学习效率提升：快速总结、翻译、生成学习资料</li>
+                        <li><i class="fas fa-sync-alt"></i> 持续更新：随时获取最新知识和研究成果</li>
+                    </ul>
+                </div>
+                
+                <div class="ai-cons">
+                    <h3><i class="fas fa-exclamation-triangle"></i> AI 的固有局限</h3>
+                    <ul class="ai-list">
+                        <li><i class="fas fa-brain"></i> 缺乏真正理解：无法建立深层逻辑联系</li>
+                        <li><i class="fas fa-heart"></i> 无情感体验：不能感受文学艺术的情感冲击</li>
+                        <li><i class="fas fa-lightbulb"></i> 创造力缺失：无法超越已有知识进行突破性创新</li>
+                        <li><i class="fas fa-question-circle"></i> 价值观真空：缺乏人类道德判断和价值观塑造</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="conclusion">
+                <p>📚 <span class="highlight">AI不会让读书过时，而是让深度阅读更有价值</span> - 未来属于那些<br>善于思考、创造并懂得利用AI的"超级思考者"。</p>
+            </div>
+        </div>
+        
+        <footer>
+            <p>数据说明：基于80年预期寿命（29,220天）的平均值计算 | 睡眠按每天8小时计算 | 黄金时间：18-45岁（9,862天）</p>
+            <p>© 2023 人生倒计时可视化 | 珍惜时间，创造价值</p>
+        </footer>
+    </div>
+
+    <script>
+        // 初始化时间分配图表
+        const timeCtx = document.getElementById('timeChart').getContext('2d');
+        const timeChart = new Chart(timeCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['睡眠 (33.3%)', '休息 (50%)', '学习 (8%)', '黄金时间 (33.7%)'],
+                datasets: [{
+                    data: [9740, 14651, 2323, 9862],
+                    backgroundColor: [
+                        'rgba(161, 196, 253, 0.8)',
+                        'rgba(122, 231, 191, 0.8)',
+                        'rgba(253, 203, 110, 0.8)',
+                        'rgba(255, 107, 107, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(161, 196, 253, 1)',
+                        'rgba(122, 231, 191, 1)',
+                        'rgba(253, 203, 110, 1)',
+                        'rgba(255, 107, 107, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            font: {
+                                size: 13
+                            },
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                return `${label}: ${value.toLocaleString()} 天`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 初始化阅读图表
+        const booksCtx = document.getElementById('booksChart').getContext('2d');
+        const booksChart = new Chart(booksCtx, {
+            type: 'bar',
+            data: {
+                labels: ['快速 (周/本)', '中等 (月/2本)', '慢速 (3月/本)'],
+                datasets: [{
+                    label: '一生可读书籍数量',
+                    data: [3640, 1680, 280],
+                    backgroundColor: 'rgba(255, 154, 158, 0.7)',
+                    borderColor: 'rgba(255, 154, 158, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.8)'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.8)'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `约 ${context.parsed.y} 本书`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 生成书籍可视化
+        const booksContainer = document.getElementById('books-container');
+        const bookTitles = ["时间简史", "活着", "百年孤独", "思考快与慢", "人类简史", 
+                            "原则", "三体", "1984", "深度工作", "认知觉醒", "心流", 
+                            "经济学原理", "创新者", "未来简史", "原则", "影响力"];
+        
+        function generateBooks(count) {
+            booksContainer.innerHTML = '';
+            const displayCount = Math.min(count, 100); // 最多显示100本书
+            
+            for (let i = 0; i < displayCount; i++) {
+                const book = document.createElement('div');
+                book.className = 'book';
+                
+                const title = document.createElement('div');
+                title.className = 'book-title';
+                title.textContent = bookTitles[Math.floor(Math.random() * bookTitles.length)];
+                
+                book.appendChild(title);
+                booksContainer.appendChild(book);
+            }
+            
+            // 添加统计文本
+            const counter = document.createElement('div');
+            counter.style.width = '100%';
+            counter.style.textAlign = 'center';
+            counter.style.marginTop = '15px';
+            counter.style.fontWeight = 'bold';
+            counter.innerHTML = `已显示: ${displayCount} 本书 | 一生可读: ${count} 本书`;
+            booksContainer.appendChild(counter);
+        }
+        
+        // 初始生成书籍（中等速度）
+        generateBooks(1680);
+        
+        // 按钮事件
+        document.getElementById('btn-fast').addEventListener('click', function() {
+            generateBooks(3640);
+        });
+        
+        document.getElementById('btn-slow').addEventListener('click', function() {
+            generateBooks(280);
+        });
+        
+        // 模拟倒计时（假设用户30岁）
+        const totalDays = 29220;
+        const livedDays = 10950; // 30年
+        const leftDays = totalDays - livedDays;
+        
+        document.getElementById('days-lived').textContent = livedDays.toLocaleString();
+        document.getElementById('days-left').textContent = leftDays.toLocaleString();
+    </script>
+</body>
+</html>

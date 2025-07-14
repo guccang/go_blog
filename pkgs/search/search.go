@@ -65,6 +65,15 @@ func Search(match string) []*module.Blog{
 				return nil
 			}
 			reload(tokens[1])
+			// Return a special blog entry to indicate reload completion
+			reloadBlog := &module.Blog{
+				Title: "系统重新加载完成",
+				Content: "配置文件已重新加载完成！",
+				ModifyTime: time.Now().Format("2006-01-02 15:04:05"),
+				Tags: "system",
+				AuthType: module.EAuthType_public,
+			}
+			return []*module.Blog{reloadBlog}
 		}
 		if strings.ToLower(tag) == strings.ToLower("tag") {
 			if len(tokens) < 2 {

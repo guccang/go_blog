@@ -22,6 +22,7 @@ func GetVersion() string{
 var datas = make(map[string]string)
 var autodatesuffix = make([]string,0)
 var publictags = make([]string,0)
+var diary_keywords = make([]string,0)  // 新增：日记关键字列表
 var config_path = ""
 var sys_files = make([]string,0)
 
@@ -62,6 +63,88 @@ func loadConfig(filePath string){
 		sys_files = arr
 	}
 	
+	// 从 sys_conf.md 文件中读取日记关键字配置
+	loadDiaryKeywordsFromSysConf()
+}
+
+// 从 sys_conf.md 文件中读取日记关键字配置
+func loadDiaryKeywordsFromSysConf() {
+	// 获取 blogs_txt 目录路径
+	blogsPath := GetBlogsPath()
+	sysConfPath := filepath.Join(blogsPath, "sys_conf.md")
+	
+	// 检查文件是否存在
+	if _, err := os.Stat(sysConfPath); os.IsNotExist(err) {
+		log.DebugF("sys_conf.md 文件不存在: %s", sysConfPath)
+		// 设置默认的日记关键字
+		diary_keywords = []string{"日记_"}
+		return
+	}
+	
+	// 读取文件内容
+	file, err := os.Open(sysConfPath)
+	if err != nil {
+		log.ErrorF("无法打开 sys_conf.md 文件: %v", err)
+		diary_keywords = []string{"日记_"}
+		return
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+		
+		// 跳过空行和注释行
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 查找日记关键字配置行
+		if strings.HasPrefix(line, "diary_keywords=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				keywordsStr := strings.TrimSpace(parts[1])
+				if keywordsStr != "" {
+					keywords := strings.Split(keywordsStr, "|")
+					diary_keywords = make([]string, 0, len(keywords))
+					for _, keyword := range keywords {
+						keyword = strings.TrimSpace(keyword)
+						if keyword != "" {
+							diary_keywords = append(diary_keywords, keyword)
+						}
+					}
+					log.DebugF("从 sys_conf.md 加载日记关键字: %v", diary_keywords)
+					return
+				}
+			}
+		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		log.ErrorF("读取 sys_conf.md 文件出错: %v", err)
+	}
+	
+	// 如果没有找到配置，使用默认值
+	if len(diary_keywords) == 0 {
+		diary_keywords = []string{"日记_"}
+		log.DebugF("未找到日记关键字配置，使用默认值: %v", diary_keywords)
+	}
+}
+
+// 获取日记关键字列表
+func GetDiaryKeywords() []string {
+	return diary_keywords
+}
+
+// 检查标题是否匹配日记关键字
+func IsDiaryBlog(title string) bool {
+	for _, keyword := range diary_keywords {
+		if strings.HasPrefix(title, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func GetConfig(name string)(string){

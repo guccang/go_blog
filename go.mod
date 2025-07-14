@@ -46,6 +46,8 @@ replace exercise => ./pkgs/exercise
 
 replace reading => ./pkgs/reading
 
+replace lifecountdown => ./pkgs/lifecountdown
+
 require (
 	blog v0.0.0
 	comment v0.0.0-00010101000000-000000000000
@@ -56,7 +58,7 @@ require (
 	ioutils v0.0.0-00010101000000-000000000000
 	login v0.0.0-00010101000000-000000000000
 	module v0.0.0
-	mylog v0.0.0-00010101000000-000000000000
+	mylog v0.0.0
 	persistence v0.0.0-00010101000000-000000000000
 	search v0.0.0-00010101000000-000000000000
 	share v0.0.0-00010101000000-000000000000
@@ -71,6 +73,7 @@ require (
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.30.0 // indirect
+	lifecountdown v0.0.0-00010101000000-000000000000 // indirect
 	reading v0.0.0-00010101000000-000000000000 // indirect
 	todolist v0.0.0-00010101000000-000000000000 // indirect
 	yearplan v0.0.0-00010101000000-000000000000 // indirect
