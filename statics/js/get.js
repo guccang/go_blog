@@ -11,6 +11,14 @@ const editor = document.getElementById('editor-inner');
 const md = document.getElementById('md');
 const toastContainer = document.getElementById('toast-container');
 
+// 初始化编辑页面权限控制
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initPermissionControls === 'function') {
+        initPermissionControls();
+    }
+    initEditPagePermissions();
+});
+
 // Toggle sidebar
 bubble.addEventListener('click', function() {
 	if (isPCDevice()){
@@ -39,21 +47,37 @@ PageHistoryBack();
 
 function onDecrypt() {
 	const e = document.getElementById('editor-inner');
-	const k = document.getElementById('encrypt').value;
+	const decryptInput = document.getElementById('decrypt-password');
+	const k = decryptInput ? decryptInput.value : '';
 	
 	if (!k) {
 		showToast('请输入解密密码', 'error');
+		if (decryptInput) decryptInput.focus();
 		return;
 	}
 	
 	try {
 		const content = e.innerHTML;
+		
+		// 检查内容是否为空
+		if (!content || content.trim() === '') {
+			showToast('博客内容为空', 'warning');
+			return;
+		}
+		
 		const txt = aesDecrypt(content, k);
 		e.innerHTML = txt;
 		mdRender(txt);
 		showToast('解密成功', 'success');
+		
+		// 解密成功后，将解密密码复制到加密设置框作为默认值
+		const encryptPasswordInput = document.getElementById('encrypt-password');
+		if (encryptPasswordInput && !encryptPasswordInput.value) {
+			encryptPasswordInput.value = k;
+		}
 	} catch (error) {
 		showToast('解密失败，密码可能不正确', 'error');
+		if (decryptInput) decryptInput.focus();
 	}
 }
 
@@ -332,9 +356,10 @@ function onEditor() {
 }
 
 function submitFirst() {
-	const encryptInput = document.getElementById('encrypt');
+	// 检查是否是加密博客
+	const decryptInput = document.getElementById('decrypt-password');
 	
-	if (encryptInput !== null) {
+	if (decryptInput !== null) {
 		if (confirm('确定要提交修改吗？')) {
 			submitContent();
 		}
@@ -344,27 +369,70 @@ function submitFirst() {
 }
 
 function submitContent() {
-	const content = editor.value;
-	const title = document.getElementById('title').innerText;
-	const tags = document.getElementById('tags').value;
-	const encryptInput = document.getElementById('encrypt');
+	const content = editor ? editor.value : '';
+	const titleElement = document.getElementById('title');
+	const tagsElement = document.getElementById('tags');
+	
+	const title = titleElement ? titleElement.innerText : '';
+	const tags = tagsElement ? tagsElement.value : '';
+	
+	// 获取加密密码 - 使用专门的加密设置输入框
+	const encryptPasswordInput = document.getElementById('encrypt-password');
 	let key = '';
 	
-	if (encryptInput !== null) {
-		key = encryptInput.value;
+	if (encryptPasswordInput !== null) {
+		key = encryptPasswordInput.value;
 	}
 	
-	const authType = document.querySelector('input[name="auth_type"]:checked').value;
+	// Get base auth type with null check
+	const baseAuthElement = document.querySelector('input[name="base_auth_type"]:checked');
+	const baseAuthType = baseAuthElement ? baseAuthElement.value : 'private';
 	
-	// Show loading status
-	showToast('正在保存...', 'info');
+	// Get special permissions with null checks
+	const diaryElement = document.getElementById('diary_permission');
+	const cooperationElement = document.getElementById('cooperation_permission');
+	const encryptElement = document.getElementById('encrypt_permission');
+	
+	const diaryPermission = diaryElement ? diaryElement.checked : false;
+	const cooperationPermission = cooperationElement ? cooperationElement.checked : false;
+	const encryptPermission = encryptElement ? encryptElement.checked : false;
+	
+	// 检查是否已经是加密博客
+	const decryptInput = document.getElementById('decrypt-password');
+	const isAlreadyEncrypted = decryptInput !== null;
+	
+	// 验证加密权限与密码的一致性
+	if (encryptPermission && !isAlreadyEncrypted && (!key || key.trim() === '')) {
+		showToast('启用内容加密时必须设置加密密码', 'error');
+		if (encryptPasswordInput) {
+			encryptPasswordInput.focus();
+		}
+		return;
+	}
+	
+	// Build combined auth type string
+	let authTypeArray = [baseAuthType];
+	if (diaryPermission) authTypeArray.push('diary');
+	if (cooperationPermission) authTypeArray.push('cooperation');
+	if (encryptPermission) authTypeArray.push('encrypt');
+	
+	const authType = authTypeArray.join(',');
+	
+	// Validate permissions using PermissionManager
+	if (window.PermissionManager && !window.PermissionManager.validate()) {
+		return;
+	}
+	
+	// Show loading status with permission summary
+	const permissionSummary = window.PermissionManager ? window.PermissionManager.getSummary() : '';
+	showToast(`正在保存修改 (${permissionSummary})...`, 'info');
 	
 	// Create request
 	const xhr = new XMLHttpRequest();
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState == 4) {
 			if (xhr.status == 200) {
-				showToast('保存成功', 'success');
+				showToast(`修改保存成功！权限：${permissionSummary}`, 'success');
 			} else {
 				showToast('保存失败: ' + xhr.responseText, 'error');
 			}
@@ -373,10 +441,18 @@ function submitContent() {
 	
 	// Handle encryption if needed
 	let finalContent = content;
+	let encryptFlag = '';
 	
-	if (key.length > 0) {
-		finalContent = aesEncrypt(content, key);
-		key = 'use_aes_cbc';
+	if (encryptPermission) {
+		if (key.length > 0) {
+			// 有密码，进行加密（新加密或重新加密）
+			finalContent = aesEncrypt(content, key);
+			encryptFlag = 'use_aes_cbc';
+		} else if (isAlreadyEncrypted) {
+			// 已加密博客，没有新密码，保持原有加密状态
+			encryptFlag = 'use_aes_cbc';
+		}
+		// 如果没有密码且不是已加密博客，前面的验证已经阻止了这种情况
 	}
 	
 	// Send data
@@ -385,7 +461,15 @@ function submitContent() {
 	formData.append('content', finalContent);
 	formData.append('auth_type', authType);
 	formData.append('tags', tags);
-	formData.append('encrypt', key);
+	formData.append('encrypt', encryptFlag);
+	
+	console.log('发送的表单数据:', {
+		title,
+		auth_type: authType,
+		tags,
+		encrypt: encryptFlag
+	});
+	
 	xhr.open('POST', '/modify', true);
 	xhr.send(formData);
 }
@@ -581,3 +665,153 @@ function checkUsernameStatus() {
 	xhr.open('GET', `/api/check-username?username=${encodeURIComponent(username)}`, true);
 	xhr.send();
 }
+
+function checkLogin(value) {
+    // 简单的登录检查函数
+    return value && value.length > 0;
+}
+
+// 初始化加密权限交互
+window.addEventListener('load', function() {
+    const encryptCheckbox = document.getElementById('encrypt_permission');
+    const encryptInput = document.getElementById('encrypt');
+    
+    if (encryptCheckbox && encryptInput) {
+        encryptCheckbox.addEventListener('change', function() {
+            if (this.checked && !encryptInput.value.trim()) {
+                // 滚动到密码输入框
+                encryptInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                setTimeout(() => {
+                    encryptInput.focus();
+                    encryptInput.style.animation = 'passwordHighlight 2s ease-in-out';
+                }, 300);
+                
+                showToast('🔐 内容加密已启用！请在下方设置加密密码', 'info');
+            }
+        });
+    }
+});
+
+// 编辑页面权限控制初始化
+function initEditPagePermissions() {
+    const encryptCheckbox = document.getElementById('encrypt_permission');
+    const encryptPasswordInput = document.getElementById('encrypt-password');
+    const encryptSection = document.getElementById('encrypt-section-edit');
+    const encryptLabel = document.getElementById('encrypt-password-label');
+    const encryptHint = document.getElementById('encrypt-password-hint');
+    
+    if (!encryptCheckbox || !encryptPasswordInput) {
+        return; // 不是编辑页面或元素不存在
+    }
+    
+    // 初始状态设置
+    updateEditPageEncryptState();
+    
+    // 监听加密权限变化
+    encryptCheckbox.addEventListener('change', function() {
+        updateEditPageEncryptState();
+        
+        if (this.checked && !encryptPasswordInput.value.trim()) {
+            // 滚动到密码输入框
+            encryptPasswordInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // 延迟聚焦，确保滚动完成
+            setTimeout(() => {
+                encryptPasswordInput.focus();
+                // 添加视觉提示
+                encryptPasswordInput.style.animation = 'passwordHighlight 2.5s ease-in-out';
+            }, 300);
+            
+            showToast('🔐 内容加密已启用！请在下方密码区域设置加密密码', 'info');
+        } else if (this.checked) {
+            showToast('🔐 内容加密已启用！', 'success');
+        }
+    });
+    
+    // 监听密码输入框变化
+    encryptPasswordInput.addEventListener('input', function() {
+        // 如果输入了密码但没有启用加密权限，自动启用
+        if (this.value.trim() && !encryptCheckbox.checked) {
+            encryptCheckbox.checked = true;
+            updateEditPageEncryptState();
+            showToast('已自动启用内容加密', 'info');
+        }
+    });
+    
+    function updateEditPageEncryptState() {
+        // 检查是否已经是加密博客
+        const decryptInput = document.getElementById('decrypt-password');
+        const isAlreadyEncrypted = decryptInput !== null;
+        
+        if (encryptCheckbox.checked) {
+            // 启用加密时的样式
+            encryptPasswordInput.style.borderColor = '#4CAF50';
+            encryptPasswordInput.style.backgroundColor = 'rgba(76, 175, 80, 0.1)';
+            
+            if (isAlreadyEncrypted) {
+                // 已加密博客的提示
+                encryptPasswordInput.placeholder = '🔐 留空保持原密码，或输入新密码重新加密';
+                encryptPasswordInput.required = false;
+                
+                if (encryptLabel) {
+                    encryptLabel.textContent = '🔐 加密密码 (可选)';
+                    encryptLabel.style.color = '#4CAF50';
+                    encryptLabel.style.fontWeight = 'bold';
+                }
+                
+                if (encryptHint) {
+                    encryptHint.textContent = '✅ 内容已加密 - 留空保持原密码，输入新密码则重新加密';
+                    encryptHint.style.color = '#4CAF50';
+                }
+            } else {
+                // 新加密博客的提示
+                encryptPasswordInput.placeholder = '🔐 请输入加密密码（必填）';
+                encryptPasswordInput.required = true;
+                
+                if (encryptLabel) {
+                    encryptLabel.textContent = '🔐 加密密码 (必填)';
+                    encryptLabel.style.color = '#4CAF50';
+                    encryptLabel.style.fontWeight = 'bold';
+                }
+                
+                if (encryptHint) {
+                    encryptHint.textContent = '✅ 内容加密已启用 - 请设置一个安全的密码';
+                    encryptHint.style.color = '#4CAF50';
+                }
+            }
+            
+            if (encryptSection) {
+                encryptSection.style.backgroundColor = 'rgba(76, 175, 80, 0.05)';
+                encryptSection.style.border = '1px solid rgba(76, 175, 80, 0.3)';
+                encryptSection.style.borderRadius = '6px';
+                encryptSection.style.padding = '10px';
+            }
+        } else {
+            // 未启用加密时的样式
+            encryptPasswordInput.style.borderColor = '';
+            encryptPasswordInput.style.backgroundColor = '';
+            encryptPasswordInput.placeholder = '设置加密密码...';
+            encryptPasswordInput.required = false;
+            
+            if (encryptSection) {
+                encryptSection.style.backgroundColor = '';
+                encryptSection.style.border = '';
+                encryptSection.style.borderRadius = '';
+                encryptSection.style.padding = '';
+            }
+            
+            if (encryptLabel) {
+                encryptLabel.textContent = '🔐 加密密码';
+                encryptLabel.style.color = '';
+                encryptLabel.style.fontWeight = '';
+            }
+            
+            if (encryptHint) {
+                encryptHint.textContent = '💡 启用"内容加密"权限时必须设置密码';
+                encryptHint.style.color = '#888';
+            }
+        }
+    }
+}
+

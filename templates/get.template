@@ -22,29 +22,65 @@
             <label for="tags">标签</label>
 			<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 			<div class="separator"></div>
-		{{if eq "private" .AUTHTYPE }}
-			<label class="custom-radio">
-				<input class="radio-left" type="radio" name="auth_type" value="private" checked>
-				<span class="radio-btn"><i class="checkmark"></i></span>
-                    私有
+			
+			<label>📋 博客权限设置
+				<button type="button" onclick="PermissionManager.showHelp()" style="margin-left: 5px; font-size: 12px; padding: 2px 6px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px; cursor: pointer;">?</button>
 			</label>
-			<label class="custom-radio">
-                    <input class="radio-left" type="radio" name="auth_type" value="public">
-				<span class="radio-btn"><i class="checkmark"></i></span>
-                    公开
-			</label>
-		{{else}}
-			<label class="custom-radio">
-                    <input class="radio-left" type="radio" name="auth_type" value="private">
-				<span class="radio-btn"><i class="checkmark"></i></span>
-                    私有
-			</label>
-			<label class="custom-radio">
-				<input class="radio-left" type="radio" name="auth_type" value="public" checked>
-				<span class="radio-btn"><i class="checkmark"></i></span>
-                    公开
-			</label>
-		{{end}}
+			
+			<!-- 基础权限类型 -->
+			<div class="permission-section">
+				<label class="section-title">基础权限</label>
+				<label class="custom-radio">
+					<input class="radio-left" type="radio" name="base_auth_type" value="private" 
+						{{ if .IS_PRIVATE }}checked{{ end }}>
+					<span class="radio-btn"><i class="checkmark"></i></span>
+					<span class="radio-label">🔒 私有</span>
+				</label>
+				<label class="custom-radio">
+					<input class="radio-left" type="radio" name="base_auth_type" value="public"
+						{{ if .IS_PUBLIC }}checked{{ end }}>
+					<span class="radio-btn"><i class="checkmark"></i></span>
+					<span class="radio-label">🌐 公开</span>
+				</label>
+			</div>
+
+			<!-- 特殊权限选项 -->
+			<div class="permission-section">
+				<label class="section-title">特殊权限</label>
+				
+				<label class="custom-checkbox">
+					<input type="checkbox" name="diary_permission" id="diary_permission"
+						{{ if .IS_DIARY }}checked{{ end }}>
+					<span class="checkbox-btn"><i class="checkmark"></i></span>
+					<span class="checkbox-label">📔 日记权限</span>
+				</label>
+				<small class="permission-hint">需要额外密码验证</small>
+				
+				<label class="custom-checkbox">
+					<input type="checkbox" name="cooperation_permission" id="cooperation_permission"
+						{{ if .IS_COOPERATION }}checked{{ end }}>
+					<span class="checkbox-btn"><i class="checkmark"></i></span>
+					<span class="checkbox-label">🤝 协作权限</span>
+				</label>
+				<small class="permission-hint">允许协作用户访问</small>
+				
+				<label class="custom-checkbox">
+					<input type="checkbox" name="encrypt_permission" id="encrypt_permission"
+						{{ if .IS_ENCRYPTED }}checked{{ end }}>
+					<span class="checkbox-btn"><i class="checkmark"></i></span>
+					<span class="checkbox-label">🔐 内容加密</span>
+				</label>
+				<small class="permission-hint">使用AES加密保护内容</small>
+			</div>
+			
+			<div class="separator"></div>
+			<div style="margin-top: auto;" id="encrypt-section-edit">
+				<label for="encrypt-password" id="encrypt-password-label">🔐 加密密码</label>
+				<input id="encrypt-password" type="password" name="encrypt-password" placeholder="设置加密密码..." 
+					value="">
+				<small class="encrypt-hint" id="encrypt-password-hint">💡 启用"内容加密"权限时必须设置密码</small>
+
+			</div>
 			<div class="separator"></div>
             <button id="editor-button" class="bottom-button" onclick="submitFirst()">保存修改</button>
 		</div>
@@ -63,10 +99,12 @@
 		</div>
         
 		<div class="bottom-container">
-		{{ if eq "aes" .ENCRYPT }}
+		{{ if or (eq "aes" .ENCRYPT) .IS_ENCRYPTED }}
 			<div class="decrypt-container">
-				<input id="encrypt" type="password" name="encrypt" placeholder="输入解密密码">
-				<button id="decrypt-button" class="decrypt-btn" type="button" onclick="onDecrypt()">🔓 解密</button>
+				<label for="decrypt-password" style="display: block; margin-bottom: 5px; font-size: 14px; color: #e0e0e0;">🔓 解密密码</label>
+				<input id="decrypt-password" type="password" name="decrypt-password" placeholder="输入解密密码查看内容">
+				<button id="decrypt-button" class="decrypt-btn" type="button" onclick="onDecrypt()">🔓 解密内容</button>
+				<small style="display: block; margin-top: 5px; font-size: 11px; color: #888;">输入正确的解密密码来查看博客内容</small>
 			</div>
 		{{end}}
 			<button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
@@ -171,6 +209,7 @@
 	<script src="/js/marked/marked.min.js"></script>
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
+	<script src="/js/permissions.js"></script>
 	<script src="/js/get.js"></script>
 </body>
 </html>

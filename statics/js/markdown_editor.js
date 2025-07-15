@@ -197,7 +197,33 @@
         const title = document.getElementById('title').value;
         const tags = document.getElementById('tags').value;
         const encrypt = document.getElementById('encrypt').value;
-        const authType = document.querySelector('input[name="auth_type"]:checked').value;
+        
+        // Get base auth type
+        const baseAuthType = document.querySelector('input[name="base_auth_type"]:checked').value;
+        
+        // Get special permissions
+        const diaryPermission = document.getElementById('diary_permission').checked;
+        const cooperationPermission = document.getElementById('cooperation_permission').checked;
+        const encryptPermission = document.getElementById('encrypt_permission').checked;
+        
+        // 添加调试日志
+        console.log('权限收集调试:', {
+            baseAuthType,
+            diaryPermission,
+            cooperationPermission,
+            encryptPermission,
+            encryptKey: encrypt ? '[有密码]' : '[无密码]'
+        });
+        
+        // Build combined auth type string
+        let authTypeArray = [baseAuthType];
+        if (diaryPermission) authTypeArray.push('diary');
+        if (cooperationPermission) authTypeArray.push('cooperation');
+        if (encryptPermission) authTypeArray.push('encrypt');
+        
+        const authType = authTypeArray.join(',');
+        
+        console.log('最终权限字符串:', authType);
         
         // Validate title
         if (!title.trim()) {
@@ -205,14 +231,20 @@
             return;
         }
         
-        // Show saving status
-        showToast('正在保存...', 'info');
+        // Validate permissions using PermissionManager
+        if (window.PermissionManager && !window.PermissionManager.validate()) {
+            return;
+        }
+        
+        // Show saving status with permission summary
+        const permissionSummary = window.PermissionManager ? window.PermissionManager.getSummary() : '';
+        showToast(`正在保存博客 (${permissionSummary})...`, 'info');
         
         // Handle encryption if needed
         let finalContent = content;
         let encryptFlag = '';
         
-        if (encrypt.length > 0) {
+        if (encryptPermission && encrypt.length > 0) {
             finalContent = aesEncrypt(content, encrypt);
             encryptFlag = 'use_aes_cbc';
         }
@@ -222,7 +254,7 @@
 		xhr.onreadystatechange = function() {
             if (xhr.readyState == 4) {
                 if (xhr.status == 200) {
-                    showToast('保存成功！', 'success');
+                    showToast(`博客保存成功！权限：${permissionSummary}`, 'success');
                 } else {
                     showToast('保存失败: ' + xhr.responseText, 'error');
                 }

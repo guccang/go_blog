@@ -13,6 +13,12 @@
 	--danger-color: #e63946;
 	--code-bg: #f0e6d9;
 	--shadow-color: rgba(0, 0, 0, 0.1);
+	--encrypt-color: #e76f51;
+	--encrypt-bg: rgba(231, 111, 81, 0.1);
+	--diary-color: #6b9080;
+	--diary-bg: rgba(107, 144, 128, 0.1);
+	--cooperation-color: #e9c46a;
+	--cooperation-bg: rgba(233, 196, 106, 0.1);
 }
 
 body {
@@ -231,6 +237,55 @@ body {
 	padding: 8px 10px;
 	transition: all 0.3s;
 	position: relative;
+}
+
+/* 权限图标通用样式 */
+.encrypt-lock,
+.diary-icon,
+.cooperation-icon {
+	margin-right: 6px;
+	font-size: 14px;
+	padding: 2px 4px;
+	border-radius: 3px;
+	display: inline-block;
+	line-height: 1;
+	transition: all 0.3s ease;
+}
+
+/* 加密锁样式 */
+.encrypt-lock {
+	color: var(--encrypt-color);
+	background: var(--encrypt-bg);
+}
+
+.encrypt-lock:hover {
+	background: var(--encrypt-color);
+	color: white;
+	transform: scale(1.1);
+}
+
+/* 日记图标样式 */
+.diary-icon {
+	color: var(--diary-color);
+	background: var(--diary-bg);
+}
+
+.diary-icon:hover {
+	background: var(--diary-color);
+	color: white;
+	transform: scale(1.1);
+}
+
+/* 协作图标样式 */
+.cooperation-icon {
+	color: var(--cooperation-color);
+	background: var(--cooperation-bg);
+}
+
+.cooperation-icon:hover {
+	background: var(--cooperation-color);
+	color: white;
+	transform: scale(1.1);
 }
 
 .link-with-dot:hover {
@@ -659,6 +714,15 @@ body {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-weight: 500;
+}
+
+/* 最近访问区域的权限图标样式 */
+.circle-title .encrypt-lock,
+.circle-title .diary-icon,
+.circle-title .cooperation-icon {
+	font-size: 12px;
+	padding: 1px 3px;
+	margin-right: 3px;
 }
 
 .circle-link:hover .circle-avatar {

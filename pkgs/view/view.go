@@ -27,6 +27,9 @@ type LinkData struct{
 	COOPERATION int
 	ACCESS_TIME string
 	TAGS []string
+	IS_ENCRYPTED bool
+	IS_DIARY bool
+	IS_COOPERATION bool
 }
 
 type LinkDatas struct{
@@ -53,6 +56,12 @@ type EditorData struct{
 	TAGS		string
 	COMMENTS	[]CommentDatas	
 	ENCRYPT		string
+	// 权限状态字段
+	IS_PRIVATE		bool
+	IS_PUBLIC		bool
+	IS_DIARY		bool
+	IS_COOPERATION	bool
+	IS_ENCRYPTED	bool
 }
 
 type TodolistData struct {
@@ -107,6 +116,9 @@ func getShareLinks() *LinkDatas{
 			DESC:b.Title,
 			COOPERATION:0,
 			TAGS:[]string{},
+			IS_ENCRYPTED:false,
+			IS_DIARY:false,
+			IS_COOPERATION:false,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -117,6 +129,9 @@ func getShareLinks() *LinkDatas{
 			DESC:fmt.Sprintf("Tag-%s",t.Tag),
 			COOPERATION:0,
 			TAGS:[]string{},
+			IS_ENCRYPTED:false,
+			IS_DIARY:false,
+			IS_COOPERATION:false,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 	}
@@ -165,6 +180,9 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 			COOPERATION:(b.AuthType & module.EAuthType_cooperation),
 			ACCESS_TIME:b.AccessTime,
 			TAGS:blogTags,
+			IS_ENCRYPTED:b.Encrypt == 1 || (b.AuthType & module.EAuthType_encrypt) != 0,
+			IS_DIARY:(b.AuthType & module.EAuthType_diary) != 0,
+			IS_COOPERATION:(b.AuthType & module.EAuthType_cooperation) != 0,
 		}
 		datas.LINKS = append(datas.LINKS,ld)
 
@@ -228,6 +246,30 @@ func getLinks(blogs []*module.Blog,flag int,session string) *LinkDatas{
 	}
 
 	return &datas
+}
+
+// parseAuthTypeToEditorData 解析权限类型到EditorData结构体
+func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, bool, bool, bool) {
+	authTypeString := "private"
+	isPrivate := (authType & module.EAuthType_private) != 0
+	isPublic := (authType & module.EAuthType_public) != 0
+	isDiary := (authType & module.EAuthType_diary) != 0
+	isCooperation := (authType & module.EAuthType_cooperation) != 0
+	isEncrypted := encrypt == 1 || (authType & module.EAuthType_encrypt) != 0
+	
+	// 设置主要权限字符串（用于向后兼容）
+	if isPublic {
+		authTypeString = "public"
+	} else if isDiary {
+		authTypeString = "diary"
+	} else {
+		authTypeString = "private"
+	}
+	
+	log.DebugF("Parsed auth type %d: private=%v, public=%v, diary=%v, cooperation=%v, encrypted=%v", 
+		authType, isPrivate, isPublic, isDiary, isCooperation, isEncrypted)
+	
+	return authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted
 }
 
 func PageSearch(match string,w h.ResponseWriter,session string){
@@ -325,12 +367,20 @@ func PageEditor(w h.ResponseWriter,init_title string,init_content string){
 		content = init_content
 	}
 	
+	// 为新博客设置默认权限
+	authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted := parseAuthTypeToEditorData(module.EAuthType_private, 0)
+	
 	data := EditorData{
 		TITLE:title,
 		CONTENT:content,
-		AUTHTYPE:"private",
+		AUTHTYPE:authTypeString,
 		TAGS:"",
 		ENCRYPT:"",
+		IS_PRIVATE:isPrivate,
+		IS_PUBLIC:isPublic,
+		IS_DIARY:isDiary,
+		IS_COOPERATION:isCooperation,
+		IS_ENCRYPTED:isEncrypted,
 	}
 
 	err = tmpl.Execute(w,data)
@@ -351,13 +401,9 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 	// modify accesstime
 	control.UpdateAccessTime(blog)
 
-	auth_type_string := "private"
 	template_name := "get.template"
 	if usepublic != 0 {
 		template_name = "get_public.template"
-	}
-	if (blog.AuthType & module.EAuthType_public) != 0 {
-		auth_type_string = "public"
 	}
 
 	tempDir := config.GetHttpTemplatePath()
@@ -374,13 +420,21 @@ func PageGetBlog(blogname string,w h.ResponseWriter,usepublic int){
 		encrypt_str = "aes"
 	}
 	
+	// 解析博客权限状态
+	authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted := parseAuthTypeToEditorData(blog.AuthType, blog.Encrypt)
+	
 	data := EditorData{
 		TITLE:blog.Title,
 		CONTENT:blog.Content,
 		CTIME : blog.CreateTime,
-		AUTHTYPE:auth_type_string,
+		AUTHTYPE:authTypeString,
 		TAGS : blog.Tags,
 		ENCRYPT:encrypt_str,
+		IS_PRIVATE:isPrivate,
+		IS_PUBLIC:isPublic,
+		IS_DIARY:isDiary,
+		IS_COOPERATION:isCooperation,
+		IS_ENCRYPTED:isEncrypted,
 	}
 
 	bc := control.GetBlogComments(blogname)

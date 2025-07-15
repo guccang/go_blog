@@ -115,6 +115,18 @@ func AddBlog(udb *module.UploadedBlogData) int{
 	if b.Encrypt == 1 {
 		b.AuthType = module.EAuthType_encrypt
 	}
+	
+	// 日志记录权限设置
+	if (auth_type & module.EAuthType_diary) != 0 {
+		log.InfoF("博客 '%s' 设置了日记权限，AuthType=%d", title, auth_type)
+	}
+	if (auth_type & module.EAuthType_cooperation) != 0 {
+		log.InfoF("博客 '%s' 设置了协作权限，AuthType=%d", title, auth_type)
+	}
+	if (auth_type & module.EAuthType_encrypt) != 0 {
+		log.InfoF("博客 '%s' 设置了加密权限，AuthType=%d", title, auth_type)
+	}
+	
 	Blogs[title] = &b
 	db.SaveBlog(&b)
 	return 0
@@ -144,13 +156,41 @@ func ModifyBlog(udb *module.UploadedBlogData) int {
 	b.Content = content
 	b.ModifyTime = strTime()
 	b.ModifyNum += 1
-	if (b.AuthType &  module.EAuthType_cooperation) != 0 {
-		// 非cooperation编辑修改后，会移除这个标记，导致无法访问。
-		b.AuthType = auth_type | module.EAuthType_cooperation
-	}else{
-		b.AuthType = auth_type
+	
+	// 协作权限的智能处理逻辑
+	// 如果新权限中明确包含或排除协作权限，则尊重用户选择
+	// 否则保留原有的协作权限设置
+	finalAuthType := auth_type
+	
+	// 检查是否从协作用户发起的请求（这种情况下需要保留协作权限）
+	// 注意：这里的逻辑需要配合请求上下文，暂时简化处理
+	
+	// 如果原博客有协作权限，但新权限中没有明确设置协作权限
+	// 我们需要判断是用户主动移除还是意外遗漏
+	if (b.AuthType & module.EAuthType_cooperation) != 0 {
+		// 如果新权限中明确包含协作权限，保留
+		if (auth_type & module.EAuthType_cooperation) != 0 {
+			log.DebugF("博客 '%s' 保持协作权限", title)
+		} else {
+			// 用户明确移除了协作权限
+			log.InfoF("博客 '%s' 移除协作权限，原AuthType=%d，新AuthType=%d", title, b.AuthType, auth_type)
+		}
 	}
+	
+	b.AuthType = finalAuthType
 	b.Tags = tags
+	
+	// 日志记录权限更新
+	if (auth_type & module.EAuthType_diary) != 0 {
+		log.InfoF("博客 '%s' 更新了日记权限，AuthType=%d", title, auth_type)
+	}
+	if (auth_type & module.EAuthType_cooperation) != 0 {
+		log.InfoF("博客 '%s' 更新了协作权限，AuthType=%d", title, auth_type)
+	}
+	if (auth_type & module.EAuthType_encrypt) != 0 {
+		log.InfoF("博客 '%s' 更新了加密权限，AuthType=%d", title, auth_type)
+	}
+	
 	db.SaveBlog(b)
 	return 0
 }

@@ -482,3 +482,171 @@
             from { opacity: 1; }
             to { opacity: 0; }
 		}
+
+/* 权限设置样式 */
+.permission-section {
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+    display: block;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 5px;
+}
+
+/* 复选框样式 */
+.custom-checkbox {
+    display: flex;
+    align-items: center;
+    margin: 8px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.custom-checkbox input[type="checkbox"] {
+    display: none;
+}
+
+.checkbox-btn {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #666;
+    border-radius: 4px;
+    margin-right: 10px;
+    background: transparent;
+    transition: all 0.3s ease;
+}
+
+.custom-checkbox input[type="checkbox"]:checked + .checkbox-btn {
+    background: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.custom-checkbox input[type="checkbox"]:checked + .checkbox-btn .checkmark {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.checkbox-btn .checkmark {
+    position: absolute;
+    top: 1px;
+    left: 5px;
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.checkbox-label {
+    font-size: 14px;
+    color: #e0e0e0;
+    flex: 1;
+}
+
+/* 权限提示文本 */
+.permission-hint {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin: 2px 0 8px 28px;
+    font-style: italic;
+}
+
+.encrypt-hint {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+/* 权限分组间距 */
+.permission-section + .permission-section {
+    margin-top: 10px;
+}
+
+/* 加密区域样式 */
+#encrypt-section {
+    transition: all 0.3s ease;
+    margin-top: auto;
+}
+
+#encrypt-section.encrypt-enabled {
+    background-color: rgba(76, 175, 80, 0.05) !important;
+    border: 1px solid rgba(76, 175, 80, 0.3) !important;
+    border-radius: 6px !important;
+    padding: 10px !important;
+}
+
+#encrypt-label {
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+/* 密码输入框高亮动画 */
+@keyframes passwordHighlight {
+    0% { 
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        border-color: #4CAF50;
+        transform: scale(1);
+    }
+    25% { 
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0.5);
+        border-color: #4CAF50;
+        transform: scale(1.02);
+    }
+    50% { 
+        box-shadow: 0 0 0 15px rgba(76, 175, 80, 0.3);
+        border-color: #4CAF50;
+        transform: scale(1.02);
+    }
+    75% { 
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0.2);
+        border-color: #4CAF50;
+        transform: scale(1.01);
+    }
+    100% { 
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+        border-color: #4CAF50;
+        transform: scale(1);
+    }
+}
+
+/* 加密输入框样式增强 */
+#encrypt {
+    transition: all 0.3s ease;
+}
+
+#encrypt:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .permission-section {
+        margin: 10px 0;
+        padding: 8px;
+    }
+    
+    .checkbox-label {
+        font-size: 13px;
+    }
+    
+    .permission-hint {
+        font-size: 10px;
+        margin-left: 25px;
+    }
+}

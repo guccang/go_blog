@@ -32,6 +32,40 @@ func Info(){
 	log.Debug("info http v1.0")
 }
 
+// parseAuthTypeString 解析权限类型字符串，支持组合权限
+func parseAuthTypeString(authTypeStr string) int {
+	if authTypeStr == "" {
+		return module.EAuthType_private
+	}
+	
+	authType := 0
+	permissions := strings.Split(authTypeStr, ",")
+	
+	for _, perm := range permissions {
+		perm = strings.TrimSpace(perm)
+		switch perm {
+		case "private":
+			authType |= module.EAuthType_private
+		case "public":
+			authType |= module.EAuthType_public
+		case "diary":
+			authType |= module.EAuthType_diary
+		case "cooperation":
+			authType |= module.EAuthType_cooperation
+		case "encrypt":
+			authType |= module.EAuthType_encrypt
+		}
+	}
+	
+	// 如果没有设置任何基础权限，默认为私有
+	if (authType & (module.EAuthType_private | module.EAuthType_public)) == 0 {
+		authType |= module.EAuthType_private
+	}
+	
+	log.DebugF("Parsed auth type: %s -> %d", authTypeStr, authType)
+	return authType
+}
+
 type handle_content struct{
 	content string
 }
@@ -179,13 +213,14 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	// 在这里，您可以处理或保存content到数据库等
 	log.DebugF("Received content:%s", content)
 
-	// 是否公开
+	// 解析权限设置
 	auth_type_string := r.FormValue("authtype")
-	log.DebugF("Received content:%s",auth_type_string)
-	auth_type := module.EAuthType_private
-	if auth_type_string == "public" {
-		auth_type = module.EAuthType_public
-	}
+	log.DebugF("Received authtype:%s",auth_type_string)
+	
+	// 解析权限组合
+	auth_type := parseAuthTypeString(auth_type_string)
+	
+	// 如果是协作用户，自动添加协作权限
 	if IsCooperation(r) {
 		auth_type |= module.EAuthType_cooperation
 	}
@@ -344,8 +379,15 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		return
 	}	
 
-	// 检查是否是日记博客，如果是则需要密码验证
-	if config.IsDiaryBlog(blogname) {
+	// 首先获取博客信息以检查权限
+	blog := control.GetBlog(blogname)
+	if blog == nil {
+		h.Error(w, fmt.Sprintf("blogname=%s not find",blogname), h.StatusBadRequest)
+		return
+	}
+
+	// 检查是否设置了日记权限，如果是则需要密码验证
+	if (blog.AuthType & module.EAuthType_diary) != 0 {
 		// 检查是否提供了密码
 		diaryPassword := r.URL.Query().Get("diary_pwd")
 		if diaryPassword == "" {
@@ -354,7 +396,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 			return
 		}
 		
-		// 验证密码（这里使用简单的密码验证，实际应用中应该使用更安全的方式）
+		// 验证密码
 		expectedPassword := config.GetConfig("diary_password")
 		if expectedPassword == "" {
 			expectedPassword = "diary123" // 默认密码
@@ -367,7 +409,33 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		}
 		
 		// 密码正确，继续处理
-		log.DebugF("日记博客密码验证成功: %s", blogname)
+		log.DebugF("日记博客密码验证成功: %s (AuthType: %d)", blogname, blog.AuthType)
+	}
+	
+	// 兼容性：同时检查基于名称的日记博客（向后兼容）
+	if config.IsDiaryBlog(blogname) && (blog.AuthType & module.EAuthType_diary) == 0 {
+		// 检查是否提供了密码
+		diaryPassword := r.URL.Query().Get("diary_pwd")
+		if diaryPassword == "" {
+			// 没有提供密码，显示密码输入页面
+			view.PageDiaryPasswordInput(w, blogname)
+			return
+		}
+		
+		// 验证密码
+		expectedPassword := config.GetConfig("diary_password")
+		if expectedPassword == "" {
+			expectedPassword = "diary123" // 默认密码
+		}
+		
+		if diaryPassword != expectedPassword {
+			// 密码错误，返回错误页面
+			view.PageDiaryPasswordError(w, blogname)
+			return
+		}
+		
+		// 密码正确，继续处理
+		log.DebugF("传统日记博客密码验证成功: %s", blogname)
 	}
 
 	// 检查是否是 todolist 博客，如果是则重定向到 todolist 页面
@@ -439,12 +507,11 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
 	if checkLogin(r) !=0 {
-		// 判定blog访问权限
+		// 判定blog访问权限 - 直接使用已获取的blog对象
 		session := getsession(r)
-		auth_type := control.GetBlogAuthType(blogname)
+		auth_type := blog.AuthType
 		if cooperation.IsCooperation(session) {
 			// 判定blog访问权限
-			auth_type := control.GetBlogAuthType(blogname)
 			if (auth_type & module.EAuthType_cooperation) != 0 {
 				if cooperation.CanEditBlog(session,blogname) != 0 {
 					if (auth_type & module.EAuthType_public) == 0 {
@@ -671,17 +738,16 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 	title := r.FormValue("title")
 	log.DebugF("title:%s",title)
 
-	// auth_type
+	// 解析权限设置
 	auth_type_string := r.FormValue("auth_type")
-	log.DebugF("auth:%d",auth_type_string)
-	auth_type := module.EAuthType_private
-	if auth_type_string == "public" {
-		auth_type = module.EAuthType_public
-	}
+	log.DebugF("Received auth_type:%s",auth_type_string)
+	
+	// 解析权限组合
+	auth_type := parseAuthTypeString(auth_type_string)
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received content:%s",tags)
+	log.DebugF("Received tags:%s",tags)
 
 	// 内容
 	content := r.FormValue("content")
@@ -692,7 +758,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 	// 加密
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s session:%s",title,encrypt,getsession(r))
+	log.DebugF("Received title=%s encrypt:%s session:%s",title,encryptionKey,getsession(r))
 
 	if encryptionKey != "" {
 		encrypt = 1
