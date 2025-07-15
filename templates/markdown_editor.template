@@ -28,23 +28,65 @@
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="private" checked>
 			<span class="radio-btn"><i class="checkmark"></i></span>
-            私有
+            <span class="radio-label">🔒 私有</span>
 		</label>
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="public">
 			<span class="radio-btn"><i class="checkmark"></i></span>
-            公开
+            <span class="radio-label">🌐 公开</span>
 		</label>
-		{{ else }}
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="diary">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">📔 日记</span>
+		</label>
+		{{ else if eq "public" .AUTHTYPE }}
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="private">
 			<span class="radio-btn"><i class="checkmark"></i></span>
-            私有
+            <span class="radio-label">🔒 私有</span>
 		</label>
 		<label class="custom-radio">
 			<input class="radio-left" type="radio" name="auth_type" value="public" checked>
 			<span class="radio-btn"><i class="checkmark"></i></span>
-            公开
+            <span class="radio-label">🌐 公开</span>
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="diary">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">📔 日记</span>
+		</label>
+		{{ else if eq "diary" .AUTHTYPE }}
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="private">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">🔒 私有</span>
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="public">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">🌐 公开</span>
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="diary" checked>
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">📔 日记</span>
+		</label>
+		{{ else }}
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="private" checked>
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">🔒 私有</span>
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="public">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">🌐 公开</span>
+		</label>
+		<label class="custom-radio">
+			<input class="radio-left" type="radio" name="auth_type" value="diary">
+			<span class="radio-btn"><i class="checkmark"></i></span>
+            <span class="radio-label">📔 日记</span>
 		</label>
 		{{end}}
 

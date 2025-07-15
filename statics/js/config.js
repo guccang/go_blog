@@ -1,7 +1,9 @@
 // 配置管理页面JavaScript
 
 let allConfigs = {};
+let configComments = {};
 let originalConfigs = {};
+let originalComments = {};
 let filteredConfigs = {};
 
 // 页面加载完成后初始化
@@ -51,7 +53,9 @@ async function loadConfigs() {
         
         if (data.success) {
             allConfigs = data.configs || {};
+            configComments = data.comments || {};
             originalConfigs = JSON.parse(JSON.stringify(allConfigs)); // 深拷贝
+            originalComments = JSON.parse(JSON.stringify(configComments)); // 深拷贝
             filteredConfigs = JSON.parse(JSON.stringify(allConfigs));
             
             renderConfigs();
@@ -110,6 +114,8 @@ function createConfigItem(key, value) {
         item.classList.add('modified');
     }
 
+    const comment = configComments[key] || '';
+    
     item.innerHTML = `
         <div class="config-key">
             <div class="config-key-label">配置项名称</div>
@@ -123,6 +129,12 @@ function createConfigItem(key, value) {
                    onchange="updateConfigValue('${escapeHtml(key)}', this.value)"
                    title="配置项的值">
             <div class="config-type-hint">${getConfigTypeHint(value)}</div>
+        </div>
+        <div class="config-comment">
+            <div class="config-comment-label">注释说明</div>
+            <textarea class="config-comment-input" 
+                      onchange="updateConfigComment('${escapeHtml(key)}', this.value)"
+                      placeholder="配置项注释说明">${escapeHtml(comment)}</textarea>
         </div>
         <div class="config-actions">
             <button class="btn btn-warning" onclick="resetConfig('${escapeHtml(key)}')" 
@@ -179,10 +191,13 @@ function updateConfigKey(oldKey, newKey) {
         return;
     }
     
-    // 更新配置
+    // 更新配置和注释
     const value = allConfigs[oldKey];
+    const comment = configComments[oldKey] || '';
     delete allConfigs[oldKey];
+    delete configComments[oldKey];
     allConfigs[newKey] = value;
+    configComments[newKey] = comment;
     
     // 如果在筛选结果中，也要更新
     if (filteredConfigs.hasOwnProperty(oldKey)) {
@@ -203,15 +218,29 @@ function updateConfigValue(key, value) {
     }
     
     updateRawPreview();
-    
-    // 更新配置项的状态样式
+    updateConfigItemStatus(key);
+}
+
+// 更新配置项注释
+function updateConfigComment(key, comment) {
+    configComments[key] = comment;
+    updateRawPreview();
+    updateConfigItemStatus(key);
+}
+
+// 更新配置项状态样式
+function updateConfigItemStatus(key) {
     const configItems = document.querySelectorAll('.config-item');
     configItems.forEach(item => {
         if (item.dataset.originalKey === key) {
             item.classList.remove('new', 'modified');
-            if (!originalConfigs.hasOwnProperty(key)) {
+            const isNewConfig = !originalConfigs.hasOwnProperty(key);
+            const isValueChanged = originalConfigs[key] !== allConfigs[key];
+            const isCommentChanged = (originalComments[key] || '') !== (configComments[key] || '');
+            
+            if (isNewConfig) {
                 item.classList.add('new');
-            } else if (originalConfigs[key] !== value) {
+            } else if (isValueChanged || isCommentChanged) {
                 item.classList.add('modified');
             }
         }
@@ -222,6 +251,7 @@ function updateConfigValue(key, value) {
 function resetConfig(key) {
     if (originalConfigs.hasOwnProperty(key)) {
         allConfigs[key] = originalConfigs[key];
+        configComments[key] = originalComments[key] || '';
         if (filteredConfigs.hasOwnProperty(key)) {
             filteredConfigs[key] = originalConfigs[key];
         }
@@ -238,6 +268,7 @@ function resetConfig(key) {
 function deleteConfig(key) {
     if (confirm(`确定要删除配置项 "${key}" 吗？`)) {
         delete allConfigs[key];
+        delete configComments[key];
         delete filteredConfigs[key];
         renderConfigs();
         updateRawPreview();
@@ -293,8 +324,13 @@ function updateRawPreview() {
     const sortedKeys = Object.keys(allConfigs).sort();
     sortedKeys.forEach(key => {
         const value = allConfigs[key];
+        const comment = configComments[key];
         if (key && value !== undefined) {
+            if (comment && comment.trim()) {
+                lines.push(`# ${comment}`);
+            }
             lines.push(`${key}=${value}`);
+            lines.push('');
         }
     });
     
@@ -305,7 +341,7 @@ function updateRawPreview() {
 function addNewConfig() {
     document.getElementById('newConfigKey').value = '';
     document.getElementById('newConfigValue').value = '';
-    document.getElementById('newConfigDescription').value = '';
+    document.getElementById('newConfigComment').value = '';
     document.getElementById('addConfigModal').style.display = 'block';
     document.getElementById('newConfigKey').focus();
 }
@@ -319,6 +355,7 @@ function closeAddModal() {
 function confirmAddConfig() {
     const key = document.getElementById('newConfigKey').value.trim();
     const value = document.getElementById('newConfigValue').value.trim();
+    const comment = document.getElementById('newConfigComment').value.trim();
     
     if (!key) {
         showToast('请输入配置项名称', 'error');
@@ -341,8 +378,9 @@ function confirmAddConfig() {
         return;
     }
     
-    // 添加配置
+    // 添加配置和注释
     allConfigs[key] = value;
+    configComments[key] = comment;
     filteredConfigs[key] = value;
     
     closeAddModal();
@@ -363,7 +401,8 @@ async function saveAllConfigs() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                configs: allConfigs
+                configs: allConfigs,
+                comments: configComments
             })
         });
 
@@ -376,6 +415,7 @@ async function saveAllConfigs() {
         
         if (data.success) {
             originalConfigs = JSON.parse(JSON.stringify(allConfigs)); // 更新原始配置
+            originalComments = JSON.parse(JSON.stringify(configComments)); // 更新原始注释
             renderConfigs(); // 重新渲染以更新状态样式
             showToast('配置保存成功！系统配置已更新', 'success');
         } else {
@@ -408,7 +448,9 @@ function hasUnsavedChanges() {
     }
     
     for (let key of currentKeys) {
-        if (!originalConfigs.hasOwnProperty(key) || originalConfigs[key] !== allConfigs[key]) {
+        const valueChanged = !originalConfigs.hasOwnProperty(key) || originalConfigs[key] !== allConfigs[key];
+        const commentChanged = (originalComments[key] || '') !== (configComments[key] || '');
+        if (valueChanged || commentChanged) {
             return true;
         }
     }

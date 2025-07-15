@@ -146,12 +146,30 @@
         }
         
         .custom-radio {
-            display: block;
+            display: flex;
+            align-items: center;
             position: relative;
             padding-left: 30px;
             margin-bottom: 12px;
             cursor: pointer;
             user-select: none;
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            padding: 8px;
+            margin-left: -8px;
+            padding-left: 38px;
+        }
+        
+        .custom-radio:hover {
+            background-color: var(--lighter-bg);
+        }
+        
+        .radio-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            color: var(--text-color);
         }
         
         .radio-left {

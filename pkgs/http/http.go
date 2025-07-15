@@ -2392,8 +2392,18 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 				"diary_keywords":               "日记_",
 			}
 			
-			// 构建默认配置内容
-			defaultContent := buildConfigContent(defaultConfigs)
+			// 构建默认配置内容和注释
+			defaultComments := map[string]string{
+				"port":                         "HTTP服务监听端口",
+				"redis_ip":                     "Redis服务器IP地址", 
+				"redis_port":                   "Redis服务器端口",
+				"redis_pwd":                    "Redis密码（留空表示无密码）",
+				"publictags":                   "公开标签列表（用|分隔）",
+				"sysfiles":                     "系统文件列表（用|分隔）",
+				"title_auto_add_date_suffix":   "自动添加日期后缀的标题前缀（用|分隔）",
+				"diary_keywords":               "日记关键字（用|分隔）",
+			}
+			defaultContent := buildConfigContentWithComments(defaultConfigs, defaultComments)
 			
 			// 创建默认配置文件
 			uploadData := &module.UploadedBlogData{
@@ -2417,6 +2427,7 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			response := map[string]interface{}{
 				"success":     true,
 				"configs":     defaultConfigs,
+				"comments":    defaultComments,
 				"raw_content": defaultContent,
 				"is_default":  true,
 			}
@@ -2424,12 +2435,13 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 		
-		// 解析配置内容
-		configs := parseConfigContent(blog.Content)
+		// 解析配置内容和注释
+		configs, comments := parseConfigContentWithComments(blog.Content)
 		
 		response := map[string]interface{}{
 			"success":     true,
 			"configs":     configs,
+			"comments":    comments,
 			"raw_content": blog.Content,
 			"is_default":  false,
 		}
@@ -2438,7 +2450,8 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 	case h.MethodPost:
 		// 更新系统配置
 		var requestData struct {
-			Configs map[string]string `json:"configs"`
+			Configs  map[string]string `json:"configs"`
+			Comments map[string]string `json:"comments"`
 		}
 		
 		if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
@@ -2448,7 +2461,7 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 		}
 		
 		// 构建新的配置内容
-		newContent := buildConfigContent(requestData.Configs)
+		newContent := buildConfigContentWithComments(requestData.Configs, requestData.Comments)
 		
 		// 更新sys_conf文件
 		uploadData := &module.UploadedBlogData{
@@ -2589,6 +2602,185 @@ func buildConfigContent(configs map[string]string) string {
 		lines = append(lines, "# 其他配置")
 		for _, key := range otherKeys {
 			lines = append(lines, fmt.Sprintf("# %s配置项", key))
+			lines = append(lines, fmt.Sprintf("%s=%s", key, configs[key]))
+			lines = append(lines, "")
+		}
+	}
+	
+	// 移除最后的空行
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	
+	return strings.Join(lines, "\n")
+}
+
+// 解析配置文件内容和注释
+func parseConfigContentWithComments(content string) (map[string]string, map[string]string) {
+	configs := make(map[string]string)
+	comments := make(map[string]string)
+	lines := strings.Split(content, "\n")
+	
+	var currentComment string
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		
+		if strings.HasPrefix(line, "#") {
+			// 处理注释行
+			comment := strings.TrimSpace(strings.TrimPrefix(line, "#"))
+			if comment != "" && !isGroupComment(comment) {
+				currentComment = comment
+			}
+			continue
+		}
+		
+		// 处理配置行
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			configs[key] = value
+			
+			// 关联注释到配置项
+			if currentComment != "" {
+				comments[key] = currentComment
+				currentComment = "" // 重置注释
+			}
+		}
+	}
+	
+	return configs, comments
+}
+
+// 判断是否是分组注释
+func isGroupComment(comment string) bool {
+	groupTitles := []string{
+		"系统配置文件",
+		"格式: key=value", 
+		"注释行以#开头",
+		"服务器配置",
+		"Redis数据库配置",
+		"系统功能配置",
+		"其他配置",
+	}
+	
+	for _, title := range groupTitles {
+		if strings.Contains(comment, title) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// 构建带注释的配置文件内容
+func buildConfigContentWithComments(configs map[string]string, comments map[string]string) string {
+	var lines []string
+	
+	// 添加文件头注释
+	lines = append(lines, "# 系统配置文件")
+	lines = append(lines, "# 格式: key=value")
+	lines = append(lines, "# 注释行以#开头")
+	lines = append(lines, "")
+	
+	// 定义配置项的分组和默认注释
+	configGroups := []struct {
+		title   string
+		configs []struct {
+			key            string
+			defaultComment string
+		}
+	}{
+		{
+			title: "服务器配置",
+			configs: []struct {
+				key            string
+				defaultComment string
+			}{
+				{"port", "HTTP服务监听端口"},
+			},
+		},
+		{
+			title: "Redis数据库配置", 
+			configs: []struct {
+				key            string
+				defaultComment string
+			}{
+				{"redis_ip", "Redis服务器IP地址"},
+				{"redis_port", "Redis服务器端口"},
+				{"redis_pwd", "Redis密码（留空表示无密码）"},
+			},
+		},
+		{
+			title: "系统功能配置",
+			configs: []struct {
+				key            string
+				defaultComment string
+			}{
+				{"publictags", "公开标签列表（用|分隔）"},
+				{"sysfiles", "系统文件列表（用|分隔）"},
+				{"title_auto_add_date_suffix", "自动添加日期后缀的标题前缀（用|分隔）"},
+				{"diary_keywords", "日记关键字（用|分隔）"},
+			},
+		},
+	}
+	
+	// 按分组添加配置项
+	for _, group := range configGroups {
+		hasGroupConfigs := false
+		for _, config := range group.configs {
+			if _, exists := configs[config.key]; exists && configs[config.key] != "" {
+				hasGroupConfigs = true
+				break
+			}
+		}
+		
+		if hasGroupConfigs {
+			lines = append(lines, fmt.Sprintf("# %s", group.title))
+			for _, config := range group.configs {
+				if value, exists := configs[config.key]; exists && value != "" {
+					// 使用自定义注释或默认注释
+					comment := comments[config.key]
+					if comment == "" {
+						comment = config.defaultComment
+					}
+					lines = append(lines, fmt.Sprintf("# %s", comment))
+					lines = append(lines, fmt.Sprintf("%s=%s", config.key, value))
+					lines = append(lines, "")
+				}
+			}
+		}
+	}
+	
+	// 添加未分组的其他配置项
+	processedKeys := make(map[string]bool)
+	for _, group := range configGroups {
+		for _, config := range group.configs {
+			processedKeys[config.key] = true
+		}
+	}
+	
+	var otherKeys []string
+	for key := range configs {
+		if !processedKeys[key] && key != "" && configs[key] != "" {
+			otherKeys = append(otherKeys, key)
+		}
+	}
+	
+	if len(otherKeys) > 0 {
+		sort.Strings(otherKeys)
+		lines = append(lines, "# 其他配置")
+		for _, key := range otherKeys {
+			// 使用自定义注释或默认注释
+			comment := comments[key]
+			if comment == "" {
+				comment = fmt.Sprintf("%s配置项", key)
+			}
+			lines = append(lines, fmt.Sprintf("# %s", comment))
 			lines = append(lines, fmt.Sprintf("%s=%s", key, configs[key]))
 			lines = append(lines, "")
 		}

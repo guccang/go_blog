@@ -59,8 +59,8 @@
                     <input type="text" id="newConfigValue" placeholder="例如: true">
                 </div>
                 <div class="form-group">
-                    <label for="newConfigDescription">说明（可选）：</label>
-                    <textarea id="newConfigDescription" placeholder="配置项的说明信息"></textarea>
+                    <label for="newConfigComment">注释说明（可选）：</label>
+                    <textarea id="newConfigComment" placeholder="配置项的注释说明，将显示在配置文件中"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
