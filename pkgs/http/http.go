@@ -5,6 +5,7 @@ import(
 	"os"
 	"path/filepath"
 	h "net/http"
+	t "html/template"
 	"config"
 	"control"
 	log "mylog"
@@ -1857,6 +1858,10 @@ func Init() int{
 	h.HandleFunc("/api/lifecountdown", HandleLifeCountdownAPI)
 	h.HandleFunc("/api/lifecountdown/config", HandleLifeCountdownConfigAPI)
 
+	// 系统配置管理路由
+	h.HandleFunc("/config", HandleConfig)
+	h.HandleFunc("/api/config", HandleConfigAPI)
+
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
 	h.Handle("/", h.StripPrefix("/", fs))
@@ -2325,4 +2330,274 @@ func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
+}
+
+// 系统配置页面处理
+func HandleConfig(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleConfig", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/login", h.StatusSeeOther)
+		return
+	}
+	
+	// 渲染配置页面模板
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "config.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse config.template: %s", err.Error())
+		h.Error(w, "Failed to parse config template", h.StatusInternalServerError)
+		return
+	}
+	
+	data := struct {
+		Title string
+	}{
+		Title: "系统配置管理",
+	}
+	
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.ErrorF("Failed to render config.template: %s", err.Error())
+		h.Error(w, "Failed to render config template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// 系统配置API处理
+func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleConfigAPI", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case h.MethodGet:
+		// 获取系统配置
+		blog := control.GetBlog("sys_conf")
+		if blog == nil {
+			log.ErrorF("sys_conf文件不存在，创建默认配置文件")
+			
+			// 创建默认配置文件
+			defaultConfigs := map[string]string{
+				"port":                         "8888",
+				"redis_ip":                     "127.0.0.1", 
+				"redis_port":                   "6666",
+				"redis_pwd":                    "",
+				"publictags":                   "public|share|demo",
+				"sysfiles":                     "sys_conf",
+				"title_auto_add_date_suffix":   "日记",
+				"diary_keywords":               "日记_",
+			}
+			
+			// 构建默认配置内容
+			defaultContent := buildConfigContent(defaultConfigs)
+			
+			// 创建默认配置文件
+			uploadData := &module.UploadedBlogData{
+				Title:    "sys_conf",
+				Content:  defaultContent,
+				AuthType: module.EAuthType_private,
+				Tags:     "system,config",
+				Encrypt:  0,
+			}
+			
+			result := control.AddBlog(uploadData)
+			if result != 0 {
+				log.ErrorF("创建默认配置文件失败: result=%d", result)
+				h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
+				return
+			}
+			
+			log.DebugF("默认配置文件创建成功")
+			
+			// 返回默认配置
+			response := map[string]interface{}{
+				"success":     true,
+				"configs":     defaultConfigs,
+				"raw_content": defaultContent,
+				"is_default":  true,
+			}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+		
+		// 解析配置内容
+		configs := parseConfigContent(blog.Content)
+		
+		response := map[string]interface{}{
+			"success":     true,
+			"configs":     configs,
+			"raw_content": blog.Content,
+			"is_default":  false,
+		}
+		json.NewEncoder(w).Encode(response)
+		
+	case h.MethodPost:
+		// 更新系统配置
+		var requestData struct {
+			Configs map[string]string `json:"configs"`
+		}
+		
+		if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+			log.ErrorF("解析配置数据失败: %v", err)
+			h.Error(w, "无效的JSON数据", h.StatusBadRequest)
+			return
+		}
+		
+		// 构建新的配置内容
+		newContent := buildConfigContent(requestData.Configs)
+		
+		// 更新sys_conf文件
+		uploadData := &module.UploadedBlogData{
+			Title:    "sys_conf",
+			Content:  newContent,
+			AuthType: module.EAuthType_private,
+			Tags:     "system,config",
+			Encrypt:  0,
+		}
+		
+		result := control.ModifyBlog(uploadData)
+		if result != 0 {
+			log.ErrorF("更新配置文件失败: result=%d", result)
+			h.Error(w, "更新配置失败", h.StatusInternalServerError)
+			return
+		}
+		
+		// 重新加载配置
+		configPath := config.GetConfigPath()
+		config.ReloadConfig(configPath)
+		
+		log.DebugF("系统配置更新成功")
+		
+		response := map[string]interface{}{
+			"success": true,
+			"message": "配置更新成功",
+		}
+		json.NewEncoder(w).Encode(response)
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
+}
+
+// 解析配置文件内容
+func parseConfigContent(content string) map[string]string {
+	configs := make(map[string]string)
+	lines := strings.Split(content, "\n")
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			configs[key] = value
+		}
+	}
+	
+	return configs
+}
+
+// 构建配置文件内容
+func buildConfigContent(configs map[string]string) string {
+	var lines []string
+	
+	// 添加文件头注释
+	lines = append(lines, "# 系统配置文件")
+	lines = append(lines, "# 格式: key=value")
+	lines = append(lines, "# 注释行以#开头")
+	lines = append(lines, "")
+	
+	// 定义配置项的分组和注释
+	configGroups := []struct {
+		title   string
+		configs []struct {
+			key     string
+			comment string
+		}
+	}{
+		{
+			title: "服务器配置",
+			configs: []struct {
+				key     string
+				comment string
+			}{
+				{"port", "HTTP服务监听端口"},
+			},
+		},
+		{
+			title: "Redis数据库配置", 
+			configs: []struct {
+				key     string
+				comment string
+			}{
+				{"redis_ip", "Redis服务器IP地址"},
+				{"redis_port", "Redis服务器端口"},
+				{"redis_pwd", "Redis密码（留空表示无密码）"},
+			},
+		},
+		{
+			title: "系统功能配置",
+			configs: []struct {
+				key     string
+				comment string
+			}{
+				{"publictags", "公开标签列表（用|分隔）"},
+				{"sysfiles", "系统文件列表（用|分隔）"},
+				{"title_auto_add_date_suffix", "自动添加日期后缀的标题前缀（用|分隔）"},
+				{"diary_keywords", "日记关键字（用|分隔）"},
+			},
+		},
+	}
+	
+	// 按分组添加配置项
+	for _, group := range configGroups {
+		lines = append(lines, fmt.Sprintf("# %s", group.title))
+		for _, config := range group.configs {
+			if value, exists := configs[config.key]; exists && value != "" {
+				lines = append(lines, fmt.Sprintf("# %s", config.comment))
+				lines = append(lines, fmt.Sprintf("%s=%s", config.key, value))
+				lines = append(lines, "")
+			}
+		}
+	}
+	
+	// 添加未分组的其他配置项
+	processedKeys := make(map[string]bool)
+	for _, group := range configGroups {
+		for _, config := range group.configs {
+			processedKeys[config.key] = true
+		}
+	}
+	
+	var otherKeys []string
+	for key := range configs {
+		if !processedKeys[key] && key != "" && configs[key] != "" {
+			otherKeys = append(otherKeys, key)
+		}
+	}
+	
+	if len(otherKeys) > 0 {
+		sort.Strings(otherKeys)
+		lines = append(lines, "# 其他配置")
+		for _, key := range otherKeys {
+			lines = append(lines, fmt.Sprintf("# %s配置项", key))
+			lines = append(lines, fmt.Sprintf("%s=%s", key, configs[key]))
+			lines = append(lines, "")
+		}
+	}
+	
+	// 移除最后的空行
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	
+	return strings.Join(lines, "\n")
 }

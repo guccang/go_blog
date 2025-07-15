@@ -23,6 +23,7 @@
 				<a href="/reading" class="nav-item"><span class="nav-icon">📚</span><span class="nav-text">读书记录</span></a>
 				<a href="/lifecountdown" class="nav-item"><span class="nav-icon">⏰</span><span class="nav-text">人生倒计时</span></a>
 				<a href="/statistics" class="nav-item"><span class="nav-icon">📊</span><span class="nav-text">访问统计</span></a>
+				<a href="/config" class="nav-item"><span class="nav-icon">🔧</span><span class="nav-text">系统配置</span></a>
 				<a href="/public" class="nav-item"><span class="nav-icon">🌐</span><span class="nav-text">公开博客</span></a>
 			</div>
 			<div class="search-toggle-container">

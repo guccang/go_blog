@@ -1,0 +1,438 @@
+/* 配置管理页面样式 */
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: var(--bg-color, #ffffff);
+    color: var(--text-color, #333333);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--border-color, #e1e5e9);
+}
+
+.header h1 {
+    margin: 0;
+    color: var(--primary-color, #007bff);
+    font-size: 2.2rem;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #545b62;
+}
+
+.btn-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #1e7e34;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background-color: #e0a800;
+}
+
+/* 搜索区域 */
+.search-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: var(--secondary-bg, #f8f9fa);
+    border-radius: 8px;
+}
+
+.search-box input {
+    width: 300px;
+    padding: 10px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.config-stats {
+    font-weight: bold;
+    color: var(--text-secondary, #666);
+}
+
+/* 配置列表 */
+.config-list {
+    margin-bottom: 30px;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background-color: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e1e5e9);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.config-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-color, #007bff);
+}
+
+.config-key {
+    flex: 1;
+    min-width: 200px;
+    margin-right: 15px;
+}
+
+.config-key-label {
+    font-weight: bold;
+    color: var(--primary-color, #007bff);
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.config-key-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    background-color: #f8f9fa;
+}
+
+.config-value {
+    flex: 2;
+    margin-right: 15px;
+}
+
+.config-value-label {
+    font-weight: bold;
+    color: var(--text-color, #333);
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.config-value-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.config-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.config-actions .btn {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+/* 原始配置预览 */
+.raw-config-section {
+    margin-top: 30px;
+}
+
+.raw-config-section h3 {
+    margin-bottom: 15px;
+    color: var(--text-color, #333);
+}
+
+#rawConfigPreview {
+    width: 100%;
+    height: 300px;
+    padding: 15px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    background-color: #f8f9fa;
+    resize: vertical;
+}
+
+/* 模态窗口 */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: var(--bg-color, #ffffff);
+    margin: 5% auto;
+    padding: 0;
+    border-radius: 8px;
+    width: 500px;
+    max-width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color, #e1e5e9);
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--primary-color, #007bff);
+}
+
+.close {
+    color: #aaa;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: #000;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: var(--text-color, #333);
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.form-group textarea {
+    height: 80px;
+    resize: vertical;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 20px;
+    border-top: 1px solid var(--border-color, #e1e5e9);
+}
+
+/* Toast 提示 */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    color: white;
+    font-weight: bold;
+    z-index: 1100;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast.success {
+    background-color: #28a745;
+}
+
+.toast.error {
+    background-color: #dc3545;
+}
+
+.toast.warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.toast.info {
+    background-color: #17a2b8;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .header-actions {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .search-section {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .search-box input {
+        width: 100%;
+    }
+    
+    .config-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .config-key,
+    .config-value {
+        margin-right: 0;
+        margin-bottom: 15px;
+    }
+    
+    .config-actions {
+        justify-content: center;
+        margin-top: 10px;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+}
+
+/* 深色主题支持 */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-color: #1a1a1a;
+        --card-bg: #2d2d2d;
+        --text-color: #ffffff;
+        --text-secondary: #cccccc;
+        --border-color: #444444;
+        --secondary-bg: #2d2d2d;
+        --primary-color: #0d6efd;
+    }
+    
+    .config-key-input,
+    .config-value-input,
+    #rawConfigPreview {
+        background-color: #2d2d2d;
+        color: #ffffff;
+        border-color: #444444;
+    }
+    
+    .search-box input,
+    .form-group input,
+    .form-group textarea {
+        background-color: #2d2d2d;
+        color: #ffffff;
+        border-color: #444444;
+    }
+}
+
+/* 动画效果 */
+.config-item {
+    animation: fadeInUp 0.3s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 配置项状态指示 */
+.config-item.modified {
+    border-left: 4px solid #ffc107;
+}
+
+.config-item.new {
+    border-left: 4px solid #28a745;
+}
+
+.config-item.error {
+    border-left: 4px solid #dc3545;
+}
+
+/* 配置值类型提示 */
+.config-type-hint {
+    font-size: 12px;
+    color: var(--text-secondary, #666);
+    margin-top: 4px;
+    font-style: italic;
+} 

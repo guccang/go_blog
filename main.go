@@ -26,7 +26,7 @@ func main(){
 		fmt.Println(arg);
 	}
 	if len(args) <2 {
-		fmt.Println("need blog.conf path");
+		fmt.Println("need sys_conf path");
 		return
 	}
 	// versions
