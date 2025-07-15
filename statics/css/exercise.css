@@ -168,11 +168,121 @@ body {
 }
 
 .content-view {
-    display: none;
+    display: none !important;
 }
 
 .content-view.active {
-    display: block;
+    display: block !important;
+}
+
+/* 强制确保视图切换时完全隐藏其他内容 */
+.content-view:not(.active) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+}
+
+.content-view.active {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+}
+
+/* 特定视图的强制隐藏 */
+#exerciseView:not(.active),
+#templateView:not(.active),
+#collectionView:not(.active),
+#profileView:not(.active),
+#statsView:not(.active) {
+    display: none !important;
+}
+
+#exerciseView.active,
+#templateView.active,
+#collectionView.active,
+#profileView.active,
+#statsView.active {
+    display: block !important;
+}
+
+/* 简化的视图控制：通过类名控制全局显示 */
+
+/* 当页面有特定视图激活时的隐藏规则 */
+body.view-exercise .template-list,
+body.view-exercise .template-form,
+body.view-exercise .collection-list,
+body.view-exercise .collection-form,
+body.view-exercise .profile-form,
+body.view-exercise .calorie-info,
+body.view-exercise .met-reference,
+body.view-exercise .stats-overview,
+body.view-exercise .type-stats,
+body.view-exercise .stats-controls {
+    display: none !important;
+}
+
+body.view-template .exercise-list,
+body.view-template .daily-stats,
+body.view-template .quick-add-section,
+body.view-template .collection-list,
+body.view-template .collection-form,
+body.view-template .profile-form,
+body.view-template .calorie-info,
+body.view-template .met-reference,
+body.view-template .stats-overview,
+body.view-template .type-stats,
+body.view-template .stats-controls {
+    display: none !important;
+}
+
+body.view-collection .exercise-list,
+body.view-collection .daily-stats,
+body.view-collection .quick-add-section,
+body.view-collection .template-list,
+body.view-collection .template-form,
+body.view-collection .profile-form,
+body.view-collection .calorie-info,
+body.view-collection .met-reference,
+body.view-collection .stats-overview,
+body.view-collection .type-stats,
+body.view-collection .stats-controls {
+    display: none !important;
+}
+
+body.view-profile .exercise-list,
+body.view-profile .daily-stats,
+body.view-profile .quick-add-section,
+body.view-profile .template-list,
+body.view-profile .template-form,
+body.view-profile .collection-list,
+body.view-profile .collection-form,
+body.view-profile .stats-overview,
+body.view-profile .type-stats,
+body.view-profile .stats-controls {
+    display: none !important;
+}
+
+body.view-stats .exercise-list,
+body.view-stats .daily-stats,
+body.view-stats .quick-add-section,
+body.view-stats .template-list,
+body.view-stats .template-form,
+body.view-stats .collection-list,
+body.view-stats .collection-form,
+body.view-stats .profile-form,
+body.view-stats .calorie-info,
+body.view-stats .met-reference {
+    display: none !important;
 }
 
 /* 页面标题 */
@@ -1162,4 +1272,34 @@ body {
 
 .exercise-item, .template-item {
     animation: fadeIn 0.3s ease-out;
+} 
+
+.body-parts-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+.body-parts-checkboxes label {
+    display: flex;
+    align-items: center;
+    font-size: 1.08em;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: #f6f8fa;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    cursor: pointer;
+    transition: background 0.2s;
+    min-width: 90px;
+    margin: 0;
+}
+.body-parts-checkboxes label:hover {
+    background: #e3eefa;
+}
+.body-parts-checkboxes input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    accent-color: #4e9cff;
 } 

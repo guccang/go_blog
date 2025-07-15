@@ -22,6 +22,7 @@ type ExerciseItem struct {
     Weight      float64   `json:"weight"`      // 负重 (kg)
     CreatedAt   time.Time `json:"created_at"`
     CompletedAt *time.Time `json:"completed_at,omitempty"`
+    BodyParts   []string  `json:"body_parts"` // 新增，锻炼部位
 }
 
 // ExerciseTemplate represents an exercise template
@@ -34,6 +35,7 @@ type ExerciseTemplate struct {
     Calories  int     `json:"calories"`
     Notes     string  `json:"notes"`
     Weight    float64 `json:"weight"` // 负重 (kg)
+    BodyParts []string `json:"body_parts"` // 新增，锻炼部位
 }
 
 // ExerciseTemplateCollection represents a collection of exercise templates
@@ -745,15 +747,42 @@ func (em *ExerciseManager) AddFromCollection(date, collectionID string) error {
     if err != nil {
         return err
     }
-    
     // Add each template as an exercise
     for _, template := range templates {
-        _, err := em.AddExercise(date, template.Name, template.Type, template.Duration, template.Intensity, template.Calories, template.Notes, template.Weight)
+        // 修复：同步模板的body_parts字段
+        exerciseList, err := em.GetExercisesByDate(date)
         if err != nil {
-            return fmt.Errorf("failed to add exercise from template %s: %w", template.Name, err)
+            exerciseList = ExerciseList{
+                Date:  date,
+                Items: []ExerciseItem{},
+            }
+        }
+        calories := template.Calories
+        if calories == 0 {
+            profile, _ := em.GetUserProfile()
+            if profile != nil && profile.Weight > 0 {
+                totalWeight := profile.Weight + template.Weight
+                calories = em.CalculateCalories(template.Type, template.Intensity, template.Duration, totalWeight)
+            }
+        }
+        item := ExerciseItem{
+            ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+            Name:      template.Name,
+            Type:      template.Type,
+            Duration:  template.Duration,
+            Intensity: template.Intensity,
+            Calories:  calories,
+            Notes:     template.Notes,
+            Completed: false,
+            Weight:    template.Weight,
+            CreatedAt: time.Now(),
+            BodyParts: template.BodyParts, // 关键修复
+        }
+        exerciseList.Items = append(exerciseList.Items, item)
+        if err := em.saveExercisesToBlog(exerciseList); err != nil {
+            return err
         }
     }
-    
     return nil
 }
 

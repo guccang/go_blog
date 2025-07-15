@@ -120,6 +120,20 @@
                             </div>
                         </div>
                         <div class="form-group">
+                            <label>锻炼部位</label>
+                            <div id="exerciseBodyParts" class="body-parts-checkboxes">
+                                <label><input type="checkbox" name="body_parts" value="胸肌"> 胸肌</label>
+                                <label><input type="checkbox" name="body_parts" value="肱三头肌"> 肱三头肌</label>
+                                <label><input type="checkbox" name="body_parts" value="大腿"> 大腿</label>
+                                <label><input type="checkbox" name="body_parts" value="背部"> 背部</label>
+                                <label><input type="checkbox" name="body_parts" value="肱二头肌"> 肱二头肌</label>
+                                <label><input type="checkbox" name="body_parts" value="腹肌"> 腹肌</label>
+                                <label><input type="checkbox" name="body_parts" value="脊柱"> 脊柱</label>
+                                <label><input type="checkbox" name="body_parts" value="肩膀"> 肩膀</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
                             <label>&nbsp;</label>
                             <div class="weight-info">
                                 <small>💡 负重将加到体重上用于卡路里计算</small>
@@ -236,6 +250,20 @@
                             </div>
                         </div>
                         <div class="form-group">
+                            <label>锻炼部位</label>
+                            <div id="templateBodyParts" class="body-parts-checkboxes">
+                                <label><input type="checkbox" name="body_parts" value="胸肌"> 胸肌</label>
+                                <label><input type="checkbox" name="body_parts" value="肱三头肌"> 肱三头肌</label>
+                                <label><input type="checkbox" name="body_parts" value="大腿"> 大腿</label>
+                                <label><input type="checkbox" name="body_parts" value="背部"> 背部</label>
+                                <label><input type="checkbox" name="body_parts" value="肱二头肌"> 肱二头肌</label>
+                                <label><input type="checkbox" name="body_parts" value="腹肌"> 腹肌</label>
+                                <label><input type="checkbox" name="body_parts" value="脊柱"> 脊柱</label>
+                                <label><input type="checkbox" name="body_parts" value="肩膀"> 肩膀</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
                             <label>&nbsp;</label>
                             <div class="weight-info">
                                 <small>💡 负重将加到体重上用于卡路里计算</small>

@@ -150,14 +150,15 @@ func handleGetExercises(w http.ResponseWriter, r *http.Request) {
 
 func handleAddExercise(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        Date      string  `json:"date"`
-        Name      string  `json:"name"`
-        Type      string  `json:"type"`
-        Duration  int     `json:"duration"`
-        Intensity string  `json:"intensity"`
-        Calories  int     `json:"calories"`
-        Notes     string  `json:"notes"`
-        Weight    float64 `json:"weight"`
+        Date      string   `json:"date"`
+        Name      string   `json:"name"`
+        Type      string   `json:"type"`
+        Duration  int      `json:"duration"`
+        Intensity string   `json:"intensity"`
+        Calories  int      `json:"calories"`
+        Notes     string   `json:"notes"`
+        Weight    float64  `json:"weight"`
+        BodyParts []string `json:"body_parts"` // 新增
     }
     
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -169,40 +170,99 @@ func handleAddExercise(w http.ResponseWriter, r *http.Request) {
         req.Date = time.Now().Format("2006-01-02")
     }
     
-    exercise, err := manager.AddExercise(req.Date, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight)
+    // 新增：传递body_parts
+    exerciseList, err := manager.GetExercisesByDate(req.Date)
     if err != nil {
-        log.ErrorF("Failed to add exercise: %v", err)
+        exerciseList = ExerciseList{
+            Date:  req.Date,
+            Items: []ExerciseItem{},
+        }
+    }
+    // Auto-calculate calories if not provided or is 0
+    calories := req.Calories
+    if calories == 0 {
+        profile, _ := manager.GetUserProfile()
+        if profile != nil && profile.Weight > 0 {
+            totalWeight := profile.Weight + req.Weight
+            calories = manager.CalculateCalories(req.Type, req.Intensity, req.Duration, totalWeight)
+        }
+    }
+    item := ExerciseItem{
+        ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+        Name:      req.Name,
+        Type:      req.Type,
+        Duration:  req.Duration,
+        Intensity: req.Intensity,
+        Calories:  calories,
+        Notes:     req.Notes,
+        Completed: false,
+        Weight:    req.Weight,
+        CreatedAt: time.Now(),
+        BodyParts: req.BodyParts, // 新增
+    }
+    exerciseList.Items = append(exerciseList.Items, item)
+    if err := manager.saveExercisesToBlog(exerciseList); err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    
-    json.NewEncoder(w).Encode(exercise)
+    json.NewEncoder(w).Encode(item)
 }
 
 func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        Date      string  `json:"date"`
-        ID        string  `json:"id"`
-        Name      string  `json:"name"`
-        Type      string  `json:"type"`
-        Duration  int     `json:"duration"`
-        Intensity string  `json:"intensity"`
-        Calories  int     `json:"calories"`
-        Notes     string  `json:"notes"`
-        Weight    float64 `json:"weight"`
+        Date      string   `json:"date"`
+        ID        string   `json:"id"`
+        Name      string   `json:"name"`
+        Type      string   `json:"type"`
+        Duration  int      `json:"duration"`
+        Intensity string   `json:"intensity"`
+        Calories  int      `json:"calories"`
+        Notes     string   `json:"notes"`
+        Weight    float64  `json:"weight"`
+        BodyParts []string `json:"body_parts"` // 新增
     }
     
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-    
-    if err := manager.UpdateExercise(req.Date, req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight); err != nil {
-        log.ErrorF("Failed to update exercise: %v", err)
+    exerciseList, err := manager.GetExercisesByDate(req.Date)
+    if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    
+    // Auto-calculate calories if not provided or is 0
+    calories := req.Calories
+    if calories == 0 {
+        profile, _ := manager.GetUserProfile()
+        if profile != nil && profile.Weight > 0 {
+            totalWeight := profile.Weight + req.Weight
+            calories = manager.CalculateCalories(req.Type, req.Intensity, req.Duration, totalWeight)
+        }
+    }
+    found := false
+    for i := range exerciseList.Items {
+        if exerciseList.Items[i].ID == req.ID {
+            exerciseList.Items[i].Name = req.Name
+            exerciseList.Items[i].Type = req.Type
+            exerciseList.Items[i].Duration = req.Duration
+            exerciseList.Items[i].Intensity = req.Intensity
+            exerciseList.Items[i].Calories = calories
+            exerciseList.Items[i].Notes = req.Notes
+            exerciseList.Items[i].Weight = req.Weight
+            exerciseList.Items[i].BodyParts = req.BodyParts // 新增
+            found = true
+            break
+        }
+    }
+    if !found {
+        http.Error(w, "exercise item not found", http.StatusNotFound)
+        return
+    }
+    if err := manager.saveExercisesToBlog(exerciseList); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
     json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
@@ -239,13 +299,14 @@ func handleGetTemplates(w http.ResponseWriter, r *http.Request) {
 
 func handleAddTemplate(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        Name      string  `json:"name"`
-        Type      string  `json:"type"`
-        Duration  int     `json:"duration"`
-        Intensity string  `json:"intensity"`
-        Calories  int     `json:"calories"`
-        Notes     string  `json:"notes"`
-        Weight    float64 `json:"weight"`
+        Name      string   `json:"name"`
+        Type      string   `json:"type"`
+        Duration  int      `json:"duration"`
+        Intensity string   `json:"intensity"`
+        Calories  int      `json:"calories"`
+        Notes     string   `json:"notes"`
+        Weight    float64  `json:"weight"`
+        BodyParts []string `json:"body_parts"` // 新增
     }
     
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -253,26 +314,43 @@ func handleAddTemplate(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    template, err := manager.AddTemplate(req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight)
+    // 新增：传递body_parts
+    template := ExerciseTemplate{
+        ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+        Name:      req.Name,
+        Type:      req.Type,
+        Duration:  req.Duration,
+        Intensity: req.Intensity,
+        Calories:  req.Calories,
+        Notes:     req.Notes,
+        Weight:    req.Weight,
+        BodyParts: req.BodyParts,
+    }
+    
+    templates, err := manager.GetTemplates()
     if err != nil {
-        log.ErrorF("Failed to add template: %v", err)
+        templates = []ExerciseTemplate{}
+    }
+    templates = append(templates, template)
+    if err := manager.saveTemplatesToBlog(templates); err != nil {
+        log.ErrorF("Failed to save templates: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    
     json.NewEncoder(w).Encode(template)
 }
 
 func handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        ID        string  `json:"id"`
-        Name      string  `json:"name"`
-        Type      string  `json:"type"`
-        Duration  int     `json:"duration"`
-        Intensity string  `json:"intensity"`
-        Calories  int     `json:"calories"`
-        Notes     string  `json:"notes"`
-        Weight    float64 `json:"weight"`
+        ID        string   `json:"id"`
+        Name      string   `json:"name"`
+        Type      string   `json:"type"`
+        Duration  int      `json:"duration"`
+        Intensity string   `json:"intensity"`
+        Calories  int      `json:"calories"`
+        Notes     string   `json:"notes"`
+        Weight    float64  `json:"weight"`
+        BodyParts []string `json:"body_parts"` // 新增
     }
     
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -280,12 +358,35 @@ func handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.UpdateTemplate(req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight); err != nil {
-        log.ErrorF("Failed to update template: %v", err)
+    templates, err := manager.GetTemplates()
+    if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    
+    found := false
+    for i := range templates {
+        if templates[i].ID == req.ID {
+            templates[i].Name = req.Name
+            templates[i].Type = req.Type
+            templates[i].Duration = req.Duration
+            templates[i].Intensity = req.Intensity
+            templates[i].Calories = req.Calories
+            templates[i].Notes = req.Notes
+            templates[i].Weight = req.Weight
+            templates[i].BodyParts = req.BodyParts // 新增
+            found = true
+            break
+        }
+    }
+    if !found {
+        http.Error(w, "template not found", http.StatusNotFound)
+        return
+    }
+    if err := manager.saveTemplatesToBlog(templates); err != nil {
+        log.ErrorF("Failed to save templates: %v", err)
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
     json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 

@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 初始化页面
 function initializePage() {
+    console.log('开始初始化页面');
+    
     // 从URL参数获取日期
     const urlParams = new URLSearchParams(window.location.search);
     const dateParam = urlParams.get('date');
@@ -27,16 +29,16 @@ function initializePage() {
     document.getElementById('datePicker').value = currentDate;
     updateCurrentDateDisplay();
     
-    // 显示锻炼视图
-    showExerciseView();
+    // 首先确保所有视图都隐藏
+    hideAllViews();
     
     // 绑定事件监听器
     bindEventListeners();
     
-    // 加载数据
-    loadExercises();
-    loadTemplates();
-    loadCollections();
+    // 显示锻炼视图（这会自动加载对应数据）
+    setTimeout(() => {
+        showExerciseView();
+    }, 200);
     
     showToast('锻炼管理页面加载完成', 'success');
 }
@@ -108,59 +110,137 @@ function bindEventListeners() {
 
 // 视图切换函数
 function showExerciseView() {
-    hideAllViews();
-    document.getElementById('exerciseView').classList.add('active');
-    document.getElementById('exerciseView').style.display = 'block';
+    showView('exerciseView');
     setActiveNavButton(0);
     currentView = 'exercise';
+    
+    // 只加载锻炼相关数据
     loadExercises();
+    
+    // 确保其他表单隐藏
+    hideAddForm();
+    resetExerciseForm();
+    
+    console.log('切换到锻炼视图');
 }
 
 function showTemplateView() {
-    hideAllViews();
-    hideAllEditForms(); // 切换视图时隐藏编辑表单
-    document.getElementById('templateView').classList.add('active');
-    document.getElementById('templateView').style.display = 'block';
+    showView('templateView');
     setActiveNavButton(1);
     currentView = 'template';
+    
+    // 只加载模板相关数据
     loadTemplates();
+    
+    // 重置模板表单状态
+    resetTemplateForm();
+    
+    console.log('切换到模板视图');
 }
 
 function showCollectionView() {
-    hideAllViews();
-    document.getElementById('collectionView').classList.add('active');
-    document.getElementById('collectionView').style.display = 'block';
+    showView('collectionView');
     setActiveNavButton(2);
     currentView = 'collection';
+    
+    // 只加载集合相关数据
     loadCollections();
     loadTemplatesForCheckboxes();
+    
+    // 重置集合表单状态
+    resetCollectionForm();
+    
+    console.log('切换到集合管理视图');
 }
 
 function showProfileView() {
-    hideAllViews();
-    document.getElementById('profileView').classList.add('active');
-    document.getElementById('profileView').style.display = 'block';
+    showView('profileView');
     setActiveNavButton(3);
     currentView = 'profile';
+    
+    // 只加载个人信息相关数据
     loadUserProfile();
     loadMETValues();
+    
+    console.log('切换到个人信息视图');
 }
 
 function showStatsView() {
-    hideAllViews();
-    document.getElementById('statsView').classList.add('active');
-    document.getElementById('statsView').style.display = 'block';
+    showView('statsView');
     setActiveNavButton(4);
     currentView = 'stats';
+    
+    // 只加载统计相关数据
     updateStats();
+    
+    console.log('切换到统计分析视图');
 }
 
 function hideAllViews() {
-    document.querySelectorAll('.content-view').forEach(view => {
-        view.classList.remove('active');
-        view.style.display = 'none';
+    // 获取所有视图并强制隐藏
+    const views = ['exerciseView', 'templateView', 'collectionView', 'profileView', 'statsView'];
+    views.forEach(viewId => {
+        const view = document.getElementById(viewId);
+        if (view) {
+            view.classList.remove('active');
+            view.style.display = 'none';
+            view.style.visibility = 'hidden';
+            view.style.opacity = '0';
+            view.style.position = 'absolute';
+            view.style.left = '-9999px';
+            view.style.top = '-9999px';
+        }
     });
+    
+    // 同时隐藏所有可能的弹出表单
+    hideAddForm();
+    resetExerciseForm();
+    resetTemplateForm();
+    resetCollectionForm();
 }
+
+// 显示指定视图的通用函数
+function showView(viewId) {
+    // 首先隐藏所有视图
+    hideAllViews();
+    hideAllEditForms();
+    
+    // 移除所有视图类名
+    document.body.classList.remove('view-exercise', 'view-template', 'view-collection', 'view-profile', 'view-stats');
+    
+    // 显示指定视图
+    const view = document.getElementById(viewId);
+    if (view) {
+        view.classList.add('active');
+        view.style.display = 'block';
+        view.style.visibility = 'visible';
+        view.style.opacity = '1';
+        view.style.position = 'static';
+        view.style.left = 'auto';
+        view.style.top = 'auto';
+    }
+    
+    // 根据视图ID给body添加对应的类名
+    switch (viewId) {
+        case 'exerciseView':
+            document.body.classList.add('view-exercise');
+            break;
+        case 'templateView':
+            document.body.classList.add('view-template');
+            break;
+        case 'collectionView':
+            document.body.classList.add('view-collection');
+            break;
+        case 'profileView':
+            document.body.classList.add('view-profile');
+            break;
+        case 'statsView':
+            document.body.classList.add('view-stats');
+            break;
+    }
+}
+
+
 
 function setActiveNavButton(index) {
     document.querySelectorAll('.nav-btn').forEach((btn, i) => {
@@ -250,6 +330,10 @@ function renderExercises(exercises) {
                     <div class="detail-value">${exercise.weight}kg</div>
                 </div>
                 ` : ''}
+                <div class="detail-item">
+                    <div class="detail-label">部位</div>
+                    <div class="detail-value">${(exercise.body_parts || []).join('、') || '-'}</div>
+                </div>
             </div>
             ${exercise.notes ? `<div class="exercise-notes">${exercise.notes}</div>` : ''}
         </div>
@@ -268,26 +352,63 @@ function updateDailyStats(exercises) {
 
 // 锻炼表单函数
 function showAddForm() {
-    document.getElementById('exerciseForm').style.display = 'block';
-    document.getElementById('formTitle').textContent = '添加锻炼';
+    const form = document.getElementById('exerciseForm');
+    if (form) {
+        form.style.display = 'block';
+    }
+    
+    // 重置表单状态
     resetExerciseForm();
-    isEditing = false;
-    editingId = null;
+    
+    // 确保表单标题正确
+    const formTitle = document.getElementById('formTitle');
+    if (formTitle) {
+        formTitle.textContent = '添加锻炼';
+    }
+    
+    // 滚动到表单位置
+    form && form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function hideAddForm() {
-    document.getElementById('exerciseForm').style.display = 'none';
+    const form = document.getElementById('exerciseForm');
+    if (form) {
+        form.style.display = 'none';
+    }
+    
+    // 重置锻炼表单
     resetExerciseForm();
-    isEditing = false;
-    editingId = null;
+    
+    // 清除锻炼部位选择
+    const bodyPartCheckboxes = document.querySelectorAll('#exerciseBodyParts input[name="body_parts"]');
+    bodyPartCheckboxes.forEach(cb => {
+        cb.checked = false;
+    });
 }
 
 function resetExerciseForm() {
-    document.getElementById('exerciseFormElement').reset();
-    document.getElementById('exerciseId').value = '';
+    const form = document.getElementById('exerciseFormElement');
+    if (form) {
+        form.reset();
+    }
+    const idField = document.getElementById('exerciseId');
+    if (idField) {
+        idField.value = '';
+    }
     hideMETDisplay('exercise');
+    
+    // 重置编辑状态
+    isEditing = false;
+    editingId = null;
+    
+    // 重置表单标题
+    const formTitle = document.getElementById('formTitle');
+    if (formTitle) {
+        formTitle.textContent = '添加锻炼';
+    }
 }
 
+// 修改saveExercise函数，收集锻炼部位
 async function saveExercise() {
     const formData = {
         date: currentDate,
@@ -297,7 +418,9 @@ async function saveExercise() {
         intensity: document.getElementById('exerciseIntensity').value,
         calories: parseInt(document.getElementById('exerciseCalories').value) || 0,
         notes: document.getElementById('exerciseNotes').value,
-        weight: parseFloat(document.getElementById('exerciseWeight').value) || 0
+        weight: parseFloat(document.getElementById('exerciseWeight').value) || 0,
+        // 新增：收集锻炼部位
+        body_parts: Array.from(document.querySelectorAll('#exerciseBodyParts input[name="body_parts"]:checked')).map(cb => cb.value)
     };
     
     try {
@@ -330,6 +453,7 @@ async function saveExercise() {
     }
 }
 
+// 修改editExercise函数，编辑时自动勾选body_parts
 async function editExercise(id) {
     try {
         const response = await fetch(`/api/exercises?date=${currentDate}`);
@@ -345,12 +469,15 @@ async function editExercise(id) {
             document.getElementById('exerciseCalories').value = exercise.calories || 0;
             document.getElementById('exerciseNotes').value = exercise.notes || '';
             document.getElementById('exerciseWeight').value = exercise.weight || 0;
-            
+            // 新增：设置锻炼部位多选
+            const allCbs = document.querySelectorAll('#exerciseBodyParts input[name="body_parts"]');
+            allCbs.forEach(cb => {
+                cb.checked = (exercise.body_parts || []).includes(cb.value);
+            });
             document.getElementById('exerciseForm').style.display = 'block';
             document.getElementById('formTitle').textContent = '编辑锻炼';
             isEditing = true;
             editingId = id;
-            
             // 更新MET显示
             updateExerciseMETDisplay();
         }
@@ -444,26 +571,13 @@ function renderTemplates(templates) {
                 </div>
             </div>
             <div class="template-details">
-                <div class="detail-item">
-                    <div class="detail-label">时长</div>
-                    <div class="detail-value">${template.duration}分钟</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">强度</div>
-                    <div class="detail-value">${getIntensityLabel(template.intensity)}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">卡路里</div>
-                    <div class="detail-value">${template.calories || 0}</div>
-                </div>
-                ${template.weight > 0 ? `
-                <div class="detail-item">
-                    <div class="detail-label">负重</div>
-                    <div class="detail-value">${template.weight}kg</div>
-                </div>
-                ` : ''}
+                <div class="detail-item"><span class="detail-label">时长</span><span class="detail-value">${template.duration}分钟</span></div>
+                <div class="detail-item"><span class="detail-label">强度</span><span class="detail-value">${getIntensityLabel(template.intensity)}</span></div>
+                <div class="detail-item"><span class="detail-label">卡路里</span><span class="detail-value">${template.calories || 0}</span></div>
+                <div class="detail-item"><span class="detail-label">负重</span><span class="detail-value">${template.weight || 0}kg</span></div>
+                <div class="detail-item"><span class="detail-label">部位</span><span class="detail-value">${(template.body_parts || []).join('、') || '-'}</span></div>
+                ${template.notes ? `<div class="detail-item"><span class="detail-label">备注</span><span class="detail-value">${template.notes}</span></div>` : ''}
             </div>
-            ${template.notes ? `<div class="template-notes">${template.notes}</div>` : ''}
         </div>
     `).join('');
 }
@@ -495,7 +609,8 @@ async function addFromTemplate() {
                 intensity: template.intensity,
                 calories: template.calories,
                 notes: template.notes,
-                weight: template.weight || 0
+                weight: template.weight || 0,
+                body_parts: template.body_parts || [] // 修复：同步部位
             };
             
             const addResponse = await fetch('/api/exercises', {
@@ -518,43 +633,50 @@ async function addFromTemplate() {
     }
 }
 
+// 修改saveTemplate函数，收集锻炼部位
 async function saveTemplate() {
-    const formData = {
-        name: document.getElementById('templateName').value,
-        type: document.getElementById('templateType').value,
-        duration: parseInt(document.getElementById('templateDuration').value),
-        intensity: document.getElementById('templateIntensity').value,
-        calories: parseInt(document.getElementById('templateCalories').value) || 0,
-        notes: document.getElementById('templateNotes').value,
-        weight: parseFloat(document.getElementById('templateWeight').value) || 0
+    const id = document.getElementById('templateId').value;
+    const name = document.getElementById('templateName').value.trim();
+    const type = document.getElementById('templateType').value;
+    const duration = parseInt(document.getElementById('templateDuration').value) || 0;
+    const intensity = document.getElementById('templateIntensity').value;
+    const calories = parseInt(document.getElementById('templateCalories').value) || 0;
+    const notes = document.getElementById('templateNotes').value.trim();
+    const weight = parseFloat(document.getElementById('templateWeight').value) || 0;
+    // 新增：收集锻炼部位
+    const bodyParts = Array.from(document.querySelectorAll('#templateBodyParts input[name="body_parts"]:checked')).map(cb => cb.value);
+
+    if (!name || !type || !duration || !intensity) {
+        showToast('请填写完整模板信息', 'error');
+        return;
+    }
+
+    const templateData = {
+        id,
+        name,
+        type,
+        duration,
+        intensity,
+        calories,
+        notes,
+        weight,
+        body_parts: bodyParts
     };
-    
+
+    let url = '/api/exercise-templates';
+    let method = id ? 'PUT' : 'POST';
+
     try {
-        let response;
-        if (isTemplateEditing) {
-            formData.id = editingTemplateId;
-            response = await fetch('/api/exercise-templates', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-        } else {
-            response = await fetch('/api/exercise-templates', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-        }
-        
-        if (response.ok) {
-            showToast(isTemplateEditing ? '模板更新成功' : '模板添加成功', 'success');
-            resetTemplateForm();
-            loadTemplates();
-        } else {
-            throw new Error('保存失败');
-        }
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(templateData)
+        });
+        if (!response.ok) throw new Error('保存失败');
+        showToast('模板保存成功', 'success');
+        resetTemplateForm();
+        loadTemplates();
     } catch (error) {
-        console.error('保存模板失败:', error);
         showToast('保存模板失败', 'error');
     }
 }
@@ -563,18 +685,25 @@ async function editTemplate(id) {
     try {
         const response = await fetch('/api/exercise-templates');
         const templates = await response.json();
-        const template = templates.find(t => t.id === id);
         
-        if (template) {
-            // 隐藏所有现有的编辑表单
-            hideAllEditForms();
-            
-            // 在对应模板上方创建编辑表单
-            showTemplateEditForm(id, template);
-            
-            isTemplateEditing = true;
-            editingTemplateId = id;
-        }
+        // 获取模板数据
+        const template = templates.find(t => t.id === id);
+        if (!template) return;
+        
+        // 隐藏所有现有的编辑表单
+        hideAllEditForms();
+        
+        // 在对应模板上方创建编辑表单
+        showTemplateEditForm(id, template);
+        
+        // 设置锻炼部位多选
+        const allCbs = document.querySelectorAll('#templateBodyParts input[name="body_parts"]');
+        allCbs.forEach(cb => {
+            cb.checked = (template.body_parts || []).includes(cb.value);
+        });
+        
+        isTemplateEditing = true;
+        editingTemplateId = id;
     } catch (error) {
         console.error('加载模板数据失败:', error);
         showToast('加载模板数据失败', 'error');
@@ -606,13 +735,34 @@ async function deleteTemplate(id) {
 }
 
 function resetTemplateForm() {
-    document.getElementById('templateFormElement').reset();
-    document.getElementById('templateId').value = '';
-    document.getElementById('templateFormTitle').textContent = '添加模板';
+    const form = document.getElementById('templateFormElement');
+    if (form) {
+        form.reset();
+    }
+    const idField = document.getElementById('templateId');
+    if (idField) {
+        idField.value = '';
+    }
+    const formTitle = document.getElementById('templateFormTitle');
+    if (formTitle) {
+        formTitle.textContent = '添加模板';
+    }
+    
+    // 重置编辑状态
     isTemplateEditing = false;
     editingTemplateId = null;
+    
+    // 隐藏MET显示
     hideMETDisplay('template');
+    
+    // 隐藏所有编辑表单
     hideAllEditForms();
+    
+    // 清除锻炼部位选择
+    const bodyPartCheckboxes = document.querySelectorAll('#templateBodyParts input[name="body_parts"]');
+    bodyPartCheckboxes.forEach(cb => {
+        cb.checked = false;
+    });
 }
 
 // 隐藏所有编辑表单
@@ -687,6 +837,21 @@ function showTemplateEditForm(templateId, template) {
                         </div>
                     </div>
                     <div class="form-group">
+                        <label>锻炼部位</label>
+                        <div id="editTemplateBodyParts-${templateId}" class="body-parts-checkboxes">
+                            <label><input type="checkbox" name="body_parts" value="胸肌"> 胸肌</label>
+                            <label><input type="checkbox" name="body_parts" value="肱三头肌"> 肱三头肌</label>
+                            <label><input type="checkbox" name="body_parts" value="大腿"> 大腿</label>
+                            <label><input type="checkbox" name="body_parts" value="背部"> 背部</label>
+                            <label><input type="checkbox" name="body_parts" value="肱二头肌"> 肱二头肌</label>
+                            <label><input type="checkbox" name="body_parts" value="腹肌"> 腹肌</label>
+                            <label><input type="checkbox" name="body_parts" value="脊柱"> 脊柱</label>
+                            <label><input type="checkbox" name="body_parts" value="肩膀"> 肩膀</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label>&nbsp;</label>
                         <div class="weight-info">
                             <small>💡 负重将加到体重上用于卡路里计算</small>
@@ -703,6 +868,12 @@ function showTemplateEditForm(templateId, template) {
     
     // 在模板项目之前插入编辑表单
     templateItem.insertAdjacentHTML('beforebegin', editFormHTML);
+    
+    // 设置锻炼部位多选
+    const allCbs = document.querySelectorAll(`#editTemplateBodyParts-${templateId} input[name='body_parts']`);
+    allCbs.forEach(cb => {
+        cb.checked = (template.body_parts || []).includes(cb.value);
+    });
     
     // 添加事件监听器用于自动计算和MET显示
     setupEditFormListeners(templateId);
@@ -831,6 +1002,7 @@ function showToast(message, type = 'info') {
 window.showExerciseView = showExerciseView;
 window.showTemplateView = showTemplateView;
 window.showCollectionView = showCollectionView;
+window.showProfileView = showProfileView;
 window.showStatsView = showStatsView;
 window.goToToday = goToToday;
 window.showAddForm = showAddForm;
@@ -1080,15 +1252,26 @@ async function deleteCollection(id) {
 }
 
 function resetCollectionForm() {
-    document.getElementById('collectionFormElement').reset();
-    document.getElementById('collectionId').value = '';
-    document.getElementById('collectionFormTitle').textContent = '添加集合';
+    const form = document.getElementById('collectionFormElement');
+    if (form) {
+        form.reset();
+    }
+    const idField = document.getElementById('collectionId');
+    if (idField) {
+        idField.value = '';
+    }
+    const formTitle = document.getElementById('collectionFormTitle');
+    if (formTitle) {
+        formTitle.textContent = '添加集合';
+    }
     
-    // 清除所有复选框选择
-    document.querySelectorAll('#templateCheckboxes input[type="checkbox"]').forEach(cb => {
+    // 清除所有模板复选框选择
+    const checkboxes = document.querySelectorAll('#templateCheckboxes input[type="checkbox"]');
+    checkboxes.forEach(cb => {
         cb.checked = false;
     });
     
+    // 重置编辑状态
     isCollectionEditing = false;
     editingCollectionId = null;
 }
@@ -1673,7 +1856,9 @@ async function saveEditTemplate(templateId) {
         intensity: document.getElementById(`editTemplateIntensity-${templateId}`).value,
         calories: parseInt(document.getElementById(`editTemplateCalories-${templateId}`).value) || 0,
         notes: document.getElementById(`editTemplateNotes-${templateId}`).value,
-        weight: parseFloat(document.getElementById(`editTemplateWeight-${templateId}`).value) || 0
+        weight: parseFloat(document.getElementById(`editTemplateWeight-${templateId}`).value) || 0,
+        // 新增：收集锻炼部位
+        body_parts: Array.from(document.querySelectorAll(`#editTemplateBodyParts-${templateId} input[name='body_parts']:checked`)).map(cb => cb.value)
     };
     
     if (!formData.name || !formData.type || !formData.duration || !formData.intensity) {
