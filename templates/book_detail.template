@@ -8,23 +8,85 @@
     <link rel="stylesheet" href="/css/styles.css">
     <script src="/js/marked/marked.min.js"></script>
     <style>
+        /* 完全重置页面布局 */
+        * {
+            box-sizing: border-box !important;
+        }
+        
+        html {
+            overflow-x: hidden !important;
+            overflow-y: visible !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            position: static !important;
+        }
+        
+        body {
+            margin: 0 !important;
+            padding: 60px 0 0 0 !important;
+            overflow-x: hidden !important;
+            overflow-y: visible !important;
+            min-height: 100vh !important;
+            height: auto !important;
+            background-color: #faf6f0 !important;
+            position: static !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+        }
+        
+        /* 重置所有可能的容器样式冲突 */
+        .container, .sidebar-container, .main-container {
+            margin-left: 0 !important;
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            transform: none !important;
+            overflow: visible !important;
+        }
+        
+        /* 强制页面级别的容器允许内容溢出 */
+        html, body, .book-detail-container, .book-header {
+            overflow: visible !important;
+            max-height: none !important;
+        }
+        
         .book-detail-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #faf6f0;
-            min-height: 100vh;
+            max-width: 1200px !important;
+            margin: 120px auto 0 auto !important;
+            padding: 40px 20px 60px 20px !important;
+            background-color: #faf6f0 !important;
+            position: relative !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            min-height: auto !important;
+            height: auto !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+            z-index: 1 !important;
         }
         
         .book-header {
-            display: flex;
-            gap: 30px;
-            margin-bottom: 30px;
-            background: #ffffff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border: 1px solid #ddd0c0;
+            display: flex !important;
+            gap: 30px !important;
+            margin-bottom: 30px !important;
+            background: #ffffff !important;
+            padding: 30px !important;
+            border-radius: 12px !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+            border: 1px solid #ddd0c0 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            position: relative !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+            min-height: auto !important;
+            height: auto !important;
         }
         
         .book-cover-large {
@@ -98,10 +160,19 @@
         }
         
         .tabs {
-            display: flex;
-            border-bottom: 2px solid #ddd0c0;
-            margin-bottom: 20px;
+            display: flex !important;
+            border-bottom: 2px solid #ddd0c0 !important;
+            margin: 20px 0 !important;
+            justify-content: flex-start !important;
+            flex-wrap: nowrap !important;
+            min-height: 50px !important;
+            height: auto !important;
+            align-items: stretch !important;
+            overflow: visible !important;
+            background: transparent !important;
+            position: relative !important;
         }
+        
         
         .tab {
             padding: 12px 24px;
@@ -112,6 +183,17 @@
             color: #8b7355;
             border-bottom: 2px solid transparent;
             transition: all 0.3s ease;
+            flex: 1;
+            text-align: center;
+            white-space: nowrap;
+            line-height: 1.5;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            overflow: visible;
+            position: relative;
         }
         
         .tab.active {
@@ -120,16 +202,23 @@
         }
         
         .tab-content {
-            display: none;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            border: 1px solid #ddd0c0;
+            display: none !important;
+            background: white !important;
+            padding: 20px !important;
+            border-radius: 8px !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+            border: 1px solid #ddd0c0 !important;
+            width: 100% !important;
+            overflow: visible !important;
+            box-sizing: border-box !important;
+            position: relative !important;
+            margin-bottom: 20px !important;
+            min-height: auto !important;
+            height: auto !important;
         }
         
         .tab-content.active {
-            display: block;
+            display: block !important;
         }
         
         .progress-section {
@@ -400,9 +489,15 @@
         }
         
         .notes-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 15px !important;
+            width: 100% !important;
+            overflow: visible !important;
+            position: relative !important;
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
         }
         
         .note-item {
@@ -719,23 +814,23 @@
         }
         
         .back-btn {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: #e76f51;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(231, 111, 81, 0.3);
-            white-space: nowrap;
-            display: inline-block;
-            width: auto;
+            position: fixed !important;
+            top: 20px !important;
+            left: 20px !important;
+            background: #e76f51 !important;
+            color: white !important;
+            padding: 8px 16px !important;
+            border: none !important;
+            border-radius: 20px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            transition: all 0.3s ease !important;
+            z-index: 9999 !important;
+            box-shadow: 0 2px 8px rgba(231, 111, 81, 0.3) !important;
+            white-space: nowrap !important;
+            display: inline-block !important;
+            width: auto !important;
         }
         
         .back-btn:hover {
@@ -762,6 +857,24 @@
         }
         
         @media (max-width: 768px) {
+            body {
+                padding: 80px 0 0 0 !important;
+            }
+            
+            .book-detail-container {
+                margin: 40px auto 0 auto !important;
+                padding: 20px 15px 60px 15px !important;
+                min-height: auto !important;
+                height: auto !important;
+            }
+            
+            .container {
+                margin-left: 0 !important;
+                min-height: auto !important;
+                height: auto !important;
+                padding-bottom: 60px !important;
+            }
+            
             .book-header {
                 flex-direction: column;
                 text-align: center;
@@ -778,7 +891,19 @@
             }
             
             .tabs {
-                overflow-x: auto;
+                justify-content: space-between;
+                min-height: 45px;
+                height: auto;
+                margin: 15px 0;
+            }
+            
+            .tab {
+                padding: 10px 16px;
+                font-size: 14px;
+                min-height: 45px;
+                line-height: 1.4;
+                box-sizing: border-box;
+                overflow: visible;
             }
             
             .progress-controls {
@@ -1769,6 +1894,7 @@
             }
         }
         
+        
         // 加载笔记
         async function loadNotes() {
             try {
@@ -2090,7 +2216,9 @@
                 showToast('笔记删除成功！', 'success');
                 
                 // 重新加载笔记
-                setTimeout(() => loadNotes(), 500);
+                setTimeout(() => {
+                    loadNotes();
+                }, 500);
                 
             } catch (error) {
                 console.error('删除笔记失败:', error);
@@ -2347,7 +2475,9 @@
                 showToast('笔记更新成功！', 'success');
                 
                 // 重新加载笔记
-                setTimeout(() => loadNotes(), 500);
+                setTimeout(() => {
+                    loadNotes();
+                }, 500);
                 
             } catch (error) {
                 console.error('更新笔记失败:', error);
