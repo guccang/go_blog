@@ -34,10 +34,15 @@ function initializePage() {
     
     // 绑定事件监听器
     bindEventListeners();
-    
+
+   
     // 显示锻炼视图（这会自动加载对应数据）
     setTimeout(() => {
         showExerciseView();
+        // 加载模板数据
+        loadTemplatesSelect()
+        // 加载集合数据
+        loadCollectionsSelect()
     }, 200);
     
     showToast('锻炼管理页面加载完成', 'success');
@@ -527,6 +532,20 @@ async function toggleExercise(id) {
     } catch (error) {
         console.error('切换锻炼状态失败:', error);
         showToast('切换锻炼状态失败', 'error');
+    }
+}
+
+// 加载TemplateSelect
+// 模板管理函数
+async function loadTemplatesSelect() {
+    try {
+        const response = await fetch('/api/exercise-templates');
+        const templates = await response.json();
+        
+        updateTemplateSelect(templates || []);
+    } catch (error) {
+        console.error('加载模板失败:', error);
+        showToast('加载模板失败', 'error');
     }
 }
 
@@ -1023,6 +1042,19 @@ window.updateStats = updateStats;
 window.calculateEditTemplateCalories = calculateEditTemplateCalories;
 window.saveEditTemplate = saveEditTemplate;
 window.cancelEditTemplate = cancelEditTemplate;
+
+// 模板集合管理函数select
+async function loadCollectionsSelect() {
+    try {
+        const response = await fetch('/api/exercise-collections');
+        const collections = await response.json();
+        updateCollectionSelect(collections || []);
+    } catch (error) {
+        console.error('加载集合失败:', error);
+        showToast('加载集合失败', 'error');
+    }
+}
+
 
 // 模板集合管理函数
 async function loadCollections() {
