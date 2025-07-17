@@ -290,6 +290,19 @@ func GetMonthGoals(year int) (map[int]*MonthGoal, error) {
 	return goals, nil
 }
 
+// ParseYearPlanFromBlog parses a blog content string into a MonthGoal
+func ParseYearPlanFromBlog(content string) MonthGoal {
+	var goal MonthGoal
+	if err := json.Unmarshal([]byte(content), &goal); err != nil {
+		// Return empty MonthGoal if parsing fails
+		return MonthGoal{
+			Weeks: make(map[int]*WeekGoal),
+			Tasks: []Task{},
+		}
+	}
+	return goal
+}
+
 // InitYearPlanModule initializes the year plan module
 func InitYearPlanModule() error {
 	log.Debug("Initializing year plan module")

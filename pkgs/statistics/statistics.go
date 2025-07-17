@@ -292,6 +292,11 @@ func GetStatistics() *Statistics {
 	return stats
 }
 
+// GetOverallStatistics is an alias for GetStatistics for API compatibility
+func GetOverallStatistics() *Statistics {
+	return GetStatistics()
+}
+
 // 计算博客统计
 func calculateBlogStatistics() BlogStatistics {
 	stats := BlogStatistics{}

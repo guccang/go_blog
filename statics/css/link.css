@@ -390,6 +390,42 @@ body {
 	box-shadow: 0 8px 15px var(--shadow-color);
 }
 
+/* 智能助手悬浮按钮 */
+.assistant-btn {
+	position: fixed;
+	right: 30px;
+	bottom: 140px;
+	background: linear-gradient(45deg, #00d4aa, #a1c4fd);
+	color: white;
+	width: 55px;
+	height: 55px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 22px;
+	box-shadow: 0 4px 15px rgba(0, 212, 170, 0.3);
+	transition: all 0.3s ease;
+	text-decoration: none;
+	z-index: 999;
+}
+
+.assistant-btn:hover {
+	transform: scale(1.15) translateY(-3px);
+	box-shadow: 0 6px 20px rgba(0, 212, 170, 0.4);
+	background: linear-gradient(45deg, #00e6c0, #b1d1ff);
+}
+
+.assistant-btn i {
+	animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+	0% { transform: scale(1); }
+	50% { transform: scale(1.05); }
+	100% { transform: scale(1); }
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
 	.top-sidebar {
@@ -492,6 +528,14 @@ body {
 		bottom: 70px;
 	}
 	
+	.assistant-btn {
+		right: 20px;
+		bottom: 140px;
+		width: 50px;
+		height: 50px;
+		font-size: 20px;
+	}
+	
 	/* 最近查看区域也需要底部间距 */
 	.recent-section {
 		padding-bottom: 80px;
@@ -548,6 +592,14 @@ body {
 		min-width: 100px;
 		align-self: center; /* 居中对齐 */
 	}
+	
+	.assistant-btn {
+		right: 15px;
+		bottom: 130px;
+		width: 45px;
+		height: 45px;
+		font-size: 18px;
+	}
 }
 
 /* 超小屏幕优化 */
@@ -596,6 +648,14 @@ body {
 	
 	.view-toggle i {
 		font-size: 12px;
+	}
+	
+	.assistant-btn {
+		right: 15px;
+		bottom: 120px;
+		width: 40px;
+		height: 40px;
+		font-size: 16px;
 	}
 }
 

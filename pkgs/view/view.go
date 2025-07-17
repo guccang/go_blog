@@ -1012,3 +1012,20 @@ func PageDiaryPasswordError(w h.ResponseWriter, blogname string) {
 		return
 	}
 }
+// 智能助手页面
+func PageAssistant(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "assistant.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse assistant.template: %s", err.Error())
+		h.Error(w, "Failed to parse assistant template", h.StatusInternalServerError)
+		return
+	}
+	
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render assistant.template: %s", err.Error())
+		h.Error(w, "Failed to render assistant template", h.StatusInternalServerError)
+		return
+	}
+}

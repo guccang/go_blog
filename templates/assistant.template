@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 智能助手 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/css/assistant.css">
+</head>
+<body>
+    <!-- 返回导航 -->
+    <div class="nav-back">
+        <a href="/link" class="back-btn">
+            <i class="fas fa-home"></i> 返回主页
+        </a>
+    </div>
+
+    <div class="container">
+        <header class="assistant-header">
+            <div class="assistant-title">
+                <i class="fas fa-robot"></i>
+                <h1>智能助手</h1>
+                <span class="status-indicator online">在线</span>
+            </div>
+            <div class="assistant-subtitle">
+                <p>您的个人数据分析师和生活教练</p>
+            </div>
+        </header>
+
+        <main class="assistant-main">
+            <!-- 左侧：聊天界面 -->
+            <section class="chat-section">
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <!-- 欢迎消息 -->
+                        <div class="message assistant-message">
+                            <div class="avatar">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="message-content">
+                                <div class="message-text">
+                                    <p>您好！我是您的智能助手，很高兴为您服务！</p>
+                                    <p>我可以帮您：</p>
+                                    <ul>
+                                        <li>📊 分析您的个人数据和行为模式</li>
+                                        <li>💡 提供个性化的建议和提醒</li>
+                                        <li>📋 帮助管理任务和计划</li>
+                                        <li>📈 生成各种统计报告</li>
+                                        <li>🎯 追踪目标进度和成就</li>
+                                    </ul>
+                                    <p>试试问我："我最近的状态怎么样？"或"帮我分析一下时间分配"</p>
+                                </div>
+                                <div class="message-time">刚刚</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <div class="quick-actions">
+                            <button class="quick-btn" data-action="status">📊 状态分析</button>
+                            <button class="quick-btn" data-action="time">⏰ 时间分析</button>
+                            <button class="quick-btn" data-action="goals">🎯 目标进度</button>
+                            <button class="quick-btn" data-action="suggestions">💡 智能建议</button>
+                        </div>
+                        
+                        <div class="input-wrapper">
+                            <input type="text" id="messageInput" placeholder="问问我任何关于您的数据或计划的问题..." maxlength="500">
+                            <button class="send-btn" id="sendBtn">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧：智能面板 -->
+            <aside class="info-panel">
+                <div class="panel-header">
+                    <h3><i class="fas fa-chart-line"></i> 数据概览</h3>
+                    <button class="refresh-btn" id="refreshData">
+                        <i class="fas fa-refresh"></i>
+                    </button>
+                </div>
+
+                <!-- 今日概览 -->
+                <div class="info-card">
+                    <h4><i class="fas fa-calendar-day"></i> 今日概览</h4>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="todayTasks">-</div>
+                            <div class="stat-label">任务完成</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="todayReading">-</div>
+                            <div class="stat-label">阅读时间</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="todayExercise">-</div>
+                            <div class="stat-label">锻炼记录</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="todayBlogs">-</div>
+                            <div class="stat-label">博客写作</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 智能建议 -->
+                <div class="info-card">
+                    <h4><i class="fas fa-lightbulb"></i> 智能建议</h4>
+                    <div class="suggestions-list" id="suggestionsList">
+                        <div class="suggestion-item">
+                            <div class="suggestion-icon">💡</div>
+                            <div class="suggestion-text">正在分析您的数据...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 快速操作 -->
+                <div class="info-card">
+                    <h4><i class="fas fa-bolt"></i> 快速操作</h4>
+                    <div class="quick-operations">
+                        <button class="operation-btn" data-action="new-task">
+                            <i class="fas fa-plus"></i> 新建任务
+                        </button>
+                        <button class="operation-btn" data-action="record-exercise">
+                            <i class="fas fa-dumbbell"></i> 记录锻炼
+                        </button>
+                        <button class="operation-btn" data-action="write-blog">
+                            <i class="fas fa-pen"></i> 写博客
+                        </button>
+                        <button class="operation-btn" data-action="add-reading">
+                            <i class="fas fa-book"></i> 添加阅读
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 趋势图表 -->
+                <div class="info-card">
+                    <h4><i class="fas fa-chart-area"></i> 近期趋势</h4>
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 设置面板 -->
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-header">
+                <h3><i class="fas fa-cog"></i> 助手设置</h3>
+                <button class="close-btn" id="closeSettings">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="settings-content">
+                <div class="setting-group">
+                    <h4>通知设置</h4>
+                    <div class="setting-item">
+                        <label class="switch">
+                            <input type="checkbox" id="enableNotifications" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>启用智能提醒</span>
+                    </div>
+                    <div class="setting-item">
+                        <label class="switch">
+                            <input type="checkbox" id="enableSuggestions" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>显示智能建议</span>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <h4>分析深度</h4>
+                    <div class="setting-item">
+                        <label>分析时间范围:</label>
+                        <select id="analysisRange">
+                            <option value="7">最近7天</option>
+                            <option value="30" selected>最近30天</option>
+                            <option value="90">最近90天</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <h4>个性化</h4>
+                    <div class="setting-item">
+                        <label>助手人格:</label>
+                        <select id="assistantPersonality">
+                            <option value="friendly">友好温和</option>
+                            <option value="professional" selected>专业严谨</option>
+                            <option value="encouraging">鼓励激励</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 设置按钮 -->
+        <button class="settings-btn" id="settingsBtn">
+            <i class="fas fa-cog"></i>
+        </button>
+    </div>
+
+    <script src="/js/assistant.js"></script>
+</body>
+</html>

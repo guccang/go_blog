@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>年度计划</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/yearplan.css">
 </head>
 <body>
@@ -610,6 +611,11 @@
         <span class="right-label" id="total-tasks">总任务数: 0</span>
         <span class="right-label" id="completed-tasks">已完成: 0</span>
     </div>
+
+    <!-- 智能助手悬浮图标 -->
+    <a href="/assistant" class="assistant-floating-btn" title="智能助手">
+        <i class="fas fa-robot"></i>
+    </a>
 
     <script src="/js/utils.js"></script>
 	<script src="/js/marked/marked.min.js"></script>

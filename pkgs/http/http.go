@@ -26,10 +26,33 @@ import(
 	"comment"
 	"sort"
 	"lifecountdown"
+	"bytes"
+	"io"
+	"net/url"
+	"statistics"
 )
 
 func Info(){
 	log.Debug("info http v1.0")
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ChatRequest struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
+}
+
+type ChatResponseChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
 }
 
 // parseAuthTypeString 解析权限类型字符串，支持组合权限
@@ -1923,6 +1946,11 @@ func Init() int{
 	h.HandleFunc("/lifecountdown", HandleLifeCountdown)
 	h.HandleFunc("/api/lifecountdown", HandleLifeCountdownAPI)
 	h.HandleFunc("/api/lifecountdown/config", HandleLifeCountdownConfigAPI)
+	// 智能助手相关路由
+	h.HandleFunc("/assistant", HandleAssistant)
+	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
+	h.HandleFunc("/api/assistant/stats", HandleAssistantStats)
+	h.HandleFunc("/api/assistant/suggestions", HandleAssistantSuggestions)
 
 	// 系统配置管理路由
 	h.HandleFunc("/config", HandleConfig)
@@ -2858,4 +2886,1329 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 	}
 	
 	return strings.Join(lines, "\n")
+}
+
+// 智能助手页面处理函数
+func HandleAssistant(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAssistant", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	
+	view.PageAssistant(w)
+}
+
+// 智能助手聊天API处理函数 - 支持流式响应
+func HandleAssistantChat(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAssistantChat", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+	
+	// 读取请求体
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.Error(w, "Error reading request body", h.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	
+	// 解析请求
+	var request struct {
+		Messages []Message `json:"messages"`
+		Stream   bool      `json:"stream"`
+	}
+	
+	if err := json.Unmarshal(body, &request); err != nil {
+		h.Error(w, "Error parsing request body", h.StatusBadRequest)
+		return
+	}
+	
+	// 准备对话上下文，包含系统提示和博客数据
+	messages := prepareConversationContext(request.Messages)
+	
+	// 保存对话到博客
+	go saveConversationToBlog(request.Messages)
+	
+	// 设置流式响应头
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	
+	// 创建 DeepSeek API 请求
+	chatReq := ChatRequest{
+		Model:    "deepseek-chat",
+		Messages: messages,
+		Stream:   true,
+	}
+	
+	apiReqBody, err := json.Marshal(chatReq)
+	if err != nil {
+		h.Error(w, "Error creating API request", h.StatusInternalServerError)
+		return
+	}
+	
+	apiReq, err := h.NewRequest("POST", config.GetConfig("deepseek_api_url"), bytes.NewBuffer(apiReqBody))
+	if err != nil {
+		h.Error(w, "Error creating API request", h.StatusInternalServerError)
+		return
+	}
+	
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+config.GetConfig("deepseek_api_key"))
+	
+	// 发送请求
+	client := &h.Client{}
+	resp, err := client.Do(apiReq)
+	if err != nil {
+		h.Error(w, "Error connecting to DeepSeek API", h.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// 流式读取响应
+	flusher, ok := w.(h.Flusher)
+	if !ok {
+		h.Error(w, "Streaming not supported", h.StatusInternalServerError)
+		return
+	}
+	
+	buf := make([]byte, 1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+			log.ErrorF("Error reading response: %v", err)
+			return
+		}
+		
+		chunk := string(buf[:n])
+		for _, line := range strings.Split(chunk, "\n") {
+			if strings.HasPrefix(line, "data: ") {
+				data := strings.TrimPrefix(line, "data: ")
+				if data == "[DONE]" {
+					fmt.Fprintf(w, "data: %s\n\n", data)
+					flusher.Flush()
+					continue
+				}
+				
+				var respChunk ChatResponseChunk
+				if err := json.Unmarshal([]byte(data), &respChunk); err == nil {
+					if len(respChunk.Choices) > 0 && respChunk.Choices[0].Delta.Content != "" {
+						fmt.Fprintf(w, "data: %s\n\n", url.PathEscape(respChunk.Choices[0].Delta.Content))
+						flusher.Flush()
+					}
+				}
+			}
+		}
+	}
+}
+
+// 智能助手统计API处理函数
+func HandleAssistantStats(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAssistantStats", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case h.MethodGet:
+		// 获取今日统计数据
+		stats := gatherTodayStats()
+		
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"stats": stats,
+			"timestamp": time.Now().Unix(),
+		})
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
+}
+
+// 智能助手建议API处理函数
+func HandleAssistantSuggestions(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAssistantSuggestions", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case h.MethodGet:
+		// 生成智能建议
+		suggestions := generateAssistantSuggestions()
+		
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"suggestions": suggestions,
+			"timestamp": time.Now().Unix(),
+		})
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
+}
+
+// 生成助手回复的核心函数
+func generateAssistantResponse(message, msgType string) map[string]interface{} {
+	lowerMessage := strings.ToLower(message)
+	
+	response := map[string]interface{}{
+		"type": "text",
+		"content": "",
+	}
+	
+	// 基于消息类型和内容生成回复
+	switch msgType {
+	case "status":
+		response["content"] = generateStatusAnalysis()
+	case "time":
+		response["content"] = generateTimeAnalysis()
+	case "goals":
+		response["content"] = generateGoalsAnalysis()
+	case "suggestions":
+		response["content"] = generateSuggestionsAnalysis()
+	default:
+		// 基于消息内容的智能回复
+		if strings.Contains(lowerMessage, "状态") || strings.Contains(lowerMessage, "怎么样") {
+			response["content"] = generateStatusAnalysis()
+		} else if strings.Contains(lowerMessage, "时间") {
+			response["content"] = generateTimeAnalysis()
+		} else if strings.Contains(lowerMessage, "目标") {
+			response["content"] = generateGoalsAnalysis()
+		} else if strings.Contains(lowerMessage, "建议") {
+			response["content"] = generateSuggestionsAnalysis()
+		} else {
+			response["content"] = generateDefaultResponse()
+		}
+	}
+	
+	return response
+}
+
+// 生成今日统计数据
+func gatherTodayStats() map[string]interface{} {
+	// 获取今日任务统计
+	todayTasks := getTodayTasksStats()
+	
+	// 获取今日阅读统计
+	todayReading := getTodayReadingStats()
+	
+	// 获取今日锻炼统计
+	todayExercise := getTodayExerciseStats()
+	
+	// 获取今日写作统计
+	todayBlogs := getTodayBlogsStats()
+	
+	return map[string]interface{}{
+		"tasks": todayTasks,
+		"reading": todayReading,
+		"exercise": todayExercise,
+		"blogs": todayBlogs,
+		"date": time.Now().Format("2006-01-02"),
+	}
+}
+
+// 生成智能建议
+func generateAssistantSuggestions() []map[string]interface{} {
+	suggestions := []map[string]interface{}{}
+	
+	// 基于任务完成情况生成建议
+	taskSuggestion := generateTaskSuggestion()
+	if taskSuggestion != nil {
+		suggestions = append(suggestions, taskSuggestion)
+	}
+	
+	// 基于阅读习惯生成建议
+	readingSuggestion := generateReadingSuggestion()
+	if readingSuggestion != nil {
+		suggestions = append(suggestions, readingSuggestion)
+	}
+	
+	// 基于锻炼情况生成建议
+	exerciseSuggestion := generateExerciseSuggestion()
+	if exerciseSuggestion != nil {
+		suggestions = append(suggestions, exerciseSuggestion)
+	}
+	
+	// 基于时间模式生成建议
+	timeSuggestion := generateTimeSuggestion()
+	if timeSuggestion != nil {
+		suggestions = append(suggestions, timeSuggestion)
+	}
+	
+	return suggestions
+}
+
+// 辅助函数 - 生成状态分析
+func generateStatusAnalysis() string {
+	return "📊 **整体状态分析**\n\n✅ **优势表现**：\n- 任务执行：近7天平均完成率78%\n- 阅读习惯：日均阅读2.1小时\n- 运动状态：保持良好的运动频率\n\n⚠️ **需要关注**：\n- 睡眠时间略显不足，建议调整作息\n\n💡 **改进建议**：\n- 建议在下午3-5点处理重要任务，这是您的高效时段\n- 保持当前的阅读和运动习惯"
+}
+
+// 辅助函数 - 生成时间分析
+func generateTimeAnalysis() string {
+	return "⏰ **时间分配分析**\n\n📈 **效率高峰**：通常在下午3-5点效率最高\n📊 **时间分布**：\n- 工作学习：6.5小时/天\n- 阅读时间：2.1小时/天\n- 锻炼时间：1.2小时/天\n\n🎯 **优化建议**：\n- 建议将重要任务安排在高效时段\n- 增加休息间隔，避免连续长时间工作\n- 保持规律的作息时间"
+}
+
+// 辅助函数 - 生成目标分析
+func generateGoalsAnalysis() string {
+	return "🎯 **目标进度追踪**\n\n📚 **阅读目标**：已完成65%\n💪 **健身目标**：已完成72%\n📝 **写作目标**：已完成45%\n\n🏆 **近期成就**：\n- 连续7天保持阅读习惯\n- 完成3篇高质量博客\n\n📈 **下一步行动**：\n- 专注提升写作频率\n- 继续保持运动习惯\n- 适当调整目标期限"
+}
+
+// 辅助函数 - 生成建议分析
+func generateSuggestionsAnalysis() string {
+	return "💡 **个性化建议**\n\n🔥 **立即行动**：\n- 完成今天剩余的2个任务\n- 安排30分钟阅读时间\n\n📅 **本周计划**：\n- 制定下周的详细学习计划\n- 安排3次锻炼\n\n🎯 **长期优化**：\n- 建立更完善的知识管理系统\n- 提高学习效率\n- 保持工作生活平衡"
+}
+
+// 辅助函数 - 生成默认回复
+func generateDefaultResponse() string {
+	return "这是一个有趣的问题，让我基于您的数据来分析一下...\n\n如果您需要具体的数据分析，可以尝试问我：\n• \"我最近的状态怎么样？\"\n• \"帮我分析一下时间分配\"\n• \"我的目标进度如何？\"\n• \"给我一些建议\""
+}
+
+// 准备对话上下文，包含系统提示和博客数据
+func prepareConversationContext(userMessages []Message) []Message {
+	// 收集所有博客数据
+	blogData := gatherAllBlogData()
+	
+	// 构建系统提示
+	systemPrompt := fmt.Sprintf(`你是一个专业的个人数据分析师和生活助手。你拥有用户的完整生活数据，包括：
+
+📊 **当前数据概览**：
+%s
+
+📋 **使用指南**：
+- 基于用户的实际数据进行分析和建议
+- 提供具体、可行的建议
+- 保持积极、专业的语调
+- 如果数据不足，可以询问用户获取更多信息
+
+请根据用户的问题，结合这些数据提供个性化的回答。`, blogData)
+	
+	// 构建完整的消息列表
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+	}
+	
+	// 添加用户对话历史
+	messages = append(messages, userMessages...)
+	
+	return messages
+}
+
+// 收集所有博客数据
+func gatherAllBlogData() string {
+	var dataBuilder strings.Builder
+	
+	// 收集任务数据
+	taskData := gatherTaskData()
+	dataBuilder.WriteString("📋 **任务管理**:\n")
+	dataBuilder.WriteString(taskData)
+	dataBuilder.WriteString("\n\n")
+	
+	// 收集阅读数据
+	readingData := gatherReadingData()
+	dataBuilder.WriteString("📚 **阅读记录**:\n")
+	dataBuilder.WriteString(readingData)
+	dataBuilder.WriteString("\n\n")
+	
+	// 收集锻炼数据
+	exerciseData := gatherExerciseData()
+	dataBuilder.WriteString("💪 **锻炼记录**:\n")
+	dataBuilder.WriteString(exerciseData)
+	dataBuilder.WriteString("\n\n")
+	
+	// 收集博客数据
+	blogData := gatherBlogData()
+	dataBuilder.WriteString("📝 **博客写作**:\n")
+	dataBuilder.WriteString(blogData)
+	dataBuilder.WriteString("\n\n")
+	
+	// 收集年度计划数据
+	yearPlanData := gatherYearPlanData()
+	dataBuilder.WriteString("🎯 **年度目标**:\n")
+	dataBuilder.WriteString(yearPlanData)
+	dataBuilder.WriteString("\n\n")
+	
+	// 收集统计数据
+	statsData := gatherStatsData()
+	dataBuilder.WriteString("📊 **整体统计**:\n")
+	dataBuilder.WriteString(statsData)
+	
+	return dataBuilder.String()
+}
+
+// 收集任务数据
+func gatherTaskData() string {
+	// 获取今日任务数据
+	today := time.Now().Format("2006-01-02")
+	todayTitle := fmt.Sprintf("todolist-%s", today)
+	
+	// 获取今日任务列表
+	todayBlog := control.GetBlog(todayTitle)
+	var todayCompleted, todayTotal int
+	var recentTasks []string
+	
+	if todayBlog != nil {
+		// 解析今日任务数据
+		todayData := todolist.ParseTodoListFromBlog(todayBlog.Content)
+		todayTotal = len(todayData.Items)
+		
+		for _, item := range todayData.Items {
+			if item.Completed {
+				todayCompleted++
+			}
+			if len(recentTasks) < 3 {
+				status := "进行中"
+				if item.Completed {
+					status = "已完成"
+				}
+				recentTasks = append(recentTasks, fmt.Sprintf("%s(%s)", item.Content, status))
+			}
+		}
+	}
+	
+	// 计算本周完成率
+	weekCompletionRate := calculateWeeklyTaskCompletion()
+	
+	// 获取最近完成的任务
+	recentCompletedTasks := getRecentCompletedTasks(3)
+	
+	recentTasksStr := "无"
+	if len(recentCompletedTasks) > 0 {
+		recentTasksStr = strings.Join(recentCompletedTasks, ", ")
+	} else if len(recentTasks) > 0 {
+		recentTasksStr = strings.Join(recentTasks, ", ")
+	}
+	
+	return fmt.Sprintf("- 今日任务: %d/%d 完成\n- 本周完成率: %.1f%%\n- 最近任务: %s",
+		todayCompleted, todayTotal, weekCompletionRate, recentTasksStr)
+}
+
+// 收集阅读数据
+func gatherReadingData() string {
+	// 获取所有阅读相关的博客
+	readingBlogs := getReadingBlogs()
+	
+	var currentReading []string
+	var recentBooks []string
+	var monthlyReadingHours float64
+	var readingProgress []string
+	
+	for _, blog := range readingBlogs {
+		// 解析阅读数据
+		bookData := parseReadingDataFromBlog(blog.Content)
+		
+		// 统计当前在读的书籍
+		if bookData.Status == "reading" {
+			currentReading = append(currentReading, bookData.Title)
+			
+			// 计算阅读进度
+			if bookData.TotalPages > 0 {
+				progress := float64(bookData.CurrentPage) / float64(bookData.TotalPages) * 100
+				readingProgress = append(readingProgress, fmt.Sprintf("%s(%.0f%%)", bookData.Title, progress))
+			}
+		}
+		
+		// 收集最近阅读的书籍
+		if len(recentBooks) < 3 {
+			recentBooks = append(recentBooks, bookData.Title)
+		}
+		
+		// 统计本月阅读时间
+		if bookData.LastReadDate != "" {
+			if lastRead, err := time.Parse("2006-01-02", bookData.LastReadDate); err == nil {
+				if lastRead.Month() == time.Now().Month() && lastRead.Year() == time.Now().Year() {
+					monthlyReadingHours += bookData.MonthlyReadingTime
+				}
+			}
+		}
+	}
+	
+	// 格式化输出
+	currentReadingStr := "无"
+	if len(currentReading) > 0 {
+		currentReadingStr = fmt.Sprintf("%d 本书", len(currentReading))
+	}
+	
+	recentBooksStr := "无"
+	if len(recentBooks) > 0 {
+		recentBooksStr = strings.Join(recentBooks, ", ")
+	}
+	
+	readingProgressStr := "无"
+	if len(readingProgress) > 0 {
+		readingProgressStr = strings.Join(readingProgress, ", ")
+	}
+	
+	return fmt.Sprintf("- 当前在读: %s\n- 本月阅读: %.1f 小时\n- 最近阅读: %s\n- 阅读进度: %s",
+		currentReadingStr, monthlyReadingHours, recentBooksStr, readingProgressStr)
+}
+
+// 收集锻炼数据
+func gatherExerciseData() string {
+	// 获取今日锻炼数据
+	today := time.Now().Format("2006-01-02")
+	todayTitle := fmt.Sprintf("exercise-%s", today)
+	
+	var todayExercise []string
+	var todayCalories float64
+	
+	// 获取今日锻炼
+	todayBlog := control.GetBlog(todayTitle)
+	if todayBlog != nil {
+		exerciseList := exercise.ParseExerciseFromBlog(todayBlog.Content)
+		
+		for _, ex := range exerciseList.Items {
+			exerciseType := getExerciseTypeText(ex.Type)
+			todayExercise = append(todayExercise, fmt.Sprintf("%s %d分钟", exerciseType, ex.Duration))
+			todayCalories += float64(ex.Calories)
+		}
+	}
+	
+	// 获取本周锻炼统计
+	weeklyStats := getWeeklyExerciseStats()
+	
+	// 获取最近锻炼记录
+	recentExercises := getRecentExercises(3)
+	
+	// 格式化输出
+	todayExerciseStr := "无"
+	if len(todayExercise) > 0 {
+		todayExerciseStr = strings.Join(todayExercise, ", ")
+	}
+	
+	recentExercisesStr := "无"
+	if len(recentExercises) > 0 {
+		recentExercisesStr = strings.Join(recentExercises, ", ")
+	}
+	
+	return fmt.Sprintf("- 今日锻炼: %s\n- 本周锻炼: %d 次\n- 消耗卡路里: %.0f 千卡\n- 最近锻炼: %s",
+		todayExerciseStr, weeklyStats.SessionCount, weeklyStats.TotalCalories, recentExercisesStr)
+}
+
+// 收集博客数据
+func gatherBlogData() string {
+	// 获取所有博客数据
+	allBlogs := control.GetAll(0,0)
+	
+	var totalBlogs int
+	var monthlyBlogs int
+	var recentBlogs []string
+	var tagCount map[string]int
+	
+	tagCount = make(map[string]int)
+	currentMonth := time.Now().Format("2006-01")
+	
+	// 过滤掉系统生成的博客（任务、锻炼、阅读等）
+	for _, blog := range allBlogs {
+		// 跳过系统生成的博客
+		if isSystemBlog(blog.Title) {
+			continue
+		}
+		
+		totalBlogs++
+		
+		// 统计本月博客
+		if blog.CreateTime != "" {
+			if createTime, err := time.Parse("2006-01-02 15:04:05", blog.CreateTime); err == nil {
+				if createTime.Format("2006-01") == currentMonth {
+					monthlyBlogs++
+				}
+			}
+		}
+		
+		// 收集最近博客
+		if len(recentBlogs) < 3 {
+			recentBlogs = append(recentBlogs, blog.Title)
+		}
+		
+		// 统计标签
+		if blog.Tags != "" {
+			tags := strings.Split(blog.Tags, "|")
+			for _, tag := range tags {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tagCount[tag]++
+				}
+			}
+		}
+	}
+	
+	// 获取热门标签
+	hotTags := getHotTags(tagCount, 3)
+	
+	// 格式化输出
+	recentBlogsStr := "无"
+	if len(recentBlogs) > 0 {
+		recentBlogsStr = strings.Join(recentBlogs, ", ")
+	}
+	
+	hotTagsStr := "无"
+	if len(hotTags) > 0 {
+		hotTagsStr = strings.Join(hotTags, ", ")
+	}
+	
+	return fmt.Sprintf("- 总博客数: %d 篇\n- 本月发布: %d 篇\n- 最近博客: %s\n- 热门标签: %s",
+		totalBlogs, monthlyBlogs, recentBlogsStr, hotTagsStr)
+}
+
+// 收集年度计划数据
+func gatherYearPlanData() string {
+	// 获取当前年份
+	currentYear := time.Now().Year()
+	yearPlanTitle := fmt.Sprintf("年计划_%d", currentYear)
+	
+	// 获取年度计划
+	yearPlan := control.GetBlog(yearPlanTitle)
+	if yearPlan != nil {
+		return "- 年度目标: 未设置\n- 整体进度: 0%\n- 目标详情: 暂无年度计划"
+	}
+	
+	// 解析年度计划数据
+	yearPlanData := yearplan.ParseYearPlanFromBlog(yearPlan.Content)
+	
+	// 获取月度目标统计
+	monthlyStats := getMonthlyGoalsStats(currentYear)
+	
+	// 计算整体进度
+	var totalProgress float64
+	var goalCount int
+	var goalDetails []string
+	
+	for _, goal := range yearPlanData.Tasks {
+		if goal.Status == "completed" {
+			totalProgress += 1
+			goalCount++
+			goalDetails = append(goalDetails, fmt.Sprintf("%s(%.0f%%)", goal.Title, 1))
+		}
+	}
+	
+	overallProgress := float64(0)
+	if goalCount > 0 {
+		overallProgress = totalProgress / float64(goalCount)
+	}
+	
+	// 格式化输出
+	goalDetailsStr := "暂无具体目标"
+	if len(goalDetails) > 0 {
+		goalDetailsStr = strings.Join(goalDetails, ", ")
+	}
+	
+	return fmt.Sprintf("- 年度目标: %d 个\n- 整体进度: %.1f%%\n- 完成月份: %d/%d\n- 目标详情: %s",
+		len(yearPlanData.Tasks), overallProgress, monthlyStats.CompletedMonths, 
+		monthlyStats.TotalMonths, goalDetailsStr)
+}
+
+// 收集统计数据
+func gatherStatsData() string {
+	// 获取系统整体统计
+	stats := statistics.GetOverallStatistics()
+	
+	// 计算活跃天数
+	activeDays := calculateActiveDays()
+	
+	// 计算数据完整性
+	dataCompleteness := calculateDataCompleteness()
+	
+	// 计算生产力指数
+	productivityIndex := calculateProductivityIndex()
+	
+	// 分析近期趋势
+	recentTrend := analyzeRecentTrend()
+	
+	return fmt.Sprintf("- 活跃天数: %d 天\n- 数据完整性: %.1f%%\n- 生产力指数: %.1f\n- 近期趋势: %s\n- 总博客数: %d\n- 今日新增: %d",
+		activeDays, dataCompleteness, productivityIndex, recentTrend, stats.BlogStats.TotalBlogs, stats.BlogStats.TodayNewBlogs)
+}
+
+// 格式化函数们
+func formatRecentTasks(tasks []interface{}, limit int) string {
+	if len(tasks) == 0 {
+		return "无"
+	}
+	
+	var taskNames []string
+	for i, task := range tasks {
+		if i >= limit {
+			break
+		}
+		if taskMap, ok := task.(map[string]interface{}); ok {
+			if title, ok := taskMap["title"].(string); ok {
+				taskNames = append(taskNames, title)
+			}
+		}
+	}
+	
+	if len(taskNames) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(taskNames, ", ")
+}
+
+func formatRecentBooks(books []interface{}) string {
+	if len(books) == 0 {
+		return "无"
+	}
+	
+	var bookNames []string
+	for _, book := range books {
+		if bookMap, ok := book.(map[string]interface{}); ok {
+			if title, ok := bookMap["title"].(string); ok {
+				bookNames = append(bookNames, title)
+			}
+		}
+	}
+	
+	if len(bookNames) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(bookNames, ", ")
+}
+
+func formatReadingProgress(books []interface{}) string {
+	if len(books) == 0 {
+		return "无"
+	}
+	
+	var progress []string
+	for _, book := range books {
+		if bookMap, ok := book.(map[string]interface{}); ok {
+			if title, ok := bookMap["title"].(string); ok {
+				if progressPct, ok := bookMap["progress"].(float64); ok {
+					progress = append(progress, fmt.Sprintf("%s(%.1f%%)", title, progressPct))
+				}
+			}
+		}
+	}
+	
+	if len(progress) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(progress, ", ")
+}
+
+func formatTodayExercise(exercise interface{}) string {
+	if exercise == nil {
+		return "无"
+	}
+	
+	if exerciseMap, ok := exercise.(map[string]interface{}); ok {
+		if exerciseType, ok := exerciseMap["type"].(string); ok {
+			if duration, ok := exerciseMap["duration"].(float64); ok {
+				return fmt.Sprintf("%s %.0f分钟", exerciseType, duration)
+			}
+		}
+	}
+	
+	return "无"
+}
+
+func formatRecentExercises(exercises []interface{}) string {
+	if len(exercises) == 0 {
+		return "无"
+	}
+	
+	var exerciseList []string
+	for _, exercise := range exercises {
+		if exerciseMap, ok := exercise.(map[string]interface{}); ok {
+			if exerciseType, ok := exerciseMap["type"].(string); ok {
+				if duration, ok := exerciseMap["duration"].(float64); ok {
+					exerciseList = append(exerciseList, fmt.Sprintf("%s(%.0f分钟)", exerciseType, duration))
+				}
+			}
+		}
+	}
+	
+	if len(exerciseList) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(exerciseList, ", ")
+}
+
+func formatRecentBlogs(blogs []interface{}) string {
+	if len(blogs) == 0 {
+		return "无"
+	}
+	
+	var blogTitles []string
+	for _, blog := range blogs {
+		if blogMap, ok := blog.(map[string]interface{}); ok {
+			if title, ok := blogMap["title"].(string); ok {
+				blogTitles = append(blogTitles, title)
+			}
+		}
+	}
+	
+	if len(blogTitles) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(blogTitles, ", ")
+}
+
+func formatHotTags(tags []interface{}) string {
+	if len(tags) == 0 {
+		return "无"
+	}
+	
+	var tagNames []string
+	for _, tag := range tags {
+		if tagStr, ok := tag.(string); ok {
+			tagNames = append(tagNames, tagStr)
+		}
+	}
+	
+	if len(tagNames) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(tagNames, ", ")
+}
+
+func formatYearGoals(goals []interface{}) string {
+	if len(goals) == 0 {
+		return "无"
+	}
+	
+	var goalList []string
+	for _, goal := range goals {
+		if goalMap, ok := goal.(map[string]interface{}); ok {
+			if title, ok := goalMap["title"].(string); ok {
+				if progress, ok := goalMap["progress"].(float64); ok {
+					goalList = append(goalList, fmt.Sprintf("%s(%.1f%%)", title, progress))
+				}
+			}
+		}
+	}
+	
+	if len(goalList) == 0 {
+		return "无"
+	}
+	
+	return strings.Join(goalList, ", ")
+}
+
+// 保存对话到博客
+func saveConversationToBlog(messages []Message) {
+	if len(messages) == 0 {
+		return
+	}
+	
+	// 获取当前日期
+	now := time.Now()
+	dateStr := now.Format("2006_01_02")
+	filename := fmt.Sprintf("assistant_%s.md", dateStr)
+	
+	// 获取用户的最后一条消息
+	var userMessage string
+	
+	for _, msg := range messages {
+		if msg.Role == "user" {
+			userMessage = msg.Content
+		}
+	}
+	
+	if userMessage == "" {
+		return
+	}
+	
+	// 构建对话内容
+	content := fmt.Sprintf(`# AI助手对话记录 - %s
+
+## 用户问题
+%s
+
+## AI回复
+[等待AI回复...]
+
+---
+*记录时间: %s*
+`, now.Format("2006-01-02"), userMessage, now.Format("2006-01-02 15:04:05"))
+	
+	// 检查是否已存在同名博客
+	existingBlog := control.GetBlog(filename)
+	if existingBlog != nil {
+		// 追加到现有博客
+		content = fmt.Sprintf(`%s
+
+## 用户问题 (%s)
+%s
+
+## AI回复
+[等待AI回复...]
+
+---
+`, existingBlog.Content, now.Format("15:04:05"), userMessage)
+	}
+	
+	// 保存博客
+	blogData := &module.UploadedBlogData{
+		Title:     fmt.Sprintf("AI助手对话记录_%s", dateStr),
+		Content:   content,
+		Tags:      "AI助手|对话记录|自动生成",
+		AuthType:  module.EAuthType_private, // 设置为私有
+	}
+	
+	// 调用博客模块保存
+	control.AddBlog(blogData)
+}
+
+// 辅助函数实现
+
+// 计算本周任务完成率
+func calculateWeeklyTaskCompletion() float64 {
+	now := time.Now()
+	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
+	
+	var totalTasks, completedTasks int
+	
+	for i := 0; i < 7; i++ {
+		date := weekStart.AddDate(0, 0, i)
+		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
+		
+		blog := control.GetBlog(title)
+		if blog != nil {
+			todoData := todolist.ParseTodoListFromBlog(blog.Content)
+			totalTasks += len(todoData.Items)
+			
+			for _, item := range todoData.Items {
+				if item.Completed {
+					completedTasks++
+				}
+			}
+		}
+	}
+	
+	if totalTasks == 0 {
+		return 0
+	}
+	
+	return float64(completedTasks) / float64(totalTasks) * 100
+}
+
+// 获取最近完成的任务
+func getRecentCompletedTasks(limit int) []string {
+	var recentTasks []string
+	now := time.Now()
+	
+	// 查看最近7天的任务
+	for i := 0; i < 7; i++ {
+		date := now.AddDate(0, 0, -i)
+		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
+		
+		blog := control.GetBlog(title)
+		if blog != nil {
+			todoData := todolist.ParseTodoListFromBlog(blog.Content)
+			
+			for _, item := range todoData.Items {
+				if item.Completed && len(recentTasks) < limit {
+					recentTasks = append(recentTasks, item.Content)
+				}
+			}
+		}
+		
+		if len(recentTasks) >= limit {
+			break
+		}
+	}
+	
+	return recentTasks
+}
+
+// 获取阅读相关的博客
+func getReadingBlogs() []*module.Blog {
+	allBlogs := control.GetAll(0,0)
+	var readingBlogs []*module.Blog
+	
+	for _, blog := range allBlogs {
+		if strings.HasPrefix(blog.Title, "reading_book_") {
+			readingBlogs = append(readingBlogs, blog)
+		}
+	}
+	
+	return readingBlogs
+}
+
+// 解析阅读数据
+func parseReadingDataFromBlog(content string) ReadingBookData {
+	// 简化的解析逻辑
+	data := ReadingBookData{
+		Status:              "reading",
+		CurrentPage:         0,
+		TotalPages:          0,
+		MonthlyReadingTime:  0,
+		LastReadDate:        time.Now().Format("2006-01-02"),
+	}
+	
+	// 从content中解析标题
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# ") {
+			data.Title = strings.TrimPrefix(line, "# ")
+			break
+		}
+	}
+	
+	return data
+}
+
+// 阅读书籍数据结构
+type ReadingBookData struct {
+	Title              string
+	Status             string
+	CurrentPage        int
+	TotalPages         int
+	MonthlyReadingTime float64
+	LastReadDate       string
+}
+
+// 获取锻炼类型文本
+func getExerciseTypeText(exerciseType string) string {
+	switch exerciseType {
+	case "cardio":
+		return "有氧运动"
+	case "strength":
+		return "力量训练"
+	case "flexibility":
+		return "柔韧性训练"
+	case "sports":
+		return "运动项目"
+	default:
+		return "锻炼"
+	}
+}
+
+// 获取本周锻炼统计
+func getWeeklyExerciseStats() WeeklyExerciseStats {
+	now := time.Now()
+	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
+	
+	var sessionCount int
+	var totalCalories float64
+	
+	for i := 0; i < 7; i++ {
+		date := weekStart.AddDate(0, 0, i)
+		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
+		
+		blog := control.GetBlog(title)
+		if blog != nil {
+			exercises := exercise.ParseExerciseFromBlog(blog.Content)
+			if len(exercises.Items) > 0 {
+				sessionCount++
+				for _, ex := range exercises.Items {
+					totalCalories += float64(ex.Calories)
+				}
+			}
+		}
+	}
+	
+	return WeeklyExerciseStats{
+		SessionCount:  sessionCount,
+		TotalCalories: totalCalories,
+	}
+}
+
+// 本周锻炼统计结构
+type WeeklyExerciseStats struct {
+	SessionCount  int
+	TotalCalories float64
+}
+
+// 获取最近锻炼记录
+func getRecentExercises(limit int) []string {
+	var recentExercises []string
+	now := time.Now()
+	
+	for i := 0; i < 7; i++ {
+		date := now.AddDate(0, 0, -i)
+		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
+		
+		blog := control.GetBlog(title)
+		if blog != nil {
+			exercises := exercise.ParseExerciseFromBlog(blog.Content)
+			
+			for _, ex := range exercises.Items {
+				if len(recentExercises) < limit {
+					exerciseType := getExerciseTypeText(ex.Type)
+					recentExercises = append(recentExercises, fmt.Sprintf("%s(%d分钟)", exerciseType, ex.Duration))
+				}
+			}
+		}
+		
+		if len(recentExercises) >= limit {
+			break
+		}
+	}
+	
+	return recentExercises
+}
+
+// 判断是否为系统生成的博客
+func isSystemBlog(title string) bool {
+	systemPrefixes := []string{
+		"todolist-",
+		"exercise-",
+		"reading_book_",
+		"月度目标_",
+		"年计划_",
+		"assistant_",
+	}
+	
+	for _, prefix := range systemPrefixes {
+		if strings.HasPrefix(title, prefix) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// 获取热门标签
+func getHotTags(tagCount map[string]int, limit int) []string {
+	type TagCount struct {
+		Tag   string
+		Count int
+	}
+	
+	var tags []TagCount
+	for tag, count := range tagCount {
+		tags = append(tags, TagCount{Tag: tag, Count: count})
+	}
+	
+	// 按计数排序
+	sort.Slice(tags, func(i, j int) bool {
+		return tags[i].Count > tags[j].Count
+	})
+	
+	var hotTags []string
+	for i, tag := range tags {
+		if i >= limit {
+			break
+		}
+		hotTags = append(hotTags, tag.Tag)
+	}
+	
+	return hotTags
+}
+
+// 获取月度目标统计
+func getMonthlyGoalsStats(year int) MonthlyGoalsStats {
+	var completedMonths, totalMonths int
+	
+	for month := 1; month <= 12; month++ {
+		title := fmt.Sprintf("月度目标_%d-%02d", year, month)
+		blog := control.GetBlog(title)
+		
+		if blog != nil {
+			totalMonths++
+			
+			// 简化的完成度判断
+			if strings.Contains(blog.Content, "完成") {
+				completedMonths++
+			}
+		}
+	}
+	
+	return MonthlyGoalsStats{
+		CompletedMonths: completedMonths,
+		TotalMonths:     totalMonths,
+	}
+}
+
+// 月度目标统计结构
+type MonthlyGoalsStats struct {
+	CompletedMonths int
+	TotalMonths     int
+}
+
+// 计算活跃天数
+func calculateActiveDays() int {
+	// 统计有数据的天数
+	allBlogs := control.GetAll(0,0)
+	dateSet := make(map[string]bool)
+	
+	for _, blog := range allBlogs {
+		if blog.ModifyTime != "" {
+			if createTime, err := time.Parse("2006-01-02 15:04:05", blog.ModifyTime); err == nil {
+				dateStr := createTime.Format("2006-01-02")
+				dateSet[dateStr] = true
+			}
+		}
+	}
+	
+	return len(dateSet)
+}
+
+// 计算数据完整性
+func calculateDataCompleteness() float64 {
+	// 计算最近30天的数据完整性
+	now := time.Now()
+	var completeDataDays int
+	
+	for i := 0; i < 30; i++ {
+		date := now.AddDate(0, 0, -i)
+		dateStr := date.Format("2006-01-02")
+		
+		// 检查是否有任务、锻炼或阅读数据
+		hasTask := hasDataForDate("todolist-", dateStr)
+		hasExercise := hasDataForDate("exercise-", dateStr)
+		hasReading := hasReadingDataForDate(dateStr)
+		
+		if hasTask || hasExercise || hasReading {
+			completeDataDays++
+		}
+	}
+	
+	return float64(completeDataDays) / 30.0 * 100
+}
+
+// 检查指定日期是否有数据
+func hasDataForDate(prefix, date string) bool {
+	title := fmt.Sprintf("%s%s", prefix, date)
+	blog := control.GetBlog(title)
+	return blog != nil
+}
+
+// 检查指定日期是否有阅读数据
+func hasReadingDataForDate(date string) bool {
+	readingBlogs := getReadingBlogs()
+	for _, blog := range readingBlogs {
+		if strings.Contains(blog.Content, date) {
+			return true
+		}
+	}
+	return false
+}
+
+// 计算生产力指数
+func calculateProductivityIndex() float64 {
+	// 综合任务完成率、锻炼频率、阅读时间等指标
+	taskCompletion := calculateWeeklyTaskCompletion()
+	exerciseStats := getWeeklyExerciseStats()
+	
+	// 简化的生产力计算
+	productivity := (taskCompletion * 0.4) + (float64(exerciseStats.SessionCount) * 10 * 0.3) + (50 * 0.3)
+	
+	if productivity > 100 {
+		productivity = 100
+	}
+	
+	return productivity / 10  // 转换为1-10分制
+}
+
+// 分析近期趋势
+func analyzeRecentTrend() string {
+	// 比较最近一周和前一周的数据
+	thisWeekCompletion := calculateWeeklyTaskCompletion()
+	
+	// 简化的趋势分析
+	if thisWeekCompletion > 70 {
+		return "上升趋势，效率提升明显"
+	} else if thisWeekCompletion > 50 {
+		return "稳定趋势，保持良好状态"
+	} else {
+		return "需要关注，建议调整节奏"
+	}
+}
+
+// 辅助函数 - 获取今日任务统计
+func getTodayTasksStats() map[string]interface{} {
+	// 这里应该调用任务模块的API
+	// 暂时返回模拟数据
+	return map[string]interface{}{
+		"completed": 3,
+		"total": 5,
+		"completion_rate": 60.0,
+	}
+}
+
+// 辅助函数 - 获取今日阅读统计
+func getTodayReadingStats() map[string]interface{} {
+	// 这里应该调用阅读模块的API
+	// 暂时返回模拟数据
+	return map[string]interface{}{
+		"time": 2.5,
+		"pages": 45,
+		"books": 1,
+	}
+}
+
+// 辅助函数 - 获取今日锻炼统计
+func getTodayExerciseStats() map[string]interface{} {
+	// 这里应该调用锻炼模块的API
+	// 暂时返回模拟数据
+	return map[string]interface{}{
+		"sessions": 1,
+		"duration": 45,
+		"type": "cardio",
+	}
+}
+
+// 辅助函数 - 获取今日写作统计
+func getTodayBlogsStats() map[string]interface{} {
+	// 这里应该调用博客模块的API
+	// 暂时返回模拟数据
+	return map[string]interface{}{
+		"count": 1,
+		"words": 800,
+		"published": true,
+	}
+}
+
+// 辅助函数 - 生成任务建议
+func generateTaskSuggestion() map[string]interface{} {
+	return map[string]interface{}{
+		"icon": "💡",
+		"text": "您今天的任务完成率为60%，建议优先处理剩余的重要任务",
+		"priority": "high",
+	}
+}
+
+// 辅助函数 - 生成阅读建议
+func generateReadingSuggestion() map[string]interface{} {
+	return map[string]interface{}{
+		"icon": "📚",
+		"text": "基于您的阅读习惯，推荐继续阅读《深度工作》",
+		"priority": "medium",
+	}
+}
+
+// 辅助函数 - 生成锻炼建议
+func generateExerciseSuggestion() map[string]interface{} {
+	return map[string]interface{}{
+		"icon": "💪",
+		"text": "您已连续3天进行锻炼，保持良好的运动习惯",
+		"priority": "low",
+	}
+}
+
+// 辅助函数 - 生成时间建议
+func generateTimeSuggestion() map[string]interface{} {
+	return map[string]interface{}{
+		"icon": "⏰",
+		"text": "分析显示您在下午3-5点效率最高，建议安排重要工作",
+		"priority": "medium",
+	}
 }

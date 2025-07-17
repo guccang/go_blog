@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>每日任务 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- 添加 flatpickr 库 -->
     <link rel="stylesheet" href="/css/flatpickr.min.css">
     <script src="/js/flatpickr"></script>
@@ -241,6 +242,11 @@
 
     <!-- Create Button -->
     <a href="#" class="create-btn" title="快速添加任务" onclick="document.getElementById('newTodo').focus(); return false;">+</a>
+
+    <!-- 智能助手悬浮图标 -->
+    <a href="/assistant" class="assistant-floating-btn" title="智能助手">
+        <i class="fas fa-robot"></i>
+    </a>
 
     <!-- Bottom Info Bar -->
     <div class="bottom-fix-div">

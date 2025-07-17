@@ -314,6 +314,16 @@ func (em *ExerciseManager) GetAllExercises() (map[string]ExerciseList, error) {
     return result, nil
 }
 
+// ParseExerciseFromBlog parses a blog content string into an ExerciseList
+func ParseExerciseFromBlog(content string) ExerciseList {
+    var exerciseList ExerciseList
+    if err := json.Unmarshal([]byte(content), &exerciseList); err != nil {
+        // Return empty ExerciseList if parsing fails
+        return ExerciseList{Items: []ExerciseItem{}}
+    }
+    return exerciseList
+}
+
 // saveExercisesToBlog saves an ExerciseList as a blog post
 func (em *ExerciseManager) saveExercisesToBlog(exerciseList ExerciseList) error {
     title := generateBlogTitle(exerciseList.Date)

@@ -218,6 +218,16 @@ func (tm *TodoManager) GetHistoricalTodos(startDate, endDate string) (map[string
     return result, nil
 }
 
+// ParseTodoListFromBlog parses a blog content string into a TodoList
+func ParseTodoListFromBlog(content string) TodoList {
+    var todoList TodoList
+    if err := json.Unmarshal([]byte(content), &todoList); err != nil {
+        // Return empty TodoList if parsing fails
+        return TodoList{Items: []TodoItem{}}
+    }
+    return todoList
+}
+
 // saveTodosToBlog saves a TodoList as a blog post
 func (tm *TodoManager) saveTodosToBlog(todoList TodoList) error {
     title := generateBlogTitle(todoList.Date)
