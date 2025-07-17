@@ -348,6 +348,75 @@ h1 {
     color: #a1c4fd;
 }
 
+/* 黄金时间区域 */
+.golden-age-section {
+    margin-top: 30px;
+    padding: 25px;
+    background: rgba(255, 107, 107, 0.1);
+    border-radius: 15px;
+    border-left: 4px solid rgba(255, 107, 107, 0.8);
+}
+
+.golden-age-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .golden-age-content {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+.golden-age-chart {
+    position: relative;
+    height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.golden-age-info {
+    padding: 20px;
+}
+
+.golden-age-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.golden-stat {
+    background: rgba(255, 107, 107, 0.15);
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.golden-stat .stat-label {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-bottom: 5px;
+}
+
+.golden-stat .stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: rgba(255, 107, 107, 1);
+    margin-bottom: 5px;
+}
+
+.golden-stat .stat-percent {
+    font-size: 0.9rem;
+    color: rgba(255, 107, 107, 1);
+    font-weight: 600;
+}
+
 .highlight {
     color: #fad0c4;
     font-weight: 700;

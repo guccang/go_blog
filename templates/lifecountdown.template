@@ -101,10 +101,30 @@
                     <!-- 书籍将通过JS生成 -->
                 </div>
                 
-                <div class="insights">
+                <!-- 黄金时间饼状图 -->
+                <div class="golden-age-section">
                     <h3 class="insights-title">黄金时间（18-45岁）</h3>
-                    <p>这是你最具创造力和精力的<span id="golden-years">27</span>年，共 <span class="highlight" id="golden-days">9,862</span>天。</p>
-                    <p>充分利用这段时间学习、成长和创造，它将奠定你一生的基础。</p>
+                    <div class="golden-age-content">
+                        <div class="golden-age-chart">
+                            <canvas id="goldenAgeChart"></canvas>
+                        </div>
+                        <div class="golden-age-info">
+                            <p>这是你最具创造力和精力的<span id="golden-years">27</span>年，共 <span class="highlight" id="golden-days">9,862</span>天。</p>
+                            <p>充分利用这段时间学习、成长和创造，它将奠定你一生的基础。</p>
+                            <div class="golden-age-stats">
+                                <div class="golden-stat">
+                                    <div class="stat-label">已过黄金时间</div>
+                                    <div class="stat-value" id="golden-passed">0</div>
+                                    <div class="stat-percent" id="golden-passed-percent">0%</div>
+                                </div>
+                                <div class="golden-stat">
+                                    <div class="stat-label">剩余黄金时间</div>
+                                    <div class="stat-value" id="golden-remaining">9,862</div>
+                                    <div class="stat-percent" id="golden-remaining-percent">100%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

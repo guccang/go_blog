@@ -14,6 +14,7 @@ let currentConfig = {
 let currentData = null;
 let timeChart = null;
 let booksChart = null;
+let goldenAgeChart = null;
 let availableBooks = []; // 存储从API获取的书籍列表
 
 // 页面加载完成后初始化
@@ -141,6 +142,53 @@ function initializeCharts() {
             }
         }
     });
+    
+    // 初始化黄金时间饼状图
+    const goldenAgeCtx = document.getElementById('goldenAgeChart').getContext('2d');
+    goldenAgeChart = new Chart(goldenAgeCtx, {
+        type: 'pie',
+        data: {
+            labels: ['已过黄金时间', '剩余黄金时间'],
+            datasets: [{
+                data: [0, 9862],
+                backgroundColor: [
+                    'rgba(255, 107, 107, 0.6)',
+                    'rgba(255, 154, 158, 0.8)'
+                ],
+                borderColor: [
+                    'rgba(255, 107, 107, 1)',
+                    'rgba(255, 154, 158, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        font: {
+                            size: 12
+                        },
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const percentage = ((value / (context.dataset.data[0] + context.dataset.data[1])) * 100).toFixed(1);
+                            return `${label}: ${value.toLocaleString()} 天 (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 // 设置事件监听器
@@ -222,6 +270,7 @@ function updateUI() {
     updateBooksChart([currentData.booksCanRead, Math.floor(currentData.booksCanRead * 0.6), Math.floor(currentData.booksCanRead * 0.15)]);
     updateBooksVisualization(currentData.booksCanRead);
     updateGoldenTime();
+    updateGoldenAgeChart();
     updateDataTable();
     updateFooter();
 }
@@ -379,6 +428,49 @@ function updateGoldenTime() {
     const goldenYears = Math.max(0, Math.min(45, currentData.expectedLifespan) - Math.max(18, currentData.currentAge));
     document.getElementById('golden-years').textContent = goldenYears;
     document.getElementById('golden-days').textContent = currentData.goldenDays.toLocaleString();
+}
+
+// 更新黄金时间饼状图
+function updateGoldenAgeChart() {
+    if (!goldenAgeChart) return;
+    
+    // 计算黄金时间数据
+    const goldenStartAge = 18;
+    const goldenEndAge = 45;
+    const totalGoldenDays = (goldenEndAge - goldenStartAge) * 365; // 27年 = 9855天
+    
+    let goldenPassedDays = 0;
+    let goldenRemainingDays = totalGoldenDays;
+    
+    if (currentData.currentAge >= goldenStartAge) {
+        if (currentData.currentAge <= goldenEndAge) {
+            // 在黄金时间内
+            goldenPassedDays = (currentData.currentAge - goldenStartAge) * 365;
+            goldenRemainingDays = (goldenEndAge - currentData.currentAge) * 365;
+        } else {
+            // 超过黄金时间
+            goldenPassedDays = totalGoldenDays;
+            goldenRemainingDays = 0;
+        }
+    } else {
+        // 还没到黄金时间
+        goldenPassedDays = 0;
+        goldenRemainingDays = totalGoldenDays;
+    }
+    
+    // 更新图表数据
+    goldenAgeChart.data.datasets[0].data = [goldenPassedDays, goldenRemainingDays];
+    goldenAgeChart.update();
+    
+    // 更新统计信息
+    document.getElementById('golden-passed').textContent = goldenPassedDays.toLocaleString();
+    document.getElementById('golden-remaining').textContent = goldenRemainingDays.toLocaleString();
+    
+    const goldenPassedPercent = ((goldenPassedDays / totalGoldenDays) * 100).toFixed(1);
+    const goldenRemainingPercent = ((goldenRemainingDays / totalGoldenDays) * 100).toFixed(1);
+    
+    document.getElementById('golden-passed-percent').textContent = goldenPassedPercent + '%';
+    document.getElementById('golden-remaining-percent').textContent = goldenRemainingPercent + '%';
 }
 
 // 更新详细数据表格
