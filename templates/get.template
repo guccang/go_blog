@@ -82,7 +82,7 @@
 
 			</div>
 			<div class="separator"></div>
-            <button id="editor-button" class="bottom-button" onclick="submitFirst()">保存修改</button>
+            <button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
 		</div>
         <div class="bubble" id="bubble">&#9776;</div>
 	</div>
@@ -107,7 +107,7 @@
 				<small style="display: block; margin-top: 5px; font-size: 11px; color: #888;">输入正确的解密密码来查看博客内容</small>
 			</div>
 		{{end}}
-			<button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
+			<button id="editor-button" class="bottom-button" onclick="submitFirst()">保存修改</button>
 		</div>
 
 		<div class="comments-section">
