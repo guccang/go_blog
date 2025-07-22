@@ -132,5 +132,7 @@
     <a href="/assistant" class="assistant-floating-btn" title="智能助手">
         <i class="fas fa-robot"></i>
     </a>
+
+    <script src="/js/move_assistant.js"></script>
 </body>
 </html>

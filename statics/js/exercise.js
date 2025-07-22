@@ -1926,3 +1926,5 @@ function cancelEditTemplate(templateId) {
     isTemplateEditing = false;
     editingTemplateId = null;
 } 
+
+ 

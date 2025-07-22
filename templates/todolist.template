@@ -258,6 +258,7 @@
         // 将模板变量传递给JavaScript
         const templateDate = "{{.DATE}}";
     </script>
+    <script src="/js/move_assistant.js"></script>
     <script src="/js/todolist.js"></script>
 </body>
 </html>

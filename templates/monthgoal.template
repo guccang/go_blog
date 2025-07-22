@@ -222,6 +222,7 @@
         <i class="fas fa-robot"></i>
     </a>
 
+    <script src="/js/move_assistant.js"></script>
     <script src="/js/monthgoal.js"></script>
 </body>
 </html> 
