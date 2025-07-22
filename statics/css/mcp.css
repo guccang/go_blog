@@ -318,18 +318,135 @@ body {
     position: relative;
 }
 
-.config-card::before {
+/* 启用状态的配置卡片 - 绿色主题 */
+.config-card.enabled {
+    background: #f0fdf4 !important;
+    border: 2px solid #22c55e !important;
+    box-shadow: 0 8px 16px -4px rgba(34, 197, 94, 0.3) !important;
+}
+
+.config-card.enabled::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 4px;
-    background: var(--success-color);
+    height: 6px;
+    background: linear-gradient(90deg, #22c55e, #16a34a) !important;
+}
+
+.config-card.enabled .config-card-header {
+    background: linear-gradient(135deg, #dcfce7, #bbf7d0) !important;
+    border-bottom-color: #22c55e !important;
+}
+
+/* 禁用状态的配置卡片 - 红色主题 */
+.config-card.disabled {
+    background: #fef2f2 !important;
+    border: 2px solid #ef4444 !important;
+    box-shadow: 0 8px 16px -4px rgba(239, 68, 68, 0.3) !important;
+    opacity: 0.85;
 }
 
 .config-card.disabled::before {
-    background: var(--danger-color);
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, #ef4444, #dc2626) !important;
+}
+
+.config-card.disabled .config-card-header {
+    background: linear-gradient(135deg, #fee2e2, #fecaca) !important;
+    border-bottom-color: #ef4444 !important;
+}
+
+/* 启用状态文字和元素样式 */
+.config-card.enabled .config-name {
+    color: #14532d !important;
+    font-weight: 700 !important;
+}
+
+.config-card.enabled .command-text {
+    background: #dcfce7 !important;
+    border: 1px solid #22c55e !important;
+    color: #14532d !important;
+}
+
+.config-card.enabled .env-var {
+    background: #dcfce7 !important;
+    border: 1px solid #22c55e !important;
+}
+
+.config-card.enabled .env-key {
+    color: #14532d !important;
+    font-weight: 600 !important;
+}
+
+.config-card.enabled .env-value {
+    color: #166534 !important;
+}
+
+.config-card.enabled .status-dot.active {
+    background: #22c55e !important;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6) !important;
+}
+
+.config-card.enabled .status-text {
+    color: #14532d !important;
+    font-weight: 600 !important;
+}
+
+/* 禁用状态文字和元素样式 */
+.config-card.disabled .config-name {
+    color: #7f1d1d !important;
+    font-weight: 700 !important;
+}
+
+.config-card.disabled .command-text {
+    background: #fee2e2 !important;
+    border: 1px solid #ef4444 !important;
+    color: #7f1d1d !important;
+}
+
+.config-card.disabled .env-var {
+    background: #fee2e2 !important;
+    border: 1px solid #ef4444 !important;
+}
+
+.config-card.disabled .env-key {
+    color: #7f1d1d !important;
+    font-weight: 600 !important;
+}
+
+.config-card.disabled .env-value {
+    color: #991b1b !important;
+}
+
+.config-card.disabled .status-dot.inactive {
+    background: #ef4444 !important;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6) !important;
+}
+
+.config-card.disabled .status-text {
+    color: #7f1d1d !important;
+    font-weight: 600 !important;
+}
+
+/* 禁用卡片的按钮样式调整 */
+.config-card.disabled .btn-action.primary {
+    background: #dc2626 !important;
+}
+
+.config-card.disabled .btn-action.success {
+    background: #16a34a !important;
+}
+
+.config-card.disabled .config-card-footer {
+    background: #fee2e2 !important;
+    border-top-color: #ef4444 !important;
 }
 
 .config-card:hover {

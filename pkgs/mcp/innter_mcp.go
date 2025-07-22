@@ -1,9 +1,7 @@
 package mcp
 
 import (
-	"fmt"
 	"statistics"
-	log "mylog"
 )
 
 // 提供内部mcp接口,接口名称为Inner_blog.xxx
@@ -44,33 +42,35 @@ func Inner_blog_RawBlogDataByDate(date string) string {
 	return statistics.RawBlogDataByDate(date)
 }
 
+func getTitle(arguments map[string]interface{}) string {
+	title := ""
+	for _, v := range arguments {
+		title = v.(string)
+		break
+	}
+	return title
+}
 
 func CallInnerTools(toolName string, arguments map[string]interface{}) string {
 	switch toolName {
 	case "RawAllBlogData":
 		return Inner_blog_RawAllBlogData()
 	case "RawBlogData":
-		title := arguments["title"]
-		if title == nil || title == "" {
-			title = arguments["name"]
-		}
-		if title == nil || title == "" {
-			return "Error NOT find blog: " + fmt.Sprintf("%v", title)
-		}
-		data := Inner_blog_RawBlogData(title.(string))
-		log.DebugF("RawBlogData: %s, data: %s", title, data)
+		title := getTitle(arguments)
+		data := Inner_blog_RawBlogData(title)
 		if  data == ""{
-			data = "Error NOT find blog: " + title.(string)
+			data = "Error NOT find blog: " + title
 		}
 		return data
 	case "RawAllCommentData":
 		return Inner_blog_RawAllCommentData()
 	case "RawCommentData":
-		title := arguments["title"].(string)
-		if title == "" {
-			title = arguments["name"].(string)
+		title := getTitle(arguments)
+		data := Inner_blog_RawCommentData(title)
+		if  data == ""{
+			data = "Error NOT find comment: " + title
 		}
-		return Inner_blog_RawCommentData(title)
+		return data
 	case "RawAllCooperationData":
 		return Inner_blog_RawAllCooperationData()
 	case "RawAllBlogDataByDate":

@@ -53,7 +53,7 @@ function updateConfigList(configs) {
 // Create config element
 function createConfigElement(config) {
     const div = document.createElement('div');
-    div.className = `config-item ${config.enabled ? 'enabled' : 'disabled'}`;
+    div.className = `config-card ${config.enabled ? 'enabled' : 'disabled'}`;
     div.setAttribute('data-name', config.name);
 
     const statusClass = config.enabled ? 'active' : 'inactive';
@@ -63,17 +63,28 @@ function createConfigElement(config) {
     // Format args display
     let argsDisplay = '';
     if (config.args && config.args.length > 0) {
-        argsDisplay = config.args.map(arg => `<span class="arg">${escapeHtml(arg)}</span>`).join('');
-        argsDisplay = `<span class="args">${argsDisplay}</span>`;
+        argsDisplay = config.args.map(arg => `<span class="arg-tag">${escapeHtml(arg)}</span>`).join('');
     }
 
     // Format environment variables display
     let envDisplay = '';
     if (config.environment && Object.keys(config.environment).length > 0) {
         const envVars = Object.entries(config.environment)
-            .map(([key, value]) => `<span class="env-var">${escapeHtml(key)}=${escapeHtml(value)}</span>`)
-            .join('');
-        envDisplay = `<div class="config-env"><strong>环境变量:</strong> ${envVars}</div>`;
+            .map(([key, value]) => `
+                <div class="env-var">
+                    <span class="env-key">${escapeHtml(key)}</span>
+                    <span class="env-value">${escapeHtml(value)}</span>
+                </div>
+            `).join('');
+        envDisplay = `
+            <div class="config-env">
+                <div class="env-label">
+                    <i class="fas fa-layer-group"></i> 环境变量
+                </div>
+                <div class="env-vars">
+                    ${envVars}
+                </div>
+            </div>`;
     }
 
     // Format dates
@@ -81,28 +92,65 @@ function createConfigElement(config) {
     const updatedAt = new Date(config.updated_at).toLocaleString('zh-CN');
 
     div.innerHTML = `
-        <div class="config-header">
-            <div class="config-name">${escapeHtml(config.name)}</div>
-            <div class="config-status">
-                <span class="status-indicator ${statusClass}"></span>
-                <span class="status-text">${statusText}</span>
+        <div class="config-card-header">
+            <div class="config-info">
+                <h3 class="config-name">${escapeHtml(config.name)}</h3>
+                <div class="config-status">
+                    <span class="status-dot ${statusClass}"></span>
+                    <span class="status-text">${config.enabled ? '运行中' : '已停止'}</span>
+                </div>
+            </div>
+            <div class="config-menu">
+                <button class="menu-btn" onclick="toggleMenu('${escapeHtml(config.name)}')">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <div class="menu-dropdown" id="menu-${escapeHtml(config.name)}">
+                    <a href="#" onclick="editConfig('${escapeHtml(config.name)}')">
+                        <i class="fas fa-edit"></i> 编辑
+                    </a>
+                    <a href="#" onclick="toggleConfig('${escapeHtml(config.name)}')">
+                        <i class="fas fa-${config.enabled ? 'pause' : 'play'}"></i> 
+                        ${config.enabled ? '停止' : '启动'}
+                    </a>
+                    <a href="#" onclick="deleteConfig('${escapeHtml(config.name)}')" class="danger">
+                        <i class="fas fa-trash"></i> 删除
+                    </a>
+                </div>
             </div>
         </div>
-        <div class="config-details">
+        <div class="config-card-body">
             <div class="config-command">
-                <strong>命令:</strong> ${escapeHtml(config.command)}
-                ${argsDisplay}
+                <div class="command-label">
+                    <i class="fas fa-terminal"></i> 命令
+                </div>
+                <div class="command-text">${escapeHtml(config.command)}</div>
+                ${argsDisplay ? `<div class="command-args">${argsDisplay}</div>` : ''}
             </div>
             ${envDisplay}
             <div class="config-meta">
-                <span class="meta-item">创建: ${createdAt}</span>
-                <span class="meta-item">更新: ${updatedAt}</span>
+                <div class="meta-item">
+                    <i class="fas fa-calendar-plus"></i>
+                    <span>${createdAt}</span>
+                </div>
+                <div class="meta-item">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>${updatedAt}</span>
+                </div>
             </div>
         </div>
-        <div class="config-actions">
-            <button class="btn btn-small btn-toggle" onclick="toggleConfig('${escapeHtml(config.name)}')">${toggleText}</button>
-            <button class="btn btn-small btn-edit" onclick="editConfig('${escapeHtml(config.name)}')">编辑</button>
-            <button class="btn btn-small btn-delete" onclick="deleteConfig('${escapeHtml(config.name)}')">删除</button>
+        <div class="config-card-footer">
+            <div class="config-actions">
+                <button class="btn-action primary" onclick="editConfig('${escapeHtml(config.name)}')">
+                    <i class="fas fa-edit"></i> 编辑
+                </button>
+                <button class="btn-action ${config.enabled ? 'warning' : 'success'}" onclick="toggleConfig('${escapeHtml(config.name)}')">
+                    <i class="fas fa-${config.enabled ? 'pause' : 'play'}"></i>
+                    ${config.enabled ? '停止' : '启动'}
+                </button>
+                <button class="btn-action danger" onclick="deleteConfig('${escapeHtml(config.name)}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
         </div>
     `;
 

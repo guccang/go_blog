@@ -2,14 +2,13 @@ package mcp
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"encoding/json"
 	"io/ioutil"
 	log "mylog"
-	"config"
 	"time"
+	"control"
+	"module"
 )
 
 var mcp_version = "Version2.0"
@@ -40,15 +39,6 @@ type LLMFunction struct {
 	Name        string      `json:"name"`
 	Description string      `json:"description"`
 	InputSchema interface{} `json:"inputschema"`
-}
-
-// getConfigWithDefault 获取配置值，如果为空则使用默认值
-func getConfigWithDefault(key, defaultValue string) string {
-	value := config.GetConfig(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
 }
 
 func Info() {
@@ -83,7 +73,7 @@ func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 					// file-system.read_file to read_file
 					Name:        extractFunctionName(tool.Name),
 					Description: tool.Description,
-					InputSchema: tool.Parameters,
+					InputSchema: tool.InputSchema,
 				},
 			}
 			llmTools = append(llmTools, llmTool)
@@ -173,41 +163,28 @@ func Init() {
 
 func loadMCPConfigs() {
 	log.Debug("--- Loading MCP Configurations ---")
-	configPath := getMCPConfigPath()
-	log.DebugF("MCP config file path: %s", configPath)
-	
-	// Check if config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		log.WarnF("MCP config file does not exist: %s", configPath)
-		log.Debug("Creating default MCP configuration...")
-		createDefaultMCPConfig(configPath)
-		log.InfoF("Default MCP configuration created at: %s", configPath)
-		return
+
+	title := getMCPConfigTitle()
+	bolg := control.GetBlog(title)
+	if bolg == nil {
+		control.AddBlog(&module.UploadedBlogData{
+			Title: title,
+			Content: "",
+		})
+		b := control.GetBlog(title)
+		if b == nil {
+			log.ErrorF("Failed to get blog '%s'", title)
+			return
+		}
 	}
-	
-	log.DebugF("MCP config file exists, reading: %s", configPath)
-	
-	// Read config file
-	data, err := ioutil.ReadFile(configPath)
+
+	mcpConfigs = MCPConfigList{}
+	err := json.Unmarshal([]byte(bolg.Content), &mcpConfigs)
 	if err != nil {
-		log.ErrorF("Failed to read MCP config file '%s': %v", configPath, err)
-		log.Error("Using empty MCP configuration due to read error")
-		mcpConfigs = MCPConfigList{Configs: []MCPConfig{}}
-		return
-	}
-	
-	log.DebugF("Successfully read MCP config file, size: %d bytes", len(data))
-	
-	// Parse JSON
-	err = json.Unmarshal(data, &mcpConfigs)
-	if err != nil {
-		log.ErrorF("Failed to parse MCP config file '%s': %v", configPath, err)
+		log.ErrorF("Failed to parse MCP config file '%s': %v", title, err)
 		log.Error("Using empty MCP configuration due to parse error")
-		mcpConfigs = MCPConfigList{Configs: []MCPConfig{}}
 		return
 	}
-	
-	log.InfoF("Successfully loaded %d MCP configurations from file", len(mcpConfigs.Configs))
 	
 	// Validate loaded configurations
 	validConfigs := 0
@@ -223,12 +200,11 @@ func loadMCPConfigs() {
 	log.InfoF("MCP configuration validation completed: %d/%d configs valid", validConfigs, len(mcpConfigs.Configs))
 }
 
-func getMCPConfigPath() string {
-	blogsPath := config.GetBlogsPath()
-	return filepath.Join(blogsPath, "mcp_config.json")
+func getMCPConfigTitle() string {
+	return "mcp_config"
 }
 
-func createDefaultMCPConfig(configPath string) {
+func createDefaultMCPConfig() {
 	log.Debug("--- Creating Default MCP Configuration ---")
 	
 	// Create default configuration
@@ -237,13 +213,24 @@ func createDefaultMCPConfig(configPath string) {
 			{
 				Name:        "file-system",
 				Command:     "npx",
-				Args:        []string{"-y", "@modelcontextprotocol/server-filesystem", "."},
+				Args:        []string{"-y", "@modelcontextprotocol/server-filesystem", "./blogs_txt"},
 				Environment: map[string]string{},
 				Enabled:     true,
 				Description: "File system MCP server example",
 				CreatedAt:   time.Now(),
 				UpdatedAt:   time.Now(),
 			},
+			{
+				Name:        "redis",
+				Command:     "npx",
+				Args:        []string{"-y", "@modelcontextprotocol/server-redis", "redis://localhost:6379"},
+				Environment: map[string]string{},
+				Enabled:     true,
+				Description: "Redis MCP server example",
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			},
+	
 		},
 	}
 	
@@ -253,13 +240,6 @@ func createDefaultMCPConfig(configPath string) {
 			i+1, config.Name, config.Command, config.Description)
 	}
 	
-	// Create directory if it doesn't exist
-	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		log.ErrorF("Failed to create MCP config directory '%s': %v", configDir, err)
-		return
-	}
-	log.DebugF("MCP config directory ensured: %s", configDir)
 	
 	// Write to file
 	data, err := json.MarshalIndent(defaultConfig, "", "  ")
@@ -267,17 +247,16 @@ func createDefaultMCPConfig(configPath string) {
 		log.ErrorF("Failed to marshal default MCP config: %v", err)
 		return
 	}
-	
-	log.DebugF("Writing default MCP config to file: %s (%d bytes)", configPath, len(data))
-	err = ioutil.WriteFile(configPath, data, 0644)
-	if err != nil {
-		log.ErrorF("Failed to write default MCP config to '%s': %v", configPath, err)
-		return
-	}
+
+	title := getMCPConfigTitle()
+	control.ModifyBlog(&module.UploadedBlogData{
+		Title: title,
+		Content: string(data),
+	})
 	
 	mcpConfigs = defaultConfig
 	log.InfoF("Successfully created default MCP configuration with %d entries at: %s", 
-		len(defaultConfig.Configs), configPath)
+		len(defaultConfig.Configs), title)
 }
 
 func GetAllConfigs() []MCPConfig {
@@ -446,34 +425,21 @@ func ToggleConfig(name string) error {
 
 func saveMCPConfigs() error {
 	log.Debug("--- Saving MCP Configurations ---")
-	configPath := getMCPConfigPath()
-	log.DebugF("Save path: %s", configPath)
-	
-	// Create backup if file exists
-	if _, err := os.Stat(configPath); err == nil {
-		backupPath := configPath + ".backup"
-		if err := copyFile(configPath, backupPath); err != nil {
-			log.WarnF("Failed to create backup of MCP config: %v", err)
-		} else {
-			log.DebugF("Created backup: %s", backupPath)
-		}
-	}
 	
 	data, err := json.MarshalIndent(mcpConfigs, "", "  ")
 	if err != nil {
 		log.ErrorF("Failed to marshal MCP configs: %v", err)
 		return fmt.Errorf("failed to marshal MCP configs: %v", err)
 	}
+
+	title := getMCPConfigTitle()
+	control.ModifyBlog(&module.UploadedBlogData{
+		Title: title,
+		Content: string(data),
+	})
 	
-	log.DebugF("Marshaled MCP configs: %d bytes, %d configurations", len(data), len(mcpConfigs.Configs))
-	
-	err = ioutil.WriteFile(configPath, data, 0644)
-	if err != nil {
-		log.ErrorF("Failed to write MCP config file '%s': %v", configPath, err)
-		return fmt.Errorf("failed to write MCP config file: %v", err)
-	}
-	
-	log.InfoF("Successfully saved %d MCP configurations to %s", len(mcpConfigs.Configs), configPath)
+
+	log.InfoF("Successfully saved %d MCP configurations to %s", len(mcpConfigs.Configs), title)
 	return nil
 }
 

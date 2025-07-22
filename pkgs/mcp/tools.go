@@ -15,7 +15,7 @@ import (
 type MCPTool struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Parameters  interface{} `json:"parameters"`
+	InputSchema interface{} `json:"inputschema"`
 }
 
 // MCPToolCall represents a tool call request
@@ -281,7 +281,7 @@ func getToolsFromServer(config MCPConfig) []MCPTool {
 					tool := MCPTool{
 						Name:        fmt.Sprintf("%s.%s", config.Name, getString(toolMap, "name")),
 						Description: getString(toolMap, "description"),
-						Parameters:  toolMap["inputSchema"],
+						InputSchema:  toolMap["inputSchema"],
 					}
 					tools = append(tools, tool)
 				}
@@ -444,10 +444,10 @@ func FormatToolsForLLM() string {
 		
 		// Add parameter information if available
 		paramCount := 0
-		if tool.Parameters != nil {
-			if params, ok := tool.Parameters.(map[string]interface{}); ok {
+		if tool.InputSchema != nil {
+			if params, ok := tool.InputSchema.(map[string]interface{}); ok {
 				if properties, ok := params["properties"].(map[string]interface{}); ok {
-					sb.WriteString("  Parameters:\n")
+					sb.WriteString("  InputSchema:\n")
 					for paramName, paramInfo := range properties {
 						if paramMap, ok := paramInfo.(map[string]interface{}); ok {
 							paramDesc := getString(paramMap, "description")

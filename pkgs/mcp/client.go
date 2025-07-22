@@ -248,7 +248,7 @@ func (c *MCPClient) ListTools() ([]MCPTool, error) {
 					tool := MCPTool{
 						Name:        fmt.Sprintf("%s.%s", c.config.Name, getString(toolMap, "name")),
 						Description: getString(toolMap, "description"),
-						Parameters:  toolMap["inputSchema"],
+						InputSchema:  toolMap["inputSchema"],
 					}
 					tools = append(tools, tool)
 				}

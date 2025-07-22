@@ -196,7 +196,7 @@ func GetAvailableToolsImproved() []MCPTool {
 		mcpTool := MCPTool{
 			Name: tool.Function.Name,
 			Description: tool.Function.Description,
-			Parameters: tool.Function.InputSchema,
+			InputSchema: tool.Function.InputSchema,
 		}
 		tools = append(tools, mcpTool)
 	}
