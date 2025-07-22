@@ -1761,8 +1761,9 @@ input:checked + .slider:before {
     }
     
     .mcp-tools-list-large {
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        grid-template-columns: 1fr; /* 移动端单列显示 */
         max-height: calc(100vh - 380px);
+        gap: 8px; /* 减少间距 */
     }
     
     .mcp-tools-section {
@@ -1804,6 +1805,108 @@ input:checked + .slider:before {
     
     .mcp-tools-actions-large button:last-child {
         margin-bottom: 0;
+    }
+    
+    /* MCP工具项移动端优化 */
+    .mcp-tools-list-large .mcp-tool-item {
+        padding: 12px 15px; /* 减少padding */
+        margin-bottom: 0;
+    }
+    
+    .mcp-tools-list-large .mcp-tool-name {
+        font-size: 0.95rem; /* 稍微减小字体 */
+        font-weight: 600;
+        line-height: 1.3; /* 紧凑行高 */
+    }
+    
+    .mcp-tools-list-large .mcp-tool-desc {
+        font-size: 0.85rem; /* 减小描述字体 */
+        margin-top: 4px; /* 减少间距 */
+        line-height: 1.3; /* 紧凑行高 */
+        color: rgba(255, 255, 255, 0.8); /* 稍微降低对比度 */
+    }
+    
+    /* 工具选择框移动端优化 */
+    .mcp-tool-item .mcp-tool-checkbox {
+        width: 16px; /* 稍微减小复选框 */
+        height: 16px;
+        margin-right: 8px; /* 减少右边距 */
+    }
+    
+    /* 服务器状态区域移动端优化 */
+    .mcp-servers-section {
+        padding: 15px; /* 减少padding */
+        margin-bottom: 15px;
+    }
+    
+    .mcp-servers-section h4 {
+        font-size: 1rem; /* 减小标题字体 */
+        margin-bottom: 10px;
+    }
+}
+
+/* 超小屏幕特殊优化（480px以下） */
+@media (max-width: 480px) {
+    .mcp-tools-panel-header {
+        padding: 12px 15px; /* 进一步减少header padding */
+    }
+    
+    .mcp-tools-panel-header h3 {
+        font-size: 1.1rem; /* 减小标题字体 */
+        gap: 8px;
+    }
+    
+    .mcp-tools-status-large {
+        padding: 15px; /* 减少padding */
+        min-height: calc(100vh - 180px);
+    }
+    
+    .mcp-tools-list-large {
+        max-height: calc(100vh - 350px); /* 调整最大高度 */
+        gap: 6px; /* 进一步减少间距 */
+        padding-right: 5px; /* 减少右侧padding */
+    }
+    
+    .mcp-tools-list-large .mcp-tool-item {
+        padding: 10px 12px; /* 更紧凑的padding */
+        border-radius: 6px; /* 稍小的圆角 */
+    }
+    
+    .mcp-tools-list-large .mcp-tool-name {
+        font-size: 0.9rem; /* 进一步减小字体 */
+        line-height: 1.2;
+    }
+    
+    .mcp-tools-list-large .mcp-tool-desc {
+        font-size: 0.8rem; /* 进一步减小描述字体 */
+        margin-top: 3px;
+        line-height: 1.2;
+        /* 限制描述文本最大行数，避免过长 */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .mcp-tools-actions-large {
+        padding: 12px 15px; /* 减少操作区域padding */
+    }
+    
+    .mcp-tools-actions-large button {
+        padding: 10px 20px; /* 减少按钮padding */
+        font-size: 0.9rem; /* 减小按钮字体 */
+        min-width: 100px; /* 减少最小宽度 */
+    }
+    
+    .mcp-tools-section {
+        height: calc(100vh - 220px); /* 调整高度 */
+        padding: 15px; /* 减少padding */
+    }
+    
+    .mcp-servers-section {
+        padding: 12px; /* 进一步减少padding */
+        margin-bottom: 12px;
     }
 }
 

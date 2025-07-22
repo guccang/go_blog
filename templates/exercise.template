@@ -139,7 +139,6 @@
                             <div class="weight-info">
                                 <small>💡 负重将加到体重上用于卡路里计算</small>
                             </div>
-                        </div>
                     </div>
                     <div class="form-buttons">
                         <button type="submit" class="btn-primary">保存</button>

@@ -54,8 +54,9 @@ body {
 .nav-container {
 	display: flex;
 	align-items: center;
-	flex-wrap: nowrap; /* 导航项不换行 */
+	flex-wrap: wrap; /* 允许导航项换行 */
 	flex-grow: 1;
+	gap: 5px; /* 添加间距 */
 }
 
 /* 搜索和切换容器 */
@@ -466,8 +467,23 @@ body {
 }
 
 @media (max-width: 768px) {
+	.top-sidebar-cotainer {
+		padding: 8px 0; /* 减少顶部容器padding */
+	}
+	
 	.top-sidebar {
 		padding: 0 8px;
+		flex-direction: column; /* 垂直布局 */
+		align-items: stretch; /* 拉伸对齐 */
+		gap: 8px;
+	}
+	
+	/* 导航区域在移动端的布局 */
+	.nav-container {
+		justify-content: flex-start; /* 左对齐 */
+		flex-wrap: wrap; /* 允许换行 */
+		width: 100%;
+		order: 1; /* 第一行 */
 	}
 	
 	.img-cycle {
@@ -475,6 +491,7 @@ body {
 		height: 50px;
 		font-size: 24px;
 		margin-right: 8px;
+		order: -1; /* 始终在最前面 */
 	}
 	
 	.nav-text {
@@ -483,8 +500,10 @@ body {
 	
 	.nav-item {
 		margin-right: 8px;
+		margin-bottom: 4px; /* 添加底部间距用于换行 */
 		padding: 6px 4px;
 		min-width: 40px;
+		flex: 0 0 auto; /* 不拉伸，固定尺寸 */
 	}
 	
 	.nav-icon {
@@ -494,7 +513,9 @@ body {
 	
 	.search-toggle-container {
 		justify-content: center; /* 在小屏幕上居中显示 */
-		margin-top: 10px;
+		margin-top: 0; /* 移除margin，因为已经有gap */
+		order: 2; /* 第二行 */
+		width: 100%;
 	}
 	
 	.search-container {
@@ -543,8 +564,18 @@ body {
 }
 
 @media (max-width: 480px) {
+	.top-sidebar-cotainer {
+		padding: 6px 0; /* 进一步减少padding */
+	}
+	
 	.top-sidebar {
 		padding: 0 5px;
+		gap: 6px; /* 减少间距 */
+	}
+	
+	/* 进一步优化导航容器 */
+	.nav-container {
+		gap: 3px; /* 减少导航项之间的间距 */
 	}
 	
 	.img-cycle {
@@ -556,8 +587,10 @@ body {
 	
 	.nav-item {
 		margin-right: 6px;
+		margin-bottom: 3px; /* 减少底部间距 */
 		padding: 4px 3px;
 		min-width: 35px;
+		flex: 0 0 auto;
 	}
 	
 	.nav-icon {
@@ -567,12 +600,15 @@ body {
 	.search-toggle-container {
 		flex-direction: column; /* 垂直排列搜索框和切换按钮 */
 		gap: 5px;
-		margin-top: 8px;
+		margin-top: 0;
+		width: 100%;
+		align-items: center; /* 居中对齐 */
 	}
 	
 	.search-container {
 		max-width: 100%;
 		min-width: 200px;
+		width: 90%; /* 占用大部分宽度 */
 	}
 	
 	#search {
@@ -604,8 +640,17 @@ body {
 
 /* 超小屏幕优化 */
 @media (max-width: 360px) {
+	.top-sidebar-cotainer {
+		padding: 4px 0; /* 最小padding */
+	}
+	
 	.top-sidebar {
 		padding: 0 3px;
+		gap: 4px; /* 最小间距 */
+	}
+	
+	.nav-container {
+		gap: 2px; /* 最小导航项间距 */
 	}
 	
 	.img-cycle {
@@ -617,16 +662,23 @@ body {
 	
 	.nav-item {
 		margin-right: 4px;
+		margin-bottom: 2px; /* 最小底部间距 */
 		padding: 3px 2px;
 		min-width: 30px;
+		flex: 0 0 auto;
 	}
 	
 	.nav-icon {
 		font-size: 14px;
 	}
 	
+	.search-toggle-container {
+		gap: 4px; /* 减少搜索区域间距 */
+	}
+	
 	.search-container {
 		min-width: 180px;
+		width: 95%; /* 占用更多宽度 */
 	}
 	
 	#search {
