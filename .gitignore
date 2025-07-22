@@ -11,3 +11,5 @@ blogs_txt/
 .cursor/
 .cursorignore
 CLAUDE.md
+.claude/settings.local.json
+*.log

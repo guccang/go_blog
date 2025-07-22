@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - MCP管理中心</title>
+    <link rel="stylesheet" href="/css/public.css">
+    <link rel="stylesheet" href="/css/mcp.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="mcp-header">
+        <div class="header-container">
+            <div class="header-left">
+                <h1><i class="fas fa-plug"></i> MCP 管理中心</h1>
+                <p class="header-subtitle">Model Context Protocol 配置管理</p>
+            </div>
+            <div class="header-actions">
+                <button id="addConfigBtn" class="btn-primary">
+                    <i class="fas fa-plus"></i> 新增配置
+                </button>
+                <div class="nav-links">
+                    <a href="/main"><i class="fas fa-home"></i> 首页</a>
+                    <a href="/config"><i class="fas fa-cog"></i> 配置</a>
+                    <a href="/assistant" class="active"><i class="fas fa-plug"></i> 助手</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区域 -->
+    <main class="mcp-main">
+        <!-- 统计卡片 -->
+        <section class="stats-section">
+            <div class="stat-card">
+                <div class="stat-icon total">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="totalConfigs">{{len .Configs}}</div>
+                    <div class="stat-label">总配置数</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon active">
+                    <i class="fas fa-play-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="enabledConfigs">{{.CurrentTime}}</div>
+                    <div class="stat-label">启用配置</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon inactive">
+                    <i class="fas fa-pause-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number" id="disabledConfigs">0</div>
+                    <div class="stat-label">禁用配置</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon status">
+                    <i class="fas fa-heartbeat"></i>
+                </div>
+                <div class="stat-content">
+                    <div class="stat-number">正常</div>
+                    <div class="stat-label">系统状态</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 配置列表 -->
+        <section class="configs-section">
+            <div class="section-header">
+                <h2><i class="fas fa-list"></i> 配置列表</h2>
+                <div class="section-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="搜索配置..." id="searchInput">
+                    </div>
+                    <div class="view-toggle">
+                        <button class="view-btn active" data-view="grid">
+                            <i class="fas fa-th"></i>
+                        </button>
+                        <button class="view-btn" data-view="list">
+                            <i class="fas fa-list"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="configs-container" id="configsContainer">
+                <div class="configs-grid" id="configList">
+                    {{range .Configs}}
+                    <div class="config-card {{if .Enabled}}enabled{{else}}disabled{{end}}" data-name="{{.Name}}">
+                        <div class="config-card-header">
+                            <div class="config-info">
+                                <h3 class="config-name">{{.Name}}</h3>
+                                <div class="config-status">
+                                    <span class="status-dot {{if .Enabled}}active{{else}}inactive{{end}}"></span>
+                                    <span class="status-text">{{if .Enabled}}运行中{{else}}已停止{{end}}</span>
+                                </div>
+                            </div>
+                            <div class="config-menu">
+                                <button class="menu-btn" onclick="toggleMenu('{{.Name}}')">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div class="menu-dropdown" id="menu-{{.Name}}">
+                                    <a href="#" onclick="editConfig('{{.Name}}')">
+                                        <i class="fas fa-edit"></i> 编辑
+                                    </a>
+                                    <a href="#" onclick="toggleConfig('{{.Name}}')">
+                                        <i class="fas fa-{{if .Enabled}}pause{{else}}play{{end}}"></i> 
+                                        {{if .Enabled}}停止{{else}}启动{{end}}
+                                    </a>
+                                    <a href="#" onclick="deleteConfig('{{.Name}}')" class="danger">
+                                        <i class="fas fa-trash"></i> 删除
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="config-card-body">
+                            <div class="config-command">
+                                <div class="command-label">
+                                    <i class="fas fa-terminal"></i> 命令
+                                </div>
+                                <div class="command-text">{{.Command}}</div>
+                                {{if .Args}}
+                                <div class="command-args">
+                                    {{range .Args}}
+                                    <span class="arg-tag">{{.}}</span>
+                                    {{end}}
+                                </div>
+                                {{end}}
+                            </div>
+
+                            {{if .Environment}}
+                            <div class="config-env">
+                                <div class="env-label">
+                                    <i class="fas fa-layer-group"></i> 环境变量
+                                </div>
+                                <div class="env-vars">
+                                    {{range $key, $value := .Environment}}
+                                    <div class="env-var">
+                                        <span class="env-key">{{$key}}</span>
+                                        <span class="env-value">{{$value}}</span>
+                                    </div>
+                                    {{end}}
+                                </div>
+                            </div>
+                            {{end}}
+
+                            <div class="config-meta">
+                                <div class="meta-item">
+                                    <i class="fas fa-calendar-plus"></i>
+                                    <span>{{.CreatedAt.Format "2006-01-02 15:04"}}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <i class="fas fa-calendar-check"></i>
+                                    <span>{{.UpdatedAt.Format "2006-01-02 15:04"}}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="config-card-footer">
+                            <div class="config-actions">
+                                <button class="btn-action primary" onclick="editConfig('{{.Name}}')">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </button>
+                                <button class="btn-action {{if .Enabled}}warning{{else}}success{{end}}" 
+                                        onclick="toggleConfig('{{.Name}}')">
+                                    <i class="fas fa-{{if .Enabled}}pause{{else}}play{{end}}"></i>
+                                    {{if .Enabled}}停止{{else}}启动{{end}}
+                                </button>
+                                <button class="btn-action danger" onclick="deleteConfig('{{.Name}}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+
+                <!-- 空状态 -->
+                <div class="empty-state" id="emptyState" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-plug"></i>
+                    </div>
+                    <h3>暂无MCP配置</h3>
+                    <p>开始创建您的第一个MCP服务器配置</p>
+                    <button class="btn-primary" onclick="document.getElementById('addConfigBtn').click()">
+                        <i class="fas fa-plus"></i> 创建配置
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 帮助信息 -->
+        <section class="help-section">
+            <div class="help-card">
+                <h3><i class="fas fa-question-circle"></i> 什么是MCP？</h3>
+                <p>Model Context Protocol (MCP) 是一个开放标准，用于在AI助手和外部数据源、工具之间建立安全、可控的连接。</p>
+            </div>
+            <div class="help-card">
+                <h3><i class="fas fa-lightbulb"></i> 配置示例</h3>
+                <div class="example-code">
+                    <pre><code>{
+  "name": "filesystem",
+  "command": "node",
+  "args": ["/path/to/server.js"],
+  "environment": {
+    "NODE_ENV": "production"
+  },
+  "enabled": true
+}</code></pre>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 配置模态框 -->
+    <div id="configModal" class="modal">
+        <div class="modal-backdrop" onclick="closeModal()"></div>
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalTitle">
+                    <i class="fas fa-plus-circle"></i> 新增MCP配置
+                </h3>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="modal-body">
+                <form id="configForm" class="config-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="configName">
+                                <i class="fas fa-tag"></i> 配置名称 *
+                            </label>
+                            <input type="text" id="configName" name="name" required 
+                                   placeholder="输入配置名称">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="configEnabled" name="enabled">
+                                <span class="checkbox-label">启用配置</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="configCommand">
+                            <i class="fas fa-terminal"></i> 执行命令 *
+                        </label>
+                        <input type="text" id="configCommand" name="command" required 
+                               placeholder="例如: node, python, /path/to/executable">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="configArgs">
+                            <i class="fas fa-list"></i> 命令参数
+                        </label>
+                        <textarea id="configArgs" name="args" rows="4" 
+                                  placeholder="每行一个参数，例如:&#10;/path/to/script.js&#10;--port=3000"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="configEnv">
+                            <i class="fas fa-layer-group"></i> 环境变量
+                        </label>
+                        <textarea id="configEnv" name="environment" rows="4" 
+                                  placeholder="KEY=VALUE 格式，每行一个，例如:&#10;NODE_ENV=production&#10;PORT=3000"></textarea>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeModal()">
+                    <i class="fas fa-times"></i> 取消
+                </button>
+                <button type="button" class="btn-primary" onclick="saveConfig()">
+                    <i class="fas fa-save"></i> 保存配置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知容器 -->
+    <div id="notifications" class="notifications"></div>
+
+    <script src="/js/mcp.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeMCPPage();
+        });
+    </script>
+</body>
+</html>

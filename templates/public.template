@@ -10,11 +10,10 @@
 <body>
     <div class="top-sidebar-cotainer">
         <div class="top-sidebar">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" style="font-size: 24px;">主页</a>
-            <a href="/public" style="font-size: 24px; color: var(--accent-color);">公开博客</a>
+            <a href="/link" class="management-btn" style="font-size: 20px; background: var(--accent-color); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px;">管理</a>
             <div class="search-container">
                 <input id="search" type="text" placeholder="搜索公开博客..." list="search_list">
                 <datalist id="search_list">

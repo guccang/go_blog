@@ -10,11 +10,11 @@
 <body>
     <header class="page-header">
         <div class="container">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
             <h1 class="page-title">年度计划</h1>
-            <a href="/link" class="header-link">返回首页</a>
+            <a href="/main" class="header-link">返回首页</a>
             <div class="year-picker-container">
                 <input id="search-year" type="number" placeholder="输入年份..." min="2020" max="2100">
                 <button type="button" class="search-btn" onclick="loadYearPlan()">查找</button>

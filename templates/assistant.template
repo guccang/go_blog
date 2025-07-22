@@ -11,8 +11,11 @@
 <body>
     <!-- 返回导航 -->
     <div class="nav-back">
-        <a href="/link" class="back-btn">
+        <a href="/main" class="back-btn">
             <i class="fas fa-home"></i> 返回主页
+        </a>
+        <a href="/mcp" class="back-btn">
+            <i class="fas fa-tools"></i> MCP管理
         </a>
     </div>
 
@@ -40,16 +43,18 @@
                             </div>
                             <div class="message-content">
                                 <div class="message-text">
-                                    <p>您好！我是您的智能助手，很高兴为您服务！</p>
+                                    <p>您好！我是您的智能助手，现在配备了强大的MCP工具支持！</p>
                                     <p>我可以帮您：</p>
                                     <ul>
-                                        <li>📊 分析您的个人数据和行为模式</li>
-                                        <li>💡 提供个性化的建议和提醒</li>
-                                        <li>📋 帮助管理任务和计划</li>
-                                        <li>📈 生成各种统计报告</li>
-                                        <li>🎯 追踪目标进度和成就</li>
+                                        <li>📊 使用MCP工具分析您的个人数据和行为模式</li>
+                                        <li>💡 基于工具调用提供个性化的建议和提醒</li>
+                                        <li>📋 通过工具集成帮助管理任务和计划</li>
+                                        <li>📈 调用外部工具生成各种统计报告</li>
+                                        <li>🎯 使用专业工具追踪目标进度和成就</li>
+                                        <li>🔧 <strong>新功能：智能工具调用</strong> - 根据需求自动选择合适的MCP工具</li>
                                     </ul>
-                                    <p>试试问我："我最近的状态怎么样？"或"帮我分析一下时间分配"</p>
+                                    <p>试试问我："使用MCP工具帮我分析最近的数据"或"调用工具帮我优化时间分配"</p>
+                                    <p><em>提示：您可以在右侧工具面板中选择特定的MCP工具，或让我自动选择最合适的工具。</em></p>
                                 </div>
                                 <div class="message-time">刚刚</div>
                             </div>
@@ -62,6 +67,7 @@
                             <button class="quick-btn" data-action="time">⏰ 时间分析</button>
                             <button class="quick-btn" data-action="goals">🎯 目标进度</button>
                             <button class="quick-btn" data-action="suggestions">💡 智能建议</button>
+                            <button class="quick-btn" data-action="tools" onclick="showMCPToolsDialog()">🔧 工具</button>
                         </div>
                         
                         <div class="input-wrapper">
@@ -146,6 +152,58 @@
             </aside>
         </main>
 
+        <!-- MCP工具管理大面板 -->
+        <section class="mcp-tools-panel">
+            <div class="mcp-tools-panel-header">
+                <h3><i class="fas fa-tools"></i> MCP 工具管理中心</h3>
+                <div class="mcp-tools-panel-actions">
+                    <button class="mcp-panel-toggle" onclick="toggleMCPPanel()">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="mcp-tools-panel-content" id="mcp-tools-panel-content">
+                <div id="mcp-tools-status-large" class="mcp-tools-status-large">
+                    <div class="mcp-status-loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>正在加载MCP工具...</span>
+                    </div>
+                </div>
+                <div class="mcp-info-large">
+                    <div class="mcp-info-grid">
+                        <div class="mcp-info-item">
+                            <i class="fas fa-info-circle"></i>
+                            <div>
+                                <strong>工具选择</strong>
+                                <p>选择要在对话中使用的MCP工具。未选择时将使用所有可用工具。</p>
+                            </div>
+                        </div>
+                        <div class="mcp-info-item">
+                            <i class="fas fa-server"></i>
+                            <div>
+                                <strong>服务器状态</strong>
+                                <p>实时显示各个MCP服务器的连接状态和可用工具数量。</p>
+                            </div>
+                        </div>
+                        <div class="mcp-info-item">
+                            <i class="fas fa-search"></i>
+                            <div>
+                                <strong>搜索功能</strong>
+                                <p>支持按工具名称、服务器或描述进行快速搜索和过滤。</p>
+                            </div>
+                        </div>
+                        <div class="mcp-info-item">
+                            <i class="fas fa-cog"></i>
+                            <div>
+                                <strong>配置管理</strong>
+                                <p>可前往<a href="/mcp">MCP配置页面</a>管理服务器和工具配置。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- 设置面板 -->
         <div class="settings-panel" id="settingsPanel">
             <div class="settings-header">
@@ -206,6 +264,7 @@
         </button>
     </div>
 
+    <script src="/js/marked/marked.min.js"></script>
     <script src="/js/assistant.js"></script>
 </body>
 </html>

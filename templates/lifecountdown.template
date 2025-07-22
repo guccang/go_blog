@@ -11,7 +11,7 @@
 <body>
     <!-- 返回导航 -->
     <div class="nav-back">
-        <a href="/link" class="back-btn">
+        <a href="/main" class="back-btn">
             <i class="fas fa-home"></i> 返回主页
         </a>
     </div>

@@ -94,6 +94,23 @@ body {
     transform: translateY(-2px);
 }
 
+/* 管理按钮特殊样式 */
+.management-btn {
+    background: var(--accent-color) !important;
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 16px !important;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+.management-btn:hover {
+    background: var(--accent-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px var(--shadow-color);
+}
+
 /* 搜索容器 */
 .search-container {
     display: flex;

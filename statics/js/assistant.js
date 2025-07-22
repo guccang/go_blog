@@ -13,6 +13,7 @@ let currentSettings = {
     analysisRange: 30,
     assistantPersonality: 'professional'
 };
+let mcpTools = [];
 
 // 模拟数据
 const mockData = {
@@ -120,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSuggestions();
     initializeTrendChart();
     loadSettings();
+    loadMCPTools();
 });
 
 // 初始化页面
@@ -237,6 +239,9 @@ function createAiMessagePlaceholder() {
 
 // 发送流式请求
 async function sendStreamingRequest(aiMessageElement) {
+    let toolCallCount = 0;
+    let currentToolCall = null;
+    
     try {
         const response = await fetch('/api/assistant/chat', {
             method: 'POST',
@@ -245,7 +250,8 @@ async function sendStreamingRequest(aiMessageElement) {
             },
             body: JSON.stringify({
                 messages: chatMessages,
-                stream: true
+                stream: true,
+                selected_tools: getSelectedTools()
             })
         });
         
@@ -256,32 +262,78 @@ async function sendStreamingRequest(aiMessageElement) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let aiResponse = '';
+        let buffer = '';
         
         // 开始流式读取
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n\n').filter(line => line.trim() !== '');
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || ''; // 保留最后一个不完整的行
             
             for (const line of lines) {
+                if (line.trim() === '') continue;
+                
                 if (line.startsWith('data: ')) {
                     const data = line.replace('data: ', '');
                     if (data === '[DONE]') {
                         // 完成响应
                         chatMessages.push({ role: "assistant", content: aiResponse });
                         addTimestamp(aiMessageElement);
+                        hideToolCallStatus(aiMessageElement);
                         return;
                     }
                     
                     try {
-                        const decodedContent = decodeURIComponent(data);
-                        aiResponse += decodedContent;
+                        // 先将+替换为%20，再进行URL解码
+                        const processedData = data.replace(/\+/g, '%20');
+                        console.log('🟨 原始data:', data);
+                        console.log('🟨 processedData:', processedData);
+                        
+                        const decodedContent = decodeURIComponent(processedData);
+                        console.log('🟨 decodedContent:', JSON.stringify(decodedContent));
+                        console.log('🟨 包含\\n:', decodedContent.includes('\n'));
+                        console.log('🟨 包含\\r\\n:', decodedContent.includes('\r\n'));
+                        
+                        // 检测工具调用相关的内容，包括完整的工具调用和其碎片
+                        const isToolCallContent = decodedContent.includes('[Calling tool ') || 
+                                                decodedContent.includes(' with args ') ||
+                                                decodedContent.trim() === ']' ||
+                                                /^文件.*?的?内容如下：?\s*$/i.test(decodedContent.trim());
+                        
+                        if (decodedContent.includes('[Calling tool ') && decodedContent.includes(' with args ')) {
+                            // 完整的工具调用检测
+                            toolCallCount++;
+                            const toolMatch = decodedContent.match(/\[Calling tool (\w+(?:\.\w+)*) with args (.*?)\]/);
+                            if (toolMatch) {
+                                currentToolCall = {
+                                    name: toolMatch[1],
+                                    args: toolMatch[2],
+                                    count: toolCallCount
+                                };
+                                showToolCallStatus(aiMessageElement, currentToolCall);
+                            }
+                        } else if (!isToolCallContent && decodedContent.trim()) {
+                            // 开始接收实际响应内容，隐藏工具调用状态
+                            if (currentToolCall && decodedContent.length > 10) {
+                                hideToolCallStatus(aiMessageElement);
+                                currentToolCall = null;
+                            }
+                            // 只添加非工具调用相关的内容到响应中
+                            aiResponse += decodedContent;
+                            
+                            console.log('✅ 添加到aiResponse:', JSON.stringify(decodedContent));
+                        } else if (isToolCallContent) {
+                            console.log('🚫 过滤工具调用内容:', JSON.stringify(decodedContent));
+                        }
                         
                         // 更新消息内容
                         const messageText = aiMessageElement.querySelector('.message-text');
-                        messageText.innerHTML = formatMessage(aiResponse);
+                        if (messageText) {
+                            messageText.innerHTML = formatMessage(aiResponse);
+                        }
                         
                         // 滚动到底部
                         const chatContainer = document.getElementById('chatMessages');
@@ -312,6 +364,134 @@ async function sendStreamingRequest(aiMessageElement) {
             }
         }, 1000);
     }
+}
+
+// 显示工具调用状态
+function showToolCallStatus(messageElement, toolCall) {
+    const messageText = messageElement.querySelector('.message-text');
+    if (!messageText) return;
+    
+    // 移除现有的工具调用状态
+    const existingStatus = messageElement.querySelector('.tool-call-status');
+    if (existingStatus) {
+        existingStatus.remove();
+    }
+    
+    // 创建工具调用状态指示器
+    const toolStatus = document.createElement('div');
+    toolStatus.className = 'tool-call-status';
+    toolStatus.innerHTML = `
+        <div class="tool-call-indicator">
+            <div class="tool-call-spinner">
+                <i class="fas fa-cog fa-spin"></i>
+            </div>
+            <div class="tool-call-info">
+                <div class="tool-call-title">
+                    <i class="fas fa-tools"></i>
+                    正在调用工具 ${toolCall.count} 
+                </div>
+                <div class="tool-call-details">
+                    <strong>${toolCall.name}</strong>
+                    <span class="tool-call-args">${formatToolArgs(toolCall.args)}</span>
+                </div>
+                <div class="tool-call-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <span class="progress-text">执行中...</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 插入到消息内容之前
+    messageText.style.display = 'none'; // 暂时隐藏普通内容
+    messageElement.querySelector('.message-content').insertBefore(toolStatus, messageText);
+    
+    // 开始进度动画
+    startProgressAnimation(toolStatus);
+}
+
+// 隐藏工具调用状态
+function hideToolCallStatus(messageElement) {
+    const toolStatus = messageElement.querySelector('.tool-call-status');
+    const messageText = messageElement.querySelector('.message-text');
+    
+    if (toolStatus && messageText) {
+        // 显示完成状态
+        const progressText = toolStatus.querySelector('.progress-text');
+        const progressFill = toolStatus.querySelector('.progress-fill');
+        const spinner = toolStatus.querySelector('.tool-call-spinner i');
+        
+        if (progressText && progressFill && spinner) {
+            progressText.textContent = '完成';
+            progressFill.style.width = '100%';
+            progressFill.style.background = '#00d4aa';
+            spinner.className = 'fas fa-check';
+            spinner.style.animation = 'none';
+            spinner.style.color = '#00d4aa';
+        }
+        
+        // 延迟移除状态并显示正常内容
+        setTimeout(() => {
+            toolStatus.style.opacity = '0';
+            toolStatus.style.transform = 'translateY(-10px)';
+            setTimeout(() => {
+                toolStatus.remove();
+                messageText.style.display = 'block';
+            }, 300);
+        }, 800);
+    }
+}
+
+// 格式化工具参数显示
+function formatToolArgs(args) {
+    if (!args || args === '{}' || args === 'map[]') {
+        return '无参数';
+    }
+    
+    try {
+        // 尝试解析并格式化JSON参数
+        const parsed = JSON.parse(args.replace(/map\[(.*?)\]/, '{$1}'));
+        const formatted = Object.entries(parsed)
+            .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+            .join(', ');
+        return formatted.length > 60 ? formatted.substring(0, 57) + '...' : formatted;
+    } catch (e) {
+        // 如果解析失败，直接显示原始参数（截断过长的）
+        return args.length > 40 ? args.substring(0, 37) + '...' : args;
+    }
+}
+
+// 开始进度条动画
+function startProgressAnimation(statusElement) {
+    const progressFill = statusElement.querySelector('.progress-fill');
+    const progressText = statusElement.querySelector('.progress-text');
+    
+    if (!progressFill || !progressText) return;
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += Math.random() * 15; // 随机增长
+        if (progress > 90) progress = 90; // 最多到90%，等待实际完成
+        
+        progressFill.style.width = progress + '%';
+        
+        // 更新状态文本
+        if (progress < 30) {
+            progressText.textContent = '正在连接...';
+        } else if (progress < 60) {
+            progressText.textContent = '执行工具...';
+        } else if (progress < 90) {
+            progressText.textContent = '处理结果...';
+        } else {
+            progressText.textContent = '即将完成...';
+            clearInterval(interval);
+        }
+    }, 300 + Math.random() * 200); // 300-500ms间隔
+    
+    // 存储interval引用以便清理
+    statusElement.setAttribute('data-interval', interval);
 }
 
 // 添加时间戳到消息
@@ -371,29 +551,138 @@ function addMessage(sender, content) {
     // });
 }
 
-// 格式化消息内容
+// 使用与博客系统相同的Markdown渲染函数
 function formatMessage(content) {
-    // 转义HTML特殊字符
-    let formatted = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>');
+    if (!content) return '';
     
-    // 处理代码块
-    formatted = formatted.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, lang, code) => {
-        return `<div class="code-block"><pre><code>${code.trim()}</code></pre></div>`;
-    });
+    console.log('🔵 formatMessage - 原始内容:');
+    console.log(content);
+    console.log('🔵 内容长度:', content.length);
     
-    // 处理行内代码
-    formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // 预处理：移除LLM返回内容中的代码块包裹
+    let processedContent = preprocessLLMContent(content);
     
-    // 处理粗体和斜体
-    formatted = formatted
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    console.log('🟡 formatMessage - 预处理后内容:');
+    console.log(processedContent);
+    console.log('🟡 处理后长度:', processedContent.length);
     
-    return formatted;
+    // 检查marked库是否已加载
+    if (typeof marked === 'undefined') {
+        console.error('❌ marked.js library not loaded!');
+        return processedContent.replace(/\n/g, '<br>');
+    }
+    
+    try {
+        // 初始化marked配置
+        initializeMarkdown();
+        
+        // 使用marked渲染markdown
+        let rendered;
+        if (typeof marked.parse === 'function') {
+            rendered = marked.parse(processedContent);
+        } else if (typeof marked === 'function') {
+            rendered = marked(processedContent);
+        } else {
+            throw new Error('No valid marked parsing method found');
+        }
+        
+        console.log('🟢 formatMessage - 渲染后的HTML:');
+        console.log(rendered);
+        console.log('🟢 HTML长度:', rendered.length);
+        
+        return rendered;
+        
+    } catch (error) {
+        console.error('❌ Error rendering markdown:', error);
+        return processedContent.replace(/\n/g, '<br>');
+    }
+}
+
+// 预处理LLM返回内容，移除代码块包裹
+function preprocessLLMContent(content) {
+    if (!content) return content;
+    
+    console.log('🔴 preprocessLLMContent - 开始预处理:');
+    console.log(content);
+    
+    let processed = content;
+    
+    // 1. 匹配并移除 ```markdown ... ``` 或 ```md ... ``` (支持换行和不换行格式)
+    const markdownBlockPattern = /```(?:markdown|md)\s*([\s\S]*?)\s*```/gi;
+    let matches = processed.match(markdownBlockPattern);
+    
+    if (matches) {
+        console.log('🟠 发现markdown代码块:', matches.length, '个');
+        processed = processed.replace(markdownBlockPattern, (match, innerContent) => {
+            console.log('🟠 移除markdown代码块包裹，内容:', innerContent.substring(0, 100) + '...');
+            return innerContent.trim();
+        });
+    }
+    
+    // 2. 匹配并移除普通的 ``` ... ``` 代码块（当整个内容被包裹时）
+    const genericCodeBlockPattern = /```\s*([\s\S]*?)\s*```/g;
+    matches = processed.match(genericCodeBlockPattern);
+    
+    if (matches) {
+        console.log('🟣 发现普通代码块包裹:', matches.length, '个');
+        processed = processed.replace(genericCodeBlockPattern, (match, innerContent) => {
+            console.log('🟣 移除普通代码块包裹，内容:', innerContent.substring(0, 100) + '...');
+            return innerContent.trim();
+        });
+    }
+    
+    // 3. 移除开头的描述性文本
+    processed = processed.replace(/^.*?文件.*?的?内容如下：?\s*\n*/i, '');
+    processed = processed.replace(/^返回内容如上.*?\n*/i, '');
+    processed = processed.replace(/^\[Calling tool.*?\]\s*/i, '');
+    processed = processed.replace(/^\]\s*/i, '');
+    
+    // 4. 清理开头和结尾的多余空行
+    processed = processed.trim();
+    
+    console.log('🟢 preprocessLLMContent - 预处理完成:');
+    console.log(processed);
+    
+    return processed;
+}
+
+// 初始化Markdown配置（仅在需要时调用一次）
+let markdownInitialized = false;
+function initializeMarkdown() {
+    if (markdownInitialized) return;
+    
+    try {
+        // 先检查marked的可用方法
+        if (typeof marked.use === 'function') {
+            // 新版本marked (v4+)
+            marked.use({
+                gfm: true,
+                tables: true,
+                breaks: false,
+                pedantic: false,
+                smartLists: true,
+                smartypants: false
+            });
+        } else if (typeof marked.setOptions === 'function') {
+            // 旧版本marked
+            const renderer = new marked.Renderer();
+            marked.setOptions({
+                renderer: renderer,
+                gfm: true,
+                tables: true,
+                breaks: false,
+                pedantic: false,
+                sanitize: false,
+                smartLists: true,
+                smartypants: false
+            });
+        }
+        
+        markdownInitialized = true;
+        
+    } catch (error) {
+        console.error('Failed to initialize markdown:', error);
+    }
 }
 
 // 显示打字指示器
@@ -785,10 +1074,573 @@ function formatDate(date) {
     });
 }
 
+// 获取选中的工具
+function getSelectedTools() {
+    // 优先从大面板获取选择，如果大面板不存在则从小面板获取
+    const selectedTools = [];
+    
+    // 先尝试从大面板获取
+    const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large:checked');
+    if (largeCheckboxes.length > 0) {
+        largeCheckboxes.forEach(checkbox => {
+            selectedTools.push(checkbox.value);
+        });
+    } else {
+        // 如果大面板没有选择，从小面板获取
+        const smallCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:not(.mcp-tool-checkbox-large):checked');
+        smallCheckboxes.forEach(checkbox => {
+            selectedTools.push(checkbox.value);
+        });
+    }
+    
+    // 如果没有选择任何工具，返回null表示使用所有可用工具
+    return selectedTools.length > 0 ? selectedTools : null;
+}
+
+// 全选工具
+function selectAllTools() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+}
+
+// 全不选工具
+function selectNoTools() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+}
+
+// MCP工具相关函数
+function loadMCPTools() {
+    console.log('正在加载MCP工具...');
+    
+    // 并行获取工具列表和服务器状态
+    Promise.all([
+        fetch('/api/mcp/tools').then(r => r.json()),
+        fetch('/api/mcp?action=status').then(r => r.json()).catch(() => ({ data: {} }))
+    ])
+    .then(([toolsResponse, statusResponse]) => {
+        if (toolsResponse.success) {
+            mcpTools = toolsResponse.data || [];
+            const serverStatus = statusResponse.data || {};
+            console.log('MCP工具加载成功:', mcpTools);
+            console.log('服务器状态:', serverStatus);
+            updateMCPToolsStatus(mcpTools, serverStatus);
+            updateMCPToolsStatusLarge(mcpTools, serverStatus);
+        } else {
+            console.error('获取MCP工具失败:', toolsResponse.message);
+            updateMCPToolsStatus([], {});
+            updateMCPToolsStatusLarge([], {});
+        }
+    })
+    .catch(error => {
+        console.error('MCP工具API调用失败:', error);
+        updateMCPToolsStatus([], {});
+        updateMCPToolsStatusLarge([], {});
+    });
+}
+
+function updateMCPToolsStatus(tools = [], serverStatus = {}) {
+    const toolsContainer = document.getElementById('mcp-tools-status');
+    if (!toolsContainer) return;
+    
+    if (tools.length === 0) {
+        toolsContainer.innerHTML = `
+            <div class="mcp-status-empty">
+                <div style="font-size: 2rem; margin-bottom: 12px;">🔧</div>
+                <div class="mcp-status-none">暂无配置的MCP工具</div>
+                <div style="margin-top: 8px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.6);">
+                    MCP工具可以大大增强助手的功能
+                </div>
+                <a href="/mcp" class="mcp-config-link">
+                    <i class="fas fa-plus"></i> 前往配置
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    // 按服务器分组显示工具
+    const toolsByServer = groupToolsByServer(tools);
+    const serversHtml = Object.keys(toolsByServer).map(serverName => {
+        const serverTools = toolsByServer[serverName];
+        const isConnected = serverStatus[serverName]?.connected || false;
+        const isEnabled = serverStatus[serverName]?.enabled || false;
+        const statusClass = isConnected ? 'connected' : (isEnabled ? 'disconnected' : 'disabled');
+        
+        return `
+            <div class="mcp-server-item ${statusClass}">
+                <div class="mcp-server-name">${serverName}</div>
+                <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
+            </div>
+        `;
+    }).join('');
+    
+    toolsContainer.innerHTML = `
+        <div class="mcp-tools-header">
+            <div class="mcp-tools-count">
+                <i class="fas fa-tools"></i>
+                ${tools.length} 个可用工具
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="mcp-refresh-btn" onclick="loadMCPTools()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="mcp-refresh-btn" onclick="toggleMCPToolsExpanded()">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="mcp-servers-list">
+            ${serversHtml}
+        </div>
+        
+        <div class="mcp-tools-search" style="margin-bottom: 12px;">
+            <input type="text" id="mcp-tools-search" placeholder="搜索工具..." 
+                   style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.1); 
+                          border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; 
+                          color: white; font-size: 0.9rem;"
+                   onkeyup="filterMCPTools(this.value)">
+        </div>
+        
+        <details class="mcp-tools-details" open>
+            <summary>
+                <i class="fas fa-list"></i> 工具选择 (${tools.length})
+            </summary>
+            <div class="mcp-tools-list" id="mcp-tools-list">
+                ${tools.map(tool => {
+                    const serverName = tool.name.split('.')[0];
+                    const toolName = tool.name.split('.').slice(1).join('.');
+                    return `
+                        <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
+                            <label class="mcp-tool-checkbox-label">
+                                <input type="checkbox" class="mcp-tool-checkbox" value="${tool.name}">
+                                <div class="mcp-tool-content">
+                                    <div class="mcp-tool-name">
+                                        <i class="fas fa-cog"></i>
+                                        ${toolName}
+                                        <span style="opacity: 0.6; font-size: 0.8em; margin-left: 8px;">(${serverName})</span>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            <div class="mcp-tools-actions">
+                <button class="mcp-tools-select-all" onclick="selectAllTools()">
+                    <i class="fas fa-check-double"></i> 全选
+                </button>
+                <button class="mcp-tools-select-none" onclick="selectNoTools()">
+                    <i class="fas fa-times"></i> 全不选
+                </button>
+            </div>
+        </details>
+        
+        <div class="mcp-tools-stats" style="margin-top: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">
+            <div style="display: flex; justify-content: space-between;">
+                <span><i class="fas fa-check"></i> <span id="selected-tools-count">0</span> 已选择</span>
+                <span><i class="fas fa-server"></i> ${Object.keys(toolsByServer).length} 个服务器</span>
+            </div>
+        </div>
+    `;
+    
+    // 更新选中工具计数（默认全不选）
+    updateSelectedToolsCount();
+}
+
+// 按服务器分组工具的辅助函数
+function groupToolsByServer(tools) {
+    const grouped = {};
+    tools.forEach(tool => {
+        const serverName = tool.name.split('.')[0];
+        if (!grouped[serverName]) {
+            grouped[serverName] = [];
+        }
+        grouped[serverName].push(tool);
+    });
+    return grouped;
+}
+
+function showMCPToolsDialog() {
+    if (mcpTools.length === 0) {
+        alert('暂无可用的MCP工具，请先在MCP配置页面添加工具配置。');
+        return;
+    }
+    
+    const toolsList = mcpTools.map(tool => `
+        <div class="mcp-tool-option" data-tool-name="${tool.name}">
+            <h4>${tool.name}</h4>
+            <p>${tool.description}</p>
+            ${tool.parameters ? `<details>
+                <summary>参数说明</summary>
+                <pre>${JSON.stringify(tool.parameters, null, 2)}</pre>
+            </details>` : ''}
+        </div>
+    `).join('');
+    
+    const dialog = document.createElement('div');
+    dialog.className = 'mcp-tools-dialog';
+    dialog.innerHTML = `
+        <div class="mcp-tools-dialog-content">
+            <h3>可用的MCP工具</h3>
+            <div class="mcp-tools-grid">${toolsList}</div>
+            <div class="mcp-tools-dialog-actions">
+                <button onclick="closeMCPToolsDialog()">关闭</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // 添加工具选择事件
+    dialog.querySelectorAll('.mcp-tool-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const toolName = this.getAttribute('data-tool-name');
+            const chatInput = document.getElementById('chat-input');
+            if (chatInput) {
+                chatInput.value = `请使用 ${toolName} 工具帮我`;
+                chatInput.focus();
+            }
+            closeMCPToolsDialog();
+        });
+    });
+}
+
+function closeMCPToolsDialog() {
+    const dialog = document.querySelector('.mcp-tools-dialog');
+    if (dialog) {
+        dialog.remove();
+    }
+}
+
+// MCP工具搜索和过滤功能
+function filterMCPTools(searchTerm) {
+    const toolItems = document.querySelectorAll('.mcp-tool-item');
+    const term = searchTerm.toLowerCase().trim();
+    let visibleCount = 0;
+    
+    toolItems.forEach(item => {
+        const toolName = item.dataset.toolName || '';
+        const server = item.dataset.server || '';
+        const desc = item.dataset.desc || '';
+        
+        const matches = toolName.includes(term) || 
+                       server.includes(term) || 
+                       desc.includes(term);
+        
+        if (matches || term === '') {
+            item.style.display = 'flex';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    
+    // 更新工具详情摘要
+    const summary = document.querySelector('.mcp-tools-details summary');
+    if (summary) {
+        const totalCount = toolItems.length;
+        if (term === '') {
+            summary.innerHTML = `<i class="fas fa-list"></i> 工具选择 (${totalCount})`;
+        } else {
+            summary.innerHTML = `<i class="fas fa-search"></i> 搜索结果 (${visibleCount}/${totalCount})`;
+        }
+    }
+}
+
+// 切换MCP工具区域展开/收缩
+function toggleMCPToolsExpanded() {
+    const toolsCard = document.querySelector('#mcp-tools-status').closest('.info-card');
+    const currentHeight = toolsCard.style.minHeight;
+    
+    if (currentHeight === '350px' || !currentHeight) {
+        // 展开到更大
+        toolsCard.style.minHeight = '500px';
+        toolsCard.style.maxHeight = '70vh';
+        
+        // 更新工具列表最大高度
+        const toolsList = document.querySelector('.mcp-tools-list');
+        if (toolsList) {
+            toolsList.style.maxHeight = '350px';
+        }
+        
+        // 更新按钮图标
+        const expandBtn = document.querySelector('button[onclick="toggleMCPToolsExpanded()"] i');
+        if (expandBtn) {
+            expandBtn.className = 'fas fa-compress-arrows-alt';
+        }
+    } else {
+        // 收缩到正常大小
+        toolsCard.style.minHeight = '350px';
+        toolsCard.style.maxHeight = 'none';
+        
+        // 恢复工具列表最大高度
+        const toolsList = document.querySelector('.mcp-tools-list');
+        if (toolsList) {
+            toolsList.style.maxHeight = '200px';
+        }
+        
+        // 更新按钮图标
+        const expandBtn = document.querySelector('button[onclick="toggleMCPToolsExpanded()"] i');
+        if (expandBtn) {
+            expandBtn.className = 'fas fa-expand-arrows-alt';
+        }
+    }
+}
+
+// 更新选中工具计数
+function updateSelectedToolsCount() {
+    const selectedCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:checked');
+    const countElement = document.getElementById('selected-tools-count');
+    if (countElement) {
+        countElement.textContent = selectedCheckboxes.length;
+    }
+}
+
+// 重写全选和全不选函数，添加计数更新
+function selectAllTools() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+    updateSelectedToolsCount();
+}
+
+function selectNoTools() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    updateSelectedToolsCount();
+}
+
+// 大面板更新函数
+function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
+    const toolsContainer = document.getElementById('mcp-tools-status-large');
+    if (!toolsContainer) return;
+    
+    if (tools.length === 0) {
+        toolsContainer.innerHTML = `
+            <div class="mcp-status-empty">
+                <div style="font-size: 4rem; margin-bottom: 20px;">🔧</div>
+                <div class="mcp-status-none">暂无配置的MCP工具</div>
+                <div style="margin-top: 12px; font-size: 1rem; color: rgba(255, 255, 255, 0.6);">
+                    MCP工具可以大大增强助手的功能，支持文件系统、数据库等多种工具类型
+                </div>
+                <a href="/mcp" class="mcp-config-link">
+                    <i class="fas fa-plus"></i> 前往配置
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    // 按服务器分组显示工具
+    const toolsByServer = groupToolsByServer(tools);
+    const serversHtml = Object.keys(toolsByServer).map(serverName => {
+        const serverTools = toolsByServer[serverName];
+        const isConnected = serverStatus[serverName]?.connected || false;
+        const isEnabled = serverStatus[serverName]?.enabled || false;
+        const statusClass = isConnected ? 'connected' : (isEnabled ? 'disconnected' : 'disabled');
+        
+        return `
+            <div class="mcp-server-item ${statusClass}">
+                <div class="mcp-server-name">${serverName}</div>
+                <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
+            </div>
+        `;
+    }).join('');
+    
+    toolsContainer.innerHTML = `
+        <div class="mcp-tools-large-grid">
+            <div class="mcp-servers-section">
+                <h4><i class="fas fa-server"></i> 服务器状态</h4>
+                <div class="mcp-servers-list">
+                    ${serversHtml}
+                </div>
+                <div class="mcp-tools-stats" style="margin-top: 15px; padding: 12px; background: rgba(255,255,255,0.08); border-radius: 6px; font-size: 0.9rem; color: rgba(255,255,255,0.8);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span><i class="fas fa-server"></i> ${Object.keys(toolsByServer).length} 个服务器</span>
+                        <span><i class="fas fa-tools"></i> ${tools.length} 个工具</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span><i class="fas fa-check"></i> <span id="selected-tools-count-large">0</span> 已选择</span>
+                        <span><i class="fas fa-sync-alt"></i> <button onclick="loadMCPTools()" style="background: none; border: none; color: #00d4aa; cursor: pointer; font-size: 0.9rem;">刷新</button></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mcp-tools-section">
+                <h4><i class="fas fa-list"></i> 工具管理</h4>
+                
+                <div class="mcp-tools-search-large">
+                    <input type="text" id="mcp-tools-search-large" placeholder="搜索工具名称、服务器或描述..." 
+                           onkeyup="filterMCPToolsLarge(this.value)">
+                </div>
+                
+                <div class="mcp-tools-list-large" id="mcp-tools-list-large">
+                    ${tools.map(tool => {
+                        const serverName = tool.name.split('.')[0];
+                        const toolName = tool.name.split('.').slice(1).join('.');
+                        return `
+                            <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
+                                <label class="mcp-tool-checkbox-label">
+                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}">
+                                    <div class="mcp-tool-content">
+                                        <div class="mcp-tool-name">
+                                            <i class="fas fa-cog"></i>
+                                            ${toolName}
+                                            <span style="opacity: 0.6; font-size: 0.85em; margin-left: 8px;">(${serverName})</span>
+                                        </div>
+                                        </div>
+                                </label>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                
+                <div class="mcp-tools-actions-large">
+                    <button class="mcp-tools-select-all" onclick="selectAllToolsLarge()">
+                        <i class="fas fa-check-double"></i> 全选
+                    </button>
+                    <button class="mcp-tools-select-none" onclick="selectNoToolsLarge()">
+                        <i class="fas fa-times"></i> 全不选
+                    </button>
+                    <button class="mcp-tools-select-all" onclick="syncToolsSelection()" style="background: rgba(161, 196, 253, 0.2); border-color: rgba(161, 196, 253, 0.4);">
+                        <i class="fas fa-sync"></i> 同步选择
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 更新大面板选中工具计数（默认全不选）
+    updateSelectedToolsCountLarge();
+}
+
+// 大面板搜索功能
+function filterMCPToolsLarge(searchTerm) {
+    const toolItems = document.querySelectorAll('#mcp-tools-list-large .mcp-tool-item');
+    const term = searchTerm.toLowerCase().trim();
+    let visibleCount = 0;
+    
+    toolItems.forEach(item => {
+        const toolName = item.dataset.toolName || '';
+        const server = item.dataset.server || '';
+        const desc = item.dataset.desc || '';
+        
+        const matches = toolName.includes(term) || 
+                       server.includes(term) || 
+                       desc.includes(term);
+        
+        if (matches || term === '') {
+            item.style.display = 'flex';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    
+    // 更新工具部分标题
+    const toolsSection = document.querySelector('.mcp-tools-section h4');
+    if (toolsSection) {
+        const totalCount = toolItems.length;
+        if (term === '') {
+            toolsSection.innerHTML = `<i class="fas fa-list"></i> 工具管理`;
+        } else {
+            toolsSection.innerHTML = `<i class="fas fa-search"></i> 搜索结果 (${visibleCount}/${totalCount})`;
+        }
+    }
+}
+
+// 大面板工具选择函数
+function selectAllToolsLarge() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+    updateSelectedToolsCountLarge();
+}
+
+function selectNoToolsLarge() {
+    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    updateSelectedToolsCountLarge();
+}
+
+// 同步大面板和小面板的选择
+function syncToolsSelection() {
+    const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
+    const smallCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)');
+    
+    // 从大面板同步到小面板
+    largeCheckboxes.forEach(largeCheckbox => {
+        const toolName = largeCheckbox.value;
+        const smallCheckbox = Array.from(smallCheckboxes).find(cb => cb.value === toolName);
+        if (smallCheckbox) {
+            smallCheckbox.checked = largeCheckbox.checked;
+        }
+    });
+    
+    updateSelectedToolsCount();
+    updateSelectedToolsCountLarge();
+}
+
+// 更新大面板选中工具计数
+function updateSelectedToolsCountLarge() {
+    const selectedCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large:checked');
+    const countElement = document.getElementById('selected-tools-count-large');
+    if (countElement) {
+        countElement.textContent = selectedCheckboxes.length;
+    }
+}
+
+// 切换大面板展开/收缩
+function toggleMCPPanel() {
+    const panel = document.querySelector('.mcp-tools-panel');
+    const toggleButton = document.querySelector('.mcp-panel-toggle i');
+    
+    if (panel.classList.contains('collapsed')) {
+        panel.classList.remove('collapsed');
+        toggleButton.className = 'fas fa-chevron-up';
+    } else {
+        panel.classList.add('collapsed');
+        toggleButton.className = 'fas fa-chevron-down';
+    }
+}
+
+// 添加工具选择变化监听
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('mcp-tool-checkbox')) {
+        updateSelectedToolsCount();
+        if (e.target.classList.contains('mcp-tool-checkbox-large')) {
+            updateSelectedToolsCountLarge();
+        }
+    }
+});
+
 // 导出功能供外部使用
 window.AssistantApp = {
     sendMessage,
     addMessage,
     refreshData,
-    handleError
+    handleError,
+    loadMCPTools,
+    showMCPToolsDialog,
+    filterMCPTools,
+    filterMCPToolsLarge,
+    toggleMCPToolsExpanded,
+    toggleMCPPanel,
+    selectAllTools,
+    selectNoTools,
+    selectAllToolsLarge,
+    selectNoToolsLarge,
+    syncToolsSelection
 };

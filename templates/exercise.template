@@ -12,10 +12,10 @@
     <!-- 顶部导航栏 -->
     <div class="top-sidebar-container">
         <div class="top-sidebar">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" style="font-size: 18px;">主页</a>
+            <a href="/main" style="font-size: 18px;">主页</a>
             <a href="/exercise" style="font-size: 18px; color: var(--accent-color);">💪 锻炼管理</a>
             
             <div class="date-picker-container">

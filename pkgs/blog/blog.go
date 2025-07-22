@@ -234,7 +234,7 @@ func GetRecentlyTimedBlog(title string) *module.Blog {
 func GetAll(num int,flag int) []*module.Blog {
 	s := make([]*module.Blog,0)
 	for _,b := range Blogs{
-		log.DebugF("flag=%d b.AuthType=%d",flag,b.AuthType)
+		//log.DebugF("flag=%d b.AuthType=%d",flag,b.AuthType)
 		if (flag & b.AuthType) != 0 {
 			s = append(s,b)
 		}

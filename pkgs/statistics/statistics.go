@@ -807,3 +807,106 @@ func min(a, b int) int {
 	}
 	return b
 } 
+
+// 获取所有blog名称,以空格分割
+func RawAllBlogData() string {
+	blogs := blog.Blogs
+	blogNames := make([]string, 0)
+	for _, b := range blogs {
+		blogNames = append(blogNames, b.Title)
+	}
+	return strings.Join(blogNames, " ")
+}
+
+// 通过名称获取blog内容
+func RawBlogData(title string) string {
+	blog := blog.GetBlog(title)
+	log.DebugF("RawBlogData: %s, blog: %v", title, blog)
+	if blog != nil {
+		return blog.Content
+	}
+	return ""
+}
+
+// 获取所有comment
+func RawAllCommentData() string {
+	comments := comment.Comments
+	commentData := make([]string, 0)
+	for _, c := range comments {
+		commentData = append(commentData, c.Title)
+	}
+	return strings.Join(commentData, " ")
+}
+// 通过名称获取comment
+func RawCommentData(title string) string {
+	comments := comment.GetComments(title)
+	if comments != nil {
+		msg := ""
+		for _, c := range comments.Comments {	
+			msg += c.Msg + "\n"
+		}
+		return msg
+	}
+	return ""
+}
+
+// 获取所有cooperation
+func RawAllCooperationData() string {
+	cooperations := cooperation.Cooperations
+	cooperationData := make([]string, 0)
+	for _, c := range cooperations {
+		cooperationData = append(cooperationData, c.Account)
+	}
+	return strings.Join(cooperationData, " ")
+}
+
+// 根据日期获取所有Blog
+func RawAllBlogDataByDate(date string) string {
+	blogs := blog.Blogs
+	blogData := make([]string, 0)
+	for _, b := range blogs {
+		if b.CreateTime == date {
+			blogData = append(blogData, b.Title)
+		}
+	}
+	return strings.Join(blogData, " ")
+
+}
+
+// 根据日期范围获取所有Blog
+func RawAllBlogDataByDateRange(startDate, endDate string) string {
+	blogs := blog.Blogs
+	blogData := make([]string, 0)
+	for _, b := range blogs {
+		if b.CreateTime >= startDate && b.CreateTime <= endDate {
+			blogData = append(blogData, b.Title)
+		}
+	}
+	return strings.Join(blogData, " ")
+}
+
+
+// 根据日期范围获取所有Blog数量
+func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
+	blogs := blog.Blogs
+	count := 0
+	for _, b := range blogs {
+		if b.CreateTime >= startDate && b.CreateTime <= endDate {
+			count++
+		}
+	}
+	return count
+}
+
+// 获取指定日期Blog数量
+func RawBlogDataByDate(date string) string {
+	blogs := blog.Blogs
+	blogData := make([]string, 0)
+	for _, b := range blogs {
+		if b.CreateTime == date {
+			blogData = append(blogData, b.Title)
+		}
+	}
+	return strings.Join(blogData, " ")
+}
+

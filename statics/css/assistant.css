@@ -300,6 +300,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    height: fit-content;
 }
 
 .panel-header {
@@ -793,4 +794,1156 @@ input:checked + .slider:before {
 
 .assistant-message .message-text code {
     background: rgba(255, 255, 255, 0.1);
+}
+
+/* 工具调用状态样式 */
+.tool-call-status {
+    margin-bottom: 15px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0, 212, 170, 0.1), rgba(161, 196, 253, 0.1));
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    padding: 15px;
+    backdrop-filter: blur(5px);
+    animation: toolCallAppear 0.3s ease-out;
+    transition: all 0.3s ease;
+}
+
+@keyframes toolCallAppear {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.tool-call-indicator {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.tool-call-spinner {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 212, 170, 0.2);
+    border-radius: 50%;
+    border: 2px solid rgba(0, 212, 170, 0.4);
+}
+
+.tool-call-spinner i {
+    color: #00d4aa;
+    font-size: 14px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.tool-call-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.tool-call-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #a1c4fd;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tool-call-title i {
+    font-size: 0.9rem;
+}
+
+.tool-call-details {
+    margin-bottom: 10px;
+}
+
+.tool-call-details strong {
+    color: #00d4aa;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.tool-call-args {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8rem;
+    font-family: 'Consolas', monospace;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-call-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00d4aa, #a1c4fd);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: progressShimmer 1.5s infinite;
+}
+
+@keyframes progressShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-text {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    min-width: 80px;
+    font-weight: 500;
+}
+
+/* 工具调用完成状态 */
+.tool-call-status.completed .tool-call-spinner {
+    background: rgba(0, 212, 170, 0.3);
+    border-color: #00d4aa;
+}
+
+.tool-call-status.completed .progress-fill {
+    background: #00d4aa;
+}
+
+.tool-call-status.completed .progress-text {
+    color: #00d4aa;
+}
+
+/* 多个工具调用时的样式 */
+.tool-call-status + .tool-call-status {
+    margin-top: 10px;
+}
+
+/* MCP工具状态样式 - 优化版 */
+.mcp-tools-status {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.mcp-status-none {
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+}
+
+.mcp-status-loading {
+    color: #a1c4fd;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcp-status-empty {
+    text-align: center;
+    padding: 20px;
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.mcp-config-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: #00d4aa;
+    text-decoration: none;
+    font-size: 0.9rem;
+    padding: 6px 12px;
+    background: rgba(0, 212, 170, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    transition: all 0.3s ease;
+}
+
+.mcp-config-link:hover {
+    background: rgba(0, 212, 170, 0.2);
+    transform: translateY(-1px);
+}
+
+.mcp-tools-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mcp-tools-count {
+    font-weight: 600;
+    color: #00d4aa;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcp-refresh-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.8);
+    transition: all 0.3s ease;
+}
+
+.mcp-refresh-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.mcp-servers-list {
+    margin-bottom: 12px;
+}
+
+.mcp-server-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    transition: all 0.3s ease;
+}
+
+.mcp-server-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(2px);
+}
+
+.mcp-server-item:last-child {
+    border-bottom: none;
+}
+
+.mcp-server-item.connected .mcp-server-name {
+    color: #00d4aa;
+}
+
+.mcp-server-item.disconnected .mcp-server-name {
+    color: #ff6b6b;
+}
+
+.mcp-server-item.disabled .mcp-server-name {
+    opacity: 0.5;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.mcp-server-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mcp-server-name::before {
+    content: '🔧';
+    font-size: 0.8rem;
+}
+
+.mcp-server-item.connected .mcp-server-name::before {
+    content: '✅';
+}
+
+.mcp-server-item.disconnected .mcp-server-name::before {
+    content: '❌';
+}
+
+.mcp-server-item.disabled .mcp-server-name::before {
+    content: '⏸️';
+}
+
+.mcp-server-desc {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+.mcp-tools-details {
+    margin-top: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mcp-tools-details summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #a1c4fd;
+    margin-bottom: 0;
+    padding: 12px 16px;
+    background: rgba(161, 196, 253, 0.1);
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.mcp-tools-details summary:hover {
+    background: rgba(161, 196, 253, 0.2);
+}
+
+.mcp-tools-details[open] summary {
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mcp-tools-list {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 12px 16px 0;
+}
+
+.mcp-tool-item {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.3s ease;
+}
+
+.mcp-tool-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    padding-left: 8px;
+    margin-left: -8px;
+    margin-right: -8px;
+    border-radius: 4px;
+}
+
+.mcp-tool-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.mcp-tool-name {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    display: block;
+    font-size: 0.9rem;
+}
+
+.mcp-tool-desc {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8rem;
+    display: block;
+    line-height: 1.4;
+}
+
+/* MCP工具对话框样式 */
+.mcp-tools-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.mcp-tools-dialog-content {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.mcp-tools-dialog-content h3 {
+    margin: 0 0 16px 0;
+    color: #333;
+    font-size: 1.25rem;
+}
+
+.mcp-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.mcp-tool-option {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mcp-tool-option:hover {
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+.mcp-tool-option h4 {
+    margin: 0 0 8px 0;
+    color: #333;
+    font-size: 1rem;
+}
+
+.mcp-tool-option p {
+    margin: 0 0 8px 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.mcp-tool-option details {
+    margin-top: 8px;
+}
+
+.mcp-tool-option details summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #007bff;
+}
+
+.mcp-tool-option details pre {
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    overflow-x: auto;
+    margin-top: 4px;
+}
+
+.mcp-tools-dialog-actions {
+    text-align: right;
+}
+
+.mcp-tools-dialog-actions button {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.mcp-tools-dialog-actions button:hover {
+    background: #5a6268;
+}
+
+/* MCP工具选择样式 - 优化版 */
+.mcp-tool-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 2px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.mcp-tool-checkbox-label:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.mcp-tool-checkbox {
+    margin: 0;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: #00d4aa;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.mcp-tool-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mcp-tool-item {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    transition: all 0.3s ease;
+}
+
+.mcp-tool-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px rgba(0, 212, 170, 0.1);
+}
+
+.mcp-tool-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.mcp-tools-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0 0 8px 8px;
+}
+
+.mcp-tools-select-all, .mcp-tools-select-none {
+    background: rgba(0, 212, 170, 0.2);
+    border: 1px solid rgba(0, 212, 170, 0.4);
+    color: white;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    flex: 1;
+}
+
+.mcp-tools-select-all:hover, .mcp-tools-select-none:hover {
+    background: rgba(0, 212, 170, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 212, 170, 0.2);
+}
+
+.mcp-tools-select-all {
+    background: rgba(0, 212, 170, 0.25);
+}
+
+.mcp-tools-select-none {
+    background: rgba(255, 107, 107, 0.2);
+    border-color: rgba(255, 107, 107, 0.4);
+}
+
+.mcp-tools-select-none:hover {
+    background: rgba(255, 107, 107, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
+}
+
+.mcp-info {
+    margin-top: 15px;
+    padding: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 212, 170, 0.05);
+    border-radius: 6px;
+}
+
+.mcp-info small {
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.4;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+/* MCP工具搜索框样式 */
+.mcp-tools-search input {
+    transition: all 0.3s ease;
+}
+
+.mcp-tools-search input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 170, 0.5) !important;
+    box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.2);
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.mcp-tools-search input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* MCP工具统计样式 */
+.mcp-tools-stats {
+    border: 1px solid rgba(0, 212, 170, 0.2);
+}
+
+.mcp-tools-stats i {
+    color: rgba(0, 212, 170, 0.8);
+    margin-right: 4px;
+}
+
+/* 展开状态样式 */
+.mcp-tools-expanded .mcp-tools-list {
+    max-height: 400px !important;
+}
+
+.mcp-tools-expanded {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* MCP工具管理大面板样式 */
+.mcp-tools-panel {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 20px 0 0;
+    width: 100%;
+    min-height: calc(100vh - 120px);
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.mcp-tools-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 212, 170, 0.1);
+    border-radius: 15px 15px 0 0;
+}
+
+.mcp-tools-panel-header h3 {
+    color: #00d4aa;
+    font-size: 1.4rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+}
+
+.mcp-tools-panel-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.mcp-panel-toggle {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    padding: 10px 12px;
+    transition: all 0.3s ease;
+    font-size: 1rem;
+}
+
+.mcp-panel-toggle:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.mcp-tools-panel-content {
+    padding: 0;
+    max-height: calc(100vh - 180px);
+    overflow: hidden;
+    transition: all 0.5s ease;
+}
+
+.mcp-tools-panel.collapsed .mcp-tools-panel-content {
+    max-height: 0;
+    padding: 0;
+}
+
+.mcp-tools-panel.collapsed .mcp-panel-toggle i {
+    transform: rotate(180deg);
+}
+
+/* 大面板工具状态样式 */
+.mcp-tools-status-large {
+    padding: 30px;
+    min-height: calc(100vh - 240px);
+    display: block;
+}
+
+.mcp-tools-status-large .mcp-status-loading {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 1.1rem;
+    color: #a1c4fd;
+    min-height: 200px;
+}
+
+.mcp-tools-status-large .mcp-status-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 40px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+}
+
+.mcp-tools-status-large .mcp-status-empty > div:first-child {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+.mcp-tools-status-large .mcp-config-link {
+    font-size: 1.1rem;
+    padding: 12px 24px;
+    margin-top: 20px;
+}
+
+/* 大面板工具列表网格布局 */
+.mcp-tools-large-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 30px;
+    align-items: start;
+}
+
+.mcp-servers-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    width: 300px;
+    flex-shrink: 0;
+}
+
+.mcp-servers-section h4 {
+    color: #a1c4fd;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcp-tools-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    height: calc(100vh - 280px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mcp-tools-section h4 {
+    color: #00d4aa;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 大面板工具搜索框 */
+.mcp-tools-search-large {
+    margin-bottom: 20px;
+    flex-shrink: 0;
+}
+
+.mcp-tools-search-large input {
+    width: 100%;
+    padding: 15px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    color: white;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.mcp-tools-search-large input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 170, 0.5);
+    box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.2);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* 大面板工具列表 */
+.mcp-tools-list-large {
+    flex: 1;
+    max-height: calc(100vh - 450px);
+    overflow-y: auto;
+    padding-right: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    align-content: start;
+}
+
+.mcp-tools-list-large .mcp-tool-item {
+    padding: 15px;
+    margin-bottom: 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    height: fit-content;
+    transition: all 0.2s ease;
+}
+
+.mcp-tools-list-large .mcp-tool-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(0, 212, 170, 0.3);
+    transform: translateY(-2px);
+}
+
+.mcp-tools-list-large .mcp-tool-name {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.mcp-tools-list-large .mcp-tool-desc {
+    font-size: 0.9rem;
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* 大面板操作按钮 */
+.mcp-tools-actions-large {
+    display: flex;
+    gap: 12px;
+    margin-top: auto;
+    padding: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 0 0 10px 10px;
+}
+
+.mcp-tools-actions-large button {
+    padding: 12px 24px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    min-width: 120px;
+}
+
+/* 信息网格样式 */
+.mcp-info-large {
+    padding: 30px;
+    background: rgba(0, 212, 170, 0.05);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mcp-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.mcp-info-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.mcp-info-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.mcp-info-item i {
+    color: #00d4aa;
+    font-size: 1.5rem;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.mcp-info-item strong {
+    color: #a1c4fd;
+    font-size: 1rem;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.mcp-info-item p {
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.4;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.mcp-info-item a {
+    color: #00d4aa;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.mcp-info-item a:hover {
+    text-decoration: underline;
+}
+
+/* 响应式设计 - MCP工具 */
+@media (max-width: 768px) {
+    .mcp-tools-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .mcp-tools-dialog-content {
+        width: 95%;
+        padding: 16px;
+    }
+    
+    .mcp-tools-actions {
+        justify-content: center;
+    }
+    
+    /* 大面板响应式 */
+    .mcp-tools-panel {
+        margin: 10px 5px 0;
+        border-radius: 10px;
+        min-height: calc(100vh - 80px);
+    }
+    
+    .mcp-tools-panel-header {
+        padding: 15px 20px;
+    }
+    
+    .mcp-tools-panel-header h3 {
+        font-size: 1.2rem;
+    }
+    
+    .mcp-tools-status-large {
+        grid-template-columns: 1fr;
+        padding: 20px;
+        min-height: calc(100vh - 200px);
+    }
+    
+    .mcp-tools-list-large {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        max-height: calc(100vh - 380px);
+    }
+    
+    .mcp-tools-section {
+        height: calc(100vh - 240px);
+    }
+    
+    .mcp-tools-large-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .mcp-servers-section {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    
+    .mcp-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .mcp-info-large {
+        padding: 20px;
+    }
+    
+    .mcp-tools-actions-large {
+        flex-direction: column;
+        padding: 15px;
+        margin-top: auto;
+        position: sticky;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+    }
+    
+    .mcp-tools-actions-large button {
+        width: 100%;
+        margin-bottom: 8px;
+    }
+    
+    .mcp-tools-actions-large button:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* Markdown渲染样式（与博客系统一致） */
+.message-text {
+    line-height: 1.7;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* 标题样式 */
+.message-text h1, .message-text h2, .message-text h3, .message-text h4, .message-text h5, .message-text h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    color: #00d4aa;
+    border-bottom: 1px solid rgba(0, 212, 170, 0.3);
+    padding-bottom: 5px;
+}
+
+.message-text h1 { font-size: 2em; }
+.message-text h2 { font-size: 1.75em; }
+.message-text h3 { font-size: 1.5em; }
+.message-text h4 { font-size: 1.25em; }
+.message-text h5 { font-size: 1.1em; }
+.message-text h6 { font-size: 1em; }
+
+/* 段落样式 */
+.message-text p {
+    margin-bottom: 1em;
+}
+
+/* 链接样式 */
+.message-text a {
+    color: #a1c4fd;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.message-text a:hover {
+    text-decoration: underline;
+    color: #00d4aa;
+}
+
+/* 列表样式 */
+.message-text ul, .message-text ol {
+    margin-left: 2em;
+    margin-bottom: 1em;
+}
+
+.message-text li {
+    margin-bottom: 0.5em;
+}
+
+/* 引用样式 */
+.message-text blockquote {
+    border-left: 4px solid #00d4aa;
+    padding-left: 1em;
+    margin-left: 0;
+    margin-bottom: 1em;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(0, 212, 170, 0.1);
+    padding: 10px;
+    border-radius: 0 4px 4px 0;
+}
+
+/* 代码块样式 */
+.message-text pre {
+    background: #2b2b2b;
+    padding: 1em;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 1em;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-text code {
+    font-family: 'Consolas', monospace;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 5px;
+    border-radius: 3px;
+    color: #a1c4fd;
+}
+
+.message-text pre code {
+    background: transparent;
+    padding: 0;
+    color: #f8f8f2;
+}
+
+/* 图片样式 */
+.message-text img {
+    max-width: 100%;
+    height: auto;
+    margin: 1em 0;
+    border-radius: 4px;
+}
+
+/* 表格样式 */
+.message-text table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1em;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.message-text th, .message-text td {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.message-text th {
+    background: rgba(0, 212, 170, 0.2);
+    color: #00d4aa;
+    font-weight: 600;
+}
+
+.message-text tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.message-text tr:hover {
+    background: rgba(0, 212, 170, 0.05);
+}
+
+/* 分割线 */
+.message-text hr {
+    margin: 20px 0;
+    border: none;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 170, 0.5), transparent);
+}
+
+/* 第一个和最后一个元素的间距 */
+.message-text > *:first-child {
+    margin-top: 0;
+}
+
+.message-text > *:last-child {
+    margin-bottom: 0;
 }

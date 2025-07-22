@@ -26,34 +26,15 @@ import(
 	"comment"
 	"sort"
 	"lifecountdown"
-	"bytes"
-	"io"
-	"net/url"
 	"statistics"
+	"llm"
+	"mcp"
 )
 
 func Info(){
 	log.Debug("info http v1.0")
 }
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
-}
-
-type ChatResponseChunk struct {
-	Choices []struct {
-		Delta struct {
-			Content string `json:"content"`
-		} `json:"delta"`
-	} `json:"choices"`
-}
 
 // parseAuthTypeString 解析权限类型字符串，支持组合权限
 func parseAuthTypeString(authTypeStr string) int {
@@ -670,7 +651,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 
 	control.AddComment(title, comment, owner, pwd, mail)
 	w.WriteHeader(h.StatusOK)
-	w.Write([]byte("评论提交成功"))
+	w.Write([]byte("评论提交成功"+title+" "+owner+" "+pwd+" "+mail))
 }
 
 // 检查用户名信息的API（返回使用该用户名的用户数量）
@@ -906,7 +887,7 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 	h.SetCookie(w, cookie)
 	
 	log.DebugF("login success account=%s pwd=%s session=%s iscooperation=%d",account,pwd,session,cooperation.IsCooperation(session))
-	h.Redirect(w, r,"/link", 302)
+	h.Redirect(w, r,"/public", 302)
 }
 
 func HandleIndex(w h.ResponseWriter,r *h.Request){
@@ -1904,6 +1885,7 @@ func Init() int{
 	
 	// 公开博客页面路由
 	h.HandleFunc("/public", HandlePublic)
+	h.HandleFunc("/main", HandlePublic)
 	
 	// 锻炼相关路由
 	h.HandleFunc("/exercise", HandleExercise)
@@ -1955,6 +1937,11 @@ func Init() int{
 	// 系统配置管理路由
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)
+	
+	// MCP 配置管理路由
+	h.HandleFunc("/mcp", mcp.HandleMCPPage)
+	h.HandleFunc("/api/mcp", mcp.HandleMCPAPI)
+	h.HandleFunc("/api/mcp/tools", HandleMCPToolsAPI)
 
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
@@ -2899,120 +2886,73 @@ func HandleAssistant(w h.ResponseWriter, r *h.Request) {
 	view.PageAssistant(w)
 }
 
-// 智能助手聊天API处理函数 - 支持流式响应
+// 智能助手聊天API处理函数 - 使用llm CallLM
 func HandleAssistantChat(w h.ResponseWriter, r *h.Request) {
+	log.Debug("=== Assistant Chat Request Started (MCP Mode) ===")
 	LogRemoteAddr("HandleAssistantChat", r)
+	
+	if checkLogin(r) != 0 {
+		log.WarnF("Unauthorized assistant chat request from %s", r.RemoteAddr)
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+	
+	llm.ProcessRequest(r,w)
+}
+
+
+// MCP工具API处理函数
+func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleMCPToolsAPI", r)
 	if checkLogin(r) != 0 {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
 	
-	if r.Method != h.MethodPost {
-		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
-		return
-	}
+	w.Header().Set("Content-Type", "application/json")
 	
-	// 读取请求体
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		h.Error(w, "Error reading request body", h.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-	
-	// 解析请求
-	var request struct {
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
-	}
-	
-	if err := json.Unmarshal(body, &request); err != nil {
-		h.Error(w, "Error parsing request body", h.StatusBadRequest)
-		return
-	}
-	
-	// 准备对话上下文，包含系统提示和博客数据
-	messages := prepareConversationContext(request.Messages)
-	
-	// 保存对话到博客
-	go saveConversationToBlog(request.Messages)
-	
-	// 设置流式响应头
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
-	// 创建 DeepSeek API 请求
-	chatReq := ChatRequest{
-		Model:    "deepseek-chat",
-		Messages: messages,
-		Stream:   true,
-	}
-	
-	apiReqBody, err := json.Marshal(chatReq)
-	if err != nil {
-		h.Error(w, "Error creating API request", h.StatusInternalServerError)
-		return
-	}
-	
-	apiReq, err := h.NewRequest("POST", config.GetConfig("deepseek_api_url"), bytes.NewBuffer(apiReqBody))
-	if err != nil {
-		h.Error(w, "Error creating API request", h.StatusInternalServerError)
-		return
-	}
-	
-	apiReq.Header.Set("Content-Type", "application/json")
-	apiReq.Header.Set("Authorization", "Bearer "+config.GetConfig("deepseek_api_key"))
-	
-	// 发送请求
-	client := &h.Client{}
-	resp, err := client.Do(apiReq)
-	if err != nil {
-		h.Error(w, "Error connecting to DeepSeek API", h.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-	
-	// 流式读取响应
-	flusher, ok := w.(h.Flusher)
-	if !ok {
-		h.Error(w, "Streaming not supported", h.StatusInternalServerError)
-		return
-	}
-	
-	buf := make([]byte, 1024)
-	for {
-		n, err := resp.Body.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				fmt.Fprintf(w, "data: [DONE]\n\n")
-				flusher.Flush()
-				return
+	switch r.Method {
+	case "GET":
+		// 获取可用工具列表和服务器状态
+		action := r.URL.Query().Get("action")
+		
+		switch action {
+		case "status":
+			// 获取服务器状态
+			status := mcp.GetServerStatus()
+			response := map[string]interface{}{
+				"success": true,
+				"status":  status,
 			}
-			log.ErrorF("Error reading response: %v", err)
+			json.NewEncoder(w).Encode(response)
+		default:
+			// 获取工具列表
+			tools := mcp.GetAvailableToolsImproved()
+			response := map[string]interface{}{
+				"success": true,
+				"message": "MCP tools retrieved successfully",
+				"data":    tools,
+			}
+			json.NewEncoder(w).Encode(response)
+		}
+		
+	case "POST":
+		// 测试工具调用
+		var toolCall mcp.MCPToolCall
+		if err := json.NewDecoder(r.Body).Decode(&toolCall); err != nil {
+			response := map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Invalid JSON: %v", err),
+			}
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 		
-		chunk := string(buf[:n])
-		for _, line := range strings.Split(chunk, "\n") {
-			if strings.HasPrefix(line, "data: ") {
-				data := strings.TrimPrefix(line, "data: ")
-				if data == "[DONE]" {
-					fmt.Fprintf(w, "data: %s\n\n", data)
-					flusher.Flush()
-					continue
-				}
-				
-				var respChunk ChatResponseChunk
-				if err := json.Unmarshal([]byte(data), &respChunk); err == nil {
-					if len(respChunk.Choices) > 0 && respChunk.Choices[0].Delta.Content != "" {
-						fmt.Fprintf(w, "data: %s\n\n", url.PathEscape(respChunk.Choices[0].Delta.Content))
-						flusher.Flush()
-					}
-				}
-			}
-		}
+		result := mcp.CallToolImproved(toolCall)
+		json.NewEncoder(w).Encode(result)
+		
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
 }
 
@@ -3066,43 +3006,6 @@ func HandleAssistantSuggestions(w h.ResponseWriter, r *h.Request) {
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
-}
-
-// 生成助手回复的核心函数
-func generateAssistantResponse(message, msgType string) map[string]interface{} {
-	lowerMessage := strings.ToLower(message)
-	
-	response := map[string]interface{}{
-		"type": "text",
-		"content": "",
-	}
-	
-	// 基于消息类型和内容生成回复
-	switch msgType {
-	case "status":
-		response["content"] = generateStatusAnalysis()
-	case "time":
-		response["content"] = generateTimeAnalysis()
-	case "goals":
-		response["content"] = generateGoalsAnalysis()
-	case "suggestions":
-		response["content"] = generateSuggestionsAnalysis()
-	default:
-		// 基于消息内容的智能回复
-		if strings.Contains(lowerMessage, "状态") || strings.Contains(lowerMessage, "怎么样") {
-			response["content"] = generateStatusAnalysis()
-		} else if strings.Contains(lowerMessage, "时间") {
-			response["content"] = generateTimeAnalysis()
-		} else if strings.Contains(lowerMessage, "目标") {
-			response["content"] = generateGoalsAnalysis()
-		} else if strings.Contains(lowerMessage, "建议") {
-			response["content"] = generateSuggestionsAnalysis()
-		} else {
-			response["content"] = generateDefaultResponse()
-		}
-	}
-	
-	return response
 }
 
 // 生成今日统计数据
@@ -3182,36 +3085,6 @@ func generateSuggestionsAnalysis() string {
 // 辅助函数 - 生成默认回复
 func generateDefaultResponse() string {
 	return "这是一个有趣的问题，让我基于您的数据来分析一下...\n\n如果您需要具体的数据分析，可以尝试问我：\n• \"我最近的状态怎么样？\"\n• \"帮我分析一下时间分配\"\n• \"我的目标进度如何？\"\n• \"给我一些建议\""
-}
-
-// 准备对话上下文，包含系统提示和博客数据
-func prepareConversationContext(userMessages []Message) []Message {
-	// 收集所有博客数据
-	blogData := gatherAllBlogData()
-	
-	// 构建系统提示
-	systemPrompt := fmt.Sprintf(`你是一个专业的个人数据分析师和生活助手。你拥有用户的完整生活数据，包括：
-
-📊 **当前数据概览**：
-%s
-
-📋 **使用指南**：
-- 基于用户的实际数据进行分析和建议
-- 提供具体、可行的建议
-- 保持积极、专业的语调
-- 如果数据不足，可以询问用户获取更多信息
-
-请根据用户的问题，结合这些数据提供个性化的回答。`, blogData)
-	
-	// 构建完整的消息列表
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-	}
-	
-	// 添加用户对话历史
-	messages = append(messages, userMessages...)
-	
-	return messages
 }
 
 // 收集所有博客数据
@@ -3708,71 +3581,6 @@ func formatYearGoals(goals []interface{}) string {
 	}
 	
 	return strings.Join(goalList, ", ")
-}
-
-// 保存对话到博客
-func saveConversationToBlog(messages []Message) {
-	if len(messages) == 0 {
-		return
-	}
-	
-	// 获取当前日期
-	now := time.Now()
-	dateStr := now.Format("2006_01_02")
-	filename := fmt.Sprintf("assistant_%s.md", dateStr)
-	
-	// 获取用户的最后一条消息
-	var userMessage string
-	
-	for _, msg := range messages {
-		if msg.Role == "user" {
-			userMessage = msg.Content
-		}
-	}
-	
-	if userMessage == "" {
-		return
-	}
-	
-	// 构建对话内容
-	content := fmt.Sprintf(`# AI助手对话记录 - %s
-
-## 用户问题
-%s
-
-## AI回复
-[等待AI回复...]
-
----
-*记录时间: %s*
-`, now.Format("2006-01-02"), userMessage, now.Format("2006-01-02 15:04:05"))
-	
-	// 检查是否已存在同名博客
-	existingBlog := control.GetBlog(filename)
-	if existingBlog != nil {
-		// 追加到现有博客
-		content = fmt.Sprintf(`%s
-
-## 用户问题 (%s)
-%s
-
-## AI回复
-[等待AI回复...]
-
----
-`, existingBlog.Content, now.Format("15:04:05"), userMessage)
-	}
-	
-	// 保存博客
-	blogData := &module.UploadedBlogData{
-		Title:     fmt.Sprintf("AI助手对话记录_%s", dateStr),
-		Content:   content,
-		Tags:      "AI助手|对话记录|自动生成",
-		AuthType:  module.EAuthType_private, // 设置为私有
-	}
-	
-	// 调用博客模块保存
-	control.AddBlog(blogData)
 }
 
 // 辅助函数实现

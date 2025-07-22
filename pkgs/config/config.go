@@ -9,10 +9,10 @@ import (
 	"strconv"
 )
 
-var blog_version = "Version11.0"
+var blog_version = "Version13.0"
 
 func Info(){
-	fmt.Println("info config v11.0")
+	fmt.Println("info config v13.0")
 }
 
 func GetVersion() string{

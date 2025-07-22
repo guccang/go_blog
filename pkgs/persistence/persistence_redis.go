@@ -228,7 +228,8 @@ func SaveBlogComments(bc *module.BlogComments){
 				c.CreateTime,s,
 				c.ModifyTime,s,
 				c.Msg,s,
-				c.Mail)
+				c.Mail,s,
+				c.Pwd)
 		idx_str := fmt.Sprintf("%d",c.Idx)
 		values[idx_str] = value
 	}
@@ -281,6 +282,7 @@ func toBlogComments(title string,m map[string]string,bcs map[string]*module.Blog
 		mt   := ""
 		mail := ""
 		idx  := -1
+		pwd  := ""
 
 		// analy the hash value, split by ASCII 0x01 which is can not print
 		tokens := strings.Split(v,"\x01")
@@ -309,6 +311,8 @@ func toBlogComments(title string,m map[string]string,bcs map[string]*module.Blog
 					}else{
 						idx = the_idx
 					}
+				}else if strings.ToLower(k) == "pwd" {
+					pwd = v
 				} 
 
 			}else{
@@ -329,6 +333,7 @@ func toBlogComments(title string,m map[string]string,bcs map[string]*module.Blog
 			ModifyTime : mt,
 			Mail : mail,
 			Idx : idx,
+			Pwd: pwd,
 		}
 		bc.Comments = append(bc.Comments,&c)
 	}

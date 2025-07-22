@@ -14,7 +14,7 @@
 <body>
     <header class="page-header">
     <div class="container">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
             <h1 class="page-title">每日任务</h1>

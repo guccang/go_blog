@@ -11,10 +11,10 @@
     <!-- Sidebar -->
 	<div id="sidebar-container" class="sidebar-container">
 		<div id="sidebar" class="sidebar">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" style="font-size: 24px;">主页</a>
+            <a href="/main" style="font-size: 24px;">主页</a>
             <div class="separator"></div>
             <h2 id="title">{{.TITLE}}</h2>
 			<div class="separator"></div>
@@ -23,7 +23,7 @@
             <label for="tags">标签</label>
 			<input id="tags" type="text" name="tags" value="{{.TAGS}}">
 			<div class="separator"></div>
-            <a href="/link" class="btn-primary" style="text-align: center; margin-top: auto;">返回首页</a>
+            <a href="/main" class="btn-primary" style="text-align: center; margin-top: auto;">返回首页</a>
 		</div>
         <div class="bubble" id="bubble">&#9776;</div>
 	</div>

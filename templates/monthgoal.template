@@ -15,11 +15,11 @@
     <div class="page-wrapper">
         <!-- 侧边栏 -->
         <div class="sidebar">
-            <a href="/link" class="logo">
+            <a href="/main" class="logo">
                 <div class="img-cycle">G</div>
             </a>
             <div class="sidebar-title">月度工作目标</div>
-            <a href="/link" class="back-link">返回首页</a>
+            <a href="/main" class="back-link">返回首页</a>
         </div>
 
         <!-- 主内容区 -->

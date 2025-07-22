@@ -13,12 +13,12 @@
         <button class="sidebar-toggle" id="sidebar-toggle">&#10094;</button>
         <div class="top-sidebar-cotainer">
             <div class="top-sidebar">
-                <a href="/link">
+                <a href="/main">
                     <div class="img-cycle">G</div>
                 </a>
             </div>
         </div>
-        <a href="/link" style="font-size: 24px;">主页</a>
+        <a href="/main" style="font-size: 24px;">主页</a>
         <div class="separator"></div>
         <label for="title">文章标题</label>
         <input id="title" type="text" name="title" value="{{.TITLE}}" placeholder="输入文章标题...">

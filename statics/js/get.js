@@ -112,7 +112,7 @@ function onDelete() {
 				if (xhr.status == 200) {
 					showToast('删除成功', 'success');
 					setTimeout(() => {
-						window.location.href = '/link';
+						window.location.href = '/main';
 					}, 1500);
 				} else {
 					showToast('删除失败: ' + xhr.responseText, 'error');

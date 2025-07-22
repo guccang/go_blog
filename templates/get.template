@@ -10,10 +10,10 @@
     <!-- Sidebar -->
 	<div id="sidebar-container" class="sidebar-container">
 		<div id="sidebar" class="sidebar">
-            <a href="/link">
+            <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" style="font-size: 24px;">主页</a>
+            <a href="/main" style="font-size: 24px;">主页</a>
 			<div class="separator"></div>
             <h2 id="title">{{.TITLE}}</h2>
 			<div class="separator"></div>

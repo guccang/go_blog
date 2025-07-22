@@ -635,7 +635,7 @@ func PageSearchNormal(match string,w h.ResponseWriter,r *h.Request) int{
 	}
     // 直接显示主页
 	if match == "@main" {
-		h.Redirect(w,r,"/link",302)
+		h.Redirect(w,r,"/public",302)
 		return 0
 	}
 	// 创建timed blog
@@ -1026,6 +1026,24 @@ func PageAssistant(w h.ResponseWriter) {
 	if err != nil {
 		log.ErrorF("Failed to render assistant.template: %s", err.Error())
 		h.Error(w, "Failed to render assistant template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageMCP renders the MCP page
+func PageMCP(w h.ResponseWriter,data interface{}) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "mcp.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse mcp.template: %s", err.Error())
+		h.Error(w, "Failed to parse MCP template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.ErrorF("Failed to render mcp.template: %s", err.Error())
+		h.Error(w, "Failed to render MCP template", h.StatusInternalServerError)
 		return
 	}
 }
