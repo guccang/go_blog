@@ -1,3 +1,0 @@
-package email
-import (
-)

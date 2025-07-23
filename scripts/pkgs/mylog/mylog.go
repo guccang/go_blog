@@ -1,3 +1,0 @@
-package mylog
-import (
-)

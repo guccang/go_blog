@@ -1,3 +1,0 @@
-package comment
-import (
-)
