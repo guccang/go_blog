@@ -1840,6 +1840,7 @@ func Init() int{
 		log.ErrorF("Failed to initialize todolist: %v", err)
 	}
 	
+	h.HandleFunc("/main", HandleLink)
 	h.HandleFunc("/link",HandleLink)
 	h.HandleFunc("/editor",HandleEditor)
 	h.HandleFunc("/statics",HandleStatics)
@@ -1885,7 +1886,6 @@ func Init() int{
 	
 	// 公开博客页面路由
 	h.HandleFunc("/public", HandlePublic)
-	h.HandleFunc("/main", HandlePublic)
 	
 	// 锻炼相关路由
 	h.HandleFunc("/exercise", HandleExercise)

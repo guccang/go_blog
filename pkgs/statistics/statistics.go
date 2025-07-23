@@ -1,15 +1,16 @@
 package statistics
 
 import (
-	"fmt"
-	"time"
-	"sort"
-	"strings"
 	"blog"
 	"comment"
 	"cooperation"
+	"exercise"
+	"fmt"
 	"module"
 	log "mylog"
+	"sort"
+	"strings"
+	"time"
 )
 
 func Info() {
@@ -18,17 +19,17 @@ func Info() {
 
 // 统计数据结构
 type Statistics struct {
-	BlogStats    BlogStatistics    `json:"blog_stats"`
-	AccessStats  AccessStatistics  `json:"access_stats"`
-	EditStats    EditStatistics    `json:"edit_stats"`
-	UserStats    UserStatistics    `json:"user_stats"`
-	IPStats      IPStatistics      `json:"ip_stats"`
-	CommentStats CommentStatistics `json:"comment_stats"`
-	TagStats     TagStatistics     `json:"tag_stats"`
+	BlogStats        BlogStatistics        `json:"blog_stats"`
+	AccessStats      AccessStatistics      `json:"access_stats"`
+	EditStats        EditStatistics        `json:"edit_stats"`
+	UserStats        UserStatistics        `json:"user_stats"`
+	IPStats          IPStatistics          `json:"ip_stats"`
+	CommentStats     CommentStatistics     `json:"comment_stats"`
+	TagStats         TagStatistics         `json:"tag_stats"`
 	CooperationStats CooperationStatistics `json:"cooperation_stats"`
-	SystemStats  SystemStatistics  `json:"system_stats"`
-	TimeAnalysis TimeAnalysisData  `json:"time_analysis"`
-	ContentStats ContentStatistics `json:"content_stats"`
+	SystemStats      SystemStatistics      `json:"system_stats"`
+	TimeAnalysis     TimeAnalysisData      `json:"time_analysis"`
+	ContentStats     ContentStatistics     `json:"content_stats"`
 }
 
 type BlogStatistics struct {
@@ -81,30 +82,30 @@ type IPStatistics struct {
 }
 
 type CommentStatistics struct {
-	TotalComments       int               `json:"total_comments"`
-	BlogsWithComments   int               `json:"blogs_with_comments"`
-	TodayNewComments    int               `json:"today_new_comments"`
-	WeekNewComments     int               `json:"week_new_comments"`
-	MonthNewComments    int               `json:"month_new_comments"`
-	AverageComments     float64           `json:"average_comments"`
-	TopCommentedBlogs   []BlogCommentInfo `json:"top_commented_blogs"`
-	RecentComments      []CommentInfo     `json:"recent_comments"`
-	ActiveCommentUsers  []CommentUserInfo `json:"active_comment_users"`
+	TotalComments      int               `json:"total_comments"`
+	BlogsWithComments  int               `json:"blogs_with_comments"`
+	TodayNewComments   int               `json:"today_new_comments"`
+	WeekNewComments    int               `json:"week_new_comments"`
+	MonthNewComments   int               `json:"month_new_comments"`
+	AverageComments    float64           `json:"average_comments"`
+	TopCommentedBlogs  []BlogCommentInfo `json:"top_commented_blogs"`
+	RecentComments     []CommentInfo     `json:"recent_comments"`
+	ActiveCommentUsers []CommentUserInfo `json:"active_comment_users"`
 }
 
 type TagStatistics struct {
-	TotalTags      int               `json:"total_tags"`
-	PublicTags     int               `json:"public_tags"`
-	HotTags        []TagInfo         `json:"hot_tags"`
-	RecentUsedTags []TagInfo         `json:"recent_used_tags"`
-	TagDistribution map[string]int   `json:"tag_distribution"`
+	TotalTags       int            `json:"total_tags"`
+	PublicTags      int            `json:"public_tags"`
+	HotTags         []TagInfo      `json:"hot_tags"`
+	RecentUsedTags  []TagInfo      `json:"recent_used_tags"`
+	TagDistribution map[string]int `json:"tag_distribution"`
 }
 
 type CooperationStatistics struct {
-	CooperationUsers    int            `json:"cooperation_users"`
-	CooperationBlogs    int            `json:"cooperation_blogs"`
-	ActiveCooperationUsers []string    `json:"active_cooperation_users"`
-	CooperationTagStats map[string]int `json:"cooperation_tag_stats"`
+	CooperationUsers       int            `json:"cooperation_users"`
+	CooperationBlogs       int            `json:"cooperation_blogs"`
+	ActiveCooperationUsers []string       `json:"active_cooperation_users"`
+	CooperationTagStats    map[string]int `json:"cooperation_tag_stats"`
 }
 
 type SystemStatistics struct {
@@ -116,10 +117,10 @@ type SystemStatistics struct {
 }
 
 type TimeAnalysisData struct {
-	CreationTimeDistribution map[string]int  `json:"creation_time_distribution"`
-	AccessHourDistribution   map[int]int     `json:"access_hour_distribution"`
-	EditTimeDistribution     map[string]int  `json:"edit_time_distribution"`
-	ActiveTimeSlots          []TimeSlotInfo  `json:"active_time_slots"`
+	CreationTimeDistribution map[string]int `json:"creation_time_distribution"`
+	AccessHourDistribution   map[int]int    `json:"access_hour_distribution"`
+	EditTimeDistribution     map[string]int `json:"edit_time_distribution"`
+	ActiveTimeSlots          []TimeSlotInfo `json:"active_time_slots"`
 }
 
 type ContentStatistics struct {
@@ -221,19 +222,19 @@ func Init() {
 // 记录博客访问
 func RecordBlogAccess(blogTitle, ip, userAgent string) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	record := AccessRecord{
 		BlogTitle: blogTitle,
 		IP:        ip,
 		UserAgent: userAgent,
 		Timestamp: timestamp,
 	}
-	
+
 	if accessRecords[blogTitle] == nil {
 		accessRecords[blogTitle] = make([]AccessRecord, 0)
 	}
 	accessRecords[blogTitle] = append(accessRecords[blogTitle], record)
-	
+
 	if ipRecords[ip] == nil {
 		ipRecords[ip] = &IPRecord{
 			IP:          ip,
@@ -244,23 +245,23 @@ func RecordBlogAccess(blogTitle, ip, userAgent string) {
 	}
 	ipRecords[ip].AccessCount++
 	ipRecords[ip].LastAccess = timestamp
-	
+
 	log.DebugF("记录博客访问: %s from %s", blogTitle, ip)
 }
 
 // 记录用户登录
 func RecordUserLogin(account, ip string, success bool) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	record := LoginRecord{
 		Account:   account,
 		IP:        ip,
 		Timestamp: timestamp,
 		Success:   success,
 	}
-	
+
 	loginRecords = append(loginRecords, record)
-	
+
 	log.DebugF("记录用户登录: %s from %s, success: %v", account, ip, success)
 }
 
@@ -269,11 +270,11 @@ func GetStatistics() *Statistics {
 	if cachedStats != nil && time.Since(lastCacheTime) < cacheExpiry {
 		return cachedStats
 	}
-	
+
 	log.Debug("生成新的统计数据")
-	
+
 	stats := &Statistics{}
-	
+
 	stats.BlogStats = calculateBlogStatistics()
 	stats.AccessStats = calculateAccessStatistics()
 	stats.EditStats = calculateEditStatistics()
@@ -285,10 +286,10 @@ func GetStatistics() *Statistics {
 	stats.SystemStats = calculateSystemStatistics()
 	stats.TimeAnalysis = calculateTimeAnalysis()
 	stats.ContentStats = calculateContentStatistics()
-	
+
 	cachedStats = stats
 	lastCacheTime = time.Now()
-	
+
 	return stats
 }
 
@@ -300,15 +301,15 @@ func GetOverallStatistics() *Statistics {
 // 计算博客统计
 func calculateBlogStatistics() BlogStatistics {
 	stats := BlogStatistics{}
-	
+
 	blogs := blog.Blogs
 	stats.TotalBlogs = len(blogs)
-	
+
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	weekStart := now.AddDate(0, 0, -int(now.Weekday())).Format("2006-01-02")
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
-	
+
 	for _, b := range blogs {
 		if (b.AuthType & module.EAuthType_public) != 0 {
 			stats.PublicBlogs++
@@ -322,7 +323,7 @@ func calculateBlogStatistics() BlogStatistics {
 		if (b.AuthType & module.EAuthType_cooperation) != 0 {
 			stats.CooperationBlogs++
 		}
-		
+
 		createDate := strings.Split(b.CreateTime, " ")[0]
 		if createDate == today {
 			stats.TodayNewBlogs++
@@ -334,45 +335,45 @@ func calculateBlogStatistics() BlogStatistics {
 			stats.MonthNewBlogs++
 		}
 	}
-	
+
 	return stats
 }
 
 // 计算访问统计
 func calculateAccessStatistics() AccessStatistics {
 	stats := AccessStatistics{}
-	
+
 	blogs := blog.Blogs
 	var totalAccess int64
-	
+
 	topBlogs := make([]BlogAccessInfo, 0)
 	recentBlogs := make([]BlogAccessInfo, 0)
-	
+
 	for _, b := range blogs {
 		totalAccess += int64(b.AccessNum)
-		
+
 		if b.AccessNum == 0 {
 			stats.ZeroAccessBlogs++
 		}
-		
+
 		topBlogs = append(topBlogs, BlogAccessInfo{
 			Title:      b.Title,
 			AccessNum:  b.AccessNum,
 			AccessTime: b.AccessTime,
 		})
-		
+
 		recentBlogs = append(recentBlogs, BlogAccessInfo{
 			Title:      b.Title,
 			AccessNum:  b.AccessNum,
 			AccessTime: b.AccessTime,
 		})
 	}
-	
+
 	stats.TotalAccess = totalAccess
 	if len(blogs) > 0 {
 		stats.AverageAccess = float64(totalAccess) / float64(len(blogs))
 	}
-	
+
 	// 排序热门博客
 	sort.Slice(topBlogs, func(i, j int) bool {
 		return topBlogs[i].AccessNum > topBlogs[j].AccessNum
@@ -382,7 +383,7 @@ func calculateAccessStatistics() AccessStatistics {
 	} else {
 		stats.TopAccessedBlogs = topBlogs
 	}
-	
+
 	// 排序最近访问博客
 	sort.Slice(recentBlogs, func(i, j int) bool {
 		ti, _ := time.Parse("2006-01-02 15:04:05", recentBlogs[i].AccessTime)
@@ -394,45 +395,45 @@ func calculateAccessStatistics() AccessStatistics {
 	} else {
 		stats.RecentAccessBlogs = recentBlogs
 	}
-	
+
 	return stats
 }
 
 // 计算编辑统计
 func calculateEditStatistics() EditStatistics {
 	stats := EditStatistics{}
-	
+
 	blogs := blog.Blogs
 	var totalEdits int64
-	
+
 	topBlogs := make([]BlogEditInfo, 0)
 	recentBlogs := make([]BlogEditInfo, 0)
-	
+
 	for _, b := range blogs {
 		totalEdits += int64(b.ModifyNum)
-		
+
 		if b.ModifyNum == 0 {
 			stats.NeverEditedBlogs++
 		}
-		
+
 		topBlogs = append(topBlogs, BlogEditInfo{
 			Title:      b.Title,
 			ModifyNum:  b.ModifyNum,
 			ModifyTime: b.ModifyTime,
 		})
-		
+
 		recentBlogs = append(recentBlogs, BlogEditInfo{
 			Title:      b.Title,
 			ModifyNum:  b.ModifyNum,
 			ModifyTime: b.ModifyTime,
 		})
 	}
-	
+
 	stats.TotalEdits = totalEdits
 	if len(blogs) > 0 {
 		stats.AverageEdits = float64(totalEdits) / float64(len(blogs))
 	}
-	
+
 	// 排序
 	sort.Slice(topBlogs, func(i, j int) bool {
 		return topBlogs[i].ModifyNum > topBlogs[j].ModifyNum
@@ -442,7 +443,7 @@ func calculateEditStatistics() EditStatistics {
 	} else {
 		stats.TopEditedBlogs = topBlogs
 	}
-	
+
 	sort.Slice(recentBlogs, func(i, j int) bool {
 		ti, _ := time.Parse("2006-01-02 15:04:05", recentBlogs[i].ModifyTime)
 		tj, _ := time.Parse("2006-01-02 15:04:05", recentBlogs[j].ModifyTime)
@@ -453,51 +454,51 @@ func calculateEditStatistics() EditStatistics {
 	} else {
 		stats.RecentEditedBlogs = recentBlogs
 	}
-	
+
 	return stats
 }
 
 // 计算用户统计
 func calculateUserStatistics() UserStatistics {
 	stats := UserStatistics{}
-	
+
 	var totalLogins int64
 	var lastLoginTime string
-	
+
 	for _, record := range loginRecords {
 		if record.Success {
 			totalLogins++
 			lastLoginTime = record.Timestamp
 		}
 	}
-	
+
 	stats.TotalLogins = totalLogins
 	stats.LastLoginTime = lastLoginTime
 	stats.AverageDailyLogins = float64(totalLogins) / 30.0
-	
+
 	return stats
 }
 
 // 计算IP统计
 func calculateIPStatistics() IPStatistics {
 	stats := IPStatistics{}
-	
+
 	stats.UniqueVisitors = len(ipRecords)
-	
+
 	topIPs := make([]IPInfo, 0)
 	recentIPs := make([]IPInfo, 0)
-	
+
 	for ip, record := range ipRecords {
 		ipInfo := IPInfo{
 			IP:          ip,
 			AccessCount: record.AccessCount,
 			LastAccess:  record.LastAccess,
 		}
-		
+
 		topIPs = append(topIPs, ipInfo)
 		recentIPs = append(recentIPs, ipInfo)
 	}
-	
+
 	// 排序
 	sort.Slice(topIPs, func(i, j int) bool {
 		return topIPs[i].AccessCount > topIPs[j].AccessCount
@@ -507,7 +508,7 @@ func calculateIPStatistics() IPStatistics {
 	} else {
 		stats.TopActiveIPs = topIPs
 	}
-	
+
 	sort.Slice(recentIPs, func(i, j int) bool {
 		ti, _ := time.Parse("2006-01-02 15:04:05", recentIPs[i].LastAccess)
 		tj, _ := time.Parse("2006-01-02 15:04:05", recentIPs[j].LastAccess)
@@ -518,35 +519,35 @@ func calculateIPStatistics() IPStatistics {
 	} else {
 		stats.RecentAccessIPs = recentIPs
 	}
-	
+
 	return stats
 }
 
 // 计算评论统计
 func calculateCommentStatistics() CommentStatistics {
 	stats := CommentStatistics{}
-	
+
 	comments := comment.Comments
 	var totalComments int
 	blogsWithComments := 0
-	
+
 	topCommentedBlogs := make([]BlogCommentInfo, 0)
 	recentComments := make([]CommentInfo, 0)
 	userCommentCount := make(map[string]int)
-	
+
 	for title, blogComments := range comments {
 		commentCount := len(blogComments.Comments)
 		totalComments += commentCount
-		
+
 		if commentCount > 0 {
 			blogsWithComments++
-			
+
 			topCommentedBlogs = append(topCommentedBlogs, BlogCommentInfo{
 				Title:        title,
 				CommentCount: commentCount,
 			})
 		}
-		
+
 		for _, c := range blogComments.Comments {
 			recentComments = append(recentComments, CommentInfo{
 				BlogTitle:  title,
@@ -554,18 +555,18 @@ func calculateCommentStatistics() CommentStatistics {
 				Msg:        c.Msg,
 				CreateTime: c.CreateTime,
 			})
-			
+
 			userCommentCount[c.Owner]++
 		}
 	}
-	
+
 	stats.TotalComments = totalComments
 	stats.BlogsWithComments = blogsWithComments
-	
+
 	if len(blog.Blogs) > 0 {
 		stats.AverageComments = float64(totalComments) / float64(len(blog.Blogs))
 	}
-	
+
 	// 排序热门评论博客
 	sort.Slice(topCommentedBlogs, func(i, j int) bool {
 		return topCommentedBlogs[i].CommentCount > topCommentedBlogs[j].CommentCount
@@ -575,7 +576,7 @@ func calculateCommentStatistics() CommentStatistics {
 	} else {
 		stats.TopCommentedBlogs = topCommentedBlogs
 	}
-	
+
 	// 排序最近评论
 	sort.Slice(recentComments, func(i, j int) bool {
 		ti, _ := time.Parse("2006-01-02 15:04:05", recentComments[i].CreateTime)
@@ -587,7 +588,7 @@ func calculateCommentStatistics() CommentStatistics {
 	} else {
 		stats.RecentComments = recentComments
 	}
-	
+
 	// 活跃评论用户
 	activeUsers := make([]CommentUserInfo, 0)
 	for user, count := range userCommentCount {
@@ -604,16 +605,16 @@ func calculateCommentStatistics() CommentStatistics {
 	} else {
 		stats.ActiveCommentUsers = activeUsers
 	}
-	
+
 	return stats
 }
 
 // 计算标签统计
 func calculateTagStatistics() TagStatistics {
 	stats := TagStatistics{}
-	
+
 	tagCount := make(map[string]int)
-	
+
 	blogs := blog.Blogs
 	for _, b := range blogs {
 		if b.Tags != "" {
@@ -625,10 +626,10 @@ func calculateTagStatistics() TagStatistics {
 			}
 		}
 	}
-	
+
 	stats.TotalTags = len(tagCount)
 	stats.TagDistribution = tagCount
-	
+
 	// 热门标签
 	hotTags := make([]TagInfo, 0)
 	for tag, count := range tagCount {
@@ -645,19 +646,19 @@ func calculateTagStatistics() TagStatistics {
 	} else {
 		stats.HotTags = hotTags
 	}
-	
+
 	stats.RecentUsedTags = hotTags[:min(len(hotTags), 10)]
-	
+
 	return stats
 }
 
 // 计算协作统计
 func calculateCooperationStatistics() CooperationStatistics {
 	stats := CooperationStatistics{}
-	
+
 	cooperations := cooperation.Cooperations
 	stats.CooperationUsers = len(cooperations)
-	
+
 	cooperationBlogs := 0
 	blogs := blog.Blogs
 	for _, b := range blogs {
@@ -666,13 +667,13 @@ func calculateCooperationStatistics() CooperationStatistics {
 		}
 	}
 	stats.CooperationBlogs = cooperationBlogs
-	
+
 	activeUsers := make([]string, 0)
 	for account := range cooperations {
 		activeUsers = append(activeUsers, account)
 	}
 	stats.ActiveCooperationUsers = activeUsers
-	
+
 	cooperationTagStats := make(map[string]int)
 	for _, coop := range cooperations {
 		if coop.Tags != "" {
@@ -685,52 +686,52 @@ func calculateCooperationStatistics() CooperationStatistics {
 		}
 	}
 	stats.CooperationTagStats = cooperationTagStats
-	
+
 	return stats
 }
 
 // 计算系统统计
 func calculateSystemStatistics() SystemStatistics {
 	stats := SystemStatistics{}
-	
+
 	stats.SystemUptime = "系统运行中"
 	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.Blogs), len(comment.Comments))
 	stats.StaticFiles = 100
 	stats.TemplateFiles = 20
 	stats.TodayOperations = len(accessRecords)
-	
+
 	return stats
 }
 
 // 计算时间分析
 func calculateTimeAnalysis() TimeAnalysisData {
 	analysis := TimeAnalysisData{}
-	
+
 	creationDist := make(map[string]int)
 	accessHourDist := make(map[int]int)
 	editDist := make(map[string]int)
-	
+
 	blogs := blog.Blogs
 	for _, b := range blogs {
 		if createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime); err == nil {
 			monthKey := createTime.Format("2006-01")
 			creationDist[monthKey]++
 		}
-		
+
 		if accessTime, err := time.Parse("2006-01-02 15:04:05", b.AccessTime); err == nil {
 			accessHourDist[accessTime.Hour()]++
 		}
-		
+
 		if modifyTime, err := time.Parse("2006-01-02 15:04:05", b.ModifyTime); err == nil {
 			monthKey := modifyTime.Format("2006-01")
 			editDist[monthKey]++
 		}
 	}
-	
+
 	analysis.CreationTimeDistribution = creationDist
 	analysis.AccessHourDistribution = accessHourDist
 	analysis.EditTimeDistribution = editDist
-	
+
 	activeSlots := make([]TimeSlotInfo, 0)
 	for hour, count := range accessHourDist {
 		slot := fmt.Sprintf("%02d:00-%02d:59", hour, hour)
@@ -743,29 +744,29 @@ func calculateTimeAnalysis() TimeAnalysisData {
 		return activeSlots[i].Activity > activeSlots[j].Activity
 	})
 	analysis.ActiveTimeSlots = activeSlots
-	
+
 	return analysis
 }
 
 // 计算内容统计
 func calculateContentStatistics() ContentStatistics {
 	stats := ContentStatistics{}
-	
+
 	var totalCharacters int64
 	var longestBlog, shortestBlog BlogContentInfo
 	longestLength := 0
 	shortestLength := int(^uint(0) >> 1)
 	emptyBlogs := 0
-	
+
 	blogs := blog.Blogs
 	for _, b := range blogs {
 		length := len([]rune(b.Content))
 		totalCharacters += int64(length)
-		
+
 		if length == 0 {
 			emptyBlogs++
 		}
-		
+
 		if length > longestLength {
 			longestLength = length
 			longestBlog = BlogContentInfo{
@@ -773,7 +774,7 @@ func calculateContentStatistics() ContentStatistics {
 				Length: length,
 			}
 		}
-		
+
 		if length < shortestLength {
 			shortestLength = length
 			shortestBlog = BlogContentInfo{
@@ -782,7 +783,7 @@ func calculateContentStatistics() ContentStatistics {
 			}
 		}
 	}
-	
+
 	stats.TotalCharacters = totalCharacters
 	if len(blogs) > 0 {
 		stats.AverageArticleLength = float64(totalCharacters) / float64(len(blogs))
@@ -790,7 +791,7 @@ func calculateContentStatistics() ContentStatistics {
 	stats.LongestArticle = longestBlog
 	stats.ShortestArticle = shortestBlog
 	stats.EmptyContentBlogs = emptyBlogs
-	
+
 	return stats
 }
 
@@ -806,7 +807,105 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-} 
+}
+
+// =================================== MCP Interface =========================================
+
+// 获取当前日期
+func RawCurrentDate() string {
+	return time.Now().Format("2006-01-02")
+}
+
+// 获取当前时间
+func RawCurrentTime() string {
+	return time.Now().Format("2006-01-02 15:04:05")
+}
+
+// 获取日记数量
+func RawAllDiaryCount() int {
+	count := 0
+	for _, b := range blog.Blogs {
+		if strings.Contains(b.Title, "日记_") {
+			count++
+		}
+	}
+	return count
+}
+
+// 获取所有日志内容
+func RawAllDiaryContent() string {
+	content := ""
+	for _, b := range blog.Blogs {
+		if strings.Contains(b.Title, "日记_") && b.Content != "" {
+			content += b.Title + ":\n" + b.Content + "\n"
+		}
+	}
+	return content
+}
+
+// 获取指定博客内容，通过博客名称匹配
+func RawGetBlogByTitleMatch(match string) string {
+	content := ""
+	for _, b := range blog.Blogs {
+		if strings.Contains(b.Title, match) && b.Content != "" {
+			content += b.Title + ":\n" + b.Content + "\n"
+		}
+	}
+	return content
+}
+
+// 获取锻炼总次数
+func RawAllExerciseCount() int {
+	count := 0
+	for _, b := range blog.Blogs {
+		if strings.Contains(b.Title, "锻炼_") {
+			count++
+		}
+	}
+	return count
+}
+
+// 获取锻炼总时间分钟
+func RawAllExerciseTotalMinutes() int {
+	time := 0
+	all, _ := exercise.GetAllExercises()
+	for _, e := range all {
+		for _, item := range e.Items {
+			time += item.Duration
+		}
+	}
+	return time
+}
+
+// 获取锻炼总距离
+func RawAllExerciseDistance() int {
+	distance := 0
+	all, _ := exercise.GetAllExercises()
+	for _, e := range all {
+		for _, item := range e.Items {
+			distance += item.Calories
+		}
+	}
+	return distance
+}
+
+// 获取锻炼总卡路里
+func RawAllExerciseCalories() int {
+	calories := 0
+	all, _ := exercise.GetAllExercises()
+	for _, e := range all {
+		for _, item := range e.Items {
+			calories += item.Calories
+		}
+	}
+	return calories
+}
+
+// 获取博客总数量
+func RawAllBlogCount() int {
+	log.DebugF("RawAllBlogCount: %d", len(blog.Blogs))
+	return len(blog.Blogs)
+}
 
 // 获取所有blog名称,以空格分割
 func RawAllBlogData() string {
@@ -819,7 +918,7 @@ func RawAllBlogData() string {
 }
 
 // 通过名称获取blog内容
-func RawBlogData(title string) string {
+func RawGetBlogData(title string) string {
 	blog := blog.GetBlog(title)
 	log.DebugF("RawBlogData: %s, blog: %v", title, blog)
 	if blog != nil {
@@ -837,12 +936,13 @@ func RawAllCommentData() string {
 	}
 	return strings.Join(commentData, " ")
 }
+
 // 通过名称获取comment
 func RawCommentData(title string) string {
 	comments := comment.GetComments(title)
 	if comments != nil {
 		msg := ""
-		for _, c := range comments.Comments {	
+		for _, c := range comments.Comments {
 			msg += c.Msg + "\n"
 		}
 		return msg
@@ -865,9 +965,18 @@ func RawAllBlogDataByDate(date string) string {
 	blogs := blog.Blogs
 	blogData := make([]string, 0)
 	for _, b := range blogs {
-		if b.CreateTime == date {
+		// CreateTime 2006-01-02 15:04:05
+		// date 2006-01-02
+		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
+		if err != nil {
+			continue
+		}
+		if createTime.Format("2006-01-02") == date {
 			blogData = append(blogData, b.Title)
 		}
+	}
+	if len(blogData) == 0 {
+		return "Error NOT find blog: " + date
 	}
 	return strings.Join(blogData, " ")
 
@@ -878,35 +987,70 @@ func RawAllBlogDataByDateRange(startDate, endDate string) string {
 	blogs := blog.Blogs
 	blogData := make([]string, 0)
 	for _, b := range blogs {
-		if b.CreateTime >= startDate && b.CreateTime <= endDate {
+		// 使用时间对比
+		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
+		if err != nil {
+			continue
+		}
+		start, err := time.Parse("2006-01-02 15:04:05", startDate+" 00:00:00")
+		if err != nil {
+			continue
+		}
+		end, err := time.Parse("2006-01-02 15:04:05", endDate+" 23:59:59")
+		if err != nil {
+			continue
+		}
+		if createTime.After(start) && createTime.Before(end) {
 			blogData = append(blogData, b.Title)
 		}
 	}
+	if len(blogData) == 0 {
+		return "Error NOT find blog: " + startDate + " to " + endDate
+	}
 	return strings.Join(blogData, " ")
 }
-
 
 // 根据日期范围获取所有Blog数量
 func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
 	blogs := blog.Blogs
 	count := 0
 	for _, b := range blogs {
-		if b.CreateTime >= startDate && b.CreateTime <= endDate {
+		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
+		if err != nil {
+			continue
+		}
+		start, err := time.Parse("2006-01-02 15:04:05", startDate+" 00:00:00")
+		if err != nil {
+			continue
+		}
+		end, err := time.Parse("2006-01-02 15:04:05", endDate+" 23:59:59")
+		if err != nil {
+			continue
+		}
+		if createTime.After(start) && createTime.Before(end) {
 			count++
 		}
 	}
+
 	return count
 }
 
 // 获取指定日期Blog数量
-func RawBlogDataByDate(date string) string {
+func RawGetBlogDataByDate(date string) string {
 	blogs := blog.Blogs
 	blogData := make([]string, 0)
 	for _, b := range blogs {
-		if b.CreateTime == date {
+		// 使用时间对比
+		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
+		if err != nil {
+			continue
+		}
+		if createTime.Format("2006-01-02") == date {
 			blogData = append(blogData, b.Title)
 		}
 	}
+	if len(blogData) == 0 {
+		return "Error NOT find blog: " + date
+	}
 	return strings.Join(blogData, " ")
 }
-

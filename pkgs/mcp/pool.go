@@ -196,7 +196,7 @@ func GetAvailableToolsImproved() []MCPTool {
 		mcpTool := MCPTool{
 			Name: tool.Function.Name,
 			Description: tool.Function.Description,
-			InputSchema: tool.Function.InputSchema,
+			InputSchema: tool.Function.Parameters,
 		}
 		tools = append(tools, mcpTool)
 	}
@@ -260,6 +260,12 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 	if serverName == "Inner_blog" {
 		log.DebugF("Calling inner tool: %s, arguments: %v", toolName, toolCall.Arguments)
 		data := CallInnerTools(toolName, toolCall.Arguments)
+		if data == ""  {
+			return MCPToolResponse{
+				Success: false,
+				Error:   "Error NOT find tool: " + toolName,
+			}
+		}
 		return MCPToolResponse{
 			Success: true,
 			Result:  data,
