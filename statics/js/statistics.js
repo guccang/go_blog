@@ -67,12 +67,6 @@ async function loadStatistics() {
         console.error('加载统计数据失败:', error);
         showToast('加载统计数据失败: ' + error.message, 'error');
         
-        // 如果是第一次加载失败，显示模拟数据
-        if (!statisticsData) {
-            statisticsData = generateMockData();
-            renderStatistics(statisticsData);
-            showToast('显示模拟数据', 'warning');
-        }
     } finally {
         showLoading(false);
     }

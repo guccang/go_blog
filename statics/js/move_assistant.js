@@ -147,14 +147,16 @@ function initAssistantButtonDrag() {
     
     // 触摸事件
     assistantBtn.addEventListener('touchstart', function(e) {
-        e.preventDefault();
+        //e.preventDefault();
         const touch = e.touches[0];
         startDrag(touch.clientX, touch.clientY);
     });
     
     document.addEventListener('touchmove', function(e) {
         if (!isDragging) return;
-        e.preventDefault();
+	if (hasMovedDuringDrag){
+        	e.preventDefault();
+	}
         const touch = e.touches[0];
         duringDrag(touch.clientX, touch.clientY);
     }, { passive: false });

@@ -1,34 +1,35 @@
 package main
 
-import(
-	"fmt"
-	"os"
-	"module"
-	"view"
-	"control"
-	"http"
-	"persistence"
-	"config"
-	log "mylog"
-	"ioutils"
-	"login"
-	"comment"
+import (
 	"blog"
+	"comment"
+	"config"
+	"control"
+	"cooperation"
+	"fmt"
+	"http"
+	"ioutils"
+	"llm"
+	"login"
+	"mcp"
+	"module"
+	log "mylog"
+	"os"
+	"persistence"
 	"search"
 	"share"
-	"cooperation"
+	"sms"
 	"statistics"
-	"mcp"
-	"llm"
+	"view"
 )
 
-func main(){
+func main() {
 	args := os.Args
-	for _,arg := range args {
-		fmt.Println(arg);
+	for _, arg := range args {
+		fmt.Println(arg)
 	}
-	if len(args) <2 {
-		fmt.Println("need sys_conf path");
+	if len(args) < 2 {
+		fmt.Println("need sys_conf path")
 		return
 	}
 	// versions
@@ -50,9 +51,9 @@ func main(){
 	mcp.Info()
 	llm.Info()
 
-	// Init 
+	// Init
 	config.Init(args[1])
-	
+
 	// Initialize logging system with logs directory
 	logsDir := config.GetConfig("logs_dir")
 	if logsDir == "" {
@@ -63,7 +64,7 @@ func main(){
 		fmt.Println("Continuing with console logging only...")
 	}
 	log.Debug("Logging system initialized")
-	
+
 	persistence.Init()
 	control.Init()
 	login.Init()
@@ -72,6 +73,7 @@ func main(){
 	cooperation.Init()
 	mcp.Init()
 	llm.Init()
+	sms.Init()
 	persistence.SaveBlogs(blog.Blogs)
 
 	log.Debug("go_blog started")
@@ -82,10 +84,9 @@ func main(){
 		certFile = args[2]
 		keyFile = args[3]
 	}
-	http.Run(certFile,keyFile)
+	http.Run(certFile, keyFile)
 
 	log.Debug("go_blog exit")
 	log.FlushLogs()
 	log.Cleanup()
 }
-

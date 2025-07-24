@@ -52,6 +52,8 @@ replace mcp => ./pkgs/mcp
 
 replace llm => ./pkgs/llm
 
+replace sms => ./pkgs/sms
+
 require (
 	blog v0.0.0
 	comment v0.0.0-00010101000000-000000000000
@@ -63,6 +65,7 @@ require (
 	login v0.0.0-00010101000000-000000000000
 	mcp v0.0.0-00010101000000-000000000000
 	llm v0.0.0-00010101000000-000000000000
+	sms v0.0.0-00010101000000-000000000000
 	module v0.0.0
 	mylog v0.0.0
 	persistence v0.0.0-00010101000000-000000000000

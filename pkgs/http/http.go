@@ -1,50 +1,53 @@
 package http
 
-import(
-	"fmt"
-	"os"
-	"path/filepath"
-	h "net/http"
-	t "html/template"
+import (
+	"auth"
+	"blog"
+	"comment"
 	"config"
 	"control"
-	log "mylog"
-	"view"
-	"login"
-	"time"
-	"auth"
-	"regexp"
-	"module"
-	"strconv"
-	"share"
 	"cooperation"
-	"todolist"
-	"strings"
-	"yearplan"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"exercise"
-	"comment"
-	"sort"
+	"fmt"
+	t "html/template"
 	"lifecountdown"
-	"statistics"
 	"llm"
+	"login"
 	"mcp"
+	"module"
+	log "mylog"
+	"reading"
+	h "net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"share"
+	"sort"
+	"statistics"
+	"strconv"
+	"strings"
+	"time"
+	"todolist"
+	"view"
+	"yearplan"
 )
 
-func Info(){
+func Info() {
 	log.Debug("info http v1.0")
 }
-
 
 // parseAuthTypeString 解析权限类型字符串，支持组合权限
 func parseAuthTypeString(authTypeStr string) int {
 	if authTypeStr == "" {
 		return module.EAuthType_private
 	}
-	
+
 	authType := 0
 	permissions := strings.Split(authTypeStr, ",")
-	
+
 	for _, perm := range permissions {
 		perm = strings.TrimSpace(perm)
 		switch perm {
@@ -60,31 +63,31 @@ func parseAuthTypeString(authTypeStr string) int {
 			authType |= module.EAuthType_encrypt
 		}
 	}
-	
+
 	// 如果没有设置任何基础权限，默认为私有
 	if (authType & (module.EAuthType_private | module.EAuthType_public)) == 0 {
 		authType |= module.EAuthType_private
 	}
-	
+
 	log.DebugF("Parsed auth type: %s -> %d", authTypeStr, authType)
 	return authType
 }
 
-type handle_content struct{
+type handle_content struct {
 	content string
 }
 
-func LogRemoteAddr(msg string,r *h.Request) {
+func LogRemoteAddr(msg string, r *h.Request) {
 	remoteAddr := r.RemoteAddr
 	xForwardedFor := r.Header.Get("X-Forwarded-For")
-    if xForwardedFor != "" {
+	if xForwardedFor != "" {
 		remoteAddr = xForwardedFor
-    }
-	log.DebugF("RemoteAddr %s %s",remoteAddr,msg)
+	}
+	log.DebugF("RemoteAddr %s %s", remoteAddr, msg)
 }
 
-func getsession(r *h.Request) string{
-	session,err:= r.Cookie("session")
+func getsession(r *h.Request) string {
+	session, err := r.Cookie("session")
 	if err != nil {
 		return ""
 	}
@@ -96,68 +99,66 @@ func IsCooperation(r *h.Request) bool {
 	return cooperation.IsCooperation(session)
 }
 
-func checkLogin(r *h.Request) int{
-	session,err:= r.Cookie("session")
+func checkLogin(r *h.Request) int {
+	session, err := r.Cookie("session")
 	if err != nil {
-		log.ErrorF("not find cookie session err=%s",err.Error())
+		log.ErrorF("not find cookie session err=%s", err.Error())
 		return 1
 	}
-	
-	log.DebugF("checkLogin session=%s",session.Value)
+
+	log.DebugF("checkLogin session=%s", session.Value)
 	if auth.CheckLoginSession(session.Value) != 0 {
+		log.InfoF("checkLogin session=%s not find", session.Value)
 		return 1
 	}
 	return 0
 }
 
-func HandleEditor(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleEditor",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleEditor(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleEditor", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	view.PageEditor(w,"","")
+	view.PageEditor(w, "", "")
 }
 
-func HandleDemo(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleDemo",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleDemo(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleDemo", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	tmp_name:= r.URL.Query().Get("tmp_name")
-	view.PageDemo(w,tmp_name)
+	tmp_name := r.URL.Query().Get("tmp_name")
+	view.PageDemo(w, tmp_name)
 }
 
-
-
-
-func  HandleLink(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleLink",r)
-	if checkLogin(r) != 0{
-		h.Redirect(w,r,"/index",302)
+func HandleLink(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLink", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	session := getsession(r)
 	is_cooperation := cooperation.IsCooperation(session)
 	flag := module.EAuthType_all
 	if is_cooperation {
 		flag = module.EAuthType_cooperation | module.EAuthType_public
 	}
-	view.PageLink(w,flag,session)
+	view.PageLink(w, flag, session)
 }
 
-func HandleStatics(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleStatics",r)
-	filename:= r.URL.Query().Get("filename")
+func HandleStatics(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleStatics", r)
+	filename := r.URL.Query().Get("filename")
 	if filename == "" {
 		h.Error(w, "Filepath parameter is missing", h.StatusBadRequest)
 		return
-	}	
+	}
 
 	spath := config.GetHttpStaticPath()
-	filePath := filepath.Join(spath,filename)
+	filePath := filepath.Join(spath, filename)
 
 	// 打开文件
 	exeDir := config.GetExePath()
@@ -185,10 +186,10 @@ func HandleStatics(w h.ResponseWriter, r *h.Request){
 	h.ServeContent(w, r, filename, fileInfo.ModTime(), file)
 }
 
-func HandleSave(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleSave",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleSave(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleSave", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
 
@@ -202,16 +203,15 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-    pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
-    reg := regexp.MustCompile(pattern)
+	pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
+	reg := regexp.MustCompile(pattern)
 	match := reg.MatchString(title)
 	if !match {
 		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
 		return
 	}
 
-	log.DebugF("title:%s",title)
-	
+	log.DebugF("title:%s", title)
 
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
@@ -219,11 +219,11 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 
 	// 解析权限设置
 	auth_type_string := r.FormValue("authtype")
-	log.DebugF("Received authtype:%s",auth_type_string)
-	
+	log.DebugF("Received authtype:%s", auth_type_string)
+
 	// 解析权限组合
 	auth_type := parseAuthTypeString(auth_type_string)
-	
+
 	// 如果是协作用户，自动添加协作权限
 	if IsCooperation(r) {
 		auth_type |= module.EAuthType_cooperation
@@ -231,40 +231,39 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received tags:%s",tags)
+	log.DebugF("Received tags:%s", tags)
 
-	// encrypt 
+	// encrypt
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s",title,encryptionKey)
+	log.DebugF("Received title=%s encrypt:%s", title, encryptionKey)
 
-	// 
+	//
 	if encryptionKey != "" {
 		encrypt = 1
-/*
-		// aes加密
-		log.DebugF("encryption key=%s",encryptionKey)
-		content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
+		/*
+			// aes加密
+			log.DebugF("encryption key=%s",encryptionKey)
+			content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
 
-		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
-		log.DebugF("encryption content_decrypt=%s",content_encrypt)
-		if content_decrypt != content {
-			h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
-			return
-		}
-		fmt.Printf("content encrypt=%s\n",content)
-		// 邮件备份密码,todo
-		content = content_encrypt
-*/
+			content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
+			log.DebugF("encryption content_decrypt=%s",content_encrypt)
+			if content_decrypt != content {
+				h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
+				return
+			}
+			fmt.Printf("content encrypt=%s\n",content)
+			// 邮件备份密码,todo
+			content = content_encrypt
+		*/
 	}
-	
-	
-	ubd := module.UploadedBlogData {
-		Title : title,
-		Content : content,
-		AuthType : auth_type,
-		Tags : tags,
-		Encrypt: encrypt,
+
+	ubd := module.UploadedBlogData{
+		Title:    title,
+		Content:  content,
+		AuthType: auth_type,
+		Tags:     tags,
+		Encrypt:  encrypt,
 	}
 
 	if IsCooperation(r) {
@@ -277,24 +276,23 @@ func HandleSave(w h.ResponseWriter, r *h.Request){
 	ret := control.AddBlog(&ubd)
 
 	// 响应客户端
-	if ret==0 {
-		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d",ret)))
+	if ret == 0 {
+		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d", ret)))
 		if IsCooperation(r) {
 			session := getsession(r)
-			cooperation.AddCanEditBlogBySession(session,title)
+			cooperation.AddCanEditBlogBySession(session, title)
 		}
-	}else{
+	} else {
 		h.Error(w, "save failed! has same title blog", h.StatusBadRequest)
 	}
 }
 
-
-func HandleD3(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleHelp",r)
+func HandleD3(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleHelp", r)
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
 
@@ -302,91 +300,91 @@ func HandleD3(w h.ResponseWriter, r *h.Request){
 
 }
 
-func HandleHelp(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleHelp",r)
-	blogname := config.GetHelpBlogName()	
+func HandleHelp(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleHelp", r)
+	blogname := config.GetHelpBlogName()
 	if blogname == "" {
 		blogname = "help"
 	}
 
-	log.DebugF("help blogname=",blogname)
+	log.DebugF("help blogname=", blogname)
 
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
-	if checkLogin(r) !=0 {
+	if checkLogin(r) != 0 {
 		// 判定blog访问权限
 		auth_type := control.GetBlogAuthType(blogname)
 		if auth_type == module.EAuthType_private {
-			h.Redirect(w,r,"/index",302)
+			h.Redirect(w, r, "/index", 302)
 			return
-		}else{
+		} else {
 			usepublic = 1
 		}
 	}
 
-	view.PageGetBlog(blogname,w,usepublic)
+	view.PageGetBlog(blogname, w, usepublic)
 }
 
 // 使用@share c blogname 标签获取分享链接和密码
 // 访问分享，使用链接和密码
-func HandleGetShare(w h.ResponseWriter,r *h.Request){
-  r.ParseMultipartForm(32 << 20) // 32MB
-  // t
-  t,_:= strconv.Atoi(r.URL.Query().Get("t"))
-  name := r.URL.Query().Get("name")
-  pwd := r.URL.Query().Get("pwd")
-    
-  if t == 0 {
-    // blog
-	blog := share.GetSharedBlog(name)
-    if blog == nil {
-		h.Error(w, "HandleGetShared error blogname", h.StatusBadRequest)
-		return
+func HandleGetShare(w h.ResponseWriter, r *h.Request) {
+	r.ParseMultipartForm(32 << 20) // 32MB
+	// t
+	t, _ := strconv.Atoi(r.URL.Query().Get("t"))
+	name := r.URL.Query().Get("name")
+	pwd := r.URL.Query().Get("pwd")
+
+	if t == 0 {
+		// blog
+		blog := share.GetSharedBlog(name)
+		if blog == nil {
+			h.Error(w, "HandleGetShared error blogname", h.StatusBadRequest)
+			return
+		}
+		if blog.Pwd != pwd {
+			h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
+			return
+		}
+		cnt := share.ModifyCntSharedBlog(name, -1)
+		if cnt < 0 {
+			h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
+			return
+		}
+		usepublic := 1
+		view.PageGetBlog(name, w, usepublic)
+	} else if t == 1 {
+		// tag
+		tag := share.GetSharedTag(name)
+		if tag == nil {
+			h.Error(w, "HandleGetShared error tagname", h.StatusBadRequest)
+			return
+		}
+		if tag.Pwd != pwd {
+			h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
+			return
+		}
+		cnt := share.ModifyCntSharedTag(name, -1)
+		if cnt < 0 {
+			h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
+			return
+		}
+		view.PageTags(w, name)
 	}
-    if blog.Pwd != pwd {
-		h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
-		return
-	}
-    cnt := share.ModifyCntSharedBlog(name,-1)
-    if cnt < 0 {
-		h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
-		return
-	}
-    usepublic := 1
-    view.PageGetBlog(name,w,usepublic)
-  }else if t == 1 {
-	// tag
-    tag := share.GetSharedTag(name)
-    if tag == nil {
-		h.Error(w, "HandleGetShared error tagname", h.StatusBadRequest)
-		return
-	}
-    if tag.Pwd != pwd {
-		h.Error(w, "HandleGetShared error pwd", h.StatusBadRequest)
-		return
-	}
-    cnt := share.ModifyCntSharedTag(name,-1)
-    if cnt < 0 {
-		h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
-		return
-	}
-    view.PageTags(w,name)
-  }
 }
 
-func HandleGet(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleGet",r)
+func HandleGet(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleGet", r)
 	blogname := r.URL.Query().Get("blogname")
 	if blogname == "" {
 		h.Error(w, "blogname parameter is missing", h.StatusBadRequest)
 		return
-	}	
+	}
 
 	// 首先获取博客信息以检查权限
 	blog := control.GetBlog(blogname)
 	if blog == nil {
-		h.Error(w, fmt.Sprintf("blogname=%s not find",blogname), h.StatusBadRequest)
+		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
 	}
 
@@ -399,25 +397,25 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 			view.PageDiaryPasswordInput(w, blogname)
 			return
 		}
-		
+
 		// 验证密码
 		expectedPassword := config.GetConfig("diary_password")
 		if expectedPassword == "" {
 			expectedPassword = "diary123" // 默认密码
 		}
-		
+
 		if diaryPassword != expectedPassword {
 			// 密码错误，返回错误页面
 			view.PageDiaryPasswordError(w, blogname)
 			return
 		}
-		
+
 		// 密码正确，继续处理
 		log.DebugF("日记博客密码验证成功: %s (AuthType: %d)", blogname, blog.AuthType)
 	}
-	
+
 	// 兼容性：同时检查基于名称的日记博客（向后兼容）
-	if config.IsDiaryBlog(blogname) && (blog.AuthType & module.EAuthType_diary) == 0 {
+	if config.IsDiaryBlog(blogname) && (blog.AuthType&module.EAuthType_diary) == 0 {
 		// 检查是否提供了密码
 		diaryPassword := r.URL.Query().Get("diary_pwd")
 		if diaryPassword == "" {
@@ -425,19 +423,19 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 			view.PageDiaryPasswordInput(w, blogname)
 			return
 		}
-		
+
 		// 验证密码
 		expectedPassword := config.GetConfig("diary_password")
 		if expectedPassword == "" {
 			expectedPassword = "diary123" // 默认密码
 		}
-		
+
 		if diaryPassword != expectedPassword {
 			// 密码错误，返回错误页面
 			view.PageDiaryPasswordError(w, blogname)
 			return
 		}
-		
+
 		// 密码正确，继续处理
 		log.DebugF("传统日记博客密码验证成功: %s", blogname)
 	}
@@ -510,31 +508,31 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
-	if checkLogin(r) !=0 {
+	if checkLogin(r) != 0 {
 		// 判定blog访问权限 - 直接使用已获取的blog对象
 		session := getsession(r)
 		auth_type := blog.AuthType
 		if cooperation.IsCooperation(session) {
 			// 判定blog访问权限
 			if (auth_type & module.EAuthType_cooperation) != 0 {
-				if cooperation.CanEditBlog(session,blogname) != 0 {
+				if cooperation.CanEditBlog(session, blogname) != 0 {
 					if (auth_type & module.EAuthType_public) == 0 {
-						h.Redirect(w,r,"/index",302)
+						h.Redirect(w, r, "/index", 302)
 						return
 					}
 				}
 			}
-		}else{
+		} else {
 			if (auth_type & module.EAuthType_private) != 0 {
-				h.Redirect(w,r,"/index",302)
+				h.Redirect(w, r, "/index", 302)
 				return
 			}
 		}
 
 		if (auth_type & module.EAuthType_public) != 0 {
 			usepublic = 1
-		}else{
-			h.Redirect(w,r,"/index",302)
+		} else {
+			h.Redirect(w, r, "/index", 302)
 			return
 		}
 	}
@@ -550,11 +548,11 @@ func HandleGet(w h.ResponseWriter, r *h.Request){
 		control.RecordBlogAccess(blogname, remoteAddr, userAgent)
 	}
 
-	view.PageGetBlog(blogname,w,usepublic)
+	view.PageGetBlog(blogname, w, usepublic)
 }
 
-func HandleComment(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleComment",r)
+func HandleComment(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleComment", r)
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
@@ -565,16 +563,16 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-    pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
-    reg := regexp.MustCompile(pattern)
+	pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
+	reg := regexp.MustCompile(pattern)
 	match := reg.MatchString(title)
 	if !match {
 		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
 		return
 	}
 
-	log.DebugF("comment title:%s",title)
-	
+	log.DebugF("comment title:%s", title)
+
 	owner := r.FormValue("owner")
 	mail := r.FormValue("mail")
 	comment := r.FormValue("comment")
@@ -582,7 +580,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 
 	if comment == "" {
 		h.Error(w, "save failed! comment is invalied!", h.StatusBadRequest)
-		return 
+		return
 	}
 
 	// 获取用户IP和UserAgent
@@ -609,7 +607,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 	// 如果没有会话ID且提供了用户名，使用密码验证机制
 	if owner != "" {
 		password := r.FormValue("pwd") // 获取密码
-		
+
 		if password != "" {
 			// 使用密码验证创建会话
 			ret, msg, newSessionID := control.AddCommentWithPassword(title, comment, owner, mail, password, ip, userAgent)
@@ -643,7 +641,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 	if owner == "" {
 		owner = ip // 使用IP作为默认用户名
 	}
-	
+
 	pwd := r.FormValue("pwd")
 	if pwd == "" {
 		pwd = ip // 使用IP作为默认密码
@@ -651,18 +649,18 @@ func HandleComment(w h.ResponseWriter, r *h.Request){
 
 	control.AddComment(title, comment, owner, pwd, mail)
 	w.WriteHeader(h.StatusOK)
-	w.Write([]byte("评论提交成功"+title+" "+owner+" "+pwd+" "+mail))
+	w.Write([]byte("评论提交成功" + title + " " + owner + " " + pwd + " " + mail))
 }
 
 // 检查用户名信息的API（返回使用该用户名的用户数量）
 func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleCheckUsername", r)
-	
+
 	if r.Method != h.MethodGet {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	username := r.URL.Query().Get("username")
 	if username == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -673,39 +671,39 @@ func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
 		})
 		return
 	}
-	
+
 	// 获取使用该用户名的用户列表
 	users := comment.UserManager.GetUsersByUsername(username)
 	userCount := len(users)
-	
+
 	response := map[string]interface{}{
 		"success":    true,
 		"available":  userCount == 0,
 		"username":   username,
 		"user_count": userCount,
 	}
-	
+
 	if userCount == 0 {
 		response["message"] = "新用户名，可直接使用"
 	} else {
 		response["message"] = "该用户名已被注册，请输入密码进行身份验证"
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(h.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }
 
-func HandleDelete(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleDelete",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleDelete(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleDelete", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
 
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
-			return
+		return
 	}
 
 	// 设置请求体大小限制
@@ -713,26 +711,26 @@ func HandleDelete(w h.ResponseWriter, r *h.Request){
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-	log.DebugF("delete title:%s",title)
+	log.DebugF("delete title:%s", title)
 
-	ret := control.DeleteBlog(title);
+	ret := control.DeleteBlog(title)
 	if ret == 0 {
-		w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d",ret)))
-	}else{
-		w.Write([]byte(fmt.Sprintf("Content received failed! ret=%d",ret)))
+		w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
+	} else {
+		w.Write([]byte(fmt.Sprintf("Content received failed! ret=%d", ret)))
 	}
 }
 
-func HandleModify(w h.ResponseWriter, r *h.Request){
-	LogRemoteAddr("HandleModify",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleModify(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleModify", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
 
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
-			return
+		return
 	}
 
 	// 设置请求体大小限制
@@ -740,105 +738,187 @@ func HandleModify(w h.ResponseWriter, r *h.Request){
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-	log.DebugF("title:%s",title)
+	log.DebugF("title:%s", title)
 
 	// 解析权限设置
 	auth_type_string := r.FormValue("auth_type")
-	log.DebugF("Received auth_type:%s",auth_type_string)
-	
+	log.DebugF("Received auth_type:%s", auth_type_string)
+
 	// 解析权限组合
 	auth_type := parseAuthTypeString(auth_type_string)
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received tags:%s",tags)
+	log.DebugF("Received tags:%s", tags)
 
 	// 内容
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
 	//log.DebugF("Received content:%s", content)
 
-
 	// 加密
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s session:%s",title,encryptionKey,getsession(r))
+	log.DebugF("Received title=%s encrypt:%s session:%s", title, encryptionKey, getsession(r))
 
 	if encryptionKey != "" {
 		encrypt = 1
-/*
-		// aes加密
-		log.DebugF("encryption key=%s",encryptionKey)
-		content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
+		/*
+			// aes加密
+			log.DebugF("encryption key=%s",encryptionKey)
+			content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
 
-		content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
-		log.DebugF("encryption content_decrypt=%s",content_encrypt)
-		if content_decrypt != content {
-			h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
-			return
-		}
-		fmt.Printf("content encrypt=%s\n",content)
+			content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
+			log.DebugF("encryption content_decrypt=%s",content_encrypt)
+			if content_decrypt != content {
+				h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
+				return
+			}
+			fmt.Printf("content encrypt=%s\n",content)
 
-		content = content_encrypt
-*/
+			content = content_encrypt
+		*/
 		// 邮件备份密码,todo
 	}
-	
 
-	ubd := module.UploadedBlogData {
-		Title		: title,
-		Content		: content,
-		AuthType	: auth_type,
-		Tags		: tags,
-		Encrypt		: encrypt,
+	ubd := module.UploadedBlogData{
+		Title:    title,
+		Content:  content,
+		AuthType: auth_type,
+		Tags:     tags,
+		Encrypt:  encrypt,
 	}
 
 	ret := control.ModifyBlog(&ubd)
 
-
 	// 响应客户端
-	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d",ret)))
+	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
 
 }
 
-
-func HandleSearch(w h.ResponseWriter,r *h.Request){
-	LogRemoteAddr("HandleSearch",r)
-	if checkLogin(r) !=0 {
-		h.Redirect(w,r,"/index",302)
+func HandleSearch(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleSearch", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
 		return
 	}
 	match := r.URL.Query().Get("match")
-	ret := view.PageSearchNormal(match,w,r)
+	ret := view.PageSearchNormal(match, w, r)
 	if ret != 0 {
 		// 通用搜索逻辑
 		session := getsession(r)
-		view.PageSearch(match,w,session)
+		view.PageSearch(match, w, session)
 	}
 }
 
-func HandleTag(w h.ResponseWriter,r *h.Request){
-	LogRemoteAddr("HandleTag",r)
+func HandleTag(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleTag", r)
 
 	r.ParseMultipartForm(32 << 20) // 32MB
 
 	tag := r.FormValue("tag")
-	
-	isTagPublic := config.IsPublicTag(tag);
-	log.DebugF("HandleTag %s %d",tag,isTagPublic)
+
+	isTagPublic := config.IsPublicTag(tag)
+	log.DebugF("HandleTag %s %d", tag, isTagPublic)
 	if isTagPublic != 1 {
-		if checkLogin(r) !=0 {
-			h.Redirect(w,r,"/index",302)
+		if checkLogin(r) != 0 {
+			h.Redirect(w, r, "/index", 302)
 			return
 		}
 	}
 
 	// 展示所有public tag
-	view.PageTags(w,tag)
+	view.PageTags(w, tag)
 }
 
-func HandleLogin(w h.ResponseWriter,r *h.Request){
-	LogRemoteAddr("HandleLogin",r)
+func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLoginSMSAPI", r)
+
+	device_id := r.FormValue("device_id")
+	if device_id == "" {
+		h.Error(w, "device_id parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	// Check if device_id exists in config or validate format (starts with SK)
+	if !strings.HasPrefix(device_id, "SK") || len(device_id) != 34 {
+		h.Error(w, "invalid device_id format", h.StatusBadRequest)
+		return
+	}
+
+	code, ret := login.GenerateSMSCode()
+	log.InfoF("SMS Generate code=%s for device_id=%s", code, device_id)
+	if ret != 0 {
+		h.Error(w, "SMS generation failed", h.StatusBadRequest)
+		return
+	}
+
+	// 提示 短信已发送
+	w.Write([]byte("短信已发送 请注意查收"))
+}
+
+func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLoginSMS", r)
+
+	r.ParseMultipartForm(32 << 20) // 32MB
+
+	code := r.FormValue("code")
+	if code == "" {
+		h.Error(w, "code parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	device_id := r.FormValue("device_id")
+	if device_id == "" {
+		h.Error(w, "device_id parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	// Validate device_id format
+	if !strings.HasPrefix(device_id, "SK") {
+		h.Error(w, "invalid device_id format", h.StatusBadRequest)
+		return
+	}
+	// md5(admin+pwd)
+	account := config.GetConfig("admin")
+	pwd := config.GetConfig("pwd")
+	hash := md5.Sum([]byte(account + pwd))
+	inner_device_id := "SK" + hex.EncodeToString(hash[:])
+	if inner_device_id != device_id {
+		h.Error(w, "invalid device_id inner_device_id="+inner_device_id+" device_id="+device_id, h.StatusBadRequest)
+		return
+	}
+
+	session, ret := login.LoginSMS(code)
+	if ret != 0 {
+		h.Error(w, "invalid SMS code or code expired", h.StatusBadRequest)
+		return
+	}
+	log.InfoF("LoginSMS add session=%s code=%s device_id=%s", session, code, device_id)
+
+	// 获取用户IP
+	remoteAddr := r.RemoteAddr
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
+	if xForwardedFor != "" {
+		remoteAddr = xForwardedFor
+	}
+	account = config.GetConfig("admin")
+	control.RecordUserLogin(account, remoteAddr, true)
+
+	// set cookie
+	cookie := &h.Cookie{
+		Name:    "session",
+		Value:   session,
+		Expires: time.Now().Add(48 * time.Hour), // 过期时间为两天
+		Path:    "/",
+	}
+	h.SetCookie(w, cookie)
+
+	h.Redirect(w, r, "/main", 302)
+}
+
+func HandleLogin(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleLogin", r)
 
 	r.ParseMultipartForm(32 << 20) // 32MB
 
@@ -846,35 +926,36 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 	if account == "" {
 		h.Error(w, "account parameter is missing", h.StatusBadRequest)
 		return
-	}	
+	}
 
 	pwd := r.FormValue("password")
 	if pwd == "" {
 		h.Error(w, "pwd parameter is missing", h.StatusBadRequest)
 		return
-	}	
+	}
 
-	log.DebugF("account=%s pwd=%s",account,pwd)
-	
+	device_id := r.FormValue("device_id")
+	log.DebugF("account=%s pwd=%s device_id=%s", account, pwd, device_id)
+
 	// 获取用户IP
 	remoteAddr := r.RemoteAddr
 	xForwardedFor := r.Header.Get("X-Forwarded-For")
 	if xForwardedFor != "" {
 		remoteAddr = xForwardedFor
 	}
-	
-	session , ret:= login.Login(account,pwd)
+
+	session, ret := login.Login(account, pwd)
 	if ret != 0 {
-		session,ret = cooperation.CooperationLogin(account,pwd)
+		session, ret = cooperation.CooperationLogin(account, pwd)
 		if ret != 0 {
 			// 记录失败的登录
 			control.RecordUserLogin(account, remoteAddr, false)
-			h.Error(w,"Error account or pwd",h.StatusBadRequest)
+			h.Error(w, "Error account or pwd", h.StatusBadRequest)
 			return
 		}
-		log.DebugF("cooperation login ok account=%s pwd=%s",account,pwd)
+		log.DebugF("cooperation login ok account=%s pwd=%s", account, pwd)
 	}
-	
+
 	// 记录成功的登录
 	control.RecordUserLogin(account, remoteAddr, true)
 
@@ -883,31 +964,31 @@ func HandleLogin(w h.ResponseWriter,r *h.Request){
 		Name:    "session",
 		Value:   session,
 		Expires: time.Now().Add(48 * time.Hour), // 过期时间为两天
+		Path:    "/",
 	}
 	h.SetCookie(w, cookie)
-	
-	log.DebugF("login success account=%s pwd=%s session=%s iscooperation=%d",account,pwd,session,cooperation.IsCooperation(session))
-	h.Redirect(w, r,"/public", 302)
+
+	log.DebugF("login success account=%s pwd=%s session=%s iscooperation=%d", account, pwd, session, cooperation.IsCooperation(session))
+	h.Redirect(w, r, "/main", 302)
 }
 
-func HandleIndex(w h.ResponseWriter,r *h.Request){
-	LogRemoteAddr("HandleIndex",r)
+func HandleIndex(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleIndex", r)
 	view.PageIndex(w)
 }
 
-
 func basicAuth(next h.Handler) h.Handler {
-    return h.HandlerFunc(func(w h.ResponseWriter, r *h.Request) {
-		if checkLogin(r) !=0 {
-			h.Redirect(w,r,"/index",302)
+	return h.HandlerFunc(func(w h.ResponseWriter, r *h.Request) {
+		if checkLogin(r) != 0 {
+			h.Redirect(w, r, "/index", 302)
 			return
 		}
-        next.ServeHTTP(w, r)
-    })
+		next.ServeHTTP(w, r)
+	})
 }
 
-func HandleTimeStamp(w h.ResponseWriter, r *h.Request){
-	view.PageTimeStamp(w);
+func HandleTimeStamp(w h.ResponseWriter, r *h.Request) {
+	view.PageTimeStamp(w)
 }
 
 func HandleTodolist(w h.ResponseWriter, r *h.Request) {
@@ -933,14 +1014,14 @@ func HandleYearPlan(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	// Get the current year
 	year := r.URL.Query().Get("year")
 	// string to int
 	yearInt, err := strconv.Atoi(year)
 	if err != nil {
 		yearInt = time.Now().Year()
-	}	
+	}
 
 	// Render the yearplan template
 	view.PageYearPlan(w, yearInt)
@@ -953,16 +1034,16 @@ func HandleMonthGoal(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	// Get the current year and month
 	year := r.URL.Query().Get("year")
 	month := r.URL.Query().Get("month")
-	
+
 	yearInt, err := strconv.Atoi(year)
 	if err != nil {
 		yearInt = time.Now().Year()
 	}
-	
+
 	monthInt, err := strconv.Atoi(month)
 	if err != nil {
 		monthInt = int(time.Now().Month())
@@ -979,7 +1060,7 @@ func HandleStatistics(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	view.PageStatistics(w)
 }
 
@@ -990,7 +1071,7 @@ func HandleReading(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	// 检查是否有book参数，如果有则跳转到书籍详情页面
 	bookTitle := r.URL.Query().Get("book")
 	if bookTitle != "" {
@@ -1007,7 +1088,7 @@ func HandleReading(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/reading", 302)
 		return
 	}
-	
+
 	view.PageReading(w)
 }
 
@@ -1018,7 +1099,7 @@ func HandleReadingDashboard(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	view.PageReadingDashboard(w)
 }
 
@@ -1029,15 +1110,15 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取排序参数
 		sortBy := r.URL.Query().Get("sort_by")
 		sortOrder := r.URL.Query().Get("sort_order")
-		
+
 		// 设置默认排序：按添加时间倒序（最新添加的在前）
 		if sortBy == "" {
 			sortBy = "add_time"
@@ -1045,23 +1126,23 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		if sortOrder == "" {
 			sortOrder = "desc"
 		}
-		
+
 		// 获取所有书籍
 		books := control.GetAllBooks()
 		booksSlice := make([]*module.Book, 0, len(books))
 		for _, book := range books {
 			booksSlice = append(booksSlice, book)
 		}
-		
+
 		// 应用排序
 		sortBooks(booksSlice, sortBy, sortOrder)
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"books":   booksSlice,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodPost:
 		// 添加新书籍
 		var bookData struct {
@@ -1077,12 +1158,12 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			Tags        []string `json:"tags"`
 			SourceUrl   string   `json:"source_url"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&bookData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		book, err := control.AddBook(
 			bookData.Title,
 			bookData.Author,
@@ -1096,18 +1177,18 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			bookData.Category,
 			bookData.Tags,
 		)
-		
+
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"book":    book,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodPut:
 		// 编辑书籍
 		bookID := r.URL.Query().Get("book_id")
@@ -1115,7 +1196,7 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Book ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		var updateData struct {
 			Title       string   `json:"title"`
 			Author      string   `json:"author"`
@@ -1129,12 +1210,12 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			Tags        []string `json:"tags"`
 			SourceUrl   string   `json:"source_url"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		// 构建更新数据
 		updates := make(map[string]interface{})
 		if updateData.Title != "" {
@@ -1170,26 +1251,26 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		if updateData.SourceUrl != "" {
 			updates["source_url"] = updateData.SourceUrl
 		}
-		
+
 		err := control.UpdateBook(bookID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		// 获取更新后的书籍信息
 		book := control.GetBook(bookID)
 		if book == nil {
 			h.Error(w, "Book not found after update", h.StatusNotFound)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"book":    book,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodDelete:
 		// 删除书籍
 		bookID := r.URL.Query().Get("book_id")
@@ -1198,9 +1279,9 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Book ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		log.DebugF("收到删除书籍请求: book_id=%s", bookID)
-		
+
 		// 先检查书籍是否存在
 		book := control.GetBook(bookID)
 		if book == nil {
@@ -1209,23 +1290,23 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 		log.DebugF("找到要删除的书籍: %s - %s", book.ID, book.Title)
-		
+
 		err := control.DeleteBook(bookID)
 		if err != nil {
 			log.ErrorF("删除书籍失败: book_id=%s, error=%v", bookID, err)
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		log.DebugF("书籍删除成功: book_id=%s", bookID)
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Book deleted successfully",
 			"book_id": bookID,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -1238,14 +1319,14 @@ func HandleReadingStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodGet {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	stats := control.GetReadingStatistics()
 	json.NewEncoder(w).Encode(stats)
 }
@@ -1257,24 +1338,24 @@ func HandleParseBookURL(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var requestData struct {
 		URL string `json:"url"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
 		h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 		return
 	}
-	
+
 	// 简单的URL解析实现（实际应用中可以调用第三方API）
 	bookData := parseBookFromURL(requestData.URL)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(bookData)
 }
@@ -1286,7 +1367,7 @@ func HandleBookDetail(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	// 从URL中提取书籍ID
 	path := r.URL.Path
 	parts := strings.Split(path, "/")
@@ -1294,14 +1375,14 @@ func HandleBookDetail(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Invalid book ID", h.StatusBadRequest)
 		return
 	}
-	
+
 	bookID := parts[3]
 	book := control.GetBook(bookID)
 	if book == nil {
 		h.Error(w, "Book not found", h.StatusNotFound)
 		return
 	}
-	
+
 	view.PageBookDetail(w, book)
 }
 
@@ -1311,7 +1392,7 @@ func parseBookFromURL(url string) map[string]interface{} {
 	// 1. 调用豆瓣API
 	// 2. 爬取网页内容
 	// 3. 调用其他图书信息API
-	
+
 	result := map[string]interface{}{
 		"title":       "示例书籍",
 		"author":      "示例作者",
@@ -1321,7 +1402,7 @@ func parseBookFromURL(url string) map[string]interface{} {
 		"cover_url":   "",
 		"source_url":  url,
 	}
-	
+
 	// 根据不同的URL来源进行不同的解析
 	if strings.Contains(url, "douban.com") {
 		result["title"] = "豆瓣书籍示例"
@@ -1330,7 +1411,7 @@ func parseBookFromURL(url string) map[string]interface{} {
 		result["title"] = "亚马逊书籍示例"
 		result["description"] = "从亚马逊解析的书籍信息"
 	}
-	
+
 	return result
 }
 
@@ -1339,10 +1420,10 @@ func sortBooks(books []*module.Book, sortBy string, sortOrder string) {
 	if len(books) <= 1 {
 		return
 	}
-	
+
 	// 根据排序字段确定比较函数
 	var compareFunc func(i, j int) bool
-	
+
 	switch sortBy {
 	case "add_time":
 		// 按添加时间排序
@@ -1414,7 +1495,7 @@ func sortBooks(books []*module.Book, sortBy string, sortOrder string) {
 			return timeI.After(timeJ) // 默认倒序
 		}
 	}
-	
+
 	sort.Slice(books, compareFunc)
 }
 
@@ -1457,34 +1538,34 @@ func HandleBookProgressAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	// 从URL查询参数中获取书籍ID
 	bookID := r.URL.Query().Get("book_id")
 	if bookID == "" {
 		h.Error(w, "Book ID is required", h.StatusBadRequest)
 		return
 	}
-	
+
 	var requestData struct {
 		CurrentPage int `json:"current_page"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
 		h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 		return
 	}
-	
+
 	err := control.UpdateBookProgress(bookID, requestData.CurrentPage)
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"success": true,
@@ -1500,25 +1581,25 @@ func HandleBookFinishAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	// 从URL查询参数中获取书籍ID
 	bookID := r.URL.Query().Get("book_id")
 	if bookID == "" {
 		h.Error(w, "Book ID is required", h.StatusBadRequest)
 		return
 	}
-	
+
 	err := control.FinishBook(bookID)
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"success": true,
@@ -1534,22 +1615,22 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	// 从URL查询参数中获取书籍ID
 	bookID := r.URL.Query().Get("book_id")
 	if bookID == "" {
 		h.Error(w, "Book ID is required", h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取笔记
 		notes := control.GetBookNotes(bookID)
 		json.NewEncoder(w).Encode(notes)
-		
+
 	case h.MethodPost:
 		// 添加笔记
 		var noteData struct {
@@ -1557,24 +1638,24 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			Page    int    `json:"page"`
 			Content string `json:"content"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&noteData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		note, err := control.AddBookNote(bookID, "note", noteData.Chapter, noteData.Content, noteData.Page, []string{})
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"note":    note,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodPut:
 		// 更新笔记
 		noteID := r.URL.Query().Get("note_id")
@@ -1582,18 +1663,18 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Note ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		var updateData struct {
 			Chapter string `json:"chapter"`
 			Page    int    `json:"page"`
 			Content string `json:"content"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		updates := make(map[string]interface{})
 		if updateData.Chapter != "" {
 			updates["chapter"] = updateData.Chapter
@@ -1604,19 +1685,19 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 		if updateData.Content != "" {
 			updates["content"] = updateData.Content
 		}
-		
+
 		err := control.UpdateBookNote(bookID, noteID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Note updated successfully",
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodDelete:
 		// 删除笔记
 		noteID := r.URL.Query().Get("note_id")
@@ -1624,19 +1705,19 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Note ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		err := control.DeleteBookNote(bookID, noteID)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Note deleted successfully",
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -1649,22 +1730,22 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	// 从URL查询参数中获取书籍ID
 	bookID := r.URL.Query().Get("book_id")
 	if bookID == "" {
 		h.Error(w, "Book ID is required", h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取心得
 		insights := control.GetBookInsights(bookID)
 		json.NewEncoder(w).Encode(insights)
-		
+
 	case h.MethodPost:
 		// 添加心得
 		var insightData struct {
@@ -1674,17 +1755,17 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			Content  string `json:"content"`
 			Takeaway string `json:"takeaway"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&insightData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		keyTakeaways := []string{}
 		if insightData.Takeaway != "" {
 			keyTakeaways = append(keyTakeaways, insightData.Takeaway)
 		}
-		
+
 		insight, err := control.AddBookInsight(
 			bookID,
 			insightData.Title,
@@ -1698,13 +1779,13 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"insight": insight,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodPut:
 		// 更新心得
 		insightID := r.URL.Query().Get("insight_id")
@@ -1712,7 +1793,7 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Insight ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		var updateData struct {
 			Title    string `json:"title"`
 			Rating   int    `json:"rating"`
@@ -1720,12 +1801,12 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			Content  string `json:"content"`
 			Takeaway string `json:"takeaway"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		updates := make(map[string]interface{})
 		if updateData.Title != "" {
 			updates["title"] = updateData.Title
@@ -1739,19 +1820,19 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 		if updateData.Takeaway != "" {
 			updates["key_takeaways"] = []string{updateData.Takeaway}
 		}
-		
+
 		err := control.UpdateBookInsight(insightID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Insight updated successfully",
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodDelete:
 		// 删除心得
 		insightID := r.URL.Query().Get("insight_id")
@@ -1759,19 +1840,19 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Insight ID is required", h.StatusBadRequest)
 			return
 		}
-		
+
 		err := control.DeleteBookInsight(insightID)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "Insight deleted successfully",
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -1791,13 +1872,13 @@ func HandleExercise(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		// If no date provided, use today's date
 		date = time.Now().Format("2006-01-02")
 	}
-	
+
 	view.PageExercise(w)
 }
 
@@ -1825,7 +1906,7 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(h.StatusOK)
-	
+
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		log.ErrorF("Failed to encode statistics: %v", err)
 		w.WriteHeader(h.StatusInternalServerError)
@@ -1834,31 +1915,33 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 	}
 }
 
-func Init() int{
+func Init() int {
 	// Initialize todolist before registering handlers
 	if err := todolist.InitTodoList(); err != nil {
 		log.ErrorF("Failed to initialize todolist: %v", err)
 	}
-	
+
 	h.HandleFunc("/main", HandleLink)
-	h.HandleFunc("/link",HandleLink)
-	h.HandleFunc("/editor",HandleEditor)
-	h.HandleFunc("/statics",HandleStatics)
-	h.HandleFunc("/save",HandleSave)
-	h.HandleFunc("/get",HandleGet)
-	h.HandleFunc("/modify",HandleModify)
-	h.HandleFunc("/delete",HandleDelete)
-	h.HandleFunc("/search",HandleSearch)
-	h.HandleFunc("/login",HandleLogin)
-	h.HandleFunc("/index",HandleIndex)
-	h.HandleFunc("/help",HandleHelp)
-	h.HandleFunc("/comment",HandleComment)
+	h.HandleFunc("/link", HandleLink)
+	h.HandleFunc("/editor", HandleEditor)
+	h.HandleFunc("/statics", HandleStatics)
+	h.HandleFunc("/save", HandleSave)
+	h.HandleFunc("/get", HandleGet)
+	h.HandleFunc("/modify", HandleModify)
+	h.HandleFunc("/delete", HandleDelete)
+	h.HandleFunc("/search", HandleSearch)
+	h.HandleFunc("/login", HandleLogin)
+	h.HandleFunc("/loginsms", HandleLoginSMS)
+	h.HandleFunc("/api/logingensms", HandleLoginSMSAPI)
+	h.HandleFunc("/index", HandleIndex)
+	h.HandleFunc("/help", HandleHelp)
+	h.HandleFunc("/comment", HandleComment)
 	h.HandleFunc("/api/check-username", HandleCheckUsername)
-	h.HandleFunc("/d3",HandleD3)
-	h.HandleFunc("/tag",HandleTag)
-	h.HandleFunc("/getshare",HandleGetShare)
-	h.HandleFunc("/demo",HandleDemo)
-	h.HandleFunc("/timestamp",HandleTimeStamp)
+	h.HandleFunc("/d3", HandleD3)
+	h.HandleFunc("/tag", HandleTag)
+	h.HandleFunc("/getshare", HandleGetShare)
+	h.HandleFunc("/demo", HandleDemo)
+	h.HandleFunc("/timestamp", HandleTimeStamp)
 	h.HandleFunc("/todolist", HandleTodolist)
 	h.HandleFunc("/api/todos", todolist.HandleTodos)
 	h.HandleFunc("/api/todos/toggle", todolist.HandleToggleTodo)
@@ -1869,7 +1952,7 @@ func Init() int{
 	h.HandleFunc("/monthgoal", HandleMonthGoal)
 	h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)
 	h.HandleFunc("/api/saveplan", yearplan.HandleSavePlan)
-	
+
 	// 月度工作目标相关路由
 	h.HandleFunc("/api/monthgoal", yearplan.HandleGetMonthGoal)
 	h.HandleFunc("/api/savemonthgoal", yearplan.HandleSaveMonthGoal)
@@ -1879,14 +1962,14 @@ func Init() int{
 	h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
 	h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
 	h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
-	
+
 	// 统计相关路由
 	h.HandleFunc("/statistics", HandleStatistics)
 	h.HandleFunc("/api/statistics", HandleStatisticsAPI)
-	
+
 	// 公开博客页面路由
 	h.HandleFunc("/public", HandlePublic)
-	
+
 	// 锻炼相关路由
 	h.HandleFunc("/exercise", HandleExercise)
 	h.HandleFunc("/api/exercises", exercise.HandleExercises)
@@ -1914,7 +1997,7 @@ func Init() int{
 	h.HandleFunc("/api/books/finish", HandleBookFinishAPI)
 	h.HandleFunc("/api/books/notes", HandleBookNotesAPI)
 	h.HandleFunc("/api/books/insights", HandleBookInsightsAPI)
-	
+
 	// 新增读书功能路由
 	h.HandleFunc("/api/reading-plans", HandleReadingPlansAPI)
 	h.HandleFunc("/api/reading-goals", HandleReadingGoalsAPI)
@@ -1933,11 +2016,12 @@ func Init() int{
 	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
 	h.HandleFunc("/api/assistant/stats", HandleAssistantStats)
 	h.HandleFunc("/api/assistant/suggestions", HandleAssistantSuggestions)
+	h.HandleFunc("/api/assistant/trends", HandleAssistantTrends)
 
 	// 系统配置管理路由
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)
-	
+
 	// MCP 配置管理路由
 	h.HandleFunc("/mcp", mcp.HandleMCPPage)
 	h.HandleFunc("/api/mcp", mcp.HandleMCPAPI)
@@ -1950,20 +2034,20 @@ func Init() int{
 	return 0
 }
 
-func Run(certFile string,keyFile string) int{
+func Run(certFile string, keyFile string) int {
 	Init()
 	port := config.GetConfig("port")
 	//h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
-	if len(certFile)<=0 || len(keyFile) <=0 {
-		h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
-	}else{
-		h.ListenAndServeTLS(fmt.Sprintf(":%s",port),certFile,keyFile,nil)
+	if len(certFile) <= 0 || len(keyFile) <= 0 {
+		h.ListenAndServe(fmt.Sprintf(":%s", port), nil)
+	} else {
+		h.ListenAndServeTLS(fmt.Sprintf(":%s", port), certFile, keyFile, nil)
 	}
-	return 0;
+	return 0
 }
 
 func Stop() int {
-	return 0;
+	return 0
 }
 
 // 新增API接口
@@ -1975,9 +2059,9 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		plans := control.GetAllReadingPlans()
@@ -1985,7 +2069,7 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 			"success": true,
 			"plans":   plans,
 		})
-		
+
 	case h.MethodPost:
 		var planData struct {
 			Title       string   `json:"title"`
@@ -1994,12 +2078,12 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 			EndDate     string   `json:"end_date"`
 			TargetBooks []string `json:"target_books"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&planData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		plan, err := control.AddReadingPlan(
 			planData.Title,
 			planData.Description,
@@ -2007,17 +2091,17 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 			planData.EndDate,
 			planData.TargetBooks,
 		)
-		
+
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"plan":    plan,
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2030,35 +2114,35 @@ func HandleReadingGoalsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		yearStr := r.URL.Query().Get("year")
 		monthStr := r.URL.Query().Get("month")
-		
+
 		year := time.Now().Year()
 		month := 0
-		
+
 		if yearStr != "" {
 			if y, err := strconv.Atoi(yearStr); err == nil {
 				year = y
 			}
 		}
-		
+
 		if monthStr != "" {
 			if m, err := strconv.Atoi(monthStr); err == nil {
 				month = m
 			}
 		}
-		
+
 		goals := control.GetReadingGoals(year, month)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"goals":   goals,
 		})
-		
+
 	case h.MethodPost:
 		var goalData struct {
 			Year        int    `json:"year"`
@@ -2066,29 +2150,29 @@ func HandleReadingGoalsAPI(w h.ResponseWriter, r *h.Request) {
 			TargetType  string `json:"target_type"`
 			TargetValue int    `json:"target_value"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&goalData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		goal, err := control.AddReadingGoal(
 			goalData.Year,
 			goalData.Month,
 			goalData.TargetType,
 			goalData.TargetValue,
 		)
-		
+
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"goal":    goal,
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2101,24 +2185,24 @@ func HandleBookRecommendationsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodGet {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	bookID := r.URL.Query().Get("book_id")
 	if bookID == "" {
 		h.Error(w, "Book ID is required", h.StatusBadRequest)
 		return
 	}
-	
+
 	recommendations, err := control.GenerateBookRecommendations(bookID)
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":         true,
@@ -2133,9 +2217,9 @@ func HandleReadingSessionAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodPost:
 		var sessionData struct {
@@ -2144,19 +2228,19 @@ func HandleReadingSessionAPI(w h.ResponseWriter, r *h.Request) {
 			Pages  int    `json:"pages"`
 			Notes  string `json:"notes"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&sessionData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		if sessionData.Action == "start" {
 			session, err := control.StartReadingSession(sessionData.BookID)
 			if err != nil {
 				h.Error(w, err.Error(), h.StatusBadRequest)
 				return
 			}
-			
+
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": true,
 				"session": session,
@@ -2164,7 +2248,7 @@ func HandleReadingSessionAPI(w h.ResponseWriter, r *h.Request) {
 		} else {
 			h.Error(w, "Invalid action", h.StatusBadRequest)
 		}
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2177,9 +2261,9 @@ func HandleBookCollectionsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		collections := control.GetAllBookCollections()
@@ -2187,8 +2271,7 @@ func HandleBookCollectionsAPI(w h.ResponseWriter, r *h.Request) {
 			"success":     true,
 			"collections": collections,
 		})
-		
-		
+
 	case h.MethodPost:
 		var collectionData struct {
 			Name        string   `json:"name"`
@@ -2196,29 +2279,29 @@ func HandleBookCollectionsAPI(w h.ResponseWriter, r *h.Request) {
 			BookIDs     []string `json:"book_ids"`
 			IsPublic    bool     `json:"is_public"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&collectionData); err != nil {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		collection, err := control.AddBookCollection(
 			collectionData.Name,
 			collectionData.Description,
 			collectionData.BookIDs,
 			collectionData.IsPublic,
 		)
-		
+
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":    true,
 			"collection": collection,
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2231,14 +2314,14 @@ func HandleAdvancedReadingStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodGet {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	stats := control.GetAdvancedReadingStatistics()
 	json.NewEncoder(w).Encode(stats)
 }
@@ -2250,24 +2333,24 @@ func HandleExportReadingDataAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	if r.Method != h.MethodPost {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var exportConfig module.ExportConfig
 	if err := json.NewDecoder(r.Body).Decode(&exportConfig); err != nil {
 		h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 		return
 	}
-	
+
 	data, err := control.ExportReadingData(&exportConfig)
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -2282,7 +2365,7 @@ func HandleLifeCountdown(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	view.PageLifeCountdown(w)
 }
 
@@ -2293,9 +2376,9 @@ func HandleLifeCountdownAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodPost:
 		// 计算人生倒计时数据
@@ -2304,45 +2387,45 @@ func HandleLifeCountdownAPI(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "Invalid JSON data", h.StatusBadRequest)
 			return
 		}
-		
+
 		data := lifecountdown.CalculateLifeCountdown(config)
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"data":    data,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodGet:
 		// 获取书籍列表用于可视化
 		booksMap := control.GetAllBooks()
 		bookTitles := make([]string, 0, len(booksMap))
-		
+
 		for _, book := range booksMap {
 			if book != nil && book.Title != "" {
 				bookTitles = append(bookTitles, book.Title)
 			}
 		}
-		
+
 		// 如果没有书籍，使用默认列表
 		if len(bookTitles) == 0 {
 			bookTitles = []string{
-				"时间简史", "活着", "百年孤独", "思考快与慢", "人类简史", 
-				"原则", "三体", "1984", "深度工作", "认知觉醒", "心流", 
+				"时间简史", "活着", "百年孤独", "思考快与慢", "人类简史",
+				"原则", "三体", "1984", "深度工作", "认知觉醒", "心流",
 				"经济学原理", "创新者", "未来简史", "影响力", "黑天鹅",
 				"毛泽东传", "邓小平传", "红楼梦", "西游记", "水浒传",
 				"三国演义", "论语", "孟子", "老子", "庄子", "史记",
 			}
 		}
-		
+
 		log.DebugF("获取书籍列表: 共%d本书", len(bookTitles))
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"books":   bookTitles,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2355,9 +2438,9 @@ func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取保存的配置
@@ -2365,49 +2448,49 @@ func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
 		if blog == nil {
 			// 如果配置不存在，返回默认配置
 			defaultConfig := map[string]interface{}{
-				"currentAge": 25,
-				"expectedLifespan": 80,
-				"dailySleepHours": 8.0,
-				"dailyStudyHours": 2.0,
+				"currentAge":        25,
+				"expectedLifespan":  80,
+				"dailySleepHours":   8.0,
+				"dailyStudyHours":   2.0,
 				"dailyReadingHours": 1.0,
-				"dailyWorkHours": 8.0,
-				"averageBookWords": 150000,
+				"dailyWorkHours":    8.0,
+				"averageBookWords":  150000,
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": true,
-				"config": defaultConfig,
+				"success":   true,
+				"config":    defaultConfig,
 				"isDefault": true,
 			})
 			return
 		}
-		
+
 		// 尝试解析保存的配置
 		var config map[string]interface{}
 		if err := json.Unmarshal([]byte(blog.Content), &config); err != nil {
 			// 解析失败，返回默认配置
 			defaultConfig := map[string]interface{}{
-				"currentAge": 25,
-				"expectedLifespan": 80,
-				"dailySleepHours": 8.0,
-				"dailyStudyHours": 2.0,
+				"currentAge":        25,
+				"expectedLifespan":  80,
+				"dailySleepHours":   8.0,
+				"dailyStudyHours":   2.0,
 				"dailyReadingHours": 1.0,
-				"dailyWorkHours": 8.0,
-				"averageBookWords": 150000,
+				"dailyWorkHours":    8.0,
+				"averageBookWords":  150000,
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": true,
-				"config": defaultConfig,
+				"success":   true,
+				"config":    defaultConfig,
 				"isDefault": true,
 			})
 			return
 		}
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"config": config,
+			"success":   true,
+			"config":    config,
 			"isDefault": false,
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2420,7 +2503,7 @@ func HandleConfig(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/login", h.StatusSeeOther)
 		return
 	}
-	
+
 	// 渲染配置页面模板
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "config.template"))
@@ -2429,13 +2512,13 @@ func HandleConfig(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Failed to parse config template", h.StatusInternalServerError)
 		return
 	}
-	
+
 	data := struct {
 		Title string
 	}{
 		Title: "系统配置管理",
 	}
-	
+
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		log.ErrorF("Failed to render config.template: %s", err.Error())
@@ -2451,41 +2534,41 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取系统配置
 		blog := control.GetBlog("sys_conf")
 		if blog == nil {
 			log.ErrorF("sys_conf文件不存在，创建默认配置文件")
-			
+
 			// 创建默认配置文件
 			defaultConfigs := map[string]string{
-				"port":                         "8888",
-				"redis_ip":                     "127.0.0.1", 
-				"redis_port":                   "6666",
-				"redis_pwd":                    "",
-				"publictags":                   "public|share|demo",
-				"sysfiles":                     "sys_conf",
-				"title_auto_add_date_suffix":   "日记",
-				"diary_keywords":               "日记_",
+				"port":                       "8888",
+				"redis_ip":                   "127.0.0.1",
+				"redis_port":                 "6666",
+				"redis_pwd":                  "",
+				"publictags":                 "public|share|demo",
+				"sysfiles":                   "sys_conf",
+				"title_auto_add_date_suffix": "日记",
+				"diary_keywords":             "日记_",
 			}
-			
+
 			// 构建默认配置内容和注释
 			defaultComments := map[string]string{
-				"port":                         "HTTP服务监听端口",
-				"redis_ip":                     "Redis服务器IP地址", 
-				"redis_port":                   "Redis服务器端口",
-				"redis_pwd":                    "Redis密码（留空表示无密码）",
-				"publictags":                   "公开标签列表（用|分隔）",
-				"sysfiles":                     "系统文件列表（用|分隔）",
-				"title_auto_add_date_suffix":   "自动添加日期后缀的标题前缀（用|分隔）",
-				"diary_keywords":               "日记关键字（用|分隔）",
+				"port":                       "HTTP服务监听端口",
+				"redis_ip":                   "Redis服务器IP地址",
+				"redis_port":                 "Redis服务器端口",
+				"redis_pwd":                  "Redis密码（留空表示无密码）",
+				"publictags":                 "公开标签列表（用|分隔）",
+				"sysfiles":                   "系统文件列表（用|分隔）",
+				"title_auto_add_date_suffix": "自动添加日期后缀的标题前缀（用|分隔）",
+				"diary_keywords":             "日记关键字（用|分隔）",
 			}
 			defaultContent := buildConfigContentWithComments(defaultConfigs, defaultComments)
-			
+
 			// 创建默认配置文件
 			uploadData := &module.UploadedBlogData{
 				Title:    "sys_conf",
@@ -2494,16 +2577,16 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 				Tags:     "system,config",
 				Encrypt:  0,
 			}
-			
+
 			result := control.AddBlog(uploadData)
 			if result != 0 {
 				log.ErrorF("创建默认配置文件失败: result=%d", result)
 				h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
 				return
 			}
-			
+
 			log.DebugF("默认配置文件创建成功")
-			
+
 			// 返回默认配置
 			response := map[string]interface{}{
 				"success":     true,
@@ -2515,10 +2598,10 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		// 解析配置内容和注释
 		configs, comments := parseConfigContentWithComments(blog.Content)
-		
+
 		response := map[string]interface{}{
 			"success":     true,
 			"configs":     configs,
@@ -2527,23 +2610,23 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			"is_default":  false,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	case h.MethodPost:
 		// 更新系统配置
 		var requestData struct {
 			Configs  map[string]string `json:"configs"`
 			Comments map[string]string `json:"comments"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
 			log.ErrorF("解析配置数据失败: %v", err)
 			h.Error(w, "无效的JSON数据", h.StatusBadRequest)
 			return
 		}
-		
+
 		// 构建新的配置内容
 		newContent := buildConfigContentWithComments(requestData.Configs, requestData.Comments)
-		
+
 		// 更新sys_conf文件
 		uploadData := &module.UploadedBlogData{
 			Title:    "sys_conf",
@@ -2552,26 +2635,26 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			Tags:     "system,config",
 			Encrypt:  0,
 		}
-		
+
 		result := control.ModifyBlog(uploadData)
 		if result != 0 {
 			log.ErrorF("更新配置文件失败: result=%d", result)
 			h.Error(w, "更新配置失败", h.StatusInternalServerError)
 			return
 		}
-		
+
 		// 重新加载配置
 		configPath := config.GetConfigPath()
 		config.ReloadConfig(configPath)
-		
+
 		log.DebugF("系统配置更新成功")
-		
+
 		response := map[string]interface{}{
 			"success": true,
 			"message": "配置更新成功",
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2581,13 +2664,13 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 func parseConfigContent(content string) map[string]string {
 	configs := make(map[string]string)
 	lines := strings.Split(content, "\n")
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
@@ -2595,20 +2678,20 @@ func parseConfigContent(content string) map[string]string {
 			configs[key] = value
 		}
 	}
-	
+
 	return configs
 }
 
 // 构建配置文件内容
 func buildConfigContent(configs map[string]string) string {
 	var lines []string
-	
+
 	// 添加文件头注释
 	lines = append(lines, "# 系统配置文件")
 	lines = append(lines, "# 格式: key=value")
 	lines = append(lines, "# 注释行以#开头")
 	lines = append(lines, "")
-	
+
 	// 定义配置项的分组和注释
 	configGroups := []struct {
 		title   string
@@ -2627,7 +2710,7 @@ func buildConfigContent(configs map[string]string) string {
 			},
 		},
 		{
-			title: "Redis数据库配置", 
+			title: "Redis数据库配置",
 			configs: []struct {
 				key     string
 				comment string
@@ -2650,7 +2733,7 @@ func buildConfigContent(configs map[string]string) string {
 			},
 		},
 	}
-	
+
 	// 按分组添加配置项
 	for _, group := range configGroups {
 		lines = append(lines, fmt.Sprintf("# %s", group.title))
@@ -2662,7 +2745,7 @@ func buildConfigContent(configs map[string]string) string {
 			}
 		}
 	}
-	
+
 	// 添加未分组的其他配置项
 	processedKeys := make(map[string]bool)
 	for _, group := range configGroups {
@@ -2670,14 +2753,14 @@ func buildConfigContent(configs map[string]string) string {
 			processedKeys[config.key] = true
 		}
 	}
-	
+
 	var otherKeys []string
 	for key := range configs {
 		if !processedKeys[key] && key != "" && configs[key] != "" {
 			otherKeys = append(otherKeys, key)
 		}
 	}
-	
+
 	if len(otherKeys) > 0 {
 		sort.Strings(otherKeys)
 		lines = append(lines, "# 其他配置")
@@ -2687,12 +2770,12 @@ func buildConfigContent(configs map[string]string) string {
 			lines = append(lines, "")
 		}
 	}
-	
+
 	// 移除最后的空行
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -2701,15 +2784,15 @@ func parseConfigContentWithComments(content string) (map[string]string, map[stri
 	configs := make(map[string]string)
 	comments := make(map[string]string)
 	lines := strings.Split(content, "\n")
-	
+
 	var currentComment string
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		if strings.HasPrefix(line, "#") {
 			// 处理注释行
 			comment := strings.TrimSpace(strings.TrimPrefix(line, "#"))
@@ -2718,14 +2801,14 @@ func parseConfigContentWithComments(content string) (map[string]string, map[stri
 			}
 			continue
 		}
-		
+
 		// 处理配置行
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
 			configs[key] = value
-			
+
 			// 关联注释到配置项
 			if currentComment != "" {
 				comments[key] = currentComment
@@ -2733,7 +2816,7 @@ func parseConfigContentWithComments(content string) (map[string]string, map[stri
 			}
 		}
 	}
-	
+
 	return configs, comments
 }
 
@@ -2741,33 +2824,33 @@ func parseConfigContentWithComments(content string) (map[string]string, map[stri
 func isGroupComment(comment string) bool {
 	groupTitles := []string{
 		"系统配置文件",
-		"格式: key=value", 
+		"格式: key=value",
 		"注释行以#开头",
 		"服务器配置",
 		"Redis数据库配置",
 		"系统功能配置",
 		"其他配置",
 	}
-	
+
 	for _, title := range groupTitles {
 		if strings.Contains(comment, title) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // 构建带注释的配置文件内容
 func buildConfigContentWithComments(configs map[string]string, comments map[string]string) string {
 	var lines []string
-	
+
 	// 添加文件头注释
 	lines = append(lines, "# 系统配置文件")
 	lines = append(lines, "# 格式: key=value")
 	lines = append(lines, "# 注释行以#开头")
 	lines = append(lines, "")
-	
+
 	// 定义配置项的分组和默认注释
 	configGroups := []struct {
 		title   string
@@ -2786,7 +2869,7 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 			},
 		},
 		{
-			title: "Redis数据库配置", 
+			title: "Redis数据库配置",
 			configs: []struct {
 				key            string
 				defaultComment string
@@ -2809,7 +2892,7 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 			},
 		},
 	}
-	
+
 	// 按分组添加配置项
 	for _, group := range configGroups {
 		hasGroupConfigs := false
@@ -2819,7 +2902,7 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 				break
 			}
 		}
-		
+
 		if hasGroupConfigs {
 			lines = append(lines, fmt.Sprintf("# %s", group.title))
 			for _, config := range group.configs {
@@ -2836,7 +2919,7 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 			}
 		}
 	}
-	
+
 	// 添加未分组的其他配置项
 	processedKeys := make(map[string]bool)
 	for _, group := range configGroups {
@@ -2844,14 +2927,14 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 			processedKeys[config.key] = true
 		}
 	}
-	
+
 	var otherKeys []string
 	for key := range configs {
 		if !processedKeys[key] && key != "" && configs[key] != "" {
 			otherKeys = append(otherKeys, key)
 		}
 	}
-	
+
 	if len(otherKeys) > 0 {
 		sort.Strings(otherKeys)
 		lines = append(lines, "# 其他配置")
@@ -2866,12 +2949,12 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 			lines = append(lines, "")
 		}
 	}
-	
+
 	// 移除最后的空行
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -2882,7 +2965,7 @@ func HandleAssistant(w h.ResponseWriter, r *h.Request) {
 		h.Redirect(w, r, "/index", 302)
 		return
 	}
-	
+
 	view.PageAssistant(w)
 }
 
@@ -2890,16 +2973,15 @@ func HandleAssistant(w h.ResponseWriter, r *h.Request) {
 func HandleAssistantChat(w h.ResponseWriter, r *h.Request) {
 	log.Debug("=== Assistant Chat Request Started (MCP Mode) ===")
 	LogRemoteAddr("HandleAssistantChat", r)
-	
+
 	if checkLogin(r) != 0 {
 		log.WarnF("Unauthorized assistant chat request from %s", r.RemoteAddr)
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
-	llm.ProcessRequest(r,w)
-}
 
+	llm.ProcessRequest(r, w)
+}
 
 // MCP工具API处理函数
 func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
@@ -2908,14 +2990,14 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case "GET":
 		// 获取可用工具列表和服务器状态
 		action := r.URL.Query().Get("action")
-		
+
 		switch action {
 		case "status":
 			// 获取服务器状态
@@ -2935,7 +3017,7 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 			}
 			json.NewEncoder(w).Encode(response)
 		}
-		
+
 	case "POST":
 		// 测试工具调用
 		var toolCall mcp.MCPToolCall
@@ -2947,10 +3029,10 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		result := mcp.CallToolImproved(toolCall)
 		json.NewEncoder(w).Encode(result)
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2963,20 +3045,20 @@ func HandleAssistantStats(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 获取今日统计数据
 		stats := gatherTodayStats()
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"stats": stats,
+			"success":   true,
+			"stats":     stats,
 			"timestamp": time.Now().Unix(),
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -2989,20 +3071,46 @@ func HandleAssistantSuggestions(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case h.MethodGet:
 		// 生成智能建议
 		suggestions := generateAssistantSuggestions()
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
+			"success":     true,
 			"suggestions": suggestions,
+			"timestamp":   time.Now().Unix(),
+		})
+
+	default:
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+	}
+}
+
+// 智能助手趋势数据API处理函数
+func HandleAssistantTrends(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAssistantTrends", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case h.MethodGet:
+		// 生成趋势数据
+		trendData := generateTrendData()
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":   true,
+			"trendData": trendData,
 			"timestamp": time.Now().Unix(),
 		})
-		
+
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
@@ -3012,54 +3120,114 @@ func HandleAssistantSuggestions(w h.ResponseWriter, r *h.Request) {
 func gatherTodayStats() map[string]interface{} {
 	// 获取今日任务统计
 	todayTasks := getTodayTasksStats()
-	
+
 	// 获取今日阅读统计
 	todayReading := getTodayReadingStats()
-	
+
 	// 获取今日锻炼统计
 	todayExercise := getTodayExerciseStats()
-	
+
 	// 获取今日写作统计
 	todayBlogs := getTodayBlogsStats()
-	
+
 	return map[string]interface{}{
-		"tasks": todayTasks,
-		"reading": todayReading,
+		"tasks":    todayTasks,
+		"reading":  todayReading,
 		"exercise": todayExercise,
-		"blogs": todayBlogs,
-		"date": time.Now().Format("2006-01-02"),
+		"blogs":    todayBlogs,
+		"date":     time.Now().Format("2006-01-02"),
 	}
 }
 
 // 生成智能建议
 func generateAssistantSuggestions() []map[string]interface{} {
 	suggestions := []map[string]interface{}{}
-	
+
 	// 基于任务完成情况生成建议
 	taskSuggestion := generateTaskSuggestion()
 	if taskSuggestion != nil {
 		suggestions = append(suggestions, taskSuggestion)
 	}
-	
+
 	// 基于阅读习惯生成建议
 	readingSuggestion := generateReadingSuggestion()
 	if readingSuggestion != nil {
 		suggestions = append(suggestions, readingSuggestion)
 	}
-	
+
 	// 基于锻炼情况生成建议
 	exerciseSuggestion := generateExerciseSuggestion()
 	if exerciseSuggestion != nil {
 		suggestions = append(suggestions, exerciseSuggestion)
 	}
-	
+
 	// 基于时间模式生成建议
 	timeSuggestion := generateTimeSuggestion()
 	if timeSuggestion != nil {
 		suggestions = append(suggestions, timeSuggestion)
 	}
-	
+
 	return suggestions
+}
+
+// 生成趋势数据
+func generateTrendData() map[string]interface{} {
+	// 获取过去7天的数据
+	labels := []string{"7天前", "6天前", "5天前", "4天前", "3天前", "2天前", "昨天", "今天"}
+	
+	// 获取任务完成率趋势
+	taskCompletionRates := getTaskCompletionTrend()
+	
+	// 获取阅读时间趋势
+	readingTimeTrend := getReadingTimeTrend()
+	
+	// 获取锻炼频率趋势
+	exerciseFrequencyTrend := getExerciseFrequencyTrend()
+	
+	return map[string]interface{}{
+		"labels": labels,
+		"datasets": []map[string]interface{}{
+			{
+				"label":           "任务完成率",
+				"data":            taskCompletionRates,
+				"borderColor":     "rgba(0, 212, 170, 1)",
+				"backgroundColor": "rgba(0, 212, 170, 0.1)",
+				"tension":         0.4,
+			},
+			{
+				"label":           "阅读时间(小时)",
+				"data":            readingTimeTrend,
+				"borderColor":     "rgba(161, 196, 253, 1)",
+				"backgroundColor": "rgba(161, 196, 253, 0.1)",
+				"tension":         0.4,
+			},
+			{
+				"label":           "锻炼次数",
+				"data":            exerciseFrequencyTrend,
+				"borderColor":     "rgba(244, 162, 97, 1)",
+				"backgroundColor": "rgba(244, 162, 97, 0.1)",
+				"tension":         0.4,
+			},
+		},
+	}
+}
+
+// 获取任务完成率趋势（近7天）
+func getTaskCompletionTrend() []int {
+	// 这里应该从真实数据源获取，暂时返回模拟数据
+	return []int{80, 75, 90, 85, 70, 95, 85, 60}
+}
+
+// 获取阅读时间趋势（近7天）
+func getReadingTimeTrend() []float64 {
+	// 这里应该从真实数据源获取，暂时返回模拟数据
+	return []float64{2.0, 1.5, 3.0, 2.5, 1.0, 2.0, 3.0, 2.5}
+}
+
+// 获取锻炼频率趋势（近7天）
+func getExerciseFrequencyTrend() []int {
+	// 这里应该从真实数据源获取，暂时返回模拟数据
+	return []int{1, 1, 0, 2, 1, 1, 2, 1}
 }
 
 // 辅助函数 - 生成状态分析
@@ -3090,42 +3258,42 @@ func generateDefaultResponse() string {
 // 收集所有博客数据
 func gatherAllBlogData() string {
 	var dataBuilder strings.Builder
-	
+
 	// 收集任务数据
 	taskData := gatherTaskData()
 	dataBuilder.WriteString("📋 **任务管理**:\n")
 	dataBuilder.WriteString(taskData)
 	dataBuilder.WriteString("\n\n")
-	
+
 	// 收集阅读数据
 	readingData := gatherReadingData()
 	dataBuilder.WriteString("📚 **阅读记录**:\n")
 	dataBuilder.WriteString(readingData)
 	dataBuilder.WriteString("\n\n")
-	
+
 	// 收集锻炼数据
 	exerciseData := gatherExerciseData()
 	dataBuilder.WriteString("💪 **锻炼记录**:\n")
 	dataBuilder.WriteString(exerciseData)
 	dataBuilder.WriteString("\n\n")
-	
+
 	// 收集博客数据
 	blogData := gatherBlogData()
 	dataBuilder.WriteString("📝 **博客写作**:\n")
 	dataBuilder.WriteString(blogData)
 	dataBuilder.WriteString("\n\n")
-	
+
 	// 收集年度计划数据
 	yearPlanData := gatherYearPlanData()
 	dataBuilder.WriteString("🎯 **年度目标**:\n")
 	dataBuilder.WriteString(yearPlanData)
 	dataBuilder.WriteString("\n\n")
-	
+
 	// 收集统计数据
 	statsData := gatherStatsData()
 	dataBuilder.WriteString("📊 **整体统计**:\n")
 	dataBuilder.WriteString(statsData)
-	
+
 	return dataBuilder.String()
 }
 
@@ -3134,17 +3302,17 @@ func gatherTaskData() string {
 	// 获取今日任务数据
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("todolist-%s", today)
-	
+
 	// 获取今日任务列表
 	todayBlog := control.GetBlog(todayTitle)
 	var todayCompleted, todayTotal int
 	var recentTasks []string
-	
+
 	if todayBlog != nil {
 		// 解析今日任务数据
 		todayData := todolist.ParseTodoListFromBlog(todayBlog.Content)
 		todayTotal = len(todayData.Items)
-		
+
 		for _, item := range todayData.Items {
 			if item.Completed {
 				todayCompleted++
@@ -3158,20 +3326,20 @@ func gatherTaskData() string {
 			}
 		}
 	}
-	
+
 	// 计算本周完成率
 	weekCompletionRate := calculateWeeklyTaskCompletion()
-	
+
 	// 获取最近完成的任务
 	recentCompletedTasks := getRecentCompletedTasks(3)
-	
+
 	recentTasksStr := "无"
 	if len(recentCompletedTasks) > 0 {
 		recentTasksStr = strings.Join(recentCompletedTasks, ", ")
 	} else if len(recentTasks) > 0 {
 		recentTasksStr = strings.Join(recentTasks, ", ")
 	}
-	
+
 	return fmt.Sprintf("- 今日任务: %d/%d 完成\n- 本周完成率: %.1f%%\n- 最近任务: %s",
 		todayCompleted, todayTotal, weekCompletionRate, recentTasksStr)
 }
@@ -3180,32 +3348,32 @@ func gatherTaskData() string {
 func gatherReadingData() string {
 	// 获取所有阅读相关的博客
 	readingBlogs := getReadingBlogs()
-	
+
 	var currentReading []string
 	var recentBooks []string
 	var monthlyReadingHours float64
 	var readingProgress []string
-	
+
 	for _, blog := range readingBlogs {
 		// 解析阅读数据
 		bookData := parseReadingDataFromBlog(blog.Content)
-		
+
 		// 统计当前在读的书籍
 		if bookData.Status == "reading" {
 			currentReading = append(currentReading, bookData.Title)
-			
+
 			// 计算阅读进度
 			if bookData.TotalPages > 0 {
 				progress := float64(bookData.CurrentPage) / float64(bookData.TotalPages) * 100
 				readingProgress = append(readingProgress, fmt.Sprintf("%s(%.0f%%)", bookData.Title, progress))
 			}
 		}
-		
+
 		// 收集最近阅读的书籍
 		if len(recentBooks) < 3 {
 			recentBooks = append(recentBooks, bookData.Title)
 		}
-		
+
 		// 统计本月阅读时间
 		if bookData.LastReadDate != "" {
 			if lastRead, err := time.Parse("2006-01-02", bookData.LastReadDate); err == nil {
@@ -3215,23 +3383,23 @@ func gatherReadingData() string {
 			}
 		}
 	}
-	
+
 	// 格式化输出
 	currentReadingStr := "无"
 	if len(currentReading) > 0 {
 		currentReadingStr = fmt.Sprintf("%d 本书", len(currentReading))
 	}
-	
+
 	recentBooksStr := "无"
 	if len(recentBooks) > 0 {
 		recentBooksStr = strings.Join(recentBooks, ", ")
 	}
-	
+
 	readingProgressStr := "无"
 	if len(readingProgress) > 0 {
 		readingProgressStr = strings.Join(readingProgress, ", ")
 	}
-	
+
 	return fmt.Sprintf("- 当前在读: %s\n- 本月阅读: %.1f 小时\n- 最近阅读: %s\n- 阅读进度: %s",
 		currentReadingStr, monthlyReadingHours, recentBooksStr, readingProgressStr)
 }
@@ -3241,39 +3409,39 @@ func gatherExerciseData() string {
 	// 获取今日锻炼数据
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("exercise-%s", today)
-	
+
 	var todayExercise []string
 	var todayCalories float64
-	
+
 	// 获取今日锻炼
 	todayBlog := control.GetBlog(todayTitle)
 	if todayBlog != nil {
 		exerciseList := exercise.ParseExerciseFromBlog(todayBlog.Content)
-		
+
 		for _, ex := range exerciseList.Items {
 			exerciseType := getExerciseTypeText(ex.Type)
 			todayExercise = append(todayExercise, fmt.Sprintf("%s %d分钟", exerciseType, ex.Duration))
 			todayCalories += float64(ex.Calories)
 		}
 	}
-	
+
 	// 获取本周锻炼统计
 	weeklyStats := getWeeklyExerciseStats()
-	
+
 	// 获取最近锻炼记录
 	recentExercises := getRecentExercises(3)
-	
+
 	// 格式化输出
 	todayExerciseStr := "无"
 	if len(todayExercise) > 0 {
 		todayExerciseStr = strings.Join(todayExercise, ", ")
 	}
-	
+
 	recentExercisesStr := "无"
 	if len(recentExercises) > 0 {
 		recentExercisesStr = strings.Join(recentExercises, ", ")
 	}
-	
+
 	return fmt.Sprintf("- 今日锻炼: %s\n- 本周锻炼: %d 次\n- 消耗卡路里: %.0f 千卡\n- 最近锻炼: %s",
 		todayExerciseStr, weeklyStats.SessionCount, weeklyStats.TotalCalories, recentExercisesStr)
 }
@@ -3281,25 +3449,25 @@ func gatherExerciseData() string {
 // 收集博客数据
 func gatherBlogData() string {
 	// 获取所有博客数据
-	allBlogs := control.GetAll(0,0)
-	
+	allBlogs := control.GetAll(0, 0)
+
 	var totalBlogs int
 	var monthlyBlogs int
 	var recentBlogs []string
 	var tagCount map[string]int
-	
+
 	tagCount = make(map[string]int)
 	currentMonth := time.Now().Format("2006-01")
-	
+
 	// 过滤掉系统生成的博客（任务、锻炼、阅读等）
 	for _, blog := range allBlogs {
 		// 跳过系统生成的博客
 		if isSystemBlog(blog.Title) {
 			continue
 		}
-		
+
 		totalBlogs++
-		
+
 		// 统计本月博客
 		if blog.CreateTime != "" {
 			if createTime, err := time.Parse("2006-01-02 15:04:05", blog.CreateTime); err == nil {
@@ -3308,12 +3476,12 @@ func gatherBlogData() string {
 				}
 			}
 		}
-		
+
 		// 收集最近博客
 		if len(recentBlogs) < 3 {
 			recentBlogs = append(recentBlogs, blog.Title)
 		}
-		
+
 		// 统计标签
 		if blog.Tags != "" {
 			tags := strings.Split(blog.Tags, "|")
@@ -3325,21 +3493,21 @@ func gatherBlogData() string {
 			}
 		}
 	}
-	
+
 	// 获取热门标签
 	hotTags := getHotTags(tagCount, 3)
-	
+
 	// 格式化输出
 	recentBlogsStr := "无"
 	if len(recentBlogs) > 0 {
 		recentBlogsStr = strings.Join(recentBlogs, ", ")
 	}
-	
+
 	hotTagsStr := "无"
 	if len(hotTags) > 0 {
 		hotTagsStr = strings.Join(hotTags, ", ")
 	}
-	
+
 	return fmt.Sprintf("- 总博客数: %d 篇\n- 本月发布: %d 篇\n- 最近博客: %s\n- 热门标签: %s",
 		totalBlogs, monthlyBlogs, recentBlogsStr, hotTagsStr)
 }
@@ -3349,24 +3517,24 @@ func gatherYearPlanData() string {
 	// 获取当前年份
 	currentYear := time.Now().Year()
 	yearPlanTitle := fmt.Sprintf("年计划_%d", currentYear)
-	
+
 	// 获取年度计划
 	yearPlan := control.GetBlog(yearPlanTitle)
 	if yearPlan != nil {
 		return "- 年度目标: 未设置\n- 整体进度: 0%\n- 目标详情: 暂无年度计划"
 	}
-	
+
 	// 解析年度计划数据
 	yearPlanData := yearplan.ParseYearPlanFromBlog(yearPlan.Content)
-	
+
 	// 获取月度目标统计
 	monthlyStats := getMonthlyGoalsStats(currentYear)
-	
+
 	// 计算整体进度
 	var totalProgress float64
 	var goalCount int
 	var goalDetails []string
-	
+
 	for _, goal := range yearPlanData.Tasks {
 		if goal.Status == "completed" {
 			totalProgress += 1
@@ -3374,20 +3542,20 @@ func gatherYearPlanData() string {
 			goalDetails = append(goalDetails, fmt.Sprintf("%s(%.0f%%)", goal.Title, 1))
 		}
 	}
-	
+
 	overallProgress := float64(0)
 	if goalCount > 0 {
 		overallProgress = totalProgress / float64(goalCount)
 	}
-	
+
 	// 格式化输出
 	goalDetailsStr := "暂无具体目标"
 	if len(goalDetails) > 0 {
 		goalDetailsStr = strings.Join(goalDetails, ", ")
 	}
-	
+
 	return fmt.Sprintf("- 年度目标: %d 个\n- 整体进度: %.1f%%\n- 完成月份: %d/%d\n- 目标详情: %s",
-		len(yearPlanData.Tasks), overallProgress, monthlyStats.CompletedMonths, 
+		len(yearPlanData.Tasks), overallProgress, monthlyStats.CompletedMonths,
 		monthlyStats.TotalMonths, goalDetailsStr)
 }
 
@@ -3395,19 +3563,19 @@ func gatherYearPlanData() string {
 func gatherStatsData() string {
 	// 获取系统整体统计
 	stats := statistics.GetOverallStatistics()
-	
+
 	// 计算活跃天数
 	activeDays := calculateActiveDays()
-	
+
 	// 计算数据完整性
 	dataCompleteness := calculateDataCompleteness()
-	
+
 	// 计算生产力指数
 	productivityIndex := calculateProductivityIndex()
-	
+
 	// 分析近期趋势
 	recentTrend := analyzeRecentTrend()
-	
+
 	return fmt.Sprintf("- 活跃天数: %d 天\n- 数据完整性: %.1f%%\n- 生产力指数: %.1f\n- 近期趋势: %s\n- 总博客数: %d\n- 今日新增: %d",
 		activeDays, dataCompleteness, productivityIndex, recentTrend, stats.BlogStats.TotalBlogs, stats.BlogStats.TodayNewBlogs)
 }
@@ -3417,7 +3585,7 @@ func formatRecentTasks(tasks []interface{}, limit int) string {
 	if len(tasks) == 0 {
 		return "无"
 	}
-	
+
 	var taskNames []string
 	for i, task := range tasks {
 		if i >= limit {
@@ -3429,11 +3597,11 @@ func formatRecentTasks(tasks []interface{}, limit int) string {
 			}
 		}
 	}
-	
+
 	if len(taskNames) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(taskNames, ", ")
 }
 
@@ -3441,7 +3609,7 @@ func formatRecentBooks(books []interface{}) string {
 	if len(books) == 0 {
 		return "无"
 	}
-	
+
 	var bookNames []string
 	for _, book := range books {
 		if bookMap, ok := book.(map[string]interface{}); ok {
@@ -3450,11 +3618,11 @@ func formatRecentBooks(books []interface{}) string {
 			}
 		}
 	}
-	
+
 	if len(bookNames) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(bookNames, ", ")
 }
 
@@ -3462,7 +3630,7 @@ func formatReadingProgress(books []interface{}) string {
 	if len(books) == 0 {
 		return "无"
 	}
-	
+
 	var progress []string
 	for _, book := range books {
 		if bookMap, ok := book.(map[string]interface{}); ok {
@@ -3473,11 +3641,11 @@ func formatReadingProgress(books []interface{}) string {
 			}
 		}
 	}
-	
+
 	if len(progress) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(progress, ", ")
 }
 
@@ -3485,7 +3653,7 @@ func formatTodayExercise(exercise interface{}) string {
 	if exercise == nil {
 		return "无"
 	}
-	
+
 	if exerciseMap, ok := exercise.(map[string]interface{}); ok {
 		if exerciseType, ok := exerciseMap["type"].(string); ok {
 			if duration, ok := exerciseMap["duration"].(float64); ok {
@@ -3493,7 +3661,7 @@ func formatTodayExercise(exercise interface{}) string {
 			}
 		}
 	}
-	
+
 	return "无"
 }
 
@@ -3501,7 +3669,7 @@ func formatRecentExercises(exercises []interface{}) string {
 	if len(exercises) == 0 {
 		return "无"
 	}
-	
+
 	var exerciseList []string
 	for _, exercise := range exercises {
 		if exerciseMap, ok := exercise.(map[string]interface{}); ok {
@@ -3512,11 +3680,11 @@ func formatRecentExercises(exercises []interface{}) string {
 			}
 		}
 	}
-	
+
 	if len(exerciseList) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(exerciseList, ", ")
 }
 
@@ -3524,7 +3692,7 @@ func formatRecentBlogs(blogs []interface{}) string {
 	if len(blogs) == 0 {
 		return "无"
 	}
-	
+
 	var blogTitles []string
 	for _, blog := range blogs {
 		if blogMap, ok := blog.(map[string]interface{}); ok {
@@ -3533,11 +3701,11 @@ func formatRecentBlogs(blogs []interface{}) string {
 			}
 		}
 	}
-	
+
 	if len(blogTitles) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(blogTitles, ", ")
 }
 
@@ -3545,18 +3713,18 @@ func formatHotTags(tags []interface{}) string {
 	if len(tags) == 0 {
 		return "无"
 	}
-	
+
 	var tagNames []string
 	for _, tag := range tags {
 		if tagStr, ok := tag.(string); ok {
 			tagNames = append(tagNames, tagStr)
 		}
 	}
-	
+
 	if len(tagNames) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(tagNames, ", ")
 }
 
@@ -3564,7 +3732,7 @@ func formatYearGoals(goals []interface{}) string {
 	if len(goals) == 0 {
 		return "无"
 	}
-	
+
 	var goalList []string
 	for _, goal := range goals {
 		if goalMap, ok := goal.(map[string]interface{}); ok {
@@ -3575,11 +3743,11 @@ func formatYearGoals(goals []interface{}) string {
 			}
 		}
 	}
-	
+
 	if len(goalList) == 0 {
 		return "无"
 	}
-	
+
 	return strings.Join(goalList, ", ")
 }
 
@@ -3589,18 +3757,18 @@ func formatYearGoals(goals []interface{}) string {
 func calculateWeeklyTaskCompletion() float64 {
 	now := time.Now()
 	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-	
+
 	var totalTasks, completedTasks int
-	
+
 	for i := 0; i < 7; i++ {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
-		
+
 		blog := control.GetBlog(title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
 			totalTasks += len(todoData.Items)
-			
+
 			for _, item := range todoData.Items {
 				if item.Completed {
 					completedTasks++
@@ -3608,11 +3776,11 @@ func calculateWeeklyTaskCompletion() float64 {
 			}
 		}
 	}
-	
+
 	if totalTasks == 0 {
 		return 0
 	}
-	
+
 	return float64(completedTasks) / float64(totalTasks) * 100
 }
 
@@ -3620,42 +3788,42 @@ func calculateWeeklyTaskCompletion() float64 {
 func getRecentCompletedTasks(limit int) []string {
 	var recentTasks []string
 	now := time.Now()
-	
+
 	// 查看最近7天的任务
 	for i := 0; i < 7; i++ {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
-		
+
 		blog := control.GetBlog(title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
-			
+
 			for _, item := range todoData.Items {
 				if item.Completed && len(recentTasks) < limit {
 					recentTasks = append(recentTasks, item.Content)
 				}
 			}
 		}
-		
+
 		if len(recentTasks) >= limit {
 			break
 		}
 	}
-	
+
 	return recentTasks
 }
 
 // 获取阅读相关的博客
 func getReadingBlogs() []*module.Blog {
-	allBlogs := control.GetAll(0,0)
+	allBlogs := control.GetAll(0, 0)
 	var readingBlogs []*module.Blog
-	
+
 	for _, blog := range allBlogs {
 		if strings.HasPrefix(blog.Title, "reading_book_") {
 			readingBlogs = append(readingBlogs, blog)
 		}
 	}
-	
+
 	return readingBlogs
 }
 
@@ -3663,13 +3831,13 @@ func getReadingBlogs() []*module.Blog {
 func parseReadingDataFromBlog(content string) ReadingBookData {
 	// 简化的解析逻辑
 	data := ReadingBookData{
-		Status:              "reading",
-		CurrentPage:         0,
-		TotalPages:          0,
-		MonthlyReadingTime:  0,
-		LastReadDate:        time.Now().Format("2006-01-02"),
+		Status:             "reading",
+		CurrentPage:        0,
+		TotalPages:         0,
+		MonthlyReadingTime: 0,
+		LastReadDate:       time.Now().Format("2006-01-02"),
 	}
-	
+
 	// 从content中解析标题
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
@@ -3678,7 +3846,7 @@ func parseReadingDataFromBlog(content string) ReadingBookData {
 			break
 		}
 	}
-	
+
 	return data
 }
 
@@ -3712,14 +3880,14 @@ func getExerciseTypeText(exerciseType string) string {
 func getWeeklyExerciseStats() WeeklyExerciseStats {
 	now := time.Now()
 	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-	
+
 	var sessionCount int
 	var totalCalories float64
-	
+
 	for i := 0; i < 7; i++ {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
-		
+
 		blog := control.GetBlog(title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
@@ -3731,7 +3899,7 @@ func getWeeklyExerciseStats() WeeklyExerciseStats {
 			}
 		}
 	}
-	
+
 	return WeeklyExerciseStats{
 		SessionCount:  sessionCount,
 		TotalCalories: totalCalories,
@@ -3748,15 +3916,15 @@ type WeeklyExerciseStats struct {
 func getRecentExercises(limit int) []string {
 	var recentExercises []string
 	now := time.Now()
-	
+
 	for i := 0; i < 7; i++ {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
-		
+
 		blog := control.GetBlog(title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
-			
+
 			for _, ex := range exercises.Items {
 				if len(recentExercises) < limit {
 					exerciseType := getExerciseTypeText(ex.Type)
@@ -3764,12 +3932,12 @@ func getRecentExercises(limit int) []string {
 				}
 			}
 		}
-		
+
 		if len(recentExercises) >= limit {
 			break
 		}
 	}
-	
+
 	return recentExercises
 }
 
@@ -3783,13 +3951,13 @@ func isSystemBlog(title string) bool {
 		"年计划_",
 		"assistant_",
 	}
-	
+
 	for _, prefix := range systemPrefixes {
 		if strings.HasPrefix(title, prefix) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -3799,17 +3967,17 @@ func getHotTags(tagCount map[string]int, limit int) []string {
 		Tag   string
 		Count int
 	}
-	
+
 	var tags []TagCount
 	for tag, count := range tagCount {
 		tags = append(tags, TagCount{Tag: tag, Count: count})
 	}
-	
+
 	// 按计数排序
 	sort.Slice(tags, func(i, j int) bool {
 		return tags[i].Count > tags[j].Count
 	})
-	
+
 	var hotTags []string
 	for i, tag := range tags {
 		if i >= limit {
@@ -3817,28 +3985,28 @@ func getHotTags(tagCount map[string]int, limit int) []string {
 		}
 		hotTags = append(hotTags, tag.Tag)
 	}
-	
+
 	return hotTags
 }
 
 // 获取月度目标统计
 func getMonthlyGoalsStats(year int) MonthlyGoalsStats {
 	var completedMonths, totalMonths int
-	
+
 	for month := 1; month <= 12; month++ {
 		title := fmt.Sprintf("月度目标_%d-%02d", year, month)
 		blog := control.GetBlog(title)
-		
+
 		if blog != nil {
 			totalMonths++
-			
+
 			// 简化的完成度判断
 			if strings.Contains(blog.Content, "完成") {
 				completedMonths++
 			}
 		}
 	}
-	
+
 	return MonthlyGoalsStats{
 		CompletedMonths: completedMonths,
 		TotalMonths:     totalMonths,
@@ -3854,9 +4022,9 @@ type MonthlyGoalsStats struct {
 // 计算活跃天数
 func calculateActiveDays() int {
 	// 统计有数据的天数
-	allBlogs := control.GetAll(0,0)
+	allBlogs := control.GetAll(0, 0)
 	dateSet := make(map[string]bool)
-	
+
 	for _, blog := range allBlogs {
 		if blog.ModifyTime != "" {
 			if createTime, err := time.Parse("2006-01-02 15:04:05", blog.ModifyTime); err == nil {
@@ -3865,7 +4033,7 @@ func calculateActiveDays() int {
 			}
 		}
 	}
-	
+
 	return len(dateSet)
 }
 
@@ -3874,21 +4042,21 @@ func calculateDataCompleteness() float64 {
 	// 计算最近30天的数据完整性
 	now := time.Now()
 	var completeDataDays int
-	
+
 	for i := 0; i < 30; i++ {
 		date := now.AddDate(0, 0, -i)
 		dateStr := date.Format("2006-01-02")
-		
+
 		// 检查是否有任务、锻炼或阅读数据
 		hasTask := hasDataForDate("todolist-", dateStr)
 		hasExercise := hasDataForDate("exercise-", dateStr)
 		hasReading := hasReadingDataForDate(dateStr)
-		
+
 		if hasTask || hasExercise || hasReading {
 			completeDataDays++
 		}
 	}
-	
+
 	return float64(completeDataDays) / 30.0 * 100
 }
 
@@ -3915,22 +4083,22 @@ func calculateProductivityIndex() float64 {
 	// 综合任务完成率、锻炼频率、阅读时间等指标
 	taskCompletion := calculateWeeklyTaskCompletion()
 	exerciseStats := getWeeklyExerciseStats()
-	
+
 	// 简化的生产力计算
 	productivity := (taskCompletion * 0.4) + (float64(exerciseStats.SessionCount) * 10 * 0.3) + (50 * 0.3)
-	
+
 	if productivity > 100 {
 		productivity = 100
 	}
-	
-	return productivity / 10  // 转换为1-10分制
+
+	return productivity / 10 // 转换为1-10分制
 }
 
 // 分析近期趋势
 func analyzeRecentTrend() string {
 	// 比较最近一周和前一周的数据
 	thisWeekCompletion := calculateWeeklyTaskCompletion()
-	
+
 	// 简化的趋势分析
 	if thisWeekCompletion > 70 {
 		return "上升趋势，效率提升明显"
@@ -3943,53 +4111,194 @@ func analyzeRecentTrend() string {
 
 // 辅助函数 - 获取今日任务统计
 func getTodayTasksStats() map[string]interface{} {
-	// 这里应该调用任务模块的API
-	// 暂时返回模拟数据
+	// 获取今日日期
+	today := time.Now().Format("2006-01-02")
+	
+	// 调用todolist模块获取今日任务
+	tm := todolist.GetTodoManager()
+	if tm == nil {
+		log.WarnF("TodoManager not initialized, using mock data")
+		return map[string]interface{}{
+			"completed":       3,
+			"total":           5,
+			"completion_rate": 60.0,
+		}
+	}
+	
+	todos, err := tm.GetTodosByDate(today)
+	if err != nil {
+		log.ErrorF("Failed to get today's todos: %v", err)
+		return map[string]interface{}{
+			"completed":       0,
+			"total":           0,
+			"completion_rate": 0.0,
+		}
+	}
+	
+	total := len(todos.Items)
+	completed := 0
+	
+	for _, todo := range todos.Items {
+		if todo.Completed {
+			completed++
+		}
+	}
+	
+	completionRate := 0.0
+	if total > 0 {
+		completionRate = float64(completed) / float64(total) * 100
+	}
+	
 	return map[string]interface{}{
-		"completed": 3,
-		"total": 5,
-		"completion_rate": 60.0,
+		"completed":       completed,
+		"total":           total,
+		"completion_rate": completionRate,
 	}
 }
 
 // 辅助函数 - 获取今日阅读统计
 func getTodayReadingStats() map[string]interface{} {
-	// 这里应该调用阅读模块的API
-	// 暂时返回模拟数据
+	// 调用阅读模块获取统计数据
+	stats := reading.GetReadingStatistics()
+	if stats == nil {
+		log.WarnF("Failed to get reading statistics, using mock data")
+		return map[string]interface{}{
+			"time":  2.5,
+			"pages": 45,
+			"books": 1,
+		}
+	}
+	
+	// 从统计数据中提取今日相关信息
+	todayTime := 0.0
+	todayPages := 0
+	todayBooks := 0
+	
+	// 这里可以进一步处理stats数据，提取今日特定的阅读信息
+	// 目前reading模块的GetReadingStatistics返回整体统计，我们暂时使用它
+	if dailyTime, ok := stats["daily_reading_time"]; ok {
+		if timeVal, ok := dailyTime.(float64); ok {
+			todayTime = timeVal
+		}
+	}
+	
+	if pages, ok := stats["total_pages_read"]; ok {
+		if pagesVal, ok := pages.(int); ok {
+			todayPages = pagesVal / 30 // 估算每日平均页数
+		}
+	}
+	
+	if books, ok := stats["books_in_progress"]; ok {
+		if booksVal, ok := books.(int); ok {
+			todayBooks = booksVal
+		}
+	}
+	
 	return map[string]interface{}{
-		"time": 2.5,
-		"pages": 45,
-		"books": 1,
+		"time":  todayTime,
+		"pages": todayPages,
+		"books": todayBooks,
 	}
 }
 
 // 辅助函数 - 获取今日锻炼统计
 func getTodayExerciseStats() map[string]interface{} {
-	// 这里应该调用锻炼模块的API
-	// 暂时返回模拟数据
+	// 获取今日日期
+	today := time.Now().Format("2006-01-02")
+	
+	// 调用锻炼模块获取今日锻炼
+	em := exercise.GetExerciseManager()
+	if em == nil {
+		log.WarnF("ExerciseManager not initialized, using mock data")
+		return map[string]interface{}{
+			"sessions": 1,
+			"duration": 45,
+			"type":     "cardio",
+		}
+	}
+	
+	exercises, err := em.GetExercisesByDate(today)
+	if err != nil {
+		log.ErrorF("Failed to get today's exercises: %v", err)
+		return map[string]interface{}{
+			"sessions": 0,
+			"duration": 0,
+			"type":     "none",
+		}
+	}
+	
+	sessions := len(exercises.Items)
+	totalDuration := 0
+	exerciseType := "none"
+	
+	for _, ex := range exercises.Items {
+		if ex.Completed {
+			totalDuration += ex.Duration
+			if exerciseType == "none" {
+				exerciseType = ex.Type
+			}
+		}
+	}
+	
 	return map[string]interface{}{
-		"sessions": 1,
-		"duration": 45,
-		"type": "cardio",
+		"sessions": sessions,
+		"duration": totalDuration,
+		"type":     exerciseType,
 	}
 }
 
 // 辅助函数 - 获取今日写作统计
 func getTodayBlogsStats() map[string]interface{} {
-	// 这里应该调用博客模块的API
-	// 暂时返回模拟数据
+	// 获取今日的博客数据
+	today := time.Now().Format("2006-01-02")
+	todayBlogs := []*module.Blog{}
+	
+	// 获取最近的博客，并筛选今日创建的
+	recentBlogs := blog.GetAll(50, module.EAuthType_all) // 获取最近50篇博客
+	
+	totalWords := 0
+	publishedCount := 0
+	
+	for _, b := range recentBlogs {
+		if b != nil && b.CreateTime != "" {
+			// Blog使用字符串时间格式，需要解析
+			blogDate := ""
+			if len(b.CreateTime) >= 10 {
+				blogDate = b.CreateTime[:10] // 提取前10个字符作为日期部分
+			}
+			
+			if blogDate == today {
+				todayBlogs = append(todayBlogs, b)
+				// 计算字数（简单估算）
+				words := len(strings.ReplaceAll(b.Content, " ", ""))
+				totalWords += words
+				
+				// 检查是否公开发布
+				if b.AuthType&module.EAuthType_public != 0 {
+					publishedCount++
+				}
+			}
+		}
+	}
+	
+	count := len(todayBlogs)
+	avgWords := 0
+	if count > 0 {
+		avgWords = totalWords / count
+	}
+	
 	return map[string]interface{}{
-		"count": 1,
-		"words": 800,
-		"published": true,
+		"count":     count,
+		"words":     avgWords,
+		"published": publishedCount > 0,
 	}
 }
 
 // 辅助函数 - 生成任务建议
 func generateTaskSuggestion() map[string]interface{} {
 	return map[string]interface{}{
-		"icon": "💡",
-		"text": "您今天的任务完成率为60%，建议优先处理剩余的重要任务",
+		"icon":     "💡",
+		"text":     "您今天的任务完成率为60%，建议优先处理剩余的重要任务",
 		"priority": "high",
 	}
 }
@@ -3997,8 +4306,8 @@ func generateTaskSuggestion() map[string]interface{} {
 // 辅助函数 - 生成阅读建议
 func generateReadingSuggestion() map[string]interface{} {
 	return map[string]interface{}{
-		"icon": "📚",
-		"text": "基于您的阅读习惯，推荐继续阅读《深度工作》",
+		"icon":     "📚",
+		"text":     "基于您的阅读习惯，推荐继续阅读《深度工作》",
 		"priority": "medium",
 	}
 }
@@ -4006,8 +4315,8 @@ func generateReadingSuggestion() map[string]interface{} {
 // 辅助函数 - 生成锻炼建议
 func generateExerciseSuggestion() map[string]interface{} {
 	return map[string]interface{}{
-		"icon": "💪",
-		"text": "您已连续3天进行锻炼，保持良好的运动习惯",
+		"icon":     "💪",
+		"text":     "您已连续3天进行锻炼，保持良好的运动习惯",
 		"priority": "low",
 	}
 }
@@ -4015,8 +4324,8 @@ func generateExerciseSuggestion() map[string]interface{} {
 // 辅助函数 - 生成时间建议
 func generateTimeSuggestion() map[string]interface{} {
 	return map[string]interface{}{
-		"icon": "⏰",
-		"text": "分析显示您在下午3-5点效率最高，建议安排重要工作",
+		"icon":     "⏰",
+		"text":     "分析显示您在下午3-5点效率最高，建议安排重要工作",
 		"priority": "medium",
 	}
 }

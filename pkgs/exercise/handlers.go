@@ -11,6 +11,11 @@ import (
 
 var manager = NewExerciseManager()
 
+// GetExerciseManager returns the global exercise manager instance
+func GetExerciseManager() *ExerciseManager {
+    return manager
+}
+
 // HandleExercises handles CRUD operations for exercises
 func HandleExercises(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")

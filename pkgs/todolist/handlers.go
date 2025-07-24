@@ -14,6 +14,14 @@ func SetController(c *Controller) {
     controller = c
 }
 
+// GetTodoManager returns the todo manager instance
+func GetTodoManager() *TodoManager {
+    if controller == nil {
+        return nil
+    }
+    return controller.GetManager()
+}
+
 // HandleTodoList handles the todolist page request
 func HandleTodoList(w http.ResponseWriter, r *http.Request) {
 	log.DebugF("HandleTodoList %s", r.Method)

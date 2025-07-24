@@ -18,6 +18,11 @@ func NewController(manager *TodoManager) *Controller {
     }
 }
 
+// GetManager returns the todo manager instance
+func (c *Controller) GetManager() *TodoManager {
+    return c.manager
+}
+
 // HandleGetTodos handles GET request to retrieve todos
 func (c *Controller) HandleGetTodos(w http.ResponseWriter, r *http.Request) {
     // Set headers

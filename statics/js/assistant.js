@@ -15,41 +15,6 @@ let currentSettings = {
 };
 let mcpTools = [];
 
-// 模拟数据
-const mockData = {
-    todayStats: {
-        tasks: { completed: 3, total: 5 },
-        reading: { time: 2.5, unit: 'hours' },
-        exercise: { sessions: 1, type: 'cardio' },
-        blogs: { count: 1, words: 800 }
-    },
-    suggestions: [
-        { icon: '💡', text: '您今天的任务完成率为60%，建议优先处理剩余的重要任务' },
-        { icon: '📚', text: '基于您的阅读习惯，推荐继续阅读《深度工作》' },
-        { icon: '💪', text: '您已连续3天进行锻炼，保持良好的运动习惯' },
-        { icon: '⏰', text: '分析显示您在下午3-5点效率最高，建议安排重要工作' }
-    ],
-    trendData: {
-        labels: ['7天前', '6天前', '5天前', '4天前', '3天前', '2天前', '昨天', '今天'],
-        datasets: [
-            {
-                label: '任务完成率',
-                data: [80, 75, 90, 85, 70, 95, 85, 60],
-                borderColor: 'rgba(0, 212, 170, 1)',
-                backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                tension: 0.4
-            },
-            {
-                label: '阅读时间(小时)',
-                data: [2, 1.5, 3, 2.5, 1, 2, 3, 2.5],
-                borderColor: 'rgba(161, 196, 253, 1)',
-                backgroundColor: 'rgba(161, 196, 253, 0.1)',
-                tension: 0.4
-            }
-        ]
-    }
-};
-
 // 智能回复模板
 const responseTemplates = {
     status: {
@@ -128,11 +93,8 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializePage() {
     console.log('智能助手页面已加载');
     
-    // 模拟加载过程
-    setTimeout(() => {
-        updateTodayStats();
-        updateSuggestions();
-    }, 1000);
+    // 页面初始化完成，数据加载由其他函数处理
+    console.log('页面初始化完成，等待API数据加载...');
 }
 
 // 设置事件监听器
@@ -861,12 +823,8 @@ function handleQuickOperation(action) {
 
 // 更新今日统计
 function updateTodayStats() {
-    const stats = mockData.todayStats;
-    
-    document.getElementById('todayTasks').textContent = `${stats.tasks.completed}/${stats.tasks.total}`;
-    document.getElementById('todayReading').textContent = `${stats.reading.time}h`;
-    document.getElementById('todayExercise').textContent = stats.exercise.sessions > 0 ? '已完成' : '未完成';
-    document.getElementById('todayBlogs').textContent = `${stats.blogs.count}篇`;
+    // 现在从loadTodayStats函数调用真实API，这里不再使用mockData
+    console.log('updateTodayStats called - deferring to API data');
 }
 
 // 从API数据更新今日统计
@@ -879,18 +837,8 @@ function updateTodayStatsFromAPI(stats) {
 
 // 更新建议列表
 function updateSuggestions() {
-    const suggestionsList = document.getElementById('suggestionsList');
-    suggestionsList.innerHTML = '';
-    
-    mockData.suggestions.forEach(suggestion => {
-        const suggestionDiv = document.createElement('div');
-        suggestionDiv.className = 'suggestion-item';
-        suggestionDiv.innerHTML = `
-            <div class="suggestion-icon">${suggestion.icon}</div>
-            <div class="suggestion-text">${suggestion.text}</div>
-        `;
-        suggestionsList.appendChild(suggestionDiv);
-    });
+    // 现在从loadSuggestions函数调用真实API，这里不再使用mockData
+    console.log('updateSuggestions called - deferring to API data');
 }
 
 // 从API数据更新建议列表
@@ -913,53 +861,56 @@ function updateSuggestionsFromAPI(suggestions) {
 function initializeTrendChart() {
     const ctx = document.getElementById('trendChart').getContext('2d');
     
-    trendChart = new Chart(ctx, {
-        type: 'line',
-        data: mockData.trendData,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                    labels: {
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        font: {
-                            size: 11
+    // 首先加载真实数据，如果失败则使用模拟数据
+    loadTrendData().then(trendData => {
+        trendChart = new Chart(ctx, {
+            type: 'line',
+            data: trendData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            font: {
+                                size: 11
+                            }
                         }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: {
-                        color: 'rgba(255, 255, 255, 0.6)',
-                        font: {
-                            size: 10
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
                     }
                 },
-                y: {
-                    ticks: {
-                        color: 'rgba(255, 255, 255, 0.6)',
-                        font: {
-                            size: 10
+                scales: {
+                    x: {
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            font: {
+                                size: 10
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
                         }
                     },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.1)'
+                    y: {
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            font: {
+                                size: 10
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
                     }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
             }
-        }
+        });
     });
 }
 
@@ -1004,11 +955,14 @@ function refreshData() {
     refreshBtn.style.transform = 'rotate(180deg)';
     
     setTimeout(() => {
-        updateTodayStats();
-        updateSuggestions();
-        if (trendChart) {
-            trendChart.update();
-        }
+        loadTodayStats(); // 使用真实API调用
+        loadSuggestions(); // 使用真实API调用
+        loadTrendData().then(trendData => {
+            if (trendChart) {
+                trendChart.data = trendData;
+                trendChart.update();
+            }
+        });
         refreshBtn.style.transform = 'rotate(0deg)';
     }, 1000);
 }
@@ -1024,13 +978,24 @@ function loadTodayStats() {
                 updateTodayStatsFromAPI(data.stats);
             } else {
                 console.error('获取统计数据失败:', data);
-                updateTodayStats(); // 使用模拟数据
+                updateTodayStatsFromMockData(); // 使用模拟数据
             }
         })
         .catch(error => {
             console.error('API调用失败:', error);
-            updateTodayStats(); // 使用模拟数据
+            updateTodayStatsFromMockData(); // 使用模拟数据
         });
+}
+
+// 从模拟数据更新今日统计（作为fallback）
+function updateTodayStatsFromMockData() {
+    const stats = {
+        tasks: { completed: 3, total: 5 },
+        reading: { time: 2.5, unit: 'hours' },
+        exercise: { sessions: 1, type: 'cardio' },
+        blogs: { count: 1, words: 800 }
+    };
+    updateTodayStatsFromAPI(stats);
 }
 
 // 加载建议数据
@@ -1044,13 +1009,67 @@ function loadSuggestions() {
                 updateSuggestionsFromAPI(data.suggestions);
             } else {
                 console.error('获取建议失败:', data);
-                updateSuggestions(); // 使用模拟数据
+                updateSuggestionsFromMockData(); // 使用模拟数据
             }
         })
         .catch(error => {
             console.error('API调用失败:', error);
-            updateSuggestions(); // 使用模拟数据
+            updateSuggestionsFromMockData(); // 使用模拟数据
         });
+}
+
+// 从模拟数据更新建议列表（作为fallback）
+function updateSuggestionsFromMockData() {
+    const suggestions = [
+        { icon: '💡', text: '您今天的任务完成率为60%，建议优先处理剩余的重要任务' },
+        { icon: '📚', text: '基于您的阅读习惯，推荐继续阅读《深度工作》' },
+        { icon: '💪', text: '您已连续3天进行锻炼，保持良好的运动习惯' },
+        { icon: '⏰', text: '分析显示您在下午3-5点效率最高，建议安排重要工作' }
+    ];
+    updateSuggestionsFromAPI(suggestions);
+}
+
+// 加载趋势数据
+function loadTrendData() {
+    console.log('正在加载趋势数据...');
+    
+    return fetch('/api/assistant/trends')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                return data.trendData;
+            } else {
+                console.error('获取趋势数据失败:', data);
+                return getMockTrendData();
+            }
+        })
+        .catch(error => {
+            console.error('趋势数据API调用失败:', error);
+            return getMockTrendData();
+        });
+}
+
+// 获取模拟趋势数据（作为fallback）
+function getMockTrendData() {
+    return {
+        labels: ['7天前', '6天前', '5天前', '4天前', '3天前', '2天前', '昨天', '今天'],
+        datasets: [
+            {
+                label: '任务完成率',
+                data: [80, 75, 90, 85, 70, 95, 85, 60],
+                borderColor: 'rgba(0, 212, 170, 1)',
+                backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                tension: 0.4
+            },
+            {
+                label: '阅读时间(小时)',
+                data: [2, 1.5, 3, 2.5, 1, 2, 3, 2.5],
+                borderColor: 'rgba(161, 196, 253, 1)',
+                backgroundColor: 'rgba(161, 196, 253, 0.1)',
+                tension: 0.4
+            }
+        ]
+    };
 }
 
 // 处理错误
