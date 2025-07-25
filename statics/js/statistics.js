@@ -66,7 +66,6 @@ async function loadStatistics() {
     } catch (error) {
         console.error('加载统计数据失败:', error);
         showToast('加载统计数据失败: ' + error.message, 'error');
-        
     } finally {
         showLoading(false);
     }

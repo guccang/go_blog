@@ -31,9 +31,23 @@
             </div>
         </header>
 
+        <!-- 导航标签 -->
+        <nav class="assistant-nav">
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="assistant" onclick="switchTab('assistant')">
+                    <i class="fas fa-robot"></i> 智能助手
+                </button>
+                <button class="nav-tab" data-tab="health" onclick="switchTab('health')">
+                    <i class="fas fa-heartbeat"></i> 健康状态
+                </button>
+            </div>
+        </nav>
+
         <main class="assistant-main">
-            <!-- 左侧：聊天界面 -->
-            <section class="chat-section">
+            <!-- 智能助手内容 -->
+            <div id="assistant-content" class="tab-content active">
+                <!-- 左侧：聊天界面 -->
+                <section class="chat-section">
                 <div class="chat-container">
                     <div class="chat-messages" id="chatMessages">
                         <!-- 欢迎消息 -->
@@ -99,7 +113,7 @@
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="todayReading">-</div>
-                            <div class="stat-label">阅读时间</div>
+                            <div class="stat-label">阅读进度</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="todayExercise">-</div>
@@ -150,6 +164,413 @@
                     </div>
                 </div>
             </aside>
+            </div>
+
+            <!-- 健康状态内容 -->
+            <div id="health-content" class="tab-content">
+                <div class="health-dashboard">
+                    <!-- 综合健康状态概览 -->
+                    <div class="health-overview">
+                        <div class="comprehensive-health-card">
+                            <div class="health-header">
+                                <h3><i class="fas fa-heart"></i><i class="fas fa-brain"></i> 综合健康状态
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('overall')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h3>
+                                <div class="overall-score">
+                                    <span class="score-value" id="overallHealthScore">82</span>
+                                    <span class="score-label">分</span>
+                                </div>
+                            </div>
+                            
+                            <!-- 6个健康维度评分 -->
+                            <div class="health-dimensions">
+                                <div class="dimension-item mental">
+                                    <div class="dimension-icon">🧠</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="mentalScore">78</div>
+                                        <div class="dimension-label">心理健康</div>
+                                    </div>
+                                </div>
+                                <div class="dimension-item physical">
+                                    <div class="dimension-icon">💪</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="physicalScore">92</div>
+                                        <div class="dimension-label">体能健康</div>
+                                    </div>
+                                </div>
+                                <div class="dimension-item learning">
+                                    <div class="dimension-icon">📚</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="learningScore">88</div>
+                                        <div class="dimension-label">学习成长</div>
+                                    </div>
+                                </div>
+                                <div class="dimension-item time">
+                                    <div class="dimension-icon">⏰</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="timeScore">75</div>
+                                        <div class="dimension-label">时间管理</div>
+                                    </div>
+                                </div>
+                                <div class="dimension-item goal">
+                                    <div class="dimension-icon">🎯</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="goalScore">82</div>
+                                        <div class="dimension-label">目标执行</div>
+                                    </div>
+                                </div>
+                                <div class="dimension-item balance">
+                                    <div class="dimension-icon">⚖️</div>
+                                    <div class="dimension-info">
+                                        <div class="dimension-score" id="balanceScore">85</div>
+                                        <div class="dimension-label">生活平衡</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 心理健康专区 -->
+                    <div class="mental-health-section">
+                        <h3 class="section-title"><i class="fas fa-brain"></i> 心理健康监测</h3>
+                        <div class="mental-health-cards">
+                            <!-- 压力监测 -->
+                            <div class="mental-card stress-monitor">
+                                <h4><i class="fas fa-chart-bar"></i> 压力水平
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('stress')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h4>
+                                <div class="stress-level">
+                                    <div class="stress-gauge">
+                                        <div class="gauge-bg">
+                                            <div class="gauge-fill" id="stressGauge" style="width: 45%"></div>
+                                        </div>
+                                        <span class="stress-value" id="stressValue">中等</span>
+                                    </div>
+                                    <div class="stress-details">
+                                        <div class="stress-factor">
+                                            <span class="factor-label">未完成任务:</span>
+                                            <span class="factor-value" id="unfinishedTasks">8项</span>
+                                        </div>
+                                        <div class="stress-factor">
+                                            <span class="factor-label">紧急任务:</span>
+                                            <span class="factor-value" id="urgentTasks">2项</span>
+                                        </div>
+                                        <div class="stress-recommendation">
+                                            💡 建议: 优先处理紧急任务
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 情绪健康 -->
+                            <div class="mental-card emotion-tracker">
+                                <h4><i class="fas fa-smile"></i> 情绪健康
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('emotion')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h4>
+                                <div class="emotion-status">
+                                    <div class="emotion-stability">
+                                        <span class="stability-label">情绪稳定度:</span>
+                                        <span class="stability-value" id="emotionStability">良好</span>
+                                    </div>
+                                    <div class="emotion-trend">
+                                        <span class="trend-label">最近7天情绪趋势:</span>
+                                        <div class="emotion-icons" id="emotionTrend">
+                                            <span>😊</span><span>😊</span><span>😐</span><span>😊</span>
+                                            <span>😊</span><span>😔</span><span>😊</span>
+                                        </div>
+                                    </div>
+                                    <div class="emotion-stats">
+                                        <div class="emotion-stat">
+                                            <span class="stat-label">积极表达:</span>
+                                            <span class="stat-value" id="positiveExpression">78%</span>
+                                        </div>
+                                        <div class="emotion-stat">
+                                            <span class="stat-label">情绪丰富度:</span>
+                                            <span class="stat-value" id="emotionRichness">高</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 焦虑风险评估 -->
+                            <div class="mental-card anxiety-assessment">
+                                <h4><i class="fas fa-exclamation-triangle"></i> 焦虑风险
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('anxiety')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h4>
+                                <div class="anxiety-risk">
+                                    <div class="risk-level">
+                                        <span class="risk-label">当前风险等级:</span>
+                                        <span class="risk-value low-medium" id="anxietyRisk">低-中等</span>
+                                    </div>
+                                    <div class="risk-factors">
+                                        <div class="risk-factor">
+                                            <span class="factor-name">作息规律:</span>
+                                            <div class="rating-stars">
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star">☆</span>
+                                            </div>
+                                        </div>
+                                        <div class="risk-factor">
+                                            <span class="factor-name">任务管理:</span>
+                                            <div class="rating-stars">
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star">☆</span>
+                                                <span class="star">☆</span>
+                                            </div>
+                                        </div>
+                                        <div class="risk-factor">
+                                            <span class="factor-name">社交活跃:</span>
+                                            <div class="rating-stars">
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                                <span class="star filled">⭐</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="anxiety-detail">
+                                        <span class="detail-text">深夜活动: <strong id="lateNightActivity">2次/周</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 心理健康建议 -->
+                            <div class="mental-card mental-recommendations">
+                                <h4><i class="fas fa-lightbulb"></i> 心理健康建议</h4>
+                                <div class="mental-tips" id="mentalHealthTips">
+                                    <div class="tip-item meditation">
+                                        <div class="tip-icon">🧘</div>
+                                        <div class="tip-text">建议增加冥想/放松时间</div>
+                                    </div>
+                                    <div class="tip-item sleep">
+                                        <div class="tip-icon">🌅</div>
+                                        <div class="tip-text">尝试早起，减少深夜活动</div>
+                                    </div>
+                                    <div class="tip-item social">
+                                        <div class="tip-icon">👥</div>
+                                        <div class="tip-text">本周社交互动较少，建议主动参与讨论</div>
+                                    </div>
+                                    <div class="tip-item journal">
+                                        <div class="tip-icon">📝</div>
+                                        <div class="tip-text">写作情绪偏负面，建议记录积极事件</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 核心指标卡片区域 -->
+                    <div class="core-metrics-section">
+                        <h3 class="section-title"><i class="fas fa-chart-line"></i> 核心健康指标</h3>
+                        <div class="core-metrics-grid">
+                            <!-- 今日运动状态 -->
+                            <div class="metric-card fitness">
+                                <h4><i class="fas fa-running"></i> 今日运动状态
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('fitness')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value" id="weeklyExercise">3</span>
+                                        <span class="metric-unit">/3次</span>
+                                    </div>
+                                    <div class="metric-label">本周已运动</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">今日消耗:</span>
+                                            <span class="detail-value" id="todayCalories">320卡路里</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">主要锻炼:</span>
+                                            <span class="detail-value" id="mainExercise">有氧运动 45分钟</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 学习进度跟踪 -->
+                            <div class="metric-card learning">
+                                <h4><i class="fas fa-book"></i> 学习进度</h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value" id="monthlyReadingProgress">65</span>
+                                        <span class="metric-unit">%</span>
+                                    </div>
+                                    <div class="metric-label">本月阅读进度</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">在读书籍:</span>
+                                            <span class="detail-value" id="currentBook">《深度工作》</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">本周写作:</span>
+                                            <span class="detail-value" id="weeklyWriting">3篇, 2400字</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 时间效能分析 -->
+                            <div class="metric-card time-management">
+                                <h4><i class="fas fa-clock"></i> 时间效能
+                                    <button class="algorithm-info-btn" onclick="showAlgorithmInfo('timeManagement')" title="查看算法说明">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value" id="timeEfficiency">良好</span>
+                                    </div>
+                                    <div class="metric-label">作息规律度</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">活跃时段:</span>
+                                            <span class="detail-value" id="activeHours">9-11点, 14-17点</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">连续规律:</span>
+                                            <span class="detail-value" id="routineStreak">7天</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 任务执行情况 -->
+                            <div class="metric-card goal-execution">
+                                <h4><i class="fas fa-check-circle"></i> 任务执行</h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value" id="dailyTaskCompletion">6</span>
+                                        <span class="metric-unit">/8</span>
+                                    </div>
+                                    <div class="metric-label">今日任务完成</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">本月目标:</span>
+                                            <span class="detail-value" id="monthlyGoals">已达成 8/10 项</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">连续完成:</span>
+                                            <span class="detail-value" id="completionStreak">5天</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 生活节奏评估 -->
+                            <div class="metric-card life-balance">
+                                <h4><i class="fas fa-balance-scale"></i> 生活节奏</h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value" id="workLifeBalance">平衡</span>
+                                    </div>
+                                    <div class="metric-label">工作生活平衡</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">工作学习:</span>
+                                            <span class="detail-value" id="workStudyHours">8小时 (合理)</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">社交互动:</span>
+                                            <span class="detail-value" id="socialInteraction">本周5次</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 趋势预测 -->
+                            <div class="metric-card trend-prediction">
+                                <h4><i class="fas fa-chart-line"></i> 趋势预测</h4>
+                                <div class="metric-content">
+                                    <div class="metric-main">
+                                        <span class="metric-value trend-up" id="healthTrend">↗️ 稳步上升</span>
+                                    </div>
+                                    <div class="metric-label">健康趋势</div>
+                                    <div class="metric-details">
+                                        <div class="detail-item">
+                                            <span class="detail-label">数据基础:</span>
+                                            <span class="detail-value">最近30天</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span class="detail-label">预计月底:</span>
+                                            <span class="detail-value" id="predictedScore">87分</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 数据可视化区域 -->
+                    <div class="health-visualization-section">
+                        <h3 class="section-title"><i class="fas fa-chart-pie"></i> 健康数据可视化</h3>
+                        <div class="visualization-grid">
+                            <!-- 健康雷达图 -->
+                            <div class="chart-card radar-chart">
+                                <h4><i class="fas fa-radar"></i> 健康维度雷达图</h4>
+                                <div class="chart-container">
+                                    <canvas id="healthRadarChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 情绪波动曲线 -->
+                            <div class="chart-card emotion-chart">
+                                <h4><i class="fas fa-chart-line"></i> 情绪波动趋势</h4>
+                                <div class="chart-container">
+                                    <canvas id="emotionTrendChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 压力热力图 -->
+                            <div class="chart-card stress-heatmap">
+                                <h4><i class="fas fa-fire"></i> 压力水平热力图</h4>
+                                <div class="chart-container">
+                                    <canvas id="stressHeatmapChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 时间分布图 -->
+                            <div class="chart-card time-distribution">
+                                <h4><i class="fas fa-clock"></i> 时间分布分析</h4>
+                                <div class="chart-container">
+                                    <canvas id="timeDistributionChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 社交健康指标 -->
+                            <div class="chart-card social-health">
+                                <h4><i class="fas fa-users"></i> 社交健康指标</h4>
+                                <div class="chart-container">
+                                    <canvas id="socialHealthChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 心理韧性趋势 -->
+                            <div class="chart-card resilience-trend">
+                                <h4><i class="fas fa-shield-alt"></i> 心理韧性趋势</h4>
+                                <div class="chart-container">
+                                    <canvas id="resilienceTrendChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <!-- MCP工具管理大面板 -->
@@ -262,6 +683,21 @@
         <button class="settings-btn" id="settingsBtn">
             <i class="fas fa-cog"></i>
         </button>
+
+        <!-- 算法说明弹窗 -->
+        <div class="algorithm-info-modal" id="algorithmInfoModal">
+            <div class="algorithm-info-content">
+                <div class="algorithm-info-header">
+                    <h3><i class="fas fa-brain"></i> 算法说明</h3>
+                    <button class="close-btn" onclick="closeAlgorithmInfo()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="algorithm-info-body" id="algorithmInfoBody">
+                    <!-- 算法详情内容将在这里动态插入 -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="/js/marked/marked.min.js"></script>

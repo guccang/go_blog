@@ -7,6 +7,205 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* 算法信息按钮样式 */
+.algorithm-info-btn {
+    background: rgba(0, 212, 170, 0.2);
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    color: #00d4aa;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    vertical-align: middle;
+}
+
+.algorithm-info-btn:hover {
+    background: rgba(0, 212, 170, 0.3);
+    transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(0, 212, 170, 0.5);
+}
+
+/* 算法说明弹窗样式 */
+.algorithm-info-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+.algorithm-info-modal.active {
+    display: flex;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.algorithm-info-content {
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    border-radius: 20px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: slideUp 0.3s ease-out;
+}
+
+.algorithm-info-header {
+    background: linear-gradient(45deg, #1a2a6c, #2c3e50);
+    padding: 20px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.algorithm-info-header h3 {
+    color: #00d4aa;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.algorithm-info-header .close-btn {
+    background: rgba(255, 107, 107, 0.2);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    color: #ff6b6b;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.algorithm-info-header .close-btn:hover {
+    background: rgba(255, 107, 107, 0.3);
+    transform: scale(1.1);
+}
+
+.algorithm-info-body {
+    padding: 30px;
+    max-height: 60vh;
+    overflow-y: auto;
+    color: #fff;
+    line-height: 1.8;
+}
+
+.algorithm-section {
+    margin-bottom: 25px;
+}
+
+.algorithm-section h4 {
+    color: #00d4aa;
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.algorithm-section p {
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.algorithm-formula {
+    background: rgba(0, 212, 170, 0.1);
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+    font-family: 'Courier New', monospace;
+    color: #00d4aa;
+    white-space: pre-line;
+}
+
+.algorithm-data-source {
+    background: rgba(161, 196, 253, 0.1);
+    border: 1px solid rgba(161, 196, 253, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.algorithm-data-source h5 {
+    color: #a1c4fd;
+    margin-bottom: 8px;
+    font-size: 1rem;
+}
+
+.algorithm-data-source ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.algorithm-data-source li {
+    padding: 5px 0;
+    color: rgba(255, 255, 255, 0.8);
+    position: relative;
+    padding-left: 20px;
+}
+
+.algorithm-data-source li:before {
+    content: "📊";
+    position: absolute;
+    left: 0;
+    top: 5px;
+}
+
+.algorithm-reference {
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.algorithm-reference h5 {
+    color: #ffc107;
+    margin-bottom: 8px;
+    font-size: 1rem;
+}
+
+.algorithm-reference p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(50px) scale(0.9);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 body {
     background: linear-gradient(135deg, #1a2a6c, #2c3e50, #4a235a);
     color: #fff;
@@ -94,19 +293,569 @@ body {
     opacity: 0.9;
 }
 
+/* 导航标签 */
+.assistant-nav {
+    margin-bottom: 30px;
+}
+
+.nav-tabs {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.nav-tab {
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 25px;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-tab:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.nav-tab.active {
+    background: linear-gradient(45deg, #00d4aa, #a1c4fd);
+    border-color: rgba(0, 212, 170, 0.5);
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 212, 170, 0.3);
+}
+
+/* 标签内容 */
+.tab-content {
+    display: none !important;
+}
+
+.tab-content.active {
+    display: block !important;
+}
+
 /* 主要内容区域 */
 .assistant-main {
-    display: grid;
+    min-height: 600px;
+}
+
+#assistant-content.active {
+    display: grid !important;
     grid-template-columns: 1fr 380px;
     gap: 30px;
     min-height: 600px;
 }
 
+#health-content.active {
+    display: block !important;
+}
+
 @media (max-width: 1024px) {
-    .assistant-main {
-        grid-template-columns: 1fr;
+    #assistant-content.active {
+        grid-template-columns: 1fr !important;
         gap: 20px;
     }
+}
+
+/* 健康状态页面样式 - 重新设计 */
+#health-content {
+    width: 100%;
+}
+
+.health-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    min-height: 600px;
+    padding: 0 20px;
+}
+
+/* 通用部分标题样式 */
+.section-title {
+    color: #00d4aa;
+    font-size: 1.4rem;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid rgba(0, 212, 170, 0.3);
+}
+
+/* 综合健康状态概览 */
+.health-overview {
+    margin-bottom: 10px;
+}
+
+.comprehensive-health-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    padding: 30px;
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.3s ease;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.comprehensive-health-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 212, 170, 0.2);
+}
+
+.health-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.health-header h3 {
+    color: #00d4aa;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+}
+
+.overall-score {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.score-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: #00d4aa;
+    text-shadow: 0 2px 15px rgba(0, 212, 170, 0.4);
+}
+
+.score-label {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* 6个健康维度 */
+.health-dimensions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 20px;
+}
+
+.dimension-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.dimension-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-5px);
+    border-color: rgba(0, 212, 170, 0.3);
+}
+
+.dimension-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.dimension-info {
+    text-align: center;
+}
+
+.dimension-score {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 5px;
+}
+
+.dimension-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* 维度特定颜色 */
+.dimension-item.mental:hover { border-color: rgba(138, 43, 226, 0.5); }
+.dimension-item.physical:hover { border-color: rgba(255, 99, 132, 0.5); }
+.dimension-item.learning:hover { border-color: rgba(54, 162, 235, 0.5); }
+.dimension-item.time:hover { border-color: rgba(255, 206, 86, 0.5); }
+.dimension-item.goal:hover { border-color: rgba(75, 192, 192, 0.5); }
+.dimension-item.balance:hover { border-color: rgba(153, 102, 255, 0.5); }
+
+/* 心理健康专区 */
+.mental-health-section {
+    margin-bottom: 20px;
+}
+
+.mental-health-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.mental-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.mental-card:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mental-card h4 {
+    color: #a1c4fd;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 压力监测样式 */
+.stress-gauge {
+    margin-bottom: 15px;
+}
+
+.gauge-bg {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00d4aa, #ffc107, #ff6b6b);
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+
+.stress-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ffc107;
+}
+
+.stress-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stress-factor {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.factor-label {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.factor-value {
+    color: white;
+    font-weight: 600;
+}
+
+.stress-recommendation {
+    background: rgba(0, 212, 170, 0.1);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+    border-left: 3px solid #00d4aa;
+}
+
+/* 情绪健康样式 */
+.emotion-stability, .emotion-trend {
+    margin-bottom: 12px;
+}
+
+.stability-label, .trend-label {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.stability-value {
+    color: #00d4aa;
+    font-weight: 600;
+}
+
+.emotion-icons {
+    display: flex;
+    gap: 5px;
+    font-size: 1.2rem;
+}
+
+.emotion-stats {
+    display: flex;
+    justify-content: space-between;
+}
+
+.emotion-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.stat-label {
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 3px;
+}
+
+.stat-value {
+    color: white;
+    font-weight: 600;
+}
+
+/* 焦虑风险评估样式 */
+.risk-level {
+    margin-bottom: 15px;
+}
+
+.risk-label {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+}
+
+.risk-value {
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.risk-value.low-medium {
+    color: #ffc107;
+}
+
+.risk-factors {
+    margin-bottom: 12px;
+}
+
+.risk-factor {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.factor-name {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.rating-stars {
+    display: flex;
+    gap: 2px;
+}
+
+.star {
+    font-size: 0.8rem;
+}
+
+.star.filled {
+    color: #ffc107;
+}
+
+.anxiety-detail {
+    background: rgba(255, 193, 7, 0.1);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* 心理健康建议样式 */
+.mental-tips {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tip-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    transition: all 0.3s ease;
+}
+
+.tip-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(5px);
+}
+
+.tip-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.tip-text {
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.3;
+}
+
+/* 核心指标卡片区域 */
+.core-metrics-section {
+    margin-bottom: 20px;
+}
+
+.core-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.metric-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.metric-card h4 {
+    color: #a1c4fd;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.metric-main {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+}
+
+.metric-unit {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 5px;
+}
+
+.metric-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.detail-label {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.detail-value {
+    color: white;
+    font-weight: 500;
+}
+
+/* 趋势相关样式 */
+.trend-up {
+    color: #00d4aa;
+}
+
+.trend-down {
+    color: #ff6b6b;
+}
+
+.trend-stable {
+    color: #ffc107;
+}
+
+/* 数据可视化区域 */
+.health-visualization-section {
+    margin-bottom: 20px;
+}
+
+.visualization-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.chart-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: transform 0.3s ease;
+}
+
+.chart-card:hover {
+    transform: translateY(-2px);
+}
+
+.chart-card h4 {
+    color: #a1c4fd;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chart-card .chart-container {
+    position: relative;
+    height: 280px;
+    margin-top: 10px;
 }
 
 /* 聊天区域 */
@@ -678,6 +1427,68 @@ input:checked + .slider:before {
     .nav-back {
         position: relative;
         margin-bottom: 20px;
+    }
+    
+    /* 健康页面响应式 */
+    .health-dimensions {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    .dimension-item {
+        padding: 15px 10px;
+    }
+    
+    .dimension-icon {
+        font-size: 2rem;
+    }
+    
+    .dimension-score {
+        font-size: 1.5rem;
+    }
+    
+    .score-value {
+        font-size: 2.5rem;
+    }
+    
+    .mental-health-cards {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .core-metrics-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .visualization-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+    
+    .chart-card .chart-container {
+        height: 220px;
+    }
+    
+    .metric-card {
+        padding: 15px;
+    }
+    
+    .metric-value {
+        font-size: 1.8rem;
+    }
+    
+    .section-title {
+        font-size: 1.2rem;
+    }
+    
+    .nav-tabs {
+        gap: 5px;
+    }
+    
+    .nav-tab {
+        padding: 10px 16px;
+        font-size: 0.9rem;
     }
     
     .assistant-header {

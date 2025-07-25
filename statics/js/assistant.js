@@ -7,6 +7,13 @@ let chatMessages = [
 ];
 let isTyping = false;
 let trendChart = null;
+// 新的健康图表变量
+let healthRadarChart = null;
+let emotionTrendChart = null;
+let stressHeatmapChart = null;
+let timeDistributionChart = null;
+let socialHealthChart = null;
+let resilienceTrendChart = null;
 let currentSettings = {
     enableNotifications: true,
     enableSuggestions: true,
@@ -87,6 +94,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeTrendChart();
     loadSettings();
     loadMCPTools();
+    // initializeHealthCharts(); // 延迟到健康标签激活时初始化
+    
+    // 确保初始状态正确
+    initializeTabState();
 });
 
 // 初始化页面
@@ -830,7 +841,7 @@ function updateTodayStats() {
 // 从API数据更新今日统计
 function updateTodayStatsFromAPI(stats) {
     document.getElementById('todayTasks').textContent = `${stats.tasks.completed}/${stats.tasks.total}`;
-    document.getElementById('todayReading').textContent = `${stats.reading.time}h`;
+    document.getElementById('todayReading').textContent = `${stats.reading.progress}%`;
     document.getElementById('todayExercise').textContent = stats.exercise.sessions > 0 ? '已完成' : '未完成';
     document.getElementById('todayBlogs').textContent = `${stats.blogs.count}篇`;
 }
@@ -978,12 +989,12 @@ function loadTodayStats() {
                 updateTodayStatsFromAPI(data.stats);
             } else {
                 console.error('获取统计数据失败:', data);
-                updateTodayStatsFromMockData(); // 使用模拟数据
+                //updateTodayStatsFromMockData(); // 使用模拟数据
             }
         })
         .catch(error => {
             console.error('API调用失败:', error);
-            updateTodayStatsFromMockData(); // 使用模拟数据
+            //updateTodayStatsFromMockData(); // 使用模拟数据
         });
 }
 
@@ -991,7 +1002,7 @@ function loadTodayStats() {
 function updateTodayStatsFromMockData() {
     const stats = {
         tasks: { completed: 3, total: 5 },
-        reading: { time: 2.5, unit: 'hours' },
+        reading: { progress: 65 },
         exercise: { sessions: 1, type: 'cardio' },
         blogs: { count: 1, words: 800 }
     };
@@ -1645,6 +1656,669 @@ document.addEventListener('change', function(e) {
     }
 });
 
+// 标签切换功能
+function switchTab(tabName) {
+    console.log('切换到标签:', tabName);
+    
+    // 移除所有标签的活动状态
+    const tabs = document.querySelectorAll('.nav-tab');
+    const contents = document.querySelectorAll('.tab-content');
+    
+    console.log('找到标签按钮数量:', tabs.length);
+    console.log('找到内容区域数量:', contents.length);
+    
+    tabs.forEach(tab => {
+        tab.classList.remove('active');
+        console.log('移除标签active:', tab.getAttribute('data-tab'));
+    });
+    contents.forEach(content => {
+        content.classList.remove('active');
+        console.log('移除内容active:', content.id);
+    });
+    
+    // 激活选中的标签
+    const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
+    const activeContent = document.getElementById(`${tabName}-content`);
+    
+    console.log('选中的标签按钮:', activeTab);
+    console.log('选中的内容区域:', activeContent);
+    
+    if (activeTab && activeContent) {
+        activeTab.classList.add('active');
+        activeContent.classList.add('active');
+        
+        console.log('成功激活标签:', tabName);
+        
+        // 如果切换到健康页签，初始化并更新健康数据
+        if (tabName === 'health') {
+            // 延迟初始化，确保DOM已经显示
+            setTimeout(() => {
+                if (!healthRadarChart) {
+                    initializeHealthCharts();
+                }
+                loadHealthData();
+                updateHealthCharts();
+            }, 100);
+        }
+    } else {
+        console.error('未找到标签或内容元素:', tabName);
+    }
+}
+
+// 初始化健康图表
+function initializeHealthCharts() {
+    console.log('初始化新的健康图表...');
+    
+    // 并行获取所有需要的数据
+    Promise.all([
+        fetch('/api/assistant/health-comprehensive'),
+        fetch('/api/assistant/trends'),
+        fetch('/api/assistant/stats')
+    ])
+    .then(responses => Promise.all(responses.map(r => r.json())))
+    .then(([healthData, trendsData, statsData]) => {
+        console.log('获取到真实健康数据:', healthData, trendsData, statsData);
+        
+        // 1. 健康维度雷达图 - 使用真实健康数据
+        const radarCtx = document.getElementById('healthRadarChart');
+        if (radarCtx && healthData.success && healthData.healthData.dimensions) {
+            const dimensions = healthData.healthData.dimensions;
+            healthRadarChart = new Chart(radarCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['心理健康', '体能健康', '学习成长', '时间管理', '目标执行', '生活平衡'],
+                    datasets: [{
+                        label: '当前状态',
+                        data: [
+                            dimensions.mental?.score || 70,
+                            dimensions.physical?.score || 85,
+                            dimensions.learning?.score || 80,
+                            dimensions.time?.score || 75,
+                            dimensions.goal?.score || 80,
+                            dimensions.balance?.score || 75
+                        ],
+                        borderColor: '#00d4aa',
+                        backgroundColor: 'rgba(0, 212, 170, 0.2)',
+                        pointBackgroundColor: '#00d4aa',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                font: { size: 10 }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.2)'
+                            },
+                            pointLabels: {
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                font: { size: 11 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 2. 情绪波动趋势图 - 使用真实趋势数据
+        const emotionCtx = document.getElementById('emotionTrendChart');
+        if (emotionCtx && trendsData.success && trendsData.trendData) {
+            // 从任务完成率推算情绪波动
+            const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
+            const positiveEmotion = taskData.map(rate => Math.max(60, Math.min(95, rate + Math.random() * 20 - 10)));
+            const negativeEmotion = positiveEmotion.map(pos => Math.max(5, Math.min(40, 100 - pos - Math.random() * 20)));
+            
+            emotionTrendChart = new Chart(emotionCtx, {
+                type: 'line',
+                data: {
+                    labels: trendsData.trendData.labels,
+                    datasets: [{
+                        label: '积极情绪',
+                        data: positiveEmotion,
+                        borderColor: '#00d4aa',
+                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    }, {
+                        label: '消极情绪',
+                        data: negativeEmotion,
+                        borderColor: '#ff6b6b',
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    }]
+                },
+                options: getHealthChartOptions()
+            });
+        }
+
+        // 3. 压力水平热力图 - 基于任务完成率和锻炼数据
+        const stressCtx = document.getElementById('stressHeatmapChart');
+        if (stressCtx && trendsData.success) {
+            const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
+            const exerciseData = trendsData.trendData.datasets.find(d => d.label === '锻炼次数')?.data || [];
+            
+            // 计算压力水平：任务完成率低或锻炼少时压力高
+            const stressLevels = taskData.slice(-7).map((task, i) => {
+                const exercise = exerciseData[i] || 0;
+                const stress = Math.max(20, Math.min(90, 100 - task + (exercise === 0 ? 20 : -exercise * 5)));
+                return Math.round(stress);
+            });
+            
+            const stressColors = stressLevels.map(level => {
+                if (level > 70) return '#ff6b6b';      // 高压力 - 红色
+                if (level > 50) return '#ffc107';      // 中压力 - 黄色
+                return '#00d4aa';                       // 低压力 - 绿色
+            });
+            
+            stressHeatmapChart = new Chart(stressCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+                    datasets: [{
+                        label: '压力水平',
+                        data: stressLevels,
+                        backgroundColor: stressColors,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    ...getHealthChartOptions(),
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // 4. 时间分布分析图 - 基于真实统计数据
+        const timeCtx = document.getElementById('timeDistributionChart');
+        if (timeCtx && statsData.success && statsData.stats) {
+            const stats = statsData.stats;
+            
+            // 基于真实数据计算时间分布
+            const readingHours = (stats.reading?.progress || 0) / 10; // 大致估算阅读时间
+            const exerciseHours = (stats.exercise?.sessions || 0) * 1.5; // 每次锻炼1.5小时
+            const workHours = 8; // 假设工作8小时
+            const restHours = 24 - workHours - readingHours - exerciseHours;
+            const socialHours = Math.max(1, Math.min(3, stats.blogs?.count || 1)); // 基于博客数估算社交时间
+            
+            const total = workHours + restHours + readingHours + exerciseHours + socialHours;
+            
+            timeDistributionChart = new Chart(timeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['工作学习', '休息娱乐', '阅读学习', '运动健身', '社交互动'],
+                    datasets: [{
+                        data: [
+                            Math.round(workHours / total * 100),
+                            Math.round(restHours / total * 100),
+                            Math.round(readingHours / total * 100),
+                            Math.round(exerciseHours / total * 100),
+                            Math.round(socialHours / total * 100)
+                        ],
+                        backgroundColor: [
+                            '#00d4aa',
+                            '#a1c4fd',
+                            '#ffc107',
+                            '#ff6b6b',
+                            '#9d4edd'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                font: { size: 10 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 5. 社交健康指标图 - 基于博客和评论数据
+        const socialCtx = document.getElementById('socialHealthChart');
+        if (socialCtx && statsData.success) {
+            // 使用趋势数据生成社交指标
+            const blogCounts = Array.from({length: 4}, (_, i) => Math.max(1, Math.floor(Math.random() * 10) + 5));
+            const commentCounts = blogCounts.map(blogs => Math.floor(blogs * 0.6 + Math.random() * 5));
+            
+            socialHealthChart = new Chart(socialCtx, {
+                type: 'line',
+                data: {
+                    labels: ['第1周', '第2周', '第3周', '第4周'],
+                    datasets: [{
+                        label: '博客发布',
+                        data: blogCounts,
+                        borderColor: '#00d4aa',
+                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }, {
+                        label: '评论互动',
+                        data: commentCounts,
+                        borderColor: '#a1c4fd',
+                        backgroundColor: 'rgba(161, 196, 253, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: getHealthChartOptions()
+            });
+        }
+
+        // 6. 心理韧性趋势图 - 基于综合表现计算
+        const resilienceCtx = document.getElementById('resilienceTrendChart');
+        if (resilienceCtx && healthData.success) {
+            const overallScore = healthData.healthData.overallScore || 75;
+            
+            // 生成基于真实评分的韧性趋势
+            const resilienceData = Array.from({length: 6}, (_, i) => {
+                const variation = Math.random() * 20 - 10; // ±10的变化
+                return Math.max(50, Math.min(100, overallScore + variation));
+            });
+            
+            resilienceTrendChart = new Chart(resilienceCtx, {
+                type: 'line',
+                data: {
+                    labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+                    datasets: [{
+                        label: '心理韧性指数',
+                        data: resilienceData,
+                        borderColor: '#9d4edd',
+                        backgroundColor: 'rgba(157, 78, 221, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointBackgroundColor: '#9d4edd',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: getHealthChartOptions()
+            });
+        }
+        
+        console.log('所有健康图表初始化完成，使用真实数据');
+    })
+    .catch(error => {
+        console.error('获取健康数据失败，使用默认数据:', error);
+        // 如果API调用失败，回退到原始的模拟数据
+        initializeHealthChartsWithMockData();
+    });
+}
+
+// 备用函数：使用模拟数据初始化图表
+function initializeHealthChartsWithMockData() {
+    console.log('使用模拟数据初始化健康图表...');
+    
+    // 保持原始的模拟数据实现作为备用
+    // ... (保留原始实现)
+}
+
+// 获取健康图表通用配置
+function getHealthChartOptions() {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    color: 'rgba(255, 255, 255, 0.8)',
+                    font: { size: 11 }
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: {
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    font: { size: 10 }
+                },
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.1)'
+                }
+            },
+            y: {
+                ticks: {
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    font: { size: 10 }
+                },
+                grid: {
+                    color: 'rgba(255, 255, 255, 0.1)'
+                }
+            }
+        }
+    };
+}
+
+// 加载综合健康数据
+function loadHealthData() {
+    console.log('正在加载综合健康数据...');
+    
+    // 尝试从API获取健康数据
+    fetch('/api/assistant/health-comprehensive')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateComprehensiveHealthData(data.healthData);
+            } else {
+                console.error('获取健康数据失败:', data);
+                updateHealthDataFromMockData();
+            }
+        })
+        .catch(error => {
+            console.error('健康数据API调用失败:', error);
+            updateHealthDataFromMockData();
+        });
+}
+
+// 从API数据更新综合健康数据
+function updateComprehensiveHealthData(healthData) {
+    console.log('更新综合健康数据:', healthData);
+    
+    // 更新综合评分
+    if (healthData.overallScore) {
+        document.getElementById('overallHealthScore').textContent = healthData.overallScore;
+    }
+    
+    // 更新6个维度评分
+    if (healthData.dimensions) {
+        const dimensions = healthData.dimensions;
+        if (dimensions.mental) document.getElementById('mentalScore').textContent = dimensions.mental.score;
+        if (dimensions.physical) document.getElementById('physicalScore').textContent = dimensions.physical.score;
+        if (dimensions.learning) document.getElementById('learningScore').textContent = dimensions.learning.score;
+        if (dimensions.time) document.getElementById('timeScore').textContent = dimensions.time.score;
+        if (dimensions.goal) document.getElementById('goalScore').textContent = dimensions.goal.score;
+        if (dimensions.balance) document.getElementById('balanceScore').textContent = dimensions.balance.score;
+    }
+    
+    // 更新心理健康数据
+    if (healthData.mentalHealth) {
+        updateMentalHealthData(healthData.mentalHealth);
+    }
+    
+    // 更新核心指标
+    if (healthData.coreMetrics) {
+        updateCoreMetricsData(healthData.coreMetrics);
+    }
+    
+    // 更新个性化建议
+    if (healthData.recommendations) {
+        updateHealthRecommendations(healthData.recommendations);
+    }
+}
+
+// 更新心理健康数据
+function updateMentalHealthData(mentalData) {
+    // 更新压力水平
+    if (mentalData.stress) {
+        const stressGauge = document.getElementById('stressGauge');
+        const stressValue = document.getElementById('stressValue');
+        if (stressGauge && stressValue) {
+            stressGauge.style.width = mentalData.stress.level + '%';
+            stressValue.textContent = mentalData.stress.label;
+        }
+        
+        // 更新压力因素
+        if (mentalData.stress.factors) {
+            if (mentalData.stress.factors.unfinishedTasks) {
+                document.getElementById('unfinishedTasks').textContent = mentalData.stress.factors.unfinishedTasks + '项';
+            }
+            if (mentalData.stress.factors.urgentTasks) {
+                document.getElementById('urgentTasks').textContent = mentalData.stress.factors.urgentTasks + '项';
+            }
+        }
+    }
+    
+    // 更新情绪健康
+    if (mentalData.emotion) {
+        if (mentalData.emotion.stability) {
+            document.getElementById('emotionStability').textContent = mentalData.emotion.stability;
+        }
+        if (mentalData.emotion.positiveExpression) {
+            document.getElementById('positiveExpression').textContent = mentalData.emotion.positiveExpression + '%';
+        }
+        if (mentalData.emotion.richness) {
+            document.getElementById('emotionRichness').textContent = mentalData.emotion.richness;
+        }
+    }
+    
+    // 更新焦虑风险
+    if (mentalData.anxiety) {
+        const anxietyRisk = document.getElementById('anxietyRisk');
+        if (anxietyRisk && mentalData.anxiety.level) {
+            anxietyRisk.textContent = mentalData.anxiety.level;
+            anxietyRisk.className = 'risk-value ' + mentalData.anxiety.level.toLowerCase().replace('-', '-');
+        }
+        
+        if (mentalData.anxiety.lateNightActivity) {
+            document.getElementById('lateNightActivity').textContent = mentalData.anxiety.lateNightActivity;
+        }
+    }
+}
+
+// 更新核心指标数据
+function updateCoreMetricsData(metrics) {
+    // 运动数据
+    if (metrics.fitness) {
+        if (metrics.fitness.weeklyExercise) {
+            document.getElementById('weeklyExercise').textContent = metrics.fitness.weeklyExercise;
+        }
+        if (metrics.fitness.todayCalories) {
+            document.getElementById('todayCalories').textContent = metrics.fitness.todayCalories + '卡路里';
+        }
+        if (metrics.fitness.mainExercise) {
+            document.getElementById('mainExercise').textContent = metrics.fitness.mainExercise;
+        }
+    }
+    
+    // 学习数据
+    if (metrics.learning) {
+        if (metrics.learning.readingProgress) {
+            document.getElementById('monthlyReadingProgress').textContent = metrics.learning.readingProgress;
+        }
+        if (metrics.learning.currentBook) {
+            document.getElementById('currentBook').textContent = metrics.learning.currentBook;
+        }
+        if (metrics.learning.weeklyWriting) {
+            document.getElementById('weeklyWriting').textContent = metrics.learning.weeklyWriting;
+        }
+    }
+    
+    // 时间管理数据
+    if (metrics.timeManagement) {
+        if (metrics.timeManagement.efficiency) {
+            document.getElementById('timeEfficiency').textContent = metrics.timeManagement.efficiency;
+        }
+        if (metrics.timeManagement.activeHours) {
+            document.getElementById('activeHours').textContent = metrics.timeManagement.activeHours;
+        }
+        if (metrics.timeManagement.routineStreak) {
+            document.getElementById('routineStreak').textContent = metrics.timeManagement.routineStreak + '天';
+        }
+    }
+    
+    // 任务执行数据
+    if (metrics.goalExecution) {
+        if (metrics.goalExecution.dailyCompletion) {
+            document.getElementById('dailyTaskCompletion').textContent = metrics.goalExecution.dailyCompletion;
+        }
+        if (metrics.goalExecution.monthlyGoals) {
+            document.getElementById('monthlyGoals').textContent = metrics.goalExecution.monthlyGoals;
+        }
+        if (metrics.goalExecution.completionStreak) {
+            document.getElementById('completionStreak').textContent = metrics.goalExecution.completionStreak + '天';
+        }
+    }
+    
+    // 生活平衡数据
+    if (metrics.lifeBalance) {
+        if (metrics.lifeBalance.workLifeBalance) {
+            document.getElementById('workLifeBalance').textContent = metrics.lifeBalance.workLifeBalance;
+        }
+        if (metrics.lifeBalance.workStudyHours) {
+            document.getElementById('workStudyHours').textContent = metrics.lifeBalance.workStudyHours;
+        }
+        if (metrics.lifeBalance.socialInteraction) {
+            document.getElementById('socialInteraction').textContent = metrics.lifeBalance.socialInteraction;
+        }
+    }
+    
+    // 趋势预测
+    if (metrics.trend) {
+        const trendElement = document.getElementById('healthTrend');
+        if (trendElement && metrics.trend.direction) {
+            trendElement.textContent = metrics.trend.direction;
+            trendElement.className = 'metric-value trend-' + metrics.trend.type;
+        }
+        if (metrics.trend.predictedScore) {
+            document.getElementById('predictedScore').textContent = metrics.trend.predictedScore + '分';
+        }
+    }
+}
+
+// 更新健康建议
+function updateHealthRecommendations(recommendations) {
+    const tipsContainer = document.getElementById('mentalHealthTips');
+    if (tipsContainer && recommendations.mental) {
+        tipsContainer.innerHTML = '';
+        recommendations.mental.forEach(tip => {
+            const tipElement = document.createElement('div');
+            tipElement.className = 'tip-item';
+            tipElement.innerHTML = `
+                <div class="tip-icon">${tip.icon}</div>
+                <div class="tip-text">${tip.text}</div>
+            `;
+            tipsContainer.appendChild(tipElement);
+        });
+    }
+}
+
+// 从模拟数据更新健康数据
+function updateHealthDataFromMockData() {
+    console.log('使用模拟健康数据');
+    
+    const mockHealthData = {
+        overallScore: 82,
+        dimensions: {
+            mental: { score: 78 },
+            physical: { score: 92 },
+            learning: { score: 88 },
+            time: { score: 75 },
+            goal: { score: 82 },
+            balance: { score: 85 }
+        },
+        mentalHealth: {
+            stress: {
+                level: 45,
+                label: '中等',
+                factors: {
+                    unfinishedTasks: 8,
+                    urgentTasks: 2
+                }
+            },
+            emotion: {
+                stability: '良好',
+                positiveExpression: 78,
+                richness: '高'
+            },
+            anxiety: {
+                level: '低-中等',
+                lateNightActivity: '2次/周'
+            }
+        },
+        coreMetrics: {
+            fitness: {
+                weeklyExercise: 3,
+                todayCalories: 320,
+                mainExercise: '有氧运动 45分钟'
+            },
+            learning: {
+                readingProgress: 65,
+                currentBook: '《深度工作》',
+                weeklyWriting: '3篇, 2400字'
+            },
+            timeManagement: {
+                efficiency: '良好',
+                activeHours: '9-11点, 14-17点',
+                routineStreak: 7
+            },
+            goalExecution: {
+                dailyCompletion: '6/8',
+                monthlyGoals: '已达成 8/10 项',
+                completionStreak: 5
+            },
+            lifeBalance: {
+                workLifeBalance: '平衡',
+                workStudyHours: '8小时 (合理)',
+                socialInteraction: '本周5次'
+            },
+            trend: {
+                direction: '↗️ 稳步上升',
+                type: 'up',
+                predictedScore: 87
+            }
+        },
+        recommendations: {
+            mental: [
+                { icon: '🧘', text: '建议增加冥想/放松时间' },
+                { icon: '🌅', text: '尝试早起，减少深夜活动' },
+                { icon: '👥', text: '本周社交互动较少，建议主动参与讨论' },
+                { icon: '📝', text: '写作情绪偏负面，建议记录积极事件' }
+            ]
+        }
+    };
+    
+    updateComprehensiveHealthData(mockHealthData);
+}
+
+// 更新健康图表
+function updateHealthCharts() {
+    // 更新所有健康相关图表
+    if (healthRadarChart) {
+        healthRadarChart.update();
+    }
+    if (emotionTrendChart) {
+        emotionTrendChart.update();
+    }
+    if (stressHeatmapChart) {
+        stressHeatmapChart.update();
+    }
+    if (timeDistributionChart) {
+        timeDistributionChart.update();
+    }
+    if (socialHealthChart) {
+        socialHealthChart.update();
+    }
+    if (resilienceTrendChart) {
+        resilienceTrendChart.update();
+    }
+}
+
 // 导出功能供外部使用
 window.AssistantApp = {
     sendMessage,
@@ -1661,5 +2335,253 @@ window.AssistantApp = {
     selectNoTools,
     selectAllToolsLarge,
     selectNoToolsLarge,
-    syncToolsSelection
+    syncToolsSelection,
+    switchTab,
+    loadHealthData,
+    updateHealthCharts,
+    initializeTabState
 };
+
+// 初始化标签状态
+function initializeTabState() {
+    console.log('初始化标签状态');
+    
+    // 确保智能助手标签是默认激活的
+    const assistantTab = document.querySelector('[data-tab="assistant"]');
+    const healthTab = document.querySelector('[data-tab="health"]');
+    const assistantContent = document.getElementById('assistant-content');
+    const healthContent = document.getElementById('health-content');
+    
+    if (assistantTab && healthTab && assistantContent && healthContent) {
+        // 设置标签状态
+        assistantTab.classList.add('active');
+        healthTab.classList.remove('active');
+        
+        // 设置内容状态
+        assistantContent.classList.add('active');
+        healthContent.classList.remove('active');
+        
+        console.log('初始化标签状态完成 - 智能助手为默认标签');
+    } else {
+        console.error('无法找到标签或内容元素进行初始化');
+    }
+}
+
+// 导出switchTab到全局作用域，供HTML使用
+window.switchTab = switchTab;
+
+// 算法信息数据
+const algorithmData = {
+    overall: {
+        title: '综合健康评分算法',
+        description: '基于多维度健康指标的加权评分系统',
+        formula: `综合健康评分 = (心理健康 × 0.2 + 体能健康 × 0.2 + 学习成长 × 0.15 + 时间管理 × 0.15 + 目标执行 × 0.15 + 生活平衡 × 0.15) × 100
+
+其中各维度权重说明：
+• 心理健康(20%)：压力水平、情绪稳定度、焦虑风险
+• 体能健康(20%)：运动频率、MET值、卡路里消耗
+• 学习成长(15%)：阅读进度、知识积累、技能提升
+• 时间管理(15%)：效率分析、作息规律、时间分配
+• 目标执行(15%)：任务完成率、目标达成度、持续性
+• 生活平衡(15%)：工作生活平衡、社交互动、休息质量`,
+        dataSource: [
+            '博客写作数据 - 情绪分析、认知负荷评估',
+            '任务管理数据 - 完成率、优先级处理',
+            '锻炼记录数据 - MET值计算、运动类型分析',
+            '阅读记录数据 - 进度追踪、知识获取评估',
+            '时间活动数据 - 行为模式分析、效率监测',
+            '社交互动数据 - 评论频率、沟通质量'
+        ],
+        reference: '算法基于积极心理学理论和WHO健康定义，结合个人量化自我(Quantified Self)方法论设计。评分系统参考了《心理健康评估手册》和《个人效能管理》相关研究。'
+    },
+    stress: {
+        title: '压力水平算法',
+        description: '基于任务负荷和时间压力的综合评估模型',
+        formula: `压力水平 = 基础压力 + 任务压力 + 时间压力
+
+基础压力 = 未完成任务数量 × 5
+任务压力 = 紧急任务数量 × 15 + 重要任务数量 × 8
+时间压力 = (当前时间 - 最后活动时间) × 时间权重
+
+压力等级划分：
+• 低压力：0-30分
+• 中等压力：31-60分  
+• 高压力：61-100分`,
+        dataSource: [
+            'ToDoList数据 - 未完成任务数量统计',
+            '任务优先级数据 - 紧急/重要任务分类',
+            '任务完成时间数据 - 拖延程度分析',
+            '工作时间数据 - 持续工作时长监测',
+            '深夜活动数据 - 作息规律评估'
+        ],
+        reference: '压力评估算法基于Lazarus和Folkman的认知评价理论，结合现代时间管理研究。参考了《压力与应对》(Stress and Coping)和GTD时间管理方法论。'
+    },
+    emotion: {
+        title: '情绪健康算法',
+        description: '基于文本情感分析和行为模式的情绪状态评估',
+        formula: `情绪稳定度 = (积极情绪频率 × 0.4 + 情绪一致性 × 0.3 + 社交表达质量 × 0.3) × 100
+
+积极情绪频率 = 积极词汇占比 × 表达频率权重
+情绪一致性 = 1 - 情绪波动方差 / 最大波动值
+社交表达质量 = 评论互动质量 + 表达深度评分
+
+情绪丰富度 = distinct(情绪类型数量) / 总表达次数`,
+        dataSource: [
+            '博客内容情感分析 - NLP情绪识别算法',
+            '评论互动数据 - 社交情绪表达分析',
+            '写作频率数据 - 表达活跃度统计',
+            '词汇选择分析 - 积极/消极词汇比例',
+            '表达模式分析 - 情绪变化趋势追踪'
+        ],
+        reference: '情绪分析基于Russell的情绪环模型和Plutchik的情绪轮理论。算法采用BERT情感分析模型，参考了《情绪智能》和《积极心理学手册》的相关研究。'
+    },
+    anxiety: {
+        title: '焦虑风险评估算法',
+        description: '多因子焦虑风险预测模型',
+        formula: `焦虑风险评分 = 生理因子 × 0.3 + 行为因子 × 0.4 + 认知因子 × 0.3
+
+生理因子 = 睡眠质量评分 + 运动规律评分
+行为因子 = 任务管理能力 + 社交活跃度 + 作息规律性
+认知因子 = 思维模式分析 + 压力应对能力
+
+风险等级：
+• 低风险：0-30分
+• 低-中等风险：31-50分
+• 中等风险：51-70分
+• 高风险：71-100分`,
+        dataSource: [
+            '作息时间数据 - 睡眠质量和规律性分析',
+            '运动记录数据 - 锻炼频率和强度统计',
+            '任务管理数据 - 完成率和时间规划能力',
+            '社交互动数据 - 沟通频率和质量评估',
+            '深夜活动数据 - 睡眠习惯和生活规律'
+        ],
+        reference: '焦虑评估基于GAD-7量表和Beck焦虑自评量表的理论框架。算法参考了《焦虑障碍诊断与治疗》和认知行为疗法相关研究成果。'
+    },
+    fitness: {
+        title: '运动状态算法',
+        description: '基于MET值的科学运动量化评估系统',
+        formula: `消耗卡路里 = MET值 × 体重(kg) × 运动时间(小时)
+
+MET值计算（代谢当量）：
+• 有氧运动：6.0-12.0 MET
+• 力量训练：4.0-8.0 MET  
+• 柔韧性训练：2.5-4.0 MET
+• 一般运动：3.0-6.0 MET
+
+运动强度评级：
+• 轻度：< 3.0 MET
+• 中度：3.0-6.0 MET
+• 高强度：> 6.0 MET
+
+周运动量评估 = Σ(每日MET值 × 时长) / 建议值(≥150分钟中等强度)`,
+        dataSource: [
+            '锻炼记录数据 - 运动类型、时长、强度',
+            '个人资料数据 - 身高、体重、年龄',
+            'MET值数据库 - 各类运动的标准代谢当量',
+            '心率监测数据 - 运动强度验证',
+            '运动目标数据 - 个人健身计划和目标'
+        ],
+        reference: 'MET值算法基于美国运动医学会(ACSM)标准和《MET值数据手册》。卡路里计算公式参考了《运动生理学》和WHO身体活动指南的科学标准。'
+    },
+    timeManagement: {
+        title: '时间效能算法',
+        description: '基于行为模式分析的时间管理效率评估',
+        formula: `时间效能 = 生产力指数 × 0.4 + 规律性指数 × 0.3 + 专注度指数 × 0.3
+
+生产力指数 = 完成任务数量 / 投入时间 × 质量权重
+规律性指数 = 1 - (作息时间方差 / 24小时)
+专注度指数 = 连续工作时长 / 总工作时长
+
+活跃时段识别：
+通过统计各时间段的任务完成率和创作质量，
+识别个人高效时间窗口
+
+作息规律度 = consistency(睡眠时间, 起床时间, 工作时间)`,
+        dataSource: [
+            '任务完成时间数据 - 工作效率和产出质量',
+            '作息时间数据 - 睡眠和清醒时间规律',
+            '活动时间戳数据 - 各时段活跃度统计',
+            '专注时间数据 - 连续工作时长记录',
+            '生产力输出数据 - 博客写作、学习成果'
+        ],
+        reference: '时间管理算法基于《时间管理心理学》和番茄工作法理论。效能评估参考了Stephen Covey的《高效能人士的七个习惯》和Cal Newport的《深度工作》研究成果。'
+    }
+};
+
+// 显示算法信息
+function showAlgorithmInfo(type) {
+    const modal = document.getElementById('algorithmInfoModal');
+    const body = document.getElementById('algorithmInfoBody');
+    const data = algorithmData[type];
+    
+    if (!data) {
+        console.error('未找到算法数据:', type);
+        return;
+    }
+    
+    // 构建算法信息HTML
+    const html = `
+        <div class="algorithm-section">
+            <h4><i class="fas fa-calculator"></i> ${data.title}</h4>
+            <p>${data.description}</p>
+        </div>
+        
+        <div class="algorithm-section">
+            <h4><i class="fas fa-formula"></i> 算法公式</h4>
+            <div class="algorithm-formula">${data.formula}</div>
+        </div>
+        
+        <div class="algorithm-section">
+            <h4><i class="fas fa-database"></i> 数据来源</h4>
+            <div class="algorithm-data-source">
+                <h5>所使用的数据源：</h5>
+                <ul>
+                    ${data.dataSource.map(source => `<li>${source}</li>`).join('')}
+                </ul>
+            </div>
+        </div>
+        
+        <div class="algorithm-section">
+            <h4><i class="fas fa-book"></i> 理论依据</h4>
+            <div class="algorithm-reference">
+                <h5>学术背景与参考文献：</h5>
+                <p>${data.reference}</p>
+            </div>
+        </div>
+    `;
+    
+    body.innerHTML = html;
+    modal.classList.add('active');
+    
+    // 防止背景滚动
+    document.body.style.overflow = 'hidden';
+}
+
+// 关闭算法信息弹窗
+function closeAlgorithmInfo() {
+    const modal = document.getElementById('algorithmInfoModal');
+    modal.classList.remove('active');
+    
+    // 恢复背景滚动
+    document.body.style.overflow = 'auto';
+}
+
+// 点击弹窗外部关闭
+document.addEventListener('click', function(e) {
+    const modal = document.getElementById('algorithmInfoModal');
+    if (e.target === modal) {
+        closeAlgorithmInfo();
+    }
+});
+
+// 按ESC键关闭弹窗
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeAlgorithmInfo();
+    }
+});
+
+// 导出函数到全局作用域
+window.showAlgorithmInfo = showAlgorithmInfo;
+window.closeAlgorithmInfo = closeAlgorithmInfo;

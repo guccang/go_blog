@@ -249,7 +249,8 @@ func GetAll(num int,flag int) []*module.Blog {
 		num = num - 1
 	}
 
-	if(len(s) > num){
+	log.DebugF("GetAll num=%d len(s)=%d",num,len(s))
+	if(num > 0 && len(s) > num){
 		return s[:num]
 	}else {
 		return s
