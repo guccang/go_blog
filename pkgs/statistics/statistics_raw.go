@@ -393,7 +393,7 @@ func RawRecentActiveBlog() string {
 	blogs := blog.Blogs
 	now := time.Now()
 	sevenDaysAgo := now.AddDate(0, 0, -7)
-	
+
 	activeBlogs := make([]string, 0)
 	for _, b := range blogs {
 		// 检查访问时间
@@ -410,7 +410,7 @@ func RawRecentActiveBlog() string {
 			}
 		}
 	}
-	
+
 	if len(activeBlogs) == 0 {
 		return "近7天无活跃博客"
 	}
@@ -421,14 +421,14 @@ func RawRecentActiveBlog() string {
 func RawMonthlyCreationTrend() string {
 	blogs := blog.Blogs
 	monthCount := make(map[string]int)
-	
+
 	for _, b := range blogs {
 		if createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime); err == nil {
 			monthKey := createTime.Format("2006-01")
 			monthCount[monthKey]++
 		}
 	}
-	
+
 	result := "月度创建趋势:\n"
 	// 按月份排序
 	months := make([]string, 0, len(monthCount))
@@ -436,11 +436,11 @@ func RawMonthlyCreationTrend() string {
 		months = append(months, month)
 	}
 	sort.Strings(months)
-	
+
 	for _, month := range months {
 		result += fmt.Sprintf("%s: %d篇\n", month, monthCount[month])
 	}
-	
+
 	return result
 }
 
@@ -448,14 +448,14 @@ func RawMonthlyCreationTrend() string {
 func RawSearchBlogContent(keyword string) string {
 	blogs := blog.Blogs
 	matchedBlogs := make([]string, 0)
-	
+
 	for _, b := range blogs {
 		if strings.Contains(strings.ToLower(b.Content), strings.ToLower(keyword)) ||
-		   strings.Contains(strings.ToLower(b.Title), strings.ToLower(keyword)) {
-			matchedBlogs = append(matchedBlogs, b.Title)
+			strings.Contains(strings.ToLower(b.Title), strings.ToLower(keyword)) {
+			matchedBlogs = append(matchedBlogs, b.Content)
 		}
 	}
-	
+
 	if len(matchedBlogs) == 0 {
 		return fmt.Sprintf("未找到包含关键词'%s'的博客", keyword)
 	}
@@ -468,12 +468,12 @@ func RawExerciseDetailedStats() string {
 	if err != nil {
 		return "获取锻炼数据失败: " + err.Error()
 	}
-	
+
 	totalSessions := len(all)
 	totalMinutes := 0
 	totalCalories := 0
 	typeCount := make(map[string]int)
-	
+
 	for _, e := range all {
 		for _, item := range e.Items {
 			totalMinutes += item.Duration
@@ -481,14 +481,14 @@ func RawExerciseDetailedStats() string {
 			typeCount[item.Type]++
 		}
 	}
-	
+
 	result := fmt.Sprintf("锻炼详细统计:\n总锻炼次数:%d\n总时长:%d分钟(%.1f小时)\n总卡路里:%d千卡\n\n锻炼类型分布:\n",
 		totalSessions, totalMinutes, float64(totalMinutes)/60.0, totalCalories)
-	
+
 	for exerciseType, count := range typeCount {
 		result += fmt.Sprintf("- %s: %d次\n", exerciseType, count)
 	}
-	
+
 	return result
 }
 
@@ -498,13 +498,13 @@ func RawRecentExerciseRecords(days int) string {
 	if err != nil {
 		return "获取锻炼数据失败: " + err.Error()
 	}
-	
+
 	now := time.Now()
 	cutoffDate := now.AddDate(0, 0, -days)
-	
+
 	result := fmt.Sprintf("最近%d天锻炼记录:\n", days)
 	recentCount := 0
-	
+
 	for _, e := range all {
 		// ExerciseList.Date字段包含日期信息
 		exerciseDate := e.Date
@@ -512,17 +512,17 @@ func RawRecentExerciseRecords(days int) string {
 			if date.After(cutoffDate) {
 				result += fmt.Sprintf("日期:%s, 项目数:%d\n", exerciseDate, len(e.Items))
 				for _, item := range e.Items {
-					result += fmt.Sprintf("  - %s(%s): %d分钟, %d千卡\n", 
+					result += fmt.Sprintf("  - %s(%s): %d分钟, %d千卡\n",
 						item.Name, item.Type, item.Duration, item.Calories)
 				}
 				recentCount++
 			}
 		}
 	}
-	
+
 	if recentCount == 0 {
 		result += fmt.Sprintf("最近%d天无锻炼记录\n", days)
 	}
-	
+
 	return result
 }

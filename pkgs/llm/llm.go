@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"config"
 	"control"
@@ -121,9 +122,10 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 
 	// 解析请求
 	var request struct {
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
-		Tools    []string  `json:"selected_tools,omitempty"`
+		Messages    []Message `json:"messages"`
+		Stream      bool      `json:"stream"`
+		Tools       []string  `json:"selected_tools,omitempty"`
+		TypingSpeed string    `json:"typing_speed,omitempty"` // 打字机速度设置
 	}
 
 	if err := json.Unmarshal(body, &request); err != nil {
@@ -169,50 +171,15 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 		return http.StatusInternalServerError
 	}
 
-	// 使用MCP ProcessQuery处理查询
-	log.InfoF("Processing query with MCP: %s", userQuery)
-	result, err := processQuery(userQuery, request.Tools)
+	// 使用流式处理查询，直接转发LLM的流式响应
+	log.InfoF("Processing query with streaming LLM: %s", userQuery)
+	err = processQueryStreaming(userQuery, request.Tools, w, flusher)
 	if err != nil {
-		log.ErrorF("MCP ProcessQuery failed: %v", err)
+		log.ErrorF("Streaming ProcessQuery failed: %v", err)
 		fmt.Fprintf(w, "data: Error processing query: %v\n\n", err)
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
 		return http.StatusInternalServerError
-	}
-
-	log.InfoF("MCP ProcessQuery completed, result length: %d characters result=%s", len(result), result)
-
-	// 保存完整的LLM响应到当天日记
-	log.Debug("Saving LLM response to daily diary...")
-	go saveLLMResponseToDiary(userQuery, result)
-
-	// 以流式方式发送结果，保持原有的换行和空格格式
-	// 按行处理，保留换行符
-	lines := strings.Split(result, "\n")
-	for lineIdx, line := range lines {
-		if line == "" {
-			// 发送空行（换行符）
-			fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape("\n"))
-			flusher.Flush()
-			time.Sleep(30 * time.Millisecond)
-		} else {
-			// 按词发送每一行的内容，但保留行内的空格结构
-			words := strings.Fields(line)
-			for i, word := range words {
-				if i < len(words)-1 {
-					fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(word+" "))
-				} else {
-					// 最后一个词，如果不是最后一行，则加换行符
-					if lineIdx < len(lines)-1 {
-						fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(word+"\n"))
-					} else {
-						fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(word))
-					}
-				}
-				flusher.Flush()
-				time.Sleep(50 * time.Millisecond)
-			}
-		}
 	}
 
 	// 发送完成信号
@@ -379,6 +346,7 @@ func processQuery(query string, selectedTools []string) (string, error) {
 		}
 	}
 
+	// Join final text parts with double newlines to preserve markdown structure
 	result := strings.Join(finalText, "\n")
 	log.InfoF("llm Final result length: %d characters result=%s", len(result), result)
 	return result, nil
@@ -448,4 +416,370 @@ func saveConversationToBlog(messages []Message) {
 
 	log.DebugF("保存用户问题到对话记录: %s", userMessage)
 	// 这里可以预先保存用户问题，实际的LLM响应将由saveLLMResponseToDiary处理
+}
+
+// processQueryStreaming 支持工具调用的流式处理LLM响应
+func processQueryStreaming(query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
+	log.DebugF("=== Streaming LLM Processing Started with Tool Support ===")
+	log.DebugF("Query: %s", query)
+	log.DebugF("Selected tools: %v", selectedTools)
+
+	// Initialize messages
+	messages := []Message{
+		{
+			Role:    "system",
+			Content: "你是一个万能助手，自行决定是否调用工具获取数据，当你得到工具返回结果后，就不需要调用相同工具了，最后返回简单直接的结果给用户。",
+		},
+		{
+			Role:    "user",
+			Content: query,
+		},
+	}
+
+	// Get available tools
+	availableTools := mcp.GetAvailableLLMTools(selectedTools)
+	log.DebugF("Available LLM tools: %d", len(availableTools))
+
+	var fullResponse strings.Builder
+
+	// Initial LLM call
+	_, toolCalls, err := sendStreamingLLMRequest(messages, availableTools, w, flusher, &fullResponse)
+	if err != nil {
+		log.ErrorF("Initial streaming LLM request failed: %v", err)
+		return fmt.Errorf("initial streaming LLM request failed: %v", err)
+	}
+
+	// Tool calling loop with max iterations
+	maxCall := 25
+	for len(toolCalls) > 0 && maxCall > 0 {
+		maxCall--
+		log.DebugF("Tool calling iteration, remaining: %d", maxCall)
+
+		// Process tool calls
+		log.DebugF("Processing %d tool calls", len(toolCalls))
+		for _, toolCall := range toolCalls {
+			// Log tool call status but don't send to client to keep response clean
+			log.DebugF(fmt.Sprintf("\n[Calling tool %s with args %s]\n", toolCall.Function.Name, toolCall.Function.Arguments))
+
+			toolName := toolCall.Function.Name
+			toolArgs := make(map[string]interface{})
+
+			fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(fmt.Sprintf("[Calling tool %s with args %s]", toolCall.Function.Name, toolCall.Function.Arguments)))
+			flusher.Flush()
+
+			// Parse tool arguments with validation
+			if toolCall.Function.Arguments == "" {
+				log.WarnF("Tool call %s has empty arguments, skipping", toolName)
+				continue
+			}
+
+			// Validate JSON format first
+			if !isValidJSON(toolCall.Function.Arguments) {
+				log.ErrorF("Tool call %s has invalid JSON arguments: %s", toolName, toolCall.Function.Arguments)
+				continue
+			}
+
+			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &toolArgs); err != nil {
+				log.ErrorF("Failed to parse tool arguments for %s: %v, args: %s", toolName, err, toolCall.Function.Arguments)
+				continue
+			}
+
+			// Call the tool
+			log.InfoF("Tool call begin: %s %v", toolName, toolArgs)
+			result := mcp.CallMCPTool(toolName, toolArgs)
+			log.InfoF("Tool call result: %s %v %v", toolName, toolArgs, result)
+
+			// Add tool call and result to message history
+			messages = append(messages, Message{
+				Role:      "assistant",
+				ToolCalls: []mcp.ToolCall{toolCall},
+			})
+
+			messages = append(messages, Message{
+				Role:       "tool",
+				ToolCallId: toolCall.ID,
+				Content:    fmt.Sprintf("%v", result.Result),
+			})
+
+			// Add tool call info to full response for saving
+			fullResponse.WriteString(fmt.Sprintf("\n[Tool %s called with result: %v]\n", toolName, result.Result))
+
+			// Tool result is now processed through LLM, no need to add directly to response
+		}
+
+		// Next LLM call with updated messages
+		log.InfoF("Tool calls processed, sending next LLM request")
+		_, toolCalls, err = sendStreamingLLMRequest(messages, availableTools, w, flusher, &fullResponse)
+		if err != nil {
+			log.ErrorF("LLM call failed in tool loop: %v", err)
+			break
+		}
+		log.InfoF("Next LLM response received, tool calls: %d", len(toolCalls))
+	}
+
+	// Send completion signal to client
+	log.DebugF("Tool processing complete, sending DONE signal")
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
+
+	// Save complete response to diary
+	go saveLLMResponseToDiary(query, fullResponse.String())
+	return nil
+}
+
+// sendStreamingLLMRequest 发送流式LLM请求并检测工具调用
+func sendStreamingLLMRequest(messages []Message, availableTools []mcp.LLMTool, w http.ResponseWriter, flusher http.Flusher, fullResponse *strings.Builder) (string, []mcp.ToolCall, error) {
+	// Create LLM request with streaming enabled
+	requestBody := map[string]interface{}{
+		"model":       llmConfig.Model,
+		"messages":    messages,
+		"tools":       availableTools,
+		"temperature": llmConfig.Temperature,
+		"stream":      true, // 启用流式响应
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		log.ErrorF("Error marshaling LLM request: %v", err)
+		return "", nil, fmt.Errorf("error marshaling request: %v", err)
+	}
+
+	log.DebugF("Sending streaming request to LLM API: %s", llmConfig.BaseURL)
+
+	// Create HTTP request to LLM API
+	req, err := http.NewRequest("POST", llmConfig.BaseURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.ErrorF("Error creating LLM request: %v", err)
+		return "", nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+llmConfig.APIKey)
+	req.Header.Set("Accept", "text/event-stream")
+
+	// Send request with streaming support
+	client := &http.Client{
+		Timeout: 300 * time.Second, // 5分钟超时
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.ErrorF("Error sending request to LLM API: %v", err)
+		return "", nil, fmt.Errorf("error sending request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.ErrorF("LLM API returned status %d: %s", resp.StatusCode, string(body))
+		return "", nil, fmt.Errorf("LLM API error: %d", resp.StatusCode)
+	}
+
+	log.DebugF("Received streaming response from LLM API, processing...")
+
+	// Process the streaming response
+	return processStreamingResponseWithToolDetection(resp.Body, w, flusher, fullResponse)
+}
+
+// processStreamingResponseWithToolDetection 处理流式响应并检测工具调用
+func processStreamingResponseWithToolDetection(responseBody io.ReadCloser, w http.ResponseWriter, flusher http.Flusher, fullResponse *strings.Builder) (string, []mcp.ToolCall, error) {
+	log.DebugF("Starting streaming response processing with tool detection")
+	scanner := bufio.NewScanner(responseBody)
+	var responseContent strings.Builder
+	var toolCalls []mcp.ToolCall
+	var currentToolCall *mcp.ToolCall
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+
+		// Handle SSE format: "data: ..."
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Handle completion signal
+			if data == "[DONE]" {
+				log.DebugF("LLM streaming completed")
+				break
+			}
+
+			// Parse JSON chunk
+			var chunk map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				log.WarnF("Failed to parse streaming chunk: %v", err)
+				continue
+			}
+
+			// Extract content from chunk
+			if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if delta, ok := choice["delta"].(map[string]interface{}); ok {
+
+						// Handle regular content
+						if content, ok := delta["content"].(string); ok && content != "" {
+							log.DebugF("Tool-aware streaming: forwarding content chunk: %s", content)
+							// Forward content to client immediately
+							fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(content))
+							flusher.Flush()
+
+							// Accumulate for processing and saving
+							responseContent.WriteString(content)
+							fullResponse.WriteString(content)
+						}
+
+						// Handle tool calls
+						if toolCallsRaw, ok := delta["tool_calls"].([]interface{}); ok {
+							for _, toolCallRaw := range toolCallsRaw {
+								if toolCallMap, ok := toolCallRaw.(map[string]interface{}); ok {
+									// Parse tool call
+									if err := parseToolCallFromDelta(toolCallMap, &currentToolCall, &toolCalls); err != nil {
+										log.ErrorF("Failed to parse tool call: %v", err)
+									}
+								}
+							}
+						}
+
+						// Check for finish reason
+						if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" && finishReason != "null" {
+							log.DebugF("Finish reason: %s", finishReason)
+							if finishReason == "tool_calls" {
+								log.DebugF("Tool calls detected, finishing content streaming")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.ErrorF("Error reading streaming response: %v", err)
+		return "", nil, fmt.Errorf("error reading stream: %v", err)
+	}
+
+	log.DebugF("Streaming response processed. Content length: %d, Tool calls: %d", responseContent.Len(), len(toolCalls))
+	return responseContent.String(), toolCalls, nil
+}
+
+// parseToolCallFromDelta 解析增量工具调用数据
+func parseToolCallFromDelta(toolCallMap map[string]interface{}, currentToolCall **mcp.ToolCall, toolCalls *[]mcp.ToolCall) error {
+	index, hasIndex := toolCallMap["index"].(float64)
+	if !hasIndex {
+		log.WarnF("Tool call chunk missing index, skipping")
+		return nil
+	}
+
+	// Initialize new tool call if needed
+	if *currentToolCall == nil || int(index) != len(*toolCalls) {
+		*currentToolCall = &mcp.ToolCall{}
+		if id, ok := toolCallMap["id"].(string); ok {
+			(*currentToolCall).ID = id
+		}
+		if typeStr, ok := toolCallMap["type"].(string); ok && typeStr == "function" {
+			(*currentToolCall).Type = typeStr
+		}
+	}
+
+	// Parse function details
+	if function, ok := toolCallMap["function"].(map[string]interface{}); ok {
+		if name, ok := function["name"].(string); ok {
+			(*currentToolCall).Function.Name = name
+		}
+		if arguments, ok := function["arguments"].(string); ok {
+			(*currentToolCall).Function.Arguments += arguments
+		}
+	}
+
+	// If this tool call seems complete, add it to the list
+	if (*currentToolCall).ID != "" && (*currentToolCall).Function.Name != "" && (*currentToolCall).Function.Arguments != "" {
+		// Validate that arguments is valid JSON before adding to list
+		if isValidJSON((*currentToolCall).Function.Arguments) {
+			// Check if this tool call is already in the list
+			found := false
+			for i, tc := range *toolCalls {
+				if tc.ID == (*currentToolCall).ID {
+					(*toolCalls)[i] = **currentToolCall // Update existing
+					found = true
+					break
+				}
+			}
+			if !found {
+				*toolCalls = append(*toolCalls, **currentToolCall)
+			}
+		} else {
+			log.DebugF("Tool call arguments not yet complete: %s", (*currentToolCall).Function.Arguments)
+		}
+	}
+
+	return nil
+}
+
+// isValidJSON 检查字符串是否为有效的JSON
+func isValidJSON(str string) bool {
+	var js interface{}
+	return json.Unmarshal([]byte(str), &js) == nil
+}
+
+// forwardStreamingResponse 转发LLM的流式响应到客户端
+func forwardStreamingResponse(responseBody io.ReadCloser, w http.ResponseWriter, flusher http.Flusher, originalQuery string) error {
+	scanner := bufio.NewScanner(responseBody)
+	var fullResponse strings.Builder
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+
+		// Handle SSE format: "data: ..."
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Handle completion signal
+			if data == "[DONE]" {
+				log.DebugF("LLM streaming completed")
+				// 保存完整响应到日记
+				go saveLLMResponseToDiary(originalQuery, fullResponse.String())
+				return nil
+			}
+
+			// Parse JSON chunk
+			var chunk map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				log.WarnF("Failed to parse streaming chunk: %v", err)
+				continue
+			}
+
+			// Extract content from chunk
+			if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]interface{}); ok {
+					if delta, ok := choice["delta"].(map[string]interface{}); ok {
+						if content, ok := delta["content"].(string); ok && content != "" {
+							// Forward content to client immediately
+							fmt.Fprintf(w, "data: %s\n\n", url.QueryEscape(content))
+							flusher.Flush()
+
+							// Accumulate for saving
+							fullResponse.WriteString(content)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.ErrorF("Error reading streaming response: %v", err)
+		return fmt.Errorf("error reading stream: %v", err)
+	}
+
+	// Save final response
+	go saveLLMResponseToDiary(originalQuery, fullResponse.String())
+	return nil
 }

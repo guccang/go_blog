@@ -6,6 +6,7 @@ let chatMessages = [
     { role: "assistant", content: "你好！我是智能助手，可以帮你分析数据、提供建议。有什么我可以帮助你的吗？" }
 ];
 let isTyping = false;
+let typingIntervals = new Map(); // 存储每个消息的打字机定时器
 let trendChart = null;
 // 新的健康图表变量
 let healthRadarChart = null;
@@ -18,7 +19,8 @@ let currentSettings = {
     enableNotifications: true,
     enableSuggestions: true,
     analysisRange: 30,
-    assistantPersonality: 'professional'
+    assistantPersonality: 'professional',
+    enableTypingEffect: true    // 打字机光标效果开关
 };
 let mcpTools = [];
 
@@ -252,7 +254,11 @@ async function sendStreamingRequest(aiMessageElement) {
                 if (line.startsWith('data: ')) {
                     const data = line.replace('data: ', '');
                     if (data === '[DONE]') {
-                        // 完成响应
+                        // 完成响应，停止打字机效果
+                        const messageText = aiMessageElement.querySelector('.message-text');
+                        if (messageText) {
+                            stopTypingEffect(messageText, aiResponse);
+                        }
                         chatMessages.push({ role: "assistant", content: aiResponse });
                         addTimestamp(aiMessageElement);
                         hideToolCallStatus(aiMessageElement);
@@ -270,13 +276,15 @@ async function sendStreamingRequest(aiMessageElement) {
                         console.log('🟨 包含\\n:', decodedContent.includes('\n'));
                         console.log('🟨 包含\\r\\n:', decodedContent.includes('\r\n'));
                         
-                        // 检测工具调用相关的内容，包括完整的工具调用和其碎片
-                        const isToolCallContent = decodedContent.includes('[Calling tool ') || 
-                                                decodedContent.includes(' with args ') ||
-                                                decodedContent.trim() === ']' ||
-                                                /^文件.*?的?内容如下：?\s*$/i.test(decodedContent.trim());
+                        // 检查是否包含markdown标题标记
+                        if (decodedContent.includes('#')) {
+                            console.log('🔍 检测到标题标记，内容:', JSON.stringify(decodedContent));
+                        }
                         
-                        if (decodedContent.includes('[Calling tool ') && decodedContent.includes(' with args ')) {
+                        // 检测工具调用相关的内容，只过滤明确的工具调用标识
+                        const isToolCallContent = decodedContent.includes('[Calling tool ') && decodedContent.includes(' with args ');
+                        
+                        if (isToolCallContent) {
                             // 完整的工具调用检测
                             toolCallCount++;
                             const toolMatch = decodedContent.match(/\[Calling tool (\w+(?:\.\w+)*) with args (.*?)\]/);
@@ -288,24 +296,30 @@ async function sendStreamingRequest(aiMessageElement) {
                                 };
                                 showToolCallStatus(aiMessageElement, currentToolCall);
                             }
-                        } else if (!isToolCallContent && decodedContent.trim()) {
+                            console.log('🔧 检测到工具调用:', JSON.stringify(decodedContent));
+                        } else if (decodedContent) {
                             // 开始接收实际响应内容，隐藏工具调用状态
-                            if (currentToolCall && decodedContent.length > 10) {
+                            if (currentToolCall) {
                                 hideToolCallStatus(aiMessageElement);
                                 currentToolCall = null;
                             }
                             // 只添加非工具调用相关的内容到响应中
                             aiResponse += decodedContent;
                             
-                            console.log('✅ 添加到aiResponse:', JSON.stringify(decodedContent));
-                        } else if (isToolCallContent) {
-                            console.log('🚫 过滤工具调用内容:', JSON.stringify(decodedContent));
-                        }
-                        
-                        // 更新消息内容
-                        const messageText = aiMessageElement.querySelector('.message-text');
-                        if (messageText) {
-                            messageText.innerHTML = formatMessage(aiResponse);
+                            console.log('✅ 实时添加到aiResponse:', JSON.stringify(decodedContent), '累计长度:', aiResponse.length);
+                            
+                            // 特别检查包含标题标记的内容
+                            if (decodedContent.includes('#')) {
+                                console.log('🚨 标题相关内容块:', JSON.stringify(decodedContent));
+                                console.log('🚨 当前累计aiResponse末尾20字符:', JSON.stringify(aiResponse.substring(Math.max(0, aiResponse.length - 20))));
+                            }
+                            
+                            // 使用打字机效果更新消息内容 - 立即显示每个内容块
+                            const messageText = aiMessageElement.querySelector('.message-text');
+                            if (messageText) {
+                                console.log('🔄 更新界面显示, 当前内容:', aiResponse.substring(Math.max(0, aiResponse.length - 20)));
+                                updateTypingEffect(messageText, aiResponse);
+                            }
                         }
                         
                         // 滚动到底部
@@ -324,18 +338,28 @@ async function sendStreamingRequest(aiMessageElement) {
         
         // 显示错误消息
         const messageText = aiMessageElement.querySelector('.message-text');
-        messageText.innerHTML = '<span class="error">抱歉，请求过程中出现错误。请重试。</span>';
+        if (messageText) {
+            // 停止打字机效果
+            stopTypingEffect(messageText, '');
+            messageText.innerHTML = '<span class="error">抱歉，请求过程中出现错误。请重试。</span>';
+        }
         
         // 降级到本地生成
         setTimeout(() => {
             const lastUserMessage = chatMessages[chatMessages.length - 1];
             if (lastUserMessage && lastUserMessage.role === 'user') {
                 const response = generateAIResponse(lastUserMessage.content);
-                messageText.innerHTML = formatMessage(response);
+                if (messageText) {
+                    messageText.innerHTML = formatMessage(response);
+                }
                 chatMessages.push({ role: "assistant", content: response });
                 addTimestamp(aiMessageElement);
             }
         }, 1000);
+    } finally {
+        // 重置状态
+        isTyping = false;
+        console.log('Stream request completed. Typing effect enabled:', currentSettings.enableTypingEffect);
     }
 }
 
@@ -532,6 +556,16 @@ function formatMessage(content) {
     console.log(content);
     console.log('🔵 内容长度:', content.length);
     
+    // 检查是否包含markdown标题
+    if (content.includes('#')) {
+        console.log('🔍 formatMessage - 检测到标题内容:', JSON.stringify(content));
+        // 检查标题格式
+        const titleMatches = content.match(/#{1,6}\s+[^\n]*/g);
+        if (titleMatches) {
+            console.log('🔍 标题匹配结果:', titleMatches);
+        }
+    }
+    
     // 预处理：移除LLM返回内容中的代码块包裹
     let processedContent = preprocessLLMContent(content);
     
@@ -578,6 +612,15 @@ function preprocessLLMContent(content) {
     console.log('🔴 preprocessLLMContent - 开始预处理:');
     console.log(content);
     
+    // 检查标题格式
+    if (content.includes('#')) {
+        console.log('🔍 preprocessLLMContent - 输入包含标题:', JSON.stringify(content));
+        const titleMatches = content.match(/#{1,6}\s+[^\n]*/g);
+        if (titleMatches) {
+            console.log('🔍 输入标题匹配:', titleMatches);
+        }
+    }
+    
     let processed = content;
     
     // 1. 匹配并移除 ```markdown ... ``` 或 ```md ... ``` (支持换行和不换行格式)
@@ -588,7 +631,7 @@ function preprocessLLMContent(content) {
         console.log('🟠 发现markdown代码块:', matches.length, '个');
         processed = processed.replace(markdownBlockPattern, (match, innerContent) => {
             console.log('🟠 移除markdown代码块包裹，内容:', innerContent.substring(0, 100) + '...');
-            return innerContent.trim();
+            return innerContent; // 保留原始格式，不使用trim()
         });
     }
     
@@ -600,21 +643,27 @@ function preprocessLLMContent(content) {
         console.log('🟣 发现普通代码块包裹:', matches.length, '个');
         processed = processed.replace(genericCodeBlockPattern, (match, innerContent) => {
             console.log('🟣 移除普通代码块包裹，内容:', innerContent.substring(0, 100) + '...');
-            return innerContent.trim();
+            return innerContent; // 保留原始格式，不使用trim()
         });
     }
     
-    // 3. 移除开头的描述性文本
-    processed = processed.replace(/^.*?文件.*?的?内容如下：?\s*\n*/i, '');
-    processed = processed.replace(/^返回内容如上.*?\n*/i, '');
-    processed = processed.replace(/^\[Calling tool.*?\]\s*/i, '');
-    processed = processed.replace(/^\]\s*/i, '');
+    // 3. 只移除明确的工具调用标识，保留markdown格式
+    //processed = processed.replace(/^\[Calling tool.*?\]\s*\n?/i, '');
     
-    // 4. 清理开头和结尾的多余空行
-    processed = processed.trim();
+    // 4. 只移除开头和结尾的多余空行，但保留必要的换行
+    //processed = processed.replace(/^\n+/, '').replace(/\n+$/, '');
     
     console.log('🟢 preprocessLLMContent - 预处理完成:');
     console.log(processed);
+    
+    // 检查处理后的标题格式
+    if (processed.includes('#')) {
+        console.log('🔍 preprocessLLMContent - 输出包含标题:', JSON.stringify(processed));
+        const titleMatches = processed.match(/#{1,6}\s+[^\n]*/g);
+        if (titleMatches) {
+            console.log('🔍 输出标题匹配:', titleMatches);
+        }
+    }
     
     return processed;
 }
@@ -631,7 +680,7 @@ function initializeMarkdown() {
             marked.use({
                 gfm: true,
                 tables: true,
-                breaks: false,
+                breaks: true, 
                 pedantic: false,
                 smartLists: true,
                 smartypants: false
@@ -643,7 +692,7 @@ function initializeMarkdown() {
                 renderer: renderer,
                 gfm: true,
                 tables: true,
-                breaks: false,
+                breaks: true, // 启用换行符转换，保持markdown格式
                 pedantic: false,
                 sanitize: false,
                 smartLists: true,
@@ -937,11 +986,12 @@ function loadSettings() {
     document.getElementById('enableSuggestions').checked = currentSettings.enableSuggestions;
     document.getElementById('analysisRange').value = currentSettings.analysisRange;
     document.getElementById('assistantPersonality').value = currentSettings.assistantPersonality;
+    document.getElementById('enableTypingEffect').checked = currentSettings.enableTypingEffect;
 }
 
 // 设置监听器
 function setupSettingsListeners() {
-    const settings = ['enableNotifications', 'enableSuggestions', 'analysisRange', 'assistantPersonality'];
+    const settings = ['enableNotifications', 'enableSuggestions', 'analysisRange', 'assistantPersonality', 'enableTypingEffect'];
     
     settings.forEach(setting => {
         const element = document.getElementById(setting);
@@ -949,6 +999,11 @@ function setupSettingsListeners() {
             element.addEventListener('change', function() {
                 currentSettings[setting] = element.type === 'checkbox' ? element.checked : element.value;
                 saveSettings();
+                
+                // 特殊处理打字机效果设置变更
+                if (setting === 'enableTypingEffect') {
+                    console.log(`打字机光标效果设置已更新: ${setting} = ${currentSettings[setting]}`);
+                }
             });
         }
     });
@@ -2341,6 +2396,41 @@ window.AssistantApp = {
     updateHealthCharts,
     initializeTabState
 };
+
+// 打字机效果相关函数
+
+// 更新打字机效果 - 适用于真实流式响应
+function updateTypingEffect(messageElement, fullText) {
+    if (!currentSettings.enableTypingEffect) {
+        // 如果禁用打字机效果，直接显示内容
+        messageElement.innerHTML = formatMessage(fullText);
+        return;
+    }
+    
+    // 实时显示内容并添加打字机光标
+    const formattedText = formatMessage(fullText);
+    messageElement.innerHTML = formattedText + '<span class="typing-cursor">|</span>';
+    
+    // 为消息元素添加流式效果类，增强视觉反馈
+    messageElement.classList.add('streaming-text');
+}
+
+// 停止打字机效果并移除光标
+function stopTypingEffect(messageElement, finalText) {
+    const formattedText = formatMessage(finalText);
+    messageElement.innerHTML = formattedText;
+    
+    // 移除流式效果类
+    messageElement.classList.remove('streaming-text');
+}
+
+// 改进的流式打字机效果处理
+function handleStreamingText(messageElement, newContent, currentText) {
+    // 立即显示新内容，保持自然的流式效果
+    const updatedText = currentText + newContent;
+    updateTypingEffect(messageElement, updatedText);
+    return updatedText;
+}
 
 // 初始化标签状态
 function initializeTabState() {

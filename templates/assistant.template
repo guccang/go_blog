@@ -676,6 +676,20 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="setting-group">
+                    <h4>显示效果</h4>
+                    <div class="setting-item">
+                        <label class="switch">
+                            <input type="checkbox" id="enableTypingEffect" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>启用打字机光标效果</span>
+                    </div>
+                    <div class="setting-description">
+                        <small>注：响应内容将实时流式显示，此选项仅控制打字机光标的显示</small>
+                    </div>
+                </div>
             </div>
         </div>
 

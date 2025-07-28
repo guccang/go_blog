@@ -1,29 +1,29 @@
 package mcp
 
 import (
+	"auth"
+	"config"
 	"encoding/json"
 	"fmt"
 	log "mylog"
-	"view"
-	"auth"
-	"config"
 	"net/http"
+	"view"
 )
 
 type MCPResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success bool        `json:"success"`
+	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
-func checkLogin(r *http.Request) int{
-	session,err:= r.Cookie("session")
+func checkLogin(r *http.Request) int {
+	session, err := r.Cookie("session")
 	if err != nil {
-		log.ErrorF("not find cookie session err=%s",err.Error())
+		log.ErrorF("not find cookie session err=%s", err.Error())
 		return 1
 	}
-	
-	log.DebugF("checkLogin session=%s",session.Value)
+
+	log.DebugF("checkLogin session=%s", session.Value)
 	if auth.CheckLoginSession(session.Value) != 0 {
 		return 1
 	}
@@ -32,18 +32,18 @@ func checkLogin(r *http.Request) int{
 
 func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
 	log.Debug("HandleMCPPage called")
-	
+
 	if checkLogin(r) != 0 {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, "/index", http.StatusFound)
 		return
 	}
-	
+
 	// Get all MCP configurations
 	configs := GetAllConfigs()
-	
+
 	// Get available tools for display
 	availableTools := GetAvailableToolsImproved()
-	
+
 	// Prepare template data
 	data := struct {
 		Title          string
@@ -58,20 +58,20 @@ func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
 		CurrentTime:    getCurrentTimeString(),
 		LLMConfigured:  config.GetConfig("deepseek_api_key") != "",
 	}
-	
-	view.PageMCP(w,data)
+
+	view.PageMCP(w, data)
 }
 
 func HandleMCPAPI(w http.ResponseWriter, r *http.Request) {
 	log.Debug("HandleMCPAPI called")
-	
+
 	if checkLogin(r) != 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch r.Method {
 	case "GET":
 		handleMCPGet(w, r)
@@ -88,7 +88,7 @@ func HandleMCPAPI(w http.ResponseWriter, r *http.Request) {
 
 func handleMCPGet(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
-	
+
 	switch action {
 	case "list":
 		configs := GetAllConfigs()
@@ -98,8 +98,7 @@ func handleMCPGet(w http.ResponseWriter, r *http.Request) {
 			Data:    configs,
 		}
 		json.NewEncoder(w).Encode(response)
-		
-		
+
 	case "get":
 		name := r.URL.Query().Get("name")
 		if name == "" {
@@ -110,7 +109,7 @@ func handleMCPGet(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		config, found := GetConfig(name)
 		if !found {
 			response := MCPResponse{
@@ -120,14 +119,14 @@ func handleMCPGet(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		response := MCPResponse{
 			Success: true,
 			Message: "MCP configuration retrieved successfully",
 			Data:    config,
 		}
 		json.NewEncoder(w).Encode(response)
-		
+
 	default:
 		response := MCPResponse{
 			Success: false,
@@ -147,7 +146,7 @@ func handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if err := ValidateConfig(config); err != nil {
 		response := MCPResponse{
 			Success: false,
@@ -156,7 +155,7 @@ func handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if err := AddConfig(config); err != nil {
 		response := MCPResponse{
 			Success: false,
@@ -165,7 +164,7 @@ func handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	response := MCPResponse{
 		Success: true,
 		Message: "MCP configuration added successfully",
@@ -177,7 +176,7 @@ func handleMCPPost(w http.ResponseWriter, r *http.Request) {
 func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	action := r.URL.Query().Get("action")
-	
+
 	if action == "toggle" {
 		if name == "" {
 			response := MCPResponse{
@@ -187,7 +186,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		if err := ToggleConfig(name); err != nil {
 			response := MCPResponse{
 				Success: false,
@@ -196,7 +195,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		config, _ := GetConfig(name)
 		response := MCPResponse{
 			Success: true,
@@ -206,7 +205,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if name == "" {
 		response := MCPResponse{
 			Success: false,
@@ -215,7 +214,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	var config MCPConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		response := MCPResponse{
@@ -225,7 +224,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if err := ValidateConfig(config); err != nil {
 		response := MCPResponse{
 			Success: false,
@@ -234,7 +233,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if err := UpdateConfig(name, config); err != nil {
 		response := MCPResponse{
 			Success: false,
@@ -243,7 +242,7 @@ func handleMCPPut(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	response := MCPResponse{
 		Success: true,
 		Message: "MCP configuration updated successfully",
@@ -262,7 +261,7 @@ func handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	if err := DeleteConfig(name); err != nil {
 		response := MCPResponse{
 			Success: false,
@@ -271,7 +270,7 @@ func handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	response := MCPResponse{
 		Success: true,
 		Message: "MCP configuration deleted successfully",
@@ -286,14 +285,14 @@ func getCurrentTimeString() string {
 // GetAvailableToolsHandler handles requests for available tools
 func GetAvailableToolsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Debug("GetAvailableToolsHandler called")
-	
+
 	if checkLogin(r) != 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	tools := GetAvailableToolsImproved()
 	response := MCPResponse{
 		Success: true,
