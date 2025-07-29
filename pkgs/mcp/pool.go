@@ -2,8 +2,8 @@ package mcp
 
 import (
 	"fmt"
-	"time"
 	log "mylog"
+	"time"
 )
 
 // MCPPool manages a pool of MCP client connections
@@ -23,7 +23,7 @@ func GetPool() *MCPPool {
 // GetClient returns an MCP client for the given configuration
 func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 	log.DebugF("--- Getting MCP Client: %s ---", config.Name)
-	
+
 	if client, exists := p.clients[config.Name]; exists {
 		if client.IsConnected() {
 			log.DebugF("Found existing connected MCP client for '%s'", config.Name)
@@ -34,10 +34,10 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 	} else {
 		log.DebugF("No existing MCP client found for '%s'", config.Name)
 	}
-	
+
 	// Need to create or reconnect client
 	log.DebugF("Creating new MCP client connection for '%s'", config.Name)
-	
+
 	// Double-check after acquiring write lock
 	if client, exists := p.clients[config.Name]; exists {
 		if client.IsConnected() {
@@ -48,7 +48,7 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 		log.DebugF("Closing existing disconnected MCP client for '%s'", config.Name)
 		client.Close()
 	}
-	
+
 	// Create new client
 	log.DebugF("Creating new MCP client instance for '%s' with command: %s, args: %v", config.Name, config.Command, config.Args)
 	client := NewMCPClient(config)
@@ -56,7 +56,7 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 		log.ErrorF("Failed to connect MCP client for '%s': %v", config.Name, err)
 		return nil, fmt.Errorf("failed to connect to MCP server %s: %v", config.Name, err)
 	}
-	
+
 	p.clients[config.Name] = client
 	log.InfoF("Successfully created and connected new MCP client for '%s'", config.Name)
 	return client, nil
@@ -65,7 +65,7 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 // RemoveClient removes a client from the pool
 func (p *MCPPool) RemoveClient(name string) {
 	log.DebugF("--- Removing MCP Client: %s ---", name)
-	
+
 	if client, exists := p.clients[name]; exists {
 		log.DebugF("Found MCP client '%s' in pool, closing connection", name)
 		client.Close()
@@ -79,11 +79,11 @@ func (p *MCPPool) RemoveClient(name string) {
 // GetAllClients returns all active clients
 func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 	log.Debug("--- Getting All Active MCP Clients ---")
-	
+
 	result := make(map[string]*MCPClient)
 	connectedCount := 0
 	disconnectedCount := 0
-	
+
 	for name, client := range p.clients {
 		if client.IsConnected() {
 			result[name] = client
@@ -94,8 +94,8 @@ func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 			log.DebugF("Inactive MCP client: %s", name)
 		}
 	}
-	
-	log.InfoF("Found %d active MCP clients (%d total, %d disconnected)", 
+
+	log.InfoF("Found %d active MCP clients (%d total, %d disconnected)",
 		connectedCount, len(p.clients), disconnectedCount)
 	return result
 }
@@ -103,10 +103,10 @@ func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 // CleanupDisconnected removes disconnected clients from the pool
 func (p *MCPPool) CleanupDisconnected() {
 	log.Debug("--- Cleaning Up Disconnected MCP Clients ---")
-	
+
 	cleanedCount := 0
 	activeCount := 0
-	
+
 	for name, client := range p.clients {
 		if !client.IsConnected() {
 			log.DebugF("Cleaning up disconnected MCP client: %s", name)
@@ -118,7 +118,7 @@ func (p *MCPPool) CleanupDisconnected() {
 			log.DebugF("Keeping active MCP client: %s", name)
 		}
 	}
-	
+
 	if cleanedCount > 0 {
 		log.InfoF("Cleaned up %d disconnected MCP clients, %d remain active", cleanedCount, activeCount)
 	} else {
@@ -129,15 +129,15 @@ func (p *MCPPool) CleanupDisconnected() {
 // Shutdown closes all clients and clears the pool
 func (p *MCPPool) Shutdown() {
 	log.Debug("=== Shutting Down MCP Pool ===")
-	
+
 	clientCount := len(p.clients)
 	log.DebugF("Shutting down %d MCP clients", clientCount)
-	
+
 	for name, client := range p.clients {
 		log.DebugF("Shutting down MCP client: %s", name)
 		client.Close()
 	}
-	
+
 	p.clients = make(map[string]*MCPClient)
 	log.InfoF("MCP pool shutdown complete, %d clients closed", clientCount)
 }
@@ -145,15 +145,15 @@ func (p *MCPPool) Shutdown() {
 // HealthCheck performs a health check on all clients
 func (p *MCPPool) HealthCheck() map[string]bool {
 	log.Debug("--- Performing MCP Health Check ---")
-	
+
 	result := make(map[string]bool)
 	healthyCount := 0
 	unhealthyCount := 0
-	
+
 	for name, client := range p.clients {
 		isHealthy := client.IsConnected()
 		result[name] = isHealthy
-		
+
 		if isHealthy {
 			healthyCount++
 			log.DebugF("MCP client '%s': HEALTHY", name)
@@ -162,8 +162,8 @@ func (p *MCPPool) HealthCheck() map[string]bool {
 			log.DebugF("MCP client '%s': UNHEALTHY", name)
 		}
 	}
-	
-	log.InfoF("MCP health check complete: %d healthy, %d unhealthy out of %d total clients", 
+
+	log.InfoF("MCP health check complete: %d healthy, %d unhealthy out of %d total clients",
 		healthyCount, unhealthyCount, len(p.clients))
 	return result
 }
@@ -174,9 +174,9 @@ func (p *MCPPool) StartCleanupRoutine() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		
+
 		log.InfoF("MCP pool cleanup routine started, will run every 5 minutes")
-		
+
 		for range ticker.C {
 			log.Debug("MCP pool cleanup routine triggered")
 			p.CleanupDisconnected()
@@ -189,12 +189,11 @@ func GetAvailableToolsImproved() []MCPTool {
 	var tools []MCPTool
 	pool := GetPool()
 
-
 	innerTools := GetInnerMCPTools(toolNameMapping)
 	for _, tool := range innerTools {
 		toolNameMapping[tool.Function.Name] = tool.Function.Name
 		mcpTool := MCPTool{
-			Name: tool.Function.Name,
+			Name:        tool.Function.Name,
 			Description: tool.Function.Description,
 			InputSchema: tool.Function.Parameters,
 		}
@@ -202,39 +201,39 @@ func GetAvailableToolsImproved() []MCPTool {
 	}
 
 	enabledConfigs := GetEnabledConfigs()
-	
+
 	successfulServers := 0
 	failedServers := 0
 	totalTools := 0
-	
+
 	for _, config := range enabledConfigs {
-		
+
 		client, err := pool.GetClient(config)
 		if err != nil {
 			log.ErrorF("Failed to get MCP client for '%s': %v", config.Name, err)
 			failedServers++
 			continue
 		}
-		
+
 		serverTools, err := client.ListTools()
 		if err != nil {
 			log.ErrorF("Failed to list tools from '%s': %v", config.Name, err)
 			failedServers++
 			continue
 		}
-		
+
 		for i, tool := range serverTools {
 			log.DebugF("  Tool %d: %s - %s", i+1, tool.Name, tool.Description)
 		}
-		
+
 		tools = append(tools, serverTools...)
 		totalTools += len(serverTools)
 		successfulServers++
 	}
-	
-	log.InfoF("MCP tool discovery complete: %d tools from %d servers (%d succeeded, %d failed)", 
+
+	log.InfoF("MCP tool discovery complete: %d tools from %d servers (%d succeeded, %d failed)",
 		totalTools, len(enabledConfigs), successfulServers, failedServers)
-	
+
 	return tools
 }
 
@@ -242,7 +241,7 @@ func GetAvailableToolsImproved() []MCPTool {
 func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 	log.DebugF("=== Calling MCP Tool: %s ===", toolCall.Name)
 	log.DebugF("Tool arguments: %v", toolCall.Arguments)
-	
+
 	// Parse the tool name to extract server and tool
 	parts := splitToolName(toolCall.Name)
 	if len(parts) != 2 {
@@ -252,7 +251,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   "Invalid tool name format. Expected: server.tool",
 		}
 	}
-	
+
 	serverName := parts[0]
 	toolName := parts[1]
 	log.DebugF("Parsed tool call - Server: %s, Tool: %s", serverName, toolName)
@@ -260,7 +259,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 	if serverName == "Inner_blog" {
 		log.DebugF("Calling inner tool: %s, arguments: %v", toolName, toolCall.Arguments)
 		data := CallInnerTools(toolName, toolCall.Arguments)
-		if data == ""  {
+		if data == "" {
 			return MCPToolResponse{
 				Success: false,
 				Error:   "Error NOT find tool: " + toolName,
@@ -271,7 +270,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Result:  data,
 		}
 	}
-	
+
 	// Find the server configuration
 	config, found := GetConfig(serverName)
 	if !found {
@@ -281,9 +280,9 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Server configuration '%s' not found", serverName),
 		}
 	}
-	
+
 	log.DebugF("Found MCP server config for '%s': %s", serverName, config.Command)
-	
+
 	if !config.Enabled {
 		log.WarnF("MCP server '%s' is disabled", serverName)
 		return MCPToolResponse{
@@ -291,7 +290,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Server '%s' is disabled", serverName),
 		}
 	}
-	
+
 	// Get client from pool
 	log.DebugF("Getting MCP client from pool for server '%s'", serverName)
 	pool := GetPool()
@@ -303,7 +302,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Failed to get MCP client: %v", err),
 		}
 	}
-	
+
 	// Execute tool call
 	log.InfoF("Executing MCP tool '%s' on server '%s'", toolName, serverName)
 	response, err := client.CallTool(toolName, toolCall.Arguments)
@@ -314,7 +313,7 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Failed to call tool: %v", err),
 		}
 	}
-	
+
 	if !response.Success {
 		log.WarnF("MCP tool '%s' returned error: %s", toolCall.Name, response.Error)
 		return MCPToolResponse{
@@ -322,10 +321,10 @@ func CallToolImproved(toolCall MCPToolCall) MCPToolResponse {
 			Error:   response.Error,
 		}
 	}
-	
+
 	log.InfoF("MCP tool '%s' executed successfully", toolCall.Name)
 	log.DebugF("Tool response data length: %d", len(fmt.Sprintf("%v", response.Data)))
-	
+
 	return MCPToolResponse{
 		Success: true,
 		Result:  response.Data,
@@ -356,40 +355,40 @@ func GetServerStatus() map[string]interface{} {
 	log.Debug("=== Getting MCP Server Status ===")
 	pool := GetPool()
 	healthStatus := pool.HealthCheck()
-	
+
 	result := make(map[string]interface{})
 	connectedCount := 0
 	enabledCount := 0
 	totalConfigs := len(GetAllConfigs())
-	
+
 	// Add status for servers in connection pool
 	for serverName, isHealthy := range healthStatus {
 		status := map[string]interface{}{
 			"connected": isHealthy,
 			"enabled":   false,
 		}
-		
+
 		// Check if server is enabled in config
 		if config, found := GetConfig(serverName); found {
 			status["enabled"] = config.Enabled
 			status["description"] = config.Description
 			status["command"] = config.Command
 			status["last_updated"] = config.UpdatedAt.Format("2006-01-02 15:04:05")
-			
+
 			if config.Enabled {
 				enabledCount++
 			}
 		}
-		
+
 		if isHealthy {
 			connectedCount++
 		}
-		
+
 		result[serverName] = status
-		log.DebugF("Server '%s': connected=%t, enabled=%t", 
+		log.DebugF("Server '%s': connected=%t, enabled=%t",
 			serverName, isHealthy, status["enabled"])
 	}
-	
+
 	// Add status for configured servers not in pool
 	for _, config := range GetAllConfigs() {
 		if _, exists := result[config.Name]; !exists {
@@ -401,18 +400,18 @@ func GetServerStatus() map[string]interface{} {
 				"last_updated": config.UpdatedAt.Format("2006-01-02 15:04:05"),
 			}
 			result[config.Name] = status
-			
+
 			if config.Enabled {
 				enabledCount++
 			}
-			
-			log.DebugF("Configured server '%s': connected=false, enabled=%t", 
+
+			log.DebugF("Configured server '%s': connected=false, enabled=%t",
 				config.Name, config.Enabled)
 		}
 	}
-	
-	log.InfoF("MCP server status summary: %d connected, %d enabled, %d total configs", 
+
+	log.InfoF("MCP server status summary: %d connected, %d enabled, %d total configs",
 		connectedCount, enabledCount, totalConfigs)
-	
+
 	return result
 }

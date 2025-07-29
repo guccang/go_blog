@@ -55,7 +55,10 @@
                             <div class="avatar">
                                 <i class="fas fa-robot"></i>
                             </div>
-                            <div class="message-content">
+                            <div class="message-content" style="position: relative;">
+                                <button class="copy-message-btn" onclick="copyMessageToClipboard('您好！我是您的智能助手，现在配备了强大的MCP工具支持！\n\n我可以帮您：\n\n• 📊 使用MCP工具分析您的个人数据和行为模式\n• 💡 基于工具调用提供个性化的建议和提醒\n• 📋 通过工具集成帮助管理任务和计划\n• 📈 调用外部工具生成各种统计报告\n• 🎯 使用专业工具追踪目标进度和成就\n• 🔧 新功能：智能工具调用 - 根据需求自动选择合适的MCP工具\n\n试试问我：使用MCP工具帮我分析最近的数据或调用工具帮我优化时间分配\n\n提示：您可以在右侧工具面板中选择特定的MCP工具，或让我自动选择最合适的工具。', this)">
+                                    <i class="fas fa-copy"></i> 复制
+                                </button>
                                 <div class="message-text">
                                     <p>您好！我是您的智能助手，现在配备了强大的MCP工具支持！</p>
                                     <p>我可以帮您：</p>

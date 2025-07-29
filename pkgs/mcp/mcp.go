@@ -157,6 +157,10 @@ func Init() {
 
 	log.Debug("=== MCP Module Initialization Completed ===")
 	log.InfoF("MCP module initialized successfully with %d configurations", len(mcpConfigs.Configs))
+
+	// create mcp server and client
+	tools := GetAvailableToolsImproved()
+	log.DebugF("MCP module initialized successfully with %d tools", len(tools))
 }
 
 func loadMCPConfigs() {

@@ -15,15 +15,32 @@ import (
 	"module"
 	log "mylog"
 	"os"
+	"os/signal"
 	"persistence"
 	"search"
 	"share"
 	"sms"
 	"statistics"
+	"syscall"
 	"view"
 )
 
+func clearup() {
+	log.Debug("go_blog clearup")
+	mcp.GetPool().Shutdown()
+}
+
 func main() {
+	defer clearup()
+
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
+	go func() {
+		<-sigchan
+		clearup()
+		os.Exit(0)
+	}()
+
 	args := os.Args
 	for _, arg := range args {
 		fmt.Println(arg)

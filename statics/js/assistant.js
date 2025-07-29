@@ -87,6 +87,52 @@ const responseTemplates = {
     }
 };
 
+// 复制消息到剪贴板
+function copyMessageToClipboard(content, button) {
+    // 创建临时文本区域
+    const tempTextArea = document.createElement('textarea');
+    tempTextArea.value = content;
+    document.body.appendChild(tempTextArea);
+    
+    try {
+        // 选择并复制文本
+        tempTextArea.select();
+        tempTextArea.setSelectionRange(0, 99999); // 移动端兼容
+        document.execCommand('copy');
+        
+        // 更新按钮状态
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> 已复制';
+        button.style.background = 'rgba(34, 197, 94, 0.2)';
+        button.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+        button.style.color = '#22c55e';
+        
+        // 3秒后恢复原状
+        setTimeout(() => {
+            button.innerHTML = originalContent;
+            button.style.background = 'rgba(255, 255, 255, 0.1)';
+            button.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            button.style.color = 'rgba(255, 255, 255, 0.7)';
+        }, 3000);
+        
+        console.log('消息已复制到剪贴板');
+    } catch (err) {
+        console.error('复制失败:', err);
+        
+        // 备用方案：使用现代 Clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(content).then(() => {
+                console.log('使用 Clipboard API 复制成功');
+            }).catch(err => {
+                console.error('Clipboard API 复制失败:', err);
+            });
+        }
+    } finally {
+        // 清理临时元素
+        document.body.removeChild(tempTextArea);
+    }
+}
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
@@ -519,6 +565,16 @@ function addMessage(sender, content) {
     
     const messageContent = document.createElement('div');
     messageContent.className = 'message-content';
+    
+    // 为assistant消息添加复制按钮
+    if (sender === 'assistant') {
+        messageContent.style.position = 'relative';
+        const copyButton = document.createElement('button');
+        copyButton.className = 'copy-message-btn';
+        copyButton.innerHTML = '<i class="fas fa-copy"></i> 复制';
+        copyButton.onclick = () => copyMessageToClipboard(content, copyButton);
+        messageContent.appendChild(copyButton);
+    }
     
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
@@ -1282,6 +1338,16 @@ function displayChatHistory(chatHistory) {
         
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
+        
+        // 为assistant消息添加复制按钮
+        if (message.role === 'assistant') {
+            messageContent.style.position = 'relative';
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-message-btn';
+            copyButton.innerHTML = '<i class="fas fa-copy"></i> 复制';
+            copyButton.onclick = () => copyMessageToClipboard(message.content, copyButton);
+            messageContent.appendChild(copyButton);
+        }
         
         const messageText = document.createElement('div');
         messageText.className = 'message-text';
