@@ -6,9 +6,9 @@
     PageHistoryBack();
     
     // DOM Elements
-    const sidebar = document.getElementById('sidebar');
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const container = document.getElementById('container');
+    const sidebar = document.getElementById('sidebar-container');
+    const bubble = document.getElementById('bubble');
+    const container = document.querySelector('.container');
     const editor = document.getElementById('editor');
     const md = document.getElementById('md');
     const editorWrapper = document.getElementById('editor-wrapper');
@@ -19,9 +19,14 @@
     let viewState = 'split'; // split, editor-only, preview-only
     
     // Toggle sidebar
-    sidebarToggle.addEventListener('click', function() {
-        sidebar.classList.toggle('collapsed');
-        sidebarToggle.innerHTML = sidebar.classList.contains('collapsed') ? '&#10095;' : '&#10094;';
+    bubble.addEventListener('click', function() {
+        if (isPCDevice()){
+            sidebar.classList.toggle('hide-sidebar');
+            container.classList.toggle('hide-sidebar');
+        }else{
+            sidebar.classList.toggle('hide-sidebar-mobile');
+            container.classList.toggle('hide-sidebar');
+        }
     });
     
     // Toggle view (split, editor-only, preview-only)

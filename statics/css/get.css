@@ -50,7 +50,7 @@
         }
 
         .sidebar-container.hide-sidebar-mobile {
-            transform: translateX(-220px);
+            transform: translateX(-230px);
         }
         
         .sidebar {

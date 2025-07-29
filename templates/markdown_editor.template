@@ -9,8 +9,8 @@
 </head>
 <body class="th_black" id="body">
     <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-        <button class="sidebar-toggle" id="sidebar-toggle">&#10094;</button>
+    <div id="sidebar-container" class="sidebar-container">
+        <div id="sidebar" class="sidebar">
         <div class="top-sidebar-cotainer">
             <div class="top-sidebar">
                 <a href="/main">
@@ -83,6 +83,8 @@
                 value="{{.ENCRYPT}}">
             <small class="encrypt-hint" id="encrypt-hint">💡 启用"内容加密"权限时必须设置密码</small>
         </div>
+        </div>
+        <div class="bubble" id="bubble">&#9776;</div>
     </div>
 
     <!-- Main Content -->
