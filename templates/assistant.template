@@ -56,7 +56,7 @@
                                 <i class="fas fa-robot"></i>
                             </div>
                             <div class="message-content" style="position: relative;">
-                                <button class="copy-message-btn" onclick="copyMessageToClipboard('您好！我是您的智能助手，现在配备了强大的MCP工具支持！\n\n我可以帮您：\n\n• 📊 使用MCP工具分析您的个人数据和行为模式\n• 💡 基于工具调用提供个性化的建议和提醒\n• 📋 通过工具集成帮助管理任务和计划\n• 📈 调用外部工具生成各种统计报告\n• 🎯 使用专业工具追踪目标进度和成就\n• 🔧 新功能：智能工具调用 - 根据需求自动选择合适的MCP工具\n\n试试问我：使用MCP工具帮我分析最近的数据或调用工具帮我优化时间分配\n\n提示：您可以在右侧工具面板中选择特定的MCP工具，或让我自动选择最合适的工具。', this)">
+                                <button class="copy-message-btn" onclick="copyMessageToClipboard('您好！我是您的智能助手，现在配备了强大的MCP工具支持！\n\n我可以帮您：\n\n• 📊 使用MCP工具分析您的个人数据和行为模式\n• 💡 基于工具调用提供个性化的建议和提醒\n• 📋 通过工具集成帮助管理任务和计划\n• 📈 调用外部工具生成各种统计报告\n• 🎯 使用专业工具追踪目标进度和成就\n• 🔧 新功能：智能工具调用 - 根据需求自动选择合适的MCP工具\n\n试试问我：使用MCP工具帮我分析最近的数据或调用工具帮我优化时间分配\n\n提示：您可以在右侧工具面板中选择特定的MCP工具，或让我自动选择最合适的工具。\n\n⚠️ 每次对话最多可使用50个工具，请合理选择使用。', this)">
                                     <i class="fas fa-copy"></i> 复制
                                 </button>
                                 <div class="message-text">
@@ -72,6 +72,7 @@
                                     </ul>
                                     <p>试试问我："使用MCP工具帮我分析最近的数据"或"调用工具帮我优化时间分配"</p>
                                     <p><em>提示：您可以在右侧工具面板中选择特定的MCP工具，或让我自动选择最合适的工具。</em></p>
+                                    <p><small style="color: #f39c12;">⚠️ 每次对话最多可使用50个工具，请合理选择使用。</small></p>
                                 </div>
                                 <div class="message-time">刚刚</div>
                             </div>
@@ -614,6 +615,7 @@
                             <div>
                                 <strong>工具选择</strong>
                                 <p>选择要在对话中使用的MCP工具。未选择时将使用所有可用工具。</p>
+                                <p><strong>⚠️ 注意：</strong> 每次对话最多可使用 <span style="color: #e74c3c; font-weight: bold;">50个工具</span>，请合理选择。</p>
                             </div>
                         </div>
                         <div class="mcp-info-item">

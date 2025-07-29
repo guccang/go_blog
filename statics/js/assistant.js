@@ -1240,22 +1240,6 @@ function getSelectedTools() {
     return selectedTools.length > 0 ? selectedTools : null;
 }
 
-// 全选工具
-function selectAllTools() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
-    });
-}
-
-// 全不选工具
-function selectNoTools() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-}
-
 // MCP工具相关函数
 function loadMCPTools() {
     console.log('正在加载MCP工具...');
@@ -1408,6 +1392,21 @@ function initializeChatHistoryControls() {
     }
 }
 
+// 按服务器分组工具的辅助函数
+function groupToolsByServer(tools) {
+    console.log("groupToolsServe ===========tools", tools);
+    const grouped = {};
+    tools.forEach(tool => {
+        const serverName = tool.name.split('.')[0];
+        console.log("===========serverName", serverName);
+        if (!grouped[serverName]) {
+            grouped[serverName] = [];
+        }
+        grouped[serverName].push(tool);
+    });
+    return grouped;
+}
+
 function updateMCPToolsStatus(tools = [], serverStatus = {}) {
     const toolsContainer = document.getElementById('mcp-tools-status');
     if (!toolsContainer) return;
@@ -1430,6 +1429,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
     
     // 按服务器分组显示工具
     const toolsByServer = groupToolsByServer(tools);
+    console.log("===========toolsByServer", toolsByServer);
     const serversHtml = Object.keys(toolsByServer).map(serverName => {
         const serverTools = toolsByServer[serverName];
         const isConnected = serverStatus[serverName]?.connected || false;
@@ -1518,18 +1518,6 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
     updateSelectedToolsCount();
 }
 
-// 按服务器分组工具的辅助函数
-function groupToolsByServer(tools) {
-    const grouped = {};
-    tools.forEach(tool => {
-        const serverName = tool.name.split('.')[0];
-        if (!grouped[serverName]) {
-            grouped[serverName] = [];
-        }
-        grouped[serverName].push(tool);
-    });
-    return grouped;
-}
 
 function showMCPToolsDialog() {
     if (mcpTools.length === 0) {
@@ -1647,19 +1635,6 @@ function showMCPToolsEmptyState() {
     requestAnimationFrame(() => dialog.classList.add('active'));
 }
 
-// 按服务器分组工具
-function groupToolsByServer(tools) {
-    const grouped = {};
-    tools.forEach(tool => {
-        const server = tool.server || 'Unknown';
-        if (!grouped[server]) {
-            grouped[server] = [];
-        }
-        grouped[server].push(tool);
-    });
-    return grouped;
-}
-
 // 生成工具网格HTML
 function generateToolsGrid(groupedTools) {
     let html = '';
@@ -1697,9 +1672,6 @@ function generateToolCard(tool) {
                     <h4 class="tool-name">${tool.name}</h4>
                     <span class="tool-server">${tool.server || 'Unknown'}</span>
                 </div>
-                <button class="tool-action-btn" onclick="selectTool('${tool.name}')">
-                    <i class="fas fa-plus"></i>
-                </button>
             </div>
             <div class="tool-description">
                 ${tool.description || '暂无描述'}
@@ -1809,17 +1781,6 @@ function updateVisibleCount(count = null) {
     }
 }
 
-// 选择工具
-function selectTool(toolName) {
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.value = `请使用 ${toolName} 工具帮我 `;
-        messageInput.focus();
-        // 将光标移动到末尾
-        messageInput.setSelectionRange(messageInput.value.length, messageInput.value.length);
-    }
-    closeMCPToolsDialog();
-}
 
 // 切换参数显示
 function toggleParams(button) {
@@ -1981,20 +1942,24 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
     }
     
     // 按服务器分组显示工具
+    console.log("===========tools", tools);
     const toolsByServer = groupToolsByServer(tools);
+    console.log("===========toolsByServer1", toolsByServer);
     const serversHtml = Object.keys(toolsByServer).map(serverName => {
         const serverTools = toolsByServer[serverName];
         const isConnected = serverStatus[serverName]?.connected || false;
         const isEnabled = serverStatus[serverName]?.enabled || false;
         const statusClass = isConnected ? 'connected' : (isEnabled ? 'disconnected' : 'disabled');
-        
+        console.log("===========serverName", serverName);
+        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
+        console.log("===========checked", checked);
         return `
             <div class="mcp-server-item ${statusClass}">
                 <label class="mcp-server-checkbox-label">
                     <input type="checkbox" 
                            class="mcp-server-checkbox" 
                            data-server="${serverName}"
-                           checked
+                           ${checked}
                            onchange="toggleServerTools('${serverName}', this.checked)">
                     <div class="mcp-server-info">
                         <div class="mcp-server-name">${serverName}</div>
@@ -2048,10 +2013,11 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                     ${tools.map(tool => {
                         const serverName = tool.name.split('.')[0];
                         const toolName = tool.name.split('.').slice(1).join('.');
+                        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
                         return `
                             <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
                                 <label class="mcp-tool-checkbox-label">
-                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}" checked>
+                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}" ${checked}>
                                     <div class="mcp-tool-content">
                                         <div class="mcp-tool-name">
                                             <i class="fas fa-cog"></i>

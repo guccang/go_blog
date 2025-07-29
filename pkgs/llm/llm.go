@@ -74,6 +74,8 @@ type LLMResponse struct {
 
 var llmConfig = LLMConfig{}
 
+var max_selected_tools = 50
+
 func Info() {
 	fmt.Println("info llm v1.0")
 }
@@ -262,6 +264,10 @@ func processQuery(query string, selectedTools []string) (string, error) {
 	log.DebugF("llm === Processing Query with LLM and MCP Tools ===")
 	log.DebugF("llm Query: %s", query)
 	log.DebugF("llm Selected tools: %v", selectedTools)
+	if len(selectedTools) > max_selected_tools {
+		log.WarnF("Selected tools count is too large, max is %d", max_selected_tools)
+		selectedTools = selectedTools[:max_selected_tools]
+	}
 
 	// Initialize messages
 	messages := []Message{
@@ -423,6 +429,10 @@ func processQueryStreaming(query string, selectedTools []string, w http.Response
 	log.DebugF("=== Streaming LLM Processing Started with Tool Support ===")
 	log.DebugF("Query: %s", query)
 	log.DebugF("Selected tools: %v", selectedTools)
+	if len(selectedTools) > max_selected_tools {
+		log.WarnF("Selected tools count is too large, max is %d", max_selected_tools)
+		selectedTools = selectedTools[:max_selected_tools]
+	}
 
 	// Initialize messages
 	messages := []Message{

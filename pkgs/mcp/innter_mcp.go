@@ -273,14 +273,14 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTask",
-				Description: "获取今天的每日任务",
+				Description: "获取今天的todolist",
 			},
 		},
 		{
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByDate",
-				Description: "获取指定日期每日任务",
+				Description: "获取指定日期todolist",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -294,7 +294,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByRageDate",
-				Description: "获取指定日期范围每日任务",
+				Description: "获取指定日期范围todolist",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
