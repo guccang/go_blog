@@ -1188,6 +1188,56 @@ body {
     margin-top: 10px;
 }
 
+/* 聊天历史控件 */
+.chat-history-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.date-input {
+    flex: 1;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.date-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 170, 0.5);
+    box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.2);
+}
+
+.load-history-btn {
+    padding: 8px 12px;
+    background: rgba(0, 212, 170, 0.2);
+    border: 1px solid rgba(0, 212, 170, 0.4);
+    border-radius: 6px;
+    color: #00d4aa;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.load-history-btn:hover {
+    background: rgba(0, 212, 170, 0.3);
+    transform: translateY(-1px);
+}
+
+.history-info {
+    margin-top: 5px;
+}
+
+.history-info small {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.8rem;
+}
+
 /* 设置面板 */
 .settings-panel {
     position: fixed;

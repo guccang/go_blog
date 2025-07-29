@@ -96,6 +96,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeTrendChart();
     loadSettings();
     loadMCPTools();
+    initializeChatHistoryControls(); // 初始化聊天历史控件
+    loadChatHistory(); // 加载聊天历史
     // initializeHealthCharts(); // 延迟到健康标签激活时初始化
     
     // 确保初始状态正确
@@ -1226,6 +1228,118 @@ function loadMCPTools() {
         updateMCPToolsStatus([], {});
         updateMCPToolsStatusLarge([], {});
     });
+}
+
+// 加载聊天历史
+function loadChatHistory(date) {
+    console.log('正在加载聊天历史...');
+    
+    // 如果没有指定日期，使用今天的日期
+    if (!date) {
+        date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD格式
+    }
+    
+    fetch(`/api/assistant/chat/history?date=${date}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.chatHistory.length > 0) {
+                console.log(`成功加载 ${data.chatHistory.length} 条聊天记录`);
+                displayChatHistory(data.chatHistory);
+            } else {
+                console.log('该日期无聊天历史记录');
+                // 不显示任何内容，保持空白的聊天界面
+            }
+        })
+        .catch(error => {
+            console.error('加载聊天历史失败:', error);
+        });
+}
+
+// 显示聊天历史
+function displayChatHistory(chatHistory) {
+    const chatContainer = document.getElementById('chatMessages');
+    if (!chatContainer) return;
+    
+    // 清空当前消息（除了欢迎消息）
+    const welcomeMessage = chatContainer.querySelector('.message.assistant-message');
+    chatContainer.innerHTML = '';
+    
+    // 保留欢迎消息
+    if (welcomeMessage) {
+        chatContainer.appendChild(welcomeMessage);
+    }
+    
+    // 显示历史聊天记录
+    chatHistory.forEach(message => {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.role}-message`;
+        
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.innerHTML = message.role === 'user' ? 
+            '<i class="fas fa-user"></i>' : 
+            '<i class="fas fa-robot"></i>';
+        
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        
+        const messageText = document.createElement('div');
+        messageText.className = 'message-text';
+        
+        // 使用相同的 Markdown 格式化功能
+        messageText.innerHTML = formatMessage(message.content);
+        
+        const messageTime = document.createElement('div');
+        messageTime.className = 'message-time';
+        messageTime.textContent = message.timestamp || '历史消息';
+        
+        messageContent.appendChild(messageText);
+        messageContent.appendChild(messageTime);
+        
+        if (message.role === 'user') {
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(avatar);
+        } else {
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(messageContent);
+        }
+        
+        chatContainer.appendChild(messageDiv);
+    });
+    
+    // 滚动到底部
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    
+    console.log('聊天历史显示完成');
+}
+
+// 加载选定日期的聊天历史
+function loadSelectedDateHistory() {
+    const dateInput = document.getElementById('chatHistoryDate');
+    if (!dateInput || !dateInput.value) {
+        alert('请选择一个日期');
+        return;
+    }
+    
+    const selectedDate = dateInput.value;
+    console.log('加载指定日期的聊天历史:', selectedDate);
+    loadChatHistory(selectedDate);
+}
+
+// 初始化聊天历史控件
+function initializeChatHistoryControls() {
+    const dateInput = document.getElementById('chatHistoryDate');
+    if (dateInput) {
+        // 设置默认日期为今天
+        dateInput.value = new Date().toISOString().split('T')[0];
+        
+        // 添加回车键监听
+        dateInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadSelectedDateHistory();
+            }
+        });
+    }
 }
 
 function updateMCPToolsStatus(tools = [], serverStatus = {}) {

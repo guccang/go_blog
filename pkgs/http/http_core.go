@@ -288,6 +288,7 @@ func Init() int {
 	// Assistant routes
 	h.HandleFunc("/assistant", HandleAssistant)
 	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
+	h.HandleFunc("/api/assistant/chat/history", HandleAssistantChatHistory)
 	h.HandleFunc("/api/assistant/stats", HandleAssistantStats)
 	h.HandleFunc("/api/assistant/suggestions", HandleAssistantSuggestions)
 	h.HandleFunc("/api/assistant/trends", HandleAssistantTrends)
