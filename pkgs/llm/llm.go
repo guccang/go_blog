@@ -503,7 +503,7 @@ func processQueryStreaming(query string, selectedTools []string, w http.Response
 
 			// Add tool call info to full response for saving
 			save := config.GetConfig("assistant_save_mcp_result")
-			if save.ToLower() == "true" {
+			if strings.ToLower(save) == "true" {
 				fullResponse.WriteString(fmt.Sprintf("\n[Tool %s called with result: %v]\n", toolName, result.Result))
 			} else {
 				// 不显示工具回调返回的数据，设计隐私，发送给llm无问题，但是缓存后显示在UI上就很麻烦了。
