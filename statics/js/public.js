@@ -6,7 +6,28 @@ let allBlogs = [];
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
+    initializeSidebar();
 });
+
+// 初始化侧边栏功能
+function initializeSidebar() {
+    const sidebar = document.getElementById('sidebar-container');
+    const bubble = document.getElementById('bubble');
+    const container = document.querySelector('.container');
+    
+    if (bubble && sidebar && container) {
+        // Toggle sidebar
+        bubble.addEventListener('click', function() {
+            if (isPCDevice()){
+                sidebar.classList.toggle('hide-sidebar');
+                container.classList.toggle('hide-sidebar');
+            }else{
+                sidebar.classList.toggle('hide-sidebar-mobile');
+                container.classList.toggle('hide-sidebar');
+            }
+        });
+    }
+}
 
 // 初始化页面
 function initializePage() {

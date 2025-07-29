@@ -8,7 +8,7 @@
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
-	<div id="sidebar-container" class="sidebar-container">
+	<div id="sidebar-container" class="sidebar-container hide-sidebar">
 		<div id="sidebar" class="sidebar">
             <a href="/main">
                 <div class="img-cycle">G</div>
@@ -88,7 +88,7 @@
 	</div>
 
     <!-- Main Content -->
-	<div class="container">
+	<div class="container hide-sidebar">
 		<div class="buttons-container">
 		<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
 		</div>

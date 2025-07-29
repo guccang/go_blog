@@ -10,12 +10,17 @@
 </head>
 
 <body>
-    <div class="top-sidebar-cotainer">
-        <div class="top-sidebar">
+    <!-- Sidebar -->
+    <div id="sidebar-container" class="sidebar-container hide-sidebar">
+        <div id="sidebar" class="sidebar">
             <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" class="management-btn" style="font-size: 20px; background: var(--accent-color); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px;">管理</a>
+            <a href="/main" style="font-size: 24px;">主页</a>
+            <div class="separator"></div>
+            <a href="/link" class="management-btn" style="font-size: 20px; background: var(--accent-color); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-bottom: 15px; display: block; text-align: center;">管理</a>
+            <div class="separator"></div>
+            <label for="search">搜索公开博客</label>
             <div class="search-container">
                 <input id="search" type="text" placeholder="搜索公开博客..." list="search_list">
                 <datalist id="search_list">
@@ -25,14 +30,18 @@
                 </datalist>
                 <button type="button" class="search-btn">搜索</button>
             </div>
+            <div class="separator"></div>
             <button class="view-toggle" title="切换视图">
                 <i id="view-icon">📑</i>
                 <span id="view-text">网格视图</span>
             </button>
         </div>
+        <div class="bubble" id="bubble">&#9776;</div>
     </div>
 
-    <!-- 页面标题 -->
+    <!-- Main Content -->
+    <div class="container hide-sidebar">
+        <!-- 页面标题 -->
     <div class="page-header">
         <h1 class="page-title">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 8px;">
@@ -97,9 +106,10 @@
     </div>
 
 
-    <div class="bottom-fix-div">
-        <span class="right-label">公开博客数量: {{.BLOGS_NUMBER}}</span>
-        <span class="right-label">版本: {{.VERSION}}</span>
+        <div class="bottom-fix-div">
+            <span class="right-label">公开博客数量: {{.BLOGS_NUMBER}}</span>
+            <span class="right-label">版本: {{.VERSION}}</span>
+        </div>
     </div>
 
     <script src="/js/utils.js"></script>
