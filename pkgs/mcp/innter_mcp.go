@@ -69,6 +69,10 @@ func Inner_blog_RawAllDiaryCount(arguments map[string]interface{}) string {
 	return strconv.Itoa(statistics.RawAllDiaryCount())
 }
 
+func Inner_blog_RawCurrentDiaryContent(arguments map[string]interface{}) string {
+	return statistics.RawCurrentDiaryContent()
+}
+
 func Inner_blog_RawAllExerciseCount(arguments map[string]interface{}) string {
 	return strconv.Itoa(statistics.RawAllExerciseCount())
 }
@@ -216,6 +220,7 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawAllExerciseDistance", Inner_blog_RawAllExerciseDistance)
 	RegisterCallBack("RawAllExerciseCalories", Inner_blog_RawAllExerciseCalories)
 	RegisterCallBack("RawAllDiaryContent", Inner_blog_RawAllDiaryContent)
+	RegisterCallBack("RawCurrentDiaryContent", Inner_blog_RawCurrentDiaryContent)
 	RegisterCallBack("RawGetBlogByTitleMatch", Inner_blog_RawGetBlogByTitleMatch)
 
 	// 新增扩展接口 - 统计类
@@ -272,15 +277,22 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{
 			Type: "function",
 			Function: LLMFunction{
+				Name:        "Inner_blog.RawCurrentDiaryContent",
+				Description: "获取当天日记数据",
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTask",
-				Description: "获取今天的todolist",
+				Description: "获取当天todolist数据,返回json格式",
 			},
 		},
 		{
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByDate",
-				Description: "获取指定日期todolist",
+				Description: "获取指定日期的todolist数据,返回json格式",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -294,7 +306,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByRageDate",
-				Description: "获取指定日期范围todolist",
+				Description: "获取指定日期范围的todolist数据,返回json格式",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -309,7 +321,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllDiaryContent",
-				Description: "获取所有日志内容",
+				Description: "获取所有日记内容",
 			},
 		},
 		{

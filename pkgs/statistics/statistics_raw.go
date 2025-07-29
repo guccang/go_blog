@@ -557,3 +557,8 @@ func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
 	}
 	return ""
 }
+
+func RawCurrentDiaryContent() string {
+	title := "日记_" + RawCurrentDate()
+	return RawGetBlogData(title)
+}
