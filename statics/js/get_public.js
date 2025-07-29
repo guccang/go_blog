@@ -115,4 +115,7 @@
     window.onload = function() {
         mdRender(editor.value);
         checkTime();
+        // hide sidebar
+        sidebar.classList.add('hide-sidebar');
+        container.classList.add('hide-sidebar');
     }

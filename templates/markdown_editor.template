@@ -9,7 +9,7 @@
 </head>
 <body class="th_black" id="body">
     <!-- Sidebar -->
-    <div id="sidebar-container" class="sidebar-container">
+    <div id="sidebar-container" class="sidebar-container hide-sidebar">
         <div id="sidebar" class="sidebar">
         <div class="top-sidebar-cotainer">
             <div class="top-sidebar">
@@ -88,7 +88,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container" id="container">
+    <div class="container hide-sidebar" id="container">
         <!-- Toolbar -->
         <div class="editor-toolbar">
             <div class="toolbar-group">

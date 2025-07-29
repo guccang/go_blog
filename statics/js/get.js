@@ -26,7 +26,7 @@ bubble.addEventListener('click', function() {
 		container.classList.toggle('hide-sidebar');
 	}else{
 		sidebar.classList.toggle('hide-sidebar-mobile');
-		container.classList.toggle('hide-sidebar');
+		container.classList.toggle('hide-sidebar-mobile');
 	}
 });
 
@@ -498,14 +498,16 @@ window.onload = function() {
 	mdRender(editor.value);
 	checkTime();
 
+	/*
 	// 自动隐藏侧边栏
 	if (isPCDevice()){
 		sidebar.classList.toggle('hide-sidebar');
 		container.classList.toggle('hide-sidebar');
 	}else{
 		sidebar.classList.toggle('hide-sidebar-mobile');
-		container.classList.toggle('hide-sidebar');
+		container.classList.toggle('hide-sidebar-mobile');
 	}
+	*/
 	
 	// 初始化编辑器高度，避免高度为0的问题
 	if (isPCDevice()) {
