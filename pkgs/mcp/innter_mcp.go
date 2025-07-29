@@ -94,6 +94,21 @@ func Inner_blog_RawGetBlogByTitleMatch(arguments map[string]interface{}) string 
 	return statistics.RawGetBlogByTitleMatch(match)
 }
 
+func Inner_blog_RawGetCurrentTask(arguments map[string]interface{}) string {
+	return statistics.RawGetCurrentTask()
+}
+
+func Inner_blog_RawGetCurrentTaskByDate(arguments map[string]interface{}) string {
+	date := arguments["date"].(string)
+	return statistics.RawGetCurrentTaskByDate(date)
+}
+
+func Inner_blog_RawGetCurrentTaskByRageDate(arguments map[string]interface{}) string {
+	startDate := arguments["startDate"].(string)
+	endDate := arguments["endDate"].(string)
+	return statistics.RawGetCurrentTaskByRageDate(startDate, endDate)
+}
+
 // =================================== 扩展Inner_blog接口 =========================================
 
 // 博客统计相关接口
@@ -181,6 +196,7 @@ func CallInnerTools(name string, arguments map[string]interface{}) string {
 }
 
 func RegisterInnerTools() {
+
 	// 原有接口
 	RegisterCallBack("RawAllBlogData", Inner_blog_RawAllBlogData)
 	RegisterCallBack("RawGetBlogData", Inner_blog_RawGetBlogData)
@@ -201,7 +217,7 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawAllExerciseCalories", Inner_blog_RawAllExerciseCalories)
 	RegisterCallBack("RawAllDiaryContent", Inner_blog_RawAllDiaryContent)
 	RegisterCallBack("RawGetBlogByTitleMatch", Inner_blog_RawGetBlogByTitleMatch)
-	
+
 	// 新增扩展接口 - 统计类
 	RegisterCallBack("RawBlogStatistics", Inner_blog_RawBlogStatistics)
 	RegisterCallBack("RawAccessStatistics", Inner_blog_RawAccessStatistics)
@@ -211,7 +227,7 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawTagStatistics", Inner_blog_RawTagStatistics)
 	RegisterCallBack("RawCommentStatistics", Inner_blog_RawCommentStatistics)
 	RegisterCallBack("RawContentStatistics", Inner_blog_RawContentStatistics)
-	
+
 	// 新增扩展接口 - 查询类
 	RegisterCallBack("RawBlogsByAuthType", Inner_blog_RawBlogsByAuthType)
 	RegisterCallBack("RawBlogsByTag", Inner_blog_RawBlogsByTag)
@@ -219,10 +235,15 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawRecentActiveBlog", Inner_blog_RawRecentActiveBlog)
 	RegisterCallBack("RawMonthlyCreationTrend", Inner_blog_RawMonthlyCreationTrend)
 	RegisterCallBack("RawSearchBlogContent", Inner_blog_RawSearchBlogContent)
-	
+
 	// 新增扩展接口 - 锻炼类
 	RegisterCallBack("RawExerciseDetailedStats", Inner_blog_RawExerciseDetailedStats)
 	RegisterCallBack("RawRecentExerciseRecords", Inner_blog_RawRecentExerciseRecords)
+
+	// 新增接口 - 获取每日任务
+	RegisterCallBack("RawGetCurrentTask", Inner_blog_RawGetCurrentTask)
+	RegisterCallBack("RawGetCurrentTaskByDate", Inner_blog_RawGetCurrentTaskByDate)
+	RegisterCallBack("RawGetCurrentTaskByRageDate", Inner_blog_RawGetCurrentTaskByRageDate)
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -248,6 +269,42 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 	*/
 
 	tools := []LLMTool{
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.RawGetCurrentTask",
+				Description: "获取今天的每日任务",
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.RawGetCurrentTaskByDate",
+				Description: "获取指定日期每日任务",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"date": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
+					},
+					"required": []string{"date"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.RawGetCurrentTaskByRageDate",
+				Description: "获取指定日期范围每日任务",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"startDate": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
+						"endDate":   map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
+					},
+					"required": []string{"startDate", "endDate"},
+				},
+			},
+		},
 		{
 			Type: "function",
 			Function: LLMFunction{
@@ -424,9 +481,9 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Description: "获取当前时间",
 			},
 		},
-		
+
 		// =================================== 新增扩展工具 =========================================
-		
+
 		// 统计类工具
 		{
 			Type: "function",
@@ -484,7 +541,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Description: "获取内容统计信息,包括字符数、文章长度分布等",
 			},
 		},
-		
+
 		// 查询类工具
 		{
 			Type: "function",
@@ -495,7 +552,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"authType": map[string]interface{}{
-							"type": "number", 
+							"type":        "number",
 							"description": "权限类型数值:1=私有,2=公开,4=加密,8=协作,16=日记",
 						},
 					},
@@ -559,7 +616,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
-		
+
 		// 锻炼类工具
 		{
 			Type: "function",
@@ -577,7 +634,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"days": map[string]interface{}{
-							"type": "number", 
+							"type":        "number",
 							"description": "要查询的天数,如7表示最近7天",
 						},
 					},

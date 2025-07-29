@@ -526,3 +526,34 @@ func RawRecentExerciseRecords(days int) string {
 
 	return result
 }
+
+func RawGetCurrentTask() string {
+	title := "todolist-" + RawCurrentDate()
+	return RawGetBlogData(title)
+}
+
+func RawGetCurrentTaskByDate(date string) string {
+	title := "todolist-" + date
+	return RawGetBlogData(title)
+}
+
+func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
+	start, err := time.Parse("2006-01-02 15:04:05", startDate+" 00:00:00")
+	if err != nil {
+		return ""
+	}
+	end, err := time.Parse("2006-01-02 15:04:05", endDate+" 23:59:59")
+	if err != nil {
+		return ""
+	}
+	for _, b := range blog.Blogs {
+		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
+		if err != nil {
+			continue
+		}
+		if createTime.After(start) && createTime.Before(end) && strings.Contains(b.Title, "todolist-") {
+			return b.Title + ":\n" + b.Content + "\n"
+		}
+	}
+	return ""
+}

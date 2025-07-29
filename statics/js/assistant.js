@@ -1533,54 +1533,329 @@ function groupToolsByServer(tools) {
 
 function showMCPToolsDialog() {
     if (mcpTools.length === 0) {
-        alert('暂无可用的MCP工具，请先在MCP配置页面添加工具配置。');
+        showMCPToolsEmptyState();
         return;
     }
     
-    const toolsList = mcpTools.map(tool => `
-        <div class="mcp-tool-option" data-tool-name="${tool.name}">
-            <h4>${tool.name}</h4>
-            <p>${tool.description}</p>
-            ${tool.parameters ? `<details>
-                <summary>参数说明</summary>
-                <pre>${JSON.stringify(tool.parameters, null, 2)}</pre>
-            </details>` : ''}
-        </div>
-    `).join('');
+    // 创建分组工具数据
+    const groupedTools = groupToolsByServer(mcpTools);
     
     const dialog = document.createElement('div');
     dialog.className = 'mcp-tools-dialog';
     dialog.innerHTML = `
         <div class="mcp-tools-dialog-content">
-            <h3>可用的MCP工具</h3>
-            <div class="mcp-tools-grid">${toolsList}</div>
-            <div class="mcp-tools-dialog-actions">
-                <button onclick="closeMCPToolsDialog()">关闭</button>
+            <div class="mcp-dialog-header">
+                <div class="dialog-title">
+                    <i class="fas fa-tools"></i>
+                    <h3>MCP 工具选择器</h3>
+                    <span class="tools-count">${mcpTools.length} 个工具可用</span>
+                </div>
+                <button class="close-dialog-btn" onclick="closeMCPToolsDialog()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="mcp-dialog-search">
+                <div class="search-container">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="toolSearchInput" placeholder="搜索工具名称、服务器或描述..." oninput="filterDialogTools(this.value)">
+                </div>
+                <div class="search-filters">
+                    <button class="filter-btn active" data-filter="all" onclick="setToolFilter(this, 'all')">
+                        <i class="fas fa-list"></i> 全部
+                    </button>
+                    <button class="filter-btn" data-filter="recent" onclick="setToolFilter(this, 'recent')">
+                        <i class="fas fa-clock"></i> 常用
+                    </button>
+                    <button class="filter-btn" data-filter="data" onclick="setToolFilter(this, 'data')">
+                        <i class="fas fa-database"></i> 数据
+                    </button>
+                    <button class="filter-btn" data-filter="analysis" onclick="setToolFilter(this, 'analysis')">
+                        <i class="fas fa-chart-bar"></i> 分析
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mcp-dialog-body">
+                <div class="tools-grid" id="toolsGrid">
+                    ${generateToolsGrid(groupedTools)}
+                </div>
+            </div>
+            
+            <div class="mcp-dialog-footer">
+                <div class="dialog-actions">
+                    <button class="btn-secondary" onclick="closeMCPToolsDialog()">
+                        <i class="fas fa-times"></i> 取消
+                    </button>
+                    <button class="btn-primary" onclick="openMCPConfig()">
+                        <i class="fas fa-cog"></i> 管理工具
+                    </button>
+                </div>
             </div>
         </div>
     `;
     
     document.body.appendChild(dialog);
     
-    // 添加工具选择事件
-    dialog.querySelectorAll('.mcp-tool-option').forEach(option => {
-        option.addEventListener('click', function() {
-            const toolName = this.getAttribute('data-tool-name');
-            const chatInput = document.getElementById('chat-input');
-            if (chatInput) {
-                chatInput.value = `请使用 ${toolName} 工具帮我`;
-                chatInput.focus();
-            }
-            closeMCPToolsDialog();
-        });
+    // 添加动画效果
+    requestAnimationFrame(() => {
+        dialog.classList.add('active');
     });
+    
+    // 添加工具选择事件
+    setupToolSelectionEvents(dialog);
+    
+    // 焦点管理
+    const searchInput = dialog.querySelector('#toolSearchInput');
+    setTimeout(() => searchInput.focus(), 100);
 }
 
 function closeMCPToolsDialog() {
     const dialog = document.querySelector('.mcp-tools-dialog');
     if (dialog) {
-        dialog.remove();
+        dialog.classList.add('closing');
+        setTimeout(() => {
+            dialog.remove();
+        }, 200);
     }
+}
+
+// 显示空状态
+function showMCPToolsEmptyState() {
+    const dialog = document.createElement('div');
+    dialog.className = 'mcp-tools-dialog';
+    dialog.innerHTML = `
+        <div class="mcp-tools-dialog-content empty-state">
+            <div class="empty-state-content">
+                <div class="empty-icon">
+                    <i class="fas fa-tools"></i>
+                </div>
+                <h3>暂无可用工具</h3>
+                <p>请先在 MCP 配置页面添加工具配置，然后刷新页面重试。</p>
+                <div class="empty-actions">
+                    <button class="btn-primary" onclick="openMCPConfig()">
+                        <i class="fas fa-plus"></i> 添加工具
+                    </button>
+                    <button class="btn-secondary" onclick="closeMCPToolsDialog()">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+    requestAnimationFrame(() => dialog.classList.add('active'));
+}
+
+// 按服务器分组工具
+function groupToolsByServer(tools) {
+    const grouped = {};
+    tools.forEach(tool => {
+        const server = tool.server || 'Unknown';
+        if (!grouped[server]) {
+            grouped[server] = [];
+        }
+        grouped[server].push(tool);
+    });
+    return grouped;
+}
+
+// 生成工具网格HTML
+function generateToolsGrid(groupedTools) {
+    let html = '';
+    
+    Object.entries(groupedTools).forEach(([server, tools]) => {
+        html += `
+            <div class="tools-server-group">
+                <div class="server-header">
+                    <i class="fas fa-server"></i>
+                    <span class="server-name">${server}</span>
+                    <span class="tools-count">${tools.length} 个工具</span>
+                </div>
+                <div class="server-tools">
+                    ${tools.map(tool => generateToolCard(tool)).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    return html;
+}
+
+// 生成单个工具卡片
+function generateToolCard(tool) {
+    const hasParams = tool.parameters && Object.keys(tool.parameters).length > 0;
+    const category = getToolCategory(tool.name, tool.description);
+    
+    return `
+        <div class="tool-card" data-tool-name="${tool.name}" data-server="${tool.server || ''}" data-category="${category}" data-description="${tool.description || ''}">
+            <div class="tool-header">
+                <div class="tool-icon">
+                    <i class="fas ${getToolIcon(tool.name, tool.description)}"></i>
+                </div>
+                <div class="tool-info">
+                    <h4 class="tool-name">${tool.name}</h4>
+                    <span class="tool-server">${tool.server || 'Unknown'}</span>
+                </div>
+                <button class="tool-action-btn" onclick="selectTool('${tool.name}')">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+            <div class="tool-description">
+                ${tool.description || '暂无描述'}
+            </div>
+            ${hasParams ? `
+                <div class="tool-params">
+                    <button class="params-toggle" onclick="toggleParams(this)">
+                        <i class="fas fa-cog"></i> 参数说明
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="params-content">
+                        <pre>${JSON.stringify(tool.parameters, null, 2)}</pre>
+                    </div>
+                </div>
+            ` : ''}
+            <div class="tool-footer">
+                <span class="tool-category">${category}</span>
+            </div>
+        </div>
+    `;
+}
+
+// 获取工具分类
+function getToolCategory(name, description) {
+    const lowerName = (name || '').toLowerCase();
+    const lowerDesc = (description || '').toLowerCase();
+    
+    if (lowerName.includes('data') || lowerName.includes('get') || lowerName.includes('list')) {
+        return 'data';
+    } else if (lowerName.includes('analysis') || lowerName.includes('stat') || lowerName.includes('count')) {
+        return 'analysis';
+    } else if (lowerName.includes('file') || lowerName.includes('directory')) {
+        return 'file';
+    } else {
+        return 'tool';
+    }
+}
+
+// 获取工具图标
+function getToolIcon(name, description) {
+    const category = getToolCategory(name, description);
+    const iconMap = {
+        'data': 'fa-database',
+        'analysis': 'fa-chart-bar',
+        'file': 'fa-file',
+        'tool': 'fa-wrench'
+    };
+    return iconMap[category] || 'fa-wrench';
+}
+
+// 设置工具过滤
+function setToolFilter(button, filter) {
+    // 更新按钮状态
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    button.classList.add('active');
+    
+    // 应用过滤
+    const toolCards = document.querySelectorAll('.tool-card');
+    toolCards.forEach(card => {
+        const category = card.dataset.category;
+        if (filter === 'all' || category === filter) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    updateVisibleCount();
+}
+
+// 对话框工具搜索
+function filterDialogTools(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const toolCards = document.querySelectorAll('.tool-card');
+    let visibleCount = 0;
+    
+    toolCards.forEach(card => {
+        const name = card.dataset.toolName.toLowerCase();
+        const server = card.dataset.server.toLowerCase();
+        const description = card.dataset.description.toLowerCase();
+        
+        const matches = name.includes(term) || 
+                       server.includes(term) || 
+                       description.includes(term);
+        
+        if (matches || term === '') {
+            card.style.display = 'block';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    updateVisibleCount(visibleCount);
+}
+
+// 更新可见工具计数
+function updateVisibleCount(count = null) {
+    const toolsCount = document.querySelector('.tools-count');
+    if (toolsCount) {
+        if (count !== null) {
+            toolsCount.textContent = `${count} / ${mcpTools.length} 个工具`;
+        } else {
+            const visibleCards = document.querySelectorAll('.tool-card[style*="block"], .tool-card:not([style*="none"])');
+            toolsCount.textContent = `${visibleCards.length} / ${mcpTools.length} 个工具`;
+        }
+    }
+}
+
+// 选择工具
+function selectTool(toolName) {
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.value = `请使用 ${toolName} 工具帮我 `;
+        messageInput.focus();
+        // 将光标移动到末尾
+        messageInput.setSelectionRange(messageInput.value.length, messageInput.value.length);
+    }
+    closeMCPToolsDialog();
+}
+
+// 切换参数显示
+function toggleParams(button) {
+    const paramsContent = button.nextElementSibling;
+    const chevron = button.querySelector('.fa-chevron-down');
+    
+    if (paramsContent.style.display === 'block') {
+        paramsContent.style.display = 'none';
+        chevron.style.transform = 'rotate(0deg)';
+    } else {
+        paramsContent.style.display = 'block';
+        chevron.style.transform = 'rotate(180deg)';
+    }
+}
+
+// 设置工具选择事件
+function setupToolSelectionEvents(dialog) {
+    // 键盘快捷键
+    dialog.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeMCPToolsDialog();
+        }
+    });
+    
+    // 点击背景关闭
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) {
+            closeMCPToolsDialog();
+        }
+    });
+}
+
+// 打开MCP配置页面
+function openMCPConfig() {
+    window.open('/mcp', '_blank');
+    closeMCPToolsDialog();
 }
 
 // MCP工具搜索和过滤功能
