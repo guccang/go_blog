@@ -1303,7 +1303,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
                     return `
                         <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
                             <label class="mcp-tool-checkbox-label">
-                                <input type="checkbox" class="mcp-tool-checkbox" value="${tool.name}">
+                                <input type="checkbox" class="mcp-tool-checkbox" value="${tool.name}" checked>
                                 <div class="mcp-tool-content">
                                     <div class="mcp-tool-name">
                                         <i class="fas fa-cog"></i>
@@ -1334,7 +1334,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
         </div>
     `;
     
-    // 更新选中工具计数（默认全不选）
+    // 更新选中工具计数（默认全选）
     updateSelectedToolsCount();
 }
 
@@ -1535,8 +1535,17 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
         
         return `
             <div class="mcp-server-item ${statusClass}">
-                <div class="mcp-server-name">${serverName}</div>
-                <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
+                <label class="mcp-server-checkbox-label">
+                    <input type="checkbox" 
+                           class="mcp-server-checkbox" 
+                           data-server="${serverName}"
+                           checked
+                           onchange="toggleServerTools('${serverName}', this.checked)">
+                    <div class="mcp-server-info">
+                        <div class="mcp-server-name">${serverName}</div>
+                        <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
+                    </div>
+                </label>
             </div>
         `;
     }).join('');
@@ -1568,6 +1577,18 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                            onkeyup="filterMCPToolsLarge(this.value)">
                 </div>
                 
+                <div class="mcp-tools-actions-large">
+                    <button class="mcp-tools-select-all" onclick="selectAllToolsLarge()">
+                        <i class="fas fa-check-double"></i> 全选
+                    </button>
+                    <button class="mcp-tools-select-none" onclick="selectNoToolsLarge()">
+                        <i class="fas fa-times"></i> 全不选
+                    </button>
+                    <button class="mcp-tools-select-all" onclick="syncToolsSelection()" style="background: rgba(161, 196, 253, 0.2); border-color: rgba(161, 196, 253, 0.4);">
+                        <i class="fas fa-sync"></i> 同步选择
+                    </button>
+                </div>
+                
                 <div class="mcp-tools-list-large" id="mcp-tools-list-large">
                     ${tools.map(tool => {
                         const serverName = tool.name.split('.')[0];
@@ -1575,7 +1596,7 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                         return `
                             <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
                                 <label class="mcp-tool-checkbox-label">
-                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}">
+                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}" checked>
                                     <div class="mcp-tool-content">
                                         <div class="mcp-tool-name">
                                             <i class="fas fa-cog"></i>
@@ -1588,23 +1609,11 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                         `;
                     }).join('')}
                 </div>
-                
-                <div class="mcp-tools-actions-large">
-                    <button class="mcp-tools-select-all" onclick="selectAllToolsLarge()">
-                        <i class="fas fa-check-double"></i> 全选
-                    </button>
-                    <button class="mcp-tools-select-none" onclick="selectNoToolsLarge()">
-                        <i class="fas fa-times"></i> 全不选
-                    </button>
-                    <button class="mcp-tools-select-all" onclick="syncToolsSelection()" style="background: rgba(161, 196, 253, 0.2); border-color: rgba(161, 196, 253, 0.4);">
-                        <i class="fas fa-sync"></i> 同步选择
-                    </button>
-                </div>
             </div>
         </div>
     `;
     
-    // 更新大面板选中工具计数（默认全不选）
+    // 更新大面板选中工具计数（默认全选）
     updateSelectedToolsCountLarge();
 }
 
@@ -2374,6 +2383,61 @@ function updateHealthCharts() {
     }
 }
 
+// 服务器工具切换函数
+function toggleServerTools(serverName, isChecked) {
+    console.log(`切换服务器 ${serverName} 的工具状态:`, isChecked);
+    
+    // 使用与 groupToolsByServer 相同的逻辑获取该服务器下的所有工具
+    const toolsByServer = groupToolsByServer(mcpTools);
+    const serverTools = toolsByServer[serverName] || [];
+    
+    console.log(`找到服务器 ${serverName} 下的工具:`, serverTools.map(tool => tool.name));
+    
+    // 更新工具选择状态 - 更新所有相关的复选框
+    serverTools.forEach(tool => {
+        console.log(`处理工具: ${tool.name}`);
+        
+        // 转义工具名称中的特殊字符用于CSS选择器
+        const escapedToolName = CSS.escape(tool.name);
+        
+        // 更新大面板中的复选框
+        const largeCheckbox = document.querySelector(`.mcp-tool-checkbox-large[value="${escapedToolName}"]`);
+        if (largeCheckbox) {
+            largeCheckbox.checked = isChecked;
+            console.log(`更新大面板复选框: ${tool.name} -> ${isChecked}`);
+        } else {
+            console.log(`未找到大面板复选框: ${tool.name}`);
+        }
+        
+        // 更新小面板中的复选框
+        const smallCheckbox = document.querySelector(`.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)[value="${escapedToolName}"]`);
+        if (smallCheckbox) {
+            smallCheckbox.checked = isChecked;
+            console.log(`更新小面板复选框: ${tool.name} -> ${isChecked}`);
+        } else {
+            console.log(`未找到小面板复选框: ${tool.name}`);
+        }
+    });
+    
+    // 更新选择计数
+    updateSelectedToolsCount();
+    updateSelectedToolsCountLarge();
+    
+    // 同步工具选择状态
+    syncToolsSelection();
+    
+    console.log(`${isChecked ? '启用' : '禁用'}了服务器 ${serverName} 的 ${serverTools.length} 个工具`);
+}
+
+// 更新选择的工具数量显示
+function updateSelectedToolsCountLarge() {
+    const selectedCount = document.querySelectorAll('.mcp-tool-checkbox-large:checked').length;
+    const countElement = document.getElementById('selected-tools-count-large');
+    if (countElement) {
+        countElement.textContent = selectedCount;
+    }
+}
+
 // 导出功能供外部使用
 window.AssistantApp = {
     sendMessage,
@@ -2391,6 +2455,8 @@ window.AssistantApp = {
     selectAllToolsLarge,
     selectNoToolsLarge,
     syncToolsSelection,
+    toggleServerTools,
+    updateSelectedToolsCountLarge,
     switchTab,
     loadHealthData,
     updateHealthCharts,

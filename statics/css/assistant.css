@@ -56,8 +56,6 @@
     border-radius: 20px;
     max-width: 800px;
     width: 90%;
-    max-height: 80vh;
-    overflow: hidden;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
     animation: slideUp 0.3s ease-out;
@@ -102,8 +100,6 @@
 
 .algorithm-info-body {
     padding: 30px;
-    max-height: 60vh;
-    overflow-y: auto;
     color: #fff;
     line-height: 1.8;
 }
@@ -212,6 +208,7 @@ body {
     min-height: 100vh;
     padding: 20px;
     line-height: 1.6;
+    overflow-x: hidden;
 }
 
 .container {
@@ -347,16 +344,16 @@ body {
 
 #assistant-content.active {
     display: grid !important;
-    grid-template-columns: 1fr 380px;
-    gap: 30px;
-    min-height: 600px;
+    grid-template-columns: 2fr 280px;
+    gap: 15px;
+    min-height: 700px;
 }
 
 #health-content.active {
     display: block !important;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
     #assistant-content.active {
         grid-template-columns: 1fr !important;
         gap: 20px;
@@ -862,11 +859,13 @@ body {
 .chat-section {
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 15px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    backdrop-filter: blur(15px);
+    border: 2px solid rgba(0, 212, 170, 0.2);
     overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 212, 170, 0.1);
+    transition: all 0.3s ease;
 }
 
 .chat-container {
@@ -877,10 +876,8 @@ body {
 
 .chat-messages {
     flex: 1;
-    overflow-y: auto;
     padding: 20px;
-    min-height: 400px;
-    max-height: 600px;
+    min-height: 500px;
 }
 
 .message {
@@ -925,11 +922,13 @@ body {
 
 .message-text {
     background: rgba(255, 255, 255, 0.1);
-    padding: 15px 20px;
-    border-radius: 15px;
-    backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    margin-bottom: 5px;
+    padding: 18px 22px;
+    border-radius: 18px;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    margin-bottom: 8px;
+    font-size: 1.05rem;
+    line-height: 1.7;
 }
 
 .user-message .message-text {
@@ -1048,7 +1047,7 @@ body {
 .info-panel {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 15px;
     height: fit-content;
 }
 
@@ -1084,11 +1083,12 @@ body {
 
 .info-card {
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 15px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 15px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     transition: transform 0.3s ease;
+    margin-bottom: 15px;
 }
 
 .info-card:hover {
@@ -1107,14 +1107,14 @@ body {
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
+    gap: 10px;
 }
 
 .stat-item {
     text-align: center;
-    padding: 10px;
+    padding: 8px;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
+    border-radius: 6px;
 }
 
 .stat-value {
@@ -1131,8 +1131,6 @@ body {
 
 /* 建议列表 */
 .suggestions-list {
-    max-height: 200px;
-    overflow-y: auto;
 }
 
 .suggestion-item {
@@ -1201,7 +1199,6 @@ body {
     backdrop-filter: blur(20px);
     z-index: 1001;
     transition: right 0.3s ease;
-    overflow-y: auto;
     border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -1504,12 +1501,11 @@ input:checked + .slider:before {
     }
     
     .info-panel {
-        order: -1;
+        order: 2;
     }
     
     .chat-messages {
-        min-height: 300px;
-        max-height: 400px;
+        min-height: 400px;
     }
     
     .message-content {
@@ -1533,32 +1529,6 @@ input:checked + .slider:before {
     }
 }
 
-/* 滚动条样式 */
-.chat-messages::-webkit-scrollbar,
-.suggestions-list::-webkit-scrollbar,
-.settings-panel::-webkit-scrollbar {
-    width: 6px;
-}
-
-.chat-messages::-webkit-scrollbar-track,
-.suggestions-list::-webkit-scrollbar-track,
-.settings-panel::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb,
-.suggestions-list::-webkit-scrollbar-thumb,
-.settings-panel::-webkit-scrollbar-thumb {
-    background: rgba(0, 212, 170, 0.5);
-    border-radius: 3px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover,
-.suggestions-list::-webkit-scrollbar-thumb:hover,
-.settings-panel::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 212, 170, 0.7);
-}
 
 /* 错误消息样式 */
 .error {
@@ -1775,8 +1745,6 @@ input:checked + .slider:before {
 .mcp-tools-status {
     font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.9);
-    max-height: 300px;
-    overflow-y: auto;
 }
 
 .mcp-status-none {
@@ -1865,6 +1833,43 @@ input:checked + .slider:before {
     transition: all 0.3s ease;
 }
 
+.mcp-server-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    width: 100%;
+    padding: 0;
+}
+
+.mcp-server-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #00d4aa;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.mcp-server-item.connected .mcp-server-checkbox {
+    accent-color: #00d4aa;
+}
+
+.mcp-server-item.disconnected .mcp-server-checkbox {
+    accent-color: #ffc107;
+}
+
+.mcp-server-item.disabled .mcp-server-checkbox {
+    accent-color: #6c757d;
+    opacity: 0.6;
+}
+
+.mcp-server-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .mcp-server-item:hover {
     background: rgba(255, 255, 255, 0.1);
     transform: translateX(2px);
@@ -1948,8 +1953,6 @@ input:checked + .slider:before {
 }
 
 .mcp-tools-list {
-    max-height: 200px;
-    overflow-y: auto;
     padding: 12px 16px 0;
 }
 
@@ -2009,8 +2012,6 @@ input:checked + .slider:before {
     padding: 24px;
     max-width: 600px;
     width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
 }
 
 .mcp-tools-dialog-content h3 {
@@ -2230,12 +2231,9 @@ input:checked + .slider:before {
 
 /* 展开状态样式 */
 .mcp-tools-expanded .mcp-tools-list {
-    max-height: 400px !important;
 }
 
 .mcp-tools-expanded {
-    max-height: 70vh;
-    overflow-y: auto;
 }
 
 /* MCP工具管理大面板样式 */
@@ -2244,18 +2242,18 @@ input:checked + .slider:before {
     border-radius: 15px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    margin: 20px 0 0;
     width: 100%;
-    min-height: calc(100vh - 120px);
+    height: auto;
     transition: all 0.3s ease;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    margin-bottom: 30px;
 }
 
 .mcp-tools-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 30px;
+    padding: 15px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(0, 212, 170, 0.1);
     border-radius: 15px 15px 0 0;
@@ -2263,11 +2261,11 @@ input:checked + .slider:before {
 
 .mcp-tools-panel-header h3 {
     color: #00d4aa;
-    font-size: 1.4rem;
+    font-size: 1.1rem;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     margin: 0;
 }
 
@@ -2295,9 +2293,9 @@ input:checked + .slider:before {
 
 .mcp-tools-panel-content {
     padding: 0;
-    max-height: calc(100vh - 180px);
-    overflow: hidden;
+    overflow: visible;
     transition: all 0.5s ease;
+    max-height: none;
 }
 
 .mcp-tools-panel.collapsed .mcp-tools-panel-content {
@@ -2312,7 +2310,6 @@ input:checked + .slider:before {
 /* 大面板工具状态样式 */
 .mcp-tools-status-large {
     padding: 30px;
-    min-height: calc(100vh - 240px);
     display: block;
 }
 
@@ -2350,17 +2347,20 @@ input:checked + .slider:before {
 /* 大面板工具列表网格布局 */
 .mcp-tools-large-grid {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
     gap: 30px;
     align-items: start;
+    height: auto;
 }
 
 .mcp-servers-section {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
-    width: 300px;
-    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+    height: auto;
 }
 
 .mcp-servers-section h4 {
@@ -2376,10 +2376,11 @@ input:checked + .slider:before {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 20px;
-    height: calc(100vh - 280px);
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    height: auto;
 }
 
 .mcp-tools-section h4 {
@@ -2418,14 +2419,12 @@ input:checked + .slider:before {
 
 /* 大面板工具列表 */
 .mcp-tools-list-large {
-    flex: 1;
-    max-height: calc(100vh - 450px);
-    overflow-y: auto;
     padding-right: 10px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 12px;
     align-content: start;
+    height: auto;
 }
 
 .mcp-tools-list-large .mcp-tool-item {
@@ -2459,7 +2458,7 @@ input:checked + .slider:before {
 .mcp-tools-actions-large {
     display: flex;
     gap: 12px;
-    margin-top: auto;
+    margin-top: 20px;
     padding: 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.05);
@@ -2480,23 +2479,30 @@ input:checked + .slider:before {
     padding: 30px;
     background: rgba(0, 212, 170, 0.05);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .mcp-info-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, auto);
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .mcp-info-item {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 20px;
+    gap: 10px;
+    padding: 12px;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .mcp-info-item:hover {
@@ -2506,23 +2512,23 @@ input:checked + .slider:before {
 
 .mcp-info-item i {
     color: #00d4aa;
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     margin-top: 2px;
     flex-shrink: 0;
 }
 
 .mcp-info-item strong {
     color: #a1c4fd;
-    font-size: 1rem;
+    font-size: 0.9rem;
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .mcp-info-item p {
     color: rgba(255, 255, 255, 0.8);
-    line-height: 1.4;
+    line-height: 1.3;
     margin: 0;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
 }
 
 .mcp-info-item a {
@@ -2536,6 +2542,18 @@ input:checked + .slider:before {
 }
 
 /* 响应式设计 - MCP工具 */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .mcp-info-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto;
+        gap: 18px;
+    }
+    
+    .mcp-info-item {
+        min-height: 120px;
+    }
+}
+
 @media (max-width: 768px) {
     .mcp-tools-grid {
         grid-template-columns: 1fr;
@@ -2554,7 +2572,6 @@ input:checked + .slider:before {
     .mcp-tools-panel {
         margin: 10px 5px 0;
         border-radius: 10px;
-        min-height: calc(100vh - 80px);
     }
     
     .mcp-tools-panel-header {
@@ -2568,17 +2585,15 @@ input:checked + .slider:before {
     .mcp-tools-status-large {
         grid-template-columns: 1fr;
         padding: 20px;
-        min-height: calc(100vh - 200px);
     }
     
     .mcp-tools-list-large {
         grid-template-columns: 1fr; /* 移动端单列显示 */
-        max-height: calc(100vh - 380px);
         gap: 8px; /* 减少间距 */
     }
     
     .mcp-tools-section {
-        height: calc(100vh - 240px);
+        width: 100%;
     }
     
     .mcp-tools-large-grid {
@@ -2593,6 +2608,8 @@ input:checked + .slider:before {
     
     .mcp-info-grid {
         grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, auto);
+        gap: 15px;
     }
     
     .mcp-info-large {
@@ -2602,9 +2619,7 @@ input:checked + .slider:before {
     .mcp-tools-actions-large {
         flex-direction: column;
         padding: 15px;
-        margin-top: auto;
-        position: sticky;
-        bottom: 0;
+        margin-top: 15px;
         background: rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(10px);
     }
@@ -2669,11 +2684,10 @@ input:checked + .slider:before {
     
     .mcp-tools-status-large {
         padding: 15px; /* 减少padding */
-        min-height: calc(100vh - 180px);
     }
     
     .mcp-tools-list-large {
-        max-height: calc(100vh - 350px); /* 调整最大高度 */
+        height: auto; /* 自适应高度 */
         gap: 6px; /* 进一步减少间距 */
         padding-right: 5px; /* 减少右侧padding */
     }
@@ -2711,7 +2725,7 @@ input:checked + .slider:before {
     }
     
     .mcp-tools-section {
-        height: calc(100vh - 220px); /* 调整高度 */
+        height: auto; /* 自适应高度 */
         padding: 15px; /* 减少padding */
     }
     

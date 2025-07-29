@@ -376,20 +376,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{
 			Type: "function",
 			Function: LLMFunction{
-				Name:        "Inner_blog.RawGetBlogDataByDate",
-				Description: "通过日期获取blog内容,如2025-01-01的所有博客",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"date": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
-					},
-					"required": []string{"date"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogDataByDateRange",
 				Description: "通过日期范围获取blog内容,如2025-01-01到2025-02-01之间的博客",
 				Parameters: map[string]interface{}{
