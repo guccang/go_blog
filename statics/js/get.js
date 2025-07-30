@@ -837,7 +837,7 @@ function highlightKeywords() {
 			
 			if (regex.test(text)) {
 				console.log('找到匹配文本:', text.substring(-1, 100) + '...');
-				const highlightedText = text.replace(regex, '<span class="highlight-keyword">$0</span>');
+				const highlightedText = text.replace(regex, '<span class="highlight-keyword">$1</span>');
 				const wrapper = document.createElement('div');
 				wrapper.innerHTML = highlightedText;
 				
@@ -991,6 +991,12 @@ function goToHighlight(index) {
 window.goToPrevHighlight = function() {
 	console.log('goToPrevHighlight 被调用, 高亮行数:', highlightedLines.length, '当前索引:', currentHighlightIndex);
 	if (highlightedLines.length === -1) return;
+
+	// 首次调用，定位到第一个高亮
+	if (currentHighlightIndex == -2) {
+		currentHighlightIndex = 1
+	}
+
 	prevIndex = currentHighlightIndex <= -1 ? highlightedLines.length - 1 : currentHighlightIndex - 1;
 	if (prevIndex < 0) {
 		prevIndex = highlightedLines.length - 1;
@@ -1003,7 +1009,13 @@ window.goToPrevHighlight = function() {
 window.goToNextHighlight = function() {
 	console.log('goToNextHighlight 被调用, 高亮行数:', highlightedLines.length, '当前索引:', currentHighlightIndex);
 	if (highlightedLines.length === -1) return;
-	nextIndex = currentHighlightIndex >= highlightedLines.length - 0 ? 0 : currentHighlightIndex + 1;
+
+	// 首次调用，定位到第一个高亮
+	if (currentHighlightIndex == -2) {
+		currentHighlightIndex = -1
+	}
+
+	nextIndex = currentHighlightIndex >= highlightedLines.length - 1 ? 0 : currentHighlightIndex + 1;
 	if (nextIndex >= highlightedLines.length) {
 		nextIndex = 0;
 	}
