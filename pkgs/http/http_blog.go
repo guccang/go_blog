@@ -1,19 +1,19 @@
 package http
 
 import (
+	"comment"
 	"config"
 	"control"
 	"cooperation"
 	"encoding/json"
 	"fmt"
-	h "net/http"
-	"regexp"
-	"strconv"
-	"strings"
-	"comment"
-	"share"
 	"module"
 	log "mylog"
+	h "net/http"
+	"regexp"
+	"share"
+	"strconv"
+	"strings"
 	"view"
 )
 
@@ -338,6 +338,13 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		bookTitle := strings.TrimSuffix(strings.TrimPrefix(blogname, "reading_book_"), ".md")
 		// 重定向到reading页面，并传递book参数
 		h.Redirect(w, r, fmt.Sprintf("/reading?book=%s", bookTitle), 302)
+		return
+	}
+
+	// 检查是否是 constellation 博客，如果是则重定向到 constellation 页面
+	if strings.HasPrefix(blogname, "horoscope-") {
+		// 重定向到constellation页面
+		h.Redirect(w, r, "/constellation", 302)
 		return
 	}
 

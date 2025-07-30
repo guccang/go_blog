@@ -15,10 +15,10 @@ set OUTPUT=go_blog-%TIMESTAMP%.zip
 set SEVENZIP="C:\Program Files\7-Zip\7z.exe"
 
 :: 要打包的文件夹
-set FOLDERS=pkgs statics/css statics/js templates
+set FOLDERS=pkgs statics/css statics/js templates  ./main.go ./go.mod
 
 :: 执行压缩
 %SEVENZIP% a -tzip "%OUTPUT%" %FOLDERS%
 
 echo 成功生成压缩文件：%OUTPUT%
-pause
+:: pause
