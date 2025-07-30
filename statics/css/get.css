@@ -1130,3 +1130,167 @@
     font-size: 12px;
     opacity: 0.7;
 }
+
+/* 当前激活的高亮行样式 */
+.current-highlight {
+    background-color: rgba(255, 165, 0, 0.3) !important;
+    border-left-color: #ffa500 !important;
+    border-width: 6px !important;
+    box-shadow: 0 0 15px rgba(255, 165, 0, 0.4) !important;
+    transform: translateX(4px) !important;
+}
+
+.th_black .current-highlight {
+    background-color: rgba(255, 140, 0, 0.3) !important;
+    border-left-color: #ff8c00 !important;
+}
+
+/* 当前高亮行的标记图标 */
+.current-highlight::before {
+    content: "🎯";
+    color: #ffa500;
+    font-size: 14px;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.7; transform: translateY(-50%) scale(1); }
+    50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+}
+
+/* 高亮导航控件样式 */
+.highlight-navigation {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 8px;
+    padding: 12px;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    min-width: 120px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.th_black .highlight-navigation {
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+}
+
+.highlight-navigation:hover {
+    transform: translateY(-50%) scale(1.05);
+}
+
+/* 导航信息显示 */
+.nav-info {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #ffd700;
+}
+
+.th_black .nav-info {
+    color: #ff8c00;
+}
+
+/* 导航按钮样式 */
+.highlight-navigation button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 2px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.highlight-navigation button:hover {
+    background: #45a049;
+    transform: scale(1.1);
+}
+
+.highlight-navigation button:active {
+    transform: scale(0.95);
+}
+
+/* 关闭按钮特殊样式 */
+#nav-close {
+    background: #f44336 !important;
+    font-size: 12px;
+}
+
+#nav-close:hover {
+    background: #da190b !important;
+}
+
+/* 上下箭头按钮 */
+#nav-prev, #nav-next {
+    background: #2196F3;
+}
+
+#nav-prev:hover, #nav-next:hover {
+    background: #1976D2;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .highlight-navigation {
+        right: 10px;
+        min-width: 100px;
+        padding: 8px;
+    }
+    
+    .highlight-navigation button {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+    
+    .nav-info {
+        font-size: 12px;
+    }
+}
+
+/* 导航控件动画入场效果 */
+.highlight-navigation {
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateY(-50%) translateX(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(-50%) translateX(0);
+        opacity: 1;
+    }
+}
+
+/* 键盘快捷键提示 */
+.highlight-navigation::after {
+    content: "快捷键: Ctrl+↑↓, ESC关闭";
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #888;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.highlight-navigation:hover::after {
+    opacity: 1;
+}

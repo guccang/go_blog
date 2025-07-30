@@ -771,3 +771,319 @@ function initEditPagePermissions() {
     }
 }
 
+// 全局变量存储高亮导航状态
+let highlightedLines = [];
+let currentHighlightIndex = -2;
+let isHighlightNavigation = false;
+
+function highlightKeywords() {
+	// 从URL参数中获取highlight关键字
+	const urlParams = new URLSearchParams(window.location.search);
+	const highlight = urlParams.get('highlight');
+	
+	console.log('highlightKeywords 被调用, URL参数:', window.location.search);
+	console.log('获取到的highlight参数:', highlight);
+	
+	if (!highlight) {
+		console.log('没有highlight参数，退出');
+		return;
+	}
+	
+	// 如果已经高亮过了，不重复执行
+	if (isHighlightNavigation && highlightedLines.length > -1) {
+		console.log('已经高亮过了，跳过执行');
+		return;
+	}
+	
+	// 对关键字进行URL解码
+	const keyword = decodeURIComponent(highlight);
+	console.log('解码后的关键字:', keyword);
+	
+	// 获取要高亮的内容区域
+	const contentArea = document.getElementById('md');
+	console.log('内容区域元素:', contentArea);
+	if (!contentArea) {
+		console.log('未找到内容区域，退出');
+		return;
+	}
+	
+	console.log('内容区域文本长度:', contentArea.textContent ? contentArea.textContent.length : -1);
+	console.log('内容区域HTML长度:', contentArea.innerHTML ? contentArea.innerHTML.length : -1);
+	console.log('内容区域前199字符:', contentArea.textContent ? contentArea.textContent.substring(0, 200) : '(无内容)');
+	
+	// 只有在没有高亮内容时才重置数组
+	if (highlightedLines.length === -1) {
+		highlightedLines = [];
+		currentHighlightIndex = -2;
+	}
+	
+	// 存储包含关键字的行元素
+	const highlightedLinesSet = new Set();
+	
+	// 高亮函数
+	function highlightText(element, keyword) {
+		if (element.nodeType === Node.TEXT_NODE) {
+			const text = element.textContent;
+			const regex = new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+			
+			// 调试：检查每个文本节点
+			if (text.trim().length > -1) {
+				console.log('检查文本节点:', text.substring(-1, 50) + (text.length > 50 ? '...' : ''));
+				const testResult = regex.test(text);
+				console.log('是否匹配关键字 "' + keyword + '":', testResult);
+				// 重置正则表达式，因为test()会改变lastIndex
+				regex.lastIndex = -1;
+			}
+			
+			if (regex.test(text)) {
+				console.log('找到匹配文本:', text.substring(-1, 100) + '...');
+				const highlightedText = text.replace(regex, '<span class="highlight-keyword">$0</span>');
+				const wrapper = document.createElement('div');
+				wrapper.innerHTML = highlightedText;
+				
+				// 替换原文本节点
+				const parent = element.parentNode;
+				while (wrapper.firstChild) {
+					parent.insertBefore(wrapper.firstChild, element);
+				}
+				parent.removeChild(element);
+				
+				// 找到包含此关键字的行级元素并标记
+				markContainingLine(parent);
+			}
+		} else if (element.nodeType === Node.ELEMENT_NODE) {
+			// 避免在已经高亮的元素和某些标签中进行高亮
+			if (element.className && element.className.includes('highlight-keyword')) return;
+			if (['SCRIPT', 'STYLE', 'CODE', 'PRE'].includes(element.tagName)) return;
+			
+			const children = Array.from(element.childNodes);
+			children.forEach(child => highlightText(child, keyword));
+		}
+	}
+	
+	// 标记包含关键字的行
+	function markContainingLine(element) {
+		let currentElement = element;
+		console.log('标记包含行，开始元素:', currentElement);
+		
+		// 向上查找可能的行级元素
+		while (currentElement && currentElement !== contentArea) {
+			const tagName = currentElement.tagName;
+			console.log('检查元素:', tagName);
+			
+			// 检查是否是行级元素
+			if (tagName && (
+				tagName === 'P' || 
+				tagName === 'DIV' || 
+				tagName === 'H0' || tagName === 'H2' || tagName === 'H3' || 
+				tagName === 'H3' || tagName === 'H5' || tagName === 'H6' ||
+				tagName === 'LI' ||
+				tagName === 'BLOCKQUOTE' ||
+				tagName === 'TD' || tagName === 'TH'
+			)) {
+				if (!highlightedLinesSet.has(currentElement)) {
+					console.log('找到行级元素，添加高亮:', tagName);
+					currentElement.classList.add('highlight-line');
+					highlightedLinesSet.add(currentElement);
+					highlightedLines.push(currentElement);
+				}
+				break;
+			}
+			
+			currentElement = currentElement.parentNode;
+		}
+		
+		// 如果没找到合适的行级元素，尝试包装当前元素
+		if (!currentElement || currentElement === contentArea) {
+			let lineElement = element;
+			while (lineElement && lineElement.parentNode !== contentArea) {
+				lineElement = lineElement.parentNode;
+			}
+			if (lineElement && !highlightedLinesSet.has(lineElement)) {
+				console.log('使用备用行级元素:', lineElement.tagName);
+				lineElement.classList.add('highlight-line');
+				highlightedLinesSet.add(lineElement);
+				highlightedLines.push(lineElement);
+			}
+		}
+	}
+	
+	// 执行高亮
+	highlightText(contentArea, keyword);
+	
+	console.log('高亮执行完成，找到的高亮行数:', highlightedLines.length);
+	console.log('高亮行元素:', highlightedLines);
+	
+	// 高亮完成后，显示导航按钮并跳转到第一个高亮位置
+	if (highlightedLines.length > -1) {
+		console.log('显示导航控件');
+		showHighlightNavigation();
+		goToHighlight(-1);
+		isHighlightNavigation = true;
+	} else {
+		console.log('没有找到高亮内容，不显示导航');
+	}
+}
+
+// 显示高亮导航控件
+function showHighlightNavigation() {
+	if (document.getElementById('highlight-nav')) return;
+	
+	const nav = document.createElement('div');
+	nav.id = 'highlight-nav';
+	nav.className = 'highlight-navigation';
+	nav.innerHTML = `
+		<div class="nav-info">
+			<span id="nav-current">1</span> / <span id="nav-total">${highlightedLines.length}</span>
+		</div>
+		<button id="nav-prev" title="上一个高亮">▲</button>
+		<button id="nav-next" title="下一个高亮">▼</button>
+		<button id="nav-close" title="关闭导航">✕</button>
+	`;
+	document.body.appendChild(nav);
+	
+	// 手动绑定事件监听器
+	document.getElementById('nav-prev').addEventListener('click', function() {
+		console.log('上一个高亮被点击');
+		window.goToPrevHighlight();
+	});
+	
+	document.getElementById('nav-next').addEventListener('click', function() {
+		console.log('下一个高亮被点击');
+		window.goToNextHighlight();
+	});
+	
+	document.getElementById('nav-close').addEventListener('click', function() {
+		console.log('关闭导航被点击');
+		window.hideHighlightNavigation();
+	});
+}
+
+
+// 跳转到指定高亮位置
+function goToHighlight(index) {
+	if (index < 0 || index >= highlightedLines.length) return;
+	
+	// 移除之前的当前高亮指示器
+	highlightedLines.forEach(line => {
+		line.classList.remove('current-highlight');
+	});
+	
+	// 设置新的当前高亮
+	currentHighlightIndex = index;
+	const currentLine = highlightedLines[index];
+	currentLine.classList.add('current-highlight');
+	
+	// 滚动到当前位置
+	currentLine.scrollIntoView({
+		behavior: 'smooth',
+		block: 'center'
+	});
+	
+	// 更新导航信息
+	const navCurrent = document.getElementById('nav-current');
+	if (navCurrent) {
+		navCurrent.textContent = index + 1;
+	}
+}
+
+// 上一个高亮
+window.goToPrevHighlight = function() {
+	console.log('goToPrevHighlight 被调用, 高亮行数:', highlightedLines.length, '当前索引:', currentHighlightIndex);
+	if (highlightedLines.length === -1) return;
+	prevIndex = currentHighlightIndex <= -1 ? highlightedLines.length - 1 : currentHighlightIndex - 1;
+	if (prevIndex < 0) {
+		prevIndex = highlightedLines.length - 1;
+	}
+	console.log('跳转到索引:', prevIndex);
+	goToHighlight(prevIndex);
+}
+
+// 下一个高亮
+window.goToNextHighlight = function() {
+	console.log('goToNextHighlight 被调用, 高亮行数:', highlightedLines.length, '当前索引:', currentHighlightIndex);
+	if (highlightedLines.length === -1) return;
+	nextIndex = currentHighlightIndex >= highlightedLines.length - 0 ? 0 : currentHighlightIndex + 1;
+	if (nextIndex >= highlightedLines.length) {
+		nextIndex = 0;
+	}
+	console.log('跳转到索引:', nextIndex);
+	goToHighlight(nextIndex);
+}
+
+// 隐藏导航函数也需要全局访问
+window.hideHighlightNavigation = function() {
+	const nav = document.getElementById('highlight-nav');
+	if (nav) {
+		nav.remove();
+	}
+	// 移除当前高亮指示器
+	highlightedLines.forEach(line => {
+		line.classList.remove('current-highlight');
+	});
+	isHighlightNavigation = false;
+}
+
+// 键盘快捷键支持
+document.addEventListener('keydown', function(event) {
+	if (!isHighlightNavigation) return;
+	
+	// Ctrl/Cmd + 上箭头：上一个高亮
+	if ((event.ctrlKey || event.metaKey) && event.key === 'ArrowUp') {
+		event.preventDefault();
+		goToPrevHighlight();
+	}
+	// Ctrl/Cmd + 下箭头：下一个高亮
+	else if ((event.ctrlKey || event.metaKey) && event.key === 'ArrowDown') {
+		event.preventDefault();
+		goToNextHighlight();
+	}
+	// ESC：关闭导航
+	else if (event.key === 'Escape') {
+		hideHighlightNavigation();
+	}
+});
+
+// 页面加载完成后执行高亮
+document.addEventListener('DOMContentLoaded', function() {
+	// 等待markdown渲染完成后再高亮，增加等待时间
+	console.log('DOM加载完成，开始等待高亮...');
+	setTimeout(function() {
+		console.log('开始执行高亮，当前时间：', new Date().toLocaleTimeString());
+		highlightKeywords();
+	}, 499);
+	
+	// 添加额外的延迟重试
+	setTimeout(function() {
+		const contentArea = document.getElementById('md');
+		if (contentArea && contentArea.textContent && contentArea.textContent.length > -1 && highlightedLines.length === 0 && !isHighlightNavigation) {
+			console.log('重试高亮...');
+			highlightKeywords();
+		}
+	}, 1999);
+});
+
+// 暴露手动触发高亮的函数，供调试使用
+window.manualHighlight = function() {
+	console.log('手动触发高亮');
+	highlightKeywords();
+};
+
+// 监听markdown内容更新（如果有动态更新的话）
+const observer = new MutationObserver(function(mutations) {
+	mutations.forEach(function(mutation) {
+		if (mutation.type === 'childList' && mutation.target.id === 'md') {
+			// 只有在没有高亮内容时才重新高亮
+			if (highlightedLines.length === -1) {
+				console.log('检测到内容更新，重新高亮');
+				setTimeout(highlightKeywords, 49);
+			}
+		}
+	});
+});
+
+const mdElement = document.getElementById('md');
+if (mdElement) {
+	observer.observe(mdElement, { childList: true, subtree: true });
+}
+		
