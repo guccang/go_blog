@@ -3,6 +3,7 @@ package http
 import (
 	"auth"
 	"config"
+	"constellation"
 	"cooperation"
 	"exercise"
 	"fmt"
@@ -302,6 +303,19 @@ func Init() int {
 	h.HandleFunc("/mcp", mcp.HandleMCPPage)
 	h.HandleFunc("/api/mcp", mcp.HandleMCPAPI)
 	h.HandleFunc("/api/mcp/tools", HandleMCPToolsAPI)
+
+	// Constellation divination routes
+	h.HandleFunc("/constellation", constellation.HandleConstellation)
+	h.HandleFunc("/api/constellation/horoscope", constellation.HandleDailyHoroscope)
+	h.HandleFunc("/api/constellation/birthchart", constellation.HandleBirthChart)
+	h.HandleFunc("/api/constellation/divination", constellation.HandleDivination)
+	h.HandleFunc("/api/constellation/compatibility", constellation.HandleCompatibility)
+	h.HandleFunc("/api/constellation/history", constellation.HandleDivinationHistory)
+	h.HandleFunc("/api/constellation/statistics", constellation.HandleDivinationStats)
+	h.HandleFunc("/api/constellation/info", constellation.HandleConstellationInfo)
+	h.HandleFunc("/api/constellation/date", constellation.HandleGetConstellationByDate)
+	h.HandleFunc("/api/constellation/accuracy", constellation.HandleUpdateAccuracy)
+	h.HandleFunc("/api/constellation/batch-horoscope", constellation.HandleBatchHoroscope)
 
 	// Static file server
 	root := config.GetHttpStaticPath()

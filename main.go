@@ -88,7 +88,7 @@ func main() {
 	blogs_txt_dir := config.GetBlogsPath()
 	control.ImportBlogsFromPath(blogs_txt_dir)
 	cooperation.Init()
-	mcp.Init()
+	go mcp.Init()
 	llm.Init()
 	sms.Init()
 	persistence.SaveBlogs(blog.Blogs)

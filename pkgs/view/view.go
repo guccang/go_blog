@@ -1047,3 +1047,21 @@ func PageMCP(w h.ResponseWriter,data interface{}) {
 		return
 	}
 }
+
+// PageConstellation renders the constellation divination page
+func PageConstellation(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "constellation.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse constellation.template: %s", err.Error())
+		h.Error(w, "Failed to parse constellation template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render constellation.template: %s", err.Error())
+		h.Error(w, "Failed to render constellation template", h.StatusInternalServerError)
+		return
+	}
+}

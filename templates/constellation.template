@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星座占卜运势 - 神秘星空</title>
+    <link rel="stylesheet" href="/statics/css/public.css">
+    <link rel="stylesheet" href="/css/constellation.css">
+    <script src="/js/constellation.js" defer></script>
+</head>
+<body class="constellation-body">
+    <div class="star-background"></div>
+    
+    <header class="constellation-header">
+        <h1 class="main-title">🌟 星座占卜运势 🌟</h1>
+        <p class="subtitle">探索宇宙奥秘，洞察人生真谛</p>
+    </header>
+
+    <main class="constellation-main">
+        <!-- 星座选择器 -->
+        <section class="constellation-selector">
+            <h2>选择你的星座</h2>
+            <div class="zodiac-wheel">
+                <div class="constellation-item" data-sign="aries">
+                    <span class="constellation-symbol">♈</span>
+                    <span class="constellation-name">白羊座</span>
+                    <span class="date-range">3.21-4.19</span>
+                </div>
+                <div class="constellation-item" data-sign="taurus">
+                    <span class="constellation-symbol">♉</span>
+                    <span class="constellation-name">金牛座</span>
+                    <span class="date-range">4.20-5.20</span>
+                </div>
+                <div class="constellation-item" data-sign="gemini">
+                    <span class="constellation-symbol">♊</span>
+                    <span class="constellation-name">双子座</span>
+                    <span class="date-range">5.21-6.21</span>
+                </div>
+                <div class="constellation-item" data-sign="cancer">
+                    <span class="constellation-symbol">♋</span>
+                    <span class="constellation-name">巨蟹座</span>
+                    <span class="date-range">6.22-7.22</span>
+                </div>
+                <div class="constellation-item" data-sign="leo">
+                    <span class="constellation-symbol">♌</span>
+                    <span class="constellation-name">狮子座</span>
+                    <span class="date-range">7.23-8.22</span>
+                </div>
+                <div class="constellation-item" data-sign="virgo">
+                    <span class="constellation-symbol">♍</span>
+                    <span class="constellation-name">处女座</span>
+                    <span class="date-range">8.23-9.22</span>
+                </div>
+                <div class="constellation-item" data-sign="libra">
+                    <span class="constellation-symbol">♎</span>
+                    <span class="constellation-name">天秤座</span>
+                    <span class="date-range">9.23-10.23</span>
+                </div>
+                <div class="constellation-item" data-sign="scorpio">
+                    <span class="constellation-symbol">♏</span>
+                    <span class="constellation-name">天蝎座</span>
+                    <span class="date-range">10.24-11.22</span>
+                </div>
+                <div class="constellation-item" data-sign="sagittarius">
+                    <span class="constellation-symbol">♐</span>
+                    <span class="constellation-name">射手座</span>
+                    <span class="date-range">11.23-12.21</span>
+                </div>
+                <div class="constellation-item" data-sign="capricorn">
+                    <span class="constellation-symbol">♑</span>
+                    <span class="constellation-name">摩羯座</span>
+                    <span class="date-range">12.22-1.19</span>
+                </div>
+                <div class="constellation-item" data-sign="aquarius">
+                    <span class="constellation-symbol">♒</span>
+                    <span class="constellation-name">水瓶座</span>
+                    <span class="date-range">1.20-2.18</span>
+                </div>
+                <div class="constellation-item" data-sign="pisces">
+                    <span class="constellation-symbol">♓</span>
+                    <span class="constellation-name">双鱼座</span>
+                    <span class="date-range">2.19-3.20</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 今日运势显示区域 -->
+        <section class="daily-horoscope-section" id="daily-horoscope" style="display: none;">
+            <h2>今日运势</h2>
+            <div class="horoscope-card">
+                <div class="horoscope-header">
+                    <div class="selected-constellation">
+                        <span class="selected-symbol"></span>
+                        <span class="selected-name"></span>
+                    </div>
+                    <div class="horoscope-date"></div>
+                </div>
+                
+                <div class="horoscope-content">
+                    <div class="overall-score">
+                        <h3>综合运势</h3>
+                        <div class="stars" id="overall-stars"></div>
+                        <span class="score-text" id="overall-score"></span>
+                    </div>
+                    
+                    <div class="detailed-scores">
+                        <div class="score-item">
+                            <span class="score-label">💕 爱情</span>
+                            <div class="stars" id="love-stars"></div>
+                        </div>
+                        <div class="score-item">
+                            <span class="score-label">💼 事业</span>
+                            <div class="stars" id="career-stars"></div>
+                        </div>
+                        <div class="score-item">
+                            <span class="score-label">💰 财运</span>
+                            <div class="stars" id="money-stars"></div>
+                        </div>
+                        <div class="score-item">
+                            <span class="score-label">💪 健康</span>
+                            <div class="stars" id="health-stars"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="lucky-elements">
+                        <div class="lucky-item">
+                            <span class="lucky-label">🎨 幸运色</span>
+                            <span class="lucky-value" id="lucky-color"></span>
+                        </div>
+                        <div class="lucky-item">
+                            <span class="lucky-label">🔢 幸运数字</span>
+                            <span class="lucky-value" id="lucky-number"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="horoscope-description">
+                        <h4>运势详解</h4>
+                        <p id="horoscope-text"></p>
+                    </div>
+                    
+                    <div class="horoscope-advice">
+                        <h4>今日建议</h4>
+                        <p id="advice-text"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 功能导航 -->
+        <nav class="feature-nav">
+            <button class="nav-btn active" data-section="horoscope">
+                <span class="nav-icon">🌟</span>
+                <span class="nav-text">每日运势</span>
+            </button>
+            <button class="nav-btn" data-section="divination">
+                <span class="nav-icon">🔮</span>
+                <span class="nav-text">塔罗占卜</span>
+            </button>
+            <button class="nav-btn" data-section="compatibility">
+                <span class="nav-icon">💫</span>
+                <span class="nav-text">星座配对</span>
+            </button>
+            <button class="nav-btn" data-section="birthchart">
+                <span class="nav-icon">🌌</span>
+                <span class="nav-text">个人星盘</span>
+            </button>
+            <button class="nav-btn" data-section="history">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">占卜历史</span>
+            </button>
+        </nav>
+
+        <!-- 塔罗占卜区域 -->
+        <section class="divination-section" id="divination-section" style="display: none;">
+            <h2>塔罗占卜</h2>
+            <div class="divination-form">
+                <div class="form-group">
+                    <label>选择占卜类型：</label>
+                    <select id="divination-type">
+                        <option value="tarot">塔罗牌占卜</option>
+                        <option value="astrology">星座占卜</option>
+                        <option value="numerology">数字占卜</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="tarot-methods">
+                    <label>选择牌阵：</label>
+                    <div class="method-buttons">
+                        <button class="method-btn active" data-method="single_card">单卡占卜</button>
+                        <button class="method-btn" data-method="three_card">三卡牌阵</button>
+                        <button class="method-btn" data-method="celtic_cross">凯尔特十字</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>你的问题：</label>
+                    <textarea id="divination-question" placeholder="请输入你想要占卜的问题..."></textarea>
+                </div>
+                
+                <button id="start-divination" class="action-btn">开始占卜</button>
+            </div>
+            
+            <div class="divination-result" id="divination-result" style="display: none;">
+                <h3>占卜结果</h3>
+                <div class="tarot-cards" id="tarot-cards"></div>
+                <div class="divination-interpretation" id="divination-interpretation"></div>
+                <div class="divination-advice" id="divination-advice"></div>
+            </div>
+        </section>
+
+        <!-- 星座配对区域 -->
+        <section class="compatibility-section" id="compatibility-section" style="display: none;">
+            <h2>星座配对分析</h2>
+            <div class="compatibility-form">
+                <div class="constellation-selectors">
+                    <div class="selector-group">
+                        <label>第一个星座：</label>
+                        <select id="compatibility-sign1">
+                            <option value="">请选择星座</option>
+                            <option value="aries">白羊座 ♈</option>
+                            <option value="taurus">金牛座 ♉</option>
+                            <option value="gemini">双子座 ♊</option>
+                            <option value="cancer">巨蟹座 ♋</option>
+                            <option value="leo">狮子座 ♌</option>
+                            <option value="virgo">处女座 ♍</option>
+                            <option value="libra">天秤座 ♎</option>
+                            <option value="scorpio">天蝎座 ♏</option>
+                            <option value="sagittarius">射手座 ♐</option>
+                            <option value="capricorn">摩羯座 ♑</option>
+                            <option value="aquarius">水瓶座 ♒</option>
+                            <option value="pisces">双鱼座 ♓</option>
+                        </select>
+                    </div>
+                    
+                    <div class="vs-symbol">💕</div>
+                    
+                    <div class="selector-group">
+                        <label>第二个星座：</label>
+                        <select id="compatibility-sign2">
+                            <option value="">请选择星座</option>
+                            <option value="aries">白羊座 ♈</option>
+                            <option value="taurus">金牛座 ♉</option>
+                            <option value="gemini">双子座 ♊</option>
+                            <option value="cancer">巨蟹座 ♋</option>
+                            <option value="leo">狮子座 ♌</option>
+                            <option value="virgo">处女座 ♍</option>
+                            <option value="libra">天秤座 ♎</option>
+                            <option value="scorpio">天蝎座 ♏</option>
+                            <option value="sagittarius">射手座 ♐</option>
+                            <option value="capricorn">摩羯座 ♑</option>
+                            <option value="aquarius">水瓶座 ♒</option>
+                            <option value="pisces">双鱼座 ♓</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button id="analyze-compatibility" class="action-btn">开始配对分析</button>
+            </div>
+            
+            <div class="compatibility-result" id="compatibility-result" style="display: none;">
+                <h3>配对分析结果</h3>
+                <div class="compatibility-scores">
+                    <div class="score-circle">
+                        <div class="circle-progress" id="overall-compatibility">
+                            <span class="score-value" id="overall-score-value">0</span>
+                            <span class="score-label">综合匹配</span>
+                        </div>
+                    </div>
+                    
+                    <div class="detailed-compatibility">
+                        <div class="compat-item">
+                            <span class="compat-label">💕 爱情指数</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="love-progress"></div>
+                                <span class="progress-text" id="love-score-text">0%</span>
+                            </div>
+                        </div>
+                        <div class="compat-item">
+                            <span class="compat-label">👥 友情指数</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="friend-progress"></div>
+                                <span class="progress-text" id="friend-score-text">0%</span>
+                            </div>
+                        </div>
+                        <div class="compat-item">
+                            <span class="compat-label">💼 工作指数</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="work-progress"></div>
+                                <span class="progress-text" id="work-score-text">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="compatibility-analysis">
+                    <div class="analysis-section">
+                        <h4>✨ 配对优势</h4>
+                        <ul id="compatibility-advantages"></ul>
+                    </div>
+                    
+                    <div class="analysis-section">
+                        <h4>⚠️ 潜在挑战</h4>
+                        <ul id="compatibility-challenges"></ul>
+                    </div>
+                    
+                    <div class="analysis-section">
+                        <h4>💡 相处建议</h4>
+                        <ul id="compatibility-suggestions"></ul>
+                    </div>
+                </div>
+                
+                <div class="detailed-analysis" id="detailed-analysis"></div>
+            </div>
+        </section>
+
+        <!-- 个人星盘区域 -->
+        <section class="birthchart-section" id="birthchart-section" style="display: none;">
+            <h2>个人星盘</h2>
+            <div class="birthchart-form">
+                <div class="form-group">
+                    <label>姓名：</label>
+                    <input type="text" id="chart-username" placeholder="请输入姓名">
+                </div>
+                
+                <div class="form-group">
+                    <label>出生日期：</label>
+                    <input type="date" id="chart-birthdate">
+                </div>
+                
+                <div class="form-group">
+                    <label>出生时间：</label>
+                    <input type="time" id="chart-birthtime">
+                </div>
+                
+                <div class="form-group">
+                    <label>出生地点：</label>
+                    <input type="text" id="chart-birthplace" placeholder="请输入出生城市">
+                </div>
+                
+                <button id="create-birthchart" class="action-btn">生成星盘</button>
+            </div>
+            
+            <div class="birthchart-result" id="birthchart-result" style="display: none;">
+                <h3>你的个人星盘</h3>
+                <div class="chart-info">
+                    <div class="main-signs">
+                        <div class="sign-item">
+                            <span class="sign-label">☀️ 太阳星座</span>
+                            <span class="sign-value" id="sun-sign"></span>
+                        </div>
+                        <div class="sign-item">
+                            <span class="sign-label">🌙 月亮星座</span>
+                            <span class="sign-value" id="moon-sign"></span>
+                        </div>
+                        <div class="sign-item">
+                            <span class="sign-label">⬆️ 上升星座</span>
+                            <span class="sign-value" id="rising-sign"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="planetary-positions" id="planetary-positions">
+                        <h4>行星位置</h4>
+                        <!-- 动态生成行星位置信息 -->
+                    </div>
+                    
+                    <div class="houses-info" id="houses-info">
+                        <h4>十二宫位</h4>
+                        <!-- 动态生成宫位信息 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 占卜历史区域 -->
+        <section class="history-section" id="history-section" style="display: none;">
+            <h2>占卜历史与统计</h2>
+            
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <span class="stat-number" id="total-divinations">0</span>
+                    <span class="stat-label">总占卜次数</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="average-accuracy">0</span>
+                    <span class="stat-label">平均准确度</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" id="favorite-type">-</span>
+                    <span class="stat-label">最常用类型</span>
+                </div>
+            </div>
+            
+            <div class="history-list" id="history-list">
+                <!-- 动态生成历史记录 -->
+            </div>
+        </section>
+    </main>
+
+    <!-- 加载动画 -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>正在占卜中...</p>
+        </div>
+    </div>
+
+    <!-- 返回顶部按钮 -->
+    <button class="back-to-top" id="back-to-top" style="display: none;">
+        <span>⬆️</span>
+    </button>
+</body>
+</html>

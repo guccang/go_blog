@@ -54,6 +54,8 @@ replace llm => ./pkgs/llm
 
 replace sms => ./pkgs/sms
 
+replace constellation => ./pkgs/constellation
+
 require (
 	blog v0.0.0
 	comment v0.0.0-00010101000000-000000000000
@@ -83,4 +85,5 @@ require (
 	reading v0.0.0-00010101000000-000000000000 // indirect
 	todolist v0.0.0-00010101000000-000000000000 // indirect
 	yearplan v0.0.0-00010101000000-000000000000 // indirect
+	constellation v0.0.0-00010101000000-000000000000 // indirect
 )
