@@ -1069,3 +1069,64 @@
     border-radius: 6px !important;
     padding: 10px !important;
 }
+
+/* 关键字高亮样式 */
+.highlight-keyword {
+    background-color: #ffff00;
+    color: #000;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+    box-shadow: 0 1px 3px rgba(255, 255, 0, 0.3);
+    transition: all 0.2s ease;
+}
+
+/* 深色主题下的高亮样式 */
+.th_black .highlight-keyword {
+    background-color: #ffd700;
+    color: #000;
+}
+
+/* 高亮关键字的悬停效果 */
+.highlight-keyword:hover {
+    background-color: #ffeb3b;
+    transform: scale(1.05);
+}
+
+/* 包含关键字的行高亮样式 */
+.highlight-line {
+    background-color: rgba(255, 255, 0, 0.15) !important;
+    border-left: 4px solid #ffff00 !important;
+    padding-left: 12px !important;
+    margin: 8px 0 !important;
+    border-radius: 4px !important;
+    transition: all 0.3s ease !important;
+    position: relative;
+}
+
+/* 深色主题下的行高亮样式 */
+.th_black .highlight-line {
+    background-color: rgba(255, 215, 0, 0.15) !important;
+    border-left-color: #ffd700 !important;
+}
+
+/* 行高亮的悬停效果 */
+.highlight-line:hover {
+    background-color: rgba(255, 255, 0, 0.25) !important;
+    transform: translateX(2px);
+}
+
+.th_black .highlight-line:hover {
+    background-color: rgba(255, 215, 0, 0.25) !important;
+}
+
+/* 为行高亮添加一个小标记 */
+.highlight-line::before {
+    content: "📍";
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    opacity: 0.7;
+}

@@ -38,6 +38,10 @@ func Info() {
 
 // Init initializes the logging system
 func Init(logsDir string) error {
+	if logsDir == "" {
+		logsDir = "logs" // Default logs directory
+	}
+
 	logMutex.Lock()
 	defer logMutex.Unlock()
 

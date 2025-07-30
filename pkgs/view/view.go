@@ -282,6 +282,18 @@ func PageSearch(match string,w h.ResponseWriter,session string){
 	}
 	
 	datas := getLinks(blogs,flag,session)
+	
+	// 为搜索结果中的所有链接添加highlight参数
+	for i := range datas.LINKS {
+		if strings.Contains(datas.LINKS[i].URL, "/get?blogname=") {
+			datas.LINKS[i].URL = fmt.Sprintf("%s&highlight=%s", datas.LINKS[i].URL, match)
+		}
+	}
+	for i := range datas.RECENT_LINKS {
+		if strings.Contains(datas.RECENT_LINKS[i].URL, "/get?blogname=") {
+			datas.RECENT_LINKS[i].URL = fmt.Sprintf("%s&highlight=%s", datas.RECENT_LINKS[i].URL, match)
+		}
+	}
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl,err:=t.ParseFiles(filepath.Join(exeDir,"link.template"))

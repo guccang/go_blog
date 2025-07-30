@@ -73,9 +73,6 @@ func main() {
 
 	// Initialize logging system with logs directory
 	logsDir := config.GetConfig("logs_dir")
-	if logsDir == "" {
-		logsDir = "logs" // Default logs directory
-	}
 	if err := log.Init(logsDir); err != nil {
 		fmt.Printf("Warning: Failed to initialize file logging: %v\n", err)
 		fmt.Println("Continuing with console logging only...")

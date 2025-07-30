@@ -342,7 +342,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 检查是否是 constellation 博客，如果是则重定向到 constellation 页面
-	if strings.HasPrefix(blogname, "horoscope-") {
+	if strings.HasPrefix(blogname, "horoscope-") || strings.HasPrefix(blogname, "constellation-") {
 		// 重定向到constellation页面
 		h.Redirect(w, r, "/constellation", 302)
 		return
