@@ -21,13 +21,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Toggle sidebar
 bubble.addEventListener('click', function() {
-	if (isPCDevice()){
 		sidebar.classList.toggle('hide-sidebar');
 		container.classList.toggle('hide-sidebar');
-	}else{
-		sidebar.classList.toggle('hide-sidebar-mobile');
-		container.classList.toggle('hide-sidebar-mobile');
-	}
 });
 
 // Function to show toast notifications
@@ -321,7 +316,6 @@ function cleanupExpiredSessions() {
 function onEditor() {
 	const toggleBtn = document.getElementById('toggle-button');
 	
-	if (isPCDevice()) {
 		// PC version
 		if (toggleBtn.innerText === '编辑') {
 			md.className = 'mdEditor';
@@ -334,25 +328,6 @@ function onEditor() {
 			editor.className = 'hide th_black';
 			toggleBtn.innerText = '编辑';
 		}
-	} else {
-		// Mobile version
-		if (toggleBtn.innerText === '编辑') {
-			md.className = 'hide';
-			editor.className = 'editor th_black';
-			document.getElementById('editor-button').className = 'left-button';
-			toggleBtn.innerText = '预览';
-			
-			// 设置适合移动设备的编辑器高度
-			const minHeight = Math.max(window.innerHeight * 0.9, 300);
-			editor.style.height = Math.max(editor.scrollHeight, minHeight) + 'px';
-			console.log("height ",minHeight,editor.style.height,window.innerHeight)
-		} else {
-			md.className = 'md';
-			editor.className = 'hide th_black';
-			document.getElementById('editor-button').className = 'hide';
-			toggleBtn.innerText = '编辑';
-		}
-	}
 }
 
 function submitFirst() {
@@ -477,20 +452,11 @@ function submitContent() {
 // Handle editor resizing and preview updates
 editor.addEventListener('input', function() {
 	// 针对不同设备采用不同的高度调整策略
-	if (isPCDevice()) {
 		// PC版本全屏显示
 		this.style.height = 'auto';
 		// 使用更大的高度值，覆盖整个可见区域
 		this.style.height = (window.innerHeight * 0.85) + 'px';
 		mdRender(this.value);
-	} else {
-		// 移动端版本使用固定高度或基于内容的自适应高度
-		this.style.height = 'auto';
-		// 增加移动端高度比例，确保显示更完整
-		const minHeight = Math.max(window.innerHeight * 0.95, 300);
-		this.style.height = Math.max(this.scrollHeight, minHeight) + 'px';
-		mdRender(this.value);
-	}
 });
 
 // Initialize editor and preview on page load
@@ -498,19 +464,11 @@ window.onload = function() {
 	mdRender(editor.value);
 	checkTime();
 
-	/*
 	// 自动隐藏侧边栏
-	if (isPCDevice()){
 		sidebar.classList.toggle('hide-sidebar');
 		container.classList.toggle('hide-sidebar');
-	}else{
-		sidebar.classList.toggle('hide-sidebar-mobile');
-		container.classList.toggle('hide-sidebar-mobile');
-	}
-	*/
 	
 	// 初始化编辑器高度，避免高度为0的问题
-	if (isPCDevice()) {
 		// PC端全屏显示
 		editor.style.height = (window.innerHeight * 0.85) + 'px';
 		// 同时应用全屏样式类
@@ -520,11 +478,7 @@ window.onload = function() {
 		if (md) {
 			md.style.height = (window.innerHeight * 0.85) + 'px';
 		}
-	} else {
-		// 增加移动端高度比例
-		const minHeight = Math.max(window.innerHeight * 0.95, 300);
-		editor.style.height = minHeight + 'px';
-	}
+
 	
 	// 添加返回按钮
 	addBackButton();

@@ -31,10 +31,6 @@ function isMobileDevice(){
 	return isMobile;
 }
 
-function isPCDevice(){
-	return !isMobileDevice();
-}
-
 function PageHistoryBack(){
 	document.addEventListener('keydown', function(event) {
 		console.log(`key=${event.key},code=${event.code}`);

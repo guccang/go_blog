@@ -20,13 +20,8 @@
     
     // Toggle sidebar
     bubble.addEventListener('click', function() {
-        if (isPCDevice()){
             sidebar.classList.toggle('hide-sidebar');
             container.classList.toggle('hide-sidebar');
-        }else{
-            sidebar.classList.toggle('hide-sidebar-mobile');
-            container.classList.toggle('hide-sidebar');
-        }
     });
     
     // Toggle view (split, editor-only, preview-only)
@@ -102,15 +97,7 @@
             const scrollPos = window.pageYOffset || document.documentElement.scrollTop;
             
             // Render markdown content
-            if (isPCDevice()) {
-                mdRender(editor.value);
-            } else {
-                // Mobile device - default to editor-only view
-                viewState = 'editor-only';
-                editorWrapper.classList.add('fullscreen');
-                previewWrapper.classList.add('hidden');
-                btnToggleView.innerHTML = '👁️';
-            }
+            mdRender(editor.value);
             
             // Ensure theme is correctly applied
             checkTime();
