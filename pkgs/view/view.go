@@ -1077,3 +1077,21 @@ func PageConstellation(w h.ResponseWriter) {
 		return
 	}
 }
+
+// PageTools renders the tools page
+func PageTools(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "tools.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse tools.template: %s", err.Error())
+		h.Error(w, "Failed to parse tools template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render tools.template: %s", err.Error())
+		h.Error(w, "Failed to render tools template", h.StatusInternalServerError)
+		return
+	}
+}

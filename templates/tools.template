@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实用工具集合 - Go Blog</title>
+    <link rel="stylesheet" href="/css/public.css">
+    <link rel="stylesheet" href="/css/tools.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="tools-body">
+    <!-- 背景装饰 -->
+    <div class="bg-decoration">
+        <div class="bg-circle circle-1"></div>
+        <div class="bg-circle circle-2"></div>
+        <div class="bg-circle circle-3"></div>
+    </div>
+
+    <div class="tools-container">
+        <!-- 顶部导航栏 -->
+        <header class="tools-header">
+            <div class="header-left">
+                <div class="header-logo">
+                    <i class="fas fa-tools"></i>
+                    <h1>实用工具集合</h1>
+                </div>
+                <p class="header-subtitle">一站式工具平台，提升工作效率</p>
+            </div>
+            <nav class="header-nav">
+                <a href="/main" class="nav-link">
+                    <i class="fas fa-home"></i>
+                    <span>返回首页</span>
+                </a>
+                <a href="/link" class="nav-link">
+                    <i class="fas fa-dashboard"></i>
+                    <span>管理中心</span>
+                </a>
+            </nav>
+        </header>
+
+        <!-- 工具导航卡片 -->
+        <div class="tool-nav-grid">
+            <div class="tool-nav-card active" data-tool="time">
+                <div class="nav-card-icon">⏰</div>
+                <div class="nav-card-content">
+                    <h3>时间工具</h3>
+                    <p>时间戳转换、时区查询</p>
+                </div>
+            </div>
+            <div class="tool-nav-card" data-tool="data">
+                <div class="nav-card-icon">📊</div>
+                <div class="nav-card-content">
+                    <h3>数据处理</h3>
+                    <p>JSON格式化、编码转换</p>
+                </div>
+            </div>
+            <div class="tool-nav-card" data-tool="calculator">
+                <div class="nav-card-icon">🧮</div>
+                <div class="nav-card-content">
+                    <h3>计算工具</h3>
+                    <p>科学计算、单位转换</p>
+                </div>
+            </div>
+            <div class="tool-nav-card" data-tool="text">
+                <div class="nav-card-icon">📝</div>
+                <div class="nav-card-content">
+                    <h3>文本工具</h3>
+                    <p>文本统计、正则测试</p>
+                </div>
+            </div>
+            <div class="tool-nav-card" data-tool="system">
+                <div class="nav-card-icon">🌐</div>
+                <div class="nav-card-content">
+                    <h3>系统工具</h3>
+                    <p>天气查询、颜色工具</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 工具内容区域 -->
+        <main class="tools-main">
+            <!-- 时间工具 -->
+            <div class="tool-section active" id="time-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-clock"></i> 时间工具</h2>
+                    <p>时间相关的各种实用功能</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🕒</div>
+                            <h3>当前时间</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <label class="form-label">选择时区</label>
+                                <select id="timezone-select" class="form-select">
+                                    <option value="">本地时区</option>
+                                    <option value="Asia/Shanghai">北京时间 (UTC+8)</option>
+                                    <option value="UTC">协调世界时 (UTC)</option>
+                                    <option value="America/New_York">纽约时间 (EST)</option>
+                                    <option value="Europe/London">伦敦时间 (GMT)</option>
+                                    <option value="Asia/Tokyo">东京时间 (JST)</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary" onclick="getCurrentTime()">
+                                <i class="fas fa-sync-alt"></i>
+                                获取当前时间
+                            </button>
+                            <div id="current-time-result" class="result-box"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🔢</div>
+                            <h3>时间戳转换</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <label class="form-label">时间戳 (秒)</label>
+                                <input type="number" id="timestamp-input" class="form-input" placeholder="输入Unix时间戳">
+                            </div>
+                            <button class="btn btn-primary" onclick="convertTimestamp()">
+                                <i class="fas fa-exchange-alt"></i>
+                                转换时间
+                            </button>
+                            <div id="timestamp-result" class="result-box"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据处理工具 -->
+            <div class="tool-section" id="data-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-database"></i> 数据处理工具</h2>
+                    <p>数据格式化和编码转换工具</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border full-width">
+                        <div class="card-header">
+                            <div class="card-icon">{ }</div>
+                            <h3>JSON 格式化</h3>
+                        </div>
+                        <div class="card-body">
+                            <textarea id="json-input" class="form-textarea" placeholder="粘贴JSON数据..." rows="8"></textarea>
+                            <button class="btn btn-primary" onclick="formatJSON()">
+                                <i class="fas fa-magic"></i>
+                                格式化JSON
+                            </button>
+                            <div id="json-result" class="result-box code-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🔐</div>
+                            <h3>Base64 编码</h3>
+                        </div>
+                        <div class="card-body">
+                            <textarea id="base64-input" class="form-textarea" placeholder="输入文本或Base64编码..." rows="4"></textarea>
+                            <div class="button-group">
+                                <button class="btn btn-secondary" onclick="encodeBase64()">
+                                    <i class="fas fa-lock"></i>
+                                    编码
+                                </button>
+                                <button class="btn btn-secondary" onclick="decodeBase64()">
+                                    <i class="fas fa-unlock"></i>
+                                    解码
+                                </button>
+                            </div>
+                            <div id="base64-result" class="result-box code-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🔗</div>
+                            <h3>URL 编码</h3>
+                        </div>
+                        <div class="card-body">
+                            <input type="text" id="url-input" class="form-input" placeholder="输入URL或编码后的URL">
+                            <div class="button-group">
+                                <button class="btn btn-secondary" onclick="encodeURL()">
+                                    <i class="fas fa-compress-alt"></i>
+                                    编码
+                                </button>
+                                <button class="btn btn-secondary" onclick="decodeURL()">
+                                    <i class="fas fa-expand-alt"></i>
+                                    解码
+                                </button>
+                            </div>
+                            <div id="url-result" class="result-box code-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">#</div>
+                            <h3>哈希生成</h3>
+                        </div>
+                        <div class="card-body">
+                            <input type="text" id="hash-input" class="form-input" placeholder="输入要生成哈希的文本">
+                            <select id="hash-type" class="form-select">
+                                <option value="md5">MD5</option>
+                                <option value="sha1">SHA1</option>
+                                <option value="sha256">SHA256</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="generateHash()">
+                                <i class="fas fa-key"></i>
+                                生成哈希
+                            </button>
+                            <div id="hash-result" class="result-box code-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 计算工具 -->
+            <div class="tool-section" id="calculator-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-calculator"></i> 计算工具</h2>
+                    <p>各种数学计算和单位转换</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🔢</div>
+                            <h3>科学计算器</h3>
+                        </div>
+                        <div class="card-body">
+                            <input type="text" id="calc-input" class="form-input" placeholder="输入数学表达式 (如: 2+3*4)">
+                            <button class="btn btn-primary" onclick="calculate()">
+                                <i class="fas fa-equals"></i>
+                                计算结果
+                            </button>
+                            <div id="calc-result" class="result-box math-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">⚖️</div>
+                            <h3>BMI 计算器</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <label class="form-label">身高 (cm)</label>
+                                <input type="number" id="height-input" class="form-input" placeholder="170" step="0.1">
+                            </div>
+                            <div class="form-row">
+                                <label class="form-label">体重 (kg)</label>
+                                <input type="number" id="weight-input" class="form-input" placeholder="70" step="0.1">
+                            </div>
+                            <button class="btn btn-primary" onclick="calculateBMI()">
+                                <i class="fas fa-heartbeat"></i>
+                                计算BMI
+                            </button>
+                            <div id="bmi-result" class="result-box health-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border full-width">
+                        <div class="card-header">
+                            <div class="card-icon">📏</div>
+                            <h3>单位转换</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="converter-grid">
+                                <div class="form-row">
+                                    <label class="form-label">数值</label>
+                                    <input type="number" id="unit-value" class="form-input" placeholder="100" step="0.01">
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">转换类型</label>
+                                    <select id="unit-type" class="form-select" onchange="updateUnitOptions()">
+                                        <option value="length">长度转换</option>
+                                        <option value="weight">重量转换</option>
+                                        <option value="temperature">温度转换</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">从</label>
+                                    <select id="from-unit" class="form-select"></select>
+                                </div>
+                                <div class="form-row">
+                                    <label class="form-label">到</label>
+                                    <select id="to-unit" class="form-select"></select>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="convertUnit()">
+                                <i class="fas fa-exchange-alt"></i>
+                                立即转换
+                            </button>
+                            <div id="unit-result" class="result-box math-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 文本工具 -->
+            <div class="tool-section" id="text-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-font"></i> 文本工具</h2>
+                    <p>文本处理和分析工具</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border full-width">
+                        <div class="card-header">
+                            <div class="card-icon">📊</div>
+                            <h3>文本统计</h3>
+                        </div>
+                        <div class="card-body">
+                            <textarea id="text-count-input" class="form-textarea" placeholder="输入要统计的文本..." rows="8"></textarea>
+                            <button class="btn btn-primary" onclick="countText()">
+                                <i class="fas fa-chart-bar"></i>
+                                统计分析
+                            </button>
+                            <div id="text-count-result" class="result-box stats-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border full-width">
+                        <div class="card-header">
+                            <div class="card-icon">🔍</div>
+                            <h3>正则表达式测试</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <label class="form-label">正则表达式</label>
+                                <input type="text" id="regex-pattern" class="form-input" placeholder="如: \d{3}-\d{4}-\d{4}">
+                            </div>
+                            <textarea id="regex-text" class="form-textarea" placeholder="输入要测试的文本..." rows="6"></textarea>
+                            <button class="btn btn-primary" onclick="testRegex()">
+                                <i class="fas fa-search"></i>
+                                测试匹配
+                            </button>
+                            <div id="regex-result" class="result-box code-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统工具 -->
+            <div class="tool-section" id="system-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-cogs"></i> 系统工具</h2>
+                    <p>实用的系统和网络工具</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🌤️</div>
+                            <h3>天气查询</h3>
+                        </div>
+                        <div class="card-body">
+                            <input type="text" id="weather-city" class="form-input" placeholder="输入城市名称 (如: 北京)">
+                            <button class="btn btn-primary" onclick="getWeather()">
+                                <i class="fas fa-cloud-sun"></i>
+                                查询天气
+                            </button>
+                            <div id="weather-result" class="result-box weather-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">🎨</div>
+                            <h3>颜色选择器</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="color-picker-container">
+                                <input type="color" id="color-picker" class="color-input" value="#3498db">
+                                <div class="color-preview" id="color-preview"></div>
+                            </div>
+                            <button class="btn btn-primary" onclick="getColorInfo()">
+                                <i class="fas fa-palette"></i>
+                                获取颜色信息
+                            </button>
+                            <div id="color-result" class="result-box color-result"></div>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border full-width">
+                        <div class="card-header">
+                            <div class="card-icon">🔑</div>
+                            <h3>随机密码生成器</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="password-options">
+                                <div class="form-row">
+                                    <label class="form-label">密码长度</label>
+                                    <input type="number" id="password-length" class="form-input" value="12" min="4" max="50">
+                                </div>
+                                <div class="checkbox-grid">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="include-lowercase" checked>
+                                        <span class="checkmark"></span>
+                                        小写字母 (a-z)
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="include-uppercase" checked>
+                                        <span class="checkmark"></span>
+                                        大写字母 (A-Z)
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="include-numbers" checked>
+                                        <span class="checkmark"></span>
+                                        数字 (0-9)
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="include-symbols">
+                                        <span class="checkmark"></span>
+                                        特殊字符 (!@#$...)
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="generatePassword()">
+                                <i class="fas fa-key"></i>
+                                生成密码
+                            </button>
+                            <div id="password-result" class="result-box password-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 返回顶部按钮 -->
+    <button class="back-to-top" id="backToTop" onclick="scrollToTop()">
+        <i class="fas fa-chevron-up"></i>
+    </button>
+
+    <script src="/js/tools.js"></script>
+</body>
+</html>

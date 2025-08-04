@@ -22,6 +22,7 @@ import (
 	"sms"
 	"statistics"
 	"syscall"
+	"tools"
 	"view"
 )
 
@@ -67,6 +68,7 @@ func main() {
 	statistics.Info()
 	mcp.Info()
 	llm.Info()
+	tools.Info()
 
 	// Init
 	config.Init(args[1])

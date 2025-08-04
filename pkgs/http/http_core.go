@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"todolist"
+	"tools"
 	"view"
 	"yearplan"
 )
@@ -316,6 +317,16 @@ func Init() int {
 	h.HandleFunc("/api/constellation/date", constellation.HandleGetConstellationByDate)
 	h.HandleFunc("/api/constellation/accuracy", constellation.HandleUpdateAccuracy)
 	h.HandleFunc("/api/constellation/batch-horoscope", constellation.HandleBatchHoroscope)
+
+	// Tools routes
+	h.HandleFunc("/tools", HandleTools)
+	h.HandleFunc("/api/tools/time", tools.TimeToolHandler)
+	h.HandleFunc("/api/tools/data", tools.DataProcessHandler)
+	h.HandleFunc("/api/tools/calculator", tools.CalculatorHandler)
+	h.HandleFunc("/api/tools/bmi", tools.BMIHandler)
+	h.HandleFunc("/api/tools/text", tools.TextToolHandler)
+	h.HandleFunc("/api/tools/weather", tools.WeatherHandler)
+	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
 
 	// Static file server
 	root := config.GetHttpStaticPath()
