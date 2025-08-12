@@ -1302,7 +1302,8 @@ func getTodayReadingStats() map[string]interface{} {
 	todayPages := 0
 
 	// 遍历所有书籍获取详细信息
-	for _, book := range reading.Books {
+	books := reading.GetAllBooks()
+	for _, book := range books {
 		if book.Status == "reading" {
 			if len(currentBooks) < 3 {
 				currentBooks = append(currentBooks, book.Title)
@@ -1318,7 +1319,12 @@ func getTodayReadingStats() map[string]interface{} {
 	}
 
 	// 估算今日阅读页数（基于阅读记录的最后更新时间）
-	for _, record := range reading.ReadingRecords {
+	// 由于没有直接获取所有阅读记录的函数，我们需要通过书籍来获取记录
+	for _, book := range books {
+		record := reading.GetReadingRecord(book.ID)
+		if record == nil {
+			continue
+		}
 		if record.LastUpdateTime != "" {
 			if lastUpdate, err := time.Parse("2006-01-02 15:04:05", record.LastUpdateTime); err == nil {
 				if lastUpdate.Format("2006-01-02") == today {

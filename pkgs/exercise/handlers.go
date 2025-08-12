@@ -9,12 +9,6 @@ import (
     log "mylog"
 )
 
-var manager = NewExerciseManager()
-
-// GetExerciseManager returns the global exercise manager instance
-func GetExerciseManager() *ExerciseManager {
-    return manager
-}
 
 // HandleExercises handles CRUD operations for exercises
 func HandleExercises(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +47,7 @@ func HandleToggleExercise(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.ToggleExercise(req.Date, req.ID); err != nil {
+    if err := ToggleExercise(req.Date, req.ID); err != nil {
         log.ErrorF("Failed to toggle exercise: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -100,7 +94,7 @@ func HandleExerciseStats(w http.ResponseWriter, r *http.Request) {
         if date == "" {
             date = time.Now().Format("2006-01-02")
         }
-        stats, err = manager.GetWeeklyStats(date)
+        stats, err = GetWeeklyStats(date)
     case "month":
         yearStr := r.URL.Query().Get("year")
         monthStr := r.URL.Query().Get("month")
@@ -114,7 +108,7 @@ func HandleExerciseStats(w http.ResponseWriter, r *http.Request) {
             month = int(now.Month())
         }
         
-        stats, err = manager.GetMonthlyStats(year, month)
+        stats, err = GetMonthlyStats(year, month)
     case "year":
         yearStr := r.URL.Query().Get("year")
         year, err1 := strconv.Atoi(yearStr)
@@ -122,7 +116,7 @@ func HandleExerciseStats(w http.ResponseWriter, r *http.Request) {
             year = time.Now().Year()
         }
         
-        stats, err = manager.GetYearlyStats(year)
+        stats, err = GetYearlyStats(year)
     default:
         http.Error(w, "Invalid period. Use: week, month, or year", http.StatusBadRequest)
         return
@@ -143,7 +137,7 @@ func handleGetExercises(w http.ResponseWriter, r *http.Request) {
         date = time.Now().Format("2006-01-02")
     }
     
-    exercises, err := manager.GetExercisesByDate(date)
+    exercises, err := GetExercisesByDate(date)
     if err != nil {
         log.ErrorF("Failed to get exercises: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -175,41 +169,13 @@ func handleAddExercise(w http.ResponseWriter, r *http.Request) {
         req.Date = time.Now().Format("2006-01-02")
     }
     
-    // 新增：传递body_parts
-    exerciseList, err := manager.GetExercisesByDate(req.Date)
+    item, err := AddExercise(req.Date, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts)
     if err != nil {
-        exerciseList = ExerciseList{
-            Date:  req.Date,
-            Items: []ExerciseItem{},
-        }
-    }
-    // Auto-calculate calories if not provided or is 0
-    calories := req.Calories
-    if calories == 0 {
-        profile, _ := manager.GetUserProfile()
-        if profile != nil && profile.Weight > 0 {
-            totalWeight := profile.Weight + req.Weight
-            calories = manager.CalculateCalories(req.Type, req.Intensity, req.Duration, totalWeight)
-        }
-    }
-    item := ExerciseItem{
-        ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-        Name:      req.Name,
-        Type:      req.Type,
-        Duration:  req.Duration,
-        Intensity: req.Intensity,
-        Calories:  calories,
-        Notes:     req.Notes,
-        Completed: false,
-        Weight:    req.Weight,
-        CreatedAt: time.Now(),
-        BodyParts: req.BodyParts, // 新增
-    }
-    exerciseList.Items = append(exerciseList.Items, item)
-    if err := manager.saveExercisesToBlog(exerciseList); err != nil {
+        log.ErrorF("Failed to add exercise: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
+    
     json.NewEncoder(w).Encode(item)
 }
 
@@ -231,43 +197,12 @@ func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Invalid request body", http.StatusBadRequest)
         return
     }
-    exerciseList, err := manager.GetExercisesByDate(req.Date)
-    if err != nil {
+    if err := UpdateExercise(req.Date, req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts); err != nil {
+        log.ErrorF("Failed to update exercise: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    // Auto-calculate calories if not provided or is 0
-    calories := req.Calories
-    if calories == 0 {
-        profile, _ := manager.GetUserProfile()
-        if profile != nil && profile.Weight > 0 {
-            totalWeight := profile.Weight + req.Weight
-            calories = manager.CalculateCalories(req.Type, req.Intensity, req.Duration, totalWeight)
-        }
-    }
-    found := false
-    for i := range exerciseList.Items {
-        if exerciseList.Items[i].ID == req.ID {
-            exerciseList.Items[i].Name = req.Name
-            exerciseList.Items[i].Type = req.Type
-            exerciseList.Items[i].Duration = req.Duration
-            exerciseList.Items[i].Intensity = req.Intensity
-            exerciseList.Items[i].Calories = calories
-            exerciseList.Items[i].Notes = req.Notes
-            exerciseList.Items[i].Weight = req.Weight
-            exerciseList.Items[i].BodyParts = req.BodyParts // 新增
-            found = true
-            break
-        }
-    }
-    if !found {
-        http.Error(w, "exercise item not found", http.StatusNotFound)
-        return
-    }
-    if err := manager.saveExercisesToBlog(exerciseList); err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+    
     json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
@@ -282,7 +217,7 @@ func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.DeleteExercise(req.Date, req.ID); err != nil {
+    if err := DeleteExercise(req.Date, req.ID); err != nil {
         log.ErrorF("Failed to delete exercise: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -292,7 +227,7 @@ func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetTemplates(w http.ResponseWriter, r *http.Request) {
-    templates, err := manager.GetTemplates()
+    templates, err := GetTemplates()
     if err != nil {
         log.ErrorF("Failed to get templates: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -319,29 +254,13 @@ func handleAddTemplate(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    // 新增：传递body_parts
-    template := ExerciseTemplate{
-        ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-        Name:      req.Name,
-        Type:      req.Type,
-        Duration:  req.Duration,
-        Intensity: req.Intensity,
-        Calories:  req.Calories,
-        Notes:     req.Notes,
-        Weight:    req.Weight,
-        BodyParts: req.BodyParts,
-    }
-    
-    templates, err := manager.GetTemplates()
+    template, err := AddTemplate(req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts)
     if err != nil {
-        templates = []ExerciseTemplate{}
-    }
-    templates = append(templates, template)
-    if err := manager.saveTemplatesToBlog(templates); err != nil {
-        log.ErrorF("Failed to save templates: %v", err)
+        log.ErrorF("Failed to add template: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
+    
     json.NewEncoder(w).Encode(template)
 }
 
@@ -363,35 +282,12 @@ func handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    templates, err := manager.GetTemplates()
-    if err != nil {
+    if err := UpdateTemplate(req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts); err != nil {
+        log.ErrorF("Failed to update template: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    found := false
-    for i := range templates {
-        if templates[i].ID == req.ID {
-            templates[i].Name = req.Name
-            templates[i].Type = req.Type
-            templates[i].Duration = req.Duration
-            templates[i].Intensity = req.Intensity
-            templates[i].Calories = req.Calories
-            templates[i].Notes = req.Notes
-            templates[i].Weight = req.Weight
-            templates[i].BodyParts = req.BodyParts // 新增
-            found = true
-            break
-        }
-    }
-    if !found {
-        http.Error(w, "template not found", http.StatusNotFound)
-        return
-    }
-    if err := manager.saveTemplatesToBlog(templates); err != nil {
-        log.ErrorF("Failed to save templates: %v", err)
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+    
     json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
@@ -405,7 +301,7 @@ func handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.DeleteTemplate(req.ID); err != nil {
+    if err := DeleteTemplate(req.ID); err != nil {
         log.ErrorF("Failed to delete template: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -451,7 +347,7 @@ func HandleAddFromCollection(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.AddFromCollection(req.Date, req.CollectionID); err != nil {
+    if err := AddFromCollection(req.Date, req.CollectionID); err != nil {
         log.ErrorF("Failed to add from collection: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -475,7 +371,7 @@ func HandleGetCollectionDetails(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    collection, templates, err := manager.GetCollectionWithTemplates(collectionID)
+    collection, templates, err := GetCollectionWithTemplates(collectionID)
     if err != nil {
         log.ErrorF("Failed to get collection details: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -491,7 +387,7 @@ func HandleGetCollectionDetails(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetCollections(w http.ResponseWriter, r *http.Request) {
-    collections, err := manager.GetCollections()
+    collections, err := GetCollections()
     if err != nil {
         log.ErrorF("Failed to get collections: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -513,7 +409,7 @@ func handleAddCollection(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    collection, err := manager.AddCollection(req.Name, req.Description, req.TemplateIDs)
+    collection, err := AddCollection(req.Name, req.Description, req.TemplateIDs)
     if err != nil {
         log.ErrorF("Failed to add collection: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -536,7 +432,7 @@ func handleUpdateCollection(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.UpdateCollection(req.ID, req.Name, req.Description, req.TemplateIDs); err != nil {
+    if err := UpdateCollection(req.ID, req.Name, req.Description, req.TemplateIDs); err != nil {
         log.ErrorF("Failed to update collection: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -555,7 +451,7 @@ func handleDeleteCollection(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    if err := manager.DeleteCollection(req.ID); err != nil {
+    if err := DeleteCollection(req.ID); err != nil {
         log.ErrorF("Failed to delete collection: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -599,7 +495,7 @@ func HandleCalculateCalories(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    calories := manager.CalculateCalories(req.ExerciseType, req.Intensity, req.Duration, req.Weight)
+    calories := CalculateCalories(req.ExerciseType, req.Intensity, req.Duration, req.Weight)
     
     response := map[string]interface{}{
         "calories": calories,
@@ -617,7 +513,7 @@ func HandleMETValues(w http.ResponseWriter, r *http.Request) {
     
     w.Header().Set("Content-Type", "application/json")
     
-    metValues, err := manager.GetMETValues()
+    metValues, err := GetMETValues()
     if err != nil {
         log.ErrorF("Failed to get MET values: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -628,7 +524,7 @@ func HandleMETValues(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetUserProfile(w http.ResponseWriter, r *http.Request) {
-    profile, err := manager.GetUserProfile()
+    profile, err := GetUserProfile()
     if err != nil {
         log.ErrorF("Failed to get user profile: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -658,7 +554,7 @@ func handleSaveUserProfile(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    profile, err := manager.SaveUserProfile(req.Name, req.Gender, req.Weight, req.Height, req.Age)
+    profile, err := SaveUserProfile(req.Name, req.Gender, req.Weight, req.Height, req.Age)
     if err != nil {
         log.ErrorF("Failed to save user profile: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -692,7 +588,7 @@ func HandleUpdateTemplateCalories(w http.ResponseWriter, r *http.Request) {
         weight = 70.0 // Default standard weight
     }
     
-    err := manager.UpdateAllTemplateCalories(weight)
+    err := UpdateAllTemplateCalories(weight)
     if err != nil {
         log.ErrorF("Failed to update template calories: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -732,7 +628,7 @@ func HandleUpdateExerciseCalories(w http.ResponseWriter, r *http.Request) {
         weight = 70.0 // Default standard weight
     }
     
-    updatedCount, err := manager.UpdateAllExerciseCalories(weight)
+    updatedCount, err := UpdateAllExerciseCalories(weight)
     if err != nil {
         log.ErrorF("Failed to update exercise calories: %v", err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -766,7 +662,7 @@ func HandleGetMETValue(w http.ResponseWriter, r *http.Request) {
         return
     }
     
-    met, description := manager.GetMETValueWithDescription(exerciseType, intensity)
+    met, description := GetMETValueWithDescription(exerciseType, intensity)
     
     response := map[string]interface{}{
         "met": met,

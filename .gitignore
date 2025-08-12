@@ -13,3 +13,4 @@ blogs_txt/
 CLAUDE.md
 .claude/settings.local.json
 *.log
+*.rdb

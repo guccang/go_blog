@@ -7,6 +7,7 @@ import (
 	"config"
 	"control"
 	"cooperation"
+	"exercise"
 	"fmt"
 	"http"
 	"ioutils"
@@ -70,6 +71,7 @@ func main() {
 	mcp.Info()
 	llm.Info()
 	tools.Info()
+	exercise.Info()
 
 	// Init
 	config.Init(args[1])
@@ -92,6 +94,7 @@ func main() {
 	go mcp.Init()
 	llm.Init()
 	sms.Init()
+	exercise.Init()
 	persistence.SaveBlogs(blog.Blogs)
 
 	log.Debug("go_blog started")
