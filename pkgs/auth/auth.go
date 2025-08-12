@@ -1,39 +1,58 @@
 package auth
+
 import (
+	"core"
 	log "mylog"
-	"github.com/google/uuid"
 )
 
-func Info(){
+func Info() {
 	log.Debug("info auth v1.0")
 }
 
-// Login Session
-var Sessions = make([]string,0)
-
-func AddSession(account string) string{
-	RemoveSession(account)
-	s := genSession()
-	Sessions = append(Sessions,s)
-	return s
-}
-
-func RemoveSession(account string){
-	if len(Sessions) > 1 {
-		Sessions = Sessions[1:]
+func Init() {
+	auth_actor = &AuthActor{
+		Actor:    core.NewActor(),
+		sessions: make(map[string]string),
 	}
+	auth_actor.Start(auth_actor)
 }
 
-func genSession()string{
-	return uuid.New().String()
-}
+// auth actor data
+var auth_actor *AuthActor
 
-// Check login session
-func CheckLoginSession(s string) int {
-	for _, session := range Sessions {
-		if s == session {
-			return 0
-		}
+// interface
+func AddSession(account string) string {
+	cmd := &addSessionCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
 	}
-	return 1
+	auth_actor.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(string)
+}
+
+func RemoveSession(account string) int {
+	cmd := &removeSessionCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+	}
+	auth_actor.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(int)
+}
+
+func CheckLoginSession(session string) int {
+	cmd := &checkLoginSessionCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Session: session,
+	}
+	auth_actor.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(int)
 }

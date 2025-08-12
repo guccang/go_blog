@@ -1,77 +1,90 @@
 package login
 
 import (
-	"auth"
 	"config"
+	"core"
 	"module"
 	log "mylog"
-	"sms"
 )
+
+// 登录模块actor
+var login_module *LoginActor
 
 func Info() {
 	log.Debug("info login v1.0")
 }
 
-var Users = make(map[string]*module.User)
-var codes = make(map[string]string)
-
+// 初始化login模块，用于用户登录，短信验证登录，账号密码登录，登出
 func Init() {
-	account := config.GetConfig("admin")
-	pwd := config.GetConfig("pwd")
-	Users[account] = &module.User{
-		Account:  account,
-		Password: pwd,
+	login_module = &LoginActor{
+		Actor:     core.NewActor(),
+		users:     make(map[string]*module.User),
+		sms_codes: make(map[string]string),
 	}
-	codes[account] = "901124"
+
+	// 管理员账号密码
+	admin_account := config.GetConfig("admin")
+	admin_pwd := config.GetConfig("pwd")
+	login_module.users[admin_account] = &module.User{
+		Account:  admin_account,
+		Password: admin_pwd,
+	}
+	login_module.sms_codes[admin_account] = "901124"
+	login_module.Start(login_module)
+
 }
 
-// 短信验证登录,因为只有你一个人登录，所以不需要输入账号
-func LoginSMS(verfycode string) (string, int) {
-	account := config.GetConfig("admin")
-	code, ok := codes[account]
-	if !ok {
-		return "", 1
-	}
+// interface
 
-	if code != verfycode {
-		return "", 2
-	}
-
-	s := auth.AddSession(account)
-	log.InfoF("LoginSMS account=%s code=%s verfycode=%s", account, code, verfycode)
-	return s, 0
-}
-
-// 产生短信
-func GenerateSMSCode() (string, int) {
-	code, err := sms.SendSMS()
-	if err != nil {
-		log.InfoF("GenerateSMSCode err=%s",err.Error())
-		return "", 1
-	}
-
-	account := config.GetConfig("admin")
-	codes[account] = code
-
-	return code, 0
-}
-
-// 账号密码登录
 func Login(account string, password string) (string, int) {
-	u, ok := Users[account]
-	if !ok {
-		return "", 1
+	cmd := &LoginCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account:  account,
+		Password: password,
 	}
-
-	if u.Password != password {
-		return "", 2
-	}
-
-	s := auth.AddSession(account)
-
-	return s, 0
+	login_module.Send(cmd)
+	session := <-cmd.Response()
+	code := <-cmd.Response()
+	return session.(string), code.(int)
 }
 
-func Logout(account string) {
-	auth.RemoveSession(account)
+func LoginSMS(account string, verfycode string) (string, int) {
+	cmd := &LoginSMSCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account:   account,
+		Verfycode: verfycode,
+	}
+	login_module.Send(cmd)
+	session := <-cmd.Response()
+	code := <-cmd.Response()
+	return session.(string), code.(int)
+}
+
+func Logout(account string) int {
+	cmd := &LoginOutCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+	}
+	login_module.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(int)
+}
+
+func GenerateSMSCode(account string) (string, int) {
+	cmd := &GenerateSMSCodeCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+	}
+	login_module.Send(cmd)
+	code := <-cmd.Response()
+	ret := <-cmd.Response()
+	return code.(string), ret.(int)
 }

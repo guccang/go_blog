@@ -6,9 +6,9 @@ import (
 	"cooperation"
 	"crypto/md5"
 	"encoding/hex"
-	h "net/http"
 	"login"
 	log "mylog"
+	h "net/http"
 	"strings"
 	"time"
 	"view"
@@ -30,7 +30,8 @@ func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	code, ret := login.GenerateSMSCode()
+	account := config.GetConfig("admin")
+	code, ret := login.GenerateSMSCode(account)
 	log.InfoF("SMS Generate code=%s for device_id=%s", code, device_id)
 	if ret != 0 {
 		h.Error(w, "SMS generation failed", h.StatusBadRequest)
@@ -74,7 +75,7 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session, ret := login.LoginSMS(code)
+	session, ret := login.LoginSMS(account, code)
 	if ret != 0 {
 		h.Error(w, "invalid SMS code or code expired", h.StatusBadRequest)
 		return

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"auth"
 	"blog"
 	"comment"
 	"config"
@@ -83,6 +84,7 @@ func main() {
 
 	persistence.Init()
 	control.Init()
+	auth.Init()
 	login.Init()
 	blogs_txt_dir := config.GetBlogsPath()
 	control.ImportBlogsFromPath(blogs_txt_dir)
