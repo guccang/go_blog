@@ -1,138 +1,135 @@
 package share
+
 import (
+	"core"
 	log "mylog"
-	"github.com/google/uuid"
-	"fmt"
-	"time"
-	"strconv"
-	"config"
 )
 
-func Info(){
+// 分享模块actor
+var share_module *ShareActor
+
+func Info() {
 	log.InfoF("info share v8.0")
 }
 
-
-type SharedBlog struct {
-	Pwd		string
-	Title	string
-	Count	int
-	URL		string
-	Timeout int64
+// 初始化share模块，用于博客和标签分享管理
+func Init() {
+	share_module = &ShareActor{
+		Actor:       core.NewActor(),
+		sharedBlogs: make(map[string]*SharedBlog),
+		sharedTags:  make(map[string]*SharedTag),
+	}
+	share_module.Start(share_module)
 }
 
-type SharedTag struct {
-    Pwd		string
-	Tag		string
-	Count	int
-	URL		string
-	Timeout int64
-}
+// interface
 
-var SharedBlogs = make(map[string]*SharedBlog)
-var SharedTags = make(map[string]*SharedTag)
-
-func GetSharedBlog(title string)*SharedBlog{
-	b, ok := SharedBlogs[title]
-	if !ok {
+func GetSharedBlogs() map[string]*SharedBlog {
+	cmd := &GetSharedBlogsCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+	}
+	share_module.Send(cmd)
+	ret := <-cmd.Response()
+	if ret == nil {
 		return nil
 	}
-	return b
+	return ret.(map[string]*SharedBlog)
 }
 
-func GetSharedTag(title string)*SharedTag{
-	b, ok := SharedTags[title]
-	if !ok {
+func GetSharedTags() map[string]*SharedTag {
+	cmd := &GetSharedTagsCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+	}
+	share_module.Send(cmd)
+	ret := <-cmd.Response()
+	if ret == nil {
 		return nil
 	}
-	return b
+	return ret.(map[string]*SharedTag)
 }
 
-// 7天超时时间戳
-func Get7DaysTimeOutStamp()int64{
-	utcTimestamp := time.Now().UTC().Unix()
-	share_days,err := strconv.Atoi(config.GetConfig("share_days"))
-	if err != nil {
-		share_days = 7
+func GetSharedBlog(title string) *SharedBlog {
+	cmd := &GetSharedBlogCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
 	}
-	return utcTimestamp + (int64(share_days) * 24 * 3600)
+	share_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
+		return nil
+	}
+	return result.(*SharedBlog)
 }
 
-func AddSharedBlog(title string) (string,string){
-	b, ok := SharedBlogs[title]
-	if !ok {
-		pwd := uuid.New().String()
-		url := fmt.Sprintf("/getshare?t=0&name=%s&pwd=%s",title,pwd)
-		SharedBlogs[title] = &SharedBlog{
-			Title : title,
-			Count : 9999,
-			Pwd : pwd,
-			URL : url,
-			Timeout : Get7DaysTimeOutStamp(),
-		}
-		return url,pwd
+func GetSharedTag(tag string) *SharedTag {
+	cmd := &GetSharedTagCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Tag: tag,
 	}
-
-	b.Count = b.Count + 1
-	return b.URL,b.Pwd
+	share_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
+		return nil
+	}
+	return result.(*SharedTag)
 }
 
-func AddSharedTag(tag string) (string,string){
-	t, ok := SharedTags[tag]
-	if !ok {
-		pwd := uuid.New().String()
-		url := fmt.Sprintf("/getshare?t=1&name=%s&pwd=%s",tag,pwd)
-		SharedTags[tag] = &SharedTag{
-			Tag : tag,
-			Count : 9999,
-			Pwd : pwd,
-			URL : url,
-			Timeout : Get7DaysTimeOutStamp(),
-		}
-		return url,pwd
+func AddSharedBlog(title string) (string, string) {
+	cmd := &AddSharedBlogCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
 	}
-	t.Count = t.Count + 1
-	return t.URL,t.Pwd
+	share_module.Send(cmd)
+	url := <-cmd.Response()
+	pwd := <-cmd.Response()
+	return url.(string), pwd.(string)
 }
 
-func ModifyCntSharedBlog(title string,c int) int{
-	b, ok := SharedBlogs[title]	
-	if !ok {
-		return -1
+func AddSharedTag(tag string) (string, string) {
+	cmd := &AddSharedTagCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Tag: tag,
 	}
-
-	b.Count = b.Count + c
-	if b.Count < 0 {
-		delete(SharedBlogs,title)
-		return -2
-	}	
-
-	utcTimestamp := time.Now().UTC().Unix()
-	if b.Timeout < utcTimestamp {
-		delete(SharedBlogs,title)
-		return -3
-	}
-
-	return b.Count
+	share_module.Send(cmd)
+	url := <-cmd.Response()
+	pwd := <-cmd.Response()
+	return url.(string), pwd.(string)
 }
 
-func ModifyCntSharedTag(tag string,c int) int{
-	b, ok := SharedBlogs[tag]	
-	if !ok {
-		return -1
+func ModifyCntSharedBlog(title string, c int) int {
+	cmd := &ModifyCntSharedBlogCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
+		Count: c,
 	}
+	share_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
+}
 
-	b.Count = b.Count + c
-	if b.Count < 0 {
-		delete(SharedTags,tag)
-		return -2
-	}	
-
-	utcTimestamp := time.Now().UTC().Unix()
-	if b.Timeout < utcTimestamp {
-		delete(SharedTags,tag)
-		return -3
+func ModifyCntSharedTag(tag string, c int) int {
+	cmd := &ModifyCntSharedTagCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Tag:   tag,
+		Count: c,
 	}
-
-	return b.Count
+	share_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
 }
