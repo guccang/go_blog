@@ -36,8 +36,6 @@ replace search => ./pkgs/search
 
 replace share => ./pkgs/share
 
-replace cooperation => ./pkgs/cooperation
-
 replace statistics => ./pkgs/statistics
 
 replace todolist => ./pkgs/todolist
@@ -65,7 +63,6 @@ require (
 	comment v0.0.0
 	config v0.0.0
 	control v0.0.0
-	cooperation v0.0.0
 	http v0.0.0
 	ioutils v0.0.0
 	llm v0.0.0

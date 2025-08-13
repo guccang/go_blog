@@ -63,11 +63,8 @@
 								<span class="circle-text" data-title="{{.DESC}}"></span>
 							</div>
 							<span class="circle-title">
-								{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{if .IS_COOPERATION}}<span class="cooperation-icon">🤝</span>{{end}}{{.DESC}}
+								{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
 							</span>
-							{{ if ne 0 .COOPERATION }}
-							<span class="dot-indicator"></span>
-							{{end}}
 						</a>
 					</div>
 				{{end}}
@@ -80,16 +77,9 @@
 		<div class="container">
 		{{range .LINKS}}
 			<div class="link-card">
-			{{ if eq 0 .COOPERATION }}
-					<a class="link-with-dot" href="{{.URL}}">
-						{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{if .IS_COOPERATION}}<span class="cooperation-icon">🤝</span>{{end}}{{.DESC}}
-					</a>
-			{{else}}
-					<a class="link-with-dot" href="{{.URL}}">
-					{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{if .IS_COOPERATION}}<span class="cooperation-icon">🤝</span>{{end}}{{.DESC}}
-					<span class="dot"></span>
-					</a>
-			{{end}}
+				<a class="link-with-dot" href="{{.URL}}">
+				{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
+				</a>
 			</div>
 		{{end}}
 		</div>

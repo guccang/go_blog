@@ -6,7 +6,6 @@ import (
 	"comment"
 	"config"
 	"control"
-	"cooperation"
 	"exercise"
 	"fmt"
 	"http"
@@ -19,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"persistence"
+	"reading"
 	"search"
 	"share"
 	"sms"
@@ -66,12 +66,12 @@ func main() {
 	comment.Info()
 	search.Info()
 	share.Info()
-	cooperation.Info()
 	statistics.Info()
 	mcp.Info()
 	llm.Info()
 	tools.Info()
 	exercise.Info()
+	reading.Info()
 
 	// Init
 	config.Init(args[1])
@@ -85,16 +85,20 @@ func main() {
 	log.Debug("Logging system initialized")
 
 	persistence.Init()
+	blog.Init()
 	control.Init()
+	comment.Init()
+	reading.Init()
+	statistics.Init()
 	auth.Init()
 	login.Init()
 	blogs_txt_dir := config.GetBlogsPath()
 	control.ImportBlogsFromPath(blogs_txt_dir)
-	cooperation.Init()
 	go mcp.Init()
 	llm.Init()
 	sms.Init()
 	exercise.Init()
+	share.Init()
 	persistence.SaveBlogs(blog.Blogs)
 
 	log.Debug("go_blog started")

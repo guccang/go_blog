@@ -3,7 +3,6 @@ package http
 import (
 	"config"
 	"control"
-	"cooperation"
 	"crypto/md5"
 	"encoding/hex"
 	"login"
@@ -133,14 +132,10 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 
 	session, ret := login.Login(account, pwd)
 	if ret != 0 {
-		session, ret = cooperation.CooperationLogin(account, pwd)
-		if ret != 0 {
-			// 记录失败的登录
-			control.RecordUserLogin(account, remoteAddr, false)
-			h.Error(w, "Error account or pwd", h.StatusBadRequest)
-			return
-		}
-		log.DebugF("cooperation login ok account=%s pwd=%s", account, pwd)
+		// 记录失败的登录
+		control.RecordUserLogin(account, remoteAddr, false)
+		h.Error(w, "Error account or pwd", h.StatusBadRequest)
+		return
 	}
 
 	// 记录成功的登录
@@ -155,7 +150,7 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 	h.SetCookie(w, cookie)
 
-	log.DebugF("login success account=%s pwd=%s session=%s iscooperation=%d", account, pwd, session, cooperation.IsCooperation(session))
+	log.DebugF("login success account=%s pwd=%s session=%s", account, pwd, session)
 	h.Redirect(w, r, "/main", 302)
 }
 

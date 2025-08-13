@@ -3,7 +3,6 @@ package statistics
 import (
 	"blog"
 	"comment"
-	"cooperation"
 	"exercise"
 	"fmt"
 	log "mylog"
@@ -132,7 +131,7 @@ func RawGetBlogData(title string) string {
 
 // 获取所有comment
 func RawAllCommentData() string {
-	comments := comment.Comments
+	comments := comment.GetAllComments()
 	commentData := make([]string, 0)
 	for _, c := range comments {
 		commentData = append(commentData, c.Title)
@@ -151,16 +150,6 @@ func RawCommentData(title string) string {
 		return msg
 	}
 	return ""
-}
-
-// 获取所有cooperation
-func RawAllCooperationData() string {
-	cooperations := cooperation.Cooperations
-	cooperationData := make([]string, 0)
-	for _, c := range cooperations {
-		cooperationData = append(cooperationData, c.Account)
-	}
-	return strings.Join(cooperationData, " ")
 }
 
 // 根据日期获取所有Blog
@@ -263,9 +252,9 @@ func RawGetBlogDataByDate(date string) string {
 // 获取博客详细统计信息
 func RawBlogStatistics() string {
 	stats := calculateBlogStatistics()
-	result := fmt.Sprintf("总博客数:%d,公开:%d,私有:%d,加密:%d,协作:%d,今日新增:%d,本周新增:%d,本月新增:%d",
+	result := fmt.Sprintf("总博客数:%d,公开:%d,私有:%d,加密:%d,今日新增:%d,本周新增:%d,本月新增:%d",
 		stats.TotalBlogs, stats.PublicBlogs, stats.PrivateBlogs, stats.EncryptBlogs,
-		stats.CooperationBlogs, stats.TodayNewBlogs, stats.WeekNewBlogs, stats.MonthNewBlogs)
+		stats.TodayNewBlogs, stats.WeekNewBlogs, stats.MonthNewBlogs)
 	return result
 }
 

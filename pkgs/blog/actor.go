@@ -110,9 +110,6 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 	if (authType & module.EAuthType_diary) != 0 {
 		log.InfoF("博客 '%s' 设置了日记权限，AuthType=%d", title, authType)
 	}
-	if (authType & module.EAuthType_cooperation) != 0 {
-		log.InfoF("博客 '%s' 设置了协作权限，AuthType=%d", title, authType)
-	}
 	if (authType & module.EAuthType_encrypt) != 0 {
 		log.InfoF("博客 '%s' 设置了加密权限，AuthType=%d", title, authType)
 	}
@@ -145,22 +142,12 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 	b.ModifyNum += 1
 
 	finalAuthType := authType
-	if (b.AuthType & module.EAuthType_cooperation) != 0 {
-		if (authType & module.EAuthType_cooperation) != 0 {
-			log.DebugF("博客 '%s' 保持协作权限", title)
-		} else {
-			log.InfoF("博客 '%s' 移除协作权限，原AuthType=%d，新AuthType=%d", title, b.AuthType, authType)
-		}
-	}
 
 	b.AuthType = finalAuthType
 	b.Tags = tags
 
 	if (authType & module.EAuthType_diary) != 0 {
 		log.InfoF("博客 '%s' 更新了日记权限，AuthType=%d", title, authType)
-	}
-	if (authType & module.EAuthType_cooperation) != 0 {
-		log.InfoF("博客 '%s' 更新了协作权限，AuthType=%d", title, authType)
 	}
 	if (authType & module.EAuthType_encrypt) != 0 {
 		log.InfoF("博客 '%s' 更新了加密权限，AuthType=%d", title, authType)

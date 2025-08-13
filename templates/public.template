@@ -73,7 +73,7 @@
             <div class="link-card" data-tags="{{range .TAGS}}{{.}} {{end}}">
                 <a class="link-with-dot" href="{{.URL}}">
                     <div class="blog-title">
-                        {{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{if .IS_COOPERATION}}<span class="cooperation-icon">🤝</span>{{end}}{{.DESC}}
+                        {{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
                     </div>
                     {{if .ACCESS_TIME}}
                         <div class="blog-time">访问时间: {{.ACCESS_TIME}}</div>

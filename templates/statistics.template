@@ -93,8 +93,6 @@
                 <div class="card">
                     <div class="card-icon">🤝</div>
                     <div class="card-content">
-                        <h3 id="cooperation-users">0</h3>
-                        <p>协作用户</p>
                     </div>
                 </div>
             </div>
@@ -111,7 +109,6 @@
                         <li>公开博客: <span id="public-blogs">0</span></li>
                         <li>私有博客: <span id="private-blogs">0</span></li>
                         <li>加密博客: <span id="encrypt-blogs">0</span></li>
-                        <li>协作博客: <span id="cooperation-blogs">0</span></li>
                     </ul>
                 </div>
                 <div class="stat-item">

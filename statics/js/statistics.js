@@ -103,7 +103,6 @@ function renderOverviewCards(data) {
     setElementText('total-logins', formatNumber(data.user_stats.total_logins));
     setElementText('unique-visitors', data.ip_stats.unique_visitors);
     setElementText('total-tags', data.tag_stats.total_tags);
-    setElementText('cooperation-users', data.cooperation_stats.cooperation_users);
 }
 
 // 渲染博客统计
@@ -111,7 +110,6 @@ function renderBlogStats(blogStats) {
     setElementText('public-blogs', blogStats.public_blogs);
     setElementText('private-blogs', blogStats.private_blogs);
     setElementText('encrypt-blogs', blogStats.encrypt_blogs);
-    setElementText('cooperation-blogs', blogStats.cooperation_blogs);
     setElementText('today-new-blogs', blogStats.today_new_blogs);
     setElementText('week-new-blogs', blogStats.week_new_blogs);
     setElementText('month-new-blogs', blogStats.month_new_blogs);
@@ -625,7 +623,6 @@ function generateMockData() {
             public_blogs: 89,
             private_blogs: 45,
             encrypt_blogs: 12,
-            cooperation_blogs: 10,
             today_new_blogs: 3,
             week_new_blogs: 8,
             month_new_blogs: 25
@@ -714,12 +711,6 @@ function generateMockData() {
                 { tag: "最新技术", count: 5 },
                 { tag: "学习笔记", count: 8 }
             ]
-        },
-        cooperation_stats: {
-            cooperation_users: 5,
-            cooperation_blogs: 23,
-            active_cooperation_users: ["用户A", "用户B"],
-            cooperation_tag_stats: { "协作": 15, "团队": 8 }
         },
         time_analysis: {
             creation_time_distribution: { "2024-01": 15, "2024-02": 23 },

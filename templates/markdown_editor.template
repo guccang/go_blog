@@ -59,12 +59,6 @@
             </label>
             <small class="permission-hint">需要额外密码验证</small>
             
-            <label class="custom-checkbox">
-                <input type="checkbox" name="cooperation_permission" id="cooperation_permission"
-                    {{ if .IS_COOPERATION }}checked{{ end }}>
-                <span class="checkbox-btn"><i class="checkmark"></i></span>
-                <span class="checkbox-label">🤝 协作权限</span>
-            </label>
             <small class="permission-hint">允许协作用户访问</small>
             
             <label class="custom-checkbox">

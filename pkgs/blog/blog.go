@@ -175,7 +175,6 @@ func DelAuthType(blogname string, flag int) {
 	<-cmd.Response()
 }
 
-// Reintroduce for compatibility with cooperation module
 func GetURLBlogNames(blogname string) []string {
 	cmd := &getURLNamesCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}, Blogname: blogname}
 	blog_actor.Send(cmd)

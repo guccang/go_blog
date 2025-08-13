@@ -365,11 +365,9 @@ function submitContent() {
 	
 	// Get special permissions with null checks
 	const diaryElement = document.getElementById('diary_permission');
-	const cooperationElement = document.getElementById('cooperation_permission');
 	const encryptElement = document.getElementById('encrypt_permission');
 	
 	const diaryPermission = diaryElement ? diaryElement.checked : false;
-	const cooperationPermission = cooperationElement ? cooperationElement.checked : false;
 	const encryptPermission = encryptElement ? encryptElement.checked : false;
 	
 	// 检查是否已经是加密博客
@@ -388,7 +386,6 @@ function submitContent() {
 	// Build combined auth type string
 	let authTypeArray = [baseAuthType];
 	if (diaryPermission) authTypeArray.push('diary');
-	if (cooperationPermission) authTypeArray.push('cooperation');
 	if (encryptPermission) authTypeArray.push('encrypt');
 	
 	const authType = authTypeArray.join(',');
@@ -1097,5 +1094,93 @@ const observer = new MutationObserver(function(mutations) {
 const mdElement = document.getElementById('md');
 if (mdElement) {
 	observer.observe(mdElement, { childList: true, subtree: true });
+}
+
+// Share functionality
+function onShare() {
+	const title = document.getElementById('title').textContent.trim();
+	if (!title) {
+		showToast('无法获取博客标题', 'error');
+		return;
+	}
+
+	// 显示加载状态
+	const shareButton = document.getElementById('share-button');
+	const originalText = shareButton.textContent;
+	shareButton.textContent = '⏳ 生成中...';
+	shareButton.disabled = true;
+
+	// 调用API创建分享链接
+	fetch('/api/createshare', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+		},
+		body: `blogname=${encodeURIComponent(title)}`
+	})
+	.then(response => {
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+		return response.json();
+	})
+	.then(data => {
+		if (data.success) {
+			// 复制分享链接到剪贴板
+			const shareText = `📝 博客分享\n标题：${data.blogname}\n链接：${data.url}\n访问密码：${data.pwd}\n\n💡 点击链接并输入密码即可查看博客内容`;
+			
+			if (navigator.clipboard && window.isSecureContext) {
+				// 使用现代 Clipboard API
+				navigator.clipboard.writeText(shareText).then(() => {
+					showToast('🎉 分享链接已复制到剪贴板！', 'success');
+				}).catch(err => {
+					console.error('复制失败:', err);
+					fallbackCopyTextToClipboard(shareText);
+				});
+			} else {
+				// 降级到传统方法
+				fallbackCopyTextToClipboard(shareText);
+			}
+		} else {
+			showToast('生成分享链接失败', 'error');
+		}
+	})
+	.catch(error => {
+		console.error('Error:', error);
+		showToast('生成分享链接时发生错误', 'error');
+	})
+	.finally(() => {
+		// 恢复按钮状态
+		shareButton.textContent = originalText;
+		shareButton.disabled = false;
+	});
+}
+
+// 降级复制方法（适用于旧浏览器或非HTTPS环境）
+function fallbackCopyTextToClipboard(text) {
+	const textArea = document.createElement("textarea");
+	textArea.value = text;
+	textArea.style.top = "0";
+	textArea.style.left = "0";
+	textArea.style.position = "fixed";
+	textArea.style.opacity = "0";
+
+	document.body.appendChild(textArea);
+	textArea.focus();
+	textArea.select();
+
+	try {
+		const successful = document.execCommand('copy');
+		if (successful) {
+			showToast('🎉 分享链接已复制到剪贴板！', 'success');
+		} else {
+			showToast('复制失败，请手动复制分享信息', 'error');
+		}
+	} catch (err) {
+		console.error('降级复制方法失败:', err);
+		showToast('复制失败，请手动复制分享信息', 'error');
+	}
+
+	document.body.removeChild(textArea);
 }
 		

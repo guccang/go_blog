@@ -1,5 +1,5 @@
 
-modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search" "share" "cooperation")
+modules=("http" "module" "control" "view" "persistence" "mylog" "config" "ioutils" "login" "auth" "comment" "blog" "email" "encryption" "search" "share")
 prename="pkgs"
 
 cur_path=$(realpath $0)

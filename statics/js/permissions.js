@@ -62,7 +62,6 @@ function initPermissionControls() {
     const encryptCheckbox = document.getElementById('encrypt_permission');
     const encryptInput = document.getElementById('encrypt');
     const diaryCheckbox = document.getElementById('diary_permission');
-    const cooperationCheckbox = document.getElementById('cooperation_permission');
     
     // 加密权限与密码输入框联动
     if (encryptCheckbox && encryptInput) {
@@ -116,26 +115,6 @@ function initPermissionControls() {
                         '查看配置方法',
                         '知道了',
                         () => showDiaryPasswordHelp()
-                    );
-                }, 500);
-            }
-        });
-    }
-    
-    // 协作权限提示
-    if (cooperationCheckbox) {
-        cooperationCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                showToast('🤝 协作权限已启用！协作用户可以访问此博客', 'info');
-                
-                // 显示协作权限说明
-                setTimeout(() => {
-                    showCustomConfirm(
-                        '🤝 协作权限说明',
-                        '协作用户可以访问此博客\n协作用户需要在系统中配置',
-                        '查看配置方法',
-                        '知道了',
-                        () => showCooperationHelp()
                     );
                 }, 500);
             }
@@ -216,7 +195,6 @@ function updateEncryptInputState() {
 function getPermissionSummary() {
     const baseAuth = document.querySelector('input[name="base_auth_type"]:checked');
     const diary = document.getElementById('diary_permission');
-    const cooperation = document.getElementById('cooperation_permission');
     const encrypt = document.getElementById('encrypt_permission');
     
     let summary = [];
@@ -227,10 +205,6 @@ function getPermissionSummary() {
     
     if (diary && diary.checked) {
         summary.push('📔 日记');
-    }
-    
-    if (cooperation && cooperation.checked) {
-        summary.push('🤝 协作');
     }
     
     if (encrypt && encrypt.checked) {
@@ -494,26 +468,6 @@ function showDiaryPasswordHelp() {
     showCustomAlert('📔 日记密码配置指南', helpText);
 }
 
-// 显示协作权限配置帮助
-function showCooperationHelp() {
-    const helpText = `👥 协作用户管理：
-协作用户需要在系统配置中添加
-
-🔧 配置方法：
-1. 访问系统配置页面
-2. 添加协作用户账号和密码
-3. 为协作用户指定可访问的博客
-
-⚙️ 权限说明：
-• 协作用户可以访问标记为"协作"的博客
-• 需要单独的登录认证
-• 可与其他权限组合使用
-
-💡 使用场景：
-适合团队协作或特定用户分享`;
-    
-    showCustomAlert('🤝 协作权限配置指南', helpText);
-}
 
 // 导出函数供其他脚本使用
 window.PermissionManager = {

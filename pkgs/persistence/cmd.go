@@ -89,44 +89,6 @@ func (cmd *GetAllBlogCommentsCmd) Do(actor core.ActorInterface) {
 	cmd.Response() <- comments
 }
 
-// 保存合作信息cmd
-type SaveCooperationCmd struct {
-	core.ActorCommand
-	Account string
-	Pwd     string
-	Blogs   string
-	Tags    string
-}
-
-func (cmd *SaveCooperationCmd) Do(actor core.ActorInterface) {
-	persistenceActor := actor.(*PersistenceActor)
-	result := persistenceActor.saveCooperation(cmd.Account, cmd.Pwd, cmd.Blogs, cmd.Tags)
-	cmd.Response() <- result
-}
-
-// 删除合作信息cmd
-type DelCooperationCmd struct {
-	core.ActorCommand
-	Account string
-}
-
-func (cmd *DelCooperationCmd) Do(actor core.ActorInterface) {
-	persistenceActor := actor.(*PersistenceActor)
-	result := persistenceActor.delCooperation(cmd.Account)
-	cmd.Response() <- result
-}
-
-// 获取所有合作信息cmd
-type GetCooperationsCmd struct {
-	core.ActorCommand
-}
-
-func (cmd *GetCooperationsCmd) Do(actor core.ActorInterface) {
-	persistenceActor := actor.(*PersistenceActor)
-	cooperations := persistenceActor.getCooperations()
-	cmd.Response() <- cooperations
-}
-
 // 保存评论用户cmd
 type SaveCommentUserCmd struct {
 	core.ActorCommand

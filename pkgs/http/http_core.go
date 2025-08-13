@@ -4,13 +4,12 @@ import (
 	"auth"
 	"config"
 	"constellation"
-	"cooperation"
 	"exercise"
 	"fmt"
-	h "net/http"
 	"mcp"
 	"module"
 	log "mylog"
+	h "net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +43,6 @@ func parseAuthTypeString(authTypeStr string) int {
 			authType |= module.EAuthType_public
 		case "diary":
 			authType |= module.EAuthType_diary
-		case "cooperation":
-			authType |= module.EAuthType_cooperation
 		case "encrypt":
 			authType |= module.EAuthType_encrypt
 		}
@@ -82,12 +79,6 @@ func getsession(r *h.Request) string {
 		return ""
 	}
 	return session.Value
-}
-
-// IsCooperation checks if the request is from a cooperation user
-func IsCooperation(r *h.Request) bool {
-	session := getsession(r)
-	return cooperation.IsCooperation(session)
 }
 
 // checkLogin validates user login session
@@ -136,11 +127,7 @@ func HandleLink(w h.ResponseWriter, r *h.Request) {
 	}
 
 	session := getsession(r)
-	is_cooperation := cooperation.IsCooperation(session)
 	flag := module.EAuthType_all
-	if is_cooperation {
-		flag = module.EAuthType_cooperation | module.EAuthType_public
-	}
 	view.PageLink(w, flag, session)
 }
 
@@ -216,6 +203,9 @@ func Init() int {
 	h.HandleFunc("/tag", HandleTag)
 	h.HandleFunc("/getshare", HandleGetShare)
 	h.HandleFunc("/public", HandlePublic)
+
+	// Share routes
+	h.HandleFunc("/api/createshare", HandleCreateShare)
 
 	// Todolist routes
 	h.HandleFunc("/todolist", HandleTodolist)

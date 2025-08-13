@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-redis/redis"
 	"config"
 	"ioutils"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/go-redis/redis"
 )
 
 /*
@@ -373,68 +374,6 @@ func (p *PersistenceActor) showBlogComments(cs *module.BlogComments) {
 	}
 }
 
-func (p *PersistenceActor) toCooperation(m map[string]string) *module.Cooperation {
-	now := p.strTime()
-	ct, ok := m["ct"]
-	if !ok {
-		ct = now
-	}
-	account, ok := m["account"]
-	if !ok {
-		return nil
-	}
-	pwd, ok := m["pwd"]
-	if !ok {
-		return nil
-	}
-	tags, ok := m["tags"]
-	if !ok {
-		tags = ""
-	}
-	blogs, ok := m["blogs"]
-	if !ok {
-		blogs = ""
-	}
-
-	c := &module.Cooperation{
-		Account:    account,
-		Password:   pwd,
-		CreateTime: ct,
-		Tags:       tags,
-		Blogs:      blogs,
-	}
-	return c
-}
-
-func (p *PersistenceActor) delCooperation(account string) int {
-	key := fmt.Sprintf("cooperation@%s", account)
-	err := p.client.Del(key).Err()
-	if err != nil {
-		log.ErrorF("delete cooperation error key=%s err=%s", key, err.Error())
-		return 1
-	}
-
-	log.DebugF("delete account=%s", key)
-	return 0
-}
-
-func (p *PersistenceActor) saveCooperation(account string, pwd string, blogs string, tags string) int {
-	key := fmt.Sprintf("cooperation@%s", account)
-	values := make(map[string]interface{})
-	values["account"] = account
-	values["pwd"] = pwd
-	values["ct"] = p.strTime()
-	values["blogs"] = blogs
-	values["tags"] = tags
-	err := p.client.HMSet(key, values).Err()
-	if err != nil {
-		log.ErrorF("savecooperation error key=%s err=%s", key, err.Error())
-		return 1
-	}
-	log.DebugF("redis savecooperation success account=%s pwd=%s", key, pwd)
-	return 0
-}
-
 func (p *PersistenceActor) saveCommentUser(user *module.CommentUser) {
 	key := fmt.Sprintf("comment_user@%s", user.UserID)
 	values := make(map[string]interface{})
@@ -646,28 +585,4 @@ func (p *PersistenceActor) toCommentSession(m map[string]string) *module.Comment
 		ExpireTime: m["expire_time"],
 		IsActive:   isActive,
 	}
-}
-
-func (p *PersistenceActor) getCooperations() map[string]*module.Cooperation {
-	keys, err := p.client.Keys("cooperation@*").Result()
-	if err != nil {
-		log.ErrorF("getblogs error keys=cooperation@* err=%s", err.Error())
-		return nil
-	}
-
-	cooperations := make(map[string]*module.Cooperation)
-
-	for _, key := range keys {
-		log.DebugF("getcooperation key=%s", key)
-		m, err := p.client.HGetAll(key).Result()
-		if err != nil {
-			log.ErrorF("getcooperation error key=%s err=%s", key, err.Error())
-			continue
-		}
-		log.DebugF("getcooperation success key=%s", key)
-		c := p.toCooperation(m)
-		cooperations[c.Account] = c
-	}
-
-	return cooperations
 }

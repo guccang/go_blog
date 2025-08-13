@@ -18,8 +18,6 @@
 	--encrypt-bg: rgba(231, 111, 81, 0.1);
 	--diary-color: #6b9080;
 	--diary-bg: rgba(107, 144, 128, 0.1);
-	--cooperation-color: #e9c46a;
-	--cooperation-bg: rgba(233, 196, 106, 0.1);
 }
 
 
@@ -383,15 +381,7 @@ body {
 /* 权限图标通用样式 */
 .encrypt-lock,
 .diary-icon,
-.cooperation-icon {
-    margin-right: 6px;
-    font-size: 14px;
-    padding: 2px 4px;
-    border-radius: 3px;
-    display: inline-block;
-    line-height: 1;
-    transition: all 0.3s ease;
-}
+
 
 /* 加密锁样式 */
 .encrypt-lock {
@@ -413,18 +403,6 @@ body {
 
 .diary-icon:hover {
     background: var(--diary-color);
-    color: white;
-    transform: scale(1.1);
-}
-
-/* 协作图标样式 */
-.cooperation-icon {
-    color: var(--cooperation-color);
-    background: var(--cooperation-bg);
-}
-
-.cooperation-icon:hover {
-    background: var(--cooperation-color);
     color: white;
     transform: scale(1.1);
 }

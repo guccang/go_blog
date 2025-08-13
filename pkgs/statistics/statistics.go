@@ -3,7 +3,6 @@ package statistics
 import (
 	"blog"
 	"comment"
-	"cooperation"
 	"fmt"
 	"module"
 	log "mylog"
@@ -18,28 +17,26 @@ func Info() {
 
 // 统计数据结构
 type Statistics struct {
-	BlogStats        BlogStatistics        `json:"blog_stats"`
-	AccessStats      AccessStatistics      `json:"access_stats"`
-	EditStats        EditStatistics        `json:"edit_stats"`
-	UserStats        UserStatistics        `json:"user_stats"`
-	IPStats          IPStatistics          `json:"ip_stats"`
-	CommentStats     CommentStatistics     `json:"comment_stats"`
-	TagStats         TagStatistics         `json:"tag_stats"`
-	CooperationStats CooperationStatistics `json:"cooperation_stats"`
-	SystemStats      SystemStatistics      `json:"system_stats"`
-	TimeAnalysis     TimeAnalysisData      `json:"time_analysis"`
-	ContentStats     ContentStatistics     `json:"content_stats"`
+	BlogStats    BlogStatistics    `json:"blog_stats"`
+	AccessStats  AccessStatistics  `json:"access_stats"`
+	EditStats    EditStatistics    `json:"edit_stats"`
+	UserStats    UserStatistics    `json:"user_stats"`
+	IPStats      IPStatistics      `json:"ip_stats"`
+	CommentStats CommentStatistics `json:"comment_stats"`
+	TagStats     TagStatistics     `json:"tag_stats"`
+	SystemStats  SystemStatistics  `json:"system_stats"`
+	TimeAnalysis TimeAnalysisData  `json:"time_analysis"`
+	ContentStats ContentStatistics `json:"content_stats"`
 }
 
 type BlogStatistics struct {
-	TotalBlogs       int `json:"total_blogs"`
-	PublicBlogs      int `json:"public_blogs"`
-	PrivateBlogs     int `json:"private_blogs"`
-	EncryptBlogs     int `json:"encrypt_blogs"`
-	CooperationBlogs int `json:"cooperation_blogs"`
-	TodayNewBlogs    int `json:"today_new_blogs"`
-	WeekNewBlogs     int `json:"week_new_blogs"`
-	MonthNewBlogs    int `json:"month_new_blogs"`
+	TotalBlogs    int `json:"total_blogs"`
+	PublicBlogs   int `json:"public_blogs"`
+	PrivateBlogs  int `json:"private_blogs"`
+	EncryptBlogs  int `json:"encrypt_blogs"`
+	TodayNewBlogs int `json:"today_new_blogs"`
+	WeekNewBlogs  int `json:"week_new_blogs"`
+	MonthNewBlogs int `json:"month_new_blogs"`
 }
 
 type AccessStatistics struct {
@@ -98,13 +95,6 @@ type TagStatistics struct {
 	HotTags         []TagInfo      `json:"hot_tags"`
 	RecentUsedTags  []TagInfo      `json:"recent_used_tags"`
 	TagDistribution map[string]int `json:"tag_distribution"`
-}
-
-type CooperationStatistics struct {
-	CooperationUsers       int            `json:"cooperation_users"`
-	CooperationBlogs       int            `json:"cooperation_blogs"`
-	ActiveCooperationUsers []string       `json:"active_cooperation_users"`
-	CooperationTagStats    map[string]int `json:"cooperation_tag_stats"`
 }
 
 type SystemStatistics struct {
@@ -281,7 +271,6 @@ func GetStatistics() *Statistics {
 	stats.IPStats = calculateIPStatistics()
 	stats.CommentStats = calculateCommentStatistics()
 	stats.TagStats = calculateTagStatistics()
-	stats.CooperationStats = calculateCooperationStatistics()
 	stats.SystemStats = calculateSystemStatistics()
 	stats.TimeAnalysis = calculateTimeAnalysis()
 	stats.ContentStats = calculateContentStatistics()
@@ -318,9 +307,6 @@ func calculateBlogStatistics() BlogStatistics {
 		}
 		if (b.AuthType & module.EAuthType_encrypt) != 0 {
 			stats.EncryptBlogs++
-		}
-		if (b.AuthType & module.EAuthType_cooperation) != 0 {
-			stats.CooperationBlogs++
 		}
 
 		createDate := strings.Split(b.CreateTime, " ")[0]
@@ -526,7 +512,7 @@ func calculateIPStatistics() IPStatistics {
 func calculateCommentStatistics() CommentStatistics {
 	stats := CommentStatistics{}
 
-	comments := comment.Comments
+	comments := comment.GetAllComments()
 	var totalComments int
 	blogsWithComments := 0
 
@@ -651,50 +637,12 @@ func calculateTagStatistics() TagStatistics {
 	return stats
 }
 
-// 计算协作统计
-func calculateCooperationStatistics() CooperationStatistics {
-	stats := CooperationStatistics{}
-
-	cooperations := cooperation.Cooperations
-	stats.CooperationUsers = len(cooperations)
-
-	cooperationBlogs := 0
-	blogs := blog.Blogs
-	for _, b := range blogs {
-		if (b.AuthType & module.EAuthType_cooperation) != 0 {
-			cooperationBlogs++
-		}
-	}
-	stats.CooperationBlogs = cooperationBlogs
-
-	activeUsers := make([]string, 0)
-	for account := range cooperations {
-		activeUsers = append(activeUsers, account)
-	}
-	stats.ActiveCooperationUsers = activeUsers
-
-	cooperationTagStats := make(map[string]int)
-	for _, coop := range cooperations {
-		if coop.Tags != "" {
-			tags := strings.Split(coop.Tags, "|")
-			for _, tag := range tags {
-				if tag != "" {
-					cooperationTagStats[tag]++
-				}
-			}
-		}
-	}
-	stats.CooperationTagStats = cooperationTagStats
-
-	return stats
-}
-
 // 计算系统统计
 func calculateSystemStatistics() SystemStatistics {
 	stats := SystemStatistics{}
 
 	stats.SystemUptime = "系统运行中"
-	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.Blogs), len(comment.Comments))
+	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.Blogs), len(comment.GetAllComments()))
 	stats.StaticFiles = 100
 	stats.TemplateFiles = 20
 	stats.TodayOperations = len(accessRecords)

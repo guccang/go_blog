@@ -1,197 +1,215 @@
 package comment
+
 import (
-	"module"
-	db "persistence"
-	log "mylog"
-	"time"
+	"core"
 	"fmt"
-	"config"
+	"module"
+	log "mylog"
+	db "persistence"
 )
+
+// 评论模块actor
+var comment_module *CommentActor
 
 func Info() {
 	fmt.Println("info comment v3.0")
 }
 
-var Comments = make(map[string]*module.BlogComments)
-
-func strTime() string{
-	return  time.Now().Format("2006-01-02 15:04:05")
-}
-
-// 加载评论数据
+// 初始化comment模块，用于评论管理
 func Init() {
+	comment_module = &CommentActor{
+		Actor:    core.NewActor(),
+		comments: make(map[string]*module.BlogComments),
+	}
+
 	// 初始化用户管理器
-	InitUserManager()
-	
+	comment_module.initUserManager()
+
+	// 加载评论数据
 	all_datas := db.GetAllBlogComments()
 	if all_datas != nil {
-		for _,c := range all_datas {
-			Comments[c.Title] = c
+		for _, c := range all_datas {
+			comment_module.comments[c.Title] = c
 		}
 	}
-	log.DebugF("getComments number=%d",len(Comments))
+	log.DebugF("getComments number=%d", len(comment_module.comments))
+
+	comment_module.Start(comment_module)
 }
 
 
-// 添加
-func AddComment(title string,msg string,owner string,pwd string,mail string) int {
-	bc,ok := Comments[title]
-	if !ok {
-		bc = &module.BlogComments {
-			Title : title,
-		}
-		Comments[title] = bc
-	}
+// interface
 
-	cur_cnt := len(bc.Comments)
-	if cur_cnt > config.GetMaxBlogComments() {
-		log.ErrorF("AddComment error comments max limits  max=%d",config.GetMaxBlogComments())
-		return 0
-	}
-
-	c := module.Comment{
+func AddComment(title string, msg string, owner string, pwd string, mail string) int {
+	cmd := &AddCommentCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
+		Msg:   msg,
 		Owner: owner,
-		Msg : msg,
-		CreateTime : strTime(),
-		ModifyTime : strTime(),
-		Idx : len(bc.Comments),
-		Pwd : pwd,
-		Mail : mail,
+		Pwd:   pwd,
+		Mail:  mail,
 	}
-	bc.Comments = append(bc.Comments,&c)
-	db.SaveBlogComments(bc)
-	return 0
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
 }
 
-// 添加带用户身份验证的评论
 func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, string) {
-	// 验证会话
-	user, err := UserManager.ValidateSession(sessionID)
-	if err != nil {
-		return 1, err.Error()
+	cmd := &AddCommentWithAuthCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title:     title,
+		Msg:       msg,
+		SessionID: sessionID,
+		IP:        ip,
+		UserAgent: userAgent,
 	}
-	
-	// 检查用户是否可以评论
-	canComment, reason := UserManager.CanUserComment(user.UserID)
-	if !canComment {
-		return 2, reason
-	}
-	
-	// 获取或创建博客评论集合
-	bc, ok := Comments[title]
-	if !ok {
-		bc = &module.BlogComments{Title: title}
-		Comments[title] = bc
-	}
-	
-	// 检查评论数量限制
-	cur_cnt := len(bc.Comments)
-	if cur_cnt > config.GetMaxBlogComments() {
-		log.ErrorF("AddCommentWithAuth error comments max limits max=%d", config.GetMaxBlogComments())
-		return 3, "评论数量已达上限"
-	}
-	
-	// 创建评论
-	comment := module.Comment{
-		Owner:       user.Username,
-		Msg:         msg,
-		CreateTime:  strTime(),
-		ModifyTime:  strTime(),
-		Idx:         len(bc.Comments),
-		Pwd:         "", // 使用用户身份，不需要密码
-		Mail:        user.Email,
-		UserID:      user.UserID,
-		SessionID:   sessionID,
-		IP:          ip,
-		UserAgent:   userAgent,
-		IsAnonymous: false,
-		IsVerified:  user.IsVerified,
-	}
-	
-	bc.Comments = append(bc.Comments, &comment)
-	db.SaveBlogComments(bc)
-	
-	// 更新用户评论计数
-	UserManager.IncrementUserCommentCount(user.UserID)
-	
-	log.DebugF("AddCommentWithAuth success: user=%s title=%s", user.Username, title)
-	return 0, "评论发表成功"
+	comment_module.Send(cmd)
+	ret := <-cmd.Response()
+	message := <-cmd.Response()
+	return ret.(int), message.(string)
 }
 
-// 创建匿名用户会话并发表评论
 func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int, string) {
-	// 创建匿名用户会话
-	session, err := UserManager.CreateAnonymousSession(username, email, ip, userAgent)
-	if err != nil {
-		return 1, err.Error()
+	cmd := &AddAnonymousCommentCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title:     title,
+		Msg:       msg,
+		Username:  username,
+		Email:     email,
+		IP:        ip,
+		UserAgent: userAgent,
 	}
-	
-	// 使用新会话发表评论
-	return AddCommentWithAuth(title, msg, session.SessionID, ip, userAgent)
+	comment_module.Send(cmd)
+	ret := <-cmd.Response()
+	message := <-cmd.Response()
+	return ret.(int), message.(string)
 }
 
-// 创建带密码验证的用户会话并发表评论
 func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent string) (int, string, string) {
-	// 创建或验证用户会话
-	session, _, err := UserManager.CreateOrAuthenticateSession(username, email, password, ip, userAgent)
-	if err != nil {
-		return 1, err.Error(), ""
+	cmd := &AddCommentWithPasswordCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title:     title,
+		Msg:       msg,
+		Username:  username,
+		Email:     email,
+		Password:  password,
+		IP:        ip,
+		UserAgent: userAgent,
 	}
-	
-	// 使用会话发表评论
-	ret, message := AddCommentWithAuth(title, msg, session.SessionID, ip, userAgent)
-	return ret, message, session.SessionID
+	comment_module.Send(cmd)
+	ret := <-cmd.Response()
+	message := <-cmd.Response()
+	sessionID := <-cmd.Response()
+	return ret.(int), message.(string), sessionID.(string)
 }
 
-// 修改
-func ModifyComment(title string,msg string, idx int) int {
-	bc,ok := Comments[title]
-	if !ok {
-		log.ErrorF("ModifyComment %s not find",title)
-		return 1
+func ModifyComment(title string, msg string, idx int) int {
+	cmd := &ModifyCommentCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
+		Msg:   msg,
+		Idx:   idx,
 	}
-	if idx >= len(bc.Comments) {
-		log.ErrorF("ModifyComment %s id=%d > len of comments %d",title,idx,len(bc.Comments))
-		return 2
-	}
-	c := bc.Comments[idx]
-	c.Msg = msg
-	db.SaveBlogComments(bc)
-	return 0
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
 }
 
-// 移除
-func RemoveComment(title string,idx int) int {
-	bc,ok := Comments[title]
-	if !ok {
-		log.ErrorF("RemoveComment %s not find",title)
-		return 1
+func RemoveComment(title string, idx int) int {
+	cmd := &RemoveCommentCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
+		Idx:   idx,
 	}
-	if idx >= len(bc.Comments) {
-		log.ErrorF("RemoveComment %s id=%d > len of comments %d",title,idx,len(bc.Comments))
-		return 2
-	}
-
-	sub_comments := bc.Comments[:0]
-	cnt := 0
-	for i ,v := range bc.Comments {
-		if i != idx {
-			sub_comments = append(sub_comments,v)
-			v.Idx = cnt
-			cnt = cnt + 1
-		} 
-	}
-
-	bc.Comments = sub_comments
-
-	return 0
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
 }
 
-// 获取评论数据
-func GetComments(title string) *module.BlogComments{
-	c,ok := Comments[title]
-	if !ok {
+func GetComments(title string) *module.BlogComments {
+	cmd := &GetCommentsCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Title: title,
+	}
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
 		return nil
 	}
-	return c
+	return result.(*module.BlogComments)
+}
+
+func IsUsernameAvailable(username string) bool {
+	cmd := &IsUsernameAvailableCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Username: username,
+	}
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(bool)
+}
+
+func ValidateSession(sessionID string) (*module.CommentUser, error) {
+	cmd := &ValidateSessionCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		SessionID: sessionID,
+	}
+	comment_module.Send(cmd)
+	user := <-cmd.Response()
+	err := <-cmd.Response()
+	
+	if err != nil {
+		return nil, err.(error)
+	}
+	if user == nil {
+		return nil, nil
+	}
+	return user.(*module.CommentUser), nil
+}
+
+func GetAllComments() map[string]*module.BlogComments {
+	cmd := &GetAllCommentsCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+	}
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
+		return nil
+	}
+	return result.(map[string]*module.BlogComments)
+}
+
+func GetUsersByUsername(username string) []*module.CommentUser {
+	cmd := &GetUsersByUsernameCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Username: username,
+	}
+	comment_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
+		return nil
+	}
+	return result.([]*module.CommentUser)
 }

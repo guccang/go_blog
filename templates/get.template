@@ -56,12 +56,6 @@
 				</label>
 				<small class="permission-hint">需要额外密码验证</small>
 				
-				<label class="custom-checkbox">
-					<input type="checkbox" name="cooperation_permission" id="cooperation_permission"
-						{{ if .IS_COOPERATION }}checked{{ end }}>
-					<span class="checkbox-btn"><i class="checkmark"></i></span>
-					<span class="checkbox-label">🤝 协作权限</span>
-				</label>
 				<small class="permission-hint">允许协作用户访问</small>
 				
 				<label class="custom-checkbox">
@@ -81,6 +75,8 @@
 				<small class="encrypt-hint" id="encrypt-password-hint">💡 启用"内容加密"权限时必须设置密码</small>
 
 			</div>
+			<div class="separator"></div>
+            <button id="share-button" class="bottom-button" onclick="onShare()">🔗 分享</button>
 			<div class="separator"></div>
             <button id="delete-button" class="bottom-button" onclick="onDelete()">删除</button>
 		</div>

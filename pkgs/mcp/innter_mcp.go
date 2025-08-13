@@ -26,10 +26,6 @@ func Inner_blog_RawCommentData(arguments map[string]interface{}) string {
 	return statistics.RawCommentData(title)
 }
 
-func Inner_blog_RawAllCooperationData(arguments map[string]interface{}) string {
-	return statistics.RawAllCooperationData()
-}
-
 func Inner_blog_RawAllBlogDataByDate(arguments map[string]interface{}) string {
 	date := arguments["date"].(string)
 	return statistics.RawAllBlogDataByDate(date)
@@ -206,7 +202,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawGetBlogData", Inner_blog_RawGetBlogData)
 	RegisterCallBack("RawAllCommentData", Inner_blog_RawAllCommentData)
 	RegisterCallBack("RawCommentData", Inner_blog_RawCommentData)
-	RegisterCallBack("RawAllCooperationData", Inner_blog_RawAllCooperationData)
 	RegisterCallBack("RawAllBlogDataByDate", Inner_blog_RawAllBlogDataByDate)
 	RegisterCallBack("RawAllBlogDataByDateRange", Inner_blog_RawAllBlogDataByDateRange)
 	RegisterCallBack("RawAllBlogDataByDateRangeCount", Inner_blog_RawAllBlogDataByDateRangeCount)
@@ -422,21 +417,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"title": map[string]string{"type": "string", "description": "comment名称"},
-					},
-					"required": []string{"title"},
-				},
-			},
-		},
-
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.RawAllCooperationData",
-				Description: "通过名称获取cooperation内容",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"title": map[string]string{"type": "string", "description": "cooperation名称"},
 					},
 					"required": []string{"title"},
 				},

@@ -195,14 +195,12 @@
         
         // Get special permissions
         const diaryPermission = document.getElementById('diary_permission').checked;
-        const cooperationPermission = document.getElementById('cooperation_permission').checked;
         const encryptPermission = document.getElementById('encrypt_permission').checked;
         
         // 添加调试日志
         console.log('权限收集调试:', {
             baseAuthType,
             diaryPermission,
-            cooperationPermission,
             encryptPermission,
             encryptKey: encrypt ? '[有密码]' : '[无密码]'
         });
@@ -210,7 +208,6 @@
         // Build combined auth type string
         let authTypeArray = [baseAuthType];
         if (diaryPermission) authTypeArray.push('diary');
-        if (cooperationPermission) authTypeArray.push('cooperation');
         if (encryptPermission) authTypeArray.push('encrypt');
         
         const authType = authTypeArray.join(',');

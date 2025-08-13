@@ -4,7 +4,6 @@ import (
 	"comment"
 	"config"
 	"control"
-	"cooperation"
 	"encoding/json"
 	"fmt"
 	"module"
@@ -56,11 +55,6 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 	// 解析权限组合
 	auth_type := parseAuthTypeString(auth_type_string)
 
-	// 如果是协作用户，自动添加协作权限
-	if IsCooperation(r) {
-		auth_type |= module.EAuthType_cooperation
-	}
-
 	// tags
 	tags := r.FormValue("tags")
 	log.DebugF("Received tags:%s", tags)
@@ -98,22 +92,11 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 		Encrypt:  encrypt,
 	}
 
-	if IsCooperation(r) {
-		if config.IsTitleAddDateSuffix(title) == 1 {
-			h.Error(w, "save failed! cooperation auth error,timed blog not support", h.StatusBadRequest)
-			return
-		}
-	}
-
 	ret := control.AddBlog(&ubd)
 
 	// 响应客户端
 	if ret == 0 {
 		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d", ret)))
-		if IsCooperation(r) {
-			session := getsession(r)
-			cooperation.AddCanEditBlogBySession(session, title)
-		}
 	} else {
 		h.Error(w, "save failed! has same title blog", h.StatusBadRequest)
 	}
@@ -353,23 +336,10 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
 	if checkLogin(r) != 0 {
 		// 判定blog访问权限 - 直接使用已获取的blog对象
-		session := getsession(r)
 		auth_type := blog.AuthType
-		if cooperation.IsCooperation(session) {
-			// 判定blog访问权限
-			if (auth_type & module.EAuthType_cooperation) != 0 {
-				if cooperation.CanEditBlog(session, blogname) != 0 {
-					if (auth_type & module.EAuthType_public) == 0 {
-						h.Redirect(w, r, "/index", 302)
-						return
-					}
-				}
-			}
-		} else {
-			if (auth_type & module.EAuthType_private) != 0 {
-				h.Redirect(w, r, "/index", 302)
-				return
-			}
+		if (auth_type & module.EAuthType_private) != 0 {
+			h.Redirect(w, r, "/index", 302)
+			return
 		}
 
 		if (auth_type & module.EAuthType_public) != 0 {
@@ -518,7 +488,7 @@ func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 获取使用该用户名的用户列表
-	users := comment.UserManager.GetUsersByUsername(username)
+	users := comment.GetUsersByUsername(username)
 	userCount := len(users)
 
 	response := map[string]interface{}{
@@ -685,4 +655,58 @@ func HandlePublic(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandlePublic", r)
 
 	view.PagePublic(w)
+}
+
+// HandleCreateShare creates a share link for a blog
+func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleCreateShare", r)
+
+	// 检查登录状态
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	// 解析请求
+	r.ParseForm()
+	blogname := r.FormValue("blogname")
+	if blogname == "" {
+		h.Error(w, "blogname parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	// 检查博客是否存在
+	blog := control.GetBlog(blogname)
+	if blog == nil {
+		h.Error(w, fmt.Sprintf("Blog %s not found", blogname), h.StatusBadRequest)
+		return
+	}
+
+	// 创建分享链接
+	url, pwd := share.AddSharedBlog(blogname)
+
+	// 构建完整的URL（包含域名和协议）
+	host := r.Host
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	fullURL := fmt.Sprintf("%s://%s%s", scheme, host, url)
+
+	// 返回JSON响应
+	response := map[string]interface{}{
+		"success":  true,
+		"url":      fullURL,
+		"pwd":      pwd,
+		"blogname": blogname,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(h.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }

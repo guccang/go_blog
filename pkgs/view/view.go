@@ -3,7 +3,6 @@ package view
 import (
 	"config"
 	"control"
-	"cooperation"
 	"fmt"
 	t "html/template"
 	"module"
@@ -21,14 +20,12 @@ func Info() {
 }
 
 type LinkData struct {
-	URL            string
-	DESC           string
-	COOPERATION    int
-	ACCESS_TIME    string
-	TAGS           []string
-	IS_ENCRYPTED   bool
-	IS_DIARY       bool
-	IS_COOPERATION bool
+	URL          string
+	DESC         string
+	ACCESS_TIME  string
+	TAGS         []string
+	IS_ENCRYPTED bool
+	IS_DIARY     bool
 }
 
 type LinkDatas struct {
@@ -56,11 +53,10 @@ type EditorData struct {
 	COMMENTS []CommentDatas
 	ENCRYPT  string
 	// 权限状态字段
-	IS_PRIVATE     bool
-	IS_PUBLIC      bool
-	IS_DIARY       bool
-	IS_COOPERATION bool
-	IS_ENCRYPTED   bool
+	IS_PRIVATE   bool
+	IS_PUBLIC    bool
+	IS_DIARY     bool
+	IS_ENCRYPTED bool
 }
 
 type TodolistData struct {
@@ -110,26 +106,22 @@ func getShareLinks() *LinkDatas {
 
 	for _, b := range sharedblogs {
 		ld := LinkData{
-			URL:            b.URL,
-			DESC:           b.Title,
-			COOPERATION:    0,
-			TAGS:           []string{},
-			IS_ENCRYPTED:   false,
-			IS_DIARY:       false,
-			IS_COOPERATION: false,
+			URL:          b.URL,
+			DESC:         b.Title,
+			TAGS:         []string{},
+			IS_ENCRYPTED: false,
+			IS_DIARY:     false,
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 	}
 
 	for _, t := range sharedtags {
 		ld := LinkData{
-			URL:            t.URL,
-			DESC:           fmt.Sprintf("Tag-%s", t.Tag),
-			COOPERATION:    0,
-			TAGS:           []string{},
-			IS_ENCRYPTED:   false,
-			IS_DIARY:       false,
-			IS_COOPERATION: false,
+			URL:          t.URL,
+			DESC:         fmt.Sprintf("Tag-%s", t.Tag),
+			TAGS:         []string{},
+			IS_ENCRYPTED: false,
+			IS_DIARY:     false,
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 	}
@@ -152,12 +144,6 @@ func getLinks(blogs []*module.Blog, flag int, session string) *LinkDatas {
 			continue
 		}
 
-		if session != "" && cooperation.IsCooperation(session) {
-			if cooperation.CanEditBlog(session, b.Title) != 0 {
-				continue
-			}
-		}
-
 		// 处理博客标签
 		var blogTags []string
 		if b.Tags != "" {
@@ -170,14 +156,12 @@ func getLinks(blogs []*module.Blog, flag int, session string) *LinkDatas {
 		}
 
 		ld := LinkData{
-			URL:            fmt.Sprintf("/get?blogname=%s", b.Title),
-			DESC:           b.Title,
-			COOPERATION:    (b.AuthType & module.EAuthType_cooperation),
-			ACCESS_TIME:    b.AccessTime,
-			TAGS:           blogTags,
-			IS_ENCRYPTED:   b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0,
-			IS_DIARY:       (b.AuthType & module.EAuthType_diary) != 0,
-			IS_COOPERATION: (b.AuthType & module.EAuthType_cooperation) != 0,
+			URL:          fmt.Sprintf("/get?blogname=%s", b.Title),
+			DESC:         b.Title,
+			ACCESS_TIME:  b.AccessTime,
+			TAGS:         blogTags,
+			IS_ENCRYPTED: b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0,
+			IS_DIARY:     (b.AuthType & module.EAuthType_diary) != 0,
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 
@@ -244,12 +228,11 @@ func getLinks(blogs []*module.Blog, flag int, session string) *LinkDatas {
 }
 
 // parseAuthTypeToEditorData 解析权限类型到EditorData结构体
-func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, bool, bool, bool) {
+func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, bool, bool) {
 	authTypeString := "private"
 	isPrivate := (authType & module.EAuthType_private) != 0
 	isPublic := (authType & module.EAuthType_public) != 0
 	isDiary := (authType & module.EAuthType_diary) != 0
-	isCooperation := (authType & module.EAuthType_cooperation) != 0
 	isEncrypted := encrypt == 1 || (authType&module.EAuthType_encrypt) != 0
 
 	// 设置主要权限字符串（用于向后兼容）
@@ -261,21 +244,16 @@ func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, b
 		authTypeString = "private"
 	}
 
-	log.DebugF("Parsed auth type %d: private=%v, public=%v, diary=%v, cooperation=%v, encrypted=%v",
-		authType, isPrivate, isPublic, isDiary, isCooperation, isEncrypted)
+	log.DebugF("Parsed auth type %d: private=%v, public=%v, diary=%v, encrypted=%v",
+		authType, isPrivate, isPublic, isDiary, isEncrypted)
 
-	return authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted
+	return authTypeString, isPrivate, isPublic, isDiary, isEncrypted
 }
 
 func PageSearch(match string, w h.ResponseWriter, session string) {
 
 	blogs := control.GetMatch(match)
-	is_cooperation := cooperation.IsCooperation(session)
 	flag := module.EAuthType_all
-	if is_cooperation {
-		flag = module.EAuthType_public | module.EAuthType_cooperation
-	}
-
 	datas := getLinks(blogs, flag, session)
 
 	// 为搜索结果中的所有链接添加highlight参数
@@ -375,19 +353,18 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 	}
 
 	// 为新博客设置默认权限
-	authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted := parseAuthTypeToEditorData(module.EAuthType_private, 0)
+	authTypeString, isPrivate, isPublic, isDiary, isEncrypted := parseAuthTypeToEditorData(module.EAuthType_private, 0)
 
 	data := EditorData{
-		TITLE:          title,
-		CONTENT:        content,
-		AUTHTYPE:       authTypeString,
-		TAGS:           "",
-		ENCRYPT:        "",
-		IS_PRIVATE:     isPrivate,
-		IS_PUBLIC:      isPublic,
-		IS_DIARY:       isDiary,
-		IS_COOPERATION: isCooperation,
-		IS_ENCRYPTED:   isEncrypted,
+		TITLE:        title,
+		CONTENT:      content,
+		AUTHTYPE:     authTypeString,
+		TAGS:         "",
+		ENCRYPT:      "",
+		IS_PRIVATE:   isPrivate,
+		IS_PUBLIC:    isPublic,
+		IS_DIARY:     isDiary,
+		IS_ENCRYPTED: isEncrypted,
 	}
 
 	err = tmpl.Execute(w, data)
@@ -427,20 +404,19 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int) {
 	}
 
 	// 解析博客权限状态
-	authTypeString, isPrivate, isPublic, isDiary, isCooperation, isEncrypted := parseAuthTypeToEditorData(blog.AuthType, blog.Encrypt)
+	authTypeString, isPrivate, isPublic, isDiary, isEncrypted := parseAuthTypeToEditorData(blog.AuthType, blog.Encrypt)
 
 	data := EditorData{
-		TITLE:          blog.Title,
-		CONTENT:        blog.Content,
-		CTIME:          blog.CreateTime,
-		AUTHTYPE:       authTypeString,
-		TAGS:           blog.Tags,
-		ENCRYPT:        encrypt_str,
-		IS_PRIVATE:     isPrivate,
-		IS_PUBLIC:      isPublic,
-		IS_DIARY:       isDiary,
-		IS_COOPERATION: isCooperation,
-		IS_ENCRYPTED:   isEncrypted,
+		TITLE:        blog.Title,
+		CONTENT:      blog.Content,
+		CTIME:        blog.CreateTime,
+		AUTHTYPE:     authTypeString,
+		TAGS:         blog.Tags,
+		ENCRYPT:      encrypt_str,
+		IS_PRIVATE:   isPrivate,
+		IS_PUBLIC:    isPublic,
+		IS_DIARY:     isDiary,
+		IS_ENCRYPTED: isEncrypted,
 	}
 
 	bc := control.GetBlogComments(blogname)
@@ -557,67 +533,6 @@ func PageShowAllShare(w h.ResponseWriter) {
 	}
 }
 
-func PageAddCooperation(w h.ResponseWriter, account string) {
-	ret, c := cooperation.CreateCooperation(account)
-	if ret != 0 {
-		h.Error(w, fmt.Sprintf("cooperation %s exit ret=%d c.pwd=%s", account, ret, c.Password), h.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(fmt.Sprintf("create cooperation \n account=%s \n pwd=%s ", c.Account, c.Password)))
-	log.DebugF("PageAddCooperation account=%s ret=%d", account, ret)
-}
-
-func PageDelCooperation(w h.ResponseWriter, account string) {
-	ret := cooperation.DelCooperation(account)
-	w.Write([]byte(fmt.Sprintf("delete cooperation \n account=%s ret=%d", account, ret)))
-}
-
-func PageShowCooperation(w h.ResponseWriter) {
-	cooperations := cooperation.Cooperations
-	str := "All Cooperations:"
-	for _, c := range cooperations {
-		c_str := fmt.Sprintf("account=%s pwd=%s ct=%v", c.Account, c.Password, c.CreateTime)
-		str = fmt.Sprintf("%s \n %s ", str, c_str)
-	}
-	w.Write([]byte(str))
-}
-
-func PageAddCooperationBlog(w h.ResponseWriter, account string, blogname string) {
-	ret := cooperation.AddCanEditBlog(account, blogname)
-	if ret != 0 {
-		h.Error(w, fmt.Sprintf("cooperation addblog account=%s blog=%s ret=%d", account, blogname, ret), h.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(fmt.Sprintf("cooperation addblog \n account=%s \n blog=%s ", account, blogname)))
-}
-
-func PageDelCooperationBlog(w h.ResponseWriter, account string, blogname string) {
-	ret := cooperation.DelCanEditBlog(account, blogname)
-	if ret != 0 {
-		h.Error(w, fmt.Sprintf("cooperation delblog %s ret=%d", account, ret), h.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(fmt.Sprintf("cooperation delblog \n account=%s \n blog=%s ", account, blogname)))
-}
-
-func PageAddCooperationTag(w h.ResponseWriter, account string, tag string) {
-	ret := cooperation.AddCanEditTag(account, tag)
-	if ret != 0 {
-		h.Error(w, fmt.Sprintf("cooperation addtag account=%s tag=%s ret=%d", account, tag, ret), h.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(fmt.Sprintf("cooperation addtag \n account=%s \n blog=%s ", account, tag)))
-}
-
-func PageDelCooperationTag(w h.ResponseWriter, account string, tag string) {
-	ret := cooperation.DelCanEditTag(account, tag)
-	if ret != 0 {
-		h.Error(w, fmt.Sprintf("cooperation deltag account=%s tag=%s ret=%d", account, tag, ret), h.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(fmt.Sprintf("cooperation deltag \n account=%s \n blog=%s ", account, tag)))
-}
-
 func getsession(r *h.Request) string {
 	session, err := r.Cookie("session")
 	if err != nil {
@@ -627,8 +542,6 @@ func getsession(r *h.Request) string {
 }
 
 func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
-	session := getsession(r)
-	is_cooperation := cooperation.IsCooperation(session)
 
 	// 直接显示help
 	tokens := strings.Split(match, " ")
@@ -643,10 +556,6 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 	}
 	// 创建timed blog
 	if tokens[0] == "@c" {
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return 0
-		}
 		if len(tokens) != 2 {
 			h.Error(w, "@c titlename need", h.StatusBadRequest)
 			return 0
@@ -662,10 +571,6 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 	}
 	// 分享private连接
 	if tokens[0] == "@share" && len(tokens) >= 2 {
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return 0
-		}
 
 		// 创建分享
 		if tokens[1] == "c" && len(tokens) >= 3 {
@@ -678,61 +583,7 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 		}
 		// 显示所有创建的分享
 		if tokens[1] == "all" {
-			if false == is_cooperation {
-				PageShowAllShare(w)
-			} else {
-				w.Write([]byte("not support operation (showAllShare)!!!"))
-			}
-		}
-		return 0
-	}
-	// 创建协作账号
-	if tokens[0] == "@cooperation" && len(tokens) >= 2 {
-		log.DebugF("cooperation opt=%s", tokens[1])
-		if is_cooperation {
-			h.Error(w, "@c auth not support", h.StatusBadRequest)
-			return 0
-		}
-
-		// 创建
-		if tokens[1] == "c" && len(tokens) == 3 {
-			account := tokens[2]
-			PageAddCooperation(w, account)
-		}
-		// 删除
-		if tokens[1] == "d" && len(tokens) == 3 {
-			account := tokens[2]
-			PageDelCooperation(w, account)
-		}
-		// 显示
-		if tokens[1] == "all" && len(tokens) == 2 {
-			if false == is_cooperation {
-				PageShowCooperation(w)
-			} else {
-				w.Write([]byte("not support operation (showCooperation)!!!"))
-			}
-		}
-		// add edit blog
-		if tokens[1] == "addblog" && len(tokens) == 4 {
-			account := tokens[2]
-			blog := tokens[3]
-			PageAddCooperationBlog(w, account, blog)
-		}
-		if tokens[1] == "delblog" && len(tokens) == 4 {
-			account := tokens[2]
-			blog := tokens[3]
-			PageDelCooperationBlog(w, account, blog)
-		}
-		// add edit tag
-		if tokens[1] == "addtag" && len(tokens) == 4 {
-			account := tokens[2]
-			tag := tokens[3]
-			PageAddCooperationTag(w, account, tag)
-		}
-		if tokens[1] == "deltag" && len(tokens) == 4 {
-			account := tokens[2]
-			tag := tokens[3]
-			PageDelCooperationTag(w, account, tag)
+			PageShowAllShare(w)
 		}
 		return 0
 	}

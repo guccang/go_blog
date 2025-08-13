@@ -3,8 +3,8 @@ package persistence
 import (
 	"config"
 	"core"
-	log "mylog"
 	"module"
+	log "mylog"
 	"strconv"
 )
 
@@ -118,47 +118,6 @@ func GetAllBlogComments() map[string]*module.BlogComments {
 		return nil
 	}
 	return result.(map[string]*module.BlogComments)
-}
-
-func SaveCooperation(account string, pwd string, blogs string, tags string) int {
-	cmd := &SaveCooperationCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Pwd:     pwd,
-		Blogs:   blogs,
-		Tags:    tags,
-	}
-	persistence_module.Send(cmd)
-	result := <-cmd.Response()
-	return result.(int)
-}
-
-func DelCooperation(account string) int {
-	cmd := &DelCooperationCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	persistence_module.Send(cmd)
-	result := <-cmd.Response()
-	return result.(int)
-}
-
-func GetCooperations() map[string]*module.Cooperation {
-	cmd := &GetCooperationsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-	}
-	persistence_module.Send(cmd)
-	result := <-cmd.Response()
-	if result == nil {
-		return nil
-	}
-	return result.(map[string]*module.Cooperation)
 }
 
 func SaveCommentUser(user *module.CommentUser) {

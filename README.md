@@ -28,7 +28,7 @@
 
 ### 1. 核心博客功能 (`pkgs/blog/`)
 - Markdown编写/编辑，实时预览
-- 权限控制系统：public/private/encrypt/cooperation/diary
+- 权限控制系统：public/private/encrypt/diary
 - 标签系统和全文搜索
 - 加密存储敏感内容
 
