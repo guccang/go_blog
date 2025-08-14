@@ -175,7 +175,7 @@ func (cm *ConstellationManager) AnalyzeCompatibility(sign1, sign2 string) (*Comp
 func (cm *ConstellationManager) GetDivinationHistory(userName string, limit int) ([]*DivinationRecord, error) {
 	// 搜索用户的占卜记录
 	blogList := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if strings.HasPrefix(b.Title, "constellation-divination-") {
 			blogList = append(blogList, b)
 		}

@@ -98,7 +98,7 @@ func sortblogs(s []*module.Blog) {
 
 func matchTags(tag string, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if false == strings.Contains(strings.ToLower(b.Tags), strings.ToLower(tag)) {
 			continue
 		}
@@ -125,7 +125,7 @@ func reload(name string) {
 
 func matchOther(matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if ismatch(b, matches) == 0 {
 			continue
 		}
@@ -139,7 +139,7 @@ func matchOther(matches []string) []*module.Blog {
 
 func matchHelp() []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		s = append(s, b)
 	}
 	return s
@@ -191,7 +191,7 @@ func ismatch(b *module.Blog, matches []string) int {
 
 func matchBlogsWithAuthType(auth_type int, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		// auth
 		if (b.AuthType & auth_type) == 0 {
 			continue
@@ -213,7 +213,7 @@ func matchBlogsWithAuthType(auth_type int, matches []string) []*module.Blog {
 
 func matchEncrypt() []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 
 		// not encrypt
 		if b.Encrypt != 1 {
@@ -243,7 +243,7 @@ func tagChange(tokens []string) {
 
 func tagTimed(tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		// not timed
 		if config.IsTitleContainsDateSuffix(b.Title) != 1 {
 			continue

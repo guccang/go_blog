@@ -13,9 +13,6 @@ func Info() {
 	fmt.Println("info blog v3.0")
 }
 
-// Global Blogs map preserved for compatibility; it references the actor's map after Init
-var Blogs = make(map[string]*module.Blog)
-
 // blog actor instance
 var blog_actor *BlogActor
 
@@ -31,11 +28,20 @@ func Init() {
 	cmd := &loadBlogsCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
 	blog_actor.Send(cmd)
 	<-cmd.Response()
-	// expose the internal map for compatibility
-	Blogs = blog_actor.blogs
 }
 
-func GetBlogsNum() int { return len(Blogs) }
+func GetBlogsNum() int {
+	cmd := &getBlogsNumCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
+	blog_actor.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(int)
+}
+
+// 多个goroutine 并发访问，会存在问题
+// 但是在当前的场景下使用不会出问题，原因单用户访问操作。不存在并发访问
+func GetBlogs() map[string]*module.Blog {
+	return blog_actor.blogs
+}
 
 func ImportBlogsFromPath(dir string) {
 	cmd := &importBlogsCmd{

@@ -1,13 +1,13 @@
 package yearplan
 
 import (
-	"fmt"
-	"time"
-	"encoding/json"
 	"blog"
+	"encoding/json"
+	"fmt"
 	"module"
 	log "mylog"
 	"strconv"
+	"time"
 )
 
 // Info provides version info about the yearplan module
@@ -22,11 +22,11 @@ func RegisterHandlers() {
 
 // MonthGoal represents a monthly work goal
 type MonthGoal struct {
-	Year     int                    `json:"year"`
-	Month    int                    `json:"month"`
-	Overview string                 `json:"overview"`
-	Weeks    map[int]*WeekGoal      `json:"weeks"` // week number -> week goal
-	Tasks    []Task                 `json:"tasks"`
+	Year     int               `json:"year"`
+	Month    int               `json:"month"`
+	Overview string            `json:"overview"`
+	Weeks    map[int]*WeekGoal `json:"weeks"` // week number -> week goal
+	Tasks    []Task            `json:"tasks"`
 }
 
 // WeekGoal represents a weekly work goal
@@ -43,7 +43,7 @@ type Task struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Status      string `json:"status"` // pending, in_progress, completed, cancelled
+	Status      string `json:"status"`   // pending, in_progress, completed, cancelled
 	Priority    string `json:"priority"` // low, medium, high, urgent
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
@@ -61,7 +61,7 @@ func GetWeekNumber(date time.Time) int {
 	// Calculate week number within the month
 	firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
 	weekStart := firstDay.AddDate(0, 0, -int(firstDay.Weekday()))
-	
+
 	daysDiff := int(date.Sub(weekStart).Hours() / 24)
 	return (daysDiff / 7) + 1
 }
@@ -70,17 +70,17 @@ func GetWeekNumber(date time.Time) int {
 func GetWeeksInMonth(year, month int) int {
 	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
 	lastDay := firstDay.AddDate(0, 1, -1)
-	
+
 	firstWeek := GetWeekNumber(firstDay)
 	lastWeek := GetWeekNumber(lastDay)
-	
+
 	return lastWeek - firstWeek + 1
 }
 
 // GetMonthGoal retrieves or creates a month goal
 func GetMonthGoal(year, month int) (*MonthGoal, error) {
 	title := fmt.Sprintf("月度目标_%d-%02d", year, month)
-	
+
 	// Try to get existing blog
 	b := blog.GetBlog(title)
 	if b == nil {
@@ -92,7 +92,7 @@ func GetMonthGoal(year, month int) (*MonthGoal, error) {
 			Weeks:    make(map[int]*WeekGoal),
 			Tasks:    []Task{},
 		}
-		
+
 		// Initialize weeks
 		weeksCount := GetWeeksInMonth(year, month)
 		for week := 1; week <= weeksCount; week++ {
@@ -104,22 +104,22 @@ func GetMonthGoal(year, month int) (*MonthGoal, error) {
 				Tasks:    []Task{},
 			}
 		}
-		
+
 		return goal, nil
 	}
-	
+
 	// Parse existing blog content
 	var goal MonthGoal
 	err := json.Unmarshal([]byte(b.Content), &goal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse month goal: %w", err)
 	}
-	
+
 	// Ensure weeks are initialized
 	if goal.Weeks == nil {
 		goal.Weeks = make(map[int]*WeekGoal)
 	}
-	
+
 	// Initialize missing weeks
 	weeksCount := GetWeeksInMonth(year, month)
 	for week := 1; week <= weeksCount; week++ {
@@ -133,20 +133,20 @@ func GetMonthGoal(year, month int) (*MonthGoal, error) {
 			}
 		}
 	}
-	
+
 	return &goal, nil
 }
 
 // SaveMonthGoal saves a month goal to the blog system
 func SaveMonthGoal(goal *MonthGoal) error {
 	title := fmt.Sprintf("月度目标_%d-%02d", goal.Year, goal.Month)
-	
+
 	// Convert to JSON
 	content, err := json.MarshalIndent(goal, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal month goal: %w", err)
 	}
-	
+
 	// Create blog data
 	udb := &module.UploadedBlogData{
 		Title:    title,
@@ -155,7 +155,7 @@ func SaveMonthGoal(goal *MonthGoal) error {
 		Tags:     "月度目标",
 		Encrypt:  0,
 	}
-	
+
 	// Check if blog exists
 	existingBlog := blog.GetBlog(title)
 	if existingBlog != nil {
@@ -171,7 +171,7 @@ func SaveMonthGoal(goal *MonthGoal) error {
 			return fmt.Errorf("failed to create month goal")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -181,12 +181,12 @@ func GetWeekGoal(year, month, week int) (*WeekGoal, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	weekGoal, exists := monthGoal.Weeks[week]
 	if !exists {
 		return nil, fmt.Errorf("week %d not found in month %d-%02d", week, year, month)
 	}
-	
+
 	return weekGoal, nil
 }
 
@@ -196,7 +196,7 @@ func SaveWeekGoal(weekGoal *WeekGoal) error {
 	if err != nil {
 		return err
 	}
-	
+
 	monthGoal.Weeks[weekGoal.Week] = weekGoal
 	return SaveMonthGoal(monthGoal)
 }
@@ -207,28 +207,28 @@ func AddTask(year, month int, task Task) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Set timestamps if not provided
 	if task.CreatedAt == "" {
 		task.CreatedAt = time.Now().Format("2006-01-02 15:04:05")
 	}
 	task.UpdatedAt = time.Now().Format("2006-01-02 15:04:05")
-	
+
 	// Set default status if not provided
 	if task.Status == "" {
 		task.Status = "pending"
 	}
-	
+
 	// Set default priority if not provided
 	if task.Priority == "" {
 		task.Priority = "medium"
 	}
-	
+
 	// Generate ID if not provided
 	if task.ID == "" {
 		task.ID = strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
-	
+
 	monthGoal.Tasks = append(monthGoal.Tasks, task)
 	return SaveMonthGoal(monthGoal)
 }
@@ -239,7 +239,7 @@ func UpdateTask(year, month int, taskID string, updatedTask Task) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Find and update task
 	for i, task := range monthGoal.Tasks {
 		if task.ID == taskID {
@@ -248,7 +248,7 @@ func UpdateTask(year, month int, taskID string, updatedTask Task) error {
 			return SaveMonthGoal(monthGoal)
 		}
 	}
-	
+
 	return fmt.Errorf("task with ID %s not found", taskID)
 }
 
@@ -258,7 +258,7 @@ func DeleteTask(year, month int, taskID string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Find and remove task
 	for i, task := range monthGoal.Tasks {
 		if task.ID == taskID {
@@ -266,16 +266,16 @@ func DeleteTask(year, month int, taskID string) error {
 			return SaveMonthGoal(monthGoal)
 		}
 	}
-	
+
 	return fmt.Errorf("task with ID %s not found", taskID)
 }
 
 // GetMonthGoals retrieves all month goals for a year
 func GetMonthGoals(year int) (map[int]*MonthGoal, error) {
 	goals := make(map[int]*MonthGoal)
-	
+
 	// Get all blogs with month goal pattern
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		var goalYear, goalMonth int
 		_, err := fmt.Sscanf(b.Title, "月度目标_%d-%02d", &goalYear, &goalMonth)
 		if err == nil && goalYear == year {
@@ -286,7 +286,7 @@ func GetMonthGoals(year int) (map[int]*MonthGoal, error) {
 			}
 		}
 	}
-	
+
 	return goals, nil
 }
 
@@ -307,4 +307,4 @@ func ParseYearPlanFromBlog(content string) MonthGoal {
 func InitYearPlanModule() error {
 	log.Debug("Initializing year plan module")
 	return nil
-} 
+}

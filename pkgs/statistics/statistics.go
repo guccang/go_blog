@@ -290,7 +290,7 @@ func GetOverallStatistics() *Statistics {
 func calculateBlogStatistics() BlogStatistics {
 	stats := BlogStatistics{}
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	stats.TotalBlogs = len(blogs)
 
 	now := time.Now()
@@ -328,7 +328,7 @@ func calculateBlogStatistics() BlogStatistics {
 func calculateAccessStatistics() AccessStatistics {
 	stats := AccessStatistics{}
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	var totalAccess int64
 
 	topBlogs := make([]BlogAccessInfo, 0)
@@ -388,7 +388,7 @@ func calculateAccessStatistics() AccessStatistics {
 func calculateEditStatistics() EditStatistics {
 	stats := EditStatistics{}
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	var totalEdits int64
 
 	topBlogs := make([]BlogEditInfo, 0)
@@ -548,8 +548,8 @@ func calculateCommentStatistics() CommentStatistics {
 	stats.TotalComments = totalComments
 	stats.BlogsWithComments = blogsWithComments
 
-	if len(blog.Blogs) > 0 {
-		stats.AverageComments = float64(totalComments) / float64(len(blog.Blogs))
+	if len(blog.GetBlogs()) > 0 {
+		stats.AverageComments = float64(totalComments) / float64(len(blog.GetBlogs()))
 	}
 
 	// 排序热门评论博客
@@ -600,7 +600,7 @@ func calculateTagStatistics() TagStatistics {
 
 	tagCount := make(map[string]int)
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	for _, b := range blogs {
 		if b.Tags != "" {
 			tags := strings.Split(b.Tags, "|")
@@ -642,7 +642,7 @@ func calculateSystemStatistics() SystemStatistics {
 	stats := SystemStatistics{}
 
 	stats.SystemUptime = "系统运行中"
-	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.Blogs), len(comment.GetAllComments()))
+	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.GetBlogs()), len(comment.GetAllComments()))
 	stats.StaticFiles = 100
 	stats.TemplateFiles = 20
 	stats.TodayOperations = len(accessRecords)
@@ -658,7 +658,7 @@ func calculateTimeAnalysis() TimeAnalysisData {
 	accessHourDist := make(map[int]int)
 	editDist := make(map[string]int)
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	for _, b := range blogs {
 		if createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime); err == nil {
 			monthKey := createTime.Format("2006-01")
@@ -705,7 +705,7 @@ func calculateContentStatistics() ContentStatistics {
 	shortestLength := int(^uint(0) >> 1)
 	emptyBlogs := 0
 
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	for _, b := range blogs {
 		length := len([]rune(b.Content))
 		totalCharacters += int64(length)

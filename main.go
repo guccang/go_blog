@@ -99,7 +99,7 @@ func main() {
 	sms.Init()
 	exercise.Init()
 	share.Init()
-	persistence.SaveBlogs(blog.Blogs)
+	persistence.SaveBlogs(blog.GetBlogs())
 
 	log.Debug("go_blog started")
 

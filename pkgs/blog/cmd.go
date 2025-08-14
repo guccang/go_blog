@@ -182,3 +182,12 @@ func (cmd *getURLNamesCmd) Do(actor core.ActorInterface) {
 	blogActor := actor.(*BlogActor)
 	cmd.Response() <- blogActor.getURLBlogNames(cmd.Blogname)
 }
+
+type getBlogsNumCmd struct {
+	core.ActorCommand
+}
+
+func (cmd *getBlogsNumCmd) Do(actor core.ActorInterface) {
+	blogActor := actor.(*BlogActor)
+	cmd.Response() <- len(blogActor.blogs)
+}

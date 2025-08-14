@@ -120,7 +120,7 @@ func (ar *ReadingActor) addBook(title, author, isbn, publisher, publishDate, cov
 
 func (ar *ReadingActor) getBook(bookID string) *module.Book {
 	// 从blog系统获取单本书数据
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				Book *module.Book `json:"book"`
@@ -140,7 +140,7 @@ func (ar *ReadingActor) getAllBooks() map[string]*module.Book {
 	books := make(map[string]*module.Book)
 
 	// 遍历所有blog，查找reading_book_开头的
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			// 解析JSON内容
 			var data struct {
@@ -347,7 +347,7 @@ func (ar *ReadingActor) updateReadingProgress(bookID string, currentPage int, no
 
 func (ar *ReadingActor) getReadingRecord(bookID string) *module.ReadingRecord {
 	// 从blog系统获取阅读记录
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingRecord *module.ReadingRecord `json:"reading_record"`
@@ -393,10 +393,10 @@ func (ar *ReadingActor) addBookNote(bookID, noteType, chapter, content string, p
 
 func (ar *ReadingActor) getBookNotes(bookID string) []*module.BookNote {
 	// 从blog系统获取笔记数据
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
-				Book      *module.Book        `json:"book"`
+				Book      *module.Book       `json:"book"`
 				BookNotes []*module.BookNote `json:"book_notes"`
 			}
 			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
@@ -529,7 +529,7 @@ func (ar *ReadingActor) addBookInsight(bookID, title, content string, keyTakeawa
 
 func (ar *ReadingActor) getBookInsights(bookID string) []*module.BookInsight {
 	// 从blog系统获取感悟数据
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -563,7 +563,7 @@ func (ar *ReadingActor) updateBookInsight(insightID string, updates map[string]i
 	var bookID string
 
 	// 遍历所有书籍数据查找指定的心得
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -633,7 +633,7 @@ func (ar *ReadingActor) deleteBookInsight(insightID string) error {
 	var targetBookID string
 
 	// 从blog系统查找心得
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -847,7 +847,7 @@ func (ar *ReadingActor) saveBook(book *module.Book) {
 		AuthType: module.EAuthType_private,
 	}
 
-	if _, exists := blog.Blogs[title]; exists {
+	if _, exists := blog.GetBlogs()[title]; exists {
 		blog.ModifyBlog(udb)
 	} else {
 		blog.AddBlog(udb)
@@ -877,7 +877,7 @@ func (ar *ReadingActor) saveBookInsight(insight *module.BookInsight) {
 
 func (ar *ReadingActor) loadBooks() {
 	// 从blog系统加载书籍数据
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				Book *module.Book `json:"book"`
@@ -892,7 +892,7 @@ func (ar *ReadingActor) loadBooks() {
 
 func (ar *ReadingActor) loadReadingRecords() {
 	// 从blog系统加载阅读记录
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingRecord *module.ReadingRecord `json:"reading_record"`
@@ -907,7 +907,7 @@ func (ar *ReadingActor) loadReadingRecords() {
 
 func (ar *ReadingActor) loadBookNotes() {
 	// 从blog系统加载笔记
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookNotes []*module.BookNote `json:"book_notes"`
@@ -928,7 +928,7 @@ func (ar *ReadingActor) loadBookNotes() {
 
 func (ar *ReadingActor) loadBookInsights() {
 	// 从blog系统加载感悟
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -946,7 +946,7 @@ func (ar *ReadingActor) loadBookInsights() {
 // 加载其他数据的函数
 func (ar *ReadingActor) loadReadingPlans() {
 	// 从blog系统加载阅读计划
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`
@@ -963,7 +963,7 @@ func (ar *ReadingActor) loadReadingPlans() {
 
 func (ar *ReadingActor) loadReadingGoals() {
 	// 从blog系统加载阅读目标
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingGoals []*module.ReadingGoal `json:"reading_goals"`
@@ -980,7 +980,7 @@ func (ar *ReadingActor) loadReadingGoals() {
 
 func (ar *ReadingActor) loadBookCollections() {
 	// 从blog系统加载书籍收藏夹
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookCollections []*module.BookCollection `json:"book_collections"`
@@ -997,7 +997,7 @@ func (ar *ReadingActor) loadBookCollections() {
 
 func (ar *ReadingActor) loadReadingTimeRecords() {
 	// 从blog系统加载阅读时间记录
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingTimeRecords map[string][]*module.ReadingTimeRecord `json:"reading_time_records"`
@@ -1052,7 +1052,7 @@ func (ar *ReadingActor) getAllReadingPlans() []*module.ReadingPlan {
 	// 从blog系统获取阅读计划数据
 	var plans []*module.ReadingPlan
 
-	for title, b := range blog.Blogs {
+	for title, b := range blog.GetBlogs() {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`

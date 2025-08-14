@@ -236,7 +236,7 @@ func (ea *ExerciseActor) getAllExercises() (map[string]ExerciseList, error) {
 	result := make(map[string]ExerciseList)
 
 	// Iterate through all blogs
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		date := ea.getDateFromTitle(b.Title)
 		if date != "" {
 			var exerciseList ExerciseList

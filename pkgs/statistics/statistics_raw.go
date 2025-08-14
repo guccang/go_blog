@@ -26,7 +26,7 @@ func RawCurrentTime() string {
 // 获取日记数量
 func RawAllDiaryCount() int {
 	count := 0
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if strings.Contains(b.Title, "日记_") {
 			count++
 		}
@@ -37,7 +37,7 @@ func RawAllDiaryCount() int {
 // 获取所有日志内容
 func RawAllDiaryContent() string {
 	content := ""
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if strings.Contains(b.Title, "日记_") && b.Content != "" {
 			content += b.Title + ":\n" + b.Content + "\n"
 		}
@@ -48,7 +48,7 @@ func RawAllDiaryContent() string {
 // 获取指定博客内容，通过博客名称匹配
 func RawGetBlogByTitleMatch(match string) string {
 	content := ""
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if strings.Contains(b.Title, match) && b.Content != "" {
 			content += b.Title + ":\n" + b.Content + "\n"
 		}
@@ -59,7 +59,7 @@ func RawGetBlogByTitleMatch(match string) string {
 // 获取锻炼总次数
 func RawAllExerciseCount() int {
 	count := 0
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		if strings.Contains(b.Title, "锻炼_") {
 			count++
 		}
@@ -105,13 +105,13 @@ func RawAllExerciseCalories() int {
 
 // 获取博客总数量
 func RawAllBlogCount() int {
-	log.DebugF("RawAllBlogCount: %d", len(blog.Blogs))
-	return len(blog.Blogs)
+	log.DebugF("RawAllBlogCount: %d", len(blog.GetBlogs()))
+	return len(blog.GetBlogs())
 }
 
 // 获取所有blog名称,以空格分割
 func RawAllBlogData() string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		blogNames = append(blogNames, b.Title)
@@ -154,7 +154,7 @@ func RawCommentData(title string) string {
 
 // 根据日期获取所有Blog
 func RawAllBlogDataByDate(date string) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// CreateTime 2006-01-02 15:04:05
@@ -176,7 +176,7 @@ func RawAllBlogDataByDate(date string) string {
 
 // 根据日期范围获取所有Blog
 func RawAllBlogDataByDateRange(startDate, endDate string) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// 使用时间对比
@@ -204,7 +204,7 @@ func RawAllBlogDataByDateRange(startDate, endDate string) string {
 
 // 根据日期范围获取所有Blog数量
 func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	count := 0
 	for _, b := range blogs {
 		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
@@ -229,7 +229,7 @@ func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
 
 // 获取指定日期Blog数量
 func RawGetBlogDataByDate(date string) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// 使用时间对比
@@ -338,7 +338,7 @@ func RawContentStatistics() string {
 
 // 按权限类型获取博客列表
 func RawBlogsByAuthType(authType int) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		if (b.AuthType & authType) != 0 {
@@ -353,7 +353,7 @@ func RawBlogsByAuthType(authType int) string {
 
 // 按标签获取博客列表
 func RawBlogsByTag(tag string) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		if strings.Contains(b.Tags, tag) {
@@ -379,7 +379,7 @@ func RawBlogMetadata(title string) string {
 
 // 获取近期活跃博客(近7天有访问或修改)
 func RawRecentActiveBlog() string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	now := time.Now()
 	sevenDaysAgo := now.AddDate(0, 0, -7)
 
@@ -408,7 +408,7 @@ func RawRecentActiveBlog() string {
 
 // 获取月度创建趋势
 func RawMonthlyCreationTrend() string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	monthCount := make(map[string]int)
 
 	for _, b := range blogs {
@@ -435,7 +435,7 @@ func RawMonthlyCreationTrend() string {
 
 // 搜索博客内容
 func RawSearchBlogContent(keyword string) string {
-	blogs := blog.Blogs
+	blogs := blog.GetBlogs()
 	matchedBlogs := make([]string, 0)
 
 	for _, b := range blogs {
@@ -535,7 +535,7 @@ func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
 	if err != nil {
 		return ""
 	}
-	for _, b := range blog.Blogs {
+	for _, b := range blog.GetBlogs() {
 		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
 		if err != nil {
 			continue
