@@ -81,6 +81,15 @@ func getsession(r *h.Request) string {
 	return session.Value
 }
 
+// getAccountFromRequest extracts account by resolving the session cookie
+func getAccountFromRequest(r *h.Request) string {
+	s := getsession(r)
+	if s == "" {
+		return ""
+	}
+	return auth.GetAccountBySession(s)
+}
+
 // checkLogin validates user login session
 func checkLogin(r *h.Request) int {
 	session, err := r.Cookie("session")
@@ -317,6 +326,10 @@ func Init() int {
 	h.HandleFunc("/api/tools/text", tools.TextToolHandler)
 	h.HandleFunc("/api/tools/weather", tools.WeatherHandler)
 	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
+
+	// Skill routes
+	h.HandleFunc("/skill", HandleSkill)
+	RegisterSkillRoutes()
 
 	// Static file server
 	root := config.GetHttpStaticPath()

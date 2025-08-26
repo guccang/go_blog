@@ -58,6 +58,8 @@ replace constellation => ./pkgs/constellation
 
 replace tools => ./pkgs/tools
 
+replace skill => ./pkgs/skill
+
 require (
 	blog v0.0.0
 	comment v0.0.0
@@ -85,6 +87,7 @@ require (
 	todolist v0.0.0
 	yearplan v0.0.0
 	core v0.0.0
+	skill v0.0.0
 
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect

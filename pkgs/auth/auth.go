@@ -56,3 +56,16 @@ func CheckLoginSession(session string) int {
 	ret := <-cmd.Response()
 	return ret.(int)
 }
+
+// GetAccountBySession returns the account bound to a session, or empty if not found
+func GetAccountBySession(session string) string {
+	cmd := &getAccountBySessionCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Session: session,
+	}
+	auth_actor.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(string)
+}

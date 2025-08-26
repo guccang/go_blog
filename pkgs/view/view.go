@@ -630,6 +630,24 @@ func PageTodolist(w h.ResponseWriter, date string) {
 	}
 }
 
+// PageSkill renders the skill learning page
+func PageSkill(w h.ResponseWriter) {
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "skill.template"))
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to parse skill template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(err.Error())
+		h.Error(w, "Failed to render template skill.template", h.StatusInternalServerError)
+		return
+	}
+}
+
 // PageYearPlan renders the year plan page
 func PageYearPlan(w h.ResponseWriter, year int) {
 	tmpDir := config.GetHttpTemplatePath()

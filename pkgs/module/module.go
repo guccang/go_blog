@@ -21,6 +21,7 @@ type UploadedBlogData struct {
 	AuthType int
 	Tags     string
 	Encrypt  int
+	Account  string
 }
 
 // blog数据
@@ -35,6 +36,7 @@ type Blog struct {
 	AuthType   int
 	Tags       string
 	Encrypt    int
+	Account    string
 }
 
 // 用户

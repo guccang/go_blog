@@ -18,17 +18,17 @@ import (
 )
 
 /*
-goroutine 线程安全
- goroutine 会被调度到任意一个线程上，因此会被任意一个线程执行接口
- 线程安全原因
- 原因1: 	actor使用chan通信，chan是线程安全的
- 原因2: 	actor的mailbox是线程安全的
+ goroutine 线程安全
+  goroutine 会被调度到任意一个线程上，因此会被任意一个线程执行接口
+  线程安全原因
+  原因1: 	actor使用chan通信，chan是线程安全的
+  原因2: 	actor的mailbox是线程安全的
 
- 添加一个功能需要的四个步骤:
-  第一步: 实现功能逻辑
-  第二步: 实现对应的cmd
-  第三步: 在persistence.go中添加对应的接口
-  第四步: 在http中添加对应的接口
+  添加一个功能需要的四个步骤:
+   第一步: 实现功能逻辑
+   第二步: 实现对应的cmd
+   第三步: 在persistence.go中添加对应的接口
+   第四步: 在http中添加对应的接口
 */
 
 // actor
@@ -60,20 +60,36 @@ func (p *PersistenceActor) connect(ip string, port int, password string) int {
 }
 
 func (p *PersistenceActor) deleteBlog(title string) int {
-	key := fmt.Sprintf("blog@%s", title)
-	err := p.client.Del(key).Err()
-	if err != nil {
-		log.ErrorF("delete error key=%s err=%s", key, err.Error())
-		return 1
+	// delete redis keys for all accounts and legacy key
+	pattern := fmt.Sprintf("*:blog@%s", title)
+	keys, _ := p.client.Keys(pattern).Result()
+	legacyKey := fmt.Sprintf("blog@%s", title)
+	keys = append(keys, legacyKey)
+	var accountForFile string
+	for _, k := range keys {
+		if err := p.client.Del(k).Err(); err != nil {
+			log.ErrorF("delete error key=%s err=%s", k, err.Error())
+		} else {
+			log.DebugF("delete key=%s", k)
+			// parse account prefix if present
+			if idx := strings.Index(k, ":blog@"); idx > 0 {
+				accountForFile = k[:idx]
+			}
+		}
 	}
-
-	log.DebugF("delete title=%s", key)
-	p.deleteFile(title)
+	p.deleteFile(accountForFile, title)
 	return 0
 }
 
 func (p *PersistenceActor) saveBlog(blog *module.Blog) {
-	key := fmt.Sprintf("blog@%s", blog.Title)
+	account := blog.Account
+	if account == "" {
+		// default to admin when not provided
+		account = config.GetConfig("admin")
+		blog.Account = account
+	}
+
+	key := fmt.Sprintf("%s:blog@%s", account, blog.Title)
 	values := make(map[string]interface{})
 	values["title"] = blog.Title
 	values["content"] = blog.Content
@@ -85,6 +101,7 @@ func (p *PersistenceActor) saveBlog(blog *module.Blog) {
 	values["authtype"] = blog.AuthType
 	values["tags"] = blog.Tags
 	values["encrypt"] = blog.Encrypt
+	values["account"] = account
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
 		log.ErrorF("saveblog error key=%s err=%s", key, err.Error())
@@ -134,6 +151,7 @@ func (p *PersistenceActor) toBlog(m map[string]string) *module.Blog {
 	if !ok {
 		encrypt_s = "0"
 	}
+	account, _ := m["account"]
 
 	mn, _ := strconv.Atoi(mn_s)
 	an, _ := strconv.Atoi(an_s)
@@ -151,12 +169,26 @@ func (p *PersistenceActor) toBlog(m map[string]string) *module.Blog {
 		AuthType:   auth,
 		Tags:       tags,
 		Encrypt:    encrypt,
+		Account:    account,
 	}
 	return &b
 }
 
 func (p *PersistenceActor) getBlog(name string) *module.Blog {
-	key := fmt.Sprintf("blog@%s", name)
+	// try account namespaced first
+	keys, err := p.client.Keys(fmt.Sprintf("*:blog@%s", name)).Result()
+	if err != nil {
+		log.ErrorF("getblog error keys=*:blog@%s err=%s", name, err.Error())
+		return nil
+	}
+	if len(keys) == 0 {
+		// legacy key without account
+		keys, _ = p.client.Keys(fmt.Sprintf("blog@%s", name)).Result()
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	key := keys[0]
 	m, err := p.client.HGetAll(key).Result()
 	if err != nil {
 		log.ErrorF("getblog error key=%s err=%s", key, err.Error())
@@ -171,11 +203,14 @@ func (p *PersistenceActor) getBlog(name string) *module.Blog {
 }
 
 func (p *PersistenceActor) getBlogs() map[string]*module.Blog {
-	keys, err := p.client.Keys("blog@*").Result()
+	keys, err := p.client.Keys("*:blog@*").Result()
 	if err != nil {
-		log.ErrorF("getblogs error keys=blog@* err=%s", err.Error())
+		log.ErrorF("getblogs error keys=*:blog@* err=%s", err.Error())
 		return nil
 	}
+	// also load legacy keys if exist
+	legacy, _ := p.client.Keys("blog@*").Result()
+	keys = append(keys, legacy...)
 
 	blogs := make(map[string]*module.Blog)
 
@@ -204,9 +239,13 @@ func (p *PersistenceActor) showBlog(b *module.Blog) {
 	log.DebugF("an=%d", b.AccessNum)
 }
 
-func (p *PersistenceActor) deleteFile(title string) int {
+func (p *PersistenceActor) deleteFile(account string, title string) int {
 	filename := title
 	path := config.GetBlogsPath()
+	if account != "" {
+		path = filepath.Join(path, account)
+	}
+	ioutils.Mkdir(path)
 	full := filepath.Join(path, filename)
 	full = fmt.Sprintf("%s.md", full)
 
@@ -222,6 +261,10 @@ func (p *PersistenceActor) saveToFile(blog *module.Blog) {
 	content := blog.Content
 
 	path := config.GetBlogsPath()
+	if blog.Account != "" {
+		path = filepath.Join(path, blog.Account)
+	}
+	ioutils.Mkdir(path)
 	full := filepath.Join(path, filename)
 	full = fmt.Sprintf("%s.md", full)
 
@@ -241,13 +284,14 @@ func (p *PersistenceActor) saveBlogComments(bc *module.BlogComments) {
 	s := "\x01"
 	// save new keys
 	for _, c := range bc.Comments {
-		value := fmt.Sprintf("Idx=%d%sowner=%s%sct=%s%smt=%s%smsg=%s%smail=%s",
+		value := fmt.Sprintf("Idx=%d%sowner=%s%sct=%s%smt=%s%smsg=%s%smail=%s%sPwd=%s",
 			c.Idx, s,
 			c.Owner, s,
 			c.CreateTime, s,
 			c.ModifyTime, s,
 			c.Msg, s,
 			c.Mail, s,
+			s,
 			c.Pwd)
 		idx_str := fmt.Sprintf("%d", c.Idx)
 		values[idx_str] = value

@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技能学习 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/skill.css">
+</head>
+<body>
+    <div class="top-sidebar-cotainer">
+      <div class="top-sidebar">
+        <div class="nav-container">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+        </div>
+        <div class="search-toggle-container">
+            <h1 class="page-title" style="margin:0;color:var(--text-color);font-size:24px;">🎯 技能学习</h1>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+        <!-- 添加新技能卡片 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">添加新技能</h2>
+            </div>
+            <div class="card-body">
+                <form id="addSkillForm" class="skill-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="skillName">技能名称</label>
+                            <input type="text" id="skillName" name="name" required placeholder="例如：Go语言编程">
+                        </div>
+                        <div class="form-group">
+                            <label for="skillCategory">分类</label>
+                            <input type="text" id="skillCategory" name="category" placeholder="例如：编程语言">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="skillDescription">技能描述</label>
+                        <textarea id="skillDescription" name="description" rows="3" placeholder="描述这个技能的目标和学习内容..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="currentLevel">当前水平</label>
+                            <select id="currentLevel" name="level">
+                                <option value="beginner">初学者</option>
+                                <option value="intermediate">中级</option>
+                                <option value="advanced">高级</option>
+                                <option value="expert">专家</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="targetLevel">目标水平</label>
+                            <select id="targetLevel" name="target_level">
+                                <option value="beginner">初学者</option>
+                                <option value="intermediate">中级</option>
+                                <option value="advanced" selected>高级</option>
+                                <option value="expert">专家</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="skillTags">标签（逗号分隔）</label>
+                        <input type="text" id="skillTags" name="tags" placeholder="例如：编程,后端,并发">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="skillActive" name="is_active" checked>
+                            <span class="checkmark"></span>
+                            立即开始学习
+                        </label>
+                    </div>
+                    <button type="submit" class="add-btn">创建技能</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 技能列表 -->
+        <div class="card">
+            <div class="card-header">
+            <div class="card-body">
+                <div id="skillsList" class="skills-grid">
+                    <!-- 技能卡片将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 技能详情模态框 -->
+        <div id="skillDetailModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalSkillTitle" class="modal-title">技能详情</h3>
+                    <span class="close-modal" onclick="closeSkillModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="skill-info">
+                        <div class="skill-meta">
+                            <span class="skill-category" id="modalSkillCategory"></span>
+                            <span class="skill-level" id="modalSkillLevel"></span>
+                            <span class="skill-progress" id="modalSkillProgress"></span>
+                        </div>
+                        <p class="skill-description" id="modalSkillDescription"></p>
+                    </div>
+
+                    <!-- 时间轴部分 - 全页面显示 -->
+                    <div class="timeline-section full-page">
+                        <div class="timeline-header">
+                            <h4>学习时间轴</h4>
+                            <button class="btn btn-primary" onclick="openAddContentModal()">
+                                <i class="fas fa-plus"></i> 添加学习内容
+                            </button>
+                        </div>
+                        <div id="timelineContainer" class="timeline-container">
+                            <!-- 时间轴内容将在这里动态生成 -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeSkillModal()">关闭</button>
+                    <button class="btn btn-danger" onclick="deleteCurrentSkill()">删除技能</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加学习内容模态框 - 全屏模式 -->
+        <div id="addContentModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">添加学习内容</h3>
+                    <span class="close-modal" onclick="closeAddContentModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="fullscreen-form-container">
+                        <form id="addContentForm" class="content-form fullscreen-form">
+                            <div class="form-section">
+                                <h4 class="form-section-title">基本信息</h4>
+                                <div class="form-row">
+                                    <div class="form-group fullscreen-form-group">
+                                        <label for="contentTitle">内容标题</label>
+                                        <input type="text" id="contentTitle" name="title" required placeholder="例如：学习Go协程">
+                                    </div>
+                                    <div class="form-group fullscreen-form-group">
+                                        <label for="contentStatus">状态</label>
+                                        <select id="contentStatus" name="status">
+                                            <option value="planned">计划中</option>
+                                            <option value="in_progress">进行中</option>
+                                            <option value="completed">已完成</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group fullscreen-form-group">
+                                    <label for="contentDescription">详细描述</label>
+                                    <textarea id="contentDescription" name="description" rows="3" placeholder="描述具体的学习内容..."></textarea>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h4 class="form-section-title">学习详情</h4>
+                                <div class="form-row">
+                                    <div class="form-group fullscreen-form-group">
+                                        <label for="contentPriority">优先级 (1-10)</label>
+                                        <input type="number" id="contentPriority" name="priority" min="1" max="10" value="5">
+                                    </div>
+                                    <div class="form-group fullscreen-form-group">
+                                        <label for="contentTimeSpent">已花费时间（分钟）</label>
+                                        <input type="number" id="contentTimeSpent" name="time_spent" min="0" value="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h4 class="form-section-title">学习资源</h4>
+                                <div class="form-group fullscreen-form-group">
+                                    <label for="contentResources">资源链接（每行一个URL）</label>
+                                    <textarea id="contentResources" name="resources" rows="4" placeholder="https://example.com/tutorial
+https://docs.example.com/guide"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="form-section">
+                                <h4 class="form-section-title">学习笔记</h4>
+                                <div class="form-group fullscreen-form-group">
+                                    <label for="contentNotes">详细笔记和心得</label>
+                                    <textarea id="contentNotes" name="notes" rows="6" placeholder="记录学习过程中的要点、心得、遇到的问题和解决方案..."></textarea>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeAddContentModal()">取消</button>
+                    <button class="btn btn-primary" onclick="handleAddContent()">添加内容</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计数据卡片 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">学习统计</h2>
+            </div>
+            <div class="card-body">
+                <div id="skillStats" class="stats-grid">
+                    <!-- 统计数据将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast容器 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 创建按钮 -->
+    <a href="#" class="create-btn" title="添加新技能" onclick="document.getElementById('skillName').focus(); return false;">+</a>
+
+    <!-- 智能助手悬浮图标 -->
+    <a href="/assistant" class="assistant-floating-btn" title="智能助手">
+        <i class="fas fa-robot"></i>
+    </a>
+
+    <script>
+        // 全局变量
+        let currentSkillId = null;
+        let skillsData = [];
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSkills();
+            loadSkillStats();
+            setupEventListeners();
+        });
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 添加技能表单
+            document.getElementById('addSkillForm').addEventListener('submit', handleAddSkill);
+            
+            // 模态框关闭
+            document.querySelectorAll('.close-modal').forEach(closeBtn => {
+                closeBtn.addEventListener('click', function() {
+                    if (this.onclick) {
+                        this.onclick();
+                    }
+                });
+            });
+            
+            window.addEventListener('click', function(event) {
+                if (event.target === document.getElementById('skillDetailModal')) {
+                    closeSkillModal();
+                }
+                if (event.target === document.getElementById('addContentModal')) {
+                    closeAddContentModal();
+                }
+            });
+        }
+
+        // 加载所有技能
+        function loadSkills() {
+            fetch('/api/skills')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        skillsData = data.skills;
+                        renderSkills(skillsData);
+                    }
+                })
+                .catch(error => {
+                    showToast('加载技能失败: ' + error.message, 'error');
+                });
+        }
+
+        // 加载技能统计
+        function loadSkillStats() {
+            fetch('/api/skills/stats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderSkillStats(data.stats);
+                    }
+                })
+                .catch(error => {
+                    console.error('加载统计失败:', error);
+                });
+        }
+
+       // 渲染技能卡片
+        function renderSkills(skills) {
+            const container = document.getElementById('skillsList');
+            container.innerHTML = '';
+
+            if (skills.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-graduation-cap"></i>
+                        <p>还没有添加任何技能</p>
+                        <p>点击上方"创建技能"开始你的学习之旅</p>
+                    </div>
+                `;
+                return;
+            }
+
+            skills.forEach(skill => {
+                const skillCard = createSkillCard(skill);
+                container.appendChild(skillCard);
+            });
+        }
+
+        // 创建单个技能卡片
+        function createSkillCard(skill) {
+            const card = document.createElement('div');
+            card.className = 'skill-card';
+            card.innerHTML = `
+                <div class="skill-card-header">
+                    <h3 class="skill-name">${escapeHtml(skill.name)}</h3>
+                    <span class="skill-category">${escapeHtml(skill.category || '未分类')}</span>
+                </div>
+                <div class="skill-card-body">
+                    <p class="skill-description">${truncateText(escapeHtml(skill.description || '暂无描述'), 100)}</p>
+                    <div class="skill-progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${skill.progress || 0}%"></div>
+                        </div>
+                        <span class="progress-text">${Math.round(skill.progress || 0)}%</span>
+                    </div>
+                    <div class="skill-meta">
+                        <span class="skill-level">${getLevelText(skill.level)}</span>
+                        <span class="skill-items">${skill.contents ? skill.contents.length : 0} 个学习项</span>
+                    </div>
+                </div>
+                <div class="skill-card-footer">
+                    <button class="btn btn-primary" onclick="viewSkill('${skill.id}')">查看详情</button>
+                    ${skill.is_active ? '<span class="status-badge active">活跃</span>' : '<span class="status-badge inactive">暂停</span>'}
+                </div>
+            `;
+            return card;
+        }
+
+        // 查看技能详情
+        function viewSkill(skillId) {
+            fetch(`/api/skill/${skillId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentSkillId = skillId;
+                        // 更新skillsData中的技能数据，以便编辑时使用
+                        const index = skillsData.findIndex(skill => skill.id === skillId);
+                        if (index !== -1) {
+                            skillsData[index] = data.skill;
+                        } else {
+                            skillsData.push(data.skill);
+                        }
+                        showSkillModal(data.skill);
+                    }
+                })
+                .catch(error => {
+                    showToast('加载技能详情失败: ' + error.message, 'error');
+                });
+        }
+
+        // 显示技能模态框
+        function showSkillModal(skill) {
+            document.getElementById('modalSkillTitle').textContent = skill.name;
+            document.getElementById('modalSkillCategory').textContent = skill.category || '未分类';
+            document.getElementById('modalSkillLevel').textContent = getLevelText(skill.level);
+            document.getElementById('modalSkillProgress').textContent = `进度: ${Math.round(skill.progress || 0)}%`;
+            document.getElementById('modalSkillDescription').textContent = skill.description || '暂无描述';
+
+            renderTimeline(skill.contents || []);
+            document.getElementById('skillDetailModal').style.display = 'block';
+        }
+
+        // 打开添加内容模态框
+        function openAddContentModal() {
+            if (!currentSkillId) {
+                showToast('请先选择技能', 'error');
+                return;
+            }
+            document.getElementById('addContentModal').style.display = 'block';
+        }
+
+        // 关闭添加内容模态框
+        function closeAddContentModal() {
+            document.getElementById('addContentModal').style.display = 'none';
+            document.getElementById('addContentForm').reset();
+            
+            // 重置编辑状态
+            if (window.editingContentId) {
+                window.editingContentId = null;
+                // 恢复添加模式
+                document.querySelector('#addContentModal .modal-title').textContent = '添加学习内容';
+                const submitBtn = document.querySelector('#addContentModal .btn-primary');
+                submitBtn.textContent = '添加内容';
+                submitBtn.onclick = handleAddContent;
+            }
+        }
+
+        // 关闭技能模态框
+        function closeSkillModal() {
+            document.getElementById('skillDetailModal').style.display = 'none';
+            currentSkillId = null;
+        }
+
+        // 渲染时间轴
+        function renderTimeline(contents) {
+            const container = document.getElementById('timelineContainer');
+            container.innerHTML = '';
+
+            if (contents.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-timeline">
+                        <i class="fas fa-history"></i>
+                        <p>还没有学习记录</p>
+                        <p>添加你的第一个学习内容开始记录</p>
+                    </div>
+                `;
+                return;
+            }
+
+            contents.forEach((content, index) => {
+                const timelineItem = createTimelineItem(content, index, contents.length);
+                container.appendChild(timelineItem);
+            });
+        }
+
+        // 创建时间轴项
+        function createTimelineItem(content, index, totalItems) {
+            const item = document.createElement('div');
+            item.className = 'timeline-item';
+            
+            const date = new Date(content.created_at);
+            const formattedDate = date.toLocaleDateString('zh-CN', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'long'
+            });
+            const formattedTime = date.toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const timeAgo = getTimeAgo(content.created_at);
+            
+            item.innerHTML = `
+                <div class="timeline-marker">
+                    <div class="timeline-time-badge">
+                        <div class="time-hour">${formattedTime}</div>
+                        <div class="time-ago">${timeAgo}</div>
+                    </div>
+                    <div class="timeline-dot ${content.status}"></div>
+                    ${index < totalItems - 1 ? '<div class="timeline-line"></div>' : ''}
+                </div>
+                <div class="timeline-content">
+                    <div class="timeline-header">
+                        <div class="timeline-date-info">
+                            <div class="timeline-full-date">${formattedDate}</div>
+                            <div class="timeline-time-details">
+                                <span class="time-icon">🕒</span>
+                                <span class="time-display">${formattedTime}</span>
+                                <span class="time-ago-badge">${timeAgo}</span>
+                            </div>
+                        </div>
+                        <h4 class="content-title">${escapeHtml(content.title)}</h4>
+                    </div>
+                    <div class="content-status ${content.status}">
+                        ${getStatusText(content.status)}
+                    </div>
+                    ${content.description ? `<p class="content-description">${escapeHtml(content.description)}</p>` : ''}
+                    ${content.time_spent > 0 ? `<div class="content-time">⏱️ 花费时间: ${content.time_spent} 分钟</div>` : ''}
+                    ${content.notes ? `<div class="content-notes">📝 ${escapeHtml(content.notes)}</div>` : ''}
+                    ${content.resources && content.resources.length > 0 ? `
+                        <div class="content-resources">
+                            <strong>📚 学习资源:</strong>
+                            <ul>
+                                ${content.resources.map(resource => `<li><a href="${escapeHtml(resource)}" target="_blank">${escapeHtml(resource)}</a></li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    <div class="timeline-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="editContent('${content.id}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteContent('${content.id}')">删除</button>
+                    </div>
+                </div>
+            `;
+            return item;
+        }
+
+        // 处理添加技能
+        function handleAddSkill(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const skillData = {
+                name: formData.get('name'),
+                description: formData.get('description'),
+                category: formData.get('category'),
+                level: formData.get('level'),
+                target_level: formData.get('target_level'),
+                tags: formData.get('tags') ? formData.get('tags').split(',').map(tag => tag.trim()).filter(tag => tag) : [],
+                is_active: formData.get('is_active') === 'on',
+                contents: []
+            };
+
+            fetch('/api/skill', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(skillData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('技能创建成功', 'success');
+                    event.target.reset();
+                    loadSkills();
+                    loadSkillStats();
+                } else {
+                    showToast('创建技能失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('创建技能失败: ' + error.message, 'error');
+            });
+        }
+
+        // 处理添加内容
+        function handleAddContent() {
+            if (!currentSkillId) {
+                showToast('请先选择技能', 'error');
+                return;
+            }
+
+            const form = document.getElementById('addContentForm');
+            const formData = new FormData(form);
+            const contentData = {
+                title: formData.get('title'),
+                description: formData.get('description'),
+                status: formData.get('status'),
+                priority: parseInt(formData.get('priority')),
+                time_spent: parseInt(formData.get('time_spent')),
+                resources: formData.get('resources') ? formData.get('resources').split('\n').map(url => url.trim()).filter(url => url) : [],
+                notes: formData.get('notes')
+            };
+
+            fetch(`/api/skill/${currentSkillId}/content`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(contentData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('学习内容添加成功', 'success');
+                    form.reset();
+                    closeAddContentModal();
+                    viewSkill(currentSkillId); // 重新加载详情
+                    loadSkills(); // 刷新列表
+                    loadSkillStats(); // 刷新统计
+                } else {
+                    showToast('添加内容失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('添加内容失败: ' + error.message, 'error');
+            });
+        }
+
+        // 编辑内容
+        function editContent(contentId) {
+            if (!currentSkillId) {
+                showToast('请先选择技能', 'error');
+                return;
+            }
+
+            // 从当前技能数据中查找内容（因为API没有单独获取内容的接口）
+            const currentSkill = skillsData.find(skill => skill.id === currentSkillId);
+            if (!currentSkill || !currentSkill.contents) {
+                showToast('找不到内容数据', 'error');
+                return;
+            }
+
+            const content = currentSkill.contents.find(c => c.id === contentId);
+            if (!content) {
+                showToast('找不到指定的学习内容', 'error');
+                return;
+            }
+
+            // 填充表单
+            document.getElementById('contentTitle').value = content.title || '';
+            document.getElementById('contentDescription').value = content.description || '';
+            document.getElementById('contentStatus').value = content.status || 'planned';
+            document.getElementById('contentPriority').value = content.priority || 5;
+            document.getElementById('contentTimeSpent').value = content.time_spent || 0;
+            document.getElementById('contentResources').value = content.resources ? content.resources.join('\n') : '';
+            document.getElementById('contentNotes').value = content.notes || '';
+            
+            // 设置编辑模式
+            window.editingContentId = contentId;
+            
+            // 打开模态框并修改标题
+            document.getElementById('addContentModal').style.display = 'block';
+            document.querySelector('#addContentModal .modal-title').textContent = '编辑学习内容';
+            
+            // 修改提交按钮文本
+            const submitBtn = document.querySelector('#addContentModal .btn-primary');
+            submitBtn.textContent = '更新内容';
+            submitBtn.onclick = handleUpdateContent;
+            
+            showToast('内容已加载到编辑表单', 'success');
+        }
+
+        // 处理更新内容
+        function handleUpdateContent() {
+            if (!currentSkillId || !window.editingContentId) {
+                showToast('编辑信息不完整', 'error');
+                return;
+            }
+
+            const form = document.getElementById('addContentForm');
+            const formData = new FormData(form);
+            const contentData = {
+                title: formData.get('title'),
+                description: formData.get('description'),
+                status: formData.get('status'),
+                priority: parseInt(formData.get('priority')),
+                time_spent: parseInt(formData.get('time_spent')),
+                resources: formData.get('resources') ? formData.get('resources').split('\n').map(url => url.trim()).filter(url => url) : [],
+                notes: formData.get('notes')
+            };
+
+            fetch(`/api/skill/${currentSkillId}/content/${window.editingContentId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(contentData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('内容更新成功', 'success');
+                    closeAddContentModal();
+                    viewSkill(currentSkillId); // 重新加载详情
+                    loadSkills(); // 刷新列表
+                    loadSkillStats(); // 刷新统计
+                    
+                    // 重置编辑状态
+                    window.editingContentId = null;
+                } else {
+                    showToast('更新内容失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('更新内容失败: ' + error.message, 'error');
+            });
+        }
+
+        // 删除内容
+        function deleteContent(contentId) {
+            if (!confirm('确定要删除这个学习内容吗？')) {
+                return;
+            }
+
+            fetch(`/api/skill/${currentSkillId}/content/${contentId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('内容删除成功', 'success');
+                    viewSkill(currentSkillId); // 重新加载详情
+                    loadSkills(); // 刷新列表
+                    loadSkillStats(); // 刷新统计
+                } else {
+                    showToast('删除内容失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('删除内容失败: ' + error.message, 'error');
+            });
+        }
+
+        // 删除当前技能
+        function deleteCurrentSkill() {
+            if (!currentSkillId || !confirm('确定要删除这个技能吗？所有学习内容也将被删除。')) {
+                return;
+            }
+
+            fetch(`/api/skill/${currentSkillId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('技能删除成功', 'success');
+                    closeSkillModal();
+                    loadSkills();
+                    loadSkillStats();
+                } else {
+                    showToast('删除技能失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('删除技能失败: ' + error.message, 'error');
+            });
+        }
+
+        // 渲染技能统计
+        function renderSkillStats(stats) {
+            const container = document.getElementById('skillStats');
+            container.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-graduation-cap"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${stats.total_skills}</div>
+                        <div class="stat-label">总技能数</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-play-circle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${stats.active_skills}</div>
+                        <div class="stat-label">活跃技能</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${stats.completed_skills}</div>
+                        <div class="stat-label">已完成</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-tasks"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${stats.total_contents}</div>
+                        <div class="stat-label">学习内容</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${Math.round(stats.avg_progress)}%</div>
+                        <div class="stat-label">平均进度</div>
+                    </div>
+                </div>
+            `;
+        }
+
+
+        // 更新时间线技能过滤器选项
+        function updateTimelineSkillFilter(timeline) {
+            const skills = new Set();
+            timeline.forEach(item => {
+                if (item.skill_name) {
+                    skills.add(item.skill_name);
+                }
+            });
+
+            const filter = document.getElementById('timelineSkillFilter');
+            const currentValue = filter.value;
+            
+            // 清空现有选项（保留"所有技能"）
+            while (filter.options.length > 1) {
+                filter.remove(1);
+            }
+
+            // 添加技能选项
+            skills.forEach(skill => {
+                const option = document.createElement('option');
+                option.value = skill;
+                option.textContent = skill;
+                filter.appendChild(option);
+            });
+
+            // 恢复之前的选择
+            filter.value = currentValue;
+        }
+
+        // 工具函数：获取水平文本
+        function getLevelText(level) {
+            const levels = {
+                'beginner': '初学者',
+                'intermediate': '中级',
+                'advanced': '高级',
+                'expert': '专家'
+            };
+            return levels[level] || level;
+        }
+
+        // 工具函数：获取状态文本
+        function getStatusText(status) {
+            const statuses = {
+                'planned': '计划中',
+                'in_progress': '进行中',
+                'completed': '已完成'
+            };
+            return statuses[status] || status;
+        }
+
+        // 过滤时间线
+        function filterTimeline() {
+            const skillFilter = document.getElementById('timelineSkillFilter').value;
+            const statusFilter = document.getElementById('timelineStatusFilter').value;
+            const timeFilter = document.getElementById('timelineTimeFilter').value;
+
+            fetch('/api/skills/timeline')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let filteredTimeline = data.timeline;
+
+                        // 应用技能过滤
+                        if (skillFilter) {
+                            filteredTimeline = filteredTimeline.filter(item => item.skill_name === skillFilter);
+                        }
+
+                        // 应用状态过滤
+                        if (statusFilter) {
+                            filteredTimeline = filteredTimeline.filter(item => item.status === statusFilter);
+                        }
+
+                        // 应用时间过滤
+                        if (timeFilter !== 'all') {
+                            const now = new Date();
+                            let startDate;
+
+                            switch (timeFilter) {
+                                case 'week':
+                                    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+                                    break;
+                                case 'month':
+                                    startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+                                    break;
+                                case 'year':
+                                    startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+                                    break;
+                            }
+
+                            filteredTimeline = filteredTimeline.filter(item => {
+                                const itemDate = new Date(item.created_at);
+                                return itemDate >= startDate;
+                            });
+                        }
+
+                        renderGlobalTimeline(filteredTimeline);
+                    }
+                })
+                .catch(error => {
+                    console.error('过滤时间线失败:', error);
+                });
+        }
+
+        // 工具函数：转义HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 工具函数：截断文本
+        function truncateText(text, length) {
+            return text.length > length ? text.substring(0, length) + '...' : text;
+        }
+
+        // 工具函数：获取相对时间
+        function getTimeAgo(timestamp) {
+            const now = new Date();
+            const date = new Date(timestamp);
+            const diffInSeconds = Math.floor((now - date) / 1000);
+            
+            if (diffInSeconds < 60) return '刚刚';
+            
+            const diffInMinutes = Math.floor(diffInSeconds / 60);
+            if (diffInMinutes < 60) return `${diffInMinutes}分钟前`;
+            
+            const diffInHours = Math.floor(diffInMinutes / 60);
+            if (diffInHours < 24) return `${diffInHours}小时前`;
+            
+            const diffInDays = Math.floor(diffInHours / 24);
+            if (diffInDays < 7) return `${diffInDays}天前`;
+            
+            const diffInWeeks = Math.floor(diffInDays / 7);
+            if (diffInWeeks < 4) return `${diffInWeeks}周前`;
+            
+            const diffInMonths = Math.floor(diffInDays / 30);
+            if (diffInMonths < 12) return `${diffInMonths}个月前`;
+            
+            return Math.floor(diffInDays / 365) + '年前';
+        }
+
+        // 渲染全局时间线
+        function renderGlobalTimeline(timeline) {
+            const container = document.getElementById('globalTimeline');
+            container.innerHTML = '';
+
+            if (timeline.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-timeline">
+                        <i class="fas fa-history"></i>
+                        <p>暂无学习记录</p>
+                        <p>开始添加学习内容来创建时间线</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 按日期分组
+            const groupedByDate = timeline.reduce((acc, item) => {
+                const date = new Date(item.created_at).toLocaleDateString('zh-CN');
+                if (!acc[date]) {
+                    acc[date] = [];
+                }
+                acc[date].push(item);
+                return acc;
+            }, {});
+
+            // 按日期排序
+            const sortedDates = Object.keys(groupedByDate).sort((a, b) => {
+                return new Date(b) - new Date(a);
+            });
+
+            sortedDates.forEach((date, dateIndex) => {
+                const dateItems = groupedByDate[date];
+                
+                // 创建日期标题
+                const dateHeader = document.createElement('div');
+                dateHeader.className = 'timeline-date-header';
+                dateHeader.innerHTML = `
+                    <div class="timeline-date-line"></div>
+                    <div class="timeline-date-title">${date}</div>
+                    <div class="timeline-date-line"></div>
+                `;
+                container.appendChild(dateHeader);
+
+                // 创建该日期的所有项目
+                dateItems.forEach((item, itemIndex) => {
+                    const timelineItem = createGlobalTimelineItem(item, itemIndex, dateItems.length);
+                    container.appendChild(timelineItem);
+                });
+            });
+        }
+
+        // 创建全局时间线项
+        function createGlobalTimelineItem(item, index, totalItems) {
+            const timelineItem = document.createElement('div');
+            timelineItem.className = 'global-timeline-item';
+            
+            const date = new Date(item.created_at);
+            const formattedDate = date.toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            timelineItem.innerHTML = `
+                <div class="global-timeline-marker">
+                    <div class="global-timeline-dot ${item.status}"></div>
+                    ${index < totalItems - 1 ? '<div class="global-timeline-line"></div>' : ''}
+                </div>
+                <div class="global-timeline-content">
+                    <div class="global-timeline-header">
+                        <div class="global-timeline-skill">${escapeHtml(item.skill_name)}</div>
+                        <span class="global-timeline-time">${formattedDate}</span>
+                    </div>
+                    <h4 class="global-timeline-title">${escapeHtml(item.title)}</h4>
+                    <div class="global-timeline-status ${item.status}">
+                        ${getStatusText(item.status)}
+                    </div>
+                    ${item.description ? `<p class="global-timeline-description">${escapeHtml(item.description)}</p>` : ''}
+                    ${item.time_spent > 0 ? `<div class="global-timeline-time-spent">⏱️ 花费时间: ${item.time_spent} 分钟</div>` : ''}
+                    <div class="global-timeline-actions">
+                        <button class="btn btn-sm btn-primary" onclick="viewSkill('${item.skill_id}')">查看技能</button>
+                    </div>
+                </div>
+            `;
+            return timelineItem;
+        }
+
+        // 显示Toast消息
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            
+            document.getElementById('toast-container').appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

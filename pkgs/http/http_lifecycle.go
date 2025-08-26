@@ -3,8 +3,8 @@ package http
 import (
 	"control"
 	"encoding/json"
-	h "net/http"
 	log "mylog"
+	h "net/http"
 	"strconv"
 	"time"
 	"view"
@@ -148,4 +148,15 @@ func HandleTools(w h.ResponseWriter, r *h.Request) {
 	}
 
 	view.PageTools(w)
+}
+
+// HandleSkill renders the skill learning page
+func HandleSkill(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleSkill", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+
+	view.PageSkill(w)
 }

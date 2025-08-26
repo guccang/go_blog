@@ -102,6 +102,7 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 		AuthType:   authType,
 		Tags:       tags,
 		Encrypt:    udb.Encrypt,
+		Account:    udb.Account,
 	}
 	if b.Encrypt == 1 {
 		b.AuthType = module.EAuthType_encrypt
@@ -145,6 +146,9 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 
 	b.AuthType = finalAuthType
 	b.Tags = tags
+	if udb.Account != "" {
+		b.Account = udb.Account
+	}
 
 	if (authType & module.EAuthType_diary) != 0 {
 		log.InfoF("博客 '%s' 更新了日记权限，AuthType=%d", title, authType)

@@ -84,12 +84,15 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 		*/
 	}
 
+	account := getAccountFromRequest(r)
+
 	ubd := module.UploadedBlogData{
 		Title:    title,
 		Content:  content,
 		AuthType: auth_type,
 		Tags:     tags,
 		Encrypt:  encrypt,
+		Account:  account,
 	}
 
 	ret := control.AddBlog(&ubd)
@@ -598,12 +601,15 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 		// 邮件备份密码,todo
 	}
 
+	account := getAccountFromRequest(r)
+
 	ubd := module.UploadedBlogData{
 		Title:    title,
 		Content:  content,
 		AuthType: auth_type,
 		Tags:     tags,
 		Encrypt:  encrypt,
+		Account:  account,
 	}
 
 	ret := control.ModifyBlog(&ubd)

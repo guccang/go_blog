@@ -38,3 +38,13 @@ func (actor *AuthActor) checkLoginSession(s string) int {
 	}
 	return 1
 }
+
+// get account by session
+func (actor *AuthActor) getAccountBySession(s string) string {
+	for account, session := range actor.sessions {
+		if s == session {
+			return account
+		}
+	}
+	return ""
+}

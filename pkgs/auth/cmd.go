@@ -5,6 +5,7 @@ import (
 )
 
 // cmd
+
 type addSessionCmd struct {
 	core.ActorCommand
 	Account string
@@ -35,4 +36,16 @@ type checkLoginSessionCmd struct {
 func (cmd *checkLoginSessionCmd) Do(actor core.ActorInterface) {
 	authActor := actor.(*AuthActor)
 	cmd.Response() <- authActor.checkLoginSession(cmd.Session)
+}
+
+// get account by session cmd
+type getAccountBySessionCmd struct {
+	core.ActorCommand
+	Session string
+}
+
+func (cmd *getAccountBySessionCmd) Do(actor core.ActorInterface) {
+	authActor := actor.(*AuthActor)
+	account := authActor.getAccountBySession(cmd.Session)
+	cmd.Response() <- account
 }
