@@ -174,34 +174,6 @@ func (p *PersistenceActor) toBlog(m map[string]string) *module.Blog {
 	return &b
 }
 
-func (p *PersistenceActor) getBlog(name string) *module.Blog {
-	// try account namespaced first
-	keys, err := p.client.Keys(fmt.Sprintf("*:blog@%s", name)).Result()
-	if err != nil {
-		log.ErrorF("getblog error keys=*:blog@%s err=%s", name, err.Error())
-		return nil
-	}
-	if len(keys) == 0 {
-		// legacy key without account
-		keys, _ = p.client.Keys(fmt.Sprintf("blog@%s", name)).Result()
-	}
-	if len(keys) == 0 {
-		return nil
-	}
-	key := keys[0]
-	m, err := p.client.HGetAll(key).Result()
-	if err != nil {
-		log.ErrorF("getblog error key=%s err=%s", key, err.Error())
-		return nil
-	}
-	if len(m) == 0 {
-		return nil
-	}
-	log.DebugF("getblog success key=%s title=%s", key, m["title"])
-	b := p.toBlog(m)
-	return b
-}
-
 func (p *PersistenceActor) getBlogs() map[string]*module.Blog {
 	keys, err := p.client.Keys("*:blog@*").Result()
 	if err != nil {
@@ -237,6 +209,56 @@ func (p *PersistenceActor) showBlog(b *module.Blog) {
 	log.DebugF("at=%s", b.AccessTime)
 	log.DebugF("mn=%d", b.ModifyNum)
 	log.DebugF("an=%d", b.AccessNum)
+}
+
+func (p *PersistenceActor) getBlogsByAccount(account string) map[string]*module.Blog {
+	if account == "" {
+		return p.getBlogs()
+	}
+
+	pattern := fmt.Sprintf("%s:blog@*", account)
+	keys, err := p.client.Keys(pattern).Result()
+	if err != nil {
+		log.ErrorF("getblogsbyaccount error keys=%s err=%s", pattern, err.Error())
+		return nil
+	}
+
+	// also load legacy keys for this account if they exist
+	legacyPattern := fmt.Sprintf("blog@*")
+	legacyKeys, _ := p.client.Keys(legacyPattern).Result()
+	// Filter legacy keys to only include those that belong to this account
+	var filteredLegacyKeys []string
+	for _, key := range legacyKeys {
+		// Check if this legacy blog belongs to the requested account
+		if len(key) < 6 {
+			log.DebugF("getblogbyaccount error key=%s", key)
+			continue
+		}
+		if blog := p.getBlogWithAccount(account, key[6:]); blog != nil {
+			filteredLegacyKeys = append(filteredLegacyKeys, key)
+		}
+	}
+	keys = append(keys, filteredLegacyKeys...)
+
+	blogs := make(map[string]*module.Blog)
+
+	for _, key := range keys {
+		log.DebugF("getblogbyaccount key=%s", key)
+		m, err := p.client.HGetAll(key).Result()
+		if err != nil {
+			log.ErrorF("getblogbyaccount error key=%s err=%s", key, err.Error())
+			continue
+		}
+		log.DebugF("getblogbyaccount success key=%s", key)
+		b := p.toBlog(m)
+		// Only include blogs that belong to the requested account
+		if b.Account == account {
+			blogs[b.Title] = b
+			p.showBlog(b)
+		}
+	}
+
+	return blogs
 }
 
 func (p *PersistenceActor) deleteFile(account string, title string) int {
@@ -629,4 +651,39 @@ func (p *PersistenceActor) toCommentSession(m map[string]string) *module.Comment
 		ExpireTime: m["expire_time"],
 		IsActive:   isActive,
 	}
+}
+
+func (p *PersistenceActor) getBlogWithAccount(account, name string) *module.Blog {
+
+	key := fmt.Sprintf("%s:blog@%s", account, name)
+	m, err := p.client.HGetAll(key).Result()
+	if err != nil {
+		log.ErrorF("getBlogWithAccount error key=%s err=%s", key, err.Error())
+		return nil
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	log.DebugF("getBlogWithAccount success key=%s title=%s", key, m["title"])
+	b := p.toBlog(m)
+	return b
+}
+
+func (p *PersistenceActor) deleteBlogWithAccount(account, title string) int {
+	if account == "" {
+		return p.deleteBlog(title)
+	}
+
+	// delete account-specific key
+	key := fmt.Sprintf("%s:blog@%s", account, title)
+	err := p.client.Del(key).Err()
+	if err != nil {
+		log.ErrorF("deleteBlogWithAccount error key=%s err=%s", key, err.Error())
+	} else {
+		log.DebugF("deleteBlogWithAccount success key=%s", key)
+	}
+
+	// also try to delete the file
+	p.deleteFile(account, title)
+	return 0
 }

@@ -2,7 +2,10 @@ package login
 
 import (
 	"auth"
+	"blog"
 	"core"
+	"encoding/json"
+	"fmt"
 	"module"
 	log "mylog"
 	"sms"
@@ -80,4 +83,91 @@ func (alogin *LoginActor) login(account string, password string) (string, int) {
 // 登出
 func (alogin *LoginActor) logout(account string) {
 	auth.RemoveSession(account)
+}
+
+// 用户注册
+// 返回错误码: 0-成功, 1-账号已存在, 2-无效账号或密码, 3-保存失败
+func (alogin *LoginActor) register(account string, password string) int {
+	if account == "" || password == "" {
+		return 2
+	}
+	
+	if _, exists := alogin.users[account]; exists {
+		return 1
+	}
+	
+	// 添加用户到内存
+	alogin.users[account] = &module.User{
+		Account:  account,
+		Password: password,
+	}
+	
+	// 保存所有用户账户到管理员博客中
+	if err := alogin.saveUsersToAdminBlog(); err != nil {
+		log.ErrorF("Failed to save users to admin blog: %v", err)
+		// 回滚：从内存中删除刚添加的用户
+		delete(alogin.users, account)
+		return 3
+	}
+	
+	log.InfoF("User registered successfully: %s", account)
+	return 0
+}
+
+// 保存所有用户账户到管理员博客
+func (alogin *LoginActor) saveUsersToAdminBlog() error {
+	// 将用户数据转换为JSON格式
+	usersJSON, err := json.Marshal(alogin.users)
+	if err != nil {
+		return err
+	}
+	
+	// 创建博客数据结构
+	udb := &module.UploadedBlogData{
+		Title:    "sys_accounts",
+		Content:  string(usersJSON),
+		AuthType: module.EAuthType_private, // 设为私有，保护用户数据
+		Tags:     "sys_accounts",
+		Account:  blog.GetDefaultAccount(), // 使用管理员账户
+	}
+	
+	// 检查是否已存在
+	existingBlog := blog.GetBlogWithAccount(blog.GetDefaultAccount(), "sys_accounts")
+	var ret int
+	if existingBlog == nil {
+		ret = blog.AddBlogWithAccount(blog.GetDefaultAccount(), udb)
+	} else {
+		ret = blog.ModifyBlogWithAccount(blog.GetDefaultAccount(), udb)
+	}
+	
+	if ret != 0 {
+		return fmt.Errorf("failed to save users blog, error code: %d", ret)
+	}
+	
+	return nil
+}
+
+// 从管理员博客加载用户账户数据
+func (alogin *LoginActor) loadUsersFromAdminBlog() error {
+	// 获取sys_accounts博客
+	accountsBlog := blog.GetBlogWithAccount(blog.GetDefaultAccount(), "sys_accounts")
+	if accountsBlog == nil {
+		log.InfoF("No sys_accounts blog found, starting with empty user database")
+		return nil
+	}
+	
+	// 解析JSON数据
+	var loadedUsers map[string]*module.User
+	if err := json.Unmarshal([]byte(accountsBlog.Content), &loadedUsers); err != nil {
+		return fmt.Errorf("failed to parse sys_accounts JSON: %v", err)
+	}
+	
+	// 加载用户到内存中
+	for account, user := range loadedUsers {
+		alogin.users[account] = user
+		log.DebugF("Loaded user: %s", account)
+	}
+	
+	log.InfoF("Successfully loaded %d users from sys_accounts", len(loadedUsers))
+	return nil
 }

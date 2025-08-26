@@ -93,7 +93,7 @@ func main() {
 	auth.Init()
 	login.Init()
 	blogs_txt_dir := config.GetBlogsPath()
-	control.ImportBlogsFromPath(blogs_txt_dir)
+	control.ImportBlogsFromPath("", blogs_txt_dir)
 	go mcp.Init()
 	llm.Init()
 	sms.Init()

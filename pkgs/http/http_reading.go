@@ -4,10 +4,10 @@ import (
 	"control"
 	"encoding/json"
 	"fmt"
-	h "net/http"
 	"lifecountdown"
 	"module"
 	log "mylog"
+	h "net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +27,8 @@ func HandleReading(w h.ResponseWriter, r *h.Request) {
 	bookTitle := r.URL.Query().Get("book")
 	if bookTitle != "" {
 		// 根据书名查找书籍ID
-		books := control.GetAllBooks()
+		account := getAccountFromRequest(r)
+		books := control.GetAllBooks(account)
 		for _, book := range books {
 			if book.Title == bookTitle {
 				// 跳转到书籍详情页面
@@ -81,7 +82,8 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		}
 
 		// 获取所有书籍
-		books := control.GetAllBooks()
+		account := getAccountFromRequest(r)
+		books := control.GetAllBooks(account)
 		booksSlice := make([]*module.Book, 0, len(books))
 		for _, book := range books {
 			booksSlice = append(booksSlice, book)
@@ -117,7 +119,9 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
+		account := getAccountFromRequest(r)
 		book, err := control.AddBook(
+			account,
 			bookData.Title,
 			bookData.Author,
 			bookData.ISBN,
@@ -205,14 +209,15 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 			updates["source_url"] = updateData.SourceUrl
 		}
 
-		err := control.UpdateBook(bookID, updates)
+		account := getAccountFromRequest(r)
+		err := control.UpdateBook(account, bookID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
 
 		// 获取更新后的书籍信息
-		book := control.GetBook(bookID)
+		book := control.GetBook(account, bookID)
 		if book == nil {
 			h.Error(w, "Book not found after update", h.StatusNotFound)
 			return
@@ -236,7 +241,8 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		log.DebugF("收到删除书籍请求: book_id=%s", bookID)
 
 		// 先检查书籍是否存在
-		book := control.GetBook(bookID)
+		account := getAccountFromRequest(r)
+		book := control.GetBook(account, bookID)
 		if book == nil {
 			log.ErrorF("删除书籍失败: 书籍不存在, book_id=%s", bookID)
 			h.Error(w, "书籍不存在", h.StatusBadRequest)
@@ -244,7 +250,7 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		}
 		log.DebugF("找到要删除的书籍: %s - %s", book.ID, book.Title)
 
-		err := control.DeleteBook(bookID)
+		err := control.DeleteBook(account, bookID)
 		if err != nil {
 			log.ErrorF("删除书籍失败: book_id=%s, error=%v", bookID, err)
 			h.Error(w, err.Error(), h.StatusBadRequest)
@@ -281,7 +287,8 @@ func HandleReadingStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	stats := control.GetReadingStatistics()
+	account := getAccountFromRequest(r)
+	stats := control.GetReadingStatistics(account)
 	json.NewEncoder(w).Encode(stats)
 }
 
@@ -333,7 +340,8 @@ func HandleBookDetail(w h.ResponseWriter, r *h.Request) {
 	}
 
 	bookID := parts[3]
-	book := control.GetBook(bookID)
+	account := getAccountFromRequest(r)
+	book := control.GetBook(account, bookID)
 	if book == nil {
 		h.Error(w, "Book not found", h.StatusNotFound)
 		return
@@ -372,7 +380,8 @@ func HandleBookProgressAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	err := control.UpdateBookProgress(bookID, requestData.CurrentPage)
+	account := getAccountFromRequest(r)
+	err := control.UpdateReadingProgress(account, bookID, requestData.CurrentPage, "")
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
@@ -407,7 +416,8 @@ func HandleBookFinishAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	err := control.FinishBook(bookID)
+	account := getAccountFromRequest(r)
+	err := control.FinishBook(account, bookID)
 	if err != nil {
 		h.Error(w, err.Error(), h.StatusBadRequest)
 		return
@@ -442,7 +452,8 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 	switch r.Method {
 	case h.MethodGet:
 		// 获取笔记
-		notes := control.GetBookNotes(bookID)
+		account := getAccountFromRequest(r)
+		notes := control.GetBookNotes(account, bookID)
 		json.NewEncoder(w).Encode(notes)
 
 	case h.MethodPost:
@@ -458,7 +469,8 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
-		note, err := control.AddBookNote(bookID, "note", noteData.Chapter, noteData.Content, noteData.Page, []string{})
+		account := getAccountFromRequest(r)
+		note, err := control.AddBookNote(account, bookID, "note", noteData.Chapter, noteData.Content, noteData.Page, []string{})
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
@@ -500,7 +512,8 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			updates["content"] = updateData.Content
 		}
 
-		err := control.UpdateBookNote(bookID, noteID, updates)
+		account := getAccountFromRequest(r)
+		err := control.UpdateBookNote(account, bookID, noteID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
@@ -520,7 +533,8 @@ func HandleBookNotesAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
-		err := control.DeleteBookNote(bookID, noteID)
+		account := getAccountFromRequest(r)
+		err := control.DeleteBookNote(account, bookID, noteID)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
@@ -558,7 +572,8 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 	switch r.Method {
 	case h.MethodGet:
 		// 获取心得
-		insights := control.GetBookInsights(bookID)
+		account := getAccountFromRequest(r)
+		insights := control.GetBookInsights(account, bookID)
 		json.NewEncoder(w).Encode(insights)
 
 	case h.MethodPost:
@@ -581,7 +596,9 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			keyTakeaways = append(keyTakeaways, insightData.Takeaway)
 		}
 
+		account := getAccountFromRequest(r)
 		insight, err := control.AddBookInsight(
+			account,
 			bookID,
 			insightData.Title,
 			insightData.Content,
@@ -636,7 +653,8 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			updates["key_takeaways"] = []string{updateData.Takeaway}
 		}
 
-		err := control.UpdateBookInsight(insightID, updates)
+		account := getAccountFromRequest(r)
+		err := control.UpdateBookInsight(account, insightID, updates)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
@@ -656,7 +674,8 @@ func HandleBookInsightsAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
-		err := control.DeleteBookInsight(insightID)
+		account := getAccountFromRequest(r)
+		err := control.DeleteBookInsight(account, insightID)
 		if err != nil {
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
@@ -685,7 +704,8 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case h.MethodGet:
-		plans := control.GetAllReadingPlans()
+		account := getAccountFromRequest(r)
+		plans := control.GetAllReadingPlans(account)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"plans":   plans,
@@ -705,7 +725,9 @@ func HandleReadingPlansAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
+		account := getAccountFromRequest(r)
 		plan, err := control.AddReadingPlan(
+			account,
 			planData.Title,
 			planData.Description,
 			planData.StartDate,
@@ -1027,7 +1049,8 @@ func HandleLifeCountdownAPI(w h.ResponseWriter, r *h.Request) {
 
 	case h.MethodGet:
 		// 获取书籍列表用于可视化
-		booksMap := control.GetAllBooks()
+		account := getAccountFromRequest(r)
+		booksMap := control.GetAllBooks(account)
 		bookTitles := make([]string, 0, len(booksMap))
 
 		for _, book := range booksMap {
@@ -1074,7 +1097,7 @@ func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
 	switch r.Method {
 	case h.MethodGet:
 		// 获取保存的配置
-		blog := control.GetBlog("lifecountdown.md")
+		blog := control.GetBlog("", "lifecountdown.md")
 		if blog == nil {
 			// 如果配置不存在，返回默认配置
 			defaultConfig := map[string]interface{}{

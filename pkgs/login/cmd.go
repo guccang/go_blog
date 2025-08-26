@@ -59,3 +59,16 @@ func (cmd *GenerateSMSCodeCmd) Do(actor core.ActorInterface) {
 	cmd.Response() <- code
 	cmd.Response() <- ret
 }
+
+// RegisterCmd for user registration
+type RegisterCmd struct {
+	core.ActorCommand
+	Account  string
+	Password string
+}
+
+func (cmd *RegisterCmd) Do(actor core.ActorInterface) {
+	loginActor := actor.(*LoginActor)
+	ret := loginActor.register(cmd.Account, cmd.Password)
+	cmd.Response() <- ret
+}

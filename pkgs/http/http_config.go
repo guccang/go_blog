@@ -58,7 +58,7 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 	switch r.Method {
 	case h.MethodGet:
 		// 获取系统配置
-		blog := control.GetBlog("sys_conf")
+		blog := control.GetBlog("", "sys_conf")
 		if blog == nil {
 			log.ErrorF("sys_conf文件不存在，创建默认配置文件")
 
@@ -96,7 +96,7 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 				Encrypt:  0,
 			}
 
-			result := control.AddBlog(uploadData)
+			result := control.AddBlog("", uploadData)
 			if result != 0 {
 				log.ErrorF("创建默认配置文件失败: result=%d", result)
 				h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
@@ -154,7 +154,7 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 			Encrypt:  0,
 		}
 
-		result := control.ModifyBlog(uploadData)
+		result := control.ModifyBlog("", uploadData)
 		if result != 0 {
 			log.ErrorF("更新配置文件失败: result=%d", result)
 			h.Error(w, "更新配置失败", h.StatusInternalServerError)

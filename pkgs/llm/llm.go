@@ -222,7 +222,7 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 `, now.Format("15:04:05"), userQuery, llmResponse)
 
 	// 检查是否已存在当天日记
-	existingBlog := control.GetBlog(diaryTitle)
+	existingBlog := control.GetBlog("", diaryTitle)
 	var finalContent string
 
 	if existingBlog != nil {
@@ -238,7 +238,7 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 			AuthType: existingBlog.AuthType,
 			Encrypt:  existingBlog.Encrypt,
 		}
-		control.ModifyBlog(blogData)
+		control.ModifyBlog("", blogData)
 		log.InfoF("LLM响应已追加到现有日记: %s", diaryTitle)
 	} else {
 		// 创建新的日记
@@ -254,7 +254,7 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 			Tags:     "日记|AI助手|自动生成",
 			AuthType: module.EAuthType_diary, // 使用日记权限
 		}
-		control.AddBlog(blogData)
+		control.AddBlog("", blogData)
 		log.InfoF("LLM响应已保存到新日记: %s", diaryTitle)
 	}
 }

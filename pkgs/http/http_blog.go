@@ -95,7 +95,7 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 		Account:  account,
 	}
 
-	ret := control.AddBlog(&ubd)
+	ret := control.AddBlog(account, &ubd)
 
 	// 响应客户端
 	if ret == 0 {
@@ -134,7 +134,7 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
 	if checkLogin(r) != 0 {
 		// 判定blog访问权限
-		auth_type := control.GetBlogAuthType(blogname)
+		auth_type := control.GetBlogAuthType("", blogname)
 		if auth_type == module.EAuthType_private {
 			h.Redirect(w, r, "/index", 302)
 			return
@@ -203,8 +203,10 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
+	account := getAccountFromRequest(r)
+
 	// 首先获取博客信息以检查权限
-	blog := control.GetBlog(blogname)
+	blog := control.GetBlog(account, blogname)
 	if blog == nil {
 		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
@@ -532,7 +534,7 @@ func HandleDelete(w h.ResponseWriter, r *h.Request) {
 	title := r.FormValue("title")
 	log.DebugF("delete title:%s", title)
 
-	ret := control.DeleteBlog(title)
+	ret := control.DeleteBlog("", title)
 	if ret == 0 {
 		w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
 	} else {
@@ -612,7 +614,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 		Account:  account,
 	}
 
-	ret := control.ModifyBlog(&ubd)
+	ret := control.ModifyBlog("", &ubd)
 
 	// 响应客户端
 	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
@@ -687,7 +689,7 @@ func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 检查博客是否存在
-	blog := control.GetBlog(blogname)
+	blog := control.GetBlog("", blogname)
 	if blog == nil {
 		h.Error(w, fmt.Sprintf("Blog %s not found", blogname), h.StatusBadRequest)
 		return

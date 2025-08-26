@@ -154,6 +154,38 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	h.Redirect(w, r, "/main", 302)
 }
 
+// HandleRegister handles user registration
+func HandleRegister(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleRegister", r)
+
+	r.ParseMultipartForm(32 << 20) // 32MB
+
+	account := r.FormValue("account")
+	if account == "" {
+		h.Error(w, "account parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	password := r.FormValue("password")
+	if password == "" {
+		h.Error(w, "password parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	ret := login.Register(account, password)
+	
+	switch ret {
+	case 0:
+		w.Write([]byte("注册成功"))
+	case 1:
+		h.Error(w, "账号已存在", h.StatusBadRequest)
+	case 2:
+		h.Error(w, "无效的账号或密码", h.StatusBadRequest)
+	default:
+		h.Error(w, "注册失败", h.StatusBadRequest)
+	}
+}
+
 // HandleIndex handles the index/login page
 func HandleIndex(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleIndex", r)

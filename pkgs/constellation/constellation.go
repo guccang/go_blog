@@ -376,7 +376,7 @@ func (cm *ConstellationManager) saveBirthChart(chart *BirthChart) error {
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog(ubd)
+	control.AddBlog("", ubd)
 	return nil
 }
 
@@ -392,7 +392,7 @@ func (cm *ConstellationManager) saveDailyHoroscope(horoscope *DailyHoroscope) er
 		AuthType: module.EAuthType_public,
 	}
 
-	control.AddBlog(ubd)
+	control.AddBlog("", ubd)
 	return nil
 }
 
@@ -427,7 +427,7 @@ func (cm *ConstellationManager) saveDivinationRecord(record *DivinationRecord) e
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog(ubd)
+	control.AddBlog("", ubd)
 	return nil
 }
 
@@ -444,6 +444,6 @@ func (cm *ConstellationManager) saveCompatibilityAnalysis(analysis *Compatibilit
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog(ubd)
+	control.AddBlog("", ubd)
 	return nil
 }

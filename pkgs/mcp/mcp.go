@@ -167,13 +167,13 @@ func loadMCPConfigs() {
 	log.Debug("--- Loading MCP Configurations ---")
 
 	title := getMCPConfigTitle()
-	bolg := control.GetBlog(title)
+	bolg := control.GetBlog("", title)
 	if bolg == nil {
-		control.AddBlog(&module.UploadedBlogData{
+		control.AddBlog("", &module.UploadedBlogData{
 			Title:   title,
 			Content: "",
 		})
-		b := control.GetBlog(title)
+		b := control.GetBlog("", title)
 		if b == nil {
 			log.ErrorF("Failed to get blog '%s'", title)
 			return
@@ -249,7 +249,7 @@ func createDefaultMCPConfig() {
 	}
 
 	title := getMCPConfigTitle()
-	control.ModifyBlog(&module.UploadedBlogData{
+	control.ModifyBlog("", &module.UploadedBlogData{
 		Title:   title,
 		Content: string(data),
 	})
@@ -433,7 +433,7 @@ func saveMCPConfigs() error {
 	}
 
 	title := getMCPConfigTitle()
-	control.ModifyBlog(&module.UploadedBlogData{
+	control.ModifyBlog("", &module.UploadedBlogData{
 		Title:   title,
 		Content: string(data),
 	})

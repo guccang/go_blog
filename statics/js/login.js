@@ -26,8 +26,10 @@
                 const currentTab = getCurrentTab();
                 if (currentTab === 'password') {
                     submitContent();
-                } else {
+                } else if (currentTab === 'sms') {
                     submitSMS();
+                } else if (currentTab === 'register') {
+                    submitRegister();
                 }
             }
         });
@@ -192,20 +194,33 @@
         const passwordForm = document.getElementById('password-form');
         const smsForm = document.getElementById('sms-form');
         
+        const registerForm = document.getElementById('register-form');
+        
         if (tabName === 'password') {
             passwordForm.style.display = 'block';
             smsForm.style.display = 'none';
+            registerForm.style.display = 'none';
             document.getElementById('account').focus();
-        } else {
+        } else if (tabName === 'sms') {
             passwordForm.style.display = 'none';
             smsForm.style.display = 'block';
+            registerForm.style.display = 'none';
             document.getElementById('sms-code').focus();
+        } else if (tabName === 'register') {
+            passwordForm.style.display = 'none';
+            smsForm.style.display = 'none';
+            registerForm.style.display = 'block';
+            document.getElementById('reg-account').focus();
         }
     }
     
     // Get current active tab
     function getCurrentTab() {
-        return document.querySelector('.tab-button.active').textContent.includes('账号') ? 'password' : 'sms';
+        const activeTab = document.querySelector('.tab-button.active').textContent;
+        if (activeTab.includes('账号密码')) return 'password';
+        if (activeTab.includes('短信')) return 'sms';
+        if (activeTab.includes('注册')) return 'register';
+        return 'password';
     }
     
     function submitContent() {
@@ -367,5 +382,79 @@
         formData.append('code', smsCode);
         formData.append('device_id', deviceId);
         xhr.open('POST', '/loginsms', true);
+        xhr.send(formData);
+    }
+
+    // Registration functionality
+    function submitRegister() {
+        const account = document.getElementById('reg-account').value;
+        const password = document.getElementById('reg-password').value;
+        const confirmPassword = document.getElementById('reg-confirm-password').value;
+        const errorMessage = document.getElementById("error-message");
+        
+        if (!account || !password || !confirmPassword) {
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = '请填写所有字段';
+            return;
+        }
+        
+        if (password !== confirmPassword) {
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = '密码确认不匹配';
+            return;
+        }
+        
+        if (password.length < 6) {
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = '密码长度至少6位';
+            return;
+        }
+        
+        // Show loading state
+        const registerButton = document.querySelector('#register-form .login-button');
+        registerButton.textContent = '注册中...';
+        registerButton.disabled = true;
+        
+        const xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4) {
+                // Reset button state
+                registerButton.disabled = false;
+                
+                if (xhr.status == 200) {
+                    // Success
+                    registerButton.textContent = '注册成功';
+                    registerButton.style.backgroundColor = 'var(--success-color)';
+                    
+                    errorMessage.style.display = 'block';
+                    errorMessage.style.backgroundColor = 'var(--success-color)';
+                    errorMessage.textContent = xhr.responseText || '注册成功';
+                    
+                    // Clear form
+                    document.getElementById('reg-account').value = '';
+                    document.getElementById('reg-password').value = '';
+                    document.getElementById('reg-confirm-password').value = '';
+                    
+                    setTimeout(() => {
+                        registerButton.textContent = '注册账号';
+                        registerButton.style.backgroundColor = '';
+                        errorMessage.style.display = 'none';
+                        errorMessage.style.backgroundColor = 'var(--error-color)';
+                        // Switch to login tab
+                        switchTab('password');
+                    }, 2000);
+                } else {
+                    // Error
+                    registerButton.textContent = '注册账号';
+                    errorMessage.style.display = 'block';
+                    errorMessage.textContent = xhr.responseText || '注册失败';
+                }
+            }
+        };
+
+        const formData = new FormData();
+        formData.append('account', account);
+        formData.append('password', password);
+        xhr.open('POST', '/register', true);
         xhr.send(formData);
     }

@@ -54,26 +54,12 @@ func SaveBlogs(blogs map[string]*module.Blog) {
 	<-cmd.Response()
 }
 
-func GetBlog(name string) *module.Blog {
-	cmd := &GetBlogCmd{
+func GetBlogsByAccount(account string) map[string]*module.Blog {
+	cmd := &GetBlogsByAccountCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Name: name,
-	}
-	persistence_module.Send(cmd)
-	result := <-cmd.Response()
-	if result == nil {
-		return nil
-	}
-	return result.(*module.Blog)
-}
-
-func GetBlogs() map[string]*module.Blog {
-	cmd := &GetBlogsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
+		Account: account,
 	}
 	persistence_module.Send(cmd)
 	result := <-cmd.Response()
@@ -81,18 +67,6 @@ func GetBlogs() map[string]*module.Blog {
 		return nil
 	}
 	return result.(map[string]*module.Blog)
-}
-
-func DeleteBlog(title string) int {
-	cmd := &DeleteBlogCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Title: title,
-	}
-	persistence_module.Send(cmd)
-	result := <-cmd.Response()
-	return result.(int)
 }
 
 func SaveBlogComments(bc *module.BlogComments) {
@@ -215,4 +189,93 @@ func DeleteUsernameReservation(username string) {
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
+}
+
+// Multi-account support functions
+
+func SaveBlogWithAccount(account string, blog *module.Blog) {
+	// Ensure blog has the correct account
+	if blog.Account == "" {
+		blog.Account = account
+	}
+	SaveBlog(blog)
+}
+
+func SaveBlogsWithAccount(account string, blogs map[string]*module.Blog) {
+	// Ensure all blogs have the correct account
+	for _, blog := range blogs {
+		if blog.Account == "" {
+			blog.Account = account
+		}
+	}
+	SaveBlogs(blogs)
+}
+
+func GetBlogWithAccount(account, name string) *module.Blog {
+	cmd := &GetBlogWithAccountCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+		Name:    name,
+	}
+	persistence_module.Send(cmd)
+	result := <-cmd.Response()
+	if result == nil {
+		return nil
+	}
+	return result.(*module.Blog)
+}
+
+func DeleteBlogWithAccount(account, title string) int {
+	cmd := &DeleteBlogWithAccountCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+		Title:   title,
+	}
+	persistence_module.Send(cmd)
+	result := <-cmd.Response()
+	return result.(int)
+}
+
+func SaveBlogCommentsWithAccount(account string, bc *module.BlogComments) {
+	SaveBlogComments(bc)
+}
+
+func GetAllBlogCommentsWithAccount(account string) map[string]*module.BlogComments {
+	return GetAllBlogComments()
+}
+
+func SaveCommentUserWithAccount(account string, user *module.CommentUser) {
+	SaveCommentUser(user)
+}
+
+func SaveCommentSessionWithAccount(account string, session *module.CommentSession) {
+	SaveCommentSession(session)
+}
+
+func SaveUsernameReservationWithAccount(account string, reservation *module.UsernameReservation) {
+	SaveUsernameReservation(reservation)
+}
+
+func GetAllCommentUsersWithAccount(account string) map[string]*module.CommentUser {
+	return GetAllCommentUsers()
+}
+
+func GetAllUsernameReservationsWithAccount(account string) map[string]*module.UsernameReservation {
+	return GetAllUsernameReservations()
+}
+
+func GetAllCommentSessionsWithAccount(account string) map[string]*module.CommentSession {
+	return GetAllCommentSessions()
+}
+
+func DeleteCommentSessionWithAccount(account, sessionID string) {
+	DeleteCommentSession(sessionID)
+}
+
+func DeleteUsernameReservationWithAccount(account, username string) {
+	DeleteUsernameReservation(username)
 }

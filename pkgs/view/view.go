@@ -1,6 +1,7 @@
 package view
 
 import (
+	"blog"
 	"config"
 	"control"
 	"fmt"
@@ -129,10 +130,10 @@ func getShareLinks() *LinkDatas {
 	return &datas
 }
 
-func getLinks(blogs []*module.Blog, flag int, session string) *LinkDatas {
+func getLinks(blogs []*module.Blog, flag int, session string, account string) *LinkDatas {
 
 	datas := LinkDatas{}
-	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersion(), control.GetBlogsNum())
+	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersion(), control.GetBlogsNum(account))
 	datas.BLOGS_NUMBER = len(blogs)
 
 	all_tags := make(map[string]int)
@@ -254,7 +255,8 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 
 	blogs := control.GetMatch(match)
 	flag := module.EAuthType_all
-	datas := getLinks(blogs, flag, session)
+	account := blog.GetAccountFromSession(session)
+	datas := getLinks(blogs, flag, session, account)
 
 	// 为搜索结果中的所有链接添加highlight参数
 	for i := range datas.LINKS {
@@ -290,7 +292,7 @@ func PageTags(w h.ResponseWriter, tag string) {
 	flag := module.EAuthType_public
 	// 只展示public
 
-	datas := getLinks(blogs, flag, "")
+	datas := getLinks(blogs, flag, "", blog.GetDefaultAccount())
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "tags.template"))
@@ -311,10 +313,11 @@ func PageTags(w h.ResponseWriter, tag string) {
 func PageLink(w h.ResponseWriter, flag int, session string) {
 
 	blog_num := config.GetMainBlogNum()
-	blogs := control.GetAll(blog_num, flag)
+	account := blog.GetAccountFromSession(session)
+	blogs := control.GetAll(account, blog_num, flag)
 	log.DebugF("blogs cnt=%d", len(blogs))
 
-	datas := getLinks(blogs, flag, session)
+	datas := getLinks(blogs, flag, session, account)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
@@ -376,14 +379,14 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 }
 
 func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int) {
-	blog := control.GetBlog(blogname)
-	if blog == nil {
+	blogObj := control.GetBlog(blog.GetDefaultAccount(), blogname)
+	if blogObj == nil {
 		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
 	}
 
 	// modify accesstime
-	control.UpdateAccessTime(blog)
+	control.UpdateAccessTime(blog.GetDefaultAccount(), blogObj)
 
 	template_name := "get.template"
 	if usepublic != 0 {
@@ -399,19 +402,19 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int) {
 	}
 
 	encrypt_str := ""
-	if blog.Encrypt == 1 {
+	if blogObj.Encrypt == 1 {
 		encrypt_str = "aes"
 	}
 
 	// 解析博客权限状态
-	authTypeString, isPrivate, isPublic, isDiary, isEncrypted := parseAuthTypeToEditorData(blog.AuthType, blog.Encrypt)
+	authTypeString, isPrivate, isPublic, isDiary, isEncrypted := parseAuthTypeToEditorData(blogObj.AuthType, blogObj.Encrypt)
 
 	data := EditorData{
-		TITLE:        blog.Title,
-		CONTENT:      blog.Content,
-		CTIME:        blog.CreateTime,
+		TITLE:        blogObj.Title,
+		CONTENT:      blogObj.Content,
+		CTIME:        blogObj.CreateTime,
 		AUTHTYPE:     authTypeString,
-		TAGS:         blog.Tags,
+		TAGS:         blogObj.Tags,
 		ENCRYPT:      encrypt_str,
 		IS_PRIVATE:   isPrivate,
 		IS_PUBLIC:    isPublic,
@@ -499,7 +502,7 @@ func PageD3(w h.ResponseWriter) {
 
 // 将blogname设置为分享
 func PageShareBlog(w h.ResponseWriter, blogname string) {
-	blog := control.GetBlog(blogname)
+	blog := control.GetBlog(blog.GetDefaultAccount(), blogname)
 	if blog == nil {
 		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
@@ -562,7 +565,9 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 		}
 		title := tokens[1]
 		content := ""
-		b := control.GetRecentlyTimedBlog(title)
+		session := getsession(r)
+		account := blog.GetAccountFromSession(session)
+		b := control.GetRecentlyTimedBlog(account, title)
 		if b != nil {
 			content = b.Content
 		}
@@ -783,7 +788,7 @@ func PagePublic(w h.ResponseWriter) {
 	flag := module.EAuthType_public
 
 	// 获取链接数据
-	datas := getLinks(blogs, flag, "")
+	datas := getLinks(blogs, flag, "", blog.GetDefaultAccount())
 
 	// 渲染模板
 	exeDir := config.GetHttpTemplatePath()

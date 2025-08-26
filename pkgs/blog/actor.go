@@ -17,7 +17,8 @@ import (
 // BlogActor owns blog state and performs operations via the actor model
 type BlogActor struct {
 	*core.Actor
-	blogs map[string]*module.Blog
+	Account string
+	blogs   map[string]*module.Blog
 }
 
 func strTime() string {
@@ -26,7 +27,7 @@ func strTime() string {
 
 // loadBlogs loads blogs from persistence into memory
 func (a *BlogActor) loadBlogs() int {
-	blogs := db.GetBlogs()
+	blogs := db.GetBlogsByAccount(a.Account)
 	if blogs != nil {
 		for _, b := range blogs {
 			if b.Encrypt == 1 {
@@ -64,7 +65,7 @@ func (a *BlogActor) getBlog(title string) *module.Blog {
 	if b, ok := a.blogs[title]; ok {
 		return b
 	}
-	b := db.GetBlog(title)
+	b := db.GetBlogWithAccount(a.Account, title)
 	return b
 }
 
@@ -168,7 +169,7 @@ func (a *BlogActor) deleteBlog(title string) int {
 	if config.IsSysFile(title) == 1 {
 		return 2
 	}
-	ret := db.DeleteBlog(title)
+	ret := db.DeleteBlogWithAccount(a.Account, title)
 	if ret == 1 {
 		return 3
 	}

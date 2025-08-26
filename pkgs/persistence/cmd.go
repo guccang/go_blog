@@ -31,18 +31,6 @@ func (cmd *SaveBlogsCmd) Do(actor core.ActorInterface) {
 	cmd.Response() <- 0
 }
 
-// 获取博客cmd
-type GetBlogCmd struct {
-	core.ActorCommand
-	Name string
-}
-
-func (cmd *GetBlogCmd) Do(actor core.ActorInterface) {
-	persistenceActor := actor.(*PersistenceActor)
-	blog := persistenceActor.getBlog(cmd.Name)
-	cmd.Response() <- blog
-}
-
 // 获取所有博客cmd
 type GetBlogsCmd struct {
 	core.ActorCommand
@@ -180,4 +168,42 @@ func (cmd *DeleteUsernameReservationCmd) Do(actor core.ActorInterface) {
 	persistenceActor := actor.(*PersistenceActor)
 	persistenceActor.deleteUsernameReservation(cmd.Username)
 	cmd.Response() <- 0
+}
+
+// 按账户获取博客cmd
+type GetBlogsByAccountCmd struct {
+	core.ActorCommand
+	Account string
+}
+
+func (cmd *GetBlogsByAccountCmd) Do(actor core.ActorInterface) {
+	persistenceActor := actor.(*PersistenceActor)
+	blogs := persistenceActor.getBlogsByAccount(cmd.Account)
+	cmd.Response() <- blogs
+}
+
+// 按账户获取单个博客cmd
+type GetBlogWithAccountCmd struct {
+	core.ActorCommand
+	Account string
+	Name    string
+}
+
+func (cmd *GetBlogWithAccountCmd) Do(actor core.ActorInterface) {
+	persistenceActor := actor.(*PersistenceActor)
+	blog := persistenceActor.getBlogWithAccount(cmd.Account, cmd.Name)
+	cmd.Response() <- blog
+}
+
+// 按账户删除博客cmd
+type DeleteBlogWithAccountCmd struct {
+	core.ActorCommand
+	Account string
+	Title   string
+}
+
+func (cmd *DeleteBlogWithAccountCmd) Do(actor core.ActorInterface) {
+	persistenceActor := actor.(*PersistenceActor)
+	result := persistenceActor.deleteBlogWithAccount(cmd.Account, cmd.Title)
+	cmd.Response() <- result
 }

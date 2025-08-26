@@ -11,6 +11,17 @@ import (
 	"time"
 )
 
+// getAccountFromRequest extracts account from session cookie
+func getAccountFromRequest(r *http.Request) string {
+	sessionCookie, err := r.Cookie("session")
+	if err != nil {
+		log.DebugF("No session cookie found: %v", err)
+		return ""
+	}
+	
+	return blog.GetAccountFromSession(sessionCookie.Value)
+}
+
 // HandleYearPlan renders the year plan page
 func HandleYearPlan(w http.ResponseWriter, r *http.Request) {
 	// This function should render the yearplan.template, which will be handled in the http package
@@ -46,8 +57,11 @@ func HandleGetPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Get plan data
-	planData, err := blog.GetYearPlan(year)
+	planData, err := blog.GetYearPlanWithAccount(account, year)
 	if err != nil {
 		// If not found, return empty data structure with 404
 		if err.Error() == "未找到年份 "+yearStr+" 的计划" {
@@ -127,8 +141,11 @@ func HandleSavePlan(w http.ResponseWriter, r *http.Request) {
 		log.DebugF("手动添加任务数据，大小=%d", len(planData.Tasks))
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Save plan
-	err = blog.SaveYearPlan(&planData)
+	err = blog.SaveYearPlanWithAccount(account, &planData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -177,8 +194,11 @@ func HandleGetMonthGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Get month goal
-	goal, err := GetMonthGoal(year, month)
+	goal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -243,8 +263,11 @@ func HandleSaveMonthGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Get existing month goal or create new one
-	goal, err := GetMonthGoal(requestData.Year, requestData.Month)
+	goal, err := GetMonthGoalWithAccount(account, requestData.Year, requestData.Month)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -257,7 +280,7 @@ func HandleSaveMonthGoal(w http.ResponseWriter, r *http.Request) {
 	// Update overview content
 	goal.Overview = requestData.Content
 
-	err = SaveMonthGoal(goal)
+	err = SaveMonthGoalWithAccount(account, goal)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -322,8 +345,11 @@ func HandleGetWeekGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Get week goal
-	goal, err := GetWeekGoal(year, month, week)
+	goal, err := GetWeekGoalWithAccount(account, year, month, week)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -389,8 +415,11 @@ func HandleSaveWeekGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
 	// Get existing week goal or create new one
-	goal, err := GetWeekGoal(requestData.Year, requestData.Month, requestData.Week)
+	goal, err := GetWeekGoalWithAccount(account, requestData.Year, requestData.Month, requestData.Week)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -403,7 +432,7 @@ func HandleSaveWeekGoal(w http.ResponseWriter, r *http.Request) {
 	// Update overview content
 	goal.Overview = requestData.Content
 
-	err = SaveWeekGoal(goal)
+	err = SaveWeekGoalWithAccount(account, goal)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -464,7 +493,10 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 		requestData.Task.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	err = AddTask(requestData.Year, requestData.Month, requestData.Task)
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
+	err = AddTaskWithAccount(account, requestData.Year, requestData.Month, requestData.Task)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -522,7 +554,10 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = UpdateTask(requestData.Year, requestData.Month, requestData.TaskID, requestData.Task)
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
+	err = UpdateTaskWithAccount(account, requestData.Year, requestData.Month, requestData.TaskID, requestData.Task)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -578,7 +613,10 @@ func HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = DeleteTask(requestData.Year, requestData.Month, requestData.TaskID)
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
+	err = DeleteTaskWithAccount(account, requestData.Year, requestData.Month, requestData.TaskID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -615,7 +653,10 @@ func HandleGetMonthGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goalsMap, err := GetMonthGoals(year)
+	// Get account from session
+	account := getAccountFromRequest(r)
+	
+	goalsMap, err := GetMonthGoalsWithAccount(account, year)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{

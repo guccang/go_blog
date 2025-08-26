@@ -18,36 +18,40 @@ func Info() {
 func Init() {
 }
 
-func ImportBlogsFromPath(dir string) {
-	blog.ImportBlogsFromPath(dir)
+func ImportBlogsFromPath(account, dir string) {
+	blog.ImportBlogsFromPathWithAccount(account, dir)
 }
 
-func GetBlog(title string) *module.Blog {
-	return blog.GetBlog(title)
+func GetBlog(account, title string) *module.Blog {
+	return blog.GetBlogWithAccount(account, title)
 }
 
-func AddBlog(udb *module.UploadedBlogData) int {
-	return blog.AddBlog(udb)
+func AddBlog(account string, udb *module.UploadedBlogData) int {
+	return blog.AddBlogWithAccount(account, udb)
 }
 
-func ModifyBlog(udb *module.UploadedBlogData) int {
-	return blog.ModifyBlog(udb)
+func ModifyBlog(account string, udb *module.UploadedBlogData) int {
+	return blog.ModifyBlogWithAccount(account, udb)
 }
 
-func GetAll(cnt int, flag int) []*module.Blog {
-	return blog.GetAll(cnt, flag)
+func GetAll(account string, cnt int, flag int) []*module.Blog {
+	return blog.GetAllWithAccount(account, cnt, flag)
+}
+
+func GetBlogs(account string) map[string]*module.Blog {
+	return blog.GetBlogsWithAccount(account)
 }
 
 func GetMatch(match string) []*module.Blog {
 	return search.Search(match)
 }
 
-func UpdateAccessTime(b *module.Blog) {
-	blog.UpdateAccessTime(b)
+func UpdateAccessTime(account string, b *module.Blog) {
+	blog.UpdateAccessTimeWithAccount(account, b)
 }
 
-func GetBlogAuthType(blogname string) int {
-	return blog.GetBlogAuthType(blogname)
+func GetBlogAuthType(account, blogname string) int {
+	return blog.GetBlogAuthTypeWithAccount(account, blogname)
 }
 
 func GetBlogComments(blogname string) *module.BlogComments {
@@ -71,99 +75,99 @@ func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent
 }
 
 // 读书功能控制层接口
-func AddBook(title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl string, totalPages int, category, tags []string) (*module.Book, error) {
-	return reading.AddBook(title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl, totalPages, category, tags)
+func AddBook(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl string, totalPages int, category, tags []string) (*module.Book, error) {
+	return reading.AddBookWithAccount(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl, totalPages, category, tags)
 }
 
-func GetBook(bookID string) *module.Book {
-	return reading.GetBook(bookID)
+func GetBook(account, bookID string) *module.Book {
+	return reading.GetBookWithAccount(account, bookID)
 }
 
-func GetAllBooks() map[string]*module.Book {
-	return reading.GetAllBooks()
+func GetAllBooks(account string) map[string]*module.Book {
+	return reading.GetAllBooksWithAccount(account)
 }
 
-func UpdateBook(bookID string, updates map[string]interface{}) error {
-	return reading.UpdateBook(bookID, updates)
+func UpdateBook(account, bookID string, updates map[string]interface{}) error {
+	return reading.UpdateBookWithAccount(account, bookID, updates)
 }
 
-func DeleteBook(bookID string) error {
-	return reading.DeleteBook(bookID)
+func DeleteBook(account, bookID string) error {
+	return reading.DeleteBookWithAccount(account, bookID)
 }
 
-func StartReading(bookID string) error {
-	return reading.StartReading(bookID)
+func StartReading(account, bookID string) error {
+	return reading.StartReadingWithAccount(account, bookID)
 }
 
-func UpdateReadingProgress(bookID string, currentPage int, notes string) error {
-	return reading.UpdateReadingProgress(bookID, currentPage, notes)
+func UpdateReadingProgress(account, bookID string, currentPage int, notes string) error {
+	return reading.UpdateReadingProgressWithAccount(account, bookID, currentPage, notes)
 }
 
-func GetReadingRecord(bookID string) *module.ReadingRecord {
-	return reading.GetReadingRecord(bookID)
+func GetReadingRecord(account, bookID string) *module.ReadingRecord {
+	return reading.GetReadingRecordWithAccount(account, bookID)
 }
 
-func AddBookNote(bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
-	return reading.AddBookNote(bookID, noteType, chapter, content, page, tags)
+func AddBookNote(account, bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
+	return reading.AddBookNoteWithAccount(account, bookID, noteType, chapter, content, page, tags)
 }
 
-func GetBookNotes(bookID string) []*module.BookNote {
-	return reading.GetBookNotes(bookID)
+func GetBookNotes(account, bookID string) []*module.BookNote {
+	return reading.GetBookNotesWithAccount(account, bookID)
 }
 
-func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error {
-	return reading.UpdateBookNote(bookID, noteID, updates)
+func UpdateBookNote(account, bookID, noteID string, updates map[string]interface{}) error {
+	return reading.UpdateBookNoteWithAccount(account, bookID, noteID, updates)
 }
 
-func DeleteBookNote(bookID, noteID string) error {
-	return reading.DeleteBookNote(bookID, noteID)
+func DeleteBookNote(account, bookID, noteID string) error {
+	return reading.DeleteBookNoteWithAccount(account, bookID, noteID)
 }
 
-func AddBookInsight(bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
-	return reading.AddBookInsight(bookID, title, content, keyTakeaways, applications, rating, tags)
+func AddBookInsight(account, bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
+	return reading.AddBookInsightWithAccount(account, bookID, title, content, keyTakeaways, applications, rating, tags)
 }
 
-func GetBookInsights(bookID string) []*module.BookInsight {
-	return reading.GetBookInsights(bookID)
+func GetBookInsights(account, bookID string) []*module.BookInsight {
+	return reading.GetBookInsightsWithAccount(account, bookID)
 }
 
-func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
-	return reading.UpdateBookInsight(insightID, updates)
+func UpdateBookInsight(account, insightID string, updates map[string]interface{}) error {
+	return reading.UpdateBookInsightWithAccount(account, insightID, updates)
 }
 
-func DeleteBookInsight(insightID string) error {
-	return reading.DeleteBookInsight(insightID)
+func DeleteBookInsight(account, insightID string) error {
+	return reading.DeleteBookInsightWithAccount(account, insightID)
 }
 
-func SearchBooks(keyword string) []*module.Book {
-	return reading.SearchBooks(keyword)
+func SearchBooks(account, keyword string) []*module.Book {
+	return reading.SearchBooksWithAccount(account, keyword)
 }
 
-func FilterBooksByStatus(status string) []*module.Book {
-	return reading.FilterBooksByStatus(status)
+func FilterBooksByStatus(account, status string) []*module.Book {
+	return reading.FilterBooksByStatusWithAccount(account, status)
 }
 
-func FilterBooksByCategory(category string) []*module.Book {
-	return reading.FilterBooksByCategory(category)
+func FilterBooksByCategory(account, category string) []*module.Book {
+	return reading.FilterBooksByCategoryWithAccount(account, category)
 }
 
-func GetReadingStatistics() map[string]interface{} {
-	return reading.GetReadingStatistics()
+func GetReadingStatistics(account string) map[string]interface{} {
+	return reading.GetReadingStatisticsWithAccount(account)
 }
 
 // 新增功能接口
 
 // 阅读计划相关
-func AddReadingPlan(title, description, startDate, endDate string, targetBooks []string) (*module.ReadingPlan, error) {
-	return reading.AddReadingPlan(title, description, startDate, endDate, targetBooks)
+func AddReadingPlan(account, title, description, startDate, endDate string, targetBooks []string) (*module.ReadingPlan, error) {
+	return reading.AddReadingPlanWithAccount(account, title, description, startDate, endDate, targetBooks)
 }
 
-func GetReadingPlan(planID string) *module.ReadingPlan {
-	return reading.GetReadingPlan(planID)
+func GetReadingPlan(account, planID string) *module.ReadingPlan {
+	return reading.GetReadingPlanWithAccount(account, planID)
 }
 
-func GetAllReadingPlans() []*module.ReadingPlan {
-	return reading.GetAllReadingPlans()
+func GetAllReadingPlans(account string) []*module.ReadingPlan {
+	return reading.GetAllReadingPlansWithAccount(account)
 }
 
 func UpdateReadingPlanProgress(planID string) error {
@@ -224,44 +228,28 @@ func ExportReadingData(config *module.ExportConfig) (string, error) {
 }
 
 // 便捷函数
-func FinishBook(bookID string) error {
-	book := reading.GetBook(bookID)
+func FinishBook(account, bookID string) error {
+	book := reading.GetBookWithAccount(account, bookID)
 	if book == nil {
 		return errors.New("书籍不存在")
 	}
-	return reading.UpdateReadingProgress(bookID, book.TotalPages, "")
+	return reading.UpdateReadingProgressWithAccount(account, bookID, book.TotalPages, "")
 }
 
-func UpdateBookProgress(bookID string, currentPage int) error {
-	return reading.UpdateReadingProgress(bookID, currentPage, "")
+func GetBlogsNum(account string) int {
+	return blog.GetBlogsNumWithAccount(account)
 }
 
-func AddSimpleBookNote(bookID, chapter, content string, page int) (*module.BookNote, error) {
-	return reading.AddBookNote(bookID, "note", chapter, content, page, []string{})
+func DeleteBlog(account, title string) int {
+	return blog.DeleteBlogWithAccount(account, title)
 }
 
-func AddSimpleBookInsight(bookID, title, content, takeaway string, rating int) (*module.BookInsight, error) {
-	keyTakeaways := []string{}
-	if takeaway != "" {
-		keyTakeaways = append(keyTakeaways, takeaway)
-	}
-	return reading.AddBookInsight(bookID, title, content, keyTakeaways, []string{}, rating, []string{})
+func GetRecentlyTimedBlog(account, title string) *module.Blog {
+	return blog.GetRecentlyTimedBlogWithAccount(account, title)
 }
 
-func GetBlogsNum() int {
-	return blog.GetBlogsNum()
-}
-
-func DeleteBlog(title string) int {
-	return blog.DeleteBlog(title)
-}
-
-func GetRecentlyTimedBlog(title string) *module.Blog {
-	return blog.GetRecentlyTimedBlog(title)
-}
-
-func TagReplace(from string, to string) {
-	blog.TagReplace(from, to)
+func TagReplace(account, from string, to string) {
+	blog.TagReplaceWithAccount(account, from, to)
 }
 
 // 统计相关功能

@@ -22,6 +22,8 @@ func Init() {
 		sms_codes: make(map[string]string),
 	}
 
+	login_module.Start(login_module)
+
 	// 管理员账号密码
 	admin_account := config.GetConfig("admin")
 	admin_pwd := config.GetConfig("pwd")
@@ -30,8 +32,11 @@ func Init() {
 		Password: admin_pwd,
 	}
 	login_module.sms_codes[admin_account] = "901124"
-	login_module.Start(login_module)
 
+	// 从sys_accounts博客加载用户数据
+	if err := login_module.loadUsersFromAdminBlog(); err != nil {
+		log.ErrorF("Failed to load users from admin blog: %v", err)
+	}
 }
 
 // interface
@@ -87,4 +92,18 @@ func GenerateSMSCode(account string) (string, int) {
 	code := <-cmd.Response()
 	ret := <-cmd.Response()
 	return code.(string), ret.(int)
+}
+
+// 用户注册接口
+func Register(account string, password string) int {
+	cmd := &RegisterCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account:  account,
+		Password: password,
+	}
+	login_module.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(int)
 }

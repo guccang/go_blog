@@ -39,6 +39,7 @@ goroutine 线程安全
 // actor
 type ReadingActor struct {
 	*core.Actor
+	Account             string
 	books               map[string]*module.Book
 	readingRecords      map[string]*module.ReadingRecord
 	bookNotes           map[string][]*module.BookNote
@@ -111,8 +112,8 @@ func (ar *ReadingActor) addBook(title, author, isbn, publisher, publishDate, cov
 	ar.readingRecords[bookID] = record
 
 	// 保存到数据库
-	ar.saveBook(book)
-	ar.saveReadingRecord(record)
+	ar.saveBook("", book)
+	ar.saveReadingRecord("", record)
 
 	log.DebugF("添加书籍成功: %s - %s", title, author)
 	return book, nil
@@ -120,7 +121,7 @@ func (ar *ReadingActor) addBook(title, author, isbn, publisher, publishDate, cov
 
 func (ar *ReadingActor) getBook(bookID string) *module.Book {
 	// 从blog系统获取单本书数据
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				Book *module.Book `json:"book"`
@@ -140,7 +141,7 @@ func (ar *ReadingActor) getAllBooks() map[string]*module.Book {
 	books := make(map[string]*module.Book)
 
 	// 遍历所有blog，查找reading_book_开头的
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			// 解析JSON内容
 			var data struct {
@@ -204,7 +205,7 @@ func (ar *ReadingActor) updateBook(bookID string, updates map[string]interface{}
 
 	// 更新内存中的数据
 	ar.books[bookID] = book
-	ar.saveBook(book)
+	ar.saveBook("", book)
 	log.DebugF("更新书籍成功: %s", bookID)
 	return nil
 }
@@ -222,7 +223,7 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 	log.DebugF("准备删除书籍blog: %s (书籍ID: %s)", blogTitle, bookID)
 
 	// 首先检查blog是否存在
-	existingBlog := blog.GetBlog(blogTitle)
+	existingBlog := blog.GetBlogWithAccount(ar.Account, blogTitle)
 	if existingBlog == nil {
 		log.ErrorF("要删除的blog不存在: %s，可能已经被手动删除", blogTitle)
 		// 如果blog不存在，直接删除内存数据即可
@@ -230,7 +231,7 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 		log.DebugF("找到要删除的blog: %s", blogTitle)
 
 		// 从blog系统删除 - 这是关键步骤
-		result := blog.DeleteBlog(blogTitle)
+		result := blog.DeleteBlogWithAccount(ar.Account, blogTitle)
 		if result != 0 {
 			var errorMsg string
 			switch result {
@@ -269,7 +270,7 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 }
 
 // 阅读记录功能
-func (ar *ReadingActor) startReading(bookID string) error {
+func (ar *ReadingActor) startReading(account, bookID string) error {
 	record, exists := ar.readingRecords[bookID]
 	if !exists {
 		return errors.New("阅读记录不存在")
@@ -288,15 +289,15 @@ func (ar *ReadingActor) startReading(bookID string) error {
 	// 更新书籍状态
 	if book, exists := ar.books[bookID]; exists {
 		book.Status = "reading"
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 
-	ar.saveReadingRecord(record)
+	ar.saveReadingRecord(account, record)
 	log.DebugF("开始阅读: %s", bookID)
 	return nil
 }
 
-func (ar *ReadingActor) updateReadingProgress(bookID string, currentPage int, notes string) error {
+func (ar *ReadingActor) updateReadingProgress(account, bookID string, currentPage int, notes string) error {
 	record, exists := ar.readingRecords[bookID]
 	if !exists {
 		return errors.New("阅读记录不存在")
@@ -313,11 +314,11 @@ func (ar *ReadingActor) updateReadingProgress(bookID string, currentPage int, no
 
 	// 同步更新Book结构体的CurrentPage
 	book.CurrentPage = currentPage
-	ar.saveBook(book)
+	ar.saveBook(account, book)
 
 	// 如果是首次更新进度，自动开始阅读
 	if record.Status == "unstart" {
-		ar.startReading(bookID)
+		ar.startReading(account, bookID)
 	}
 
 	// 创建阅读会话记录
@@ -337,17 +338,17 @@ func (ar *ReadingActor) updateReadingProgress(bookID string, currentPage int, no
 		record.Status = "finished"
 		record.EndDate = time.Now().Format("2006-01-02")
 		book.Status = "finished"
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 
-	ar.saveReadingRecord(record)
+	ar.saveReadingRecord(account, record)
 	log.DebugF("更新阅读进度: %s - 第%d页", bookID, currentPage)
 	return nil
 }
 
-func (ar *ReadingActor) getReadingRecord(bookID string) *module.ReadingRecord {
+func (ar *ReadingActor) getReadingRecord(account, bookID string) *module.ReadingRecord {
 	// 从blog系统获取阅读记录
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingRecord *module.ReadingRecord `json:"reading_record"`
@@ -363,7 +364,7 @@ func (ar *ReadingActor) getReadingRecord(bookID string) *module.ReadingRecord {
 }
 
 // 笔记功能
-func (ar *ReadingActor) addBookNote(bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
+func (ar *ReadingActor) addBookNote(account, bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
 	if content == "" {
 		return nil, errors.New("笔记内容不能为空")
 	}
@@ -386,14 +387,14 @@ func (ar *ReadingActor) addBookNote(bookID, noteType, chapter, content string, p
 	}
 	ar.bookNotes[bookID] = append(ar.bookNotes[bookID], note)
 
-	ar.saveBookNotes(bookID)
+	ar.saveBookNotes(account, bookID)
 	log.DebugF("添加笔记成功: %s - %s", bookID, noteType)
 	return note, nil
 }
 
-func (ar *ReadingActor) getBookNotes(bookID string) []*module.BookNote {
+func (ar *ReadingActor) getBookNotes(account, bookID string) []*module.BookNote {
 	// 从blog系统获取笔记数据
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				Book      *module.Book       `json:"book"`
@@ -423,9 +424,9 @@ func (ar *ReadingActor) getBookNotes(bookID string) []*module.BookNote {
 	return notes
 }
 
-func (ar *ReadingActor) updateBookNote(bookID, noteID string, updates map[string]interface{}) error {
+func (ar *ReadingActor) updateBookNote(account, bookID, noteID string, updates map[string]interface{}) error {
 	// 先从blog系统加载最新数据
-	notes := ar.getBookNotes(bookID)
+	notes := ar.getBookNotes(account, bookID)
 	if notes == nil || len(notes) == 0 {
 		return errors.New("笔记不存在")
 	}
@@ -459,14 +460,14 @@ func (ar *ReadingActor) updateBookNote(bookID, noteID string, updates map[string
 
 	// 更新内存中的数据
 	ar.bookNotes[bookID] = notes
-	ar.saveBookNotes(bookID)
+	ar.saveBookNotes(account, bookID)
 	log.DebugF("更新笔记成功: %s", noteID)
 	return nil
 }
 
-func (ar *ReadingActor) deleteBookNote(bookID, noteID string) error {
+func (ar *ReadingActor) deleteBookNote(account, bookID, noteID string) error {
 	// 先从blog系统加载最新数据
-	notes := ar.getBookNotes(bookID)
+	notes := ar.getBookNotes(account, bookID)
 	if notes == nil || len(notes) == 0 {
 		return errors.New("笔记不存在")
 	}
@@ -489,13 +490,13 @@ func (ar *ReadingActor) deleteBookNote(bookID, noteID string) error {
 
 	// 更新内存中的数据
 	ar.bookNotes[bookID] = updatedNotes
-	ar.saveBookNotes(bookID)
+	ar.saveBookNotes(account, bookID)
 	log.DebugF("删除笔记成功: %s", noteID)
 	return nil
 }
 
 // 读书感悟功能
-func (ar *ReadingActor) addBookInsight(bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
+func (ar *ReadingActor) addBookInsight(account, bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
 	if title == "" || content == "" {
 		return nil, errors.New("标题和内容不能为空")
 	}
@@ -519,17 +520,17 @@ func (ar *ReadingActor) addBookInsight(bookID, title, content string, keyTakeawa
 	// 更新书籍评分
 	if book := ar.books[bookID]; book != nil && rating > 0 {
 		book.Rating = float64(rating)
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 
-	ar.saveBookInsight(insight)
+	ar.saveBookInsight(account, insight)
 	log.DebugF("添加读书感悟成功: %s - %s", bookID, title)
 	return insight, nil
 }
 
-func (ar *ReadingActor) getBookInsights(bookID string) []*module.BookInsight {
+func (ar *ReadingActor) getBookInsights(account, bookID string) []*module.BookInsight {
 	// 从blog系统获取感悟数据
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -557,13 +558,13 @@ func (ar *ReadingActor) getBookInsights(bookID string) []*module.BookInsight {
 	return insights
 }
 
-func (ar *ReadingActor) updateBookInsight(insightID string, updates map[string]interface{}) error {
+func (ar *ReadingActor) updateBookInsight(account, insightID string, updates map[string]interface{}) error {
 	// 先从blog系统查找心得
 	var insight *module.BookInsight
 	var bookID string
 
 	// 遍历所有书籍数据查找指定的心得
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -606,7 +607,7 @@ func (ar *ReadingActor) updateBookInsight(insightID string, updates map[string]i
 		if book := ar.getBook(bookID); book != nil && rating > 0 {
 			book.Rating = float64(rating)
 			ar.books[bookID] = book
-			ar.saveBook(book)
+			ar.saveBook(account, book)
 		}
 	}
 	if takeaways, ok := updates["key_takeaways"].([]string); ok {
@@ -622,18 +623,18 @@ func (ar *ReadingActor) updateBookInsight(insightID string, updates map[string]i
 
 	// 更新内存中的数据
 	ar.bookInsights[insightID] = insight
-	ar.saveBookInsight(insight)
+	ar.saveBookInsight(account, insight)
 	log.DebugF("更新心得成功: %s", insightID)
 	return nil
 }
 
-func (ar *ReadingActor) deleteBookInsight(insightID string) error {
+func (ar *ReadingActor) deleteBookInsight(account, insightID string) error {
 	// 先查找心得并获取bookID
 	var foundInsight *module.BookInsight
 	var targetBookID string
 
 	// 从blog系统查找心得
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -669,7 +670,7 @@ func (ar *ReadingActor) deleteBookInsight(insightID string) error {
 	// 通过saveBook保存更新后的数据
 	if book := ar.getBook(targetBookID); book != nil {
 		ar.books[targetBookID] = book
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 
 	log.DebugF("删除心得成功: %s", insightID)
@@ -759,7 +760,7 @@ func (ar *ReadingActor) getTotalNotesCount() int {
 }
 
 // 数据持久化函数
-func (ar *ReadingActor) saveBook(book *module.Book) {
+func (ar *ReadingActor) saveBook(account string, book *module.Book) {
 	// 将书籍数据保存到blog系统
 	title := fmt.Sprintf("reading_book_%s.md", book.Title)
 
@@ -845,39 +846,83 @@ func (ar *ReadingActor) saveBook(book *module.Book) {
 		Title:    title,
 		Content:  string(content),
 		AuthType: module.EAuthType_private,
+		Account:  account,
 	}
 
-	if _, exists := blog.GetBlogs()[title]; exists {
-		blog.ModifyBlog(udb)
+	if _, exists := blog.GetBlogsWithAccount(account)[title]; exists {
+		blog.ModifyBlogWithAccount(account, udb)
 	} else {
-		blog.AddBlog(udb)
+		blog.AddBlogWithAccount(account, udb)
 	}
 }
 
-func (ar *ReadingActor) saveReadingRecord(record *module.ReadingRecord) {
+func (ar *ReadingActor) saveReadingRecord(account string, record *module.ReadingRecord) {
 	// 通过saveBook函数保存，因为它会保存完整的书籍数据
 	if book, exists := ar.books[record.BookID]; exists {
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 }
 
-func (ar *ReadingActor) saveBookNotes(bookID string) {
+func (ar *ReadingActor) saveBookNotes(account, bookID string) {
 	// 通过saveBook函数保存，因为它会保存完整的书籍数据
 	if book, exists := ar.books[bookID]; exists {
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 }
 
-func (ar *ReadingActor) saveBookInsight(insight *module.BookInsight) {
+func (ar *ReadingActor) saveBookInsight(account string, insight *module.BookInsight) {
 	// 通过saveBook函数保存，因为它会保存完整的书籍数据
 	if book, exists := ar.books[insight.BookID]; exists {
-		ar.saveBook(book)
+		ar.saveBook(account, book)
 	}
 }
 
 func (ar *ReadingActor) loadBooks() {
-	// 从blog系统加载书籍数据
-	for title, b := range blog.GetBlogs() {
+	// 使用账户特定的加载方法
+	ar.loadBooksForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadReadingRecords() {
+	// 使用账户特定的加载方法
+	ar.loadReadingRecordsForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadBookNotes() {
+	// 使用账户特定的加载方法
+	ar.loadBookNotesForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadBookInsights() {
+	// 使用账户特定的加载方法
+	ar.loadBookInsightsForAccount(ar.Account)
+}
+
+// 加载其他数据的函数
+func (ar *ReadingActor) loadReadingPlans() {
+	// 使用账户特定的加载方法
+	ar.loadReadingPlansForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadReadingGoals() {
+	// 使用账户特定的加载方法
+	ar.loadReadingGoalsForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadBookCollections() {
+	// 使用账户特定的加载方法
+	ar.loadBookCollectionsForAccount(ar.Account)
+}
+
+func (ar *ReadingActor) loadReadingTimeRecords() {
+	// 使用账户特定的加载方法
+	ar.loadReadingTimeRecordsForAccount(ar.Account)
+}
+
+// 账户特定的数据加载方法
+
+func (ar *ReadingActor) loadBooksForAccount(account string) {
+	// 从blog系统加载书籍数据 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				Book *module.Book `json:"book"`
@@ -887,12 +932,12 @@ func (ar *ReadingActor) loadBooks() {
 			}
 		}
 	}
-	log.DebugF("加载书籍数量: %d", len(ar.books))
+	log.DebugF("加载账户 %s 的书籍数量: %d", account, len(ar.books))
 }
 
-func (ar *ReadingActor) loadReadingRecords() {
-	// 从blog系统加载阅读记录
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadReadingRecordsForAccount(account string) {
+	// 从blog系统加载阅读记录 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingRecord *module.ReadingRecord `json:"reading_record"`
@@ -902,12 +947,12 @@ func (ar *ReadingActor) loadReadingRecords() {
 			}
 		}
 	}
-	log.DebugF("加载阅读记录数量: %d", len(ar.readingRecords))
+	log.DebugF("加载账户 %s 的阅读记录数量: %d", account, len(ar.readingRecords))
 }
 
-func (ar *ReadingActor) loadBookNotes() {
-	// 从blog系统加载笔记
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadBookNotesForAccount(account string) {
+	// 从blog系统加载笔记 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookNotes []*module.BookNote `json:"book_notes"`
@@ -923,12 +968,12 @@ func (ar *ReadingActor) loadBookNotes() {
 			}
 		}
 	}
-	log.DebugF("加载笔记数量: %d", ar.getTotalNotesCount())
+	log.DebugF("加载账户 %s 的笔记数量: %d", account, ar.getTotalNotesCount())
 }
 
-func (ar *ReadingActor) loadBookInsights() {
-	// 从blog系统加载感悟
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadBookInsightsForAccount(account string) {
+	// 从blog系统加载感悟 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
@@ -940,13 +985,12 @@ func (ar *ReadingActor) loadBookInsights() {
 			}
 		}
 	}
-	log.DebugF("加载感悟数量: %d", len(ar.bookInsights))
+	log.DebugF("加载账户 %s 的感悟数量: %d", account, len(ar.bookInsights))
 }
 
-// 加载其他数据的函数
-func (ar *ReadingActor) loadReadingPlans() {
-	// 从blog系统加载阅读计划
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadReadingPlansForAccount(account string) {
+	// 从blog系统加载阅读计划 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`
@@ -958,12 +1002,12 @@ func (ar *ReadingActor) loadReadingPlans() {
 			}
 		}
 	}
-	log.DebugF("加载阅读计划数量: %d", len(ar.readingPlans))
+	log.DebugF("加载账户 %s 的阅读计划数量: %d", account, len(ar.readingPlans))
 }
 
-func (ar *ReadingActor) loadReadingGoals() {
-	// 从blog系统加载阅读目标
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadReadingGoalsForAccount(account string) {
+	// 从blog系统加载阅读目标 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingGoals []*module.ReadingGoal `json:"reading_goals"`
@@ -975,12 +1019,12 @@ func (ar *ReadingActor) loadReadingGoals() {
 			}
 		}
 	}
-	log.DebugF("加载阅读目标数量: %d", len(ar.readingGoals))
+	log.DebugF("加载账户 %s 的阅读目标数量: %d", account, len(ar.readingGoals))
 }
 
-func (ar *ReadingActor) loadBookCollections() {
-	// 从blog系统加载书籍收藏夹
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadBookCollectionsForAccount(account string) {
+	// 从blog系统加载书籍收藏夹 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookCollections []*module.BookCollection `json:"book_collections"`
@@ -992,12 +1036,12 @@ func (ar *ReadingActor) loadBookCollections() {
 			}
 		}
 	}
-	log.DebugF("加载书籍收藏夹数量: %d", len(ar.bookCollections))
+	log.DebugF("加载账户 %s 的书籍收藏夹数量: %d", account, len(ar.bookCollections))
 }
 
-func (ar *ReadingActor) loadReadingTimeRecords() {
-	// 从blog系统加载阅读时间记录
-	for title, b := range blog.GetBlogs() {
+func (ar *ReadingActor) loadReadingTimeRecordsForAccount(account string) {
+	// 从blog系统加载阅读时间记录 - 指定账户
+	for title, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingTimeRecords map[string][]*module.ReadingTimeRecord `json:"reading_time_records"`
@@ -1013,7 +1057,7 @@ func (ar *ReadingActor) loadReadingTimeRecords() {
 	for _, recordList := range ar.readingTimeRecords {
 		totalRecords += len(recordList)
 	}
-	log.DebugF("加载阅读时间记录数量: %d", totalRecords)
+	log.DebugF("加载账户 %s 的阅读时间记录数量: %d", account, totalRecords)
 }
 
 // 其他功能实现，这里只列出关键的几个，其他可按需添加
@@ -1052,7 +1096,7 @@ func (ar *ReadingActor) getAllReadingPlans() []*module.ReadingPlan {
 	// 从blog系统获取阅读计划数据
 	var plans []*module.ReadingPlan
 
-	for title, b := range blog.GetBlogs() {
+	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				ReadingPlans []*module.ReadingPlan `json:"reading_plans"`
@@ -1084,7 +1128,7 @@ func (ar *ReadingActor) saveReadingPlan(plan *module.ReadingPlan) {
 	// 这里需要找到相关的书籍来保存
 	for _, bookID := range plan.TargetBooks {
 		if book, exists := ar.books[bookID]; exists {
-			ar.saveBook(book)
+			ar.saveBook("", book)
 			break // 只需要保存一个相关书籍即可
 		}
 	}

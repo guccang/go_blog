@@ -66,8 +66,11 @@ func HandleAssistantChatHistory(w h.ResponseWriter, r *h.Request) {
 			date = time.Now().Format("2006-01-02")
 		}
 
+		// 获取账户信息
+		account := getAccountFromRequest(r)
+
 		// 加载指定日期的聊天历史
-		chatHistory := loadChatHistoryForDate(date)
+		chatHistory := loadChatHistoryForDate(account, date)
 
 		response := map[string]interface{}{
 			"success":     true,
@@ -255,12 +258,12 @@ type ChatMessage struct {
 
 // loadChatHistoryForDate loads chat history for a specific date
 // 加载指定日期的聊天历史
-func loadChatHistoryForDate(date string) []ChatMessage {
+func loadChatHistoryForDate(account, date string) []ChatMessage {
 	// 构建AI助手日记标题
 	diaryTitle := fmt.Sprintf("AI_assistant_%s", date)
-	
+
 	// 获取博客内容
-	blog := control.GetBlog(diaryTitle)
+	blog := control.GetBlog(account, diaryTitle)
 	if blog == nil {
 		log.DebugF("No chat history found for date: %s", date)
 		return []ChatMessage{}
@@ -274,16 +277,16 @@ func loadChatHistoryForDate(date string) []ChatMessage {
 // 从博客内容中解析聊天记录
 func parseChatHistoryFromContent(content string) []ChatMessage {
 	var messages []ChatMessage
-	
+
 	// 按行分割内容
 	lines := strings.Split(content, "\n")
-	
+
 	var currentMessage ChatMessage
 	var inUserQuestion bool
 	var inAIReply bool
 	var currentTime string
 	var contentBuilder strings.Builder
-	
+
 	for _, line := range lines {
 		// 检测新对话开始的标记
 		if strings.Contains(line, "### 🤖 AI助手对话") {
@@ -297,7 +300,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 			}
 			continue
 		}
-		
+
 		// 检测用户问题开始
 		if strings.Contains(line, "**用户问题：**") {
 			// 保存之前的AI回复消息（如果有的话）
@@ -308,7 +311,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 				}
 				contentBuilder.Reset()
 			}
-			
+
 			inUserQuestion = true
 			inAIReply = false
 			currentMessage = ChatMessage{
@@ -317,7 +320,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 			}
 			continue
 		}
-		
+
 		// 检测AI回复开始
 		if strings.Contains(line, "**AI回复：**") {
 			// 保存用户问题消息
@@ -328,7 +331,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 				}
 				contentBuilder.Reset()
 			}
-			
+
 			inUserQuestion = false
 			inAIReply = true
 			currentMessage = ChatMessage{
@@ -337,7 +340,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 			}
 			continue
 		}
-		
+
 		// 检测分割线，表示一次对话结束
 		if strings.Contains(line, "----") {
 			// 保存当前AI回复消息
@@ -348,12 +351,12 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 				}
 				contentBuilder.Reset()
 			}
-			
+
 			inUserQuestion = false
 			inAIReply = false
 			continue
 		}
-		
+
 		// 收集消息内容
 		if (inUserQuestion || inAIReply) && line != "" {
 			if contentBuilder.Len() > 0 {
@@ -362,7 +365,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 			contentBuilder.WriteString(line)
 		}
 	}
-	
+
 	// 处理最后一条消息
 	if (inUserQuestion || inAIReply) && contentBuilder.Len() > 0 {
 		currentMessage.Content = strings.TrimSpace(contentBuilder.String())
@@ -370,7 +373,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 			messages = append(messages, currentMessage)
 		}
 	}
-	
+
 	log.DebugF("Parsed %d chat messages from content", len(messages))
 	return messages
 }
@@ -611,7 +614,7 @@ func gatherTaskData() string {
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
 	// 获取今日任务列表
-	todayBlog := control.GetBlog(todayTitle)
+	todayBlog := control.GetBlog("", todayTitle)
 	var todayCompleted, todayTotal int
 	var recentTasks []string
 
@@ -723,7 +726,7 @@ func gatherExerciseData() string {
 	var todayCalories float64
 
 	// 获取今日锻炼
-	todayBlog := control.GetBlog(todayTitle)
+	todayBlog := control.GetBlog("", todayTitle)
 	if todayBlog != nil {
 		exerciseList := exercise.ParseExerciseFromBlog(todayBlog.Content)
 
@@ -759,7 +762,7 @@ func gatherExerciseData() string {
 // 收集博客数据
 func gatherBlogData() string {
 	// 获取所有博客数据
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	var totalBlogs int
 	var monthlyBlogs int
@@ -830,7 +833,7 @@ func gatherYearPlanData() string {
 	yearPlanTitle := fmt.Sprintf("年计划_%d", currentYear)
 
 	// 获取年度计划
-	yearPlan := control.GetBlog(yearPlanTitle)
+	yearPlan := control.GetBlog("", yearPlanTitle)
 	if yearPlan == nil {
 		return "- 年度目标: 未设置\n- 整体进度: 0%\n- 目标详情: 暂无年度计划"
 	}
@@ -926,7 +929,7 @@ func calculateWeeklyTaskCompletion() float64 {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog(title)
+		blog := control.GetBlog("", title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
 			totalTasks += len(todoData.Items)
@@ -957,7 +960,7 @@ func getRecentCompletedTasks(limit int) []string {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog(title)
+		blog := control.GetBlog("", title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
 
@@ -979,7 +982,7 @@ func getRecentCompletedTasks(limit int) []string {
 // getReadingBlogs gets reading-related blogs
 // 获取阅读相关的博客
 func getReadingBlogs() []*module.Blog {
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 	var readingBlogs []*module.Blog
 
 	for _, blog := range allBlogs {
@@ -1045,7 +1048,7 @@ func getWeeklyExerciseStats() WeeklyExerciseStats {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog(title)
+		blog := control.GetBlog("", title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
 			if len(exercises.Items) > 0 {
@@ -1073,7 +1076,7 @@ func getRecentExercises(limit int) []string {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog(title)
+		blog := control.GetBlog("", title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
 
@@ -1245,7 +1248,7 @@ func getTodayTasksStats() map[string]interface{} {
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
 	// Get today's todo blog
-	todayBlog := control.GetBlog(todayTitle)
+	todayBlog := control.GetBlog("", todayTitle)
 	if todayBlog == nil {
 		log.DebugF("getTodayTasksStats: No todo blog found for %s", today)
 		return map[string]interface{}{
@@ -1293,7 +1296,7 @@ func getTodayReadingStats() map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
 
 	// 使用reading模块的接口获取统计数据
-	stats := reading.GetReadingStatistics()
+	stats := reading.GetReadingStatisticsWithAccount("")
 
 	// 获取当前在读的书籍
 	currentBooks := []string{}
@@ -1302,7 +1305,7 @@ func getTodayReadingStats() map[string]interface{} {
 	todayPages := 0
 
 	// 遍历所有书籍获取详细信息
-	books := reading.GetAllBooks()
+	books := reading.GetAllBooksWithAccount("")
 	for _, book := range books {
 		if book.Status == "reading" {
 			if len(currentBooks) < 3 {
@@ -1321,7 +1324,7 @@ func getTodayReadingStats() map[string]interface{} {
 	// 估算今日阅读页数（基于阅读记录的最后更新时间）
 	// 由于没有直接获取所有阅读记录的函数，我们需要通过书籍来获取记录
 	for _, book := range books {
-		record := reading.GetReadingRecord(book.ID)
+		record := reading.GetReadingRecordWithAccount("", book.ID)
 		if record == nil {
 			continue
 		}
@@ -1363,7 +1366,7 @@ func getTodayExerciseStats() map[string]interface{} {
 	todayTitle := fmt.Sprintf("exercise-%s", today)
 
 	// Get today's exercise blog
-	todayBlog := control.GetBlog(todayTitle)
+	todayBlog := control.GetBlog("", todayTitle)
 	if todayBlog == nil {
 		log.DebugF("getTodayExerciseStats: No exercise blog found for %s", today)
 		return map[string]interface{}{
@@ -1423,7 +1426,7 @@ func getTodayExerciseStats() map[string]interface{} {
 // getTodayBlogsStats gets today's blogs statistics
 func getTodayBlogsStats() map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	createdToday := 0
 	updatedToday := 0
@@ -1524,7 +1527,7 @@ func getTodayBlogsStats() map[string]interface{} {
 // getTodayBlogCount gets the count of blogs created today
 func getTodayBlogCount() int {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	log.DebugF("getTodayBlogCount: Found %d total blogs", len(allBlogs))
 
@@ -1553,7 +1556,7 @@ func getTodayBlogCount() int {
 // getTodayWordCount gets the total word count for today's blogs
 func getTodayWordCount() int {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	totalWords := 0
 	for _, blog := range allBlogs {
@@ -1632,7 +1635,7 @@ func analyzeSleepPattern() SleepPattern {
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	var earlyMorning, lateNight int
 	var firstActivities, lastActivities []time.Time
@@ -1823,7 +1826,7 @@ func analyzeBloggingFrequency() float64 {
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -1961,7 +1964,7 @@ func generateActivityHourDistribution() map[string]interface{} {
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -2071,7 +2074,7 @@ func getDailyHealthMetrics(date time.Time) (int, int) {
 	blogCount := 0
 	activityCount := 0
 
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -2551,7 +2554,7 @@ func getUnfinishedTasksCount() int {
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
-	todayBlog := control.GetBlog(todayTitle)
+	todayBlog := control.GetBlog("", todayTitle)
 	if todayBlog == nil {
 		return 0
 	}
@@ -2577,7 +2580,7 @@ func getUrgentTasksCount() int {
 
 // getRecentBlogs gets recent blogs for analysis
 func getRecentBlogs(limit int) []*module.Blog {
-	allBlogs := control.GetAll(0, module.EAuthType_all)
+	allBlogs := control.GetAll("", 0, module.EAuthType_all)
 	var recentBlogs []*module.Blog
 
 	for _, blog := range allBlogs {

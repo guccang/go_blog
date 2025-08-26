@@ -78,11 +78,11 @@ func GetWeeksInMonth(year, month int) int {
 }
 
 // GetMonthGoal retrieves or creates a month goal
-func GetMonthGoal(year, month int) (*MonthGoal, error) {
+func GetMonthGoalWithAccount(account string, year, month int) (*MonthGoal, error) {
 	title := fmt.Sprintf("月度目标_%d-%02d", year, month)
 
 	// Try to get existing blog
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new month goal
 		goal := &MonthGoal{
@@ -138,7 +138,7 @@ func GetMonthGoal(year, month int) (*MonthGoal, error) {
 }
 
 // SaveMonthGoal saves a month goal to the blog system
-func SaveMonthGoal(goal *MonthGoal) error {
+func SaveMonthGoalWithAccount(account string, goal *MonthGoal) error {
 	title := fmt.Sprintf("月度目标_%d-%02d", goal.Year, goal.Month)
 
 	// Convert to JSON
@@ -154,19 +154,20 @@ func SaveMonthGoal(goal *MonthGoal) error {
 		AuthType: module.EAuthType_private,
 		Tags:     "月度目标",
 		Encrypt:  0,
+		Account:  account,
 	}
 
 	// Check if blog exists
-	existingBlog := blog.GetBlog(title)
+	existingBlog := blog.GetBlogWithAccount(account, title)
 	if existingBlog != nil {
 		// Update existing blog
-		ret := blog.ModifyBlog(udb)
+		ret := blog.ModifyBlogWithAccount(account, udb)
 		if ret != 0 {
 			return fmt.Errorf("failed to update month goal")
 		}
 	} else {
 		// Create new blog
-		ret := blog.AddBlog(udb)
+		ret := blog.AddBlogWithAccount(account, udb)
 		if ret != 0 {
 			return fmt.Errorf("failed to create month goal")
 		}
@@ -176,8 +177,8 @@ func SaveMonthGoal(goal *MonthGoal) error {
 }
 
 // GetWeekGoal retrieves a specific week goal
-func GetWeekGoal(year, month, week int) (*WeekGoal, error) {
-	monthGoal, err := GetMonthGoal(year, month)
+func GetWeekGoalWithAccount(account string, year, month, week int) (*WeekGoal, error) {
+	monthGoal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
 		return nil, err
 	}
@@ -191,19 +192,19 @@ func GetWeekGoal(year, month, week int) (*WeekGoal, error) {
 }
 
 // SaveWeekGoal saves a week goal
-func SaveWeekGoal(weekGoal *WeekGoal) error {
-	monthGoal, err := GetMonthGoal(weekGoal.Year, weekGoal.Month)
+func SaveWeekGoalWithAccount(account string, weekGoal *WeekGoal) error {
+	monthGoal, err := GetMonthGoalWithAccount(account, weekGoal.Year, weekGoal.Month)
 	if err != nil {
 		return err
 	}
 
 	monthGoal.Weeks[weekGoal.Week] = weekGoal
-	return SaveMonthGoal(monthGoal)
+	return SaveMonthGoalWithAccount(account, monthGoal)
 }
 
 // AddTask adds a task to a month goal
-func AddTask(year, month int, task Task) error {
-	monthGoal, err := GetMonthGoal(year, month)
+func AddTaskWithAccount(account string, year, month int, task Task) error {
+	monthGoal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
 		return err
 	}
@@ -230,12 +231,12 @@ func AddTask(year, month int, task Task) error {
 	}
 
 	monthGoal.Tasks = append(monthGoal.Tasks, task)
-	return SaveMonthGoal(monthGoal)
+	return SaveMonthGoalWithAccount(account, monthGoal)
 }
 
 // UpdateTask updates a task in a month goal
-func UpdateTask(year, month int, taskID string, updatedTask Task) error {
-	monthGoal, err := GetMonthGoal(year, month)
+func UpdateTaskWithAccount(account string, year, month int, taskID string, updatedTask Task) error {
+	monthGoal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
 		return err
 	}
@@ -245,7 +246,7 @@ func UpdateTask(year, month int, taskID string, updatedTask Task) error {
 		if task.ID == taskID {
 			updatedTask.UpdatedAt = time.Now().Format("2006-01-02 15:04:05")
 			monthGoal.Tasks[i] = updatedTask
-			return SaveMonthGoal(monthGoal)
+			return SaveMonthGoalWithAccount(account, monthGoal)
 		}
 	}
 
@@ -253,8 +254,8 @@ func UpdateTask(year, month int, taskID string, updatedTask Task) error {
 }
 
 // DeleteTask deletes a task from a month goal
-func DeleteTask(year, month int, taskID string) error {
-	monthGoal, err := GetMonthGoal(year, month)
+func DeleteTaskWithAccount(account string, year, month int, taskID string) error {
+	monthGoal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
 		return err
 	}
@@ -263,7 +264,7 @@ func DeleteTask(year, month int, taskID string) error {
 	for i, task := range monthGoal.Tasks {
 		if task.ID == taskID {
 			monthGoal.Tasks = append(monthGoal.Tasks[:i], monthGoal.Tasks[i+1:]...)
-			return SaveMonthGoal(monthGoal)
+			return SaveMonthGoalWithAccount(account, monthGoal)
 		}
 	}
 
@@ -271,11 +272,11 @@ func DeleteTask(year, month int, taskID string) error {
 }
 
 // GetMonthGoals retrieves all month goals for a year
-func GetMonthGoals(year int) (map[int]*MonthGoal, error) {
+func GetMonthGoalsWithAccount(account string, year int) (map[int]*MonthGoal, error) {
 	goals := make(map[int]*MonthGoal)
 
 	// Get all blogs with month goal pattern
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		var goalYear, goalMonth int
 		_, err := fmt.Sscanf(b.Title, "月度目标_%d-%02d", &goalYear, &goalMonth)
 		if err == nil && goalYear == year {

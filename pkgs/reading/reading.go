@@ -1,13 +1,11 @@
 package reading
 
 import (
+	"blog"
 	"core"
 	"module"
 	log "mylog"
 )
-
-// 读书模块actor
-var reading_module *ReadingActor
 
 func Info() {
 	log.Debug("info reading v1.0")
@@ -15,8 +13,15 @@ func Info() {
 
 // 初始化reading模块，用于书籍管理、阅读记录、笔记、心得等
 func Init() {
-	reading_module = &ReadingActor{
+	log.Debug("reading module Init")
+
+	// Initialize reading manager
+	managerCmd := &InitManagerCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
+
+	// Use a temporary actor to initialize the manager
+	tempActor := &ReadingActor{
 		Actor:               core.NewActor(),
+		Account:             blog.GetDefaultAccount(),
 		books:               make(map[string]*module.Book),
 		readingRecords:      make(map[string]*module.ReadingRecord),
 		bookNotes:           make(map[string][]*module.BookNote),
@@ -27,30 +32,21 @@ func Init() {
 		bookCollections:     make(map[string]*module.BookCollection),
 		readingTimeRecords:  make(map[string][]*module.ReadingTimeRecord),
 	}
-
-	// 从数据库加载数据
-	reading_module.loadBooks()
-	reading_module.loadReadingRecords()
-	reading_module.loadBookNotes()
-	reading_module.loadBookInsights()
-	reading_module.loadReadingPlans()
-	reading_module.loadReadingGoals()
-	reading_module.loadBookCollections()
-	reading_module.loadReadingTimeRecords()
-
-	reading_module.Start(reading_module)
-
-	log.DebugF("Reading module initialized - Books: %d, Records: %d, Notes: %d, Insights: %d, Plans: %d, Goals: %d, Collections: %d",
-		len(reading_module.books), len(reading_module.readingRecords), reading_module.getTotalNotesCount(), len(reading_module.bookInsights), len(reading_module.readingPlans), len(reading_module.readingGoals), len(reading_module.bookCollections))
+	tempActor.Start(tempActor)
+	tempActor.Send(managerCmd)
+	<-managerCmd.Response()
+	tempActor.Stop()
 }
 
 // interface
 
-func AddBook(title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl string, totalPages int, category, tags []string) (*module.Book, error) {
+func AddBookWithAccount(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl string, totalPages int, category, tags []string) (*module.Book, error) {
+	actor := getReadingActor(account)
 	cmd := &AddBookCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		Title:       title,
 		Author:      author,
 		ISBN:        isbn,
@@ -63,7 +59,7 @@ func AddBook(title, author, isbn, publisher, publishDate, coverUrl, description,
 		Category:    category,
 		Tags:        tags,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	book := <-cmd.Response()
 	err := <-cmd.Response()
 	if book == nil {
@@ -72,14 +68,16 @@ func AddBook(title, author, isbn, publisher, publishDate, coverUrl, description,
 	return book.(*module.Book), nil
 }
 
-func GetBook(bookID string) *module.Book {
+func GetBookWithAccount(account, bookID string) *module.Book {
+	actor := getReadingActor(account)
 	cmd := &GetBookCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	book := <-cmd.Response()
 	if book == nil {
 		return nil
@@ -87,26 +85,30 @@ func GetBook(bookID string) *module.Book {
 	return book.(*module.Book)
 }
 
-func GetAllBooks() map[string]*module.Book {
+func GetAllBooksWithAccount(account string) map[string]*module.Book {
+	actor := getReadingActor(account)
 	cmd := &GetAllBooksCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	books := <-cmd.Response()
 	return books.(map[string]*module.Book)
 }
 
-func UpdateBook(bookID string, updates map[string]interface{}) error {
+func UpdateBookWithAccount(account, bookID string, updates map[string]interface{}) error {
+	actor := getReadingActor(account)
 	cmd := &UpdateBookCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 		BookID:  bookID,
 		Updates: updates,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -114,14 +116,16 @@ func UpdateBook(bookID string, updates map[string]interface{}) error {
 	return err.(error)
 }
 
-func DeleteBook(bookID string) error {
+func DeleteBookWithAccount(account, bookID string) error {
+	actor := getReadingActor(account)
 	cmd := &DeleteBookCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -129,14 +133,16 @@ func DeleteBook(bookID string) error {
 	return err.(error)
 }
 
-func StartReading(bookID string) error {
+func StartReadingWithAccount(account, bookID string) error {
+	actor := getReadingActor(account)
 	cmd := &StartReadingCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -144,16 +150,18 @@ func StartReading(bookID string) error {
 	return err.(error)
 }
 
-func UpdateReadingProgress(bookID string, currentPage int, notes string) error {
+func UpdateReadingProgressWithAccount(account, bookID string, currentPage int, notes string) error {
+	actor := getReadingActor(account)
 	cmd := &UpdateReadingProgressCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		BookID:      bookID,
 		CurrentPage: currentPage,
 		Notes:       notes,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -161,14 +169,16 @@ func UpdateReadingProgress(bookID string, currentPage int, notes string) error {
 	return err.(error)
 }
 
-func GetReadingRecord(bookID string) *module.ReadingRecord {
+func GetReadingRecordWithAccount(account, bookID string) *module.ReadingRecord {
+	actor := getReadingActor(account)
 	cmd := &GetReadingRecordCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	record := <-cmd.Response()
 	if record == nil {
 		return nil
@@ -176,11 +186,13 @@ func GetReadingRecord(bookID string) *module.ReadingRecord {
 	return record.(*module.ReadingRecord)
 }
 
-func AddBookNote(bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
+func AddBookNoteWithAccount(account, bookID, noteType, chapter, content string, page int, tags []string) (*module.BookNote, error) {
+	actor := getReadingActor(account)
 	cmd := &AddBookNoteCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		BookID:   bookID,
 		NoteType: noteType,
 		Chapter:  chapter,
@@ -188,7 +200,7 @@ func AddBookNote(bookID, noteType, chapter, content string, page int, tags []str
 		Page:     page,
 		Tags:     tags,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	note := <-cmd.Response()
 	err := <-cmd.Response()
 	if note == nil {
@@ -197,28 +209,32 @@ func AddBookNote(bookID, noteType, chapter, content string, page int, tags []str
 	return note.(*module.BookNote), nil
 }
 
-func GetBookNotes(bookID string) []*module.BookNote {
+func GetBookNotesWithAccount(account, bookID string) []*module.BookNote {
+	actor := getReadingActor(account)
 	cmd := &GetBookNotesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	notes := <-cmd.Response()
 	return notes.([]*module.BookNote)
 }
 
-func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error {
+func UpdateBookNoteWithAccount(account, bookID, noteID string, updates map[string]interface{}) error {
+	actor := getReadingActor(account)
 	cmd := &UpdateBookNoteCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 		BookID:  bookID,
 		NoteID:  noteID,
 		Updates: updates,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -226,15 +242,17 @@ func UpdateBookNote(bookID, noteID string, updates map[string]interface{}) error
 	return err.(error)
 }
 
-func DeleteBookNote(bookID, noteID string) error {
+func DeleteBookNoteWithAccount(account, bookID, noteID string) error {
+	actor := getReadingActor(account)
 	cmd := &DeleteBookNoteCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
-		NoteID: noteID,
+		Account: account,
+		BookID:  bookID,
+		NoteID:  noteID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -242,11 +260,13 @@ func DeleteBookNote(bookID, noteID string) error {
 	return err.(error)
 }
 
-func AddBookInsight(bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
+func AddBookInsightWithAccount(account, bookID, title, content string, keyTakeaways, applications []string, rating int, tags []string) (*module.BookInsight, error) {
+	actor := getReadingActor(account)
 	cmd := &AddBookInsightCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		BookID:       bookID,
 		Title:        title,
 		Content:      content,
@@ -255,7 +275,7 @@ func AddBookInsight(bookID, title, content string, keyTakeaways, applications []
 		Rating:       rating,
 		Tags:         tags,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	insight := <-cmd.Response()
 	err := <-cmd.Response()
 	if insight == nil {
@@ -264,27 +284,31 @@ func AddBookInsight(bookID, title, content string, keyTakeaways, applications []
 	return insight.(*module.BookInsight), nil
 }
 
-func GetBookInsights(bookID string) []*module.BookInsight {
+func GetBookInsightsWithAccount(account, bookID string) []*module.BookInsight {
+	actor := getReadingActor(account)
 	cmd := &GetBookInsightsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		BookID: bookID,
+		Account: account,
+		BookID:  bookID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	insights := <-cmd.Response()
 	return insights.([]*module.BookInsight)
 }
 
-func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
+func UpdateBookInsightWithAccount(account, insightID string, updates map[string]interface{}) error {
+	actor := getReadingActor(account)
 	cmd := &UpdateBookInsightCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		InsightID: insightID,
 		Updates:   updates,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -292,14 +316,16 @@ func UpdateBookInsight(insightID string, updates map[string]interface{}) error {
 	return err.(error)
 }
 
-func DeleteBookInsight(insightID string) error {
+func DeleteBookInsightWithAccount(account, insightID string) error {
+	actor := getReadingActor(account)
 	cmd := &DeleteBookInsightCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		InsightID: insightID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	err := <-cmd.Response()
 	if err == nil {
 		return nil
@@ -307,65 +333,75 @@ func DeleteBookInsight(insightID string) error {
 	return err.(error)
 }
 
-func SearchBooks(keyword string) []*module.Book {
+func SearchBooksWithAccount(account, keyword string) []*module.Book {
+	actor := getReadingActor(account)
 	cmd := &SearchBooksCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 		Keyword: keyword,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	books := <-cmd.Response()
 	return books.([]*module.Book)
 }
 
-func FilterBooksByStatus(status string) []*module.Book {
+func FilterBooksByStatusWithAccount(account, status string) []*module.Book {
+	actor := getReadingActor(account)
 	cmd := &FilterBooksByStatusCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Status: status,
+		Account: account,
+		Status:  status,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	books := <-cmd.Response()
 	return books.([]*module.Book)
 }
 
-func FilterBooksByCategory(category string) []*module.Book {
+func FilterBooksByCategoryWithAccount(account, category string) []*module.Book {
+	actor := getReadingActor(account)
 	cmd := &FilterBooksByCategoryCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		Category: category,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	books := <-cmd.Response()
 	return books.([]*module.Book)
 }
 
-func GetReadingStatistics() map[string]interface{} {
+func GetReadingStatisticsWithAccount(account string) map[string]interface{} {
+	actor := getReadingActor(account)
 	cmd := &GetReadingStatisticsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	stats := <-cmd.Response()
 	return stats.(map[string]interface{})
 }
 
-func AddReadingPlan(title, description, startDate, endDate string, targetBooks []string) (*module.ReadingPlan, error) {
+func AddReadingPlanWithAccount(account, title, description, startDate, endDate string, targetBooks []string) (*module.ReadingPlan, error) {
+	actor := getReadingActor(account)
 	cmd := &AddReadingPlanCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		Title:       title,
 		Description: description,
 		StartDate:   startDate,
 		EndDate:     endDate,
 		TargetBooks: targetBooks,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	plan := <-cmd.Response()
 	err := <-cmd.Response()
 	if plan == nil {
@@ -374,14 +410,16 @@ func AddReadingPlan(title, description, startDate, endDate string, targetBooks [
 	return plan.(*module.ReadingPlan), nil
 }
 
-func GetReadingPlan(planID string) *module.ReadingPlan {
+func GetReadingPlanWithAccount(account, planID string) *module.ReadingPlan {
+	actor := getReadingActor(account)
 	cmd := &GetReadingPlanCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		PlanID: planID,
+		Account: account,
+		PlanID:  planID,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	plan := <-cmd.Response()
 	if plan == nil {
 		return nil
@@ -389,13 +427,15 @@ func GetReadingPlan(planID string) *module.ReadingPlan {
 	return plan.(*module.ReadingPlan)
 }
 
-func GetAllReadingPlans() []*module.ReadingPlan {
+func GetAllReadingPlansWithAccount(account string) []*module.ReadingPlan {
+	actor := getReadingActor(account)
 	cmd := &GetAllReadingPlansCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
-	reading_module.Send(cmd)
+	actor.Send(cmd)
 	plans := <-cmd.Response()
 	return plans.([]*module.ReadingPlan)
 }
@@ -465,6 +505,3 @@ func ExportReadingData(config *module.ExportConfig) (string, error) {
 	// TODO: 实现ExportReadingData的cmd和actor方法
 	return "", nil
 }
-
-// 兼容性函数，保持原有API不变
-// 这些函数在原版本中可能被其他模块调用，为了保持兼容性而保留
