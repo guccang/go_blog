@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	log "mylog"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
-	log "mylog"
 )
 
 // MCPTool represents an MCP tool that can be called
 type MCPTool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
 	InputSchema interface{} `json:"inputschema"`
 }
 
@@ -81,7 +81,7 @@ func (cm *MCPConnectionManager) GetConnection(config MCPConfig) (*MCPConnection,
 		// Connection is stale, remove it
 		cm.CloseConnection(config.Name)
 	}
-	
+
 	// Create new connection
 	return cm.CreateConnection(config)
 }
@@ -93,16 +93,16 @@ func (cm *MCPConnectionManager) CreateConnection(config MCPConfig) (*MCPConnecti
 		Connected: false,
 		LastPing:  time.Now(),
 	}
-	
+
 	// Test the connection
 	if err := cm.testConnection(conn); err != nil {
 		return nil, fmt.Errorf("failed to connect to MCP server %s: %v", config.Name, err)
 	}
-	
+
 	conn.Connected = true
 	cm.connections[config.Name] = conn
-	
-	log.DebugF("Established MCP connection to %s", config.Name)
+
+	log.DebugF(log.ModuleMCP, "Established MCP connection to %s", config.Name)
 	return conn, nil
 }
 
@@ -113,7 +113,7 @@ func (cm *MCPConnectionManager) CloseConnection(name string) {
 			conn.Process.Process.Kill()
 		}
 		delete(cm.connections, name)
-		log.DebugF("Closed MCP connection to %s", name)
+		log.DebugF(log.ModuleMCP, "Closed MCP connection to %s", name)
 	}
 }
 
@@ -132,12 +132,12 @@ func (cm *MCPConnectionManager) testConnection(conn *MCPConnection) error {
 			},
 		},
 	}
-	
+
 	response, err := cm.callMCPServerDirect(conn.Config, request)
 	if err != nil {
 		return err
 	}
-	
+
 	// Parse server info
 	if result, ok := response.Data.(map[string]interface{}); ok {
 		if serverInfo, ok := result["serverInfo"].(map[string]interface{}); ok {
@@ -149,52 +149,52 @@ func (cm *MCPConnectionManager) testConnection(conn *MCPConnection) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 // callMCPServerDirect executes a request to an MCP server directly
 func (cm *MCPConnectionManager) callMCPServerDirect(config MCPConfig, request MCPRequest) (MCPResponseStruct, error) {
 	var response MCPResponseStruct
-	
+
 	// Prepare the command
 	cmd := exec.Command(config.Command, config.Args...)
-	
+
 	// Set environment variables
 	cmd.Env = os.Environ()
 	for key, value := range config.Environment {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
-	
+
 	// Prepare request JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return response, fmt.Errorf("failed to marshal request: %v", err)
 	}
-	
+
 	// Set up stdin/stdout
 	cmd.Stdin = bytes.NewReader(requestJSON)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	
+
 	// Execute the command with timeout
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Run()
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err != nil {
-			log.ErrorF("MCP server command failed: %v, stderr: %s", err, stderr.String())
+			log.ErrorF(log.ModuleMCP, "MCP server command failed: %v, stderr: %s", err, stderr.String())
 			return response, fmt.Errorf("command execution failed: %v", err)
 		}
 	case <-time.After(30 * time.Second):
 		cmd.Process.Kill()
 		return response, fmt.Errorf("command execution timed out")
 	}
-	
+
 	// Parse the response
 	var mcpResp struct {
 		JSONRPC string      `json:"jsonrpc"`
@@ -202,18 +202,18 @@ func (cm *MCPConnectionManager) callMCPServerDirect(config MCPConfig, request MC
 		Result  interface{} `json:"result,omitempty"`
 		Error   *MCPError   `json:"error,omitempty"`
 	}
-	
+
 	if err := json.Unmarshal(stdout.Bytes(), &mcpResp); err != nil {
-		log.ErrorF("Failed to parse MCP response: %v, output: %s", err, stdout.String())
+		log.ErrorF(log.ModuleMCP, "Failed to parse MCP response: %v, output: %s", err, stdout.String())
 		return response, fmt.Errorf("failed to parse response: %v", err)
 	}
-	
+
 	// Convert to our response format
 	response.Data = mcpResp.Result
 	if mcpResp.Error != nil {
 		response.Message = mcpResp.Error.Message
 	}
-	
+
 	return response, nil
 }
 
@@ -236,43 +236,43 @@ func getMap(m map[string]interface{}, key string) map[string]interface{} {
 // GetAvailableTools returns a list of available MCP tools from enabled configurations
 func GetAvailableTools() []MCPTool {
 	var tools []MCPTool
-	
+
 	enabledConfigs := GetEnabledConfigs()
-	
+
 	for _, config := range enabledConfigs {
 		// Get tools from each enabled MCP server
 		serverTools := getToolsFromServer(config)
 		tools = append(tools, serverTools...)
 	}
-	
+
 	return tools
 }
 
 // getToolsFromServer retrieves tools from a specific MCP server
 func getToolsFromServer(config MCPConfig) []MCPTool {
 	var tools []MCPTool
-	
+
 	// Get or create connection
 	_, err := connectionManager.GetConnection(config)
 	if err != nil {
-		log.ErrorF("Failed to get connection for server %s: %v", config.Name, err)
+		log.ErrorF(log.ModuleMCP, "Failed to get connection for server %s: %v", config.Name, err)
 		return tools
 	}
-	
+
 	// Create MCP request to list tools
 	request := MCPRequest{
 		JSONRPC: "2.0",
 		ID:      generateRequestID(),
 		Method:  "tools/list",
 	}
-	
+
 	// Call the MCP server
 	response, err := connectionManager.callMCPServerDirect(config, request)
 	if err != nil {
-		log.ErrorF("Failed to get tools from server %s: %v", config.Name, err)
+		log.ErrorF(log.ModuleMCP, "Failed to get tools from server %s: %v", config.Name, err)
 		return tools
 	}
-	
+
 	// Parse the response
 	if result, ok := response.Data.(map[string]interface{}); ok {
 		if toolsList, ok := result["tools"].([]interface{}); ok {
@@ -281,14 +281,14 @@ func getToolsFromServer(config MCPConfig) []MCPTool {
 					tool := MCPTool{
 						Name:        fmt.Sprintf("%s.%s", config.Name, getString(toolMap, "name")),
 						Description: getString(toolMap, "description"),
-						InputSchema:  toolMap["inputSchema"],
+						InputSchema: toolMap["inputSchema"],
 					}
 					tools = append(tools, tool)
 				}
 			}
 		}
 	}
-	
+
 	return tools
 }
 
@@ -302,10 +302,10 @@ func CallTool(toolCall MCPToolCall) MCPToolResponse {
 			Error:   "Invalid tool name format. Expected: server.tool",
 		}
 	}
-	
+
 	serverName := parts[0]
 	toolName := parts[1]
-	
+
 	// Find the server configuration
 	config, found := GetConfig(serverName)
 	if !found {
@@ -314,14 +314,14 @@ func CallTool(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Server configuration '%s' not found", serverName),
 		}
 	}
-	
+
 	if !config.Enabled {
 		return MCPToolResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Server '%s' is disabled", serverName),
 		}
 	}
-	
+
 	// Create MCP request to call the tool
 	request := MCPRequest{
 		JSONRPC: "2.0",
@@ -332,7 +332,7 @@ func CallTool(toolCall MCPToolCall) MCPToolResponse {
 			"arguments": toolCall.Arguments,
 		},
 	}
-	
+
 	// Call the MCP server
 	response, err := callMCPServer(*config, request)
 	if err != nil {
@@ -341,14 +341,14 @@ func CallTool(toolCall MCPToolCall) MCPToolResponse {
 			Error:   fmt.Sprintf("Failed to call tool: %v", err),
 		}
 	}
-	
+
 	if response.Message != "" {
 		return MCPToolResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Tool call error: %v", response.Message),
 		}
 	}
-	
+
 	return MCPToolResponse{
 		Success: true,
 		Result:  response.Data,
@@ -358,51 +358,51 @@ func CallTool(toolCall MCPToolCall) MCPToolResponse {
 // callMCPServer executes a request to an MCP server
 func callMCPServer(config MCPConfig, request MCPRequest) (MCPResponse, error) {
 	var response MCPResponse
-	
+
 	// Prepare the command
 	cmd := exec.Command(config.Command, config.Args...)
-	
+
 	// Set environment variables
 	cmd.Env = os.Environ()
 	for key, value := range config.Environment {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
-	
+
 	// Prepare request JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return response, fmt.Errorf("failed to marshal request: %v", err)
 	}
-	
+
 	// Set up stdin/stdout
 	cmd.Stdin = bytes.NewReader(requestJSON)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	
+
 	// Execute the command with timeout
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Run()
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err != nil {
-			log.ErrorF("MCP server command failed: %v, stderr: %s", err, stderr.String())
+			log.ErrorF(log.ModuleMCP, "MCP server command failed: %v, stderr: %s", err, stderr.String())
 			return response, fmt.Errorf("command execution failed: %v", err)
 		}
 	case <-time.After(30 * time.Second):
 		cmd.Process.Kill()
 		return response, fmt.Errorf("command execution timed out")
 	}
-	
+
 	// Parse the response
 	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
-		log.ErrorF("Failed to parse MCP response: %v, output: %s", err, stdout.String())
+		log.ErrorF(log.ModuleMCP, "Failed to parse MCP response: %v, output: %s", err, stdout.String())
 		return response, fmt.Errorf("failed to parse response: %v", err)
 	}
-	
+
 	return response, nil
 }
 
@@ -423,25 +423,25 @@ func getString(m map[string]interface{}, key string) string {
 
 // FormatToolsForLLM formats available tools for LLM consumption
 func FormatToolsForLLM() string {
-	log.Debug("--- Formatting MCP Tools for LLM ---")
-	
-	tools := GetAvailableToolsImproved()  // Use improved version with better logging
-	log.DebugF("Retrieved %d tools for LLM formatting", len(tools))
-	
+	log.Debug(log.ModuleMCP, "--- Formatting MCP Tools for LLM ---")
+
+	tools := GetAvailableToolsImproved() // Use improved version with better logging
+	log.DebugF(log.ModuleMCP, "Retrieved %d tools for LLM formatting", len(tools))
+
 	if len(tools) == 0 {
-		log.WarnF("No MCP tools available for LLM - will return empty tools message")
+		log.WarnF(log.ModuleMCP, "No MCP tools available for LLM - will return empty tools message")
 		return "No MCP tools are currently available. Please configure MCP servers to enable tool functionality."
 	}
-	
+
 	var sb strings.Builder
 	sb.WriteString("Available MCP Tools:\n\n")
-	
-	log.DebugF("Formatting %d tools for LLM display", len(tools))
-	
+
+	log.DebugF(log.ModuleMCP, "Formatting %d tools for LLM display", len(tools))
+
 	for i, tool := range tools {
-		log.DebugF("Formatting tool %d: %s", i+1, tool.Name)
+		log.DebugF(log.ModuleMCP, "Formatting tool %d: %s", i+1, tool.Name)
 		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", tool.Name, tool.Description))
-		
+
 		// Add parameter information if available
 		paramCount := 0
 		if tool.InputSchema != nil {
@@ -459,11 +459,11 @@ func FormatToolsForLLM() string {
 				}
 			}
 		}
-		
-		log.DebugF("Tool %s has %d parameters", tool.Name, paramCount)
+
+		log.DebugF(log.ModuleMCP, "Tool %s has %d parameters", tool.Name, paramCount)
 		sb.WriteString("\n")
 	}
-	
+
 	sb.WriteString("To use a tool, respond with a JSON object like:\n")
 	sb.WriteString("```json\n")
 	sb.WriteString("{\n")
@@ -473,10 +473,10 @@ func FormatToolsForLLM() string {
 	sb.WriteString("  }\n")
 	sb.WriteString("}\n")
 	sb.WriteString("```\n")
-	
+
 	result := sb.String()
-	log.InfoF("MCP tools formatted for LLM: %d tools, %d characters", len(tools), len(result))
-	
+	log.InfoF(log.ModuleMCP, "MCP tools formatted for LLM: %d tools, %d characters", len(tools), len(result))
+
 	return result
 }
 
@@ -488,7 +488,7 @@ func TestMCPServer(config MCPConfig) error {
 		ID:      generateRequestID(),
 		Method:  "ping",
 	}
-	
+
 	_, err := callMCPServer(config, request)
 	return err
 }

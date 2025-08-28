@@ -84,7 +84,7 @@ func (a *SmsActor) sendSMS() (string, string) {
 		return "", err.Error()
 	}
 
-	log.InfoF("SendSMS url=%s code=%s phone=%s name=%s", a.sendURL, code, a.phone, a.name)
+	log.InfoF(log.ModuleSMS, "SendSMS url=%s code=%s phone=%s name=%s", a.sendURL, code, a.phone, a.name)
 	if err := a.sendVerificationCode(code); err != nil {
 		return "", err.Error()
 	}

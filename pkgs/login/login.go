@@ -11,7 +11,7 @@ import (
 var login_module *LoginActor
 
 func Info() {
-	log.Debug("info login v1.0")
+	log.Debug(log.ModuleLogin, "info login v1.0")
 }
 
 // 初始化login模块，用于用户登录，短信验证登录，账号密码登录，登出
@@ -35,7 +35,7 @@ func Init() {
 
 	// 从sys_accounts博客加载用户数据
 	if err := login_module.loadUsersFromAdminBlog(); err != nil {
-		log.ErrorF("Failed to load users from admin blog: %v", err)
+		log.ErrorF(log.ModuleLogin, "Failed to load users from admin blog: %v", err)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 func Info() {
-	log.Debug("info auth v1.0")
+	log.Debug(log.ModuleAuth, "info auth v1.0")
 }
 
 func Init() {

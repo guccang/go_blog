@@ -12,12 +12,12 @@ import (
 
 // Info provides version info about the yearplan module
 func Info() {
-	fmt.Println("info yearplan v1.0")
+	log.InfoF(log.ModuleYearPlan, "info yearplan v1.0")
 }
 
 // RegisterHandlers sets up the HTTP handlers for yearplan routes
 func RegisterHandlers() {
-	log.Debug("Registering yearplan handlers")
+	log.Debug(log.ModuleYearPlan, "Registering yearplan handlers")
 }
 
 // MonthGoal represents a monthly work goal
@@ -306,6 +306,6 @@ func ParseYearPlanFromBlog(content string) MonthGoal {
 
 // InitYearPlanModule initializes the year plan module
 func InitYearPlanModule() error {
-	log.Debug("Initializing year plan module")
+	log.Debug(log.ModuleYearPlan, "Initializing year plan module")
 	return nil
 }

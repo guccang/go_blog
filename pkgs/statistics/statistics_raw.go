@@ -106,7 +106,7 @@ func RawAllExerciseCalories(account string) int {
 // 获取博客总数量
 func RawAllBlogCount(account string) int {
 	n := len(blog.GetBlogsWithAccount(account))
-	log.DebugF("RawAllBlogCount: %d", n)
+	log.DebugF(log.ModuleStatistics, "RawAllBlogCount: %d", n)
 	return n
 }
 
@@ -123,7 +123,7 @@ func RawAllBlogData(account string) string {
 // 通过名称获取blog内容
 func RawGetBlogData(account string, title string) string {
 	blog := blog.GetBlogWithAccount(account, title)
-	log.DebugF("RawBlogData: %s, blog: %v", title, blog)
+	log.DebugF(log.ModuleStatistics, "RawBlogData: %s, blog: %v", title, blog)
 	if blog != nil {
 		return blog.Content
 	}

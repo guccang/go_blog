@@ -84,9 +84,9 @@ func (c *CommentActor) initUserManager(account string) {
 			c.comments[account].comments[comment.Title] = comment
 		}
 	}
-	log.DebugF("getComments number=%d", len(c.comments[account].comments))
+	log.DebugF(log.ModuleComment, "getComments number=%d", len(c.comments[account].comments))
 
-	log.Debug("CommentUserManager initialized")
+	log.Debug(log.ModuleComment, "CommentUserManager initialized")
 }
 
 func (c *CommentActor) addComment(account, title string, msg string, owner string, pwd string, mail string) int {
@@ -100,7 +100,7 @@ func (c *CommentActor) addComment(account, title string, msg string, owner strin
 
 	cur_cnt := len(bc.Comments)
 	if cur_cnt > config.GetMaxBlogComments() {
-		log.ErrorF("AddComment error comments max limits max=%d", config.GetMaxBlogComments())
+		log.ErrorF(log.ModuleComment, "AddComment error comments max limits max=%d", config.GetMaxBlogComments())
 		return 0
 	}
 
@@ -141,7 +141,7 @@ func (c *CommentActor) addCommentWithAuth(account, title, msg, sessionID, ip, us
 	// 检查评论数量限制
 	cur_cnt := len(bc.Comments)
 	if cur_cnt > config.GetMaxBlogComments() {
-		log.ErrorF("AddCommentWithAuth error comments max limits max=%d", config.GetMaxBlogComments())
+		log.ErrorF(log.ModuleComment, "AddCommentWithAuth error comments max limits max=%d", config.GetMaxBlogComments())
 		return 3, "评论数量已达上限"
 	}
 
@@ -168,7 +168,7 @@ func (c *CommentActor) addCommentWithAuth(account, title, msg, sessionID, ip, us
 	// 更新用户评论计数
 	c.incrementUserCommentCount(account, user.UserID)
 
-	log.DebugF("AddCommentWithAuth success: user=%s title=%s", user.Username, title)
+	log.DebugF(log.ModuleComment, "AddCommentWithAuth success: user=%s title=%s", user.Username, title)
 	return 0, "评论发表成功"
 }
 
@@ -198,11 +198,11 @@ func (c *CommentActor) addCommentWithPassword(account, title, msg, username, ema
 func (c *CommentActor) modifyComment(account, title string, msg string, idx int) int {
 	bc, ok := c.comments[account].comments[title]
 	if !ok {
-		log.ErrorF("ModifyComment %s not find", title)
+		log.ErrorF(log.ModuleComment, "ModifyComment %s not find", title)
 		return 1
 	}
 	if idx >= len(bc.Comments) {
-		log.ErrorF("ModifyComment %s id=%d > len of comments %d", title, idx, len(bc.Comments))
+		log.ErrorF(log.ModuleComment, "ModifyComment %s id=%d > len of comments %d", title, idx, len(bc.Comments))
 		return 2
 	}
 	comment := bc.Comments[idx]
@@ -214,11 +214,11 @@ func (c *CommentActor) modifyComment(account, title string, msg string, idx int)
 func (c *CommentActor) removeComment(account, title string, idx int) int {
 	bc, ok := c.comments[account].comments[title]
 	if !ok {
-		log.ErrorF("RemoveComment %s not find", title)
+		log.ErrorF(log.ModuleComment, "RemoveComment %s not find", title)
 		return 1
 	}
 	if idx >= len(bc.Comments) {
-		log.ErrorF("RemoveComment %s id=%d > len of comments %d", title, idx, len(bc.Comments))
+		log.ErrorF(log.ModuleComment, "RemoveComment %s id=%d > len of comments %d", title, idx, len(bc.Comments))
 		return 2
 	}
 
@@ -348,7 +348,7 @@ func (c *CommentActor) createAnonymousSession(account, username, email, ip, user
 	c.saveCommentUser(account, user)
 	c.saveCommentSession(account, session)
 
-	log.DebugF("创建匿名用户会话: %s (%s)", username, userID)
+	log.DebugF(log.ModuleComment, "创建匿名用户会话: %s (%s)", username, userID)
 	return session, nil
 }
 
@@ -419,7 +419,7 @@ func (c *CommentActor) incrementUserCommentCount(account, userID string) {
 		}
 
 		c.saveCommentUser(account, user)
-		log.DebugF("用户 %s 评论计数更新: %d", user.Username, user.CommentCount)
+		log.DebugF(log.ModuleComment, "用户 %s 评论计数更新: %d", user.Username, user.CommentCount)
 	}
 }
 
@@ -475,7 +475,7 @@ func (c *CommentActor) createOrAuthenticateSession(account, username, email, pas
 		c.userManager.AccountData[account].Sessions[sessionID] = session
 		c.saveCommentSession(account, session)
 
-		log.DebugF("用户身份验证成功，创建新会话: %s (%s)", username, user.UserID)
+		log.DebugF(log.ModuleComment, "用户身份验证成功，创建新会话: %s (%s)", username, user.UserID)
 		return session, user, nil
 	}
 
@@ -519,7 +519,7 @@ func (c *CommentActor) createOrAuthenticateSession(account, username, email, pas
 	c.saveCommentUser(account, user)
 	c.saveCommentSession(account, session)
 
-	log.DebugF("创建新用户会话: %s (%s)", username, userID)
+	log.DebugF(log.ModuleComment, "创建新用户会话: %s (%s)", username, userID)
 	return session, user, nil
 }
 
@@ -543,7 +543,7 @@ func (c *CommentActor) loadCommentUsers(account string) {
 			c.userManager.AccountData[account].Users[userID] = user
 		}
 	}
-	log.DebugF("加载评论用户数量: %d", len(c.userManager.AccountData[account].Users))
+	log.DebugF(log.ModuleComment, "加载评论用户数量: %d", len(c.userManager.AccountData[account].Users))
 }
 
 func (c *CommentActor) loadUsernameLocks(account string) {
@@ -553,7 +553,7 @@ func (c *CommentActor) loadUsernameLocks(account string) {
 			c.userManager.AccountData[account].Usernames[username] = reservation
 		}
 	}
-	log.DebugF("加载用户名占用记录数量: %d", len(c.userManager.AccountData[account].Usernames))
+	log.DebugF(log.ModuleComment, "加载用户名占用记录数量: %d", len(c.userManager.AccountData[account].Usernames))
 }
 
 func (c *CommentActor) loadCommentSessions(account string) {
@@ -563,5 +563,5 @@ func (c *CommentActor) loadCommentSessions(account string) {
 			c.userManager.AccountData[account].Sessions[sessionID] = session
 		}
 	}
-	log.DebugF("加载评论会话数量: %d", len(c.userManager.AccountData[account].Sessions))
+	log.DebugF(log.ModuleComment, "加载评论会话数量: %d", len(c.userManager.AccountData[account].Sessions))
 }

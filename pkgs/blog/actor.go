@@ -36,7 +36,7 @@ func (a *BlogActor) loadBlogs() int {
 			a.blogs[b.Title] = b
 		}
 	}
-	log.DebugF("getblogs number=%d", len(blogs))
+	log.DebugF(log.ModuleBlog, "getblogs number=%d", len(blogs))
 	return 0
 }
 
@@ -62,11 +62,11 @@ func (a *BlogActor) importBlogsFromPath(dir string) int {
 				// 更新blogs
 				b.Account = a.Account
 				b.Content = datas
-				log.DebugF("import update blog %s, createTime=%s, modifyTime=%s, accessTime=%s", name, b.CreateTime, b.ModifyTime, b.AccessTime)
+				log.DebugF(log.ModuleBlog, "import update blog %s, createTime=%s, modifyTime=%s, accessTime=%s", name, b.CreateTime, b.ModifyTime, b.AccessTime)
 			} else {
 				udb.Account = a.Account
 				a.addBlog(&udb)
-				log.DebugF("import add blog %s", name)
+				log.DebugF(log.ModuleBlog, "import add blog %s", name)
 			}
 		}
 	}
@@ -102,10 +102,10 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 	// diary auto-flag
 	if config.IsDiaryBlogWithAccount(a.Account, title) {
 		authType |= module.EAuthType_diary
-		log.DebugF("检测到日记博客，设置日记权限: %s", title)
+		log.DebugF(log.ModuleBlog, "检测到日记博客，设置日记权限: %s", title)
 	}
 
-	log.DebugF("add blog %s", title)
+	log.DebugF(log.ModuleBlog, "add blog %s", title)
 	now := strTime()
 	b := module.Blog{
 		Title:      title,
@@ -125,10 +125,10 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 	}
 
 	if (authType & module.EAuthType_diary) != 0 {
-		log.InfoF("博客 '%s' 设置了日记权限，AuthType=%d", title, authType)
+		log.InfoF(log.ModuleBlog, "博客 '%s' 设置了日记权限，AuthType=%d", title, authType)
 	}
 	if (authType & module.EAuthType_encrypt) != 0 {
-		log.InfoF("博客 '%s' 设置了加密权限，AuthType=%d", title, authType)
+		log.InfoF(log.ModuleBlog, "博客 '%s' 设置了加密权限，AuthType=%d", title, authType)
 	}
 
 	a.blogs[title] = &b
@@ -147,11 +147,11 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 		return 1
 	}
 
-	log.DebugF("modify blog %s", title)
+	log.DebugF(log.ModuleBlog, "modify blog %s", title)
 
 	if config.IsDiaryBlogWithAccount(a.Account, title) {
 		authType |= module.EAuthType_diary
-		log.DebugF("保持日记博客权限: %s", title)
+		log.DebugF(log.ModuleBlog, "保持日记博客权限: %s", title)
 	}
 
 	b.Content = content
@@ -167,10 +167,10 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 	}
 
 	if (authType & module.EAuthType_diary) != 0 {
-		log.InfoF("博客 '%s' 更新了日记权限，AuthType=%d", title, authType)
+		log.InfoF(log.ModuleBlog, "博客 '%s' 更新了日记权限，AuthType=%d", title, authType)
 	}
 	if (authType & module.EAuthType_encrypt) != 0 {
-		log.InfoF("博客 '%s' 更新了加密权限，AuthType=%d", title, authType)
+		log.InfoF(log.ModuleBlog, "博客 '%s' 更新了加密权限，AuthType=%d", title, authType)
 	}
 
 	db.SaveBlog(a.Account, b)
@@ -252,7 +252,7 @@ func (a *BlogActor) getRecentlyTimedBlog(title string) *module.Blog {
 	for i := 1; i < 9999; i++ {
 		str := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
 		newTitle := fmt.Sprintf("%s_%s", title, str)
-		log.DebugF("GetRecentlyTimedBlog title=%s", newTitle)
+		log.DebugF(log.ModuleBlog, "GetRecentlyTimedBlog title=%s", newTitle)
 		b := a.getBlog(newTitle)
 		if b != nil {
 			return b
@@ -299,7 +299,7 @@ func (a *BlogActor) tagReplace(from, to string) {
 				}
 			}
 			newTags = newTags[:len(newTags)-1]
-			log.InfoF("blog change tag from %s to %s", b.Tags, newTags)
+			log.InfoF(log.ModuleBlog, "blog change tag from %s to %s", b.Tags, newTags)
 			b.Tags = newTags
 		}
 

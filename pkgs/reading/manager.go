@@ -84,7 +84,7 @@ func (cmd *loadAccountReadingDataCmd) Do(actor core.ActorInterface) {
 	readingActor.loadBookCollectionsForAccount(cmd.Account)
 	readingActor.loadReadingTimeRecordsForAccount(cmd.Account)
 
-	log.DebugF("Loaded reading data for account %s - Books: %d, Records: %d, Notes: %d, Insights: %d",
+	log.DebugF(log.ModuleReading, "Loaded reading data for account %s - Books: %d, Records: %d, Notes: %d, Insights: %d",
 		cmd.Account, len(readingActor.books), len(readingActor.readingRecords),
 		readingActor.getTotalNotesCount(), len(readingActor.bookInsights))
 

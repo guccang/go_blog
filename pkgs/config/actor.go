@@ -53,7 +53,7 @@ func (aconfig *ConfigActor) getConfig(name string) string {
 func (aconfig *ConfigActor) reloadConfig(account, filePath string) int {
 	err := aconfig.loadConfigInternal(account, filePath)
 	if err != nil {
-		log.ErrorF("ReloadConfig err=%s", err.Error())
+		log.ErrorF(log.ModuleConfig, "ReloadConfig err=%s", err.Error())
 		return 1
 	}
 	return 0
@@ -77,7 +77,7 @@ func (aconfig *ConfigActor) isSysFile(name string) int {
 // 检查是否为公开标签
 func (aconfig *ConfigActor) isPublicTag(tag string) int {
 	for _, v := range aconfig.publictags {
-		log.DebugF("IsPublicTag %s %s", v, tag)
+		log.DebugF(log.ModuleConfig, "IsPublicTag %s %s", v, tag)
 		if v == tag {
 			return 1
 		}
@@ -98,7 +98,7 @@ func (aconfig *ConfigActor) isTitleAddDateSuffix(title string) int {
 // 检查是否为日记博客
 func (aconfig *ConfigActor) isDiaryBlog(title string) bool {
 	for _, keyword := range aconfig.diary_keywords {
-		log.DebugF("isDiaryBlog %s %s", title, keyword)
+		log.DebugF(log.ModuleConfig, "isDiaryBlog %s %s", title, keyword)
 		if len(title) >= len(keyword) && title[:len(keyword)] == keyword {
 			return true
 		}
@@ -131,8 +131,8 @@ func (aconfig *ConfigActor) loadAccountSpecificConfig(account string) {
 	// This method will be called to load config from sys_conf_<account> blog
 	// For now, we'll implement basic loading logic
 	// The actual blog integration will be handled in the HTTP layer
-	log.DebugF("Loading account-specific config for account: %s", account)
-	
+	log.DebugF(log.ModuleConfig, "Loading account-specific config for account: %s", account)
+
 	// Set account-specific config path
 	aconfig.config_path = GetBlogsPath(account)
 }
@@ -183,7 +183,7 @@ func (aconfig *ConfigActor) updateConfigFromBlog(blogContent string) {
 		aconfig.datas[key] = value
 	}
 	aconfig.parseConfigArrays()
-	log.DebugF("Updated config from blog for account %s, config count=%d", aconfig.Account, len(aconfig.datas))
+	log.DebugF(log.ModuleConfig, "Updated config from blog for account %s, config count=%d", aconfig.Account, len(aconfig.datas))
 }
 
 // parseConfigFromBlogContent parses configuration from blog content

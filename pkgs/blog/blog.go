@@ -11,12 +11,12 @@ import (
 )
 
 func Info() {
-	fmt.Println("info blog v3.0")
+	log.InfoF(log.ModuleBlog, "info blog v3.0")
 }
 
 // Init initializes the blog module and loads blogs via the actor
 func Init() {
-	log.Debug("blog module Init")
+	log.Debug(log.ModuleBlog, "blog module Init")
 
 	blogManager = &BlogManager{
 		actors: make(map[string]*BlogActor),
@@ -245,17 +245,17 @@ func GetYearPlanWithAccount(account string, year int) (*YearPlanData, error) {
 	if err := json.Unmarshal([]byte(blog.Content), &planData); err != nil {
 		return nil, fmt.Errorf("解析计划数据失败: %v", err)
 	}
-	log.DebugF("获取年计划 - 年份: %d, 任务数据大小: %d", year, len(planData.Tasks))
+	log.DebugF(log.ModuleBlog, "获取年计划 - 年份: %d, 任务数据大小: %d", year, len(planData.Tasks))
 	if planData.Tasks == nil {
 		planData.Tasks = make(map[string]interface{})
-		log.DebugF("初始化空任务映射")
+		log.DebugF(log.ModuleBlog, "初始化空任务映射")
 	}
 	var rawData map[string]interface{}
 	if err := json.Unmarshal([]byte(blog.Content), &rawData); err == nil {
 		if tasks, ok := rawData["tasks"].(map[string]interface{}); ok && len(tasks) > 0 {
 			if len(planData.Tasks) == 0 {
 				planData.Tasks = tasks
-				log.DebugF("从原始JSON中恢复任务数据, 大小: %d", len(tasks))
+				log.DebugF(log.ModuleBlog, "从原始JSON中恢复任务数据, 大小: %d", len(tasks))
 			}
 		}
 	}
@@ -270,10 +270,10 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 	if len(planData.MonthPlans) != 12 {
 		return fmt.Errorf("月度计划数量不正确，应为12个月")
 	}
-	log.DebugF("保存计划 - 年份: %d, 任务数据大小: %d", planData.Year, len(planData.Tasks))
+	log.DebugF(log.ModuleBlog, "保存计划 - 年份: %d, 任务数据大小: %d", planData.Year, len(planData.Tasks))
 	for month, tasks := range planData.Tasks {
 		if tasksArray, ok := tasks.([]interface{}); ok {
-			log.DebugF("月份 %s 的任务数量: %d", month, len(tasksArray))
+			log.DebugF(log.ModuleBlog, "月份 %s 的任务数量: %d", month, len(tasksArray))
 		}
 	}
 	planTitle := fmt.Sprintf("年计划_%d", planData.Year)
@@ -292,19 +292,19 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 	var ret int
 	if blog == nil {
 		ret = AddBlogWithAccount(account, &udb)
-		log.DebugF("新建年计划博客: %s", planTitle)
+		log.DebugF(log.ModuleBlog, "新建年计划博客: %s", planTitle)
 	} else {
 		ret = ModifyBlogWithAccount(account, &udb)
-		log.DebugF("更新年计划博客: %s", planTitle)
+		log.DebugF(log.ModuleBlog, "更新年计划博客: %s", planTitle)
 	}
 	if ret != 0 {
 		return fmt.Errorf("保存计划失败，错误码: %d", ret)
 	}
 	savedPlan, err := GetYearPlanWithAccount(account, planData.Year)
 	if err != nil {
-		log.ErrorF("无法验证保存的计划: %v", err)
+		log.ErrorF(log.ModuleBlog, "无法验证保存的计划: %v", err)
 	} else {
-		log.DebugF("验证 - 保存后的任务数据大小: %d", len(savedPlan.Tasks))
+		log.DebugF(log.ModuleBlog, "验证 - 保存后的任务数据大小: %d", len(savedPlan.Tasks))
 	}
 	return nil
 }

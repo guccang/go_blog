@@ -12,7 +12,7 @@ import (
 var persistence_module *PersistenceActor
 
 func Info() {
-	log.Debug("info persistence v1.0")
+	log.Debug(log.ModulePersistence, "info persistence v1.0")
 }
 
 // 初始化persistence模块，用于数据持久化操作

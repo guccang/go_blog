@@ -9,7 +9,7 @@ import (
 var share_module *ShareActor
 
 func Info() {
-	log.InfoF("info share v8.0")
+	log.InfoF(log.ModuleShare, "info share v8.0")
 }
 
 // 初始化share模块，用于博客和标签分享管理

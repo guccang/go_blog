@@ -13,7 +13,7 @@ import (
 func getAccountFromRequest(r *http.Request) string {
 	sessionCookie, err := r.Cookie("session")
 	if err != nil {
-		log.DebugF("No session cookie found: %v", err)
+		log.DebugF(log.ModuleExercise, "No session cookie found: %v", err)
 		return ""
 	}
 
@@ -59,7 +59,7 @@ func HandleToggleExercise(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := ToggleExercise(account, req.Date, req.ID); err != nil {
-		log.ErrorF("Failed to toggle exercise: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to toggle exercise: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -136,7 +136,7 @@ func HandleExerciseStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		log.ErrorF("Failed to get exercise stats: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get exercise stats: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -153,7 +153,7 @@ func handleGetExercises(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	exercises, err := GetExercisesByDate(account, date)
 	if err != nil {
-		log.ErrorF("Failed to get exercises: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get exercises: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -186,7 +186,7 @@ func handleAddExercise(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	item, err := AddExercise(account, req.Date, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts)
 	if err != nil {
-		log.ErrorF("Failed to add exercise: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to add exercise: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -214,7 +214,7 @@ func handleUpdateExercise(w http.ResponseWriter, r *http.Request) {
 	}
 	account := getAccountFromRequest(r)
 	if err := UpdateExercise(account, req.Date, req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts); err != nil {
-		log.ErrorF("Failed to update exercise: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to update exercise: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -235,7 +235,7 @@ func handleDeleteExercise(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := DeleteExercise(account, req.Date, req.ID); err != nil {
-		log.ErrorF("Failed to delete exercise: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to delete exercise: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -247,7 +247,7 @@ func handleGetTemplates(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	templates, err := GetTemplates(account)
 	if err != nil {
-		log.ErrorF("Failed to get templates: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get templates: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -275,7 +275,7 @@ func handleAddTemplate(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	template, err := AddTemplate(account, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts)
 	if err != nil {
-		log.ErrorF("Failed to add template: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to add template: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -303,7 +303,7 @@ func handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := UpdateTemplate(account, req.ID, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts); err != nil {
-		log.ErrorF("Failed to update template: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to update template: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -323,7 +323,7 @@ func handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := DeleteTemplate(account, req.ID); err != nil {
-		log.ErrorF("Failed to delete template: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to delete template: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -370,7 +370,7 @@ func HandleAddFromCollection(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := AddFromCollection(account, req.Date, req.CollectionID); err != nil {
-		log.ErrorF("Failed to add from collection: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to add from collection: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -396,7 +396,7 @@ func HandleGetCollectionDetails(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	collection, templates, err := GetCollectionWithTemplates(account, collectionID)
 	if err != nil {
-		log.ErrorF("Failed to get collection details: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get collection details: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -413,7 +413,7 @@ func handleGetCollections(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	collections, err := GetCollections(account)
 	if err != nil {
-		log.ErrorF("Failed to get collections: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get collections: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -436,7 +436,7 @@ func handleAddCollection(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	collection, err := AddCollection(account, req.Name, req.Description, req.TemplateIDs)
 	if err != nil {
-		log.ErrorF("Failed to add collection: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to add collection: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -459,7 +459,7 @@ func handleUpdateCollection(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := UpdateCollection(account, req.ID, req.Name, req.Description, req.TemplateIDs); err != nil {
-		log.ErrorF("Failed to update collection: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to update collection: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -479,7 +479,7 @@ func handleDeleteCollection(w http.ResponseWriter, r *http.Request) {
 
 	account := getAccountFromRequest(r)
 	if err := DeleteCollection(account, req.ID); err != nil {
-		log.ErrorF("Failed to delete collection: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to delete collection: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -544,7 +544,7 @@ func HandleMETValues(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	metValues, err := GetMETValues(account)
 	if err != nil {
-		log.ErrorF("Failed to get MET values: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get MET values: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -556,7 +556,7 @@ func handleGetUserProfile(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	profile, err := GetUserProfile(account)
 	if err != nil {
-		log.ErrorF("Failed to get user profile: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to get user profile: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -587,7 +587,7 @@ func handleSaveUserProfile(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	profile, err := SaveUserProfile(account, req.Name, req.Gender, req.Weight, req.Height, req.Age)
 	if err != nil {
-		log.ErrorF("Failed to save user profile: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to save user profile: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -622,7 +622,7 @@ func HandleUpdateTemplateCalories(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	err := UpdateAllTemplateCalories(account, weight)
 	if err != nil {
-		log.ErrorF("Failed to update template calories: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to update template calories: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -663,7 +663,7 @@ func HandleUpdateExerciseCalories(w http.ResponseWriter, r *http.Request) {
 	account := getAccountFromRequest(r)
 	updatedCount, err := UpdateAllExerciseCalories(account, weight)
 	if err != nil {
-		log.ErrorF("Failed to update exercise calories: %v", err)
+		log.ErrorF(log.ModuleExercise, "Failed to update exercise calories: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

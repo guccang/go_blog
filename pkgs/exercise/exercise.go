@@ -90,7 +90,7 @@ type ExerciseStats struct {
 var exercise_module *ExerciseActor
 
 func Info() {
-	log.Debug("info exercise v1.0")
+	log.Debug(log.ModuleExercise, "info exercise v1.0")
 }
 
 // 初始化exercise模块，用于锻炼管理

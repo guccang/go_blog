@@ -60,6 +60,8 @@ replace tools => ./pkgs/tools
 
 replace skill => ./pkgs/skill
 
+replace account => ./pkgs/account
+
 require (
 	blog v0.0.0
 	comment v0.0.0
@@ -88,6 +90,7 @@ require (
 	yearplan v0.0.0
 	core v0.0.0
 	skill v0.0.0
+	account v0.0.0
 
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect

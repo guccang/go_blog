@@ -1,7 +1,7 @@
 package todolist
 
 import (
-	"fmt"
+	log "mylog"
 )
 
 // InitTodoList initializes the todo list functionality
@@ -15,6 +15,6 @@ func InitTodoList() error {
 	// Set controller for handlers
 	SetController(controller)
 
-	fmt.Println("Todolist initialized successfully using blog storage system")
+	log.InfoF(log.ModuleTodolist, "Todolist initialized successfully using blog storage system")
 	return nil
 }

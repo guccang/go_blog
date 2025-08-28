@@ -115,7 +115,7 @@ func (ar *ReadingActor) addBook(title, author, isbn, publisher, publishDate, cov
 	ar.saveBook(ar.Account, book)
 	ar.saveReadingRecord(ar.Account, record)
 
-	log.DebugF("添加书籍成功: %s - %s", title, author)
+	log.DebugF(log.ModuleReading, "添加书籍成功: %s - %s", title, author)
 	return book, nil
 }
 
@@ -206,7 +206,7 @@ func (ar *ReadingActor) updateBook(bookID string, updates map[string]interface{}
 	// 更新内存中的数据
 	ar.books[bookID] = book
 	ar.saveBook(ar.Account, book)
-	log.DebugF("更新书籍成功: %s", bookID)
+	log.DebugF(log.ModuleReading, "更新书籍成功: %s", bookID)
 	return nil
 }
 
@@ -220,15 +220,15 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 	// 构建blog标题用于删除
 	blogTitle := fmt.Sprintf("reading_book_%s.md", book.Title)
 
-	log.DebugF("准备删除书籍blog: %s (书籍ID: %s)", blogTitle, bookID)
+	log.DebugF(log.ModuleReading, "准备删除书籍blog: %s (书籍ID: %s)", blogTitle, bookID)
 
 	// 首先检查blog是否存在
 	existingBlog := blog.GetBlogWithAccount(ar.Account, blogTitle)
 	if existingBlog == nil {
-		log.ErrorF("要删除的blog不存在: %s，可能已经被手动删除", blogTitle)
+		log.ErrorF(log.ModuleReading, "要删除的blog不存在: %s，可能已经被手动删除", blogTitle)
 		// 如果blog不存在，直接删除内存数据即可
 	} else {
-		log.DebugF("找到要删除的blog: %s", blogTitle)
+		log.DebugF(log.ModuleReading, "找到要删除的blog: %s", blogTitle)
 
 		// 从blog系统删除 - 这是关键步骤
 		result := blog.DeleteBlogWithAccount(ar.Account, blogTitle)
@@ -244,11 +244,11 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 			default:
 				errorMsg = fmt.Sprintf("未知错误 (错误码: %d)", result)
 			}
-			log.ErrorF("从blog系统删除书籍失败: %s, %s", blogTitle, errorMsg)
+			log.ErrorF(log.ModuleReading, "从blog系统删除书籍失败: %s, %s", blogTitle, errorMsg)
 			return fmt.Errorf("删除书籍失败：%s", errorMsg)
 		}
 
-		log.DebugF("从blog系统删除书籍成功: %s", blogTitle)
+		log.DebugF(log.ModuleReading, "从blog系统删除书籍成功: %s", blogTitle)
 	}
 
 	// 删除内存中的相关数据
@@ -265,7 +265,7 @@ func (ar *ReadingActor) deleteBook(bookID string) error {
 		}
 	}
 
-	log.DebugF("删除书籍成功: %s - %s (同时删除了 %d 条心得)", bookID, book.Title, deletedInsights)
+	log.DebugF(log.ModuleReading, "删除书籍成功: %s - %s (同时删除了 %d 条心得)", bookID, book.Title, deletedInsights)
 	return nil
 }
 
@@ -293,7 +293,7 @@ func (ar *ReadingActor) startReading(account, bookID string) error {
 	}
 
 	ar.saveReadingRecord(account, record)
-	log.DebugF("开始阅读: %s", bookID)
+	log.DebugF(log.ModuleReading, "开始阅读: %s", bookID)
 	return nil
 }
 
@@ -342,7 +342,7 @@ func (ar *ReadingActor) updateReadingProgress(account, bookID string, currentPag
 	}
 
 	ar.saveReadingRecord(account, record)
-	log.DebugF("更新阅读进度: %s - 第%d页", bookID, currentPage)
+	log.DebugF(log.ModuleReading, "更新阅读进度: %s - 第%d页", bookID, currentPage)
 	return nil
 }
 
@@ -388,7 +388,7 @@ func (ar *ReadingActor) addBookNote(account, bookID, noteType, chapter, content 
 	ar.bookNotes[bookID] = append(ar.bookNotes[bookID], note)
 
 	ar.saveBookNotes(account, bookID)
-	log.DebugF("添加笔记成功: %s - %s", bookID, noteType)
+	log.DebugF(log.ModuleReading, "添加笔记成功: %s - %s", bookID, noteType)
 	return note, nil
 }
 
@@ -461,7 +461,7 @@ func (ar *ReadingActor) updateBookNote(account, bookID, noteID string, updates m
 	// 更新内存中的数据
 	ar.bookNotes[bookID] = notes
 	ar.saveBookNotes(account, bookID)
-	log.DebugF("更新笔记成功: %s", noteID)
+	log.DebugF(log.ModuleReading, "更新笔记成功: %s", noteID)
 	return nil
 }
 
@@ -491,7 +491,7 @@ func (ar *ReadingActor) deleteBookNote(account, bookID, noteID string) error {
 	// 更新内存中的数据
 	ar.bookNotes[bookID] = updatedNotes
 	ar.saveBookNotes(account, bookID)
-	log.DebugF("删除笔记成功: %s", noteID)
+	log.DebugF(log.ModuleReading, "删除笔记成功: %s", noteID)
 	return nil
 }
 
@@ -524,7 +524,7 @@ func (ar *ReadingActor) addBookInsight(account, bookID, title, content string, k
 	}
 
 	ar.saveBookInsight(account, insight)
-	log.DebugF("添加读书感悟成功: %s - %s", bookID, title)
+	log.DebugF(log.ModuleReading, "添加读书感悟成功: %s - %s", bookID, title)
 	return insight, nil
 }
 
@@ -624,7 +624,7 @@ func (ar *ReadingActor) updateBookInsight(account, insightID string, updates map
 	// 更新内存中的数据
 	ar.bookInsights[insightID] = insight
 	ar.saveBookInsight(account, insight)
-	log.DebugF("更新心得成功: %s", insightID)
+	log.DebugF(log.ModuleReading, "更新心得成功: %s", insightID)
 	return nil
 }
 
@@ -673,7 +673,7 @@ func (ar *ReadingActor) deleteBookInsight(account, insightID string) error {
 		ar.saveBook(account, book)
 	}
 
-	log.DebugF("删除心得成功: %s", insightID)
+	log.DebugF(log.ModuleReading, "删除心得成功: %s", insightID)
 	return nil
 }
 
@@ -837,7 +837,7 @@ func (ar *ReadingActor) saveBook(account string, book *module.Book) {
 	// 序列化为JSON
 	content, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		log.ErrorF("序列化书籍数据失败: %v", err)
+		log.ErrorF(log.ModuleReading, "序列化书籍数据失败: %v", err)
 		return
 	}
 
@@ -932,7 +932,7 @@ func (ar *ReadingActor) loadBooksForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的书籍数量: %d", account, len(ar.books))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的书籍数量: %d", account, len(ar.books))
 }
 
 func (ar *ReadingActor) loadReadingRecordsForAccount(account string) {
@@ -947,7 +947,7 @@ func (ar *ReadingActor) loadReadingRecordsForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的阅读记录数量: %d", account, len(ar.readingRecords))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的阅读记录数量: %d", account, len(ar.readingRecords))
 }
 
 func (ar *ReadingActor) loadBookNotesForAccount(account string) {
@@ -968,7 +968,7 @@ func (ar *ReadingActor) loadBookNotesForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的笔记数量: %d", account, ar.getTotalNotesCount())
+	log.DebugF(log.ModuleReading, "加载账户 %s 的笔记数量: %d", account, ar.getTotalNotesCount())
 }
 
 func (ar *ReadingActor) loadBookInsightsForAccount(account string) {
@@ -985,7 +985,7 @@ func (ar *ReadingActor) loadBookInsightsForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的感悟数量: %d", account, len(ar.bookInsights))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的感悟数量: %d", account, len(ar.bookInsights))
 }
 
 func (ar *ReadingActor) loadReadingPlansForAccount(account string) {
@@ -1002,7 +1002,7 @@ func (ar *ReadingActor) loadReadingPlansForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的阅读计划数量: %d", account, len(ar.readingPlans))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的阅读计划数量: %d", account, len(ar.readingPlans))
 }
 
 func (ar *ReadingActor) loadReadingGoalsForAccount(account string) {
@@ -1019,7 +1019,7 @@ func (ar *ReadingActor) loadReadingGoalsForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的阅读目标数量: %d", account, len(ar.readingGoals))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的阅读目标数量: %d", account, len(ar.readingGoals))
 }
 
 func (ar *ReadingActor) loadBookCollectionsForAccount(account string) {
@@ -1036,7 +1036,7 @@ func (ar *ReadingActor) loadBookCollectionsForAccount(account string) {
 			}
 		}
 	}
-	log.DebugF("加载账户 %s 的书籍收藏夹数量: %d", account, len(ar.bookCollections))
+	log.DebugF(log.ModuleReading, "加载账户 %s 的书籍收藏夹数量: %d", account, len(ar.bookCollections))
 }
 
 func (ar *ReadingActor) loadReadingTimeRecordsForAccount(account string) {
@@ -1057,7 +1057,7 @@ func (ar *ReadingActor) loadReadingTimeRecordsForAccount(account string) {
 	for _, recordList := range ar.readingTimeRecords {
 		totalRecords += len(recordList)
 	}
-	log.DebugF("加载账户 %s 的阅读时间记录数量: %d", account, totalRecords)
+	log.DebugF(log.ModuleReading, "加载账户 %s 的阅读时间记录数量: %d", account, totalRecords)
 }
 
 // 其他功能实现，这里只列出关键的几个，其他可按需添加
@@ -1084,7 +1084,7 @@ func (ar *ReadingActor) addReadingPlan(title, description, startDate, endDate st
 
 	ar.readingPlans[planID] = plan
 	ar.saveReadingPlan(plan)
-	log.DebugF("添加阅读计划成功: %s", title)
+	log.DebugF(log.ModuleReading, "添加阅读计划成功: %s", title)
 	return plan, nil
 }
 

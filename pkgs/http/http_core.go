@@ -21,7 +21,7 @@ import (
 
 // Info displays package version information
 func Info() {
-	log.Debug("info http v1.0")
+	log.Debug(log.ModuleHandler, "info http v1.0")
 }
 
 // parseAuthTypeString parses permission type string, supports combined permissions
@@ -53,7 +53,7 @@ func parseAuthTypeString(authTypeStr string) int {
 		authType |= module.EAuthType_private
 	}
 
-	log.DebugF("Parsed auth type: %s -> %d", authTypeStr, authType)
+	log.DebugF(log.ModuleHandler, "Parsed auth type: %s -> %d", authTypeStr, authType)
 	return authType
 }
 
@@ -69,7 +69,7 @@ func LogRemoteAddr(msg string, r *h.Request) {
 	if xForwardedFor != "" {
 		remoteAddr = xForwardedFor
 	}
-	log.DebugF("RemoteAddr %s %s", remoteAddr, msg)
+	log.DebugF(log.ModuleHandler, "RemoteAddr %s %s", remoteAddr, msg)
 }
 
 // getsession extracts session from request cookie
@@ -94,13 +94,13 @@ func getAccountFromRequest(r *h.Request) string {
 func checkLogin(r *h.Request) int {
 	session, err := r.Cookie("session")
 	if err != nil {
-		log.ErrorF("not find cookie session err=%s", err.Error())
+		log.ErrorF(log.ModuleHandler, "not find cookie session err=%s", err.Error())
 		return 1
 	}
 
-	log.DebugF("checkLogin session=%s", session.Value)
+	log.DebugF(log.ModuleHandler, "checkLogin session=%s", session.Value)
 	if auth.CheckLoginSession(session.Value) != 0 {
-		log.InfoF("checkLogin session=%s not find", session.Value)
+		log.InfoF(log.ModuleHandler, "checkLogin session=%s not find", session.Value)
 		return 1
 	}
 	return 0
@@ -154,8 +154,8 @@ func HandleStatics(w h.ResponseWriter, r *h.Request) {
 
 	// 打开文件
 	exeDir := config.GetExePath()
-	log.Debug(exeDir)
-	log.Debug(filePath)
+	log.Debug(log.ModuleHandler, exeDir)
+	log.Debug(log.ModuleHandler, filePath)
 	file, err := h.Dir(spath).Open(filename)
 	if err != nil {
 		h.Error(w, "File not found", h.StatusNotFound)
@@ -182,7 +182,7 @@ func HandleStatics(w h.ResponseWriter, r *h.Request) {
 func Init() int {
 	// Initialize todolist before registering handlers
 	if err := todolist.InitTodoList(); err != nil {
-		log.ErrorF("Failed to initialize todolist: %v", err)
+		log.ErrorF(log.ModuleHandler, "Failed to initialize todolist: %v", err)
 	}
 
 	// Core routes
@@ -336,6 +336,10 @@ func Init() int {
 	h.HandleFunc("/migration", HandleMigration)
 	h.HandleFunc("/migration/export", HandleMigrationExport)
 	h.HandleFunc("/migration/import", HandleMigrationImport)
+
+	// account
+	h.HandleFunc("/account", HandleAccount)
+	h.HandleFunc("/api/account", HandleAccountAPI)
 
 	// Static file server
 	root := config.GetHttpStaticPath()

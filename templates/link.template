@@ -45,7 +45,7 @@
 					</button>
 					<div class="user-info">
 						<div class="user-avatar">{{.USER_AVATAR}}</div>
-						<span class="user-name">{{.USER_ACCOUNT}}</span>
+						<a href="/account" class="user-name" style="color: inherit; text-decoration: none; cursor: pointer;" title="点击查看账户信息">{{.USER_ACCOUNT}}</a>
 					</div>
 				</div>
 			</div>

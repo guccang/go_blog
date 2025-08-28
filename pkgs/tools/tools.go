@@ -21,7 +21,7 @@ import (
 
 // Info displays package version information
 func Info() {
-	log.Debug("info tools v1.0")
+	log.Debug(log.ModuleCommon, "info tools v1.0")
 }
 
 // TimeResult 时间工具结果

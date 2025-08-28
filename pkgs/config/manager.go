@@ -32,17 +32,17 @@ func InitManager(defaultConfigPath string) {
 		sys_files:      make([]string, 0),
 		blog_version:   "Version13.0",
 	}
-	log.DebugF("InitManager defaultConfigPath=%s", defaultConfigPath)
+	log.DebugF(log.ModuleConfig, "InitManager defaultConfigPath=%s", defaultConfigPath)
 
 	err := defaultActor.loadConfigInternal("", defaultConfigPath)
 	if err != nil {
-		log.ErrorF("Init default config actor err=%s", err.Error())
+		log.ErrorF(log.ModuleConfig, "Init default config actor err=%s", err.Error())
 	}
 	defaultActor.Start(defaultActor)
 
 	configManager.actors[defaultActor.Account] = defaultActor
 	adminAccount = defaultActor.Account
-	log.InfoF("Config manager initialized with default account: %s", defaultActor.Account)
+	log.InfoF(log.ModuleConfig, "Config manager initialized with default account: %s", defaultActor.Account)
 }
 
 // getConfigActor returns the config actor for the given account
@@ -87,7 +87,7 @@ func getConfigActor(account string) *ConfigActor {
 	newActor.parseConfigArrays()
 
 	configManager.actors[account] = newActor
-	log.InfoF("Created new config actor for account: %s", account)
+	log.InfoF(log.ModuleConfig, "Created new config actor for account: %s", account)
 	return newActor
 }
 
@@ -133,7 +133,7 @@ func (cmd *RemoveAccountConfigCmd) Do(actor core.ActorInterface) {
 	if act, exists := configManager.actors[cmd.Account]; exists {
 		act.Stop()
 		delete(configManager.actors, cmd.Account)
-		log.InfoF("Removed config actor for account: %s", cmd.Account)
+		log.InfoF(log.ModuleConfig, "Removed config actor for account: %s", cmd.Account)
 	}
 	cmd.Response() <- 0
 }
@@ -160,7 +160,7 @@ func (cmd *loadAccountConfigCmd) Do(actor core.ActorInterface) {
 	// Parse arrays from string configs
 	configActor.parseConfigArrays()
 
-	log.DebugF("Loaded config for account %s, config count=%d", cmd.Account, len(configActor.datas))
+	log.DebugF(log.ModuleConfig, "Loaded config for account %s, config count=%d", cmd.Account, len(configActor.datas))
 	cmd.Response() <- 0
 }
 

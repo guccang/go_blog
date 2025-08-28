@@ -12,7 +12,7 @@ import (
 )
 
 func Info() {
-	fmt.Println("info statistics v1.0")
+	log.InfoF(log.ModuleStatistics, "info statistics v1.0")
 }
 
 // 统计数据结构
@@ -205,7 +205,7 @@ var cacheExpiry = 5 * time.Minute
 
 // 初始化统计模块
 func Init() {
-	log.Debug("statistics module Init")
+	log.Debug(log.ModuleStatistics, "statistics module Init")
 }
 
 // 记录博客访问
@@ -235,7 +235,7 @@ func RecordBlogAccess(blogTitle, ip, userAgent string) {
 	ipRecords[ip].AccessCount++
 	ipRecords[ip].LastAccess = timestamp
 
-	log.DebugF("记录博客访问: %s from %s", blogTitle, ip)
+	log.DebugF(log.ModuleStatistics, "记录博客访问: %s from %s", blogTitle, ip)
 }
 
 // 记录用户登录
@@ -251,7 +251,7 @@ func RecordUserLogin(account, ip string, success bool) {
 
 	loginRecords = append(loginRecords, record)
 
-	log.DebugF("记录用户登录: %s from %s, success: %v", account, ip, success)
+	log.DebugF(log.ModuleStatistics, "记录用户登录: %s from %s, success: %v", account, ip, success)
 }
 
 // 获取统计数据
@@ -260,7 +260,7 @@ func GetStatistics(account string) *Statistics {
 		return cachedStats
 	}
 
-	log.Debug("生成新的统计数据")
+	log.Debug(log.ModuleStatistics, "生成新的统计数据")
 
 	stats := &Statistics{}
 
@@ -745,7 +745,7 @@ func calculateContentStatistics(account string) ContentStatistics {
 // 清除缓存
 func ClearCache() {
 	cachedStats = nil
-	log.Debug("统计缓存已清除")
+	log.Debug(log.ModuleStatistics, "统计缓存已清除")
 }
 
 // 辅助函数

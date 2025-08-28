@@ -1,13 +1,13 @@
 package yearplan
 
 import (
+	"blog"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
-	"blog"
 	"io/ioutil"
 	log "mylog"
+	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -15,10 +15,10 @@ import (
 func getAccountFromRequest(r *http.Request) string {
 	sessionCookie, err := r.Cookie("session")
 	if err != nil {
-		log.DebugF("No session cookie found: %v", err)
+		log.DebugF(log.ModuleYearPlan, "No session cookie found: %v", err)
 		return ""
 	}
-	
+
 	return blog.GetAccountFromSession(sessionCookie.Value)
 }
 
@@ -59,7 +59,7 @@ func HandleGetPlan(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Get plan data
 	planData, err := blog.GetYearPlanWithAccount(account, year)
 	if err != nil {
@@ -73,7 +73,7 @@ func HandleGetPlan(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -101,7 +101,7 @@ func HandleSavePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 记录收到的原始数据，便于调试
-	log.DebugF("接收到的年计划数据: %s", string(body))
+	log.DebugF(log.ModuleYearPlan, "接收到的年计划数据: %s", string(body))
 
 	// 先解析为map，以便检查任务数据的存在
 	var rawData map[string]interface{}
@@ -114,9 +114,9 @@ func HandleSavePlan(w http.ResponseWriter, r *http.Request) {
 	// 检查是否存在tasks字段
 	tasks, hasTasks := rawData["tasks"]
 	if hasTasks {
-		log.DebugF("任务数据存在: %v", tasks)
+		log.DebugF(log.ModuleYearPlan, "任务数据存在: %v", tasks)
 	} else {
-		log.DebugF("任务数据不存在")
+		log.DebugF(log.ModuleYearPlan, "任务数据不存在")
 	}
 
 	// 解析为YearPlanData
@@ -128,7 +128,7 @@ func HandleSavePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 检查任务数据是否正确解析
-	log.DebugF("解析后的年计划: Year=%d, TasksMap大小=%d", planData.Year, len(planData.Tasks))
+	log.DebugF(log.ModuleYearPlan, "解析后的年计划: Year=%d, TasksMap大小=%d", planData.Year, len(planData.Tasks))
 
 	// 确保Tasks字段不为空
 	if planData.Tasks == nil {
@@ -138,12 +138,12 @@ func HandleSavePlan(w http.ResponseWriter, r *http.Request) {
 	// 如果tasks在原始数据中存在，但在planData.Tasks中丢失，手动添加
 	if hasTasks && len(planData.Tasks) == 0 {
 		planData.Tasks = rawData["tasks"].(map[string]interface{})
-		log.DebugF("手动添加任务数据，大小=%d", len(planData.Tasks))
+		log.DebugF(log.ModuleYearPlan, "手动添加任务数据，大小=%d", len(planData.Tasks))
 	}
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Save plan
 	err = blog.SaveYearPlanWithAccount(account, &planData)
 	if err != nil {
@@ -196,7 +196,7 @@ func HandleGetMonthGoal(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Get month goal
 	goal, err := GetMonthGoalWithAccount(account, year, month)
 	if err != nil {
@@ -265,7 +265,7 @@ func HandleSaveMonthGoal(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Get existing month goal or create new one
 	goal, err := GetMonthGoalWithAccount(account, requestData.Year, requestData.Month)
 	if err != nil {
@@ -347,7 +347,7 @@ func HandleGetWeekGoal(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Get week goal
 	goal, err := GetWeekGoalWithAccount(account, year, month, week)
 	if err != nil {
@@ -417,7 +417,7 @@ func HandleSaveWeekGoal(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	// Get existing week goal or create new one
 	goal, err := GetWeekGoalWithAccount(account, requestData.Year, requestData.Month, requestData.Week)
 	if err != nil {
@@ -473,8 +473,8 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var requestData struct {
-		Year int  `json:"year"`
-		Month int `json:"month"`
+		Year  int  `json:"year"`
+		Month int  `json:"month"`
 		Task  Task `json:"task"`
 	}
 
@@ -495,7 +495,7 @@ func HandleAddTask(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	err = AddTaskWithAccount(account, requestData.Year, requestData.Month, requestData.Task)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -556,7 +556,7 @@ func HandleUpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	err = UpdateTaskWithAccount(account, requestData.Year, requestData.Month, requestData.TaskID, requestData.Task)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -615,7 +615,7 @@ func HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	err = DeleteTaskWithAccount(account, requestData.Year, requestData.Month, requestData.TaskID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -655,7 +655,7 @@ func HandleGetMonthGoals(w http.ResponseWriter, r *http.Request) {
 
 	// Get account from session
 	account := getAccountFromRequest(r)
-	
+
 	goalsMap, err := GetMonthGoalsWithAccount(account, year)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -671,20 +671,20 @@ func HandleGetMonthGoals(w http.ResponseWriter, r *http.Request) {
 	for month := 1; month <= 12; month++ {
 		if goal, exists := goalsMap[month]; exists {
 			goalsArray = append(goalsArray, map[string]interface{}{
-				"year":  goal.Year,
-				"month": goal.Month,
+				"year":     goal.Year,
+				"month":    goal.Month,
 				"overview": goal.Overview,
-				"weeks": goal.Weeks,
-				"tasks": goal.Tasks,
+				"weeks":    goal.Weeks,
+				"tasks":    goal.Tasks,
 			})
 		} else {
 			// Add placeholder for months without goals
 			goalsArray = append(goalsArray, map[string]interface{}{
-				"year":  year,
-				"month": month,
+				"year":     year,
+				"month":    month,
 				"overview": "",
-				"weeks": make(map[string]interface{}),
-				"tasks": []interface{}{},
+				"weeks":    make(map[string]interface{}),
+				"tasks":    []interface{}{},
 			})
 		}
 	}
@@ -696,4 +696,4 @@ func HandleGetMonthGoals(w http.ResponseWriter, r *http.Request) {
 func InitYearPlan() error {
 	// This function would perform any necessary initialization
 	return nil
-} 
+}

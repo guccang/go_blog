@@ -3,7 +3,6 @@ package search
 import (
 	"blog"
 	"config"
-	"fmt"
 	"module"
 	log "mylog"
 	"sort"
@@ -12,7 +11,7 @@ import (
 )
 
 func Info() {
-	fmt.Println("info search v5.0")
+	log.InfoF(log.ModuleSearch, "info search v5.0")
 }
 
 /*
@@ -29,7 +28,7 @@ func Search(account, match string) []*module.Blog {
 	// 空格分割
 	tokens := strings.Split(match, " ")
 
-	log.DebugF("match=%s tokens =%d", match, len(tokens))
+	log.DebugF(log.ModuleSearch, "match=%s tokens =%d", match, len(tokens))
 
 	if len(tokens) <= 0 {
 		empty := make([]*module.Blog, 0)
@@ -45,7 +44,7 @@ func Search(account, match string) []*module.Blog {
 	} else if strings.HasPrefix(begin_token, "@") {
 		// begin with @
 		tag := begin_token[1:]
-		log.DebugF("tag=%s token=%s", tag, begin_token)
+		log.DebugF(log.ModuleSearch, "tag=%s token=%s", tag, begin_token)
 		if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
 			auth_type := module.EAuthType_private
 			if tag == "public" {
@@ -119,7 +118,7 @@ func reload(account, name string) {
 	if name == "cfg" {
 		config_path := config.GetConfigPathWithAccount(account)
 		config.ReloadConfig(account, config_path)
-		log.InfoF("reload cfg %s", config_path)
+		log.InfoF(log.ModuleSearch, "reload cfg %s", config_path)
 	}
 }
 
@@ -146,7 +145,7 @@ func matchHelp(account string) []*module.Blog {
 }
 
 func ismatch(b *module.Blog, matches []string) int {
-	log.DebugF("ismatch len(matches)=%d matches=%v", len(matches), matches)
+	log.DebugF(log.ModuleSearch, "ismatch len(matches)=%d matches=%v", len(matches), matches)
 
 	// 加密不显示
 	if b.Encrypt == 1 {

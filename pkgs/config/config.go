@@ -14,7 +14,7 @@ import (
 var adminAccount string
 
 func Info() {
-	log.Debug("info config v13.0")
+	log.Debug(log.ModuleConfig, "info config v13.0")
 }
 
 // 初始化config模块
@@ -67,7 +67,7 @@ func ReloadConfigWithAccount(account, filePath string) {
 
 // 内部方法：加载配置
 func (aconfig *ConfigActor) loadConfigInternal(account string, filePath string) error {
-	log.DebugF("loadConfigInternal account=%s filePath=%s", account, filePath)
+	log.DebugF(log.ModuleConfig, "loadConfigInternal account=%s filePath=%s", account, filePath)
 	datas, err := readConfigFile(filePath)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (aconfig *ConfigActor) loadConfigInternal(account string, filePath string) 
 	aconfig.config_path = filePath
 
 	for k, v := range aconfig.datas {
-		log.DebugF("CONFIG %s=%s", k, v)
+		log.DebugF(log.ModuleConfig, "CONFIG %s=%s", k, v)
 	}
 
 	datetitles, ok := aconfig.datas["title_auto_add_date_suffix"]
@@ -108,13 +108,13 @@ func (aconfig *ConfigActor) loadConfigInternal(account string, filePath string) 
 
 // 从 sys_conf.md 文件中读取日记关键字配置
 func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
-	log.DebugF("loadDiaryKeywordsFromSysConf account=%s", account)
+	log.DebugF(log.ModuleConfig, "loadDiaryKeywordsFromSysConf account=%s", account)
 	// 获取 blogs_txt 目录路径
 	sysConfPath := GetSysConfigPath(account)
 
 	// 检查文件是否存在
 	if _, err := os.Stat(sysConfPath); os.IsNotExist(err) {
-		log.DebugF("sys_conf.md 文件不存在: %s", sysConfPath)
+		log.DebugF(log.ModuleConfig, "sys_conf.md 文件不存在: %s", sysConfPath)
 		// 设置默认的日记关键字
 		aconfig.diary_keywords = []string{"日记_"}
 		return
@@ -123,7 +123,7 @@ func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
 	// 读取文件内容
 	file, err := os.Open(sysConfPath)
 	if err != nil {
-		log.ErrorF("无法打开 sys_conf.md 文件: %v", err)
+		log.ErrorF(log.ModuleConfig, "无法打开 sys_conf.md 文件: %v", err)
 		aconfig.diary_keywords = []string{"日记_"}
 		return
 	}
@@ -153,7 +153,7 @@ func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
 							aconfig.diary_keywords = append(aconfig.diary_keywords, keyword)
 						}
 					}
-					log.DebugF("从 sys_conf.md 加载日记关键字: %v", aconfig.diary_keywords)
+					log.DebugF(log.ModuleConfig, "从 sys_conf.md 加载日记关键字: %v", aconfig.diary_keywords)
 					return
 				}
 			}
@@ -161,13 +161,13 @@ func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.ErrorF("读取 sys_conf.md 文件出错: %v", err)
+		log.ErrorF(log.ModuleConfig, "读取 sys_conf.md 文件出错: %v", err)
 	}
 
 	// 如果没有找到配置，使用默认值
 	if len(aconfig.diary_keywords) == 0 {
 		aconfig.diary_keywords = []string{"日记_"}
-		log.DebugF("未找到日记关键字配置，使用默认值: %v", aconfig.diary_keywords)
+		log.DebugF(log.ModuleConfig, "未找到日记关键字配置，使用默认值: %v", aconfig.diary_keywords)
 	}
 }
 

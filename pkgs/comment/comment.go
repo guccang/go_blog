@@ -2,15 +2,15 @@ package comment
 
 import (
 	"core"
-	"fmt"
 	"module"
+	log "mylog"
 )
 
 // 评论模块actor
 var comment_module *CommentActor
 
 func Info() {
-	fmt.Println("info comment v3.0")
+	log.InfoF(log.ModuleComment, "info comment v3.0")
 }
 
 // 初始化comment模块，用于评论管理

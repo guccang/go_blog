@@ -25,7 +25,7 @@ func HandleConfig(w h.ResponseWriter, r *h.Request) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "config.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse config.template: %s", err.Error())
+		log.ErrorF(log.ModuleConfig, "Failed to parse config.template: %s", err.Error())
 		h.Error(w, "Failed to parse config template", h.StatusInternalServerError)
 		return
 	}
@@ -38,7 +38,7 @@ func HandleConfig(w h.ResponseWriter, r *h.Request) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.ErrorF("Failed to render config.template: %s", err.Error())
+		log.ErrorF(log.ModuleConfig, "Failed to render config.template: %s", err.Error())
 		h.Error(w, "Failed to render config template", h.StatusInternalServerError)
 		return
 	}
@@ -96,7 +96,7 @@ func handleGetConfig(w h.ResponseWriter, account string, isAdmin bool) {
 
 // createDefaultConfig creates default configuration for an account
 func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmin bool) {
-	log.InfoF("%s配置文件不存在，创建默认配置文件", configTitle)
+	log.InfoF(log.ModuleConfig, "%s配置文件不存在，创建默认配置文件", configTitle)
 
 	// 根据用户类型创建不同的默认配置文件
 	var defaultConfigs map[string]string
@@ -162,7 +162,7 @@ func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmi
 
 	result := control.AddBlog(account, uploadData)
 	if result != 0 {
-		log.ErrorF("创建默认配置文件失败: result=%d", result)
+		log.ErrorF(log.ModuleConfig, "创建默认配置文件失败: result=%d", result)
 		h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
 		return
 	}
@@ -170,7 +170,7 @@ func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmi
 	// 更新账户的配置actor
 	config.UpdateConfigFromBlog(account, defaultContent)
 
-	log.InfoF("账户 %s 的默认配置文件创建成功", account)
+	log.InfoF(log.ModuleConfig, "账户 %s 的默认配置文件创建成功", account)
 
 	// 返回默认配置
 	response := map[string]interface{}{
@@ -194,7 +194,7 @@ func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmi
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		log.ErrorF("解析配置数据失败: %v", err)
+		log.ErrorF(log.ModuleConfig, "解析配置数据失败: %v", err)
 		h.Error(w, "无效的JSON数据", h.StatusBadRequest)
 		return
 	}
@@ -213,7 +213,7 @@ func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmi
 
 	result := control.ModifyBlog(account, uploadData)
 	if result != 0 {
-		log.ErrorF("更新配置文件失败: result=%d", result)
+		log.ErrorF(log.ModuleConfig, "更新配置文件失败: result=%d", result)
 		h.Error(w, "更新配置失败", h.StatusInternalServerError)
 		return
 	}
@@ -221,7 +221,7 @@ func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmi
 	// 更新账户的配置actor
 	config.UpdateConfigFromBlog(account, newContent)
 
-	log.InfoF("用户 %s 的配置更新成功", account)
+	log.InfoF(log.ModuleConfig, "用户 %s 的配置更新成功", account)
 
 	response := map[string]interface{}{
 		"success":  true,

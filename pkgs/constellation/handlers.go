@@ -16,7 +16,7 @@ var manager *ConstellationManager
 func getAccountFromRequest(r *http.Request) string {
 	sessionCookie, err := r.Cookie("session")
 	if err != nil {
-		log.DebugF("No session cookie found: %v", err)
+		log.DebugF(log.ModuleConstellation, "No session cookie found: %v", err)
 		return ""
 	}
 

@@ -42,7 +42,7 @@ type LLMFunction struct {
 }
 
 func Info() {
-	fmt.Println("info mcp v2.0 - LLM Agent with Tool Calling")
+	log.InfoF(log.ModuleMCP, "info mcp v2.0 - LLM Agent with Tool Calling")
 }
 
 func extractFunctionName(s string) string {
@@ -84,7 +84,7 @@ func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 
 // CallMCPTool calls an MCP tool and returns the result
 func CallMCPTool(toolName string, arguments map[string]interface{}) MCPToolResponse {
-	log.DebugF("toolcall CallMCPTool: %s, arguments: %v", toolName, arguments)
+	log.DebugF(log.ModuleMCP, "toolcall CallMCPTool: %s, arguments: %v", toolName, arguments)
 	toolCall := MCPToolCall{
 		Name:      toolNameMapping[toolName],
 		Arguments: arguments,
@@ -125,47 +125,47 @@ type MCPConfigList struct {
 var mcpConfigs MCPConfigList
 
 func Init() {
-	log.Debug("=== MCP Module Initialization Started ===")
-	log.DebugF("MCP Version: %s", mcp_version)
+	log.Debug(log.ModuleMCP, "=== MCP Module Initialization Started ===")
+	log.DebugF(log.ModuleMCP, "MCP Version: %s", mcp_version)
 
 	// Load MCP configurations
-	log.Debug("Loading MCP configurations...")
+	log.Debug(log.ModuleMCP, "Loading MCP configurations...")
 	loadMCPConfigs()
 	RegisterInnerTools()
 
 	// Log loaded configurations
-	log.DebugF("Loaded %d MCP configurations", len(mcpConfigs.Configs))
+	log.DebugF(log.ModuleMCP, "Loaded %d MCP configurations", len(mcpConfigs.Configs))
 	for i, config := range mcpConfigs.Configs {
-		log.DebugF("MCP Config %d: name=%s, enabled=%t, command=%s",
+		log.DebugF(log.ModuleMCP, "MCP Config %d: name=%s, enabled=%t, command=%s",
 			i+1, config.Name, config.Enabled, config.Command)
 		if len(config.Args) > 0 {
-			log.DebugF("  Args: %v", config.Args)
+			log.DebugF(log.ModuleMCP, "  Args: %v", config.Args)
 		}
 		if len(config.Environment) > 0 {
-			log.DebugF("  Environment: %v", config.Environment)
+			log.DebugF(log.ModuleMCP, "  Environment: %v", config.Environment)
 		}
-		log.DebugF("  Description: %s", config.Description)
-		log.DebugF("  Created: %s, Updated: %s",
+		log.DebugF(log.ModuleMCP, "  Description: %s", config.Description)
+		log.DebugF(log.ModuleMCP, "  Created: %s, Updated: %s",
 			config.CreatedAt.Format("2006-01-02 15:04:05"),
 			config.UpdatedAt.Format("2006-01-02 15:04:05"))
 	}
 
 	// Start the connection pool cleanup routine
-	log.Debug("Initializing MCP connection pool...")
+	log.Debug(log.ModuleMCP, "Initializing MCP connection pool...")
 	pool := GetPool()
 	pool.StartCleanupRoutine()
-	log.Debug("MCP connection pool cleanup routine started")
+	log.Debug(log.ModuleMCP, "MCP connection pool cleanup routine started")
 
-	log.Debug("=== MCP Module Initialization Completed ===")
-	log.InfoF("MCP module initialized successfully with %d configurations", len(mcpConfigs.Configs))
+	log.Debug(log.ModuleMCP, "=== MCP Module Initialization Completed ===")
+	log.InfoF(log.ModuleMCP, "MCP module initialized successfully with %d configurations", len(mcpConfigs.Configs))
 
 	// create mcp server and client
 	tools := GetAvailableToolsImproved()
-	log.DebugF("MCP module initialized successfully with %d tools", len(tools))
+	log.DebugF(log.ModuleMCP, "MCP module initialized successfully with %d tools", len(tools))
 }
 
 func loadMCPConfigs() {
-	log.Debug("--- Loading MCP Configurations ---")
+	log.Debug(log.ModuleMCP, "--- Loading MCP Configurations ---")
 
 	title := getMCPConfigTitle()
 	mcp_blog := control.GetBlog(config.GetAdminAccount(), title)
@@ -176,7 +176,7 @@ func loadMCPConfigs() {
 		})
 		mcp_blog := control.GetBlog(config.GetAdminAccount(), title)
 		if mcp_blog == nil {
-			log.ErrorF("Failed to get blog '%s'", title)
+			log.ErrorF(log.ModuleMCP, "Failed to get blog '%s'", title)
 			return
 		}
 	}
@@ -184,8 +184,8 @@ func loadMCPConfigs() {
 	mcpConfigs = MCPConfigList{}
 	err := json.Unmarshal([]byte(mcp_blog.Content), &mcpConfigs)
 	if err != nil {
-		log.ErrorF("Failed to parse MCP config file '%s': %v", title, err)
-		log.Error("Using empty MCP configuration due to parse error")
+		log.ErrorF(log.ModuleMCP, "Failed to parse MCP config file '%s': %v", title, err)
+		log.Error(log.ModuleMCP, "Using empty MCP configuration due to parse error")
 		return
 	}
 
@@ -193,14 +193,14 @@ func loadMCPConfigs() {
 	validConfigs := 0
 	for i, config := range mcpConfigs.Configs {
 		if err := ValidateConfig(config); err != nil {
-			log.WarnF("MCP Config %d (%s) validation failed: %v", i+1, config.Name, err)
+			log.WarnF(log.ModuleMCP, "MCP Config %d (%s) validation failed: %v", i+1, config.Name, err)
 		} else {
 			validConfigs++
-			log.DebugF("MCP Config %d (%s) validated successfully", i+1, config.Name)
+			log.DebugF(log.ModuleMCP, "MCP Config %d (%s) validated successfully", i+1, config.Name)
 		}
 	}
 
-	log.InfoF("MCP configuration validation completed: %d/%d configs valid", validConfigs, len(mcpConfigs.Configs))
+	log.InfoF(log.ModuleMCP, "MCP configuration validation completed: %d/%d configs valid", validConfigs, len(mcpConfigs.Configs))
 }
 
 func getMCPConfigTitle() string {
@@ -208,7 +208,7 @@ func getMCPConfigTitle() string {
 }
 
 func createDefaultMCPConfig() {
-	log.Debug("--- Creating Default MCP Configuration ---")
+	log.Debug(log.ModuleMCP, "--- Creating Default MCP Configuration ---")
 
 	// Create default configuration
 	defaultConfig := MCPConfigList{
@@ -236,16 +236,16 @@ func createDefaultMCPConfig() {
 		},
 	}
 
-	log.DebugF("Creating default config with %d entries", len(defaultConfig.Configs))
+	log.DebugF(log.ModuleMCP, "Creating default config with %d entries", len(defaultConfig.Configs))
 	for i, config := range defaultConfig.Configs {
-		log.DebugF("Default Config %d: %s (%s) - %s",
+		log.DebugF(log.ModuleMCP, "Default Config %d: %s (%s) - %s",
 			i+1, config.Name, config.Command, config.Description)
 	}
 
 	// Write to file
 	data, err := json.MarshalIndent(defaultConfig, "", "  ")
 	if err != nil {
-		log.ErrorF("Failed to marshal default MCP config: %v", err)
+		log.ErrorF(log.ModuleMCP, "Failed to marshal default MCP config: %v", err)
 		return
 	}
 
@@ -256,7 +256,7 @@ func createDefaultMCPConfig() {
 	})
 
 	mcpConfigs = defaultConfig
-	log.InfoF("Successfully created default MCP configuration with %d entries at: %s",
+	log.InfoF(log.ModuleMCP, "Successfully created default MCP configuration with %d entries at: %s",
 		len(defaultConfig.Configs), title)
 }
 
@@ -274,24 +274,24 @@ func GetConfig(name string) (*MCPConfig, bool) {
 }
 
 func AddConfig(config MCPConfig) error {
-	log.DebugF("--- Adding MCP Configuration: %s ---", config.Name)
-	log.DebugF("Command: %s", config.Command)
-	log.DebugF("Args: %v", config.Args)
-	log.DebugF("Environment: %v", config.Environment)
-	log.DebugF("Enabled: %t", config.Enabled)
-	log.DebugF("Description: %s", config.Description)
+	log.DebugF(log.ModuleMCP, "--- Adding MCP Configuration: %s ---", config.Name)
+	log.DebugF(log.ModuleMCP, "Command: %s", config.Command)
+	log.DebugF(log.ModuleMCP, "Args: %v", config.Args)
+	log.DebugF(log.ModuleMCP, "Environment: %v", config.Environment)
+	log.DebugF(log.ModuleMCP, "Enabled: %t", config.Enabled)
+	log.DebugF(log.ModuleMCP, "Description: %s", config.Description)
 
 	// Check if config with same name already exists
 	for i, existingConfig := range mcpConfigs.Configs {
 		if existingConfig.Name == config.Name {
-			log.WarnF("MCP config with name '%s' already exists at index %d", config.Name, i)
+			log.WarnF(log.ModuleMCP, "MCP config with name '%s' already exists at index %d", config.Name, i)
 			return fmt.Errorf("MCP config with name '%s' already exists", config.Name)
 		}
 	}
 
 	// Validate configuration
 	if err := ValidateConfig(config); err != nil {
-		log.ErrorF("MCP config validation failed for '%s': %v", config.Name, err)
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed for '%s': %v", config.Name, err)
 		return fmt.Errorf("validation failed: %v", err)
 	}
 
@@ -299,36 +299,36 @@ func AddConfig(config MCPConfig) error {
 	config.UpdatedAt = time.Now()
 	mcpConfigs.Configs = append(mcpConfigs.Configs, config)
 
-	log.InfoF("MCP config '%s' added successfully, total configs: %d", config.Name, len(mcpConfigs.Configs))
+	log.InfoF(log.ModuleMCP, "MCP config '%s' added successfully, total configs: %d", config.Name, len(mcpConfigs.Configs))
 
 	if err := saveMCPConfigs(); err != nil {
-		log.ErrorF("Failed to save MCP configs after adding '%s': %v", config.Name, err)
+		log.ErrorF(log.ModuleMCP, "Failed to save MCP configs after adding '%s': %v", config.Name, err)
 		return err
 	}
 
-	log.InfoF("MCP config '%s' saved to disk successfully", config.Name)
+	log.InfoF(log.ModuleMCP, "MCP config '%s' saved to disk successfully", config.Name)
 	return nil
 }
 
 func UpdateConfig(name string, config MCPConfig) error {
-	log.DebugF("--- Updating MCP Configuration: %s ---", name)
-	log.DebugF("New Command: %s", config.Command)
-	log.DebugF("New Args: %v", config.Args)
-	log.DebugF("New Environment: %v", config.Environment)
-	log.DebugF("New Enabled: %t", config.Enabled)
-	log.DebugF("New Description: %s", config.Description)
+	log.DebugF(log.ModuleMCP, "--- Updating MCP Configuration: %s ---", name)
+	log.DebugF(log.ModuleMCP, "New Command: %s", config.Command)
+	log.DebugF(log.ModuleMCP, "New Args: %v", config.Args)
+	log.DebugF(log.ModuleMCP, "New Environment: %v", config.Environment)
+	log.DebugF(log.ModuleMCP, "New Enabled: %t", config.Enabled)
+	log.DebugF(log.ModuleMCP, "New Description: %s", config.Description)
 
 	for i, existingConfig := range mcpConfigs.Configs {
 		if existingConfig.Name == name {
-			log.DebugF("Found MCP config '%s' at index %d", name, i)
+			log.DebugF(log.ModuleMCP, "Found MCP config '%s' at index %d", name, i)
 
 			// Log old values for comparison
-			log.DebugF("Old Command: %s -> New: %s", existingConfig.Command, config.Command)
-			log.DebugF("Old Enabled: %t -> New: %t", existingConfig.Enabled, config.Enabled)
+			log.DebugF(log.ModuleMCP, "Old Command: %s -> New: %s", existingConfig.Command, config.Command)
+			log.DebugF(log.ModuleMCP, "Old Enabled: %t -> New: %t", existingConfig.Enabled, config.Enabled)
 
 			// Validate new configuration
 			if err := ValidateConfig(config); err != nil {
-				log.ErrorF("MCP config validation failed for update '%s': %v", name, err)
+				log.ErrorF(log.ModuleMCP, "MCP config validation failed for update '%s': %v", name, err)
 				return fmt.Errorf("validation failed: %v", err)
 			}
 
@@ -337,63 +337,63 @@ func UpdateConfig(name string, config MCPConfig) error {
 			config.UpdatedAt = time.Now()
 			mcpConfigs.Configs[i] = config
 
-			log.InfoF("MCP config '%s' updated successfully", name)
+			log.InfoF(log.ModuleMCP, "MCP config '%s' updated successfully", name)
 
 			if err := saveMCPConfigs(); err != nil {
-				log.ErrorF("Failed to save MCP configs after updating '%s': %v", name, err)
+				log.ErrorF(log.ModuleMCP, "Failed to save MCP configs after updating '%s': %v", name, err)
 				return err
 			}
 
-			log.InfoF("MCP config '%s' update saved to disk successfully", name)
+			log.InfoF(log.ModuleMCP, "MCP config '%s' update saved to disk successfully", name)
 			return nil
 		}
 	}
 
-	log.WarnF("MCP config with name '%s' not found for update", name)
+	log.WarnF(log.ModuleMCP, "MCP config with name '%s' not found for update", name)
 	return fmt.Errorf("MCP config with name '%s' not found", name)
 }
 
 func DeleteConfig(name string) error {
-	log.DebugF("--- Deleting MCP Configuration: %s ---", name)
+	log.DebugF(log.ModuleMCP, "--- Deleting MCP Configuration: %s ---", name)
 
 	for i, config := range mcpConfigs.Configs {
 		if config.Name == name {
-			log.DebugF("Found MCP config '%s' at index %d", name, i)
-			log.DebugF("Config details - Command: %s, Enabled: %t", config.Command, config.Enabled)
+			log.DebugF(log.ModuleMCP, "Found MCP config '%s' at index %d", name, i)
+			log.DebugF(log.ModuleMCP, "Config details - Command: %s, Enabled: %t", config.Command, config.Enabled)
 
 			// Remove from connection pool if exists
 			pool := GetPool()
 			pool.RemoveClient(name)
-			log.DebugF("Removed MCP client '%s' from connection pool", name)
+			log.DebugF(log.ModuleMCP, "Removed MCP client '%s' from connection pool", name)
 
 			mcpConfigs.Configs = append(mcpConfigs.Configs[:i], mcpConfigs.Configs[i+1:]...)
 
-			log.InfoF("MCP config '%s' deleted successfully, remaining configs: %d", name, len(mcpConfigs.Configs))
+			log.InfoF(log.ModuleMCP, "MCP config '%s' deleted successfully, remaining configs: %d", name, len(mcpConfigs.Configs))
 
 			if err := saveMCPConfigs(); err != nil {
-				log.ErrorF("Failed to save MCP configs after deleting '%s': %v", name, err)
+				log.ErrorF(log.ModuleMCP, "Failed to save MCP configs after deleting '%s': %v", name, err)
 				return err
 			}
 
-			log.InfoF("MCP config '%s' deletion saved to disk successfully", name)
+			log.InfoF(log.ModuleMCP, "MCP config '%s' deletion saved to disk successfully", name)
 			return nil
 		}
 	}
 
-	log.WarnF("MCP config with name '%s' not found for deletion", name)
+	log.WarnF(log.ModuleMCP, "MCP config with name '%s' not found for deletion", name)
 	return fmt.Errorf("MCP config with name '%s' not found", name)
 }
 
 func ToggleConfig(name string) error {
-	log.DebugF("--- Toggling MCP Configuration: %s ---", name)
+	log.DebugF(log.ModuleMCP, "--- Toggling MCP Configuration: %s ---", name)
 
 	for i, config := range mcpConfigs.Configs {
 		if config.Name == name {
 			oldEnabled := config.Enabled
 			newEnabled := !oldEnabled
 
-			log.DebugF("Found MCP config '%s' at index %d", name, i)
-			log.DebugF("Toggling enabled state: %t -> %t", oldEnabled, newEnabled)
+			log.DebugF(log.ModuleMCP, "Found MCP config '%s' at index %d", name, i)
+			log.DebugF(log.ModuleMCP, "Toggling enabled state: %t -> %t", oldEnabled, newEnabled)
 
 			mcpConfigs.Configs[i].Enabled = newEnabled
 			mcpConfigs.Configs[i].UpdatedAt = time.Now()
@@ -402,34 +402,34 @@ func ToggleConfig(name string) error {
 			if !newEnabled {
 				pool := GetPool()
 				pool.RemoveClient(name)
-				log.DebugF("Disabled MCP config '%s', removed from connection pool", name)
+				log.DebugF(log.ModuleMCP, "Disabled MCP config '%s', removed from connection pool", name)
 			} else {
-				log.DebugF("Enabled MCP config '%s', will be available for connections", name)
+				log.DebugF(log.ModuleMCP, "Enabled MCP config '%s', will be available for connections", name)
 			}
 
-			log.InfoF("MCP config '%s' %s successfully", name,
+			log.InfoF(log.ModuleMCP, "MCP config '%s' %s successfully", name,
 				map[bool]string{true: "enabled", false: "disabled"}[newEnabled])
 
 			if err := saveMCPConfigs(); err != nil {
-				log.ErrorF("Failed to save MCP configs after toggling '%s': %v", name, err)
+				log.ErrorF(log.ModuleMCP, "Failed to save MCP configs after toggling '%s': %v", name, err)
 				return err
 			}
 
-			log.InfoF("MCP config '%s' toggle saved to disk successfully", name)
+			log.InfoF(log.ModuleMCP, "MCP config '%s' toggle saved to disk successfully", name)
 			return nil
 		}
 	}
 
-	log.WarnF("MCP config with name '%s' not found for toggle", name)
+	log.WarnF(log.ModuleMCP, "MCP config with name '%s' not found for toggle", name)
 	return fmt.Errorf("MCP config with name '%s' not found", name)
 }
 
 func saveMCPConfigs() error {
-	log.Debug("--- Saving MCP Configurations ---")
+	log.Debug(log.ModuleMCP, "--- Saving MCP Configurations ---")
 
 	data, err := json.MarshalIndent(mcpConfigs, "", "  ")
 	if err != nil {
-		log.ErrorF("Failed to marshal MCP configs: %v", err)
+		log.ErrorF(log.ModuleMCP, "Failed to marshal MCP configs: %v", err)
 		return fmt.Errorf("failed to marshal MCP configs: %v", err)
 	}
 
@@ -439,7 +439,7 @@ func saveMCPConfigs() error {
 		Content: string(data),
 	})
 
-	log.InfoF("Successfully saved %d MCP configurations to %s", len(mcpConfigs.Configs), title)
+	log.InfoF(log.ModuleMCP, "Successfully saved %d MCP configurations to %s", len(mcpConfigs.Configs), title)
 	return nil
 }
 
@@ -459,51 +459,51 @@ func copyFile(src, dst string) error {
 }
 
 func GetEnabledConfigs() []MCPConfig {
-	log.Debug("--- Getting Enabled MCP Configurations ---")
+	log.Debug(log.ModuleMCP, "--- Getting Enabled MCP Configurations ---")
 
 	var enabledConfigs []MCPConfig
 	for i, config := range mcpConfigs.Configs {
 		if config.Enabled {
 			enabledConfigs = append(enabledConfigs, config)
-			log.DebugF("Found enabled config %d: %s (%s)", i+1, config.Name, config.Command)
+			log.DebugF(log.ModuleMCP, "Found enabled config %d: %s (%s)", i+1, config.Name, config.Command)
 		} else {
-			log.DebugF("Skipping disabled config %d: %s", i+1, config.Name)
+			log.DebugF(log.ModuleMCP, "Skipping disabled config %d: %s", i+1, config.Name)
 		}
 	}
 
-	log.InfoF("Found %d enabled MCP configurations out of %d total", len(enabledConfigs), len(mcpConfigs.Configs))
+	log.InfoF(log.ModuleMCP, "Found %d enabled MCP configurations out of %d total", len(enabledConfigs), len(mcpConfigs.Configs))
 	return enabledConfigs
 }
 
 func ValidateConfig(config MCPConfig) error {
-	log.DebugF("--- Validating MCP Configuration: %s ---", config.Name)
+	log.DebugF(log.ModuleMCP, "--- Validating MCP Configuration: %s ---", config.Name)
 
 	if config.Name == "" {
-		log.ErrorF("MCP config validation failed: name cannot be empty")
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed: name cannot be empty")
 		return fmt.Errorf("name cannot be empty")
 	}
 
 	if config.Command == "" {
-		log.ErrorF("MCP config validation failed: command cannot be empty for '%s'", config.Name)
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed: command cannot be empty for '%s'", config.Name)
 		return fmt.Errorf("command cannot be empty")
 	}
 
 	if strings.TrimSpace(config.Name) != config.Name {
-		log.ErrorF("MCP config validation failed: name '%s' has leading or trailing spaces", config.Name)
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed: name '%s' has leading or trailing spaces", config.Name)
 		return fmt.Errorf("name cannot have leading or trailing spaces")
 	}
 
 	// Additional validations
 	if len(config.Name) > 50 {
-		log.ErrorF("MCP config validation failed: name '%s' is too long (%d chars, max 50)", config.Name, len(config.Name))
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed: name '%s' is too long (%d chars, max 50)", config.Name, len(config.Name))
 		return fmt.Errorf("name cannot be longer than 50 characters")
 	}
 
 	if strings.Contains(config.Name, "/") || strings.Contains(config.Name, "\\") {
-		log.ErrorF("MCP config validation failed: name '%s' contains invalid characters", config.Name)
+		log.ErrorF(log.ModuleMCP, "MCP config validation failed: name '%s' contains invalid characters", config.Name)
 		return fmt.Errorf("name cannot contain path separators")
 	}
 
-	log.DebugF("MCP config validation passed for '%s'", config.Name)
+	log.DebugF(log.ModuleMCP, "MCP config validation passed for '%s'", config.Name)
 	return nil
 }

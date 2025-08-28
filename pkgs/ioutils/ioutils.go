@@ -8,7 +8,7 @@ import (
 )
 
 func Info() {
-	log.Debug("info ioutils v1.0")
+	log.Debug(log.ModuleCommon, "info ioutils v1.0")
 }
 
 func GetFiles(dir string) []string {
@@ -16,7 +16,7 @@ func GetFiles(dir string) []string {
 
 	entries, err := ioutil.ReadDir(dir)
 	if err != nil {
-		log.DebugF("GetFiles error=%s", err.Error())
+		log.DebugF(log.ModuleCommon, "GetFiles error=%s", err.Error())
 		return nil
 	}
 
@@ -41,7 +41,7 @@ func GetBaseAndExt(full string) (string, string) {
 func GetFileDatas(full string) (string, int) {
 	data, err := ioutil.ReadFile(full)
 	if err != nil {
-		log.ErrorF("Error reading file:%s %s", full, err.Error())
+		log.ErrorF(log.ModuleCommon, "Error reading file:%s %s", full, err.Error())
 		return "", 0
 	}
 	return string(data), len(data)
@@ -54,10 +54,10 @@ func DeleteFile(full string) {
 	} else {
 		// 删除已存在的文件
 		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-			log.DebugF("Error removing existing file:%s %s", full, err.Error())
+			log.DebugF(log.ModuleCommon, "Error removing existing file:%s %s", full, err.Error())
 			return
 		}
-		log.DebugF("File already exists and remove success %s", full)
+		log.DebugF(log.ModuleCommon, "File already exists and remove success %s", full)
 	}
 }
 
@@ -65,7 +65,7 @@ func Mkdir(path string) int {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		err := os.MkdirAll(path, 0755)
 		if err != nil {
-			log.ErrorF("Mkdir path=%s error=%s", path, err.Error())
+			log.ErrorF(log.ModuleCommon, "Mkdir path=%s error=%s", path, err.Error())
 			return 1
 		}
 	}
@@ -75,7 +75,7 @@ func Mkdir(path string) int {
 func Mvfile(full string, to string) int {
 	err := os.Rename(full, to)
 	if err != nil {
-		log.ErrorF("movefile form=%s to=%s error=%s", full, to, err.Error())
+		log.ErrorF(log.ModuleCommon, "movefile form=%s to=%s error=%s", full, to, err.Error())
 		return 1
 	}
 	return 0
@@ -88,17 +88,17 @@ func RmAndSaveFile(full string, content string) {
 	} else {
 		// 删除已存在的文件
 		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-			log.DebugF("Error removing existing file:%s %s", full, err.Error())
+			log.DebugF(log.ModuleCommon, "Error removing existing file:%s %s", full, err.Error())
 			return
 		}
-		log.DebugF("File already exists and remove success %s", full)
+		log.DebugF(log.ModuleCommon, "File already exists and remove success %s", full)
 	}
 
 	// 文件不存在，写入内容
 	err := ioutil.WriteFile(full, []byte(content), 0644)
 	if err != nil {
-		log.ErrorF("Error writing to file: %s %s", err.Error(), full)
+		log.ErrorF(log.ModuleCommon, "Error writing to file: %s %s", err.Error(), full)
 	} else {
-		log.DebugF("File created and content written successfully. %s", full)
+		log.DebugF(log.ModuleCommon, "File created and content written successfully. %s", full)
 	}
 }

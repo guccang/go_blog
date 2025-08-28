@@ -43,43 +43,43 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	log.DebugF("title:%s", title)
+	log.DebugF(log.ModuleBlog, "title:%s", title)
 
 	content := r.FormValue("content")
 	// 在这里，您可以处理或保存content到数据库等
-	log.DebugF("Received content:%s", content)
+	log.DebugF(log.ModuleBlog, "Received content:%s", content)
 
 	// 解析权限设置
 	auth_type_string := r.FormValue("authtype")
-	log.DebugF("Received authtype:%s", auth_type_string)
+	log.DebugF(log.ModuleBlog, "Received authtype:%s", auth_type_string)
 
 	// 解析权限组合
 	auth_type := parseAuthTypeString(auth_type_string)
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received tags:%s", tags)
+	log.DebugF(log.ModuleBlog, "Received tags:%s", tags)
 
 	// encrypt
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s", title, encryptionKey)
+	log.DebugF(log.ModuleBlog, "Received title=%s encrypt:%s", title, encryptionKey)
 
 	//
 	if encryptionKey != "" {
 		encrypt = 1
 		/*
 			// aes加密
-			log.DebugF("encryption key=%s",encryptionKey)
+			log.DebugF(log.ModuleBlog, "encryption key=%s",encryptionKey)
 			content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
 
 			content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
-			log.DebugF("encryption content_decrypt=%s",content_encrypt)
+			log.DebugF(log.ModuleBlog, "encryption content_decrypt=%s",content_encrypt)
 			if content_decrypt != content {
 				h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
 				return
 			}
-			fmt.Printf("content encrypt=%s\n",content)
+			log.DebugF(log.ModuleBlog, "content encrypt=%s\n",content)
 			// 邮件备份密码,todo
 			content = content_encrypt
 		*/
@@ -128,7 +128,7 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 		blogname = "help"
 	}
 
-	log.DebugF("help blogname=", blogname)
+	log.DebugF(log.ModuleBlog, "help blogname=", blogname)
 
 	account := getAccountFromRequest(r)
 	usepublic := 0
@@ -238,7 +238,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		}
 
 		// 密码正确，继续处理
-		log.DebugF("日记博客密码验证成功: %s (AuthType: %d)", blogname, blog.AuthType)
+		log.DebugF(log.ModuleBlog, "日记博客密码验证成功: %s (AuthType: %d)", blogname, blog.AuthType)
 	}
 
 	// 兼容性：同时检查基于名称的日记博客（向后兼容）
@@ -264,7 +264,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		}
 
 		// 密码正确，继续处理
-		log.DebugF("传统日记博客密码验证成功: %s", blogname)
+		log.DebugF(log.ModuleBlog, "传统日记博客密码验证成功: %s", blogname)
 	}
 
 	// 检查是否是 todolist 博客，如果是则重定向到 todolist 页面
@@ -394,7 +394,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	log.DebugF("comment title:%s", title)
+	log.DebugF(log.ModuleComment, "comment title:%s", title)
 
 	owner := r.FormValue("owner")
 	mail := r.FormValue("mail")
@@ -536,7 +536,7 @@ func HandleDelete(w h.ResponseWriter, r *h.Request) {
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-	log.DebugF("delete title:%s", title)
+	log.DebugF(log.ModuleBlog, "delete title:%s", title)
 
 	account := getAccountFromRequest(r)
 
@@ -568,18 +568,18 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-	log.DebugF("title:%s", title)
+	log.DebugF(log.ModuleBlog, "title:%s", title)
 
 	// 解析权限设置
 	auth_type_string := r.FormValue("auth_type")
-	log.DebugF("Received auth_type:%s", auth_type_string)
+	log.DebugF(log.ModuleBlog, "Received auth_type:%s", auth_type_string)
 
 	// 解析权限组合
 	auth_type := parseAuthTypeString(auth_type_string)
 
 	// tags
 	tags := r.FormValue("tags")
-	log.DebugF("Received tags:%s", tags)
+	log.DebugF(log.ModuleBlog, "Received tags:%s", tags)
 
 	// 内容
 	content := r.FormValue("content")
@@ -589,7 +589,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 	// 加密
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF("Received title=%s encrypt:%s session:%s", title, encryptionKey, getsession(r))
+	log.DebugF(log.ModuleBlog, "Received title=%s encrypt:%s session:%s", title, encryptionKey, getsession(r))
 
 	if encryptionKey != "" {
 		encrypt = 1
@@ -599,12 +599,12 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 			content_encrypt  := encryption.AesSimpleEncrypt(content, encryptionKey);
 
 			content_decrypt := encryption.AesSimpleDecrypt(content_encrypt, encryptionKey);
-			log.DebugF("encryption content_decrypt=%s",content_encrypt)
+			log.DebugF(log.ModuleBlog, "encryption content_decrypt=%s",content_encrypt)
 			if content_decrypt != content {
 				h.Error(w, "save failed! aes not match error!", h.StatusBadRequest)
 				return
 			}
-			fmt.Printf("content encrypt=%s\n",content)
+			log.DebugF(log.ModuleBlog, "content encrypt=%s\n",content)
 
 			content = content_encrypt
 		*/
@@ -652,7 +652,7 @@ func HandleTag(w h.ResponseWriter, r *h.Request) {
 	tag := r.FormValue("tag")
 
 	isTagPublic := config.IsPublicTag(tag)
-	log.DebugF("HandleTag %s %d", tag, isTagPublic)
+	log.DebugF(log.ModuleBlog, "HandleTag %s %d", tag, isTagPublic)
 	if isTagPublic != 1 {
 		if checkLogin(r) != 0 {
 			h.Redirect(w, r, "/index", 302)

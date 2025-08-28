@@ -29,7 +29,7 @@ import (
 )
 
 func clearup() {
-	log.Debug("go_blog clearup")
+	log.Debug(log.ModuleCommon, "go_blog clearup")
 	mcp.GetPool().Shutdown()
 }
 
@@ -52,14 +52,15 @@ func main() {
 		fmt.Println("need sys_conf path")
 		return
 	}
+	log.Info()
+
 	// versions
-	log.Debug("go_blog starting")
+	log.Debug(log.ModuleCommon, "go_blog starting")
 	module.Info()
 	view.Info()
 	control.Info()
 	http.Info()
 	persistence.Info()
-	log.Info()
 	config.Info()
 	ioutils.Info()
 	blog.Info()
@@ -83,7 +84,7 @@ func main() {
 		fmt.Printf("Warning: Failed to initialize file logging: %v\n", err)
 		fmt.Println("Continuing with console logging only...")
 	}
-	log.Debug("Logging system initialized")
+	log.Debug(log.ModuleCommon, "Logging system initialized")
 
 	persistence.Init()
 	blog.Init()
@@ -98,7 +99,7 @@ func main() {
 	sms.Init()
 	exercise.Init()
 	share.Init()
-	log.Debug("go_blog started")
+	log.Debug(log.ModuleCommon, "go_blog started")
 
 	certFile := ""
 	keyFile := ""
@@ -108,7 +109,7 @@ func main() {
 	}
 	http.Run(certFile, keyFile)
 
-	log.Debug("go_blog exit")
+	log.Debug(log.ModuleCommon, "go_blog exit")
 	log.FlushLogs()
 	log.Cleanup()
 }

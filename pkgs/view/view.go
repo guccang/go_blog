@@ -18,7 +18,7 @@ import (
 )
 
 func Info() {
-	fmt.Println("info view v1.0")
+	log.InfoF(log.ModuleView, "info view v1.0")
 }
 
 // generateUserAvatar generates a simple avatar string for the user
@@ -97,14 +97,14 @@ func Notify(msg string, w h.ResponseWriter) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "notify.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse markdown_editor", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, msg)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template markdown_editor", h.StatusInternalServerError)
 		return
 	}
@@ -263,7 +263,7 @@ func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, b
 		authTypeString = "private"
 	}
 
-	log.DebugF("Parsed auth type %d: private=%v, public=%v, diary=%v, encrypted=%v",
+	log.DebugF(log.ModuleView, "Parsed auth type %d: private=%v, public=%v, diary=%v, encrypted=%v",
 		authType, isPrivate, isPublic, isDiary, isEncrypted)
 
 	return authTypeString, isPrivate, isPublic, isDiary, isEncrypted
@@ -291,7 +291,7 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse link.template", h.StatusInternalServerError)
 		return
 	}
@@ -316,7 +316,7 @@ func PageTags(w h.ResponseWriter, tag, session string) {
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "tags.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse tags.template", h.StatusInternalServerError)
 		return
 	}
@@ -334,21 +334,21 @@ func PageLink(w h.ResponseWriter, flag int, session string) {
 	blog_num := config.GetMainBlogNum()
 	account := blog.GetAccountFromSession(session)
 	blogs := control.GetAll(account, blog_num, flag)
-	log.DebugF("blogs cnt=%d", len(blogs))
+	log.DebugF(log.ModuleView, "blogs cnt=%d", len(blogs))
 
 	datas := getLinks(blogs, flag, account)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
 	if err != nil {
-		log.ErrorF(err.Error())
+		log.ErrorF(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse link.template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, datas)
 	if err != nil {
-		log.ErrorF("Failed to render template link.tempate err=%s", err.Error())
+		log.ErrorF(log.ModuleView, "Failed to render template link.tempate err=%s", err.Error())
 		h.Error(w, "Failed to render template link.template %s", h.StatusInternalServerError)
 		return
 	}
@@ -358,7 +358,7 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "markdown_editor.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse markdown_editor", h.StatusInternalServerError)
 		return
 	}
@@ -391,7 +391,7 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template markdown_editor", h.StatusInternalServerError)
 		return
 	}
@@ -415,7 +415,7 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account str
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, template_name))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse get.template", h.StatusInternalServerError)
 		return
 	}
@@ -457,7 +457,7 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account str
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
 		return
 	}
@@ -469,14 +469,14 @@ func PageIndex(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "login.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse get.template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
 		return
 	}
@@ -487,14 +487,14 @@ func PageDemo(w h.ResponseWriter, template_name string) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, template_name))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse demo template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
 		return
 	}
@@ -505,14 +505,14 @@ func PageD3(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "d3.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse get.template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
 		return
 	}
@@ -541,7 +541,7 @@ func PageShowAllShare(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "share.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse sharetemplate", h.StatusInternalServerError)
 		return
 	}
@@ -622,7 +622,7 @@ func PageTimeStamp(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "timestamp.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse timestamp.template", h.StatusInternalServerError)
 		return
 	}
@@ -642,14 +642,14 @@ func PageTodolist(w h.ResponseWriter, date string) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "todolist.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse todolist.template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template todolist.template", h.StatusInternalServerError)
 		return
 	}
@@ -660,14 +660,14 @@ func PageSkill(w h.ResponseWriter) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "skill.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse skill template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template skill.template", h.StatusInternalServerError)
 		return
 	}
@@ -678,7 +678,7 @@ func PageYearPlan(w h.ResponseWriter, year int) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "yearplan.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse yearplan template", h.StatusInternalServerError)
 		return
 	}
@@ -691,7 +691,7 @@ func PageYearPlan(w h.ResponseWriter, year int) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render yearplan template", h.StatusInternalServerError)
 		return
 	}
@@ -702,7 +702,7 @@ func PageMonthGoal(w h.ResponseWriter, year int, month int) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "monthgoal.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse monthgoal template", h.StatusInternalServerError)
 		return
 	}
@@ -715,7 +715,7 @@ func PageMonthGoal(w h.ResponseWriter, year int, month int) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render monthgoal template", h.StatusInternalServerError)
 		return
 	}
@@ -726,14 +726,14 @@ func PageStatistics(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "statistics.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse statistics.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse statistics template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render statistics.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render statistics template", h.StatusInternalServerError)
 		return
 	}
@@ -744,14 +744,14 @@ func PageReading(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse reading.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse reading template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render reading.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render reading template", h.StatusInternalServerError)
 		return
 	}
@@ -762,7 +762,7 @@ func PageBookDetail(w h.ResponseWriter, book *module.Book) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "book_detail.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse book_detail.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse book detail template", h.StatusInternalServerError)
 		return
 	}
@@ -775,7 +775,7 @@ func PageBookDetail(w h.ResponseWriter, book *module.Book) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.ErrorF("Failed to render book_detail.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render book detail template", h.StatusInternalServerError)
 		return
 	}
@@ -786,14 +786,14 @@ func PageReadingDashboard(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading_dashboard.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse reading_dashboard.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse reading dashboard template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render reading_dashboard.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render reading dashboard template", h.StatusInternalServerError)
 		return
 	}
@@ -814,14 +814,14 @@ func PagePublic(w h.ResponseWriter, account string) {
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "public.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse public.template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, datas)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template public.template", h.StatusInternalServerError)
 		return
 	}
@@ -832,14 +832,14 @@ func PageExercise(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse exercise.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse exercise template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render exercise.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render exercise template", h.StatusInternalServerError)
 		return
 	}
@@ -850,14 +850,14 @@ func PageLifeCountdown(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "lifecountdown.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse lifecountdown.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse lifecountdown template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render lifecountdown.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render lifecountdown template", h.StatusInternalServerError)
 		return
 	}
@@ -867,7 +867,7 @@ func PageDiaryPasswordInput(w h.ResponseWriter, blogname string) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "diary_password.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse diary_password.template", h.StatusInternalServerError)
 		return
 	}
@@ -880,7 +880,7 @@ func PageDiaryPasswordInput(w h.ResponseWriter, blogname string) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template diary_password.template", h.StatusInternalServerError)
 		return
 	}
@@ -890,7 +890,7 @@ func PageDiaryPasswordError(w h.ResponseWriter, blogname string) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "diary_password_error.template"))
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse diary_password_error.template", h.StatusInternalServerError)
 		return
 	}
@@ -903,7 +903,7 @@ func PageDiaryPasswordError(w h.ResponseWriter, blogname string) {
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.Debug(err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template diary_password_error.template", h.StatusInternalServerError)
 		return
 	}
@@ -914,14 +914,14 @@ func PageAssistant(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "assistant.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse assistant.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse assistant template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render assistant.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render assistant template", h.StatusInternalServerError)
 		return
 	}
@@ -932,14 +932,14 @@ func PageMCP(w h.ResponseWriter, data interface{}) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "mcp.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse mcp.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse MCP template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, data)
 	if err != nil {
-		log.ErrorF("Failed to render mcp.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render MCP template", h.StatusInternalServerError)
 		return
 	}
@@ -950,14 +950,14 @@ func PageConstellation(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "constellation.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse constellation.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse constellation template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render constellation.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render constellation template", h.StatusInternalServerError)
 		return
 	}
@@ -968,14 +968,14 @@ func PageTools(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "tools.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse tools.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse tools template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render tools.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render tools template", h.StatusInternalServerError)
 		return
 	}
@@ -986,14 +986,14 @@ func PageMigration(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "migration.template"))
 	if err != nil {
-		log.ErrorF("Failed to parse migration.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse migration template", h.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, nil)
 	if err != nil {
-		log.ErrorF("Failed to render migration.template: %s", err.Error())
+		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render migration template", h.StatusInternalServerError)
 		return
 	}

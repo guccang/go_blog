@@ -35,11 +35,11 @@ func HandleAssistant(w h.ResponseWriter, r *h.Request) {
 // HandleAssistantChat handles assistant chat API using llm CallLM
 // 智能助手聊天API处理函数 - 使用llm CallLM
 func HandleAssistantChat(w h.ResponseWriter, r *h.Request) {
-	log.Debug("=== Assistant Chat Request Started (MCP Mode) ===")
+	log.Debug(log.ModuleHandler, "=== Assistant Chat Request Started (MCP Mode) ===")
 	LogRemoteAddr("HandleAssistantChat", r)
 
 	if checkLogin(r) != 0 {
-		log.WarnF("Unauthorized assistant chat request from %s", r.RemoteAddr)
+		log.WarnF(log.ModuleHandler, "Unauthorized assistant chat request from %s", r.RemoteAddr)
 		h.Error(w, "Unauthorized", h.StatusUnauthorized)
 		return
 	}
@@ -268,7 +268,7 @@ func loadChatHistoryForDate(account, date string) []ChatMessage {
 	// 获取博客内容
 	blog := control.GetBlog(account, diaryTitle)
 	if blog == nil {
-		log.DebugF("No chat history found for date: %s", date)
+		log.DebugF(log.ModuleHandler, "No chat history found for date: %s", date)
 		return []ChatMessage{}
 	}
 
@@ -377,7 +377,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 		}
 	}
 
-	log.DebugF("Parsed %d chat messages from content", len(messages))
+	log.DebugF(log.ModuleAssistant, "Parsed %d chat messages from content", len(messages))
 	return messages
 }
 
@@ -396,7 +396,7 @@ func gatherTodayStats(account string) map[string]interface{} {
 	// 获取今日写作统计
 	todayBlogs := getTodayBlogsStats(account)
 
-	log.DebugF("gatherTodayStats: Tasks=%v, Reading=%v, Exercise=%v, Blogs=%v",
+	log.DebugF(log.ModuleAssistant, "gatherTodayStats: Tasks=%v, Reading=%v, Exercise=%v, Blogs=%v",
 		todayTasks, todayReading, todayExercise, todayBlogs)
 
 	return map[string]interface{}{
@@ -1210,7 +1210,7 @@ func getTodayTasksStats(account string) map[string]interface{} {
 	// Get today's todo blog
 	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog == nil {
-		log.DebugF("getTodayTasksStats: No todo blog found for %s", today)
+		log.DebugF(log.ModuleAssistant, "getTodayTasksStats: No todo blog found for %s", today)
 		return map[string]interface{}{
 			"total":           0,
 			"completed":       0,
@@ -1239,7 +1239,7 @@ func getTodayTasksStats(account string) map[string]interface{} {
 		completionRate = float64(completedTasks) / float64(totalTasks) * 100
 	}
 
-	log.DebugF("getTodayTasksStats: Found %d total tasks, %d completed (%.1f%%) for %s", totalTasks, completedTasks, completionRate, today)
+	log.DebugF(log.ModuleAssistant, "getTodayTasksStats: Found %d total tasks, %d completed (%.1f%%) for %s", totalTasks, completedTasks, completionRate, today)
 
 	return map[string]interface{}{
 		"total":           totalTasks,
@@ -1307,7 +1307,7 @@ func getTodayReadingStats(account string) map[string]interface{} {
 		averageProgress = 50.0
 	}
 
-	log.DebugF("getTodayReadingStats: Found %d reading books, average progress %.1f%%, today pages: %d",
+	log.DebugF(log.ModuleAssistant, "getTodayReadingStats: Found %d reading books, average progress %.1f%%, today pages: %d",
 		stats["reading_books"].(int), averageProgress, todayPages)
 
 	return map[string]interface{}{
@@ -1328,7 +1328,7 @@ func getTodayExerciseStats(account string) map[string]interface{} {
 	// Get today's exercise blog
 	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog == nil {
-		log.DebugF("getTodayExerciseStats: No exercise blog found for %s", today)
+		log.DebugF(log.ModuleAssistant, "getTodayExerciseStats: No exercise blog found for %s", today)
 		return map[string]interface{}{
 			"total_exercises":     0,
 			"completed_exercises": 0,
@@ -1369,7 +1369,7 @@ func getTodayExerciseStats(account string) map[string]interface{} {
 		completionRate = float64(completedExercises) / float64(totalExercises) * 100
 	}
 
-	log.DebugF("getTodayExerciseStats: Found %d total exercises, %d completed, %d calories for %s", totalExercises, completedExercises, totalCalories, today)
+	log.DebugF(log.ModuleAssistant, "getTodayExerciseStats: Found %d total exercises, %d completed, %d calories for %s", totalExercises, completedExercises, totalCalories, today)
 
 	return map[string]interface{}{
 		"total_exercises":     totalExercises,
@@ -1397,7 +1397,7 @@ func getTodayBlogsStats(account string) map[string]interface{} {
 	todayBlogs := []string{}
 	tags := make(map[string]int)
 
-	log.DebugF("getTodayBlogsStats: Processing %d total blogs for date %s", len(allBlogs), today)
+	log.DebugF(log.ModuleAssistant, "getTodayBlogsStats: Processing %d total blogs for date %s", len(allBlogs), today)
 
 	for _, blog := range allBlogs {
 		// Skip system-generated blogs
@@ -1467,7 +1467,7 @@ func getTodayBlogsStats(account string) map[string]interface{} {
 	// Get top tags for today
 	topTags := getTopTagsFromMap(tags, 3)
 
-	log.DebugF("getTodayBlogsStats: Created=%d, Updated=%d, Words=%d, PublicBlogs=%d",
+	log.DebugF(log.ModuleAssistant, "getTodayBlogsStats: Created=%d, Updated=%d, Words=%d, PublicBlogs=%d",
 		createdToday, updatedToday, totalWords, publicBlogs)
 
 	return map[string]interface{}{
@@ -1489,7 +1489,7 @@ func getTodayBlogCount(account string) int {
 	today := time.Now().Format("2006-01-02")
 	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
-	log.DebugF("getTodayBlogCount: Found %d total blogs", len(allBlogs))
+	log.DebugF(log.ModuleAssistant, "getTodayBlogCount: Found %d total blogs", len(allBlogs))
 
 	count := 0
 	for _, blog := range allBlogs {
@@ -1502,14 +1502,14 @@ func getTodayBlogCount(account string) int {
 		if blog.CreateTime != "" {
 			if createTime, err := time.Parse("2006-01-02 15:04:05", blog.CreateTime); err == nil {
 				if createTime.Format("2006-01-02") == today {
-					log.DebugF("getTodayBlogCount: Found today's blog: %s", blog.Title)
+					log.DebugF(log.ModuleAssistant, "getTodayBlogCount: Found today's blog: %s", blog.Title)
 					count++
 				}
 			}
 		}
 	}
 
-	log.DebugF("getTodayBlogCount: Returning count=%d for today=%s", count, today)
+	log.DebugF(log.ModuleAssistant, "getTodayBlogCount: Returning count=%d for today=%s", count, today)
 	return count
 }
 
@@ -2126,12 +2126,12 @@ func generateStudySuggestion(account string) map[string]interface{} {
 func generateHealthSuggestion(account string) map[string]interface{} {
 	// 分析作息规律
 	sleepPattern := analyzeSleepPattern(account)
-	log.DebugF("Health Analysis - Sleep Pattern: EarlyMorning=%d, LateNight=%d, Regularity=%.1f",
+	log.DebugF(log.ModuleAssistant, "Health Analysis - Sleep Pattern: EarlyMorning=%d, LateNight=%d, Regularity=%.1f",
 		sleepPattern.EarlyMorningActivities, sleepPattern.LateNightActivities, sleepPattern.RegularityScore)
 
 	// 分析生活习惯健康度
 	lifeHealthScore := analyzeLifeHealthScore(account)
-	log.DebugF("Health Analysis - Life Health Score: Overall=%.1f, Blogging=%.1f, Exercise=%.1f",
+	log.DebugF(log.ModuleAssistant, "Health Analysis - Life Health Score: Overall=%.1f, Blogging=%.1f, Exercise=%.1f",
 		lifeHealthScore.OverallHealthScore, lifeHealthScore.BloggingFrequency, lifeHealthScore.ExerciseConsistency)
 
 	// 根据分析结果生成建议

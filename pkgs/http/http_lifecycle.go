@@ -133,7 +133,7 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 	w.WriteHeader(h.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
-		log.ErrorF("Failed to encode statistics: %v", err)
+		log.ErrorF(log.ModuleStatistics, "Failed to encode statistics: %v", err)
 		w.WriteHeader(h.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to encode statistics"})
 		return

@@ -93,7 +93,7 @@ func (c *MCPClient) Connect() error {
 	}
 
 	c.connected = true
-	log.DebugF("MCP client connected to %s", c.config.Name)
+	log.DebugF(log.ModuleMCP, "MCP client connected to %s", c.config.Name)
 	return nil
 }
 
@@ -175,7 +175,7 @@ func (c *MCPClient) handleResponses() {
 		}
 
 		if err := json.Unmarshal([]byte(line), &response); err != nil {
-			log.ErrorF("Failed to parse MCP response: %v", err)
+			log.ErrorF(log.ModuleMCP, "Failed to parse MCP response: %v", err)
 			continue
 		}
 
@@ -212,7 +212,7 @@ func (c *MCPClient) handleResponses() {
 
 // handleNotification handles incoming notifications
 func (c *MCPClient) handleNotification(method string, params interface{}) {
-	log.DebugF("Received MCP notification: %s", method)
+	log.DebugF(log.ModuleMCP, "Received MCP notification: %s", method)
 	// Handle specific notifications here
 }
 
@@ -300,7 +300,7 @@ func (c *MCPClient) Close() error {
 		delete(c.requests, id)
 	}
 
-	log.DebugF("MCP client disconnected from %s", c.config.Name)
+	log.DebugF(log.ModuleMCP, "MCP client disconnected from %s", c.config.Name)
 	return nil
 }
 

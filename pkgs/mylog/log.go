@@ -9,6 +9,37 @@ import (
 	"time"
 )
 
+type LogModule int
+
+const (
+	ModuleAccount LogModule = iota
+	ModuleBlog
+	ModuleComment
+	ModuleConfig
+	ModuleLogin
+	ModulePersistence
+	ModuleUser
+	ModuleExercise
+	ModuleCommon
+	ModuleAuth
+	ModuleHandler
+	ModuleLifeCountDown
+	ModuleLLM
+	ModuleMCP
+	ModuleReading
+	ModuleSMS
+	ModuleYearPlan
+	ModuleConstellation
+	ModuleAssistant
+	ModuleSearch
+	ModuleSkill
+	ModuleStatistics
+	ModuleShare
+	ModuleTodolist
+	ModuleView
+	ModuleControl
+)
+
 // Logger configuration
 type LogConfig struct {
 	LogToFile    bool
@@ -30,10 +61,38 @@ var (
 	logMutex    sync.Mutex
 	logWriter   io.Writer
 	file_prefix string = "blog"
+	logModules  map[LogModule]string
 )
 
 func Info() {
-	fmt.Println("info log v1.0")
+	logModules = map[LogModule]string{
+		ModuleAccount:       "account",
+		ModuleBlog:          "blog",
+		ModuleComment:       "comment",
+		ModuleConfig:        "config",
+		ModuleLogin:         "login",
+		ModulePersistence:   "persistence",
+		ModuleUser:          "user",
+		ModuleExercise:      "exercise",
+		ModuleCommon:        "common",
+		ModuleAuth:          "auth",
+		ModuleHandler:       "handler",
+		ModuleLifeCountDown: "lifecountdown",
+		ModuleLLM:           "llm",
+		ModuleMCP:           "mcp",
+		ModuleReading:       "reading",
+		ModuleSMS:           "sms",
+		ModuleYearPlan:      "yearplan",
+		ModuleConstellation: "constellation",
+		ModuleAssistant:     "assistant",
+		ModuleSearch:        "search",
+		ModuleSkill:         "skill",
+		ModuleStatistics:    "statistics",
+		ModuleShare:         "share",
+		ModuleTodolist:      "todolist",
+		ModuleView:          "view",
+		ModuleControl:       "control",
+	}
 }
 
 // Init initializes the logging system
@@ -216,7 +275,7 @@ func Cleanup() {
 }
 
 // writeLog writes log message to configured outputs
-func writeLog(level, message string) {
+func writeLog(module LogModule, level, message string) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 
@@ -246,7 +305,8 @@ func writeLog(level, message string) {
 
 	// Format and write log message
 	timestamp := strTime()
-	logMessage := fmt.Sprintf("[%s] %s %s\n", level, timestamp, message)
+	module_name := logModules[module]
+	logMessage := fmt.Sprintf("[%s] [%s] %s %s\n", module_name, level, timestamp, message)
 
 	if logWriter != nil {
 		logWriter.Write([]byte(logMessage))
@@ -259,52 +319,45 @@ func strTime() string {
 	return time.Now().Format("2006-01-02 15:04:05")
 }
 
-func Debug(str string) {
-	writeLog("DEBUG", str)
+func Debug(module LogModule, str string) {
+	writeLog(module, "DEBUG", str)
 }
 
-func DebugF(f string, a ...any) {
+func DebugF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog("DEBUG", str)
+	writeLog(module, "DEBUG", str)
 }
 
-func InfoF(f string, a ...any) {
+func InfoF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog("MESSAGE", str)
+	writeLog(module, "MESSAGE", str)
 }
 
-func ErrorF(f string, a ...any) {
+func ErrorF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog("ERROR", str)
+	writeLog(module, "ERROR", str)
 }
 
 // Additional logging functions
-func Error(str string) {
-	writeLog("ERROR", str)
+func Error(module LogModule, str string) {
+	writeLog(module, "ERROR", str)
 }
 
-func Warn(str string) {
-	writeLog("WARN", str)
+func Warn(module LogModule, str string) {
+	writeLog(module, "WARN", str)
 }
 
-func WarnF(f string, a ...any) {
+func WarnF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog("WARN", str)
+	writeLog(module, "WARN", str)
 }
 
-func InfoMessage(str string) {
-	writeLog("MESSAGE", str)
+func Message(module LogModule, str string) {
+	writeLog(module, "MESSAGE", str)
 }
-
-func Fatal(str string) {
-	writeLog("FATAL", str)
-	os.Exit(1)
-}
-
-func FatalF(f string, a ...any) {
+func MessageF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog("FATAL", str)
-	os.Exit(1)
+	writeLog(module, "MESSAGE", str)
 }
 
 // GetLogConfig returns current log configuration

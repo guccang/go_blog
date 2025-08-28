@@ -1,8 +1,6 @@
 package module
 
-import (
-	"fmt"
-)
+import log "mylog"
 
 // blog权限
 const (
@@ -103,7 +101,7 @@ type BlogComments struct {
 }
 
 func Info() {
-	fmt.Println("info module v1.0")
+	log.InfoF(log.ModuleCommon, "info module v1.0")
 }
 
 // 读书相关数据结构

@@ -7,12 +7,12 @@ import (
 )
 
 func Info() {
-	log.Debug("info reading v1.0")
+	log.Debug(log.ModuleReading, "info reading v1.0")
 }
 
 // 初始化reading模块，用于书籍管理、阅读记录、笔记、心得等
 func Init() {
-	log.Debug("reading module Init")
+	log.Debug(log.ModuleReading, "reading module Init")
 }
 
 // interface

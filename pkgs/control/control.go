@@ -4,15 +4,15 @@ import (
 	"blog"
 	"comment"
 	"errors"
-	"fmt"
 	"module"
+	log "mylog"
 	"reading"
 	"search"
 	"statistics"
 )
 
 func Info() {
-	fmt.Println("info control v1.0")
+	log.InfoF(log.ModuleControl, "info control v1.0")
 }
 
 func Init() {

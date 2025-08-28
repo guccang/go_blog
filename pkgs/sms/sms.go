@@ -11,7 +11,7 @@ import (
 var sms_actor *SmsActor
 
 func Info() {
-	log.Debug("info sms v1.0")
+	log.Debug(log.ModuleSMS, "info sms v1.0")
 }
 
 // Init initializes the SMS module and starts its actor

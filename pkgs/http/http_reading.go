@@ -233,31 +233,31 @@ func HandleBooksAPI(w h.ResponseWriter, r *h.Request) {
 		// 删除书籍
 		bookID := r.URL.Query().Get("book_id")
 		if bookID == "" {
-			log.ErrorF("删除书籍失败: 缺少book_id参数")
+			log.ErrorF(log.ModuleReading, "删除书籍失败: 缺少book_id参数")
 			h.Error(w, "Book ID is required", h.StatusBadRequest)
 			return
 		}
 
-		log.DebugF("收到删除书籍请求: book_id=%s", bookID)
+		log.DebugF(log.ModuleReading, "收到删除书籍请求: book_id=%s", bookID)
 
 		// 先检查书籍是否存在
 		account := getAccountFromRequest(r)
 		book := control.GetBook(account, bookID)
 		if book == nil {
-			log.ErrorF("删除书籍失败: 书籍不存在, book_id=%s", bookID)
+			log.ErrorF(log.ModuleReading, "删除书籍失败: 书籍不存在, book_id=%s", bookID)
 			h.Error(w, "书籍不存在", h.StatusBadRequest)
 			return
 		}
-		log.DebugF("找到要删除的书籍: %s - %s", book.ID, book.Title)
+		log.DebugF(log.ModuleReading, "找到要删除的书籍: %s - %s", book.ID, book.Title)
 
 		err := control.DeleteBook(account, bookID)
 		if err != nil {
-			log.ErrorF("删除书籍失败: book_id=%s, error=%v", bookID, err)
+			log.ErrorF(log.ModuleReading, "删除书籍失败: book_id=%s, error=%v", bookID, err)
 			h.Error(w, err.Error(), h.StatusBadRequest)
 			return
 		}
 
-		log.DebugF("书籍删除成功: book_id=%s", bookID)
+		log.DebugF(log.ModuleReading, "书籍删除成功: book_id=%s", bookID)
 
 		response := map[string]interface{}{
 			"success": true,
@@ -1070,7 +1070,7 @@ func HandleLifeCountdownAPI(w h.ResponseWriter, r *h.Request) {
 			}
 		}
 
-		log.DebugF("获取书籍列表: 共%d本书", len(bookTitles))
+		log.DebugF(log.ModuleReading, "获取书籍列表: 共%d本书", len(bookTitles))
 
 		response := map[string]interface{}{
 			"success": true,

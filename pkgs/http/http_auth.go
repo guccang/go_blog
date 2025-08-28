@@ -44,7 +44,7 @@ func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 	}
 
 	code, ret := login.GenerateSMSCode(account)
-	log.InfoF("SMS Generate code=%s for device_id=%s", code, device_id)
+	log.InfoF(log.ModuleAuth, "SMS Generate code=%s for device_id=%s", code, device_id)
 	if ret != 0 {
 		h.Error(w, "SMS generation failed", h.StatusBadRequest)
 		return
@@ -102,7 +102,7 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "invalid SMS code or code expired", h.StatusBadRequest)
 		return
 	}
-	log.InfoF("LoginSMS add session=%s code=%s device_id=%s", session, code, device_id)
+	log.InfoF(log.ModuleAuth, "LoginSMS add session=%s code=%s device_id=%s", session, code, device_id)
 
 	// 获取用户IP
 	remoteAddr := r.RemoteAddr
@@ -155,7 +155,7 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 
 	device_id := r.FormValue("device_id")
-	log.DebugF("account=%s pwd=%s device_id=%s", account, pwd, device_id)
+	log.DebugF(log.ModuleAuth, "account=%s pwd=%s device_id=%s", account, pwd, device_id)
 
 	// 获取用户IP
 	remoteAddr := r.RemoteAddr
@@ -196,7 +196,7 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 	h.SetCookie(w, cookie)
 
-	log.DebugF("login success account=%s pwd=%s session=%s", account, pwd, session)
+	log.DebugF(log.ModuleAuth, "login success account=%s pwd=%s session=%s", account, pwd, session)
 	h.Redirect(w, r, "/main", 302)
 }
 

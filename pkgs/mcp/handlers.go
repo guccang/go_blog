@@ -19,11 +19,11 @@ type MCPResponse struct {
 func checkLogin(r *http.Request) int {
 	session, err := r.Cookie("session")
 	if err != nil {
-		log.ErrorF("not find cookie session err=%s", err.Error())
+		log.ErrorF(log.ModuleMCP, "not find cookie session err=%s", err.Error())
 		return 1
 	}
 
-	log.DebugF("checkLogin session=%s", session.Value)
+	log.DebugF(log.ModuleMCP, "checkLogin session=%s", session.Value)
 	if auth.CheckLoginSession(session.Value) != 0 {
 		return 1
 	}
@@ -31,7 +31,7 @@ func checkLogin(r *http.Request) int {
 }
 
 func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
-	log.Debug("HandleMCPPage called")
+	log.Debug(log.ModuleMCP, "HandleMCPPage called")
 
 	if checkLogin(r) != 0 {
 		http.Redirect(w, r, "/index", http.StatusFound)
@@ -65,7 +65,7 @@ func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleMCPAPI(w http.ResponseWriter, r *http.Request) {
-	log.Debug("HandleMCPAPI called")
+	log.Debug(log.ModuleMCP, "HandleMCPAPI called")
 
 	if checkLogin(r) != 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -286,7 +286,7 @@ func getCurrentTimeString() string {
 
 // GetAvailableToolsHandler handles requests for available tools
 func GetAvailableToolsHandler(w http.ResponseWriter, r *http.Request) {
-	log.Debug("GetAvailableToolsHandler called")
+	log.Debug(log.ModuleMCP, "GetAvailableToolsHandler called")
 
 	if checkLogin(r) != 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

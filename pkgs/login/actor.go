@@ -48,7 +48,7 @@ func (alogin *LoginActor) loginSMS(account string, verfycode string) (string, in
 	}
 
 	s := auth.AddSession(account)
-	log.InfoF("LoginSMS account=%s code=%s verfycode=%s", account, alogin.sms_codes[account], verfycode)
+	log.InfoF(log.ModuleLogin, "LoginSMS account=%s code=%s verfycode=%s", account, alogin.sms_codes[account], verfycode)
 	return s, 0
 }
 
@@ -57,7 +57,7 @@ func (alogin *LoginActor) loginSMS(account string, verfycode string) (string, in
 func (alogin *LoginActor) generateSMSCode(account string) (string, int) {
 	code, err := sms.SendSMS()
 	if err != nil {
-		log.InfoF("GenerateSMSCode err=%s", err.Error())
+		log.InfoF(log.ModuleLogin, "GenerateSMSCode err=%s", err.Error())
 		return "", 1
 	}
 
@@ -110,13 +110,13 @@ func (alogin *LoginActor) register(account string, password string) int {
 
 	// 保存所有用户账户到管理员博客中
 	if err := alogin.saveUsersToAdminBlog(); err != nil {
-		log.ErrorF("Failed to save users to admin blog: %v", err)
+		log.ErrorF(log.ModuleLogin, "Failed to save users to admin blog: %v", err)
 		// 回滚：从内存中删除刚添加的用户
 		delete(alogin.users, account)
 		return 3
 	}
 
-	log.InfoF("User registered successfully: %s", account)
+	log.InfoF(log.ModuleLogin, "User registered successfully: %s", account)
 	return 0
 }
 
@@ -158,7 +158,7 @@ func (alogin *LoginActor) loadUsersFromAdminBlog() error {
 	// 获取sys_accounts博客
 	accountsBlog := blog.GetBlogWithAccount(config.GetAdminAccount(), "sys_accounts")
 	if accountsBlog == nil {
-		log.InfoF("No sys_accounts blog found, starting with empty user database")
+		log.InfoF(log.ModuleLogin, "No sys_accounts blog found, starting with empty user database")
 		return nil
 	}
 
@@ -171,10 +171,10 @@ func (alogin *LoginActor) loadUsersFromAdminBlog() error {
 	// 加载用户到内存中
 	for account, user := range loadedUsers {
 		alogin.users[account] = user
-		log.DebugF("Loaded user: %s", account)
+		log.DebugF(log.ModuleLogin, "Loaded user: %s", account)
 	}
 
-	log.InfoF("Successfully loaded %d users from sys_accounts", len(loadedUsers))
+	log.InfoF(log.ModuleLogin, "Successfully loaded %d users from sys_accounts", len(loadedUsers))
 	return nil
 }
 

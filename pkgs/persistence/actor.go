@@ -51,11 +51,11 @@ func (p *PersistenceActor) connect(ip string, port int, password string) int {
 	pong, err := client.Ping().Result()
 	if err == nil {
 		p.client = client
-		log.DebugF("connect redis success ip=%s port=%d password=%s", ip, port, password)
+		log.DebugF(log.ModulePersistence, "connect redis success ip=%s port=%d password=%s", ip, port, password)
 		return 1
 	}
 
-	log.DebugF(pong, err)
+	log.DebugF(log.ModulePersistence, pong, err)
 	return 0
 }
 
@@ -67,9 +67,9 @@ func (p *PersistenceActor) deleteBlog(account, title string) int {
 	keys = append(keys, legacyKey)
 	for _, k := range keys {
 		if err := p.client.Del(k).Err(); err != nil {
-			log.ErrorF("delete error key=%s err=%s", k, err.Error())
+			log.ErrorF(log.ModulePersistence, "delete error key=%s err=%s", k, err.Error())
 		} else {
-			log.DebugF("delete key=%s", k)
+			log.DebugF(log.ModulePersistence, "delete key=%s", k)
 		}
 	}
 	p.deleteFile(account, title)
@@ -93,17 +93,17 @@ func (p *PersistenceActor) saveBlog(account string, blog *module.Blog) {
 	values["account"] = account
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
-		log.ErrorF("saveblog error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "saveblog error key=%s err=%s", key, err.Error())
 	}
-	log.DebugF("redis saveblog success key=%s mt=%s", key, blog.ModifyTime)
+	log.DebugF(log.ModulePersistence, "redis saveblog success key=%s mt=%s", key, blog.ModifyTime)
 
 	// try delete old blog  blog@Title
 	old_key := fmt.Sprintf("blog@%s", blog.Title)
 	ret := p.client.Del(old_key)
 	if ret.Err() != nil {
-		log.ErrorF("delete old blog error key=%s err=%s", old_key, ret.Err().Error())
+		log.ErrorF(log.ModulePersistence, "delete old blog error key=%s err=%s", old_key, ret.Err().Error())
 	} else {
-		log.DebugF("delete old blog success key=%s", old_key)
+		log.DebugF(log.ModulePersistence, "delete old blog success key=%s", old_key)
 	}
 
 	p.saveToFile(account, blog)
@@ -173,29 +173,29 @@ func (p *PersistenceActor) toBlog(m map[string]string) *module.Blog {
 }
 
 func (p *PersistenceActor) showBlog(b *module.Blog) {
-	log.DebugF("title=%s", b.Title)
-	log.DebugF("ct=%s", b.CreateTime)
-	log.DebugF("mt=%s", b.ModifyTime)
-	log.DebugF("at=%s", b.AccessTime)
-	log.DebugF("mn=%d", b.ModifyNum)
-	log.DebugF("an=%d", b.AccessNum)
+	log.DebugF(log.ModulePersistence, "title=%s", b.Title)
+	log.DebugF(log.ModulePersistence, "ct=%s", b.CreateTime)
+	log.DebugF(log.ModulePersistence, "mt=%s", b.ModifyTime)
+	log.DebugF(log.ModulePersistence, "at=%s", b.AccessTime)
+	log.DebugF(log.ModulePersistence, "mn=%d", b.ModifyNum)
+	log.DebugF(log.ModulePersistence, "an=%d", b.AccessNum)
 }
 
 func (p *PersistenceActor) getBlogsByAccount(account string) map[string]*module.Blog {
-	log.DebugF("getBlogsByAccount account=%s", account)
+	log.DebugF(log.ModulePersistence, "getBlogsByAccount account=%s", account)
 	pattern := fmt.Sprintf("%s:blog@*", account)
 	keys, err := p.client.Keys(pattern).Result()
 	if err != nil {
-		log.ErrorF("getblogsbyaccount error keys=%s err=%s", pattern, err.Error())
+		log.ErrorF(log.ModulePersistence, "getblogsbyaccount error keys=%s err=%s", pattern, err.Error())
 		return nil
 	}
 
 	if account == config.GetAdminAccount() {
 		legacy, _ := p.client.Keys("blog@*").Result()
 		keys = append(keys, legacy...)
-		log.DebugF("getBlogsByAccount admin account=%s keys_len=%d", account, len(keys))
+		log.DebugF(log.ModulePersistence, "getBlogsByAccount admin account=%s keys_len=%d", account, len(keys))
 	} else {
-		log.DebugF("getBlogsByAccount account=%s keys_len=%d", account, len(keys))
+		log.DebugF(log.ModulePersistence, "getBlogsByAccount account=%s keys_len=%d", account, len(keys))
 	}
 
 	blogs := make(map[string]*module.Blog)
@@ -203,14 +203,14 @@ func (p *PersistenceActor) getBlogsByAccount(account string) map[string]*module.
 	for _, key := range keys {
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
-			log.ErrorF("getblogbyaccount error key=%s err=%s", key, err.Error())
+			log.ErrorF(log.ModulePersistence, "getblogbyaccount error key=%s err=%s", key, err.Error())
 			continue
 		}
 		b := p.toBlog(m)
 		blogs[b.Title] = b
 	}
 
-	log.DebugF("getBlogsByAccount blogs_len=%d", len(blogs))
+	log.DebugF(log.ModulePersistence, "getBlogsByAccount blogs_len=%d", len(blogs))
 	return blogs
 }
 
@@ -242,18 +242,18 @@ func (p *PersistenceActor) saveToFile(account string, blog *module.Blog) {
 	ioutils.Mkdir(path)
 	full := filepath.Join(path, filename)
 	full = fmt.Sprintf("%s.md", full)
-	log.DebugF("saveToFile full=%s", full)
+	log.DebugF(log.ModulePersistence, "saveToFile full=%s", full)
 
 	fcontent, _ := ioutils.GetFileDatas(full)
 	if content == fcontent {
-		log.DebugF("saveToFile Cancle content is same %s", full)
+		log.DebugF(log.ModulePersistence, "saveToFile Cancle content is same %s", full)
 		return
 	}
 	ioutils.RmAndSaveFile(full, content)
 }
 
 func (p *PersistenceActor) saveBlogComments(account string, bc *module.BlogComments) {
-	log.DebugF("SaveBlogComments title=%s comments_len=%d", bc.Title, len(bc.Comments))
+	log.DebugF(log.ModulePersistence, "SaveBlogComments title=%s comments_len=%d", bc.Title, len(bc.Comments))
 
 	key := fmt.Sprintf("comments@%s", bc.Title)
 	values := make(map[string]interface{})
@@ -274,16 +274,16 @@ func (p *PersistenceActor) saveBlogComments(account string, bc *module.BlogComme
 	}
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
-		log.ErrorF("saveblogcomments error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "saveblogcomments error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("redis saveblogcomments success key=%s title=%s", key, bc.Title)
+		log.DebugF(log.ModulePersistence, "redis saveblogcomments success key=%s title=%s", key, bc.Title)
 	}
 }
 
 func (p *PersistenceActor) getAllBlogComments(account string) map[string]*module.BlogComments {
 	keys, err := p.client.Keys("comments@*").Result()
 	if err != nil {
-		log.ErrorF("getcomments error keys=comments@* err=%s", err.Error())
+		log.ErrorF(log.ModulePersistence, "getcomments error keys=comments@* err=%s", err.Error())
 		return nil
 	}
 
@@ -292,10 +292,10 @@ func (p *PersistenceActor) getAllBlogComments(account string) map[string]*module
 	for _, key := range keys {
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
-			log.ErrorF("getComments error key=%s err=%s", key, err.Error())
+			log.ErrorF(log.ModulePersistence, "getComments error key=%s err=%s", key, err.Error())
 			continue
 		}
-		log.DebugF("getComments success key=%s", key)
+		log.DebugF(log.ModulePersistence, "getComments success key=%s", key)
 		title := key[strings.Index(key, "@")+1:]
 		p.toBlogComments(title, m, bcs)
 	}
@@ -323,13 +323,13 @@ func (p *PersistenceActor) toBlogComments(title string, m map[string]string, bcs
 
 		// analy the hash value, split by ASCII 0x01 which is can not print
 		tokens := strings.Split(v, "\x01")
-		log.DebugF("toBlogComments v=%s tokens_len=%d", v, len(tokens))
+		log.DebugF(log.ModulePersistence, "toBlogComments v=%s tokens_len=%d", v, len(tokens))
 		for _, t := range tokens {
 			kv := strings.Split(t, "=")
 			if len(kv) >= 2 {
 				k := kv[0]
 				v := t[strings.Index(t, "=")+1:]
-				log.DebugF("k=%s v=%s", k, v)
+				log.DebugF(log.ModulePersistence, "k=%s v=%s", k, v)
 
 				if strings.ToLower(k) == "owner" {
 					owner = v
@@ -344,7 +344,7 @@ func (p *PersistenceActor) toBlogComments(title string, m map[string]string, bcs
 				} else if strings.ToLower(k) == "idx" {
 					the_idx, err := strconv.Atoi(v)
 					if err != nil {
-						log.ErrorF("split idx conv to int error %s the_idx=%d", err.Error(), the_idx)
+						log.ErrorF(log.ModulePersistence, "split idx conv to int error %s the_idx=%d", err.Error(), the_idx)
 					} else {
 						idx = the_idx
 					}
@@ -353,13 +353,13 @@ func (p *PersistenceActor) toBlogComments(title string, m map[string]string, bcs
 				}
 
 			} else {
-				log.ErrorF("split tokens %s error kv <= 2", t)
+				log.ErrorF(log.ModulePersistence, "split tokens %s error kv <= 2", t)
 			}
 
 		}
 
 		if idx < 0 {
-			log.ErrorF("toBlogComments idx<0 idx=%d", idx)
+			log.ErrorF(log.ModulePersistence, "toBlogComments idx<0 idx=%d", idx)
 			continue
 		}
 
@@ -384,13 +384,13 @@ func (p *PersistenceActor) toBlogComments(title string, m map[string]string, bcs
 }
 
 func (p *PersistenceActor) showBlogComments(cs *module.BlogComments) {
-	log.DebugF("title=%s", cs.Title)
+	log.DebugF(log.ModulePersistence, "title=%s", cs.Title)
 	for _, c := range cs.Comments {
-		log.DebugF("Idx=%d", c.Idx)
-		log.DebugF("owner=%s", c.Owner)
-		log.DebugF("msg=%s", c.Msg)
-		log.DebugF("ct=%s", c.CreateTime)
-		log.DebugF("mt=%s", c.ModifyTime)
+		log.DebugF(log.ModulePersistence, "Idx=%d", c.Idx)
+		log.DebugF(log.ModulePersistence, "owner=%s", c.Owner)
+		log.DebugF(log.ModulePersistence, "msg=%s", c.Msg)
+		log.DebugF(log.ModulePersistence, "ct=%s", c.CreateTime)
+		log.DebugF(log.ModulePersistence, "mt=%s", c.ModifyTime)
 	}
 }
 
@@ -410,9 +410,9 @@ func (p *PersistenceActor) saveCommentUser(account string, user *module.CommentU
 
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
-		log.ErrorF("SaveCommentUser error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "SaveCommentUser error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("SaveCommentUser success key=%s", key)
+		log.DebugF(log.ModulePersistence, "SaveCommentUser success key=%s", key)
 	}
 }
 
@@ -429,9 +429,9 @@ func (p *PersistenceActor) saveCommentSession(account string, session *module.Co
 
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
-		log.ErrorF("SaveCommentSession error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "SaveCommentSession error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("SaveCommentSession success key=%s", key)
+		log.DebugF(log.ModulePersistence, "SaveCommentSession success key=%s", key)
 	}
 }
 
@@ -445,16 +445,16 @@ func (p *PersistenceActor) saveUsernameReservation(account string, reservation *
 
 	err := p.client.HMSet(key, values).Err()
 	if err != nil {
-		log.ErrorF("SaveUsernameReservation error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "SaveUsernameReservation error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("SaveUsernameReservation success key=%s", key)
+		log.DebugF(log.ModulePersistence, "SaveUsernameReservation success key=%s", key)
 	}
 }
 
 func (p *PersistenceActor) getAllCommentUsers(account string) map[string]*module.CommentUser {
 	keys, err := p.client.Keys("comment_user@*").Result()
 	if err != nil {
-		log.ErrorF("GetAllCommentUsers error keys=comment_user@* err=%s", err.Error())
+		log.ErrorF(log.ModulePersistence, "GetAllCommentUsers error keys=comment_user@* err=%s", err.Error())
 		return nil
 	}
 
@@ -463,14 +463,14 @@ func (p *PersistenceActor) getAllCommentUsers(account string) map[string]*module
 	for _, key := range keys {
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
-			log.ErrorF("GetAllCommentUsers error key=%s err=%s", key, err.Error())
+			log.ErrorF(log.ModulePersistence, "GetAllCommentUsers error key=%s err=%s", key, err.Error())
 			continue
 		}
 
 		user := p.toCommentUser(m)
 		if user != nil {
 			users[user.UserID] = user
-			log.DebugF("GetAllCommentUsers success key=%s", key)
+			log.DebugF(log.ModulePersistence, "GetAllCommentUsers success key=%s", key)
 		}
 	}
 
@@ -480,7 +480,7 @@ func (p *PersistenceActor) getAllCommentUsers(account string) map[string]*module
 func (p *PersistenceActor) getAllUsernameReservations(account string) map[string]*module.UsernameReservation {
 	keys, err := p.client.Keys("username_reservation@*").Result()
 	if err != nil {
-		log.ErrorF("GetAllUsernameReservations error keys=username_reservation@* err=%s", err.Error())
+		log.ErrorF(log.ModulePersistence, "GetAllUsernameReservations error keys=username_reservation@* err=%s", err.Error())
 		return nil
 	}
 
@@ -489,7 +489,7 @@ func (p *PersistenceActor) getAllUsernameReservations(account string) map[string
 	for _, key := range keys {
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
-			log.ErrorF("GetAllUsernameReservations error key=%s err=%s", key, err.Error())
+			log.ErrorF(log.ModulePersistence, "GetAllUsernameReservations error key=%s err=%s", key, err.Error())
 			continue
 		}
 
@@ -505,7 +505,7 @@ func (p *PersistenceActor) getAllUsernameReservations(account string) map[string
 func (p *PersistenceActor) getAllCommentSessions(account string) map[string]*module.CommentSession {
 	keys, err := p.client.Keys("comment_session@*").Result()
 	if err != nil {
-		log.ErrorF("GetAllCommentSessions error keys=comment_session@* err=%s", err.Error())
+		log.ErrorF(log.ModulePersistence, "GetAllCommentSessions error keys=comment_session@* err=%s", err.Error())
 		return nil
 	}
 
@@ -514,7 +514,7 @@ func (p *PersistenceActor) getAllCommentSessions(account string) map[string]*mod
 	for _, key := range keys {
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
-			log.ErrorF("GetAllCommentSessions error key=%s err=%s", key, err.Error())
+			log.ErrorF(log.ModulePersistence, "GetAllCommentSessions error key=%s err=%s", key, err.Error())
 			continue
 		}
 
@@ -531,9 +531,9 @@ func (p *PersistenceActor) deleteCommentSession(account, sessionID string) {
 	key := fmt.Sprintf("comment_session@%s", sessionID)
 	err := p.client.Del(key).Err()
 	if err != nil {
-		log.ErrorF("DeleteCommentSession error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "DeleteCommentSession error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("DeleteCommentSession success key=%s", key)
+		log.DebugF(log.ModulePersistence, "DeleteCommentSession success key=%s", key)
 	}
 }
 
@@ -541,9 +541,9 @@ func (p *PersistenceActor) deleteUsernameReservation(account, username string) {
 	key := fmt.Sprintf("username_reservation@%s", username)
 	err := p.client.Del(key).Err()
 	if err != nil {
-		log.ErrorF("DeleteUsernameReservation error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "DeleteUsernameReservation error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("DeleteUsernameReservation success key=%s", key)
+		log.DebugF(log.ModulePersistence, "DeleteUsernameReservation success key=%s", key)
 	}
 }
 
@@ -612,13 +612,13 @@ func (p *PersistenceActor) getBlogWithAccount(account, name string) *module.Blog
 	key := fmt.Sprintf("%s:blog@%s", account, name)
 	m, err := p.client.HGetAll(key).Result()
 	if err != nil {
-		log.ErrorF("getBlogWithAccount error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "getBlogWithAccount error key=%s err=%s", key, err.Error())
 		return nil
 	}
 	if len(m) == 0 {
 		return nil
 	}
-	log.DebugF("getBlogWithAccount success key=%s title=%s", key, m["title"])
+	log.DebugF(log.ModulePersistence, "getBlogWithAccount success key=%s title=%s", key, m["title"])
 	b := p.toBlog(m)
 	return b
 }
@@ -629,9 +629,9 @@ func (p *PersistenceActor) deleteBlogWithAccount(account, title string) int {
 	key := fmt.Sprintf("%s:blog@%s", account, title)
 	err := p.client.Del(key).Err()
 	if err != nil {
-		log.ErrorF("deleteBlogWithAccount error key=%s err=%s", key, err.Error())
+		log.ErrorF(log.ModulePersistence, "deleteBlogWithAccount error key=%s err=%s", key, err.Error())
 	} else {
-		log.DebugF("deleteBlogWithAccount success key=%s", key)
+		log.DebugF(log.ModulePersistence, "deleteBlogWithAccount success key=%s", key)
 	}
 
 	// also try to delete the file
