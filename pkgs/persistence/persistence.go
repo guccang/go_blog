@@ -23,32 +23,34 @@ func Init() {
 	}
 
 	// 连接Redis
-	ip := config.GetConfig("redis_ip")
-	port, _ := strconv.Atoi(config.GetConfig("redis_port"))
-	pwd := config.GetConfig("redis_pwd")
+	ip := config.GetConfigWithAccount(config.GetAdminAccount(), "redis_ip")
+	port, _ := strconv.Atoi(config.GetConfigWithAccount(config.GetAdminAccount(), "redis_port"))
+	pwd := config.GetConfigWithAccount(config.GetAdminAccount(), "redis_pwd")
 	persistence_module.connect(ip, port, pwd)
 	persistence_module.Start(persistence_module)
 }
 
 // interface
 
-func SaveBlog(blog *module.Blog) {
+func SaveBlog(account string, blog *module.Blog) {
 	cmd := &SaveBlogCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Blog: blog,
+		Account: account,
+		Blog:    blog,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func SaveBlogs(blogs map[string]*module.Blog) {
+func SaveBlogs(account string, blogs map[string]*module.Blog) {
 	cmd := &SaveBlogsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Blogs: blogs,
+		Account: account,
+		Blogs:   blogs,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
@@ -69,22 +71,24 @@ func GetBlogsByAccount(account string) map[string]*module.Blog {
 	return result.(map[string]*module.Blog)
 }
 
-func SaveBlogComments(bc *module.BlogComments) {
+func SaveBlogComments(account string, bc *module.BlogComments) {
 	cmd := &SaveBlogCommentsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		BlogComments: bc,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func GetAllBlogComments() map[string]*module.BlogComments {
+func GetAllBlogComments(account string) map[string]*module.BlogComments {
 	cmd := &GetAllBlogCommentsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	persistence_module.Send(cmd)
 	result := <-cmd.Response()
@@ -94,44 +98,48 @@ func GetAllBlogComments() map[string]*module.BlogComments {
 	return result.(map[string]*module.BlogComments)
 }
 
-func SaveCommentUser(user *module.CommentUser) {
+func SaveCommentUser(account string, user *module.CommentUser) {
 	cmd := &SaveCommentUserCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		User: user,
+		Account: account,
+		User:    user,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func SaveCommentSession(session *module.CommentSession) {
+func SaveCommentSession(account string, session *module.CommentSession) {
 	cmd := &SaveCommentSessionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 		Session: session,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func SaveUsernameReservation(reservation *module.UsernameReservation) {
+func SaveUsernameReservation(account string, reservation *module.UsernameReservation) {
 	cmd := &SaveUsernameReservationCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		Reservation: reservation,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func GetAllCommentUsers() map[string]*module.CommentUser {
+func GetAllCommentUsers(account string) map[string]*module.CommentUser {
 	cmd := &GetAllCommentUsersCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	persistence_module.Send(cmd)
 	result := <-cmd.Response()
@@ -141,11 +149,12 @@ func GetAllCommentUsers() map[string]*module.CommentUser {
 	return result.(map[string]*module.CommentUser)
 }
 
-func GetAllUsernameReservations() map[string]*module.UsernameReservation {
+func GetAllUsernameReservations(account string) map[string]*module.UsernameReservation {
 	cmd := &GetAllUsernameReservationsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	persistence_module.Send(cmd)
 	result := <-cmd.Response()
@@ -155,11 +164,12 @@ func GetAllUsernameReservations() map[string]*module.UsernameReservation {
 	return result.(map[string]*module.UsernameReservation)
 }
 
-func GetAllCommentSessions() map[string]*module.CommentSession {
+func GetAllCommentSessions(account string) map[string]*module.CommentSession {
 	cmd := &GetAllCommentSessionsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	persistence_module.Send(cmd)
 	result := <-cmd.Response()
@@ -169,22 +179,24 @@ func GetAllCommentSessions() map[string]*module.CommentSession {
 	return result.(map[string]*module.CommentSession)
 }
 
-func DeleteCommentSession(sessionID string) {
+func DeleteCommentSession(account, sessionID string) {
 	cmd := &DeleteCommentSessionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		SessionID: sessionID,
 	}
 	persistence_module.Send(cmd)
 	<-cmd.Response()
 }
 
-func DeleteUsernameReservation(username string) {
+func DeleteUsernameReservation(account, username string) {
 	cmd := &DeleteUsernameReservationCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		Username: username,
 	}
 	persistence_module.Send(cmd)
@@ -198,7 +210,7 @@ func SaveBlogWithAccount(account string, blog *module.Blog) {
 	if blog.Account == "" {
 		blog.Account = account
 	}
-	SaveBlog(blog)
+	SaveBlog(account, blog)
 }
 
 func SaveBlogsWithAccount(account string, blogs map[string]*module.Blog) {
@@ -208,7 +220,7 @@ func SaveBlogsWithAccount(account string, blogs map[string]*module.Blog) {
 			blog.Account = account
 		}
 	}
-	SaveBlogs(blogs)
+	SaveBlogs(account, blogs)
 }
 
 func GetBlogWithAccount(account, name string) *module.Blog {
@@ -241,41 +253,41 @@ func DeleteBlogWithAccount(account, title string) int {
 }
 
 func SaveBlogCommentsWithAccount(account string, bc *module.BlogComments) {
-	SaveBlogComments(bc)
+	SaveBlogComments(account, bc)
 }
 
 func GetAllBlogCommentsWithAccount(account string) map[string]*module.BlogComments {
-	return GetAllBlogComments()
+	return GetAllBlogComments(account)
 }
 
 func SaveCommentUserWithAccount(account string, user *module.CommentUser) {
-	SaveCommentUser(user)
+	SaveCommentUser(account, user)
 }
 
 func SaveCommentSessionWithAccount(account string, session *module.CommentSession) {
-	SaveCommentSession(session)
+	SaveCommentSession(account, session)
 }
 
 func SaveUsernameReservationWithAccount(account string, reservation *module.UsernameReservation) {
-	SaveUsernameReservation(reservation)
+	SaveUsernameReservation(account, reservation)
 }
 
 func GetAllCommentUsersWithAccount(account string) map[string]*module.CommentUser {
-	return GetAllCommentUsers()
+	return GetAllCommentUsers(account)
 }
 
 func GetAllUsernameReservationsWithAccount(account string) map[string]*module.UsernameReservation {
-	return GetAllUsernameReservations()
+	return GetAllUsernameReservations(account)
 }
 
 func GetAllCommentSessionsWithAccount(account string) map[string]*module.CommentSession {
-	return GetAllCommentSessions()
+	return GetAllCommentSessions(account)
 }
 
 func DeleteCommentSessionWithAccount(account, sessionID string) {
-	DeleteCommentSession(sessionID)
+	DeleteCommentSession(account, sessionID)
 }
 
 func DeleteUsernameReservationWithAccount(account, username string) {
-	DeleteUsernameReservation(username)
+	DeleteUsernameReservation(account, username)
 }

@@ -1,106 +1,104 @@
 package ioutils
+
 import (
-	log "mylog"
 	"io/ioutil"
-	"config"
-	"path/filepath"
+	log "mylog"
 	"os"
+	"path/filepath"
 )
 
-func Info(){
+func Info() {
 	log.Debug("info ioutils v1.0")
-	dir := config.GetBlogsPath()
-	GetFiles(dir)
 }
 
-func GetFiles(dir string)[]string{
-	files := make([]string,0)
+func GetFiles(dir string) []string {
+	files := make([]string, 0)
 
 	entries, err := ioutil.ReadDir(dir)
-    if err != nil {
-		log.DebugF("GetFiles error=%s",err.Error())
-        return nil
-    }
+	if err != nil {
+		log.DebugF("GetFiles error=%s", err.Error())
+		return nil
+	}
 
-    for _, entry := range entries {
-        if !entry.IsDir() {
-			full:=filepath.Join(dir,entry.Name())
-            //log.DebugF("GetFiles %s",full)
-			files = append(files,full)
-        }
-    }
-	
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			full := filepath.Join(dir, entry.Name())
+			//log.DebugF("GetFiles %s",full)
+			files = append(files, full)
+		}
+	}
+
 	return files
 }
 
-func GetBaseAndExt(full string)(string,string){
-	filenameWithExt :=  filepath.Base(full)
+func GetBaseAndExt(full string) (string, string) {
+	filenameWithExt := filepath.Base(full)
 	ext := filepath.Ext(filenameWithExt)
 	nameWithoutExt := filenameWithExt[:len(filenameWithExt)-len(ext)]
-	return nameWithoutExt,ext
+	return nameWithoutExt, ext
 }
 
-func GetFileDatas(full string)(string,int){
+func GetFileDatas(full string) (string, int) {
 	data, err := ioutil.ReadFile(full)
 	if err != nil {
-		log.ErrorF("Error reading file:%s %s",full, err.Error())
-		return "",0
+		log.ErrorF("Error reading file:%s %s", full, err.Error())
+		return "", 0
 	}
-	return string(data),len(data)
+	return string(data), len(data)
 }
 
 func DeleteFile(full string) {
 	// 判断文件是否存在
 	if _, err := os.Stat(full); os.IsNotExist(err) {
-		// todo 
+		// todo
 	} else {
-			// 删除已存在的文件
+		// 删除已存在的文件
 		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-			log.DebugF("Error removing existing file:%s %s",full,err.Error())
+			log.DebugF("Error removing existing file:%s %s", full, err.Error())
 			return
 		}
-		log.DebugF("File already exists and remove success %s",full)
+		log.DebugF("File already exists and remove success %s", full)
 	}
 }
 
-func Mkdir(path string) int{
+func Mkdir(path string) int {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		err := os.MkdirAll(path,0755)
-		if err != nil{
-			log.ErrorF("Mkdir path=%s error=%s",path,err.Error())
+		err := os.MkdirAll(path, 0755)
+		if err != nil {
+			log.ErrorF("Mkdir path=%s error=%s", path, err.Error())
 			return 1
 		}
 	}
 	return 0
 }
 
-func Mvfile(full string,to string)int{
-	err := os.Rename(full,to)	
+func Mvfile(full string, to string) int {
+	err := os.Rename(full, to)
 	if err != nil {
-		log.ErrorF("movefile form=%s to=%s error=%s",full,to,err.Error())
+		log.ErrorF("movefile form=%s to=%s error=%s", full, to, err.Error())
 		return 1
 	}
 	return 0
 }
 
-func RmAndSaveFile(full string,content string){
+func RmAndSaveFile(full string, content string) {
 	// 判断文件是否存在
 	if _, err := os.Stat(full); os.IsNotExist(err) {
-		// todo 
+		// todo
 	} else {
-			// 删除已存在的文件
+		// 删除已存在的文件
 		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-			log.DebugF("Error removing existing file:%s %s",full,err.Error())
+			log.DebugF("Error removing existing file:%s %s", full, err.Error())
 			return
 		}
-		log.DebugF("File already exists and remove success %s",full)
+		log.DebugF("File already exists and remove success %s", full)
 	}
 
 	// 文件不存在，写入内容
 	err := ioutil.WriteFile(full, []byte(content), 0644)
 	if err != nil {
-		log.ErrorF("Error writing to file: %s %s", err.Error(),full)
+		log.ErrorF("Error writing to file: %s %s", err.Error(), full)
 	} else {
-		log.DebugF("File created and content written successfully. %s",full)
+		log.DebugF("File created and content written successfully. %s", full)
 	}
 }

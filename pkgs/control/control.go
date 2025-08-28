@@ -42,8 +42,8 @@ func GetBlogs(account string) map[string]*module.Blog {
 	return blog.GetBlogsWithAccount(account)
 }
 
-func GetMatch(match string) []*module.Blog {
-	return search.Search(match)
+func GetMatch(account, match string) []*module.Blog {
+	return search.Search(account, match)
 }
 
 func UpdateAccessTime(account string, b *module.Blog) {
@@ -54,24 +54,24 @@ func GetBlogAuthType(account, blogname string) int {
 	return blog.GetBlogAuthTypeWithAccount(account, blogname)
 }
 
-func GetBlogComments(blogname string) *module.BlogComments {
-	return comment.GetComments(blogname)
+func GetBlogComments(account, blogname string) *module.BlogComments {
+	return comment.GetComments(account, blogname)
 }
 
-func AddComment(title string, msg string, owner string, pwd string, mail string) {
-	comment.AddComment(title, msg, owner, pwd, mail)
+func AddComment(account, title string, msg string, owner string, pwd string, mail string) {
+	comment.AddComment(account, title, msg, owner, pwd, mail)
 }
 
-func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, string) {
-	return comment.AddCommentWithAuth(title, msg, sessionID, ip, userAgent)
+func AddCommentWithAuth(account, title, msg, sessionID, ip, userAgent string) (int, string) {
+	return comment.AddCommentWithAuth(account, title, msg, sessionID, ip, userAgent)
 }
 
-func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int, string) {
-	return comment.AddAnonymousComment(title, msg, username, email, ip, userAgent)
+func AddAnonymousComment(account, title, msg, username, email, ip, userAgent string) (int, string) {
+	return comment.AddAnonymousComment(account, title, msg, username, email, ip, userAgent)
 }
 
-func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent string) (int, string, string) {
-	return comment.AddCommentWithPassword(title, msg, username, email, password, ip, userAgent)
+func AddCommentWithPassword(account, title, msg, username, email, password, ip, userAgent string) (int, string, string) {
+	return comment.AddCommentWithPassword(account, title, msg, username, email, password, ip, userAgent)
 }
 
 // 读书功能控制层接口
@@ -253,8 +253,8 @@ func TagReplace(account, from string, to string) {
 }
 
 // 统计相关功能
-func GetStatistics() *statistics.Statistics {
-	return statistics.GetStatistics()
+func GetStatistics(account string) *statistics.Statistics {
+	return statistics.GetStatistics(account)
 }
 
 func RecordBlogAccess(blogTitle, ip, userAgent string) {

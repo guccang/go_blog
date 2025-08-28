@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"auth"
 	"bufio"
 	"bytes"
 	"config"
@@ -82,7 +83,7 @@ func Info() {
 
 // getConfigWithDefault 获取配置值，如果为空则使用默认值
 func getConfigWithDefault(key, defaultValue string) string {
-	value := config.GetConfig(key)
+	value := config.GetConfigWithAccount(config.GetAdminAccount(), key)
 	if value == "" {
 		return defaultValue
 	}
@@ -156,8 +157,8 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 	log.DebugF("Extracted user query: %s", userQuery)
 
 	// 保存对话到博客
-	log.Debug("Starting background conversation save to blog...")
-	go saveConversationToBlog(request.Messages)
+	//log.Debug("Starting background conversation save to blog...")
+	//go saveConversationToBlog(request.Messages)
 
 	// 设置流式响应头
 	log.Debug("Setting up streaming response headers...")
@@ -174,8 +175,15 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 	}
 
 	// 使用流式处理查询，直接转发LLM的流式响应
-	log.InfoF("Processing query with streaming LLM: %s", userQuery)
-	err = processQueryStreaming(userQuery, request.Tools, w, flusher)
+	session, err := r.Cookie("session")
+	if err != nil {
+		log.ErrorF("Error getting session cookie: %v", err)
+		http.Error(w, "Error getting session cookie", http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	account := auth.GetAccountBySession(session.Value)
+	log.InfoF("Processing query with streaming LLM: account=%s %s", account, userQuery)
+	err = processQueryStreaming(account, userQuery, request.Tools, w, flusher)
 	if err != nil {
 		log.ErrorF("Streaming ProcessQuery failed: %v", err)
 		fmt.Fprintf(w, "data: Error processing query: %v\n\n", err)
@@ -195,7 +203,7 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 
 // 保存对话到博客
 // 保存LLM完整响应到日记
-func saveLLMResponseToDiary(userQuery, llmResponse string) {
+func saveLLMResponseToDiary(account, userQuery, llmResponse string) {
 	if userQuery == "" || llmResponse == "" {
 		return
 	}
@@ -222,7 +230,7 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 `, now.Format("15:04:05"), userQuery, llmResponse)
 
 	// 检查是否已存在当天日记
-	existingBlog := control.GetBlog("", diaryTitle)
+	existingBlog := control.GetBlog(account, diaryTitle)
 	var finalContent string
 
 	if existingBlog != nil {
@@ -238,7 +246,7 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 			AuthType: existingBlog.AuthType,
 			Encrypt:  existingBlog.Encrypt,
 		}
-		control.ModifyBlog("", blogData)
+		control.ModifyBlog(account, blogData)
 		log.InfoF("LLM响应已追加到现有日记: %s", diaryTitle)
 	} else {
 		// 创建新的日记
@@ -254,152 +262,9 @@ func saveLLMResponseToDiary(userQuery, llmResponse string) {
 			Tags:     "日记|AI助手|自动生成",
 			AuthType: module.EAuthType_diary, // 使用日记权限
 		}
-		control.AddBlog("", blogData)
+		control.AddBlog(account, blogData)
 		log.InfoF("LLM响应已保存到新日记: %s", diaryTitle)
 	}
-}
-
-// ProcessQuery uses LLM and MCP server tools to process query
-func processQuery(query string, selectedTools []string) (string, error) {
-	log.DebugF("llm === Processing Query with LLM and MCP Tools ===")
-	log.DebugF("llm Query: %s", query)
-	log.DebugF("llm Selected tools: %v", selectedTools)
-	if len(selectedTools) > max_selected_tools {
-		log.WarnF("Selected tools count is too large, max is %d", max_selected_tools)
-		selectedTools = selectedTools[:max_selected_tools]
-	}
-
-	// Initialize messages
-	messages := []Message{
-		{
-			Role:    "system",
-			Content: "你是一个万能助手，自行决定是否调用工具获取数据，当你得到工具返回结果后，就不需要调用相同工具了，最后返回简单直接的结果给用户。",
-		},
-		{
-			Role:    "user",
-			Content: query,
-		},
-	}
-
-	log.InfoF("llm request: %v, selected_tools: %v", messages, selectedTools)
-
-	// Get available tools
-	availableTools := mcp.GetAvailableLLMTools(selectedTools)
-
-	// Initial LLM call
-	response, err := callLLM(messages, availableTools)
-	if err != nil {
-		return "", fmt.Errorf("LLM call failed: %v", err)
-	}
-
-	log.DebugF("llm response callLLM response=%v", response)
-
-	finalText := []string{}
-	message := response.Choices[0].Message
-	if message.Content != "" {
-		finalText = append(finalText, message.Content)
-	}
-	log.InfoF("llm choices[0] message: %v", message)
-
-	// Tool calling loop with max iterations
-	maxCall := 25
-	for len(message.ToolCalls) > 0 && maxCall > 0 {
-		maxCall--
-		log.DebugF("Tool calling iteration, remaining: %d", maxCall)
-
-		// Process each tool call
-		for _, toolCall := range message.ToolCalls {
-			toolName := toolCall.Function.Name
-			toolArgs := make(map[string]interface{})
-
-			// Parse tool arguments
-			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &toolArgs); err != nil {
-				log.ErrorF("Failed to parse tool arguments: %v", err)
-				continue
-			}
-
-			// Call the tool
-			log.InfoF("toocall begin: %s %v", toolName, toolArgs)
-			result := mcp.CallMCPTool(toolName, toolArgs)
-			finalText = append(finalText, fmt.Sprintf("[Calling tool %s with args %v]\n", toolName, toolArgs))
-			log.InfoF("toocall result: %s %v %v", toolName, toolArgs, result)
-
-			// Add tool call and result to message history
-			messages = append(messages, Message{
-				Role:      "assistant",
-				ToolCalls: []mcp.ToolCall{toolCall},
-			})
-
-			messages = append(messages, Message{
-				Role:       "tool",
-				ToolCallId: toolCall.ID,
-				Content:    fmt.Sprintf("%v", result.Result),
-			})
-		}
-
-		// Next LLM call with updated messages
-		log.InfoF("toolcall send to llm: %v", messages)
-		response, err = callLLM(messages, availableTools)
-		if err != nil {
-			log.ErrorF("LLM call failed in tool loop: %v", err)
-			break
-		}
-
-		message = response.Choices[0].Message
-		log.InfoF("toolcall llm response: %v", message)
-		if message.Content != "" {
-			finalText = append(finalText, message.Content)
-		}
-	}
-
-	// Join final text parts with double newlines to preserve markdown structure
-	result := strings.Join(finalText, "\n")
-	log.InfoF("llm Final result length: %d characters result=%s", len(result), result)
-	return result, nil
-}
-
-// callLLM makes a request to the LLM API
-func callLLM(messages []Message, tools []mcp.LLMTool) (*LLMResponse, error) {
-	request := LLMRequest{
-		Model:       llmConfig.Model,
-		Messages:    messages,
-		Tools:       tools,
-		Temperature: llmConfig.Temperature,
-	}
-
-	requestJSON, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %v", err)
-	}
-
-	log.DebugF("llm request llmConfig.BaseURL=%s requestJSON=%s", llmConfig.BaseURL, string(requestJSON))
-	req, err := http.NewRequest("POST", llmConfig.BaseURL, bytes.NewBuffer(requestJSON))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+llmConfig.APIKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %v", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
-	}
-	log.DebugF("llm response raw body data resp.Body=%v body=%s", resp.Body, string(body))
-
-	var response LLMResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %v", err)
-	}
-	log.DebugF("llm response unmarshal response=%v", response)
-
-	return &response, nil
 }
 
 // 原有的保存对话功能，现在重构为保存用户问题的占位符
@@ -425,20 +290,21 @@ func saveConversationToBlog(messages []Message) {
 }
 
 // processQueryStreaming 支持工具调用的流式处理LLM响应
-func processQueryStreaming(query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
+func processQueryStreaming(account string, query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
 	log.DebugF("=== Streaming LLM Processing Started with Tool Support ===")
-	log.DebugF("Query: %s", query)
+	log.DebugF("Query: account=%s %s", account, query)
 	log.DebugF("Selected tools: %v", selectedTools)
 	if len(selectedTools) > max_selected_tools {
 		log.WarnF("Selected tools count is too large, max is %d", max_selected_tools)
 		selectedTools = selectedTools[:max_selected_tools]
 	}
+	sys_promopt := fmt.Sprintf("使用%s账号作为参数,你是一个万能助手，自行决定是否调用工具获取数据，当你得到工具返回结果后，就不需要调用相同工具了，最后返回简单直接的结果给用户。", account)
 
 	// Initialize messages
 	messages := []Message{
 		{
 			Role:    "system",
-			Content: "你是一个万能助手，自行决定是否调用工具获取数据，当你得到工具返回结果后，就不需要调用相同工具了，最后返回简单直接的结果给用户。",
+			Content: sys_promopt,
 		},
 		{
 			Role:    "user",
@@ -512,7 +378,7 @@ func processQueryStreaming(query string, selectedTools []string, w http.Response
 			})
 
 			// Add tool call info to full response for saving
-			save := config.GetConfig("assistant_save_mcp_result")
+			save := config.GetConfigWithAccount(config.GetAdminAccount(), "assistant_save_mcp_result")
 			// len(result.Result) < 32 表示结果很短，不会是隐私数据，因此可以存入Assistant_xxx中
 			if strings.ToLower(save) == "true" || len(fmt.Sprintf("%v", result.Result)) < 32 {
 				fullResponse.WriteString(fmt.Sprintf("\n[Tool %s called with result: %v]\n", toolName, result.Result))
@@ -539,7 +405,7 @@ func processQueryStreaming(query string, selectedTools []string, w http.Response
 	flusher.Flush()
 
 	// Save complete response to diary
-	go saveLLMResponseToDiary(query, fullResponse.String())
+	go saveLLMResponseToDiary(account, query, fullResponse.String())
 	return nil
 }
 
@@ -741,7 +607,7 @@ func isValidJSON(str string) bool {
 }
 
 // forwardStreamingResponse 转发LLM的流式响应到客户端
-func forwardStreamingResponse(responseBody io.ReadCloser, w http.ResponseWriter, flusher http.Flusher, originalQuery string) error {
+func forwardStreamingResponse(account string, responseBody io.ReadCloser, w http.ResponseWriter, flusher http.Flusher, originalQuery string) error {
 	scanner := bufio.NewScanner(responseBody)
 	var fullResponse strings.Builder
 
@@ -761,7 +627,7 @@ func forwardStreamingResponse(responseBody io.ReadCloser, w http.ResponseWriter,
 			if data == "[DONE]" {
 				log.DebugF("LLM streaming completed")
 				// 保存完整响应到日记
-				go saveLLMResponseToDiary(originalQuery, fullResponse.String())
+				go saveLLMResponseToDiary(account, originalQuery, fullResponse.String())
 				return nil
 			}
 
@@ -796,6 +662,6 @@ func forwardStreamingResponse(responseBody io.ReadCloser, w http.ResponseWriter,
 	}
 
 	// Save final response
-	go saveLLMResponseToDiary(originalQuery, fullResponse.String())
+	go saveLLMResponseToDiary(account, originalQuery, fullResponse.String())
 	return nil
 }

@@ -332,6 +332,11 @@ func Init() int {
 	h.HandleFunc("/skill", HandleSkill)
 	RegisterSkillRoutes()
 
+	// Migration routes
+	h.HandleFunc("/migration", HandleMigration)
+	h.HandleFunc("/migration/export", HandleMigrationExport)
+	h.HandleFunc("/migration/import", HandleMigrationImport)
+
 	// Static file server
 	root := config.GetHttpStaticPath()
 	fs := h.FileServer(h.Dir(root))
@@ -343,7 +348,7 @@ func Init() int {
 // Run starts the HTTP server
 func Run(certFile string, keyFile string) int {
 	Init()
-	port := config.GetConfig("port")
+	port := config.GetConfigWithAccount(config.GetAdminAccount(), "port")
 	//h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
 	if len(certFile) <= 0 || len(keyFile) <= 0 {
 		h.ListenAndServe(fmt.Sprintf(":%s", port), nil)

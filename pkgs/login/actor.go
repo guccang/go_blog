@@ -3,6 +3,7 @@ package login
 import (
 	"auth"
 	"blog"
+	"config"
 	"core"
 	"encoding/json"
 	"fmt"
@@ -68,11 +69,14 @@ func (alogin *LoginActor) generateSMSCode(account string) (string, int) {
 // 账号密码登录
 // 返回session，错误码
 func (alogin *LoginActor) login(account string, password string) (string, int) {
-	if alogin.users[account].Account != account {
+	if _, exists := alogin.users[account]; !exists {
 		return "", 1
 	}
-	if alogin.users[account].Password != password {
+	if alogin.users[account].Account != account {
 		return "", 2
+	}
+	if alogin.users[account].Password != password {
+		return "", 3
 	}
 
 	s := auth.AddSession(account)
@@ -91,17 +95,17 @@ func (alogin *LoginActor) register(account string, password string) int {
 	if account == "" || password == "" {
 		return 2
 	}
-	
+
 	if _, exists := alogin.users[account]; exists {
 		return 1
 	}
-	
+
 	// 添加用户到内存
 	alogin.users[account] = &module.User{
 		Account:  account,
 		Password: password,
 	}
-	
+
 	// 保存所有用户账户到管理员博客中
 	if err := alogin.saveUsersToAdminBlog(); err != nil {
 		log.ErrorF("Failed to save users to admin blog: %v", err)
@@ -109,7 +113,7 @@ func (alogin *LoginActor) register(account string, password string) int {
 		delete(alogin.users, account)
 		return 3
 	}
-	
+
 	log.InfoF("User registered successfully: %s", account)
 	return 0
 }
@@ -121,53 +125,53 @@ func (alogin *LoginActor) saveUsersToAdminBlog() error {
 	if err != nil {
 		return err
 	}
-	
+
 	// 创建博客数据结构
 	udb := &module.UploadedBlogData{
 		Title:    "sys_accounts",
 		Content:  string(usersJSON),
 		AuthType: module.EAuthType_private, // 设为私有，保护用户数据
 		Tags:     "sys_accounts",
-		Account:  blog.GetDefaultAccount(), // 使用管理员账户
+		Account:  config.GetAdminAccount(), // 使用管理员账户
 	}
-	
+
 	// 检查是否已存在
-	existingBlog := blog.GetBlogWithAccount(blog.GetDefaultAccount(), "sys_accounts")
+	existingBlog := blog.GetBlogWithAccount(config.GetAdminAccount(), "sys_accounts")
 	var ret int
 	if existingBlog == nil {
-		ret = blog.AddBlogWithAccount(blog.GetDefaultAccount(), udb)
+		ret = blog.AddBlogWithAccount(config.GetAdminAccount(), udb)
 	} else {
-		ret = blog.ModifyBlogWithAccount(blog.GetDefaultAccount(), udb)
+		ret = blog.ModifyBlogWithAccount(config.GetAdminAccount(), udb)
 	}
-	
+
 	if ret != 0 {
 		return fmt.Errorf("failed to save users blog, error code: %d", ret)
 	}
-	
+
 	return nil
 }
 
 // 从管理员博客加载用户账户数据
 func (alogin *LoginActor) loadUsersFromAdminBlog() error {
 	// 获取sys_accounts博客
-	accountsBlog := blog.GetBlogWithAccount(blog.GetDefaultAccount(), "sys_accounts")
+	accountsBlog := blog.GetBlogWithAccount(config.GetAdminAccount(), "sys_accounts")
 	if accountsBlog == nil {
 		log.InfoF("No sys_accounts blog found, starting with empty user database")
 		return nil
 	}
-	
+
 	// 解析JSON数据
 	var loadedUsers map[string]*module.User
 	if err := json.Unmarshal([]byte(accountsBlog.Content), &loadedUsers); err != nil {
 		return fmt.Errorf("failed to parse sys_accounts JSON: %v", err)
 	}
-	
+
 	// 加载用户到内存中
 	for account, user := range loadedUsers {
 		alogin.users[account] = user
 		log.DebugF("Loaded user: %s", account)
 	}
-	
+
 	log.InfoF("Successfully loaded %d users from sys_accounts", len(loadedUsers))
 	return nil
 }

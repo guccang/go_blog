@@ -65,7 +65,7 @@ func (s *ShareActor) getSharedTag(tag string) *SharedTag {
 
 func (s *ShareActor) get7DaysTimeOutStamp() int64 {
 	utcTimestamp := time.Now().UTC().Unix()
-	share_days, err := strconv.Atoi(config.GetConfig("share_days"))
+	share_days, err := strconv.Atoi(config.GetConfigWithAccount(config.GetAdminAccount(), "share_days"))
 	if err != nil {
 		share_days = 7
 	}

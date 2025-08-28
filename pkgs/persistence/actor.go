@@ -59,35 +59,24 @@ func (p *PersistenceActor) connect(ip string, port int, password string) int {
 	return 0
 }
 
-func (p *PersistenceActor) deleteBlog(title string) int {
+func (p *PersistenceActor) deleteBlog(account, title string) int {
 	// delete redis keys for all accounts and legacy key
 	pattern := fmt.Sprintf("*:blog@%s", title)
 	keys, _ := p.client.Keys(pattern).Result()
 	legacyKey := fmt.Sprintf("blog@%s", title)
 	keys = append(keys, legacyKey)
-	var accountForFile string
 	for _, k := range keys {
 		if err := p.client.Del(k).Err(); err != nil {
 			log.ErrorF("delete error key=%s err=%s", k, err.Error())
 		} else {
 			log.DebugF("delete key=%s", k)
-			// parse account prefix if present
-			if idx := strings.Index(k, ":blog@"); idx > 0 {
-				accountForFile = k[:idx]
-			}
 		}
 	}
-	p.deleteFile(accountForFile, title)
+	p.deleteFile(account, title)
 	return 0
 }
 
-func (p *PersistenceActor) saveBlog(blog *module.Blog) {
-	account := blog.Account
-	if account == "" {
-		// default to admin when not provided
-		account = config.GetConfig("admin")
-		blog.Account = account
-	}
+func (p *PersistenceActor) saveBlog(account string, blog *module.Blog) {
 
 	key := fmt.Sprintf("%s:blog@%s", account, blog.Title)
 	values := make(map[string]interface{})
@@ -108,12 +97,12 @@ func (p *PersistenceActor) saveBlog(blog *module.Blog) {
 	}
 	log.DebugF("redis saveblog success key=%s mt=%s", key, blog.ModifyTime)
 
-	p.saveToFile(blog)
+	p.saveToFile(account, blog)
 }
 
-func (p *PersistenceActor) saveBlogs(blogs map[string]*module.Blog) {
+func (p *PersistenceActor) saveBlogs(account string, blogs map[string]*module.Blog) {
 	for _, b := range blogs {
-		p.saveBlog(b)
+		p.saveBlog(account, b)
 	}
 }
 
@@ -174,34 +163,6 @@ func (p *PersistenceActor) toBlog(m map[string]string) *module.Blog {
 	return &b
 }
 
-func (p *PersistenceActor) getBlogs() map[string]*module.Blog {
-	keys, err := p.client.Keys("*:blog@*").Result()
-	if err != nil {
-		log.ErrorF("getblogs error keys=*:blog@* err=%s", err.Error())
-		return nil
-	}
-	// also load legacy keys if exist
-	legacy, _ := p.client.Keys("blog@*").Result()
-	keys = append(keys, legacy...)
-
-	blogs := make(map[string]*module.Blog)
-
-	for _, key := range keys {
-		log.DebugF("getblog key=%s", key)
-		m, err := p.client.HGetAll(key).Result()
-		if err != nil {
-			log.ErrorF("getblog error key=%s err=%s", key, err.Error())
-			continue
-		}
-		log.DebugF("getblog success key=%s", key)
-		b := p.toBlog(m)
-		blogs[b.Title] = b
-		p.showBlog(b)
-	}
-
-	return blogs
-}
-
 func (p *PersistenceActor) showBlog(b *module.Blog) {
 	log.DebugF("title=%s", b.Title)
 	log.DebugF("ct=%s", b.CreateTime)
@@ -212,10 +173,7 @@ func (p *PersistenceActor) showBlog(b *module.Blog) {
 }
 
 func (p *PersistenceActor) getBlogsByAccount(account string) map[string]*module.Blog {
-	if account == "" {
-		return p.getBlogs()
-	}
-
+	log.DebugF("getBlogsByAccount account=%s", account)
 	pattern := fmt.Sprintf("%s:blog@*", account)
 	keys, err := p.client.Keys(pattern).Result()
 	if err != nil {
@@ -223,50 +181,34 @@ func (p *PersistenceActor) getBlogsByAccount(account string) map[string]*module.
 		return nil
 	}
 
-	// also load legacy keys for this account if they exist
-	legacyPattern := fmt.Sprintf("blog@*")
-	legacyKeys, _ := p.client.Keys(legacyPattern).Result()
-	// Filter legacy keys to only include those that belong to this account
-	var filteredLegacyKeys []string
-	for _, key := range legacyKeys {
-		// Check if this legacy blog belongs to the requested account
-		if len(key) < 6 {
-			log.DebugF("getblogbyaccount error key=%s", key)
-			continue
-		}
-		if blog := p.getBlogWithAccount(account, key[6:]); blog != nil {
-			filteredLegacyKeys = append(filteredLegacyKeys, key)
-		}
+	if account == config.GetAdminAccount() {
+		legacy, _ := p.client.Keys("blog@*").Result()
+		keys = append(keys, legacy...)
+		log.DebugF("getBlogsByAccount admin account=%s keys_len=%d", account, len(keys))
+	} else {
+		log.DebugF("getBlogsByAccount account=%s keys_len=%d", account, len(keys))
 	}
-	keys = append(keys, filteredLegacyKeys...)
 
 	blogs := make(map[string]*module.Blog)
 
 	for _, key := range keys {
-		log.DebugF("getblogbyaccount key=%s", key)
 		m, err := p.client.HGetAll(key).Result()
 		if err != nil {
 			log.ErrorF("getblogbyaccount error key=%s err=%s", key, err.Error())
 			continue
 		}
-		log.DebugF("getblogbyaccount success key=%s", key)
 		b := p.toBlog(m)
-		// Only include blogs that belong to the requested account
-		if b.Account == account {
-			blogs[b.Title] = b
-			p.showBlog(b)
-		}
+		blogs[b.Title] = b
 	}
 
+	log.DebugF("getBlogsByAccount blogs_len=%d", len(blogs))
 	return blogs
 }
 
 func (p *PersistenceActor) deleteFile(account string, title string) int {
 	filename := title
-	path := config.GetBlogsPath()
-	if account != "" {
-		path = filepath.Join(path, account)
-	}
+	path := config.GetBlogsPath(account)
+
 	ioutils.Mkdir(path)
 	full := filepath.Join(path, filename)
 	full = fmt.Sprintf("%s.md", full)
@@ -278,17 +220,20 @@ func (p *PersistenceActor) deleteFile(account string, title string) int {
 	return 0
 }
 
-func (p *PersistenceActor) saveToFile(blog *module.Blog) {
+func (p *PersistenceActor) saveToFile(account string, blog *module.Blog) {
 	filename := blog.Title
 	content := blog.Content
 
-	path := config.GetBlogsPath()
-	if blog.Account != "" {
-		path = filepath.Join(path, blog.Account)
+	if blog.Account == "" {
+		blog.Account = account
 	}
+
+	path := config.GetBlogsPath(account)
+
 	ioutils.Mkdir(path)
 	full := filepath.Join(path, filename)
 	full = fmt.Sprintf("%s.md", full)
+	log.DebugF("saveToFile full=%s", full)
 
 	fcontent, _ := ioutils.GetFileDatas(full)
 	if content == fcontent {
@@ -298,7 +243,7 @@ func (p *PersistenceActor) saveToFile(blog *module.Blog) {
 	ioutils.RmAndSaveFile(full, content)
 }
 
-func (p *PersistenceActor) saveBlogComments(bc *module.BlogComments) {
+func (p *PersistenceActor) saveBlogComments(account string, bc *module.BlogComments) {
 	log.DebugF("SaveBlogComments title=%s comments_len=%d", bc.Title, len(bc.Comments))
 
 	key := fmt.Sprintf("comments@%s", bc.Title)
@@ -326,7 +271,7 @@ func (p *PersistenceActor) saveBlogComments(bc *module.BlogComments) {
 	}
 }
 
-func (p *PersistenceActor) getAllBlogComments() map[string]*module.BlogComments {
+func (p *PersistenceActor) getAllBlogComments(account string) map[string]*module.BlogComments {
 	keys, err := p.client.Keys("comments@*").Result()
 	if err != nil {
 		log.ErrorF("getcomments error keys=comments@* err=%s", err.Error())
@@ -440,7 +385,7 @@ func (p *PersistenceActor) showBlogComments(cs *module.BlogComments) {
 	}
 }
 
-func (p *PersistenceActor) saveCommentUser(user *module.CommentUser) {
+func (p *PersistenceActor) saveCommentUser(account string, user *module.CommentUser) {
 	key := fmt.Sprintf("comment_user@%s", user.UserID)
 	values := make(map[string]interface{})
 	values["user_id"] = user.UserID
@@ -462,7 +407,7 @@ func (p *PersistenceActor) saveCommentUser(user *module.CommentUser) {
 	}
 }
 
-func (p *PersistenceActor) saveCommentSession(session *module.CommentSession) {
+func (p *PersistenceActor) saveCommentSession(account string, session *module.CommentSession) {
 	key := fmt.Sprintf("comment_session@%s", session.SessionID)
 	values := make(map[string]interface{})
 	values["session_id"] = session.SessionID
@@ -481,7 +426,7 @@ func (p *PersistenceActor) saveCommentSession(session *module.CommentSession) {
 	}
 }
 
-func (p *PersistenceActor) saveUsernameReservation(reservation *module.UsernameReservation) {
+func (p *PersistenceActor) saveUsernameReservation(account string, reservation *module.UsernameReservation) {
 	key := fmt.Sprintf("username_reservation@%s", reservation.Username)
 	values := make(map[string]interface{})
 	values["username"] = reservation.Username
@@ -497,7 +442,7 @@ func (p *PersistenceActor) saveUsernameReservation(reservation *module.UsernameR
 	}
 }
 
-func (p *PersistenceActor) getAllCommentUsers() map[string]*module.CommentUser {
+func (p *PersistenceActor) getAllCommentUsers(account string) map[string]*module.CommentUser {
 	keys, err := p.client.Keys("comment_user@*").Result()
 	if err != nil {
 		log.ErrorF("GetAllCommentUsers error keys=comment_user@* err=%s", err.Error())
@@ -523,7 +468,7 @@ func (p *PersistenceActor) getAllCommentUsers() map[string]*module.CommentUser {
 	return users
 }
 
-func (p *PersistenceActor) getAllUsernameReservations() map[string]*module.UsernameReservation {
+func (p *PersistenceActor) getAllUsernameReservations(account string) map[string]*module.UsernameReservation {
 	keys, err := p.client.Keys("username_reservation@*").Result()
 	if err != nil {
 		log.ErrorF("GetAllUsernameReservations error keys=username_reservation@* err=%s", err.Error())
@@ -548,7 +493,7 @@ func (p *PersistenceActor) getAllUsernameReservations() map[string]*module.Usern
 	return reservations
 }
 
-func (p *PersistenceActor) getAllCommentSessions() map[string]*module.CommentSession {
+func (p *PersistenceActor) getAllCommentSessions(account string) map[string]*module.CommentSession {
 	keys, err := p.client.Keys("comment_session@*").Result()
 	if err != nil {
 		log.ErrorF("GetAllCommentSessions error keys=comment_session@* err=%s", err.Error())
@@ -573,7 +518,7 @@ func (p *PersistenceActor) getAllCommentSessions() map[string]*module.CommentSes
 	return sessions
 }
 
-func (p *PersistenceActor) deleteCommentSession(sessionID string) {
+func (p *PersistenceActor) deleteCommentSession(account, sessionID string) {
 	key := fmt.Sprintf("comment_session@%s", sessionID)
 	err := p.client.Del(key).Err()
 	if err != nil {
@@ -583,7 +528,7 @@ func (p *PersistenceActor) deleteCommentSession(sessionID string) {
 	}
 }
 
-func (p *PersistenceActor) deleteUsernameReservation(username string) {
+func (p *PersistenceActor) deleteUsernameReservation(account, username string) {
 	key := fmt.Sprintf("username_reservation@%s", username)
 	err := p.client.Del(key).Err()
 	if err != nil {
@@ -670,9 +615,6 @@ func (p *PersistenceActor) getBlogWithAccount(account, name string) *module.Blog
 }
 
 func (p *PersistenceActor) deleteBlogWithAccount(account, title string) int {
-	if account == "" {
-		return p.deleteBlog(title)
-	}
 
 	// delete account-specific key
 	key := fmt.Sprintf("%s:blog@%s", account, title)

@@ -9,6 +9,7 @@ import (
 // AddExerciseCmd adds a new exercise item
 type AddExerciseCmd struct {
 	core.ActorCommand
+	Account   string
 	Date      string
 	Name      string
 	Type      string
@@ -22,7 +23,7 @@ type AddExerciseCmd struct {
 
 func (cmd *AddExerciseCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	item, err := exerciseActor.addExercise(cmd.Date, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
+	item, err := exerciseActor.addExercise(cmd.Account, cmd.Date, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
 	if err != nil {
 		cmd.Response() <- nil
 		cmd.Response() <- err
@@ -35,19 +36,21 @@ func (cmd *AddExerciseCmd) Do(actor core.ActorInterface) {
 // DeleteExerciseCmd removes an exercise item by ID
 type DeleteExerciseCmd struct {
 	core.ActorCommand
-	Date string
-	ID   string
+	Account string
+	Date    string
+	ID      string
 }
 
 func (cmd *DeleteExerciseCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.deleteExercise(cmd.Date, cmd.ID)
+	err := exerciseActor.deleteExercise(cmd.Account, cmd.Date, cmd.ID)
 	cmd.Response() <- err
 }
 
 // UpdateExerciseCmd updates an existing exercise item
 type UpdateExerciseCmd struct {
 	core.ActorCommand
+	Account   string
 	Date      string
 	ID        string
 	Name      string
@@ -62,32 +65,34 @@ type UpdateExerciseCmd struct {
 
 func (cmd *UpdateExerciseCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.updateExercise(cmd.Date, cmd.ID, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
+	err := exerciseActor.updateExercise(cmd.Account, cmd.Date, cmd.ID, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
 	cmd.Response() <- err
 }
 
 // ToggleExerciseCmd toggles the completion status of an exercise item
 type ToggleExerciseCmd struct {
 	core.ActorCommand
-	Date string
-	ID   string
+	Account string
+	Date    string
+	ID      string
 }
 
 func (cmd *ToggleExerciseCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.toggleExercise(cmd.Date, cmd.ID)
+	err := exerciseActor.toggleExercise(cmd.Account, cmd.Date, cmd.ID)
 	cmd.Response() <- err
 }
 
 // GetExercisesByDateCmd retrieves the exercise list for a specific date
 type GetExercisesByDateCmd struct {
 	core.ActorCommand
-	Date string
+	Account string
+	Date    string
 }
 
 func (cmd *GetExercisesByDateCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	exercises, err := exerciseActor.getExercisesByDate(cmd.Date)
+	exercises, err := exerciseActor.getExercisesByDate(cmd.Account, cmd.Date)
 	cmd.Response() <- exercises
 	cmd.Response() <- err
 }
@@ -95,11 +100,12 @@ func (cmd *GetExercisesByDateCmd) Do(actor core.ActorInterface) {
 // GetAllExercisesCmd retrieves all exercise lists
 type GetAllExercisesCmd struct {
 	core.ActorCommand
+	Account string
 }
 
 func (cmd *GetAllExercisesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	exercises, err := exerciseActor.getAllExercises()
+	exercises, err := exerciseActor.getAllExercises(cmd.Account)
 	cmd.Response() <- exercises
 	cmd.Response() <- err
 }
@@ -107,6 +113,7 @@ func (cmd *GetAllExercisesCmd) Do(actor core.ActorInterface) {
 // AddTemplateCmd adds a new exercise template
 type AddTemplateCmd struct {
 	core.ActorCommand
+	Account   string
 	Name      string
 	Type      string
 	Duration  int
@@ -119,7 +126,7 @@ type AddTemplateCmd struct {
 
 func (cmd *AddTemplateCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	template, err := exerciseActor.addTemplate(cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
+	template, err := exerciseActor.addTemplate(cmd.Account, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
 	if err != nil {
 		cmd.Response() <- nil
 		cmd.Response() <- err
@@ -132,18 +139,20 @@ func (cmd *AddTemplateCmd) Do(actor core.ActorInterface) {
 // DeleteTemplateCmd removes a template by ID
 type DeleteTemplateCmd struct {
 	core.ActorCommand
-	ID string
+	Account string
+	ID      string
 }
 
 func (cmd *DeleteTemplateCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.deleteTemplate(cmd.ID)
+	err := exerciseActor.deleteTemplate(cmd.Account, cmd.ID)
 	cmd.Response() <- err
 }
 
 // UpdateTemplateCmd updates an existing template
 type UpdateTemplateCmd struct {
 	core.ActorCommand
+	Account   string
 	ID        string
 	Name      string
 	Type      string
@@ -157,18 +166,19 @@ type UpdateTemplateCmd struct {
 
 func (cmd *UpdateTemplateCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.updateTemplate(cmd.ID, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
+	err := exerciseActor.updateTemplate(cmd.Account, cmd.ID, cmd.Name, cmd.Type, cmd.Duration, cmd.Intensity, cmd.Calories, cmd.Notes, cmd.Weight, cmd.BodyParts)
 	cmd.Response() <- err
 }
 
 // GetTemplatesCmd retrieves all exercise templates
 type GetTemplatesCmd struct {
 	core.ActorCommand
+	Account string
 }
 
 func (cmd *GetTemplatesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	templates, err := exerciseActor.getTemplates()
+	templates, err := exerciseActor.getTemplates(cmd.Account)
 	cmd.Response() <- templates
 	cmd.Response() <- err
 }
@@ -176,12 +186,13 @@ func (cmd *GetTemplatesCmd) Do(actor core.ActorInterface) {
 // GetWeeklyStatsCmd calculates weekly exercise statistics
 type GetWeeklyStatsCmd struct {
 	core.ActorCommand
+	Account   string
 	StartDate string
 }
 
 func (cmd *GetWeeklyStatsCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	stats, err := exerciseActor.getWeeklyStats(cmd.StartDate)
+	stats, err := exerciseActor.getWeeklyStats(cmd.Account, cmd.StartDate)
 	cmd.Response() <- stats
 	cmd.Response() <- err
 }
@@ -189,13 +200,14 @@ func (cmd *GetWeeklyStatsCmd) Do(actor core.ActorInterface) {
 // GetMonthlyStatsCmd calculates monthly exercise statistics
 type GetMonthlyStatsCmd struct {
 	core.ActorCommand
-	Year  int
-	Month int
+	Account string
+	Year    int
+	Month   int
 }
 
 func (cmd *GetMonthlyStatsCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	stats, err := exerciseActor.getMonthlyStats(cmd.Year, cmd.Month)
+	stats, err := exerciseActor.getMonthlyStats(cmd.Account, cmd.Year, cmd.Month)
 	cmd.Response() <- stats
 	cmd.Response() <- err
 }
@@ -203,12 +215,13 @@ func (cmd *GetMonthlyStatsCmd) Do(actor core.ActorInterface) {
 // GetYearlyStatsCmd calculates yearly exercise statistics
 type GetYearlyStatsCmd struct {
 	core.ActorCommand
-	Year int
+	Account string
+	Year    int
 }
 
 func (cmd *GetYearlyStatsCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	stats, err := exerciseActor.getYearlyStats(cmd.Year)
+	stats, err := exerciseActor.getYearlyStats(cmd.Account, cmd.Year)
 	cmd.Response() <- stats
 	cmd.Response() <- err
 }
@@ -216,6 +229,7 @@ func (cmd *GetYearlyStatsCmd) Do(actor core.ActorInterface) {
 // AddCollectionCmd adds a new template collection
 type AddCollectionCmd struct {
 	core.ActorCommand
+	Account     string
 	Name        string
 	Description string
 	TemplateIDs []string
@@ -223,7 +237,7 @@ type AddCollectionCmd struct {
 
 func (cmd *AddCollectionCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	collection, err := exerciseActor.addCollection(cmd.Name, cmd.Description, cmd.TemplateIDs)
+	collection, err := exerciseActor.addCollection(cmd.Account, cmd.Name, cmd.Description, cmd.TemplateIDs)
 	if err != nil {
 		cmd.Response() <- nil
 		cmd.Response() <- err
@@ -236,18 +250,20 @@ func (cmd *AddCollectionCmd) Do(actor core.ActorInterface) {
 // DeleteCollectionCmd removes a collection by ID
 type DeleteCollectionCmd struct {
 	core.ActorCommand
-	ID string
+	Account string
+	ID      string
 }
 
 func (cmd *DeleteCollectionCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.deleteCollection(cmd.ID)
+	err := exerciseActor.deleteCollection(cmd.Account, cmd.ID)
 	cmd.Response() <- err
 }
 
 // UpdateCollectionCmd updates an existing collection
 type UpdateCollectionCmd struct {
 	core.ActorCommand
+	Account     string
 	ID          string
 	Name        string
 	Description string
@@ -256,18 +272,19 @@ type UpdateCollectionCmd struct {
 
 func (cmd *UpdateCollectionCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.updateCollection(cmd.ID, cmd.Name, cmd.Description, cmd.TemplateIDs)
+	err := exerciseActor.updateCollection(cmd.Account, cmd.ID, cmd.Name, cmd.Description, cmd.TemplateIDs)
 	cmd.Response() <- err
 }
 
 // GetCollectionsCmd retrieves all template collections
 type GetCollectionsCmd struct {
 	core.ActorCommand
+	Account string
 }
 
 func (cmd *GetCollectionsCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	collections, err := exerciseActor.getCollections()
+	collections, err := exerciseActor.getCollections(cmd.Account)
 	cmd.Response() <- collections
 	cmd.Response() <- err
 }
@@ -275,12 +292,13 @@ func (cmd *GetCollectionsCmd) Do(actor core.ActorInterface) {
 // GetCollectionWithTemplatesCmd retrieves a collection with its associated templates
 type GetCollectionWithTemplatesCmd struct {
 	core.ActorCommand
+	Account      string
 	CollectionID string
 }
 
 func (cmd *GetCollectionWithTemplatesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	collection, templates, err := exerciseActor.getCollectionWithTemplates(cmd.CollectionID)
+	collection, templates, err := exerciseActor.getCollectionWithTemplates(cmd.Account, cmd.CollectionID)
 	cmd.Response() <- collection
 	cmd.Response() <- templates
 	cmd.Response() <- err
@@ -289,19 +307,21 @@ func (cmd *GetCollectionWithTemplatesCmd) Do(actor core.ActorInterface) {
 // AddFromCollectionCmd adds all exercises from a collection to a specific date
 type AddFromCollectionCmd struct {
 	core.ActorCommand
+	Account      string
 	Date         string
 	CollectionID string
 }
 
 func (cmd *AddFromCollectionCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.addFromCollection(cmd.Date, cmd.CollectionID)
+	err := exerciseActor.addFromCollection(cmd.Account, cmd.Date, cmd.CollectionID)
 	cmd.Response() <- err
 }
 
 // CalculateCaloriesCmd calculates calories burned
 type CalculateCaloriesCmd struct {
 	core.ActorCommand
+	Account      string
 	ExerciseType string
 	Intensity    string
 	Duration     int
@@ -317,6 +337,7 @@ func (cmd *CalculateCaloriesCmd) Do(actor core.ActorInterface) {
 // GetMETValueWithDescriptionCmd returns the MET value and description
 type GetMETValueWithDescriptionCmd struct {
 	core.ActorCommand
+	Account      string
 	ExerciseType string
 	Intensity    string
 }
@@ -331,16 +352,17 @@ func (cmd *GetMETValueWithDescriptionCmd) Do(actor core.ActorInterface) {
 // SaveUserProfileCmd saves or updates user profile
 type SaveUserProfileCmd struct {
 	core.ActorCommand
-	Name   string
-	Gender string
-	Weight float64
-	Height float64
-	Age    int
+	Account string
+	Name    string
+	Gender  string
+	Weight  float64
+	Height  float64
+	Age     int
 }
 
 func (cmd *SaveUserProfileCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	profile, err := exerciseActor.saveUserProfile(cmd.Name, cmd.Gender, cmd.Weight, cmd.Height, cmd.Age)
+	profile, err := exerciseActor.saveUserProfile(cmd.Account, cmd.Name, cmd.Gender, cmd.Weight, cmd.Height, cmd.Age)
 	if err != nil {
 		cmd.Response() <- nil
 		cmd.Response() <- err
@@ -353,11 +375,12 @@ func (cmd *SaveUserProfileCmd) Do(actor core.ActorInterface) {
 // GetUserProfileCmd retrieves user profile
 type GetUserProfileCmd struct {
 	core.ActorCommand
+	Account string
 }
 
 func (cmd *GetUserProfileCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	profile, err := exerciseActor.getUserProfile()
+	profile, err := exerciseActor.getUserProfile(cmd.Account)
 	cmd.Response() <- profile
 	cmd.Response() <- err
 }
@@ -365,11 +388,12 @@ func (cmd *GetUserProfileCmd) Do(actor core.ActorInterface) {
 // GetMETValuesCmd retrieves MET values
 type GetMETValuesCmd struct {
 	core.ActorCommand
+	Account string
 }
 
 func (cmd *GetMETValuesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	metValues, err := exerciseActor.getMETValues()
+	metValues, err := exerciseActor.getMETValues(cmd.Account)
 	cmd.Response() <- metValues
 	cmd.Response() <- err
 }
@@ -377,24 +401,26 @@ func (cmd *GetMETValuesCmd) Do(actor core.ActorInterface) {
 // UpdateAllTemplateCaloriesCmd updates calories for all existing templates
 type UpdateAllTemplateCaloriesCmd struct {
 	core.ActorCommand
-	Weight float64
+	Account string
+	Weight  float64
 }
 
 func (cmd *UpdateAllTemplateCaloriesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.updateAllTemplateCalories(cmd.Weight)
+	err := exerciseActor.updateAllTemplateCalories(cmd.Account, cmd.Weight)
 	cmd.Response() <- err
 }
 
 // UpdateAllExerciseCaloriesCmd updates calories for all existing exercise records
 type UpdateAllExerciseCaloriesCmd struct {
 	core.ActorCommand
-	Weight float64
+	Account string
+	Weight  float64
 }
 
 func (cmd *UpdateAllExerciseCaloriesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	updatedCount, err := exerciseActor.updateAllExerciseCalories(cmd.Weight)
+	updatedCount, err := exerciseActor.updateAllExerciseCalories(cmd.Account, cmd.Weight)
 	cmd.Response() <- updatedCount
 	cmd.Response() <- err
 }

@@ -76,8 +76,9 @@ func main() {
 	// Init
 	config.Init(args[1])
 
+	account := config.GetAdminAccount()
 	// Initialize logging system with logs directory
-	logsDir := config.GetConfig("logs_dir")
+	logsDir := config.GetConfigWithAccount(account, "logs_dir")
 	if err := log.Init(logsDir); err != nil {
 		fmt.Printf("Warning: Failed to initialize file logging: %v\n", err)
 		fmt.Println("Continuing with console logging only...")
@@ -92,15 +93,11 @@ func main() {
 	statistics.Init()
 	auth.Init()
 	login.Init()
-	blogs_txt_dir := config.GetBlogsPath()
-	control.ImportBlogsFromPath("", blogs_txt_dir)
 	go mcp.Init()
 	llm.Init()
 	sms.Init()
 	exercise.Init()
 	share.Init()
-	persistence.SaveBlogs(blog.GetBlogs())
-
 	log.Debug("go_blog started")
 
 	certFile := ""

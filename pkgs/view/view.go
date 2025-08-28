@@ -1,6 +1,7 @@
 package view
 
 import (
+	"auth"
 	"blog"
 	"config"
 	"control"
@@ -102,7 +103,7 @@ func getShareLinks() *LinkDatas {
 	sharedtags := share.GetSharedTags()
 
 	total_shared_data := len(sharedblogs) + len(sharedtags)
-	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersion(), total_shared_data)
+	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersionWithAccount(config.GetAdminAccount()), total_shared_data)
 	datas.BLOGS_NUMBER = total_shared_data
 
 	for _, b := range sharedblogs {
@@ -130,10 +131,10 @@ func getShareLinks() *LinkDatas {
 	return &datas
 }
 
-func getLinks(blogs []*module.Blog, flag int, session string, account string) *LinkDatas {
+func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 
 	datas := LinkDatas{}
-	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersion(), control.GetBlogsNum(account))
+	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersionWithAccount(account), control.GetBlogsNum(account))
 	datas.BLOGS_NUMBER = len(blogs)
 
 	all_tags := make(map[string]int)
@@ -253,10 +254,10 @@ func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, b
 
 func PageSearch(match string, w h.ResponseWriter, session string) {
 
-	blogs := control.GetMatch(match)
-	flag := module.EAuthType_all
 	account := blog.GetAccountFromSession(session)
-	datas := getLinks(blogs, flag, session, account)
+	blogs := control.GetMatch(account, match)
+	flag := module.EAuthType_all
+	datas := getLinks(blogs, flag, account)
 
 	// 为搜索结果中的所有链接添加highlight参数
 	for i := range datas.LINKS {
@@ -285,14 +286,15 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 	}
 }
 
-func PageTags(w h.ResponseWriter, tag string) {
+func PageTags(w h.ResponseWriter, tag, session string) {
 
-	blogs := control.GetMatch("$" + tag)
+	account := blog.GetAccountFromSession(session)
+	blogs := control.GetMatch(account, "$"+tag)
 
 	flag := module.EAuthType_public
 	// 只展示public
 
-	datas := getLinks(blogs, flag, "", blog.GetDefaultAccount())
+	datas := getLinks(blogs, flag, account)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "tags.template"))
@@ -317,7 +319,7 @@ func PageLink(w h.ResponseWriter, flag int, session string) {
 	blogs := control.GetAll(account, blog_num, flag)
 	log.DebugF("blogs cnt=%d", len(blogs))
 
-	datas := getLinks(blogs, flag, session, account)
+	datas := getLinks(blogs, flag, account)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
@@ -378,15 +380,15 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 	}
 }
 
-func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int) {
-	blogObj := control.GetBlog(blog.GetDefaultAccount(), blogname)
+func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account string) {
+	blogObj := control.GetBlog(account, blogname)
 	if blogObj == nil {
 		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
 	}
 
 	// modify accesstime
-	control.UpdateAccessTime(blog.GetDefaultAccount(), blogObj)
+	control.UpdateAccessTime(account, blogObj)
 
 	template_name := "get.template"
 	if usepublic != 0 {
@@ -422,7 +424,7 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int) {
 		IS_ENCRYPTED: isEncrypted,
 	}
 
-	bc := control.GetBlogComments(blogname)
+	bc := control.GetBlogComments(account, blogname)
 	if bc != nil {
 		for _, c := range bc.Comments {
 			cd := CommentDatas{
@@ -501,8 +503,8 @@ func PageD3(w h.ResponseWriter) {
 }
 
 // 将blogname设置为分享
-func PageShareBlog(w h.ResponseWriter, blogname string) {
-	blog := control.GetBlog(blog.GetDefaultAccount(), blogname)
+func PageShareBlog(w h.ResponseWriter, account, blogname string) {
+	blog := control.GetBlog(account, blogname)
 	if blog == nil {
 		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
 		return
@@ -545,6 +547,7 @@ func getsession(r *h.Request) string {
 }
 
 func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
+	account := auth.GetAccountFromRequest(r)
 
 	// 直接显示help
 	tokens := strings.Split(match, " ")
@@ -580,7 +583,7 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 		// 创建分享
 		if tokens[1] == "c" && len(tokens) >= 3 {
 			blogname := tokens[2]
-			PageShareBlog(w, blogname)
+			PageShareBlog(w, account, blogname)
 		}
 		if tokens[1] == "t" && len(tokens) >= 3 {
 			tag := tokens[2]
@@ -780,15 +783,15 @@ func PageReadingDashboard(w h.ResponseWriter) {
 }
 
 // PagePublic renders the public blogs page
-func PagePublic(w h.ResponseWriter) {
+func PagePublic(w h.ResponseWriter, account string) {
 	// 获取所有public标签的博客
-	blogs := control.GetMatch("@public")
+	blogs := control.GetMatch(account, "@public")
 
 	// 只展示public权限的博客
 	flag := module.EAuthType_public
 
 	// 获取链接数据
-	datas := getLinks(blogs, flag, "", blog.GetDefaultAccount())
+	datas := getLinks(blogs, flag, account)
 
 	// 渲染模板
 	exeDir := config.GetHttpTemplatePath()
@@ -957,6 +960,24 @@ func PageTools(w h.ResponseWriter) {
 	if err != nil {
 		log.ErrorF("Failed to render tools.template: %s", err.Error())
 		h.Error(w, "Failed to render tools template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageMigration renders the migration page
+func PageMigration(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "migration.template"))
+	if err != nil {
+		log.ErrorF("Failed to parse migration.template: %s", err.Error())
+		h.Error(w, "Failed to parse migration template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.ErrorF("Failed to render migration.template: %s", err.Error())
+		h.Error(w, "Failed to render migration template", h.StatusInternalServerError)
 		return
 	}
 }

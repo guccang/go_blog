@@ -30,13 +30,14 @@ goroutine 线程安全
 // actor
 type ConfigActor struct {
 	*core.Actor
-	datas           map[string]string
-	autodatesuffix  []string
-	publictags      []string
-	diary_keywords  []string
-	config_path     string
-	sys_files       []string
-	blog_version    string
+	Account        string
+	datas          map[string]string
+	autodatesuffix []string
+	publictags     []string
+	diary_keywords []string
+	config_path    string
+	sys_files      []string
+	blog_version   string
 }
 
 // 获取配置值
@@ -49,8 +50,8 @@ func (aconfig *ConfigActor) getConfig(name string) string {
 }
 
 // 重新加载配置
-func (aconfig *ConfigActor) reloadConfig(filePath string) int {
-	err := aconfig.loadConfigInternal(filePath)
+func (aconfig *ConfigActor) reloadConfig(account, filePath string) int {
+	err := aconfig.loadConfigInternal(account, filePath)
 	if err != nil {
 		log.ErrorF("ReloadConfig err=%s", err.Error())
 		return 1
@@ -97,6 +98,7 @@ func (aconfig *ConfigActor) isTitleAddDateSuffix(title string) int {
 // 检查是否为日记博客
 func (aconfig *ConfigActor) isDiaryBlog(title string) bool {
 	for _, keyword := range aconfig.diary_keywords {
+		log.DebugF("isDiaryBlog %s %s", title, keyword)
 		if len(title) >= len(keyword) && title[:len(keyword)] == keyword {
 			return true
 		}
@@ -122,4 +124,88 @@ func (aconfig *ConfigActor) isTitleContainsDateSuffix(title string) int {
 		}
 	}
 	return 0
+}
+
+// loadAccountSpecificConfig loads configuration from account-specific sys_conf blog
+func (aconfig *ConfigActor) loadAccountSpecificConfig(account string) {
+	// This method will be called to load config from sys_conf_<account> blog
+	// For now, we'll implement basic loading logic
+	// The actual blog integration will be handled in the HTTP layer
+	log.DebugF("Loading account-specific config for account: %s", account)
+	
+	// Set account-specific config path
+	aconfig.config_path = GetBlogsPath(account)
+}
+
+// parseConfigArrays parses string configurations into arrays
+func (aconfig *ConfigActor) parseConfigArrays() {
+	// Parse title_auto_add_date_suffix
+	if datetitles, ok := aconfig.datas["title_auto_add_date_suffix"]; ok {
+		arr := strings.Split(datetitles, "|")
+		aconfig.autodatesuffix = arr
+	}
+
+	// Parse publictags
+	if tags, ok := aconfig.datas["publictags"]; ok {
+		arr := strings.Split(tags, "|")
+		aconfig.publictags = arr
+	}
+
+	// Parse sysfiles
+	if sysfiles, ok := aconfig.datas["sysfiles"]; ok {
+		arr := strings.Split(sysfiles, "|")
+		aconfig.sys_files = arr
+	}
+
+	// Parse diary_keywords
+	if keywords, ok := aconfig.datas["diary_keywords"]; ok {
+		arr := strings.Split(keywords, "|")
+		// Clean up empty strings
+		aconfig.diary_keywords = make([]string, 0, len(arr))
+		for _, keyword := range arr {
+			keyword = strings.TrimSpace(keyword)
+			if keyword != "" {
+				aconfig.diary_keywords = append(aconfig.diary_keywords, keyword)
+			}
+		}
+	}
+
+	// Set default diary keywords if none configured
+	if len(aconfig.diary_keywords) == 0 {
+		aconfig.diary_keywords = []string{"日记_"}
+	}
+}
+
+// updateConfigFromBlog updates configuration from blog content
+func (aconfig *ConfigActor) updateConfigFromBlog(blogContent string) {
+	configs := parseConfigFromBlogContent(blogContent)
+	for key, value := range configs {
+		aconfig.datas[key] = value
+	}
+	aconfig.parseConfigArrays()
+	log.DebugF("Updated config from blog for account %s, config count=%d", aconfig.Account, len(aconfig.datas))
+}
+
+// parseConfigFromBlogContent parses configuration from blog content
+func parseConfigFromBlogContent(content string) map[string]string {
+	configs := make(map[string]string)
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip comments and empty lines
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse key=value format
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			configs[key] = value
+		}
+	}
+
+	return configs
 }

@@ -71,7 +71,7 @@ func (cm *ConstellationManager) GetConstellationInfo(constellationID string) (*C
 }
 
 // CreateBirthChart 创建个人星盘
-func (cm *ConstellationManager) CreateBirthChart(userName, birthDate, birthTime, birthPlace string) (*BirthChart, error) {
+func (cm *ConstellationManager) CreateBirthChart(account, userName, birthDate, birthTime, birthPlace string) (*BirthChart, error) {
 	// 获取太阳星座
 	sunSign, err := cm.GetConstellationByDate(birthDate)
 	if err != nil {
@@ -94,7 +94,7 @@ func (cm *ConstellationManager) CreateBirthChart(userName, birthDate, birthTime,
 	}
 
 	// 保存星盘到博客系统
-	err = cm.saveBirthChart(chart)
+	err = cm.saveBirthChart(account, chart)
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +103,9 @@ func (cm *ConstellationManager) CreateBirthChart(userName, birthDate, birthTime,
 }
 
 // GetDailyHoroscope 获取每日运势
-func (cm *ConstellationManager) GetDailyHoroscope(constellationID, date string) (*DailyHoroscope, error) {
+func (cm *ConstellationManager) GetDailyHoroscope(account, constellationID, date string) (*DailyHoroscope, error) {
 	// 先尝试从博客系统获取现有运势
-	horoscope, err := cm.loadDailyHoroscope(constellationID, date)
+	horoscope, err := cm.loadDailyHoroscope(account, constellationID, date)
 	if err == nil {
 		return horoscope, nil
 	}
@@ -114,7 +114,7 @@ func (cm *ConstellationManager) GetDailyHoroscope(constellationID, date string) 
 	horoscope = cm.horoscopeGenerator.GenerateDailyHoroscope(constellationID, date)
 
 	// 保存到博客系统
-	err = cm.saveDailyHoroscope(horoscope)
+	err = cm.saveDailyHoroscope(account, horoscope)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (cm *ConstellationManager) GetDailyHoroscope(constellationID, date string) 
 }
 
 // CreateDivination 创建占卜记录
-func (cm *ConstellationManager) CreateDivination(userName, divinationType, question, method string) (*DivinationRecord, error) {
+func (cm *ConstellationManager) CreateDivination(account, userName, divinationType, question, method string) (*DivinationRecord, error) {
 	// 生成占卜结果
 	result, err := cm.divinationEngine.PerformDivination(divinationType, method, question)
 	if err != nil {
@@ -142,7 +142,7 @@ func (cm *ConstellationManager) CreateDivination(userName, divinationType, quest
 	}
 
 	// 保存占卜记录
-	err = cm.saveDivinationRecord(record)
+	err = cm.saveDivinationRecord(account, record)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,8 @@ func (cm *ConstellationManager) CreateDivination(userName, divinationType, quest
 }
 
 // AnalyzeCompatibility 分析星座配对
-func (cm *ConstellationManager) AnalyzeCompatibility(sign1, sign2 string) (*CompatibilityAnalysis, error) {
+func (cm *ConstellationManager) AnalyzeCompatibility(account, sign1, sign2 string) (*CompatibilityAnalysis, error) {
+	analysis := cm.compatibilityAnalyzer.AnalyzeCompatibility(sign1, sign2)
 	// 检查星座是否存在
 	if _, exists := ConstellationData[sign1]; !exists {
 		return nil, fmt.Errorf("星座不存在: %s", sign1)
@@ -160,10 +161,8 @@ func (cm *ConstellationManager) AnalyzeCompatibility(sign1, sign2 string) (*Comp
 		return nil, fmt.Errorf("星座不存在: %s", sign2)
 	}
 
-	analysis := cm.compatibilityAnalyzer.AnalyzeCompatibility(sign1, sign2)
-
 	// 保存配对分析
-	err := cm.saveCompatibilityAnalysis(analysis)
+	err := cm.saveCompatibilityAnalysis(account, analysis)
 	if err != nil {
 		return nil, err
 	}
@@ -172,10 +171,10 @@ func (cm *ConstellationManager) AnalyzeCompatibility(sign1, sign2 string) (*Comp
 }
 
 // GetDivinationHistory 获取占卜历史
-func (cm *ConstellationManager) GetDivinationHistory(userName string, limit int) ([]*DivinationRecord, error) {
+func (cm *ConstellationManager) GetDivinationHistory(account, userName string, limit int) ([]*DivinationRecord, error) {
 	// 搜索用户的占卜记录
 	blogList := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if strings.HasPrefix(b.Title, "constellation-divination-") {
 			blogList = append(blogList, b)
 		}
@@ -207,8 +206,8 @@ func (cm *ConstellationManager) GetDivinationHistory(userName string, limit int)
 }
 
 // GetDivinationStats 获取占卜统计
-func (cm *ConstellationManager) GetDivinationStats(userName string) (*DivinationStats, error) {
-	records, err := cm.GetDivinationHistory(userName, 1000) // 获取所有记录
+func (cm *ConstellationManager) GetDivinationStats(account, userName string) (*DivinationStats, error) {
+	records, err := cm.GetDivinationHistory(account, userName, 1000) // 获取所有记录
 	if err != nil {
 		return nil, err
 	}
@@ -261,10 +260,10 @@ func (cm *ConstellationManager) GetDivinationStats(userName string) (*Divination
 }
 
 // UpdateDivinationAccuracy 更新占卜准确度评价
-func (cm *ConstellationManager) UpdateDivinationAccuracy(recordID string, accuracy int) error {
+func (cm *ConstellationManager) UpdateDivinationAccuracy(account, recordID string, accuracy int) error {
 	// 查找对应的博客记录
 	title := fmt.Sprintf("constellation-divination-%s", recordID)
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return fmt.Errorf("占卜记录不存在")
 	}
@@ -280,7 +279,7 @@ func (cm *ConstellationManager) UpdateDivinationAccuracy(recordID string, accura
 	record.Accuracy = accuracy
 
 	// 重新保存
-	return cm.saveDivinationRecord(&record)
+	return cm.saveDivinationRecord(account, &record)
 }
 
 // === 私有方法 ===
@@ -365,7 +364,7 @@ func (cm *ConstellationManager) getRandomConstellation(seed string) string {
 }
 
 // 保存个人星盘
-func (cm *ConstellationManager) saveBirthChart(chart *BirthChart) error {
+func (cm *ConstellationManager) saveBirthChart(account string, chart *BirthChart) error {
 	title := fmt.Sprintf("constellation-birthchart-%s-%s", chart.UserName, chart.ID)
 	content, _ := json.MarshalIndent(chart, "", "  ")
 
@@ -376,12 +375,12 @@ func (cm *ConstellationManager) saveBirthChart(chart *BirthChart) error {
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog("", ubd)
+	control.AddBlog(account, ubd)
 	return nil
 }
 
 // 保存每日运势
-func (cm *ConstellationManager) saveDailyHoroscope(horoscope *DailyHoroscope) error {
+func (cm *ConstellationManager) saveDailyHoroscope(account string, horoscope *DailyHoroscope) error {
 	title := fmt.Sprintf("horoscope-%s-%s", horoscope.Constellation, horoscope.Date)
 	content, _ := json.MarshalIndent(horoscope, "", "  ")
 
@@ -392,14 +391,14 @@ func (cm *ConstellationManager) saveDailyHoroscope(horoscope *DailyHoroscope) er
 		AuthType: module.EAuthType_public,
 	}
 
-	control.AddBlog("", ubd)
+	control.AddBlog(account, ubd)
 	return nil
 }
 
 // 加载每日运势
-func (cm *ConstellationManager) loadDailyHoroscope(constellationID, date string) (*DailyHoroscope, error) {
+func (cm *ConstellationManager) loadDailyHoroscope(account, constellationID, date string) (*DailyHoroscope, error) {
 	title := fmt.Sprintf("horoscope-%s-%s", constellationID, date)
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return nil, fmt.Errorf("运势不存在")
 	}
@@ -414,7 +413,7 @@ func (cm *ConstellationManager) loadDailyHoroscope(constellationID, date string)
 }
 
 // 保存占卜记录
-func (cm *ConstellationManager) saveDivinationRecord(record *DivinationRecord) error {
+func (cm *ConstellationManager) saveDivinationRecord(account string, record *DivinationRecord) error {
 	title := fmt.Sprintf("constellation-divination-%s-%s",
 		record.UserName,
 		time.Now().Format("2006-01-02-15-04-05"))
@@ -427,12 +426,12 @@ func (cm *ConstellationManager) saveDivinationRecord(record *DivinationRecord) e
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog("", ubd)
+	control.AddBlog(account, ubd)
 	return nil
 }
 
 // 保存配对分析
-func (cm *ConstellationManager) saveCompatibilityAnalysis(analysis *CompatibilityAnalysis) error {
+func (cm *ConstellationManager) saveCompatibilityAnalysis(account string, analysis *CompatibilityAnalysis) error {
 	title := fmt.Sprintf("constellation-compatibility-%s-%s-%s",
 		analysis.Person1, analysis.Person2, analysis.ID)
 	content, _ := json.MarshalIndent(analysis, "", "  ")
@@ -444,6 +443,6 @@ func (cm *ConstellationManager) saveCompatibilityAnalysis(analysis *Compatibilit
 		AuthType: module.EAuthType_private,
 	}
 
-	control.AddBlog("", ubd)
+	control.AddBlog(account, ubd)
 	return nil
 }

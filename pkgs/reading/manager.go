@@ -5,53 +5,15 @@ import (
 	"module"
 	log "mylog"
 	"sync"
-
-	"blog"
 )
 
 // ReadingManager manages multiple reading actors for different accounts
 type ReadingManager struct {
-	actors     map[string]*ReadingActor // account -> ReadingActor
-	defaultAct *ReadingActor            // default actor for system operations
-	mu         sync.RWMutex
+	actors map[string]*ReadingActor // account -> ReadingActor
+	mu     sync.RWMutex
 }
 
 var readingManager *ReadingManager
-
-// InitManager initializes the reading manager
-type InitManagerCmd struct {
-	core.ActorCommand
-}
-
-func (cmd *InitManagerCmd) Do(actor core.ActorInterface) {
-	readingManager = &ReadingManager{
-		actors:     make(map[string]*ReadingActor),
-		defaultAct: nil,
-	}
-
-	// Initialize default actor for system operations
-	readingManager.defaultAct = &ReadingActor{
-		Actor:               core.NewActor(),
-		Account:             blog.GetDefaultAccount(),
-		books:               make(map[string]*module.Book),
-		readingRecords:      make(map[string]*module.ReadingRecord),
-		bookNotes:           make(map[string][]*module.BookNote),
-		bookInsights:        make(map[string]*module.BookInsight),
-		readingPlans:        make(map[string]*module.ReadingPlan),
-		readingGoals:        make(map[string]*module.ReadingGoal),
-		bookRecommendations: make(map[string]*module.BookRecommendation),
-		bookCollections:     make(map[string]*module.BookCollection),
-		readingTimeRecords:  make(map[string][]*module.ReadingTimeRecord),
-	}
-	readingManager.defaultAct.Start(readingManager.defaultAct)
-
-	// Load system reading data
-	loadCmd := &loadReadingDataCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-	readingManager.defaultAct.Send(loadCmd)
-	<-loadCmd.Response()
-
-	cmd.Response() <- 0
-}
 
 // GetReadingActor returns the reading actor for a specific account
 // If account is empty, returns the default actor
@@ -63,11 +25,6 @@ type GetReadingActorCmd struct {
 func (cmd *GetReadingActorCmd) Do(actor core.ActorInterface) {
 	readingManager.mu.RLock()
 	defer readingManager.mu.RUnlock()
-
-	if cmd.Account == "" {
-		cmd.Response() <- readingManager.defaultAct
-		return
-	}
 
 	if act, exists := readingManager.actors[cmd.Account]; exists {
 		cmd.Response() <- act
@@ -116,7 +73,7 @@ type loadAccountReadingDataCmd struct {
 
 func (cmd *loadAccountReadingDataCmd) Do(actor core.ActorInterface) {
 	readingActor := actor.(*ReadingActor)
-	
+
 	// Load account-specific reading data from blog system
 	readingActor.loadBooksForAccount(cmd.Account)
 	readingActor.loadReadingRecordsForAccount(cmd.Account)
@@ -128,9 +85,9 @@ func (cmd *loadAccountReadingDataCmd) Do(actor core.ActorInterface) {
 	readingActor.loadReadingTimeRecordsForAccount(cmd.Account)
 
 	log.DebugF("Loaded reading data for account %s - Books: %d, Records: %d, Notes: %d, Insights: %d",
-		cmd.Account, len(readingActor.books), len(readingActor.readingRecords), 
+		cmd.Account, len(readingActor.books), len(readingActor.readingRecords),
 		readingActor.getTotalNotesCount(), len(readingActor.bookInsights))
-	
+
 	cmd.Response() <- 0
 }
 
@@ -141,7 +98,7 @@ type loadReadingDataCmd struct {
 
 func (cmd *loadReadingDataCmd) Do(actor core.ActorInterface) {
 	readingActor := actor.(*ReadingActor)
-	
+
 	// Load default reading data
 	readingActor.loadBooks()
 	readingActor.loadReadingRecords()
@@ -174,39 +131,12 @@ func (cmd *RemoveAccountCmd) Do(actor core.ActorInterface) {
 
 // getReadingActor returns the reading actor for the given account
 func getReadingActor(account string) *ReadingActor {
-	// If account is empty, use default account
-	if account == "" {
-		account = blog.GetDefaultAccount()
-	}
 
 	if readingManager == nil {
 		// Initialize manager if not already done
 		readingManager = &ReadingManager{
 			actors: make(map[string]*ReadingActor),
-			defaultAct: &ReadingActor{
-				Actor:               core.NewActor(),
-				Account:             blog.GetDefaultAccount(),
-				books:               make(map[string]*module.Book),
-				readingRecords:      make(map[string]*module.ReadingRecord),
-				bookNotes:           make(map[string][]*module.BookNote),
-				bookInsights:        make(map[string]*module.BookInsight),
-				readingPlans:        make(map[string]*module.ReadingPlan),
-				readingGoals:        make(map[string]*module.ReadingGoal),
-				bookRecommendations: make(map[string]*module.BookRecommendation),
-				bookCollections:     make(map[string]*module.BookCollection),
-				readingTimeRecords:  make(map[string][]*module.ReadingTimeRecord),
-			},
 		}
-		readingManager.defaultAct.Start(readingManager.defaultAct)
-
-		// Load system reading data
-		loadCmd := &loadReadingDataCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-		readingManager.defaultAct.Send(loadCmd)
-		<-loadCmd.Response()
-	}
-
-	if account == blog.GetDefaultAccount() {
-		return readingManager.defaultAct
 	}
 
 	readingManager.mu.RLock()

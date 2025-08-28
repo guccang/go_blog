@@ -18,9 +18,9 @@ func Info() {
 func Init() {
 	sms_actor = &SmsActor{
 		Actor:   core.NewActor(),
-		sendURL: config.GetConfig("sms_send_url"),
-		name:    config.GetConfig("admin"),
-		phone:   config.GetConfig("sms_phone"),
+		sendURL: config.GetConfigWithAccount(config.GetAdminAccount(), "sms_send_url"),
+		name:    config.GetAdminAccount(),
+		phone:   config.GetConfigWithAccount(config.GetAdminAccount(), "sms_phone"),
 	}
 	sms_actor.Start(sms_actor)
 }

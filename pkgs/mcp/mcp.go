@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"config"
 	"control"
 	"encoding/json"
 	"fmt"
@@ -167,21 +168,21 @@ func loadMCPConfigs() {
 	log.Debug("--- Loading MCP Configurations ---")
 
 	title := getMCPConfigTitle()
-	bolg := control.GetBlog("", title)
-	if bolg == nil {
-		control.AddBlog("", &module.UploadedBlogData{
+	mcp_blog := control.GetBlog(config.GetAdminAccount(), title)
+	if mcp_blog == nil {
+		control.AddBlog(config.GetAdminAccount(), &module.UploadedBlogData{
 			Title:   title,
 			Content: "",
 		})
-		b := control.GetBlog("", title)
-		if b == nil {
+		mcp_blog := control.GetBlog(config.GetAdminAccount(), title)
+		if mcp_blog == nil {
 			log.ErrorF("Failed to get blog '%s'", title)
 			return
 		}
 	}
 
 	mcpConfigs = MCPConfigList{}
-	err := json.Unmarshal([]byte(bolg.Content), &mcpConfigs)
+	err := json.Unmarshal([]byte(mcp_blog.Content), &mcpConfigs)
 	if err != nil {
 		log.ErrorF("Failed to parse MCP config file '%s': %v", title, err)
 		log.Error("Using empty MCP configuration due to parse error")
@@ -249,7 +250,7 @@ func createDefaultMCPConfig() {
 	}
 
 	title := getMCPConfigTitle()
-	control.ModifyBlog("", &module.UploadedBlogData{
+	control.ModifyBlog(config.GetAdminAccount(), &module.UploadedBlogData{
 		Title:   title,
 		Content: string(data),
 	})
@@ -433,7 +434,7 @@ func saveMCPConfigs() error {
 	}
 
 	title := getMCPConfigTitle()
-	control.ModifyBlog("", &module.UploadedBlogData{
+	control.ModifyBlog(config.GetAdminAccount(), &module.UploadedBlogData{
 		Title:   title,
 		Content: string(data),
 	})

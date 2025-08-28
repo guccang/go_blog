@@ -24,9 +24,9 @@ func RawCurrentTime() string {
 }
 
 // 获取日记数量
-func RawAllDiaryCount() int {
+func RawAllDiaryCount(account string) int {
 	count := 0
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if strings.Contains(b.Title, "日记_") {
 			count++
 		}
@@ -35,9 +35,9 @@ func RawAllDiaryCount() int {
 }
 
 // 获取所有日志内容
-func RawAllDiaryContent() string {
+func RawAllDiaryContent(account string) string {
 	content := ""
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if strings.Contains(b.Title, "日记_") && b.Content != "" {
 			content += b.Title + ":\n" + b.Content + "\n"
 		}
@@ -46,9 +46,9 @@ func RawAllDiaryContent() string {
 }
 
 // 获取指定博客内容，通过博客名称匹配
-func RawGetBlogByTitleMatch(match string) string {
+func RawGetBlogByTitleMatch(account, match string) string {
 	content := ""
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if strings.Contains(b.Title, match) && b.Content != "" {
 			content += b.Title + ":\n" + b.Content + "\n"
 		}
@@ -57,9 +57,9 @@ func RawGetBlogByTitleMatch(match string) string {
 }
 
 // 获取锻炼总次数
-func RawAllExerciseCount() int {
+func RawAllExerciseCount(account string) int {
 	count := 0
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if strings.Contains(b.Title, "锻炼_") {
 			count++
 		}
@@ -68,9 +68,9 @@ func RawAllExerciseCount() int {
 }
 
 // 获取锻炼总时间分钟
-func RawAllExerciseTotalMinutes() int {
+func RawAllExerciseTotalMinutes(account string) int {
 	time := 0
-	all, _ := exercise.GetAllExercises()
+	all, _ := exercise.GetAllExercises(account)
 	for _, e := range all {
 		for _, item := range e.Items {
 			time += item.Duration
@@ -80,9 +80,9 @@ func RawAllExerciseTotalMinutes() int {
 }
 
 // 获取锻炼总距离
-func RawAllExerciseDistance() int {
+func RawAllExerciseDistance(account string) int {
 	distance := 0
-	all, _ := exercise.GetAllExercises()
+	all, _ := exercise.GetAllExercises(account)
 	for _, e := range all {
 		for _, item := range e.Items {
 			distance += item.Calories
@@ -92,9 +92,9 @@ func RawAllExerciseDistance() int {
 }
 
 // 获取锻炼总卡路里
-func RawAllExerciseCalories() int {
+func RawAllExerciseCalories(account string) int {
 	calories := 0
-	all, _ := exercise.GetAllExercises()
+	all, _ := exercise.GetAllExercises(account)
 	for _, e := range all {
 		for _, item := range e.Items {
 			calories += item.Calories
@@ -104,14 +104,15 @@ func RawAllExerciseCalories() int {
 }
 
 // 获取博客总数量
-func RawAllBlogCount() int {
-	log.DebugF("RawAllBlogCount: %d", len(blog.GetBlogs()))
-	return len(blog.GetBlogs())
+func RawAllBlogCount(account string) int {
+	n := len(blog.GetBlogsWithAccount(account))
+	log.DebugF("RawAllBlogCount: %d", n)
+	return n
 }
 
 // 获取所有blog名称,以空格分割
-func RawAllBlogData() string {
-	blogs := blog.GetBlogs()
+func RawAllBlogData(account string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		blogNames = append(blogNames, b.Title)
@@ -120,8 +121,8 @@ func RawAllBlogData() string {
 }
 
 // 通过名称获取blog内容
-func RawGetBlogData(title string) string {
-	blog := blog.GetBlog(title)
+func RawGetBlogData(account string, title string) string {
+	blog := blog.GetBlogWithAccount(account, title)
 	log.DebugF("RawBlogData: %s, blog: %v", title, blog)
 	if blog != nil {
 		return blog.Content
@@ -130,8 +131,8 @@ func RawGetBlogData(title string) string {
 }
 
 // 获取所有comment
-func RawAllCommentData() string {
-	comments := comment.GetAllComments()
+func RawAllCommentData(account string) string {
+	comments := comment.GetAllComments(account)
 	commentData := make([]string, 0)
 	for _, c := range comments {
 		commentData = append(commentData, c.Title)
@@ -140,8 +141,8 @@ func RawAllCommentData() string {
 }
 
 // 通过名称获取comment
-func RawCommentData(title string) string {
-	comments := comment.GetComments(title)
+func RawCommentData(account, title string) string {
+	comments := comment.GetComments(account, title)
 	if comments != nil {
 		msg := ""
 		for _, c := range comments.Comments {
@@ -153,8 +154,8 @@ func RawCommentData(title string) string {
 }
 
 // 根据日期获取所有Blog
-func RawAllBlogDataByDate(date string) string {
-	blogs := blog.GetBlogs()
+func RawAllBlogDataByDate(account, date string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// CreateTime 2006-01-02 15:04:05
@@ -175,8 +176,8 @@ func RawAllBlogDataByDate(date string) string {
 }
 
 // 根据日期范围获取所有Blog
-func RawAllBlogDataByDateRange(startDate, endDate string) string {
-	blogs := blog.GetBlogs()
+func RawAllBlogDataByDateRange(account, startDate, endDate string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// 使用时间对比
@@ -203,8 +204,8 @@ func RawAllBlogDataByDateRange(startDate, endDate string) string {
 }
 
 // 根据日期范围获取所有Blog数量
-func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
-	blogs := blog.GetBlogs()
+func RawAllBlogDataByDateRangeCount(account, startDate, endDate string) int {
+	blogs := blog.GetBlogsWithAccount(account)
 	count := 0
 	for _, b := range blogs {
 		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
@@ -228,8 +229,8 @@ func RawAllBlogDataByDateRangeCount(startDate, endDate string) int {
 }
 
 // 获取指定日期Blog数量
-func RawGetBlogDataByDate(date string) string {
-	blogs := blog.GetBlogs()
+func RawGetBlogDataByDate(account, date string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogData := make([]string, 0)
 	for _, b := range blogs {
 		// 使用时间对比
@@ -250,8 +251,8 @@ func RawGetBlogDataByDate(date string) string {
 // =================================== 扩展Raw接口 =========================================
 
 // 获取博客详细统计信息
-func RawBlogStatistics() string {
-	stats := calculateBlogStatistics()
+func RawBlogStatistics(account string) string {
+	stats := calculateBlogStatistics(account)
 	result := fmt.Sprintf("总博客数:%d,公开:%d,私有:%d,加密:%d,今日新增:%d,本周新增:%d,本月新增:%d",
 		stats.TotalBlogs, stats.PublicBlogs, stats.PrivateBlogs, stats.EncryptBlogs,
 		stats.TodayNewBlogs, stats.WeekNewBlogs, stats.MonthNewBlogs)
@@ -259,8 +260,8 @@ func RawBlogStatistics() string {
 }
 
 // 获取访问统计信息
-func RawAccessStatistics() string {
-	stats := calculateAccessStatistics()
+func RawAccessStatistics(account string) string {
+	stats := calculateAccessStatistics(account)
 	result := fmt.Sprintf("总访问量:%d,今日访问:%d,本周访问:%d,本月访问:%d,平均访问:%.2f,零访问博客数:%d",
 		stats.TotalAccess, stats.TodayAccess, stats.WeekAccess, stats.MonthAccess,
 		stats.AverageAccess, stats.ZeroAccessBlogs)
@@ -268,8 +269,8 @@ func RawAccessStatistics() string {
 }
 
 // 获取热门博客列表(前10)
-func RawTopAccessedBlogs() string {
-	stats := calculateAccessStatistics()
+func RawTopAccessedBlogs(account string) string {
+	stats := calculateAccessStatistics(account)
 	result := "热门博客TOP10:\n"
 	for i, blog := range stats.TopAccessedBlogs {
 		if i >= 10 {
@@ -282,8 +283,8 @@ func RawTopAccessedBlogs() string {
 }
 
 // 获取最近访问的博客列表
-func RawRecentAccessedBlogs() string {
-	stats := calculateAccessStatistics()
+func RawRecentAccessedBlogs(account string) string {
+	stats := calculateAccessStatistics(account)
 	result := "最近访问博客:\n"
 	for i, blog := range stats.RecentAccessBlogs {
 		if i >= 10 {
@@ -296,8 +297,8 @@ func RawRecentAccessedBlogs() string {
 }
 
 // 获取编辑统计信息
-func RawEditStatistics() string {
-	stats := calculateEditStatistics()
+func RawEditStatistics(account string) string {
+	stats := calculateEditStatistics(account)
 	result := fmt.Sprintf("总编辑次数:%d,今日编辑:%d,本周编辑:%d,本月编辑:%d,平均编辑:%.2f,从未编辑博客数:%d",
 		stats.TotalEdits, stats.TodayEdits, stats.WeekEdits, stats.MonthEdits,
 		stats.AverageEdits, stats.NeverEditedBlogs)
@@ -305,8 +306,8 @@ func RawEditStatistics() string {
 }
 
 // 获取标签统计信息
-func RawTagStatistics() string {
-	stats := calculateTagStatistics()
+func RawTagStatistics(account string) string {
+	stats := calculateTagStatistics(account)
 	result := fmt.Sprintf("标签总数:%d,公开标签:%d\n热门标签:\n", stats.TotalTags, stats.PublicTags)
 	for i, tag := range stats.HotTags {
 		if i >= 10 {
@@ -318,8 +319,8 @@ func RawTagStatistics() string {
 }
 
 // 获取评论统计信息
-func RawCommentStatistics() string {
-	stats := calculateCommentStatistics()
+func RawCommentStatistics(account string) string {
+	stats := calculateCommentStatistics(account)
 	result := fmt.Sprintf("评论总数:%d,有评论博客数:%d,今日新评论:%d,本周新评论:%d,本月新评论:%d,平均评论:%.2f",
 		stats.TotalComments, stats.BlogsWithComments, stats.TodayNewComments,
 		stats.WeekNewComments, stats.MonthNewComments, stats.AverageComments)
@@ -327,8 +328,8 @@ func RawCommentStatistics() string {
 }
 
 // 获取内容统计信息
-func RawContentStatistics() string {
-	stats := calculateContentStatistics()
+func RawContentStatistics(account string) string {
+	stats := calculateContentStatistics(account)
 	result := fmt.Sprintf("总字符数:%d,平均文章长度:%.2f,空内容博客数:%d\n最长文章:%s(%d字)\n最短文章:%s(%d字)",
 		stats.TotalCharacters, stats.AverageArticleLength, stats.EmptyContentBlogs,
 		stats.LongestArticle.Title, stats.LongestArticle.Length,
@@ -337,8 +338,8 @@ func RawContentStatistics() string {
 }
 
 // 按权限类型获取博客列表
-func RawBlogsByAuthType(authType int) string {
-	blogs := blog.GetBlogs()
+func RawBlogsByAuthType(account string, authType int) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		if (b.AuthType & authType) != 0 {
@@ -352,8 +353,8 @@ func RawBlogsByAuthType(authType int) string {
 }
 
 // 按标签获取博客列表
-func RawBlogsByTag(tag string) string {
-	blogs := blog.GetBlogs()
+func RawBlogsByTag(account string, tag string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
 		if strings.Contains(b.Tags, tag) {
@@ -367,8 +368,8 @@ func RawBlogsByTag(tag string) string {
 }
 
 // 获取博客元数据(不包含内容)
-func RawBlogMetadata(title string) string {
-	b := blog.GetBlog(title)
+func RawBlogMetadata(account string, title string) string {
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return "博客不存在: " + title
 	}
@@ -378,8 +379,8 @@ func RawBlogMetadata(title string) string {
 }
 
 // 获取近期活跃博客(近7天有访问或修改)
-func RawRecentActiveBlog() string {
-	blogs := blog.GetBlogs()
+func RawRecentActiveBlog(account string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	now := time.Now()
 	sevenDaysAgo := now.AddDate(0, 0, -7)
 
@@ -407,8 +408,8 @@ func RawRecentActiveBlog() string {
 }
 
 // 获取月度创建趋势
-func RawMonthlyCreationTrend() string {
-	blogs := blog.GetBlogs()
+func RawMonthlyCreationTrend(account string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	monthCount := make(map[string]int)
 
 	for _, b := range blogs {
@@ -434,8 +435,8 @@ func RawMonthlyCreationTrend() string {
 }
 
 // 搜索博客内容
-func RawSearchBlogContent(keyword string) string {
-	blogs := blog.GetBlogs()
+func RawSearchBlogContent(account, keyword string) string {
+	blogs := blog.GetBlogsWithAccount(account)
 	matchedBlogs := make([]string, 0)
 
 	for _, b := range blogs {
@@ -452,8 +453,8 @@ func RawSearchBlogContent(keyword string) string {
 }
 
 // 获取锻炼详细统计
-func RawExerciseDetailedStats() string {
-	all, err := exercise.GetAllExercises()
+func RawExerciseDetailedStats(account string) string {
+	all, err := exercise.GetAllExercises(account)
 	if err != nil {
 		return "获取锻炼数据失败: " + err.Error()
 	}
@@ -482,8 +483,8 @@ func RawExerciseDetailedStats() string {
 }
 
 // 获取近期锻炼记录
-func RawRecentExerciseRecords(days int) string {
-	all, err := exercise.GetAllExercises()
+func RawRecentExerciseRecords(account string, days int) string {
+	all, err := exercise.GetAllExercises(account)
 	if err != nil {
 		return "获取锻炼数据失败: " + err.Error()
 	}
@@ -516,17 +517,17 @@ func RawRecentExerciseRecords(days int) string {
 	return result
 }
 
-func RawGetCurrentTask() string {
+func RawGetCurrentTask(account string) string {
 	title := "todolist-" + RawCurrentDate()
-	return RawGetBlogData(title)
+	return RawGetBlogData(account, title)
 }
 
-func RawGetCurrentTaskByDate(date string) string {
+func RawGetCurrentTaskByDate(account string, date string) string {
 	title := "todolist-" + date
-	return RawGetBlogData(title)
+	return RawGetBlogData(account, title)
 }
 
-func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
+func RawGetCurrentTaskByRageDate(account, startDate, endDate string) string {
 	start, err := time.Parse("2006-01-02 15:04:05", startDate+" 00:00:00")
 	if err != nil {
 		return ""
@@ -535,7 +536,7 @@ func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
 	if err != nil {
 		return ""
 	}
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime)
 		if err != nil {
 			continue
@@ -547,7 +548,7 @@ func RawGetCurrentTaskByRageDate(startDate, endDate string) string {
 	return ""
 }
 
-func RawCurrentDiaryContent() string {
+func RawCurrentDiaryContent(account string) string {
 	title := "日记_" + RawCurrentDate()
-	return RawGetBlogData(title)
+	return RawGetBlogData(account, title)
 }

@@ -38,6 +38,8 @@ func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	account := auth.GetAccountFromRequest(r)
+
 	// Get all MCP configurations
 	configs := GetAllConfigs()
 
@@ -56,7 +58,7 @@ func HandleMCPPage(w http.ResponseWriter, r *http.Request) {
 		Configs:        configs,
 		AvailableTools: availableTools,
 		CurrentTime:    getCurrentTimeString(),
-		LLMConfigured:  config.GetConfig("deepseek_api_key") != "",
+		LLMConfigured:  config.GetConfigWithAccount(account, "deepseek_api_key") != "",
 	}
 
 	view.PageMCP(w, data)

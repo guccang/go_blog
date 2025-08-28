@@ -152,10 +152,11 @@ func HandleAssistantStats(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	account := getAccountFromRequest(r)
 	switch r.Method {
 	case h.MethodGet:
 		// 获取今日统计数据
-		stats := gatherTodayStats()
+		stats := gatherTodayStats(account)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":   true,
@@ -179,10 +180,11 @@ func HandleAssistantSuggestions(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	account := getAccountFromRequest(r)
 	switch r.Method {
 	case h.MethodGet:
 		// 生成智能建议
-		suggestions := generateAssistantSuggestions()
+		suggestions := generateAssistantSuggestions(account)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":     true,
@@ -206,10 +208,11 @@ func HandleAssistantHealthData(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	account := getAccountFromRequest(r)
 	switch r.Method {
 	case h.MethodGet:
 		// 生成详细的健康分析数据
-		healthData := generateDetailedHealthData()
+		healthData := generateDetailedHealthData(account)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":    true,
@@ -380,18 +383,18 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 
 // gatherTodayStats generates today's statistics data
 // 生成今日统计数据
-func gatherTodayStats() map[string]interface{} {
+func gatherTodayStats(account string) map[string]interface{} {
 	// 获取今日任务统计
-	todayTasks := getTodayTasksStats()
+	todayTasks := getTodayTasksStats(account)
 
 	// 获取今日阅读统计
-	todayReading := getTodayReadingStats()
+	todayReading := getTodayReadingStats(account)
 
 	// 获取今日锻炼统计
-	todayExercise := getTodayExerciseStats()
+	todayExercise := getTodayExerciseStats(account)
 
 	// 获取今日写作统计
-	todayBlogs := getTodayBlogsStats()
+	todayBlogs := getTodayBlogsStats(account)
 
 	log.DebugF("gatherTodayStats: Tasks=%v, Reading=%v, Exercise=%v, Blogs=%v",
 		todayTasks, todayReading, todayExercise, todayBlogs)
@@ -407,59 +410,59 @@ func gatherTodayStats() map[string]interface{} {
 
 // generateAssistantSuggestions generates intelligent suggestions
 // 生成智能建议
-func generateAssistantSuggestions() []map[string]interface{} {
+func generateAssistantSuggestions(account string) []map[string]interface{} {
 	suggestions := []map[string]interface{}{}
 
 	// 基于任务完成情况生成建议
-	taskSuggestion := generateTaskSuggestion()
+	taskSuggestion := generateTaskSuggestion(account)
 	if taskSuggestion != nil {
 		suggestions = append(suggestions, taskSuggestion)
 	}
 
 	// 基于阅读习惯生成建议
-	readingSuggestion := generateReadingSuggestion()
+	readingSuggestion := generateReadingSuggestion(account)
 	if readingSuggestion != nil {
 		suggestions = append(suggestions, readingSuggestion)
 	}
 
 	// 基于锻炼情况生成建议
-	exerciseSuggestion := generateExerciseSuggestion()
+	exerciseSuggestion := generateExerciseSuggestion(account)
 	if exerciseSuggestion != nil {
 		suggestions = append(suggestions, exerciseSuggestion)
 	}
 
 	// 基于时间模式生成建议
-	timeSuggestion := generateTimeSuggestion()
+	timeSuggestion := generateTimeSuggestion(account)
 	if timeSuggestion != nil {
 		suggestions = append(suggestions, timeSuggestion)
 	}
 
 	// 基于学习习惯生成建议
-	studySuggestion := generateStudySuggestion()
+	studySuggestion := generateStudySuggestion(account)
 	if studySuggestion != nil {
 		suggestions = append(suggestions, studySuggestion)
 	}
 
 	// 基于健康状况生成建议
-	healthSuggestion := generateHealthSuggestion()
+	healthSuggestion := generateHealthSuggestion(account)
 	if healthSuggestion != nil {
 		suggestions = append(suggestions, healthSuggestion)
 	}
 
 	// 基于目标进度生成建议
-	goalSuggestion := generateGoalSuggestion()
+	goalSuggestion := generateGoalSuggestion(account)
 	if goalSuggestion != nil {
 		suggestions = append(suggestions, goalSuggestion)
 	}
 
 	// 基于写作习惯生成建议
-	writingSuggestion := generateWritingSuggestion()
+	writingSuggestion := generateWritingSuggestion(account)
 	if writingSuggestion != nil {
 		suggestions = append(suggestions, writingSuggestion)
 	}
 
 	// 基于数据分析生成建议
-	analyticsSuggestion := generateAnalyticsSuggestion()
+	analyticsSuggestion := generateAnalyticsSuggestion(account)
 	if analyticsSuggestion != nil {
 		suggestions = append(suggestions, analyticsSuggestion)
 	}
@@ -563,58 +566,15 @@ func generateDefaultResponse() string {
 	return "这是一个有趣的问题，让我基于您的数据来分析一下...\n\n如果您需要具体的数据分析，可以尝试问我：\n• \"我最近的状态怎么样？\"\n• \"帮我分析一下时间分配\"\n• \"我的目标进度如何？\"\n• \"给我一些建议\""
 }
 
-// gatherAllBlogData collects all blog data for assistant analysis
-// 收集所有博客数据
-func gatherAllBlogData() string {
-	var dataBuilder strings.Builder
-
-	// 收集任务数据
-	taskData := gatherTaskData()
-	dataBuilder.WriteString("📋 **任务管理**:\n")
-	dataBuilder.WriteString(taskData)
-	dataBuilder.WriteString("\n\n")
-
-	// 收集阅读数据
-	readingData := gatherReadingData()
-	dataBuilder.WriteString("📚 **阅读记录**:\n")
-	dataBuilder.WriteString(readingData)
-	dataBuilder.WriteString("\n\n")
-
-	// 收集锻炼数据
-	exerciseData := gatherExerciseData()
-	dataBuilder.WriteString("💪 **锻炼记录**:\n")
-	dataBuilder.WriteString(exerciseData)
-	dataBuilder.WriteString("\n\n")
-
-	// 收集博客数据
-	blogData := gatherBlogData()
-	dataBuilder.WriteString("📝 **博客写作**:\n")
-	dataBuilder.WriteString(blogData)
-	dataBuilder.WriteString("\n\n")
-
-	// 收集年度计划数据
-	yearPlanData := gatherYearPlanData()
-	dataBuilder.WriteString("🎯 **年度目标**:\n")
-	dataBuilder.WriteString(yearPlanData)
-	dataBuilder.WriteString("\n\n")
-
-	// 收集统计数据
-	statsData := gatherStatsData()
-	dataBuilder.WriteString("📊 **整体统计**:\n")
-	dataBuilder.WriteString(statsData)
-
-	return dataBuilder.String()
-}
-
 // gatherTaskData collects task data
 // 收集任务数据
-func gatherTaskData() string {
+func gatherTaskData(account string) string {
 	// 获取今日任务数据
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
 	// 获取今日任务列表
-	todayBlog := control.GetBlog("", todayTitle)
+	todayBlog := control.GetBlog(account, todayTitle)
 	var todayCompleted, todayTotal int
 	var recentTasks []string
 
@@ -638,10 +598,10 @@ func gatherTaskData() string {
 	}
 
 	// 计算本周完成率
-	weekCompletionRate := calculateWeeklyTaskCompletion()
+	weekCompletionRate := calculateWeeklyTaskCompletion(account)
 
 	// 获取最近完成的任务
-	recentCompletedTasks := getRecentCompletedTasks(3)
+	recentCompletedTasks := getRecentCompletedTasks(account, 3)
 
 	recentTasksStr := "无"
 	if len(recentCompletedTasks) > 0 {
@@ -656,9 +616,9 @@ func gatherTaskData() string {
 
 // gatherReadingData collects reading data
 // 收集阅读数据
-func gatherReadingData() string {
+func gatherReadingData(account string) string {
 	// 获取所有阅读相关的博客
-	readingBlogs := getReadingBlogs()
+	readingBlogs := getReadingBlogs(account)
 
 	var currentReading []string
 	var recentBooks []string
@@ -717,7 +677,7 @@ func gatherReadingData() string {
 
 // gatherExerciseData collects exercise data
 // 收集锻炼数据
-func gatherExerciseData() string {
+func gatherExerciseData(account string) string {
 	// 获取今日锻炼数据
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("exercise-%s", today)
@@ -726,7 +686,7 @@ func gatherExerciseData() string {
 	var todayCalories float64
 
 	// 获取今日锻炼
-	todayBlog := control.GetBlog("", todayTitle)
+	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog != nil {
 		exerciseList := exercise.ParseExerciseFromBlog(todayBlog.Content)
 
@@ -738,10 +698,10 @@ func gatherExerciseData() string {
 	}
 
 	// 获取本周锻炼统计
-	weeklyStats := getWeeklyExerciseStats()
+	weeklyStats := getWeeklyExerciseStats(account)
 
 	// 获取最近锻炼记录
-	recentExercises := getRecentExercises(3)
+	recentExercises := getRecentExercises(account, 3)
 
 	// 格式化输出
 	todayExerciseStr := "无"
@@ -760,9 +720,9 @@ func gatherExerciseData() string {
 
 // gatherBlogData collects blog data
 // 收集博客数据
-func gatherBlogData() string {
+func gatherBlogData(account string) string {
 	// 获取所有博客数据
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	var totalBlogs int
 	var monthlyBlogs int
@@ -827,13 +787,13 @@ func gatherBlogData() string {
 
 // gatherYearPlanData collects year plan data
 // 收集年度计划数据
-func gatherYearPlanData() string {
+func gatherYearPlanData(account string) string {
 	// 获取当前年份
 	currentYear := time.Now().Year()
 	yearPlanTitle := fmt.Sprintf("年计划_%d", currentYear)
 
 	// 获取年度计划
-	yearPlan := control.GetBlog("", yearPlanTitle)
+	yearPlan := control.GetBlog(account, yearPlanTitle)
 	if yearPlan == nil {
 		return "- 年度目标: 未设置\n- 整体进度: 0%\n- 目标详情: 暂无年度计划"
 	}
@@ -875,9 +835,9 @@ func gatherYearPlanData() string {
 
 // gatherStatsData collects statistics data
 // 收集统计数据
-func gatherStatsData() string {
+func gatherStatsData(account string) string {
 	// 获取系统整体统计
-	stats := statistics.GetOverallStatistics()
+	stats := statistics.GetOverallStatistics(account)
 
 	// 计算活跃天数
 	activeDays := calculateActiveDays()
@@ -919,7 +879,7 @@ type WeeklyExerciseStats struct {
 
 // calculateWeeklyTaskCompletion calculates weekly task completion rate
 // 计算本周任务完成率
-func calculateWeeklyTaskCompletion() float64 {
+func calculateWeeklyTaskCompletion(account string) float64 {
 	now := time.Now()
 	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
 
@@ -929,7 +889,7 @@ func calculateWeeklyTaskCompletion() float64 {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog("", title)
+		blog := control.GetBlog(account, title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
 			totalTasks += len(todoData.Items)
@@ -951,7 +911,7 @@ func calculateWeeklyTaskCompletion() float64 {
 
 // getRecentCompletedTasks gets recently completed tasks
 // 获取最近完成的任务
-func getRecentCompletedTasks(limit int) []string {
+func getRecentCompletedTasks(account string, limit int) []string {
 	var recentTasks []string
 	now := time.Now()
 
@@ -960,7 +920,7 @@ func getRecentCompletedTasks(limit int) []string {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("todolist-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog("", title)
+		blog := control.GetBlog(account, title)
 		if blog != nil {
 			todoData := todolist.ParseTodoListFromBlog(blog.Content)
 
@@ -981,8 +941,8 @@ func getRecentCompletedTasks(limit int) []string {
 
 // getReadingBlogs gets reading-related blogs
 // 获取阅读相关的博客
-func getReadingBlogs() []*module.Blog {
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+func getReadingBlogs(account string) []*module.Blog {
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 	var readingBlogs []*module.Blog
 
 	for _, blog := range allBlogs {
@@ -1037,7 +997,7 @@ func getExerciseTypeText(exerciseType string) string {
 
 // getWeeklyExerciseStats gets weekly exercise statistics
 // 获取本周锻炼统计
-func getWeeklyExerciseStats() WeeklyExerciseStats {
+func getWeeklyExerciseStats(account string) WeeklyExerciseStats {
 	now := time.Now()
 	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
 
@@ -1048,7 +1008,7 @@ func getWeeklyExerciseStats() WeeklyExerciseStats {
 		date := weekStart.AddDate(0, 0, i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog("", title)
+		blog := control.GetBlog(account, title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
 			if len(exercises.Items) > 0 {
@@ -1068,7 +1028,7 @@ func getWeeklyExerciseStats() WeeklyExerciseStats {
 
 // getRecentExercises gets recent exercise records
 // 获取最近锻炼记录
-func getRecentExercises(limit int) []string {
+func getRecentExercises(account string, limit int) []string {
 	var recentExercises []string
 	now := time.Now()
 
@@ -1076,7 +1036,7 @@ func getRecentExercises(limit int) []string {
 		date := now.AddDate(0, 0, -i)
 		title := fmt.Sprintf("exercise-%s", date.Format("2006-01-02"))
 
-		blog := control.GetBlog("", title)
+		blog := control.GetBlog(account, title)
 		if blog != nil {
 			exercises := exercise.ParseExerciseFromBlog(blog.Content)
 
@@ -1243,12 +1203,12 @@ func analyzeRecentTrend() string {
 // Individual stats functions that can be implemented based on real data
 
 // getTodayTasksStats gets today's tasks statistics
-func getTodayTasksStats() map[string]interface{} {
+func getTodayTasksStats(account string) map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
 	// Get today's todo blog
-	todayBlog := control.GetBlog("", todayTitle)
+	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog == nil {
 		log.DebugF("getTodayTasksStats: No todo blog found for %s", today)
 		return map[string]interface{}{
@@ -1292,7 +1252,7 @@ func getTodayTasksStats() map[string]interface{} {
 }
 
 // getTodayReadingStats gets today's reading statistics using reading module interfaces
-func getTodayReadingStats() map[string]interface{} {
+func getTodayReadingStats(account string) map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
 
 	// 使用reading模块的接口获取统计数据
@@ -1324,7 +1284,7 @@ func getTodayReadingStats() map[string]interface{} {
 	// 估算今日阅读页数（基于阅读记录的最后更新时间）
 	// 由于没有直接获取所有阅读记录的函数，我们需要通过书籍来获取记录
 	for _, book := range books {
-		record := reading.GetReadingRecordWithAccount("", book.ID)
+		record := reading.GetReadingRecordWithAccount(account, book.ID)
 		if record == nil {
 			continue
 		}
@@ -1361,12 +1321,12 @@ func getTodayReadingStats() map[string]interface{} {
 }
 
 // getTodayExerciseStats gets today's exercise statistics
-func getTodayExerciseStats() map[string]interface{} {
+func getTodayExerciseStats(account string) map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("exercise-%s", today)
 
 	// Get today's exercise blog
-	todayBlog := control.GetBlog("", todayTitle)
+	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog == nil {
 		log.DebugF("getTodayExerciseStats: No exercise blog found for %s", today)
 		return map[string]interface{}{
@@ -1424,9 +1384,9 @@ func getTodayExerciseStats() map[string]interface{} {
 }
 
 // getTodayBlogsStats gets today's blogs statistics
-func getTodayBlogsStats() map[string]interface{} {
+func getTodayBlogsStats(account string) map[string]interface{} {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	createdToday := 0
 	updatedToday := 0
@@ -1525,9 +1485,9 @@ func getTodayBlogsStats() map[string]interface{} {
 }
 
 // getTodayBlogCount gets the count of blogs created today
-func getTodayBlogCount() int {
+func getTodayBlogCount(account string) int {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	log.DebugF("getTodayBlogCount: Found %d total blogs", len(allBlogs))
 
@@ -1554,9 +1514,9 @@ func getTodayBlogCount() int {
 }
 
 // getTodayWordCount gets the total word count for today's blogs
-func getTodayWordCount() int {
+func getTodayWordCount(account string) int {
 	today := time.Now().Format("2006-01-02")
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	totalWords := 0
 	for _, blog := range allBlogs {
@@ -1631,11 +1591,11 @@ type LifeHealthScore struct {
 }
 
 // analyzeSleepPattern analyzes sleep and activity patterns from blog data
-func analyzeSleepPattern() SleepPattern {
+func analyzeSleepPattern(account string) SleepPattern {
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	var earlyMorning, lateNight int
 	var firstActivities, lastActivities []time.Time
@@ -1723,18 +1683,18 @@ func analyzeSleepPattern() SleepPattern {
 }
 
 // analyzeLifeHealthScore analyzes overall life health metrics
-func analyzeLifeHealthScore() LifeHealthScore {
+func analyzeLifeHealthScore(account string) LifeHealthScore {
 	// 分析写作频率 (近7天)
-	bloggingScore := analyzeBloggingFrequency()
+	bloggingScore := analyzeBloggingFrequency(account)
 
 	// 分析任务完成率
-	taskScore := analyzeTaskCompletion()
+	taskScore := analyzeTaskCompletion(account)
 
 	// 分析锻炼一致性
-	exerciseScore := analyzeExerciseConsistency()
+	exerciseScore := analyzeExerciseConsistency(account)
 
 	// 分析阅读习惯
-	readingScore := analyzeReadingHabit()
+	readingScore := analyzeReadingHabit(account)
 
 	// 计算综合评分
 	overallScore := (bloggingScore + taskScore + exerciseScore + readingScore) / 4.0
@@ -1821,12 +1781,12 @@ func calculateTimeVariance(times []time.Time) float64 {
 }
 
 // analyzeBloggingFrequency analyzes blogging frequency score
-func analyzeBloggingFrequency() float64 {
+func analyzeBloggingFrequency(account string) float64 {
 	weeklyBlogs := 0
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -1854,7 +1814,7 @@ func analyzeBloggingFrequency() float64 {
 }
 
 // analyzeTaskCompletion analyzes task completion rate
-func analyzeTaskCompletion() float64 {
+func analyzeTaskCompletion(account string) float64 {
 	// 简化实现：基于近期任务完成情况
 	// 这里可以集成真实的任务系统数据
 
@@ -1863,7 +1823,7 @@ func analyzeTaskCompletion() float64 {
 }
 
 // analyzeExerciseConsistency analyzes exercise consistency
-func analyzeExerciseConsistency() float64 {
+func analyzeExerciseConsistency(account string) float64 {
 	// 简化实现：基于近期锻炼记录
 	// 这里可以集成真实的锻炼数据
 
@@ -1872,9 +1832,9 @@ func analyzeExerciseConsistency() float64 {
 }
 
 // analyzeReadingHabit analyzes reading habit score
-func analyzeReadingHabit() float64 {
+func analyzeReadingHabit(account string) float64 {
 	// 简化实现：基于阅读相关博客数量和频率
-	readingBlogs := getReadingBlogs()
+	readingBlogs := getReadingBlogs(account)
 
 	if len(readingBlogs) == 0 {
 		return 30.0
@@ -1931,21 +1891,21 @@ func generateHealthAdvice(sleepPattern SleepPattern, lifeHealth LifeHealthScore)
 }
 
 // generateDetailedHealthData generates comprehensive health data for visualization
-func generateDetailedHealthData() map[string]interface{} {
+func generateDetailedHealthData(account string) map[string]interface{} {
 	// 分析作息规律
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 
 	// 分析生活习惯健康度
-	lifeHealthScore := analyzeLifeHealthScore()
+	lifeHealthScore := analyzeLifeHealthScore(account)
 
 	// 生成活动时间分布数据
-	activityHourDistribution := generateActivityHourDistribution()
+	activityHourDistribution := generateActivityHourDistribution(account)
 
 	// 生成一周健康趋势数据
-	weeklyHealthTrend := generateWeeklyHealthTrend()
+	weeklyHealthTrend := generateWeeklyHealthTrend(account)
 
 	// 生成健康评分雷达图数据
-	healthRadarData := generateHealthRadarData(lifeHealthScore)
+	healthRadarData := generateHealthRadarData(account, lifeHealthScore)
 
 	return map[string]interface{}{
 		"sleepPattern":             sleepPattern,
@@ -1959,12 +1919,12 @@ func generateDetailedHealthData() map[string]interface{} {
 }
 
 // generateActivityHourDistribution generates hourly activity distribution
-func generateActivityHourDistribution() map[string]interface{} {
+func generateActivityHourDistribution(account string) map[string]interface{} {
 	hourCounts := make([]int, 24) // 24小时计数
 	now := time.Now()
 	oneWeekAgo := now.AddDate(0, 0, -7)
 
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -2004,7 +1964,7 @@ func generateActivityHourDistribution() map[string]interface{} {
 }
 
 // generateWeeklyHealthTrend generates weekly health trend data
-func generateWeeklyHealthTrend() map[string]interface{} {
+func generateWeeklyHealthTrend(account string) map[string]interface{} {
 	labels := make([]string, 7)
 	blogCounts := make([]int, 7)
 	activityCounts := make([]int, 7)
@@ -2016,7 +1976,7 @@ func generateWeeklyHealthTrend() map[string]interface{} {
 		labels[6-i] = date.Format("01-02")
 
 		// 统计当天博客数量和活动数量
-		dailyBlogs, dailyActivities := getDailyHealthMetrics(date)
+		dailyBlogs, dailyActivities := getDailyHealthMetrics(account, date)
 		blogCounts[6-i] = dailyBlogs
 		activityCounts[6-i] = dailyActivities
 	}
@@ -2044,7 +2004,7 @@ func generateWeeklyHealthTrend() map[string]interface{} {
 }
 
 // generateHealthRadarData generates health radar chart data
-func generateHealthRadarData(lifeHealth LifeHealthScore) map[string]interface{} {
+func generateHealthRadarData(account string, lifeHealth LifeHealthScore) map[string]interface{} {
 	return map[string]interface{}{
 		"labels": []string{"写作频率", "任务完成", "锻炼习惯", "阅读习惯", "作息规律", "整体健康"},
 		"datasets": []map[string]interface{}{
@@ -2055,7 +2015,7 @@ func generateHealthRadarData(lifeHealth LifeHealthScore) map[string]interface{} 
 					lifeHealth.TaskCompletionRate,
 					lifeHealth.ExerciseConsistency,
 					lifeHealth.ReadingHabit,
-					calculateSleepRegularityScore(), // 作息规律单独计算
+					calculateSleepRegularityScore(account), // 作息规律单独计算
 					lifeHealth.OverallHealthScore,
 				},
 				"borderColor":          "rgba(54, 162, 235, 1)",
@@ -2069,12 +2029,12 @@ func generateHealthRadarData(lifeHealth LifeHealthScore) map[string]interface{} 
 }
 
 // getDailyHealthMetrics gets daily health metrics for specific date
-func getDailyHealthMetrics(date time.Time) (int, int) {
+func getDailyHealthMetrics(account string, date time.Time) (int, int) {
 	dateStr := date.Format("2006-01-02")
 	blogCount := 0
 	activityCount := 0
 
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 
 	for _, blog := range allBlogs {
 		if isSystemBlog(blog.Title) {
@@ -2105,15 +2065,15 @@ func getDailyHealthMetrics(date time.Time) (int, int) {
 }
 
 // calculateSleepRegularityScore calculates sleep regularity score
-func calculateSleepRegularityScore() float64 {
-	sleepPattern := analyzeSleepPattern()
+func calculateSleepRegularityScore(account string) float64 {
+	sleepPattern := analyzeSleepPattern(account)
 	return sleepPattern.RegularityScore
 }
 
 // Suggestion generation functions
 
 // generateTaskSuggestion generates task-related suggestions
-func generateTaskSuggestion() map[string]interface{} {
+func generateTaskSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "📝",
 		"text":   "您今天的任务完成率为60%，建议优先处理剩余的重要任务",
@@ -2123,7 +2083,7 @@ func generateTaskSuggestion() map[string]interface{} {
 }
 
 // generateReadingSuggestion generates reading-related suggestions
-func generateReadingSuggestion() map[string]interface{} {
+func generateReadingSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "📚",
 		"text":   "今日阅读时间2.5小时，建议继续保持良好的阅读习惯",
@@ -2133,7 +2093,7 @@ func generateReadingSuggestion() map[string]interface{} {
 }
 
 // generateExerciseSuggestion generates exercise-related suggestions
-func generateExerciseSuggestion() map[string]interface{} {
+func generateExerciseSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "💪",
 		"text":   "本周已完成3次锻炼，运动习惯保持良好，继续加油！",
@@ -2143,7 +2103,7 @@ func generateExerciseSuggestion() map[string]interface{} {
 }
 
 // generateTimeSuggestion generates time management suggestions
-func generateTimeSuggestion() map[string]interface{} {
+func generateTimeSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "⏰",
 		"text":   "分析显示您在下午2-4点效率最高，建议安排重要工作",
@@ -2153,7 +2113,7 @@ func generateTimeSuggestion() map[string]interface{} {
 }
 
 // generateStudySuggestion generates study-related suggestions
-func generateStudySuggestion() map[string]interface{} {
+func generateStudySuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "🎓",
 		"text":   "您的学习进度保持稳定，建议增加深度学习时间",
@@ -2163,14 +2123,14 @@ func generateStudySuggestion() map[string]interface{} {
 }
 
 // generateHealthSuggestion generates health-related suggestions
-func generateHealthSuggestion() map[string]interface{} {
+func generateHealthSuggestion(account string) map[string]interface{} {
 	// 分析作息规律
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 	log.DebugF("Health Analysis - Sleep Pattern: EarlyMorning=%d, LateNight=%d, Regularity=%.1f",
 		sleepPattern.EarlyMorningActivities, sleepPattern.LateNightActivities, sleepPattern.RegularityScore)
 
 	// 分析生活习惯健康度
-	lifeHealthScore := analyzeLifeHealthScore()
+	lifeHealthScore := analyzeLifeHealthScore(account)
 	log.DebugF("Health Analysis - Life Health Score: Overall=%.1f, Blogging=%.1f, Exercise=%.1f",
 		lifeHealthScore.OverallHealthScore, lifeHealthScore.BloggingFrequency, lifeHealthScore.ExerciseConsistency)
 
@@ -2186,7 +2146,7 @@ func generateHealthSuggestion() map[string]interface{} {
 }
 
 // generateGoalSuggestion generates goal-related suggestions
-func generateGoalSuggestion() map[string]interface{} {
+func generateGoalSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "🎯",
 		"text":   "本月目标完成度75%，距离达成还有5天，加油冲刺！",
@@ -2196,9 +2156,9 @@ func generateGoalSuggestion() map[string]interface{} {
 }
 
 // generateWritingSuggestion generates writing-related suggestions
-func generateWritingSuggestion() map[string]interface{} {
-	todayCount := getTodayBlogCount()
-	todayWords := getTodayWordCount()
+func generateWritingSuggestion(account string) map[string]interface{} {
+	todayCount := getTodayBlogCount(account)
+	todayWords := getTodayWordCount(account)
 
 	var text string
 	if todayCount == 0 {
@@ -2218,7 +2178,7 @@ func generateWritingSuggestion() map[string]interface{} {
 }
 
 // generateAnalyticsSuggestion generates analytics-related suggestions
-func generateAnalyticsSuggestion() map[string]interface{} {
+func generateAnalyticsSuggestion(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"icon":   "📊",
 		"text":   "数据完整性85%，持续记录可获得更精准的个人分析",
@@ -2238,10 +2198,11 @@ func HandleAssistantHealthComprehensive(w h.ResponseWriter, r *h.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	account := getAccountFromRequest(r)
 	switch r.Method {
 	case h.MethodGet:
 		// 生成综合健康分析数据
-		healthData := generateComprehensiveHealthData()
+		healthData := generateComprehensiveHealthData(account)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":    true,
@@ -2256,14 +2217,14 @@ func HandleAssistantHealthComprehensive(w h.ResponseWriter, r *h.Request) {
 
 // generateComprehensiveHealthData generates comprehensive health data with mental health analysis
 // 生成综合健康数据（包含心理健康分析）
-func generateComprehensiveHealthData() map[string]interface{} {
+func generateComprehensiveHealthData(account string) map[string]interface{} {
 	// 计算6个健康维度评分
-	mentalHealthScore := calculateMentalHealthScore()
-	physicalHealthScore := calculatePhysicalHealthScore()
-	learningGrowthScore := calculateLearningGrowthScore()
-	timeManagementScore := calculateTimeManagementScore()
-	goalExecutionScore := calculateGoalExecutionScore()
-	lifeBalanceScore := calculateLifeBalanceScore()
+	mentalHealthScore := calculateMentalHealthScore(account)
+	physicalHealthScore := calculatePhysicalHealthScore(account)
+	learningGrowthScore := calculateLearningGrowthScore(account)
+	timeManagementScore := calculateTimeManagementScore(account)
+	goalExecutionScore := calculateGoalExecutionScore(account)
+	lifeBalanceScore := calculateLifeBalanceScore(account)
 
 	// 计算综合评分（加权平均）
 	overallScore := int(mentalHealthScore*0.25 + physicalHealthScore*0.20 +
@@ -2271,13 +2232,13 @@ func generateComprehensiveHealthData() map[string]interface{} {
 		goalExecutionScore*0.15 + lifeBalanceScore*0.05)
 
 	// 分析心理健康数据
-	mentalHealthData := analyzeMentalHealthData()
+	mentalHealthData := analyzeMentalHealthData(account)
 
 	// 分析核心指标数据
-	coreMetricsData := analyzeCoreMetrics()
+	coreMetricsData := analyzeCoreMetrics(account)
 
 	// 生成个性化建议
-	recommendations := generateHealthRecommendations()
+	recommendations := generateHealthRecommendations(account)
 
 	return map[string]interface{}{
 		"overallScore": overallScore,
@@ -2309,15 +2270,15 @@ func generateComprehensiveHealthData() map[string]interface{} {
 
 // calculateMentalHealthScore calculates mental health score based on stress, anxiety, emotion
 // 计算心理健康评分（基于压力、焦虑、情绪分析）
-func calculateMentalHealthScore() float64 {
+func calculateMentalHealthScore(account string) float64 {
 	// 分析压力水平
-	stressLevel := analyzeStressLevel()
+	stressLevel := analyzeStressLevel(account)
 
 	// 分析焦虑风险
-	anxietyRisk := analyzeAnxietyRisk()
+	anxietyRisk := analyzeAnxietyRisk(account)
 
 	// 分析情绪稳定度
-	emotionStability := analyzeEmotionStability()
+	emotionStability := analyzeEmotionStability(account)
 
 	// 综合评分（压力越低、焦虑风险越小、情绪越稳定，分数越高）
 	score := (100.0-stressLevel)*0.4 + (100.0-anxietyRisk)*0.3 + emotionStability*0.3
@@ -2327,15 +2288,15 @@ func calculateMentalHealthScore() float64 {
 
 // analyzeStressLevel analyzes stress level based on task management and time patterns
 // 分析压力水平（基于任务管理和时间模式）
-func analyzeStressLevel() float64 {
+func analyzeStressLevel(account string) float64 {
 	// 获取未完成任务数量
-	unfinishedTasks := getUnfinishedTasksCount()
+	unfinishedTasks := getUnfinishedTasksCount(account)
 
 	// 获取紧急任务数量
-	urgentTasks := getUrgentTasksCount()
+	urgentTasks := getUrgentTasksCount(account)
 
 	// 分析深夜活动频率
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 	lateNightFactor := float64(sleepPattern.LateNightActivities) * 2.0
 
 	// 计算压力水平（0-100，越高压力越大）
@@ -2347,13 +2308,13 @@ func analyzeStressLevel() float64 {
 
 // analyzeAnxietyRisk analyzes anxiety risk based on behavioral patterns
 // 分析焦虑风险（基于行为模式）
-func analyzeAnxietyRisk() float64 {
+func analyzeAnxietyRisk(account string) float64 {
 	// 分析作息规律性
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 	irregularityFactor := (100.0 - sleepPattern.RegularityScore) * 0.3
 
 	// 分析任务完成率
-	taskCompletionRate := calculateWeeklyTaskCompletion()
+	taskCompletionRate := calculateWeeklyTaskCompletion(account)
 	taskStressFactor := (100.0 - taskCompletionRate) * 0.4
 
 	// 分析深夜活动频率
@@ -2367,9 +2328,9 @@ func analyzeAnxietyRisk() float64 {
 
 // analyzeEmotionStability analyzes emotional stability from writing patterns
 // 分析情绪稳定度（基于写作模式）
-func analyzeEmotionStability() float64 {
+func analyzeEmotionStability(account string) float64 {
 	// 分析最近博客的情绪倾向
-	recentBlogs := getRecentBlogs(7) // 最近7篇博客
+	recentBlogs := getRecentBlogs(account, 7) // 最近7篇博客
 
 	positiveWords := 0
 	negativeWords := 0
@@ -2407,9 +2368,9 @@ func analyzeEmotionStability() float64 {
 
 // calculatePhysicalHealthScore calculates physical health score based on exercise data
 // 计算体能健康评分（基于锻炼数据）
-func calculatePhysicalHealthScore() float64 {
+func calculatePhysicalHealthScore(account string) float64 {
 	// 获取本周锻炼统计
-	weeklyStats := getWeeklyExerciseStats()
+	weeklyStats := getWeeklyExerciseStats(account)
 
 	// 基于锻炼频率和强度评分
 	frequencyScore := math.Min(100, float64(weeklyStats.SessionCount)*20) // 每次锻炼20分
@@ -2421,12 +2382,12 @@ func calculatePhysicalHealthScore() float64 {
 
 // calculateLearningGrowthScore calculates learning growth score
 // 计算学习成长评分（基于阅读和写作数据）
-func calculateLearningGrowthScore() float64 {
+func calculateLearningGrowthScore(account string) float64 {
 	// 分析阅读习惯
-	readingScore := analyzeReadingHabit()
+	readingScore := analyzeReadingHabit(account)
 
 	// 分析写作频率
-	bloggingScore := analyzeBloggingFrequency()
+	bloggingScore := analyzeBloggingFrequency(account)
 
 	// 综合学习成长评分
 	return (readingScore + bloggingScore) / 2.0
@@ -2434,12 +2395,12 @@ func calculateLearningGrowthScore() float64 {
 
 // calculateTimeManagementScore calculates time management score
 // 计算时间管理评分（基于作息规律和活动模式）
-func calculateTimeManagementScore() float64 {
+func calculateTimeManagementScore(account string) float64 {
 	// 分析作息规律
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 
 	// 分析任务完成及时性
-	taskCompletionRate := calculateWeeklyTaskCompletion()
+	taskCompletionRate := calculateWeeklyTaskCompletion(account)
 
 	// 综合时间管理评分
 	return (sleepPattern.RegularityScore + taskCompletionRate) / 2.0
@@ -2447,9 +2408,9 @@ func calculateTimeManagementScore() float64 {
 
 // calculateGoalExecutionScore calculates goal execution score
 // 计算目标执行评分（基于任务完成和目标达成）
-func calculateGoalExecutionScore() float64 {
+func calculateGoalExecutionScore(account string) float64 {
 	// 任务完成率
-	taskRate := calculateWeeklyTaskCompletion()
+	taskRate := calculateWeeklyTaskCompletion(account)
 
 	// 目标达成度（简化计算）
 	goalAchievementRate := 80.0 // 可以后续集成真实目标数据
@@ -2460,9 +2421,9 @@ func calculateGoalExecutionScore() float64 {
 
 // calculateLifeBalanceScore calculates life balance score
 // 计算生活平衡评分（基于工作学习与休息娱乐的平衡）
-func calculateLifeBalanceScore() float64 {
+func calculateLifeBalanceScore(account string) float64 {
 	// 分析活动分布
-	activityDistribution := analyzeActivityDistribution()
+	activityDistribution := analyzeActivityDistribution(account)
 
 	// 基于活动平衡度评分
 	if activityDistribution["work"] > 0.7 {
@@ -2476,15 +2437,15 @@ func calculateLifeBalanceScore() float64 {
 
 // analyzeMentalHealthData analyzes detailed mental health data
 // 分析详细心理健康数据
-func analyzeMentalHealthData() map[string]interface{} {
-	stressLevel := analyzeStressLevel()
-	anxietyRisk := analyzeAnxietyRisk()
-	emotionStability := analyzeEmotionStability()
+func analyzeMentalHealthData(account string) map[string]interface{} {
+	stressLevel := analyzeStressLevel(account)
+	anxietyRisk := analyzeAnxietyRisk(account)
+	emotionStability := analyzeEmotionStability(account)
 
 	// 获取压力因素数据
-	unfinishedTasks := getUnfinishedTasksCount()
-	urgentTasks := getUrgentTasksCount()
-	sleepPattern := analyzeSleepPattern()
+	unfinishedTasks := getUnfinishedTasksCount(account)
+	urgentTasks := getUrgentTasksCount(account)
+	sleepPattern := analyzeSleepPattern(account)
 
 	return map[string]interface{}{
 		"stress": map[string]interface{}{
@@ -2550,11 +2511,11 @@ func getAnxietyRiskLabel(risk float64) string {
 }
 
 // getUnfinishedTasksCount gets count of unfinished tasks
-func getUnfinishedTasksCount() int {
+func getUnfinishedTasksCount(account string) int {
 	today := time.Now().Format("2006-01-02")
 	todayTitle := fmt.Sprintf("todolist-%s", today)
 
-	todayBlog := control.GetBlog("", todayTitle)
+	todayBlog := control.GetBlog(account, todayTitle)
 	if todayBlog == nil {
 		return 0
 	}
@@ -2572,15 +2533,15 @@ func getUnfinishedTasksCount() int {
 }
 
 // getUrgentTasksCount gets count of urgent tasks (simplified)
-func getUrgentTasksCount() int {
+func getUrgentTasksCount(account string) int {
 	// 简化实现：假设未完成任务的30%是紧急任务
-	unfinished := getUnfinishedTasksCount()
+	unfinished := getUnfinishedTasksCount(account)
 	return int(float64(unfinished) * 0.3)
 }
 
 // getRecentBlogs gets recent blogs for analysis
-func getRecentBlogs(limit int) []*module.Blog {
-	allBlogs := control.GetAll("", 0, module.EAuthType_all)
+func getRecentBlogs(account string, limit int) []*module.Blog {
+	allBlogs := control.GetAll(account, 0, module.EAuthType_all)
 	var recentBlogs []*module.Blog
 
 	for _, blog := range allBlogs {
@@ -2597,7 +2558,7 @@ func getRecentBlogs(limit int) []*module.Blog {
 }
 
 // analyzeActivityDistribution analyzes activity distribution
-func analyzeActivityDistribution() map[string]float64 {
+func analyzeActivityDistribution(account string) map[string]float64 {
 	// 简化实现：返回模拟的活动分布
 	return map[string]float64{
 		"work":     0.5,
@@ -2608,22 +2569,22 @@ func analyzeActivityDistribution() map[string]float64 {
 }
 
 // analyzeCoreMetrics analyzes core health metrics
-func analyzeCoreMetrics() map[string]interface{} {
+func analyzeCoreMetrics(account string) map[string]interface{} {
 	// 获取运动数据
-	weeklyStats := getWeeklyExerciseStats()
+	weeklyStats := getWeeklyExerciseStats(account)
 
 	// 获取学习数据
-	readingBlogs := getReadingBlogs()
+	readingBlogs := getReadingBlogs(account)
 	currentBook := "《深度工作》" // 简化实现
 	if len(readingBlogs) > 0 {
 		currentBook = readingBlogs[0].Title
 	}
 
 	// 获取时间管理数据
-	sleepPattern := analyzeSleepPattern()
+	sleepPattern := analyzeSleepPattern(account)
 
 	// 获取任务执行数据
-	todayTasks := getTodayTasksStats()
+	todayTasks := getTodayTasksStats(account)
 
 	return map[string]interface{}{
 		"fitness": map[string]interface{}{
@@ -2671,7 +2632,7 @@ func getEfficiencyLabel(score float64) string {
 }
 
 // generateHealthRecommendations generates personalized health recommendations
-func generateHealthRecommendations() map[string]interface{} {
+func generateHealthRecommendations(account string) map[string]interface{} {
 	return map[string]interface{}{
 		"mental": []map[string]interface{}{
 			{

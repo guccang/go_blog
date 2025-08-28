@@ -187,14 +187,14 @@ func (cmd *DeleteBookNoteCmd) Do(actor core.ActorInterface) {
 // 添加读书感悟cmd
 type AddBookInsightCmd struct {
 	core.ActorCommand
-	Account       string
-	BookID        string
-	Title         string
-	Content       string
-	KeyTakeaways  []string
-	Applications  []string
-	Rating        int
-	Tags          []string
+	Account      string
+	BookID       string
+	Title        string
+	Content      string
+	KeyTakeaways []string
+	Applications []string
+	Rating       int
+	Tags         []string
 }
 
 func (cmd *AddBookInsightCmd) Do(actor core.ActorInterface) {
@@ -273,7 +273,7 @@ func (cmd *FilterBooksByStatusCmd) Do(actor core.ActorInterface) {
 // 按分类筛选书籍cmd
 type FilterBooksByCategoryCmd struct {
 	core.ActorCommand
-	Account   string
+	Account  string
 	Category string
 }
 
@@ -298,12 +298,12 @@ func (cmd *GetReadingStatisticsCmd) Do(actor core.ActorInterface) {
 // 添加阅读计划cmd
 type AddReadingPlanCmd struct {
 	core.ActorCommand
-	Account      string
-	Title        string
-	Description  string
-	StartDate    string
-	EndDate      string
-	TargetBooks  []string
+	Account     string
+	Title       string
+	Description string
+	StartDate   string
+	EndDate     string
+	TargetBooks []string
 }
 
 func (cmd *AddReadingPlanCmd) Do(actor core.ActorInterface) {

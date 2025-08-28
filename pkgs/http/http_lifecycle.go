@@ -121,7 +121,8 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	stats := control.GetStatistics()
+	account := getAccountFromRequest(r)
+	stats := control.GetStatistics(account)
 	if stats == nil {
 		w.WriteHeader(h.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to get statistics"})

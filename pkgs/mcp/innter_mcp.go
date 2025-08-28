@@ -9,43 +9,51 @@ import (
 var callBacks = make(map[string]func(arguments map[string]interface{}) string)
 
 func Inner_blog_RawAllBlogData(arguments map[string]interface{}) string {
-	return statistics.RawAllBlogData()
+	account := arguments["account"].(string)
+	return statistics.RawAllBlogData(account)
 }
 
 func Inner_blog_RawGetBlogData(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	title := arguments["title"].(string)
-	return statistics.RawGetBlogData(title)
+	return statistics.RawGetBlogData(account, title)
 }
 
 func Inner_blog_RawAllCommentData(arguments map[string]interface{}) string {
-	return statistics.RawAllCommentData()
+	account := arguments["account"].(string)
+	return statistics.RawAllCommentData(account)
 }
 
 func Inner_blog_RawCommentData(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	title := arguments["title"].(string)
-	return statistics.RawCommentData(title)
+	return statistics.RawCommentData(account, title)
 }
 
 func Inner_blog_RawAllBlogDataByDate(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	date := arguments["date"].(string)
-	return statistics.RawAllBlogDataByDate(date)
+	return statistics.RawAllBlogDataByDate(account, date)
 }
 
 func Inner_blog_RawAllBlogDataByDateRange(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	startDate := arguments["startDate"].(string)
 	endDate := arguments["endDate"].(string)
-	return statistics.RawAllBlogDataByDateRange(startDate, endDate)
+	return statistics.RawAllBlogDataByDateRange(account, startDate, endDate)
 }
 
 func Inner_blog_RawAllBlogDataByDateRangeCount(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	startDate := arguments["startDate"].(string)
 	endDate := arguments["endDate"].(string)
-	return string(statistics.RawAllBlogDataByDateRangeCount(startDate, endDate))
+	return string(statistics.RawAllBlogDataByDateRangeCount(account, startDate, endDate))
 }
 
 func Inner_blog_RawGetBlogDataByDate(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	date := arguments["date"].(string)
-	return statistics.RawGetBlogDataByDate(date)
+	return statistics.RawGetBlogDataByDate(account, date)
 }
 
 func Inner_blog_RawCurrentDate(arguments map[string]interface{}) string {
@@ -58,129 +66,157 @@ func Inner_blog_RawCurrentTime(arguments map[string]interface{}) string {
 
 func Inner_blog_RawAllBlogCount(arguments map[string]interface{}) string {
 	// int to string
-	return strconv.Itoa(statistics.RawAllBlogCount())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllBlogCount(account))
 }
 
 func Inner_blog_RawAllDiaryCount(arguments map[string]interface{}) string {
-	return strconv.Itoa(statistics.RawAllDiaryCount())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllDiaryCount(account))
 }
 
 func Inner_blog_RawCurrentDiaryContent(arguments map[string]interface{}) string {
-	return statistics.RawCurrentDiaryContent()
+	account := arguments["account"].(string)
+	return statistics.RawCurrentDiaryContent(account)
 }
 
 func Inner_blog_RawAllExerciseCount(arguments map[string]interface{}) string {
-	return strconv.Itoa(statistics.RawAllExerciseCount())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllExerciseCount(account))
 }
 
 func Inner_blog_RawAllExerciseTotalMinutes(arguments map[string]interface{}) string {
-	return strconv.Itoa(statistics.RawAllExerciseTotalMinutes())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllExerciseTotalMinutes(account))
 }
 
 func Inner_blog_RawAllExerciseDistance(arguments map[string]interface{}) string {
-	return strconv.Itoa(statistics.RawAllExerciseDistance())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllExerciseDistance(account))
 }
 
 func Inner_blog_RawAllExerciseCalories(arguments map[string]interface{}) string {
-	return strconv.Itoa(statistics.RawAllExerciseCalories())
+	account := arguments["account"].(string)
+	return strconv.Itoa(statistics.RawAllExerciseCalories(account))
 }
 
 func Inner_blog_RawAllDiaryContent(arguments map[string]interface{}) string {
-	return statistics.RawAllDiaryContent()
+	account := arguments["account"].(string)
+	return statistics.RawAllDiaryContent(account)
 }
 
 func Inner_blog_RawGetBlogByTitleMatch(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	match := arguments["match"].(string)
-	return statistics.RawGetBlogByTitleMatch(match)
+	return statistics.RawGetBlogByTitleMatch(account, match)
 }
 
 func Inner_blog_RawGetCurrentTask(arguments map[string]interface{}) string {
-	return statistics.RawGetCurrentTask()
+	account := arguments["account"].(string)
+	return statistics.RawGetCurrentTask(account)
 }
 
 func Inner_blog_RawGetCurrentTaskByDate(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	date := arguments["date"].(string)
-	return statistics.RawGetCurrentTaskByDate(date)
+	return statistics.RawGetCurrentTaskByDate(account, date)
 }
 
 func Inner_blog_RawGetCurrentTaskByRageDate(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	startDate := arguments["startDate"].(string)
 	endDate := arguments["endDate"].(string)
-	return statistics.RawGetCurrentTaskByRageDate(startDate, endDate)
+	return statistics.RawGetCurrentTaskByRageDate(account, startDate, endDate)
 }
 
 // =================================== 扩展Inner_blog接口 =========================================
 
 // 博客统计相关接口
 func Inner_blog_RawBlogStatistics(arguments map[string]interface{}) string {
-	return statistics.RawBlogStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawBlogStatistics(account)
 }
 
 func Inner_blog_RawAccessStatistics(arguments map[string]interface{}) string {
-	return statistics.RawAccessStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawAccessStatistics(account)
 }
 
 func Inner_blog_RawTopAccessedBlogs(arguments map[string]interface{}) string {
-	return statistics.RawTopAccessedBlogs()
+	account := arguments["account"].(string)
+	return statistics.RawTopAccessedBlogs(account)
 }
 
 func Inner_blog_RawRecentAccessedBlogs(arguments map[string]interface{}) string {
-	return statistics.RawRecentAccessedBlogs()
+	account := arguments["account"].(string)
+	return statistics.RawRecentAccessedBlogs(account)
 }
 
 func Inner_blog_RawEditStatistics(arguments map[string]interface{}) string {
-	return statistics.RawEditStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawEditStatistics(account)
 }
 
 func Inner_blog_RawTagStatistics(arguments map[string]interface{}) string {
-	return statistics.RawTagStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawTagStatistics(account)
 }
 
 func Inner_blog_RawCommentStatistics(arguments map[string]interface{}) string {
-	return statistics.RawCommentStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawCommentStatistics(account)
 }
 
 func Inner_blog_RawContentStatistics(arguments map[string]interface{}) string {
-	return statistics.RawContentStatistics()
+	account := arguments["account"].(string)
+	return statistics.RawContentStatistics(account)
 }
 
 // 博客查询相关接口
 func Inner_blog_RawBlogsByAuthType(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	authType := int(arguments["authType"].(float64)) // JSON数字默认为float64
-	return statistics.RawBlogsByAuthType(authType)
+	return statistics.RawBlogsByAuthType(account, authType)
 }
 
 func Inner_blog_RawBlogsByTag(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	tag := arguments["tag"].(string)
-	return statistics.RawBlogsByTag(tag)
+	return statistics.RawBlogsByTag(account, tag)
 }
 
 func Inner_blog_RawBlogMetadata(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	title := arguments["title"].(string)
-	return statistics.RawBlogMetadata(title)
+	return statistics.RawBlogMetadata(account, title)
 }
 
 func Inner_blog_RawRecentActiveBlog(arguments map[string]interface{}) string {
-	return statistics.RawRecentActiveBlog()
+	account := arguments["account"].(string)
+	return statistics.RawRecentActiveBlog(account)
 }
 
 func Inner_blog_RawMonthlyCreationTrend(arguments map[string]interface{}) string {
-	return statistics.RawMonthlyCreationTrend()
+	account := arguments["account"].(string)
+	return statistics.RawMonthlyCreationTrend(account)
 }
 
 func Inner_blog_RawSearchBlogContent(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	keyword := arguments["keyword"].(string)
-	return statistics.RawSearchBlogContent(keyword)
+	return statistics.RawSearchBlogContent(account, keyword)
 }
 
 // 锻炼相关接口
 func Inner_blog_RawExerciseDetailedStats(arguments map[string]interface{}) string {
-	return statistics.RawExerciseDetailedStats()
+	account := arguments["account"].(string)
+	return statistics.RawExerciseDetailedStats(account)
 }
 
 func Inner_blog_RawRecentExerciseRecords(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
 	days := int(arguments["days"].(float64))
-	return statistics.RawRecentExerciseRecords(days)
+	return statistics.RawRecentExerciseRecords(account, days)
 }
 
 func RegisterCallBack(name string, callback func(arguments map[string]interface{}) string) {
@@ -274,6 +310,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentDiaryContent",
 				Description: "获取当天日记数据",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -281,6 +324,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTask",
 				Description: "获取当天todolist数据,返回json格式",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -291,9 +341,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"date": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"date":    map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 					},
-					"required": []string{"date"},
+					"required": []string{"account", "date"},
 				},
 			},
 		},
@@ -305,10 +356,11 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account":   map[string]string{"type": "string", "description": "账号"},
 						"startDate": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 						"endDate":   map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 					},
-					"required": []string{"startDate", "endDate"},
+					"required": []string{"account", "startDate", "endDate"},
 				},
 			},
 		},
@@ -317,6 +369,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllDiaryContent",
 				Description: "获取所有日记内容",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -327,9 +386,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"match": map[string]string{"type": "string", "description": "博客名称匹配字符串，如日记_,匹配日记_开头的博客"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"match":   map[string]string{"type": "string", "description": "博客名称匹配字符串，如日记_,匹配日记_开头的博客"},
 					},
-					"required": []string{"match"},
+					"required": []string{"account", "match"},
 				},
 			},
 		},
@@ -338,6 +398,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseCalories",
 				Description: "获取锻炼总卡路里,单位千卡",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -345,6 +412,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseDistance",
 				Description: "获取锻炼总距离,单位公里",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -352,6 +426,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseTotalMinutes",
 				Description: "获取锻炼总时长,单位分钟",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -359,6 +440,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllDiaryCount",
 				Description: "获取日记数量",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -366,6 +454,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseCount",
 				Description: "获取锻炼次数",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -374,9 +469,11 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Name:        "Inner_blog.RawAllBlogData",
 				Description: "获取所有blog名称,以空格分割",
 				Parameters: map[string]interface{}{
-					"type":       "object",
-					"properties": map[string]interface{}{},
-					"required":   []string{},
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
 				},
 			},
 		},
@@ -388,9 +485,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"title": map[string]string{"type": "string", "description": "blog名称"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"title":   map[string]string{"type": "string", "description": "blog名称"},
 					},
-					"required": []string{"title"},
+					"required": []string{"account", "title"},
 				},
 			},
 		},
@@ -402,9 +500,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"date": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"date":    map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 					},
-					"required": []string{"date"},
+					"required": []string{"account", "date"},
 				},
 			},
 		},
@@ -416,9 +515,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"title": map[string]string{"type": "string", "description": "comment名称"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"title":   map[string]string{"type": "string", "description": "comment名称"},
 					},
-					"required": []string{"title"},
+					"required": []string{"account", "title"},
 				},
 			},
 		},
@@ -430,10 +530,11 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account":   map[string]string{"type": "string", "description": "账号"},
 						"startDate": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 						"endDate":   map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 					},
-					"required": []string{"startDate", "endDate"},
+					"required": []string{"account", "startDate", "endDate"},
 				},
 			},
 		},
@@ -445,10 +546,11 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account":   map[string]string{"type": "string", "description": "账号"},
 						"startDate": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 						"endDate":   map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
 					},
-					"required": []string{"startDate", "endDate"},
+					"required": []string{"account", "startDate", "endDate"},
 				},
 			},
 		},
@@ -457,6 +559,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogCount",
 				Description: "获取blog数量",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -464,6 +573,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentDate",
 				Description: "获取当前日期",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -471,6 +587,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentTime",
 				Description: "获取当前时间",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 
@@ -482,6 +605,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawBlogStatistics",
 				Description: "获取博客详细统计信息,包括总数、权限分布、时间统计等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -489,6 +619,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAccessStatistics",
 				Description: "获取博客访问统计信息,包括总访问量、今日/周/月访问等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -496,6 +633,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawTopAccessedBlogs",
 				Description: "获取热门博客列表(前10名),按访问量排序",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -503,6 +647,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawRecentAccessedBlogs",
 				Description: "获取最近访问的博客列表,按访问时间排序",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -510,6 +661,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawEditStatistics",
 				Description: "获取博客编辑统计信息,包括编辑次数、频率等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -517,6 +675,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawTagStatistics",
 				Description: "获取标签统计信息,包括标签总数和热门标签排行",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -524,6 +689,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCommentStatistics",
 				Description: "获取评论统计信息,包括评论总数、活跃度等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -531,6 +703,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawContentStatistics",
 				Description: "获取内容统计信息,包括字符数、文章长度分布等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 
@@ -543,12 +722,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
 						"authType": map[string]interface{}{
 							"type":        "number",
 							"description": "权限类型数值:1=私有,2=公开,4=加密,8=协作,16=日记",
 						},
 					},
-					"required": []string{"authType"},
+					"required": []string{"account", "authType"},
 				},
 			},
 		},
@@ -560,9 +740,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"tag": map[string]string{"type": "string", "description": "要查询的标签名称"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"tag":     map[string]string{"type": "string", "description": "要查询的标签名称"},
 					},
-					"required": []string{"tag"},
+					"required": []string{"account", "tag"},
 				},
 			},
 		},
@@ -574,9 +755,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"title": map[string]string{"type": "string", "description": "博客标题"},
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"title":   map[string]string{"type": "string", "description": "博客标题"},
 					},
-					"required": []string{"title"},
+					"required": []string{"account", "title"},
 				},
 			},
 		},
@@ -585,6 +767,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawRecentActiveBlog",
 				Description: "获取近期活跃博客列表(近7天有访问或修改的博客)",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -592,6 +781,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawMonthlyCreationTrend",
 				Description: "获取博客月度创建趋势统计,显示每月创建的博客数量",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -602,9 +798,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
 						"keyword": map[string]string{"type": "string", "description": "要搜索的关键词"},
 					},
-					"required": []string{"keyword"},
+					"required": []string{"account", "keyword"},
 				},
 			},
 		},
@@ -615,6 +812,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawExerciseDetailedStats",
 				Description: "获取锻炼详细统计信息,包括总次数、时长、卡路里、类型分布等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
 			},
 		},
 		{
@@ -625,12 +829,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
 						"days": map[string]interface{}{
 							"type":        "number",
 							"description": "要查询的天数,如7表示最近7天",
 						},
 					},
-					"required": []string{"days"},
+					"required": []string{"account", "days"},
 				},
 			},
 		},

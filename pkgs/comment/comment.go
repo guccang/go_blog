@@ -4,8 +4,6 @@ import (
 	"core"
 	"fmt"
 	"module"
-	log "mylog"
-	db "persistence"
 )
 
 // 评论模块actor
@@ -19,48 +17,52 @@ func Info() {
 func Init() {
 	comment_module = &CommentActor{
 		Actor:    core.NewActor(),
-		comments: make(map[string]*module.BlogComments),
+		comments: make(map[string]*AccountCommentData),
 	}
 
-	// 初始化用户管理器
-	comment_module.initUserManager()
-
-	// 加载评论数据
-	all_datas := db.GetAllBlogComments()
-	if all_datas != nil {
-		for _, c := range all_datas {
-			comment_module.comments[c.Title] = c
-		}
+	comment_module.userManager = &CommentUserManager{
+		AccountData: make(map[string]*CommentAccountData),
 	}
-	log.DebugF("getComments number=%d", len(comment_module.comments))
 
 	comment_module.Start(comment_module)
 }
 
+func LoadComments(account string) {
+	cmd := &LoadCommentsCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+	}
+	comment_module.Send(cmd)
+	<-cmd.Response()
+}
 
 // interface
 
-func AddComment(title string, msg string, owner string, pwd string, mail string) int {
+func AddComment(account, title string, msg string, owner string, pwd string, mail string) int {
 	cmd := &AddCommentCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Title: title,
-		Msg:   msg,
-		Owner: owner,
-		Pwd:   pwd,
-		Mail:  mail,
+		Account: account,
+		Title:   title,
+		Msg:     msg,
+		Owner:   owner,
+		Pwd:     pwd,
+		Mail:    mail,
 	}
 	comment_module.Send(cmd)
 	result := <-cmd.Response()
 	return result.(int)
 }
 
-func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, string) {
+func AddCommentWithAuth(account, title, msg, sessionID, ip, userAgent string) (int, string) {
 	cmd := &AddCommentWithAuthCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Title:     title,
 		Msg:       msg,
 		SessionID: sessionID,
@@ -73,11 +75,12 @@ func AddCommentWithAuth(title, msg, sessionID, ip, userAgent string) (int, strin
 	return ret.(int), message.(string)
 }
 
-func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int, string) {
+func AddAnonymousComment(account, title, msg, username, email, ip, userAgent string) (int, string) {
 	cmd := &AddAnonymousCommentCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Title:     title,
 		Msg:       msg,
 		Username:  username,
@@ -91,11 +94,12 @@ func AddAnonymousComment(title, msg, username, email, ip, userAgent string) (int
 	return ret.(int), message.(string)
 }
 
-func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent string) (int, string, string) {
+func AddCommentWithPassword(account, title, msg, username, email, password, ip, userAgent string) (int, string, string) {
 	cmd := &AddCommentWithPasswordCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Title:     title,
 		Msg:       msg,
 		Username:  username,
@@ -111,39 +115,42 @@ func AddCommentWithPassword(title, msg, username, email, password, ip, userAgent
 	return ret.(int), message.(string), sessionID.(string)
 }
 
-func ModifyComment(title string, msg string, idx int) int {
+func ModifyComment(account, title string, msg string, idx int) int {
 	cmd := &ModifyCommentCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Title: title,
-		Msg:   msg,
-		Idx:   idx,
+		Account: account,
+		Title:   title,
+		Msg:     msg,
+		Idx:     idx,
 	}
 	comment_module.Send(cmd)
 	result := <-cmd.Response()
 	return result.(int)
 }
 
-func RemoveComment(title string, idx int) int {
+func RemoveComment(account, title string, idx int) int {
 	cmd := &RemoveCommentCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Title: title,
-		Idx:   idx,
+		Account: account,
+		Title:   title,
+		Idx:     idx,
 	}
 	comment_module.Send(cmd)
 	result := <-cmd.Response()
 	return result.(int)
 }
 
-func GetComments(title string) *module.BlogComments {
+func GetComments(account, title string) *module.BlogComments {
 	cmd := &GetCommentsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Title: title,
+		Account: account,
+		Title:   title,
 	}
 	comment_module.Send(cmd)
 	result := <-cmd.Response()
@@ -153,11 +160,12 @@ func GetComments(title string) *module.BlogComments {
 	return result.(*module.BlogComments)
 }
 
-func IsUsernameAvailable(username string) bool {
+func IsUsernameAvailable(account, username string) bool {
 	cmd := &IsUsernameAvailableCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		Username: username,
 	}
 	comment_module.Send(cmd)
@@ -165,17 +173,18 @@ func IsUsernameAvailable(username string) bool {
 	return result.(bool)
 }
 
-func ValidateSession(sessionID string) (*module.CommentUser, error) {
+func ValidateSession(account, sessionID string) (*module.CommentUser, error) {
 	cmd := &ValidateSessionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		SessionID: sessionID,
 	}
 	comment_module.Send(cmd)
 	user := <-cmd.Response()
 	err := <-cmd.Response()
-	
+
 	if err != nil {
 		return nil, err.(error)
 	}
@@ -185,11 +194,12 @@ func ValidateSession(sessionID string) (*module.CommentUser, error) {
 	return user.(*module.CommentUser), nil
 }
 
-func GetAllComments() map[string]*module.BlogComments {
+func GetAllComments(account string) map[string]*module.BlogComments {
 	cmd := &GetAllCommentsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	comment_module.Send(cmd)
 	result := <-cmd.Response()
@@ -199,11 +209,12 @@ func GetAllComments() map[string]*module.BlogComments {
 	return result.(map[string]*module.BlogComments)
 }
 
-func GetUsersByUsername(username string) []*module.CommentUser {
+func GetUsersByUsername(account, username string) []*module.CommentUser {
 	cmd := &GetUsersByUsernameCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		Username: username,
 	}
 	comment_module.Send(cmd)

@@ -1,9 +1,11 @@
 package skill
 
 import (
+	"blog"
 	"encoding/json"
 	"fmt"
 	"io"
+	log "mylog"
 	"net/http"
 	"strings"
 )
@@ -11,6 +13,21 @@ import (
 // HTTP handlers for skill management
 
 var skillManager = NewSkillManager()
+
+// getAccountFromRequest extracts account from session cookie
+func getAccountFromRequest(r *http.Request) string {
+	sessionCookie, err := r.Cookie("session")
+	if err != nil {
+		log.DebugF("No session cookie found: %v", err)
+		return ""
+	}
+
+	account := blog.GetAccountFromSession(sessionCookie.Value)
+	if account == "" {
+		return ""
+	}
+	return account
+}
 
 // AddSkillHandler handles adding a new skill
 func AddSkillHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +49,8 @@ func AddSkillHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := skillManager.AddSkill(&skill); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.AddSkill(account, &skill); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to add skill: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -59,7 +77,8 @@ func GetSkillHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	skillID := pathParts[len(pathParts)-1]
 
-	skill, err := skillManager.GetSkill(skillID)
+	account := getAccountFromRequest(r)
+	skill, err := skillManager.GetSkill(account, skillID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Skill not found: %v", err), http.StatusNotFound)
 		return
@@ -92,7 +111,8 @@ func UpdateSkillHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := skillManager.UpdateSkill(&skill); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.UpdateSkill(account, &skill); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update skill: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -119,7 +139,8 @@ func DeleteSkillHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	skillID := pathParts[len(pathParts)-1]
 
-	if err := skillManager.DeleteSkill(skillID); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.DeleteSkill(account, skillID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete skill: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -138,7 +159,8 @@ func GetAllSkillsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skills, err := skillManager.GetAllSkills()
+	account := getAccountFromRequest(r)
+	skills, err := skillManager.GetAllSkills(account)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get skills: %v", err), http.StatusInternalServerError)
 		return
@@ -180,7 +202,8 @@ func AddSkillContentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := skillManager.AddSkillContent(skillID, &content); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.AddSkillContent(account, skillID, &content); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to add content: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -221,7 +244,8 @@ func UpdateSkillContentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := skillManager.UpdateSkillContent(skillID, contentID, &content); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.UpdateSkillContent(account, skillID, contentID, &content); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update content: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -249,7 +273,8 @@ func DeleteSkillContentHandler(w http.ResponseWriter, r *http.Request) {
 	skillID := pathParts[len(pathParts)-3]
 	contentID := pathParts[len(pathParts)-1]
 
-	if err := skillManager.DeleteSkillContent(skillID, contentID); err != nil {
+	account := getAccountFromRequest(r)
+	if err := skillManager.DeleteSkillContent(account, skillID, contentID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete content: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -274,7 +299,8 @@ func GetSkillsByCategoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skills, err := skillManager.GetSkillsByCategory(category)
+	account := getAccountFromRequest(r)
+	skills, err := skillManager.GetSkillsByCategory(account, category)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get skills: %v", err), http.StatusInternalServerError)
 		return
@@ -301,7 +327,8 @@ func GetSkillsByTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skills, err := skillManager.GetSkillsByTag(tag)
+	account := getAccountFromRequest(r)
+	skills, err := skillManager.GetSkillsByTag(account, tag)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get skills: %v", err), http.StatusInternalServerError)
 		return
@@ -322,7 +349,8 @@ func GetActiveSkillsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skills, err := skillManager.GetActiveSkills()
+	account := getAccountFromRequest(r)
+	skills, err := skillManager.GetActiveSkills(account)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get skills: %v", err), http.StatusInternalServerError)
 		return
@@ -339,14 +367,14 @@ func GetActiveSkillsHandler(w http.ResponseWriter, r *http.Request) {
 // SkillStats represents statistics about skills
 // 技能统计信息
 type SkillStats struct {
-	TotalSkills      int     `json:"total_skills"`
-	ActiveSkills     int     `json:"active_skills"`
-	CompletedSkills  int     `json:"completed_skills"`
-	TotalContents    int     `json:"total_contents"`
-	CompletedContents int     `json:"completed_contents"`
-	AvgProgress      float64 `json:"avg_progress"`
-	Categories       map[string]int `json:"categories"`
-	Tags             map[string]int `json:"tags"`
+	TotalSkills       int            `json:"total_skills"`
+	ActiveSkills      int            `json:"active_skills"`
+	CompletedSkills   int            `json:"completed_skills"`
+	TotalContents     int            `json:"total_contents"`
+	CompletedContents int            `json:"completed_contents"`
+	AvgProgress       float64        `json:"avg_progress"`
+	Categories        map[string]int `json:"categories"`
+	Tags              map[string]int `json:"tags"`
 }
 
 // GetSkillStatsHandler handles retrieving skill statistics
@@ -356,7 +384,8 @@ func GetSkillStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allSkills, err := skillManager.GetAllSkills()
+	account := getAccountFromRequest(r)
+	allSkills, err := skillManager.GetAllSkills(account)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get skills: %v", err), http.StatusInternalServerError)
 		return

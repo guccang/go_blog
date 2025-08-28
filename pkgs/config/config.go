@@ -10,8 +10,7 @@ import (
 	"strings"
 )
 
-// 配置模块actor
-var config_module *ConfigActor
+var adminAccount string
 
 func Info() {
 	log.Debug("info config v13.0")
@@ -19,61 +18,55 @@ func Info() {
 
 // 初始化config模块
 func Init(filePath string) {
-	config_module = &ConfigActor{
-		Actor:          core.NewActor(),
-		datas:          make(map[string]string),
-		autodatesuffix: make([]string, 0),
-		publictags:     make([]string, 0),
-		diary_keywords: make([]string, 0),
-		config_path:    filePath,
-		sys_files:      make([]string, 0),
-		blog_version:   "Version13.0",
-	}
-
-	err := config_module.loadConfigInternal(filePath)
-	if err != nil {
-		log.ErrorF("Init config err=%s", err.Error())
-	}
-	config_module.Start(config_module)
+	InitManager(filePath)
 }
 
 // interface
 
-func GetVersion() string {
+func GetVersionWithAccount(account string) string {
+	actor := getConfigActor(account)
 	cmd := &GetVersionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	version := <-cmd.Response()
 	return version.(string)
 }
 
-func GetConfigPath() string {
+func GetConfigPathWithAccount(account string) string {
+	actor := getConfigActor(account)
 	cmd := &GetConfigPathCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	path := <-cmd.Response()
 	return path.(string)
 }
 
-func ReloadConfig(filePath string) {
+func ReloadConfig(account, filePath string) {
+	ReloadConfigWithAccount(account, filePath)
+}
+
+func ReloadConfigWithAccount(account, filePath string) {
+	actor := getConfigActor(account)
 	cmd := &ReloadConfigCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:  account,
 		FilePath: filePath,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	<-cmd.Response()
 }
 
 // 内部方法：加载配置
-func (aconfig *ConfigActor) loadConfigInternal(filePath string) error {
+func (aconfig *ConfigActor) loadConfigInternal(account string, filePath string) error {
+	log.DebugF("loadConfigInternal account=%s filePath=%s", account, filePath)
 	datas, err := readConfigFile(filePath)
 	if err != nil {
 		return err
@@ -104,15 +97,19 @@ func (aconfig *ConfigActor) loadConfigInternal(filePath string) error {
 	}
 
 	// 从 sys_conf.md 文件中读取日记关键字配置
-	aconfig.loadDiaryKeywordsFromSysConf()
+	if account == "" {
+		account = aconfig.getConfig("admin")
+		aconfig.Account = account
+	}
+	aconfig.loadDiaryKeywordsFromSysConf(account)
 	return nil
 }
 
 // 从 sys_conf.md 文件中读取日记关键字配置
-func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf() {
+func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
+	log.DebugF("loadDiaryKeywordsFromSysConf account=%s", account)
 	// 获取 blogs_txt 目录路径
-	blogsPath := GetBlogsPath()
-	sysConfPath := filepath.Join(blogsPath, "sys_conf.md")
+	sysConfPath := GetSysConfigPath(account)
 
 	// 检查文件是否存在
 	if _, err := os.Stat(sysConfPath); os.IsNotExist(err) {
@@ -173,45 +170,46 @@ func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf() {
 	}
 }
 
-// 获取日记关键字列表
-func GetDiaryKeywords() []string {
+func GetDiaryKeywordsWithAccount(account string) []string {
+	actor := getConfigActor(account)
 	cmd := &GetDiaryKeywordsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	keywords := <-cmd.Response()
 	return keywords.([]string)
 }
 
-// 检查标题是否匹配日记关键字
-func IsDiaryBlog(title string) bool {
+func IsDiaryBlogWithAccount(account, title string) bool {
+	actor := getConfigActor(account)
 	cmd := &IsDiaryBlogCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Title: title,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(bool)
 }
 
-func GetConfig(name string) string {
+func GetConfigWithAccount(account, name string) string {
+	actor := getConfigActor(account)
 	cmd := &GetConfigCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Name: name,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	value := <-cmd.Response()
 	return value.(string)
 }
 
 func GetHttpTemplatePath() string {
-	templates_path := GetConfig("templates_path")
+	templates_path := GetConfigWithAccount(adminAccount, "templates_path")
 	if templates_path == "" {
 		exePath, _ := os.Executable()
 		templates_path = filepath.Dir(exePath)
@@ -222,7 +220,7 @@ func GetHttpTemplatePath() string {
 }
 
 func GetHttpStaticPath() string {
-	statics_path := GetConfig("statics_path")
+	statics_path := GetConfigWithAccount(adminAccount, "statics_path")
 	if statics_path == "" {
 		exePath, _ := os.Executable()
 		statics_path = filepath.Dir(exePath)
@@ -238,9 +236,9 @@ func GetExePath() string {
 	return exeDir
 }
 
-func GetBlogsPath() string {
+func GetBlogsPath(account string) string {
 	exeDir := GetExePath()
-	return filepath.Join(exeDir, "blogs_txt")
+	return filepath.Join(exeDir, "blogs_txt", account)
 }
 
 func readConfigFile(filePath string) (map[string]string, error) {
@@ -256,11 +254,9 @@ func readConfigFile(filePath string) (map[string]string, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		line = strings.TrimSpace(line)
-		log.DebugF("line =%s", line)
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
-		log.DebugF("parse line =%s", line)
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
@@ -277,63 +273,79 @@ func readConfigFile(filePath string) (map[string]string, error) {
 }
 
 func IsSysFile(name string) int {
+	actor := getConfigActor(adminAccount)
 	cmd := &IsSysFileCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Name: name,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(int)
 }
 
 func IsPublicTag(tag string) int {
+	return IsPublicTagWithAccount("", tag)
+}
+
+func IsPublicTagWithAccount(account, tag string) int {
+	actor := getConfigActor(account)
 	cmd := &IsPublicTagCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Tag: tag,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(int)
 }
 
 func IsTitleAddDateSuffix(title string) int {
+	return IsTitleAddDateSuffixWithAccount("", title)
+}
+
+func IsTitleAddDateSuffixWithAccount(account, title string) int {
+	actor := getConfigActor(account)
 	cmd := &IsTitleAddDateSuffixCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Title: title,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(int)
 }
 
 func IsTitleContainsDateSuffix(title string) int {
+	return IsTitleContainsDateSuffixWithAccount("", title)
+}
+
+func IsTitleContainsDateSuffixWithAccount(account, title string) int {
+	actor := getConfigActor(account)
 	cmd := &IsTitleContainsDateSuffixCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
 		Title: title,
 	}
-	config_module.Send(cmd)
+	actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(int)
 }
 
 func GetDownLoadPath() string {
-	return GetConfig("download_path")
+	return GetConfigWithAccount(adminAccount, "download_path")
 }
 
 func GetHelpBlogName() string {
-	return GetConfig("help_blog_name")
+	return GetConfigWithAccount(adminAccount, "help_blog_name")
 }
 
 func GetMaxBlogComments() int {
-	str_cnt := GetConfig("max_blog_comments")
+	str_cnt := GetConfigWithAccount(adminAccount, "max_blog_comments")
 	cnt, _ := strconv.Atoi(str_cnt)
 	if cnt <= 0 {
 		cnt = 100
@@ -342,7 +354,7 @@ func GetMaxBlogComments() int {
 }
 
 func GetMainBlogNum() int {
-	str_cnt := GetConfig("main_show_blogs")
+	str_cnt := GetConfigWithAccount(adminAccount, "main_show_blogs")
 	cnt, _ := strconv.Atoi(str_cnt)
 	if cnt <= 0 {
 		cnt = 100
@@ -351,9 +363,46 @@ func GetMainBlogNum() int {
 }
 
 func GetRecyclePath() string {
-	path := GetConfig("recycle_path")
+	path := GetConfigWithAccount(adminAccount, "recycle_path")
 	if path == "" {
 		path = ".go_blog_recycle"
 	}
 	return path
+}
+
+// UpdateConfigFromBlog updates account-specific configuration from blog content
+func UpdateConfigFromBlog(account, blogContent string) {
+	actor := getConfigActor(account)
+	cmd := &UpdateConfigFromBlogCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		BlogContent: blogContent,
+	}
+	actor.Send(cmd)
+	<-cmd.Response()
+}
+
+func GetAdminAccount() string {
+	return adminAccount
+}
+
+func GetSysConfigPath(account string) string {
+	return filepath.Join(GetBlogsPath(account), GetSysConfigFullName())
+}
+
+func GetSysConfigTitle() string {
+	return "sys_conf"
+}
+
+func GetSysConfigFullName() string {
+	return GetSysConfigTitle() + ".md"
+}
+
+func GetSysConfigTitleMCP() string {
+	return "mcp_config"
+}
+
+func GetSysConfigs() string {
+	return GetSysConfigTitle() + " | " + GetSysConfigTitleMCP()
 }

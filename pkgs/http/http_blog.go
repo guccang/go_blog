@@ -1,6 +1,7 @@
 package http
 
 import (
+	"auth"
 	"comment"
 	"config"
 	"control"
@@ -129,12 +130,13 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 
 	log.DebugF("help blogname=", blogname)
 
+	account := getAccountFromRequest(r)
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
 	if checkLogin(r) != 0 {
 		// 判定blog访问权限
-		auth_type := control.GetBlogAuthType("", blogname)
+		auth_type := control.GetBlogAuthType(account, blogname)
 		if auth_type == module.EAuthType_private {
 			h.Redirect(w, r, "/index", 302)
 			return
@@ -143,7 +145,7 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 		}
 	}
 
-	view.PageGetBlog(blogname, w, usepublic)
+	view.PageGetBlog(blogname, w, usepublic, account)
 }
 
 // HandleGetShare handles shared blog/tag access
@@ -155,6 +157,7 @@ func HandleGetShare(w h.ResponseWriter, r *h.Request) {
 	t, _ := strconv.Atoi(r.URL.Query().Get("t"))
 	name := r.URL.Query().Get("name")
 	pwd := r.URL.Query().Get("pwd")
+	account := getAccountFromRequest(r)
 
 	if t == 0 {
 		// blog
@@ -173,7 +176,7 @@ func HandleGetShare(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 		usepublic := 1
-		view.PageGetBlog(name, w, usepublic)
+		view.PageGetBlog(name, w, usepublic, account)
 	} else if t == 1 {
 		// tag
 		tag := share.GetSharedTag(name)
@@ -190,7 +193,7 @@ func HandleGetShare(w h.ResponseWriter, r *h.Request) {
 			h.Error(w, "HandleGetShared error cnt < 0", h.StatusBadRequest)
 			return
 		}
-		view.PageTags(w, name)
+		view.PageTags(w, name, "")
 	}
 }
 
@@ -223,7 +226,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		}
 
 		// 验证密码
-		expectedPassword := config.GetConfig("diary_password")
+		expectedPassword := config.GetConfigWithAccount(account, "diary_password")
 		if expectedPassword == "" {
 			expectedPassword = "diary123" // 默认密码
 		}
@@ -239,7 +242,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 兼容性：同时检查基于名称的日记博客（向后兼容）
-	if config.IsDiaryBlog(blogname) && (blog.AuthType&module.EAuthType_diary) == 0 {
+	if config.IsDiaryBlogWithAccount(account, blogname) && (blog.AuthType&module.EAuthType_diary) == 0 {
 		// 检查是否提供了密码
 		diaryPassword := r.URL.Query().Get("diary_pwd")
 		if diaryPassword == "" {
@@ -249,7 +252,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		}
 
 		// 验证密码
-		expectedPassword := config.GetConfig("diary_password")
+		expectedPassword := config.GetConfigWithAccount(account, "diary_password")
 		if expectedPassword == "" {
 			expectedPassword = "diary123" // 默认密码
 		}
@@ -366,7 +369,7 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		control.RecordBlogAccess(blogname, remoteAddr, userAgent)
 	}
 
-	view.PageGetBlog(blogname, w, usepublic)
+	view.PageGetBlog(blogname, w, usepublic, account)
 }
 
 // HandleComment handles blog comment functionality
@@ -385,6 +388,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 	pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
 	reg := regexp.MustCompile(pattern)
 	match := reg.MatchString(title)
+	account := auth.GetAccountFromRequest(r)
 	if !match {
 		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
 		return
@@ -413,7 +417,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 	// 优先使用身份验证的评论系统
 	if sessionID != "" {
 		// 使用已有会话发表评论
-		ret, msg := control.AddCommentWithAuth(title, comment, sessionID, ip, userAgent)
+		ret, msg := control.AddCommentWithAuth(account, title, comment, sessionID, ip, userAgent)
 		if ret == 0 {
 			w.WriteHeader(h.StatusOK)
 			w.Write([]byte(msg))
@@ -429,7 +433,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 
 		if password != "" {
 			// 使用密码验证创建会话
-			ret, msg, newSessionID := control.AddCommentWithPassword(title, comment, owner, mail, password, ip, userAgent)
+			ret, msg, newSessionID := control.AddCommentWithPassword(account, title, comment, owner, mail, password, ip, userAgent)
 			if ret == 0 {
 				// 构造包含会话ID的响应
 				response := map[string]interface{}{
@@ -445,7 +449,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 			}
 		} else {
 			// 没有密码，创建匿名用户会话
-			ret, msg := control.AddAnonymousComment(title, comment, owner, mail, ip, userAgent)
+			ret, msg := control.AddAnonymousComment(account, title, comment, owner, mail, ip, userAgent)
 			if ret == 0 {
 				w.WriteHeader(h.StatusOK)
 				w.Write([]byte(msg))
@@ -466,7 +470,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 		pwd = ip // 使用IP作为默认密码
 	}
 
-	control.AddComment(title, comment, owner, pwd, mail)
+	control.AddComment(account, title, comment, owner, pwd, mail)
 	w.WriteHeader(h.StatusOK)
 	w.Write([]byte("评论提交成功" + title + " " + owner + " " + pwd + " " + mail))
 }
@@ -475,7 +479,7 @@ func HandleComment(w h.ResponseWriter, r *h.Request) {
 // 检查用户名信息的API（返回使用该用户名的用户数量）
 func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleCheckUsername", r)
-
+	account := auth.GetAccountFromRequest(r)
 	if r.Method != h.MethodGet {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
@@ -493,7 +497,7 @@ func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 获取使用该用户名的用户列表
-	users := comment.GetUsersByUsername(username)
+	users := comment.GetUsersByUsername(account, username)
 	userCount := len(users)
 
 	response := map[string]interface{}{
@@ -534,7 +538,9 @@ func HandleDelete(w h.ResponseWriter, r *h.Request) {
 	title := r.FormValue("title")
 	log.DebugF("delete title:%s", title)
 
-	ret := control.DeleteBlog("", title)
+	account := getAccountFromRequest(r)
+
+	ret := control.DeleteBlog(account, title)
 	if ret == 0 {
 		w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
 	} else {
@@ -554,6 +560,8 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 		return
 	}
+
+	account := getAccountFromRequest(r)
 
 	// 设置请求体大小限制
 	r.ParseMultipartForm(32 << 20) // 32MB
@@ -603,8 +611,6 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 		// 邮件备份密码,todo
 	}
 
-	account := getAccountFromRequest(r)
-
 	ubd := module.UploadedBlogData{
 		Title:    title,
 		Content:  content,
@@ -614,7 +620,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 		Account:  account,
 	}
 
-	ret := control.ModifyBlog("", &ubd)
+	ret := control.ModifyBlog(account, &ubd)
 
 	// 响应客户端
 	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
@@ -655,14 +661,16 @@ func HandleTag(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 展示所有public tag
-	view.PageTags(w, tag)
+	session := getsession(r)
+	view.PageTags(w, tag, session)
 }
 
 // HandlePublic renders the public blogs page
 func HandlePublic(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandlePublic", r)
 
-	view.PagePublic(w)
+	account := auth.GetAccountFromRequest(r)
+	view.PagePublic(w, account)
 }
 
 // HandleCreateShare creates a share link for a blog
@@ -688,8 +696,9 @@ func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
+	account := getAccountFromRequest(r)
 	// 检查博客是否存在
-	blog := control.GetBlog("", blogname)
+	blog := control.GetBlog(account, blogname)
 	if blog == nil {
 		h.Error(w, fmt.Sprintf("Blog %s not found", blogname), h.StatusBadRequest)
 		return
@@ -717,4 +726,233 @@ func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(h.StatusOK)
 	json.NewEncoder(w).Encode(response)
+}
+
+// HandleMigration handles migration page display
+func HandleMigration(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleMigration", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	view.PageMigration(w)
+}
+
+// HandleMigrationExport handles blog data export
+func HandleMigrationExport(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleMigrationExport", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	account := getAccountFromRequest(r)
+
+	// 获取所有博客数据
+	blogs := control.GetBlogs(account)
+	if blogs == nil {
+		h.Error(w, "Failed to get blogs", h.StatusInternalServerError)
+		return
+	}
+
+	// 构建导出数据结构
+	exportData := make([]map[string]interface{}, 0)
+
+	for _, blog := range blogs {
+		// 获取评论信息
+		comments := comment.GetComments(account, blog.Title)
+		var commentData []map[string]interface{}
+		if comments != nil && comments.Comments != nil {
+			for _, c := range comments.Comments {
+				commentInfo := map[string]interface{}{
+					"owner":        c.Owner,
+					"message":      c.Msg,
+					"create_time":  c.CreateTime,
+					"modify_time":  c.ModifyTime,
+					"idx":          c.Idx,
+					"mail":         c.Mail,
+					"user_id":      c.UserID,
+					"session_id":   c.SessionID,
+					"ip":           c.IP,
+					"user_agent":   c.UserAgent,
+					"is_anonymous": c.IsAnonymous,
+					"is_verified":  c.IsVerified,
+				}
+				commentData = append(commentData, commentInfo)
+			}
+		}
+
+		blogData := map[string]interface{}{
+			"title":       blog.Title,
+			"create_time": blog.CreateTime,
+			"modify_time": blog.ModifyTime,
+			"access_time": blog.AccessTime,
+			"modify_num":  blog.ModifyNum,
+			"access_num":  blog.AccessNum,
+			"auth_type":   blog.AuthType,
+			"tags":        blog.Tags,
+			"encrypt":     blog.Encrypt,
+			"account":     blog.Account,
+			"comments":    commentData,
+		}
+		exportData = append(exportData, blogData)
+	}
+
+	// 转换为JSON
+	jsonData, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		h.Error(w, "Failed to marshal JSON: "+err.Error(), h.StatusInternalServerError)
+		return
+	}
+
+	// 设置响应头
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=sys_blog_exdata.md")
+	w.WriteHeader(h.StatusOK)
+
+	// 写入文件内容
+	w.Write([]byte("# 博客元数据导出文件\n\n"))
+	w.Write([]byte("此文件包含博客的元数据信息，不包含内容\n\n"))
+	w.Write([]byte("```json\n"))
+	w.Write(jsonData)
+	w.Write([]byte("\n```\n"))
+}
+
+// HandleMigrationImport handles blog data import
+func HandleMigrationImport(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleMigrationImport", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	// 解析上传的文件
+	err := r.ParseMultipartForm(10 << 20) // 10MB limit
+	if err != nil {
+		h.Error(w, "Failed to parse form: "+err.Error(), h.StatusBadRequest)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		h.Error(w, "Failed to get uploaded file: "+err.Error(), h.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	if !strings.HasSuffix(handler.Filename, ".md") {
+		h.Error(w, "Only .md files are allowed", h.StatusBadRequest)
+		return
+	}
+
+	// 读取文件内容
+	buffer := make([]byte, handler.Size)
+	_, err = file.Read(buffer)
+	if err != nil {
+		h.Error(w, "Failed to read file: "+err.Error(), h.StatusInternalServerError)
+		return
+	}
+
+	content := string(buffer)
+
+	// 提取JSON数据
+	startMarker := "```json"
+	endMarker := "```"
+	startIndex := strings.Index(content, startMarker)
+	if startIndex == -1 {
+		h.Error(w, "Invalid file format: JSON block not found", h.StatusBadRequest)
+		return
+	}
+
+	startIndex += len(startMarker)
+	endIndex := strings.Index(content[startIndex:], endMarker)
+	if endIndex == -1 {
+		h.Error(w, "Invalid file format: JSON block not closed", h.StatusBadRequest)
+		return
+	}
+
+	jsonContent := strings.TrimSpace(content[startIndex : startIndex+endIndex])
+
+	// 解析JSON数据
+	var importData []map[string]interface{}
+	err = json.Unmarshal([]byte(jsonContent), &importData)
+	if err != nil {
+		h.Error(w, "Failed to parse JSON: "+err.Error(), h.StatusBadRequest)
+		return
+	}
+
+	account := getAccountFromRequest(r)
+	updatedCount := 0
+	skippedCount := 0
+
+	// 更新博客数据
+	for _, data := range importData {
+		title, ok := data["title"].(string)
+		if !ok || title == "" {
+			continue
+		}
+
+		// 检查博客是否存在
+		existingBlog := control.GetBlog(account, title)
+		if existingBlog == nil {
+			skippedCount++
+			continue
+		}
+
+		// 更新博客元数据（不包括content）
+		if createTime, ok := data["create_time"].(string); ok && createTime != "" {
+			existingBlog.CreateTime = createTime
+		}
+		if modifyTime, ok := data["modify_time"].(string); ok && modifyTime != "" {
+			existingBlog.ModifyTime = modifyTime
+		}
+		if accessTime, ok := data["access_time"].(string); ok && accessTime != "" {
+			existingBlog.AccessTime = accessTime
+		}
+		if modifyNum, ok := data["modify_num"].(float64); ok {
+			existingBlog.ModifyNum = int(modifyNum)
+		}
+		if accessNum, ok := data["access_num"].(float64); ok {
+			existingBlog.AccessNum = int(accessNum)
+		}
+		if authType, ok := data["auth_type"].(float64); ok {
+			existingBlog.AuthType = int(authType)
+		}
+		if tags, ok := data["tags"].(string); ok {
+			existingBlog.Tags = tags
+		}
+		if encrypt, ok := data["encrypt"].(float64); ok {
+			existingBlog.Encrypt = int(encrypt)
+		}
+
+		// 保存更新的博客
+		ubd := module.UploadedBlogData{
+			Title:    existingBlog.Title,
+			Content:  existingBlog.Content,
+			AuthType: existingBlog.AuthType,
+			Tags:     existingBlog.Tags,
+			Encrypt:  existingBlog.Encrypt,
+			Account:  account,
+		}
+
+		ret := control.ModifyBlog(account, &ubd)
+		if ret == 0 {
+			updatedCount++
+		}
+	}
+
+	// 返回结果
+	result := fmt.Sprintf("导入完成! 更新了 %d 个博客，跳过 %d 个不存在的博客", updatedCount, skippedCount)
+	w.WriteHeader(h.StatusOK)
+	w.Write([]byte(result))
 }

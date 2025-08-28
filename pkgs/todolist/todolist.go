@@ -50,9 +50,9 @@ func getDateFromTitle(title string) string {
 }
 
 // AddTodo adds a new todo item to a specific date's list
-func (tm *TodoManager) AddTodo(date, content string, hours, minutes int) (*TodoItem, error) {
+func (tm *TodoManager) AddTodo(account, date, content string, hours, minutes int) (*TodoItem, error) {
 	// Get or create todo list for the date
-	todoList, err := tm.GetTodosByDate(date)
+	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
 		todoList = TodoList{
 			Date:  date,
@@ -74,7 +74,7 @@ func (tm *TodoManager) AddTodo(date, content string, hours, minutes int) (*TodoI
 	todoList.Items = append(todoList.Items, item)
 
 	// Save to blog
-	if err := tm.saveTodosToBlog(todoList); err != nil {
+	if err := tm.saveTodosToBlog(account, todoList); err != nil {
 		return nil, err
 	}
 
@@ -82,9 +82,9 @@ func (tm *TodoManager) AddTodo(date, content string, hours, minutes int) (*TodoI
 }
 
 // DeleteTodo removes a todo item by ID
-func (tm *TodoManager) DeleteTodo(date, id string) error {
+func (tm *TodoManager) DeleteTodo(account, date, id string) error {
 	// Get todo list for the date
-	todoList, err := tm.GetTodosByDate(date)
+	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -108,13 +108,13 @@ func (tm *TodoManager) DeleteTodo(date, id string) error {
 	todoList.Items = updatedItems
 
 	// Save to blog
-	return tm.saveTodosToBlog(todoList)
+	return tm.saveTodosToBlog(account, todoList)
 }
 
 // ToggleTodo toggles the completion status of a todo item
-func (tm *TodoManager) ToggleTodo(date, id string) error {
+func (tm *TodoManager) ToggleTodo(account, date, id string) error {
 	// Get todo list for the date
-	todoList, err := tm.GetTodosByDate(date)
+	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -134,13 +134,13 @@ func (tm *TodoManager) ToggleTodo(date, id string) error {
 	}
 
 	// Save to blog
-	return tm.saveTodosToBlog(todoList)
+	return tm.saveTodosToBlog(account, todoList)
 }
 
 // UpdateTodoTime updates the time spent on a todo item
-func (tm *TodoManager) UpdateTodoTime(date, id string, hours, minutes int) error {
+func (tm *TodoManager) UpdateTodoTime(account, date, id string, hours, minutes int) error {
 	// Get todo list for the date
-	todoList, err := tm.GetTodosByDate(date)
+	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -161,15 +161,15 @@ func (tm *TodoManager) UpdateTodoTime(date, id string, hours, minutes int) error
 	}
 
 	// Save to blog
-	return tm.saveTodosToBlog(todoList)
+	return tm.saveTodosToBlog(account, todoList)
 }
 
 // GetTodosByDate retrieves the todo list for a specific date
-func (tm *TodoManager) GetTodosByDate(date string) (TodoList, error) {
+func (tm *TodoManager) GetTodosByDate(account, date string) (TodoList, error) {
 	title := generateBlogTitle(date)
 
-	// Find blog by title
-	b := blog.GetBlog(title)
+	// Find blog by title using account-based interface
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return TodoList{Date: date, Items: []TodoItem{}}, nil
 	}
@@ -184,11 +184,11 @@ func (tm *TodoManager) GetTodosByDate(date string) (TodoList, error) {
 }
 
 // GetAllTodos retrieves all todo lists from the blog system
-func (tm *TodoManager) GetAllTodos() (map[string]TodoList, error) {
+func (tm *TodoManager) GetAllTodos(account string) (map[string]TodoList, error) {
 	result := make(map[string]TodoList)
 
-	// Iterate through all blogs
-	for _, b := range blog.GetBlogs() {
+	// Iterate through all blogs for the account
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		date := getDateFromTitle(b.Title)
 		if date != "" {
 			var todoList TodoList
@@ -202,8 +202,8 @@ func (tm *TodoManager) GetAllTodos() (map[string]TodoList, error) {
 }
 
 // GetHistoricalTodos retrieves todos for a date range
-func (tm *TodoManager) GetHistoricalTodos(startDate, endDate string) (map[string]TodoList, error) {
-	allTodos, err := tm.GetAllTodos()
+func (tm *TodoManager) GetHistoricalTodos(account, startDate, endDate string) (map[string]TodoList, error) {
+	allTodos, err := tm.GetAllTodos(account)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func ParseTodoListFromBlog(content string) TodoList {
 }
 
 // saveTodosToBlog saves a TodoList as a blog post
-func (tm *TodoManager) saveTodosToBlog(todoList TodoList) error {
+func (tm *TodoManager) saveTodosToBlog(account string, todoList TodoList) error {
 	title := generateBlogTitle(todoList.Date)
 
 	// Convert to JSON
@@ -238,8 +238,8 @@ func (tm *TodoManager) saveTodosToBlog(todoList TodoList) error {
 		return fmt.Errorf("failed to convert todo list to JSON: %w", err)
 	}
 
-	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	// Find existing blog or create new one using account-based interface
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -247,8 +247,9 @@ func (tm *TodoManager) saveTodosToBlog(todoList TodoList) error {
 			Content:  string(content),
 			Tags:     "todolist",
 			AuthType: module.EAuthType_private,
+			Account:  account,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -256,17 +257,18 @@ func (tm *TodoManager) saveTodosToBlog(todoList TodoList) error {
 			Content:  string(content),
 			Tags:     "todolist",
 			AuthType: module.EAuthType_private,
+			Account:  account,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // UpdateTodoOrder updates the order of todo items for a specific date
-func (tm *TodoManager) UpdateTodoOrder(date string, order []string) error {
+func (tm *TodoManager) UpdateTodoOrder(account, date string, order []string) error {
 	// Get todo list for the date
-	todoList, err := tm.GetTodosByDate(date)
+	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -288,5 +290,5 @@ func (tm *TodoManager) UpdateTodoOrder(date string, order []string) error {
 	todoList.Order = order
 
 	// Save to blog
-	return tm.saveTodosToBlog(todoList)
+	return tm.saveTodosToBlog(account, todoList)
 }

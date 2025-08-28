@@ -25,8 +25,8 @@ func Init() {
 	login_module.Start(login_module)
 
 	// 管理员账号密码
-	admin_account := config.GetConfig("admin")
-	admin_pwd := config.GetConfig("pwd")
+	admin_account := config.GetAdminAccount()
+	admin_pwd := config.GetConfigWithAccount(admin_account, "pwd")
 	login_module.users[admin_account] = &module.User{
 		Account:  admin_account,
 		Password: admin_pwd,

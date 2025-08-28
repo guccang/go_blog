@@ -42,6 +42,11 @@ func (a *BlogActor) loadBlogs() int {
 
 // importBlogsFromPath reads files from a dir and adds them as private blogs
 func (a *BlogActor) importBlogsFromPath(dir string) int {
+
+	// 从数据库中加载博客
+	a.loadBlogs()
+
+	// 更新或添加博客
 	files := ioutils.GetFiles(dir)
 	for _, file := range files {
 		name, _ := ioutils.GetBaseAndExt(file)
@@ -52,12 +57,22 @@ func (a *BlogActor) importBlogsFromPath(dir string) int {
 				Content:  datas,
 				AuthType: module.EAuthType_private,
 			}
-			ret := a.addBlog(&udb)
-			if ret == 0 {
-				log.DebugF("name=%s size=%d", name, size)
+			b := a.getBlog(name)
+			if b != nil {
+				// 更新blogs
+				b.Account = a.Account
+				b.Content = datas
+				log.DebugF("import update blog %s, createTime=%s, modifyTime=%s, accessTime=%s", name, b.CreateTime, b.ModifyTime, b.AccessTime)
+			} else {
+				udb.Account = a.Account
+				a.addBlog(&udb)
+				log.DebugF("import add blog %s", name)
 			}
 		}
 	}
+
+	// save blogs,更新数据到数据库和磁盘
+	db.SaveBlogs(a.Account, a.blogs)
 	return 0
 }
 
@@ -85,7 +100,7 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 	}
 
 	// diary auto-flag
-	if config.IsDiaryBlog(title) {
+	if config.IsDiaryBlogWithAccount(a.Account, title) {
 		authType |= module.EAuthType_diary
 		log.DebugF("检测到日记博客，设置日记权限: %s", title)
 	}
@@ -117,7 +132,7 @@ func (a *BlogActor) addBlog(udb *module.UploadedBlogData) int {
 	}
 
 	a.blogs[title] = &b
-	db.SaveBlog(&b)
+	db.SaveBlog(a.Account, &b)
 	return 0
 }
 
@@ -134,7 +149,7 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 
 	log.DebugF("modify blog %s", title)
 
-	if config.IsDiaryBlog(title) {
+	if config.IsDiaryBlogWithAccount(a.Account, title) {
 		authType |= module.EAuthType_diary
 		log.DebugF("保持日记博客权限: %s", title)
 	}
@@ -158,7 +173,7 @@ func (a *BlogActor) modifyBlog(udb *module.UploadedBlogData) int {
 		log.InfoF("博客 '%s' 更新了加密权限，AuthType=%d", title, authType)
 	}
 
-	db.SaveBlog(b)
+	db.SaveBlog(a.Account, b)
 	return 0
 }
 
@@ -201,7 +216,7 @@ func (a *BlogActor) getAll(num int, flag int) []*module.Blog {
 func (a *BlogActor) updateAccessTime(blog *module.Blog) {
 	blog.AccessTime = strTime()
 	blog.AccessNum += 1
-	db.SaveBlog(blog)
+	db.SaveBlog(a.Account, blog)
 }
 
 func (a *BlogActor) getBlogAuthType(blogname string) int {
@@ -218,7 +233,7 @@ func (a *BlogActor) addAuthType(blogname string, flag int) {
 		return
 	}
 	blog.AuthType |= flag
-	db.SaveBlog(blog)
+	db.SaveBlog(a.Account, blog)
 }
 
 func (a *BlogActor) delAuthType(blogname string, flag int) {
@@ -230,7 +245,7 @@ func (a *BlogActor) delAuthType(blogname string, flag int) {
 	if blog.AuthType == 0 {
 		blog.AuthType = module.EAuthType_private
 	}
-	db.SaveBlog(blog)
+	db.SaveBlog(a.Account, blog)
 }
 
 func (a *BlogActor) getRecentlyTimedBlog(title string) *module.Blog {
@@ -302,7 +317,7 @@ func (a *BlogActor) tagReplace(from, to string) {
 		}
 		newTags = newTags[:len(newTags)-1]
 		b.Tags = newTags
-		db.SaveBlog(b)
+		db.SaveBlog(a.Account, b)
 	}
 }
 
@@ -316,7 +331,7 @@ func (a *BlogActor) setSameAuth(blogname string) {
 		b := a.getBlog(name)
 		if b != nil {
 			b.AuthType = blog.AuthType
-			db.SaveBlog(b)
+			db.SaveBlog(a.Account, b)
 		}
 	}
 }

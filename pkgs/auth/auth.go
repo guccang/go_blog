@@ -3,6 +3,7 @@ package auth
 import (
 	"core"
 	log "mylog"
+	"net/http"
 )
 
 func Info() {
@@ -68,4 +69,17 @@ func GetAccountBySession(session string) string {
 	auth_actor.Send(cmd)
 	ret := <-cmd.Response()
 	return ret.(string)
+}
+
+// getsession extracts session from request cookie
+func GetSessionFromRequest(r *http.Request) string {
+	session, err := r.Cookie("session")
+	if err != nil {
+		return ""
+	}
+	return session.Value
+}
+
+func GetAccountFromRequest(r *http.Request) string {
+	return GetAccountBySession(GetSessionFromRequest(r))
 }

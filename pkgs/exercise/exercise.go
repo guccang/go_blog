@@ -103,11 +103,12 @@ func Init() {
 
 // interface
 
-func AddExercise(date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
+func AddExercise(account, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
 	cmd := &AddExerciseCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Date:      date,
 		Name:      name,
 		Type:      exerciseType,
@@ -127,13 +128,14 @@ func AddExercise(date, name, exerciseType string, duration int, intensity string
 	return item.(*ExerciseItem), nil
 }
 
-func DeleteExercise(date, id string) error {
+func DeleteExercise(account, date, id string) error {
 	cmd := &DeleteExerciseCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Date: date,
-		ID:   id,
+		Account: account,
+		Date:    date,
+		ID:      id,
 	}
 	exercise_module.Send(cmd)
 	err := <-cmd.Response()
@@ -143,11 +145,12 @@ func DeleteExercise(date, id string) error {
 	return nil
 }
 
-func UpdateExercise(date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+func UpdateExercise(account, date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
 	cmd := &UpdateExerciseCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Date:      date,
 		ID:        id,
 		Name:      name,
@@ -167,13 +170,14 @@ func UpdateExercise(date, id, name, exerciseType string, duration int, intensity
 	return nil
 }
 
-func ToggleExercise(date, id string) error {
+func ToggleExercise(account, date, id string) error {
 	cmd := &ToggleExerciseCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Date: date,
-		ID:   id,
+		Account: account,
+		Date:    date,
+		ID:      id,
 	}
 	exercise_module.Send(cmd)
 	err := <-cmd.Response()
@@ -183,12 +187,13 @@ func ToggleExercise(date, id string) error {
 	return nil
 }
 
-func GetExercisesByDate(date string) (ExerciseList, error) {
+func GetExercisesByDate(account, date string) (ExerciseList, error) {
 	cmd := &GetExercisesByDateCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Date: date,
+		Account: account,
+		Date:    date,
 	}
 	exercise_module.Send(cmd)
 	exercises := <-cmd.Response()
@@ -199,11 +204,12 @@ func GetExercisesByDate(date string) (ExerciseList, error) {
 	return exercises.(ExerciseList), nil
 }
 
-func GetAllExercises() (map[string]ExerciseList, error) {
+func GetAllExercises(account string) (map[string]ExerciseList, error) {
 	cmd := &GetAllExercisesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	exercise_module.Send(cmd)
 	exercises := <-cmd.Response()
@@ -214,11 +220,12 @@ func GetAllExercises() (map[string]ExerciseList, error) {
 	return exercises.(map[string]ExerciseList), nil
 }
 
-func AddTemplate(name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
+func AddTemplate(account, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
 	cmd := &AddTemplateCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		Name:      name,
 		Type:      exerciseType,
 		Duration:  duration,
@@ -237,12 +244,13 @@ func AddTemplate(name, exerciseType string, duration int, intensity string, calo
 	return template.(*ExerciseTemplate), nil
 }
 
-func DeleteTemplate(id string) error {
+func DeleteTemplate(account, id string) error {
 	cmd := &DeleteTemplateCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		ID: id,
+		Account: account,
+		ID:      id,
 	}
 	exercise_module.Send(cmd)
 	err := <-cmd.Response()
@@ -252,11 +260,12 @@ func DeleteTemplate(id string) error {
 	return nil
 }
 
-func UpdateTemplate(id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+func UpdateTemplate(account, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
 	cmd := &UpdateTemplateCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		ID:        id,
 		Name:      name,
 		Type:      exerciseType,
@@ -275,11 +284,12 @@ func UpdateTemplate(id, name, exerciseType string, duration int, intensity strin
 	return nil
 }
 
-func GetTemplates() ([]ExerciseTemplate, error) {
+func GetTemplates(account string) ([]ExerciseTemplate, error) {
 	cmd := &GetTemplatesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	exercise_module.Send(cmd)
 	templates := <-cmd.Response()
@@ -290,11 +300,12 @@ func GetTemplates() ([]ExerciseTemplate, error) {
 	return templates.([]ExerciseTemplate), nil
 }
 
-func GetWeeklyStats(startDate string) (*ExerciseStats, error) {
+func GetWeeklyStats(account, startDate string) (*ExerciseStats, error) {
 	cmd := &GetWeeklyStatsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:   account,
 		StartDate: startDate,
 	}
 	exercise_module.Send(cmd)
@@ -306,13 +317,14 @@ func GetWeeklyStats(startDate string) (*ExerciseStats, error) {
 	return stats.(*ExerciseStats), nil
 }
 
-func GetMonthlyStats(year int, month int) (*ExerciseStats, error) {
+func GetMonthlyStats(account string, year int, month int) (*ExerciseStats, error) {
 	cmd := &GetMonthlyStatsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Year:  year,
-		Month: month,
+		Account: account,
+		Year:    year,
+		Month:   month,
 	}
 	exercise_module.Send(cmd)
 	stats := <-cmd.Response()
@@ -323,12 +335,13 @@ func GetMonthlyStats(year int, month int) (*ExerciseStats, error) {
 	return stats.(*ExerciseStats), nil
 }
 
-func GetYearlyStats(year int) (*ExerciseStats, error) {
+func GetYearlyStats(account string, year int) (*ExerciseStats, error) {
 	cmd := &GetYearlyStatsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Year: year,
+		Account: account,
+		Year:    year,
 	}
 	exercise_module.Send(cmd)
 	stats := <-cmd.Response()
@@ -339,11 +352,12 @@ func GetYearlyStats(year int) (*ExerciseStats, error) {
 	return stats.(*ExerciseStats), nil
 }
 
-func AddCollection(name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
+func AddCollection(account, name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
 	cmd := &AddCollectionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		Name:        name,
 		Description: description,
 		TemplateIDs: templateIDs,
@@ -357,12 +371,13 @@ func AddCollection(name, description string, templateIDs []string) (*ExerciseTem
 	return collection.(*ExerciseTemplateCollection), nil
 }
 
-func DeleteCollection(id string) error {
+func DeleteCollection(account, id string) error {
 	cmd := &DeleteCollectionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		ID: id,
+		Account: account,
+		ID:      id,
 	}
 	exercise_module.Send(cmd)
 	err := <-cmd.Response()
@@ -372,11 +387,12 @@ func DeleteCollection(id string) error {
 	return nil
 }
 
-func UpdateCollection(id, name, description string, templateIDs []string) error {
+func UpdateCollection(account, id, name, description string, templateIDs []string) error {
 	cmd := &UpdateCollectionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:     account,
 		ID:          id,
 		Name:        name,
 		Description: description,
@@ -390,11 +406,12 @@ func UpdateCollection(id, name, description string, templateIDs []string) error 
 	return nil
 }
 
-func GetCollections() ([]ExerciseTemplateCollection, error) {
+func GetCollections(account string) ([]ExerciseTemplateCollection, error) {
 	cmd := &GetCollectionsCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	exercise_module.Send(cmd)
 	collections := <-cmd.Response()
@@ -405,11 +422,12 @@ func GetCollections() ([]ExerciseTemplateCollection, error) {
 	return collections.([]ExerciseTemplateCollection), nil
 }
 
-func GetCollectionWithTemplates(collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
+func GetCollectionWithTemplates(account, collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
 	cmd := &GetCollectionWithTemplatesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		CollectionID: collectionID,
 	}
 	exercise_module.Send(cmd)
@@ -422,11 +440,12 @@ func GetCollectionWithTemplates(collectionID string) (*ExerciseTemplateCollectio
 	return collection.(*ExerciseTemplateCollection), templates.([]ExerciseTemplate), nil
 }
 
-func AddFromCollection(date, collectionID string) error {
+func AddFromCollection(account, date, collectionID string) error {
 	cmd := &AddFromCollectionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		Date:         date,
 		CollectionID: collectionID,
 	}
@@ -438,11 +457,12 @@ func AddFromCollection(date, collectionID string) error {
 	return nil
 }
 
-func CalculateCalories(exerciseType, intensity string, duration int, weight float64) int {
+func CalculateCalories(account, exerciseType, intensity string, duration int, weight float64) int {
 	cmd := &CalculateCaloriesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		ExerciseType: exerciseType,
 		Intensity:    intensity,
 		Duration:     duration,
@@ -453,11 +473,12 @@ func CalculateCalories(exerciseType, intensity string, duration int, weight floa
 	return calories.(int)
 }
 
-func GetMETValueWithDescription(exerciseType, intensity string) (float64, string) {
+func GetMETValueWithDescription(account, exerciseType, intensity string) (float64, string) {
 	cmd := &GetMETValueWithDescriptionCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account:      account,
 		ExerciseType: exerciseType,
 		Intensity:    intensity,
 	}
@@ -467,16 +488,17 @@ func GetMETValueWithDescription(exerciseType, intensity string) (float64, string
 	return met.(float64), description.(string)
 }
 
-func SaveUserProfile(name, gender string, weight, height float64, age int) (*UserProfile, error) {
+func SaveUserProfile(account, name, gender string, weight, height float64, age int) (*UserProfile, error) {
 	cmd := &SaveUserProfileCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Name:   name,
-		Gender: gender,
-		Weight: weight,
-		Height: height,
-		Age:    age,
+		Account: account,
+		Name:    name,
+		Gender:  gender,
+		Weight:  weight,
+		Height:  height,
+		Age:     age,
 	}
 	exercise_module.Send(cmd)
 	profile := <-cmd.Response()
@@ -487,11 +509,12 @@ func SaveUserProfile(name, gender string, weight, height float64, age int) (*Use
 	return profile.(*UserProfile), nil
 }
 
-func GetUserProfile() (*UserProfile, error) {
+func GetUserProfile(account string) (*UserProfile, error) {
 	cmd := &GetUserProfileCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	exercise_module.Send(cmd)
 	profile := <-cmd.Response()
@@ -505,11 +528,12 @@ func GetUserProfile() (*UserProfile, error) {
 	return profile.(*UserProfile), nil
 }
 
-func GetMETValues() ([]METValue, error) {
+func GetMETValues(account string) ([]METValue, error) {
 	cmd := &GetMETValuesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
+		Account: account,
 	}
 	exercise_module.Send(cmd)
 	metValues := <-cmd.Response()
@@ -520,12 +544,13 @@ func GetMETValues() ([]METValue, error) {
 	return metValues.([]METValue), nil
 }
 
-func UpdateAllTemplateCalories(weight float64) error {
+func UpdateAllTemplateCalories(account string, weight float64) error {
 	cmd := &UpdateAllTemplateCaloriesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Weight: weight,
+		Account: account,
+		Weight:  weight,
 	}
 	exercise_module.Send(cmd)
 	err := <-cmd.Response()
@@ -535,12 +560,13 @@ func UpdateAllTemplateCalories(weight float64) error {
 	return nil
 }
 
-func UpdateAllExerciseCalories(weight float64) (int, error) {
+func UpdateAllExerciseCalories(account string, weight float64) (int, error) {
 	cmd := &UpdateAllExerciseCaloriesCmd{
 		ActorCommand: core.ActorCommand{
 			Res: make(chan interface{}),
 		},
-		Weight: weight,
+		Account: account,
+		Weight:  weight,
 	}
 	exercise_module.Send(cmd)
 	updatedCount := <-cmd.Response()

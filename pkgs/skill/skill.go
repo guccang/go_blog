@@ -58,7 +58,7 @@ func generateBlogTitle(skillID string) string {
 }
 
 // AddSkill adds a new skill
-func (sm *SkillManager) AddSkill(skill *Skill) error {
+func (sm *SkillManager) AddSkill(account string, skill *Skill) error {
 	if skill.ID == "" {
 		skill.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
@@ -67,13 +67,13 @@ func (sm *SkillManager) AddSkill(skill *Skill) error {
 	}
 	skill.UpdatedAt = time.Now()
 
-	return sm.saveSkillToBlog(skill)
+	return sm.saveSkillToBlog(account, skill)
 }
 
 // GetSkill retrieves a skill by ID
-func (sm *SkillManager) GetSkill(skillID string) (*Skill, error) {
+func (sm *SkillManager) GetSkill(account, skillID string) (*Skill, error) {
 	title := generateBlogTitle(skillID)
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return nil, fmt.Errorf("skill not found")
 	}
@@ -87,15 +87,15 @@ func (sm *SkillManager) GetSkill(skillID string) (*Skill, error) {
 }
 
 // UpdateSkill updates an existing skill
-func (sm *SkillManager) UpdateSkill(skill *Skill) error {
+func (sm *SkillManager) UpdateSkill(account string, skill *Skill) error {
 	skill.UpdatedAt = time.Now()
-	return sm.saveSkillToBlog(skill)
+	return sm.saveSkillToBlog(account, skill)
 }
 
 // DeleteSkill removes a skill
-func (sm *SkillManager) DeleteSkill(skillID string) error {
+func (sm *SkillManager) DeleteSkill(account, skillID string) error {
 	title := generateBlogTitle(skillID)
-	ret := blog.DeleteBlog(title)
+	ret := blog.DeleteBlogWithAccount(account, title)
 	if ret != 0 {
 		return fmt.Errorf("failed to delete skill")
 	}
@@ -103,10 +103,10 @@ func (sm *SkillManager) DeleteSkill(skillID string) error {
 }
 
 // GetAllSkills retrieves all skills
-func (sm *SkillManager) GetAllSkills() ([]*Skill, error) {
+func (sm *SkillManager) GetAllSkills(account string) ([]*Skill, error) {
 	var skills []*Skill
 
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if isSkillBlog(b.Title) {
 			var skill Skill
 			if err := json.Unmarshal([]byte(b.Content), &skill); err == nil {
@@ -119,8 +119,8 @@ func (sm *SkillManager) GetAllSkills() ([]*Skill, error) {
 }
 
 // AddSkillContent adds a new content item to a skill
-func (sm *SkillManager) AddSkillContent(skillID string, content *SkillContent) error {
-	skill, err := sm.GetSkill(skillID)
+func (sm *SkillManager) AddSkillContent(account, skillID string, content *SkillContent) error {
+	skill, err := sm.GetSkill(account, skillID)
 	if err != nil {
 		return err
 	}
@@ -137,12 +137,12 @@ func (sm *SkillManager) AddSkillContent(skillID string, content *SkillContent) e
 	skill.Contents = append([]SkillContent{*content}, skill.Contents...)
 	skill.UpdatedAt = time.Now()
 
-	return sm.saveSkillToBlog(skill)
+	return sm.saveSkillToBlog(account, skill)
 }
 
 // UpdateSkillContent updates a content item in a skill
-func (sm *SkillManager) UpdateSkillContent(skillID, contentID string, content *SkillContent) error {
-	skill, err := sm.GetSkill(skillID)
+func (sm *SkillManager) UpdateSkillContent(account, skillID, contentID string, content *SkillContent) error {
+	skill, err := sm.GetSkill(account, skillID)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (sm *SkillManager) UpdateSkillContent(skillID, contentID string, content *S
 			}
 			skill.Contents[i] = *content
 			skill.UpdatedAt = time.Now()
-			return sm.saveSkillToBlog(skill)
+			return sm.saveSkillToBlog(account, skill)
 		}
 	}
 
@@ -163,8 +163,8 @@ func (sm *SkillManager) UpdateSkillContent(skillID, contentID string, content *S
 }
 
 // DeleteSkillContent removes a content item from a skill
-func (sm *SkillManager) DeleteSkillContent(skillID, contentID string) error {
-	skill, err := sm.GetSkill(skillID)
+func (sm *SkillManager) DeleteSkillContent(account, skillID, contentID string) error {
+	skill, err := sm.GetSkill(account, skillID)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (sm *SkillManager) DeleteSkillContent(skillID, contentID string) error {
 			// 从切片中删除元素
 			skill.Contents = append(skill.Contents[:i], skill.Contents[i+1:]...)
 			skill.UpdatedAt = time.Now()
-			return sm.saveSkillToBlog(skill)
+			return sm.saveSkillToBlog(account, skill)
 		}
 	}
 
@@ -182,8 +182,8 @@ func (sm *SkillManager) DeleteSkillContent(skillID, contentID string) error {
 }
 
 // GetSkillContent retrieves a specific content item
-func (sm *SkillManager) GetSkillContent(skillID, contentID string) (*SkillContent, error) {
-	skill, err := sm.GetSkill(skillID)
+func (sm *SkillManager) GetSkillContent(account, skillID, contentID string) (*SkillContent, error) {
+	skill, err := sm.GetSkill(account, skillID)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func isSkillBlog(title string) bool {
 }
 
 // saveSkillToBlog saves a skill as a blog post
-func (sm *SkillManager) saveSkillToBlog(skill *Skill) error {
+func (sm *SkillManager) saveSkillToBlog(account string, skill *Skill) error {
 	title := generateBlogTitle(skill.ID)
 
 	// 计算进度
@@ -232,7 +232,7 @@ func (sm *SkillManager) saveSkillToBlog(skill *Skill) error {
 	}
 
 	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog
 		ubd := &module.UploadedBlogData{
@@ -241,7 +241,7 @@ func (sm *SkillManager) saveSkillToBlog(skill *Skill) error {
 			Tags:     "skill",
 			AuthType: module.EAuthType_private,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog
 		ubd := &module.UploadedBlogData{
@@ -250,15 +250,15 @@ func (sm *SkillManager) saveSkillToBlog(skill *Skill) error {
 			Tags:     "skill",
 			AuthType: module.EAuthType_private,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // GetSkillsByCategory retrieves skills filtered by category
-func (sm *SkillManager) GetSkillsByCategory(category string) ([]*Skill, error) {
-	allSkills, err := sm.GetAllSkills()
+func (sm *SkillManager) GetSkillsByCategory(account, category string) ([]*Skill, error) {
+	allSkills, err := sm.GetAllSkills(account)
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +274,8 @@ func (sm *SkillManager) GetSkillsByCategory(category string) ([]*Skill, error) {
 }
 
 // GetSkillsByTag retrieves skills filtered by tag
-func (sm *SkillManager) GetSkillsByTag(tag string) ([]*Skill, error) {
-	allSkills, err := sm.GetAllSkills()
+func (sm *SkillManager) GetSkillsByTag(account, tag string) ([]*Skill, error) {
+	allSkills, err := sm.GetAllSkills(account)
 	if err != nil {
 		return nil, err
 	}
@@ -294,8 +294,8 @@ func (sm *SkillManager) GetSkillsByTag(tag string) ([]*Skill, error) {
 }
 
 // GetActiveSkills retrieves only active skills
-func (sm *SkillManager) GetActiveSkills() ([]*Skill, error) {
-	allSkills, err := sm.GetAllSkills()
+func (sm *SkillManager) GetActiveSkills(account string) ([]*Skill, error) {
+	allSkills, err := sm.GetAllSkills(account)
 	if err != nil {
 		return nil, err
 	}

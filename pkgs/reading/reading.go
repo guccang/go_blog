@@ -1,7 +1,6 @@
 package reading
 
 import (
-	"blog"
 	"core"
 	"module"
 	log "mylog"
@@ -14,28 +13,6 @@ func Info() {
 // 初始化reading模块，用于书籍管理、阅读记录、笔记、心得等
 func Init() {
 	log.Debug("reading module Init")
-
-	// Initialize reading manager
-	managerCmd := &InitManagerCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-
-	// Use a temporary actor to initialize the manager
-	tempActor := &ReadingActor{
-		Actor:               core.NewActor(),
-		Account:             blog.GetDefaultAccount(),
-		books:               make(map[string]*module.Book),
-		readingRecords:      make(map[string]*module.ReadingRecord),
-		bookNotes:           make(map[string][]*module.BookNote),
-		bookInsights:        make(map[string]*module.BookInsight),
-		readingPlans:        make(map[string]*module.ReadingPlan),
-		readingGoals:        make(map[string]*module.ReadingGoal),
-		bookRecommendations: make(map[string]*module.BookRecommendation),
-		bookCollections:     make(map[string]*module.BookCollection),
-		readingTimeRecords:  make(map[string][]*module.ReadingTimeRecord),
-	}
-	tempActor.Start(tempActor)
-	tempActor.Send(managerCmd)
-	<-managerCmd.Response()
-	tempActor.Stop()
 }
 
 // interface

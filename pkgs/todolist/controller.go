@@ -4,6 +4,7 @@ import (
     "net/http"
     "encoding/json"
     "time"
+    "auth"
 )
 
 // Controller handles HTTP requests for todo list operations
@@ -18,6 +19,24 @@ func NewController(manager *TodoManager) *Controller {
     }
 }
 
+// getsession extracts session value from request cookie
+func getsession(r *http.Request) string {
+    session, err := r.Cookie("session")
+    if err != nil {
+        return ""
+    }
+    return session.Value
+}
+
+// getAccountFromRequest extracts account by resolving the session cookie
+func getAccountFromRequest(r *http.Request) string {
+    s := getsession(r)
+    if s == "" {
+        return ""
+    }
+    return auth.GetAccountBySession(s)
+}
+
 // GetManager returns the todo manager instance
 func (c *Controller) GetManager() *TodoManager {
     return c.manager
@@ -29,12 +48,13 @@ func (c *Controller) HandleGetTodos(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     
+    account := getAccountFromRequest(r)
     date := r.URL.Query().Get("date")
     if date == "" {
         date = time.Now().Format("2006-01-02")
     }
 
-    todoList, err := c.manager.GetTodosByDate(date)
+    todoList, err := c.manager.GetTodosByDate(account, date)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
@@ -89,13 +109,14 @@ func (c *Controller) HandleAddTodo(w http.ResponseWriter, r *http.Request) {
         return
     }
     
+    account := getAccountFromRequest(r)
     // Use provided date or default to today
     date := request.Date
     if date == "" {
         date = time.Now().Format("2006-01-02")
     }
 
-    todo, err := c.manager.AddTodo(date, request.Content, request.Hours, request.Minutes)
+    todo, err := c.manager.AddTodo(account, date, request.Content, request.Hours, request.Minutes)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
@@ -123,12 +144,13 @@ func (c *Controller) HandleDeleteTodo(w http.ResponseWriter, r *http.Request) {
         return
     }
     
+    account := getAccountFromRequest(r)
     date := r.URL.Query().Get("date")
     if date == "" {
         date = time.Now().Format("2006-01-02")
     }
 
-    if err := c.manager.DeleteTodo(date, id); err != nil {
+    if err := c.manager.DeleteTodo(account, date, id); err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Failed to delete todo: " + err.Error(),
@@ -158,12 +180,13 @@ func (c *Controller) HandleToggleTodo(w http.ResponseWriter, r *http.Request) {
         return
     }
     
+    account := getAccountFromRequest(r)
     date := r.URL.Query().Get("date")
     if date == "" {
         date = time.Now().Format("2006-01-02")
     }
 
-    if err := c.manager.ToggleTodo(date, id); err != nil {
+    if err := c.manager.ToggleTodo(account, date, id); err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Failed to toggle todo: " + err.Error(),
@@ -203,6 +226,7 @@ func (c *Controller) HandleUpdateTodoTime(w http.ResponseWriter, r *http.Request
         return
     }
     
+    account := getAccountFromRequest(r)
     date := r.URL.Query().Get("date")
     if date == "" {
         date = time.Now().Format("2006-01-02")
@@ -241,7 +265,7 @@ func (c *Controller) HandleUpdateTodoTime(w http.ResponseWriter, r *http.Request
         return
     }
     
-    if err := c.manager.UpdateTodoTime(date, id, request.Hours, request.Minutes); err != nil {
+    if err := c.manager.UpdateTodoTime(account, date, id, request.Hours, request.Minutes); err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Failed to update todo time: " + err.Error(),
@@ -262,6 +286,7 @@ func (c *Controller) HandleGetHistoricalTodos(w http.ResponseWriter, r *http.Req
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     
+    account := getAccountFromRequest(r)
     startDate := r.URL.Query().Get("start_date")
     endDate := r.URL.Query().Get("end_date")
 
@@ -273,7 +298,7 @@ func (c *Controller) HandleGetHistoricalTodos(w http.ResponseWriter, r *http.Req
         return
     }
 
-    historicalTodos, err := c.manager.GetHistoricalTodos(startDate, endDate)
+    historicalTodos, err := c.manager.GetHistoricalTodos(account, startDate, endDate)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
@@ -343,7 +368,8 @@ func (c *Controller) HandleUpdateTodoOrder(w http.ResponseWriter, r *http.Reques
         return
     }
     
-    if err := c.manager.UpdateTodoOrder(request.Date, request.Order); err != nil {
+    account := getAccountFromRequest(r)
+    if err := c.manager.UpdateTodoOrder(account, request.Date, request.Order); err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Failed to update todo order: " + err.Error(),

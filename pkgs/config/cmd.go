@@ -21,12 +21,13 @@ func (cmd *GetConfigCmd) Do(actor core.ActorInterface) {
 // 重新加载配置cmd
 type ReloadConfigCmd struct {
 	core.ActorCommand
+	Account  string
 	FilePath string
 }
 
 func (cmd *ReloadConfigCmd) Do(actor core.ActorInterface) {
 	configActor := actor.(*ConfigActor)
-	ret := configActor.reloadConfig(cmd.FilePath)
+	ret := configActor.reloadConfig(cmd.Account, cmd.FilePath)
 	cmd.Response() <- ret
 }
 
@@ -121,4 +122,16 @@ func (cmd *IsTitleContainsDateSuffixCmd) Do(actor core.ActorInterface) {
 	configActor := actor.(*ConfigActor)
 	ret := configActor.isTitleContainsDateSuffix(cmd.Title)
 	cmd.Response() <- ret
+}
+
+// 从博客内容更新配置cmd
+type UpdateConfigFromBlogCmd struct {
+	core.ActorCommand
+	BlogContent string
+}
+
+func (cmd *UpdateConfigFromBlogCmd) Do(actor core.ActorInterface) {
+	configActor := actor.(*ConfigActor)
+	configActor.updateConfigFromBlog(cmd.BlogContent)
+	cmd.Response() <- 0
 }

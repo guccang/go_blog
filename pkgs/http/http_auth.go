@@ -1,6 +1,7 @@
 package http
 
 import (
+	"comment"
 	"config"
 	"control"
 	"crypto/md5"
@@ -8,6 +9,7 @@ import (
 	"login"
 	log "mylog"
 	h "net/http"
+	db "persistence"
 	"strings"
 	"time"
 	"view"
@@ -29,7 +31,7 @@ func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	account := config.GetConfig("admin")
+	account := config.GetAdminAccount()
 	code, ret := login.GenerateSMSCode(account)
 	log.InfoF("SMS Generate code=%s for device_id=%s", code, device_id)
 	if ret != 0 {
@@ -65,8 +67,8 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	// md5(admin+pwd)
-	account := config.GetConfig("admin")
-	pwd := config.GetConfig("pwd")
+	account := config.GetAdminAccount()
+	pwd := config.GetConfigWithAccount(account, "pwd")
 	hash := md5.Sum([]byte(account + pwd))
 	inner_device_id := "SK" + hex.EncodeToString(hash[:])
 	if inner_device_id != device_id {
@@ -87,7 +89,7 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	if xForwardedFor != "" {
 		remoteAddr = xForwardedFor
 	}
-	account = config.GetConfig("admin")
+	account = config.GetAdminAccount()
 	control.RecordUserLogin(account, remoteAddr, true)
 
 	// set cookie
@@ -141,6 +143,18 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	// 记录成功的登录
 	control.RecordUserLogin(account, remoteAddr, true)
 
+	// 加载数据
+	blogs_txt_dir := config.GetBlogsPath(account)
+	control.ImportBlogsFromPath(account, blogs_txt_dir)
+	db.SaveBlogs(account, control.GetBlogs(account))
+
+	// 加载comment
+	comment.LoadComments(account)
+
+	// config
+	sys_conf_path := config.GetSysConfigPath(account)
+	config.ReloadConfigWithAccount(account, sys_conf_path)
+
 	// set cookie
 	cookie := &h.Cookie{
 		Name:    "session",
@@ -173,7 +187,7 @@ func HandleRegister(w h.ResponseWriter, r *h.Request) {
 	}
 
 	ret := login.Register(account, password)
-	
+
 	switch ret {
 	case 0:
 		w.Write([]byte("注册成功"))

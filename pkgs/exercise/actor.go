@@ -63,9 +63,9 @@ func (ea *ExerciseActor) getDateFromTitle(title string) string {
 }
 
 // AddExercise adds a new exercise item to a specific date's list
-func (ea *ExerciseActor) addExercise(date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
+func (ea *ExerciseActor) addExercise(account, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
 	// Get or create exercise list for the date
-	exerciseList, err := ea.getExercisesByDate(date)
+	exerciseList, err := ea.getExercisesByDate(account, date)
 	if err != nil {
 		exerciseList = ExerciseList{
 			Date:  date,
@@ -75,7 +75,7 @@ func (ea *ExerciseActor) addExercise(date, name, exerciseType string, duration i
 
 	// Auto-calculate calories if not provided or is 0
 	if calories == 0 {
-		profile, _ := ea.getUserProfile()
+		profile, _ := ea.getUserProfile(account)
 		if profile != nil && profile.Weight > 0 {
 			totalWeight := profile.Weight + weight // Add exercise weight to body weight
 			calories = ea.calculateCalories(exerciseType, intensity, duration, totalWeight)
@@ -101,7 +101,7 @@ func (ea *ExerciseActor) addExercise(date, name, exerciseType string, duration i
 	exerciseList.Items = append(exerciseList.Items, item)
 
 	// Save to blog
-	if err := ea.saveExercisesToBlog(exerciseList); err != nil {
+	if err := ea.saveExercisesToBlog(account, exerciseList); err != nil {
 		return nil, err
 	}
 
@@ -109,9 +109,9 @@ func (ea *ExerciseActor) addExercise(date, name, exerciseType string, duration i
 }
 
 // DeleteExercise removes an exercise item by ID
-func (ea *ExerciseActor) deleteExercise(date, id string) error {
+func (ea *ExerciseActor) deleteExercise(account, date, id string) error {
 	// Get exercise list for the date
-	exerciseList, err := ea.getExercisesByDate(date)
+	exerciseList, err := ea.getExercisesByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -135,20 +135,20 @@ func (ea *ExerciseActor) deleteExercise(date, id string) error {
 	exerciseList.Items = updatedItems
 
 	// Save to blog
-	return ea.saveExercisesToBlog(exerciseList)
+	return ea.saveExercisesToBlog(account, exerciseList)
 }
 
 // UpdateExercise updates an existing exercise item
-func (ea *ExerciseActor) updateExercise(date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+func (ea *ExerciseActor) updateExercise(account, date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
 	// Get exercise list for the date
-	exerciseList, err := ea.getExercisesByDate(date)
+	exerciseList, err := ea.getExercisesByDate(account, date)
 	if err != nil {
 		return err
 	}
 
 	// Auto-calculate calories if not provided or is 0
 	if calories == 0 {
-		profile, _ := ea.getUserProfile()
+		profile, _ := ea.getUserProfile(account)
 		if profile != nil && profile.Weight > 0 {
 			totalWeight := profile.Weight + weight // Add exercise weight to body weight
 			calories = ea.calculateCalories(exerciseType, intensity, duration, totalWeight)
@@ -177,13 +177,13 @@ func (ea *ExerciseActor) updateExercise(date, id, name, exerciseType string, dur
 	}
 
 	// Save to blog
-	return ea.saveExercisesToBlog(exerciseList)
+	return ea.saveExercisesToBlog(account, exerciseList)
 }
 
 // ToggleExercise toggles the completion status of an exercise item
-func (ea *ExerciseActor) toggleExercise(date, id string) error {
+func (ea *ExerciseActor) toggleExercise(account, date, id string) error {
 	// Get exercise list for the date
-	exerciseList, err := ea.getExercisesByDate(date)
+	exerciseList, err := ea.getExercisesByDate(account, date)
 	if err != nil {
 		return err
 	}
@@ -209,15 +209,15 @@ func (ea *ExerciseActor) toggleExercise(date, id string) error {
 	}
 
 	// Save to blog
-	return ea.saveExercisesToBlog(exerciseList)
+	return ea.saveExercisesToBlog(account, exerciseList)
 }
 
 // GetExercisesByDate retrieves the exercise list for a specific date
-func (ea *ExerciseActor) getExercisesByDate(date string) (ExerciseList, error) {
+func (ea *ExerciseActor) getExercisesByDate(account, date string) (ExerciseList, error) {
 	title := ea.generateBlogTitle(date)
 
-	// Find blog by title
-	b := blog.GetBlog(title)
+	// Find blog by title using account-based interface
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return ExerciseList{Date: date, Items: []ExerciseItem{}}, nil
 	}
@@ -232,11 +232,11 @@ func (ea *ExerciseActor) getExercisesByDate(date string) (ExerciseList, error) {
 }
 
 // GetAllExercises retrieves all exercise lists from the blog system
-func (ea *ExerciseActor) getAllExercises() (map[string]ExerciseList, error) {
+func (ea *ExerciseActor) getAllExercises(account string) (map[string]ExerciseList, error) {
 	result := make(map[string]ExerciseList)
 
 	// Iterate through all blogs
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		date := ea.getDateFromTitle(b.Title)
 		if date != "" {
 			var exerciseList ExerciseList
@@ -250,7 +250,7 @@ func (ea *ExerciseActor) getAllExercises() (map[string]ExerciseList, error) {
 }
 
 // saveExercisesToBlog saves an ExerciseList as a blog post
-func (ea *ExerciseActor) saveExercisesToBlog(exerciseList ExerciseList) error {
+func (ea *ExerciseActor) saveExercisesToBlog(account string, exerciseList ExerciseList) error {
 	title := ea.generateBlogTitle(exerciseList.Date)
 
 	// Convert to JSON
@@ -259,8 +259,8 @@ func (ea *ExerciseActor) saveExercisesToBlog(exerciseList ExerciseList) error {
 		return fmt.Errorf("failed to convert exercise list to JSON: %w", err)
 	}
 
-	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	// Find existing blog or create new one using account-based interface
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -268,8 +268,9 @@ func (ea *ExerciseActor) saveExercisesToBlog(exerciseList ExerciseList) error {
 			Content:  string(content),
 			Tags:     "exercise",
 			AuthType: module.EAuthType_private,
+			Account:  account,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -277,16 +278,17 @@ func (ea *ExerciseActor) saveExercisesToBlog(exerciseList ExerciseList) error {
 			Content:  string(content),
 			Tags:     "exercise",
 			AuthType: module.EAuthType_private,
+			Account:  account,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // AddTemplate adds a new exercise template
-func (ea *ExerciseActor) addTemplate(name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
-	templates, err := ea.getTemplates()
+func (ea *ExerciseActor) addTemplate(account, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
+	templates, err := ea.getTemplates(account)
 	if err != nil {
 		templates = []ExerciseTemplate{}
 	}
@@ -308,7 +310,7 @@ func (ea *ExerciseActor) addTemplate(name, exerciseType string, duration int, in
 	templates = append(templates, template)
 
 	// Save templates
-	if err := ea.saveTemplatesToBlog(templates); err != nil {
+	if err := ea.saveTemplatesToBlog(account, templates); err != nil {
 		return nil, err
 	}
 
@@ -316,8 +318,8 @@ func (ea *ExerciseActor) addTemplate(name, exerciseType string, duration int, in
 }
 
 // DeleteTemplate removes a template by ID
-func (ea *ExerciseActor) deleteTemplate(id string) error {
-	templates, err := ea.getTemplates()
+func (ea *ExerciseActor) deleteTemplate(account, id string) error {
+	templates, err := ea.getTemplates(account)
 	if err != nil {
 		return err
 	}
@@ -338,12 +340,12 @@ func (ea *ExerciseActor) deleteTemplate(id string) error {
 	}
 
 	// Save updated templates
-	return ea.saveTemplatesToBlog(updatedTemplates)
+	return ea.saveTemplatesToBlog(account, updatedTemplates)
 }
 
 // UpdateTemplate updates an existing template
-func (ea *ExerciseActor) updateTemplate(id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
-	templates, err := ea.getTemplates()
+func (ea *ExerciseActor) updateTemplate(account, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+	templates, err := ea.getTemplates(account)
 	if err != nil {
 		return err
 	}
@@ -370,15 +372,15 @@ func (ea *ExerciseActor) updateTemplate(id, name, exerciseType string, duration 
 	}
 
 	// Save updated templates
-	return ea.saveTemplatesToBlog(templates)
+	return ea.saveTemplatesToBlog(account, templates)
 }
 
 // GetTemplates retrieves all exercise templates
-func (ea *ExerciseActor) getTemplates() ([]ExerciseTemplate, error) {
+func (ea *ExerciseActor) getTemplates(account string) ([]ExerciseTemplate, error) {
 	title := ea.generateTemplateBlogTitle()
 
 	// Find blog by title
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return []ExerciseTemplate{}, nil
 	}
@@ -393,7 +395,7 @@ func (ea *ExerciseActor) getTemplates() ([]ExerciseTemplate, error) {
 }
 
 // saveTemplatesToBlog saves exercise templates as a blog post
-func (ea *ExerciseActor) saveTemplatesToBlog(templates []ExerciseTemplate) error {
+func (ea *ExerciseActor) saveTemplatesToBlog(account string, templates []ExerciseTemplate) error {
 	title := ea.generateTemplateBlogTitle()
 
 	// Convert to JSON
@@ -403,7 +405,7 @@ func (ea *ExerciseActor) saveTemplatesToBlog(templates []ExerciseTemplate) error
 	}
 
 	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -412,7 +414,7 @@ func (ea *ExerciseActor) saveTemplatesToBlog(templates []ExerciseTemplate) error
 			Tags:     "exercise-template",
 			AuthType: module.EAuthType_private,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -421,15 +423,15 @@ func (ea *ExerciseActor) saveTemplatesToBlog(templates []ExerciseTemplate) error
 			Tags:     "exercise-template",
 			AuthType: module.EAuthType_private,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // calculateStats calculates exercise statistics for a given period
-func (ea *ExerciseActor) calculateStats(period, startDate, endDate string) (*ExerciseStats, error) {
-	allExercises, err := ea.getAllExercises()
+func (ea *ExerciseActor) calculateStats(account, period, startDate, endDate string) (*ExerciseStats, error) {
+	allExercises, err := ea.getAllExercises(account)
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +502,7 @@ func (ea *ExerciseActor) calculateStats(period, startDate, endDate string) (*Exe
 }
 
 // GetWeeklyStats calculates weekly exercise statistics
-func (ea *ExerciseActor) getWeeklyStats(startDate string) (*ExerciseStats, error) {
+func (ea *ExerciseActor) getWeeklyStats(account, startDate string) (*ExerciseStats, error) {
 	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start date: %w", err)
@@ -514,11 +516,11 @@ func (ea *ExerciseActor) getWeeklyStats(startDate string) (*ExerciseStats, error
 	monday := start.AddDate(0, 0, -int(weekday-1))
 	sunday := monday.AddDate(0, 0, 6)
 
-	return ea.calculateStats("week", monday.Format("2006-01-02"), sunday.Format("2006-01-02"))
+	return ea.calculateStats(account, "week", monday.Format("2006-01-02"), sunday.Format("2006-01-02"))
 }
 
 // GetMonthlyStats calculates monthly exercise statistics
-func (ea *ExerciseActor) getMonthlyStats(year int, month int) (*ExerciseStats, error) {
+func (ea *ExerciseActor) getMonthlyStats(account string, year int, month int) (*ExerciseStats, error) {
 	startDate := fmt.Sprintf("%04d-%02d-01", year, month)
 	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
@@ -528,20 +530,20 @@ func (ea *ExerciseActor) getMonthlyStats(year int, month int) (*ExerciseStats, e
 	// Last day of month
 	end := start.AddDate(0, 1, -1)
 
-	return ea.calculateStats("month", start.Format("2006-01-02"), end.Format("2006-01-02"))
+	return ea.calculateStats(account, "month", start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
 // GetYearlyStats calculates yearly exercise statistics
-func (ea *ExerciseActor) getYearlyStats(year int) (*ExerciseStats, error) {
+func (ea *ExerciseActor) getYearlyStats(account string, year int) (*ExerciseStats, error) {
 	startDate := fmt.Sprintf("%04d-01-01", year)
 	endDate := fmt.Sprintf("%04d-12-31", year)
 
-	return ea.calculateStats("year", startDate, endDate)
+	return ea.calculateStats(account, "year", startDate, endDate)
 }
 
 // AddCollection adds a new template collection
-func (ea *ExerciseActor) addCollection(name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
-	collections, err := ea.getCollections()
+func (ea *ExerciseActor) addCollection(account, name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
+	collections, err := ea.getCollections(account)
 	if err != nil {
 		collections = []ExerciseTemplateCollection{}
 	}
@@ -559,7 +561,7 @@ func (ea *ExerciseActor) addCollection(name, description string, templateIDs []s
 	collections = append(collections, collection)
 
 	// Save collections
-	if err := ea.saveCollectionsToBlog(collections); err != nil {
+	if err := ea.saveCollectionsToBlog(account, collections); err != nil {
 		return nil, err
 	}
 
@@ -567,8 +569,8 @@ func (ea *ExerciseActor) addCollection(name, description string, templateIDs []s
 }
 
 // DeleteCollection removes a collection by ID
-func (ea *ExerciseActor) deleteCollection(id string) error {
-	collections, err := ea.getCollections()
+func (ea *ExerciseActor) deleteCollection(account, id string) error {
+	collections, err := ea.getCollections(account)
 	if err != nil {
 		return err
 	}
@@ -589,12 +591,12 @@ func (ea *ExerciseActor) deleteCollection(id string) error {
 	}
 
 	// Save updated collections
-	return ea.saveCollectionsToBlog(updatedCollections)
+	return ea.saveCollectionsToBlog(account, updatedCollections)
 }
 
 // UpdateCollection updates an existing collection
-func (ea *ExerciseActor) updateCollection(id, name, description string, templateIDs []string) error {
-	collections, err := ea.getCollections()
+func (ea *ExerciseActor) updateCollection(account, id, name, description string, templateIDs []string) error {
+	collections, err := ea.getCollections(account)
 	if err != nil {
 		return err
 	}
@@ -616,15 +618,15 @@ func (ea *ExerciseActor) updateCollection(id, name, description string, template
 	}
 
 	// Save updated collections
-	return ea.saveCollectionsToBlog(collections)
+	return ea.saveCollectionsToBlog(account, collections)
 }
 
 // GetCollections retrieves all template collections
-func (ea *ExerciseActor) getCollections() ([]ExerciseTemplateCollection, error) {
+func (ea *ExerciseActor) getCollections(account string) ([]ExerciseTemplateCollection, error) {
 	title := ea.generateCollectionBlogTitle()
 
 	// Find blog by title
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return []ExerciseTemplateCollection{}, nil
 	}
@@ -639,8 +641,8 @@ func (ea *ExerciseActor) getCollections() ([]ExerciseTemplateCollection, error) 
 }
 
 // GetCollectionWithTemplates retrieves a collection with its associated templates
-func (ea *ExerciseActor) getCollectionWithTemplates(collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
-	collections, err := ea.getCollections()
+func (ea *ExerciseActor) getCollectionWithTemplates(account, collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
+	collections, err := ea.getCollections(account)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -659,7 +661,7 @@ func (ea *ExerciseActor) getCollectionWithTemplates(collectionID string) (*Exerc
 	}
 
 	// Get all templates
-	allTemplates, err := ea.getTemplates()
+	allTemplates, err := ea.getTemplates(account)
 	if err != nil {
 		return targetCollection, []ExerciseTemplate{}, nil
 	}
@@ -679,14 +681,14 @@ func (ea *ExerciseActor) getCollectionWithTemplates(collectionID string) (*Exerc
 }
 
 // AddFromCollection adds all exercises from a collection to a specific date
-func (ea *ExerciseActor) addFromCollection(date, collectionID string) error {
-	_, templates, err := ea.getCollectionWithTemplates(collectionID)
+func (ea *ExerciseActor) addFromCollection(account, date, collectionID string) error {
+	_, templates, err := ea.getCollectionWithTemplates(account, collectionID)
 	if err != nil {
 		return err
 	}
 	// Add each template as an exercise
 	for _, template := range templates {
-		exerciseList, err := ea.getExercisesByDate(date)
+		exerciseList, err := ea.getExercisesByDate(account, date)
 		if err != nil {
 			exerciseList = ExerciseList{
 				Date:  date,
@@ -695,7 +697,7 @@ func (ea *ExerciseActor) addFromCollection(date, collectionID string) error {
 		}
 		calories := template.Calories
 		if calories == 0 {
-			profile, _ := ea.getUserProfile()
+			profile, _ := ea.getUserProfile(account)
 			if profile != nil && profile.Weight > 0 {
 				totalWeight := profile.Weight + template.Weight
 				calories = ea.calculateCalories(template.Type, template.Intensity, template.Duration, totalWeight)
@@ -715,7 +717,7 @@ func (ea *ExerciseActor) addFromCollection(date, collectionID string) error {
 			BodyParts: template.BodyParts,
 		}
 		exerciseList.Items = append(exerciseList.Items, item)
-		if err := ea.saveExercisesToBlog(exerciseList); err != nil {
+		if err := ea.saveExercisesToBlog(account, exerciseList); err != nil {
 			return err
 		}
 	}
@@ -723,7 +725,7 @@ func (ea *ExerciseActor) addFromCollection(date, collectionID string) error {
 }
 
 // saveCollectionsToBlog saves template collections as a blog post
-func (ea *ExerciseActor) saveCollectionsToBlog(collections []ExerciseTemplateCollection) error {
+func (ea *ExerciseActor) saveCollectionsToBlog(account string, collections []ExerciseTemplateCollection) error {
 	title := ea.generateCollectionBlogTitle()
 
 	// Convert to JSON
@@ -733,7 +735,7 @@ func (ea *ExerciseActor) saveCollectionsToBlog(collections []ExerciseTemplateCol
 	}
 
 	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -742,7 +744,7 @@ func (ea *ExerciseActor) saveCollectionsToBlog(collections []ExerciseTemplateCol
 			Tags:     "exercise-collection",
 			AuthType: module.EAuthType_private,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -751,7 +753,7 @@ func (ea *ExerciseActor) saveCollectionsToBlog(collections []ExerciseTemplateCol
 			Tags:     "exercise-collection",
 			AuthType: module.EAuthType_private,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
@@ -852,7 +854,7 @@ func (ea *ExerciseActor) getDefaultMETValues() []METValue {
 }
 
 // SaveUserProfile saves or updates user profile
-func (ea *ExerciseActor) saveUserProfile(name, gender string, weight, height float64, age int) (*UserProfile, error) {
+func (ea *ExerciseActor) saveUserProfile(account, name, gender string, weight, height float64, age int) (*UserProfile, error) {
 	profile := &UserProfile{
 		ID:        "default", // Single user profile
 		Name:      name,
@@ -864,14 +866,14 @@ func (ea *ExerciseActor) saveUserProfile(name, gender string, weight, height flo
 	}
 
 	// Check if profile exists
-	existingProfile, _ := ea.getUserProfile()
+	existingProfile, _ := ea.getUserProfile(account)
 	if existingProfile == nil {
 		profile.CreatedAt = time.Now()
 	} else {
 		profile.CreatedAt = existingProfile.CreatedAt
 	}
 
-	if err := ea.saveUserProfileToBlog(profile); err != nil {
+	if err := ea.saveUserProfileToBlog(account, profile); err != nil {
 		return nil, err
 	}
 
@@ -879,11 +881,11 @@ func (ea *ExerciseActor) saveUserProfile(name, gender string, weight, height flo
 }
 
 // GetUserProfile retrieves user profile
-func (ea *ExerciseActor) getUserProfile() (*UserProfile, error) {
+func (ea *ExerciseActor) getUserProfile(account string) (*UserProfile, error) {
 	title := ea.generateUserProfileBlogTitle()
 
 	// Find blog by title
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		return nil, nil // No profile found
 	}
@@ -898,7 +900,7 @@ func (ea *ExerciseActor) getUserProfile() (*UserProfile, error) {
 }
 
 // saveUserProfileToBlog saves user profile as a blog post
-func (ea *ExerciseActor) saveUserProfileToBlog(profile *UserProfile) error {
+func (ea *ExerciseActor) saveUserProfileToBlog(account string, profile *UserProfile) error {
 	title := ea.generateUserProfileBlogTitle()
 
 	// Convert to JSON
@@ -908,7 +910,7 @@ func (ea *ExerciseActor) saveUserProfileToBlog(profile *UserProfile) error {
 	}
 
 	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -917,7 +919,7 @@ func (ea *ExerciseActor) saveUserProfileToBlog(profile *UserProfile) error {
 			Tags:     "exercise-profile",
 			AuthType: module.EAuthType_private,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -926,22 +928,22 @@ func (ea *ExerciseActor) saveUserProfileToBlog(profile *UserProfile) error {
 			Tags:     "exercise-profile",
 			AuthType: module.EAuthType_private,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // GetMETValues retrieves MET values
-func (ea *ExerciseActor) getMETValues() ([]METValue, error) {
+func (ea *ExerciseActor) getMETValues(account string) ([]METValue, error) {
 	title := ea.generateMETValuesBlogTitle()
 
 	// Find blog by title
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Return default values and save them
 		defaultValues := ea.getDefaultMETValues()
-		ea.saveMETValuesToBlog(defaultValues)
+		ea.saveMETValuesToBlog(account, defaultValues)
 		return defaultValues, nil
 	}
 
@@ -955,7 +957,7 @@ func (ea *ExerciseActor) getMETValues() ([]METValue, error) {
 }
 
 // saveMETValuesToBlog saves MET values as a blog post
-func (ea *ExerciseActor) saveMETValuesToBlog(metValues []METValue) error {
+func (ea *ExerciseActor) saveMETValuesToBlog(account string, metValues []METValue) error {
 	title := ea.generateMETValuesBlogTitle()
 
 	// Convert to JSON
@@ -965,7 +967,7 @@ func (ea *ExerciseActor) saveMETValuesToBlog(metValues []METValue) error {
 	}
 
 	// Find existing blog or create new one
-	b := blog.GetBlog(title)
+	b := blog.GetBlogWithAccount(account, title)
 	if b == nil {
 		// Create new blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -974,7 +976,7 @@ func (ea *ExerciseActor) saveMETValuesToBlog(metValues []METValue) error {
 			Tags:     "exercise-met",
 			AuthType: module.EAuthType_private,
 		}
-		blog.AddBlog(ubd)
+		blog.AddBlogWithAccount(account, ubd)
 	} else {
 		// Update existing blog using UploadedBlogData
 		ubd := &module.UploadedBlogData{
@@ -983,15 +985,15 @@ func (ea *ExerciseActor) saveMETValuesToBlog(metValues []METValue) error {
 			Tags:     "exercise-met",
 			AuthType: module.EAuthType_private,
 		}
-		blog.ModifyBlog(ubd)
+		blog.ModifyBlogWithAccount(account, ubd)
 	}
 
 	return nil
 }
 
 // UpdateAllTemplateCalories updates calories for all existing templates based on current MET values
-func (ea *ExerciseActor) updateAllTemplateCalories(weight float64) error {
-	templates, err := ea.getTemplates()
+func (ea *ExerciseActor) updateAllTemplateCalories(account string, weight float64) error {
+	templates, err := ea.getTemplates(account)
 	if err != nil {
 		return err
 	}
@@ -1009,15 +1011,15 @@ func (ea *ExerciseActor) updateAllTemplateCalories(weight float64) error {
 
 	// Save updated templates if any changes were made
 	if updated {
-		return ea.saveTemplatesToBlog(templates)
+		return ea.saveTemplatesToBlog(account, templates)
 	}
 
 	return nil
 }
 
 // UpdateAllExerciseCalories updates calories for all existing exercise records based on current MET values
-func (ea *ExerciseActor) updateAllExerciseCalories(weight float64) (int, error) {
-	allExercises, err := ea.getAllExercises()
+func (ea *ExerciseActor) updateAllExerciseCalories(account string, weight float64) (int, error) {
+	allExercises, err := ea.getAllExercises(account)
 	if err != nil {
 		return 0, err
 	}
@@ -1038,7 +1040,7 @@ func (ea *ExerciseActor) updateAllExerciseCalories(weight float64) (int, error) 
 
 		// Save updated exercise list if any changes were made
 		if updated {
-			if err := ea.saveExercisesToBlog(exerciseList); err != nil {
+			if err := ea.saveExercisesToBlog(account, exerciseList); err != nil {
 				return updatedCount, fmt.Errorf("failed to save exercises for date %s: %w", date, err)
 			}
 		}

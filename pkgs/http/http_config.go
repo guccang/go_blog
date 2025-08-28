@@ -4,10 +4,10 @@ import (
 	"config"
 	"control"
 	"encoding/json"
-	h "net/http"
 	t "html/template"
 	"module"
 	log "mylog"
+	h "net/http"
 	"path/filepath"
 	"strings"
 )
@@ -17,7 +17,7 @@ import (
 func HandleConfig(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleConfig", r)
 	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/login", h.StatusSeeOther)
+		h.Redirect(w, r, "/main", h.StatusSeeOther)
 		return
 	}
 
@@ -44,8 +44,8 @@ func HandleConfig(w h.ResponseWriter, r *h.Request) {
 	}
 }
 
-// HandleConfigAPI handles the system configuration API
-// 系统配置API处理
+// HandleConfigAPI handles the system configuration API with per-account support
+// 系统配置API处理 - 支持多账户
 func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleConfigAPI", r)
 	if checkLogin(r) != 0 {
@@ -54,128 +54,188 @@ func HandleConfigAPI(w h.ResponseWriter, r *h.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	account := getAccountFromRequest(r)
+	isAdmin := isAdminUser(account)
 
 	switch r.Method {
 	case h.MethodGet:
-		// 获取系统配置
-		blog := control.GetBlog("", "sys_conf")
-		if blog == nil {
-			log.ErrorF("sys_conf文件不存在，创建默认配置文件")
-
-			// 创建默认配置文件
-			defaultConfigs := map[string]string{
-				"port":                       "8888",
-				"redis_ip":                   "127.0.0.1",
-				"redis_port":                 "6666",
-				"redis_pwd":                  "",
-				"publictags":                 "public|share|demo",
-				"sysfiles":                   "sys_conf",
-				"title_auto_add_date_suffix": "日记",
-				"diary_keywords":             "日记_",
-			}
-
-			// 构建默认配置内容和注释
-			defaultComments := map[string]string{
-				"port":                       "HTTP服务监听端口",
-				"redis_ip":                   "Redis服务器IP地址",
-				"redis_port":                 "Redis服务器端口",
-				"redis_pwd":                  "Redis密码（留空表示无密码）",
-				"publictags":                 "公开标签列表（用|分隔）",
-				"sysfiles":                   "系统文件列表（用|分隔）",
-				"title_auto_add_date_suffix": "自动添加日期后缀的标题前缀（用|分隔）",
-				"diary_keywords":             "日记关键字（用|分隔）",
-			}
-			defaultContent := buildConfigContentWithComments(defaultConfigs, defaultComments)
-
-			// 创建默认配置文件
-			uploadData := &module.UploadedBlogData{
-				Title:    "sys_conf",
-				Content:  defaultContent,
-				AuthType: module.EAuthType_private,
-				Tags:     "system,config",
-				Encrypt:  0,
-			}
-
-			result := control.AddBlog("", uploadData)
-			if result != 0 {
-				log.ErrorF("创建默认配置文件失败: result=%d", result)
-				h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
-				return
-			}
-
-			log.DebugF("默认配置文件创建成功")
-
-			// 返回默认配置
-			response := map[string]interface{}{
-				"success":     true,
-				"configs":     defaultConfigs,
-				"comments":    defaultComments,
-				"raw_content": defaultContent,
-				"is_default":  true,
-			}
-			json.NewEncoder(w).Encode(response)
-			return
-		}
-
-		// 解析配置内容和注释
-		configs, comments := parseConfigContentWithComments(blog.Content)
-
-		response := map[string]interface{}{
-			"success":     true,
-			"configs":     configs,
-			"comments":    comments,
-			"raw_content": blog.Content,
-			"is_default":  false,
-		}
-		json.NewEncoder(w).Encode(response)
-
+		handleGetConfig(w, account, isAdmin)
 	case h.MethodPost:
-		// 更新系统配置
-		var requestData struct {
-			Configs  map[string]string `json:"configs"`
-			Comments map[string]string `json:"comments"`
-		}
-
-		if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-			log.ErrorF("解析配置数据失败: %v", err)
-			h.Error(w, "无效的JSON数据", h.StatusBadRequest)
-			return
-		}
-
-		// 构建新的配置内容
-		newContent := buildConfigContentWithComments(requestData.Configs, requestData.Comments)
-
-		// 更新sys_conf文件
-		uploadData := &module.UploadedBlogData{
-			Title:    "sys_conf",
-			Content:  newContent,
-			AuthType: module.EAuthType_private,
-			Tags:     "system,config",
-			Encrypt:  0,
-		}
-
-		result := control.ModifyBlog("", uploadData)
-		if result != 0 {
-			log.ErrorF("更新配置文件失败: result=%d", result)
-			h.Error(w, "更新配置失败", h.StatusInternalServerError)
-			return
-		}
-
-		// 重新加载配置
-		configPath := config.GetConfigPath()
-		config.ReloadConfig(configPath)
-
-		log.DebugF("系统配置更新成功")
-
-		response := map[string]interface{}{
-			"success": true,
-			"message": "配置更新成功",
-		}
-		json.NewEncoder(w).Encode(response)
-
+		handleUpdateConfig(w, r, account, isAdmin)
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
 	}
+}
+
+// handleGetConfig handles GET requests for configuration
+func handleGetConfig(w h.ResponseWriter, account string, isAdmin bool) {
+	// 获取账户专属的系统配置
+	configTitle := config.GetSysConfigTitle()
+	blog := control.GetBlog(account, configTitle)
+
+	if blog == nil {
+		// 创建默认配置
+		createDefaultConfig(w, account, configTitle, isAdmin)
+		return
+	}
+
+	// 解析现有配置内容和注释
+	configs, comments := parseConfigContentWithComments(blog.Content)
+
+	response := map[string]interface{}{
+		"success":     true,
+		"configs":     configs,
+		"comments":    comments,
+		"raw_content": blog.Content,
+		"is_default":  false,
+		"is_admin":    isAdmin,
+		"account":     account,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// createDefaultConfig creates default configuration for an account
+func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmin bool) {
+	log.InfoF("%s配置文件不存在，创建默认配置文件", configTitle)
+
+	// 根据用户类型创建不同的默认配置文件
+	var defaultConfigs map[string]string
+	var defaultComments map[string]string
+
+	if isAdmin {
+		// 管理员获得完整的系统配置
+		defaultConfigs = map[string]string{
+			"port":                       "8888",
+			"redis_ip":                   "127.0.0.1",
+			"redis_port":                 "6666",
+			"redis_pwd":                  "",
+			"publictags":                 "public|share|demo",
+			"sysfiles":                   configTitle,
+			"title_auto_add_date_suffix": "日记",
+			"diary_keywords":             "日记_",
+			"diary_password":             "",
+			"main_show_blogs":            "10",
+		}
+
+		defaultComments = map[string]string{
+			"port":                       "HTTP服务监听端口",
+			"redis_ip":                   "Redis服务器IP地址",
+			"redis_port":                 "Redis服务器端口",
+			"redis_pwd":                  "Redis密码（留空表示无密码）",
+			"publictags":                 "公开标签列表（用|分隔）",
+			"sysfiles":                   "系统文件列表（用|分隔）",
+			"title_auto_add_date_suffix": "自动添加日期后缀的标题前缀（用|分隔）",
+			"diary_keywords":             "日记关键字（用|分隔）",
+			"diary_password":             "日记密码保护",
+			"main_show_blogs":            "主页显示博客数量",
+		}
+	} else {
+		// 非管理员只获得个人配置
+		defaultConfigs = map[string]string{
+			"publictags":                 "public|share|demo",
+			"title_auto_add_date_suffix": "日记",
+			"diary_keywords":             "日记_",
+			"diary_password":             "",
+			"main_show_blogs":            "10",
+		}
+
+		defaultComments = map[string]string{
+			"publictags":                 "公开标签列表（用|分隔）",
+			"title_auto_add_date_suffix": "自动添加日期后缀的标题前缀（用|分隔）",
+			"diary_keywords":             "日记关键字（用|分隔）",
+			"diary_password":             "日记密码保护",
+			"main_show_blogs":            "主页显示博客数量",
+		}
+	}
+
+	// 构建默认配置内容
+	defaultContent := buildConfigContentWithComments(defaultConfigs, defaultComments)
+
+	// 创建默认配置文件
+	uploadData := &module.UploadedBlogData{
+		Title:    configTitle,
+		Content:  defaultContent,
+		AuthType: module.EAuthType_private,
+		Tags:     "system,config",
+		Encrypt:  0,
+	}
+
+	result := control.AddBlog(account, uploadData)
+	if result != 0 {
+		log.ErrorF("创建默认配置文件失败: result=%d", result)
+		h.Error(w, "创建默认配置文件失败", h.StatusInternalServerError)
+		return
+	}
+
+	// 更新账户的配置actor
+	config.UpdateConfigFromBlog(account, defaultContent)
+
+	log.InfoF("账户 %s 的默认配置文件创建成功", account)
+
+	// 返回默认配置
+	response := map[string]interface{}{
+		"success":     true,
+		"configs":     defaultConfigs,
+		"comments":    defaultComments,
+		"raw_content": defaultContent,
+		"is_default":  true,
+		"is_admin":    isAdmin,
+		"account":     account,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleUpdateConfig handles POST requests for configuration updates
+func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmin bool) {
+	configTitle := config.GetSysConfigTitle()
+	var requestData struct {
+		Configs  map[string]string `json:"configs"`
+		Comments map[string]string `json:"comments"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+		log.ErrorF("解析配置数据失败: %v", err)
+		h.Error(w, "无效的JSON数据", h.StatusBadRequest)
+		return
+	}
+
+	// 构建新的配置内容
+	newContent := buildConfigContentWithComments(requestData.Configs, requestData.Comments)
+
+	// 更新账户专属的配置文件
+	uploadData := &module.UploadedBlogData{
+		Title:    configTitle,
+		Content:  newContent,
+		AuthType: module.EAuthType_private,
+		Tags:     "system,config",
+		Encrypt:  0,
+	}
+
+	result := control.ModifyBlog(account, uploadData)
+	if result != 0 {
+		log.ErrorF("更新配置文件失败: result=%d", result)
+		h.Error(w, "更新配置失败", h.StatusInternalServerError)
+		return
+	}
+
+	// 更新账户的配置actor
+	config.UpdateConfigFromBlog(account, newContent)
+
+	log.InfoF("用户 %s 的配置更新成功", account)
+
+	response := map[string]interface{}{
+		"success":  true,
+		"message":  "配置更新成功",
+		"is_admin": isAdmin,
+		"account":  account,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// isAdminUser 检查用户是否为管理员
+func isAdminUser(account string) bool {
+	adminAccount := config.GetAdminAccount()
+	return account == adminAccount
 }
 
 // parseConfigContent parses configuration content into key-value pairs
@@ -288,13 +348,15 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 	// 定义配置项的顺序
 	configOrder := []string{
 		"port",
-		"redis_ip", 
+		"redis_ip",
 		"redis_port",
 		"redis_pwd",
 		"publictags",
 		"sysfiles",
 		"title_auto_add_date_suffix",
 		"diary_keywords",
+		"diary_password",
+		"main_show_blogs",
 	}
 
 	// 按顺序输出配置项

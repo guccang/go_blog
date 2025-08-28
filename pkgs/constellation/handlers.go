@@ -1,16 +1,27 @@
 package constellation
 
 import (
+	"blog"
 	"encoding/json"
 	"fmt"
+	log "mylog"
 	"net/http"
 	"strconv"
 	"time"
-
 	"view"
 )
 
 var manager *ConstellationManager
+
+func getAccountFromRequest(r *http.Request) string {
+	sessionCookie, err := r.Cookie("session")
+	if err != nil {
+		log.DebugF("No session cookie found: %v", err)
+		return ""
+	}
+
+	return blog.GetAccountFromSession(sessionCookie.Value)
+}
 
 func init() {
 	manager = NewConstellationManager()
@@ -36,7 +47,8 @@ func HandleDailyHoroscope(w http.ResponseWriter, r *http.Request) {
 		date = time.Now().Format("2006-01-02")
 	}
 
-	horoscope, err := manager.GetDailyHoroscope(constellationID, date)
+	account := getAccountFromRequest(r)
+	horoscope, err := manager.GetDailyHoroscope(account, constellationID, date)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -62,7 +74,9 @@ func HandleBirthChart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		account := getAccountFromRequest(r)
 		chart, err := manager.CreateBirthChart(
+			account,
 			request.UserName,
 			request.BirthDate,
 			request.BirthTime,
@@ -96,7 +110,9 @@ func HandleDivination(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		account := getAccountFromRequest(r)
 		record, err := manager.CreateDivination(
+			account,
 			request.UserName,
 			request.Type,
 			request.Question,
@@ -125,7 +141,8 @@ func HandleCompatibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := manager.AnalyzeCompatibility(sign1, sign2)
+	account := getAccountFromRequest(r)
+	analysis, err := manager.AnalyzeCompatibility(account, sign1, sign2)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -153,7 +170,8 @@ func HandleDivinationHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	records, err := manager.GetDivinationHistory(userName, limit)
+	account := getAccountFromRequest(r)
+	records, err := manager.GetDivinationHistory(account, userName, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -172,7 +190,8 @@ func HandleDivinationStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := manager.GetDivinationStats(userName)
+	account := getAccountFromRequest(r)
+	stats, err := manager.GetDivinationStats(account, userName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -251,7 +270,8 @@ func HandleUpdateAccuracy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err := manager.UpdateDivinationAccuracy(request.RecordID, request.Accuracy)
+		account := getAccountFromRequest(r)
+		err := manager.UpdateDivinationAccuracy(account, request.RecordID, request.Accuracy)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -276,7 +296,8 @@ func HandleBatchHoroscope(w http.ResponseWriter, r *http.Request) {
 	allHoroscopes := make(map[string]*DailyHoroscope)
 
 	for constellationID := range ConstellationData {
-		horoscope, err := manager.GetDailyHoroscope(constellationID, date)
+		account := getAccountFromRequest(r)
+		horoscope, err := manager.GetDailyHoroscope(account, constellationID, date)
 		if err != nil {
 			// 记录错误但继续处理其他星座
 			fmt.Printf("获取%s运势失败: %v\n", constellationID, err)

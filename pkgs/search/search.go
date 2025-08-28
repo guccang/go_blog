@@ -25,7 +25,7 @@ func Info() {
     $linux vim : search blogs with tag named linux, and find content or title has vim world
   - others for search
 */
-func Search(match string) []*module.Blog {
+func Search(account, match string) []*module.Blog {
 	// 空格分割
 	tokens := strings.Split(match, " ")
 
@@ -41,7 +41,7 @@ func Search(match string) []*module.Blog {
 	if strings.HasPrefix(begin_token, "$") {
 		// begin  with $
 		tag := begin_token[1:]
-		return matchTags(tag, tokens[1:])
+		return matchTags(account, tag, tokens[1:])
 	} else if strings.HasPrefix(begin_token, "@") {
 		// begin with @
 		tag := begin_token[1:]
@@ -51,16 +51,16 @@ func Search(match string) []*module.Blog {
 			if tag == "public" {
 				auth_type = module.EAuthType_public
 			}
-			return matchBlogsWithAuthType(auth_type, tokens[1:])
+			return matchBlogsWithAuthType(account, auth_type, tokens[1:])
 		}
 		if strings.ToLower(tag) == strings.ToLower("encrypt") {
-			return matchEncrypt()
+			return matchEncrypt(account)
 		}
 		if strings.ToLower(tag) == strings.ToLower("reload") {
 			if len(tokens) != 2 {
 				return nil
 			}
-			reload(tokens[1])
+			reload(account, tokens[1])
 			// Return a special blog entry to indicate reload completion
 			reloadBlog := &module.Blog{
 				Title:      "系统重新加载完成",
@@ -75,14 +75,14 @@ func Search(match string) []*module.Blog {
 			if len(tokens) < 2 {
 				return nil
 			}
-			tagChange(tokens)
+			tagChange(account, tokens)
 		}
 		if strings.ToLower(tag) == strings.ToLower("timed") {
-			return tagTimed(tokens)
+			return tagTimed(account, tokens)
 		}
 	} else {
 		// begin with other
-		return matchOther(tokens)
+		return matchOther(account, tokens)
 	}
 
 	return nil
@@ -96,9 +96,9 @@ func sortblogs(s []*module.Blog) {
 	})
 }
 
-func matchTags(tag string, matches []string) []*module.Blog {
+func matchTags(account, tag string, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if false == strings.Contains(strings.ToLower(b.Tags), strings.ToLower(tag)) {
 			continue
 		}
@@ -115,17 +115,17 @@ func matchTags(tag string, matches []string) []*module.Blog {
 	return s
 }
 
-func reload(name string) {
+func reload(account, name string) {
 	if name == "cfg" {
-		config_path := config.GetConfigPath()
-		config.ReloadConfig(config_path)
+		config_path := config.GetConfigPathWithAccount(account)
+		config.ReloadConfig(account, config_path)
 		log.InfoF("reload cfg %s", config_path)
 	}
 }
 
-func matchOther(matches []string) []*module.Blog {
+func matchOther(account string, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		if ismatch(b, matches) == 0 {
 			continue
 		}
@@ -137,9 +137,9 @@ func matchOther(matches []string) []*module.Blog {
 	return s
 }
 
-func matchHelp() []*module.Blog {
+func matchHelp(account string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		s = append(s, b)
 	}
 	return s
@@ -189,9 +189,9 @@ func ismatch(b *module.Blog, matches []string) int {
 	return 0
 }
 
-func matchBlogsWithAuthType(auth_type int, matches []string) []*module.Blog {
+func matchBlogsWithAuthType(account string, auth_type int, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		// auth
 		if (b.AuthType & auth_type) == 0 {
 			continue
@@ -211,9 +211,9 @@ func matchBlogsWithAuthType(auth_type int, matches []string) []*module.Blog {
 
 }
 
-func matchEncrypt() []*module.Blog {
+func matchEncrypt(account string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 
 		// not encrypt
 		if b.Encrypt != 1 {
@@ -227,7 +227,7 @@ func matchEncrypt() []*module.Blog {
 	return s
 }
 
-func tagChange(tokens []string) {
+func tagChange(account string, tokens []string) {
 	from := ""
 	to := ""
 
@@ -238,12 +238,12 @@ func tagChange(tokens []string) {
 		from = tokens[1]
 	}
 
-	blog.TagReplace(from, to)
+	blog.TagReplaceWithAccount(account, from, to)
 }
 
-func tagTimed(tokens []string) []*module.Blog {
+func tagTimed(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogs() {
+	for _, b := range blog.GetBlogsWithAccount(account) {
 		// not timed
 		if config.IsTitleContainsDateSuffix(b.Title) != 1 {
 			continue

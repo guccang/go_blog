@@ -112,8 +112,8 @@ func (ar *ReadingActor) addBook(title, author, isbn, publisher, publishDate, cov
 	ar.readingRecords[bookID] = record
 
 	// 保存到数据库
-	ar.saveBook("", book)
-	ar.saveReadingRecord("", record)
+	ar.saveBook(ar.Account, book)
+	ar.saveReadingRecord(ar.Account, record)
 
 	log.DebugF("添加书籍成功: %s - %s", title, author)
 	return book, nil
@@ -205,7 +205,7 @@ func (ar *ReadingActor) updateBook(bookID string, updates map[string]interface{}
 
 	// 更新内存中的数据
 	ar.books[bookID] = book
-	ar.saveBook("", book)
+	ar.saveBook(ar.Account, book)
 	log.DebugF("更新书籍成功: %s", bookID)
 	return nil
 }
@@ -1128,7 +1128,7 @@ func (ar *ReadingActor) saveReadingPlan(plan *module.ReadingPlan) {
 	// 这里需要找到相关的书籍来保存
 	for _, bookID := range plan.TargetBooks {
 		if book, exists := ar.books[bookID]; exists {
-			ar.saveBook("", book)
+			ar.saveBook(ar.Account, book)
 			break // 只需要保存一个相关书籍即可
 		}
 	}

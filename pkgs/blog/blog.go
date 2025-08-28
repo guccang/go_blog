@@ -18,58 +18,13 @@ func Info() {
 func Init() {
 	log.Debug("blog module Init")
 
-	// Initialize blog manager
-	managerCmd := &InitManagerCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-
-	// Use a temporary actor to initialize the manager
-	tempActor := &BlogActor{
-		Actor:   core.NewActor(),
-		Account: getDefaultAccount(),
-		blogs:   make(map[string]*module.Blog),
+	blogManager = &BlogManager{
+		actors: make(map[string]*BlogActor),
 	}
-	tempActor.Start(tempActor)
-	tempActor.Send(managerCmd)
-	<-managerCmd.Response()
-	tempActor.Stop()
-}
-
-// getDefaultAccount returns the default admin account
-func getDefaultAccount() string {
-	return config.GetConfig("admin")
 }
 
 // getBlogActor returns the blog actor for the given account
 func getBlogActor(account string) *BlogActor {
-	// If account is empty, use default account
-	if account == "" {
-		account = getDefaultAccount()
-	}
-
-	// We need to use the blog manager's default actor to handle this
-	// For now, we'll use a simple approach - create the actor directly if needed
-	// This is a temporary solution until we properly integrate the manager
-
-	if blogManager == nil {
-		// Initialize manager if not already done
-		blogManager = &BlogManager{
-			actors: make(map[string]*BlogActor),
-			defaultAct: &BlogActor{
-				Actor:   core.NewActor(),
-				Account: getDefaultAccount(),
-				blogs:   make(map[string]*module.Blog),
-			},
-		}
-		blogManager.defaultAct.Start(blogManager.defaultAct)
-
-		// Load system blogs
-		loadCmd := &loadBlogsCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-		blogManager.defaultAct.Send(loadCmd)
-		<-loadCmd.Response()
-	}
-
-	if account == getDefaultAccount() {
-		return blogManager.defaultAct
-	}
 
 	blogManager.mu.RLock()
 	if act, exists := blogManager.actors[account]; exists {
@@ -78,10 +33,6 @@ func getBlogActor(account string) *BlogActor {
 	}
 	blogManager.mu.RUnlock()
 
-	// Create new actor for this account
-	blogManager.mu.Lock()
-	defer blogManager.mu.Unlock()
-
 	newActor := &BlogActor{
 		Actor:   core.NewActor(),
 		Account: account,
@@ -89,15 +40,10 @@ func getBlogActor(account string) *BlogActor {
 	}
 	newActor.Start(newActor)
 
-	// Load account-specific blogs
-	loadCmd := &loadAccountBlogsCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Account:      account,
-	}
-	newActor.Send(loadCmd)
-	<-loadCmd.Response()
-
+	// Create new actor for this account
+	blogManager.mu.Lock()
 	blogManager.actors[account] = newActor
+	blogManager.mu.Unlock()
 	return newActor
 }
 
@@ -365,96 +311,13 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 
 // ===== Backward compatibility for system modules =====
 
-// GetDefaultAccount returns the default admin account for system modules
-func GetDefaultAccount() string {
-	return getDefaultAccount()
-}
-
 // GetAccountFromSession returns the account from session if available, otherwise default account
 func GetAccountFromSession(session string) string {
 	if session == "" {
-		return getDefaultAccount()
+		return ""
 	}
 
 	account := auth.GetAccountBySession(session)
-	if account == "" {
-		return getDefaultAccount()
-	}
+
 	return account
-}
-
-// Backward compatibility functions for system modules
-// These functions use the default account internally
-
-func GetBlogs() map[string]*module.Blog {
-	return GetBlogsWithAccount("")
-}
-
-func GetBlog(title string) *module.Blog {
-	return GetBlogWithAccount("", title)
-}
-
-func AddBlog(udb *module.UploadedBlogData) int {
-	return AddBlogWithAccount("", udb)
-}
-
-func ModifyBlog(udb *module.UploadedBlogData) int {
-	return ModifyBlogWithAccount("", udb)
-}
-
-func DeleteBlog(title string) int {
-	return DeleteBlogWithAccount("", title)
-}
-
-func GetRecentlyTimedBlog(title string) *module.Blog {
-	return GetRecentlyTimedBlogWithAccount("", title)
-}
-
-func GetAll(num int, flag int) []*module.Blog {
-	return GetAllWithAccount("", num, flag)
-}
-
-func GetBlogAuthType(blogname string) int {
-	return GetBlogAuthTypeWithAccount("", blogname)
-}
-
-func TagReplace(from, to string) {
-	TagReplaceWithAccount("", from, to)
-}
-
-func SetSameAuth(blogname string) {
-	SetSameAuthWithAccount("", blogname)
-}
-
-func AddAuthType(blogname string, flag int) {
-	AddAuthTypeWithAccount("", blogname, flag)
-}
-
-func DelAuthType(blogname string, flag int) {
-	DelAuthTypeWithAccount("", blogname, flag)
-}
-
-func GetURLBlogNames(blogname string) []string {
-	return GetURLBlogNamesWithAccount("", blogname)
-}
-
-func GetBlogsNum() int {
-	return GetBlogsNumWithAccount("")
-}
-
-func ImportBlogsFromPath(dir string) {
-	ImportBlogsFromPathWithAccount("", dir)
-}
-
-func UpdateAccessTime(b *module.Blog) {
-	UpdateAccessTimeWithAccount("", b)
-}
-
-// Year plan backward compatibility
-func GetYearPlan(year int) (*YearPlanData, error) {
-	return GetYearPlanWithAccount("", year)
-}
-
-func SaveYearPlan(planData *YearPlanData) error {
-	return SaveYearPlanWithAccount("", planData)
 }

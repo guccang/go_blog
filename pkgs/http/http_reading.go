@@ -1093,11 +1093,12 @@ func HandleLifeCountdownConfigAPI(w h.ResponseWriter, r *h.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	account := getAccountFromRequest(r)
 
 	switch r.Method {
 	case h.MethodGet:
 		// 获取保存的配置
-		blog := control.GetBlog("", "lifecountdown.md")
+		blog := control.GetBlog(account, "lifecountdown.md")
 		if blog == nil {
 			// 如果配置不存在，返回默认配置
 			defaultConfig := map[string]interface{}{

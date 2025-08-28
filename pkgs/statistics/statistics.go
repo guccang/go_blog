@@ -255,7 +255,7 @@ func RecordUserLogin(account, ip string, success bool) {
 }
 
 // 获取统计数据
-func GetStatistics() *Statistics {
+func GetStatistics(account string) *Statistics {
 	if cachedStats != nil && time.Since(lastCacheTime) < cacheExpiry {
 		return cachedStats
 	}
@@ -264,16 +264,16 @@ func GetStatistics() *Statistics {
 
 	stats := &Statistics{}
 
-	stats.BlogStats = calculateBlogStatistics()
-	stats.AccessStats = calculateAccessStatistics()
-	stats.EditStats = calculateEditStatistics()
-	stats.UserStats = calculateUserStatistics()
-	stats.IPStats = calculateIPStatistics()
-	stats.CommentStats = calculateCommentStatistics()
-	stats.TagStats = calculateTagStatistics()
-	stats.SystemStats = calculateSystemStatistics()
-	stats.TimeAnalysis = calculateTimeAnalysis()
-	stats.ContentStats = calculateContentStatistics()
+	stats.BlogStats = calculateBlogStatistics(account)
+	stats.AccessStats = calculateAccessStatistics(account)
+	stats.EditStats = calculateEditStatistics(account)
+	stats.UserStats = calculateUserStatistics(account)
+	stats.IPStats = calculateIPStatistics(account)
+	stats.CommentStats = calculateCommentStatistics(account)
+	stats.TagStats = calculateTagStatistics(account)
+	stats.SystemStats = calculateSystemStatistics(account)
+	stats.TimeAnalysis = calculateTimeAnalysis(account)
+	stats.ContentStats = calculateContentStatistics(account)
 
 	cachedStats = stats
 	lastCacheTime = time.Now()
@@ -282,15 +282,15 @@ func GetStatistics() *Statistics {
 }
 
 // GetOverallStatistics is an alias for GetStatistics for API compatibility
-func GetOverallStatistics() *Statistics {
-	return GetStatistics()
+func GetOverallStatistics(account string) *Statistics {
+	return GetStatistics(account)
 }
 
 // 计算博客统计
-func calculateBlogStatistics() BlogStatistics {
+func calculateBlogStatistics(account string) BlogStatistics {
 	stats := BlogStatistics{}
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	stats.TotalBlogs = len(blogs)
 
 	now := time.Now()
@@ -325,10 +325,10 @@ func calculateBlogStatistics() BlogStatistics {
 }
 
 // 计算访问统计
-func calculateAccessStatistics() AccessStatistics {
+func calculateAccessStatistics(account string) AccessStatistics {
 	stats := AccessStatistics{}
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	var totalAccess int64
 
 	topBlogs := make([]BlogAccessInfo, 0)
@@ -385,10 +385,10 @@ func calculateAccessStatistics() AccessStatistics {
 }
 
 // 计算编辑统计
-func calculateEditStatistics() EditStatistics {
+func calculateEditStatistics(account string) EditStatistics {
 	stats := EditStatistics{}
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	var totalEdits int64
 
 	topBlogs := make([]BlogEditInfo, 0)
@@ -444,7 +444,7 @@ func calculateEditStatistics() EditStatistics {
 }
 
 // 计算用户统计
-func calculateUserStatistics() UserStatistics {
+func calculateUserStatistics(account string) UserStatistics {
 	stats := UserStatistics{}
 
 	var totalLogins int64
@@ -465,7 +465,7 @@ func calculateUserStatistics() UserStatistics {
 }
 
 // 计算IP统计
-func calculateIPStatistics() IPStatistics {
+func calculateIPStatistics(account string) IPStatistics {
 	stats := IPStatistics{}
 
 	stats.UniqueVisitors = len(ipRecords)
@@ -509,10 +509,10 @@ func calculateIPStatistics() IPStatistics {
 }
 
 // 计算评论统计
-func calculateCommentStatistics() CommentStatistics {
+func calculateCommentStatistics(account string) CommentStatistics {
 	stats := CommentStatistics{}
 
-	comments := comment.GetAllComments()
+	comments := comment.GetAllComments(account)
 	var totalComments int
 	blogsWithComments := 0
 
@@ -548,8 +548,8 @@ func calculateCommentStatistics() CommentStatistics {
 	stats.TotalComments = totalComments
 	stats.BlogsWithComments = blogsWithComments
 
-	if len(blog.GetBlogs()) > 0 {
-		stats.AverageComments = float64(totalComments) / float64(len(blog.GetBlogs()))
+	if len(blog.GetBlogsWithAccount(account)) > 0 {
+		stats.AverageComments = float64(totalComments) / float64(len(blog.GetBlogsWithAccount(account)))
 	}
 
 	// 排序热门评论博客
@@ -595,12 +595,12 @@ func calculateCommentStatistics() CommentStatistics {
 }
 
 // 计算标签统计
-func calculateTagStatistics() TagStatistics {
+func calculateTagStatistics(account string) TagStatistics {
 	stats := TagStatistics{}
 
 	tagCount := make(map[string]int)
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	for _, b := range blogs {
 		if b.Tags != "" {
 			tags := strings.Split(b.Tags, "|")
@@ -638,11 +638,11 @@ func calculateTagStatistics() TagStatistics {
 }
 
 // 计算系统统计
-func calculateSystemStatistics() SystemStatistics {
+func calculateSystemStatistics(account string) SystemStatistics {
 	stats := SystemStatistics{}
 
 	stats.SystemUptime = "系统运行中"
-	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.GetBlogs()), len(comment.GetAllComments()))
+	stats.DataSize = fmt.Sprintf("博客: %d, 评论: %d", len(blog.GetBlogsWithAccount(account)), len(comment.GetAllComments(account)))
 	stats.StaticFiles = 100
 	stats.TemplateFiles = 20
 	stats.TodayOperations = len(accessRecords)
@@ -651,14 +651,14 @@ func calculateSystemStatistics() SystemStatistics {
 }
 
 // 计算时间分析
-func calculateTimeAnalysis() TimeAnalysisData {
+func calculateTimeAnalysis(account string) TimeAnalysisData {
 	analysis := TimeAnalysisData{}
 
 	creationDist := make(map[string]int)
 	accessHourDist := make(map[int]int)
 	editDist := make(map[string]int)
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	for _, b := range blogs {
 		if createTime, err := time.Parse("2006-01-02 15:04:05", b.CreateTime); err == nil {
 			monthKey := createTime.Format("2006-01")
@@ -696,7 +696,7 @@ func calculateTimeAnalysis() TimeAnalysisData {
 }
 
 // 计算内容统计
-func calculateContentStatistics() ContentStatistics {
+func calculateContentStatistics(account string) ContentStatistics {
 	stats := ContentStatistics{}
 
 	var totalCharacters int64
@@ -705,7 +705,7 @@ func calculateContentStatistics() ContentStatistics {
 	shortestLength := int(^uint(0) >> 1)
 	emptyBlogs := 0
 
-	blogs := blog.GetBlogs()
+	blogs := blog.GetBlogsWithAccount(account)
 	for _, b := range blogs {
 		length := len([]rune(b.Content))
 		totalCharacters += int64(length)
