@@ -1,6 +1,7 @@
 package exercise
 
 import (
+	"account"
 	"core"
 )
 
@@ -330,7 +331,16 @@ type CalculateCaloriesCmd struct {
 
 func (cmd *CalculateCaloriesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	calories := exerciseActor.calculateCalories(cmd.ExerciseType, cmd.Intensity, cmd.Duration, cmd.Weight)
+	
+	// If weight is not provided, try to get it from account info
+	weight := cmd.Weight
+	if weight <= 0 && cmd.Account != "" {
+		if accountInfo, err := account.GetAccountInfo(cmd.Account); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
+	}
+	
+	calories := exerciseActor.calculateCalories(cmd.ExerciseType, cmd.Intensity, cmd.Duration, weight)
 	cmd.Response() <- calories
 }
 
@@ -407,7 +417,16 @@ type UpdateAllTemplateCaloriesCmd struct {
 
 func (cmd *UpdateAllTemplateCaloriesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	err := exerciseActor.updateAllTemplateCalories(cmd.Account, cmd.Weight)
+	
+	// If weight is not provided, try to get it from account info
+	weight := cmd.Weight
+	if weight <= 0 && cmd.Account != "" {
+		if accountInfo, err := account.GetAccountInfo(cmd.Account); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
+	}
+	
+	err := exerciseActor.updateAllTemplateCalories(cmd.Account, weight)
 	cmd.Response() <- err
 }
 
@@ -420,7 +439,16 @@ type UpdateAllExerciseCaloriesCmd struct {
 
 func (cmd *UpdateAllExerciseCaloriesCmd) Do(actor core.ActorInterface) {
 	exerciseActor := actor.(*ExerciseActor)
-	updatedCount, err := exerciseActor.updateAllExerciseCalories(cmd.Account, cmd.Weight)
+	
+	// If weight is not provided, try to get it from account info
+	weight := cmd.Weight
+	if weight <= 0 && cmd.Account != "" {
+		if accountInfo, err := account.GetAccountInfo(cmd.Account); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
+	}
+	
+	updatedCount, err := exerciseActor.updateAllExerciseCalories(cmd.Account, weight)
 	cmd.Response() <- updatedCount
 	cmd.Response() <- err
 }

@@ -1,7 +1,7 @@
 package account
 
 import (
-	"control"
+	"blog"
 	"encoding/json"
 	"fmt"
 	"module"
@@ -35,8 +35,8 @@ func GetAccountInfo(account string) (*AccountInfo, error) {
 	}
 
 	// 从博客中获取账户信息
-	blog := control.GetBlog(account, "sys_account_info")
-	if blog == nil {
+	blogPost := blog.GetBlogWithAccount(account, "sys_account_info")
+	if blogPost == nil {
 		// 返回默认账户信息
 		return &AccountInfo{
 			Name:      account,
@@ -47,7 +47,7 @@ func GetAccountInfo(account string) (*AccountInfo, error) {
 
 	// 解析博客内容为JSON
 	var info AccountInfo
-	if err := json.Unmarshal([]byte(blog.Content), &info); err != nil {
+	if err := json.Unmarshal([]byte(blogPost.Content), &info); err != nil {
 		log.ErrorF(log.ModuleAccount, "Failed to parse account info JSON: %v", err)
 		return nil, err
 	}
@@ -98,16 +98,16 @@ func SaveAccountInfo(account string, info *AccountInfo) error {
 	}
 
 	// 检查是否已存在账户信息博客
-	existingBlog := control.GetBlog(account, "sys_account_info")
+	existingBlog := blog.GetBlogWithAccount(account, "sys_account_info")
 	if existingBlog != nil {
 		// 修改现有博客
-		if result := control.ModifyBlog(account, udb); result != 0 {
+		if result := blog.ModifyBlogWithAccount(account, udb); result != 0 {
 			log.ErrorF(log.ModuleAccount, "Failed to modify account info blog")
 			return fmt.Errorf("failed to modify account info")
 		}
 	} else {
 		// 创建新博客
-		if result := control.AddBlog(account, udb); result != 0 {
+		if result := blog.AddBlogWithAccount(account, udb); result != 0 {
 			log.ErrorF(log.ModuleAccount, "Failed to add account info blog")
 			return fmt.Errorf("failed to add account info")
 		}

@@ -1,6 +1,7 @@
 package exercise
 
 import (
+	"account"
 	"blog"
 	"core"
 	"encoding/json"
@@ -881,12 +882,25 @@ func (ea *ExerciseActor) saveUserProfile(account, name, gender string, weight, h
 }
 
 // GetUserProfile retrieves user profile
-func (ea *ExerciseActor) getUserProfile(account string) (*UserProfile, error) {
+func (ea *ExerciseActor) getUserProfile(userAccount string) (*UserProfile, error) {
 	title := ea.generateUserProfileBlogTitle()
 
 	// Find blog by title
-	b := blog.GetBlogWithAccount(account, title)
+	b := blog.GetBlogWithAccount(userAccount, title)
 	if b == nil {
+		// Fall back to account package if no exercise profile found
+		if accountInfo, err := account.GetAccountInfo(userAccount); err == nil && accountInfo != nil && accountInfo.Weight > 0 {
+			// Convert account info to exercise user profile
+			return &UserProfile{
+				ID:        userAccount,
+				Name:      accountInfo.Name,
+				Weight:    accountInfo.Weight,
+				Height:    accountInfo.Height,
+				Age:       accountInfo.GetAge(),
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}, nil
+		}
 		return nil, nil // No profile found
 	}
 

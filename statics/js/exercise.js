@@ -1925,6 +1925,59 @@ function cancelEditTemplate(templateId) {
     hideAllEditForms();
     isTemplateEditing = false;
     editingTemplateId = null;
-} 
+}
+
+// 账户信息函数
+async function loadAccountInfo() {
+    try {
+        const response = await fetch('/api/account');
+        const data = await response.json();
+        
+        if (data.success && data.accountInfo) {
+            const accountInfo = data.accountInfo;
+            
+            // 更新账户信息显示
+            document.getElementById('accountName').textContent = accountInfo.name || '--';
+            document.getElementById('accountWeight').textContent = accountInfo.weight || '--';
+            document.getElementById('accountHeight').textContent = accountInfo.height || '--';
+            document.getElementById('accountAge').textContent = data.age || '--';
+            
+            // 显示BMI信息
+            document.getElementById('accountBMI').textContent = data.bmi ? data.bmi.toFixed(1) : '--';
+            document.getElementById('accountBMIStatus').textContent = data.bmiStatus || '--';
+            
+            // 更新头像
+            if (accountInfo.avatar) {
+                document.getElementById('accountAvatar').textContent = accountInfo.avatar;
+            }
+            
+            showToast('账户信息加载成功', 'success');
+        } else {
+            showToast('未找到账户信息', 'info');
+        }
+    } catch (error) {
+        console.error('加载账户信息失败:', error);
+        showToast('加载账户信息失败', 'error');
+    }
+}
+
+function getBMIStatus(bmi) {
+    if (!bmi) return '数据不足';
+    if (bmi < 18.5) return '偏瘦';
+    if (bmi < 24) return '正常';
+    if (bmi < 28) return '偏胖';
+    return '肥胖';
+}
+
+// 在显示个人信息视图时自动加载账户信息
+const originalShowProfileView = showProfileView;
+showProfileView = function() {
+    originalShowProfileView();
+    // 延迟加载账户信息以确保DOM已更新
+    setTimeout(loadAccountInfo, 100);
+};
+
+// 导出到全局作用域
+window.loadAccountInfo = loadAccountInfo;
 
  

@@ -396,6 +396,37 @@
                 </form>
             </div>
 
+            <!-- 账户信息展示 -->
+            <div class="account-info">
+                <h3>账户信息</h3>
+                <div class="account-card">
+                    <div class="account-details">
+                        <div class="account-avatar" id="accountAvatar">👤</div>
+                        <div class="account-data">
+                            <div class="account-field">
+                                <strong>姓名:</strong> <span id="accountName">--</span>
+                            </div>
+                            <div class="account-field">
+                                <strong>体重:</strong> <span id="accountWeight">--</span> kg
+                            </div>
+                            <div class="account-field">
+                                <strong>身高:</strong> <span id="accountHeight">--</span> cm
+                            </div>
+                            <div class="account-field">
+                                <strong>BMI:</strong> <span id="accountBMI">--</span> (<span id="accountBMIStatus">--</span>)
+                            </div>
+                            <div class="account-field">
+                                <strong>年龄:</strong> <span id="accountAge">--</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="account-actions">
+                        <button class="btn-secondary" onclick="loadAccountInfo()">🔄 刷新账户信息</button>
+                        <small>💡 此信息来自您的账户设置，用于智能卡路里计算</small>
+                    </div>
+                </div>
+            </div>
+
             <!-- 卡路里计算说明 -->
             <div class="calorie-info">
                 <h3>卡路里计算公式</h3>
@@ -407,7 +438,7 @@
                         <p><strong>MET (代谢当量)</strong>：表示运动强度，静坐时MET=1，数值越大消耗越高</p>
                         <p><strong>时间</strong>：自动从分钟转换为小时（如30分钟=0.5小时）</p>
                         <p><strong>体重</strong>：以公斤为单位，影响总卡路里消耗</p>
-                        <p><strong>💡 智能计算</strong>：添加锻炼或模板时，如果您设置了体重将使用您的体重计算；如果未设置体重，系统将使用标准体重70kg进行计算</p>
+                        <p><strong>💡 智能计算</strong>：添加锻炼或模板时，如果您设置了体重将使用您的体重计算；如果未设置体重，系统将自动使用账户中的体重信息进行计算</p>
                     </div>
                 </div>
             </div>
