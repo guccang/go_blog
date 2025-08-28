@@ -248,6 +248,10 @@ func (c *CommentActor) getComments(account, title string) *module.BlogComments {
 	return comment
 }
 
+func (c *CommentActor) getAllComments(account string) map[string]*module.BlogComments {
+	return c.comments[account].comments
+}
+
 // User management methods
 
 func (c *CommentActor) generateUserID() string {

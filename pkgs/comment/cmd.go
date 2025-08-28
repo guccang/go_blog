@@ -171,12 +171,11 @@ func (cmd *ValidateSessionCmd) Do(actor core.ActorInterface) {
 type GetAllCommentsCmd struct {
 	core.ActorCommand
 	Account string
-	Title   string
 }
 
 func (cmd *GetAllCommentsCmd) Do(actor core.ActorInterface) {
 	commentActor := actor.(*CommentActor)
-	cmd.Response() <- commentActor.getComments(cmd.Account, cmd.Title)
+	cmd.Response() <- commentActor.getAllComments(cmd.Account)
 }
 
 // 通过用户名获取用户cmd

@@ -97,6 +97,15 @@ func (p *PersistenceActor) saveBlog(account string, blog *module.Blog) {
 	}
 	log.DebugF("redis saveblog success key=%s mt=%s", key, blog.ModifyTime)
 
+	// try delete old blog  blog@Title
+	old_key := fmt.Sprintf("blog@%s", blog.Title)
+	ret := p.client.Del(old_key)
+	if ret.Err() != nil {
+		log.ErrorF("delete old blog error key=%s err=%s", old_key, ret.Err().Error())
+	} else {
+		log.DebugF("delete old blog success key=%s", old_key)
+	}
+
 	p.saveToFile(account, blog)
 }
 
