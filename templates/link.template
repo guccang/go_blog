@@ -38,10 +38,16 @@
 				</datalist>
 					<button type="button" class="search-btn" onclick="onSearch()">搜索</button>
 				</div>
-				<button class="view-toggle" onclick="toggleView()" title="切换视图">
-					<i id="view-icon">📑</i>
-					<span id="view-text">网格视图</span>
-				</button>
+				<div class="header-actions">
+					<button class="view-toggle" onclick="toggleView()" title="切换视图">
+						<i id="view-icon">📑</i>
+						<span id="view-text">网格视图</span>
+					</button>
+					<div class="user-info">
+						<div class="user-avatar">{{.USER_AVATAR}}</div>
+						<span class="user-name">{{.USER_ACCOUNT}}</span>
+					</div>
+				</div>
 			</div>
 		  </div>
 		</div>

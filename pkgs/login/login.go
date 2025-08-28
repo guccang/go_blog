@@ -107,3 +107,15 @@ func Register(account string, password string) int {
 	ret := <-cmd.Response()
 	return ret.(int)
 }
+
+func GetPwd(account string) string {
+	cmd := &GetPwdCmd{
+		ActorCommand: core.ActorCommand{
+			Res: make(chan interface{}),
+		},
+		Account: account,
+	}
+	login_module.Send(cmd)
+	ret := <-cmd.Response()
+	return ret.(string)
+}

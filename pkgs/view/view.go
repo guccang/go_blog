@@ -21,6 +21,19 @@ func Info() {
 	fmt.Println("info view v1.0")
 }
 
+// generateUserAvatar generates a simple avatar string for the user
+func generateUserAvatar(account string) string {
+	if account == "" {
+		return "👤"
+	}
+	// Use the first character of the account name as avatar
+	runes := []rune(strings.ToUpper(account))
+	if len(runes) > 0 {
+		return string(runes[0])
+	}
+	return "👤"
+}
+
 type LinkData struct {
 	URL          string
 	DESC         string
@@ -36,6 +49,8 @@ type LinkDatas struct {
 	VERSION      string
 	BLOGS_NUMBER int
 	TAGS         []string
+	USER_ACCOUNT string
+	USER_AVATAR  string
 }
 
 type CommentDatas struct {
@@ -136,6 +151,8 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 	datas := LinkDatas{}
 	datas.VERSION = fmt.Sprintf("%s|%d", config.GetVersionWithAccount(account), control.GetBlogsNum(account))
 	datas.BLOGS_NUMBER = len(blogs)
+	datas.USER_ACCOUNT = account
+	datas.USER_AVATAR = generateUserAvatar(account)
 
 	all_tags := make(map[string]int)
 

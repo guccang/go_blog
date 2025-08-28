@@ -205,7 +205,7 @@
             passwordForm.style.display = 'none';
             smsForm.style.display = 'block';
             registerForm.style.display = 'none';
-            document.getElementById('sms-code').focus();
+            document.getElementById('sms-account').focus();
         } else if (tabName === 'register') {
             passwordForm.style.display = 'none';
             smsForm.style.display = 'none';
@@ -236,6 +236,7 @@
         
         // Generate and store device_id
         const deviceId = generateDeviceId(account, pwd);
+        localStorage.setItem('device_id', deviceId);
         
         // Show loading state on button
         const loginButton = document.querySelector('#password-form .login-button');
@@ -278,15 +279,16 @@
     
     // SMS sending functionality
     function sendSMS() {
-        const deviceId = getDeviceId();
+        const smsAccount = document.getElementById('sms-account').value;
         const errorMessage = document.getElementById("error-message");
         const sendButton = document.getElementById('sms-send-btn');
         
-        if (!deviceId) {
+        if (!smsAccount) {
             errorMessage.style.display = 'block';
-            errorMessage.textContent = '请先通过账号密码登录一次以生成设备ID';
+            errorMessage.textContent = '请输入账号';
             return;
         }
+        
         
         // Show loading state
         sendButton.textContent = '发送中...';
@@ -327,6 +329,7 @@
         };
 
         const formData = new FormData();
+        formData.append('account', smsAccount);
         formData.append('device_id', deviceId);
         xhr.open('POST', '/api/logingensms', true);
         xhr.send(formData);
@@ -334,8 +337,15 @@
     
     // SMS login functionality
     function submitSMS() {
+        const smsAccount = document.getElementById('sms-account').value;
         const smsCode = document.getElementById('sms-code').value;
         const errorMessage = document.getElementById("error-message");
+        
+        if (!smsAccount) {
+            errorMessage.style.display = 'block';
+            errorMessage.textContent = '请输入账号';
+            return;
+        }
         
         if (!smsCode) {
             errorMessage.style.display = 'block';
@@ -343,12 +353,8 @@
             return;
         }
         
-        const deviceId = getDeviceId();
-        if (!deviceId) {
-            errorMessage.style.display = 'block';
-            errorMessage.textContent = '请先通过账号密码登录一次以生成设备ID';
-            return;
-        }
+        // Use SMS device_id from localStorage
+        const deviceId = localStorage.getItem('device_id');
         
         // Show loading state
         const loginButton = document.querySelector('#sms-form .login-button');
@@ -379,6 +385,7 @@
         };
 
         const formData = new FormData();
+        formData.append('account', smsAccount);
         formData.append('code', smsCode);
         formData.append('device_id', deviceId);
         xhr.open('POST', '/loginsms', true);

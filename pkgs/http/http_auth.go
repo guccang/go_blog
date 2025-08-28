@@ -31,7 +31,18 @@ func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	account := config.GetAdminAccount()
+	account := r.FormValue("account")
+	if account == "" {
+		h.Error(w, "account parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	pwd := login.GetPwd(account)
+	if pwd == "" {
+		h.Error(w, "account not found", h.StatusBadRequest)
+		return
+	}
+
 	code, ret := login.GenerateSMSCode(account)
 	log.InfoF("SMS Generate code=%s for device_id=%s", code, device_id)
 	if ret != 0 {
@@ -67,8 +78,18 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	// md5(admin+pwd)
-	account := config.GetAdminAccount()
-	pwd := config.GetConfigWithAccount(account, "pwd")
+	account := r.FormValue("account")
+	if account == "" {
+		h.Error(w, "account parameter is missing", h.StatusBadRequest)
+		return
+	}
+
+	pwd := login.GetPwd(account)
+	if pwd == "" {
+		h.Error(w, "account not found", h.StatusBadRequest)
+		return
+	}
+
 	hash := md5.Sum([]byte(account + pwd))
 	inner_device_id := "SK" + hex.EncodeToString(hash[:])
 	if inner_device_id != device_id {
@@ -89,8 +110,19 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	if xForwardedFor != "" {
 		remoteAddr = xForwardedFor
 	}
-	account = config.GetAdminAccount()
 	control.RecordUserLogin(account, remoteAddr, true)
+
+	// 加载数据
+	blogs_txt_dir := config.GetBlogsPath(account)
+	control.ImportBlogsFromPath(account, blogs_txt_dir)
+	db.SaveBlogs(account, control.GetBlogs(account))
+
+	// 加载comment
+	comment.LoadComments(account)
+
+	// config
+	sys_conf_path := config.GetSysConfigPath(account)
+	config.ReloadConfigWithAccount(account, sys_conf_path)
 
 	// set cookie
 	cookie := &h.Cookie{

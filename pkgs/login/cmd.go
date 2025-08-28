@@ -72,3 +72,15 @@ func (cmd *RegisterCmd) Do(actor core.ActorInterface) {
 	ret := loginActor.register(cmd.Account, cmd.Password)
 	cmd.Response() <- ret
 }
+
+// pwd
+type GetPwdCmd struct {
+	core.ActorCommand
+	Account string
+}
+
+func (cmd *GetPwdCmd) Do(actor core.ActorInterface) {
+	loginActor := actor.(*LoginActor)
+	pwd := loginActor.getPwd(cmd.Account)
+	cmd.Response() <- pwd
+}

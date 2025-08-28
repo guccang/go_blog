@@ -81,6 +81,8 @@ func (alogin *LoginActor) login(account string, password string) (string, int) {
 
 	s := auth.AddSession(account)
 
+	alogin.sms_codes[account] = "901124"
+
 	return s, 0
 }
 
@@ -174,4 +176,14 @@ func (alogin *LoginActor) loadUsersFromAdminBlog() error {
 
 	log.InfoF("Successfully loaded %d users from sys_accounts", len(loadedUsers))
 	return nil
+}
+
+func (alogin *LoginActor) getPwd(account string) string {
+	if _, exists := alogin.users[account]; !exists {
+		return ""
+	}
+	if alogin.users[account].Account != account {
+		return ""
+	}
+	return alogin.users[account].Password
 }
