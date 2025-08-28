@@ -668,8 +668,10 @@ func HandleTag(w h.ResponseWriter, r *h.Request) {
 // HandlePublic renders the public blogs page
 func HandlePublic(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandlePublic", r)
-
-	account := auth.GetAccountFromRequest(r)
+	account := r.URL.Query().Get("account")
+	if account == "" {
+		account = config.GetAdminAccount()
+	}
 	view.PagePublic(w, account)
 }
 

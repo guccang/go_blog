@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"core"
+	"fmt"
 	log "mylog"
 	"os"
 	"path/filepath"
@@ -404,5 +405,5 @@ func GetSysConfigTitleMCP() string {
 }
 
 func GetSysConfigs() string {
-	return GetSysConfigTitle() + " | " + GetSysConfigTitleMCP()
+	return fmt.Sprintf("%s | %s | %s", GetSysConfigTitle(), GetSysConfigTitleMCP(), "sys_accounts")
 }
