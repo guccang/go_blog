@@ -19,6 +19,9 @@ import (
 func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleLoginSMSAPI", r)
 
+	h.Error(w, "短信功能暂时关闭", h.StatusBadRequest)
+	return
+
 	device_id := r.FormValue("device_id")
 	if device_id == "" {
 		h.Error(w, "device_id parameter is missing", h.StatusBadRequest)
@@ -57,6 +60,8 @@ func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 // HandleLoginSMS handles SMS login functionality
 func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleLoginSMS", r)
+	h.Error(w, "短信功能暂时关闭", h.StatusBadRequest)
+	return
 
 	r.ParseMultipartForm(32 << 20) // 32MB
 

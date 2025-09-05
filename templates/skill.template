@@ -22,69 +22,80 @@
     </div>
 
     <div class="container">
-        <!-- 添加新技能卡片 -->
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title">添加新技能</h2>
-            </div>
-            <div class="card-body">
-                <form id="addSkillForm" class="skill-form">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="skillName">技能名称</label>
-                            <input type="text" id="skillName" name="name" required placeholder="例如：Go语言编程">
-                        </div>
-                        <div class="form-group">
-                            <label for="skillCategory">分类</label>
-                            <input type="text" id="skillCategory" name="category" placeholder="例如：编程语言">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="skillDescription">技能描述</label>
-                        <textarea id="skillDescription" name="description" rows="3" placeholder="描述这个技能的目标和学习内容..."></textarea>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="currentLevel">当前水平</label>
-                            <select id="currentLevel" name="level">
-                                <option value="beginner">初学者</option>
-                                <option value="intermediate">中级</option>
-                                <option value="advanced">高级</option>
-                                <option value="expert">专家</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="targetLevel">目标水平</label>
-                            <select id="targetLevel" name="target_level">
-                                <option value="beginner">初学者</option>
-                                <option value="intermediate">中级</option>
-                                <option value="advanced" selected>高级</option>
-                                <option value="expert">专家</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="skillTags">标签（逗号分隔）</label>
-                        <input type="text" id="skillTags" name="tags" placeholder="例如：编程,后端,并发">
-                    </div>
-                    <div class="form-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="skillActive" name="is_active" checked>
-                            <span class="checkmark"></span>
-                            立即开始学习
-                        </label>
-                    </div>
-                    <button type="submit" class="add-btn">创建技能</button>
-                </form>
-            </div>
-        </div>
-
         <!-- 技能列表 -->
         <div class="card">
             <div class="card-header">
+                <h2 class="card-title">技能列表</h2>
+                <button class="add-skill-btn" onclick="openAddSkillModal()">
+                    <i class="fas fa-plus"></i> 添加新技能
+                </button>
+            </div>
             <div class="card-body">
                 <div id="skillsList" class="skills-grid">
                     <!-- 技能卡片将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加新技能模态框 -->
+        <div id="addSkillModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">添加新技能</h3>
+                    <span class="close-modal" onclick="closeAddSkillModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <form id="addSkillForm" class="skill-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="skillName">技能名称</label>
+                                <input type="text" id="skillName" name="name" required placeholder="例如：Go语言编程">
+                            </div>
+                            <div class="form-group">
+                                <label for="skillCategory">分类</label>
+                                <input type="text" id="skillCategory" name="category" placeholder="例如：编程语言">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="skillDescription">技能描述</label>
+                            <textarea id="skillDescription" name="description" rows="3" placeholder="描述这个技能的目标和学习内容..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="currentLevel">当前水平</label>
+                                <select id="currentLevel" name="level">
+                                    <option value="beginner">初学者</option>
+                                    <option value="intermediate">中级</option>
+                                    <option value="advanced">高级</option>
+                                    <option value="expert">专家</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="targetLevel">目标水平</label>
+                                <select id="targetLevel" name="target_level">
+                                    <option value="beginner">初学者</option>
+                                    <option value="intermediate">中级</option>
+                                    <option value="advanced" selected>高级</option>
+                                    <option value="expert">专家</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="skillTags">标签（逗号分隔）</label>
+                            <input type="text" id="skillTags" name="tags" placeholder="例如：编程,后端,并发">
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="skillActive" name="is_active" checked>
+                                <span class="checkmark"></span>
+                                立即开始学习
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeAddSkillModal()">取消</button>
+                    <button class="btn btn-primary" onclick="handleAddSkillFromModal()">创建技能</button>
                 </div>
             </div>
         </div>
@@ -236,9 +247,6 @@ https://docs.example.com/guide"></textarea>
 
         // 设置事件监听器
         function setupEventListeners() {
-            // 添加技能表单
-            document.getElementById('addSkillForm').addEventListener('submit', handleAddSkill);
-            
             // 模态框关闭
             document.querySelectorAll('.close-modal').forEach(closeBtn => {
                 closeBtn.addEventListener('click', function() {
@@ -254,6 +262,9 @@ https://docs.example.com/guide"></textarea>
                 }
                 if (event.target === document.getElementById('addContentModal')) {
                     closeAddContentModal();
+                }
+                if (event.target === document.getElementById('addSkillModal')) {
+                    closeAddSkillModal();
                 }
             });
         }
@@ -486,6 +497,55 @@ https://docs.example.com/guide"></textarea>
                 </div>
             `;
             return item;
+        }
+
+        // 打开添加技能模态框
+        function openAddSkillModal() {
+            document.getElementById('addSkillModal').style.display = 'block';
+        }
+
+        // 关闭添加技能模态框
+        function closeAddSkillModal() {
+            document.getElementById('addSkillModal').style.display = 'none';
+            document.getElementById('addSkillForm').reset();
+        }
+
+        // 从模态框处理添加技能
+        function handleAddSkillFromModal() {
+            const form = document.getElementById('addSkillForm');
+            const formData = new FormData(form);
+            const skillData = {
+                name: formData.get('name'),
+                description: formData.get('description'),
+                category: formData.get('category'),
+                level: formData.get('level'),
+                target_level: formData.get('target_level'),
+                tags: formData.get('tags') ? formData.get('tags').split(',').map(tag => tag.trim()).filter(tag => tag) : [],
+                is_active: formData.get('is_active') === 'on',
+                contents: []
+            };
+
+            fetch('/api/skill', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(skillData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('技能创建成功', 'success');
+                    closeAddSkillModal();
+                    loadSkills();
+                    loadSkillStats();
+                } else {
+                    showToast('创建技能失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('创建技能失败: ' + error.message, 'error');
+            });
         }
 
         // 处理添加技能

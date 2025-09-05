@@ -14,3 +14,5 @@ CLAUDE.md
 .claude/settings.local.json
 *.log
 *.rdb
+claudecode_config.sh
+go_blog_test
