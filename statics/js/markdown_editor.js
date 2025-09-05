@@ -18,10 +18,33 @@
     // Initialize view state
     let viewState = 'split'; // split, editor-only, preview-only
     
+    // 检测是否为移动设备
+    const isMobile = window.innerWidth <= 768;
+    
+    // 如果是移动设备，自动切换到纯编辑模式并折叠sidebar
+    if (isMobile) {
+        viewState = 'editor-only';
+        editorWrapper.classList.add('fullscreen');
+        previewWrapper.classList.add('hidden');
+        btnToggleView.innerHTML = '👁️';
+        btnToggleView.style.display = 'none'; // 移动端隐藏切换按钮
+        
+        // 移动端自动折叠sidebar
+        sidebar.classList.remove('show-sidebar');
+        container.classList.add('full-width');
+    }
+    
     // Toggle sidebar
     bubble.addEventListener('click', function() {
+        if (isMobile) {
+            // 移动端使用新的切换逻辑
+            sidebar.classList.toggle('show-sidebar');
+            container.classList.toggle('full-width');
+        } else {
+            // 桌面端保持原有逻辑
             sidebar.classList.toggle('hide-sidebar');
             container.classList.toggle('hide-sidebar');
+        }
     });
     
     // Toggle view (split, editor-only, preview-only)

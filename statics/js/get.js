@@ -11,18 +11,34 @@ const editor = document.getElementById('editor-inner');
 const md = document.getElementById('md');
 const toastContainer = document.getElementById('toast-container');
 
+// 检测是否为移动设备
+const isMobile = window.innerWidth <= 768;
+
 // 初始化编辑页面权限控制
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initPermissionControls === 'function') {
         initPermissionControls();
     }
     initEditPagePermissions();
+    
+    // 移动端自动折叠sidebar
+    if (isMobile) {
+        sidebar.classList.remove('show-sidebar');
+        container.classList.add('full-width');
+    }
 });
 
 // Toggle sidebar
 bubble.addEventListener('click', function() {
-		sidebar.classList.toggle('hide-sidebar');
-		container.classList.toggle('hide-sidebar');
+    if (isMobile) {
+        // 移动端使用新的切换逻辑
+        sidebar.classList.toggle('show-sidebar');
+        container.classList.toggle('full-width');
+    } else {
+        // 桌面端保持原有逻辑
+        sidebar.classList.toggle('hide-sidebar');
+        container.classList.toggle('hide-sidebar');
+    }
 });
 
 // Function to show toast notifications

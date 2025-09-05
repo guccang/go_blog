@@ -471,21 +471,84 @@
         
         /* Responsive design */
         @media (max-width: 768px) {
+            .sidebar-container {
+                width: 280px;
+                transform: translateX(-260px); /* 默认折叠状态 */
+            }
+            
+            .sidebar-container.show-sidebar {
+                transform: translateX(0); /* 展开状态 */
+            }
+            
             .sidebar {
                 width: 260px;
             }
             
+            .container {
+                margin-left: 20px; /* 折叠后的最小边距 */
+            }
+            
+            .container.full-width {
+                margin-left: 0; /* 全屏模式 */
+            }
+            
+            /* 移动端优化：隐藏预览区域，专注编辑 */
             .editor-content {
                 flex-direction: column;
             }
             
-            .editor-wrapper, .preview-wrapper {
+            .editor-wrapper {
                 flex: 1;
                 max-height: 100vh;
+                width: 100%;
             }
             
+            .preview-wrapper {
+                display: none; /* 移动端隐藏预览区域 */
+            }
+            
+            /* 移动端编辑区域优化 */
+            .editor {
+                min-height: 70vh; /* 增大编辑区域 */
+                font-size: 14px; /* 适应移动设备的字体大小 */
+                padding: 15px;
+            }
+            
+            /* 工具栏优化 */
             .toolbar-group {
                 flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .toolbar-btn {
+                padding: 8px 12px;
+                font-size: 14px;
+                min-width: 36px;
+                height: 36px;
+            }
+            
+            /* 隐藏切换视图按钮，因为预览已隐藏 */
+            #btn-toggle-view {
+                display: none;
+            }
+            
+            /* 保存按钮优化 */
+            .btn-primary {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+            
+            /* 容器高度优化 */
+            .editor-content {
+                height: calc(100vh - 120px); /* 减去工具栏高度 */
+            }
+            
+            /* 移动端气泡按钮优化 */
+            .bubble {
+                width: 35px;
+                height: 45px;
+                font-size: 18px;
+                right: -17px;
             }
         }
         

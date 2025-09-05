@@ -876,6 +876,58 @@
                 padding: 6px 10px;
                 font-size: 14px;
             }
+            
+            /* 移动端隐藏MD实时预览，专注编辑 */
+            .editor-container {
+                flex-direction: column;
+            }
+            
+            .editor {
+                min-height: 70vh; /* 增大编辑区域 */
+                font-size: 14px; /* 稍小字体适应移动设备 */
+                padding: 15px;
+            }
+            
+            .md, .mdEditor {
+                display: none; /* 移动端隐藏预览区域 */
+            }
+            
+            /* 移动端编辑模式优化 */
+            .editor-inner.hide {
+                display: block !important; /* 确保编辑区域显示 */
+            }
+            
+            /* 调整按钮大小 */
+            .right-button {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+            
+            /* 侧边栏优化 - 移动端自动折叠 */
+            .sidebar-container {
+                width: 280px;
+                transform: translateX(-260px); /* 默认折叠状态 */
+            }
+            
+            .sidebar-container.show-sidebar {
+                transform: translateX(0); /* 展开状态 */
+            }
+            
+            .container {
+                margin-left: 20px; /* 折叠后的最小边距 */
+            }
+            
+            .container.full-width {
+                margin-left: 0; /* 全屏模式 */
+            }
+            
+            /* 移动端气泡按钮优化 */
+            .bubble {
+                width: 35px;
+                height: 45px;
+                font-size: 18px;
+                right: -17px;
+            }
         }
 
 /* 权限设置样式 */
