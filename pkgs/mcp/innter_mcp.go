@@ -8,9 +8,9 @@ import (
 // 提供内部mcp接口,接口名称为Inner_blog.xxx
 var callBacks = make(map[string]func(arguments map[string]interface{}) string)
 
-func Inner_blog_RawAllBlogData(arguments map[string]interface{}) string {
+func Inner_blog_RawAllBlogName(arguments map[string]interface{}) string {
 	account := arguments["account"].(string)
-	return statistics.RawAllBlogData(account)
+	return statistics.RawAllBlogName(account)
 }
 
 func Inner_blog_RawGetBlogData(arguments map[string]interface{}) string {
@@ -30,24 +30,24 @@ func Inner_blog_RawCommentData(arguments map[string]interface{}) string {
 	return statistics.RawCommentData(account, title)
 }
 
-func Inner_blog_RawAllBlogDataByDate(arguments map[string]interface{}) string {
+func Inner_blog_RawAllBlogNameByDate(arguments map[string]interface{}) string {
 	account := arguments["account"].(string)
 	date := arguments["date"].(string)
-	return statistics.RawAllBlogDataByDate(account, date)
+	return statistics.RawAllBlogNameByDate(account, date)
 }
 
-func Inner_blog_RawAllBlogDataByDateRange(arguments map[string]interface{}) string {
+func Inner_blog_RawAllBlogNameByDateRange(arguments map[string]interface{}) string {
 	account := arguments["account"].(string)
 	startDate := arguments["startDate"].(string)
 	endDate := arguments["endDate"].(string)
-	return statistics.RawAllBlogDataByDateRange(account, startDate, endDate)
+	return statistics.RawAllBlogNameByDateRange(account, startDate, endDate)
 }
 
-func Inner_blog_RawAllBlogDataByDateRangeCount(arguments map[string]interface{}) string {
+func Inner_blog_RawAllBlogNameByDateRangeCount(arguments map[string]interface{}) string {
 	account := arguments["account"].(string)
 	startDate := arguments["startDate"].(string)
 	endDate := arguments["endDate"].(string)
-	return string(statistics.RawAllBlogDataByDateRangeCount(account, startDate, endDate))
+	return string(statistics.RawAllBlogNameByDateRangeCount(account, startDate, endDate))
 }
 
 func Inner_blog_RawGetBlogDataByDate(arguments map[string]interface{}) string {
@@ -234,13 +234,13 @@ func CallInnerTools(name string, arguments map[string]interface{}) string {
 func RegisterInnerTools() {
 
 	// 原有接口
-	RegisterCallBack("RawAllBlogData", Inner_blog_RawAllBlogData)
+	RegisterCallBack("RawAllBlogName", Inner_blog_RawAllBlogName)
 	RegisterCallBack("RawGetBlogData", Inner_blog_RawGetBlogData)
 	RegisterCallBack("RawAllCommentData", Inner_blog_RawAllCommentData)
 	RegisterCallBack("RawCommentData", Inner_blog_RawCommentData)
-	RegisterCallBack("RawAllBlogDataByDate", Inner_blog_RawAllBlogDataByDate)
-	RegisterCallBack("RawAllBlogDataByDateRange", Inner_blog_RawAllBlogDataByDateRange)
-	RegisterCallBack("RawAllBlogDataByDateRangeCount", Inner_blog_RawAllBlogDataByDateRangeCount)
+	RegisterCallBack("RawAllBlogNameByDate", Inner_blog_RawAllBlogNameByDate)
+	RegisterCallBack("RawAllBlogNameByDateRange", Inner_blog_RawAllBlogNameByDateRange)
+	RegisterCallBack("RawAllBlogNameByDateRangeCount", Inner_blog_RawAllBlogNameByDateRangeCount)
 	RegisterCallBack("RawGetBlogDataByDate", Inner_blog_RawGetBlogDataByDate)
 	RegisterCallBack("RawCurrentDate", Inner_blog_RawCurrentDate)
 	RegisterCallBack("RawCurrentTime", Inner_blog_RawCurrentTime)
@@ -466,7 +466,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{
 			Type: "function",
 			Function: LLMFunction{
-				Name:        "Inner_blog.RawAllBlogData",
+				Name:        "Inner_blog.RawAllBlogName",
 				Description: "获取所有blog名称,以空格分割",
 				Parameters: map[string]interface{}{
 					"type": "object",
@@ -525,7 +525,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{
 			Type: "function",
 			Function: LLMFunction{
-				Name:        "Inner_blog.RawAllBlogDataByDateRange",
+				Name:        "Inner_blog.RawAllBlogNameByDateRange",
 				Description: "通过日期范围获取blog内容,如2025-01-01到2025-02-01之间的博客",
 				Parameters: map[string]interface{}{
 					"type": "object",
@@ -541,7 +541,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{
 			Type: "function",
 			Function: LLMFunction{
-				Name:        "Inner_blog.RawAllBlogDataByDateRangeCount",
+				Name:        "Inner_blog.RawAllBlogNameByDateRangeCount",
 				Description: "通过日期范围获取blog数量,如2025-01-01到2025-02-01之间的博客数量",
 				Parameters: map[string]interface{}{
 					"type": "object",

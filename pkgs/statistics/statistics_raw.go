@@ -111,7 +111,7 @@ func RawAllBlogCount(account string) int {
 }
 
 // 获取所有blog名称,以空格分割
-func RawAllBlogData(account string) string {
+func RawAllBlogName(account string) string {
 	blogs := blog.GetBlogsWithAccount(account)
 	blogNames := make([]string, 0)
 	for _, b := range blogs {
@@ -154,7 +154,7 @@ func RawCommentData(account, title string) string {
 }
 
 // 根据日期获取所有Blog
-func RawAllBlogDataByDate(account, date string) string {
+func RawAllBlogNameByDate(account, date string) string {
 	blogs := blog.GetBlogsWithAccount(account)
 	blogData := make([]string, 0)
 	for _, b := range blogs {
@@ -176,7 +176,7 @@ func RawAllBlogDataByDate(account, date string) string {
 }
 
 // 根据日期范围获取所有Blog
-func RawAllBlogDataByDateRange(account, startDate, endDate string) string {
+func RawAllBlogNameByDateRange(account, startDate, endDate string) string {
 	blogs := blog.GetBlogsWithAccount(account)
 	blogData := make([]string, 0)
 	for _, b := range blogs {
@@ -204,7 +204,7 @@ func RawAllBlogDataByDateRange(account, startDate, endDate string) string {
 }
 
 // 根据日期范围获取所有Blog数量
-func RawAllBlogDataByDateRangeCount(account, startDate, endDate string) int {
+func RawAllBlogNameByDateRangeCount(account, startDate, endDate string) int {
 	blogs := blog.GetBlogsWithAccount(account)
 	count := 0
 	for _, b := range blogs {
