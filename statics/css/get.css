@@ -877,7 +877,7 @@
                 font-size: 14px;
             }
             
-            /* 移动端隐藏MD实时预览，专注编辑 */
+            /* 移动端优化：默认显示预览，提供切换功能 */
             .editor-container {
                 flex-direction: column;
             }
@@ -888,13 +888,25 @@
                 padding: 15px;
             }
             
-            .md, .mdEditor {
-                display: none; /* 移动端隐藏预览区域 */
+            /* 移动端默认显示预览，隐藏编辑区域 */
+            .editor-inner {
+                display: none; /* 默认隐藏编辑区域 */
             }
             
-            /* 移动端编辑模式优化 */
-            .editor-inner.hide {
-                display: block !important; /* 确保编辑区域显示 */
+            .md, .mdEditor {
+                display: block !important; /* 移动端显示预览区域 */
+                width: 100%;
+                min-height: 70vh;
+            }
+            
+            /* 编辑模式激活时显示编辑器 */
+            .editor-container.edit-mode .editor-inner {
+                display: block !important;
+            }
+            
+            .editor-container.edit-mode .md,
+            .editor-container.edit-mode .mdEditor {
+                display: none !important; /* 编辑模式时隐藏预览 */
             }
             
             /* 调整按钮大小 */

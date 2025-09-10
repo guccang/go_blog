@@ -13,6 +13,7 @@ const toastContainer = document.getElementById('toast-container');
 
 // 检测是否为移动设备
 const isMobile = window.innerWidth <= 768;
+let isEditMode = false; // 移动端编辑模式状态
 
 // 初始化编辑页面权限控制
 document.addEventListener('DOMContentLoaded', function() {
@@ -21,10 +22,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     initEditPagePermissions();
     
-    // 移动端自动折叠sidebar
+    // 移动端自动折叠sidebar，并初始化模式
     if (isMobile) {
         sidebar.classList.remove('show-sidebar');
         container.classList.add('full-width');
+        
+        // 移动端默认显示预览模式，使用原有的切换按钮
+        // 修改原有按钮的文字和位置
+        const toggleBtn = document.getElementById('toggle-button');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '📝 编辑';
+            toggleBtn.style.display = 'inline-block'; // 确保显示
+        }
     }
 });
 
@@ -332,7 +341,26 @@ function cleanupExpiredSessions() {
 function onEditor() {
 	const toggleBtn = document.getElementById('toggle-button');
 	
-		// PC version
+	if (isMobile) {
+		// 移动端版本 - 使用CSS类切换模式
+		const editorContainer = document.querySelector('.editor-container');
+		if (isEditMode) {
+			// 当前是编辑模式，切换到预览模式
+			editorContainer.classList.remove('edit-mode');
+			isEditMode = false;
+			toggleBtn.innerHTML = '📝 编辑';
+			toggleBtn.title = '切换到编辑模式';
+			// 预览模式下更新markdown渲染
+			mdRender(editor.value);
+		} else {
+			// 当前是预览模式，切换到编辑模式
+			editorContainer.classList.add('edit-mode');
+			isEditMode = true;
+			toggleBtn.innerHTML = '👁️ 预览';
+			toggleBtn.title = '切换到预览模式';
+		}
+	} else {
+		// PC端版本 - 保持原有的切换逻辑
 		if (toggleBtn.innerText === '编辑') {
 			md.className = 'mdEditor';
 			editor.className = 'editor th_black';
@@ -344,6 +372,7 @@ function onEditor() {
 			editor.className = 'hide th_black';
 			toggleBtn.innerText = '编辑';
 		}
+	}
 }
 
 function submitFirst() {

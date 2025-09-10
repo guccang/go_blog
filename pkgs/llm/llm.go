@@ -77,6 +77,106 @@ var llmConfig = LLMConfig{}
 
 var max_selected_tools = 50
 
+// New: clamp configuration to prevent context overflow
+const (
+	maxToolResultChars    = 4000   // per tool result passed back to the model
+	maxToolArgumentsChars = 4000   // per tool-call arguments embedded in assistant message
+	maxMessageChars       = 8000   // per message content clamp
+	maxMessagesToSend     = 60     // overall message count cap
+	maxTotalCharsBudget   = 200000 // rough total-char budget for all messages
+)
+
+// New: helper to truncate strings with a marker
+func truncateString(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "... [truncated]"
+}
+
+// New: sanitize a single tool call (limit arguments size)
+func sanitizeToolCall(tc mcp.ToolCall) mcp.ToolCall {
+	if len(tc.Function.Arguments) > maxToolArgumentsChars {
+		tc.Function.Arguments = truncateString(tc.Function.Arguments, maxToolArgumentsChars)
+	}
+	return tc
+}
+
+// New: sanitize/prune messages to stay within budget (default limits)
+func sanitizeMessages(original []Message) []Message {
+	return sanitizeMessagesWithLimits(original, maxMessageChars, maxTotalCharsBudget, maxMessagesToSend)
+}
+
+// New: same logic with adjustable limits for retry
+func sanitizeMessagesWithLimits(original []Message, perMessageMax, totalBudget, maxMsgs int) []Message {
+	var totalChars int
+	var resultReversed []Message
+
+	// Preserve the first system message if present
+	var system *Message
+	if len(original) > 0 && original[0].Role == "system" {
+		sys := original[0]
+		if len(sys.Content) > perMessageMax {
+			sys.Content = truncateString(sys.Content, perMessageMax)
+		}
+		system = &sys
+	}
+
+	// Walk from end to start so we keep the most recent turns
+	for i := len(original) - 1; i >= 0; i-- {
+		if system != nil && i == 0 {
+			continue
+		}
+
+		msg := original[i]
+
+		// Clamp message content
+		if msg.Content != "" && len(msg.Content) > perMessageMax {
+			msg.Content = truncateString(msg.Content, perMessageMax)
+		}
+
+		// Clamp any tool calls embedded in assistant message
+		if len(msg.ToolCalls) > 0 {
+			sanitizedCalls := make([]mcp.ToolCall, 0, len(msg.ToolCalls))
+			for _, tc := range msg.ToolCalls {
+				sanitizedCalls = append(sanitizedCalls, sanitizeToolCall(tc))
+			}
+			msg.ToolCalls = sanitizedCalls
+		}
+
+		// Rough contribution to budget
+		approx := len(msg.Content)
+		for _, tc := range msg.ToolCalls {
+			approx += len(tc.Function.Name) + len(tc.Function.Arguments) + len(tc.ID)
+		}
+
+		// Enforce message count cap (reserve one slot for system if any)
+		if len(resultReversed) >= maxMsgs-1 {
+			break
+		}
+		// Enforce total char budget
+		if totalChars+approx > totalBudget {
+			break
+		}
+
+		totalChars += approx
+		resultReversed = append(resultReversed, msg)
+	}
+
+	// Reverse back to chronological order
+	for i, j := 0, len(resultReversed)-1; i < j; i, j = i+1, j-1 {
+		resultReversed[i], resultReversed[j] = resultReversed[j], resultReversed[i]
+	}
+
+	if system != nil {
+		return append([]Message{*system}, resultReversed...)
+	}
+	return resultReversed
+}
+
 func Info() {
 	log.Debug(log.ModuleLLM, "info llm v1.0")
 }
@@ -368,13 +468,14 @@ func processQueryStreaming(account string, query string, selectedTools []string,
 			// Add tool call and result to message history
 			messages = append(messages, Message{
 				Role:      "assistant",
-				ToolCalls: []mcp.ToolCall{toolCall},
+				ToolCalls: []mcp.ToolCall{sanitizeToolCall(toolCall)},
 			})
 
+			toolContent := truncateString(fmt.Sprintf("%v", result.Result), maxToolResultChars)
 			messages = append(messages, Message{
 				Role:       "tool",
 				ToolCallId: toolCall.ID,
-				Content:    fmt.Sprintf("%v", result.Result),
+				Content:    toolContent,
 			})
 
 			// Add tool call info to full response for saving
@@ -411,56 +512,88 @@ func processQueryStreaming(account string, query string, selectedTools []string,
 
 // sendStreamingLLMRequest 发送流式LLM请求并检测工具调用
 func sendStreamingLLMRequest(messages []Message, availableTools []mcp.LLMTool, w http.ResponseWriter, flusher http.Flusher, fullResponse *strings.Builder) (string, []mcp.ToolCall, error) {
-	// Create LLM request with streaming enabled
-	requestBody := map[string]interface{}{
-		"model":       llmConfig.Model,
-		"messages":    messages,
-		"tools":       availableTools,
-		"temperature": llmConfig.Temperature,
-		"stream":      true, // 启用流式响应
+	// Prepare sanitized messages to fit context budget
+	sanitizedMessages := sanitizeMessages(messages)
+
+	attempts := []struct {
+		perMessageMax int
+		totalBudget   int
+		maxMsgs       int
+	}{
+		{maxMessageChars, maxTotalCharsBudget, maxMessagesToSend},
+		{4000, 100000, 40}, // stricter fallback
+		{2000, 60000, 30},  // most strict fallback
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		log.ErrorF(log.ModuleLLM, "Error marshaling LLM request: %v", err)
-		return "", nil, fmt.Errorf("error marshaling request: %v", err)
+	for idx, lim := range attempts {
+		if idx > 0 {
+			// recompute with stricter limits
+			sanitizedMessages = sanitizeMessagesWithLimits(messages, lim.perMessageMax, lim.totalBudget, lim.maxMsgs)
+		}
+
+		// Create LLM request with streaming enabled
+		requestBody := map[string]interface{}{
+			"model":       llmConfig.Model,
+			"messages":    sanitizedMessages,
+			"tools":       availableTools,
+			"temperature": llmConfig.Temperature,
+			"stream":      true, // 启用流式响应
+		}
+
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			log.ErrorF(log.ModuleLLM, "Error marshaling LLM request: %v", err)
+			return "", nil, fmt.Errorf("error marshaling request: %v", err)
+		}
+
+		log.DebugF(log.ModuleLLM, "Sending streaming request to LLM API: %s (attempt %d)", llmConfig.BaseURL, idx+1)
+
+		// Create HTTP request to LLM API
+		req, err := http.NewRequest("POST", llmConfig.BaseURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.ErrorF(log.ModuleLLM, "Error creating LLM request: %v", err)
+			return "", nil, fmt.Errorf("error creating request: %v", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+llmConfig.APIKey)
+		req.Header.Set("Accept", "text/event-stream")
+
+		// Send request with streaming support
+		client := &http.Client{
+			Timeout: 300 * time.Second, // 5分钟超时
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.ErrorF(log.ModuleLLM, "Error sending request to LLM API: %v", err)
+			return "", nil, fmt.Errorf("error sending request: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			log.ErrorF(log.ModuleLLM, "LLM API returned status %d: %s", resp.StatusCode, string(body))
+			// retry only on context-length style errors, otherwise fail fast
+			if resp.StatusCode == http.StatusBadRequest && (strings.Contains(strings.ToLower(string(body)), "maximum context length") || strings.Contains(strings.ToLower(string(body)), "context")) {
+				if idx < len(attempts)-1 {
+					log.WarnF(log.ModuleLLM, "Retrying with stricter message limits due to context length error")
+					continue
+				}
+			}
+			return "", nil, fmt.Errorf("LLM API error: %d", resp.StatusCode)
+		}
+
+		// Ensure body is closed after processing
+		defer resp.Body.Close()
+
+		log.DebugF(log.ModuleLLM, "Received streaming response from LLM API, processing...")
+
+		// Process the streaming response
+		return processStreamingResponseWithToolDetection(resp.Body, w, flusher, fullResponse)
 	}
 
-	log.DebugF(log.ModuleLLM, "Sending streaming request to LLM API: %s", llmConfig.BaseURL)
-
-	// Create HTTP request to LLM API
-	req, err := http.NewRequest("POST", llmConfig.BaseURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.ErrorF(log.ModuleLLM, "Error creating LLM request: %v", err)
-		return "", nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+llmConfig.APIKey)
-	req.Header.Set("Accept", "text/event-stream")
-
-	// Send request with streaming support
-	client := &http.Client{
-		Timeout: 300 * time.Second, // 5分钟超时
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.ErrorF(log.ModuleLLM, "Error sending request to LLM API: %v", err)
-		return "", nil, fmt.Errorf("error sending request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.ErrorF(log.ModuleLLM, "LLM API returned status %d: %s", resp.StatusCode, string(body))
-		return "", nil, fmt.Errorf("LLM API error: %d", resp.StatusCode)
-	}
-
-	log.DebugF(log.ModuleLLM, "Received streaming response from LLM API, processing...")
-
-	// Process the streaming response
-	return processStreamingResponseWithToolDetection(resp.Body, w, flusher, fullResponse)
+	return "", nil, fmt.Errorf("failed to send request after retries")
 }
 
 // processStreamingResponseWithToolDetection 处理流式响应并检测工具调用
