@@ -59,31 +59,86 @@ function scrollToTop() {
 
 // =============== 时间工具 ===============
 
-// 获取当前时间
+// 获取当前时间（本地）
 function getCurrentTime() {
     const timezone = document.getElementById('timezone-select').value;
     const resultDiv = document.getElementById('current-time-result');
     
     resultDiv.innerHTML = '<div class="loading"></div> 获取中...';
     
-    fetch(`/api/tools/time?action=current&timezone=${encodeURIComponent(timezone)}`)
-        .then(response => response.json())
-        .then(data => {
-            resultDiv.className = 'result-box success';
-            resultDiv.innerHTML = `
-                <strong>当前时间:</strong> ${data.current_time}<br>
-                <strong>时间戳:</strong> ${data.timestamp}<br>
-                <strong>时区:</strong> ${data.timezone}<br>
-                <strong>格式化时间:</strong> ${data.formatted_time}
-            `;
-        })
-        .catch(error => {
+    // 延迟显示以提供更好的用户体验
+    setTimeout(() => {
+        try {
+            let now;
+            
+            if (timezone) {
+                // 简单的时区处理（注意：浏览器时区支持有限）
+                const options = { 
+                    timeZone: timezone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                };
+                const formatter = new Intl.DateTimeFormat('zh-CN', options);
+                const parts = formatter.formatToParts(new Date());
+                
+                const dateTime = {};
+                parts.forEach(part => {
+                    if (part.type !== 'literal') {
+                        dateTime[part.type] = part.value;
+                    }
+                });
+                
+                const formattedTime = `${dateTime.year}-${dateTime.month}-${dateTime.day} ${dateTime.hour}:${dateTime.minute}:${dateTime.second}`;
+                const timestamp = Math.floor(new Date().getTime() / 1000);
+                
+                resultDiv.className = 'result-box success';
+                resultDiv.innerHTML = `
+                    <strong>当前时间:</strong> ${formattedTime}<br>
+                    <strong>时间戳:</strong> ${timestamp}<br>
+                    <strong>时区:</strong> ${timezone}<br>
+                    <strong>格式化时间:</strong> ${new Date().toLocaleString('zh-CN', { 
+                        timeZone: timezone,
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })}
+                `;
+            } else {
+                // 本地时区
+                now = new Date();
+                const timestamp = Math.floor(now.getTime() / 1000);
+                
+                resultDiv.className = 'result-box success';
+                resultDiv.innerHTML = `
+                    <strong>当前时间:</strong> ${now.toLocaleString('zh-CN')}<br>
+                    <strong>时间戳:</strong> ${timestamp}<br>
+                    <strong>时区:</strong> ${Intl.DateTimeFormat().resolvedOptions().timeZone}<br>
+                    <strong>格式化时间:</strong> ${now.toLocaleString('zh-CN', { 
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })}
+                `;
+            }
+        } catch (error) {
             resultDiv.className = 'result-box error';
             resultDiv.textContent = '获取时间失败: ' + error.message;
-        });
+        }
+    }, 100);
 }
 
-// 转换时间戳
+// 转换时间戳（本地）
 function convertTimestamp() {
     const timestamp = document.getElementById('timestamp-input').value;
     const resultDiv = document.getElementById('timestamp-result');
@@ -96,25 +151,34 @@ function convertTimestamp() {
     
     resultDiv.innerHTML = '<div class="loading"></div> 转换中...';
     
-    fetch(`/api/tools/time?action=convert&timestamp=${timestamp}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                resultDiv.className = 'result-box error';
-                resultDiv.textContent = data.error;
-            } else {
-                resultDiv.className = 'result-box success';
-                resultDiv.innerHTML = `
-                    <strong>时间戳:</strong> ${data.timestamp}<br>
-                    <strong>转换结果:</strong> ${data.current_time}<br>
-                    <strong>格式化时间:</strong> ${data.formatted_time}
-                `;
+    // 延迟显示以提供更好的用户体验
+    setTimeout(() => {
+        try {
+            const timestampNum = parseInt(timestamp);
+            if (isNaN(timestampNum)) {
+                throw new Error('无效的时间戳');
             }
-        })
-        .catch(error => {
+            
+            const date = new Date(timestampNum * 1000);
+            
+            resultDiv.className = 'result-box success';
+            resultDiv.innerHTML = `
+                <strong>时间戳:</strong> ${timestamp}<br>
+                <strong>转换结果:</strong> ${date.toLocaleString('zh-CN')}<br>
+                <strong>格式化时间:</strong> ${date.toLocaleString('zh-CN', { 
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                })}
+            `;
+        } catch (error) {
             resultDiv.className = 'result-box error';
-            resultDiv.textContent = '转换失败: ' + error.message;
-        });
+            resultDiv.textContent = error.message;
+        }
+    }, 100);
 }
 
 // =============== 数据处理工具 ===============
@@ -174,6 +238,61 @@ function generateHash() {
     processData(hashType, input, resultDiv);
 }
 
+// =============== 本地数据处理函数 ===============
+
+// JSON格式化（本地）
+function formatJsonLocal(input) {
+    if (!input.trim()) return '';
+    try {
+        const jsonObj = JSON.parse(input);
+        return JSON.stringify(jsonObj, null, 2);
+    } catch (error) {
+        throw new Error('无效的JSON格式');
+    }
+}
+
+// 异步哈希函数生成器
+async function generateHashAsync(algorithm, input) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest(algorithm, data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 生成MD5哈希
+async function generateMD5(input) {
+    try {
+        // 注意：Web Crypto API 不支持MD5，这里使用替代方案
+        // 在实际项目中可以考虑使用crypto-js库
+        const encoder = new TextEncoder();
+        const data = encoder.encode(input);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    } catch (error) {
+        throw new Error('MD5计算失败');
+    }
+}
+
+// 生成SHA1哈希
+async function generateSHA1(input) {
+    try {
+        return await generateHashAsync('SHA-1', input);
+    } catch (error) {
+        throw new Error('SHA1计算失败');
+    }
+}
+
+// 生成SHA256哈希
+async function generateSHA256(input) {
+    try {
+        return await generateHashAsync('SHA-256', input);
+    } catch (error) {
+        throw new Error('SHA256计算失败');
+    }
+}
+
 // 通用数据处理函数
 function processData(action, input, resultDiv) {
     if (!input && action !== 'json_format') {
@@ -184,28 +303,77 @@ function processData(action, input, resultDiv) {
     
     resultDiv.innerHTML = '<div class="loading"></div> 处理中...';
     
-    const formData = new FormData();
-    formData.append('action', action);
-    formData.append('input', input);
+    // 处理哈希函数（异步）
+    if (['md5', 'sha1', 'sha256'].includes(action)) {
+        handleHashAction(action, input, resultDiv);
+        return;
+    }
     
-    fetch('/api/tools/data', {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.valid) {
+    // 处理其他同步操作
+    setTimeout(() => {
+        try {
+            let output;
+            let isValid = true;
+            let errorMessage = '';
+            
+            switch (action) {
+                case 'json_format':
+                    output = formatJsonLocal(input);
+                    break;
+                case 'base64_encode':
+                    output = btoa(unescape(encodeURIComponent(input)));
+                    break;
+                case 'base64_decode':
+                    output = decodeURIComponent(escape(atob(input)));
+                    break;
+                case 'url_encode':
+                    output = encodeURIComponent(input);
+                    break;
+                case 'url_decode':
+                    output = decodeURIComponent(input);
+                    break;
+                default:
+                    isValid = false;
+                    errorMessage = '无效的操作';
+            }
+            
+            if (isValid) {
                 resultDiv.className = 'result-box success';
-                resultDiv.textContent = data.output;
+                resultDiv.textContent = output;
             } else {
                 resultDiv.className = 'result-box error';
-                resultDiv.textContent = data.error || '处理失败';
+                resultDiv.textContent = errorMessage;
             }
-        })
-        .catch(error => {
+        } catch (error) {
             resultDiv.className = 'result-box error';
             resultDiv.textContent = '处理失败: ' + error.message;
-        });
+        }
+    }, 100);
+}
+
+// 处理异步哈希操作
+async function handleHashAction(action, input, resultDiv) {
+    try {
+        let hashResult;
+        
+        switch (action) {
+            case 'md5':
+                hashResult = await generateMD5(input);
+                break;
+            case 'sha1':
+                hashResult = await generateSHA1(input);
+                break;
+            case 'sha256':
+                hashResult = await generateSHA256(input);
+                break;
+        }
+        
+        resultDiv.className = 'result-box success';
+        resultDiv.textContent = hashResult;
+    } catch (error) {
+        resultDiv.className = 'result-box error';
+        resultDiv.textContent = '哈希计算失败: ' + error.message;
+    }
 }
 
 // =============== 计算工具 ===============

@@ -143,10 +143,6 @@ func HandleStatisticsAPI(w h.ResponseWriter, r *h.Request) {
 // HandleTools handles tools page
 func HandleTools(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleTools", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
 
 	view.PageTools(w)
 }

@@ -387,6 +387,46 @@
             </form>
         </div>
 
+        <!-- WHO标准体重信息 -->
+        {{if .AccountInfo.Height}}
+        <div class="info-section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-weight-scale"></i>
+                    WHO标准体重参考
+                </h2>
+            </div>
+            
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">男性标准体重</div>
+                    <div class="info-value">{{printf "%.1f" .WHOStandardWeightM}} kg</div>
+                    <div class="info-label" style="font-size: 12px; color: #666; margin-top: 5px;">
+                        计算公式: (身高 - 80) × 0.7<br>
+                        适用于身高 {{printf "%.1f" .AccountInfo.Height}} cm 的男性
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-label">女性标准体重</div>
+                    <div class="info-value">{{printf "%.1f" .WHOStandardWeightF}} kg</div>
+                    <div class="info-label" style="font-size: 12px; color: #666; margin-top: 5px;">
+                        计算公式: (身高 - 70) × 0.6<br>
+                        适用于身高 {{printf "%.1f" .AccountInfo.Height}} cm 的女性
+                    </div>
+                </div>
+                
+                <div class="info-item" style="grid-column: 1 / -1;">
+                    <div class="info-label">说明</div>
+                    <div class="info-value" style="font-size: 14px; color: #666; line-height: 1.5;">
+                        这是世界卫生组织(WHO)推荐的标准体重计算公式，仅供参考。<br>
+                        实际理想体重可能因个体差异、肌肉量、骨骼密度等因素而有所不同。
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{end}}
+
         <!-- 联系信息 -->
         <div class="info-section">
             <div class="section-header">

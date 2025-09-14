@@ -204,6 +204,32 @@ func (info *AccountInfo) GetAge() int {
 	return age
 }
 
+// GetWHOStandardWeight 计算WHO标准体重
+func (info *AccountInfo) GetWHOStandardWeight() float64 {
+	if info.Height <= 0 {
+		return 0
+	}
+	
+	// 默认使用男性公式
+	return (info.Height - 80) * 0.7
+}
+
+// GetWHOStandardWeightForGender 根据性别计算WHO标准体重
+func (info *AccountInfo) GetWHOStandardWeightForGender(gender string) float64 {
+	if info.Height <= 0 {
+		return 0
+	}
+	
+	// 根据性别使用不同的公式
+	if gender == "female" {
+		// 女性公式: (身高-70) × 0.6
+		return (info.Height - 70) * 0.6
+	} else {
+		// 男性公式: (身高-80) × 0.7
+		return (info.Height - 80) * 0.7
+	}
+}
+
 // 验证电话号码格式的简单实现
 func isValidPhone(phone string) bool {
 	// 移除所有非数字字符

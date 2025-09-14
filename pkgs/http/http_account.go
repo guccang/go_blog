@@ -41,19 +41,25 @@ func HandleAccount(w h.ResponseWriter, r *h.Request) {
 
 	// 准备模板数据
 	data := struct {
-		UserAccount string
-		AccountInfo *account.AccountInfo
-		BMI         float64
-		BMIStatus   string
-		Age         int
-		HobbiesStr  string
+		UserAccount         string
+		AccountInfo         *account.AccountInfo
+		BMI                 float64
+		BMIStatus           string
+		Age                 int
+		HobbiesStr          string
+		WHOStandardWeight   float64
+		WHOStandardWeightM  float64
+		WHOStandardWeightF  float64
 	}{
-		UserAccount: userAccount,
-		AccountInfo: accountInfo,
-		BMI:         accountInfo.GetBMI(),
-		BMIStatus:   accountInfo.GetBMIStatus(),
-		Age:         accountInfo.GetAge(),
-		HobbiesStr:  account.HobbiesToString(accountInfo.Hobbies),
+		UserAccount:        userAccount,
+		AccountInfo:        accountInfo,
+		BMI:                accountInfo.GetBMI(),
+		BMIStatus:          accountInfo.GetBMIStatus(),
+		Age:                accountInfo.GetAge(),
+		HobbiesStr:         account.HobbiesToString(accountInfo.Hobbies),
+		WHOStandardWeight:  accountInfo.GetWHOStandardWeight(),
+		WHOStandardWeightM: accountInfo.GetWHOStandardWeightForGender("male"),
+		WHOStandardWeightF: accountInfo.GetWHOStandardWeightForGender("female"),
 	}
 
 	// 渲染模板
@@ -110,13 +116,16 @@ func handleGetAccountInfo(w h.ResponseWriter, r *h.Request, userAccount string) 
 	}
 
 	response := map[string]interface{}{
-		"success":     true,
-		"account":     userAccount,
-		"accountInfo": accountInfo,
-		"bmi":         accountInfo.GetBMI(),
-		"bmiStatus":   accountInfo.GetBMIStatus(),
-		"age":         accountInfo.GetAge(),
-		"hobbiesStr":  account.HobbiesToString(accountInfo.Hobbies),
+		"success":            true,
+		"account":            userAccount,
+		"accountInfo":        accountInfo,
+		"bmi":                accountInfo.GetBMI(),
+		"bmiStatus":          accountInfo.GetBMIStatus(),
+		"age":                accountInfo.GetAge(),
+		"hobbiesStr":         account.HobbiesToString(accountInfo.Hobbies),
+		"whoStandardWeight":  accountInfo.GetWHOStandardWeight(),
+		"whoStandardWeightM": accountInfo.GetWHOStandardWeightForGender("male"),
+		"whoStandardWeightF": accountInfo.GetWHOStandardWeightForGender("female"),
 	}
 
 	sendJSONResponse(w, response)

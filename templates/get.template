@@ -90,7 +90,7 @@
 		</div>
         
 		<div class="editor-container">
-			<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
+			<textarea id="editor-inner" class="hide editor editor-inner th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
 			<div id="md" class="md"></div>
 		</div>
         
