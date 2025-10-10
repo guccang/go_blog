@@ -529,33 +529,36 @@ func (ar *ReadingActor) addBookInsight(account, bookID, title, content string, k
 }
 
 func (ar *ReadingActor) getBookInsights(account, bookID string) []*module.BookInsight {
-	// 从blog系统获取感悟数据
+	// 从blog系统聚合指定书籍的全部心得
+	var aggregated []*module.BookInsight
 	for title, b := range blog.GetBlogsWithAccount(ar.Account) {
 		if strings.HasPrefix(title, "reading_book_") {
 			var data struct {
 				BookInsights []*module.BookInsight `json:"book_insights"`
 			}
 			if err := json.Unmarshal([]byte(b.Content), &data); err == nil {
-				// 筛选该书的感悟
-				var insights []*module.BookInsight
-				for _, insight := range data.BookInsights {
-					if insight.BookID == bookID {
-						insights = append(insights, insight)
+				for _, ins := range data.BookInsights {
+					if ins.BookID == bookID {
+						aggregated = append(aggregated, ins)
 					}
 				}
-				return insights
 			}
 		}
 	}
+	if len(aggregated) > 0 {
+		return aggregated
+	}
 
-	// 如果blog中没有找到，则从原有Redis加载（兼容性）
-	var insights []*module.BookInsight
-	for _, insight := range ar.bookInsights {
-		if insight.BookID == bookID {
-			insights = append(insights, insight)
+	// 如果blog中没有找到，则从内存（兼容存量数据）加载
+	for _, ins := range ar.bookInsights {
+		if ins.BookID == bookID {
+			aggregated = append(aggregated, ins)
 		}
 	}
-	return insights
+	if len(aggregated) == 0 {
+		return []*module.BookInsight{}
+	}
+	return aggregated
 }
 
 func (ar *ReadingActor) updateBookInsight(account, insightID string, updates map[string]interface{}) error {
@@ -874,7 +877,17 @@ func (ar *ReadingActor) saveBookInsight(account string, insight *module.BookInsi
 	// 通过saveBook函数保存，因为它会保存完整的书籍数据
 	if book, exists := ar.books[insight.BookID]; exists {
 		ar.saveBook(account, book)
+		return
 	}
+
+	// 如果内存中未缓存对应书籍，尝试获取后再保存，避免心得无法持久化
+	if book := ar.getBook(insight.BookID); book != nil {
+		ar.books[insight.BookID] = book
+		ar.saveBook(account, book)
+		return
+	}
+
+	log.ErrorF(log.ModuleReading, "保存心得失败：未找到书籍，book_id=%s", insight.BookID)
 }
 
 func (ar *ReadingActor) loadBooks() {
