@@ -783,15 +783,14 @@ func (ar *ReadingActor) saveBook(account string, book *module.Book) {
 	}
 
 	// 添加心得
-	var insights []*module.BookInsight
+	insights := make([]*module.BookInsight, 0)
 	for _, insight := range ar.bookInsights {
 		if insight.BookID == book.ID {
 			insights = append(insights, insight)
 		}
 	}
-	if len(insights) > 0 {
-		data["book_insights"] = insights
-	}
+	// 始终写入book_insights字段，空数组也写入，避免出现null或字段缺失
+	data["book_insights"] = insights
 
 	// 添加阅读计划（包含该书籍的计划）
 	var plans []*module.ReadingPlan

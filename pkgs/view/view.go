@@ -21,6 +21,20 @@ func Info() {
 	log.InfoF(log.ModuleView, "info view v1.0")
 }
 
+// helper: get template full path
+func GetTemplatePath(name string) string {
+	return filepath.Join(config.GetHttpTemplatePath(), name)
+}
+
+// helper: render a template with data
+func RenderTemplate(w h.ResponseWriter, fullpath string, data interface{}) error {
+	tmpl, err := t.ParseFiles(fullpath)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
+}
+
 // generateUserAvatar generates a simple avatar string for the user
 func generateUserAvatar(account string) string {
 	if account == "" {
