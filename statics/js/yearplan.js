@@ -208,6 +208,19 @@ function loadYearPlan() {
     // 构建blog标题，格式为 "年计划_2023"
     const planTitle = `年计划_${currentYear}`;
     
+    // 在加载新数据前清空现有数据
+    document.getElementById('year-overview-content').value = '';
+    for (let i = 1; i <= 12; i++) {
+        document.getElementById(`month-${i}-content`).value = '';
+    }
+    
+    // 重置任务数据
+    monthTasks = {};
+    for (let i = 1; i <= 12; i++) {
+        monthTasks[i.toString()] = [];
+    }
+    renderAllTasks();
+    
     // 从服务器获取数据
     fetch(`/api/getplan?title=${planTitle}`)
         .then(response => {

@@ -175,8 +175,6 @@ function initAutoResizeTextareas() {
 
 // 调整文本框高度以适应内容
 function adjustTextareaHeight(textarea) {
-    return;
-
     if (!textarea || textarea.offsetParent === null) return; // 如果文本框不存在或不可见，则退出
     
     // 保存滚动条位置

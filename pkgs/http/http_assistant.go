@@ -345,7 +345,7 @@ func parseChatHistoryFromContent(content string) []ChatMessage {
 		}
 
 		// 检测分割线，表示一次对话结束
-		if strings.Contains(line, "----") {
+		if strings.Contains(line, "----") && !strings.Contains(line, "|") {
 			// 保存当前AI回复消息
 			if inAIReply && contentBuilder.Len() > 0 {
 				currentMessage.Content = strings.TrimSpace(contentBuilder.String())

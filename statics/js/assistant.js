@@ -1337,6 +1337,7 @@ function displayChatHistory(chatHistory) {
         messageText.className = 'message-text';
         
         // 使用相同的 Markdown 格式化功能
+        console.log("===========message.content", message.content);
         messageText.innerHTML = formatMessage(message.content);
         
         const messageTime = document.createElement('div');

@@ -3306,6 +3306,8 @@ input:checked + .slider:before {
     line-height: 1.7;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    overflow-x: auto;               /* 允许横向滚动，避免表格被裁切 */
+    -webkit-overflow-scrolling: touch;
 }
 
 /* 标题样式 */
@@ -3397,7 +3399,9 @@ input:checked + .slider:before {
 
 /* 表格样式 */
 .message-text table {
-    width: 100%;
+    /* 让表格按内容宽度展示，不足时占满容器；超出时由父容器横向滚动 */
+    width: max-content;
+    max-width: 100%;
     border-collapse: collapse;
     margin-bottom: 1em;
     background: rgba(255, 255, 255, 0.05);
@@ -3409,6 +3413,7 @@ input:checked + .slider:before {
     border: 1px solid rgba(255, 255, 255, 0.1);
     padding: 8px 12px;
     text-align: left;
+    white-space: nowrap; /* 避免内容换行导致表格被压缩，结合父容器横向滚动 */
 }
 
 .message-text th {

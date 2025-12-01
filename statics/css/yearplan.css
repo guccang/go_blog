@@ -442,7 +442,7 @@
 
 #year-overview-content {
     width: 100%;
-    min-height: 160px;
+    min-height: 300px;
     padding: 16px;
     font-size: 16px;
     line-height: 1.6;
@@ -493,7 +493,7 @@
     background-color: var(--lighter-bg);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
-    overflow-y: auto;
+    overflow-y: visible;
     min-height: 200px;
     color: var(--text-color);
     line-height: 1.6;
@@ -668,7 +668,7 @@
     background-color: var(--lighter-bg);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
-    overflow-y: auto;
+    overflow-y: visible;
     min-height: 120px;
     color: var(--text-color);
     line-height: 1.6;
