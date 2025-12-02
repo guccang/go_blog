@@ -1018,3 +1018,21 @@ func PageMigration(w h.ResponseWriter) {
 		return
 	}
 }
+
+// PageFinance renders the family asset calculation page
+func PageFinance(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "finance.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse finance template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render finance template", h.StatusInternalServerError)
+		return
+	}
+}

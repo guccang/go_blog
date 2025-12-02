@@ -7,6 +7,7 @@ import (
 	"exercise"
 	"fmt"
 	"gomoku"
+	"linkup"
 	"mcp"
 	"module"
 	log "mylog"
@@ -18,6 +19,7 @@ import (
 	"tools"
 	"view"
 	"yearplan"
+	"finance"
 )
 
 // Info displays package version information
@@ -332,6 +334,27 @@ func Init() int {
 	// Gomoku routes
 	h.HandleFunc("/gomoku", gomoku.HandleGomoku)
 	h.HandleFunc("/api/gomoku/ai-move", gomoku.HandleAIMove)
+	// Gomoku room routes
+	h.HandleFunc("/api/gomoku/room/create", gomoku.HandleCreateRoom)
+	h.HandleFunc("/api/gomoku/room/join", gomoku.HandleJoinRoom)
+	h.HandleFunc("/api/gomoku/room/state", gomoku.HandleRoomState)
+	h.HandleFunc("/api/gomoku/room/move", gomoku.HandleMakeMove)
+	h.HandleFunc("/api/gomoku/room/list", gomoku.HandleRoomList)
+
+	// Linkup routes
+	h.HandleFunc("/linkup", linkup.HandleLinkup)
+	h.HandleFunc("/api/linkup/new-game", linkup.HandleNewGame)
+	h.HandleFunc("/api/linkup/select", linkup.HandleSelectCell)
+	h.HandleFunc("/api/linkup/ai-move", linkup.HandleAIMove)
+	h.HandleFunc("/api/linkup/hint", linkup.HandleHint)
+	h.HandleFunc("/api/linkup/pvp/create", linkup.HandleCreatePvP)
+	h.HandleFunc("/api/linkup/pvp/join", linkup.HandleJoinPvP)
+	h.HandleFunc("/api/linkup/pvp/state", linkup.HandlePvPState)
+	h.HandleFunc("/api/linkup/pvp/ready", linkup.HandlePvPReady)
+	h.HandleFunc("/api/linkup/race/create", linkup.HandleCreateRace)
+	h.HandleFunc("/api/linkup/race/join", linkup.HandleJoinRace)
+	h.HandleFunc("/api/linkup/race/state", linkup.HandleRaceState)
+	h.HandleFunc("/api/linkup/race/list", linkup.HandleRaceList)
 
 	// Skill routes
 	h.HandleFunc("/skill", HandleSkill)
@@ -341,6 +364,11 @@ func Init() int {
 	h.HandleFunc("/migration", HandleMigration)
 	h.HandleFunc("/migration/export", HandleMigrationExport)
 	h.HandleFunc("/migration/import", HandleMigrationImport)
+
+	// Finance routes
+	h.HandleFunc("/finance", finance.HandleFinancePage)
+	h.HandleFunc("/api/finance/calculate", finance.HandleCalculateAssets)
+	h.HandleFunc("/api/finance/defaults", finance.HandleGetDefaultValues)
 
 	// account
 	h.HandleFunc("/account", HandleAccount)
@@ -355,16 +383,17 @@ func Init() int {
 }
 
 // Run starts the HTTP server
-func Run(certFile string, keyFile string) int {
+func Run(certFile string, keyFile string) error {
 	Init()
 	port := config.GetConfigWithAccount(config.GetAdminAccount(), "port")
+	var err error
 	//h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
 	if len(certFile) <= 0 || len(keyFile) <= 0 {
-		h.ListenAndServe(fmt.Sprintf(":%s", port), nil)
+		err = h.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 	} else {
-		h.ListenAndServeTLS(fmt.Sprintf(":%s", port), certFile, keyFile, nil)
+		err = h.ListenAndServeTLS(fmt.Sprintf(":%s", port), certFile, keyFile, nil)
 	}
-	return 0
+	return err
 }
 
 // Stop stops the HTTP server

@@ -34,6 +34,7 @@ const (
 	ModuleSearch
 	ModuleSkill
 	ModuleStatistics
+	ModuleFinance
 	ModuleShare
 	ModuleTodolist
 	ModuleView
@@ -88,6 +89,7 @@ func Info() {
 		ModuleSearch:        "search",
 		ModuleSkill:         "skill",
 		ModuleStatistics:    "statistics",
+		ModuleFinance:       "finance",
 		ModuleShare:         "share",
 		ModuleTodolist:      "todolist",
 		ModuleView:          "view",

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家庭资产计算器</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .finance-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+
+        .content-wrapper {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .input-section {
+            flex: 1;
+            min-width: 300px;
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .result-section {
+            flex: 2;
+            min-width: 500px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .input-group input[type="number"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+
+        .input-group input[type="number"]:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .input-row .input-group {
+            flex: 1;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2980b9, #1f6397);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(41, 128, 185, 0.2);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, #7f8c8d, #6c7b7d);
+            transform: translateY(-2px);
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .result-card h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .summary-item {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: transform 0.3s;
+        }
+
+        .summary-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .summary-label {
+            display: block;
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 8px;
+        }
+
+        .summary-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .summary-value.positive {
+            color: #27ae60;
+        }
+
+        .summary-value.negative {
+            color: #e74c3c;
+        }
+
+        .chart-container {
+            height: 300px;
+            margin-bottom: 25px;
+        }
+
+        .tab-nav {
+            display: flex;
+            border-bottom: 2px solid #ecf0f1;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            color: #7f8c8d;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #3498db;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #3498db;
+            border-radius: 3px 3px 0 0;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .data-table th {
+            background: #34495e;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .data-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .data-table tr:hover {
+            background: #e8f4fc;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 5px solid #ecf0f1;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fee;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .success-message {
+            background: #d5f4e6;
+            color: #27ae60;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #27ae60;
+        }
+
+        @media (max-width: 768px) {
+            .content-wrapper {
+                flex-direction: column;
+            }
+
+            .input-section, .result-section {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-sidebar-cotainer">
+        <div class="top-sidebar">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/main" class="header-link" style="margin-left: 10px;">返回首页</a>
+        </div>
+    </div>
+
+    <div class="finance-container">
+        <div class="header">
+            <h1><i class="fas fa-calculator"></i> 家庭资产计算器</h1>
+            <p>计算您的家庭资产增长，规划美好未来</p>
+        </div>
+
+        <div class="content-wrapper">
+            <div class="input-section">
+                <h2><i class="fas fa-edit"></i> 输入参数</h2>
+
+                <div class="input-group">
+                    <label for="initialCapital">初始资金 (元)</label>
+                    <input type="number" id="initialCapital" min="0" step="10000" placeholder="例如: 500000">
+                </div>
+
+                <div class="input-group">
+                    <label for="housePrice">购房价格 (元)</label>
+                    <input type="number" id="housePrice" min="0" step="10000" placeholder="例如: 5000000">
+                </div>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="downPayment">首付金额 (元)</label>
+                        <input type="number" id="downPayment" min="0" step="10000" placeholder="例如: 1500000">
+                    </div>
+                    <div class="input-group">
+                        <label for="downPaymentRatio">首付比例 (%)</label>
+                        <input type="number" id="downPaymentRatio" min="0" max="100" step="1" placeholder="例如: 30">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="loanRate">贷款利率 (%)</label>
+                    <input type="number" id="loanRate" min="0" step="0.01" placeholder="例如: 4.0">
+                </div>
+
+                <div class="input-group">
+                    <label for="appreciationRate">房屋增值率 (%)</label>
+                    <input type="number" id="appreciationRate" step="0.01" placeholder="例如: 3.0 (可为负数)">
+                </div>
+
+                <div class="input-group">
+                    <label for="annualIncome">家庭年收入 (元)</label>
+                    <input type="number" id="annualIncome" min="0" step="10000" placeholder="例如: 300000">
+                </div>
+
+                <div class="input-group">
+                    <label for="incomeGrowthRate">收入年增长率 (%)</label>
+                    <input type="number" id="incomeGrowthRate" min="0" step="0.1" placeholder="例如: 5.0">
+                </div>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="years">计算年数</label>
+                        <input type="number" id="years" min="1" max="50" step="1" placeholder="例如: 30">
+                    </div>
+                    <div class="input-group">
+                        <label for="expenseRatio">支出比例 (%)</label>
+                        <input type="number" id="expenseRatio" min="0" max="100" step="1" placeholder="例如: 50">
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="calculateBtn">
+                        <i class="fas fa-calculator"></i> 开始计算
+                    </button>
+                    <button class="btn btn-secondary" id="resetBtn">
+                        <i class="fas fa-redo"></i> 重置
+                    </button>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-secondary" id="loadDefaultsBtn">
+                        <i class="fas fa-download"></i> 加载示例
+                    </button>
+                    <button class="btn btn-secondary" id="exportBtn">
+                        <i class="fas fa-file-export"></i> 导出数据
+                    </button>
+                </div>
+            </div>
+
+            <div class="result-section">
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>正在计算中，请稍候...</p>
+                </div>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+                <div id="successMessage" class="success-message" style="display: none;"></div>
+
+                <div id="results" style="display: none;">
+                    <div class="result-card">
+                        <h3><i class="fas fa-chart-line"></i> 资产增长趋势</h3>
+                        <div class="chart-container">
+                            <canvas id="assetsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="result-card">
+                        <h3><i class="fas fa-list-alt"></i> 计算结果摘要</h3>
+                        <div class="summary-grid" id="summaryGrid">
+                            <!-- 摘要数据将通过JavaScript动态填充 -->
+                        </div>
+
+                        <div class="tab-nav">
+                            <button class="tab-btn active" data-tab="details">年度明细</button>
+                            <button class="tab-btn" data-tab="payment">还款明细</button>
+                            <button class="tab-btn" data-tab="charts">分析图表</button>
+                        </div>
+
+                        <div class="tab-content active" id="tab-details">
+                            <div class="chart-container">
+                                <canvas id="detailsChart"></canvas>
+                            </div>
+                            <div style="overflow-x: auto;">
+                                <table class="data-table" id="detailsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>年份</th>
+                                            <th>房屋价值</th>
+                                            <th>贷款余额</th>
+                                            <th>房屋净资产</th>
+                                            <th>现金储蓄</th>
+                                            <th>总资产</th>
+                                            <th>年收入</th>
+                                            <th>年储蓄</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detailsTableBody">
+                                        <!-- 表格数据将通过JavaScript动态填充 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="tab-content" id="tab-payment">
+                            <div class="chart-container">
+                                <canvas id="paymentChart"></canvas>
+                            </div>
+                            <div style="overflow-x: auto;">
+                                <table class="data-table" id="paymentTable">
+                                    <thead>
+                                        <tr>
+                                            <th>年份</th>
+                                            <th>年还款额</th>
+                                            <th>偿还本金</th>
+                                            <th>支付利息</th>
+                                            <th>年支出</th>
+                                            <th>年储蓄</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="paymentTableBody">
+                                        <!-- 表格数据将通过JavaScript动态填充 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="tab-content" id="tab-charts">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                                <div class="chart-container">
+                                    <canvas id="houseValueChart"></canvas>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="loanBalanceChart"></canvas>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="incomeExpenseChart"></canvas>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="savingsChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="noResults" class="loading">
+                    <i class="fas fa-calculator" style="font-size: 48px; color: #bdc3c7; margin-bottom: 20px;"></i>
+                    <h3>等待计算</h3>
+                    <p>请填写左侧参数并点击"开始计算"按钮</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/finance.js"></script>
+</body>
+</html>

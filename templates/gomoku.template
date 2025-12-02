@@ -27,6 +27,7 @@
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
         }
         .btn {
             padding: 10px 20px;
@@ -61,6 +62,127 @@
             font-size: 16px;
             border-radius: 4px;
         }
+        .game-info {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .info-item {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            min-width: 100px;
+            text-align: center;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #666;
+            font-size: 14px;
+        }
+        .info-value {
+            font-size: 18px;
+            color: #333;
+        }
+        .pvp-info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            max-width: 600px;
+        }
+        .pvp-status {
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .game-config {
+            background-color: #f9f9f9;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            max-width: 550px;
+        }
+        .config-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .config-label {
+            min-width: 90px;
+        }
+        .room-list {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+            max-width: 600px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .room-item:last-child {
+            border-bottom: none;
+        }
+        .room-info {
+            flex-grow: 1;
+        }
+        .room-name {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+        .room-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .room-lock {
+            color: #ff9800;
+            margin-left: 5px;
+        }
+        .room-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .password-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .password-modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 <body>
@@ -77,16 +199,80 @@
     <div class="container">
         <div class="game-container">
             <div class="status" id="status">请开始游戏</div>
-            
-            <div class="controls">
-                <div class="mode-selector">
+
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">玩家1 (黑)</div>
+                    <div class="info-value" id="player1-name">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">玩家2 (白)</div>
+                    <div class="info-value" id="player2-name">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">当前玩家</div>
+                    <div class="info-value" id="current-player-display">-</div>
+                </div>
+            </div>
+
+            <div class="pvp-info" id="pvp-info" style="display: none;">
+                <div class="pvp-status" id="pvp-status">等待玩家2加入...</div>
+                <div>游戏ID: <span id="game-id">-</span></div>
+                <div>你的玩家编号: <span id="player-number">-</span></div>
+            </div>
+
+            <div class="game-config" id="game-config">
+                <div class="config-row">
+                    <div class="config-label">游戏模式:</div>
                     <select id="game-mode">
                         <option value="pve">人机对战 (玩家先手)</option>
                         <option value="evp">人机对战 (电脑先手)</option>
-                        <option value="pvp">人人对战</option>
+                        <option value="pvp">在线对战</option>
                     </select>
                 </div>
-                <button class="btn" onclick="startGame()">开始新游戏</button>
+                <div class="config-row" id="room-config" style="display: none;">
+                    <div class="config-label">房间操作:</div>
+                    <button class="btn" onclick="createRoom()">创建房间</button>
+                    <input type="text" id="join-room-id" placeholder="输入游戏ID" style="width: 150px;">
+                    <button class="btn btn-secondary" onclick="joinRoom()">加入房间</button>
+                    <button class="btn btn-secondary" onclick="refreshRoomList()" style="background-color: #4CAF50;">刷新房间列表</button>
+                </div>
+                <div class="config-row" id="room-creation" style="display: none;">
+                    <div class="config-label">房间设置:</div>
+                    <input type="text" id="room-name" placeholder="房间名称 (可选)" style="width: 150px;">
+                    <input type="password" id="room-password" placeholder="房间密码 (可选)" style="width: 150px;">
+                </div>
+            </div>
+
+            <div id="room-list-container" style="display: none; max-width: 600px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">在线房间列表</h3>
+                    <button class="refresh-btn" onclick="refreshRoomList()">刷新</button>
+                </div>
+                <div class="room-list" id="room-list">
+                    <div style="text-align: center; color: #999; padding: 20px;">
+                        暂无可用房间，点击"刷新"按钮获取房间列表
+                    </div>
+                </div>
+            </div>
+
+            <div class="password-modal" id="password-modal">
+                <div class="password-modal-content">
+                    <h3 style="margin-top: 0;">请输入房间密码</h3>
+                    <div style="margin-bottom: 15px;">
+                        <div style="margin-bottom: 8px;">房间: <span id="modal-room-name"></span></div>
+                        <div style="margin-bottom: 8px;">创建者: <span id="modal-room-creator"></span></div>
+                    </div>
+                    <input type="password" id="modal-password-input" placeholder="输入密码" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-warning" onclick="closePasswordModal()">取消</button>
+                        <button class="btn" onclick="joinRoomWithPassword()">加入房间</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn" onclick="startGame()" id="start-btn">开始新游戏</button>
                 <button class="btn btn-secondary" onclick="undoMove()">悔棋</button>
             </div>
 

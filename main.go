@@ -107,9 +107,9 @@ func main() {
 		certFile = args[2]
 		keyFile = args[3]
 	}
-	http.Run(certFile, keyFile)
+	err := http.Run(certFile, keyFile)
 
-	log.Debug(log.ModuleCommon, "go_blog exit")
+	log.Debug(log.ModuleCommon, fmt.Sprintf("go_blog exit %s", err.Error()))
 	log.FlushLogs()
 	log.Cleanup()
 }

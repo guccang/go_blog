@@ -17,6 +17,7 @@
             </a>
             <a href="/link" class="management-btn" style="font-size: 20px; background: var(--accent-color); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px;">管理</a>
             <a href="/constellation" class="constellation-btn" style="font-size: 20px; background: linear-gradient(135deg, #ff6b9d, #ffb74d); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);">✨星座占卜</a>
+            <a href="/linkup" class="linkup-btn" style="font-size: 20px; background: linear-gradient(135deg, #9c27b0, #e91e63); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);">🧩连连看</a>
             <a href="/gomoku" class="gomoku-btn" style="font-size: 20px; background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);">🎮五子棋</a>
             <div class="search-container">
                 <input id="search" type="text" placeholder="搜索公开博客..." list="search_list">

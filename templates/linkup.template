@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>连连看 - Linkup</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 10px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .board-container {
+            position: relative;
+            margin: 20px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            border-radius: 8px;
+            background-color: #ffffff;
+            padding: 20px;
+            border: 2px solid #4CAF50;
+        }
+        canvas {
+            cursor: pointer;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .btn {
+            padding: 8px 16px;
+            font-size: 15px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #2196F3;
+        }
+        .btn-secondary:hover {
+            background-color: #0b7dda;
+        }
+        .btn-warning {
+            background-color: #ff9800;
+        }
+        .btn-warning:hover {
+            background-color: #e68900;
+        }
+        .status {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .mode-selector {
+            margin-bottom: 12px;
+        }
+        select, input {
+            padding: 6px;
+            font-size: 15px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .game-info {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .info-item {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            min-width: 100px;
+            text-align: center;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #666;
+            font-size: 14px;
+        }
+        .info-value {
+            font-size: 18px;
+            color: #333;
+        }
+        .pvp-info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            max-width: 600px;
+        }
+        .pvp-status {
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .icon-preview {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: inline-block;
+            margin: 2px;
+            border: 1px solid #ccc;
+        }
+        .game-config {
+            background-color: #f9f9f9;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            max-width: 550px;
+        }
+        .config-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .config-label {
+            min-width: 90px;
+        }
+        .room-list {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+            max-width: 600px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .room-item:last-child {
+            border-bottom: none;
+        }
+        .room-info {
+            flex-grow: 1;
+        }
+        .room-name {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+        .room-details {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .room-lock {
+            color: #ff9800;
+            margin-left: 5px;
+        }
+        .room-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .room-password-input {
+            margin-top: 10px;
+            display: none;
+        }
+        .password-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .password-modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <header class="page-header">
+        <div class="container">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">连连看对战</h1>
+            <a href="/main" class="header-link">返回首页</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="game-container">
+            <div class="status" id="status">请选择游戏模式并开始游戏</div>
+
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">玩家1得分</div>
+                    <div class="info-value" id="player1-score">0</div>
+                </div>
+                <div class="info-item" id="player2-score-item">
+                    <div class="info-label">玩家2得分</div>
+                    <div class="info-value" id="player2-score">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">剩余对子</div>
+                    <div class="info-value" id="remaining-pairs">0</div>
+                </div>
+                <div class="info-item" id="current-player-item">
+                    <div class="info-label">当前玩家</div>
+                    <div class="info-value" id="current-player">-</div>
+                </div>
+            </div>
+
+            <div class="pvp-info" id="pvp-info" style="display: none;">
+                <div class="pvp-status" id="pvp-status">等待玩家2加入...</div>
+                <div>游戏ID: <span id="game-id">-</span></div>
+                <div>你的玩家编号: <span id="player-number">-</span></div>
+                <div>对手得分: <span id="opponent-score">0</span></div>
+                <div>对手剩余对子: <span id="opponent-pairs">0</span></div>
+            </div>
+
+            <div class="game-config" id="game-config">
+                <div class="config-row">
+                    <div class="config-label">游戏模式:</div>
+                    <select id="game-mode">
+                        <option value="pve">人机对战</option>
+                        <option value="race">竞速对战 (双方竞速)</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <div class="config-label">棋盘大小:</div>
+                    <select id="board-size">
+                        <option value="6x8">6x8 (简单)</option>
+                        <option value="8x10" selected>8x10 (中等)</option>
+                        <option value="10x12">10x12 (困难)</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="config-row" id="custom-size" style="display: none;">
+                    <div class="config-label">自定义:</div>
+                    <input type="number" id="rows" min="4" max="20" value="8" style="width: 60px;" placeholder="行">
+                    <span>x</span>
+                    <input type="number" id="cols" min="4" max="20" value="10" style="width: 60px;" placeholder="列">
+                </div>
+                <div class="config-row">
+                    <div class="config-label">图标种类:</div>
+                    <select id="icon-types">
+                        <option value="6">6种</option>
+                        <option value="8" selected>8种</option>
+                        <option value="10">10种</option>
+                        <option value="12">12种</option>
+                    </select>
+                </div>
+                <div class="config-row" id="ai-difficulty-row">
+                    <div class="config-label">AI难度:</div>
+                    <select id="ai-difficulty">
+                        <option value="1">简单</option>
+                        <option value="2" selected>中等</option>
+                        <option value="3">困难</option>
+                    </select>
+                </div>
+                <div class="config-row" id="race-config" style="display: none;">
+                    <div class="config-label">竞速操作:</div>
+                    <button class="btn" onclick="createRaceGame()">创建竞速房间</button>
+                    <input type="text" id="join-race-id" placeholder="输入游戏ID" style="width: 150px;">
+                    <button class="btn btn-secondary" onclick="joinRaceGame()">加入竞速</button>
+                    <button class="btn btn-secondary" onclick="refreshRoomList()" style="background-color: #4CAF50;">刷新房间列表</button>
+                </div>
+                <div class="config-row" id="race-room-creation" style="display: none;">
+                    <div class="config-label">房间设置:</div>
+                    <input type="text" id="room-name" placeholder="房间名称 (可选)" style="width: 150px;">
+                    <input type="password" id="room-password" placeholder="房间密码 (可选)" style="width: 150px;">
+                </div>
+            </div>
+
+            <div id="race-room-list-container" style="display: none; max-width: 600px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">竞速房间列表</h3>
+                    <button class="refresh-btn" onclick="refreshRoomList()">刷新</button>
+                </div>
+                <div class="room-list" id="race-room-list">
+                    <div style="text-align: center; color: #999; padding: 20px;">
+                        暂无可用房间，点击"刷新"按钮获取房间列表
+                    </div>
+                </div>
+            </div>
+
+            <div class="password-modal" id="password-modal">
+                <div class="password-modal-content">
+                    <h3 style="margin-top: 0;">请输入房间密码</h3>
+                    <div style="margin-bottom: 15px;">
+                        <div style="margin-bottom: 8px;">房间: <span id="modal-room-name"></span></div>
+                        <div style="margin-bottom: 8px;">创建者: <span id="modal-room-creator"></span></div>
+                    </div>
+                    <input type="password" id="modal-password-input" placeholder="输入密码" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-warning" onclick="closePasswordModal()">取消</button>
+                        <button class="btn" onclick="joinRoomWithPassword()">加入房间</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn" onclick="startGame()" id="start-btn">开始新游戏</button>
+                <button class="btn btn-secondary" onclick="getHint()" id="hint-btn">提示</button>
+                <button class="btn btn-warning" onclick="resetGame()" id="reset-btn">重新开始</button>
+            </div>
+
+            <div class="board-container">
+                <canvas id="board" width="900" height="650"></canvas>
+            </div>
+
+            <div style="margin-top: 20px; color: #666; font-size: 14px;">
+                <p>游戏规则：选择两个相同的图标，如果它们可以用不超过两个拐角的直线连接，则消除它们。</p>
+                <p>提示：点击提示按钮可以查看一个可消除的对子。</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/linkup.js"></script>
+</body>
+</html>

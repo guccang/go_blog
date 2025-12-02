@@ -63,6 +63,8 @@ replace skill => ./pkgs/skill
 replace account => ./pkgs/account
 
 replace gomoku => ./pkgs/gomoku
+replace linkup => ./pkgs/linkup
+replace finance => ./pkgs/finance
 
 require (
 	auth v0.0.0
@@ -72,6 +74,8 @@ require (
 	control v0.0.0
 	exercise v0.0.0
 	gomoku v0.0.0
+	linkup v0.0.0
+	finance v0.0.0
 	http v0.0.0
 	ioutils v0.0.0
 	llm v0.0.0
