@@ -188,8 +188,14 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 			}
 		}
 
+		// Include account parameter in URL for public blogs to ensure correct blog retrieval
+		url := fmt.Sprintf("/get?blogname=%s", b.Title)
+		if (flag&module.EAuthType_public) != 0 && account != "" {
+			url = fmt.Sprintf("/get?blogname=%s&account=%s", b.Title, account)
+		}
+
 		ld := LinkData{
-			URL:          fmt.Sprintf("/get?blogname=%s", b.Title),
+			URL:          url,
 			DESC:         b.Title,
 			ACCESS_TIME:  b.AccessTime,
 			TAGS:         blogTags,

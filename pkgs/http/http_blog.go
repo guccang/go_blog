@@ -208,6 +208,17 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 
 	account := getAccountFromRequest(r)
 
+	// Check if account is specified in URL (for public blog access)
+	urlAccount := r.URL.Query().Get("account")
+	if urlAccount != "" {
+		account = urlAccount
+	}
+
+	// If still no account, use admin account as fallback for public blogs
+	if account == "" {
+		account = config.GetAdminAccount()
+	}
+
 	// 首先获取博客信息以检查权限
 	blog := control.GetBlog(account, blogname)
 	if blog == nil {

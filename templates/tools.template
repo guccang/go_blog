@@ -75,6 +75,13 @@
                     <p>天气查询、颜色工具</p>
                 </div>
             </div>
+            <div class="tool-nav-card" data-tool="games">
+                <div class="nav-card-icon">🎮</div>
+                <div class="nav-card-content">
+                    <h3>休闲游戏</h3>
+                    <p>五子棋、休闲娱乐</p>
+                </div>
+            </div>
         </div>
 
         <!-- 工具内容区域 -->
@@ -426,6 +433,30 @@
                                 生成密码
                             </button>
                             <div id="password-result" class="result-box password-result"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 游戏工具 -->
+            <div class="tool-section" id="games-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-gamepad"></i> 休闲游戏</h2>
+                    <p>放松心情的小游戏</p>
+                </div>
+                
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">⚫</div>
+                            <h3>五子棋</h3>
+                        </div>
+                        <div class="card-body">
+                            <p>经典五子棋游戏，支持人机对战和人人对战。</p>
+                            <a href="/gomoku" class="btn btn-primary" style="display: block; text-align: center; margin-top: 15px; text-decoration: none;">
+                                <i class="fas fa-play"></i>
+                                开始游戏
+                            </a>
                         </div>
                     </div>
                 </div>

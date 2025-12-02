@@ -6,6 +6,7 @@ import (
 	"constellation"
 	"exercise"
 	"fmt"
+	"gomoku"
 	"mcp"
 	"module"
 	log "mylog"
@@ -327,6 +328,10 @@ func Init() int {
 	h.HandleFunc("/api/tools/text", tools.TextToolHandler)
 	h.HandleFunc("/api/tools/weather", tools.WeatherHandler)
 	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
+
+	// Gomoku routes
+	h.HandleFunc("/gomoku", gomoku.HandleGomoku)
+	h.HandleFunc("/api/gomoku/ai-move", gomoku.HandleAIMove)
 
 	// Skill routes
 	h.HandleFunc("/skill", HandleSkill)

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋 - Gomoku</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <style>
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .board-container {
+            position: relative;
+            margin: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            border-radius: 4px;
+        }
+        canvas {
+            background-color: #DEB887; /* Burlywood color for board */
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #2196F3;
+        }
+        .btn-secondary:hover {
+            background-color: #0b7dda;
+        }
+        .status {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .mode-selector {
+            margin-bottom: 15px;
+        }
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header class="page-header">
+        <div class="container">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">五子棋对战</h1>
+            <a href="/main" class="header-link">返回首页</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="game-container">
+            <div class="status" id="status">请开始游戏</div>
+            
+            <div class="controls">
+                <div class="mode-selector">
+                    <select id="game-mode">
+                        <option value="pve">人机对战 (玩家先手)</option>
+                        <option value="evp">人机对战 (电脑先手)</option>
+                        <option value="pvp">人人对战</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="startGame()">开始新游戏</button>
+                <button class="btn btn-secondary" onclick="undoMove()">悔棋</button>
+            </div>
+
+            <div class="board-container">
+                <canvas id="board" width="600" height="600"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/gomoku.js"></script>
+</body>
+</html>
