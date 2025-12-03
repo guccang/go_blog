@@ -37,25 +37,41 @@ func Search(account, match string) []*module.Blog {
 
 	begin_token := tokens[0]
 
-	if strings.HasPrefix(begin_token, "$") {
-		// begin  with $
-		tag := begin_token[1:]
-		return matchTags(account, tag, tokens[1:])
-	} else if strings.HasPrefix(begin_token, "@") {
+	if strings.HasPrefix(begin_token, "@") {
 		// begin with @
-		tag := begin_token[1:]
-		log.DebugF(log.ModuleSearch, "tag=%s token=%s", tag, begin_token)
-		if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
-			auth_type := module.EAuthType_private
-			if tag == "public" {
-				auth_type = module.EAuthType_public
+		opt := begin_token[1:]
+		log.DebugF(log.ModuleSearch, "opt=%s token=%s", opt, begin_token)
+		if len(tokens) < 2 {
+			return nil
+		}
+
+		tag := tokens[1]
+		if strings.ToLower(opt) == "matchtag" {
+			// account tag matchess
+			return matchTags(account, tag, tokens[2:])
+		}
+		if strings.ToLower(opt) == "matchauth" {
+			if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
+				auth_type := module.EAuthType_private
+				if tag == "public" {
+					auth_type = module.EAuthType_public
+				}
+				return matchBlogsWithAuthType(account, auth_type, tokens[2:])
 			}
-			return matchBlogsWithAuthType(account, auth_type, tokens[1:])
+			if strings.ToLower(tag) == strings.ToLower("encrypt") {
+				return matchEncrypt(account)
+			}
 		}
-		if strings.ToLower(tag) == strings.ToLower("encrypt") {
-			return matchEncrypt(account)
+		if strings.ToLower(opt) == "optauth" {
+			if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
+				auth_type := module.EAuthType_private
+				if tag == "public" {
+					auth_type = module.EAuthType_public
+				}
+				return changeBlogsWithAuthType(account, auth_type, tokens[2:])
+			}
 		}
-		if strings.ToLower(tag) == strings.ToLower("reload") {
+		if strings.ToLower(opt) == strings.ToLower("reload") {
 			if len(tokens) != 2 {
 				return nil
 			}
@@ -70,13 +86,18 @@ func Search(account, match string) []*module.Blog {
 			}
 			return []*module.Blog{reloadBlog}
 		}
-		if strings.ToLower(tag) == strings.ToLower("tag") {
+		if strings.ToLower(opt) == strings.ToLower("opttag") {
 			if len(tokens) < 2 {
 				return nil
 			}
-			tagChange(account, tokens)
+			subopt := tokens[1]
+			if subopt == "add" {
+				tagAdd(account, tokens)
+			} else if subopt == "replace" {
+				tagChange(account, tokens)
+			}
 		}
-		if strings.ToLower(tag) == strings.ToLower("timed") {
+		if strings.ToLower(opt) == strings.ToLower("timed") {
 			return tagTimed(account, tokens)
 		}
 	} else {
@@ -144,6 +165,29 @@ func matchHelp(account string) []*module.Blog {
 	return s
 }
 
+func isMatchTitle(b *module.Blog, matches []string) int {
+	log.DebugF(log.ModuleSearch, "isMatchTitle len(matches)=%d matches=%v", len(matches), matches)
+
+	// 加密不显示
+	if b.Encrypt == 1 {
+		return 0
+	}
+
+	// 没有matches
+	if len(matches) == 0 {
+		return 0
+	}
+
+	// 匹配title
+	for _, match := range matches {
+		// title match
+		if strings.Contains(strings.ToLower(b.Title), strings.ToLower(match)) {
+			return 1
+		}
+	}
+	return 0
+}
+
 func ismatch(b *module.Blog, matches []string) int {
 	log.DebugF(log.ModuleSearch, "ismatch len(matches)=%d matches=%v", len(matches), matches)
 
@@ -188,6 +232,27 @@ func ismatch(b *module.Blog, matches []string) int {
 	return 0
 }
 
+func changeBlogsWithAuthType(account string, auth_type int, matches []string) []*module.Blog {
+	s := make([]*module.Blog, 0)
+	for _, b := range blog.GetBlogsWithAccount(account) {
+
+		if isMatchTitle(b, matches) == 0 {
+			continue
+		}
+
+		b.AuthType = auth_type
+
+		s = append(s, b)
+
+		blog.AddAuthTypeWithAccount(account, b.Title, auth_type)
+	}
+
+	sortblogs(s)
+
+	return s
+
+}
+
 func matchBlogsWithAuthType(account string, auth_type int, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
 	for _, b := range blog.GetBlogsWithAccount(account) {
@@ -224,6 +289,16 @@ func matchEncrypt(account string) []*module.Blog {
 	sortblogs(s)
 
 	return s
+}
+
+func tagAdd(account string, tokens []string) {
+	if len(tokens) != 4 {
+		return
+	}
+	title := tokens[2]
+	tag := tokens[3]
+
+	blog.TagAddWithAccount(account, title, tag)
 }
 
 func tagChange(account string, tokens []string) {

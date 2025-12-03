@@ -136,6 +136,18 @@ func (cmd *tagReplaceCmd) Do(actor core.ActorInterface) {
 	cmd.Response() <- 0
 }
 
+type tagAddCmd struct {
+	core.ActorCommand
+	Title string
+	Tag   string
+}
+
+func (cmd *tagAddCmd) Do(actor core.ActorInterface) {
+	blogActor := actor.(*BlogActor)
+	blogActor.tagAdd(cmd.Title, cmd.Tag)
+	cmd.Response() <- 0
+}
+
 // set same auth
 type setSameAuthCmd struct {
 	core.ActorCommand

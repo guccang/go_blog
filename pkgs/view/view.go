@@ -58,10 +58,10 @@ type LinkData struct {
 }
 
 type GameData struct {
-    Name        string
-    Path        string
-    Icon        string
-    Description string
+	Name        string
+	Path        string
+	Icon        string
+	Description string
 }
 
 type LinkDatas struct {
@@ -334,7 +334,7 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 func PageTags(w h.ResponseWriter, tag, session string) {
 
 	account := blog.GetAccountFromSession(session)
-	blogs := control.GetMatch(account, "$"+tag)
+	blogs := control.GetMatch(account, "@matchtag "+tag)
 
 	flag := module.EAuthType_public
 	// 只展示public
@@ -866,7 +866,7 @@ func getGamesList() []GameData {
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter, account string) {
 	// 获取所有public标签的博客
-	blogs := control.GetMatch(account, "@public")
+	blogs := control.GetMatch(account, "@matchauth public")
 
 	// 只展示public权限的博客
 	flag := module.EAuthType_public

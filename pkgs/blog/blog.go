@@ -181,6 +181,17 @@ func TagReplaceWithAccount(account, from, to string) {
 	<-cmd.Response()
 }
 
+func TagAddWithAccount(account, title, tag string) {
+	actor := getBlogActor(account)
+	cmd := &tagAddCmd{
+		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
+		Title:        title,
+		Tag:          tag,
+	}
+	actor.Send(cmd)
+	<-cmd.Response()
+}
+
 func SetSameAuthWithAccount(account, blogname string) {
 	actor := getBlogActor(account)
 	cmd := &setSameAuthCmd{
