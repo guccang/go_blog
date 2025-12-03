@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水果消消乐 - Fruit Crush</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        
+        h1 {
+            margin-top: 2rem;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .container {
+            display: flex;
+            gap: 2rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .game-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            gap: 4px;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 1rem auto;
+        }
+
+        .cell {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            filter: saturate(0.5) brightness(1.2);
+        }
+
+        .cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .cell.selected {
+            background: rgba(255, 255, 100, 0.9);
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+        }
+
+        .cell.matched {
+            animation: pop 0.3s ease-out;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); opacity: 0.5; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        .menu {
+            margin-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .room-list {
+            margin-top: 1rem;
+            text-align: left;
+            max-height: 300px;
+            overflow-y: auto;
+            min-width: 400px;
+        }
+
+        .room-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 0.8rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-message {
+            height: 30px;
+            color: #ffeb3b;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .info-panel {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .info-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-top: 0.2rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🟥 水果消消乐</h1>
+
+    <div id="menu" class="menu">
+        <button onclick="startSinglePlayer()">单人游戏</button>
+        <button onclick="startPvE()">人机对战</button>
+        <button onclick="showPvPMenu()">在线对战</button>
+        <button onclick="backToMain()">返回首页</button>
+    </div>
+
+    <div id="pvp-menu" class="game-section hidden">
+        <h3>在线对战大厅</h3>
+        <div style="margin-bottom: 1rem;">
+            <input type="text" id="room-name" placeholder="房间名称" style="padding: 0.5rem; border-radius: 5px; border: none;">
+            <button onclick="createRoom()">创建房间</button>
+        </div>
+        <div class="room-list" id="room-list">
+            <!-- Rooms will be listed here -->
+        </div>
+        <button onclick="backToMenu()" style="margin-top: 1rem;">返回</button>
+    </div>
+
+    <div id="game-container" class="container hidden">
+        <div class="game-section">
+            <h3>你</h3>
+            <div id="local-status" class="status-message"></div>
+            <div class="info-panel">
+                <div class="info-item">
+                    <div class="info-label">得分</div>
+                    <div class="info-value" id="local-score">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">步数</div>
+                    <div class="info-value" id="local-moves">0</div>
+                </div>
+            </div>
+            <div id="local-grid" class="grid"></div>
+        </div>
+
+        <div class="game-section" id="remote-section">
+            <h3 id="opponent-name">对手</h3>
+            <div id="remote-status" class="status-message"></div>
+            <div class="info-panel">
+                <div class="info-item">
+                    <div class="info-label">得分</div>
+                    <div class="info-value" id="remote-score">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">步数</div>
+                    <div class="info-value" id="remote-moves">0</div>
+                </div>
+            </div>
+            <div id="remote-grid" class="grid"></div>
+        </div>
+    </div>
+    
+    <div id="game-controls" class="hidden menu">
+        <button onclick="quitGame()">退出游戏</button>
+    </div>
+
+    <script>
+        const ROWS = 8;
+        const COLS = 8;
+        const FRUITS = ['🟥', '🟧', '🟨', '🟩', '🟦', '🟪'];
+
+        let gameMode = 'single'; // single, pve, pvp
+        let gameActive = false;
+        let localBoard = [];
+        let remoteBoard = [];
+        let gameId = null;
+        let playerRole = 0;
+        let pollInterval = null;
+        let aiInterval = null;
+        
+        let localScore = 0;
+        let localMoves = 0;
+        let remoteScore = 0;
+        let remoteMoves = 0;
+        
+        let selectedCell = null;
+
+        // Initialize empty board
+        function initBoard() {
+            let board = [];
+            for (let r = 0; r < ROWS; r++) {
+                let row = [];
+                for (let c = 0; c < COLS; c++) {
+                    row.push(Math.floor(Math.random() * 6) + 1);
+                }
+                board.push(row);
+            }
+            // Ensure no initial matches
+            removeInitialMatches(board);
+            return board;
+        }
+
+        function removeInitialMatches(board) {
+            let hasMatch = true;
+            while (hasMatch) {
+                hasMatch = false;
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (checkMatch(board, r, c).length > 0) {
+                            board[r][c] = (board[r][c] % 6) + 1;
+                            hasMatch = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        function renderGrid(board, elementId, isLocal) {
+            const grid = document.getElementById(elementId);
+            grid.innerHTML = '';
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.textContent = FRUITS[board[r][c] - 1];
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    if (isLocal) {
+                        cell.onclick = () => handleCellClick(r, c);
+                    }
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(r, c) {
+            if (!gameActive) return;
+
+            const cells = document.querySelectorAll('#local-grid .cell');
+            const clickedCell = cells[r * COLS + c];
+
+            if (!selectedCell) {
+                selectedCell = {r, c};
+                clickedCell.classList.add('selected');
+            } else {
+                // Check if adjacent
+                const dr = Math.abs(selectedCell.r - r);
+                const dc = Math.abs(selectedCell.c - c);
+                
+                if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+                    // Swap
+                    swap(localBoard, selectedCell.r, selectedCell.c, r, c);
+                    renderGrid(localBoard, 'local-grid', true);
+                    
+                    // Check for matches
+                    setTimeout(() => {
+                        if (processMatches(localBoard, true)) {
+                            localMoves++;
+                            updateScore();
+                            if (gameMode === 'pvp') {
+                                sendUpdate();
+                            }
+                        } else {
+                            // Swap back if no match
+                            swap(localBoard, selectedCell.r, selectedCell.c, r, c);
+                            renderGrid(localBoard, 'local-grid', true);
+                        }
+                        selectedCell = null;
+                    }, 200);
+                } else {
+                    // Deselect previous, select new
+                    cells.forEach(c => c.classList.remove('selected'));
+                    selectedCell = {r, c};
+                    clickedCell.classList.add('selected');
+                }
+            }
+        }
+
+        function swap(board, r1, c1, r2, c2) {
+            [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
+        }
+
+        function checkMatch(board, r, c) {
+            const fruit = board[r][c];
+            const matches = [{r, c}];
+            
+            // Check horizontal
+            let left = c - 1;
+            while (left >= 0 && board[r][left] === fruit) {
+                matches.push({r, c: left});
+                left--;
+            }
+            let right = c + 1;
+            while (right < COLS && board[r][right] === fruit) {
+                matches.push({r, c: right});
+                right++;
+            }
+            
+            if (matches.length >= 3) return matches;
+            
+            // Check vertical
+            matches.length = 1;
+            let up = r - 1;
+            while (up >= 0 && board[up][c] === fruit) {
+                matches.push({r: up, c});
+                up--;
+            }
+            let down = r + 1;
+            while (down < ROWS && board[down][c] === fruit) {
+                matches.push({r: down, c});
+                down++;
+            }
+            
+            if (matches.length >= 3) return matches;
+            
+            return [];
+        }
+
+        function processMatches(board, isLocal) {
+            let allMatches = [];
+            let matchFound = false;
+            
+            do {
+                matchFound = false;
+                let matches = [];
+                
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const cellMatches = checkMatch(board, r, c);
+                        if (cellMatches.length > 0) {
+                            matches.push(...cellMatches);
+                            matchFound = true;
+                        }
+                    }
+                }
+                
+                if (matchFound) {
+                    // Remove duplicates
+                    const uniqueMatches = [];
+                    matches.forEach(m => {
+                        if (!uniqueMatches.find(um => um.r === m.r && um.c === m.c)) {
+                            uniqueMatches.push(m);
+                        }
+                    });
+                    
+                    allMatches.push(...uniqueMatches);
+                    
+                    // Remove matched fruits
+                    uniqueMatches.forEach(m => {
+                        board[m.r][m.c] = 0;
+                    });
+                    
+                    // Drop fruits
+                    dropFruits(board);
+                    
+                    // Fill empty spaces
+                    fillBoard(board);
+                    
+                    renderGrid(board, isLocal ? 'local-grid' : 'remote-grid', isLocal);
+                }
+            } while (matchFound);
+            
+            if (allMatches.length > 0) {
+                if (isLocal) {
+                    localScore += allMatches.length * 10;
+                } else {
+                    remoteScore += allMatches.length * 10;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        function dropFruits(board) {
+            for (let c = 0; c < COLS; c++) {
+                let emptyRow = ROWS - 1;
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (board[r][c] !== 0) {
+                        if (r !== emptyRow) {
+                            board[emptyRow][c] = board[r][c];
+                            board[r][c] = 0;
+                        }
+                        emptyRow--;
+                    }
+                }
+            }
+        }
+
+        function fillBoard(board) {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] === 0) {
+                        board[r][c] = Math.floor(Math.random() * 6) + 1;
+                    }
+                }
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('local-score').textContent = localScore;
+            document.getElementById('local-moves').textContent = localMoves;
+            
+            if (gameMode !== 'single') {
+                document.getElementById('remote-score').textContent = remoteScore;
+                document.getElementById('remote-moves').textContent = remoteMoves;
+            }
+        }
+
+        // --- Game Modes ---
+
+        function startSinglePlayer() {
+            gameMode = 'single';
+            setupGameUI();
+            localBoard = initBoard();
+            renderGrid(localBoard, 'local-grid', true);
+            gameActive = true;
+            document.getElementById('remote-section').classList.add('hidden');
+            localScore = 0;
+            localMoves = 0;
+            updateScore();
+        }
+
+        function startPvE() {
+            gameMode = 'pve';
+            setupGameUI();
+            localBoard = initBoard();
+            remoteBoard = initBoard();
+            
+            renderGrid(localBoard, 'local-grid', true);
+            renderGrid(remoteBoard, 'remote-grid', false);
+            
+            gameActive = true;
+            document.getElementById('remote-section').classList.remove('hidden');
+            document.getElementById('opponent-name').textContent = '电脑';
+            
+            localScore = 0;
+            localMoves = 0;
+            remoteScore = 0;
+            remoteMoves = 0;
+            updateScore();
+            
+            // Start AI
+            if (aiInterval) clearInterval(aiInterval);
+            aiInterval = setInterval(aiMove, 2000);
+        }
+
+        function aiMove() {
+            if (!gameActive) return;
+            
+            // Simple AI: random valid move
+            for (let attempts = 0; attempts < 50; attempts++) {
+                const r1 = Math.floor(Math.random() * ROWS);
+                const c1 = Math.floor(Math.random() * COLS);
+                
+                // Try swapping with adjacent cells
+                const directions = [[0,1], [1,0], [0,-1], [-1,0]];
+                for (const [dr, dc] of directions) {
+                    const r2 = r1 + dr;
+                    const c2 = c1 + dc;
+                    
+                    if (r2 >= 0 && r2 < ROWS && c2 >= 0 && c2 < COLS) {
+                        swap(remoteBoard, r1, c1, r2, c2);
+                        if (processMatches(remoteBoard, false)) {
+                            remoteMoves++;
+                            updateScore();
+                            return;
+                        }
+                        swap(remoteBoard, r1, c1, r2, c2); // Swap back
+                    }
+                }
+            }
+        }
+
+        function showPvPMenu() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.remove('hidden');
+            refreshRoomList();
+        }
+
+        function backToMenu() {
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        function setupGameUI() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('game-container').classList.remove('hidden');
+            document.getElementById('game-controls').classList.remove('hidden');
+            document.getElementById('local-status').textContent = '';
+            document.getElementById('remote-status').textContent = '';
+        }
+
+        function quitGame() {
+            gameActive = false;
+            if (pollInterval) clearInterval(pollInterval);
+            if (aiInterval) clearInterval(aiInterval);
+            document.getElementById('game-container').classList.add('hidden');
+            document.getElementById('game-controls').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        function backToMain() {
+            window.location.href = '/public';
+        }
+
+        // --- PvP Network ---
+
+        function refreshRoomList() {
+            fetch('/api/fruitcrush/room/list')
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById('room-list');
+                    list.innerHTML = '';
+                    data.rooms.forEach(room => {
+                        const div = document.createElement('div');
+                        div.className = 'room-item';
+                        div.innerHTML = `
+                            <span>${room.roomName} (${room.creator})</span>
+                            <button onclick="joinRoom('${room.gameId}')">加入</button>
+                        `;
+                        list.appendChild(div);
+                    });
+                });
+        }
+
+        function createRoom() {
+            const name = document.getElementById('room-name').value || '水果房间';
+            fetch('/api/fruitcrush/room/create', {
+                method: 'POST',
+                body: JSON.stringify({ roomName: name, creator: 'Player' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                gameId = data.gameId;
+                playerRole = data.player;
+                startGamePvP();
+            });
+        }
+
+        function joinRoom(id) {
+            fetch('/api/fruitcrush/room/join', {
+                method: 'POST',
+                body: JSON.stringify({ gameId: id, player: 2, playerName: 'Player 2' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    gameId = id;
+                    playerRole = 2;
+                    startGamePvP();
+                } else {
+                    alert(data.message);
+                }
+            });
+        }
+
+        function startGamePvP() {
+            gameMode = 'pvp';
+            setupGameUI();
+            document.getElementById('remote-section').classList.remove('hidden');
+            
+            localBoard = initBoard();
+            remoteBoard = initBoard();
+            renderGrid(localBoard, 'local-grid', true);
+            renderGrid(remoteBoard, 'remote-grid', false);
+            
+            gameActive = true;
+            localScore = 0;
+            localMoves = 0;
+            remoteScore = 0;
+            remoteMoves = 0;
+            updateScore();
+            
+            pollInterval = setInterval(pollGameState, 1000);
+        }
+
+        function sendUpdate() {
+            if (!gameId) return;
+            
+            fetch('/api/fruitcrush/room/update', {
+                method: 'POST',
+                body: JSON.stringify({
+                    gameId: gameId,
+                    player: playerRole,
+                    state: {
+                        board: localBoard,
+                        score: localScore,
+                        moves: localMoves,
+                        gameOver: !gameActive,
+                        won: false
+                    }
+                })
+            });
+        }
+
+        function pollGameState() {
+            if (!gameId) return;
+            fetch(`/api/fruitcrush/room/state?gameId=${gameId}`)
+                .then(res => res.json())
+                .then(data => {
+                    const opponentRole = playerRole === 1 ? 2 : 1;
+                    const opponentState = data.players[opponentRole];
+                    
+                    if (opponentState && opponentState.board) {
+                        remoteBoard = opponentState.board;
+                        remoteScore = opponentState.score;
+                        remoteMoves = opponentState.moves;
+                        renderGrid(remoteBoard, 'remote-grid', false);
+                        updateScore();
+                    }
+                    
+                    if (data.winner > 0) {
+                        gameActive = false;
+                        if (data.winner === playerRole) {
+                            document.getElementById('local-status').textContent = "你赢了!";
+                        } else {
+                            document.getElementById('local-status').textContent = "对手赢了!";
+                        }
+                    }
+                });
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #202028;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .game-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #333;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            border: 2px solid #555;
+            background-color: #000;
+        }
+
+        .info-panel {
+            margin-top: 10px;
+            text-align: center;
+            width: 100%;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .mode-select {
+            margin-bottom: 20px;
+        }
+
+        .room-list {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .room-item {
+            background: #444;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+        
+        .status-message {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #ffd700;
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tetris</h1>
+    
+    <div id="menu" class="game-section">
+        <h2>Select Mode</h2>
+        <div class="controls">
+            <button onclick="startSinglePlayer()">Single Player</button>
+            <button onclick="startPvE()">Player vs Computer</button>
+            <button onclick="showPvPMenu()">Player vs Player</button>
+        </div>
+    </div>
+
+    <div id="pvp-menu" class="game-section hidden">
+        <h2>PvP Lobby</h2>
+        <div class="controls">
+            <input type="text" id="roomName" placeholder="Room Name">
+            <button onclick="createRoom()">Create Room</button>
+            <button onclick="refreshRooms()">Refresh List</button>
+            <button onclick="backToMenu()">Back</button>
+        </div>
+        <div id="roomList" class="room-list"></div>
+    </div>
+
+    <div id="game-container" class="container hidden">
+        <div class="game-section">
+            <h3>You</h3>
+            <div id="local-status" class="status-message"></div>
+            <canvas id="local-board" width="240" height="480"></canvas>
+            <div class="info-panel">
+                <p>Score: <span id="local-score">0</span></p>
+                <p>Lines: <span id="local-lines">0</span></p>
+                <p>Level: <span id="local-level">1</span></p>
+            </div>
+        </div>
+
+        <div class="game-section" id="remote-section">
+            <h3 id="opponent-name">Opponent</h3>
+            <div id="remote-status" class="status-message"></div>
+            <canvas id="remote-board" width="240" height="480"></canvas>
+            <div class="info-panel">
+                <p>Score: <span id="remote-score">0</span></p>
+                <p>Lines: <span id="remote-lines">0</span></p>
+                <p>Level: <span id="remote-level">1</span></p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-controls" class="controls hidden">
+        <button onclick="quitGame()">Quit Game</button>
+    </div>
+
+    <script>
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 24;
+        const COLORS = [
+            null,
+            '#FF0D72', // T
+            '#0DC2FF', // I
+            '#0DFF72', // S
+            '#F538FF', // Z
+            '#FF8E0D', // L
+            '#FFE138', // J
+            '#3877FF', // O
+        ];
+
+        const SHAPES = [
+            [],
+            [[0, 1, 0], [1, 1, 1], [0, 0, 0]], // T
+            [[0, 2, 0, 0], [0, 2, 0, 0], [0, 2, 0, 0], [0, 2, 0, 0]], // I
+            [[0, 3, 3], [3, 3, 0], [0, 0, 0]], // S
+            [[4, 4, 0], [0, 4, 4], [0, 0, 0]], // Z
+            [[0, 0, 5], [5, 5, 5], [0, 0, 0]], // L
+            [[6, 0, 0], [6, 6, 6], [0, 0, 0]], // J
+            [[7, 7], [7, 7]], // O
+        ];
+
+        let localCanvas = document.getElementById('local-board');
+        let localCtx = localCanvas.getContext('2d');
+        let remoteCanvas = document.getElementById('remote-board');
+        let remoteCtx = remoteCanvas.getContext('2d');
+
+        let gameMode = 'single'; // single, pve, pvp
+        let gameId = null;
+        let playerRole = 1;
+        let gameActive = false;
+        let lastTime = 0;
+        let dropCounter = 0;
+        let dropInterval = 1000;
+
+        let localBoard = createBoard();
+        let remoteBoard = createBoard();
+        
+        let player = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+            lines: 0,
+            level: 1,
+        };
+        
+        let aiPlayer = {
+            pos: {x: 0, y: 0},
+            matrix: null,
+            score: 0,
+            lines: 0,
+            level: 1,
+            dropCounter: 0,
+            dropInterval: 800, // AI slightly faster
+        };
+
+        function createBoard() {
+            return Array.from({length: ROWS}, () => Array(COLS).fill(0));
+        }
+
+        function drawMatrix(matrix, offset, ctx) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        ctx.fillStyle = COLORS[value];
+                        ctx.fillRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        ctx.strokeStyle = '#000';
+                        ctx.strokeRect((x + offset.x) * BLOCK_SIZE, (y + offset.y) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                });
+            });
+        }
+
+        function draw() {
+            // Local
+            localCtx.fillStyle = '#000';
+            localCtx.fillRect(0, 0, localCanvas.width, localCanvas.height);
+            drawMatrix(localBoard, {x: 0, y: 0}, localCtx);
+            drawMatrix(player.matrix, player.pos, localCtx);
+
+            // Remote
+            remoteCtx.fillStyle = '#000';
+            remoteCtx.fillRect(0, 0, remoteCanvas.width, remoteCanvas.height);
+            drawMatrix(remoteBoard, {x: 0, y: 0}, remoteCtx);
+            if ((gameMode === 'pve' || gameMode === 'pvp') && aiPlayer.matrix) {
+                drawMatrix(aiPlayer.matrix, aiPlayer.pos, remoteCtx);
+            }
+        }
+
+        function merge(board, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        board[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) {
+                matrix.forEach(row => row.reverse());
+            } else {
+                matrix.reverse();
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(localBoard, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function collide(board, player) {
+            const m = player.matrix;
+            const o = player.pos;
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                        (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function playerReset() {
+            const pieces = 'ILJOTSZ';
+            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            player.pos.y = 0;
+            player.pos.x = (localBoard[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+            
+            if (collide(localBoard, player)) {
+                gameOver();
+            }
+        }
+        
+        function aiReset() {
+            const pieces = 'ILJOTSZ';
+            aiPlayer.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+            aiPlayer.pos.y = 0;
+            aiPlayer.pos.x = (remoteBoard[0].length / 2 | 0) - (aiPlayer.matrix[0].length / 2 | 0);
+            
+            if (collide(remoteBoard, aiPlayer)) {
+                // AI Lost
+                document.getElementById('remote-status').innerText = "GAME OVER";
+                gameActive = false;
+                document.getElementById('local-status').innerText = "YOU WIN!";
+            }
+        }
+
+        function createPiece(type) {
+            if (type === 'I') return SHAPES[2];
+            if (type === 'L') return SHAPES[5];
+            if (type === 'J') return SHAPES[6];
+            if (type === 'O') return SHAPES[7];
+            if (type === 'Z') return SHAPES[4];
+            if (type === 'S') return SHAPES[3];
+            if (type === 'T') return SHAPES[1];
+        }
+
+        function arenaSweep(board, playerState) {
+            let rowCount = 0;
+            outer: for (let y = board.length - 1; y > 0; --y) {
+                for (let x = 0; x < board[y].length; ++x) {
+                    if (board[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = board.splice(y, 1)[0].fill(0);
+                board.unshift(row);
+                ++y;
+                rowCount++;
+            }
+            
+            if (rowCount > 0) {
+                playerState.score += rowCount * 100 * rowCount;
+                playerState.lines += rowCount;
+                playerState.level = Math.floor(playerState.lines / 10) + 1;
+                updateScore();
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('local-score').innerText = player.score;
+            document.getElementById('local-lines').innerText = player.lines;
+            document.getElementById('local-level').innerText = player.level;
+            
+            if (gameMode === 'pve') {
+                document.getElementById('remote-score').innerText = aiPlayer.score;
+                document.getElementById('remote-lines').innerText = aiPlayer.lines;
+                document.getElementById('remote-level').innerText = aiPlayer.level;
+            }
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(localBoard, player)) {
+                player.pos.y--;
+                merge(localBoard, player);
+                playerReset();
+                arenaSweep(localBoard, player);
+                if (gameMode === 'pvp') {
+                    sendUpdate();
+                }
+            }
+            dropCounter = 0;
+        }
+        
+        function aiMove() {
+            // Very simple AI: random moves
+            if (Math.random() > 0.9) {
+                aiPlayer.pos.x--;
+                if (collide(remoteBoard, aiPlayer)) {
+                    aiPlayer.pos.x++;
+                }
+            } else if (Math.random() > 0.9) {
+                aiPlayer.pos.x++;
+                if (collide(remoteBoard, aiPlayer)) {
+                    aiPlayer.pos.x--;
+                }
+            }
+            
+             aiPlayer.pos.y++;
+            if (collide(remoteBoard, aiPlayer)) {
+                aiPlayer.pos.y--;
+                merge(remoteBoard, aiPlayer);
+                aiReset();
+                arenaSweep(remoteBoard, aiPlayer);
+            }
+        }
+
+        function update(time = 0) {
+            if (!gameActive) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+            
+            if (gameMode === 'pve') {
+                aiPlayer.dropCounter += deltaTime;
+                if (aiPlayer.dropCounter > aiPlayer.dropInterval) {
+                    aiMove();
+                    aiPlayer.dropCounter = 0;
+                }
+            } else if (gameMode === 'pvp') {
+                // Poll for opponent updates
+                // In a real app, use WebSocket. Here we poll.
+                if (Math.random() > 0.95) { // Throttle polling
+                     pollGameState();
+                }
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+        
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('local-status').innerText = "GAME OVER";
+            if (gameMode === 'pvp') {
+                sendUpdate(); // Send final state
+            }
+        }
+
+        document.addEventListener('keydown', event => {
+            if (!gameActive) return;
+            
+            // Prevent scrolling for arrow keys and space
+            if([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1) {
+                event.preventDefault();
+            }
+
+            if (event.keyCode === 37) { // Left
+                player.pos.x--;
+                if (collide(localBoard, player)) {
+                    player.pos.x++;
+                }
+            } else if (event.keyCode === 39) { // Right
+                player.pos.x++;
+                if (collide(localBoard, player)) {
+                    player.pos.x--;
+                }
+            } else if (event.keyCode === 40) { // Down
+                playerDrop();
+            } else if (event.keyCode === 81) { // Q
+                playerRotate(-1);
+            } else if (event.keyCode === 87 || event.keyCode === 38) { // W or Up
+                playerRotate(1);
+            }
+        });
+
+        // UI Functions
+        function startSinglePlayer() {
+            gameMode = 'single';
+            setupGame();
+            document.getElementById('remote-section').classList.add('hidden');
+        }
+
+        function startPvE() {
+            gameMode = 'pve';
+            setupGame();
+            document.getElementById('remote-section').classList.remove('hidden');
+            document.getElementById('opponent-name').innerText = "Computer";
+            aiReset();
+        }
+
+        function showPvPMenu() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.remove('hidden');
+            refreshRooms();
+        }
+        
+        function backToMenu() {
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        function setupGame() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('game-container').classList.remove('hidden');
+            document.getElementById('game-controls').classList.remove('hidden');
+            
+            localBoard = createBoard();
+            remoteBoard = createBoard();
+            player.score = 0;
+            player.lines = 0;
+            player.level = 1;
+            gameActive = true;
+            playerReset();
+            updateScore();
+            update();
+        }
+        
+        function quitGame() {
+            gameActive = false;
+            document.getElementById('game-container').classList.add('hidden');
+            document.getElementById('game-controls').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+            document.getElementById('local-status').innerText = "";
+            document.getElementById('remote-status').innerText = "";
+        }
+
+        // PvP Functions
+        function createRoom() {
+            const name = document.getElementById('roomName').value;
+            fetch('/api/tetris/room/create', {
+                method: 'POST',
+                body: JSON.stringify({ roomName: name })
+            })
+            .then(res => res.json())
+            .then(data => {
+                gameId = data.gameId;
+                playerRole = data.player;
+                gameMode = 'pvp';
+                waitForOpponent();
+            });
+        }
+        
+        function waitForOpponent() {
+             document.getElementById('pvp-menu').innerHTML = "<h2>Waiting for opponent...</h2>";
+             const checkInterval = setInterval(() => {
+                 fetch(`/api/tetris/room/state?gameId=${gameId}`)
+                 .then(res => res.json())
+                 .then(data => {
+                     if (data.gameActive) {
+                         clearInterval(checkInterval);
+                         startPvPGame();
+                     }
+                 });
+             }, 1000);
+        }
+        
+        function joinRoom(id) {
+            fetch('/api/tetris/room/join', {
+                method: 'POST',
+                body: JSON.stringify({ gameId: id, player: 2, playerName: "Player 2" })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    gameId = id;
+                    playerRole = 2;
+                    gameMode = 'pvp';
+                    startPvPGame();
+                } else {
+                    alert(data.message);
+                }
+            });
+        }
+        
+        function startPvPGame() {
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('game-container').classList.remove('hidden');
+            document.getElementById('game-controls').classList.remove('hidden');
+            document.getElementById('remote-section').classList.remove('hidden');
+            
+            localBoard = createBoard();
+            remoteBoard = createBoard();
+            player.score = 0;
+            player.lines = 0;
+            player.level = 1;
+            gameActive = true;
+            playerReset();
+            updateScore();
+            update();
+        }
+
+        function refreshRooms() {
+            fetch('/api/tetris/room/list')
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById('roomList');
+                list.innerHTML = '';
+                data.rooms.forEach(room => {
+                    const div = document.createElement('div');
+                    div.className = 'room-item';
+                    div.innerHTML = `
+                        <span>${room.roomName || 'Room'} (${room.creator})</span>
+                        <button onclick="joinRoom('${room.gameId}')">Join</button>
+                    `;
+                    list.appendChild(div);
+                });
+            });
+        }
+        
+        function sendUpdate() {
+            if (!gameId) return;
+            fetch('/api/tetris/room/update', {
+                method: 'POST',
+                body: JSON.stringify({
+                    gameId: gameId,
+                    player: playerRole,
+                    state: {
+                        board: localBoard, // Note: sending full board is heavy, but simple
+                        currentPiece: {
+                            matrix: player.matrix,
+                            x: player.pos.x,
+                            y: player.pos.y
+                        },
+                        score: player.score,
+                        lines: player.lines,
+                        level: player.level,
+                        gameOver: !gameActive
+                    }
+                })
+            });
+        }
+        
+        function pollGameState() {
+            if (!gameId) return;
+            fetch(`/api/tetris/room/state?gameId=${gameId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.winner !== 0) {
+                    gameActive = false;
+                    if (data.winner === playerRole) {
+                        document.getElementById('local-status').innerText = "YOU WIN!";
+                        document.getElementById('remote-status').innerText = "GAME OVER";
+                    } else {
+                        document.getElementById('local-status').innerText = "GAME OVER";
+                        document.getElementById('remote-status').innerText = "WINNER";
+                    }
+                }
+                
+                const opponentRole = playerRole === 1 ? 2 : 1;
+                const opponentState = data.players[opponentRole];
+                if (opponentState && opponentState.board) {
+                    remoteBoard = opponentState.board;
+                    // Update remote piece info for drawing
+                    if (opponentState.currentPiece && opponentState.currentPiece.matrix) {
+                        aiPlayer.matrix = opponentState.currentPiece.matrix;
+                        aiPlayer.pos.x = opponentState.currentPiece.x;
+                        aiPlayer.pos.y = opponentState.currentPiece.y;
+                    } else {
+                        aiPlayer.matrix = null;
+                    }
+                    
+                    document.getElementById('remote-score').innerText = opponentState.score;
+                    document.getElementById('remote-lines').innerText = opponentState.lines;
+                    document.getElementById('remote-level').innerText = opponentState.level;
+                }
+            });
+        }
+    </script>
+</body>
+</html>

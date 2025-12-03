@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minesweeper</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        
+        .container {
+            display: flex;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .game-section {
+            background: #2d2d2d;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(10, 30px);
+            grid-template-rows: repeat(10, 30px);
+            gap: 2px;
+            background: #444;
+            padding: 5px;
+            border-radius: 5px;
+            margin: 1rem auto;
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            background: #888;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+        }
+
+        .cell:hover {
+            background: #999;
+        }
+
+        .cell.revealed {
+            background: #ccc;
+            color: #000;
+            cursor: default;
+        }
+
+        .cell.mine {
+            background: #f44;
+        }
+
+        .cell.flagged {
+            background: #888;
+        }
+        .cell.flagged::after {
+            content: "🚩";
+            font-size: 16px;
+        }
+
+        .cell.revealed.n1 { color: blue; }
+        .cell.revealed.n2 { color: green; }
+        .cell.revealed.n3 { color: red; }
+        .cell.revealed.n4 { color: darkblue; }
+        .cell.revealed.n5 { color: brown; }
+        .cell.revealed.n6 { color: cyan; }
+        .cell.revealed.n7 { color: black; }
+        .cell.revealed.n8 { color: gray; }
+
+        .menu {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+
+        button {
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .room-list {
+            margin-top: 1rem;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .room-item {
+            background: #3d3d3d;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-message {
+            height: 20px;
+            color: #ffeb3b;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Minesweeper</h1>
+
+    <div id="menu" class="menu">
+        <button onclick="startSinglePlayer()">Single Player</button>
+        <button onclick="startPvE()">Player vs Computer</button>
+        <button onclick="showPvPMenu()">Player vs Player</button>
+    </div>
+
+    <div id="pvp-menu" class="game-section hidden">
+        <h3>PvP Lobby</h3>
+        <div style="margin-bottom: 1rem;">
+            <input type="text" id="room-name" placeholder="Room Name" style="padding: 0.5rem;">
+            <button onclick="createRoom()">Create Room</button>
+        </div>
+        <div class="room-list" id="room-list">
+            <!-- Rooms will be listed here -->
+        </div>
+        <button onclick="backToMenu()" style="margin-top: 1rem; background: #666;">Back</button>
+    </div>
+
+    <div id="game-container" class="container hidden">
+        <div class="game-section">
+            <h3>You</h3>
+            <div id="local-status" class="status-message"></div>
+            <div id="local-grid" class="grid"></div>
+            <div class="info-panel">
+                <p>Mines: <span id="local-mines-count">15</span></p>
+                <p>Progress: <span id="local-progress">0</span>%</p>
+            </div>
+        </div>
+
+        <div class="game-section" id="remote-section">
+            <h3 id="opponent-name">Opponent</h3>
+            <div id="remote-status" class="status-message"></div>
+            <div id="remote-grid" class="grid"></div>
+            <div class="info-panel">
+                <p>Progress: <span id="remote-progress">0</span>%</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="game-controls" class="hidden" style="margin-top: 1rem;">
+        <button onclick="quitGame()" style="background: #f44;">Quit Game</button>
+    </div>
+
+    <script>
+        const ROWS = 10;
+        const COLS = 10;
+        const MINES = 15;
+
+        let gameMode = 'single'; // single, pve, pvp
+        let gameActive = false;
+        let localBoard = [];
+        let remoteBoard = [];
+        let gameId = null;
+        let playerRole = 0;
+        let pollInterval = null;
+        let aiInterval = null;
+
+        // Initialize empty board
+        function initBoard() {
+            let board = [];
+            for (let r = 0; r < ROWS; r++) {
+                let row = [];
+                for (let c = 0; c < COLS; c++) {
+                    row.push({
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        neighborMines: 0
+                    });
+                }
+                board.push(row);
+            }
+            return board;
+        }
+
+        function generateMines(board, firstClickR, firstClickC) {
+            let minesPlaced = 0;
+            while (minesPlaced < MINES) {
+                let r = Math.floor(Math.random() * ROWS);
+                let c = Math.floor(Math.random() * COLS);
+                if (!board[r][c].isMine && (Math.abs(r - firstClickR) > 1 || Math.abs(c - firstClickC) > 1)) {
+                    board[r][c].isMine = true;
+                    minesPlaced++;
+                }
+            }
+            calculateNeighbors(board);
+        }
+
+        function calculateNeighbors(board) {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c].isMine) continue;
+                    let count = 0;
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            let nr = r + dr;
+                            let nc = c + dc;
+                            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc].isMine) {
+                                count++;
+                            }
+                        }
+                    }
+                    board[r][c].neighborMines = count;
+                }
+            }
+        }
+
+        function renderGrid(board, elementId, isLocal) {
+            const grid = document.getElementById(elementId);
+            grid.innerHTML = '';
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    const cellData = board[r][c];
+
+                    if (cellData.isRevealed) {
+                        cell.classList.add('revealed');
+                        if (cellData.isMine) {
+                            cell.classList.add('mine');
+                            cell.textContent = '💣';
+                        } else if (cellData.neighborMines > 0) {
+                            cell.classList.add('n' + cellData.neighborMines);
+                            cell.textContent = cellData.neighborMines;
+                        }
+                    } else if (cellData.isFlagged) {
+                        cell.classList.add('flagged');
+                    }
+
+                    if (isLocal) {
+                        cell.onclick = () => handleCellClick(r, c);
+                        cell.oncontextmenu = (e) => {
+                            e.preventDefault();
+                            handleRightClick(r, c);
+                        };
+                    }
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(r, c) {
+            if (!gameActive || localBoard[r][c].isRevealed || localBoard[r][c].isFlagged) return;
+
+            // First click generation for Single/PvE
+            if (gameMode !== 'pvp' && isFirstClick()) {
+                generateMines(localBoard, r, c);
+            }
+
+            revealCell(localBoard, r, c);
+            checkGameOver(localBoard, true);
+            renderGrid(localBoard, 'local-grid', true);
+            updateProgress(localBoard, 'local-progress');
+            
+            if (gameMode === 'pvp') {
+                sendUpdate();
+            }
+        }
+
+        function isFirstClick() {
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    if (localBoard[r][c].isRevealed) return false;
+                }
+            }
+            return true;
+        }
+
+        function handleRightClick(r, c) {
+            if (!gameActive || localBoard[r][c].isRevealed) return;
+            localBoard[r][c].isFlagged = !localBoard[r][c].isFlagged;
+            renderGrid(localBoard, 'local-grid', true);
+            
+            // Update mine count display
+            let flaggedCount = 0;
+            localBoard.forEach(row => row.forEach(cell => { if(cell.isFlagged) flaggedCount++; }));
+            document.getElementById('local-mines-count').textContent = MINES - flaggedCount;
+
+            if (gameMode === 'pvp') {
+                sendUpdate();
+            }
+        }
+
+        function revealCell(board, r, c) {
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS || board[r][c].isRevealed || board[r][c].isFlagged) return;
+
+            board[r][c].isRevealed = true;
+
+            if (board[r][c].isMine) {
+                // Boom
+                return;
+            }
+
+            if (board[r][c].neighborMines === 0) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        revealCell(board, r + dr, c + dc);
+                    }
+                }
+            }
+        }
+
+        function checkGameOver(board, isLocal) {
+            let lost = false;
+            let won = true;
+            let revealedCount = 0;
+
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c].isMine && board[r][c].isRevealed) {
+                        lost = true;
+                    }
+                    if (!board[r][c].isMine && !board[r][c].isRevealed) {
+                        won = false;
+                    }
+                    if (board[r][c].isRevealed) revealedCount++;
+                }
+            }
+
+            if (lost) {
+                gameActive = false;
+                document.getElementById(isLocal ? 'local-status' : 'remote-status').textContent = "Game Over! Hit a Mine!";
+                // Reveal all mines
+                revealAllMines(board);
+            } else if (won) {
+                gameActive = false;
+                document.getElementById(isLocal ? 'local-status' : 'remote-status').textContent = "You Won!";
+            }
+            
+            return { lost, won };
+        }
+
+        function revealAllMines(board) {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c].isMine) board[r][c].isRevealed = true;
+                }
+            }
+        }
+
+        function updateProgress(board, elementId) {
+            let revealed = 0;
+            let totalSafe = ROWS * COLS - MINES;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c].isRevealed && !board[r][c].isMine) revealed++;
+                }
+            }
+            let percent = Math.floor((revealed / totalSafe) * 100);
+            document.getElementById(elementId).textContent = percent;
+            return percent;
+        }
+
+        // --- Game Modes ---
+
+        function startSinglePlayer() {
+            gameMode = 'single';
+            setupGameUI();
+            localBoard = initBoard();
+            renderGrid(localBoard, 'local-grid', true);
+            gameActive = true;
+            document.getElementById('remote-section').classList.add('hidden');
+        }
+
+        function startPvE() {
+            gameMode = 'pve';
+            setupGameUI();
+            localBoard = initBoard();
+            remoteBoard = initBoard();
+            generateMines(remoteBoard, -10, -10); // AI board generated immediately
+            
+            renderGrid(localBoard, 'local-grid', true);
+            renderGrid(remoteBoard, 'remote-grid', false);
+            
+            gameActive = true;
+            document.getElementById('remote-section').classList.remove('hidden');
+            
+            // Start AI
+            if (aiInterval) clearInterval(aiInterval);
+            aiInterval = setInterval(aiMove, 1000);
+        }
+
+        function aiMove() {
+            if (!gameActive) return;
+            
+            // Simple AI: Random valid move
+            // 1. Find all hidden non-flagged cells
+            let candidates = [];
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    if (!remoteBoard[r][c].isRevealed && !remoteBoard[r][c].isFlagged) {
+                        candidates.push({r, c});
+                    }
+                }
+            }
+            
+            if (candidates.length > 0) {
+                let move = candidates[Math.floor(Math.random() * candidates.length)];
+                revealCell(remoteBoard, move.r, move.c);
+                let result = checkGameOver(remoteBoard, false);
+                renderGrid(remoteBoard, 'remote-grid', false);
+                updateProgress(remoteBoard, 'remote-progress');
+                
+                if (result.lost) {
+                    document.getElementById('remote-status').textContent = "Computer Lost!";
+                    gameActive = false;
+                } else if (result.won) {
+                    document.getElementById('remote-status').textContent = "Computer Won!";
+                    gameActive = false;
+                }
+            }
+        }
+
+        function showPvPMenu() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.remove('hidden');
+            refreshRoomList();
+        }
+
+        function backToMenu() {
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        function setupGameUI() {
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('pvp-menu').classList.add('hidden');
+            document.getElementById('game-container').classList.remove('hidden');
+            document.getElementById('game-controls').classList.remove('hidden');
+            document.getElementById('local-status').textContent = '';
+            document.getElementById('remote-status').textContent = '';
+        }
+
+        function quitGame() {
+            gameActive = false;
+            if (pollInterval) clearInterval(pollInterval);
+            if (aiInterval) clearInterval(aiInterval);
+            document.getElementById('game-container').classList.add('hidden');
+            document.getElementById('game-controls').classList.add('hidden');
+            document.getElementById('menu').classList.remove('hidden');
+        }
+
+        // --- PvP Network ---
+
+        function refreshRoomList() {
+            fetch('/api/minesweeper/room/list')
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById('room-list');
+                    list.innerHTML = '';
+                    data.rooms.forEach(room => {
+                        const div = document.createElement('div');
+                        div.className = 'room-item';
+                        div.innerHTML = `
+                            <span>${room.roomName} (${room.creator})</span>
+                            <button onclick="joinRoom('${room.gameId}')">Join</button>
+                        `;
+                        list.appendChild(div);
+                    });
+                });
+        }
+
+        function createRoom() {
+            const name = document.getElementById('room-name').value || 'Mines Room';
+            fetch('/api/minesweeper/room/create', {
+                method: 'POST',
+                body: JSON.stringify({ roomName: name, creator: 'Player' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                gameId = data.gameId;
+                playerRole = data.player;
+                startGamePvP();
+            });
+        }
+
+        function joinRoom(id) {
+            fetch('/api/minesweeper/room/join', {
+                method: 'POST',
+                body: JSON.stringify({ gameId: id, player: 2, playerName: 'Player 2' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    gameId = id;
+                    playerRole = 2;
+                    // Set mines from server
+                    localBoard = initBoard();
+                    if (data.mineLocations) {
+                        data.mineLocations.forEach(loc => {
+                            localBoard[loc[0]][loc[1]].isMine = true;
+                        });
+                        calculateNeighbors(localBoard);
+                    }
+                    startGamePvP();
+                } else {
+                    alert(data.message);
+                }
+            });
+        }
+
+        function startGamePvP() {
+            gameMode = 'pvp';
+            setupGameUI();
+            document.getElementById('remote-section').classList.remove('hidden');
+            
+            if (playerRole === 1) {
+                // Player 1 waits for join, mines are already set by server (but we need to fetch them or wait for start)
+                // Actually, for P1, we didn't receive mines in CreateRoomResponse.
+                // We should fetch room state to get mines.
+                localBoard = initBoard();
+            }
+            
+            remoteBoard = initBoard(); // Remote board is initially empty/unknown
+            renderGrid(localBoard, 'local-grid', true);
+            renderGrid(remoteBoard, 'remote-grid', false);
+            
+            gameActive = true;
+            pollInterval = setInterval(pollGameState, 1000);
+        }
+
+        function sendUpdate() {
+            if (!gameId) return;
+            
+            let percent = updateProgress(localBoard, 'local-progress');
+            let result = checkGameOver(localBoard, true); // Just check status, don't trigger end unless needed
+            
+            fetch('/api/minesweeper/room/update', {
+                method: 'POST',
+                body: JSON.stringify({
+                    gameId: gameId,
+                    player: playerRole,
+                    state: {
+                        board: localBoard,
+                        score: percent,
+                        gameOver: !gameActive,
+                        won: result.won
+                    }
+                })
+            });
+        }
+
+        function pollGameState() {
+            if (!gameId) return;
+            fetch(`/api/minesweeper/room/state?gameId=${gameId}`)
+                .then(res => res.json())
+                .then(data => {
+                    // Sync Mines for P1 if not set
+                    if (playerRole === 1 && data.mineLocations && !hasMines(localBoard)) {
+                        data.mineLocations.forEach(loc => {
+                            localBoard[loc[0]][loc[1]].isMine = true;
+                        });
+                        calculateNeighbors(localBoard);
+                        renderGrid(localBoard, 'local-grid', true);
+                    }
+
+                    const opponentRole = playerRole === 1 ? 2 : 1;
+                    const opponentState = data.players[opponentRole];
+                    
+                    if (opponentState && opponentState.board) {
+                        // Update remote board visualization
+                        // We only want to show revealed/flagged cells, NOT mines (unless game over)
+                        updateRemoteBoard(opponentState.board);
+                        document.getElementById('remote-progress').textContent = opponentState.score;
+                        
+                        if (opponentState.won) {
+                            document.getElementById('remote-status').textContent = "Opponent Won!";
+                            gameActive = false;
+                            document.getElementById('local-status').textContent = "You Lost!";
+                        } else if (opponentState.gameOver) {
+                            document.getElementById('remote-status').textContent = "Opponent Exploded!";
+                            // If opponent exploded, do we win?
+                            // document.getElementById('local-status').textContent = "You Won!";
+                            // gameActive = false;
+                        }
+                    }
+                    
+                    if (data.winner > 0) {
+                        gameActive = false;
+                        if (data.winner === playerRole) {
+                            document.getElementById('local-status').textContent = "You Won!";
+                        } else {
+                            document.getElementById('local-status').textContent = "You Lost!";
+                        }
+                    }
+                });
+        }
+        
+        function hasMines(board) {
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    if(board[r][c].isMine) return true;
+                }
+            }
+            return false;
+        }
+
+        function updateRemoteBoard(serverBoard) {
+            // serverBoard is the full state from opponent
+            // We copy revealed/flagged status to remoteBoard
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    remoteBoard[r][c].isRevealed = serverBoard[r][c].isRevealed;
+                    remoteBoard[r][c].isFlagged = serverBoard[r][c].isFlagged;
+                    remoteBoard[r][c].isMine = serverBoard[r][c].isMine; // We know mines now?
+                    // Actually, for remote view, we might not want to cheat.
+                    // But since we are rendering, we can just render what is revealed.
+                    // The server sends the full board including mines.
+                    // We trust the client not to inspect the network traffic to cheat in this simple demo.
+                    remoteBoard[r][c].neighborMines = serverBoard[r][c].neighborMines;
+                }
+            }
+            renderGrid(remoteBoard, 'remote-grid', false);
+        }
+
+    </script>
+</body>
+</html>

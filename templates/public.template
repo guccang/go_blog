@@ -15,20 +15,13 @@
             <a href="/main">
                 <div class="img-cycle">G</div>
             </a>
-            <a href="/link" class="management-btn" style="font-size: 20px; background: var(--accent-color); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px;">管理</a>
-            <a href="/constellation" class="constellation-btn" style="font-size: 20px; background: linear-gradient(135deg, #ff6b9d, #ffb74d); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);">✨星座占卜</a>
-            <a href="/linkup" class="linkup-btn" style="font-size: 20px; background: linear-gradient(135deg, #9c27b0, #e91e63); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);">🧩连连看</a>
-            <a href="/gomoku" class="gomoku-btn" style="font-size: 20px; background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; margin-left: 10px; box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);">🎮五子棋</a>
+
             <div class="search-container">
-                <input id="search" type="text" placeholder="搜索公开博客..." list="search_list">
-                <datalist id="search_list">
-                    {{range .TAGS}}
-                        <option>{{.}}</option>
-                    {{end}}
-                </datalist>
-                <button type="button" class="search-btn">搜索</button>
+                <input type="text" id="search" placeholder="搜索博客或标签..." autocomplete="off">
+                <button type="button" class="search-btn" onclick="onSearch()">搜索</button>
             </div>
-            <button class="view-toggle" title="切换视图">
+
+            <button type="button" class="view-toggle" title="切换视图">
                 <i id="view-icon">📑</i>
                 <span id="view-text">网格视图</span>
             </button>
@@ -62,9 +55,21 @@
     <div class="filter-section">
         <h3 class="filter-title">按标签筛选</h3>
         <div class="tag-filters">
-            <button class="tag-filter active" data-tag="all">全部</button>
+            <button type="button" class="tag-filter active" data-tag="all">全部</button>
             {{range .TAGS}}
-                <button class="tag-filter" data-tag="{{.}}">{{.}}</button>
+                <button type="button" class="tag-filter" data-tag="{{.}}">{{.}}</button>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- 小游戏入口 -->
+    <div class="games-section">
+        <h3 class="games-title">小游戏</h3>
+        <div class="games-container">
+            {{range .GAMES}}
+                <a class="game-card" href="{{.Path}}">
+                    <div class="game-name">{{.Name}}</div>
+                </a>
             {{end}}
         </div>
     </div>

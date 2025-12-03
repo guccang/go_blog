@@ -64,7 +64,10 @@ function initializeSearch() {
     }
     
     if (searchBtn) {
-        searchBtn.addEventListener('click', function() {
+        // 移除可能存在的onclick属性，使用addEventListener
+        searchBtn.removeAttribute('onclick');
+        searchBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             const query = searchInput.value.toLowerCase().trim();
             if (query.length > 0) {
                 performSearch(query);
@@ -150,7 +153,10 @@ function initializeViewToggle() {
     if (viewToggle) {
         // 移除可能存在的onclick属性，使用addEventListener
         viewToggle.removeAttribute('onclick');
-        viewToggle.addEventListener('click', toggleView);
+        viewToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            toggleView();
+        });
         console.log('视图切换按钮已初始化');
     } else {
         console.error('未找到视图切换按钮');
@@ -198,7 +204,8 @@ function initializeTagFilters() {
     tagFilters.forEach(filter => {
         // 移除可能存在的onclick属性，使用addEventListener
         filter.removeAttribute('onclick');
-        filter.addEventListener('click', function() {
+        filter.addEventListener('click', function(e) {
+            e.preventDefault();
             const tag = this.getAttribute('data-tag');
             filterByTag(tag);
         });

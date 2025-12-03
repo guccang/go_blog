@@ -63,8 +63,16 @@ replace skill => ./pkgs/skill
 replace account => ./pkgs/account
 
 replace gomoku => ./pkgs/gomoku
+
 replace linkup => ./pkgs/linkup
+
 replace finance => ./pkgs/finance
+
+replace tetris => ./pkgs/tetris
+
+replace minesweeper => ./pkgs/minesweeper
+
+replace fruitcrush => ./pkgs/fruitcrush
 
 require (
 	auth v0.0.0
@@ -73,9 +81,6 @@ require (
 	config v0.0.0
 	control v0.0.0
 	exercise v0.0.0
-	gomoku v0.0.0
-	linkup v0.0.0
-	finance v0.0.0
 	http v0.0.0
 	ioutils v0.0.0
 	llm v0.0.0
@@ -97,14 +102,20 @@ require (
 	account v0.0.0 // indirect
 	constellation v0.0.0 // indirect
 	core v0.0.0 // indirect
+	finance v0.0.0 // indirect
+	fruitcrush v0.0.0 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.30.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
+	gomoku v0.0.0 // indirect
 	lifecountdown v0.0.0 // indirect
+	linkup v0.0.0 // indirect
+	minesweeper v0.0.0 // indirect
 	skill v0.0.0 // indirect
+	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
 	yearplan v0.0.0 // indirect
 )

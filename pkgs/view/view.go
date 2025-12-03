@@ -57,6 +57,11 @@ type LinkData struct {
 	IS_DIARY     bool
 }
 
+type GameData struct {
+    Name string
+    Path string
+}
+
 type LinkDatas struct {
 	LINKS        []LinkData
 	RECENT_LINKS []LinkData
@@ -65,6 +70,7 @@ type LinkDatas struct {
 	TAGS         []string
 	USER_ACCOUNT string
 	USER_AVATAR  string
+	GAMES        []GameData
 }
 
 type CommentDatas struct {
@@ -829,6 +835,15 @@ func PagePublic(w h.ResponseWriter, account string) {
 
 	// 获取链接数据
 	datas := getLinks(blogs, flag, account)
+
+	// 添加小游戏列表
+	datas.GAMES = []GameData{
+		{Name: "五子棋", Path: "/gomoku"},
+		{Name: "连连看", Path: "/linkup"},
+		{Name: "俄罗斯方块", Path: "/tetris"},
+		{Name: "扫雷", Path: "/minesweeper"},
+		{Name: "水果消消乐", Path: "/fruitcrush"},
+	}
 
 	// 渲染模板
 	exeDir := config.GetHttpTemplatePath()

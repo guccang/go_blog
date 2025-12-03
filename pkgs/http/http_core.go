@@ -5,21 +5,24 @@ import (
 	"config"
 	"constellation"
 	"exercise"
+	"finance"
 	"fmt"
+	"fruitcrush"
 	"gomoku"
 	"linkup"
 	"mcp"
+	"minesweeper"
 	"module"
 	log "mylog"
 	h "net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"tetris"
 	"todolist"
 	"tools"
 	"view"
 	"yearplan"
-	"finance"
 )
 
 // Info displays package version information
@@ -369,6 +372,30 @@ func Init() int {
 	h.HandleFunc("/finance", finance.HandleFinancePage)
 	h.HandleFunc("/api/finance/calculate", finance.HandleCalculateAssets)
 	h.HandleFunc("/api/finance/defaults", finance.HandleGetDefaultValues)
+
+	// Tetris routes
+	h.HandleFunc("/tetris", tetris.HandleTetris)
+	h.HandleFunc("/api/tetris/room/create", tetris.HandleCreateRoom)
+	h.HandleFunc("/api/tetris/room/join", tetris.HandleJoinRoom)
+	h.HandleFunc("/api/tetris/room/list", tetris.HandleRoomList)
+	h.HandleFunc("/api/tetris/room/state", tetris.HandleRoomState)
+	h.HandleFunc("/api/tetris/room/update", tetris.HandleUpdateState)
+
+	// Minesweeper routes
+	h.HandleFunc("/minesweeper", minesweeper.HandleMinesweeper)
+	h.HandleFunc("/api/minesweeper/room/create", minesweeper.HandleCreateRoom)
+	h.HandleFunc("/api/minesweeper/room/join", minesweeper.HandleJoinRoom)
+	h.HandleFunc("/api/minesweeper/room/list", minesweeper.HandleRoomList)
+	h.HandleFunc("/api/minesweeper/room/state", minesweeper.HandleRoomState)
+	h.HandleFunc("/api/minesweeper/room/update", minesweeper.HandleUpdateState)
+
+	// Fruit Crush routes
+	h.HandleFunc("/fruitcrush", fruitcrush.HandleFruitCrush)
+	h.HandleFunc("/api/fruitcrush/room/create", fruitcrush.HandleCreateRoom)
+	h.HandleFunc("/api/fruitcrush/room/join", fruitcrush.HandleJoinRoom)
+	h.HandleFunc("/api/fruitcrush/room/list", fruitcrush.HandleRoomList)
+	h.HandleFunc("/api/fruitcrush/room/state", fruitcrush.HandleRoomState)
+	h.HandleFunc("/api/fruitcrush/room/update", fruitcrush.HandleUpdateState)
 
 	// account
 	h.HandleFunc("/account", HandleAccount)
