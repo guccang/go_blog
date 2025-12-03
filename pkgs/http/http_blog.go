@@ -686,6 +686,12 @@ func HandlePublic(w h.ResponseWriter, r *h.Request) {
 	view.PagePublic(w, account)
 }
 
+// HandleGames renders the games center page
+func HandleGames(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleGames", r)
+	view.PageGames(w)
+}
+
 // HandleCreateShare creates a share link for a blog
 func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleCreateShare", r)

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG / 小游戏中心</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/public.css">
+    <style>
+        /* 游戏页面专属样式 */
+        .games-page-header {
+            text-align: center;
+            padding: 30px 20px 20px;
+            margin-top: 60px;
+            background-color: var(--lighter-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .games-page-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .games-page-description {
+            font-size: 1rem;
+            color: var(--text-color);
+            opacity: 0.7;
+            font-weight: 300;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .games-stats-section {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .games-stats-card {
+            background-color: var(--card-bg);
+            padding: 20px 30px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 6px 12px var(--shadow-color);
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            min-width: 150px;
+        }
+
+        .games-stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px var(--shadow-color);
+            border-color: var(--accent-color);
+        }
+
+        .games-stats-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--accent-color);
+            margin-bottom: 8px;
+        }
+
+        .games-stats-label {
+            font-size: 1rem;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        /* 游戏分类 */
+        .games-category-section {
+            padding: 30px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .games-category-title {
+            font-size: 1.8rem;
+            color: var(--text-color);
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 700;
+            position: relative;
+        }
+
+        .games-category-title::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background-color: var(--accent-color);
+            border-radius: 2px;
+        }
+
+        .games-category-description {
+            text-align: center;
+            color: var(--text-color);
+            opacity: 0.8;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* 增强游戏卡片样式 */
+        .games-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .game-card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 30px 25px;
+            text-align: center;
+            text-decoration: none;
+            color: var(--text-color);
+            border: 3px solid var(--border-color);
+            transition: all 0.4s ease;
+            box-shadow: 0 8px 20px var(--shadow-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, var(--accent-color), var(--accent-hover));
+            transition: height 0.3s ease;
+        }
+
+        .game-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            box-shadow: 0 15px 30px var(--shadow-color);
+            border-color: var(--accent-color);
+            background-color: var(--secondary-color);
+        }
+
+        .game-card:hover::before {
+            height: 8px;
+        }
+
+        .game-icon {
+            font-size: 3.5rem;
+            margin-bottom: 15px;
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .game-card:hover .game-icon {
+            transform: scale(1.2) rotate(5deg);
+        }
+
+        .game-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 8px;
+        }
+
+        .game-description {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            opacity: 0.8;
+            line-height: 1.4;
+            margin-bottom: 15px;
+        }
+
+        .game-play-btn {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .game-play-btn:hover {
+            background-color: white;
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+            transform: translateY(-2px);
+        }
+
+        .games-footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-color);
+            opacity: 0.7;
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 40px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .games-page-title {
+                font-size: 1.8rem;
+            }
+
+            .games-stats-section {
+                flex-direction: column;
+                gap: 15px;
+                padding: 15px;
+            }
+
+            .games-container {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 20px;
+            }
+
+            .game-card {
+                padding: 25px 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .games-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="top-sidebar-cotainer">
+        <div class="top-sidebar">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+
+            <div class="search-container">
+                <input type="text" id="search" placeholder="搜索游戏..." autocomplete="off">
+                <button type="button" class="search-btn" onclick="onSearch()">搜索</button>
+            </div>
+
+            <button type="button" class="view-toggle" title="切换视图">
+                <i id="view-icon">📑</i>
+                <span id="view-text">网格视图</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 页面标题 -->
+    <div class="games-page-header">
+        <h1 class="games-page-title">
+            <i class="fas fa-gamepad"></i>
+            小游戏中心
+        </h1>
+        <p class="games-page-description">
+            轻松愉快的休闲游戏集合，点击卡片开始游戏。所有游戏均支持在线对战和单人模式。
+        </p>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="games-stats-section">
+        <div class="games-stats-card">
+            <div class="games-stats-number">{{len .GAMES}}</div>
+            <div class="games-stats-label">游戏总数</div>
+        </div>
+        <div class="games-stats-card">
+            <div class="games-stats-number">5+</div>
+            <div class="games-stats-label">游戏类型</div>
+        </div>
+        <div class="games-stats-card">
+            <div class="games-stats-number">🎮</div>
+            <div class="games-stats-label">在线对战</div>
+        </div>
+    </div>
+
+    <!-- 所有游戏 -->
+    <div class="games-category-section">
+        <h2 class="games-category-title">所有游戏</h2>
+        <p class="games-category-description">
+            精选热门小游戏，包含益智、策略、休闲等多种类型，满足不同玩家的需求。
+        </p>
+
+        <div class="games-container">
+            {{range .GAMES}}
+                <a class="game-card" href="{{.Path}}">
+                    <div class="game-icon">{{.Icon}}</div>
+                    <div class="game-name">{{.Name}}</div>
+                    <div class="game-description">{{.Description}}</div>
+                    <span class="game-play-btn">开始游戏</span>
+                </a>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <div class="games-footer">
+        <p>© 2025 GUCCANG 小游戏中心 | 所有游戏均为原创或开源项目改编</p>
+        <p>建议使用现代浏览器以获得最佳游戏体验</p>
+    </div>
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/public.js"></script>
+    <script>
+        // 游戏页面专属JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            // 修改搜索功能为搜索游戏
+            const searchInput = document.getElementById('search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const query = this.value.toLowerCase().trim();
+                    filterGames(query);
+                });
+            }
+
+            // 初始化视图切换
+            const viewToggle = document.querySelector('.view-toggle');
+            if (viewToggle) {
+                viewToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    toggleGamesView();
+                });
+            }
+        });
+
+        // 过滤游戏
+        function filterGames(query) {
+            const gameCards = document.querySelectorAll('.game-card');
+            let visibleCount = 0;
+
+            gameCards.forEach(card => {
+                const name = card.querySelector('.game-name')?.textContent.toLowerCase() || '';
+                const desc = card.querySelector('.game-description')?.textContent.toLowerCase() || '';
+
+                if (query.length === 0 || name.includes(query) || desc.includes(query)) {
+                    card.style.display = 'block';
+                    card.style.animation = 'fadeIn 0.3s ease-out';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // 更新统计信息
+            updateGamesStats(visibleCount);
+        }
+
+        // 更新游戏统计
+        function updateGamesStats(count) {
+            const statsNumber = document.querySelector('.games-stats-number');
+            if (statsNumber && count >= 0) {
+                statsNumber.textContent = count;
+            }
+        }
+
+        // 切换游戏视图
+        function toggleGamesView() {
+            const container = document.querySelector('.games-container');
+            const viewIcon = document.getElementById('view-icon');
+            const viewText = document.getElementById('view-text');
+
+            if (container.classList.contains('list-view')) {
+                // 切换到网格视图
+                container.classList.remove('list-view');
+                container.style.gridTemplateColumns = 'repeat(auto-fill, minmax(250px, 1fr))';
+                if (viewIcon) viewIcon.textContent = '📑';
+                if (viewText) viewText.textContent = '网格视图';
+            } else {
+                // 切换到列表视图
+                container.classList.add('list-view');
+                container.style.gridTemplateColumns = '1fr';
+                if (viewIcon) viewIcon.textContent = '📋';
+                if (viewText) viewText.textContent = '列表视图';
+            }
+        }
+
+        // 兼容现有搜索函数
+        window.onSearch = function() {
+            const searchInput = document.getElementById('search');
+            if (searchInput) {
+                const query = searchInput.value.toLowerCase().trim();
+                filterGames(query);
+            }
+        };
+    </script>
+</body>
+</html>

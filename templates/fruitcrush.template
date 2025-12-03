@@ -62,7 +62,6 @@
             cursor: pointer;
             transition: all 0.2s;
             user-select: none;
-            filter: saturate(0.5) brightness(1.2);
         }
 
         .cell:hover {
@@ -165,7 +164,7 @@
     </style>
 </head>
 <body>
-    <h1>🟥 水果消消乐</h1>
+    <h1>🍎 水果消消乐</h1>
 
     <div id="menu" class="menu">
         <button onclick="startSinglePlayer()">单人游戏</button>
@@ -227,7 +226,7 @@
     <script>
         const ROWS = 8;
         const COLS = 8;
-        const FRUITS = ['🟥', '🟧', '🟨', '🟩', '🟦', '🟪'];
+        const FRUITS = ['🍎', '🍊', '🍋', '🍇', '🍓', '🍒'];
 
         let gameMode = 'single'; // single, pve, pvp
         let gameActive = false;

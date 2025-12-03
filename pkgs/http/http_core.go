@@ -219,6 +219,7 @@ func Init() int {
 	h.HandleFunc("/tag", HandleTag)
 	h.HandleFunc("/getshare", HandleGetShare)
 	h.HandleFunc("/public", HandlePublic)
+	h.HandleFunc("/games", HandleGames)
 
 	// Share routes
 	h.HandleFunc("/api/createshare", HandleCreateShare)

@@ -197,6 +197,7 @@ func InitConfig() {
 		Model:       "deepseek-chat",
 		Temperature: 0.3,
 	}
+	log.InfoF(log.ModuleLLM, "Init config %v", llmConfig)
 }
 
 func Init() error {

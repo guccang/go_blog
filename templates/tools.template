@@ -82,6 +82,13 @@
                     <p>五子棋、休闲娱乐</p>
                 </div>
             </div>
+            <div class="tool-nav-card" data-tool="finance">
+                <div class="nav-card-icon">💰</div>
+                <div class="nav-card-content">
+                    <h3>财务工具</h3>
+                    <p>家庭资产计算</p>
+                </div>
+            </div>
         </div>
 
         <!-- 工具内容区域 -->
@@ -456,6 +463,29 @@
                             <a href="/gomoku" class="btn btn-primary" style="display: block; text-align: center; margin-top: 15px; text-decoration: none;">
                                 <i class="fas fa-play"></i>
                                 开始游戏
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 财务工具 -->
+            <div class="tool-section" id="finance-tools">
+                <div class="section-header">
+                    <h2><i class="fas fa-chart-pie"></i> 财务工具</h2>
+                    <p>家庭资产计算与管理</p>
+                </div>
+
+                <div class="tools-grid">
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
+                            <div class="card-icon">💰</div>
+                            <h3>家庭资产计算器</h3>
+                        </div>
+                        <div class="card-body">
+                            <p>计算家庭总资产，包括房产、车辆、存款、投资等，生成资产分布图表。</p>
+                            <a href="/finance" class="btn btn-primary" style="display: block; text-align: center; margin-top: 15px; text-decoration: none;">
+                                <i class="fas fa-calculator"></i>
+                                开始计算
                             </a>
                         </div>
                     </div>

@@ -58,8 +58,10 @@ type LinkData struct {
 }
 
 type GameData struct {
-    Name string
-    Path string
+    Name        string
+    Path        string
+    Icon        string
+    Description string
 }
 
 type LinkDatas struct {
@@ -825,6 +827,42 @@ func PageReadingDashboard(w h.ResponseWriter) {
 	}
 }
 
+// getGamesList returns the list of all available games
+func getGamesList() []GameData {
+	return []GameData{
+		{
+			Name:        "五子棋",
+			Path:        "/gomoku",
+			Icon:        "⚫",
+			Description: "经典五子棋游戏，支持人机对战和在线对战",
+		},
+		{
+			Name:        "连连看",
+			Path:        "/linkup",
+			Icon:        "🔄",
+			Description: "休闲益智游戏，寻找相同图案进行消除",
+		},
+		{
+			Name:        "俄罗斯方块",
+			Path:        "/tetris",
+			Icon:        "🧱",
+			Description: "经典方块游戏，考验反应速度和策略规划",
+		},
+		{
+			Name:        "扫雷",
+			Path:        "/minesweeper",
+			Icon:        "💣",
+			Description: "经典扫雷游戏，考验逻辑推理能力",
+		},
+		{
+			Name:        "水果消消乐",
+			Path:        "/fruitcrush",
+			Icon:        "🟥",
+			Description: "三消休闲游戏，匹配相同水果获得高分",
+		},
+	}
+}
+
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter, account string) {
 	// 获取所有public标签的博客
@@ -837,13 +875,7 @@ func PagePublic(w h.ResponseWriter, account string) {
 	datas := getLinks(blogs, flag, account)
 
 	// 添加小游戏列表
-	datas.GAMES = []GameData{
-		{Name: "五子棋", Path: "/gomoku"},
-		{Name: "连连看", Path: "/linkup"},
-		{Name: "俄罗斯方块", Path: "/tetris"},
-		{Name: "扫雷", Path: "/minesweeper"},
-		{Name: "水果消消乐", Path: "/fruitcrush"},
-	}
+	datas.GAMES = getGamesList()
 
 	// 渲染模板
 	exeDir := config.GetHttpTemplatePath()
@@ -858,6 +890,32 @@ func PagePublic(w h.ResponseWriter, account string) {
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render template public.template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageGames renders the games center page
+func PageGames(w h.ResponseWriter) {
+	// 创建游戏数据
+	data := struct {
+		GAMES []GameData
+	}{
+		GAMES: getGamesList(),
+	}
+
+	// 渲染模板
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "games.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse games.template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render template games.template", h.StatusInternalServerError)
 		return
 	}
 }
