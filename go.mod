@@ -74,6 +74,8 @@ replace minesweeper => ./pkgs/minesweeper
 
 replace fruitcrush => ./pkgs/fruitcrush
 
+replace taskbreakdown => ./pkgs/taskbreakdown
+
 require (
 	auth v0.0.0
 	blog v0.0.0
@@ -94,6 +96,7 @@ require (
 	share v0.0.0
 	sms v0.0.0
 	statistics v0.0.0
+	taskbreakdown v0.0.0
 	tools v0.0.0
 	view v0.0.0
 )

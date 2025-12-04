@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"taskbreakdown"
 	"tetris"
 	"todolist"
 	"tools"
@@ -191,6 +192,11 @@ func Init() int {
 		log.ErrorF(log.ModuleHandler, "Failed to initialize todolist: %v", err)
 	}
 
+	// Initialize task breakdown before registering handlers
+	if err := taskbreakdown.InitTaskBreakdown(); err != nil {
+		log.ErrorF(log.ModuleHandler, "Failed to initialize task breakdown: %v", err)
+	}
+
 	// Core routes
 	h.HandleFunc("/main", HandleLink)
 	h.HandleFunc("/link", HandleLink)
@@ -231,6 +237,17 @@ func Init() int {
 	h.HandleFunc("/api/todos/time", todolist.HandleUpdateTodoTime)
 	h.HandleFunc("/api/todos/history", todolist.HandleHistoricalTodos)
 	h.HandleFunc("/api/todos/order", todolist.HandleUpdateTodoOrder)
+
+	// Task breakdown routes
+	h.HandleFunc("/taskbreakdown", taskbreakdown.HandleTaskBreakdown)
+	h.HandleFunc("/api/tasks", taskbreakdown.HandleTasks)
+	h.HandleFunc("/api/tasks/", taskbreakdown.HandleTasks) // 处理带ID的路径
+	h.HandleFunc("/api/tasks/progress", taskbreakdown.HandleTaskProgress)
+	h.HandleFunc("/api/tasks/order", taskbreakdown.HandleTaskOrder)
+	h.HandleFunc("/api/tasks/subtasks", taskbreakdown.HandleSubtasks)
+	h.HandleFunc("/api/tasks/timeline", taskbreakdown.HandleTimeline)
+	h.HandleFunc("/api/tasks/statistics", taskbreakdown.HandleStatistics)
+	h.HandleFunc("/api/tasks/search", taskbreakdown.HandleSearchTasks)
 
 	// Year plan and goal routes
 	h.HandleFunc("/yearplan", HandleYearPlan)

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务拆解追踪 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/taskbreakdown.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header class="page-header">
+        <div class="container">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">任务拆解追踪</h1>
+            <a href="/editor" class="header-link">创建博客</a>
+            <div class="header-controls">
+                <button id="viewToggle" class="btn btn-secondary">切换到时间线视图</button>
+                <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i></button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 统计面板 -->
+        <div class="stats-panel">
+            <div class="stat-card">
+                <div class="stat-value" id="totalTasks">0</div>
+                <div class="stat-label">总任务数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="completedTasks">0</div>
+                <div class="stat-label">已完成</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="inProgressTasks">0</div>
+                <div class="stat-label">进行中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="blockedTasks">0</div>
+                <div class="stat-label">阻塞中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalTime">0h</div>
+                <div class="stat-label">总预估时间</div>
+            </div>
+        </div>
+
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <!-- 左侧：任务树 -->
+            <div class="task-tree-container" id="taskTreeView">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">任务树</h2>
+                        <button id="addRootTask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加根任务</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="taskTree" class="task-tree">
+                            <!-- 任务树将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：任务详情和时间线 -->
+            <div class="task-details-container">
+                <!-- 任务详情面板 -->
+                <div class="card task-details-card" id="taskDetailsCard" style="display: none;">
+                    <div class="card-header">
+                        <h2 class="card-title">任务详情</h2>
+                        <div class="task-actions">
+                            <button id="editTask" class="btn btn-secondary"><i class="fas fa-edit"></i></button>
+                            <button id="deleteTask" class="btn btn-danger"><i class="fas fa-trash"></i></button>
+                            <button id="addSubtask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加子任务</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="task-detail-content">
+                            <h3 id="taskTitle">任务标题</h3>
+                            <div class="task-meta">
+                                <span class="task-status" id="taskStatus">规划中</span>
+                                <span class="task-priority" id="taskPriority">中等</span>
+                                <span class="task-progress" id="taskProgress">0%</span>
+                            </div>
+                            <div class="task-description" id="taskDescription">任务描述...</div>
+                            <div class="task-dates">
+                                <div><strong>开始日期:</strong> <span id="taskStartDate">-</span></div>
+                                <div><strong>结束日期:</strong> <span id="taskEndDate">-</span></div>
+                                <div><strong>预估时间:</strong> <span id="taskEstimatedTime">0分钟</span></div>
+                                <div><strong>实际时间:</strong> <span id="taskActualTime">0分钟</span></div>
+                            </div>
+                            <div class="task-tags" id="taskTags">
+                                <!-- 标签将通过JavaScript动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 时间线面板 -->
+                <div class="card timeline-card" id="timelineView">
+                    <div class="card-header">
+                        <h2 class="card-title">时间线视图</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="timelineChart">
+                            <!-- 时间线图表将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 统计图表 -->
+                <div class="card stats-card">
+                    <div class="card-header">
+                        <h2 class="card-title">统计图表</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="statusChart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="priorityChart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：添加/编辑任务 -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">添加新任务</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="taskForm">
+                    <input type="hidden" id="taskId">
+                    <input type="hidden" id="parentId">
+
+                    <div class="form-group">
+                        <label for="title">任务标题 *</label>
+                        <input type="text" id="title" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">任务描述</label>
+                        <textarea id="description" rows="3"></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="status">状态</label>
+                            <select id="status">
+                                <option value="planning">规划中</option>
+                                <option value="in-progress">进行中</option>
+                                <option value="completed">已完成</option>
+                                <option value="blocked">阻塞中</option>
+                                <option value="cancelled">已取消</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="priority">优先级</label>
+                            <select id="priority">
+                                <option value="1">最高</option>
+                                <option value="2">高</option>
+                                <option value="3" selected>中等</option>
+                                <option value="4">低</option>
+                                <option value="5">最低</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startDate">开始日期</label>
+                            <input type="date" id="startDate">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="endDate">结束日期</label>
+                            <input type="date" id="endDate">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="estimatedTime">预估时间(分钟)</label>
+                            <input type="number" id="estimatedTime" min="0" value="0">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="progress">进度(%)</label>
+                            <input type="range" id="progress" min="0" max="100" value="0">
+                            <span id="progressValue">0%</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tags">标签(用逗号分隔)</label>
+                        <input type="text" id="tags" placeholder="例如: 工作,项目,重要">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary close">取消</button>
+                <button type="button" class="btn btn-primary" id="saveTask">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/taskbreakdown.js"></script>
+</body>
+</html>

@@ -23,6 +23,7 @@
 				<a href="/exercise" class="nav-item"><span class="nav-icon">💪</span><span class="nav-text">锻炼管理</span></a>
 				<a href="/reading" class="nav-item"><span class="nav-icon">📚</span><span class="nav-text">读书记录</span></a>
 				<a href="/skill" class="nav-item"><span class="nav-icon">🎯</span><span class="nav-text">技能学习</span></a>
+				<a href="/taskbreakdown" class="nav-item"><span class="nav-icon">📋</span><span class="nav-text">任务拆解</span></a>
 				<a href="/lifecountdown" class="nav-item"><span class="nav-icon">⏰</span><span class="nav-text">人生倒计时</span></a>
 				<a href="/statistics" class="nav-item"><span class="nav-icon">📊</span><span class="nav-text">访问统计</span></a>
 				<a href="/tools" class="nav-item"><span class="nav-icon">🛠️</span><span class="nav-text">实用工具</span></a>
