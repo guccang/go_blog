@@ -207,7 +207,11 @@ function initializeTagFilters() {
         filter.addEventListener('click', function(e) {
             e.preventDefault();
             const tag = this.getAttribute('data-tag');
-            filterByTag(tag);
+            if (tag === 'all') {
+                filterByTag(tag);
+            } else {
+                searchByTag(tag);
+            }
         });
     });
 }
@@ -402,7 +406,13 @@ document.addEventListener('visibilitychange', function() {
     }
 });
 
+// 按标签搜索
+function searchByTag(tagName) {
+    window.location.href = '/search?match=' + encodeURIComponent('@tag match ' + tagName);
+}
+
 // 导出函数供模板使用
 window.onSearch = onSearch;
 window.toggleView = toggleView;
-window.filterByTag = filterByTag; 
+window.filterByTag = filterByTag;
+window.searchByTag = searchByTag; 

@@ -7,10 +7,12 @@ import (
 	"control"
 	"fmt"
 	t "html/template"
+	"math"
 	"module"
 	log "mylog"
 	h "net/http"
 	"path/filepath"
+	"search"
 	"share"
 	"sort"
 	"strings"
@@ -57,6 +59,11 @@ type LinkData struct {
 	IS_DIARY     bool
 }
 
+type TagInfo struct {
+	Name  string
+	Count int
+}
+
 type GameData struct {
 	Name        string
 	Path        string
@@ -65,14 +72,25 @@ type GameData struct {
 }
 
 type LinkDatas struct {
-	LINKS        []LinkData
-	RECENT_LINKS []LinkData
-	VERSION      string
-	BLOGS_NUMBER int
-	TAGS         []string
-	USER_ACCOUNT string
-	USER_AVATAR  string
-	GAMES        []GameData
+	LINKS          []LinkData
+	RECENT_LINKS   []LinkData
+	VERSION        string
+	BLOGS_NUMBER   int
+	TAGS           []TagInfo
+	USER_ACCOUNT   string
+	USER_AVATAR    string
+	GAMES          []GameData
+	SEARCH_COMMANDS []SearchCommandInfo
+}
+
+// SearchCommandInfo 搜索命令信息
+type SearchCommandInfo struct {
+	Name        string // 命令名称，如 "@tag match"
+	DisplayName string // 显示名称，如 "标签搜索"
+	Description string // 命令描述
+	Example     string // 使用示例
+	HasParam    bool   // 是否需要额外参数
+	ParamHint   string // 参数提示，如 "标签名"
 }
 
 type CommentDatas struct {
@@ -176,7 +194,34 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 	datas.USER_ACCOUNT = account
 	datas.USER_AVATAR = generateUserAvatar(account)
 
+	// 获取所有博客用于标签计数（基于权限标志）
+	allBlogs := control.GetAll(account, math.MaxInt32, flag)
+
 	all_tags := make(map[string]int)
+
+	// 遍历所有博客计算标签数量
+	for _, b := range allBlogs {
+		// 跳过不符合权限标志的博客
+		if (b.AuthType & flag) == 0 {
+			continue
+		}
+		// 统计标签出现次数（统一转换为小写）
+		if b.Tags != "" {
+			tags := strings.Split(b.Tags, "|")
+			for _, tag := range tags {
+				if tag == "" {
+					continue
+				}
+				lowerTag := strings.ToLower(tag)
+				cnt, ok := all_tags[lowerTag]
+				if !ok {
+					all_tags[lowerTag] = 1
+				} else {
+					all_tags[lowerTag] = cnt + 1
+				}
+			}
+		}
+	}
 
 	for _, b := range blogs {
 
@@ -212,24 +257,19 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 
-		tags := strings.Split(b.Tags, "|")
-		for _, tag := range tags {
-			if tag == "" {
-				continue
-			}
-			cnt, ok := all_tags[tag]
-			if !ok {
-				all_tags[tag] = 1
-			} else {
-				all_tags[tag] = cnt + 1
-			}
-		}
 	}
 
-	for tag, _ := range all_tags {
-		datas.TAGS = append(datas.TAGS, tag)
+	// Create TagInfo slice from all_tags map
+	for tag, count := range all_tags {
+		datas.TAGS = append(datas.TAGS, TagInfo{Name: tag, Count: count})
 	}
-	sort.Strings(datas.TAGS)
+	// Sort by count descending, then by name ascending
+	sort.Slice(datas.TAGS, func(i, j int) bool {
+		if datas.TAGS[i].Count != datas.TAGS[j].Count {
+			return datas.TAGS[i].Count > datas.TAGS[j].Count
+		}
+		return datas.TAGS[i].Name < datas.TAGS[j].Name
+	})
 
 	// 处理最近访问的博客
 	recent := make([]LinkData, len(datas.LINKS))
@@ -269,6 +309,19 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 		datas.RECENT_LINKS = recent[:MAX_RECENT_LINKS]
 	} else {
 		datas.RECENT_LINKS = recent
+	}
+
+	// 获取搜索命令数据
+	searchCommands := search.GetSearchCommands()
+	for _, cmd := range searchCommands {
+		datas.SEARCH_COMMANDS = append(datas.SEARCH_COMMANDS, SearchCommandInfo{
+			Name:        cmd.Name,
+			DisplayName: cmd.DisplayName,
+			Description: cmd.Description,
+			Example:     cmd.Example,
+			HasParam:    cmd.HasParam,
+			ParamHint:   cmd.ParamHint,
+		})
 	}
 
 	return &datas
@@ -334,7 +387,7 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 func PageTags(w h.ResponseWriter, tag, session string) {
 
 	account := blog.GetAccountFromSession(session)
-	blogs := control.GetMatch(account, "@matchtag "+tag)
+	blogs := control.GetMatch(account, "@tag match"+tag)
 
 	flag := module.EAuthType_public
 	// 只展示public
@@ -602,7 +655,7 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 	}
 	// 直接显示主页
 	if match == "@main" {
-		h.Redirect(w, r, "/public", 302)
+		h.Redirect(w, r, "/main", 302)
 		return 0
 	}
 	// 创建timed blog
@@ -866,7 +919,7 @@ func getGamesList() []GameData {
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter, account string) {
 	// 获取所有public标签的博客
-	blogs := control.GetMatch(account, "@matchauth public")
+	blogs := control.GetMatch(account, "@auth match public")
 
 	// 只展示public权限的博客
 	flag := module.EAuthType_public
@@ -1106,6 +1159,24 @@ func PageFinance(w h.ResponseWriter) {
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render finance template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageTaskBreakdown renders the task breakdown page
+func PageTaskBreakdown(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "taskbreakdown.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse taskbreakdown template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render taskbreakdown template", h.StatusInternalServerError)
 		return
 	}
 }

@@ -37,6 +37,7 @@ const (
 	ModuleFinance
 	ModuleShare
 	ModuleTodolist
+	ModuleTaskBreakdown
 	ModuleView
 	ModuleControl
 )
@@ -92,6 +93,7 @@ func Info() {
 		ModuleFinance:       "finance",
 		ModuleShare:         "share",
 		ModuleTodolist:      "todolist",
+		ModuleTaskBreakdown: "taskbreakdown",
 		ModuleView:          "view",
 		ModuleControl:       "control",
 	}

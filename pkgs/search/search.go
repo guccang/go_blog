@@ -3,6 +3,7 @@ package search
 import (
 	"blog"
 	"config"
+	"fmt"
 	"module"
 	log "mylog"
 	"sort"
@@ -10,8 +11,130 @@ import (
 	"time"
 )
 
+type optFunc func(string, []string) []*module.Blog
+
+var optFuncMap = make(map[string]optFunc)
+
+// SearchCommandMeta 搜索命令元数据
+type SearchCommandMeta struct {
+	Name        string // 命令名称，如 "@tag match"
+	DisplayName string // 显示名称，如 "标签搜索"
+	Description string // 命令描述
+	Example     string // 使用示例
+	HasParam    bool   // 是否需要额外参数
+	ParamHint   string // 参数提示，如 "标签名"
+}
+
+// commandMetaMap 命令元数据映射
+var commandMetaMap = make(map[string]SearchCommandMeta)
+
+// registerCommand 注册搜索命令
+func registerCommand(name string, fn optFunc, meta SearchCommandMeta) {
+	optFuncMap[name] = fn
+	commandMetaMap[name] = meta
+}
+
+// GetSearchCommands 获取所有搜索命令的元数据
+func GetSearchCommands() []SearchCommandMeta {
+	commands := make([]SearchCommandMeta, 0, len(commandMetaMap))
+	for _, meta := range commandMetaMap {
+		commands = append(commands, meta)
+	}
+	// 按显示名称排序，确保顺序一致
+	sort.Slice(commands, func(i, j int) bool {
+		return commands[i].DisplayName < commands[j].DisplayName
+	})
+	return commands
+}
+
 func Info() {
 	log.InfoF(log.ModuleSearch, "info search v5.0")
+
+	// 注册搜索命令及其元数据
+	registerCommand("@normal search", normalMatch, SearchCommandMeta{
+		Name:        "@normal search",
+		DisplayName: "普通搜索",
+		Description: "搜索博客标题和内容",
+		Example:     "关键词1 关键词2",
+		HasParam:    true,
+		ParamHint:   "搜索关键词",
+	})
+
+	// @matchauth public
+	// @matchauth private
+	// @matchauth encrypt
+	registerCommand("@auth match", authMatch, SearchCommandMeta{
+		Name:        "@auth match",
+		DisplayName: "权限搜索",
+		Description: "按权限类型搜索博客",
+		Example:     "@auth match public",
+		HasParam:    true,
+		ParamHint:   "public/private/encrypt",
+	})
+	// @optauth public matchtitle
+	// @optauth private matchtitle
+	registerCommand("@auth optchange", authChange, SearchCommandMeta{
+		Name:        "@auth optchange",
+		DisplayName: "修改权限",
+		Description: "修改博客的权限类型",
+		Example:     "@auth optchange public 标题关键词",
+		HasParam:    true,
+		ParamHint:   "public/private 标题关键词",
+	})
+	// @matchtag "tag1 tag2 tag3"
+	registerCommand("@tag match", tagMatch, SearchCommandMeta{
+		Name:        "@tag match",
+		DisplayName: "标签搜索",
+		Description: "按标签搜索博客",
+		Example:     "@tag match linux",
+		HasParam:    true,
+		ParamHint:   "标签名",
+	})
+	// @opttag add tag matchtitle
+	registerCommand("@tag optadd", tagAdd, SearchCommandMeta{
+		Name:        "@tag optadd",
+		DisplayName: "添加标签",
+		Description: "给博客添加标签",
+		Example:     "@tag optadd linux 标题关键词",
+		HasParam:    true,
+		ParamHint:   "标签名 标题关键词",
+	})
+	// @opttag replace from-tag to-tag
+	registerCommand("@tag optreplace", tagChange, SearchCommandMeta{
+		Name:        "@tag optreplace",
+		DisplayName: "替换标签",
+		Description: "替换博客的标签",
+		Example:     "@tag optreplace 旧标签 新标签",
+		HasParam:    true,
+		ParamHint:   "旧标签 新标签",
+	})
+	// @opttag clear tag
+	registerCommand("@tag optclear", tagClear, SearchCommandMeta{
+		Name:        "@tag optclear",
+		DisplayName: "清除标签",
+		Description: "清除博客的标签",
+		Example:     "@tag optclear 标签名",
+		HasParam:    true,
+		ParamHint:   "标签名",
+	})
+	// @matchtimed machtitle 添加日期的标题的博客搜索
+	registerCommand("@timed match", timedMatch, SearchCommandMeta{
+		Name:        "@timed match",
+		DisplayName: "定时博客",
+		Description: "搜索包含日期的博客",
+		Example:     "@timed match 关键词",
+		HasParam:    true,
+		ParamHint:   "搜索关键词",
+	})
+	// @reload cfg
+	registerCommand("@reload cfg", reloadCfg, SearchCommandMeta{
+		Name:        "@reload cfg",
+		DisplayName: "重载配置",
+		Description: "重新加载系统配置",
+		Example:     "@reload cfg",
+		HasParam:    false,
+		ParamHint:   "",
+	})
 }
 
 /*
@@ -35,77 +158,22 @@ func Search(account, match string) []*module.Blog {
 		return empty
 	}
 
-	begin_token := tokens[0]
+	opt := tokens[0]
+	if strings.HasPrefix(opt, "@") {
+		if len(tokens) > 1 {
+			opt = fmt.Sprintf("%s %s", tokens[0], tokens[1])
+			if f, ok := optFuncMap[opt]; ok {
+				// tokens[1:] pass params
+				return f(account, tokens[2:])
+			}
 
-	if strings.HasPrefix(begin_token, "@") {
-		// begin with @
-		opt := begin_token[1:]
-		log.DebugF(log.ModuleSearch, "opt=%s token=%s", opt, begin_token)
-		if len(tokens) < 2 {
-			return nil
-		}
-
-		tag := tokens[1]
-		if strings.ToLower(opt) == "matchtag" {
-			// account tag matchess
-			return matchTags(account, tag, tokens[2:])
-		}
-		if strings.ToLower(opt) == "matchauth" {
-			if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
-				auth_type := module.EAuthType_private
-				if tag == "public" {
-					auth_type = module.EAuthType_public
-				}
-				return matchBlogsWithAuthType(account, auth_type, tokens[2:])
-			}
-			if strings.ToLower(tag) == strings.ToLower("encrypt") {
-				return matchEncrypt(account)
-			}
-		}
-		if strings.ToLower(opt) == "optauth" {
-			if strings.ToLower(tag) == strings.ToLower("public") || strings.ToLower(tag) == strings.ToLower("private") {
-				auth_type := module.EAuthType_private
-				if tag == "public" {
-					auth_type = module.EAuthType_public
-				}
-				return changeBlogsWithAuthType(account, auth_type, tokens[2:])
-			}
-		}
-		if strings.ToLower(opt) == strings.ToLower("reload") {
-			if len(tokens) != 2 {
-				return nil
-			}
-			reload(account, tokens[1])
-			// Return a special blog entry to indicate reload completion
-			reloadBlog := &module.Blog{
-				Title:      "系统重新加载完成",
-				Content:    "配置文件已重新加载完成！",
-				ModifyTime: time.Now().Format("2006-01-02 15:04:05"),
-				Tags:       "system",
-				AuthType:   module.EAuthType_public,
-			}
-			return []*module.Blog{reloadBlog}
-		}
-		if strings.ToLower(opt) == strings.ToLower("opttag") {
-			if len(tokens) < 2 {
-				return nil
-			}
-			subopt := tokens[1]
-			if subopt == "add" {
-				tagAdd(account, tokens)
-			} else if subopt == "replace" {
-				tagChange(account, tokens)
-			}
-		}
-		if strings.ToLower(opt) == strings.ToLower("timed") {
-			return tagTimed(account, tokens)
 		}
 	} else {
-		// begin with other
-		return matchOther(account, tokens)
+		opt = "@normal search"
+		return optFuncMap[opt](account, tokens)
 	}
 
-	return nil
+	return []*module.Blog{}
 }
 
 func sortblogs(s []*module.Blog) {
@@ -116,8 +184,15 @@ func sortblogs(s []*module.Blog) {
 	})
 }
 
-func matchTags(account, tag string, matches []string) []*module.Blog {
+// @tag match tags
+func tagMatch(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
+	tag := ""
+	if len(tokens) > 0 {
+		tag = tokens[0]
+	}
+
+	matches := tokens[1:]
 	for _, b := range blog.GetBlogsWithAccount(account) {
 		if false == strings.Contains(strings.ToLower(b.Tags), strings.ToLower(tag)) {
 			continue
@@ -135,15 +210,14 @@ func matchTags(account, tag string, matches []string) []*module.Blog {
 	return s
 }
 
-func reload(account, name string) {
-	if name == "cfg" {
-		config_path := config.GetConfigPathWithAccount(account)
-		config.ReloadConfig(account, config_path)
-		log.InfoF(log.ModuleSearch, "reload cfg %s", config_path)
-	}
+func reloadCfg(account string, tokens []string) []*module.Blog {
+	config_path := config.GetConfigPathWithAccount(account)
+	config.ReloadConfig(account, config_path)
+	log.InfoF(log.ModuleSearch, "reload cfg %s", config_path)
+	return []*module.Blog{}
 }
 
-func matchOther(account string, matches []string) []*module.Blog {
+func normalMatch(account string, matches []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
 	for _, b := range blog.GetBlogsWithAccount(account) {
 		if ismatch(b, matches) == 0 {
@@ -154,14 +228,6 @@ func matchOther(account string, matches []string) []*module.Blog {
 
 	sortblogs(s)
 
-	return s
-}
-
-func matchHelp(account string) []*module.Blog {
-	s := make([]*module.Blog, 0)
-	for _, b := range blog.GetBlogsWithAccount(account) {
-		s = append(s, b)
-	}
 	return s
 }
 
@@ -232,8 +298,23 @@ func ismatch(b *module.Blog, matches []string) int {
 	return 0
 }
 
-func changeBlogsWithAuthType(account string, auth_type int, matches []string) []*module.Blog {
+func authChange(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
+	if len(tokens) <= 0 {
+		return s
+	}
+
+	tag := tokens[0]
+	auth_type := module.EAuthType_private
+	if strings.ToLower(tag) == strings.ToLower("private") {
+		auth_type = module.EAuthType_private
+	} else if strings.ToLower(tag) == strings.ToLower("public") {
+		auth_type = module.EAuthType_public
+	} else {
+		return s
+	}
+
+	matches := tokens[1:]
 	for _, b := range blog.GetBlogsWithAccount(account) {
 
 		if isMatchTitle(b, matches) == 0 {
@@ -253,8 +334,25 @@ func changeBlogsWithAuthType(account string, auth_type int, matches []string) []
 
 }
 
-func matchBlogsWithAuthType(account string, auth_type int, matches []string) []*module.Blog {
+func authMatch(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
+	if len(tokens) <= 0 {
+		return s
+	}
+
+	t := tokens[0]
+	auth_type := module.EAuthType_private
+	if strings.ToLower(t) == "public" {
+		auth_type = module.EAuthType_public
+	} else if strings.ToLower(t) == "private" {
+		auth_type = module.EAuthType_private
+	} else if strings.ToLower(t) == "encrypt" {
+		return encryptMatch(account, tokens)
+	} else {
+		return s
+	}
+
+	matches := tokens[1:]
 	for _, b := range blog.GetBlogsWithAccount(account) {
 		// auth
 		if (b.AuthType & auth_type) == 0 {
@@ -275,7 +373,7 @@ func matchBlogsWithAuthType(account string, auth_type int, matches []string) []*
 
 }
 
-func matchEncrypt(account string) []*module.Blog {
+func encryptMatch(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
 	for _, b := range blog.GetBlogsWithAccount(account) {
 
@@ -291,38 +389,47 @@ func matchEncrypt(account string) []*module.Blog {
 	return s
 }
 
-func tagAdd(account string, tokens []string) {
-	if len(tokens) != 4 {
-		return
+func tagAdd(account string, tokens []string) []*module.Blog {
+	if len(tokens) != 2 {
+		return []*module.Blog{}
 	}
-	title := tokens[2]
-	tag := tokens[3]
+	tag := tokens[0]
+	title := tokens[1]
 
-	blog.TagAddWithAccount(account, title, tag)
+	return blog.TagAddWithAccount(account, title, tag)
 }
 
-func tagChange(account string, tokens []string) {
+func tagClear(account string, tokens []string) []*module.Blog {
 	from := ""
 	to := ""
 
-	if len(tokens) == 3 {
-		from = tokens[1]
-		to = tokens[2]
-	} else if len(tokens) == 2 {
-		from = tokens[1]
+	if len(tokens) == 1 {
+		from = tokens[0]
 	}
 
-	blog.TagReplaceWithAccount(account, from, to)
+	return blog.TagReplaceWithAccount(account, from, to)
 }
 
-func tagTimed(account string, tokens []string) []*module.Blog {
+func tagChange(account string, tokens []string) []*module.Blog {
+	from := ""
+	to := ""
+
+	if len(tokens) == 2 {
+		from = tokens[0]
+		to = tokens[1]
+	}
+
+	return blog.TagReplaceWithAccount(account, from, to)
+}
+
+func timedMatch(account string, tokens []string) []*module.Blog {
 	s := make([]*module.Blog, 0)
 	for _, b := range blog.GetBlogsWithAccount(account) {
 		// not timed
 		if config.IsTitleContainsDateSuffix(b.Title) != 1 {
 			continue
 		}
-		if ismatch(b, tokens[1:]) == 0 {
+		if ismatch(b, tokens) == 0 {
 			continue
 		}
 		s = append(s, b)

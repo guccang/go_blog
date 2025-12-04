@@ -33,11 +33,25 @@
 				<div class="search-container">
 					<input id="search" type="text" placeholder="搜索博客或标签..." list="search_list">
 				<datalist id="search_list">
+					<!-- 标签建议 -->
 					{{range .TAGS}}
-						<option>{{.}}</option>
+						<option>{{.Name}}</option>
 					{{end}}
+					<!-- 搜索命令建议 -->
+					<option>@tag match </option>
+					<option>@auth match public</option>
+					<option>@auth match private</option>
+					<option>@auth match encrypt</option>
+					<option>@timed match </option>
+					<option>@reload cfg</option>
 				</datalist>
 					<button type="button" class="search-btn" onclick="onSearch()">搜索</button>
+					<select id="search-command-select" class="search-command-select" title="选择搜索命令">
+						<option value="">选择命令</option>
+						{{range .SEARCH_COMMANDS}}
+						<option value="{{.Name}}" data-hasparam="{{.HasParam}}" data-paramhint="{{.ParamHint}}">{{.DisplayName}}</option>
+						{{end}}
+					</select>
 				</div>
 				<div class="header-actions">
 					<button class="view-toggle" onclick="toggleView()" title="切换视图">
@@ -80,8 +94,25 @@
 			{{end}}
 			</div>
 		</div>
+	</div>
 
-		<div class="container">
+
+	<!-- 热门标签区域 -->
+	<div class="tags-section">
+		<h2 class="section-title">
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 5px;">
+				<path d="M20.59 13.41L13.42 20.58C13.2343 20.7657 13.0137 20.9134 12.7709 21.0148C12.5281 21.1162 12.2678 21.1693 12.005 21.171C11.7422 21.1727 11.4813 21.123 11.2368 21.0248C10.9923 20.9266 10.7691 20.7818 10.58 20.598L3 13V3H13L20.59 10.59C20.9625 10.9645 21.1716 11.4716 21.1716 12C21.1716 12.5284 20.9625 13.0355 20.59 13.41Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+			热门标签
+		</h2>
+		<div class="tag-filters">
+			{{range .TAGS}}
+				<button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}" onclick="searchByTag('{{.Name}}')">{{.Name}} ({{.Count}})</button>
+			{{end}}
+		</div>
+	</div>
+
+	<div class="container">
 		{{range .LINKS}}
 			<div class="link-card">
 				<a class="link-with-dot" href="{{.URL}}">
@@ -106,6 +137,169 @@
     	<script src="/js/move_assistant.js"></script>
 		<script src="/js/utils.js"></script>
 		<script src="/js/link.js"></script>
+
+		<script>
+		// 点击标签进行搜索
+		function searchByTag(tagName) {
+			const searchInput = document.getElementById('search');
+			if (searchInput) {
+				searchInput.value = "@tag match " + tagName;
+				onSearch();
+			}
+		}
+
+		// 填充搜索命令到搜索框
+		function fillSearchCommand(commandOrButton) {
+			const searchInput = document.getElementById('search');
+			if (!searchInput) return;
+
+			let command = '';
+			let hasParam = false;
+			let paramHint = '';
+
+			if (typeof commandOrButton === 'string') {
+				// 向后兼容：直接使用命令字符串
+				command = commandOrButton;
+				hasParam = command.endsWith(' ');
+			} else {
+				// 新方式：从按钮元素获取数据
+				const button = commandOrButton;
+				command = button.getAttribute('data-command');
+				hasParam = button.getAttribute('data-hasparam') === 'true';
+				paramHint = button.getAttribute('data-paramhint') || '';
+
+				// 如果命令需要参数，添加空格
+				if (hasParam) {
+					command += ' ';
+				}
+			}
+
+			searchInput.value = command;
+			searchInput.focus();
+
+			// 如果命令需要额外参数，将光标定位到命令末尾
+			if (hasParam) {
+				searchInput.setSelectionRange(command.length, command.length);
+				// 显示参数提示
+				if (paramHint) {
+					showCommandHint(`请输入${paramHint}`);
+				}
+			} else {
+				// 不需要参数的命令，直接执行搜索
+				setTimeout(() => {
+					if (searchInput.value === command) {
+						onSearch();
+					}
+				}, 100);
+			}
+		}
+
+		// 显示命令提示
+		function showCommandHint(message) {
+			// 创建或更新提示元素
+			let hintEl = document.getElementById('search-command-hint');
+			if (!hintEl) {
+				hintEl = document.createElement('div');
+				hintEl.id = 'search-command-hint';
+				hintEl.style.cssText = `
+					position: fixed;
+					top: 100px;
+					right: 20px;
+					background: #4CAF50;
+					color: white;
+					padding: 10px 15px;
+					border-radius: 5px;
+					box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+					z-index: 1000;
+					font-size: 14px;
+					animation: fadeIn 0.3s;
+				`;
+				document.body.appendChild(hintEl);
+			}
+
+			hintEl.textContent = message;
+
+			// 3秒后自动隐藏
+			setTimeout(() => {
+				if (hintEl.parentNode) {
+					hintEl.style.animation = 'fadeOut 0.3s';
+					setTimeout(() => {
+						if (hintEl.parentNode) {
+							hintEl.parentNode.removeChild(hintEl);
+						}
+					}, 300);
+				}
+			}, 3000);
+		}
+
+		// 处理搜索命令选择
+		function handleSearchCommandSelect() {
+			const select = document.getElementById('search-command-select');
+			if (!select) return;
+
+			const selectedOption = select.options[select.selectedIndex];
+			if (!selectedOption || !selectedOption.value) return;
+
+			const command = selectedOption.value;
+			const hasParam = selectedOption.getAttribute('data-hasparam') === 'true';
+			const paramHint = selectedOption.getAttribute('data-paramhint') || '';
+
+			const searchInput = document.getElementById('search');
+			if (!searchInput) return;
+
+			// 填充命令到输入框
+			let commandText = command;
+			if (hasParam) {
+				commandText += ' ';
+			}
+
+			searchInput.value = commandText;
+			searchInput.focus();
+
+			// 如果命令需要额外参数，将光标定位到命令末尾
+			if (hasParam) {
+				searchInput.setSelectionRange(commandText.length, commandText.length);
+				// 显示参数提示
+				if (paramHint) {
+					showCommandHint(`请输入${paramHint}`);
+				}
+			} else {
+				// 不需要参数的命令，直接执行搜索
+				setTimeout(() => {
+					if (searchInput.value === commandText) {
+						onSearch();
+					}
+				}, 100);
+			}
+
+			// 重置选择器到默认选项
+			setTimeout(() => {
+				select.selectedIndex = 0;
+			}, 10);
+		}
+
+		// 初始化搜索命令选择器事件
+		document.addEventListener('DOMContentLoaded', function() {
+			const searchCommandSelect = document.getElementById('search-command-select');
+			if (searchCommandSelect) {
+				searchCommandSelect.addEventListener('change', handleSearchCommandSelect);
+			}
+		});
+
+		// 添加CSS动画
+		const style = document.createElement('style');
+		style.textContent = `
+			@keyframes fadeIn {
+				from { opacity: 0; transform: translateY(-10px); }
+				to { opacity: 1; transform: translateY(0); }
+			}
+			@keyframes fadeOut {
+				from { opacity: 1; transform: translateY(0); }
+				to { opacity: 0; transform: translateY(-10px); }
+			}
+		`;
+		document.head.appendChild(style);
+		</script>
 		
 	</body>
 </html>

@@ -57,7 +57,7 @@
         <div class="tag-filters">
             <button type="button" class="tag-filter active" data-tag="all">全部</button>
             {{range .TAGS}}
-                <button type="button" class="tag-filter" data-tag="{{.}}">{{.}}</button>
+                <button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}">{{.Name}} ({{.Count}})</button>
             {{end}}
         </div>
     </div>

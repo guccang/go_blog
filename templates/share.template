@@ -31,7 +31,7 @@
 			<input id="search" type="text" class="custom-wh" list="search_list"></input>
 			<datalist id="search_list">
 				{{range .TAGS}}
-					<option>{{.}}</option>
+					<option>{{.Name}}</option>
 				{{end}}
 			</datalist>
 		</div>

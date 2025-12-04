@@ -165,7 +165,7 @@ body {
 	display: flex;
 	flex-grow: 0; /* 不允许增长，固定宽度 */
 	flex-shrink: 1; /* 允许缩小 */
-	max-width: 350px; /* 增加最大宽度 */
+	max-width: 450px; /* 增加最大宽度以适应三个元素 */
 	min-width: 200px; /* 设置最小宽度 */
 	margin-left: 0; /* 移除左边距 */
 	margin-right: 0; /* 移除右边距 */
@@ -175,6 +175,7 @@ body {
 	flex-grow: 1;
 	padding: 6px 10px; /* 进一步减少padding */
 	border: 1px solid var(--border-color);
+	border-right: none;
 	border-radius: 20px 0 0 20px; /* 减小圆角 */
 	background-color: var(--card-bg);
 	color: var(--text-color);
@@ -192,8 +193,9 @@ body {
 	padding: 6px 12px; /* 进一步减少padding */
 	background-color: var(--accent-color);
 	color: white;
-	border: none;
-	border-radius: 0 20px 20px 0; /* 减小圆角 */
+	border: 1px solid var(--accent-color);
+	border-left: none;
+	border-radius: 0;
 	cursor: pointer;
 	font-size: 13px; /* 进一步减小字体 */
 	transition: all 0.3s;
@@ -204,6 +206,39 @@ body {
 	background-color: var(--accent-hover);
 	transform: translateY(-2px);
 }
+
+/* 搜索命令选择器样式 */
+.search-command-select {
+	padding: 6px 10px;
+	background-color: var(--secondary-color);
+	color: var(--text-color);
+	border: 1px solid var(--border-color);
+	border-left: none;
+	border-radius: 0 20px 20px 0;
+	font-size: 13px;
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+	background-size: 12px;
+	padding-right: 28px;
+	min-width: 100px;
+	transition: all 0.3s;
+}
+
+.search-command-select:hover {
+	background-color: var(--lighter-bg);
+}
+
+.search-command-select:focus {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--accent-color);
+	border-color: var(--accent-color);
+}
+
 
 .view-toggle {
 	background-color: var(--accent-color);
@@ -585,7 +620,16 @@ body {
 		padding: 5px 10px;
 		font-size: 12px;
 	}
-	
+
+	.search-command-select {
+		padding: 5px 8px;
+		font-size: 12px;
+		padding-right: 24px;
+		background-size: 10px;
+		background-position: right 6px center;
+		min-width: 80px;
+	}
+
 	.view-toggle {
 		padding: 5px 6px;
 		font-size: 11px;
@@ -613,6 +657,21 @@ body {
 	/* 最近查看区域也需要底部间距 */
 	.recent-section {
 		padding-bottom: 80px;
+	}
+
+	/* 搜索命令面板在移动端的调整 */
+	.search-commands-section {
+		margin: 20px 0 15px 0;
+		padding: 15px;
+	}
+
+	.search-commands {
+		gap: 8px;
+	}
+
+	.search-command {
+		padding: 6px 12px;
+		font-size: 13px;
 	}
 }
 
@@ -697,7 +756,16 @@ body {
 		padding: 4px 8px;
 		font-size: 11px;
 	}
-	
+
+	.search-command-select {
+		padding: 4px 6px;
+		font-size: 11px;
+		padding-right: 22px;
+		background-size: 9px;
+		background-position: right 5px center;
+		min-width: 70px;
+	}
+
 	.view-toggle {
 		padding: 4px 5px;
 		font-size: 10px;
@@ -712,6 +780,22 @@ body {
 		width: 45px;
 		height: 45px;
 		font-size: 18px;
+	}
+
+	/* 搜索命令面板在超小屏幕的调整 */
+	.search-commands-section {
+		margin: 15px 0 10px 0;
+		padding: 12px;
+	}
+
+	.search-commands {
+		gap: 6px;
+	}
+
+	.search-command {
+		padding: 5px 10px;
+		font-size: 12px;
+		border-radius: 16px;
 	}
 }
 
@@ -767,7 +851,16 @@ body {
 		padding: 3px 6px;
 		font-size: 10px;
 	}
-	
+
+	.search-command-select {
+		padding: 3px 5px;
+		font-size: 10px;
+		padding-right: 20px;
+		background-size: 8px;
+		background-position: right 4px center;
+		min-width: 60px;
+	}
+
 	.view-toggle {
 		padding: 3px 4px;
 		font-size: 9px;
@@ -785,6 +878,22 @@ body {
 		width: 40px;
 		height: 40px;
 		font-size: 16px;
+	}
+
+	/* 搜索命令面板在最小屏幕的调整 */
+	.search-commands-section {
+		margin: 12px 0 8px 0;
+		padding: 10px;
+	}
+
+	.search-commands {
+		gap: 5px;
+	}
+
+	.search-command {
+		padding: 4px 8px;
+		font-size: 11px;
+		border-radius: 14px;
 	}
 }
 
@@ -1028,6 +1137,65 @@ body {
     margin-bottom: 0;
     font-size: 18px;
   }
+}
+
+/* 标签区域样式 */
+.tags-section {
+    max-width: 1200px;
+    margin: 30px auto 0;
+    padding: 0 20px;
+}
+
+.tags-section .section-title {
+    color: var(--text-color);
+    font-size: 22px;
+    margin-bottom: 15px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+}
+
+.tag-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.tag-filter {
+    padding: 6px 12px;
+    background-color: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    color: var(--text-color);
+}
+
+.tag-filter:hover {
+    background-color: var(--secondary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+/* Tag size variations based on count */
+.tag-size-small {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+.tag-size-medium {
+    font-size: 13px;
+    padding: 6px 12px;
+}
+
+.tag-size-large {
+    font-size: 16px;
+    padding: 8px 16px;
+    font-weight: 600;
 }
 
 /* 智能助手悬浮按钮 */

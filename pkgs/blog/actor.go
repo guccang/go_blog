@@ -278,31 +278,34 @@ func (a *BlogActor) getURLBlogNames(blogname string) []string {
 	return names
 }
 
-func (a *BlogActor) tagAdd(title, newtag string) {
+func (a *BlogActor) tagAdd(title, newtag string) []*module.Blog {
+	blogs := []*module.Blog{}
+	lowerNewtag := strings.ToLower(newtag)
 	for _, b := range a.blogs {
 		if !strings.Contains(strings.ToLower(b.Title), strings.ToLower(title)) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(b.Tags), strings.ToLower(newtag)) {
+		if strings.Contains(strings.ToLower(b.Tags), lowerNewtag) {
 			continue
 		}
 
 		newTags := ""
 		if b.Tags == "" {
-			newTags = newtag
+			newTags = lowerNewtag
 		} else {
-			newTags = fmt.Sprintf("%s|%s", b.Tags, newtag)
+			newTags = fmt.Sprintf("%s|%s", b.Tags, lowerNewtag)
 		}
-		log.InfoF(log.ModuleBlog, "blog add new tag %s %s", newTags, newtag)
+		log.InfoF(log.ModuleBlog, "blog add new tag %s (original: %s)", newTags, newtag)
 		b.Tags = newTags
 
-		// remove duplicates
+		// remove duplicates (case-insensitive)
 		tags := strings.Split(b.Tags, "|")
 		used := make(map[string]bool)
 		newTags = ""
 		for _, tag := range tags {
-			if !used[tag] {
-				used[tag] = true
+			lowerTag := strings.ToLower(tag)
+			if !used[lowerTag] {
+				used[lowerTag] = true
 			} else {
 				continue
 			}
@@ -311,24 +314,29 @@ func (a *BlogActor) tagAdd(title, newtag string) {
 		newTags = newTags[:len(newTags)-1]
 		b.Tags = newTags
 		db.SaveBlog(a.Account, b)
+		blogs = append(blogs, b)
 	}
+	return blogs
 }
 
 // Utilities that operate across all blogs
-func (a *BlogActor) tagReplace(from, to string) {
+func (a *BlogActor) tagReplace(from, to string) []*module.Blog {
+	blogs := []*module.Blog{}
+	lowerFrom := strings.ToLower(from)
+	lowerTo := strings.ToLower(to)
 	for _, b := range a.blogs {
-		if !strings.Contains(strings.ToLower(b.Tags), strings.ToLower(from)) {
+		if !strings.Contains(strings.ToLower(b.Tags), lowerFrom) {
 			continue
 		}
-		if from == b.Tags {
-			b.Tags = to
+		if strings.ToLower(b.Tags) == lowerFrom {
+			b.Tags = lowerTo
 		} else {
 			newTags := ""
 			tags := strings.Split(b.Tags, "|")
 			for _, tag := range tags {
-				if from == tag {
+				if strings.ToLower(tag) == lowerFrom {
 					if to != "" {
-						newTags = newTags + to + "|"
+						newTags = newTags + lowerTo + "|"
 					}
 				} else {
 					newTags = newTags + tag + "|"
@@ -339,13 +347,14 @@ func (a *BlogActor) tagReplace(from, to string) {
 			b.Tags = newTags
 		}
 
-		// remove duplicates
+		// remove duplicates (case-insensitive)
 		tags := strings.Split(b.Tags, "|")
 		used := make(map[string]bool)
 		newTags := ""
 		for _, tag := range tags {
-			if !used[tag] {
-				used[tag] = true
+			lowerTag := strings.ToLower(tag)
+			if !used[lowerTag] {
+				used[lowerTag] = true
 			} else {
 				continue
 			}
@@ -354,7 +363,10 @@ func (a *BlogActor) tagReplace(from, to string) {
 		newTags = newTags[:len(newTags)-1]
 		b.Tags = newTags
 		db.SaveBlog(a.Account, b)
+		blogs = append(blogs, b)
 	}
+
+	return blogs
 }
 
 func (a *BlogActor) setSameAuth(blogname string) {

@@ -170,7 +170,7 @@ func IsPublicTag(tag string) int {
 	return config.IsPublicTag(tag)
 }
 
-func TagReplaceWithAccount(account, from, to string) {
+func TagReplaceWithAccount(account, from, to string) []*module.Blog {
 	actor := getBlogActor(account)
 	cmd := &tagReplaceCmd{
 		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
@@ -178,10 +178,11 @@ func TagReplaceWithAccount(account, from, to string) {
 		To:           to,
 	}
 	actor.Send(cmd)
-	<-cmd.Response()
+	ret := <-cmd.Response()
+	return ret.([]*module.Blog)
 }
 
-func TagAddWithAccount(account, title, tag string) {
+func TagAddWithAccount(account, title, tag string) []*module.Blog {
 	actor := getBlogActor(account)
 	cmd := &tagAddCmd{
 		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
@@ -189,7 +190,8 @@ func TagAddWithAccount(account, title, tag string) {
 		Tag:          tag,
 	}
 	actor.Send(cmd)
-	<-cmd.Response()
+	ret := <-cmd.Response()
+	return ret.([]*module.Blog)
 }
 
 func SetSameAuthWithAccount(account, blogname string) {

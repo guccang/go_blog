@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Launch test function",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}",
+            "args": [
+                "-test.run",
+                "MyTestFunction"
+            ]
+        },
+        {
             "name": "Attach to Process",
             "type": "go",
             "request": "attach",
