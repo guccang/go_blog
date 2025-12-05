@@ -565,6 +565,34 @@ func (tm *TaskManager) GetTimelineData(account, rootID string) (*TimelineData, e
 	return &TimelineData{Tasks: timelineTasks}, nil
 }
 
+// calculateDaysBetween 计算两个日期之间的天数差
+func calculateDaysBetween(startDateStr, endDateStr string) (int, error) {
+	if startDateStr == "" || endDateStr == "" {
+		return 0, nil
+	}
+
+	// 解析日期
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid start date format: %s", startDateStr)
+	}
+
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid end date format: %s", endDateStr)
+	}
+
+	// 计算天数差（包含开始和结束日）
+	days := int(endDate.Sub(startDate).Hours()/24) + 1
+
+	// 确保天数至少为1
+	if days < 1 {
+		days = 1
+	}
+
+	return days, nil
+}
+
 // GetStatistics 获取统计信息
 func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, error) {
 	var tasks []*ComplexTask
@@ -586,12 +614,40 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		tasks = tm.flattenTaskTree(rootTask, []*ComplexTask{})
 	}
 
+	// 计算总预估时间（基于根任务的开始和结束时间）
+	totalTime := 0
+	if rootID != "" {
+		// 如果有指定根任务，使用根任务的时间
+		rootTask, err := tm.GetTask(account, rootID)
+		if err == nil && rootTask.StartDate != "" && rootTask.EndDate != "" {
+			days, err := calculateDaysBetween(rootTask.StartDate, rootTask.EndDate)
+			if err == nil && days > 0 {
+				// 假设每天工作8小时，转换为分钟
+				totalTime = days * 8 * 60
+			}
+		}
+	} else {
+		// 如果没有指定根任务，计算所有根任务的时间
+		rootTasks, err := tm.GetRootTasks(account)
+		if err == nil {
+			for _, rootTask := range rootTasks {
+				if rootTask.StartDate != "" && rootTask.EndDate != "" {
+					days, err := calculateDaysBetween(rootTask.StartDate, rootTask.EndDate)
+					if err == nil && days > 0 {
+						// 假设每天工作8小时，转换为分钟
+						totalTime += days * 8 * 60
+					}
+				}
+			}
+		}
+	}
+
 	stats := &StatisticsData{
 		TotalTasks:          len(tasks),
 		CompletedTasks:      0,
 		InProgressTasks:     0,
 		BlockedTasks:        0,
-		TotalTime:           0,
+		TotalTime:           totalTime,
 		StatusDistribution:  make(map[string]int),
 		PriorityDistribution: make(map[int]int),
 	}
@@ -622,9 +678,6 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 
 		// 统计优先级
 		stats.PriorityDistribution[task.Priority]++
-
-		// 累加预估时间
-		stats.TotalTime += task.EstimatedTime
 	}
 
 	return stats, nil

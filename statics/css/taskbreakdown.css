@@ -288,10 +288,58 @@ body {
     transform: translateX(5px);
 }
 
+/* 任务激活动画效果 */
+.task-node.task-activating {
+    animation: activate-pulse 0.3s ease-out;
+    transform: scale(1.02);
+}
+
+@keyframes activate-pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(46, 204, 113, 0);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(46, 204, 113, 0.5);
+    }
+    100% {
+        transform: scale(1.02);
+        box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+    }
+}
+
 .task-node.selected {
     background: #e3f2fd;
     border-left-color: var(--secondary-color);
+    animation: pulse-glow 2s infinite;
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.3);
+    position: relative;
 }
+
+/* 脉冲光晕动画 */
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(46, 204, 113, 0.6);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
+    }
+}
+
+/* 旋转动画 - 用于图标 */
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
 
 .task-node-header {
     display: flex;
@@ -299,10 +347,52 @@ body {
     justify-content: space-between;
 }
 
-.task-node-title {
-    font-weight: 500;
+.task-node-title-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 1;
 }
+
+.task-node-title {
+    font-weight: 500;
+}
+
+.task-selected-indicator {
+    display: none;
+    color: var(--secondary-color);
+    font-size: 12px;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 只有直接选中的任务才显示图标 */
+.task-node.selected > .task-node-header > .task-node-title-container > .task-selected-indicator {
+    display: flex;
+    animation: spin 1s linear infinite;
+}
+
+/* 只有直接选中的任务才改变标题样式 */
+.task-node.selected > .task-node-header > .task-node-title-container > .task-node-title {
+    color: var(--secondary-color);
+    font-weight: 600;
+    animation: title-pulse 2s infinite;
+}
+
+@keyframes title-pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
 
 .task-node-meta {
     display: flex;

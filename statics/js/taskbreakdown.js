@@ -607,7 +607,12 @@ class TaskBreakdownApp {
         // 构建HTML
         taskElement.innerHTML = `
             <div class="task-node-header">
-                <div class="task-node-title">${this.escapeHtml(taskTitle)}</div>
+                <div class="task-node-title-container">
+                    <span class="task-selected-indicator">
+                        <i class="fas fa-circle-notch"></i>
+                    </span>
+                    <div class="task-node-title">${this.escapeHtml(taskTitle)}</div>
+                </div>
                 <div class="task-node-meta">
                     <span class="task-status-badge ${statusClass}">${this.getStatusText(taskStatus)}</span>
                     <span class="task-priority-badge ${priorityClass}">${this.getPriorityText(taskPriority)}</span>
@@ -750,13 +755,23 @@ class TaskBreakdownApp {
         // 移除之前选中的样式
         document.querySelectorAll('.task-node.selected').forEach(el => {
             el.classList.remove('selected');
+            // 移除激活动画类
+            el.classList.remove('task-activating');
         });
 
         // 添加选中样式
         const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
         if (taskElement) {
-            taskElement.classList.add('selected');
-            console.log('找到任务元素，添加选中样式');
+            // 先添加激活动画类
+            taskElement.classList.add('task-activating');
+
+            // 短暂延迟后添加选中类，让激活动画先播放
+            setTimeout(() => {
+                taskElement.classList.add('selected');
+                taskElement.classList.remove('task-activating');
+            }, 300);
+
+            console.log('找到任务元素，添加选中样式和动画');
         } else {
             console.error(`未找到任务元素 data-task-id="${taskId}"`);
             // 尝试查找所有可能的task-id
