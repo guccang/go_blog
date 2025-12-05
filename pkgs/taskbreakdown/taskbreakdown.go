@@ -69,6 +69,11 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 
 	// 如果指定了父任务，验证父任务存在
 	if req.ParentID != "" {
+		// 检查父任务ID是否等于任务自身ID（防止循环引用）
+		if req.ParentID == taskID {
+			return nil, fmt.Errorf("task cannot be its own parent")
+		}
+
 		parentTask, err := tm.GetTask(account, req.ParentID)
 		if err != nil {
 			return nil, fmt.Errorf("parent task not found: %s", req.ParentID)
@@ -199,6 +204,11 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 	if updates.ParentID != nil && *updates.ParentID != task.ParentID {
 		// 验证新父任务存在
 		if *updates.ParentID != "" {
+			// 检查父任务ID是否等于任务自身ID（防止循环引用）
+			if *updates.ParentID == task.ID {
+				return nil, fmt.Errorf("task cannot be its own parent")
+			}
+
 			parentTask, err := tm.GetTask(account, *updates.ParentID)
 			if err != nil {
 				return nil, fmt.Errorf("new parent task not found: %s", *updates.ParentID)
@@ -332,6 +342,25 @@ func (tm *TaskManager) GetTaskTree(account, rootID string) (*ComplexTask, error)
 
 // buildTaskTree 递归构建任务树
 func (tm *TaskManager) buildTaskTree(account string, task *ComplexTask) (*ComplexTask, error) {
+	return tm.buildTaskTreeWithVisited(account, task, make(map[string]bool))
+}
+
+// buildTaskTreeWithVisited 递归构建任务树，带已访问集合防止循环引用
+func (tm *TaskManager) buildTaskTreeWithVisited(account string, task *ComplexTask, visited map[string]bool) (*ComplexTask, error) {
+	// 检查循环引用：如果任务的parent_id等于自身id，这是一个错误状态
+	// 为了安全，我们清空parent_id并记录错误
+	if task.ParentID == task.ID {
+		fmt.Printf("WARNING: Task %s has parent_id equal to its own id, clearing parent_id to prevent infinite recursion\n", task.ID)
+		task.ParentID = ""
+	}
+
+	// 检查是否已访问过此任务（防止循环引用）
+	if visited[task.ID] {
+		fmt.Printf("WARNING: Detected circular reference at task %s, breaking the cycle\n", task.ID)
+		return task, nil // 返回当前任务但不继续递归
+	}
+	visited[task.ID] = true
+
 	// 获取子任务
 	subtasks, err := tm.storage.GetTasksByParent(account, task.ID)
 	if err != nil {
@@ -349,7 +378,12 @@ func (tm *TaskManager) buildTaskTree(account string, task *ComplexTask) (*Comple
 	// 递归构建子任务树
 	task.Subtasks = []ComplexTask{}
 	for _, subtask := range activeSubtasks {
-		subtree, err := tm.buildTaskTree(account, subtask)
+		// 创建新的visited map副本，每个分支独立
+		branchVisited := make(map[string]bool)
+		for k, v := range visited {
+			branchVisited[k] = v
+		}
+		subtree, err := tm.buildTaskTreeWithVisited(account, subtask, branchVisited)
 		if err != nil {
 			return nil, err
 		}
@@ -570,13 +604,20 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		stats.StatusDistribution[normalizedStatus]++
 
 		// 统计特定状态数量
-		switch normalizedStatus {
-		case StatusCompleted:
+		// 首先检查进度是否为100%，如果是则计入已完成
+		if task.Progress == 100 {
 			stats.CompletedTasks++
-		case StatusInProgress:
-			stats.InProgressTasks++
-		case StatusBlocked:
-			stats.BlockedTasks++
+		} else {
+			// 否则按状态统计
+			switch normalizedStatus {
+			case StatusCompleted:
+				stats.CompletedTasks++
+			case StatusInProgress, StatusPlanning:
+				// 将planning状态也计入进行中
+				stats.InProgressTasks++
+			case StatusBlocked:
+				stats.BlockedTasks++
+			}
 		}
 
 		// 统计优先级

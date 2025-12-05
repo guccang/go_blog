@@ -40,6 +40,13 @@ func extractTaskIDFromTitle(title string) string {
 
 // SaveTask 保存任务到存储
 func (ts *TaskStorage) SaveTask(account string, task *ComplexTask) error {
+	// 检查循环引用：如果任务的parent_id等于自身id，这是一个错误状态
+	// 为了安全，我们清空parent_id并记录错误
+	if task.ParentID == task.ID {
+		fmt.Printf("WARNING: Task %s has parent_id equal to its own id, clearing parent_id before saving\n", task.ID)
+		task.ParentID = ""
+	}
+
 	// 生成博客标题
 	title := generateTaskBlogTitle(task.ID)
 
@@ -174,32 +181,44 @@ func (ts *TaskStorage) updateTaskIndex(account string, task *ComplexTask) error 
 		return err
 	}
 
-	// 创建或更新索引项
-	taskIndex := TaskIndex{
-		ID:        task.ID,
-		Title:     task.Title,
-		Status:    task.Status,
-		Priority:  task.Priority,
-		Progress:  task.Progress,
-		StartDate: task.StartDate,
-		EndDate:   task.EndDate,
-		ParentID:  task.ParentID,
-		Order:     task.Order,
-	}
-
-	// 查找是否已存在
-	found := false
-	for i, item := range index {
-		if item.ID == task.ID {
-			index[i] = taskIndex
-			found = true
-			break
+	// 如果任务已删除，从索引中移除
+	if task.Deleted {
+		// 从索引中移除已删除的任务
+		var newIndex []TaskIndex
+		for _, item := range index {
+			if item.ID != task.ID {
+				newIndex = append(newIndex, item)
+			}
 		}
-	}
+		index = newIndex
+	} else {
+		// 创建或更新索引项
+		taskIndex := TaskIndex{
+			ID:        task.ID,
+			Title:     task.Title,
+			Status:    task.Status,
+			Priority:  task.Priority,
+			Progress:  task.Progress,
+			StartDate: task.StartDate,
+			EndDate:   task.EndDate,
+			ParentID:  task.ParentID,
+			Order:     task.Order,
+		}
 
-	// 如果不存在，添加到索引
-	if !found {
-		index = append(index, taskIndex)
+		// 查找是否已存在
+		found := false
+		for i, item := range index {
+			if item.ID == task.ID {
+				index[i] = taskIndex
+				found = true
+				break
+			}
+		}
+
+		// 如果不存在，添加到索引
+		if !found {
+			index = append(index, taskIndex)
+		}
 	}
 
 	// 按Order排序
