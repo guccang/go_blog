@@ -7,6 +7,10 @@ class TaskBreakdownApp {
         this.currentTask = null;
         this.tasks = [];
         this.charts = {};
+
+        // 获取根任务ID（从URL参数或data属性）
+        this.rootTaskID = this.getRootTaskID();
+
         this.init();
     }
 
@@ -29,8 +33,8 @@ class TaskBreakdownApp {
             editTask: document.getElementById('editTask'),
             deleteTask: document.getElementById('deleteTask'),
             addSubtask: document.getElementById('addSubtask'),
-            viewToggle: document.getElementById('viewToggle'),
             refreshBtn: document.getElementById('refreshBtn'),
+            tabLinks: document.querySelectorAll('.tab-link'),
             taskModal: document.getElementById('taskModal'),
             modalTitle: document.getElementById('modalTitle'),
             taskForm: document.getElementById('taskForm'),
@@ -55,7 +59,17 @@ class TaskBreakdownApp {
             totalTime: document.getElementById('totalTime'),
             timelineChart: document.getElementById('timelineChart'),
             statusChart: document.getElementById('statusChart'),
-            priorityChart: document.getElementById('priorityChart')
+            priorityChart: document.getElementById('priorityChart'),
+            timeRangeSelect: document.getElementById('timeRangeSelect'),
+            refreshTrendsBtn: document.getElementById('refreshTrendsBtn'),
+            creationTrendChart: document.getElementById('creationTrendChart'),
+            completionTrendChart: document.getElementById('completionTrendChart'),
+            progressTrendChart: document.getElementById('progressTrendChart'),
+            rootTaskBreadcrumb: document.getElementById('rootTaskBreadcrumb'),
+            rootTaskTitle: document.getElementById('rootTaskTitle'),
+            statusFilter: document.getElementById('statusFilter'),
+            rootTasksPanel: document.getElementById('rootTasksPanel'),
+            rootTasksList: document.getElementById('rootTasksList')
         };
 
         // 调试：检查关键元素是否存在
@@ -79,6 +93,9 @@ class TaskBreakdownApp {
 
         // 加载数据
         this.loadData();
+
+        // 加载趋势数据（延迟加载确保图表容器已准备好）
+        this.loadInitialTrendsData();
     }
 
     bindEvents() {
@@ -115,12 +132,28 @@ class TaskBreakdownApp {
             this.elements.addSubtask.addEventListener('click', () => this.openModal('addSubtask'));
         }
 
-        if (this.elements.viewToggle) {
-            this.elements.viewToggle.addEventListener('click', () => this.toggleView());
+        // 选项卡切换事件
+        if (this.elements.tabLinks && this.elements.tabLinks.length > 0) {
+            this.elements.tabLinks.forEach(tabLink => {
+                tabLink.addEventListener('click', (e) => this.switchTab(e));
+            });
         }
 
         if (this.elements.refreshBtn) {
             this.elements.refreshBtn.addEventListener('click', () => this.loadData());
+        }
+
+        if (this.elements.refreshTrendsBtn) {
+            this.elements.refreshTrendsBtn.addEventListener('click', () => this.loadTrendsData());
+        }
+
+        if (this.elements.timeRangeSelect) {
+            this.elements.timeRangeSelect.addEventListener('change', () => this.loadTrendsData());
+        }
+
+        // 状态过滤事件
+        if (this.elements.statusFilter) {
+            this.elements.statusFilter.addEventListener('change', () => this.applyStatusFilter());
         }
 
         // 模态框关闭
@@ -134,6 +167,41 @@ class TaskBreakdownApp {
                 this.closeModal();
             }
         });
+    }
+
+    switchTab(event) {
+        const tabLink = event.currentTarget;
+        const tabId = tabLink.getAttribute('data-tab');
+
+        // 移除所有选项卡和窗格的激活状态
+        this.elements.tabLinks.forEach(link => link.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('active');
+        });
+
+        // 为点击的选项卡和对应的窗格添加激活状态
+        tabLink.classList.add('active');
+        const tabPane = document.getElementById(tabId);
+        if (tabPane) {
+            tabPane.classList.add('active');
+        }
+
+        // 如果需要，加载选项卡数据
+        if (tabId === 'statsTab') {
+            // 如果统计图表尚未渲染，重新加载数据以渲染图表
+            if (!this.charts.status) {
+                this.loadData(); // 这会加载统计数据并渲染图表
+            }
+        } else if (tabId === 'trendsTab') {
+            // 加载时间趋势数据
+            this.loadTrendsData();
+        } else if (tabId === 'timelineTab') {
+            // 如果时间线数据尚未加载，重新加载数据
+            if (!this.timelineTasks || this.timelineTasks.length === 0) {
+                this.loadData(); // 这会加载时间线数据并渲染
+            }
+        }
+        // 任务树选项卡不需要特殊处理，数据已在loadData中加载
     }
 
     async loadData() {
@@ -161,6 +229,35 @@ class TaskBreakdownApp {
             console.log('开始渲染任务树...');
             this.renderTaskTree();
             console.log('任务树渲染完成');
+
+            // 渲染根任务列表
+            console.log('开始渲染根任务列表...');
+            this.renderRootTasksList(tasks);
+            console.log('根任务列表渲染完成');
+
+            // 如果有根任务ID，自动选中该任务
+            if (this.rootTaskID) {
+                console.log(`尝试选中根任务: ${this.rootTaskID}`);
+                const rootTask = this.findTaskById(this.rootTaskID);
+                if (rootTask) {
+                    console.log('找到根任务，自动选中:', rootTask);
+                    this.selectTask(rootTask);
+
+                    // 更新面包屑导航
+                    if (this.elements.rootTaskBreadcrumb && this.elements.rootTaskTitle) {
+                        this.elements.rootTaskBreadcrumb.style.display = 'flex';
+                        const taskTitle = rootTask.title || rootTask.Title || '未命名任务';
+                        this.elements.rootTaskTitle.textContent = taskTitle;
+                    }
+                } else {
+                    console.log('未找到根任务，可能ID无效或数据未加载');
+                    // 仍然显示面包屑，但显示未知任务
+                    if (this.elements.rootTaskBreadcrumb && this.elements.rootTaskTitle) {
+                        this.elements.rootTaskBreadcrumb.style.display = 'flex';
+                        this.elements.rootTaskTitle.textContent = '未知任务';
+                    }
+                }
+            }
 
             console.log('更新统计数据...');
             this.updateStatistics(stats);
@@ -191,13 +288,26 @@ class TaskBreakdownApp {
 
     async fetchTasks() {
         console.log('开始获取任务数据...');
-        const response = await fetch('/api/tasks');
+
+        let url = '/api/tasks';
+        if (this.rootTaskID) {
+            console.log(`根任务ID: ${this.rootTaskID}, 获取子树`);
+            url = `/api/tasks/subtasks?parent_id=${encodeURIComponent(this.rootTaskID)}`;
+        }
+
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
         console.log('原始API响应:', data);
-        const tasks = data.data || [];
+        let tasks = data.data || [];
+
+        // 如果返回的是树形结构（单个任务对象），将其扁平化
+        if (tasks && !Array.isArray(tasks)) {
+            tasks = this.flattenTaskTree(tasks);
+        }
+
         console.log('解析后的任务数据:', tasks);
         if (tasks.length > 0) {
             console.log('第一个任务的字段:', Object.keys(tasks[0]));
@@ -205,8 +315,134 @@ class TaskBreakdownApp {
         return tasks;
     }
 
+    flattenTaskTree(taskTree, parentId = '') {
+        const flatTasks = [];
+
+        // 复制任务对象，添加parent_id（如果提供了）
+        const taskCopy = { ...taskTree };
+        if (parentId) {
+            taskCopy.parent_id = parentId;
+        }
+
+        flatTasks.push(taskCopy);
+
+        // 递归处理子任务
+        if (taskTree.subtasks && Array.isArray(taskTree.subtasks)) {
+            for (const subtask of taskTree.subtasks) {
+                const subtaskFlat = this.flattenTaskTree(subtask, taskTree.id || taskTree.ID || taskTree.Id || '');
+                flatTasks.push(...subtaskFlat);
+            }
+        }
+
+        // 也处理 Subtasks 字段（大写）
+        if (taskTree.Subtasks && Array.isArray(taskTree.Subtasks)) {
+            for (const subtask of taskTree.Subtasks) {
+                const subtaskFlat = this.flattenTaskTree(subtask, taskTree.id || taskTree.ID || taskTree.Id || '');
+                flatTasks.push(...subtaskFlat);
+            }
+        }
+
+        return flatTasks;
+    }
+
+    // 渲染根任务列表
+    renderRootTasksList(tasks) {
+        if (!this.elements.rootTasksList || !this.elements.rootTasksPanel) {
+            return;
+        }
+
+        // 获取根任务（没有parent_id或parent_id为空）
+        const rootTasks = tasks.filter(task => {
+            const parentId = task.parent_id || task.parentId || task.parentID || '';
+            return !parentId || parentId === '';
+        });
+
+        console.log('根任务数量:', rootTasks.length);
+
+        // 如果没有根任务，隐藏面板
+        if (rootTasks.length === 0) {
+            this.elements.rootTasksPanel.style.display = 'none';
+            return;
+        }
+
+        // 显示面板
+        this.elements.rootTasksPanel.style.display = 'block';
+        this.elements.rootTasksList.innerHTML = '';
+
+        // 添加"所有任务"链接
+        const allTasksItem = document.createElement('a');
+        allTasksItem.href = '/taskbreakdown';
+        allTasksItem.className = `root-task-item ${this.rootTaskID === '' ? 'active' : ''}`;
+        allTasksItem.innerHTML = `
+            <span class="root-task-status all"></span>
+            <span>所有任务</span>
+        `;
+        allTasksItem.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = '/taskbreakdown';
+        });
+        this.elements.rootTasksList.appendChild(allTasksItem);
+
+        // 添加每个根任务
+        rootTasks.forEach(task => {
+            const taskId = task.id || task.ID || task.Id || '';
+            const taskTitle = task.title || task.Title || '未命名任务';
+            const taskStatus = task.status || task.Status || 'planning';
+
+            const taskItem = document.createElement('a');
+            taskItem.href = `/taskbreakdown?root=${encodeURIComponent(taskId)}`;
+            taskItem.className = `root-task-item ${this.rootTaskID === taskId ? 'active' : ''}`;
+            taskItem.innerHTML = `
+                <span class="root-task-status ${taskStatus}"></span>
+                <span>${taskTitle}</span>
+            `;
+            taskItem.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.location.href = `/taskbreakdown?root=${encodeURIComponent(taskId)}`;
+            });
+            this.elements.rootTasksList.appendChild(taskItem);
+        });
+    }
+
+    // 应用状态过滤
+    applyStatusFilter() {
+        if (!this.elements.statusFilter) {
+            return;
+        }
+
+        const filterValue = this.elements.statusFilter.value;
+        console.log('应用状态过滤:', filterValue);
+
+        if (!filterValue) {
+            // 重置过滤，显示所有任务
+            this.renderTaskTree();
+            return;
+        }
+
+        // 获取过滤后的任务
+        const filteredTasks = this.tasks.filter(task => {
+            const taskStatus = (task.status || task.Status || 'planning').toLowerCase();
+
+            if (filterValue.includes(',')) {
+                // 多个状态值（如"planning,in-progress,blocked"表示未完成）
+                const allowedStatuses = filterValue.split(',').map(s => s.trim());
+                return allowedStatuses.includes(taskStatus);
+            } else {
+                // 单个状态值
+                return taskStatus === filterValue;
+            }
+        });
+
+        // 使用过滤后的任务重新渲染任务树
+        this.renderTaskTree(filteredTasks);
+    }
+
     async fetchStatistics() {
-        const response = await fetch('/api/tasks/statistics');
+        let url = '/api/tasks/statistics';
+        if (this.rootTaskID) {
+            url += `?root=${encodeURIComponent(this.rootTaskID)}`;
+        }
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -215,7 +451,11 @@ class TaskBreakdownApp {
     }
 
     async fetchTimeline() {
-        const response = await fetch('/api/tasks/timeline');
+        let url = '/api/tasks/timeline';
+        if (this.rootTaskID) {
+            url += `?root=${encodeURIComponent(this.rootTaskID)}`;
+        }
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -223,13 +463,14 @@ class TaskBreakdownApp {
         return data.data || { tasks: [] };
     }
 
-    renderTaskTree() {
+    renderTaskTree(tasks = null) {
+        const tasksToRender = tasks || this.tasks;
         console.log('=== 开始渲染任务树 ===');
-        console.log('任务总数:', this.tasks.length);
+        console.log('渲染任务总数:', tasksToRender.length);
 
         // 检查任务数据结构
-        if (this.tasks.length > 0) {
-            const firstTask = this.tasks[0];
+        if (tasksToRender.length > 0) {
+            const firstTask = tasksToRender[0];
             console.log('第一个任务的所有字段:', Object.keys(firstTask));
             console.log('第一个任务的parent_id字段值:', firstTask.parent_id);
             console.log('第一个任务的parentId字段值:', firstTask.parentId);
@@ -244,7 +485,7 @@ class TaskBreakdownApp {
         this.renderedTasks = new Set();
 
         // 获取根任务 - 支持多种可能的字段名
-        const rootTasks = this.tasks.filter(task => {
+        const rootTasks = tasksToRender.filter(task => {
             const taskId = task.id || task.ID || task.Id || '';
             const parentId = task.parent_id || task.parentId || task.parentID || '';
             console.log(`任务 ${taskId} 的parentId: "${parentId}"`);
@@ -264,7 +505,7 @@ class TaskBreakdownApp {
             }
 
             // 检查parent_id对应的任务是否存在
-            const parentTask = this.tasks.find(t => {
+            const parentTask = tasksToRender.find(t => {
                 const tId = t.id || t.ID || t.Id || '';
                 return tId === parentId;
             });
@@ -283,9 +524,9 @@ class TaskBreakdownApp {
         if (rootTasks.length === 0) {
             console.log('没有根任务，显示所有任务作为平铺列表');
             // 显示所有任务作为平铺列表
-            this.tasks.forEach((task, index) => {
+            tasksToRender.forEach((task, index) => {
                 const taskTitle = task.title || task.Title || '无标题';
-                console.log(`平铺渲染任务 ${index + 1}/${this.tasks.length}: ${taskTitle}`);
+                console.log(`平铺渲染任务 ${index + 1}/${tasksToRender.length}: ${taskTitle}`);
                 const rendered = this.renderTaskNode(task, this.elements.taskTree, 0);
                 if (!rendered) {
                     console.log(`任务 ${taskTitle} 渲染失败或已跳过`);
@@ -942,8 +1183,11 @@ class TaskBreakdownApp {
                 const task = this.findTaskById(taskId);
                 if (task) {
                     this.selectTask(task);
-                    // 切换回任务树视图
-                    this.toggleView();
+                    // 切换到任务树选项卡
+                    const taskTabLink = document.querySelector('.tab-link[data-tab="taskTab"]');
+                    if (taskTabLink) {
+                        taskTabLink.click();
+                    }
                 } else {
                     this.showError('无法找到该任务');
                 }
@@ -1022,7 +1266,11 @@ class TaskBreakdownApp {
                 const task = this.findTaskById(taskId);
                 if (task) {
                     this.selectTask(task);
-                    this.toggleView();
+                    // 切换到任务树选项卡
+                    const taskTabLink = document.querySelector('.tab-link[data-tab="taskTab"]');
+                    if (taskTabLink) {
+                        taskTabLink.click();
+                    }
                 } else {
                     this.showError('无法找到该任务');
                 }
@@ -1209,7 +1457,13 @@ class TaskBreakdownApp {
                         <div class="timeline-dot ${statusClass}">
                             <i class="${statusIcon}"></i>
                         </div>
-                        <div class="timeline-date">${formattedStartDate}</div>
+                        <div class="timeline-info">
+                            <div class="timeline-title">${this.escapeHtml(taskTitle)}</div>
+                            <div class="timeline-date">
+                                <i class="fas fa-calendar-alt"></i>
+                                ${formattedStartDate}
+                            </div>
+                        </div>
                     </div>
             `;
         });
@@ -1243,32 +1497,6 @@ class TaskBreakdownApp {
         console.log('时间线渲染完成');
     }
 
-    toggleView() {
-        const taskTreeView = document.getElementById('taskTreeView');
-        const timelineView = document.getElementById('timelineView');
-        const taskDetailsCard = document.getElementById('taskDetailsCard');
-        const button = this.elements.viewToggle;
-
-        if (taskTreeView.style.display !== 'none') {
-            // 切换到时间线视图
-            taskTreeView.style.display = 'none';
-            timelineView.style.display = 'block';
-
-            // 隐藏任务详情面板，避免挡住时间线
-            if (taskDetailsCard) {
-                taskDetailsCard.style.display = 'none';
-            }
-
-            button.textContent = '切换到任务树视图';
-            console.log('切换到时间线视图，隐藏任务详情面板');
-        } else {
-            // 切换到任务树视图
-            taskTreeView.style.display = 'block';
-            timelineView.style.display = 'none';
-            button.textContent = '切换到时间线视图';
-            console.log('切换到任务树视图');
-        }
-    }
 
     // 工具方法
     getStatusText(status) {
@@ -1366,6 +1594,24 @@ class TaskBreakdownApp {
         return div.innerHTML;
     }
 
+    getRootTaskID() {
+        // 优先从body的data属性获取
+        const body = document.body;
+        if (body && body.dataset.rootTaskId) {
+            return body.dataset.rootTaskId;
+        }
+
+        // 其次从URL参数获取
+        const urlParams = new URLSearchParams(window.location.search);
+        const rootParam = urlParams.get('root');
+        if (rootParam) {
+            return rootParam;
+        }
+
+        // 无根任务ID
+        return '';
+    }
+
     showLoading() {
         // 可以添加加载指示器
         this.elements.refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -1383,7 +1629,213 @@ class TaskBreakdownApp {
         // 可以添加更优雅的成功提示
         console.log(`成功: ${message}`);
     }
+
+
+    // ==================== 时间趋势相关方法 ====================
+
+    async loadTrendsData() {
+        try {
+            console.log('开始加载时间趋势数据...');
+
+            // 显示加载状态
+            if (this.elements.refreshTrendsBtn) {
+                this.elements.refreshTrendsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+
+            // 构建请求URL
+            let url = '/api/tasks/trends';
+            const params = new URLSearchParams();
+
+            // 添加根任务ID（如果有）
+            if (this.rootTaskID) {
+                params.append('root', this.rootTaskID);
+            }
+
+            // 添加时间范围
+            const timeRange = this.elements.timeRangeSelect ? this.elements.timeRangeSelect.value : '30d';
+            params.append('range', timeRange);
+
+            url += '?' + params.toString();
+
+            console.log('请求URL:', url);
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP错误! 状态: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('时间趋势数据加载完成:', result);
+
+            if (result.success && result.data) {
+                this.renderTrendsCharts(result.data);
+            } else {
+                console.error('API返回错误:', result.error || '未知错误');
+                this.showError('加载趋势数据失败');
+            }
+        } catch (error) {
+            console.error('加载时间趋势数据失败:', error);
+            this.showError('加载趋势数据失败: ' + error.message);
+        } finally {
+            // 恢复按钮状态
+            if (this.elements.refreshTrendsBtn) {
+                this.elements.refreshTrendsBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+            }
+        }
+    }
+
+    renderTrendsCharts(trendsData) {
+        console.log('渲染时间趋势图表...', trendsData);
+
+        // 销毁之前的趋势图表
+        ['creation', 'completion', 'progress'].forEach(chartName => {
+            if (this.charts[chartName + 'Trend']) {
+                this.charts[chartName + 'Trend'].destroy();
+                delete this.charts[chartName + 'Trend'];
+            }
+        });
+
+        // 渲染创建趋势图表
+        if (trendsData.creation_trend && this.elements.creationTrendChart) {
+            this.renderTrendChart(
+                'creationTrend',
+                trendsData.creation_trend,
+                this.elements.creationTrendChart,
+                'line'
+            );
+        }
+
+        // 渲染完成趋势图表
+        if (trendsData.completion_trend && this.elements.completionTrendChart) {
+            this.renderTrendChart(
+                'completionTrend',
+                trendsData.completion_trend,
+                this.elements.completionTrendChart,
+                'line'
+            );
+        }
+
+        // 渲染进度趋势图表
+        if (trendsData.progress_trend && this.elements.progressTrendChart) {
+            this.renderTrendChart(
+                'progressTrend',
+                trendsData.progress_trend,
+                this.elements.progressTrendChart,
+                'line'
+            );
+        }
+
+        console.log('时间趋势图表渲染完成');
+    }
+
+    renderTrendChart(chartName, trendData, canvasElement, chartType = 'line') {
+        if (!trendData || !trendData.data_points || trendData.data_points.length === 0) {
+            console.warn(`没有数据可用于渲染图表: ${chartName}`);
+            return;
+        }
+
+        const ctx = canvasElement.getContext('2d');
+
+        // 准备数据
+        const labels = trendData.data_points.map(point => {
+            // 简化日期显示，例如 "01-15"
+            const date = new Date(point.date);
+            return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+        });
+
+        const dataPoints = trendData.data_points.map(point => point.value);
+
+        // 根据趋势设置颜色
+        let borderColor, backgroundColor;
+        switch (trendData.trend) {
+            case 'up':
+                borderColor = '#4CAF50'; // 绿色
+                backgroundColor = 'rgba(76, 175, 80, 0.1)';
+                break;
+            case 'down':
+                borderColor = '#f44336'; // 红色
+                backgroundColor = 'rgba(244, 67, 54, 0.1)';
+                break;
+            default:
+                borderColor = '#2196F3'; // 蓝色
+                backgroundColor = 'rgba(33, 150, 243, 0.1)';
+                break;
+        }
+
+        // 创建图表配置
+        const config = {
+            type: chartType,
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: trendData.title,
+                    data: dataPoints,
+                    borderColor: borderColor,
+                    backgroundColor: backgroundColor,
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4, // 曲线平滑度
+                    pointRadius: 3,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.parsed.y + ' ' + trendData.unit;
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '日期'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: trendData.unit
+                        }
+                    }
+                }
+            }
+        };
+
+        // 创建图表
+        this.charts[chartName] = new Chart(ctx, config);
+    }
+
+    // 在初始化时加载趋势数据
+    async loadInitialTrendsData() {
+        // 等待一小段时间确保DOM完全加载
+        setTimeout(() => {
+            if (this.elements.creationTrendChart &&
+                this.elements.completionTrendChart &&
+                this.elements.progressTrendChart) {
+                this.loadTrendsData();
+            }
+        }, 500);
+    }
 }
+
 
 // 页面加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', () => {

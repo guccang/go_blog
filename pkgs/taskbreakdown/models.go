@@ -122,6 +122,34 @@ type StatisticsData struct {
 	PriorityDistribution map[int]int  `json:"priority_distribution"`
 }
 
+// GraphNode 网络图节点
+type GraphNode struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Priority  int    `json:"priority"`
+	Progress  int    `json:"progress"`
+	Level     int    `json:"level"`
+	Group     string `json:"group"` // 状态分组
+	Value     int    `json:"value"` // 节点大小基于优先级
+}
+
+// GraphEdge 网络图边
+type GraphEdge struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Type      string `json:"type"`      // "parent-child" 或 "dependency"
+	Arrows    string `json:"arrows"`    // "to" 表示方向
+	Dashes    bool   `json:"dashes"`    // true 表示依赖关系为虚线
+}
+
+// GraphData 网络图数据
+type GraphData struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
+}
+
 // 生成任务ID
 func GenerateTaskID() string {
 	return "task-" + time.Now().Format("20060102150405") + "-" + randomString(8)
@@ -168,4 +196,34 @@ func (t *ComplexTask) CalculateDepth() int {
 // 检查是否超过最大深度限制
 func (t *ComplexTask) ExceedsMaxDepth(maxDepth int) bool {
 	return t.CalculateDepth() > maxDepth
+}
+
+// ==================== 时间趋势数据结构 ====================
+
+// TimePoint 时间点数据
+type TimePoint struct {
+	Date  string `json:"date"`  // 日期 (YYYY-MM-DD)
+	Value int    `json:"value"` // 数值
+}
+
+// TimeTrendData 时间趋势数据
+type TimeTrendData struct {
+	Title      string      `json:"title"`       // 图表标题
+	Unit       string      `json:"unit"`        // 单位 (如 "个", "%", "分钟")
+	DataPoints []TimePoint `json:"data_points"` // 数据点
+	Total      int         `json:"total"`       // 总计
+	Average    float64     `json:"average"`     // 平均值
+	Max        int         `json:"max"`         // 最大值
+	Min        int         `json:"min"`         // 最小值
+	Trend      string      `json:"trend"`       // 趋势: "up", "down", "stable"
+}
+
+// TimeTrendsResponse 时间趋势响应
+type TimeTrendsResponse struct {
+	CreationTrend   *TimeTrendData `json:"creation_trend,omitempty"`   // 任务创建趋势
+	CompletionTrend *TimeTrendData `json:"completion_trend,omitempty"` // 任务完成趋势
+	ProgressTrend   *TimeTrendData `json:"progress_trend,omitempty"`   // 进度趋势
+	TimeRange       string         `json:"time_range"`                 // 时间范围: "7d", "30d", "90d", "1y"
+	StartDate       string         `json:"start_date"`                 // 开始日期
+	EndDate         string         `json:"end_date"`                   // 结束日期
 }

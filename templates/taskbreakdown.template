@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body data-root-task-id="{{.RootTaskID}}">
     <header class="page-header">
         <div class="container">
             <a href="/main">
@@ -18,13 +18,19 @@
             <h1 class="page-title">任务拆解追踪</h1>
             <a href="/editor" class="header-link">创建博客</a>
             <div class="header-controls">
-                <button id="viewToggle" class="btn btn-secondary">切换到时间线视图</button>
-                <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i></button>
+                <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> 刷新</button>
             </div>
         </div>
     </header>
 
     <div class="container">
+        <!-- 根任务面包屑导航 -->
+        <div id="rootTaskBreadcrumb" class="breadcrumb" style="display: none;">
+            <a href="/taskbreakdown" class="breadcrumb-link">所有任务</a>
+            <span class="breadcrumb-separator">/</span>
+            <span id="rootTaskTitle" class="breadcrumb-current">根任务</span>
+        </div>
+
         <!-- 统计面板 -->
         <div class="stats-panel">
             <div class="stat-card">
@@ -49,80 +55,162 @@
             </div>
         </div>
 
-        <!-- 主内容区域 -->
-        <div class="main-content">
-            <!-- 左侧：任务树 -->
-            <div class="task-tree-container" id="taskTreeView">
-                <div class="card">
-                    <div class="card-header">
-                        <h2 class="card-title">任务树</h2>
-                        <button id="addRootTask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加根任务</button>
+        <!-- 根任务列表 -->
+        <div class="root-tasks-panel" id="rootTasksPanel" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">根任务列表</h3>
+                </div>
+                <div class="card-body">
+                    <div id="rootTasksList" class="root-tasks-list">
+                        <!-- 根任务将通过JavaScript动态生成 -->
                     </div>
-                    <div class="card-body">
-                        <div id="taskTree" class="task-tree">
-                            <!-- 任务树将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 选项卡导航 -->
+        <div class="tabs-navigation">
+            <div class="tabs">
+                <button class="tab-link active" data-tab="taskTab">任务树</button>
+                <button class="tab-link" data-tab="timelineTab">时间线</button>
+                <button class="tab-link" data-tab="statsTab">统计图表</button>
+                <button class="tab-link" data-tab="trendsTab">时间趋势</button>
+            </div>
+        </div>
+
+        <!-- 选项卡内容区域 -->
+        <div class="tab-content">
+            <!-- 任务树选项卡 -->
+            <div id="taskTab" class="tab-pane active">
+                <div class="main-content">
+                    <!-- 左侧：任务树 -->
+                    <div class="task-tree-container" id="taskTreeView">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">任务树</h2>
+                                <div class="task-filter-controls">
+                                    <select id="statusFilter" class="form-control">
+                                        <option value="">全部状态</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="planning,in-progress,blocked">未完成</option>
+                                        <option value="planning">规划中</option>
+                                        <option value="in-progress">进行中</option>
+                                        <option value="blocked">阻塞中</option>
+                                        <option value="cancelled">已取消</option>
+                                    </select>
+                                </div>
+                                <button id="addRootTask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加根任务</button>
+                            </div>
+                            <div class="card-body">
+                                <div id="taskTree" class="task-tree">
+                                    <!-- 任务树将通过JavaScript动态生成 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：任务详情和时间线 -->
+                    <div class="task-details-container">
+                        <!-- 任务详情面板 -->
+                        <div class="card task-details-card" id="taskDetailsCard" style="display: none;">
+                            <div class="card-header">
+                                <h2 class="card-title">任务详情</h2>
+                                <div class="task-actions">
+                                    <button id="editTask" class="btn btn-secondary"><i class="fas fa-edit"></i> 编辑</button>
+                                    <button id="deleteTask" class="btn btn-danger"><i class="fas fa-trash"></i> 删除</button>
+                                    <button id="addSubtask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加子任务</button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="task-detail-content">
+                                    <h3 id="taskTitle">任务标题</h3>
+                                    <div class="task-meta">
+                                        <span class="task-status" id="taskStatus">规划中</span>
+                                        <span class="task-priority" id="taskPriority">中等</span>
+                                        <span class="task-progress" id="taskProgress">0%</span>
+                                    </div>
+                                    <div class="task-description" id="taskDescription">任务描述...</div>
+                                    <div class="task-dates">
+                                        <div><strong>开始日期:</strong> <span id="taskStartDate">-</span></div>
+                                        <div><strong>结束日期:</strong> <span id="taskEndDate">-</span></div>
+                                        <div><strong>预估时间:</strong> <span id="taskEstimatedTime">0分钟</span></div>
+                                        <div><strong>实际时间:</strong> <span id="taskActualTime">0分钟</span></div>
+                                    </div>
+                                    <div class="task-tags" id="taskTags">
+                                        <!-- 标签将通过JavaScript动态生成 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- 时间线选项卡 -->
+            <div id="timelineTab" class="tab-pane">
+                <div class="timeline-tab-content">
+                    <div class="card timeline-card" id="timelineView">
+                        <div class="card-header">
+                            <h2 class="card-title">时间线视图</h2>
+                        </div>
+                        <div class="card-body">
+                            <div id="timelineChart">
+                                <!-- 时间线图表将通过JavaScript动态生成 -->
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 右侧：任务详情和时间线 -->
-            <div class="task-details-container">
-                <!-- 任务详情面板 -->
-                <div class="card task-details-card" id="taskDetailsCard" style="display: none;">
-                    <div class="card-header">
-                        <h2 class="card-title">任务详情</h2>
-                        <div class="task-actions">
-                            <button id="editTask" class="btn btn-secondary"><i class="fas fa-edit"></i></button>
-                            <button id="deleteTask" class="btn btn-danger"><i class="fas fa-trash"></i></button>
-                            <button id="addSubtask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加子任务</button>
+            <!-- 统计图表选项卡 -->
+            <div id="statsTab" class="tab-pane">
+                <div class="stats-tab-content">
+                    <div class="card stats-card">
+                        <div class="card-header">
+                            <h2 class="card-title">统计图表</h2>
                         </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="task-detail-content">
-                            <h3 id="taskTitle">任务标题</h3>
-                            <div class="task-meta">
-                                <span class="task-status" id="taskStatus">规划中</span>
-                                <span class="task-priority" id="taskPriority">中等</span>
-                                <span class="task-progress" id="taskProgress">0%</span>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="statusChart" width="400" height="200"></canvas>
                             </div>
-                            <div class="task-description" id="taskDescription">任务描述...</div>
-                            <div class="task-dates">
-                                <div><strong>开始日期:</strong> <span id="taskStartDate">-</span></div>
-                                <div><strong>结束日期:</strong> <span id="taskEndDate">-</span></div>
-                                <div><strong>预估时间:</strong> <span id="taskEstimatedTime">0分钟</span></div>
-                                <div><strong>实际时间:</strong> <span id="taskActualTime">0分钟</span></div>
-                            </div>
-                            <div class="task-tags" id="taskTags">
-                                <!-- 标签将通过JavaScript动态生成 -->
+                            <div class="chart-container">
+                                <canvas id="priorityChart" width="400" height="200"></canvas>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- 时间线面板 -->
-                <div class="card timeline-card" id="timelineView">
-                    <div class="card-header">
-                        <h2 class="card-title">时间线视图</h2>
-                    </div>
-                    <div class="card-body">
-                        <div id="timelineChart">
-                            <!-- 时间线图表将通过JavaScript动态生成 -->
+            <!-- 时间趋势选项卡 -->
+            <div id="trendsTab" class="tab-pane">
+                <div class="trends-tab-content">
+                    <div class="card trends-card">
+                        <div class="card-header">
+                            <h2 class="card-title">时间趋势</h2>
+                            <div class="trends-controls">
+                                <select id="timeRangeSelect" class="form-control" style="width: auto; display: inline-block;">
+                                    <option value="7d">最近7天</option>
+                                    <option value="30d" selected>最近30天</option>
+                                    <option value="90d">最近90天</option>
+                                    <option value="1y">最近1年</option>
+                                </select>
+                                <button id="refreshTrendsBtn" class="btn btn-secondary btn-small">
+                                    <i class="fas fa-sync-alt"></i> 刷新
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- 统计图表 -->
-                <div class="card stats-card">
-                    <div class="card-header">
-                        <h2 class="card-title">统计图表</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="statusChart" width="400" height="200"></canvas>
-                        </div>
-                        <div class="chart-container">
-                            <canvas id="priorityChart" width="400" height="200"></canvas>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="creationTrendChart" width="400" height="200"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="completionTrendChart" width="400" height="200"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="progressTrendChart" width="400" height="200"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>

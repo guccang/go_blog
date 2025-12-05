@@ -450,7 +450,10 @@ func (c *Controller) HandleGetTimeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timelineData, err := c.manager.GetTimelineData(account)
+	// 获取根任务ID参数（可选）
+	rootID := r.URL.Query().Get("root")
+
+	timelineData, err := c.manager.GetTimelineData(account, rootID)
 	if err != nil {
 		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get timeline data: "+err.Error())
 		return
@@ -469,7 +472,10 @@ func (c *Controller) HandleGetStatistics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	stats, err := c.manager.GetStatistics(account)
+	// 获取根任务ID参数（可选）
+	rootID := r.URL.Query().Get("root")
+
+	stats, err := c.manager.GetStatistics(account, rootID)
 	if err != nil {
 		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get statistics: "+err.Error())
 		return
@@ -501,4 +507,60 @@ func (c *Controller) HandleSearchTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendSuccessResponse(w, results)
+}
+
+// HandleGetTaskGraph 处理获取任务网络图数据请求
+func (c *Controller) HandleGetTaskGraph(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// 获取根任务ID参数（可选）
+	rootID := r.URL.Query().Get("root")
+
+	graphData, err := c.manager.GetTaskGraph(account, rootID)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get task graph data: "+err.Error())
+		return
+	}
+
+	sendSuccessResponse(w, graphData)
+}
+
+// HandleGetTimeTrends 处理获取时间趋势数据请求
+func (c *Controller) HandleGetTimeTrends(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// 获取根任务ID参数（可选）
+	rootID := r.URL.Query().Get("root")
+	// 获取时间范围参数（可选，默认"30d"）
+	timeRange := r.URL.Query().Get("range")
+	if timeRange == "" {
+		timeRange = "30d"
+	}
+
+	// 验证时间范围
+	validRanges := map[string]bool{"7d": true, "30d": true, "90d": true, "1y": true}
+	if !validRanges[timeRange] {
+		sendErrorResponse(w, http.StatusBadRequest, "Invalid time range. Valid values: 7d, 30d, 90d, 1y")
+		return
+	}
+
+	trendData, err := c.manager.GetTimeTrends(account, rootID, timeRange)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get time trends data: "+err.Error())
+		return
+	}
+
+	sendSuccessResponse(w, trendData)
 }

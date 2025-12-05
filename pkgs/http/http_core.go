@@ -246,6 +246,8 @@ func Init() int {
 	h.HandleFunc("/api/tasks/order", taskbreakdown.HandleTaskOrder)
 	h.HandleFunc("/api/tasks/subtasks", taskbreakdown.HandleSubtasks)
 	h.HandleFunc("/api/tasks/timeline", taskbreakdown.HandleTimeline)
+	h.HandleFunc("/api/tasks/graph", taskbreakdown.HandleTaskGraph)
+	h.HandleFunc("/api/tasks/trends", taskbreakdown.HandleTimeTrends)
 	h.HandleFunc("/api/tasks/statistics", taskbreakdown.HandleStatistics)
 	h.HandleFunc("/api/tasks/search", taskbreakdown.HandleSearchTasks)
 

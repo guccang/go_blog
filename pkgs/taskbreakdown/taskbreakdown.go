@@ -69,7 +69,7 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 
 	// 如果指定了父任务，验证父任务存在
 	if req.ParentID != "" {
-		parentTask, err := tm.storage.GetTask(account, req.ParentID)
+		parentTask, err := tm.GetTask(account, req.ParentID)
 		if err != nil {
 			return nil, fmt.Errorf("parent task not found: %s", req.ParentID)
 		}
@@ -86,10 +86,17 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 		if err != nil {
 			return nil, fmt.Errorf("failed to get subtasks: %w", err)
 		}
-		task.Order = len(subtasks)
+		// 过滤已删除的子任务
+		var activeSubtasks []*ComplexTask
+		for _, subtask := range subtasks {
+			if !subtask.Deleted {
+				activeSubtasks = append(activeSubtasks, subtask)
+			}
+		}
+		task.Order = len(activeSubtasks)
 	} else {
 		// 根任务
-		rootTasks, err := tm.storage.GetRootTasks(account)
+		rootTasks, err := tm.GetRootTasks(account)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get root tasks: %w", err)
 		}
@@ -192,7 +199,7 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 	if updates.ParentID != nil && *updates.ParentID != task.ParentID {
 		// 验证新父任务存在
 		if *updates.ParentID != "" {
-			parentTask, err := tm.storage.GetTask(account, *updates.ParentID)
+			parentTask, err := tm.GetTask(account, *updates.ParentID)
 			if err != nil {
 				return nil, fmt.Errorf("new parent task not found: %s", *updates.ParentID)
 			}
@@ -269,7 +276,28 @@ func (tm *TaskManager) DeleteTask(account, taskID string) error {
 	task.Title = fmt.Sprintf("[DELETED] %s", task.Title)
 
 	// 保存标记删除的任务
-	return tm.storage.SaveTask(account, task)
+	if err := tm.storage.SaveTask(account, task); err != nil {
+		return err
+	}
+
+	// 如果任务有父任务，更新父任务的进度
+	if task.ParentID != "" {
+		go func() {
+			// 异步更新父任务进度
+			if parentProgress, err := tm.CalculateOverallProgress(account, task.ParentID); err == nil {
+				// 只更新进度，不改变其他字段
+				progressUpdate := &TaskUpdateRequest{
+					Progress: &parentProgress,
+				}
+				if _, updateErr := tm.UpdateTask(account, task.ParentID, progressUpdate); updateErr != nil {
+					// 记录错误但不影响当前操作
+					fmt.Printf("Failed to update parent task progress: %v\n", updateErr)
+				}
+			}
+		}()
+	}
+
+	return nil
 }
 
 // ListTasks 列出所有任务
@@ -357,7 +385,7 @@ func (tm *TaskManager) GetRootTasks(account string) ([]*ComplexTask, error) {
 // AddSubtask 添加子任务
 func (tm *TaskManager) AddSubtask(account, parentID string, req *TaskCreateRequest) (*ComplexTask, error) {
 	// 验证父任务存在
-	parentTask, err := tm.storage.GetTask(account, parentID)
+	parentTask, err := tm.GetTask(account, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("parent task not found: %s", parentID)
 	}
@@ -442,10 +470,24 @@ func (tm *TaskManager) calculateTaskProgress(task *ComplexTask) int {
 }
 
 // GetTimelineData 获取时间线数据
-func (tm *TaskManager) GetTimelineData(account string) (*TimelineData, error) {
-	tasks, err := tm.ListTasks(account)
-	if err != nil {
-		return nil, err
+func (tm *TaskManager) GetTimelineData(account, rootID string) (*TimelineData, error) {
+	var tasks []*ComplexTask
+	var err error
+
+	if rootID == "" {
+		// 获取所有任务
+		tasks, err = tm.ListTasks(account)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 获取指定根任务的子树
+		rootTask, getErr := tm.GetTaskTree(account, rootID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		// 扁平化任务树
+		tasks = tm.flattenTaskTree(rootTask, []*ComplexTask{})
 	}
 
 	var timelineTasks []TimelineTask
@@ -490,10 +532,24 @@ func (tm *TaskManager) GetTimelineData(account string) (*TimelineData, error) {
 }
 
 // GetStatistics 获取统计信息
-func (tm *TaskManager) GetStatistics(account string) (*StatisticsData, error) {
-	tasks, err := tm.ListTasks(account)
-	if err != nil {
-		return nil, err
+func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, error) {
+	var tasks []*ComplexTask
+	var err error
+
+	if rootID == "" {
+		// 获取所有任务
+		tasks, err = tm.ListTasks(account)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 获取指定根任务的子树
+		rootTask, getErr := tm.GetTaskTree(account, rootID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		// 扁平化任务树
+		tasks = tm.flattenTaskTree(rootTask, []*ComplexTask{})
 	}
 
 	stats := &StatisticsData{
@@ -531,6 +587,574 @@ func (tm *TaskManager) GetStatistics(account string) (*StatisticsData, error) {
 	}
 
 	return stats, nil
+}
+
+// GetTaskGraph 获取任务网络图数据
+func (tm *TaskManager) GetTaskGraph(account, rootID string) (*GraphData, error) {
+	tasks, err := tm.ListTasks(account)
+	if err != nil {
+		return nil, err
+	}
+
+	// 如果有根任务ID，只获取该子树
+	var rootTask *ComplexTask
+	if rootID != "" {
+		rootTask, err = tm.GetTaskTree(account, rootID)
+		if err != nil {
+			return nil, err
+		}
+		// 将树扁平化
+		tasks = []*ComplexTask{rootTask}
+		// 递归获取所有子任务（通过递归遍历）
+		tasks = tm.flattenTaskTree(rootTask, tasks)
+	}
+
+	// 构建节点和边
+	nodes := []GraphNode{}
+	edges := []GraphEdge{}
+
+	// 用于跟踪已添加的节点和边，避免重复
+	nodeMap := make(map[string]bool)
+	edgeMap := make(map[string]bool)
+
+	// 递归遍历任务树构建图
+	var buildGraph func(task *ComplexTask, level int)
+	buildGraph = func(task *ComplexTask, level int) {
+		if task == nil {
+			return
+		}
+
+		// 添加节点
+		nodeID := task.ID
+		if !nodeMap[nodeID] {
+			// 确定分组（基于状态）
+			group := task.Status
+			if group == "" {
+				group = "planning"
+			}
+
+			// 节点大小基于优先级（优先级越高，值越大）
+			value := 10
+			if task.Priority >= 1 && task.Priority <= 5 {
+				value = 15 - task.Priority * 2 // 优先级1 -> 13, 优先级5 -> 5
+			}
+
+			node := GraphNode{
+				ID:       nodeID,
+				Label:    task.Title,
+				Title:    task.Title,
+				Status:   task.Status,
+				Priority: task.Priority,
+				Progress: task.Progress,
+				Level:    level,
+				Group:    group,
+				Value:    value,
+			}
+			nodes = append(nodes, node)
+			nodeMap[nodeID] = true
+		}
+
+		// 处理子任务边
+		for i := range task.Subtasks {
+			subtask := &task.Subtasks[i]
+			subtaskID := subtask.ID
+			edgeKey := nodeID + "->" + subtaskID
+			if !edgeMap[edgeKey] {
+				edge := GraphEdge{
+					From:   nodeID,
+					To:     subtaskID,
+					Type:   "parent-child",
+					Arrows: "to",
+					Dashes: false,
+				}
+				edges = append(edges, edge)
+				edgeMap[edgeKey] = true
+			}
+			// 递归处理子任务
+			buildGraph(subtask, level+1)
+		}
+
+		// 处理依赖关系边
+		for _, depID := range task.Dependencies {
+			edgeKey := nodeID + "->" + depID
+			if !edgeMap[edgeKey] {
+				edge := GraphEdge{
+					From:   nodeID,
+					To:     depID,
+					Type:   "dependency",
+					Arrows: "to",
+					Dashes: true,
+				}
+				edges = append(edges, edge)
+				edgeMap[edgeKey] = true
+			}
+		}
+	}
+
+	// 如果有根任务，从根开始构建；否则从所有根任务开始
+	if rootTask != nil {
+		// 检查是否有子任务但Subtasks字段为空的情况
+		// 如果flattenTaskTree收集了多个任务，但rootTask.Subtasks为空，说明Subtasks字段未正确填充
+		// 这种情况下，我们直接使用扁平化的任务列表构建图
+		if len(rootTask.Subtasks) == 0 && len(tasks) > 1 {
+			// 使用扁平化的任务列表构建图（基于parent_id）
+
+			// 构建任务映射和父子关系映射
+			taskMap := make(map[string]*ComplexTask)
+			parentToChildren := make(map[string][]string)
+
+			for _, task := range tasks {
+				taskMap[task.ID] = task
+				if task.ParentID != "" {
+					parentToChildren[task.ParentID] = append(parentToChildren[task.ParentID], task.ID)
+				}
+			}
+
+			// 计算节点层级
+			levelMap := make(map[string]int)
+			var calculateLevel func(taskID string) int
+			calculateLevel = func(taskID string) int {
+				if level, exists := levelMap[taskID]; exists {
+					return level
+				}
+
+				task, exists := taskMap[taskID]
+				if !exists {
+					levelMap[taskID] = 0
+					return 0
+				}
+
+				if task.ParentID == "" {
+					levelMap[taskID] = 0
+					return 0
+				}
+
+				// 递归计算父节点层级
+				parentLevel := calculateLevel(task.ParentID)
+				level := parentLevel + 1
+				levelMap[taskID] = level
+				return level
+			}
+
+			// 计算所有任务的层级
+			for _, task := range tasks {
+				calculateLevel(task.ID)
+			}
+
+			// 添加节点和边
+			for _, task := range tasks {
+				// 添加节点
+				nodeID := task.ID
+				if !nodeMap[nodeID] {
+					// 确定分组（基于状态）
+					group := task.Status
+					if group == "" {
+						group = "planning"
+					}
+					// 节点大小基于优先级（优先级越高，值越大）
+					value := 10
+					if task.Priority >= 1 && task.Priority <= 5 {
+						value = 15 - task.Priority * 2 // 优先级1 -> 13, 优先级5 -> 5
+					}
+
+					// 获取计算好的层级
+					level := levelMap[nodeID]
+
+					node := GraphNode{
+						ID:       nodeID,
+						Label:    task.Title,
+						Title:    task.Title,
+						Status:   task.Status,
+						Priority: task.Priority,
+						Progress: task.Progress,
+						Level:    level,
+						Group:    group,
+						Value:    value,
+					}
+					nodes = append(nodes, node)
+					nodeMap[nodeID] = true
+				}
+
+				// 根据ParentID添加边
+				if task.ParentID != "" {
+					edgeKey := task.ParentID + "->" + nodeID
+					if !edgeMap[edgeKey] {
+						edge := GraphEdge{
+							From:   task.ParentID,
+							To:     nodeID,
+							Type:   "parent-child",
+							Arrows: "to",
+							Dashes: false,
+						}
+						edges = append(edges, edge)
+						edgeMap[edgeKey] = true
+					}
+				}
+
+				// 添加依赖关系边
+				for _, depID := range task.Dependencies {
+					edgeKey := nodeID + "->" + depID
+					if !edgeMap[edgeKey] {
+						edge := GraphEdge{
+							From:   nodeID,
+							To:     depID,
+							Type:   "dependency",
+							Arrows: "to",
+							Dashes: true,
+						}
+						edges = append(edges, edge)
+						edgeMap[edgeKey] = true
+					}
+				}
+			}
+		} else {
+			// 正常递归构建
+			buildGraph(rootTask, 0)
+		}
+	} else {
+		// 检查是否有任务具有Subtasks数据
+		hasSubtasksData := false
+		for _, task := range tasks {
+			if len(task.Subtasks) > 0 {
+				hasSubtasksData = true
+				break
+			}
+		}
+
+		if hasSubtasksData {
+			// 使用Subtasks递归构建
+			for _, task := range tasks {
+				if task.ParentID == "" {
+					buildGraph(task, 0)
+				}
+			}
+		} else {
+			// 使用扁平化的任务列表直接构建图（基于parent_id）
+
+			// 构建任务映射和父子关系映射
+			taskMap := make(map[string]*ComplexTask)
+			parentToChildren := make(map[string][]string)
+
+			for _, task := range tasks {
+				taskMap[task.ID] = task
+				if task.ParentID != "" {
+					parentToChildren[task.ParentID] = append(parentToChildren[task.ParentID], task.ID)
+				}
+			}
+
+			// 计算节点层级
+			levelMap := make(map[string]int)
+			var calculateLevel func(taskID string) int
+			calculateLevel = func(taskID string) int {
+				if level, exists := levelMap[taskID]; exists {
+					return level
+				}
+
+				task, exists := taskMap[taskID]
+				if !exists {
+					levelMap[taskID] = 0
+					return 0
+				}
+
+				if task.ParentID == "" {
+					levelMap[taskID] = 0
+					return 0
+				}
+
+				// 递归计算父节点层级
+				parentLevel := calculateLevel(task.ParentID)
+				level := parentLevel + 1
+				levelMap[taskID] = level
+				return level
+			}
+
+			// 计算所有任务的层级
+			for _, task := range tasks {
+				calculateLevel(task.ID)
+			}
+
+			// 添加节点和边
+			for _, task := range tasks {
+				// 添加节点
+				nodeID := task.ID
+				if !nodeMap[nodeID] {
+					// 确定分组（基于状态）
+					group := task.Status
+					if group == "" {
+						group = "planning"
+					}
+					// 节点大小基于优先级（优先级越高，值越大）
+					value := 10
+					if task.Priority >= 1 && task.Priority <= 5 {
+						value = 15 - task.Priority * 2 // 优先级1 -> 13, 优先级5 -> 5
+					}
+
+					// 获取计算好的层级
+					level := levelMap[nodeID]
+
+					node := GraphNode{
+						ID:       nodeID,
+						Label:    task.Title,
+						Title:    task.Title,
+						Status:   task.Status,
+						Priority: task.Priority,
+						Progress: task.Progress,
+						Level:    level,
+						Group:    group,
+						Value:    value,
+					}
+					nodes = append(nodes, node)
+					nodeMap[nodeID] = true
+				}
+
+				// 根据ParentID添加边
+				if task.ParentID != "" {
+					edgeKey := task.ParentID + "->" + nodeID
+					if !edgeMap[edgeKey] {
+						edge := GraphEdge{
+							From:   task.ParentID,
+							To:     nodeID,
+							Type:   "parent-child",
+							Arrows: "to",
+							Dashes: false,
+						}
+						edges = append(edges, edge)
+						edgeMap[edgeKey] = true
+					}
+				}
+
+				// 添加依赖关系边
+				for _, depID := range task.Dependencies {
+					edgeKey := nodeID + "->" + depID
+					if !edgeMap[edgeKey] {
+						edge := GraphEdge{
+							From:   nodeID,
+							To:     depID,
+							Type:   "dependency",
+							Arrows: "to",
+							Dashes: true,
+						}
+						edges = append(edges, edge)
+						edgeMap[edgeKey] = true
+					}
+				}
+			}
+		}
+	}
+
+	return &GraphData{
+		Nodes: nodes,
+		Edges: edges,
+	}, nil
+}
+
+// GetTimeTrends 获取时间趋势数据
+func (tm *TaskManager) GetTimeTrends(account, rootID, timeRange string) (*TimeTrendsResponse, error) {
+	var tasks []*ComplexTask
+	var err error
+
+	if rootID == "" {
+		// 获取所有任务
+		tasks, err = tm.ListTasks(account)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 获取指定根任务的子树
+		rootTask, getErr := tm.GetTaskTree(account, rootID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		// 扁平化子树
+		tasks = tm.flattenTaskTree(rootTask, []*ComplexTask{})
+	}
+
+	// 确定时间范围
+	var startDate, endDate time.Time
+	now := time.Now()
+	endDate = now
+
+	switch timeRange {
+	case "7d":
+		startDate = now.AddDate(0, 0, -7)
+	case "30d":
+		startDate = now.AddDate(0, 0, -30)
+	case "90d":
+		startDate = now.AddDate(0, 0, -90)
+	case "1y":
+		startDate = now.AddDate(-1, 0, 0)
+	default:
+		// 默认30天
+		startDate = now.AddDate(0, 0, -30)
+		timeRange = "30d"
+	}
+
+	// 初始化数据点映射
+	creationMap := make(map[string]int)
+	completionMap := make(map[string]int)
+	progressMap := make(map[string]int)
+	progressCountMap := make(map[string]int)
+
+	// 填充日期范围（确保所有日期都有数据点）
+	current := startDate
+	for !current.After(endDate) {
+		dateStr := current.Format("2006-01-02")
+		creationMap[dateStr] = 0
+		completionMap[dateStr] = 0
+		progressMap[dateStr] = 0
+		progressCountMap[dateStr] = 0
+		current = current.AddDate(0, 0, 1)
+	}
+
+	// 分析任务数据
+	for _, task := range tasks {
+		// 解析创建日期
+		createdAt, err := time.Parse(time.RFC3339, task.CreatedAt)
+		if err == nil && !createdAt.Before(startDate) && !createdAt.After(endDate) {
+			dateStr := createdAt.Format("2006-01-02")
+			creationMap[dateStr]++
+		}
+
+		// 解析完成日期（状态为completed且更新时间在范围内）
+		if task.Status == StatusCompleted {
+			updatedAt, err := time.Parse(time.RFC3339, task.UpdatedAt)
+			if err == nil && !updatedAt.Before(startDate) && !updatedAt.After(endDate) {
+				dateStr := updatedAt.Format("2006-01-02")
+				completionMap[dateStr]++
+			}
+		}
+
+		// 进度数据（基于更新日期）
+		updatedAt, err := time.Parse(time.RFC3339, task.UpdatedAt)
+		if err == nil && !updatedAt.Before(startDate) && !updatedAt.After(endDate) {
+			dateStr := updatedAt.Format("2006-01-02")
+			progressMap[dateStr] += task.Progress
+			progressCountMap[dateStr]++
+		}
+	}
+
+	// 计算平均进度
+	for date := range progressMap {
+		if progressCountMap[date] > 0 {
+			progressMap[date] = progressMap[date] / progressCountMap[date]
+		}
+	}
+
+	// 转换为排序的数据点
+	creationPoints := mapToTimePoints(creationMap)
+	completionPoints := mapToTimePoints(completionMap)
+	progressPoints := mapToTimePoints(progressMap)
+
+	// 计算统计信息
+	creationTrend := calculateTrendData(creationPoints, "任务创建趋势", "个")
+	completionTrend := calculateTrendData(completionPoints, "任务完成趋势", "个")
+	progressTrend := calculateTrendData(progressPoints, "平均进度趋势", "%")
+
+	return &TimeTrendsResponse{
+		CreationTrend:   creationTrend,
+		CompletionTrend: completionTrend,
+		ProgressTrend:   progressTrend,
+		TimeRange:       timeRange,
+		StartDate:       startDate.Format("2006-01-02"),
+		EndDate:         endDate.Format("2006-01-02"),
+	}, nil
+}
+
+// mapToTimePoints 将映射转换为排序的时间点
+func mapToTimePoints(data map[string]int) []TimePoint {
+	// 提取日期并排序
+	dates := make([]string, 0, len(data))
+	for date := range data {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+
+	// 构建时间点
+	points := make([]TimePoint, 0, len(dates))
+	for _, date := range dates {
+		points = append(points, TimePoint{
+			Date:  date,
+			Value: data[date],
+		})
+	}
+	return points
+}
+
+// calculateTrendData 计算趋势数据
+func calculateTrendData(points []TimePoint, title, unit string) *TimeTrendData {
+	if len(points) == 0 {
+		return &TimeTrendData{
+			Title:      title,
+			Unit:       unit,
+			DataPoints: points,
+			Total:      0,
+			Average:    0,
+			Max:        0,
+			Min:        0,
+			Trend:      "stable",
+		}
+	}
+
+	// 计算统计信息
+	total := 0
+	max := points[0].Value
+	min := points[0].Value
+	for _, point := range points {
+		total += point.Value
+		if point.Value > max {
+			max = point.Value
+		}
+		if point.Value < min {
+			min = point.Value
+		}
+	}
+	average := float64(total) / float64(len(points))
+
+	// 计算趋势（简单线性趋势）
+	trend := "stable"
+	if len(points) >= 2 {
+		firstHalf := 0
+		secondHalf := 0
+		midpoint := len(points) / 2
+
+		for i := 0; i < midpoint; i++ {
+			firstHalf += points[i].Value
+		}
+		for i := midpoint; i < len(points); i++ {
+			secondHalf += points[i].Value
+		}
+
+		firstAvg := float64(firstHalf) / float64(midpoint)
+		secondAvg := float64(secondHalf) / float64(len(points)-midpoint)
+
+		if secondAvg > firstAvg*1.1 {
+			trend = "up"
+		} else if secondAvg < firstAvg*0.9 {
+			trend = "down"
+		} else {
+			trend = "stable"
+		}
+	}
+
+	return &TimeTrendData{
+		Title:      title,
+		Unit:       unit,
+		DataPoints: points,
+		Total:      total,
+		Average:    average,
+		Max:        max,
+		Min:        min,
+		Trend:      trend,
+	}
+}
+
+// flattenTaskTree 递归扁平化任务树（辅助函数）
+func (tm *TaskManager) flattenTaskTree(root *ComplexTask, result []*ComplexTask) []*ComplexTask {
+	result = append(result, root)
+	for i := range root.Subtasks {
+		result = tm.flattenTaskTree(&root.Subtasks[i], result)
+	}
+	return result
 }
 
 // SearchTasks 搜索任务

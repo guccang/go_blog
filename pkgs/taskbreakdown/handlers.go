@@ -22,6 +22,11 @@ func GetTaskManager() *TaskManager {
 	return controller.manager
 }
 
+// TemplateData 模板数据
+type TemplateData struct {
+	RootTaskID string
+}
+
 // HandleTaskBreakdown 处理任务拆解页面请求
 func HandleTaskBreakdown(w http.ResponseWriter, r *http.Request) {
 	log.DebugF(log.ModuleTaskBreakdown, "HandleTaskBreakdown %s", r.Method)
@@ -48,8 +53,16 @@ func HandleTaskBreakdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 获取root查询参数
+	rootTaskID := r.URL.Query().Get("root")
+
+	// 准备模板数据
+	data := TemplateData{
+		RootTaskID: rootTaskID,
+	}
+
 	// 执行模板
-	if err := tmpl.Execute(w, nil); err != nil {
+	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -326,4 +339,68 @@ func HandleSearchTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	controller.HandleSearchTasks(w, r)
+}
+
+// HandleTaskGraph 处理任务网络图数据请求
+func HandleTaskGraph(w http.ResponseWriter, r *http.Request) {
+	// 设置CORS头
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, X-Requested-With")
+
+	// 处理CORS预检请求
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 检查控制器是否已初始化
+	if controller == nil {
+		log.ErrorF(log.ModuleTaskBreakdown, "HandleTaskGraph: controller is nil")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
+		return
+	}
+
+	controller.HandleGetTaskGraph(w, r)
+}
+
+// HandleTimeTrends 处理时间趋势数据请求
+func HandleTimeTrends(w http.ResponseWriter, r *http.Request) {
+	// 设置CORS头
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, X-Requested-With")
+
+	// 处理CORS预检请求
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 检查控制器是否已初始化
+	if controller == nil {
+		log.ErrorF(log.ModuleTaskBreakdown, "HandleTimeTrends: controller is nil")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Service not initialized"})
+		return
+	}
+
+	controller.HandleGetTimeTrends(w, r)
 }

@@ -96,7 +96,6 @@ require (
 	share v0.0.0
 	sms v0.0.0
 	statistics v0.0.0
-	taskbreakdown v0.0.0
 	tools v0.0.0
 	view v0.0.0
 )
@@ -118,6 +117,7 @@ require (
 	linkup v0.0.0 // indirect
 	minesweeper v0.0.0 // indirect
 	skill v0.0.0 // indirect
+	taskbreakdown v0.0.0 // indirect
 	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
 	yearplan v0.0.0 // indirect

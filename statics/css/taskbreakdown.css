@@ -158,6 +158,54 @@ body {
     font-size: 0.85rem;
 }
 
+/* 趋势图表控制 */
+.trends-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.trends-controls .form-control {
+    width: auto;
+    min-width: 120px;
+    display: inline-block;
+}
+
+.trends-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trends-card .card-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+/* 移动端适配 */
+@media (max-width: 576px) {
+    .trends-card .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .trends-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .trends-controls .form-control {
+        flex-grow: 1;
+        min-width: 0;
+    }
+
+    .trends-card .card-body {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* 主内容区域 */
 .main-content {
     display: grid;
@@ -207,8 +255,21 @@ body {
 /* 任务树样式 */
 .task-tree {
     min-height: 300px;
-    max-height: 400px;
+    max-height: 600px;
     overflow-y: auto;
+}
+
+@media (max-width: 992px) {
+    .task-tree {
+        max-height: 500px;
+    }
+}
+
+@media (max-width: 768px) {
+    .task-tree {
+        max-height: 400px;
+        min-height: 250px;
+    }
 }
 
 .task-node {
@@ -652,6 +713,30 @@ body {
     transform: translateX(-5px);
 }
 
+.timeline-marker.active {
+    transform: translateX(-8px);
+}
+
+.timeline-marker.active .timeline-dot {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 2px solid var(--primary-color);
+}
+
+.timeline-marker.active .timeline-title {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.timeline-marker.active .timeline-date {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.timeline-marker.active .timeline-date i {
+    color: var(--secondary-color);
+}
+
 .timeline-dot {
     position: absolute;
     left: 50px;
@@ -673,12 +758,35 @@ body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-.timeline-date {
-    margin-left: 80px; /* 向左移动，让日期更靠近圆点，减少右侧空间占用 */
+.timeline-info {
+    margin-left: 80px; /* 向左移动，让信息更靠近圆点，减少右侧空间占用 */
+}
+
+.timeline-title {
     font-weight: 600;
     color: var(--dark-color);
-    font-size: 0.85rem; /* 稍微减小字体大小 */
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 250px;
+}
+
+.timeline-date {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: #666;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.timeline-date i {
+    color: var(--primary-color);
+    font-size: 0.75rem;
 }
 
 /* 时间线内容 */
@@ -703,6 +811,12 @@ body {
 .timeline-card-item:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.timeline-card-item.active {
+    border-left-color: var(--secondary-color);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    background: #f8fbfe;
 }
 
 .timeline-card-item::before {
@@ -989,4 +1103,267 @@ body {
         gap: 0.5rem;
         align-items: flex-start;
     }
+}
+
+/* 面包屑导航样式 */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.breadcrumb-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.breadcrumb-link:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-separator {
+    color: #666;
+}
+
+.breadcrumb-current {
+    font-weight: 600;
+    color: var(--dark-color);
+}
+
+
+
+
+/* ==================== 选项卡导航样式 ==================== */
+.tabs-navigation {
+    margin: 1.5rem 0;
+}
+
+.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-color);
+    gap: 1px;
+}
+
+.tab-link {
+    padding: 0.75rem 1.5rem;
+    background: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.3s;
+    position: relative;
+    top: 1px;
+}
+
+.tab-link:hover {
+    background: #e9ecef;
+    color: var(--dark-color);
+}
+
+.tab-link.active {
+    background: white;
+    color: var(--primary-color);
+    border-bottom: 1px solid white;
+    font-weight: 600;
+}
+
+.tab-content {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 0 8px 8px 8px;
+    padding: 0;
+    margin-top: -1px;
+}
+
+.tab-pane {
+    display: none;
+    padding: 1.5rem;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* 时间线选项卡特定样式 */
+.timeline-tab-content {
+    padding: 1rem;
+}
+
+/* 统计图表选项卡特定样式 */
+.stats-tab-content {
+    padding: 1rem;
+}
+
+.stats-card .card-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+/* 时间趋势选项卡特定样式 */
+.trends-tab-content {
+    padding: 1rem;
+}
+
+.trends-card .card-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab-link {
+        flex: 1;
+        min-width: 120px;
+        text-align: center;
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .stats-card .card-body,
+    .trends-card .card-body {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 超小屏幕调整 */
+@media (max-width: 480px) {
+    .tab-link {
+        min-width: 90px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+}
+
+/* 根任务列表样式 */
+.root-tasks-panel {
+    margin-bottom: 1.5rem;
+}
+
+.root-tasks-panel .card-header {
+    padding: 0.75rem 1rem;
+}
+
+.root-tasks-panel .card-title {
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.root-tasks-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.root-task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #495057;
+    transition: all 0.2s;
+}
+
+.root-task-item:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+    text-decoration: none;
+    color: #212529;
+}
+
+.root-task-item.active {
+    background-color: #3498db;
+    border-color: #2980b9;
+    color: white;
+}
+
+.root-task-status {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.root-task-status.completed {
+    background-color: #2ecc71;
+}
+
+.root-task-status.in-progress {
+    background-color: #3498db;
+}
+
+.root-task-status.planning {
+    background-color: #95a5a6;
+}
+
+.root-task-status.blocked {
+    background-color: #e74c3c;
+}
+
+.root-task-status.cancelled {
+    background-color: #7f8c8d;
+}
+
+.root-task-status.all {
+    background-color: #3498db;
+}
+
+/* 任务过滤控件样式 */
+.task-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.task-filter-controls .form-control {
+    width: auto;
+    min-width: 150px;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+/* 面包屑导航样式增强 */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.breadcrumb-link {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-separator {
+    color: #6c757d;
+}
+
+.breadcrumb-current {
+    color: #495057;
+    font-weight: 500;
 }
