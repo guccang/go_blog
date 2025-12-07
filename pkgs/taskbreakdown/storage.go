@@ -321,7 +321,8 @@ func (ts *TaskStorage) GetRootTasks(account string) ([]*ComplexTask, error) {
 
 	var rootTasks []*ComplexTask
 	for _, task := range allTasks {
-		if task.ParentID == "" {
+		// 只显示未完成的根任务（状态不是completed或cancelled，且进度小于100，且未删除）
+		if task.ParentID == "" && task.Status != "completed" && task.Status != "cancelled" && task.Progress < 100 && !task.Deleted {
 			rootTasks = append(rootTasks, task)
 		}
 	}
@@ -332,4 +333,26 @@ func (ts *TaskStorage) GetRootTasks(account string) ([]*ComplexTask, error) {
 	})
 
 	return rootTasks, nil
+}
+
+// GetCompletedRootTasks 获取已完成的根任务
+func (ts *TaskStorage) GetCompletedRootTasks(account string) ([]*ComplexTask, error) {
+	allTasks, err := ts.GetAllTasks(account)
+	if err != nil {
+		return nil, err
+	}
+
+	var completedRootTasks []*ComplexTask
+	for _, task := range allTasks {
+		if task.ParentID == "" && (task.Status == "completed" || task.Progress == 100) && !task.Deleted {
+			completedRootTasks = append(completedRootTasks, task)
+		}
+	}
+
+	// 按更新时间倒序排序，最新的在前面
+	sort.Slice(completedRootTasks, func(i, j int) bool {
+		return completedRootTasks[i].UpdatedAt > completedRootTasks[j].UpdatedAt
+	})
+
+	return completedRootTasks, nil
 }

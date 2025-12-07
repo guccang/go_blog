@@ -350,6 +350,13 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
+	// 检查是否是 taskbreakdown 博客，如果是则重定向到 taskbreakdown 页面
+	if strings.HasPrefix(blogname, "taskbreakdown-task-") {
+		// 直接重定向到taskbreakdown页面
+		h.Redirect(w, r, "/taskbreakdown", 302)
+		return
+	}
+
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据

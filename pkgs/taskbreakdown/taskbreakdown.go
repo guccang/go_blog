@@ -56,6 +56,7 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 		EndDate:       req.EndDate,
 		EstimatedTime: req.EstimatedTime,
 		ActualTime:    0,
+		DailyTime:     req.DailyTime,
 		Progress:      0,
 		Subtasks:      []ComplexTask{},
 		Dependencies:  []string{},
@@ -190,6 +191,11 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 
 	if updates.ActualTime != nil {
 		task.ActualTime = *updates.ActualTime
+		updated = true
+	}
+
+	if updates.DailyTime != nil {
+		task.DailyTime = *updates.DailyTime
 		updated = true
 	}
 
@@ -401,6 +407,24 @@ func (tm *TaskManager) buildTaskTreeWithVisited(account string, task *ComplexTas
 // GetRootTasks 获取根任务列表
 func (tm *TaskManager) GetRootTasks(account string) ([]*ComplexTask, error) {
 	tasks, err := tm.storage.GetRootTasks(account)
+	if err != nil {
+		return nil, err
+	}
+
+	// 过滤已删除的任务
+	var activeTasks []*ComplexTask
+	for _, task := range tasks {
+		if !task.Deleted {
+			activeTasks = append(activeTasks, task)
+		}
+	}
+
+	return activeTasks, nil
+}
+
+// GetCompletedRootTasks 获取已完成的根任务
+func (tm *TaskManager) GetCompletedRootTasks(account string) ([]*ComplexTask, error) {
+	tasks, err := tm.storage.GetCompletedRootTasks(account)
 	if err != nil {
 		return nil, err
 	}
@@ -642,6 +666,36 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		}
 	}
 
+	// 计算时间分析数据
+	totalEstimatedTime := 0
+	totalDailyTime := 0
+	for _, task := range tasks {
+		totalEstimatedTime += task.EstimatedTime
+		totalDailyTime += task.DailyTime
+	}
+
+	// 默认每天可用时间：14小时 = 840分钟
+	dailyAvailableTime := 840
+	requiredDays := 0.0
+	timeMargin := 0
+	timeUtilization := 0.0
+	timeStatus := "sufficient"
+
+	if dailyAvailableTime > 0 {
+		requiredDays = float64(totalEstimatedTime) / float64(dailyAvailableTime)
+		timeMargin = totalTime - totalEstimatedTime
+		if totalTime > 0 {
+			timeUtilization = float64(totalEstimatedTime) / float64(totalTime) * 100
+		}
+
+		// 判断时间状态
+		if timeMargin < 0 {
+			timeStatus = "insufficient"
+		} else if timeMargin < dailyAvailableTime { // 余量小于一天
+			timeStatus = "warning"
+		}
+	}
+
 	stats := &StatisticsData{
 		TotalTasks:          len(tasks),
 		CompletedTasks:      0,
@@ -650,6 +704,13 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		TotalTime:           totalTime,
 		StatusDistribution:  make(map[string]int),
 		PriorityDistribution: make(map[int]int),
+		// 时间分析字段
+		DailyAvailableTime: dailyAvailableTime,
+		TotalDailyTime:     totalDailyTime,
+		RequiredDays:       requiredDays,
+		TimeMargin:         timeMargin,
+		TimeUtilization:    timeUtilization,
+		TimeStatus:         timeStatus,
 	}
 
 	for _, task := range tasks {

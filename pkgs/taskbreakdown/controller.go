@@ -282,6 +282,27 @@ func (c *Controller) HandleGetSubtasks(w http.ResponseWriter, r *http.Request) {
 	sendSuccessResponse(w, taskTree)
 }
 
+// HandleGetCompletedRootTasks 处理获取已完成的根任务请求
+func (c *Controller) HandleGetCompletedRootTasks(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	// 检查用户是否已登录
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// 获取已完成的根任务
+	completedRootTasks, err := c.manager.GetCompletedRootTasks(account)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get completed root tasks: "+err.Error())
+		return
+	}
+
+	sendSuccessResponse(w, completedRootTasks)
+}
+
 // HandleAddSubtask 处理添加子任务请求
 func (c *Controller) HandleAddSubtask(w http.ResponseWriter, r *http.Request) {
 	setCommonHeaders(w)

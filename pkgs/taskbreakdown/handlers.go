@@ -121,6 +121,18 @@ func HandleTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 处理已完成任务请求
+	if path == "/api/tasks/completed" {
+		if r.Method == http.MethodGet {
+			controller.HandleGetCompletedRootTasks(w, r)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		}
+		return
+	}
+
 	// 处理带ID的路径
 	if len(path) > len("/api/tasks/") {
 		// 检查是否是特定操作
@@ -403,4 +415,37 @@ func HandleTimeTrends(w http.ResponseWriter, r *http.Request) {
 	}
 
 	controller.HandleGetTimeTrends(w, r)
+}
+
+// HandleCompletedTasks 处理已完成任务页面请求
+func HandleCompletedTasks(w http.ResponseWriter, r *http.Request) {
+	log.DebugF(log.ModuleTaskBreakdown, "HandleCompletedTasks %s", r.Method)
+
+	// 检查用户是否已登录
+	session, err := r.Cookie("session")
+	if err != nil || session.Value == "" {
+		// 未登录，重定向到登录页面
+		http.Redirect(w, r, "/index", http.StatusFound)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 解析模板
+	tmpl, err := template.ParseFiles("templates/taskbreakdown_completed.template")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 执行模板
+	if err := tmpl.Execute(w, nil); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

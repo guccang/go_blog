@@ -1457,3 +1457,134 @@ body {
     color: #495057;
     font-weight: 500;
 }
+
+/* ==================== 孤儿任务样式 ==================== */
+
+/* 孤儿任务 - 特殊边框颜色表示警告 */
+.task-node.task-orphan {
+    border-left-color: #ffc107; /* 警告颜色 */
+    background-color: #fff8e1; /* 浅黄色背景 */
+}
+
+/* 孤儿任务悬停效果 */
+.task-node.task-orphan:hover {
+    background-color: #ffecb3;
+    transform: translateX(5px);
+}
+
+/* 孤儿任务指示器 */
+.task-orphan-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffc107;
+    margin-left: 8px;
+    font-size: 12px;
+    position: relative;
+    cursor: help;
+}
+
+/* 孤儿任务指示器悬停工具提示 */
+.task-orphan-indicator .tooltip-text {
+    visibility: hidden;
+    width: 180px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 4px;
+    padding: 8px;
+    position: absolute;
+    z-index: 1000;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: normal;
+    word-wrap: break-word;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* 箭头 */
+.task-orphan-indicator .tooltip-text::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+/* 悬停时显示工具提示 */
+.task-orphan-indicator:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* 孤儿任务图标动画 */
+.task-orphan-indicator i {
+    animation: warning-pulse 2s infinite;
+}
+
+@keyframes warning-pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* 孤儿任务选中状态 */
+.task-node.task-orphan.selected {
+    background-color: #fff3cd;
+    border-left-color: #ffc107;
+    box-shadow: 0 0 15px rgba(255, 193, 7, 0.3);
+}
+
+/* 孤儿任务激活动画 */
+.task-node.task-orphan.task-activating {
+    animation: orphan-activate-pulse 0.3s ease-out;
+}
+
+@keyframes orphan-activate-pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 rgba(255, 193, 7, 0);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+    }
+    100% {
+        transform: scale(1.02);
+        box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
+    }
+}
+
+/* 孤儿任务脉冲光晕动画 */
+.task-node.task-orphan.selected {
+    animation: orphan-pulse-glow 2s infinite;
+}
+
+@keyframes orphan-pulse-glow {
+    0% {
+        box-shadow: 0 0 5px rgba(255, 193, 7, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 193, 7, 0.6);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(255, 193, 7, 0.3);
+    }
+}

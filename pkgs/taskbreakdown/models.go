@@ -33,6 +33,7 @@ type ComplexTask struct {
 	EndDate       string        `json:"end_date"`        // 结束日期 (YYYY-MM-DD)
 	EstimatedTime int           `json:"estimated_time"`  // 预估时间(分钟)
 	ActualTime    int           `json:"actual_time"`     // 实际耗时(分钟)
+	DailyTime     int           `json:"daily_time"`      // 每天分配时间(分钟)
 	Progress      int           `json:"progress"`        // 进度百分比 0-100
 	Subtasks      []ComplexTask `json:"subtasks"`        // 子任务列表
 	Dependencies  []string      `json:"dependencies"`    // 依赖任务ID列表
@@ -67,6 +68,7 @@ type TaskUpdateRequest struct {
 	EndDate       *string   `json:"end_date,omitempty"`
 	EstimatedTime *int      `json:"estimated_time,omitempty"`
 	ActualTime    *int      `json:"actual_time,omitempty"`
+	DailyTime     *int      `json:"daily_time,omitempty"`
 	Progress      *int      `json:"progress,omitempty"`
 	ParentID      *string   `json:"parent_id,omitempty"`
 	Order         *int      `json:"order,omitempty"`
@@ -82,6 +84,7 @@ type TaskCreateRequest struct {
 	StartDate     string   `json:"start_date,omitempty"`
 	EndDate       string   `json:"end_date,omitempty"`
 	EstimatedTime int      `json:"estimated_time,omitempty"`
+	DailyTime     int      `json:"daily_time,omitempty"`
 	ParentID      string   `json:"parent_id,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 }
@@ -120,6 +123,13 @@ type StatisticsData struct {
 	TotalTime       int            `json:"total_time"` // 总预估时间(分钟)
 	StatusDistribution map[string]int `json:"status_distribution"`
 	PriorityDistribution map[int]int  `json:"priority_distribution"`
+	// 时间分析字段
+	DailyAvailableTime int     `json:"daily_available_time"` // 每天可用时间(分钟)
+	TotalDailyTime     int     `json:"total_daily_time"`     // 总每日分配时间(分钟)
+	RequiredDays       float64 `json:"required_days"`        // 所需天数
+	TimeMargin         int     `json:"time_margin"`          // 时间余量(分钟)
+	TimeUtilization    float64 `json:"time_utilization"`     // 时间利用率(%)
+	TimeStatus         string  `json:"time_status"`          // 时间状态: "sufficient", "insufficient", "warning"
 }
 
 // GraphNode 网络图节点

@@ -17,6 +17,7 @@
             </a>
             <h1 class="page-title">任务拆解追踪</h1>
             <a href="/editor" class="header-link">创建博客</a>
+            <a href="/taskbreakdown/completed" class="header-link">查看已完成任务</a>
             <div class="header-controls">
                 <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> 刷新</button>
             </div>
@@ -135,6 +136,7 @@
                                         <div><strong>开始日期:</strong> <span id="taskStartDate">-</span></div>
                                         <div><strong>结束日期:</strong> <span id="taskEndDate">-</span></div>
                                         <div><strong>预估时间:</strong> <span id="taskEstimatedTime">0分钟</span></div>
+                                        <div><strong>每天分配时间:</strong> <span id="taskDailyTime">0分钟</span></div>
                                         <div><strong>实际时间:</strong> <span id="taskActualTime">0分钟</span></div>
                                     </div>
                                     <div class="task-tags" id="taskTags">
@@ -280,6 +282,11 @@
                         <div class="form-group">
                             <label for="estimatedTime">预估时间(分钟)</label>
                             <input type="number" id="estimatedTime" min="0" value="0">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="dailyTime">每天分配时间(分钟)</label>
+                            <input type="number" id="dailyTime" min="0" value="0">
                         </div>
 
                         <div class="form-group">

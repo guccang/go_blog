@@ -27,6 +27,7 @@ class TaskBreakdownApp {
             taskStartDate: document.getElementById('taskStartDate'),
             taskEndDate: document.getElementById('taskEndDate'),
             taskEstimatedTime: document.getElementById('taskEstimatedTime'),
+            taskDailyTime: document.getElementById('taskDailyTime'),
             taskActualTime: document.getElementById('taskActualTime'),
             taskTags: document.getElementById('taskTags'),
             addRootTask: document.getElementById('addRootTask'),
@@ -47,6 +48,7 @@ class TaskBreakdownApp {
             startDate: document.getElementById('startDate'),
             endDate: document.getElementById('endDate'),
             estimatedTime: document.getElementById('estimatedTime'),
+            dailyTime: document.getElementById('dailyTime'),
             progress: document.getElementById('progress'),
             progressValue: document.getElementById('progressValue'),
             tags: document.getElementById('tags'),
@@ -351,10 +353,15 @@ class TaskBreakdownApp {
             return;
         }
 
-        // 获取根任务（没有parent_id或parent_id为空）
+        // 获取根任务（没有parent_id或parent_id为空），并且不是已完成、已取消或已删除的任务
         const rootTasks = tasks.filter(task => {
             const parentId = task.parent_id || task.parentId || task.parentID || '';
-            return !parentId || parentId === '';
+            const isRoot = !parentId || parentId === '';
+            const taskStatus = task.status || task.Status || 'planning';
+            const isCompleted = taskStatus === 'completed' || task.progress === 100;
+            const isCancelled = taskStatus === 'cancelled';
+            const isDeleted = task.deleted || task.Deleted || false;
+            return isRoot && !isCompleted && !isCancelled && !isDeleted;
         });
 
         console.log('根任务数量:', rootTasks.length);
@@ -414,7 +421,7 @@ class TaskBreakdownApp {
         console.log('应用状态过滤:', filterValue);
 
         if (!filterValue) {
-            // 重置过滤，显示所有任务
+            // 重置过滤，显示所有任务（使用默认过滤，不显示已完成根任务）
             this.renderTaskTree();
             return;
         }
@@ -433,8 +440,8 @@ class TaskBreakdownApp {
             }
         });
 
-        // 使用过滤后的任务重新渲染任务树
-        this.renderTaskTree(filteredTasks);
+        // 使用过滤后的任务重新渲染任务树，并传递isStatusFilter=true
+        this.renderTaskTree(filteredTasks, true);
     }
 
     async fetchStatistics() {
@@ -463,10 +470,11 @@ class TaskBreakdownApp {
         return data.data || { tasks: [] };
     }
 
-    renderTaskTree(tasks = null) {
+    renderTaskTree(tasks = null, isStatusFilter = false) {
         const tasksToRender = tasks || this.tasks;
         console.log('=== 开始渲染任务树 ===');
         console.log('渲染任务总数:', tasksToRender.length);
+        console.log('是否状态过滤:', isStatusFilter);
 
         // 检查任务数据结构
         if (tasksToRender.length > 0) {
@@ -494,42 +502,114 @@ class TaskBreakdownApp {
             // 1. parent_id 为空
             // 2. parent_id 等于自己的id（数据错误情况）
             // 3. parent_id 对应的任务不存在（孤立任务）
-            if (!parentId || parentId === '') {
-                console.log(`   -> 是根任务（parent_id为空）`);
-                return true;
+            const isRoot = (!parentId || parentId === '') ||
+                          (parentId === taskId) ||
+                          (!tasksToRender.find(t => {
+                              const tId = t.id || t.ID || t.Id || '';
+                              return tId === parentId;
+                          }));
+
+            if (!isRoot) {
+                console.log(`   -> 不是根任务`);
+                return false;
             }
 
-            if (parentId === taskId) {
-                console.log(`   -> 是根任务（parent_id等于自身id，数据错误）`);
-                return true;
+            console.log(`   -> 是根任务`);
+
+            // 如果是状态过滤模式，显示所有匹配过滤条件的根任务
+            // 否则，过滤掉已完成、已取消或已删除的根任务（默认行为）
+            if (!isStatusFilter) {
+                const taskStatus = task.status || task.Status || 'planning';
+                const taskProgress = task.progress || task.Progress || 0;
+                const isCompleted = taskStatus === 'completed' || taskProgress === 100;
+                const isCancelled = taskStatus === 'cancelled';
+                const isDeleted = task.deleted || task.Deleted || false;
+
+                if (isCompleted || isCancelled || isDeleted) {
+                    console.log(`   -> 是已完成、已取消或已删除根任务，跳过显示`);
+                    return false;
+                }
             }
 
-            // 检查parent_id对应的任务是否存在
-            const parentTask = tasksToRender.find(t => {
-                const tId = t.id || t.ID || t.Id || '';
-                return tId === parentId;
-            });
-
-            if (!parentTask) {
-                console.log(`   -> 是根任务（父任务不存在，孤立任务）`);
-                return true;
-            }
-
-            console.log(`   -> 不是根任务`);
-            return false;
+            console.log(`   -> 显示根任务`);
+            return true;
         });
         console.log('根任务数量:', rootTasks.length);
         console.log('根任务详情:', rootTasks);
 
         if (rootTasks.length === 0) {
-            console.log('没有根任务，显示所有任务作为平铺列表');
-            // 显示所有任务作为平铺列表
-            tasksToRender.forEach((task, index) => {
+            // 如果是状态过滤模式，不应该有孤儿任务，因为根任务会被显示
+            if (isStatusFilter) {
+                console.log('状态过滤模式：没有匹配过滤条件的任务');
+                // 显示空状态
+                this.elements.taskTree.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-search fa-3x"></i>
+                        <h3>没有匹配过滤条件的任务</h3>
+                        <p>尝试选择其他状态进行过滤</p>
+                    </div>
+                `;
+                return;
+            }
+
+            console.log('没有未完成的根任务，检查是否有孤儿任务');
+
+            // 查找孤儿任务（父任务不存在或父任务已完成/取消/删除）
+            const orphanTasks = tasksToRender.filter(task => {
+                const taskId = task.id || task.ID || task.Id || '';
+                const parentId = task.parent_id || task.parentId || task.parentID || '';
+
+                // 如果没有父任务，不是孤儿（是根任务，但已被过滤）
+                if (!parentId || parentId === '') {
+                    return false;
+                }
+
+                // 查找父任务
+                const parentTask = tasksToRender.find(t => {
+                    const tId = t.id || t.ID || t.Id || '';
+                    return tId === parentId;
+                });
+
+                // 如果父任务不存在，是孤儿
+                if (!parentTask) {
+                    return true;
+                }
+
+                // 如果父任务已完成、取消或删除，是孤儿
+                const parentStatus = parentTask.status || parentTask.Status || 'planning';
+                const parentProgress = parentTask.progress || parentTask.Progress || 0;
+                const parentDeleted = parentTask.deleted || parentTask.Deleted || false;
+                const parentCompleted = parentStatus === 'completed' || parentProgress === 100;
+                const parentCancelled = parentStatus === 'cancelled';
+
+                return parentCompleted || parentCancelled || parentDeleted;
+            });
+
+            console.log('孤儿任务数量:', orphanTasks.length);
+
+            if (orphanTasks.length === 0) {
+                // 显示空状态
+                this.elements.taskTree.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-check-circle fa-3x"></i>
+                        <h3>暂无进行中的任务</h3>
+                        <p>所有任务已完成或已取消</p>
+                        <a href="/taskbreakdown/completed" class="btn btn-primary">
+                            <i class="fas fa-list-check"></i> 查看已完成任务
+                        </a>
+                    </div>
+                `;
+                return;
+            }
+
+            // 显示孤儿任务
+            console.log('显示孤儿任务作为平铺列表');
+            orphanTasks.forEach((task, index) => {
                 const taskTitle = task.title || task.Title || '无标题';
-                console.log(`平铺渲染任务 ${index + 1}/${tasksToRender.length}: ${taskTitle}`);
-                const rendered = this.renderTaskNode(task, this.elements.taskTree, 0);
+                console.log(`平铺渲染孤儿任务 ${index + 1}/${orphanTasks.length}: ${taskTitle}`);
+                const rendered = this.renderTaskNode(task, this.elements.taskTree, 0, new Set(), true);
                 if (!rendered) {
-                    console.log(`任务 ${taskTitle} 渲染失败或已跳过`);
+                    console.log(`孤儿任务 ${taskTitle} 渲染失败或已跳过`);
                 }
             });
             return;
@@ -559,7 +639,7 @@ class TaskBreakdownApp {
         console.log('=== 任务树渲染完成 ===');
     }
 
-    renderTaskNode(task, container, level, visited = new Set()) {
+    renderTaskNode(task, container, level, visited = new Set(), isOrphan = false) {
         // 支持多种可能的字段名
         const taskId = task.id || task.ID || task.Id || '';
         const taskTitle = task.title || task.Title || '未命名任务';
@@ -580,11 +660,12 @@ class TaskBreakdownApp {
             return null;
         }
 
-        console.log(`渲染任务: ${taskId} (${taskTitle}), 层级: ${level}`);
+        console.log(`渲染任务: ${taskId} (${taskTitle}), 层级: ${level}, 孤儿: ${isOrphan}`);
 
         const taskElement = document.createElement('div');
-        taskElement.className = 'task-node';
+        taskElement.className = `task-node ${isOrphan ? 'task-orphan' : ''}`;
         taskElement.dataset.taskId = taskId;
+        taskElement.dataset.isOrphan = isOrphan;
         taskElement.style.paddingLeft = `${level * 20 + 10}px`;
 
         // 获取子任务 - 支持多种可能的字段名
@@ -612,6 +693,12 @@ class TaskBreakdownApp {
                         <i class="fas fa-circle-notch"></i>
                     </span>
                     <div class="task-node-title">${this.escapeHtml(taskTitle)}</div>
+                    ${isOrphan ? `
+                    <span class="task-orphan-indicator" title="父任务已完成或已取消">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span class="tooltip-text">父任务已完成或已取消</span>
+                    </span>
+                    ` : ''}
                 </div>
                 <div class="task-node-meta">
                     <span class="task-status-badge ${statusClass}">${this.getStatusText(taskStatus)}</span>
@@ -812,6 +899,7 @@ class TaskBreakdownApp {
         const taskStartDate = task.start_date || task.startDate || task.StartDate || '-';
         const taskEndDate = task.end_date || task.endDate || task.EndDate || '-';
         const taskEstimatedTime = task.estimated_time || task.estimatedTime || task.EstimatedTime || 0;
+        const taskDailyTime = task.daily_time || task.dailyTime || task.DailyTime || 0;
         const taskActualTime = task.actual_time || task.actualTime || task.ActualTime || 0;
 
         // 更新任务详情
@@ -827,6 +915,7 @@ class TaskBreakdownApp {
         this.elements.taskStartDate.textContent = taskStartDate;
         this.elements.taskEndDate.textContent = taskEndDate;
         this.elements.taskEstimatedTime.textContent = `${taskEstimatedTime}分钟`;
+        this.elements.taskDailyTime.textContent = `${taskDailyTime}分钟`;
         this.elements.taskActualTime.textContent = `${taskActualTime}分钟`;
 
         // 更新标签
@@ -908,6 +997,7 @@ class TaskBreakdownApp {
         const taskStartDate = task.start_date || task.startDate || task.StartDate || '';
         const taskEndDate = task.end_date || task.endDate || task.EndDate || '';
         const taskEstimatedTime = task.estimated_time || task.estimatedTime || task.EstimatedTime || 0;
+        const taskDailyTime = task.daily_time || task.dailyTime || task.DailyTime || 0;
         const taskProgress = task.progress || task.Progress || 0;
         const taskTags = task.tags || task.Tags || [];
 
@@ -919,6 +1009,7 @@ class TaskBreakdownApp {
         this.elements.startDate.value = taskStartDate;
         this.elements.endDate.value = taskEndDate;
         this.elements.estimatedTime.value = taskEstimatedTime;
+        this.elements.dailyTime.value = taskDailyTime;
         this.elements.progress.value = taskProgress;
         this.elements.progressValue.textContent = `${taskProgress}%`;
         this.elements.tags.value = taskTags.join(', ');
@@ -944,6 +1035,7 @@ class TaskBreakdownApp {
             start_date: this.elements.startDate.value || null,
             end_date: this.elements.endDate.value || null,
             estimated_time: parseInt(this.elements.estimatedTime.value) || 0,
+            daily_time: parseInt(this.elements.dailyTime.value) || 0,
             progress: parseInt(this.elements.progress.value) || 0,
             tags: this.elements.tags.value ? this.elements.tags.value.split(',').map(tag => tag.trim()).filter(tag => tag) : []
         };
@@ -1054,7 +1146,14 @@ class TaskBreakdownApp {
             in_progress_tasks: stats.in_progress_tasks,
             blocked_tasks: stats.blocked_tasks,
             total_time: stats.total_time,
-            status_distribution: stats.status_distribution
+            status_distribution: stats.status_distribution,
+            // 时间分析字段
+            daily_available_time: stats.daily_available_time,
+            total_daily_time: stats.total_daily_time,
+            required_days: stats.required_days,
+            time_margin: stats.time_margin,
+            time_utilization: stats.time_utilization,
+            time_status: stats.time_status
         });
 
         // 调试：检查 completed_tasks 的值
