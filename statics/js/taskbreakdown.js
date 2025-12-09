@@ -1251,9 +1251,9 @@ class TaskBreakdownApp {
 
         if (data.has_overlap) {
             this.elements.timeOverlapResult.innerHTML = `
-    < p class="overlap-warning" >
+    <p class="overlap-warning" >
         <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Subtask time overlap detected'}
-                </p >
+                </p>
         <p style="font-size: 0.85rem; margin-top: 0.5rem; color: #666;">
             Subtask time sum exceeds parent task daily allocation on some dates.
         </p>
@@ -1370,7 +1370,7 @@ class TaskBreakdownApp {
         this.elements.estimatedTime.value = taskEstimatedTime;
         this.elements.dailyTime.value = taskDailyTime;
         this.elements.progress.value = taskProgress;
-        this.elements.progressValue.textContent = `%`;
+        this.elements.progressValue.textContent = `${taskProgress}%`;
         this.elements.tags.value = taskTags.join(', ');
 
         // After filling form, check if estimated time calculation is needed
