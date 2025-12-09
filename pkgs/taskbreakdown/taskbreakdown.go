@@ -1428,14 +1428,29 @@ func (tm *TaskManager) AnalyzeTaskTime(account, taskID string) (*TaskTimeAnalysi
 		return nil, err
 	}
 
-	// 计算子任务时间总和（只计入未删除且未完成的子任务）
+	// 计算子任务时间总和（只计入未删除且未完成的子任务），并收集子任务详细信息
 	subtasksEstimatedTime := 0
 	subtasksDailyTime := 0
 	subtasksActualTime := 0
 	validSubtasksCount := 0
+	subtaskDetails := make([]SubtaskTimeDetail, 0, len(taskTree.Subtasks))
 
 	for _, subtask := range taskTree.Subtasks {
-		// 跳过已删除或已完成的任务
+		// 收集子任务详细信息（包括所有子任务，无论状态如何）
+		detail := SubtaskTimeDetail{
+			ID:            subtask.ID,
+			Title:         subtask.Title,
+			Status:        subtask.Status,
+			EstimatedTime: subtask.EstimatedTime,
+			DailyTime:     subtask.DailyTime,
+			ActualTime:    subtask.ActualTime,
+			Progress:      subtask.Progress,
+			Deleted:       subtask.Deleted,
+			Completed:     IsTaskCompleted(&subtask),
+		}
+		subtaskDetails = append(subtaskDetails, detail)
+
+		// 跳过已删除或已完成的任务（不计入时间总和）
 		if subtask.Deleted || IsTaskCompleted(&subtask) {
 			continue
 		}
@@ -1517,6 +1532,7 @@ func (tm *TaskManager) AnalyzeTaskTime(account, taskID string) (*TaskTimeAnalysi
 
 		SubtasksCount:         subtasksCount,
 		HasSubtasks:           subtasksCount > 0,
+		SubtaskDetails:        subtaskDetails,
 	}
 
 	return analysis, nil

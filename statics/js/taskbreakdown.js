@@ -840,10 +840,26 @@ class TaskBreakdownApp {
             const newVisited = new Set(visited);
             newVisited.add(taskId);
 
-            subtasks.forEach((subtask, index) => {
+            // Sort subtasks by start date
+            const sortedSubtasks = [...subtasks].sort((a, b) => {
+                const dateA = a.start_date || a.startDate || a.StartDate || '';
+                const dateB = b.start_date || b.startDate || b.StartDate || '';
+
+                // If both have dates, compare them
+                if (dateA && dateB) {
+                    return dateA.localeCompare(dateB);
+                }
+                // If only one has a date, prioritize the one with a date
+                if (dateA) return -1;
+                if (dateB) return 1;
+                // If neither has a date, maintain original order
+                return 0;
+            });
+
+            sortedSubtasks.forEach((subtask, index) => {
                 const subtaskId = subtask.id || subtask.ID || subtask.Id || '';
                 const subtaskTitle = subtask.title || subtask.Title || 'No Title';
-                console.log(`  Rendering subtask ${index + 1}/${subtasks.length}: ${subtaskId} (${subtaskTitle})`);
+                console.log(`  Rendering subtask ${index + 1}/${sortedSubtasks.length}: ${subtaskId} (${subtaskTitle})`);
 
                 const rendered = this.renderTaskNode(subtask, subtasksContainer, level + 1, newVisited);
                 if (!rendered) {
@@ -1156,16 +1172,16 @@ class TaskBreakdownApp {
 
         if (analysis.has_subtasks) {
             // Has subtasks: Show normally
-            this.elements.subtasksEstimatedTime.textContent = ` mins`;
-            this.elements.subtasksDailyTime.textContent = ` mins`;
+            this.elements.subtasksEstimatedTime.textContent = `${analysis.subtasks_estimated_time} mins`;
+            this.elements.subtasksDailyTime.textContent = `${analysis.subtasks_daily_time} mins`;
 
             const estimatedDiff = analysis.estimated_time_diff;
-            const estimatedDiffText = estimatedDiff >= 0 ? `+ mins` : ` mins`;
-            this.elements.estimatedTimeDiff.textContent = `(Diff: )`;
+            const estimatedDiffText = estimatedDiff >= 0 ? `+${estimatedDiff} mins` : `${estimatedDiff} mins`;
+            this.elements.estimatedTimeDiff.textContent = `(Diff: ${estimatedDiffText})`;
 
             const dailyDiff = analysis.daily_time_diff;
-            const dailyDiffText = dailyDiff >= 0 ? `+ mins` : ` mins`;
-            this.elements.dailyTimeDiff.textContent = `(Diff: )`;
+            const dailyDiffText = dailyDiff >= 0 ? `+${dailyDiff} mins` : `${dailyDiff} mins`;
+            this.elements.dailyTimeDiff.textContent = `(Diff: ${dailyDiffText})`;
         } else {
             // No subtasks (Leaf task): Show friendly text
             this.elements.subtasksEstimatedTime.textContent = 'No subtasks';
@@ -1175,23 +1191,126 @@ class TaskBreakdownApp {
         }
 
         // Update self time (Always show)
-        this.elements.selfEstimatedTime.textContent = ` mins`;
-        this.elements.selfDailyTime.textContent = ` mins`;
+        this.elements.selfEstimatedTime.textContent = `${analysis.self_estimated_time} mins`;
+        this.elements.selfDailyTime.textContent = `${analysis.self_daily_time} mins`;
 
-        // Update time status (Use original diff value, status function will handle)
-        this.updateTimeStatusUI(this.elements.estimatedTimeStatus, analysis.estimated_time_status, analysis.estimated_time_diff);
-        this.updateTimeStatusUI(this.elements.dailyTimeStatus, analysis.daily_time_status, analysis.daily_time_diff);
+        // Update time status with subtask details
+        this.updateTimeStatusUI(this.elements.estimatedTimeStatus, analysis.estimated_time_status, analysis.estimated_time_diff, analysis.subtask_details);
+        this.updateTimeStatusUI(this.elements.dailyTimeStatus, analysis.daily_time_status, analysis.daily_time_diff, analysis.subtask_details);
 
         // Update subtask count info
         if (analysis.has_subtasks) {
-            console.log(`Task has  subtasks`);
+            console.log(`Task has ${analysis.subtasks_count} subtasks`);
         } else {
             console.log('Task has no subtasks');
         }
+
+        // Render subtask time details table
+        this.renderSubtaskTimeTable(analysis);
+    }
+
+    // Render subtask time details table
+    renderSubtaskTimeTable(analysis) {
+        const container = document.getElementById('subtaskTimeDetails');
+        if (!container) {
+            console.error('Subtask time details container not found');
+            return;
+        }
+
+        if (!analysis.subtask_details || analysis.subtask_details.length === 0) {
+            container.innerHTML = '<p>暂无子任务时间详情</p>';
+            return;
+        }
+
+        // Filter out deleted subtasks for display (optional)
+        const displaySubtasks = analysis.subtask_details.filter(task => !task.deleted);
+        if (displaySubtasks.length === 0) {
+            container.innerHTML = '<p>所有子任务已删除</p>';
+            return;
+        }
+
+        // Sort by estimated time descending (to show longest tasks first)
+        displaySubtasks.sort((a, b) => b.estimated_time - a.estimated_time);
+
+        // Create table
+        let html = `
+            <div class="subtask-table-container">
+                <table class="subtask-time-table">
+                    <thead>
+                        <tr>
+                            <th>子任务标题</th>
+                            <th>状态</th>
+                            <th>预计时间 (分钟)</th>
+                            <th>每天分配时间 (分钟)</th>
+                            <th>实际时间 (分钟)</th>
+                            <th>进度</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        displaySubtasks.forEach(subtask => {
+            const statusClass = this.getStatusClass(subtask.status);
+            const progressClass = subtask.progress === 100 ? 'progress-completed' : subtask.progress >= 50 ? 'progress-good' : 'progress-low';
+            const note = subtask.completed ? '已完成' : (subtask.deleted ? '已删除' : '');
+
+            html += `
+                        <tr>
+                            <td><strong>${this.escapeHtml(subtask.title)}</strong></td>
+                            <td><span class="status-badge ${statusClass}">${this.getStatusText(subtask.status)}</span></td>
+                            <td>${subtask.estimated_time}</td>
+                            <td>${subtask.daily_time}</td>
+                            <td>${subtask.actual_time}</td>
+                            <td><span class="progress-bar ${progressClass}">${subtask.progress}%</span></td>
+                            <td>${note}</td>
+                        </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+                <div class="table-summary">
+                    <p>显示 ${displaySubtasks.length} 个子任务（按预计时间降序排序）</p>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    // Helper functions for subtask table
+    getStatusClass(status) {
+        switch (status) {
+            case 'completed': return 'status-completed';
+            case 'in-progress': return 'status-in-progress';
+            case 'planning': return 'status-planning';
+            case 'blocked': return 'status-blocked';
+            case 'cancelled': return 'status-cancelled';
+            default: return 'status-unknown';
+        }
+    }
+
+    getStatusText(status) {
+        switch (status) {
+            case 'completed': return '已完成';
+            case 'in-progress': return '进行中';
+            case 'planning': return '规划中';
+            case 'blocked': return '阻塞中';
+            case 'cancelled': return '已取消';
+            default: return status;
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     // Update time status UI
-    updateTimeStatusUI(element, status, diff) {
+    updateTimeStatusUI(element, status, diff, subtaskDetails) {
         // Clear all status classes
         element.classList.remove('status-sufficient', 'status-insufficient', 'status-excessive', 'status-warning', 'status-leaf');
 
@@ -1200,7 +1319,7 @@ class TaskBreakdownApp {
 
         // Update icon and text
         const iconClass = this.getStatusIconClass(status);
-        const statusText = this.getStatusTextByStatus(status, diff);
+        const statusText = this.getStatusTextByStatus(status, diff, subtaskDetails);
 
         element.innerHTML = `<i class="${iconClass}"></i> ${statusText}`;
     }
@@ -1224,18 +1343,25 @@ class TaskBreakdownApp {
     }
 
     // Get status text by status
-    getStatusTextByStatus(status, diff) {
+    getStatusTextByStatus(status, diff, subtaskDetails) {
         switch (status) {
             case 'sufficient':
                 if (diff < 0) {
-                    return `Time sufficient (Surplus  mins)`;
+                    return `Time sufficient (Surplus ${-diff} mins)`;
                 } else {
                     return 'Time sufficient';
                 }
             case 'insufficient':
-                return `Time insufficient (Shortage  mins)`;
+                let insufficientText = `Time insufficient (Shortage ${diff} mins)`;
+                // Add subtask details if available
+                if (subtaskDetails && subtaskDetails.length > 0) {
+                    const taskNames = subtaskDetails.slice(0, 3).map(t => t.title || 'Untitled').join(', ');
+                    const more = subtaskDetails.length > 3 ? ` and ${subtaskDetails.length - 3} more` : '';
+                    insufficientText += `<br><small style="color: #666;">Contributing tasks: ${taskNames}${more}</small>`;
+                }
+                return insufficientText;
             case 'excessive':
-                return `Time allocation excessive (Excess  mins)`;
+                return `Time allocation excessive (Excess ${-diff} mins)`;
             case 'warning':
                 return 'Time allocation warning';
             case 'leaf':

@@ -61,9 +61,12 @@ func HandleTaskBreakdown(w http.ResponseWriter, r *http.Request) {
 		RootTaskID: rootTaskID,
 	}
 
+	// 必须在Execute之前设置Content-Type
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 	// 执行模板
 	if err := tmpl.Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.ErrorF(log.ModuleTaskBreakdown, "Template execution error: %v", err)
 		return
 	}
 }

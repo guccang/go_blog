@@ -1,3 +1,17 @@
+package taskbreakdown
+
+import (
+	"strconv"
+	"time"
+)
+
+// 任务状态常量
+const (
+	StatusPlanning    = "planning"     // 规划中
+	StatusInProgress  = "in-progress"  // 进行中
+	StatusCompleted   = "completed"    // 已完成
+	StatusBlocked     = "blocked"      // 阻塞中
+	StatusCancelled   = "cancelled"    // 已取消
 )
 
 // 优先级常量
@@ -146,6 +160,11 @@ type GraphData struct {
 	Nodes []GraphNode `json:"nodes"`
 	Edges []GraphEdge `json:"edges"`
 }
+
+// 验证状态是否有效
+func IsValidStatus(status string) bool {
+	switch status {
+	case StatusPlanning, StatusInProgress, StatusCompleted, StatusBlocked, StatusCancelled:
 		return true
 	default:
 		return false
@@ -155,6 +174,13 @@ type GraphData struct {
 // 验证优先级是否有效
 func IsValidPriority(priority int) bool {
 	return priority >= PriorityHighest && priority <= PriorityLowest
+}
+
+// GenerateTaskID 生成任务ID
+func GenerateTaskID() string {
+	// 使用时间戳和纳秒级时间生成唯一ID
+	// 在实际生产环境中，建议使用UUID库
+	return "task-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
 // 计算任务深度
@@ -204,6 +230,19 @@ type TimeTrendsResponse struct {
 	EndDate         string         `json:"end_date"`                   // 结束日期
 }
 
+// SubtaskTimeDetail 子任务时间详情
+type SubtaskTimeDetail struct {
+	ID            string `json:"id"`              // 子任务ID
+	Title         string `json:"title"`           // 子任务标题
+	Status        string `json:"status"`          // 状态
+	EstimatedTime int    `json:"estimated_time"`  // 预估时间(分钟)
+	DailyTime     int    `json:"daily_time"`      // 每天分配时间(分钟)
+	ActualTime    int    `json:"actual_time"`     // 实际耗时(分钟)
+	Progress      int    `json:"progress"`        // 进度百分比
+	Deleted       bool   `json:"deleted"`         // 是否已删除
+	Completed     bool   `json:"completed"`       // 是否已完成
+}
+
 // TaskTimeAnalysis 任务时间分析
 type TaskTimeAnalysis struct {
 	TaskID               string `json:"task_id"`                // 任务ID
@@ -232,6 +271,8 @@ type TaskTimeAnalysis struct {
 	// 子任务数量
 	SubtasksCount        int    `json:"subtasks_count"`         // 子任务数量
 	HasSubtasks          bool   `json:"has_subtasks"`           // 是否有子任务
+	// 子任务详细信息
+	SubtaskDetails       []SubtaskTimeDetail `json:"subtask_details,omitempty"` // 子任务时间详情列表
 }
 
 // TaskTimeAnalysisResponse 任务时间分析响应
