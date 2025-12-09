@@ -1,5 +1,5 @@
-/**
- * 任务拆解追踪页面JavaScript
+﻿/**
+ * Task Breakdown Tracking Page JavaScript
  */
 
 class TaskBreakdownApp {
@@ -8,14 +8,14 @@ class TaskBreakdownApp {
         this.tasks = [];
         this.charts = {};
 
-        // 获取根任务ID（从URL参数或data属性）
+        // Get root task ID (from URL params or data attribute)
         this.rootTaskID = this.getRootTaskID();
 
         this.init();
     }
 
     init() {
-        // DOM元素
+        // DOM Elements
         this.elements = {
             taskTree: document.getElementById('taskTree'),
             taskDetailsCard: document.getElementById('taskDetailsCard'),
@@ -71,55 +71,71 @@ class TaskBreakdownApp {
             rootTaskTitle: document.getElementById('rootTaskTitle'),
             statusFilter: document.getElementById('statusFilter'),
             rootTasksPanel: document.getElementById('rootTasksPanel'),
-            rootTasksList: document.getElementById('rootTasksList')
+            rootTasksList: document.getElementById('rootTasksList'),
+            timeAnalysisPanel: document.getElementById('timeAnalysisPanel'),
+            selfEstimatedTime: document.getElementById('selfEstimatedTime'),
+            subtasksEstimatedTime: document.getElementById('subtasksEstimatedTime'),
+            estimatedTimeDiff: document.getElementById('estimatedTimeDiff'),
+            estimatedTimeStatus: document.getElementById('estimatedTimeStatus'),
+            selfDailyTime: document.getElementById('selfDailyTime'),
+            subtasksDailyTime: document.getElementById('subtasksDailyTime'),
+            dailyTimeDiff: document.getElementById('dailyTimeDiff'),
+            dailyTimeStatus: document.getElementById('dailyTimeStatus'),
+            timeOverlapResult: document.getElementById('timeOverlapResult'),
+            // Time comparison evaluation elements
+            evalEstimatedTime: document.getElementById('evalEstimatedTime'),
+            evalActualTime: document.getElementById('evalActualTime'),
+            evalTimeDiff: document.getElementById('evalTimeDiff'),
+            evalTimePercent: document.getElementById('evalTimePercent'),
+            evalResult: document.getElementById('evalResult')
         };
 
-        // 调试：检查关键元素是否存在
-        console.log('TaskBreakdownApp初始化...');
-        console.log('addRootTask元素:', this.elements.addRootTask);
-        console.log('saveTask元素:', this.elements.saveTask);
-        console.log('taskModal元素:', this.elements.taskModal);
+        // Debug: Check if key elements exist
+        console.log('TaskBreakdownApp initializing...');
+        console.log('addRootTask element:', this.elements.addRootTask);
+        console.log('saveTask element:', this.elements.saveTask);
+        console.log('taskModal element:', this.elements.taskModal);
 
-        // 事件监听
+        // Event listeners
         this.bindEvents();
 
-        // 初始化日期为今天
+        // Initialize date to today
         const today = new Date().toISOString().split('T')[0];
         this.elements.startDate.value = today;
         this.elements.endDate.value = today;
 
-        // 进度滑块事件
+        // Progress slider event
         this.elements.progress.addEventListener('input', (e) => {
             this.elements.progressValue.textContent = `${e.target.value}%`;
         });
 
-        // 加载数据
+        // Load data
         this.loadData();
 
-        // 加载趋势数据（延迟加载确保图表容器已准备好）
+        // Load trends data (delayed load to ensure chart container is ready)
         this.loadInitialTrendsData();
     }
 
     bindEvents() {
-        console.log('绑定事件...');
+        console.log('Binding events...');
 
-        // 按钮事件
+        // Button events
         if (this.elements.addRootTask) {
             this.elements.addRootTask.addEventListener('click', () => {
-                console.log('点击添加根任务按钮');
+                console.log('Clicked Add Root Task button');
                 this.openModal('add');
             });
         } else {
-            console.error('addRootTask元素未找到');
+            console.error('addRootTask element not found');
         }
 
         if (this.elements.saveTask) {
             this.elements.saveTask.addEventListener('click', () => {
-                console.log('点击保存按钮');
+                console.log('Clicked Save button');
                 this.saveTask();
             });
         } else {
-            console.error('saveTask元素未找到');
+            console.error('saveTask element not found');
         }
 
         if (this.elements.editTask) {
@@ -134,7 +150,7 @@ class TaskBreakdownApp {
             this.elements.addSubtask.addEventListener('click', () => this.openModal('addSubtask'));
         }
 
-        // 选项卡切换事件
+        // Tab switch events
         if (this.elements.tabLinks && this.elements.tabLinks.length > 0) {
             this.elements.tabLinks.forEach(tabLink => {
                 tabLink.addEventListener('click', (e) => this.switchTab(e));
@@ -153,124 +169,185 @@ class TaskBreakdownApp {
             this.elements.timeRangeSelect.addEventListener('change', () => this.loadTrendsData());
         }
 
-        // 状态过滤事件
+        // Status filter events
         if (this.elements.statusFilter) {
             this.elements.statusFilter.addEventListener('change', () => this.applyStatusFilter());
         }
 
-        // 模态框关闭
+        // Modal close
         this.elements.closeButtons.forEach(btn => {
             btn.addEventListener('click', () => this.closeModal());
         });
 
-        // 点击模态框外部关闭
+        // Click outside modal to close
         window.addEventListener('click', (e) => {
             if (e.target === this.elements.taskModal) {
                 this.closeModal();
             }
         });
+
+        // Estimated time auto-calculation events
+        if (this.elements.startDate && this.elements.endDate && this.elements.dailyTime && this.elements.estimatedTime) {
+            const calculateHandler = () => this.calculateEstimatedTime();
+            this.elements.startDate.addEventListener('change', calculateHandler);
+            this.elements.endDate.addEventListener('change', calculateHandler);
+            this.elements.dailyTime.addEventListener('input', calculateHandler);
+            this.elements.dailyTime.addEventListener('change', calculateHandler);
+            console.log('Added estimated time auto-calculation event listeners');
+        } else {
+            console.log('Estimated time calculation related elements not found, skipping event binding');
+        }
+    }
+
+    // Calculate estimated time (based on start date, end date, and daily allocated time)
+    calculateEstimatedTime() {
+        console.log('Start calculating estimated time...');
+
+        // Get input values
+        const startDate = this.elements.startDate.value;
+        const endDate = this.elements.endDate.value;
+        const dailyTime = parseInt(this.elements.dailyTime.value) || 0;
+
+        console.log(`Calculation params: startDate=${startDate}, endDate=${endDate}, dailyTime=${dailyTime}`);
+
+        // Validate input
+        if (!startDate || !endDate || dailyTime <= 0) {
+            console.log('Calculation conditions not met, not clearing estimated time field');
+            // Do not clear estimated time field, allow user to manually input
+            return;
+        }
+
+        // Calculate day difference
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+
+        // Ensure end date is not earlier than start date
+        if (end < start) {
+            console.log('End date is earlier than start date, skipping estimated time calculation');
+            return;
+        }
+
+        // Calculate days (inclusive of start and end dates)
+        const timeDiff = end.getTime() - start.getTime();
+        const days = Math.floor(timeDiff / (1000 * 3600 * 24)) + 1;
+
+        if (days <= 0) {
+            console.log('Invalid day calculation, skipping estimated time calculation');
+            return;
+        }
+
+        // Calculate estimated time (minutes)
+        const estimatedTime = days * dailyTime;
+
+        console.log(`Calculation result: days=${days}, dailyTime=${dailyTime}, estimatedTime=${estimatedTime}`);
+
+        // Update estimated time field
+        this.elements.estimatedTime.value = estimatedTime;
+
+        // Optional: Trigger change event so other listeners know the value has changed
+        this.elements.estimatedTime.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     switchTab(event) {
         const tabLink = event.currentTarget;
         const tabId = tabLink.getAttribute('data-tab');
 
-        // 移除所有选项卡和窗格的激活状态
+        // Remove active state from all tabs and panes
         this.elements.tabLinks.forEach(link => link.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(pane => {
             pane.classList.remove('active');
         });
 
-        // 为点击的选项卡和对应的窗格添加激活状态
+        // Add active state to clicked tab and corresponding pane
         tabLink.classList.add('active');
         const tabPane = document.getElementById(tabId);
         if (tabPane) {
             tabPane.classList.add('active');
         }
 
-        // 如果需要，加载选项卡数据
+        // Load tab data if needed
         if (tabId === 'statsTab') {
-            // 如果统计图表尚未渲染，重新加载数据以渲染图表
+            // If statistics charts not rendered, reload data to render charts
             if (!this.charts.status) {
-                this.loadData(); // 这会加载统计数据并渲染图表
+                this.loadData(); // This will load statistics data and render charts
             }
         } else if (tabId === 'trendsTab') {
-            // 加载时间趋势数据
+            // Load trends data
             this.loadTrendsData();
         } else if (tabId === 'timelineTab') {
-            // 如果时间线数据尚未加载，重新加载数据
+            // If timeline data not loaded, reload data
             if (!this.timelineTasks || this.timelineTasks.length === 0) {
-                this.loadData(); // 这会加载时间线数据并渲染
+                this.loadData(); // This will load timeline data and render
             }
         }
-        // 任务树选项卡不需要特殊处理，数据已在loadData中加载
+        // Task tree tab needs no special handling, data loaded in loadData
     }
 
     async loadData() {
         try {
-            console.log('开始加载数据...');
-            // 显示加载状态
+            console.log('Start loading data...');
+            // Show loading state
             this.showLoading();
 
-            // 并行加载所有数据
+            // Load all data in parallel
             const [tasks, stats, timeline] = await Promise.all([
                 this.fetchTasks(),
                 this.fetchStatistics(),
                 this.fetchTimeline()
             ]);
 
-            console.log('任务数据加载完成，数量:', tasks.length);
-            console.log('任务数据示例（完整）:', tasks.length > 0 ? tasks[0] : '无任务');
-            console.log('所有任务ID:', tasks.map(t => t.id || t.ID || t.Id || '无ID'));
-            console.log('统计数据:', stats);
+            console.log('Task data loaded, count:', tasks.length);
+            console.log('Task data sample (full):', tasks.length > 0 ? tasks[0] : 'No tasks');
+            console.log('All task IDs:', tasks.map(t => t.id || t.ID || t.Id || 'No ID'));
+            console.log('Statistics data:', stats);
 
             this.tasks = tasks;
-            console.log('设置this.tasks完成，长度:', this.tasks.length);
+            console.log('this.tasks set, length:', this.tasks.length);
 
-            // 渲染任务树
-            console.log('开始渲染任务树...');
+            // Render task tree
+            console.log('Rendering task tree...');
             this.renderTaskTree();
-            console.log('任务树渲染完成');
+            console.log('Task tree rendering complete');
 
-            // 渲染根任务列表
-            console.log('开始渲染根任务列表...');
+            // Render root task list
+            console.log('Rendering root task list...');
             this.renderRootTasksList(tasks);
-            console.log('根任务列表渲染完成');
+            console.log('Root task list rendering complete');
 
-            // 如果有根任务ID，自动选中该任务
+            // If root task ID exists, automatically select it
             if (this.rootTaskID) {
-                console.log(`尝试选中根任务: ${this.rootTaskID}`);
+                console.log(`Attempting to select root task: ${this.rootTaskID}`);
                 const rootTask = this.findTaskById(this.rootTaskID);
                 if (rootTask) {
-                    console.log('找到根任务，自动选中:', rootTask);
+                    console.log('Root task found, auto-selecting:', rootTask);
                     this.selectTask(rootTask);
 
-                    // 更新面包屑导航
+                    // Update breadcrumb navigation
                     if (this.elements.rootTaskBreadcrumb && this.elements.rootTaskTitle) {
                         this.elements.rootTaskBreadcrumb.style.display = 'flex';
-                        const taskTitle = rootTask.title || rootTask.Title || '未命名任务';
+                        const taskTitle = rootTask.title || rootTask.Title || 'Unnamed Task';
                         this.elements.rootTaskTitle.textContent = taskTitle;
                     }
                 } else {
-                    console.log('未找到根任务，可能ID无效或数据未加载');
-                    // 仍然显示面包屑，但显示未知任务
+                    console.log('Root task not found, ID invalid or data not loaded');
+                    // Still show breadcrumb, but as Unknown Task
                     if (this.elements.rootTaskBreadcrumb && this.elements.rootTaskTitle) {
                         this.elements.rootTaskBreadcrumb.style.display = 'flex';
-                        this.elements.rootTaskTitle.textContent = '未知任务';
+                        this.elements.rootTaskTitle.textContent = 'Unknown Task';
                     }
                 }
             }
 
-            console.log('更新统计数据...');
+            console.log('Updating statistics...');
             this.updateStatistics(stats);
 
-            console.log('渲染图表...');
+            console.log('Rendering charts...');
             this.renderCharts(stats);
 
-            console.log('渲染时间线...');
+            console.log('Rendering timeline...');
             this.renderTimeline(timeline);
 
-            // 如果有当前选中的任务，更新详情
+            // If there is a currently selected task, update details
             if (this.currentTask) {
                 const task = this.findTaskById(this.currentTask.id);
                 if (task) {
@@ -278,22 +355,22 @@ class TaskBreakdownApp {
                 }
             }
 
-            console.log('数据加载和渲染完成');
+            console.log('Data loading and rendering complete');
 
         } catch (error) {
-            console.error('加载数据失败:', error);
-            this.showError('加载数据失败，请刷新重试');
+            console.error('Failed to load data:', error);
+            this.showError('Failed to load data, please refresh and try again');
         } finally {
             this.hideLoading();
         }
     }
 
     async fetchTasks() {
-        console.log('开始获取任务数据...');
+        console.log('Start fetching task data...');
 
         let url = '/api/tasks';
         if (this.rootTaskID) {
-            console.log(`根任务ID: ${this.rootTaskID}, 获取子树`);
+            console.log(`Root task ID: ${this.rootTaskID}, fetching subtree`);
             url = `/api/tasks/subtasks?parent_id=${encodeURIComponent(this.rootTaskID)}`;
         }
 
@@ -302,17 +379,17 @@ class TaskBreakdownApp {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        console.log('原始API响应:', data);
+        console.log('Raw API response:', data);
         let tasks = data.data || [];
 
-        // 如果返回的是树形结构（单个任务对象），将其扁平化
+        // If response is tree structure (single task object), flatten it
         if (tasks && !Array.isArray(tasks)) {
             tasks = this.flattenTaskTree(tasks);
         }
 
-        console.log('解析后的任务数据:', tasks);
+        console.log('Parsed task data:', tasks);
         if (tasks.length > 0) {
-            console.log('第一个任务的字段:', Object.keys(tasks[0]));
+            console.log('Fields of first task:', Object.keys(tasks[0]));
         }
         return tasks;
     }
@@ -320,7 +397,7 @@ class TaskBreakdownApp {
     flattenTaskTree(taskTree, parentId = '') {
         const flatTasks = [];
 
-        // 复制任务对象，添加parent_id（如果提供了）
+        // Copy task object, add parent_id (if provided)
         const taskCopy = { ...taskTree };
         if (parentId) {
             taskCopy.parent_id = parentId;
@@ -328,7 +405,7 @@ class TaskBreakdownApp {
 
         flatTasks.push(taskCopy);
 
-        // 递归处理子任务
+        // Recursively process subtasks
         if (taskTree.subtasks && Array.isArray(taskTree.subtasks)) {
             for (const subtask of taskTree.subtasks) {
                 const subtaskFlat = this.flattenTaskTree(subtask, taskTree.id || taskTree.ID || taskTree.Id || '');
@@ -336,7 +413,7 @@ class TaskBreakdownApp {
             }
         }
 
-        // 也处理 Subtasks 字段（大写）
+        // Also process Subtasks field (capitalized)
         if (taskTree.Subtasks && Array.isArray(taskTree.Subtasks)) {
             for (const subtask of taskTree.Subtasks) {
                 const subtaskFlat = this.flattenTaskTree(subtask, taskTree.id || taskTree.ID || taskTree.Id || '');
@@ -347,13 +424,13 @@ class TaskBreakdownApp {
         return flatTasks;
     }
 
-    // 渲染根任务列表
+    // Render root task list
     renderRootTasksList(tasks) {
         if (!this.elements.rootTasksList || !this.elements.rootTasksPanel) {
             return;
         }
 
-        // 获取根任务（没有parent_id或parent_id为空），并且不是已完成、已取消或已删除的任务
+        // Get root tasks (no parent_id or empty parent_id), and not completed/cancelled/deleted
         const rootTasks = tasks.filter(task => {
             const parentId = task.parent_id || task.parentId || task.parentID || '';
             const isRoot = !parentId || parentId === '';
@@ -364,25 +441,25 @@ class TaskBreakdownApp {
             return isRoot && !isCompleted && !isCancelled && !isDeleted;
         });
 
-        console.log('根任务数量:', rootTasks.length);
+        console.log('Root task count:', rootTasks.length);
 
-        // 如果没有根任务，隐藏面板
+        // If no root tasks, hide panel
         if (rootTasks.length === 0) {
             this.elements.rootTasksPanel.style.display = 'none';
             return;
         }
 
-        // 显示面板
+        // Show panel
         this.elements.rootTasksPanel.style.display = 'block';
         this.elements.rootTasksList.innerHTML = '';
 
-        // 添加"所有任务"链接
+        // Add "All Tasks" link
         const allTasksItem = document.createElement('a');
         allTasksItem.href = '/taskbreakdown';
         allTasksItem.className = `root-task-item ${this.rootTaskID === '' ? 'active' : ''}`;
         allTasksItem.innerHTML = `
             <span class="root-task-status all"></span>
-            <span>所有任务</span>
+            <span>All Tasks</span>
         `;
         allTasksItem.addEventListener('click', (e) => {
             e.preventDefault();
@@ -390,10 +467,10 @@ class TaskBreakdownApp {
         });
         this.elements.rootTasksList.appendChild(allTasksItem);
 
-        // 添加每个根任务
+        // Add each root task
         rootTasks.forEach(task => {
             const taskId = task.id || task.ID || task.Id || '';
-            const taskTitle = task.title || task.Title || '未命名任务';
+            const taskTitle = task.title || task.Title || 'Unnamed Task';
             const taskStatus = task.status || task.Status || 'planning';
 
             const taskItem = document.createElement('a');
@@ -411,36 +488,36 @@ class TaskBreakdownApp {
         });
     }
 
-    // 应用状态过滤
+    // Apply status filter
     applyStatusFilter() {
         if (!this.elements.statusFilter) {
             return;
         }
 
         const filterValue = this.elements.statusFilter.value;
-        console.log('应用状态过滤:', filterValue);
+        console.log('Applying status filter:', filterValue);
 
         if (!filterValue) {
-            // 重置过滤，显示所有任务（使用默认过滤，不显示已完成根任务）
+            // Reset filter, show all tasks (use default filter, hide completed root tasks)
             this.renderTaskTree();
             return;
         }
 
-        // 获取过滤后的任务
+        // Get filtered tasks
         const filteredTasks = this.tasks.filter(task => {
             const taskStatus = (task.status || task.Status || 'planning').toLowerCase();
 
             if (filterValue.includes(',')) {
-                // 多个状态值（如"planning,in-progress,blocked"表示未完成）
+                // Multiple status values (e.g. "planning,in-progress,blocked" means incomplete)
                 const allowedStatuses = filterValue.split(',').map(s => s.trim());
                 return allowedStatuses.includes(taskStatus);
             } else {
-                // 单个状态值
+                // Single status value
                 return taskStatus === filterValue;
             }
         });
 
-        // 使用过滤后的任务重新渲染任务树，并传递isStatusFilter=true
+        // Re-render task tree with filtered tasks, passing isStatusFilter=true
         this.renderTaskTree(filteredTasks, true);
     }
 
@@ -472,52 +549,52 @@ class TaskBreakdownApp {
 
     renderTaskTree(tasks = null, isStatusFilter = false) {
         const tasksToRender = tasks || this.tasks;
-        console.log('=== 开始渲染任务树 ===');
-        console.log('渲染任务总数:', tasksToRender.length);
-        console.log('是否状态过滤:', isStatusFilter);
+        console.log('=== Start Rendering Task Tree ===');
+        console.log('Total tasks to render:', tasksToRender.length);
+        console.log('Is status filter active:', isStatusFilter);
 
-        // 检查任务数据结构
+        // Check task data structure
         if (tasksToRender.length > 0) {
             const firstTask = tasksToRender[0];
-            console.log('第一个任务的所有字段:', Object.keys(firstTask));
-            console.log('第一个任务的parent_id字段值:', firstTask.parent_id);
-            console.log('第一个任务的parentId字段值:', firstTask.parentId);
-            console.log('第一个任务的parentID字段值:', firstTask.parentID);
-            console.log('第一个任务的完整对象:', firstTask);
+            console.log('All fields of first task:', Object.keys(firstTask));
+            console.log('parent_id value of first task:', firstTask.parent_id);
+            console.log('parentId value of first task:', firstTask.parentId);
+            console.log('parentID value of first task:', firstTask.parentID);
+            console.log('Full object of first task:', firstTask);
         }
 
-        // 清空任务树
+        // Clear task tree
         this.elements.taskTree.innerHTML = '';
 
-        // 重置已渲染任务记录
+        // Reset rendered tasks record
         this.renderedTasks = new Set();
 
-        // 获取根任务 - 支持多种可能的字段名
+        // Get root tasks - support multiple possible field names
         const rootTasks = tasksToRender.filter(task => {
             const taskId = task.id || task.ID || task.Id || '';
             const parentId = task.parent_id || task.parentId || task.parentID || '';
-            console.log(`任务 ${taskId} 的parentId: "${parentId}"`);
+            console.log(`Task ${taskId} parentId: "${parentId}"`);
 
-            // 根任务的条件：
-            // 1. parent_id 为空
-            // 2. parent_id 等于自己的id（数据错误情况）
-            // 3. parent_id 对应的任务不存在（孤立任务）
+            // Root task conditions:
+            // 1. parent_id is empty
+            // 2. parent_id equals own id (data error case)
+            // 3. parent task does not exist (orphan task)
             const isRoot = (!parentId || parentId === '') ||
-                          (parentId === taskId) ||
-                          (!tasksToRender.find(t => {
-                              const tId = t.id || t.ID || t.Id || '';
-                              return tId === parentId;
-                          }));
+                (parentId === taskId) ||
+                (!tasksToRender.find(t => {
+                    const tId = t.id || t.ID || t.Id || '';
+                    return tId === parentId;
+                }));
 
             if (!isRoot) {
-                console.log(`   -> 不是根任务`);
+                console.log(`   -> Not a root task`);
                 return false;
             }
 
-            console.log(`   -> 是根任务`);
+            console.log(`   -> Is a root task`);
 
-            // 如果是状态过滤模式，显示所有匹配过滤条件的根任务
-            // 否则，过滤掉已完成、已取消或已删除的根任务（默认行为）
+            // If status filter mode, show all root tasks matching filter
+            // Otherwise, filter out completed/cancelled/deleted root tasks (default behavior)
             if (!isStatusFilter) {
                 const taskStatus = task.status || task.Status || 'planning';
                 const taskProgress = task.progress || task.Progress || 0;
@@ -526,56 +603,56 @@ class TaskBreakdownApp {
                 const isDeleted = task.deleted || task.Deleted || false;
 
                 if (isCompleted || isCancelled || isDeleted) {
-                    console.log(`   -> 是已完成、已取消或已删除根任务，跳过显示`);
+                    console.log(`   -> Completed/cancelled/deleted root task, skipping`);
                     return false;
                 }
             }
 
-            console.log(`   -> 显示根任务`);
+            console.log(`   -> Showing root task`);
             return true;
         });
-        console.log('根任务数量:', rootTasks.length);
-        console.log('根任务详情:', rootTasks);
+        console.log('Root task count:', rootTasks.length);
+        console.log('Root task details:', rootTasks);
 
         if (rootTasks.length === 0) {
-            // 如果是状态过滤模式，不应该有孤儿任务，因为根任务会被显示
+            // If status filter mode, there should be no orphan tasks as root tasks are shown
             if (isStatusFilter) {
-                console.log('状态过滤模式：没有匹配过滤条件的任务');
-                // 显示空状态
+                console.log('Status filter mode: No tasks match filter');
+                // Show empty state
                 this.elements.taskTree.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-search fa-3x"></i>
-                        <h3>没有匹配过滤条件的任务</h3>
-                        <p>尝试选择其他状态进行过滤</p>
+                        <h3>No tasks match filter conditions</h3>
+                        <p>Try selecting a different status filter</p>
                     </div>
                 `;
                 return;
             }
 
-            console.log('没有未完成的根任务，检查是否有孤儿任务');
+            console.log('No incomplete root tasks, checking for orphan tasks');
 
-            // 查找孤儿任务（父任务不存在或父任务已完成/取消/删除）
+            // Find orphan tasks (parent does not exist or parent is completed/cancelled/deleted)
             const orphanTasks = tasksToRender.filter(task => {
                 const taskId = task.id || task.ID || task.Id || '';
                 const parentId = task.parent_id || task.parentId || task.parentID || '';
 
-                // 如果没有父任务，不是孤儿（是根任务，但已被过滤）
+                // If no parent task, not an orphan (is root task but filtered out)
                 if (!parentId || parentId === '') {
                     return false;
                 }
 
-                // 查找父任务
+                // Find parent task
                 const parentTask = tasksToRender.find(t => {
                     const tId = t.id || t.ID || t.Id || '';
                     return tId === parentId;
                 });
 
-                // 如果父任务不存在，是孤儿
+                // If parent task does not exist, is orphan
                 if (!parentTask) {
                     return true;
                 }
 
-                // 如果父任务已完成、取消或删除，是孤儿
+                // If parent task is completed/cancelled/deleted, is orphan
                 const parentStatus = parentTask.status || parentTask.Status || 'planning';
                 const parentProgress = parentTask.progress || parentTask.Progress || 0;
                 const parentDeleted = parentTask.deleted || parentTask.Deleted || false;
@@ -585,82 +662,82 @@ class TaskBreakdownApp {
                 return parentCompleted || parentCancelled || parentDeleted;
             });
 
-            console.log('孤儿任务数量:', orphanTasks.length);
+            console.log('Orphan task count:', orphanTasks.length);
 
             if (orphanTasks.length === 0) {
-                // 显示空状态
+                // Show empty state
                 this.elements.taskTree.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-check-circle fa-3x"></i>
-                        <h3>暂无进行中的任务</h3>
-                        <p>所有任务已完成或已取消</p>
+                        <h3>No tasks in progress</h3>
+                        <p>All tasks completed or cancelled</p>
                         <a href="/taskbreakdown/completed" class="btn btn-primary">
-                            <i class="fas fa-list-check"></i> 查看已完成任务
+                            <i class="fas fa-list-check"></i> View Completed Tasks
                         </a>
                     </div>
                 `;
                 return;
             }
 
-            // 显示孤儿任务
-            console.log('显示孤儿任务作为平铺列表');
+            // Show orphan tasks
+            console.log('Showing orphan tasks as flat list');
             orphanTasks.forEach((task, index) => {
-                const taskTitle = task.title || task.Title || '无标题';
-                console.log(`平铺渲染孤儿任务 ${index + 1}/${orphanTasks.length}: ${taskTitle}`);
+                const taskTitle = task.title || task.Title || 'No Title';
+                console.log(`Flat rendering orphan task ${index + 1}/${orphanTasks.length}: ${taskTitle}`);
                 const rendered = this.renderTaskNode(task, this.elements.taskTree, 0, new Set(), true);
                 if (!rendered) {
-                    console.log(`孤儿任务 ${taskTitle} 渲染失败或已跳过`);
+                    console.log(`Orphan task ${taskTitle} render failed or skipped`);
                 }
             });
             return;
         }
 
-        // 按顺序排序 - 支持多种可能的字段名
+        // Sort by order - support multiple possible field names
         rootTasks.sort((a, b) => {
             const orderA = a.order || a.Order || 0;
             const orderB = b.order || b.Order || 0;
-            console.log(`排序: 任务A order=${orderA}, 任务B order=${orderB}`);
+            console.log(`Sort: Task A order=${orderA}, Task B order=${orderB}`);
             return orderA - orderB;
         });
 
-        console.log('开始渲染根任务...');
-        // 渲染根任务
+        console.log('Start rendering root tasks...');
+        // Render root tasks
         rootTasks.forEach((task, index) => {
-            const taskTitle = task.title || task.Title || '无标题';
-            console.log(`渲染根任务 ${index + 1}/${rootTasks.length}: ${taskTitle}`);
+            const taskTitle = task.title || task.Title || 'No Title';
+            console.log(`Rendering root task ${index + 1}/${rootTasks.length}: ${taskTitle}`);
             const rendered = this.renderTaskNode(task, this.elements.taskTree, 0);
             if (!rendered) {
-                console.log(`根任务 ${taskTitle} 渲染失败或已跳过`);
+                console.log(`Root task ${taskTitle} render failed or skipped`);
             }
         });
 
-        // 初始化可排序
+        // Initialize sortable
         this.initSortable();
-        console.log('=== 任务树渲染完成 ===');
+        console.log('=== Task Tree Rendering Complete ===');
     }
 
     renderTaskNode(task, container, level, visited = new Set(), isOrphan = false) {
-        // 支持多种可能的字段名
+        // Support multiple possible field names
         const taskId = task.id || task.ID || task.Id || '';
-        const taskTitle = task.title || task.Title || '未命名任务';
+        const taskTitle = task.title || task.Title || 'Unnamed Task';
         const taskStatus = task.status || task.Status || 'planning';
         const taskPriority = task.priority || task.Priority || 3;
         const taskProgress = task.progress || task.Progress || 0;
 
-        // 检查循环引用
+        // Check for circular references
         if (visited.has(taskId)) {
-            console.error(`检测到循环引用！任务 ${taskId} (${taskTitle}) 已经在渲染路径中`);
-            console.error('已访问的任务:', Array.from(visited));
+            console.error(`Circular reference detected! Task ${taskId} (${taskTitle}) is already in render path`);
+            console.error('Visited tasks:', Array.from(visited));
             return null;
         }
 
-        // 检查是否已经渲染过（避免重复渲染）
+        // Check if already rendered (avoid duplicate rendering)
         if (this.renderedTasks && this.renderedTasks.has(taskId)) {
-            console.log(`任务 ${taskId} (${taskTitle}) 已经渲染过，跳过`);
+            console.log(`Task ${taskId} (${taskTitle}) already rendered, skipping`);
             return null;
         }
 
-        console.log(`渲染任务: ${taskId} (${taskTitle}), 层级: ${level}, 孤儿: ${isOrphan}`);
+        console.log(`Rendering task: ${taskId} (${taskTitle}), Level: ${level}, Orphan: ${isOrphan}`);
 
         const taskElement = document.createElement('div');
         taskElement.className = `task-node ${isOrphan ? 'task-orphan' : ''}`;
@@ -668,24 +745,24 @@ class TaskBreakdownApp {
         taskElement.dataset.isOrphan = isOrphan;
         taskElement.style.paddingLeft = `${level * 20 + 10}px`;
 
-        // 获取子任务 - 支持多种可能的字段名
+        // Get subtasks - support multiple possible field names
         const subtasks = this.tasks.filter(t => {
             const tParentId = t.parent_id || t.parentId || t.parentID || '';
-            return tParentId === taskId && t !== task; // 避免将自己作为子任务
+            return tParentId === taskId && t !== task; // Avoid self-reference
         });
 
-        // 按顺序排序 - 支持多种可能的字段名
+        // Sort by order - support multiple possible field names
         subtasks.sort((a, b) => {
             const orderA = a.order || a.Order || 0;
             const orderB = b.order || b.Order || 0;
             return orderA - orderB;
         });
 
-        // 状态和优先级样式
+        // Status and priority styles
         const statusClass = `status-${taskStatus.replace('-', '')}`;
         const priorityClass = `priority-${taskPriority}`;
 
-        // 构建HTML
+        // Build HTML
         taskElement.innerHTML = `
             <div class="task-node-header">
                 <div class="task-node-title-container">
@@ -694,9 +771,9 @@ class TaskBreakdownApp {
                     </span>
                     <div class="task-node-title">${this.escapeHtml(taskTitle)}</div>
                     ${isOrphan ? `
-                    <span class="task-orphan-indicator" title="父任务已完成或已取消">
+                    <span class="task-orphan-indicator" title="Parent task completed or cancelled">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <span class="tooltip-text">父任务已完成或已取消</span>
+                        <span class="tooltip-text">Parent task completed or cancelled</span>
                     </span>
                     ` : ''}
                 </div>
@@ -711,35 +788,35 @@ class TaskBreakdownApp {
             </div>
         `;
 
-        // 点击事件
+        // Click event
         taskElement.addEventListener('click', (e) => {
-            // 阻止事件冒泡，避免父任务也处理这个点击事件
+            // Stop propagation to avoid parent task handling this click
             e.stopPropagation();
 
             if (!e.target.closest('.task-node-meta')) {
-                console.log(`点击任务元素，任务ID: ${taskId}, 任务标题: ${taskTitle}`);
-                console.log('点击的任务对象:', task);
+                console.log(`Clicked task element, ID: ${taskId}, Title: ${taskTitle}`);
+                console.log('Clicked task object:', task);
 
-                // 从任务列表中重新查找任务，确保使用最新的数据
+                // Re-find task from list to ensure using latest data
                 const freshTask = this.findTaskById(taskId);
                 if (freshTask) {
-                    console.log('找到最新任务数据:', freshTask);
+                    console.log('Found latest task data:', freshTask);
                     this.selectTask(freshTask);
                 } else {
-                    console.error(`未找到任务ID: ${taskId}，尝试从服务器获取`);
-                    // 不再使用可能错误的原始task对象
-                    // 而是尝试从服务器获取该任务
+                    console.error(`Task ID not found: ${taskId}, trying to fetch from server`);
+                    // No longer use potentially incorrect original task object
+                    // Instead try to fetch this task from server
                     this.fetchTaskById(taskId).then(fetchedTask => {
                         if (fetchedTask) {
-                            console.log('从服务器获取到任务:', fetchedTask);
+                            console.log('Fetched task from server:', fetchedTask);
                             this.selectTask(fetchedTask);
                         } else {
-                            console.error(`无法获取任务ID: ${taskId}`);
-                            this.showError(`无法找到任务: ${taskTitle}`);
+                            console.error(`Cannot fetch task ID: ${taskId}`);
+                            this.showError(`Cannot find task: ${taskTitle}`);
                         }
                     }).catch(err => {
-                        console.error(`获取任务失败: ${err}`);
-                        this.showError(`获取任务失败: ${taskTitle}`);
+                        console.error(`Fetch task failed: ${err}`);
+                        this.showError(`Fetch task failed: ${taskTitle}`);
                     });
                 }
             }
@@ -747,41 +824,41 @@ class TaskBreakdownApp {
 
         container.appendChild(taskElement);
 
-        // 标记为已渲染
+        // Mark as rendered
         if (this.renderedTasks) {
             this.renderedTasks.add(taskId);
         }
 
-        // 如果有子任务，递归渲染
+        // If has subtasks, recursively render
         if (subtasks.length > 0) {
-            console.log(`任务 ${taskId} 有 ${subtasks.length} 个子任务`);
+            console.log(`Task ${taskId} has ${subtasks.length} subtasks`);
             const subtasksContainer = document.createElement('div');
             subtasksContainer.className = 'task-subtasks';
             taskElement.appendChild(subtasksContainer);
 
-            // 创建新的已访问集合，包含当前任务
+            // Create new visited set, including current task
             const newVisited = new Set(visited);
             newVisited.add(taskId);
 
             subtasks.forEach((subtask, index) => {
                 const subtaskId = subtask.id || subtask.ID || subtask.Id || '';
-                const subtaskTitle = subtask.title || subtask.Title || '无标题';
-                console.log(`  渲染子任务 ${index + 1}/${subtasks.length}: ${subtaskId} (${subtaskTitle})`);
+                const subtaskTitle = subtask.title || subtask.Title || 'No Title';
+                console.log(`  Rendering subtask ${index + 1}/${subtasks.length}: ${subtaskId} (${subtaskTitle})`);
 
                 const rendered = this.renderTaskNode(subtask, subtasksContainer, level + 1, newVisited);
                 if (!rendered) {
-                    console.log(`  子任务 ${subtaskId} 渲染失败或已跳过`);
+                    console.log(`  Subtask ${subtaskId} render failed or skipped`);
                 }
             });
         } else {
-            console.log(`任务 ${taskId} 没有子任务`);
+            console.log(`Task ${taskId} has no subtasks`);
         }
 
         return taskElement;
     }
 
     initSortable() {
-        // 初始化可排序功能
+        // Initialize sortable functionality
         const taskTree = this.elements.taskTree;
         Sortable.create(taskTree, {
             group: 'tasks',
@@ -795,10 +872,10 @@ class TaskBreakdownApp {
 
     async updateTaskOrder(taskId, newOrder) {
         try {
-            console.log(`更新任务顺序: taskId=${taskId}, newOrder=${newOrder}`);
+            console.log(`Update task order: taskId = , newOrder = `);
 
             const requestBody = { task_id: taskId, order: newOrder };
-            console.log('请求体:', requestBody);
+            console.log('Request body:', requestBody);
 
             const response = await fetch(`/api/tasks/order`, {
                 method: 'PUT',
@@ -806,75 +883,81 @@ class TaskBreakdownApp {
                 body: JSON.stringify(requestBody)
             });
 
-            console.log('响应状态:', response.status, response.statusText);
+            console.log('Response status:', response.status, response.statusText);
 
             if (!response.ok) {
-                let errorMessage = `HTTP错误 ${response.status}: ${response.statusText}`;
+                let errorMessage = `HTTP error : `;
                 try {
                     const errorData = await response.json();
-                    console.log('错误响应数据:', errorData);
+                    console.log('Error response data:', errorData);
                     errorMessage = errorData.error || errorData.message || errorMessage;
                 } catch (e) {
-                    console.log('无法解析错误响应:', e);
+                    console.log('Cannot parse error response:', e);
                 }
                 throw new Error(errorMessage);
             }
 
             const result = await response.json();
-            console.log('更新成功:', result);
+            console.log('Update success:', result);
 
-            // 重新加载数据
+            // Reload data
             await this.loadData();
         } catch (error) {
-            console.error('更新任务顺序失败:', error);
-            this.showError(`更新顺序失败: ${error.message}`);
+            console.error('Update task order failed:', error);
+            this.showError(`Update order failed: `);
         }
     }
 
     selectTask(task) {
-        console.log('选择任务:', task);
+        console.log('Select task:', task);
 
-        // 支持多种字段名
+        // Clear previous selection timeout to prevent race conditions
+        if (this.selectionTimeout) {
+            clearTimeout(this.selectionTimeout);
+            this.selectionTimeout = null;
+        }
+
+        // Support multiple field names
         const taskId = task.id || task.ID || task.Id || '';
-        const taskTitle = task.title || task.Title || '无标题';
-        console.log(`任务ID: ${taskId}, 任务标题: ${taskTitle}`);
+        const taskTitle = task.title || task.Title || 'No Title';
+        console.log(`Task ID: , Task Title: `);
 
-        // 移除之前选中的样式
+        // Remove previous selection styles
         document.querySelectorAll('.task-node.selected').forEach(el => {
             el.classList.remove('selected');
-            // 移除激活动画类
+            // Remove activating class
             el.classList.remove('task-activating');
         });
 
-        // 添加选中样式
+        // Add selection style
         const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
         if (taskElement) {
-            // 先添加激活动画类
+            // First add activating class
             taskElement.classList.add('task-activating');
 
-            // 短暂延迟后添加选中类，让激活动画先播放
-            setTimeout(() => {
+            // Add selected class after short delay
+            this.selectionTimeout = setTimeout(() => {
                 taskElement.classList.add('selected');
                 taskElement.classList.remove('task-activating');
             }, 300);
 
-            console.log('找到任务元素，添加选中样式和动画');
+            console.log('Found task element, adding selection style and animation');
         } else {
-            console.error(`未找到任务元素 data-task-id="${taskId}"`);
-            // 尝试查找所有可能的task-id
+            console.error(`Task element not found: data-task-id="${taskId}"`);
+            // Try to find all possible task-ids
             const allTaskElements = document.querySelectorAll('[data-task-id]');
-            console.log('所有任务元素:', Array.from(allTaskElements).map(el => el.dataset.taskId));
+            console.log('All task elements:', Array.from(allTaskElements).map(el => el.dataset.taskId));
         }
 
-        // 显示任务详情
+        // Show task details
         this.showTaskDetails(task);
         this.currentTask = task;
-        console.log('当前任务设置为:', this.currentTask);
+        console.log('Current task set to:', this.currentTask);
     }
 
     showTaskDetails(task) {
-        console.log('显示任务详情，传入的任务对象:', task);
-        console.log('任务字段:', {
+        console.log('Show task details, task object:', task);
+        console.log('Task fields:', {
             id: task.id,
             title: task.title,
             status: task.status,
@@ -890,19 +973,19 @@ class TaskBreakdownApp {
 
         this.elements.taskDetailsCard.style.display = 'block';
 
-        // 支持多种字段名
-        const taskTitle = task.title || task.Title || '无标题';
+        // Support multiple field names
+        const taskTitle = task.title || task.Title || 'No Title';
         const taskStatus = task.status || task.Status || 'planning';
         const taskPriority = task.priority || task.Priority || 3;
         const taskProgress = task.progress || task.Progress || 0;
-        const taskDescription = task.description || task.Description || '暂无描述';
+        const taskDescription = task.description || task.Description || 'No description';
         const taskStartDate = task.start_date || task.startDate || task.StartDate || '-';
         const taskEndDate = task.end_date || task.endDate || task.EndDate || '-';
         const taskEstimatedTime = task.estimated_time || task.estimatedTime || task.EstimatedTime || 0;
         const taskDailyTime = task.daily_time || task.dailyTime || task.DailyTime || 0;
         const taskActualTime = task.actual_time || task.actualTime || task.ActualTime || 0;
 
-        // 更新任务详情
+        // Update task details
         this.elements.taskTitle.textContent = taskTitle;
         this.elements.taskStatus.textContent = this.getStatusText(taskStatus);
         this.elements.taskStatus.className = `task-status status-${taskStatus.replace('-', '')}`;
@@ -914,11 +997,11 @@ class TaskBreakdownApp {
         this.elements.taskDescription.textContent = taskDescription;
         this.elements.taskStartDate.textContent = taskStartDate;
         this.elements.taskEndDate.textContent = taskEndDate;
-        this.elements.taskEstimatedTime.textContent = `${taskEstimatedTime}分钟`;
-        this.elements.taskDailyTime.textContent = `${taskDailyTime}分钟`;
-        this.elements.taskActualTime.textContent = `${taskActualTime}分钟`;
+        this.elements.taskEstimatedTime.textContent = `${taskEstimatedTime} mins`;
+        this.elements.taskDailyTime.textContent = `${taskDailyTime} mins`;
+        this.elements.taskActualTime.textContent = `${taskActualTime} mins`;
 
-        // 更新标签
+        // Update tags
         this.elements.taskTags.innerHTML = '';
         if (task.tags && task.tags.length > 0) {
             task.tags.forEach(tag => {
@@ -928,22 +1011,292 @@ class TaskBreakdownApp {
                 this.elements.taskTags.appendChild(tagElement);
             });
         }
+
+        // Show time analysis panel
+        this.elements.timeAnalysisPanel.style.display = 'block';
+
+        // Load time analysis data
+        this.loadTaskTimeAnalysis(task.id || task.ID || task.Id);
+
+        // Update time evaluation
+        this.updateTimeEvaluation(task);
+    }
+
+    // Update time evaluation
+    updateTimeEvaluation(task) {
+        console.log('Update time evaluation:', task);
+
+        // Get estimated and actual time
+        const estimatedTime = task.estimated_time || task.estimatedTime || task.EstimatedTime || 0;
+        const actualTime = task.actual_time || task.actualTime || task.ActualTime || 0;
+        const taskStatus = task.status || task.Status || 'planning';
+
+        console.log(`Evaluation params: estimatedTime = ${estimatedTime}, actualTime = ${actualTime}, status = ${taskStatus}`);
+
+        // Update base values
+        this.elements.evalEstimatedTime.textContent = `${estimatedTime} mins`;
+        this.elements.evalActualTime.textContent = `${actualTime} mins`;
+
+        // Check if task is completed
+        if (taskStatus !== 'completed') {
+            this.elements.evalTimeDiff.textContent = '0 mins';
+            this.elements.evalTimePercent.textContent = '0%';
+            this.elements.evalResult.innerHTML = '<i class="fas fa-info-circle"></i> Task not completed';
+            this.elements.evalResult.className = 'evaluation-result';
+            return;
+        }
+
+        // Calculate time difference and percentage
+        const timeDiff = actualTime - estimatedTime;
+        let percentDiff = 0;
+        if (estimatedTime > 0) {
+            percentDiff = (timeDiff / estimatedTime) * 100;
+        }
+
+        // Update difference and percentage display
+        const diffText = timeDiff >= 0 ? `+${timeDiff} mins` : `${timeDiff} mins`;
+        this.elements.evalTimeDiff.textContent = diffText;
+        this.elements.evalTimePercent.textContent = `${percentDiff.toFixed(1)}%`;
+
+        // Set percentage color
+        let percentColorClass = '';
+        if (percentDiff < -10) percentColorClass = 'eval-good';
+        else if (percentDiff <= 10) percentColorClass = 'eval-ok';
+        else if (percentDiff <= 30) percentColorClass = 'eval-warning';
+        else percentColorClass = 'eval-bad';
+
+        this.elements.evalTimePercent.className = `evaluation-percent ${percentColorClass}`;
+
+        // Determine evaluation result
+        let evaluationText = '';
+        let evaluationClass = '';
+
+        if (estimatedTime <= 0) {
+            evaluationText = '<i class="fas fa-info-circle"></i> Cannot evaluate: Estimated time is 0';
+            evaluationClass = '';
+        } else if (percentDiff < -10) {
+            evaluationText = `<i class="fas fa-check-circle"></i> Completed early (Saved ${Math.abs(percentDiff).toFixed(1)}%)`;
+            evaluationClass = 'eval-good';
+        } else if (percentDiff <= 10) {
+            evaluationText = `<i class="fas fa-check-circle"></i> Completed on time (Deviation ${percentDiff.toFixed(1)}%)`;
+            evaluationClass = 'eval-ok';
+        } else if (percentDiff <= 30) {
+            evaluationText = `<i class="fas fa-exclamation-circle"></i> Slightly overdue (Overdue ${percentDiff.toFixed(1)}%)`;
+            evaluationClass = 'eval-warning';
+        } else {
+            evaluationText = `<i class="fas fa-times-circle"></i> Seriously overdue (Overdue ${percentDiff.toFixed(1)}%)`;
+            evaluationClass = 'eval-bad';
+        }
+
+        // Update evaluation result
+        this.elements.evalResult.innerHTML = evaluationText;
+        this.elements.evalResult.className = `evaluation-result ${evaluationClass}`;
+
+        console.log(`Evaluation result: diff = ${timeDiff}, percent = ${percentDiff.toFixed(1)}%, class = ${evaluationClass}`);
+    }
+
+    // Load task time analysis data
+    loadTaskTimeAnalysis(taskId) {
+        if (!taskId) {
+            console.error('Cannot load time analysis: Task ID is empty');
+            return;
+        }
+
+        console.log('Loading task time analysis data, Task ID:', taskId);
+
+        // Show loading state
+        this.elements.timeOverlapResult.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Detecting...</p>';
+
+        // First get time analysis data
+        fetch(`/api/tasks/time-analysis?task_id=${encodeURIComponent(taskId)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} `);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success && data.data) {
+                    this.updateTimeAnalysisUI(data.data);
+                } else {
+                    console.error('Time analysis API returned error:', data.error || data.message);
+                    this.showTimeAnalysisError('Failed to fetch time analysis data');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch time analysis data:', error);
+                this.showTimeAnalysisError('Cannot connect to server');
+            });
+
+        // Then get time overlap detection data
+        fetch(`/api/tasks/daily-overlap?task_id=${encodeURIComponent(taskId)} `)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status} `);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    this.updateTimeOverlapUI(data);
+                } else {
+                    console.error('Time overlap detection API returned error:', data.error || data.message);
+                    this.updateTimeOverlapUI({ has_overlap: false, message: 'Detection failed' });
+                }
+            })
+            .catch(error => {
+                console.error('Failed to fetch time overlap detection data:', error);
+                this.updateTimeOverlapUI({ has_overlap: false, message: 'Detection failed' });
+            });
+    }
+
+    // Update time analysis UI
+    updateTimeAnalysisUI(analysis) {
+        console.log('Update time analysis UI:', analysis);
+
+        if (analysis.has_subtasks) {
+            // Has subtasks: Show normally
+            this.elements.subtasksEstimatedTime.textContent = ` mins`;
+            this.elements.subtasksDailyTime.textContent = ` mins`;
+
+            const estimatedDiff = analysis.estimated_time_diff;
+            const estimatedDiffText = estimatedDiff >= 0 ? `+ mins` : ` mins`;
+            this.elements.estimatedTimeDiff.textContent = `(Diff: )`;
+
+            const dailyDiff = analysis.daily_time_diff;
+            const dailyDiffText = dailyDiff >= 0 ? `+ mins` : ` mins`;
+            this.elements.dailyTimeDiff.textContent = `(Diff: )`;
+        } else {
+            // No subtasks (Leaf task): Show friendly text
+            this.elements.subtasksEstimatedTime.textContent = 'No subtasks';
+            this.elements.subtasksDailyTime.textContent = 'No subtasks';
+            this.elements.estimatedTimeDiff.textContent = '(Leaf task)';
+            this.elements.dailyTimeDiff.textContent = '(Leaf task)';
+        }
+
+        // Update self time (Always show)
+        this.elements.selfEstimatedTime.textContent = ` mins`;
+        this.elements.selfDailyTime.textContent = ` mins`;
+
+        // Update time status (Use original diff value, status function will handle)
+        this.updateTimeStatusUI(this.elements.estimatedTimeStatus, analysis.estimated_time_status, analysis.estimated_time_diff);
+        this.updateTimeStatusUI(this.elements.dailyTimeStatus, analysis.daily_time_status, analysis.daily_time_diff);
+
+        // Update subtask count info
+        if (analysis.has_subtasks) {
+            console.log(`Task has  subtasks`);
+        } else {
+            console.log('Task has no subtasks');
+        }
+    }
+
+    // Update time status UI
+    updateTimeStatusUI(element, status, diff) {
+        // Clear all status classes
+        element.classList.remove('status-sufficient', 'status-insufficient', 'status-excessive', 'status-warning', 'status-leaf');
+
+        // Add new status class
+        element.classList.add(`status-${status}`);
+
+        // Update icon and text
+        const iconClass = this.getStatusIconClass(status);
+        const statusText = this.getStatusTextByStatus(status, diff);
+
+        element.innerHTML = `<i class="${iconClass}"></i> ${statusText}`;
+    }
+
+    // Get status icon class
+    getStatusIconClass(status) {
+        switch (status) {
+            case 'sufficient':
+                return 'fas fa-check-circle';
+            case 'insufficient':
+                return 'fas fa-exclamation-circle';
+            case 'excessive':
+                return 'fas fa-info-circle';
+            case 'warning':
+                return 'fas fa-exclamation-triangle';
+            case 'leaf':
+                return 'fas fa-leaf';
+            default:
+                return 'fas fa-question-circle';
+        }
+    }
+
+    // Get status text by status
+    getStatusTextByStatus(status, diff) {
+        switch (status) {
+            case 'sufficient':
+                if (diff < 0) {
+                    return `Time sufficient (Surplus  mins)`;
+                } else {
+                    return 'Time sufficient';
+                }
+            case 'insufficient':
+                return `Time insufficient (Shortage  mins)`;
+            case 'excessive':
+                return `Time allocation excessive (Excess  mins)`;
+            case 'warning':
+                return 'Time allocation warning';
+            case 'leaf':
+                return 'Leaf task (No subtasks)';
+            default:
+                return 'Unknown status';
+        }
+    }
+
+    // Update time overlap UI
+    updateTimeOverlapUI(data) {
+        console.log('Update time overlap UI:', data);
+
+        if (data.has_overlap) {
+            this.elements.timeOverlapResult.innerHTML = `
+    < p class="overlap-warning" >
+        <i class="fas fa-exclamation-triangle"></i> ${data.message || 'Subtask time overlap detected'}
+                </p >
+        <p style="font-size: 0.85rem; margin-top: 0.5rem; color: #666;">
+            Subtask time sum exceeds parent task daily allocation on some dates.
+        </p>
+    `;
+        } else {
+            this.elements.timeOverlapResult.innerHTML = `
+        <p class="overlap-ok">
+            <i class="fas fa-check-circle"></i> ${data.message || 'Subtask time allocation reasonable'}
+                </p>
+            <p style="font-size: 0.85rem; margin-top: 0.5rem; color: #666;">
+                No subtask time overlap detected.
+            </p>
+        `;
+        }
+    }
+
+    // Show time analysis error
+    showTimeAnalysisError(message) {
+        this.elements.timeAnalysisPanel.innerHTML = `
+            < div style = "padding: 1rem; text-align: center; color: #dc3545;" >
+                <i class="fas fa-exclamation-circle"></i>
+                <p>${message}</p>
+                <button onclick="location.reload()" style="margin-top: 0.5rem; padding: 0.25rem 0.5rem; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Retry
+                </button>
+            </div >
+            `;
     }
 
     openModal(mode, parentTask = null) {
-        console.log(`打开模态框，模式: ${mode}`);
+        console.log(`Open modal, mode: `);
 
         if (!this.elements.taskModal) {
-            console.error('taskModal元素未找到');
+            console.error('taskModal element not found');
             return;
         }
 
         this.elements.taskModal.style.display = 'block';
-        console.log('模态框显示状态设置为block');
+        console.log('Modal display status set to block');
 
         this.elements.taskForm.reset();
 
-        // 设置默认日期
+        // Set default date
         const today = new Date().toISOString().split('T')[0];
         this.elements.startDate.value = today;
         this.elements.endDate.value = today;
@@ -952,43 +1305,47 @@ class TaskBreakdownApp {
 
         switch (mode) {
             case 'add':
-                this.elements.modalTitle.textContent = '添加根任务';
+                this.elements.modalTitle.textContent = 'Add Root Task';
                 this.elements.parentId.value = '';
                 break;
 
             case 'edit':
-                console.log('编辑模式，当前任务:', this.currentTask);
+                console.log('Edit mode, current task:', this.currentTask);
                 if (!this.currentTask) {
-                    console.error('无法编辑：当前任务为空');
-                    this.showError('请先选择一个任务进行编辑');
+                    console.error('Cannot edit: Current task is empty');
+                    this.showError('Please select a task to edit first');
                     this.closeModal();
                     return;
                 }
-                console.log('编辑任务ID:', this.currentTask.id || this.currentTask.ID || this.currentTask.Id);
-                console.log('编辑任务标题:', this.currentTask.title || this.currentTask.Title);
-                this.elements.modalTitle.textContent = '编辑任务';
+                console.log('Editing Task ID:', this.currentTask.id || this.currentTask.ID || this.currentTask.Id);
+                console.log('Editing Task Title:', this.currentTask.title || this.currentTask.Title);
+                this.elements.modalTitle.textContent = 'Edit Task';
+
+                // Critical fix: Must clear parentId field
+                this.elements.parentId.value = '';
+
                 this.fillFormWithTask(this.currentTask);
                 break;
 
             case 'addSubtask':
-                console.log('添加子任务模式，当前任务:', this.currentTask);
+                console.log('Add subtask mode, current task:', this.currentTask);
                 if (!this.currentTask) {
-                    console.error('无法添加子任务：当前任务为空');
-                    this.showError('请先选择一个任务来添加子任务');
+                    console.error('Cannot add subtask: Current task is empty');
+                    this.showError('Please select a task to add subtask to');
                     this.closeModal();
                     return;
                 }
-                console.log('父任务ID:', this.currentTask.id || this.currentTask.ID || this.currentTask.Id);
-                this.elements.modalTitle.textContent = '添加子任务';
+                console.log('Parent Task ID:', this.currentTask.id || this.currentTask.ID || this.currentTask.Id);
+                this.elements.modalTitle.textContent = 'Add Subtask';
                 this.elements.parentId.value = this.currentTask.id || this.currentTask.ID || this.currentTask.Id;
                 break;
         }
     }
 
     fillFormWithTask(task) {
-        console.log('填充表单数据:', task);
+        console.log('Filling form data:', task);
 
-        // 支持多种字段名
+        // Support multiple field names
         const taskId = task.id || task.ID || task.Id || '';
         const taskTitle = task.title || task.Title || '';
         const taskDescription = task.description || task.Description || '';
@@ -1002,6 +1359,8 @@ class TaskBreakdownApp {
         const taskTags = task.tags || task.Tags || [];
 
         this.elements.taskId.value = taskId;
+        // Critical fix: Correctly populate parentId
+        this.elements.parentId.value = task.parent_id || task.parentId || task.parentID || '';
         this.elements.title.value = taskTitle;
         this.elements.description.value = taskDescription;
         this.elements.status.value = taskStatus;
@@ -1011,8 +1370,14 @@ class TaskBreakdownApp {
         this.elements.estimatedTime.value = taskEstimatedTime;
         this.elements.dailyTime.value = taskDailyTime;
         this.elements.progress.value = taskProgress;
-        this.elements.progressValue.textContent = `${taskProgress}%`;
+        this.elements.progressValue.textContent = `%`;
         this.elements.tags.value = taskTags.join(', ');
+
+        // After filling form, check if estimated time calculation is needed
+        // Use setTimeout to ensure DOM is updated
+        setTimeout(() => {
+            this.calculateEstimatedTime();
+        }, 0);
     }
 
     closeModal() {
@@ -1021,9 +1386,9 @@ class TaskBreakdownApp {
     }
 
     async saveTask() {
-        // 验证表单
+        // Validate form
         if (!this.elements.title.value.trim()) {
-            this.showError('请填写任务标题');
+            this.showError('Please enter task title');
             return;
         }
 
@@ -1040,9 +1405,15 @@ class TaskBreakdownApp {
             tags: this.elements.tags.value ? this.elements.tags.value.split(',').map(tag => tag.trim()).filter(tag => tag) : []
         };
 
-        // 如果有父任务ID，添加到数据中
-        if (this.elements.parentId.value) {
-            taskData.parent_id = this.elements.parentId.value;
+        // If parent task ID exists, add to data
+        // Critical fix: Ensure parent_id does not equal current task ID
+        const parentId = this.elements.parentId.value;
+        const currentTaskId = this.elements.taskId.value;
+
+        if (parentId && parentId !== currentTaskId) {
+            taskData.parent_id = parentId;
+        } else if (parentId === currentTaskId) {
+            console.warn('Self-reference detected: parent_id equals task_id, ignoring parent_id');
         }
 
         try {
@@ -1050,14 +1421,14 @@ class TaskBreakdownApp {
             const taskId = this.elements.taskId.value;
 
             if (taskId) {
-                // 更新任务
+                // Update task
                 response = await fetch(`/api/tasks/${taskId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(taskData)
                 });
             } else {
-                // 创建任务
+                // Create task
                 response = await fetch('/api/tasks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1067,53 +1438,54 @@ class TaskBreakdownApp {
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || '保存失败');
+                throw new Error(error.error || 'Save failed');
             }
 
-            console.log('任务保存成功，开始重新加载数据...');
+            console.log('Task saved successfully, reloading data...');
             this.closeModal();
 
-            // 保存当前选中的任务ID，以便重新加载后能重新选中
+            // Save currently selected task ID to re-select after reload
             const currentTaskId = this.currentTask ? (this.currentTask.id || this.currentTask.ID || this.currentTask.Id) : null;
-            console.log('当前选中的任务ID:', currentTaskId);
+            console.log('Currently selected task ID:', currentTaskId);
 
-            // 清除当前任务引用，因为数据即将刷新
+            // Clear current task reference as data is about to refresh
             this.currentTask = null;
             this.elements.taskDetailsCard.style.display = 'none';
+            this.elements.timeAnalysisPanel.style.display = 'none';
 
             await this.loadData();
 
-            // 如果之前有选中的任务，尝试重新选中
+            // If there was a selected task, try to re-select it
             if (currentTaskId) {
-                console.log('尝试重新选中任务:', currentTaskId);
+                console.log('Attempting to re-select task:', currentTaskId);
                 const task = this.findTaskById(currentTaskId);
                 if (task) {
-                    console.log('找到任务，重新选中:', task);
+                    console.log('Task found, re-selecting:', task);
                     this.selectTask(task);
                 } else {
-                    console.log('未找到任务，可能ID已变化或任务结构已更新');
-                    // 尝试通过标题或其他方式查找
+                    console.log('Task not found, ID might have changed or structure updated');
+                    // Try finding by title or other means
                     const savedResponse = await response.json();
                     if (savedResponse.data && savedResponse.data.id) {
                         const newTask = this.findTaskById(savedResponse.data.id);
                         if (newTask) {
-                            console.log('通过API响应找到新任务:', newTask);
+                            console.log('Found new task via API response:', newTask);
                             this.selectTask(newTask);
                         }
                     }
                 }
             }
 
-            this.showSuccess('保存成功');
+            this.showSuccess('Saved successfully');
 
         } catch (error) {
-            console.error('保存任务失败:', error);
-            this.showError(`保存失败: ${error.message}`);
+            console.error('Save task failed:', error);
+            this.showError(`Save failed: `);
         }
     }
 
     async deleteCurrentTask() {
-        if (!this.currentTask || !confirm('确定要删除这个任务吗？')) {
+        if (!this.currentTask || !confirm('Are you sure you want to delete this task?')) {
             return;
         }
 
@@ -1123,31 +1495,32 @@ class TaskBreakdownApp {
             });
 
             if (!response.ok) {
-                throw new Error('删除失败');
+                throw new Error('Delete failed');
             }
 
             this.currentTask = null;
             this.elements.taskDetailsCard.style.display = 'none';
+            this.elements.timeAnalysisPanel.style.display = 'none';
             await this.loadData();
-            this.showSuccess('删除成功');
+            this.showSuccess('Deleted successfully');
 
         } catch (error) {
-            console.error('删除任务失败:', error);
-            this.showError('删除失败');
+            console.error('Delete task failed:', error);
+            this.showError('Delete failed');
         }
     }
 
     updateStatistics(stats) {
-        console.log('更新统计数据，接收到的数据:', stats);
-        console.log('所有字段:', Object.keys(stats));
-        console.log('字段详情:', {
+        console.log('Update statistics, received data:', stats);
+        console.log('All fields:', Object.keys(stats));
+        console.log('Field details:', {
             total_tasks: stats.total_tasks,
             completed_tasks: stats.completed_tasks,
             in_progress_tasks: stats.in_progress_tasks,
             blocked_tasks: stats.blocked_tasks,
             total_time: stats.total_time,
             status_distribution: stats.status_distribution,
-            // 时间分析字段
+            // Time analysis fields
             daily_available_time: stats.daily_available_time,
             total_daily_time: stats.total_daily_time,
             required_days: stats.required_days,
@@ -1156,27 +1529,27 @@ class TaskBreakdownApp {
             time_status: stats.time_status
         });
 
-        // 调试：检查 completed_tasks 的值
-        console.log('completed_tasks 值:', stats.completed_tasks);
-        console.log('completed_tasks 类型:', typeof stats.completed_tasks);
+        // Debug: Check completed_tasks value
+        console.log('completed_tasks value:', stats.completed_tasks);
+        console.log('completed_tasks type:', typeof stats.completed_tasks);
 
         this.elements.totalTasks.textContent = stats.total_tasks || 0;
         this.elements.completedTasks.textContent = stats.completed_tasks || 0;
         this.elements.inProgressTasks.textContent = stats.in_progress_tasks || 0;
         this.elements.blockedTasks.textContent = stats.blocked_tasks || 0;
 
-        // 转换分钟为小时
+        // Convert minutes to hours
         const totalHours = Math.round((stats.total_time || 0) / 60);
-        this.elements.totalTime.textContent = `${totalHours}h`;
+        this.elements.totalTime.textContent = `${totalHours} h`;
     }
 
     renderCharts(stats) {
-        // 销毁之前的图表
+        // Destroy previous charts
         Object.values(this.charts).forEach(chart => {
             if (chart) chart.destroy();
         });
 
-        // 状态分布图表
+        // Status distribution chart
         const statusCtx = this.elements.statusChart.getContext('2d');
         this.charts.status = new Chart(statusCtx, {
             type: 'doughnut',
@@ -1203,21 +1576,21 @@ class TaskBreakdownApp {
             }
         });
 
-        // 优先级分布图表
+        // Priority distribution chart
         const priorityCtx = this.elements.priorityChart.getContext('2d');
         this.charts.priority = new Chart(priorityCtx, {
             type: 'bar',
             data: {
                 labels: Object.keys(stats.priority_distribution || {}).map(key => this.getPriorityText(parseInt(key))),
                 datasets: [{
-                    label: '任务数量',
+                    label: 'Task Count',
                     data: Object.values(stats.priority_distribution || {}),
                     backgroundColor: [
-                        '#ffebee', // 最高
-                        '#fff3e0', // 高
-                        '#e8f5e9', // 中等
-                        '#e3f2fd', // 低
-                        '#f3e5f5'  // 最低
+                        '#ffebee', // Highest
+                        '#fff3e0', // High
+                        '#e8f5e9', // Medium
+                        '#e3f2fd', // Low
+                        '#f3e5f5'  // Lowest
                     ]
                 }]
             },
@@ -1253,13 +1626,13 @@ class TaskBreakdownApp {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return dateString;
 
-            // 格式化为 YYYY-MM-DD
+            // Format as YYYY-MM-DD
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            return `${year} -${month} -${day} `;
         } catch (error) {
-            console.error('日期格式化错误:', error);
+            console.error('Date formatting error:', error);
             return dateString;
         }
     }
@@ -1276,58 +1649,58 @@ class TaskBreakdownApp {
             const diffTime = Math.abs(end - start);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-            if (diffDays === 0) return '当天';
-            if (diffDays === 1) return '1天';
-            return `${diffDays}天`;
+            if (diffDays === 0) return 'Today';
+            if (diffDays === 1) return '1 day';
+            return ` days`;
         } catch (error) {
-            console.error('计算持续时间错误:', error);
+            console.error('Calculate duration error:', error);
             return '-';
         }
     }
 
     addTimelineEventListeners() {
-        // 为查看任务按钮添加事件监听
+        // Add event listeners for view task buttons
         const viewButtons = document.querySelectorAll('.view-task-btn');
         viewButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const taskId = button.getAttribute('data-task-id');
-                console.log('查看时间线任务:', taskId);
+                console.log('View timeline task:', taskId);
 
                 const task = this.findTaskById(taskId);
                 if (task) {
                     this.selectTask(task);
-                    // 切换到任务树选项卡
+                    // Switch to task tree tab
                     const taskTabLink = document.querySelector('.tab-link[data-tab="taskTab"]');
                     if (taskTabLink) {
                         taskTabLink.click();
                     }
                 } else {
-                    this.showError('无法找到该任务');
+                    this.showError('Task not found');
                 }
             });
         });
 
-        // 为时间线标记添加点击事件 - 切换显示内容
+        // Add click event for timeline markers - toggle display content
         const timelineMarkers = document.querySelectorAll('.timeline-marker');
         timelineMarkers.forEach(marker => {
             marker.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const taskId = marker.getAttribute('data-task-id');
                 const index = parseInt(marker.getAttribute('data-index'));
-                console.log('点击时间线标记:', taskId, '索引:', index);
+                console.log('Clicked timeline marker:', taskId, 'Index:', index);
 
-                // 先显示对应的任务卡片
+                // First show corresponding task card
                 this.showTimelineTaskCard(index);
 
-                // 然后更新激活状态（卡片已经渲染）
+                // Then update active state (card already rendered)
                 this.updateTimelineActiveState(index);
             });
         });
     }
 
     updateTimelineActiveState(activeIndex) {
-        // 移除所有激活状态
+        // Remove all active states
         const markers = document.querySelectorAll('.timeline-marker');
         const cards = document.querySelectorAll('.timeline-card-item');
 
@@ -1339,7 +1712,7 @@ class TaskBreakdownApp {
             card.classList.remove('active');
         });
 
-        // 添加当前激活状态
+        // Add current active state
         const activeMarker = document.querySelector(`.timeline-marker[data-index="${activeIndex}"]`);
         const activeCard = document.querySelector(`.timeline-card-item[data-index="${activeIndex}"]`);
 
@@ -1354,7 +1727,7 @@ class TaskBreakdownApp {
 
     showTimelineTaskCard(index) {
         if (!this.timelineTasks || !this.timelineTasks[index]) {
-            console.error('找不到时间线任务:', index);
+            console.error('Timeline task not found:', index);
             return;
         }
 
@@ -1362,42 +1735,42 @@ class TaskBreakdownApp {
         const placeholder = document.getElementById('timelineContentPlaceholder');
 
         if (!placeholder) {
-            console.error('找不到时间线内容占位符');
+            console.error('Timeline content placeholder not found');
             return;
         }
 
-        // 清空并添加新的任务卡片
+        // Clear and add new task card
         placeholder.innerHTML = this.renderTimelineTaskCard(task, index, true);
 
-        // 重新绑定查看任务按钮事件
+        // Re-bind view task button event
         const viewButton = placeholder.querySelector('.view-task-btn');
         if (viewButton) {
             viewButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const taskId = viewButton.getAttribute('data-task-id');
-                console.log('查看时间线任务:', taskId);
+                console.log('View timeline task:', taskId);
 
                 const task = this.findTaskById(taskId);
                 if (task) {
                     this.selectTask(task);
-                    // 切换到任务树选项卡
+                    // Switch to task tree tab
                     const taskTabLink = document.querySelector('.tab-link[data-tab="taskTab"]');
                     if (taskTabLink) {
                         taskTabLink.click();
                     }
                 } else {
-                    this.showError('无法找到该任务');
+                    this.showError('Task not found');
                 }
             });
         }
 
-        console.log('显示时间线任务卡片:', index, task.title || task.Title);
+        console.log('Show timeline task card:', index, task.title || task.Title);
     }
 
     renderTimelineTaskCard(task, index, isActive = false) {
-        // 支持多种字段名
+        // Support multiple field names
         const taskId = task.id || task.ID || task.Id || '';
-        const taskTitle = task.title || task.Title || '无标题';
+        const taskTitle = task.title || task.Title || 'No Title';
         const taskStatus = task.status || task.Status || 'planning';
         const taskStartDate = task.start_date || task.StartDate || task.startDate || '';
         const taskEndDate = task.end_date || task.EndDate || task.endDate || '';
@@ -1409,11 +1782,11 @@ class TaskBreakdownApp {
         const statusClass = `status-${taskStatus.replace('-', '')}`;
         const priorityClass = `priority-${taskPriority}`;
 
-        // 格式化日期
+        // Format date
         const formattedStartDate = this.formatDateForDisplay(taskStartDate);
         const formattedEndDate = this.formatDateForDisplay(taskEndDate);
 
-        // 计算持续时间
+        // Calculate duration
         const durationText = this.calculateDuration(taskStartDate, taskEndDate);
 
         const activeClass = isActive ? 'active' : '';
@@ -1431,24 +1804,24 @@ class TaskBreakdownApp {
                     <div class="date-range">
                         <div class="date-item">
                             <i class="fas fa-play-circle"></i>
-                            <span class="date-label">开始</span>
+                            <span class="date-label">Start</span>
                             <span class="date-value highlight-date">${formattedStartDate}</span>
                         </div>
                         <div class="date-item">
                             <i class="fas fa-flag-checkered"></i>
-                            <span class="date-label">结束</span>
+                            <span class="date-label">End</span>
                             <span class="date-value highlight-date">${formattedEndDate}</span>
                         </div>
                         <div class="date-item">
                             <i class="fas fa-clock"></i>
-                            <span class="date-label">时长</span>
+                            <span class="date-label">Duration</span>
                             <span class="date-value">${durationText}</span>
                         </div>
                     </div>
                 </div>
                 <div class="timeline-card-progress">
                     <div class="progress-info">
-                        <span class="progress-label">进度</span>
+                        <span class="progress-label">Progress</span>
                         <span class="progress-value">${taskProgress}%</span>
                     </div>
                     <div class="progress-bar">
@@ -1457,9 +1830,9 @@ class TaskBreakdownApp {
                 </div>
                 ${taskDescription ? `<div class="timeline-card-description">${this.escapeHtml(taskDescription)}</div>` : ''}
                 <div class="timeline-card-footer">
-                    <span class="estimated-time"><i class="fas fa-hourglass-half"></i> ${taskEstimatedTime}分钟</span>
+                    <span class="estimated-time"><i class="fas fa-hourglass-half"></i> ${taskEstimatedTime}鍒嗛挓</span>
                     <button class="btn btn-small btn-outline view-task-btn" data-task-id="${taskId}">
-                        <i class="fas fa-eye"></i> 查看任务
+                        <i class="fas fa-eye"></i> View Task
                     </button>
                 </div>
             </div>
@@ -1467,23 +1840,23 @@ class TaskBreakdownApp {
     }
 
     renderTimeline(timelineData) {
-        console.log('渲染时间线数据:', timelineData);
-        // 简化的时间线渲染
+        console.log('Render timeline data:', timelineData);
+        // Simplified timeline rendering
         let tasks = timelineData.tasks || [];
 
         if (tasks.length === 0) {
             this.elements.timelineChart.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-calendar-alt"></i>
-                    <p>没有时间线数据</p>
+                    <p>No timeline data</p>
                 </div>
             `;
             return;
         }
 
-        // 在前端也进行排序，确保一致性
+        // Sort on frontend to ensure consistency
         tasks.sort((a, b) => {
-            // 支持多种字段名
+            // Support multiple field names
             const aStartDateStr = a.start_date || a.StartDate || a.startDate || '';
             const bStartDateStr = b.start_date || b.StartDate || b.startDate || '';
             const aEndDateStr = a.end_date || a.EndDate || a.endDate || '';
@@ -1491,9 +1864,9 @@ class TaskBreakdownApp {
             const aParentID = a.parent_id || a.ParentID || a.parentId || '';
             const bParentID = b.parent_id || b.ParentID || b.parentId || '';
 
-            // 将日期字符串转换为Date对象进行比较
+            // Convert date strings to Date objects for comparison
             const parseDate = (dateStr) => {
-                if (!dateStr || dateStr === '-') return new Date(0); // 空日期设为最小日期
+                if (!dateStr || dateStr === '-') return new Date(0); // Set empty date to min date
                 const date = new Date(dateStr);
                 return isNaN(date.getTime()) ? new Date(0) : date;
             };
@@ -1503,39 +1876,39 @@ class TaskBreakdownApp {
             const aEndDate = parseDate(aEndDateStr);
             const bEndDate = parseDate(bEndDateStr);
 
-            // 1. 首先，父任务优先于子任务
-            // 如果a是父任务（parent_id为空）而b是子任务，a应该排在前面
+            // 1. First, parent tasks prioritize over subtasks
+            // If a is parent (parent_id empty) and b is subtask, a should be first
             if (aParentID === '' && bParentID !== '') {
                 return -1;
             }
-            // 如果a是子任务而b是父任务，b应该排在前面
+            // If a is subtask and b is parent, b should be first
             if (aParentID !== '' && bParentID === '') {
                 return 1;
             }
 
-            // 2. 都是父任务或都是子任务，按开始时间排序（最早的在前）
+            // 2. Both parent or both subtasks, sort by start time (earliest first)
             if (aStartDate.getTime() !== bStartDate.getTime()) {
                 return aStartDate.getTime() - bStartDate.getTime();
             }
 
-            // 3. 开始时间相同，按结束时间排序
+            // 3. Start time same, sort by end time
             return aEndDate.getTime() - bEndDate.getTime();
         });
 
-        console.log('排序后的时间线任务:', tasks);
+        console.log('Sorted timeline tasks:', tasks);
 
-        // 调试：显示每个任务的详细信息
-        console.log('任务详细信息:');
+        // Debug: Show detailed info for each task
+        console.log('Task details:');
         tasks.forEach((task, index) => {
             const taskId = task.id || task.ID || task.Id || '';
-            const taskTitle = task.title || task.Title || '无标题';
+            const taskTitle = task.title || task.Title || 'No Title';
             const startDate = task.start_date || task.StartDate || task.startDate || '';
             const endDate = task.end_date || task.EndDate || task.endDate || '';
             const parentID = task.parent_id || task.ParentID || task.parentId || '';
-            console.log(`[${index}] ID: ${taskId}, 标题: "${taskTitle}", 开始: ${startDate}, 结束: ${endDate}, 父ID: "${parentID}"`);
+            console.log(`[] ID: , Title: "", Start: , End: , ParentID: ""`);
         });
 
-        // 创建视觉化时间线
+        // Create visual timeline
         let html = `
             <div class="timeline-container">
                 <div class="timeline-axis">
@@ -1543,9 +1916,9 @@ class TaskBreakdownApp {
         `;
 
         tasks.forEach((task, index) => {
-            // 支持多种字段名
+            // Support multiple field names
             const taskId = task.id || task.ID || task.Id || '';
-            const taskTitle = task.title || task.Title || '无标题';
+            const taskTitle = task.title || task.Title || 'No Title';
             const taskStatus = task.status || task.Status || 'planning';
             const taskStartDate = task.start_date || task.StartDate || task.startDate || '';
             const taskEndDate = task.end_date || task.EndDate || task.endDate || '';
@@ -1556,14 +1929,14 @@ class TaskBreakdownApp {
             const statusClass = `status-${taskStatus.replace('-', '')}`;
             const priorityClass = `priority-${taskPriority}`;
 
-            // 获取状态图标
+            // Get status icon
             const statusIcon = this.getStatusIcon(taskStatus);
 
-            // 格式化日期
+            // Format date
             const formattedStartDate = this.formatDateForDisplay(taskStartDate);
             const formattedEndDate = this.formatDateForDisplay(taskEndDate);
 
-            // 第一个任务默认激活
+            // First task active by default
             const activeClass = index === 0 ? 'active' : '';
 
             html += `
@@ -1586,10 +1959,10 @@ class TaskBreakdownApp {
                 </div>
                 <div class="timeline-content">
                     <div class="timeline-content-placeholder" id="timelineContentPlaceholder">
-                        <!-- 内容将根据点击的时间点动态加载 -->
+                        <!-- Content will load dynamically based on clicked time point -->
         `;
 
-        // 默认显示第一个任务
+        // Default show first task
         if (tasks.length > 0) {
             const firstTask = tasks[0];
             html += this.renderTimelineTaskCard(firstTask, 0, true);
@@ -1602,45 +1975,45 @@ class TaskBreakdownApp {
 
         this.elements.timelineChart.innerHTML = html;
 
-        // 存储任务数据供点击时使用
+        // Store task data for click usage
         this.timelineTasks = tasks;
 
-        // 添加时间线交互事件监听
+        // Add timeline interaction event listeners
         this.addTimelineEventListeners();
 
-        console.log('时间线渲染完成');
+        console.log('Timeline rendering complete');
     }
 
 
-    // 工具方法
+    // 宸ュ叿鏂规硶
     getStatusText(status) {
         const statusMap = {
-            'planning': '规划中',
-            'in-progress': '进行中',
-            'completed': '已完成',
-            'blocked': '阻塞中',
-            'cancelled': '已取消'
+            'planning': 'Planning',
+            'in-progress': 'In Progress',
+            'completed': 'Completed',
+            'blocked': 'Blocked',
+            'cancelled': 'Cancelled'
         };
         return statusMap[status] || status;
     }
 
     getPriorityText(priority) {
         const priorityMap = {
-            1: '最高',
-            2: '高',
-            3: '中等',
-            4: '低',
-            5: '最低'
+            1: 'Highest',
+            2: 'High',
+            3: 'Medium',
+            4: 'Low',
+            5: 'Lowest'
         };
-        return priorityMap[priority] || `优先级 ${priority}`;
+        return priorityMap[priority] || `Priority `;
     }
 
     findTaskById(taskId) {
         if (!taskId) return null;
 
-        // 首先在扁平任务列表中查找
+        // First search in flat task list
         const flatResult = this.tasks.find(task => {
-            // 支持多种可能的字段名
+            // Support multiple possible field names
             const taskIdToCompare = task.id || task.ID || task.Id || '';
             return taskIdToCompare === taskId;
         });
@@ -1649,7 +2022,7 @@ class TaskBreakdownApp {
             return flatResult;
         }
 
-        // 如果在扁平列表中没找到，递归在任务树中查找
+        // If not found in flat list, recursively search in task tree
         return this.findTaskInTree(taskId, this.tasks);
     }
 
@@ -1657,13 +2030,13 @@ class TaskBreakdownApp {
         if (!taskId || !tasks || !Array.isArray(tasks)) return null;
 
         for (const task of tasks) {
-            // 检查当前任务
+            // Check current task
             const taskIdToCompare = task.id || task.ID || task.Id || '';
             if (taskIdToCompare === taskId) {
                 return task;
             }
 
-            // 递归检查子任务
+            // Recursively check subtasks
             if (task.subtasks && Array.isArray(task.subtasks) && task.subtasks.length > 0) {
                 const foundInSubtasks = this.findTaskInTree(taskId, task.subtasks);
                 if (foundInSubtasks) {
@@ -1671,7 +2044,7 @@ class TaskBreakdownApp {
                 }
             }
 
-            // 也检查 Subtasks 字段（大写）
+            // Also check Subtasks field (capitalized)
             if (task.Subtasks && Array.isArray(task.Subtasks) && task.Subtasks.length > 0) {
                 const foundInSubtasks = this.findTaskInTree(taskId, task.Subtasks);
                 if (foundInSubtasks) {
@@ -1687,17 +2060,17 @@ class TaskBreakdownApp {
         if (!taskId) return null;
 
         try {
-            console.log(`从服务器获取任务ID: ${taskId}`);
+            console.log(`Fetch task ID from server: `);
             const response = await fetch(`/api/tasks/${taskId}`);
             if (!response.ok) {
-                console.error(`获取任务失败，状态码: ${response.status}`);
+                console.error(`Fetch task failed, status code: `);
                 return null;
             }
             const data = await response.json();
-            console.log('从服务器获取的任务数据:', data);
+            console.log('Task data fetched from server:', data);
             return data.data || null;
         } catch (error) {
-            console.error(`获取任务异常: ${error}`);
+            console.error(`Fetch task exception: `);
             return null;
         }
     }
@@ -1709,25 +2082,25 @@ class TaskBreakdownApp {
     }
 
     getRootTaskID() {
-        // 优先从body的data属性获取
+        // Prioritize getting from body data attribute
         const body = document.body;
         if (body && body.dataset.rootTaskId) {
             return body.dataset.rootTaskId;
         }
 
-        // 其次从URL参数获取
+        // Then get from URL parameter
         const urlParams = new URLSearchParams(window.location.search);
         const rootParam = urlParams.get('root');
         if (rootParam) {
             return rootParam;
         }
 
-        // 无根任务ID
+        // No root task ID
         return '';
     }
 
     showLoading() {
-        // 可以添加加载指示器
+        // Can add loading indicator
         this.elements.refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     }
 
@@ -1736,62 +2109,62 @@ class TaskBreakdownApp {
     }
 
     showError(message) {
-        alert(`错误: ${message}`);
+        alert(`閿欒: ${message}`);
     }
 
     showSuccess(message) {
-        // 可以添加更优雅的成功提示
-        console.log(`成功: ${message}`);
+        // Can add more elegant success prompt
+        console.log(`Success: `);
     }
 
 
-    // ==================== 时间趋势相关方法 ====================
+    // ==================== 鏃堕棿瓒嬪娍鐩稿叧鏂规硶 ====================
 
     async loadTrendsData() {
         try {
-            console.log('开始加载时间趋势数据...');
+            console.log('Start loading trends data...');
 
-            // 显示加载状态
+            // Show loading state
             if (this.elements.refreshTrendsBtn) {
                 this.elements.refreshTrendsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             }
 
-            // 构建请求URL
+            // Build request URL
             let url = '/api/tasks/trends';
             const params = new URLSearchParams();
 
-            // 添加根任务ID（如果有）
+            // Add root task ID (if any)
             if (this.rootTaskID) {
                 params.append('root', this.rootTaskID);
             }
 
-            // 添加时间范围
+            // Add time range
             const timeRange = this.elements.timeRangeSelect ? this.elements.timeRangeSelect.value : '30d';
             params.append('range', timeRange);
 
             url += '?' + params.toString();
 
-            console.log('请求URL:', url);
+            console.log('Request URL:', url);
 
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`HTTP错误! 状态: ${response.status}`);
+                throw new Error(`HTTP Error! Status: `);
             }
 
             const result = await response.json();
-            console.log('时间趋势数据加载完成:', result);
+            console.log('Trends data loaded:', result);
 
             if (result.success && result.data) {
                 this.renderTrendsCharts(result.data);
             } else {
-                console.error('API返回错误:', result.error || '未知错误');
-                this.showError('加载趋势数据失败');
+                console.error('API returned error:', result.error || 'Unknown error');
+                this.showError('Failed to load trends data');
             }
         } catch (error) {
-            console.error('加载时间趋势数据失败:', error);
-            this.showError('加载趋势数据失败: ' + error.message);
+            console.error('Failed to load trends data:', error);
+            this.showError('Failed to load trends data: ' + error.message);
         } finally {
-            // 恢复按钮状态
+            // Restore button state
             if (this.elements.refreshTrendsBtn) {
                 this.elements.refreshTrendsBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
             }
@@ -1799,9 +2172,9 @@ class TaskBreakdownApp {
     }
 
     renderTrendsCharts(trendsData) {
-        console.log('渲染时间趋势图表...', trendsData);
+        console.log('Rendering trends charts...', trendsData);
 
-        // 销毁之前的趋势图表
+        // Destroy previous trends charts
         ['creation', 'completion', 'progress'].forEach(chartName => {
             if (this.charts[chartName + 'Trend']) {
                 this.charts[chartName + 'Trend'].destroy();
@@ -1809,7 +2182,7 @@ class TaskBreakdownApp {
             }
         });
 
-        // 渲染创建趋势图表
+        // Render creation trend chart
         if (trendsData.creation_trend && this.elements.creationTrendChart) {
             this.renderTrendChart(
                 'creationTrend',
@@ -1819,7 +2192,7 @@ class TaskBreakdownApp {
             );
         }
 
-        // 渲染完成趋势图表
+        // Render completion trend chart
         if (trendsData.completion_trend && this.elements.completionTrendChart) {
             this.renderTrendChart(
                 'completionTrend',
@@ -1829,7 +2202,7 @@ class TaskBreakdownApp {
             );
         }
 
-        // 渲染进度趋势图表
+        // Render progress trend chart
         if (trendsData.progress_trend && this.elements.progressTrendChart) {
             this.renderTrendChart(
                 'progressTrend',
@@ -1839,44 +2212,44 @@ class TaskBreakdownApp {
             );
         }
 
-        console.log('时间趋势图表渲染完成');
+        console.log('Trends charts rendering complete');
     }
 
     renderTrendChart(chartName, trendData, canvasElement, chartType = 'line') {
         if (!trendData || !trendData.data_points || trendData.data_points.length === 0) {
-            console.warn(`没有数据可用于渲染图表: ${chartName}`);
+            console.warn(`No data available for chart: `);
             return;
         }
 
         const ctx = canvasElement.getContext('2d');
 
-        // 准备数据
+        // Prepare data
         const labels = trendData.data_points.map(point => {
-            // 简化日期显示，例如 "01-15"
+            // Simplify date display, e.g. "01-15"
             const date = new Date(point.date);
             return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
         });
 
         const dataPoints = trendData.data_points.map(point => point.value);
 
-        // 根据趋势设置颜色
+        // Set color based on trend
         let borderColor, backgroundColor;
         switch (trendData.trend) {
             case 'up':
-                borderColor = '#4CAF50'; // 绿色
+                borderColor = '#4CAF50'; // Green
                 backgroundColor = 'rgba(76, 175, 80, 0.1)';
                 break;
             case 'down':
-                borderColor = '#f44336'; // 红色
+                borderColor = '#f44336'; // Red
                 backgroundColor = 'rgba(244, 67, 54, 0.1)';
                 break;
             default:
-                borderColor = '#2196F3'; // 蓝色
+                borderColor = '#2196F3'; // Blue
                 backgroundColor = 'rgba(33, 150, 243, 0.1)';
                 break;
         }
 
-        // 创建图表配置
+        // Create chart config
         const config = {
             type: chartType,
             data: {
@@ -1888,7 +2261,7 @@ class TaskBreakdownApp {
                     backgroundColor: backgroundColor,
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.4, // 曲线平滑度
+                    tension: 0.4, // Curve smoothness
                     pointRadius: 3,
                     pointHoverRadius: 5
                 }]
@@ -1904,7 +2277,7 @@ class TaskBreakdownApp {
                         mode: 'index',
                         intersect: false,
                         callbacks: {
-                            label: function(context) {
+                            label: function (context) {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
@@ -1919,7 +2292,7 @@ class TaskBreakdownApp {
                     x: {
                         title: {
                             display: true,
-                            text: '日期'
+                            text: 'Date'
                         }
                     },
                     y: {
@@ -1933,13 +2306,13 @@ class TaskBreakdownApp {
             }
         };
 
-        // 创建图表
+        // 鍒涘缓鍥捐〃
         this.charts[chartName] = new Chart(ctx, config);
     }
 
-    // 在初始化时加载趋势数据
+    // 鍦ㄥ垵濮嬪寲鏃跺姞杞借秼鍔挎暟鎹?
     async loadInitialTrendsData() {
-        // 等待一小段时间确保DOM完全加载
+        // 绛夊緟涓€灏忔鏃堕棿纭繚DOM瀹屽叏鍔犺浇
         setTimeout(() => {
             if (this.elements.creationTrendChart &&
                 this.elements.completionTrendChart &&
@@ -1951,7 +2324,8 @@ class TaskBreakdownApp {
 }
 
 
-// 页面加载完成后初始化应用
+// 椤甸潰鍔犺浇瀹屾垚鍚庡垵濮嬪寲搴旂敤
 document.addEventListener('DOMContentLoaded', () => {
     window.taskApp = new TaskBreakdownApp();
 });
+

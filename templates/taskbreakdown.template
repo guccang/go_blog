@@ -142,6 +142,96 @@
                                     <div class="task-tags" id="taskTags">
                                         <!-- 标签将通过JavaScript动态生成 -->
                                     </div>
+
+                                    <!-- 时间分析面板 -->
+                                    <div class="time-analysis-panel" id="timeAnalysisPanel" style="display: none;">
+                                        <h4><i class="fas fa-clock"></i> 时间分析</h4>
+                                        <div class="time-analysis-content">
+                                            <div class="time-analysis-section">
+                                                <h5>父子任务时间对比</h5>
+                                                <div class="time-comparison">
+                                                    <div class="time-item">
+                                                        <span class="time-label">自身预估时间:</span>
+                                                        <span class="time-value" id="selfEstimatedTime">0分钟</span>
+                                                    </div>
+                                                    <div class="time-item">
+                                                        <span class="time-label">子任务预估时间总和:</span>
+                                                        <span class="time-value" id="subtasksEstimatedTime">0分钟</span>
+                                                        <span class="time-diff" id="estimatedTimeDiff">(差异: 0分钟)</span>
+                                                    </div>
+                                                    <div class="time-status" id="estimatedTimeStatus">
+                                                        <i class="fas fa-check-circle"></i> 时间充足
+                                                    </div>
+                                                </div>
+                                                <div class="time-comparison">
+                                                    <div class="time-item">
+                                                        <span class="time-label">自身每天分配时间:</span>
+                                                        <span class="time-value" id="selfDailyTime">0分钟</span>
+                                                    </div>
+                                                    <div class="time-item">
+                                                        <span class="time-label">子任务每天分配时间总和:</span>
+                                                        <span class="time-value" id="subtasksDailyTime">0分钟</span>
+                                                        <span class="time-diff" id="dailyTimeDiff">(差异: 0分钟)</span>
+                                                    </div>
+                                                    <div class="time-status" id="dailyTimeStatus">
+                                                        <i class="fas fa-check-circle"></i> 时间分配合理
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="time-analysis-section">
+                                                <h5>子任务时间重叠检测</h5>
+                                                <div id="timeOverlapResult">
+                                                    <p><i class="fas fa-spinner fa-spin"></i> 检测中...</p>
+                                                </div>
+                                            </div>
+                                            <div class="time-analysis-section">
+                                                <h5>时间字段说明</h5>
+                                                <div class="time-explanation">
+                                                    <p><strong>预估时间</strong>: 完成该任务预计需要的时间（分钟）</p>
+                                                    <p><strong>每天分配时间</strong>: 计划每天为该任务分配的时间（分钟）</p>
+                                                    <p><strong>实际时间</strong>: 实际花费的时间（分钟），用于跟踪进度</p>
+                                                    <p class="time-tip"><i class="fas fa-lightbulb"></i> 提示: 子任务时间总和不应超过父任务的时间分配</p>
+                                                </div>
+                                            </div>
+                                            <div class="time-analysis-section">
+                                                <h5>时间对比与评估</h5>
+                                                <div class="time-evaluation" id="timeEvaluation">
+                                                    <div class="evaluation-item">
+                                                        <span class="evaluation-label">预估时间:</span>
+                                                        <span class="evaluation-value" id="evalEstimatedTime">0分钟</span>
+                                                    </div>
+                                                    <div class="evaluation-item">
+                                                        <span class="evaluation-label">实际时间:</span>
+                                                        <span class="evaluation-value" id="evalActualTime">0分钟</span>
+                                                    </div>
+                                                    <div class="evaluation-item">
+                                                        <span class="evaluation-label">时间差值:</span>
+                                                        <span class="evaluation-value" id="evalTimeDiff">0分钟</span>
+                                                        <span class="evaluation-percent" id="evalTimePercent">0%</span>
+                                                    </div>
+                                                    <div class="evaluation-result" id="evalResult">
+                                                        <i class="fas fa-info-circle"></i> 任务尚未完成
+                                                    </div>
+                                                    <div class="evaluation-explanation" id="evalExplanation">
+                                                        <p><strong>计算过程:</strong></p>
+                                                        <ul>
+                                                            <li><strong>预估时间</strong> = 每天分配时间 × (结束日期 - 开始日期) 天数</li>
+                                                            <li><strong>实际时间</strong> = 每天分配时间 × (结束日期 - 开始日期) 天数（任务完成时自动计算）</li>
+                                                            <li><strong>时间差值</strong> = 实际时间 - 预估时间</li>
+                                                            <li><strong>偏差百分比</strong> = (时间差值 ÷ 预估时间) × 100%</li>
+                                                        </ul>
+                                                        <p><strong>评估标准:</strong></p>
+                                                        <ul>
+                                                            <li><span class="eval-good"><i class="fas fa-check-circle"></i> 提前完成</span>: 实际时间 &lt; 预估时间（偏差 &lt; -10%）</li>
+                                                            <li><span class="eval-ok"><i class="fas fa-check-circle"></i> 按时完成</span>: 实际时间 ≈ 预估时间（偏差在 ±10% 内）</li>
+                                                            <li><span class="eval-warning"><i class="fas fa-exclamation-circle"></i> 轻微超时</span>: 实际时间 &gt; 预估时间（偏差在 10%~30%）</li>
+                                                            <li><span class="eval-bad"><i class="fas fa-times-circle"></i> 严重超时</span>: 实际时间 &gt;&gt; 预估时间（偏差 &gt; 30%）</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -282,11 +372,13 @@
                         <div class="form-group">
                             <label for="estimatedTime">预估时间(分钟)</label>
                             <input type="number" id="estimatedTime" min="0" value="0">
+                            <div class="field-help">完成该任务预计需要的时间</div>
                         </div>
 
                         <div class="form-group">
                             <label for="dailyTime">每天分配时间(分钟)</label>
                             <input type="number" id="dailyTime" min="0" value="0">
+                            <div class="field-help">计划每天为该任务分配的时间</div>
                         </div>
 
                         <div class="form-group">

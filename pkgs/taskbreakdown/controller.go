@@ -585,3 +585,83 @@ func (c *Controller) HandleGetTimeTrends(w http.ResponseWriter, r *http.Request)
 
 	sendSuccessResponse(w, trendData)
 }
+
+// HandleGetTaskTimeAnalysis 处理获取任务时间分析请求
+func (c *Controller) HandleGetTaskTimeAnalysis(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// 获取任务ID参数
+	taskID := r.URL.Query().Get("task_id")
+	if taskID == "" {
+		sendErrorResponse(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	analysis, err := c.manager.AnalyzeTaskTime(account, taskID)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to analyze task time: "+err.Error())
+		return
+	}
+
+	response := TaskTimeAnalysisResponse{
+		Success: true,
+		Data:    analysis,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// HandleCheckDailyTimeOverlap 处理检查每天时间重叠请求
+func (c *Controller) HandleCheckDailyTimeOverlap(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// 获取任务ID参数
+	taskID := r.URL.Query().Get("task_id")
+	if taskID == "" {
+		sendErrorResponse(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	dailyTimeMap, hasOverlap, err := c.manager.CalculateDailyTimeOverlap(account, taskID)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to check daily time overlap: "+err.Error())
+		return
+	}
+
+	// 构建响应
+	type OverlapResponse struct {
+		Success      bool              `json:"success"`
+		HasOverlap   bool              `json:"has_overlap"`
+		DailyTimeMap map[string]int    `json:"daily_time_map,omitempty"`
+		Message      string            `json:"message,omitempty"`
+		Error        string            `json:"error,omitempty"`
+	}
+
+	response := OverlapResponse{
+		Success:      true,
+		HasOverlap:   hasOverlap,
+		DailyTimeMap: dailyTimeMap,
+	}
+
+	if hasOverlap {
+		response.Message = "检测到子任务时间重叠：某些日期的子任务时间总和超过父任务的每天分配时间"
+	} else {
+		response.Message = "子任务时间分配合理，没有检测到重叠问题"
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}

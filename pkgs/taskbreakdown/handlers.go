@@ -449,3 +449,43 @@ func HandleCompletedTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// HandleTaskTimeAnalysis 处理任务时间分析请求
+func HandleTaskTimeAnalysis(w http.ResponseWriter, r *http.Request) {
+	log.DebugF(log.ModuleTaskBreakdown, "HandleTaskTimeAnalysis %s", r.Method)
+
+	if controller == nil {
+		http.Error(w, "Controller not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// 只处理GET请求
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	controller.HandleGetTaskTimeAnalysis(w, r)
+}
+
+// HandleDailyTimeOverlap 处理每天时间重叠检查请求
+func HandleDailyTimeOverlap(w http.ResponseWriter, r *http.Request) {
+	log.DebugF(log.ModuleTaskBreakdown, "HandleDailyTimeOverlap %s", r.Method)
+
+	if controller == nil {
+		http.Error(w, "Controller not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// 只处理GET请求
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	controller.HandleCheckDailyTimeOverlap(w, r)
+}

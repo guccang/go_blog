@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	log "mylog"
 )
 
 // TaskManager 任务管理器
@@ -107,6 +109,30 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 			return nil, fmt.Errorf("failed to get root tasks: %w", err)
 		}
 		task.Order = len(rootTasks)
+	}
+
+	// 自动计算预估时间（如果预估时间为0但每天分配时间和日期范围有效）
+	if task.EstimatedTime == 0 && task.DailyTime > 0 && task.StartDate != "" && task.EndDate != "" {
+		log.DebugF(log.ModuleTaskBreakdown, "任务 %s 预估时间为0，开始自动计算预估时间", task.ID)
+		log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
+		calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime)
+		log.DebugF(log.ModuleTaskBreakdown, "计算得到的预估时间: %d分钟", calculatedEstimatedTime)
+		if calculatedEstimatedTime > 0 {
+			task.EstimatedTime = calculatedEstimatedTime
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的预估时间已设置为 %d分钟", task.ID, task.EstimatedTime)
+		}
+	}
+
+	// 如果创建时状态就是已完成，自动计算实际时间
+	if task.Status == StatusCompleted {
+		log.DebugF(log.ModuleTaskBreakdown, "任务 %s 创建时状态为已完成，开始自动计算实际时间", task.ID)
+		log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
+		calculatedActualTime := calculateActualTimeSmart(task)
+		log.DebugF(log.ModuleTaskBreakdown, "计算得到的实际时间: %d分钟", calculatedActualTime)
+		if calculatedActualTime > 0 {
+			task.ActualTime = calculatedActualTime
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的实际时间已设置为 %d分钟", task.ID, task.ActualTime)
+		}
 	}
 
 	// 保存任务
@@ -246,6 +272,48 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 
 	// 更新更新时间
 	task.UpdatedAt = time.Now().Format(time.RFC3339)
+
+	// 自动计算预估时间（如果用户未手动设置预估时间，且相关字段有效）
+	if updates.EstimatedTime == nil {
+		// 检查是否需要重新计算预估时间
+		shouldRecalculate := task.EstimatedTime == 0 || updates.DailyTime != nil || updates.StartDate != nil || updates.EndDate != nil
+
+		if shouldRecalculate && task.DailyTime > 0 && task.StartDate != "" && task.EndDate != "" {
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 需要重新计算预估时间", task.ID)
+			log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
+			calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime)
+			log.DebugF(log.ModuleTaskBreakdown, "计算得到的预估时间: %d分钟", calculatedEstimatedTime)
+			if calculatedEstimatedTime > 0 {
+				task.EstimatedTime = calculatedEstimatedTime
+				log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的预估时间已更新为 %d分钟", task.ID, task.EstimatedTime)
+			} else {
+				log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的预估时间计算失败或为0，保持原值: %d分钟", task.ID, task.EstimatedTime)
+			}
+		} else {
+			if shouldRecalculate {
+				log.DebugF(log.ModuleTaskBreakdown, "任务 %s 需要重新计算预估时间，但计算条件不满足: dailyTime=%d, startDate=%q, endDate=%q", task.ID, task.DailyTime, task.StartDate, task.EndDate)
+			}
+		}
+	}
+
+	// 自动计算实际时间（如果任务完成且用户未手动设置实际时间）
+	if task.Status == StatusCompleted && updates.ActualTime == nil {
+		log.DebugF(log.ModuleTaskBreakdown, "任务 %s 标记为完成，开始自动计算实际时间", task.ID)
+		log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
+		// 计算实际时间（智能计算，处理dailyTime <= 0的情况）
+		calculatedActualTime := calculateActualTimeSmart(task)
+		log.DebugF(log.ModuleTaskBreakdown, "计算得到的实际时间: %d分钟", calculatedActualTime)
+		if calculatedActualTime > 0 {
+			task.ActualTime = calculatedActualTime
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的实际时间已更新为 %d分钟", task.ID, task.ActualTime)
+		} else {
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的实际时间计算失败或为0，保持原值: %d分钟", task.ID, task.ActualTime)
+		}
+	} else {
+		if task.Status == StatusCompleted {
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 标记为完成，但updates.ActualTime不为nil，跳过自动计算", task.ID)
+		}
+	}
 
 	// 保存更新后的任务
 	if err := tm.storage.SaveTask(account, task); err != nil {
@@ -592,28 +660,34 @@ func (tm *TaskManager) GetTimelineData(account, rootID string) (*TimelineData, e
 // calculateDaysBetween 计算两个日期之间的天数差
 func calculateDaysBetween(startDateStr, endDateStr string) (int, error) {
 	if startDateStr == "" || endDateStr == "" {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 空日期 startDateStr=%q, endDateStr=%q", startDateStr, endDateStr)
 		return 0, nil
 	}
 
 	// 解析日期
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 开始日期解析失败 startDateStr=%q, err=%v", startDateStr, err)
 		return 0, fmt.Errorf("invalid start date format: %s", startDateStr)
 	}
 
 	endDate, err := time.Parse("2006-01-02", endDateStr)
 	if err != nil {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 结束日期解析失败 endDateStr=%q, err=%v", endDateStr, err)
 		return 0, fmt.Errorf("invalid end date format: %s", endDateStr)
 	}
 
 	// 计算天数差（包含开始和结束日）
 	days := int(endDate.Sub(startDate).Hours()/24) + 1
+	log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 计算天数 startDate=%v, endDate=%v, rawDays=%d", startDate, endDate, days)
 
 	// 确保天数至少为1
 	if days < 1 {
 		days = 1
+		log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 天数小于1，调整为1")
 	}
 
+	log.DebugF(log.ModuleTaskBreakdown, "calculateDaysBetween: 最终天数=%d", days)
 	return days, nil
 }
 
@@ -666,10 +740,14 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		}
 	}
 
-	// 计算时间分析数据
+	// 计算时间分析数据（只计入未删除且未完成的任务）
 	totalEstimatedTime := 0
 	totalDailyTime := 0
 	for _, task := range tasks {
+		// 跳过已删除或已完成的任务
+		if !ShouldIncludeInTimeCalculation(task) {
+			continue
+		}
 		totalEstimatedTime += task.EstimatedTime
 		totalDailyTime += task.DailyTime
 	}
@@ -1340,4 +1418,252 @@ func (tm *TaskManager) SearchTasks(account, query string) ([]*ComplexTask, error
 	}
 
 	return results, nil
+}
+
+// AnalyzeTaskTime 分析任务时间（父子任务时间关联分析）
+func (tm *TaskManager) AnalyzeTaskTime(account, taskID string) (*TaskTimeAnalysis, error) {
+	// 获取任务树
+	taskTree, err := tm.GetTaskTree(account, taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 计算子任务时间总和（只计入未删除且未完成的子任务）
+	subtasksEstimatedTime := 0
+	subtasksDailyTime := 0
+	subtasksActualTime := 0
+	validSubtasksCount := 0
+
+	for _, subtask := range taskTree.Subtasks {
+		// 跳过已删除或已完成的任务
+		if subtask.Deleted || IsTaskCompleted(&subtask) {
+			continue
+		}
+		subtasksEstimatedTime += subtask.EstimatedTime
+		subtasksDailyTime += subtask.DailyTime
+		subtasksActualTime += subtask.ActualTime
+		validSubtasksCount++
+	}
+	subtasksCount := validSubtasksCount
+
+	// 计算时间差异
+	estimatedTimeDiff := subtasksEstimatedTime - taskTree.EstimatedTime
+	dailyTimeDiff := subtasksDailyTime - taskTree.DailyTime
+	actualTimeDiff := subtasksActualTime - taskTree.ActualTime
+
+	// 判断时间状态
+	estimatedTimeStatus := "sufficient"
+	if subtasksCount > 0 {
+		// 只有在有子任务时才进行时间分析
+		if estimatedTimeDiff > 0 {
+			// 子任务预估时间总和大于父任务预估时间
+			estimatedTimeStatus = "insufficient"
+		} else if !IsTaskCompleted(taskTree) && taskTree.EstimatedTime > 0 {
+			// 只有父任务未完成且父任务有预估时间时才检查是否时间分配过多
+			// 使用更合理的阈值：30%（而不是50%）
+			excessiveThreshold := -taskTree.EstimatedTime * 30 / 100
+			if estimatedTimeDiff < excessiveThreshold {
+				// 子任务预估时间总和远小于父任务预估时间（小于30%）
+				estimatedTimeStatus = "excessive"
+			}
+		}
+		// 如果父任务已完成，即使子任务时间很少也不标记为excessive（这是正常的）
+	} else {
+		// 没有子任务，标记为叶子任务
+		estimatedTimeStatus = "leaf"
+	}
+
+	dailyTimeStatus := "sufficient"
+	if subtasksCount > 0 {
+		// 只有在有子任务时才进行时间分析
+		if dailyTimeDiff > 0 {
+			// 子任务每天分配时间总和大于父任务每天分配时间
+			dailyTimeStatus = "insufficient"
+		} else if !IsTaskCompleted(taskTree) && taskTree.DailyTime > 0 {
+			// 只有父任务未完成且父任务有每天分配时间时才检查是否时间分配过多
+			// 使用更合理的阈值：30%（而不是50%）
+			excessiveThreshold := -taskTree.DailyTime * 30 / 100
+			if dailyTimeDiff < excessiveThreshold {
+				// 子任务每天分配时间总和远小于父任务每天分配时间（小于30%）
+				dailyTimeStatus = "excessive"
+			}
+		}
+		// 如果父任务已完成，即使子任务时间很少也不标记为excessive（这是正常的）
+		// 如果父任务DailyTime为0，也不标记为excessive
+	} else {
+		// 没有子任务，标记为叶子任务
+		dailyTimeStatus = "leaf"
+	}
+
+	analysis := &TaskTimeAnalysis{
+		TaskID:                taskTree.ID,
+		TaskTitle:             taskTree.Title,
+		ParentID:              taskTree.ParentID,
+
+		SelfEstimatedTime:     taskTree.EstimatedTime,
+		SelfDailyTime:         taskTree.DailyTime,
+		SelfActualTime:        taskTree.ActualTime,
+
+		SubtasksEstimatedTime: subtasksEstimatedTime,
+		SubtasksDailyTime:     subtasksDailyTime,
+		SubtasksActualTime:    subtasksActualTime,
+
+		EstimatedTimeDiff:     estimatedTimeDiff,
+		DailyTimeDiff:         dailyTimeDiff,
+		ActualTimeDiff:        actualTimeDiff,
+
+		EstimatedTimeStatus:   estimatedTimeStatus,
+		DailyTimeStatus:       dailyTimeStatus,
+
+		SubtasksCount:         subtasksCount,
+		HasSubtasks:           subtasksCount > 0,
+	}
+
+	return analysis, nil
+}
+
+// CalculateDailyTimeOverlap 计算每天的时间重叠（多个子任务在同一天的时间分配）
+// 返回每天的时间分配总和，以及是否超过父任务的每天分配时间
+func (tm *TaskManager) CalculateDailyTimeOverlap(account, taskID string) (map[string]int, bool, error) {
+	// 获取任务树
+	taskTree, err := tm.GetTaskTree(account, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// 如果没有子任务，返回空
+	if len(taskTree.Subtasks) == 0 {
+		return map[string]int{}, false, nil
+	}
+
+	// 按天统计子任务的时间分配
+	dailyTimeMap := make(map[string]int)
+	hasOverlap := false
+
+	// 遍历所有子任务（只检查未删除且未完成的子任务）
+	for _, subtask := range taskTree.Subtasks {
+		// 跳过已删除或已完成的任务
+		if subtask.Deleted || IsTaskCompleted(&subtask) {
+			continue
+		}
+		// 如果子任务有开始和结束日期
+		if subtask.StartDate != "" && subtask.EndDate != "" {
+			// 计算日期范围内的天数
+			days, err := calculateDaysBetween(subtask.StartDate, subtask.EndDate)
+			if err == nil && days > 0 && subtask.DailyTime > 0 {
+				// 获取日期范围内的每一天
+				start, err := time.Parse("2006-01-02", subtask.StartDate)
+				if err != nil {
+					continue
+				}
+				end, err := time.Parse("2006-01-02", subtask.EndDate)
+				if err != nil {
+					continue
+				}
+
+				// 遍历每一天
+				for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+					dateStr := d.Format("2006-01-02")
+					dailyTimeMap[dateStr] += subtask.DailyTime
+				}
+			}
+		}
+	}
+
+	// 检查是否有任何一天的时间总和超过父任务的每天分配时间
+	parentDailyTime := taskTree.DailyTime
+	// 默认警告阈值：8小时 = 480分钟（如果父任务没有设置每天分配时间）
+	defaultWarningThreshold := 480
+
+	for date, totalTime := range dailyTimeMap {
+		if parentDailyTime > 0 {
+			// 父任务设置了每天分配时间：检查是否超过
+			if totalTime > parentDailyTime {
+				hasOverlap = true
+				fmt.Printf("日期 %s: 子任务时间总和 %d 分钟 > 父任务每天分配时间 %d 分钟\n", date, totalTime, parentDailyTime)
+				break
+			}
+		} else {
+			// 父任务没有设置每天分配时间：检查是否超过默认警告阈值
+			if totalTime > defaultWarningThreshold {
+				hasOverlap = true
+				fmt.Printf("日期 %s: 子任务时间总和 %d 分钟 > 建议每天最大时间 %d 分钟（父任务未设置每天分配时间）\n", date, totalTime, defaultWarningThreshold)
+				break
+			}
+		}
+	}
+
+	return dailyTimeMap, hasOverlap, nil
+}
+
+// calculateActualTimeFromDates 根据开始日期、结束日期和每天分配时间计算实际时间
+// 如果任何字段无效，返回0
+func calculateActualTimeFromDates(startDate, endDate string, dailyTime int) int {
+	if startDate == "" || endDate == "" || dailyTime <= 0 {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeFromDates: 无效参数 startDate=%q, endDate=%q, dailyTime=%d", startDate, endDate, dailyTime)
+		return 0
+	}
+
+	days, err := calculateDaysBetween(startDate, endDate)
+	if err != nil || days <= 0 {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeFromDates: 天数计算失败或无效 days=%d, err=%v", days, err)
+		return 0
+	}
+
+	result := days * dailyTime
+	log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeFromDates: 计算成功 days=%d, dailyTime=%d, result=%d", days, dailyTime, result)
+	return result
+}
+
+// calculateActualTimeSmart 智能计算实际时间，处理dailyTime <= 0的情况
+func calculateActualTimeSmart(task *ComplexTask) int {
+	if task.StartDate == "" || task.EndDate == "" {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: 开始日期或结束日期为空 startDate=%q, endDate=%q", task.StartDate, task.EndDate)
+		return 0
+	}
+
+	// 计算天数
+	days, err := calculateDaysBetween(task.StartDate, task.EndDate)
+	if err != nil || days <= 0 {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: 天数计算失败或无效 days=%d, err=%v", days, err)
+		return 0
+	}
+
+	// 确定每天分配时间
+	dailyTime := task.DailyTime
+	if dailyTime <= 0 {
+		// 如果每天分配时间为0或负数，尝试使用预估时间计算
+		if task.EstimatedTime > 0 && days > 0 {
+			// 计算平均每天分配时间（向上取整）
+			dailyTime = (task.EstimatedTime + days - 1) / days // 向上取整除法
+			log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: dailyTime<=0，使用预估时间计算 dailyTime=%d (estimatedTime=%d, days=%d)", dailyTime, task.EstimatedTime, days)
+		} else {
+			log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: dailyTime=%d 且无法计算替代值，返回0", task.DailyTime)
+			return 0
+		}
+	}
+
+	// 计算实际时间
+	result := days * dailyTime
+	log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: 计算成功 days=%d, dailyTime=%d, result=%d", days, dailyTime, result)
+	return result
+}
+
+// calculateEstimatedTimeFromDates 根据开始日期、结束日期和每天分配时间计算预估时间
+// 如果任何字段无效，返回0
+func calculateEstimatedTimeFromDates(startDate, endDate string, dailyTime int) int {
+	if startDate == "" || endDate == "" || dailyTime <= 0 {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 无效参数 startDate=%q, endDate=%q, dailyTime=%d", startDate, endDate, dailyTime)
+		return 0
+	}
+
+	days, err := calculateDaysBetween(startDate, endDate)
+	if err != nil || days <= 0 {
+		log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 天数计算失败或无效 days=%d, err=%v", days, err)
+		return 0
+	}
+
+	result := days * dailyTime
+	log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 计算成功 days=%d, dailyTime=%d, result=%d", days, dailyTime, result)
+	return result
 }

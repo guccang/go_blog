@@ -1,16 +1,3 @@
-package taskbreakdown
-
-import (
-	"time"
-)
-
-// 任务状态常量
-const (
-	StatusPlanning    = "planning"     // 规划中
-	StatusInProgress  = "in-progress"  // 进行中
-	StatusCompleted   = "completed"    // 已完成
-	StatusBlocked     = "blocked"      // 阻塞中
-	StatusCancelled   = "cancelled"    // 已取消
 )
 
 // 优先级常量
@@ -159,27 +146,6 @@ type GraphData struct {
 	Nodes []GraphNode `json:"nodes"`
 	Edges []GraphEdge `json:"edges"`
 }
-
-// 生成任务ID
-func GenerateTaskID() string {
-	return "task-" + time.Now().Format("20060102150405") + "-" + randomString(8)
-}
-
-// 生成随机字符串(简化版，实际应该使用更安全的随机生成)
-func randomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		// 简化实现，实际应该使用crypto/rand
-		b[i] = charset[i%len(charset)]
-	}
-	return string(b)
-}
-
-// 验证任务状态是否有效
-func IsValidStatus(status string) bool {
-	switch status {
-	case StatusPlanning, StatusInProgress, StatusCompleted, StatusBlocked, StatusCancelled:
 		return true
 	default:
 		return false
@@ -236,4 +202,53 @@ type TimeTrendsResponse struct {
 	TimeRange       string         `json:"time_range"`                 // 时间范围: "7d", "30d", "90d", "1y"
 	StartDate       string         `json:"start_date"`                 // 开始日期
 	EndDate         string         `json:"end_date"`                   // 结束日期
+}
+
+// TaskTimeAnalysis 任务时间分析
+type TaskTimeAnalysis struct {
+	TaskID               string `json:"task_id"`                // 任务ID
+	TaskTitle            string `json:"task_title"`             // 任务标题
+	ParentID             string `json:"parent_id"`              // 父任务ID（空表示根任务）
+
+	// 当前任务自身的时间
+	SelfEstimatedTime    int    `json:"self_estimated_time"`    // 自身预估时间(分钟)
+	SelfDailyTime        int    `json:"self_daily_time"`        // 自身每天分配时间(分钟)
+	SelfActualTime       int    `json:"self_actual_time"`       // 自身实际耗时(分钟)
+
+	// 子任务时间总和
+	SubtasksEstimatedTime int    `json:"subtasks_estimated_time"` // 子任务预估时间总和(分钟)
+	SubtasksDailyTime     int    `json:"subtasks_daily_time"`     // 子任务每天分配时间总和(分钟)
+	SubtasksActualTime    int    `json:"subtasks_actual_time"`    // 子任务实际耗时总和(分钟)
+
+	// 时间差异分析
+	EstimatedTimeDiff    int    `json:"estimated_time_diff"`    // 预估时间差异（子任务总和 - 自身）
+	DailyTimeDiff        int    `json:"daily_time_diff"`        // 每天分配时间差异（子任务总和 - 自身）
+	ActualTimeDiff       int    `json:"actual_time_diff"`       // 实际耗时差异（子任务总和 - 自身）
+
+	// 时间状态
+	EstimatedTimeStatus  string `json:"estimated_time_status"`  // 预估时间状态: "sufficient", "insufficient", "excessive"
+	DailyTimeStatus      string `json:"daily_time_status"`      // 每天分配时间状态: "sufficient", "insufficient", "excessive"
+
+	// 子任务数量
+	SubtasksCount        int    `json:"subtasks_count"`         // 子任务数量
+	HasSubtasks          bool   `json:"has_subtasks"`           // 是否有子任务
+}
+
+// TaskTimeAnalysisResponse 任务时间分析响应
+type TaskTimeAnalysisResponse struct {
+	Success bool               `json:"success"`
+	Message string             `json:"message,omitempty"`
+	Data    *TaskTimeAnalysis  `json:"data,omitempty"`
+	Error   string             `json:"error,omitempty"`
+}
+
+// IsTaskCompleted 检查任务是否已完成
+func IsTaskCompleted(task *ComplexTask) bool {
+	return task.Status == StatusCompleted || task.Progress == 100
+}
+
+// ShouldIncludeInTimeCalculation 检查任务是否应计入时间计算
+// 已删除或已完成的任务不应计入时间计算
+func ShouldIncludeInTimeCalculation(task *ComplexTask) bool {
+	return !task.Deleted && !IsTaskCompleted(task)
 }
