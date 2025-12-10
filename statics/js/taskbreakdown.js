@@ -7,6 +7,7 @@ class TaskBreakdownApp {
         this.currentTask = null;
         this.tasks = [];
         this.charts = {};
+        this.expandedTasks = new Set(); // 跟踪展开的任务ID
 
         // 获取根任务ID（从URL参数或data属性）
         this.rootTaskID = this.getRootTaskID();
@@ -156,6 +157,17 @@ class TaskBreakdownApp {
         // 状态过滤事件
         if (this.elements.statusFilter) {
             this.elements.statusFilter.addEventListener('change', () => this.applyStatusFilter());
+        }
+
+        // 时间字段自动计算预估时间
+        if (this.elements.dailyTime && this.elements.startDate && this.elements.endDate && this.elements.estimatedTime) {
+            const calculateHandler = () => this.calculateEstimatedTime();
+            this.elements.dailyTime.addEventListener('input', calculateHandler);
+            this.elements.startDate.addEventListener('input', calculateHandler);
+            this.elements.endDate.addEventListener('input', calculateHandler);
+            this.elements.dailyTime.addEventListener('change', calculateHandler);
+            this.elements.startDate.addEventListener('change', calculateHandler);
+            this.elements.endDate.addEventListener('change', calculateHandler);
         }
 
         // 模态框关闭
@@ -716,8 +728,10 @@ class TaskBreakdownApp {
 
         // 构建HTML
         const hasSubtasks = subtasks.length > 0;
+        const isExpanded = this.expandedTasks.has(taskId);
+        const collapseButtonClass = isExpanded ? 'expanded' : 'collapsed';
         const collapseButton = hasSubtasks ? `
-            <button class="task-collapse-btn collapsed" data-task-id="${taskId}" title="折叠/展开子任务">
+            <button class="task-collapse-btn ${collapseButtonClass}" data-task-id="${taskId}" title="折叠/展开子任务">
                 <i class="fas fa-chevron-right"></i>
             </button>
         ` : '';
@@ -799,6 +813,9 @@ class TaskBreakdownApp {
             console.log(`任务 ${taskId} 有 ${subtasks.length} 个子任务`);
             const subtasksContainer = document.createElement('div');
             subtasksContainer.className = 'task-subtasks';
+            if (isExpanded) {
+                subtasksContainer.classList.add('expanded');
+            }
             taskElement.appendChild(subtasksContainer);
 
             // 创建新的已访问集合，包含当前任务
@@ -923,6 +940,9 @@ class TaskBreakdownApp {
         this.showTaskDetails(task);
         this.currentTask = task;
         console.log('当前任务设置为:', this.currentTask);
+
+        // 展开选中任务的子任务
+        this.expandTask(taskId);
     }
 
     showTaskDetails(task) {
@@ -1036,6 +1056,9 @@ class TaskBreakdownApp {
                 this.elements.parentId.value = this.currentTask.id || this.currentTask.ID || this.currentTask.Id;
                 break;
         }
+
+        // 自动计算预估时间
+        this.calculateEstimatedTime();
     }
 
     fillFormWithTask(task) {
@@ -1068,6 +1091,9 @@ class TaskBreakdownApp {
         this.elements.progressValue.textContent = `${taskProgress}%`;
         this.elements.tags.value = taskTags.join(', ');
         this.elements.parentId.value = taskParentId;
+
+        // 自动计算预估时间
+        this.calculateEstimatedTime();
     }
 
     closeModal() {
@@ -1345,6 +1371,42 @@ class TaskBreakdownApp {
         } catch (error) {
             console.error('计算持续时间错误:', error);
             return '-';
+        }
+    }
+
+    calculateEstimatedTime() {
+        const dailyTime = parseInt(this.elements.dailyTime.value) || 0;
+        const startDate = this.elements.startDate.value;
+        const endDate = this.elements.endDate.value;
+
+        if (!startDate || !endDate || startDate === '' || endDate === '') {
+            // 如果没有日期，设置预估时间为0
+            this.elements.estimatedTime.value = dailyTime || 0;
+            return;
+        }
+
+        try {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                this.elements.estimatedTime.value = dailyTime || 0;
+                return;
+            }
+
+            const diffTime = Math.abs(end - start);
+            let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            // 如果开始日期和结束日期是同一天，天数至少为1
+            if (diffDays === 0) {
+                diffDays = 1;
+            }
+
+            // 预估时间 = 每天分配时间 * 天数
+            const estimatedTime = dailyTime * diffDays;
+            this.elements.estimatedTime.value = estimatedTime || 0;
+        } catch (error) {
+            console.error('计算预估时间错误:', error);
+            this.elements.estimatedTime.value = dailyTime || 0;
         }
     }
 
@@ -2038,14 +2100,48 @@ class TaskBreakdownApp {
             subtasksContainer.classList.remove('expanded');
             collapseBtn.classList.remove('expanded');
             collapseBtn.classList.add('collapsed');
+            this.expandedTasks.delete(taskId);
             console.log(`折叠任务 ${taskId} 的子任务`);
         } else {
             // 展开子任务
             subtasksContainer.classList.add('expanded');
             collapseBtn.classList.remove('collapsed');
             collapseBtn.classList.add('expanded');
+            this.expandedTasks.add(taskId);
             console.log(`展开任务 ${taskId} 的子任务`);
         }
+    }
+
+    expandTask(taskId) {
+        console.log(`展开任务: ${taskId}`);
+
+        // 查找任务元素
+        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+        if (!taskElement) {
+            console.error(`未找到任务元素: ${taskId}`);
+            return;
+        }
+
+        // 查找子任务容器和折叠按钮
+        const subtasksContainer = taskElement.querySelector('.task-subtasks');
+        const collapseBtn = taskElement.querySelector('.task-collapse-btn');
+
+        if (!subtasksContainer || !collapseBtn) {
+            // 没有子任务或折叠按钮，无需展开
+            return;
+        }
+
+        // 如果已经展开，不再重复操作
+        if (subtasksContainer.classList.contains('expanded')) {
+            return;
+        }
+
+        // 展开子任务
+        subtasksContainer.classList.add('expanded');
+        collapseBtn.classList.remove('collapsed');
+        collapseBtn.classList.add('expanded');
+        this.expandedTasks.add(taskId);
+        console.log(`任务 ${taskId} 的子任务已展开`);
     }
 }
 
