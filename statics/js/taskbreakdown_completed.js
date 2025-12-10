@@ -115,7 +115,7 @@ class CompletedTasksApp {
 
                     ${task.description ? `
                     <div class="task-description">
-                        ${this.escapeHtml(task.description)}
+                        ${this.renderMarkdown(task.description)}
                     </div>
                     ` : ''}
 
@@ -275,6 +275,32 @@ class CompletedTasksApp {
         return div.innerHTML;
     }
 
+    // 安全地渲染 Markdown 文本为 HTML
+    renderMarkdown(text) {
+        if (!text || typeof text !== 'string') {
+            return '';
+        }
+        // 检查 marked 和 DOMPurify 是否可用
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+            // 如果库未加载，返回转义的纯文本
+            console.warn('marked 或 DOMPurify 未加载，回退到转义文本');
+            return this.escapeHtml(text);
+        }
+        try {
+            // 使用 marked 解析 Markdown
+            const rawHtml = marked.parse(text);
+            // 使用 DOMPurify 清理 HTML，防止 XSS
+            const cleanHtml = DOMPurify.sanitize(rawHtml, {
+                ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins', 'sup', 'sub'],
+                ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'class']
+            });
+            return cleanHtml;
+        } catch (error) {
+            console.error('Markdown 解析错误:', error);
+            return this.escapeHtml(text);
+        }
+    }
+
     showLoading() {
         this.elements.completedTasksList.innerHTML = `
             <div class="loading-indicator">
@@ -369,7 +395,7 @@ class CompletedTasksApp {
                         <div class="task-description-section" style="margin-bottom: 30px;">
                             <h3 style="margin-top: 0; color: #333;">任务描述</h3>
                             <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff;">
-                                ${this.escapeHtml(task.description).replace(/\n/g, '<br>')}
+                                ${this.renderMarkdown(task.description)}
                             </div>
                         </div>
                         ` : ''}
@@ -475,7 +501,7 @@ class CompletedTasksApp {
 
                         ${subtask.description ? `
                         <div style="margin-top: 10px; padding: 10px; background-color: white; border-radius: 4px; border-left: 3px solid #007bff;">
-                            ${this.escapeHtml(subtask.description)}
+                            ${this.renderMarkdown(subtask.description)}
                         </div>
                         ` : ''}
 

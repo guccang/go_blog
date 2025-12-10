@@ -984,7 +984,7 @@ class TaskBreakdownApp {
         this.elements.taskPriority.className = `task-priority priority-${taskPriority}`;
 
         this.elements.taskProgress.textContent = `${taskProgress}%`;
-        this.elements.taskDescription.textContent = taskDescription;
+        this.elements.taskDescription.innerHTML = this.renderMarkdown(taskDescription);
         this.elements.taskStartDate.textContent = taskStartDate;
         this.elements.taskEndDate.textContent = taskEndDate;
         this.elements.taskEstimatedTime.textContent = `${taskEstimatedTime}分钟`;
@@ -1580,7 +1580,7 @@ class TaskBreakdownApp {
                         <div class="progress-fill" style="width: ${taskProgress}%"></div>
                     </div>
                 </div>
-                ${taskDescription ? `<div class="timeline-card-description">${this.escapeHtml(taskDescription)}</div>` : ''}
+                ${taskDescription ? `<div class="timeline-card-description">${this.renderMarkdown(taskDescription)}</div>` : ''}
                 <div class="timeline-card-footer">
                     <span class="estimated-time"><i class="fas fa-hourglass-half"></i> ${taskEstimatedTime}分钟</span>
                     <button class="btn btn-small btn-outline view-task-btn" data-task-id="${taskId}">
@@ -1831,6 +1831,32 @@ class TaskBreakdownApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // 安全地渲染 Markdown 文本为 HTML
+    renderMarkdown(text) {
+        if (!text || typeof text !== 'string') {
+            return '';
+        }
+        // 检查 marked 和 DOMPurify 是否可用
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+            // 如果库未加载，返回转义的纯文本
+            console.warn('marked 或 DOMPurify 未加载，回退到转义文本');
+            return this.escapeHtml(text);
+        }
+        try {
+            // 使用 marked 解析 Markdown
+            const rawHtml = marked.parse(text);
+            // 使用 DOMPurify 清理 HTML，防止 XSS
+            const cleanHtml = DOMPurify.sanitize(rawHtml, {
+                ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins', 'sup', 'sub'],
+                ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'class']
+            });
+            return cleanHtml;
+        } catch (error) {
+            console.error('Markdown 解析错误:', error);
+            return this.escapeHtml(text);
+        }
     }
 
     getRootTaskID() {
