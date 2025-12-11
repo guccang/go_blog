@@ -122,6 +122,24 @@ func (ts *TaskStorage) DeleteTask(account, taskID string) error {
 	return ts.SaveTask(account, deletedTask)
 }
 
+// HardDeleteTask 从存储中硬删除任务（永久删除）
+func (ts *TaskStorage) HardDeleteTask(account, taskID string) error {
+	title := generateTaskBlogTitle(taskID)
+	b := blog.GetBlogWithAccount(account, title)
+	if b == nil {
+		return fmt.Errorf("task not found: %s", taskID)
+	}
+
+	// 从博客存储中删除
+	result := blog.DeleteBlogWithAccount(account, title)
+	if result != 0 {
+		return fmt.Errorf("failed to delete blog with title %s, result code: %d", title, result)
+	}
+
+	// 从索引中移除任务
+	return ts.removeFromTaskIndex(account, taskID)
+}
+
 // GetAllTasks 获取所有任务
 func (ts *TaskStorage) GetAllTasks(account string) ([]*ComplexTask, error) {
 	// 获取所有博客
@@ -321,8 +339,8 @@ func (ts *TaskStorage) GetRootTasks(account string) ([]*ComplexTask, error) {
 
 	var rootTasks []*ComplexTask
 	for _, task := range allTasks {
-		// 只显示未完成的根任务（状态不是completed或cancelled，且进度小于100，且未删除）
-		if task.ParentID == "" && task.Status != "completed" && task.Status != "cancelled" && task.Progress < 100 && !task.Deleted {
+		// 只显示未完成的根任务（状态不是completed或cancelled，且未删除）
+		if task.ParentID == "" && task.Status != "completed" && task.Status != "cancelled" && !task.Deleted {
 			rootTasks = append(rootTasks, task)
 		}
 	}
@@ -344,7 +362,7 @@ func (ts *TaskStorage) GetCompletedRootTasks(account string) ([]*ComplexTask, er
 
 	var completedRootTasks []*ComplexTask
 	for _, task := range allTasks {
-		if task.ParentID == "" && (task.Status == "completed" || task.Progress == 100) && !task.Deleted {
+		if task.ParentID == "" && task.Status == "completed" && !task.Deleted {
 			completedRootTasks = append(completedRootTasks, task)
 		}
 	}
@@ -355,4 +373,26 @@ func (ts *TaskStorage) GetCompletedRootTasks(account string) ([]*ComplexTask, er
 	})
 
 	return completedRootTasks, nil
+}
+
+// GetDeletedTasks 获取所有已删除的任务
+func (ts *TaskStorage) GetDeletedTasks(account string) ([]*ComplexTask, error) {
+	allTasks, err := ts.GetAllTasks(account)
+	if err != nil {
+		return nil, err
+	}
+
+	var deletedTasks []*ComplexTask
+	for _, task := range allTasks {
+		if task.Deleted {
+			deletedTasks = append(deletedTasks, task)
+		}
+	}
+
+	// 按删除时间倒序排序（UpdatedAt字段在删除时已更新）
+	sort.Slice(deletedTasks, func(i, j int) bool {
+		return deletedTasks[i].UpdatedAt > deletedTasks[j].UpdatedAt
+	})
+
+	return deletedTasks, nil
 }

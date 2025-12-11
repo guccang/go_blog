@@ -5,6 +5,7 @@ import (
 	"html/template"
 	log "mylog"
 	"net/http"
+	"strings"
 )
 
 var controller *Controller
@@ -128,6 +129,30 @@ func HandleTasks(w http.ResponseWriter, r *http.Request) {
 	if path == "/api/tasks/completed" {
 		if r.Method == http.MethodGet {
 			controller.HandleGetCompletedRootTasks(w, r)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		}
+		return
+	}
+
+	// 处理已删除任务请求
+	if path == "/api/tasks/deleted" {
+		if r.Method == http.MethodGet {
+			controller.HandleGetDeletedTasks(w, r)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		}
+		return
+	}
+
+	// 处理任务恢复请求
+	if strings.HasSuffix(path, "/restore") {
+		if r.Method == http.MethodPut {
+			controller.HandleRestoreTask(w, r)
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -441,6 +466,39 @@ func HandleCompletedTasks(w http.ResponseWriter, r *http.Request) {
 
 	// 解析模板
 	tmpl, err := template.ParseFiles("templates/taskbreakdown_completed.template")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 执行模板
+	if err := tmpl.Execute(w, nil); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// HandleDeletedTasks 处理已删除任务页面请求
+func HandleDeletedTasks(w http.ResponseWriter, r *http.Request) {
+	log.DebugF(log.ModuleTaskBreakdown, "HandleDeletedTasks %s", r.Method)
+
+	// 检查用户是否已登录
+	session, err := r.Cookie("session")
+	if err != nil || session.Value == "" {
+		// 未登录，重定向到登录页面
+		http.Redirect(w, r, "/index", http.StatusFound)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 解析模板
+	tmpl, err := template.ParseFiles("templates/taskbreakdown_deleted.template")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

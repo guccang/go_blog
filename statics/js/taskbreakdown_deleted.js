@@ -1,10 +1,10 @@
 /**
- * 已完成任务页面JavaScript
+ * 已删除任务页面JavaScript
  */
 
-class CompletedTasksApp {
+class DeletedTasksApp {
     constructor() {
-        this.completedTasks = [];
+        this.deletedTasks = [];
         this.allTasks = []; // 保存所有任务，用于查找子任务
         this.init();
     }
@@ -12,25 +12,25 @@ class CompletedTasksApp {
     init() {
         // DOM元素
         this.elements = {
-            completedTasksList: document.getElementById('completedTasksList'),
+            deletedTasksList: document.getElementById('deletedTasksList'),
             refreshBtn: document.getElementById('refreshBtn'),
             searchInput: document.getElementById('searchInput'),
-            totalCompletedTasks: document.getElementById('totalCompletedTasks'),
-            totalTimeSpent: document.getElementById('totalTimeSpent'),
-            avgCompletionTime: document.getElementById('avgCompletionTime')
+            totalDeletedTasks: document.getElementById('totalDeletedTasks'),
+            totalEstimatedTime: document.getElementById('totalEstimatedTime'),
+            avgDaysDeleted: document.getElementById('avgDaysDeleted')
         };
 
         // 绑定事件
         this.bindEvents();
 
         // 加载数据
-        this.loadCompletedTasks();
+        this.loadDeletedTasks();
     }
 
     bindEvents() {
         // 刷新按钮
         this.elements.refreshBtn.addEventListener('click', () => {
-            this.loadCompletedTasks();
+            this.loadDeletedTasks();
         });
 
         // 搜索输入
@@ -39,13 +39,12 @@ class CompletedTasksApp {
         });
     }
 
-    async loadCompletedTasks() {
+    async loadDeletedTasks() {
         try {
             this.showLoading();
 
-            // 加载所有任务，而不仅仅是已完成的根任务
-            // 这样我们可以在loadSubtasks中查找子任务
-            const response = await fetch('/api/tasks');
+            // 加载已删除任务
+            const response = await fetch('/api/tasks/deleted');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -55,79 +54,82 @@ class CompletedTasksApp {
                 throw new Error(result.error || 'API请求失败');
             }
 
-            const allTasks = result.data || [];
+            const deletedTasks = result.data || [];
+            this.deletedTasks = deletedTasks;
 
-            // 过滤出已完成的根任务
-            this.completedTasks = allTasks.filter(task => {
-                const parentId = task.parent_id || task.parentId || task.parentID || '';
-                const isRoot = !parentId || parentId === '';
-                const taskStatus = task.status || task.Status || 'planning';
-                const isCompleted = taskStatus === 'completed';
-                const isDeleted = task.deleted || task.Deleted || false;
-                return isRoot && isCompleted && !isDeleted;
-            });
-
-            // 保存所有任务供loadSubtasks使用
-            this.allTasks = allTasks;
+            // 加载所有任务供后续使用（如果需要显示子任务）
+            const allResponse = await fetch('/api/tasks');
+            if (allResponse.ok) {
+                const allResult = await allResponse.json();
+                if (allResult.success) {
+                    this.allTasks = allResult.data || [];
+                }
+            }
 
             this.renderTasks();
             this.updateStatistics();
         } catch (error) {
-            console.error('加载已完成任务失败:', error);
-            this.showError('加载已完成任务失败，请刷新页面重试');
+            console.error('加载已删除任务失败:', error);
+            this.showError('加载已删除任务失败，请刷新页面重试');
         }
     }
 
     renderTasks() {
-        if (this.completedTasks.length === 0) {
-            this.elements.completedTasksList.innerHTML = `
+        if (this.deletedTasks.length === 0) {
+            this.elements.deletedTasksList.innerHTML = `
                 <div class="empty-state">
-                    <i class="fas fa-check-circle fa-3x"></i>
-                    <h3>暂无已完成的任务</h3>
-                    <p>当有任务标记为已完成时，它们会显示在这里</p>
+                    <i class="fas fa-trash fa-3x"></i>
+                    <h3>暂无已删除的任务</h3>
+                    <p>当有任务被删除时，它们会显示在这里</p>
                 </div>
             `;
             return;
         }
 
         let html = '';
-        this.completedTasks.forEach(task => {
+        this.deletedTasks.forEach(task => {
             const priorityClass = this.getPriorityClass(task.priority);
-            const completionDate = task.updated_at || task.created_at;
-            const formattedDate = completionDate ? new Date(completionDate).toLocaleDateString('zh-CN') : '未知';
+            const deletedDate = task.updated_at || task.created_at;
+            const formattedDate = deletedDate ? new Date(deletedDate).toLocaleDateString('zh-CN') : '未知';
+            const daysDeleted = this.calculateDaysDeleted(deletedDate);
 
             html += `
-                <div class="task-card completed-task-card" data-task-id="${task.id}">
+                <div class="task-card deleted-task-card" data-task-id="${task.id}">
                     <div class="task-card-header">
                         <div class="task-title-section">
                             <h3 class="task-title">${this.escapeHtml(task.title)}</h3>
-                            <span class="task-status-badge completed">已完成</span>
+                            <span class="task-status-badge deleted">已删除</span>
                         </div>
                         <div class="task-meta">
                             <span class="task-priority ${priorityClass}">
                                 <i class="fas fa-flag"></i> ${this.getPriorityText(task.priority)}
                             </span>
                             <span class="task-date">
-                                <i class="far fa-calendar-check"></i> ${formattedDate}
+                                <i class="far fa-calendar-times"></i> ${formattedDate}
                             </span>
+                            ${daysDeleted !== null ? `
+                            <span class="task-date">
+                                <i class="far fa-clock"></i> ${daysDeleted}天前删除
+                            </span>
+                            ` : ''}
                         </div>
                     </div>
 
                     ${task.description ? `
                     <div class="task-description">
-                        ${this.renderMarkdown(task.description)}
+                        ${this.escapeHtml(task.description)}
                     </div>
                     ` : ''}
 
                     <div class="task-stats">
                         <div class="task-stat">
-                            <span class="stat-label">进度:</span>
-                            <span class="stat-value">${task.progress || 100}%</span>
+                            <span class="stat-label">原状态:</span>
+                            <span class="stat-value">${this.getStatusText(task.status)}</span>
                         </div>
-                        ${task.actual_time ? `
+                        ${task.progress ? `
                         <div class="task-stat">
-                            <span class="stat-label">实际耗时:</span>
-                            <span class="stat-value">${this.formatTime(task.actual_time)}</span>
+                            <span class="stat-label">进度:</span>
+                            <span class="stat-value">${task.progress}%</span>
                         </div>
                         ` : ''}
                         ${task.estimated_time ? `
@@ -151,14 +153,41 @@ class CompletedTasksApp {
                         `).join('')}
                     </div>
                     ` : ''}
+
+                    <div class="task-actions">
+                        <button class="btn btn-success restore-btn" data-task-id="${task.id}">
+                            <i class="fas fa-undo"></i> 恢复任务
+                        </button>
+                        <button class="btn btn-danger permanent-delete-btn" data-task-id="${task.id}">
+                            <i class="fas fa-trash-alt"></i> 永久删除
+                        </button>
+                    </div>
                 </div>
             `;
         });
 
-        this.elements.completedTasksList.innerHTML = html;
+        this.elements.deletedTasksList.innerHTML = html;
 
-        // 为每个任务卡片添加点击事件
-        document.querySelectorAll('.completed-task-card').forEach(card => {
+        // 绑定恢复按钮事件
+        document.querySelectorAll('.restore-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = btn.dataset.taskId;
+                await this.restoreTask(taskId);
+            });
+        });
+
+        // 绑定永久删除按钮事件
+        document.querySelectorAll('.permanent-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = btn.dataset.taskId;
+                await this.permanentDeleteTask(taskId);
+            });
+        });
+
+        // 为每个任务卡片添加点击事件查看详情
+        document.querySelectorAll('.deleted-task-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 // 防止点击按钮或链接时触发
                 if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) {
@@ -186,7 +215,7 @@ class CompletedTasksApp {
             return;
         }
 
-        const filteredTasks = this.completedTasks.filter(task => {
+        const filteredTasks = this.deletedTasks.filter(task => {
             const searchLower = searchTerm.toLowerCase();
             return (
                 (task.title && task.title.toLowerCase().includes(searchLower)) ||
@@ -196,7 +225,7 @@ class CompletedTasksApp {
         });
 
         if (filteredTasks.length === 0) {
-            this.elements.completedTasksList.innerHTML = `
+            this.elements.deletedTasksList.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-search fa-3x"></i>
                     <h3>未找到匹配的任务</h3>
@@ -207,33 +236,102 @@ class CompletedTasksApp {
         }
 
         // 临时渲染过滤后的任务
-        const originalTasks = this.completedTasks;
-        this.completedTasks = filteredTasks;
+        const originalTasks = this.deletedTasks;
+        this.deletedTasks = filteredTasks;
         this.renderTasks();
-        this.completedTasks = originalTasks;
+        this.deletedTasks = originalTasks;
     }
 
     updateStatistics() {
         // 总任务数
-        this.elements.totalCompletedTasks.textContent = this.completedTasks.length;
+        this.elements.totalDeletedTasks.textContent = this.deletedTasks.length;
 
-        // 总耗时
-        const totalTime = this.completedTasks.reduce((sum, task) => sum + (task.actual_time || 0), 0);
-        this.elements.totalTimeSpent.textContent = (totalTime / 60).toFixed(1); // 转换为小时
+        // 总预估时间
+        const totalTime = this.deletedTasks.reduce((sum, task) => sum + (task.estimated_time || 0), 0);
+        this.elements.totalEstimatedTime.textContent = (totalTime / 60).toFixed(1); // 转换为小时
 
-        // 平均完成时间（如果有开始和结束日期）
-        const tasksWithDates = this.completedTasks.filter(task => task.start_date && task.end_date);
+        // 平均删除天数
+        const tasksWithDates = this.deletedTasks.filter(task => task.updated_at);
         if (tasksWithDates.length > 0) {
             const totalDays = tasksWithDates.reduce((sum, task) => {
-                const start = new Date(task.start_date);
-                const end = new Date(task.end_date);
-                const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-                return sum + Math.max(1, days); // 至少1天
+                const deletedDate = new Date(task.updated_at);
+                const now = new Date();
+                const days = Math.ceil((now - deletedDate) / (1000 * 60 * 60 * 24));
+                return sum + Math.max(0, days);
             }, 0);
             const avgDays = (totalDays / tasksWithDates.length).toFixed(1);
-            this.elements.avgCompletionTime.textContent = avgDays;
+            this.elements.avgDaysDeleted.textContent = avgDays;
         } else {
-            this.elements.avgCompletionTime.textContent = 'N/A';
+            this.elements.avgDaysDeleted.textContent = 'N/A';
+        }
+    }
+
+    calculateDaysDeleted(deletedDate) {
+        if (!deletedDate) return null;
+        const deleted = new Date(deletedDate);
+        const now = new Date();
+        const diffTime = Math.abs(now - deleted);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    }
+
+    async restoreTask(taskId) {
+        if (!confirm('确定要恢复这个任务吗？')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/tasks/${taskId}/restore`, {
+                method: 'PUT'
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || '恢复失败');
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || '恢复失败');
+            }
+
+            alert('任务恢复成功！');
+            // 重新加载数据
+            this.loadDeletedTasks();
+        } catch (error) {
+            console.error('恢复任务失败:', error);
+            alert('恢复失败: ' + error.message);
+        }
+    }
+
+    async permanentDeleteTask(taskId) {
+        if (!confirm('确定要永久删除这个任务吗？此操作不可撤销！')) {
+            return;
+        }
+
+        try {
+            // 注意：现有的DELETE是软删除，对于已删除的任务会失败
+            // 我们需要一个硬删除端点，暂时先调用DELETE
+            const response = await fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || '删除失败');
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || '删除失败');
+            }
+
+            alert('任务已永久删除！');
+            // 重新加载数据
+            this.loadDeletedTasks();
+        } catch (error) {
+            console.error('永久删除任务失败:', error);
+            alert('删除失败: ' + error.message);
         }
     }
 
@@ -259,6 +357,17 @@ class CompletedTasksApp {
         }
     }
 
+    getStatusText(status) {
+        const statusMap = {
+            'planning': '规划中',
+            'in-progress': '进行中',
+            'completed': '已完成',
+            'blocked': '阻塞中',
+            'cancelled': '已取消'
+        };
+        return statusMap[status] || status;
+    }
+
     formatTime(minutes) {
         if (minutes < 60) {
             return `${minutes}分钟`;
@@ -275,47 +384,21 @@ class CompletedTasksApp {
         return div.innerHTML;
     }
 
-    // 安全地渲染 Markdown 文本为 HTML
-    renderMarkdown(text) {
-        if (!text || typeof text !== 'string') {
-            return '';
-        }
-        // 检查 marked 和 DOMPurify 是否可用
-        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
-            // 如果库未加载，返回转义的纯文本
-            console.warn('marked 或 DOMPurify 未加载，回退到转义文本');
-            return this.escapeHtml(text);
-        }
-        try {
-            // 使用 marked 解析 Markdown
-            const rawHtml = marked.parse(text);
-            // 使用 DOMPurify 清理 HTML，防止 XSS
-            const cleanHtml = DOMPurify.sanitize(rawHtml, {
-                ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins', 'sup', 'sub'],
-                ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'class']
-            });
-            return cleanHtml;
-        } catch (error) {
-            console.error('Markdown 解析错误:', error);
-            return this.escapeHtml(text);
-        }
-    }
-
     showLoading() {
-        this.elements.completedTasksList.innerHTML = `
+        this.elements.deletedTasksList.innerHTML = `
             <div class="loading-indicator">
-                <i class="fas fa-spinner fa-spin"></i> 加载已完成任务...
+                <i class="fas fa-spinner fa-spin"></i> 加载已删除任务...
             </div>
         `;
     }
 
     showError(message) {
-        this.elements.completedTasksList.innerHTML = `
+        this.elements.deletedTasksList.innerHTML = `
             <div class="error-state">
                 <i class="fas fa-exclamation-triangle fa-3x"></i>
                 <h3>加载失败</h3>
                 <p>${message}</p>
-                <button class="btn btn-primary" onclick="app.loadCompletedTasks()">重试</button>
+                <button class="btn btn-primary" onclick="app.loadDeletedTasks()">重试</button>
             </div>
         `;
     }
@@ -359,14 +442,16 @@ class CompletedTasksApp {
                             <h3 style="margin-top: 0; color: #333;">任务信息</h3>
                             <div class="task-info-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
                                 <div class="info-item">
-                                    <strong>状态:</strong> <span class="task-status-badge completed" style="background-color: #28a745; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">已完成</span>
+                                    <strong>状态:</strong> <span class="task-status-badge deleted" style="background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">已删除</span>
                                 </div>
                                 <div class="info-item">
                                     <strong>优先级:</strong> <span class="task-priority ${this.getPriorityClass(task.priority)}">${this.getPriorityText(task.priority)}</span>
                                 </div>
+                                ${task.progress ? `
                                 <div class="info-item">
-                                    <strong>进度:</strong> ${task.progress || 100}%
+                                    <strong>进度:</strong> ${task.progress}%
                                 </div>
+                                ` : ''}
                                 ${task.start_date ? `
                                 <div class="info-item">
                                     <strong>开始日期:</strong> ${task.start_date}
@@ -387,6 +472,9 @@ class CompletedTasksApp {
                                     <strong>实际耗时:</strong> ${this.formatTime(task.actual_time)}
                                 </div>
                                 ` : ''}
+                                <div class="info-item">
+                                    <strong>删除时间:</strong> ${task.updated_at ? new Date(task.updated_at).toLocaleString('zh-CN') : '未知'}
+                                </div>
                             </div>
                         </div>
 
@@ -394,8 +482,8 @@ class CompletedTasksApp {
                         ${task.description ? `
                         <div class="task-description-section" style="margin-bottom: 30px;">
                             <h3 style="margin-top: 0; color: #333;">任务描述</h3>
-                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff;">
-                                ${this.renderMarkdown(task.description)}
+                            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #dc3545;">
+                                ${this.escapeHtml(task.description).replace(/\n/g, '<br>')}
                             </div>
                         </div>
                         ` : ''}
@@ -424,6 +512,12 @@ class CompletedTasksApp {
                     </div>
 
                     <div class="modal-footer" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; text-align: right;">
+                        <button class="btn btn-success restore-btn-modal" style="padding: 8px 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;" data-task-id="${task.id}">
+                            <i class="fas fa-undo"></i> 恢复任务
+                        </button>
+                        <button class="btn btn-danger permanent-delete-btn-modal" style="padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;" data-task-id="${task.id}">
+                            <i class="fas fa-trash-alt"></i> 永久删除
+                        </button>
                         <button class="btn btn-secondary close-modal-btn" style="padding: 8px 16px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">关闭</button>
                     </div>
                 </div>
@@ -445,6 +539,24 @@ class CompletedTasksApp {
                 if (e.target === modal) {
                     closeModal();
                 }
+            });
+
+            // 绑定恢复按钮事件
+            const restoreBtn = modal.querySelector('.restore-btn-modal');
+            restoreBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = restoreBtn.dataset.taskId;
+                await this.restoreTask(taskId);
+                closeModal();
+            });
+
+            // 绑定永久删除按钮事件
+            const permanentDeleteBtn = modal.querySelector('.permanent-delete-btn-modal');
+            permanentDeleteBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = permanentDeleteBtn.dataset.taskId;
+                await this.permanentDeleteTask(taskId);
+                closeModal();
             });
 
             // 加载子任务
@@ -480,28 +592,29 @@ class CompletedTasksApp {
             let html = '<div class="subtasks-container" style="display: flex; flex-direction: column; gap: 10px;">';
             subtasks.forEach(subtask => {
                 const priorityClass = this.getPriorityClass(subtask.priority);
-                const completionDate = subtask.updated_at || subtask.created_at;
-                const formattedDate = completionDate ? new Date(completionDate).toLocaleDateString('zh-CN') : '未知';
+                const deletedDate = subtask.updated_at || subtask.created_at;
+                const formattedDate = deletedDate ? new Date(deletedDate).toLocaleDateString('zh-CN') : '未知';
+                const isDeleted = subtask.deleted || subtask.Deleted || false;
 
                 html += `
-                    <div class="subtask-card" style="border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; background-color: #f8f9fa;">
+                    <div class="subtask-card" style="border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; background-color: #f8f9fa; ${isDeleted ? 'border-left: 4px solid #dc3545;' : ''}">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                             <div>
                                 <h4 style="margin: 0 0 5px 0;">${this.escapeHtml(subtask.title)}</h4>
                                 <div style="display: flex; gap: 10px; font-size: 14px; color: #6c757d;">
-                                    <span class="task-status-badge completed" style="background-color: #28a745; color: white; padding: 2px 8px; border-radius: 12px;">已完成</span>
+                                    <span class="task-status-badge ${isDeleted ? 'deleted' : 'completed'}" style="background-color: ${isDeleted ? '#dc3545' : '#28a745'}; color: white; padding: 2px 8px; border-radius: 12px;">${isDeleted ? '已删除' : '已完成'}</span>
                                     <span class="task-priority ${priorityClass}">
                                         <i class="fas fa-flag"></i> ${this.getPriorityText(subtask.priority)}
                                     </span>
                                     <span><i class="far fa-calendar-check"></i> ${formattedDate}</span>
                                 </div>
                             </div>
-                            <span style="font-size: 16px; font-weight: bold; color: #28a745;">${subtask.progress || 100}%</span>
+                            <span style="font-size: 16px; font-weight: bold; color: #28a745;">${subtask.progress || 0}%</span>
                         </div>
 
                         ${subtask.description ? `
                         <div style="margin-top: 10px; padding: 10px; background-color: white; border-radius: 4px; border-left: 3px solid #007bff;">
-                            ${this.renderMarkdown(subtask.description)}
+                            ${this.escapeHtml(subtask.description)}
                         </div>
                         ` : ''}
 
@@ -540,5 +653,5 @@ class CompletedTasksApp {
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
-    window.app = new CompletedTasksApp();
+    window.app = new DeletedTasksApp();
 });

@@ -1813,3 +1813,113 @@ body {
 .task-card .task-description p:last-child {
     margin-bottom: 0;
 }
+
+/* ==================== 任务状态分组样式 ==================== */
+
+.task-status-group {
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.task-status-group-header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background 0.3s;
+    user-select: none;
+}
+
+.task-status-group-header:hover {
+    background: #e9ecef;
+}
+
+.task-group-collapse-btn {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    margin-right: 8px;
+    transition: all 0.2s;
+    border-radius: 3px;
+}
+
+.task-group-collapse-btn:hover {
+    background: #dee2e6;
+    color: #333;
+}
+
+.task-group-collapse-btn i {
+    font-size: 12px;
+    transition: transform 0.3s;
+}
+
+.task-group-collapse-btn.expanded i {
+    transform: rotate(90deg);
+}
+
+.task-group-collapse-btn.collapsed i {
+    transform: rotate(0deg);
+}
+
+.task-status-group-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    flex: 1;
+}
+
+.task-status-group-count {
+    font-size: 0.85rem;
+    color: #666;
+    margin-left: 0.5rem;
+}
+
+.task-status-group-tasks {
+    padding: 0.5rem;
+    background: #fff;
+}
+
+/* 状态组标题颜色 */
+.task-status-group-title.status-planning {
+    color: #666;
+}
+
+.task-status-group-title.status-inprogress {
+    color: #1976d2;
+}
+
+.task-status-group-title.status-blocked {
+    color: #d32f2f;
+}
+
+.task-status-group-title.status-completed {
+    color: #388e3c;
+}
+
+.task-status-group-title.status-cancelled {
+    color: #757575;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .task-status-group-header {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .task-status-group-tasks {
+        padding: 0.25rem;
+    }
+}

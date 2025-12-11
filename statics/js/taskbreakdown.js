@@ -8,6 +8,7 @@ class TaskBreakdownApp {
         this.tasks = [];
         this.charts = {};
         this.expandedTasks = new Set(); // 跟踪展开的任务ID
+        this.groupRootTasksByStatus = true; // 是否按状态分组显示根任务
 
         // 获取根任务ID（从URL参数或data属性）
         this.rootTaskID = this.getRootTaskID();
@@ -30,6 +31,8 @@ class TaskBreakdownApp {
             taskEstimatedTime: document.getElementById('taskEstimatedTime'),
             taskDailyTime: document.getElementById('taskDailyTime'),
             taskActualTime: document.getElementById('taskActualTime'),
+            taskCreatedAt: document.getElementById('taskCreatedAt'),
+            taskUpdatedAt: document.getElementById('taskUpdatedAt'),
             taskTags: document.getElementById('taskTags'),
             addRootTask: document.getElementById('addRootTask'),
             editTask: document.getElementById('editTask'),
@@ -71,6 +74,7 @@ class TaskBreakdownApp {
             rootTaskBreadcrumb: document.getElementById('rootTaskBreadcrumb'),
             rootTaskTitle: document.getElementById('rootTaskTitle'),
             statusFilter: document.getElementById('statusFilter'),
+            toggleGrouping: document.getElementById('toggleGrouping'),
             rootTasksPanel: document.getElementById('rootTasksPanel'),
             rootTasksList: document.getElementById('rootTasksList')
         };
@@ -96,6 +100,9 @@ class TaskBreakdownApp {
 
         // 加载数据
         this.loadData();
+
+        // 更新分组按钮状态
+        this.updateGroupingButton();
 
         // 加载趋势数据（延迟加载确保图表容器已准备好）
         this.loadInitialTrendsData();
@@ -157,6 +164,11 @@ class TaskBreakdownApp {
         // 状态过滤事件
         if (this.elements.statusFilter) {
             this.elements.statusFilter.addEventListener('change', () => this.applyStatusFilter());
+        }
+
+        // 分组切换事件
+        if (this.elements.toggleGrouping) {
+            this.elements.toggleGrouping.addEventListener('click', () => this.toggleGrouping());
         }
 
         // 时间字段自动计算预估时间
@@ -372,13 +384,22 @@ class TaskBreakdownApp {
             const parentId = task.parent_id || task.parentId || task.parentID || '';
             const isRoot = !parentId || parentId === '';
             const taskStatus = task.status || task.Status || 'planning';
-            const isCompleted = taskStatus === 'completed' || task.progress === 100;
+            const isCompleted = taskStatus === 'completed';
             const isCancelled = taskStatus === 'cancelled';
             const isDeleted = task.deleted || task.Deleted || false;
             return isRoot && !isCompleted && !isCancelled && !isDeleted;
         });
 
         console.log('根任务数量:', rootTasks.length);
+
+        // 按任务标题排序（中文友好）
+        rootTasks.sort((a, b) => {
+            const titleA = (a.title || a.Title || '未命名任务').toLowerCase();
+            const titleB = (b.title || b.Title || '未命名任务').toLowerCase();
+            return titleA.localeCompare(titleB, 'zh-CN');
+        });
+
+        console.log('排序后的根任务:', rootTasks.map(t => t.title || t.Title));
 
         // 如果没有根任务，隐藏面板
         if (rootTasks.length === 0) {
@@ -535,7 +556,7 @@ class TaskBreakdownApp {
             if (!isStatusFilter) {
                 const taskStatus = task.status || task.Status || 'planning';
                 const taskProgress = task.progress || task.Progress || 0;
-                const isCompleted = taskStatus === 'completed' || taskProgress === 100;
+                const isCompleted = taskStatus === 'completed';
                 const isCancelled = taskStatus === 'cancelled';
                 const isDeleted = task.deleted || task.Deleted || false;
 
@@ -589,11 +610,11 @@ class TaskBreakdownApp {
                     return true;
                 }
 
-                // 如果父任务已完成、取消或删除，是孤儿
+                // 如果父任务已完成（状态为completed）、取消或删除，是孤儿
                 const parentStatus = parentTask.status || parentTask.Status || 'planning';
                 const parentProgress = parentTask.progress || parentTask.Progress || 0;
                 const parentDeleted = parentTask.deleted || parentTask.Deleted || false;
-                const parentCompleted = parentStatus === 'completed' || parentProgress === 100;
+                const parentCompleted = parentStatus === 'completed';
                 const parentCancelled = parentStatus === 'cancelled';
 
                 return parentCompleted || parentCancelled || parentDeleted;
@@ -652,15 +673,21 @@ class TaskBreakdownApp {
         });
 
         console.log('开始渲染根任务...');
-        // 渲染根任务
-        rootTasks.forEach((task, index) => {
-            const taskTitle = task.title || task.Title || '无标题';
-            console.log(`渲染根任务 ${index + 1}/${rootTasks.length}: ${taskTitle}`);
-            const rendered = this.renderTaskNode(task, this.elements.taskTree, 0);
-            if (!rendered) {
-                console.log(`根任务 ${taskTitle} 渲染失败或已跳过`);
-            }
-        });
+
+        // 如果启用了状态分组且不是状态过滤模式，按状态分组显示根任务
+        if (this.groupRootTasksByStatus && !isStatusFilter) {
+            this.renderGroupedRootTasks(rootTasks);
+        } else {
+            // 平铺渲染根任务（原始方式）
+            rootTasks.forEach((task, index) => {
+                const taskTitle = task.title || task.Title || '无标题';
+                console.log(`渲染根任务 ${index + 1}/${rootTasks.length}: ${taskTitle}`);
+                const rendered = this.renderTaskNode(task, this.elements.taskTree, 0);
+                if (!rendered) {
+                    console.log(`根任务 ${taskTitle} 渲染失败或已跳过`);
+                }
+            });
+        }
 
         // 初始化可排序
         this.initSortable();
@@ -974,6 +1001,8 @@ class TaskBreakdownApp {
         const taskEstimatedTime = task.estimated_time || task.estimatedTime || task.EstimatedTime || 0;
         const taskDailyTime = task.daily_time || task.dailyTime || task.DailyTime || 0;
         const taskActualTime = task.actual_time || task.actualTime || task.ActualTime || 0;
+        const taskCreatedAt = task.created_at || task.createdAt || task.CreatedAt || '-';
+        const taskUpdatedAt = task.updated_at || task.updatedAt || task.UpdatedAt || '-';
 
         // 更新任务详情
         this.elements.taskTitle.textContent = taskTitle;
@@ -990,6 +1019,8 @@ class TaskBreakdownApp {
         this.elements.taskEstimatedTime.textContent = `${taskEstimatedTime}分钟`;
         this.elements.taskDailyTime.textContent = `${taskDailyTime}分钟`;
         this.elements.taskActualTime.textContent = `${taskActualTime}分钟`;
+        this.elements.taskCreatedAt.textContent = this.formatDateForDisplay(taskCreatedAt);
+        this.elements.taskUpdatedAt.textContent = this.formatDateForDisplay(taskUpdatedAt);
 
         // 更新标签
         this.elements.taskTags.innerHTML = '';
@@ -1015,6 +1046,9 @@ class TaskBreakdownApp {
         console.log('模态框显示状态设置为block');
 
         this.elements.taskForm.reset();
+        // 显式清除隐藏字段，确保reset()后它们为空
+        this.elements.taskId.value = '';
+        this.elements.parentId.value = '';
 
         // 设置默认日期
         const today = new Date().toISOString().split('T')[0];
@@ -2168,6 +2202,154 @@ class TaskBreakdownApp {
         collapseBtn.classList.add('expanded');
         this.expandedTasks.add(taskId);
         console.log(`任务 ${taskId} 的子任务已展开`);
+    }
+
+    // 按状态分组渲染根任务
+    renderGroupedRootTasks(rootTasks) {
+        console.log('按状态分组渲染根任务，任务数量:', rootTasks.length);
+
+        // 按状态分组
+        const tasksByStatus = {
+            'planning': [],
+            'in-progress': [],
+            'blocked': [],
+            'completed': [],
+            'cancelled': []
+        };
+
+        rootTasks.forEach(task => {
+            const taskStatus = task.status || task.Status || 'planning';
+            if (tasksByStatus[taskStatus]) {
+                tasksByStatus[taskStatus].push(task);
+            } else {
+                // 未知状态，放入planning组
+                tasksByStatus['planning'].push(task);
+            }
+        });
+
+        console.log('分组结果:', tasksByStatus);
+
+        // 移除空分组
+        Object.keys(tasksByStatus).forEach(status => {
+            if (tasksByStatus[status].length === 0) {
+                delete tasksByStatus[status];
+            }
+        });
+
+        // 如果只有一个分组，直接平铺渲染
+        const statusKeys = Object.keys(tasksByStatus);
+        if (statusKeys.length <= 1) {
+            console.log('只有一个分组，直接平铺渲染');
+            rootTasks.forEach(task => {
+                this.renderTaskNode(task, this.elements.taskTree, 0);
+            });
+            return;
+        }
+
+        // 分组标题顺序
+        const statusOrder = ['planning', 'in-progress', 'blocked', 'completed', 'cancelled'];
+
+        // 渲染每个分组
+        statusOrder.forEach(status => {
+            if (!tasksByStatus[status]) return;
+
+            const tasks = tasksByStatus[status];
+            const statusText = this.getStatusText(status);
+            const statusClass = `status-${status.replace('-', '')}`;
+
+            // 创建分组容器
+            const groupContainer = document.createElement('div');
+            groupContainer.className = 'task-status-group';
+            groupContainer.dataset.status = status;
+
+            // 创建分组标题（可点击折叠/展开）
+            const groupHeader = document.createElement('div');
+            groupHeader.className = 'task-status-group-header';
+            groupHeader.innerHTML = `
+                <button class="task-group-collapse-btn collapsed" data-status="${status}">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                <span class="task-status-group-title ${statusClass}">${statusText}</span>
+                <span class="task-status-group-count">(${tasks.length})</span>
+            `;
+            groupContainer.appendChild(groupHeader);
+
+            // 创建任务列表容器
+            const tasksContainer = document.createElement('div');
+            tasksContainer.className = 'task-status-group-tasks';
+            tasksContainer.style.display = 'none'; // 默认折叠
+            groupContainer.appendChild(tasksContainer);
+
+            // 添加点击事件折叠/展开
+            groupHeader.addEventListener('click', (e) => {
+                // 如果点击的是折叠按钮，使用按钮的事件处理
+                if (e.target.closest('.task-group-collapse-btn')) {
+                    return;
+                }
+                this.toggleTaskGroupCollapse(status, groupHeader, tasksContainer);
+            });
+
+            // 折叠按钮点击事件
+            const collapseBtn = groupHeader.querySelector('.task-group-collapse-btn');
+            collapseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleTaskGroupCollapse(status, groupHeader, tasksContainer);
+            });
+
+            // 渲染该组内的任务
+            tasks.forEach(task => {
+                this.renderTaskNode(task, tasksContainer, 0);
+            });
+
+            this.elements.taskTree.appendChild(groupContainer);
+        });
+    }
+
+    // 切换任务组折叠/展开状态
+    toggleTaskGroupCollapse(status, groupHeader, tasksContainer) {
+        const collapseBtn = groupHeader.querySelector('.task-group-collapse-btn');
+        const isCollapsed = tasksContainer.style.display === 'none';
+
+        if (isCollapsed) {
+            // 展开
+            tasksContainer.style.display = 'block';
+            collapseBtn.classList.remove('collapsed');
+            collapseBtn.classList.add('expanded');
+            console.log(`展开状态组: ${status}`);
+        } else {
+            // 折叠
+            tasksContainer.style.display = 'none';
+            collapseBtn.classList.remove('expanded');
+            collapseBtn.classList.add('collapsed');
+            console.log(`折叠状态组: ${status}`);
+        }
+    }
+
+    // 更新分组按钮状态
+    updateGroupingButton() {
+        if (!this.elements.toggleGrouping) return;
+
+        if (this.groupRootTasksByStatus) {
+            this.elements.toggleGrouping.innerHTML = '<i class="fas fa-layer-group"></i> 分组';
+            this.elements.toggleGrouping.classList.remove('btn-outline');
+            this.elements.toggleGrouping.classList.add('btn-secondary');
+        } else {
+            this.elements.toggleGrouping.innerHTML = '<i class="fas fa-list"></i> 平铺';
+            this.elements.toggleGrouping.classList.remove('btn-secondary');
+            this.elements.toggleGrouping.classList.add('btn-outline');
+        }
+    }
+
+    // 切换分组显示
+    toggleGrouping() {
+        this.groupRootTasksByStatus = !this.groupRootTasksByStatus;
+        console.log(`切换分组显示: ${this.groupRootTasksByStatus ? '启用' : '禁用'}`);
+
+        // 更新按钮状态
+        this.updateGroupingButton();
+
+        // 重新渲染任务树
+        this.renderTaskTree();
     }
 }
 

@@ -348,9 +348,10 @@ func (tm *TaskManager) DeleteTask(account, taskID string) error {
 		return err
 	}
 
-	// 检查是否已删除
+	// 如果任务已删除，进行硬删除；否则软删除
 	if task.Deleted {
-		return fmt.Errorf("task already deleted")
+		// 硬删除：从存储中永久删除
+		return tm.storage.HardDeleteTask(account, taskID)
 	}
 
 	// 标记为删除
@@ -384,6 +385,38 @@ func (tm *TaskManager) DeleteTask(account, taskID string) error {
 	return nil
 }
 
+// RestoreTask 恢复已删除的任务
+func (tm *TaskManager) RestoreTask(account, taskID string) error {
+	// 获取任务
+	task, err := tm.storage.GetTask(account, taskID)
+	if err != nil {
+		return err
+	}
+
+	// 检查是否已删除
+	if !task.Deleted {
+		return fmt.Errorf("task is not deleted")
+	}
+
+	// 恢复任务
+	task.Deleted = false
+	task.UpdatedAt = time.Now().Format(time.RFC3339)
+	// 移除标题中的[DELETED]前缀
+	if strings.HasPrefix(task.Title, "[DELETED] ") {
+		task.Title = strings.TrimPrefix(task.Title, "[DELETED] ")
+	}
+	// 状态恢复为planning（或者保持原状？）
+	// 这里我们设置为planning，用户可之后修改
+	task.Status = StatusPlanning
+
+	// 保存恢复的任务
+	if err := tm.storage.SaveTask(account, task); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ListTasks 列出所有任务
 func (tm *TaskManager) ListTasks(account string) ([]*ComplexTask, error) {
 	tasks, err := tm.storage.GetAllTasks(account)
@@ -400,6 +433,11 @@ func (tm *TaskManager) ListTasks(account string) ([]*ComplexTask, error) {
 	}
 
 	return activeTasks, nil
+}
+
+// GetDeletedTasks 获取所有已删除的任务
+func (tm *TaskManager) GetDeletedTasks(account string) ([]*ComplexTask, error) {
+	return tm.storage.GetDeletedTasks(account)
 }
 
 // GetTaskTree 获取任务树
@@ -799,20 +837,15 @@ func (tm *TaskManager) GetStatistics(account, rootID string) (*StatisticsData, e
 		stats.StatusDistribution[normalizedStatus]++
 
 		// 统计特定状态数量
-		// 首先检查进度是否为100%，如果是则计入已完成
-		if task.Progress == 100 {
+		// 按状态统计，进度100%不再自动视为完成
+		switch normalizedStatus {
+		case StatusCompleted:
 			stats.CompletedTasks++
-		} else {
-			// 否则按状态统计
-			switch normalizedStatus {
-			case StatusCompleted:
-				stats.CompletedTasks++
-			case StatusInProgress, StatusPlanning:
-				// 将planning状态也计入进行中
-				stats.InProgressTasks++
-			case StatusBlocked:
-				stats.BlockedTasks++
-			}
+		case StatusInProgress, StatusPlanning:
+			// 将planning状态也计入进行中
+			stats.InProgressTasks++
+		case StatusBlocked:
+			stats.BlockedTasks++
 		}
 
 		// 统计优先级

@@ -250,6 +250,40 @@ func (c *Controller) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleRestoreTask 处理恢复已删除任务请求
+func (c *Controller) HandleRestoreTask(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// 从URL路径提取任务ID
+	path := r.URL.Path
+	var taskID string
+	if strings.HasPrefix(path, "/api/tasks/") {
+		taskID = strings.TrimPrefix(path, "/api/tasks/")
+		// 移除可能的/restore后缀
+		taskID = strings.TrimSuffix(taskID, "/restore")
+	}
+
+	if taskID == "" {
+		sendErrorResponse(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	if err := c.manager.RestoreTask(account, taskID); err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to restore task: "+err.Error())
+		return
+	}
+
+	sendSuccessResponse(w, map[string]string{
+		"message": "Task restored successfully",
+	})
+}
+
 // HandleGetSubtasks 处理获取子任务请求
 func (c *Controller) HandleGetSubtasks(w http.ResponseWriter, r *http.Request) {
 	setCommonHeaders(w)
@@ -301,6 +335,27 @@ func (c *Controller) HandleGetCompletedRootTasks(w http.ResponseWriter, r *http.
 	}
 
 	sendSuccessResponse(w, completedRootTasks)
+}
+
+// HandleGetDeletedTasks 处理获取已删除任务请求
+func (c *Controller) HandleGetDeletedTasks(w http.ResponseWriter, r *http.Request) {
+	setCommonHeaders(w)
+
+	// 检查用户是否已登录
+	account := getAccountFromRequest(r)
+	if account == "" {
+		sendErrorResponse(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// 获取已删除的任务
+	deletedTasks, err := c.manager.GetDeletedTasks(account)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "Failed to get deleted tasks: "+err.Error())
+		return
+	}
+
+	sendSuccessResponse(w, deletedTasks)
 }
 
 // HandleAddSubtask 处理添加子任务请求

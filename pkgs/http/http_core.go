@@ -241,6 +241,7 @@ func Init() int {
 	// Task breakdown routes
 	h.HandleFunc("/taskbreakdown", taskbreakdown.HandleTaskBreakdown)
 	h.HandleFunc("/taskbreakdown/completed", taskbreakdown.HandleCompletedTasks)
+	h.HandleFunc("/taskbreakdown/deleted", taskbreakdown.HandleDeletedTasks)
 	h.HandleFunc("/api/tasks", taskbreakdown.HandleTasks)
 	h.HandleFunc("/api/tasks/", taskbreakdown.HandleTasks) // 处理带ID的路径
 	h.HandleFunc("/api/tasks/progress", taskbreakdown.HandleTaskProgress)

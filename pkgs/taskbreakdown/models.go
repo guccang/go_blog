@@ -1,8 +1,7 @@
 package taskbreakdown
 
 import (
-	"strconv"
-	"time"
+	"github.com/google/uuid"
 )
 
 // 任务状态常量
@@ -178,9 +177,8 @@ func IsValidPriority(priority int) bool {
 
 // GenerateTaskID 生成任务ID
 func GenerateTaskID() string {
-	// 使用时间戳和纳秒级时间生成唯一ID
-	// 在实际生产环境中，建议使用UUID库
-	return "task-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	// 使用UUID生成唯一ID，格式为: tbd-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	return "tbd-" + uuid.New().String()
 }
 
 // 计算任务深度
@@ -283,9 +281,9 @@ type TaskTimeAnalysisResponse struct {
 	Error   string             `json:"error,omitempty"`
 }
 
-// IsTaskCompleted 检查任务是否已完成
+// IsTaskCompleted 检查任务是否已完成（仅检查状态，不检查进度）
 func IsTaskCompleted(task *ComplexTask) bool {
-	return task.Status == StatusCompleted || task.Progress == 100
+	return task.Status == StatusCompleted
 }
 
 // ShouldIncludeInTimeCalculation 检查任务是否应计入时间计算

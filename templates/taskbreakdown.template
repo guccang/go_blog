@@ -20,6 +20,7 @@
             <h1 class="page-title">任务拆解追踪</h1>
             <a href="/editor" class="header-link">创建博客</a>
             <a href="/taskbreakdown/completed" class="header-link">查看已完成任务</a>
+            <a href="/taskbreakdown/deleted" class="header-link">查看已删除任务</a>
             <div class="header-controls">
                 <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> 刷新</button>
             </div>
@@ -141,6 +142,9 @@
                                         <option value="blocked">阻塞中</option>
                                         <option value="cancelled">已取消</option>
                                     </select>
+                                    <button id="toggleGrouping" class="btn btn-secondary" title="切换根任务分组显示">
+                                        <i class="fas fa-layer-group"></i> 分组
+                                    </button>
                                 </div>
                                 <button id="addRootTask" class="btn btn-primary"><i class="fas fa-plus"></i> 添加根任务</button>
                             </div>
@@ -179,6 +183,8 @@
                                         <div><strong>预计时间:</strong> <span id="taskEstimatedTime">0分钟</span></div>
                                         <div><strong>每天分配时间:</strong> <span id="taskDailyTime">0分钟</span></div>
                                         <div><strong>实际时间:</strong> <span id="taskActualTime">0分钟</span></div>
+                                        <div><strong>创建时间:</strong> <span id="taskCreatedAt">-</span></div>
+                                        <div><strong>更新时间:</strong> <span id="taskUpdatedAt">-</span></div>
                                     </div>
                                     <div class="task-tags" id="taskTags">
                                         <!-- 标签将通过JavaScript动态生成-->

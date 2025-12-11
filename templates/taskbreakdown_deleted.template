@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>已删除任务 - GUCCANG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/taskbreakdown.css">
+</head>
+<body>
+    <header class="page-header">
+        <div class="container">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <h1 class="page-title">已删除任务</h1>
+            <a href="/taskbreakdown" class="header-link">返回任务列表</a>
+            <div class="header-controls">
+                <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> 刷新</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 统计面板 -->
+        <div class="stats-panel">
+            <div class="stat-card">
+                <div class="stat-value" id="totalDeletedTasks">0</div>
+                <div class="stat-label">已删除任务数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalEstimatedTime">0</div>
+                <div class="stat-label">总预估时间(小时)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgDaysDeleted">0</div>
+                <div class="stat-label">平均删除天数</div>
+            </div>
+        </div>
+
+        <!-- 任务列表 -->
+        <div class="task-list-container">
+            <div class="section-header">
+                <h2><i class="fas fa-trash"></i> 已删除的任务</h2>
+                <div class="section-controls">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="搜索已删除任务..." class="search-input">
+                        <i class="fas fa-search search-icon"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div id="deletedTasksList" class="task-list">
+                <!-- 已删除任务将通过JavaScript动态加载 -->
+                <div class="loading-indicator">
+                    <i class="fas fa-spinner fa-spin"></i> 加载已删除任务...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/taskbreakdown_deleted.js"></script>
+</body>
+</html>
