@@ -174,7 +174,7 @@ func loadMCPConfigs() {
 			Title:   title,
 			Content: "",
 		})
-		mcp_blog := control.GetBlog(config.GetAdminAccount(), title)
+		mcp_blog = control.GetBlog(config.GetAdminAccount(), title)
 		if mcp_blog == nil {
 			log.ErrorF(log.ModuleMCP, "Failed to get blog '%s'", title)
 			return
