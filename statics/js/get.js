@@ -491,14 +491,51 @@ function submitContent() {
 	xhr.send(formData);
 }
 
+/**
+ * /get 页面输入时：对齐 /editor 的行为，避免长文本时频繁重排 + 大块 innerHTML 更新导致预览异常
+ * - markdown 渲染做轻量防抖
+ * - 高度调整放到 requestAnimationFrame，并优先复用 adjustTextareaHeight()
+ */
+let getPreviewDebounceTimer = null;
+let getPreviewRafId = 0;
+
 // Handle editor resizing and preview updates
 editor.addEventListener('input', function() {
-	// 针对不同设备采用不同的高度调整策略
-		// PC版本全屏显示
-		this.style.height = 'auto';
-		// 使用更大的高度值，覆盖整个可见区域
-		this.style.height = (window.innerHeight * 0.85) + 'px';
-		mdRender(this.value);
+	const textarea = this;
+
+	// 保留光标和滚动位置（避免高度调整导致跳动）
+	const scrollTop = textarea.scrollTop;
+	const cursorPosition = textarea.selectionStart;
+
+	// 预览渲染：防抖（长文输入时显著降低渲染压力）
+	if (getPreviewDebounceTimer) clearTimeout(getPreviewDebounceTimer);
+	getPreviewDebounceTimer = setTimeout(() => {
+		mdRender(textarea.value);
+
+		// 预览区域高度：保持自适应，避免被固定高度导致“截断”
+		if (md) {
+			md.style.height = 'auto';
+		}
+	}, 100);
+
+	// 高度调整：下一帧执行，避免同步 layout thrash
+	if (getPreviewRafId) cancelAnimationFrame(getPreviewRafId);
+	getPreviewRafId = requestAnimationFrame(() => {
+		if (typeof adjustTextareaHeight === 'function') {
+			adjustTextareaHeight(textarea);
+		} else {
+			// 兜底：不再强制固定 0.85vh，而是按内容自适应，并限制上限
+			textarea.style.height = 'auto';
+			const maxHeight = Math.floor(window.innerHeight * 0.85);
+			textarea.style.height = Math.min(textarea.scrollHeight, maxHeight) + 'px';
+		}
+
+		// 恢复滚动与光标
+		textarea.scrollTop = scrollTop;
+		if (textarea === document.activeElement) {
+			textarea.setSelectionRange(cursorPosition, cursorPosition);
+		}
+	});
 });
 
 // Initialize editor and preview on page load
@@ -516,9 +553,9 @@ window.onload = function() {
 		// 同时应用全屏样式类
 		editor.classList.add('editorfullscreen');
 		
-		// 预览区域也需要适应全屏
+		// 预览区域：不要固定高度，否则长内容会看起来“截断”
 		if (md) {
-			md.style.height = (window.innerHeight * 0.85) + 'px';
+			md.style.height = 'auto';
 		}
 
 	
