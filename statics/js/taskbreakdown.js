@@ -76,7 +76,15 @@ class TaskBreakdownApp {
             statusFilter: document.getElementById('statusFilter'),
             toggleGrouping: document.getElementById('toggleGrouping'),
             rootTasksPanel: document.getElementById('rootTasksPanel'),
-            rootTasksList: document.getElementById('rootTasksList')
+            rootTasksList: document.getElementById('rootTasksList'),
+            // 重复周期复选框
+            repeatMon: document.getElementById('repeatMon'),
+            repeatTue: document.getElementById('repeatTue'),
+            repeatWed: document.getElementById('repeatWed'),
+            repeatThu: document.getElementById('repeatThu'),
+            repeatFri: document.getElementById('repeatFri'),
+            repeatSat: document.getElementById('repeatSat'),
+            repeatSun: document.getElementById('repeatSun')
         };
 
         // 调试：检查关键元素是否存在
@@ -181,6 +189,18 @@ class TaskBreakdownApp {
             this.elements.startDate.addEventListener('change', calculateHandler);
             this.elements.endDate.addEventListener('change', calculateHandler);
         }
+
+        // 重复周期复选框自动计算预估时间
+        const repeatDayCheckboxes = [
+            this.elements.repeatMon, this.elements.repeatTue, this.elements.repeatWed,
+            this.elements.repeatThu, this.elements.repeatFri, this.elements.repeatSat,
+            this.elements.repeatSun
+        ];
+        repeatDayCheckboxes.forEach(checkbox => {
+            if (checkbox) {
+                checkbox.addEventListener('change', () => this.calculateEstimatedTime());
+            }
+        });
 
         // 模态框关闭
         this.elements.closeButtons.forEach(btn => {
@@ -1111,6 +1131,7 @@ class TaskBreakdownApp {
         const taskProgress = task.progress || task.Progress || 0;
         const taskTags = task.tags || task.Tags || [];
         const taskParentId = task.parent_id || task.parentId || task.parentID || '';
+        const taskRepeatDays = task.repeat_days || task.repeatDays || task.RepeatDays || [];
 
         this.elements.taskId.value = taskId;
         this.elements.title.value = taskTitle;
@@ -1125,6 +1146,23 @@ class TaskBreakdownApp {
         this.elements.progressValue.textContent = `${taskProgress}%`;
         this.elements.tags.value = taskTags.join(', ');
         this.elements.parentId.value = taskParentId;
+
+        // 设置重复周期复选框
+        const repeatDays = Array.isArray(taskRepeatDays) ? taskRepeatDays : [];
+        const dayMapping = {
+            'mon': this.elements.repeatMon,
+            'tue': this.elements.repeatTue,
+            'wed': this.elements.repeatWed,
+            'thu': this.elements.repeatThu,
+            'fri': this.elements.repeatFri,
+            'sat': this.elements.repeatSat,
+            'sun': this.elements.repeatSun
+        };
+        for (const day in dayMapping) {
+            if (dayMapping[day]) {
+                dayMapping[day].checked = repeatDays.includes(day);
+            }
+        }
 
         // 自动计算预估时间
         this.calculateEstimatedTime();
@@ -1152,7 +1190,8 @@ class TaskBreakdownApp {
             estimated_time: parseInt(this.elements.estimatedTime.value) || 0,
             daily_time: parseInt(this.elements.dailyTime.value) || 0,
             progress: parseInt(this.elements.progress.value) || 0,
-            tags: this.elements.tags.value ? this.elements.tags.value.split(',').map(tag => tag.trim()).filter(tag => tag) : []
+            tags: this.elements.tags.value ? this.elements.tags.value.split(',').map(tag => tag.trim()).filter(tag => tag) : [],
+            repeat_days: this.getSelectedRepeatDays()
         };
 
         // 如果有父任务ID，添加到数据中
@@ -1408,6 +1447,46 @@ class TaskBreakdownApp {
         }
     }
 
+    // 计算考虑重复周期的有效天数
+    calculateEffectiveDays(start, end, repeatDays) {
+        if (!repeatDays || repeatDays.length === 0) {
+            // 如果没有重复周期，计算总天数（包含开始和结束日）
+            const diffTime = Math.abs(end - start);
+            const msPerDay = 1000 * 60 * 60 * 24;
+            let diffDays = Math.floor(diffTime / msPerDay) + 1;
+            // 确保天数至少为1（处理同一天的情况）
+            if (diffDays < 1) diffDays = 1;
+            return diffDays;
+        }
+
+        // 将星期几缩写映射到数字（0=星期日，1=星期一，...，6=星期六）
+        const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+        const selectedDays = repeatDays.map(day => dayMap[day.toLowerCase()]).filter(day => day !== undefined);
+
+        if (selectedDays.length === 0) {
+            // 如果没有有效的选中天数，返回0
+            return 0;
+        }
+
+        // 计算开始日期和结束日期之间有多少天是选中的星期几
+        let effectiveDays = 0;
+        const current = new Date(start);
+        const endDate = new Date(end);
+
+        // 确保我们包含结束日期
+        endDate.setDate(endDate.getDate() + 1);
+
+        while (current < endDate) {
+            const dayOfWeek = current.getDay(); // 0=星期日，1=星期一，...，6=星期六
+            if (selectedDays.includes(dayOfWeek)) {
+                effectiveDays++;
+            }
+            current.setDate(current.getDate() + 1);
+        }
+
+        return effectiveDays;
+    }
+
     calculateEstimatedTime() {
         const dailyTime = parseInt(this.elements.dailyTime.value) || 0;
         const startDate = this.elements.startDate.value;
@@ -1427,16 +1506,14 @@ class TaskBreakdownApp {
                 return;
             }
 
-            const diffTime = Math.abs(end - start);
-            let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // 获取选中的重复周期
+            const repeatDays = this.getSelectedRepeatDays();
 
-            // 如果开始日期和结束日期是同一天，天数至少为1
-            if (diffDays === 0) {
-                diffDays = 1;
-            }
+            // 计算有效天数（考虑重复周期）
+            const effectiveDays = this.calculateEffectiveDays(start, end, repeatDays);
 
-            // 预估时间 = 每天分配时间 * 天数
-            const estimatedTime = dailyTime * diffDays;
+            // 预估时间 = 每天分配时间 * 有效天数
+            const estimatedTime = dailyTime * effectiveDays;
             this.elements.estimatedTime.value = estimatedTime || 0;
         } catch (error) {
             console.error('计算预估时间错误:', error);
@@ -2338,6 +2415,26 @@ class TaskBreakdownApp {
             this.elements.toggleGrouping.classList.remove('btn-secondary');
             this.elements.toggleGrouping.classList.add('btn-outline');
         }
+    }
+
+    // 获取选中的重复周期
+    getSelectedRepeatDays() {
+        const days = [];
+        const dayCheckboxes = {
+            'mon': this.elements.repeatMon,
+            'tue': this.elements.repeatTue,
+            'wed': this.elements.repeatWed,
+            'thu': this.elements.repeatThu,
+            'fri': this.elements.repeatFri,
+            'sat': this.elements.repeatSat,
+            'sun': this.elements.repeatSun
+        };
+        for (const day in dayCheckboxes) {
+            if (dayCheckboxes[day] && dayCheckboxes[day].checked) {
+                days.push(day);
+            }
+        }
+        return days;
     }
 
     // 切换分组显示

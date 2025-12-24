@@ -1923,3 +1923,27 @@ body {
         padding: 0.25rem;
     }
 }
+
+/* 重复周期复选框样式 */
+.repeat-days-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.repeat-day-option {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.repeat-day-option input[type="checkbox"] {
+    margin: 0;
+}
+
+.repeat-day-option label {
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+}

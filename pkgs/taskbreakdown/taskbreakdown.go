@@ -68,6 +68,7 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 		Order:         0, // 将在保存时计算
 		Tags:          req.Tags,
 		Deleted:       false,
+		RepeatDays:    req.RepeatDays,
 	}
 
 	// 如果指定了父任务，验证父任务存在
@@ -115,7 +116,7 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 	if task.EstimatedTime == 0 && task.DailyTime > 0 && task.StartDate != "" && task.EndDate != "" {
 		log.DebugF(log.ModuleTaskBreakdown, "任务 %s 预估时间为0，开始自动计算预估时间", task.ID)
 		log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
-		calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime)
+		calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime, task.RepeatDays)
 		log.DebugF(log.ModuleTaskBreakdown, "计算得到的预估时间: %d分钟", calculatedEstimatedTime)
 		if calculatedEstimatedTime > 0 {
 			task.EstimatedTime = calculatedEstimatedTime
@@ -265,6 +266,11 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 		updated = true
 	}
 
+	if updates.RepeatDays != nil {
+		task.RepeatDays = *updates.RepeatDays
+		updated = true
+	}
+
 	// 如果没有更新，直接返回
 	if !updated {
 		return task, nil
@@ -281,7 +287,7 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 		if shouldRecalculate && task.DailyTime > 0 && task.StartDate != "" && task.EndDate != "" {
 			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 需要重新计算预估时间", task.ID)
 			log.DebugF(log.ModuleTaskBreakdown, "开始日期: %s, 结束日期: %s, 每天分配时间: %d分钟", task.StartDate, task.EndDate, task.DailyTime)
-			calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime)
+			calculatedEstimatedTime := calculateEstimatedTimeFromDates(task.StartDate, task.EndDate, task.DailyTime, task.RepeatDays)
 			log.DebugF(log.ModuleTaskBreakdown, "计算得到的预估时间: %d分钟", calculatedEstimatedTime)
 			if calculatedEstimatedTime > 0 {
 				task.EstimatedTime = calculatedEstimatedTime
@@ -1671,10 +1677,10 @@ func calculateActualTimeSmart(task *ComplexTask) int {
 		return 0
 	}
 
-	// 计算天数
-	days, err := calculateDaysBetween(task.StartDate, task.EndDate)
+	// 计算有效天数（考虑重复周期）
+	days, err := calculateEffectiveDays(task.StartDate, task.EndDate, task.RepeatDays)
 	if err != nil || days <= 0 {
-		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: 天数计算失败或无效 days=%d, err=%v", days, err)
+		log.DebugF(log.ModuleTaskBreakdown, "calculateActualTimeSmart: 有效天数计算失败或无效 days=%d, err=%v", days, err)
 		return 0
 	}
 
@@ -1698,17 +1704,79 @@ func calculateActualTimeSmart(task *ComplexTask) int {
 	return result
 }
 
-// calculateEstimatedTimeFromDates 根据开始日期、结束日期和每天分配时间计算预估时间
+// calculateEffectiveDays 计算考虑重复周期的有效天数
+func calculateEffectiveDays(startDate, endDate string, repeatDays []string) (int, error) {
+	if startDate == "" || endDate == "" {
+		return 0, fmt.Errorf("startDate or endDate is empty")
+	}
+
+	days, err := calculateDaysBetween(startDate, endDate)
+	if err != nil || days <= 0 {
+		return 0, err
+	}
+
+	// 如果没有重复周期，返回总天数
+	if len(repeatDays) == 0 {
+		return days, nil
+	}
+
+	// 解析开始日期和结束日期
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return 0, err
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return 0, err
+	}
+
+	// 将星期几缩写映射到数字（0=星期日，1=星期一，...，6=星期六）
+	dayMap := map[string]int{
+		"sun": 0, "mon": 1, "tue": 2, "wed": 3,
+		"thu": 4, "fri": 5, "sat": 6,
+	}
+	selectedDays := []int{}
+	for _, day := range repeatDays {
+		if d, ok := dayMap[strings.ToLower(day)]; ok {
+			selectedDays = append(selectedDays, d)
+		}
+	}
+
+	if len(selectedDays) == 0 {
+		return 0, nil
+	}
+
+	// 计算有效天数
+	effectiveDays := 0
+	current := start
+	// 包含结束日期
+	end = end.AddDate(0, 0, 1)
+
+	for current.Before(end) {
+		dayOfWeek := int(current.Weekday()) // 0=星期日，1=星期一，...，6=星期六
+		for _, selected := range selectedDays {
+			if dayOfWeek == selected {
+				effectiveDays++
+				break
+			}
+		}
+		current = current.AddDate(0, 0, 1)
+	}
+
+	return effectiveDays, nil
+}
+
+// calculateEstimatedTimeFromDates 根据开始日期、结束日期和每天分配时间计算预估时间，考虑重复周期
 // 如果任何字段无效，返回0
-func calculateEstimatedTimeFromDates(startDate, endDate string, dailyTime int) int {
+func calculateEstimatedTimeFromDates(startDate, endDate string, dailyTime int, repeatDays []string) int {
 	if startDate == "" || endDate == "" || dailyTime <= 0 {
 		log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 无效参数 startDate=%q, endDate=%q, dailyTime=%d", startDate, endDate, dailyTime)
 		return 0
 	}
 
-	days, err := calculateDaysBetween(startDate, endDate)
+	days, err := calculateEffectiveDays(startDate, endDate, repeatDays)
 	if err != nil || days <= 0 {
-		log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 天数计算失败或无效 days=%d, err=%v", days, err)
+		log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 有效天数计算失败或无效 days=%d, err=%v", days, err)
 		return 0
 	}
 

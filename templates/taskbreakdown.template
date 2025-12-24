@@ -442,6 +442,41 @@
                     </div>
 
                     <div class="form-group">
+                        <label>重复周期</label>
+                        <div class="repeat-days-container">
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatMon" name="repeatDays" value="mon">
+                                <label for="repeatMon">星期一</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatTue" name="repeatDays" value="tue">
+                                <label for="repeatTue">星期二</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatWed" name="repeatDays" value="wed">
+                                <label for="repeatWed">星期三</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatThu" name="repeatDays" value="thu">
+                                <label for="repeatThu">星期四</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatFri" name="repeatDays" value="fri">
+                                <label for="repeatFri">星期五</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatSat" name="repeatDays" value="sat">
+                                <label for="repeatSat">星期六</label>
+                            </div>
+                            <div class="repeat-day-option">
+                                <input type="checkbox" id="repeatSun" name="repeatDays" value="sun">
+                                <label for="repeatSun">星期日</label>
+                            </div>
+                        </div>
+                        <div class="field-help">选择任务重复的星期几（可多选）</div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="tags">标签(用逗号分隔)</label>
                         <input type="text" id="tags" placeholder="例如: 工作,项目,重要">
                     </div>

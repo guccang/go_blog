@@ -43,6 +43,7 @@ type ComplexTask struct {
 	Order         int           `json:"order"`           // 显示顺序
 	Tags          []string      `json:"tags"`            // 标签分类
 	Deleted       bool          `json:"deleted"`         // 是否已删除
+	RepeatDays    []string      `json:"repeat_days,omitempty"` // 重复周期: 星期一到星期日 (mon, tue, wed, thu, fri, sat, sun)
 }
 
 // TaskIndex 任务索引 - 用于快速查询
@@ -73,6 +74,7 @@ type TaskUpdateRequest struct {
 	ParentID      *string   `json:"parent_id,omitempty"`
 	Order         *int      `json:"order,omitempty"`
 	Tags          *[]string `json:"tags,omitempty"`
+	RepeatDays    *[]string `json:"repeat_days,omitempty"` // 重复周期: 星期一到星期日 (mon, tue, wed, thu, fri, sat, sun)
 }
 
 // TaskCreateRequest 任务创建请求
@@ -87,6 +89,7 @@ type TaskCreateRequest struct {
 	DailyTime     int      `json:"daily_time,omitempty"`
 	ParentID      string   `json:"parent_id,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
+	RepeatDays    []string `json:"repeat_days,omitempty"` // 重复周期: 星期一到星期日 (mon, tue, wed, thu, fri, sat, sun)
 }
 
 // TaskResponse 任务响应
