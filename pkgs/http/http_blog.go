@@ -351,10 +351,26 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 检查是否是 taskbreakdown 博客，如果是则重定向到 taskbreakdown 页面
-	if strings.HasPrefix(blogname, "taskbreakdown-task-") {
-		// 直接重定向到taskbreakdown页面
-		// h.Redirect(w, r, "/taskbreakdown", 302)
-		// return
+	if strings.HasPrefix(blogname, "taskbreakdown-") {
+		// 从blogname中解析出任务ID，格式为taskbreakdown-<task-id>
+		// 支持两种格式：taskbreakdown-task-xxxx 和 taskbreakdown-tbd-xxxx
+		taskID := strings.TrimPrefix(blogname, "taskbreakdown-")
+		if taskID == "" {
+			// 如果taskID为空，重定向到默认taskbreakdown页面
+			h.Redirect(w, r, "/taskbreakdown", 302)
+			return
+		}
+
+		// 查找根任务ID
+		rootTaskID := findRootTaskID(account, taskID, blog.Content)
+		if rootTaskID == "" {
+			// 如果找不到根任务，使用当前任务ID
+			rootTaskID = taskID
+		}
+
+		// 重定向到taskbreakdown页面，并传递root参数
+		h.Redirect(w, r, fmt.Sprintf("/taskbreakdown?root=%s", rootTaskID), 302)
+		return
 	}
 
 	usepublic := 0
@@ -363,14 +379,15 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 	if checkLogin(r) != 0 {
 		// 判定blog访问权限 - 直接使用已获取的blog对象
 		auth_type := blog.AuthType
-		if (auth_type & module.EAuthType_private) != 0 {
-			h.Redirect(w, r, "/index", 302)
-			return
-		}
-
+		// 如果博客有公开权限，允许访问（只读模式）
 		if (auth_type & module.EAuthType_public) != 0 {
 			usepublic = 1
+		} else if (auth_type & module.EAuthType_private) != 0 {
+			// 只有私有权限，未登录用户重定向到登录页面
+			h.Redirect(w, r, "/index", 302)
+			return
 		} else {
+			// 既不是公开也不是私有权限，重定向
 			h.Redirect(w, r, "/index", 302)
 			return
 		}
@@ -981,4 +998,77 @@ func HandleMigrationImport(w h.ResponseWriter, r *h.Request) {
 	result := fmt.Sprintf("导入完成! 更新了 %d 个博客，跳过 %d 个不存在的博客", updatedCount, skippedCount)
 	w.WriteHeader(h.StatusOK)
 	w.Write([]byte(result))
+}
+
+// findRootTaskID 查找任务的根任务ID
+func findRootTaskID(account, taskID, blogContent string) string {
+	// 解析当前任务的parent_id
+	parentID := extractParentIDFromContent(blogContent)
+	if parentID == "" {
+		// 没有parent，当前任务就是根任务
+		return taskID
+	}
+
+	// 递归查找父任务的根任务
+	// 防止循环引用，设置最大递归深度
+	return findRootTaskIDRecursive(account, parentID, 0)
+}
+
+// extractParentIDFromContent 从博客内容中提取parent_id
+func extractParentIDFromContent(content string) string {
+	// 尝试解析JSON
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		// 可能内容不是直接的JSON，尝试从markdown代码块中提取
+		// 查找 ```json 代码块
+		startMarker := "```json"
+		endMarker := "```"
+		startIndex := strings.Index(content, startMarker)
+		if startIndex != -1 {
+			startIndex += len(startMarker)
+			endIndex := strings.Index(content[startIndex:], endMarker)
+			if endIndex != -1 {
+				jsonContent := strings.TrimSpace(content[startIndex : startIndex+endIndex])
+				if err := json.Unmarshal([]byte(jsonContent), &data); err != nil {
+					return ""
+				}
+			}
+		} else {
+			// 不是JSON格式，返回空
+			return ""
+		}
+	}
+
+	// 提取parent_id字段
+	if parentID, ok := data["parent_id"].(string); ok && parentID != "" {
+		return parentID
+	}
+	return ""
+}
+
+// findRootTaskIDRecursive 递归查找根任务ID
+func findRootTaskIDRecursive(account, taskID string, depth int) string {
+	// 防止循环引用和无限递归，设置最大深度
+	const maxDepth = 100
+	if depth > maxDepth {
+		return taskID
+	}
+
+	// 获取任务博客
+	blogName := fmt.Sprintf("taskbreakdown-%s", taskID)
+	blog := control.GetBlog(account, blogName)
+	if blog == nil {
+		// 找不到博客，返回当前任务ID作为根
+		return taskID
+	}
+
+	// 提取parent_id
+	parentID := extractParentIDFromContent(blog.Content)
+	if parentID == "" {
+		// 没有parent，当前任务就是根任务
+		return taskID
+	}
+
+	// 继续向上查找
+	return findRootTaskIDRecursive(account, parentID, depth+1)
 }

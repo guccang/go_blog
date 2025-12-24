@@ -34,6 +34,8 @@ class TaskBreakdownApp {
             taskCreatedAt: document.getElementById('taskCreatedAt'),
             taskUpdatedAt: document.getElementById('taskUpdatedAt'),
             taskTags: document.getElementById('taskTags'),
+            taskBlogLink: document.getElementById('taskBlogLink'),
+            taskBlogLinkAnchor: document.getElementById('taskBlogLinkAnchor'),
             addRootTask: document.getElementById('addRootTask'),
             editTask: document.getElementById('editTask'),
             deleteTask: document.getElementById('deleteTask'),
@@ -1051,6 +1053,20 @@ class TaskBreakdownApp {
                 tagElement.textContent = tag;
                 this.elements.taskTags.appendChild(tagElement);
             });
+        }
+
+        // 更新博客链接
+        if (this.elements.taskBlogLink && this.elements.taskBlogLinkAnchor) {
+            const taskID = task.id || task.ID || '';
+            if (taskID) {
+                const blogName = `taskbreakdown-${taskID}`;
+                const blogUrl = `/get?blogname=${encodeURIComponent(blogName)}`;
+                this.elements.taskBlogLinkAnchor.href = blogUrl;
+                this.elements.taskBlogLinkAnchor.textContent = `[${blogName}]`;
+                this.elements.taskBlogLink.style.display = 'block';
+            } else {
+                this.elements.taskBlogLink.style.display = 'none';
+            }
         }
     }
 

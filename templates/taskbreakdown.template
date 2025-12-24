@@ -177,6 +177,9 @@
                                         <span class="task-progress" id="taskProgress">0%</span>
                                     </div>
                                     <div class="task-description" id="taskDescription">任务描述...</div>
+                                    <div class="task-blog-link" id="taskBlogLink" style="margin-top: 10px; margin-bottom: 10px; padding: 8px; background-color: #f5f5f5; border-radius: 4px;">
+                                        <strong>博客链接:</strong> <a id="taskBlogLinkAnchor" href="#" target="_blank">[任务博客]</a>
+                                    </div>
                                     <div class="task-dates">
                                         <div><strong>开始日期</strong> <span id="taskStartDate">-</span></div>
                                         <div><strong>结束日期:</strong> <span id="taskEndDate">-</span></div>

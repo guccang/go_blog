@@ -207,11 +207,7 @@ function initializeTagFilters() {
         filter.addEventListener('click', function(e) {
             e.preventDefault();
             const tag = this.getAttribute('data-tag');
-            if (tag === 'all') {
-                filterByTag(tag);
-            } else {
-                searchByTag(tag);
-            }
+            filterByTag(tag);
         });
     });
 }
@@ -239,7 +235,17 @@ function filterByTag(tag) {
             visibleCount++;
         } else {
             const cardTags = card.getAttribute('data-tags');
-            if (cardTags && cardTags.includes(tag)) {
+            // 检查标签是否匹配（忽略大小写）
+            let hasMatchingTag = false;
+            if (cardTags) {
+                // 将标签字符串分割成数组，过滤空字符串
+                const tagArray = cardTags.trim().split(/\s+/);
+                // 检查是否有标签匹配（忽略大小写）
+                hasMatchingTag = tagArray.some(cardTag =>
+                    cardTag.toLowerCase() === tag.toLowerCase()
+                );
+            }
+            if (hasMatchingTag) {
                 card.style.display = 'block';
                 card.style.animation = 'fadeIn 0.3s ease-out';
                 visibleCount++;
