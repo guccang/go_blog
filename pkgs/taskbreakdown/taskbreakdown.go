@@ -1855,9 +1855,19 @@ func (tm *TaskManager) SyncInProgressTasksToTodoList(account, date string) (int,
 			continue
 		}
 
-		// 转换时间：将预估时间（分钟）转换为小时和分钟
-		hours := task.EstimatedTime / 60
-		minutes := task.EstimatedTime % 60
+		// 转换时间：优先使用每天分配时间（DailyTime），如果为0则使用预估时间
+		timeInMinutes := task.DailyTime
+		if timeInMinutes <= 0 {
+			timeInMinutes = task.EstimatedTime
+		}
+		// 如果两者都<=0，设置默认时间为30分钟
+		if timeInMinutes <= 0 {
+			timeInMinutes = 30
+			log.DebugF(log.ModuleTaskBreakdown, "任务 %s 的每天分配时间和预估时间都为0，使用默认30分钟", task.Title)
+		}
+
+		hours := timeInMinutes / 60
+		minutes := timeInMinutes % 60
 
 		// 添加到待办事项
 		_, err := todoManager.AddTodo(account, date, task.Title, hours, minutes)
