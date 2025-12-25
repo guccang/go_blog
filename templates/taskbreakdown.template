@@ -23,6 +23,7 @@
             <a href="/taskbreakdown/deleted" class="header-link">查看已删除任务</a>
             <div class="header-controls">
                 <button id="refreshBtn" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> 刷新</button>
+                <button id="syncToTodoBtn" class="btn btn-primary"><i class="fas fa-tasks"></i> 同步到今日待办</button>
             </div>
         </div>
     </header>

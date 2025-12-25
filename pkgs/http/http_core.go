@@ -254,6 +254,7 @@ func Init() int {
 	h.HandleFunc("/api/tasks/search", taskbreakdown.HandleSearchTasks)
 	h.HandleFunc("/api/tasks/time-analysis", taskbreakdown.HandleTaskTimeAnalysis)
 	h.HandleFunc("/api/tasks/daily-overlap", taskbreakdown.HandleDailyTimeOverlap)
+	h.HandleFunc("/api/tasks/sync-to-todo", taskbreakdown.HandleSyncToTodo)
 
 	// Year plan and goal routes
 	h.HandleFunc("/yearplan", HandleYearPlan)

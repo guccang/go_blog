@@ -41,6 +41,7 @@ class TaskBreakdownApp {
             deleteTask: document.getElementById('deleteTask'),
             addSubtask: document.getElementById('addSubtask'),
             refreshBtn: document.getElementById('refreshBtn'),
+            syncToTodoBtn: document.getElementById('syncToTodoBtn'),
             tabLinks: document.querySelectorAll('.tab-link'),
             taskModal: document.getElementById('taskModal'),
             modalTitle: document.getElementById('modalTitle'),
@@ -161,6 +162,10 @@ class TaskBreakdownApp {
 
         if (this.elements.refreshBtn) {
             this.elements.refreshBtn.addEventListener('click', () => this.loadData());
+        }
+
+        if (this.elements.syncToTodoBtn) {
+            this.elements.syncToTodoBtn.addEventListener('click', () => this.syncToTodo());
         }
 
         if (this.elements.refreshTrendsBtn) {
@@ -2463,6 +2468,31 @@ class TaskBreakdownApp {
 
         // 重新渲染任务树
         this.renderTaskTree();
+    }
+
+    // 同步到待办事项
+    async syncToTodo() {
+        try {
+            const response = await fetch('/api/tasks/sync-to-todo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message || `成功同步 ${data.synced_count} 个任务到待办事项`);
+            } else {
+                alert('同步失败：' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            console.error('同步失败:', error);
+            alert('同步失败：' + error.message);
+        }
     }
 }
 

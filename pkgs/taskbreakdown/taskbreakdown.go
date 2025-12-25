@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "mylog"
+	"todolist"
 )
 
 // TaskManager 任务管理器
@@ -139,6 +140,20 @@ func (tm *TaskManager) CreateTask(account string, req *TaskCreateRequest) (*Comp
 	// 保存任务
 	if err := tm.storage.SaveTask(account, task); err != nil {
 		return nil, fmt.Errorf("failed to save task: %w", err)
+	}
+
+	// 如果任务状态为进行中，自动同步到待办事项
+	if task.Status == StatusInProgress && !task.Deleted {
+		go func() {
+			// 异步同步到当天待办事项
+			date := time.Now().Format("2006-01-02")
+			syncedCount, err := tm.SyncInProgressTasksToTodoList(account, date)
+			if err != nil {
+				log.ErrorF(log.ModuleTaskBreakdown, "自动同步新任务到待办事项失败: %v", err)
+			} else {
+				log.DebugF(log.ModuleTaskBreakdown, "自动同步 %d 个进行中任务到待办事项 (%s)", syncedCount, date)
+			}
+		}()
 	}
 
 	return task, nil
@@ -339,6 +354,20 @@ func (tm *TaskManager) UpdateTask(account, taskID string, updates *TaskUpdateReq
 					// 记录错误但不影响当前操作
 					fmt.Printf("Failed to update parent task progress: %v\n", updateErr)
 				}
+			}
+		}()
+	}
+
+	// 如果任务状态变为进行中，自动同步到待办事项
+	if updates.Status != nil && *updates.Status == StatusInProgress && !task.Deleted {
+		go func() {
+			// 异步同步到当天待办事项
+			date := time.Now().Format("2006-01-02")
+			syncedCount, err := tm.SyncInProgressTasksToTodoList(account, date)
+			if err != nil {
+				log.ErrorF(log.ModuleTaskBreakdown, "自动同步任务到待办事项失败: %v", err)
+			} else {
+				log.DebugF(log.ModuleTaskBreakdown, "自动同步 %d 个进行中任务到待办事项 (%s)", syncedCount, date)
 			}
 		}()
 	}
@@ -1783,4 +1812,63 @@ func calculateEstimatedTimeFromDates(startDate, endDate string, dailyTime int, r
 	result := days * dailyTime
 	log.DebugF(log.ModuleTaskBreakdown, "calculateEstimatedTimeFromDates: 计算成功 days=%d, dailyTime=%d, result=%d", days, dailyTime, result)
 	return result
+}
+
+// SyncInProgressTasksToTodoList 将进行中任务同步到待办事项
+func (tm *TaskManager) SyncInProgressTasksToTodoList(account, date string) (int, error) {
+	// 1. 获取所有进行中任务
+	allTasks, err := tm.ListTasks(account)
+	if err != nil {
+		return 0, err
+	}
+
+	// 过滤进行中任务（只同步根任务，避免重复添加子任务）
+	var inProgressTasks []*ComplexTask
+	for _, task := range allTasks {
+		if task.Status == StatusInProgress && !task.Deleted && task.ParentID == "" {
+			inProgressTasks = append(inProgressTasks, task)
+		}
+	}
+
+	if len(inProgressTasks) == 0 {
+		return 0, nil
+	}
+
+	// 2. 获取指定日期的现有待办事项
+	todoManager := todolist.NewTodoManager()
+	existingTodos, err := todoManager.GetTodosByDate(account, date)
+	if err != nil {
+		return 0, err
+	}
+
+	// 3. 构建现有待办事项标题集合（用于去重）
+	existingTitles := make(map[string]bool)
+	for _, item := range existingTodos.Items {
+		existingTitles[item.Content] = true
+	}
+
+	// 4. 同步任务
+	syncedCount := 0
+	for _, task := range inProgressTasks {
+		// 检查是否已存在
+		if existingTitles[task.Title] {
+			continue
+		}
+
+		// 转换时间：将预估时间（分钟）转换为小时和分钟
+		hours := task.EstimatedTime / 60
+		minutes := task.EstimatedTime % 60
+
+		// 添加到待办事项
+		_, err := todoManager.AddTodo(account, date, task.Title, hours, minutes)
+		if err != nil {
+			// 记录错误但继续同步其他任务
+			log.ErrorF(log.ModuleTaskBreakdown, "Failed to sync task %s: %v", task.ID, err)
+			continue
+		}
+
+		syncedCount++
+	}
+
+	return syncedCount, nil
 }

@@ -2,10 +2,14 @@ package taskbreakdown
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	log "mylog"
 	"net/http"
 	"strings"
+	"time"
+
+	"auth"
 )
 
 var controller *Controller
@@ -549,4 +553,63 @@ func HandleDailyTimeOverlap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	controller.HandleCheckDailyTimeOverlap(w, r)
+}
+
+// HandleSyncToTodo 处理同步到待办事项的请求
+func HandleSyncToTodo(w http.ResponseWriter, r *http.Request) {
+	// 检查请求方法
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// 认证检查（复用现有逻辑）
+	session, err := r.Cookie("session")
+	if err != nil || session.Value == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
+		return
+	}
+
+	// 获取账户
+	account := auth.GetAccountBySession(session.Value)
+	if account == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid session"})
+		return
+	}
+
+	// 获取日期参数（默认为今天）
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+
+	// 调用同步方法
+	manager := NewTaskManager()
+	syncedCount, err := manager.SyncInProgressTasksToTodoList(account, date)
+	if err != nil {
+		log.ErrorF(log.ModuleTaskBreakdown, "HandleSyncToTodo failed: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// 返回结果
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"synced_count": syncedCount,
+		"date": date,
+		"message": fmt.Sprintf("成功同步 %d 个任务到 %s", syncedCount, date),
+	})
 }

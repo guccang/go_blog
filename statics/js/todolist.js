@@ -2647,14 +2647,68 @@
         function toggleHistoryManually() {
             console.log('toggleHistoryManually function called');
             console.log('Current historyCollapsed state:', historyCollapsed);
-            
+
             // 切换折叠状态
             historyCollapsed = !historyCollapsed;
             console.log('New historyCollapsed state:', historyCollapsed);
-            
+
             // 更新UI
             updateHistoryCollapsedState();
-            
+
             // 保存到本地存储
             localStorage.setItem('historyCollapsed', historyCollapsed);
         }
+
+        // 同步进行中任务到待办事项
+        function syncInProgressTasks() {
+            const syncBtn = document.getElementById('syncTasksBtn');
+            if (!syncBtn) return;
+
+            // 禁用按钮，防止重复点击
+            syncBtn.disabled = true;
+            const originalText = syncBtn.innerHTML;
+            syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 同步中...';
+
+            // 获取当前日期
+            const date = currentDate;
+
+            // 调用同步API
+            fetch(`/api/tasks/sync-to-todo?date=${date}`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast(`成功同步 ${data.synced_count} 个任务到 ${data.date}`, 'success');
+                    // 重新加载待办事项列表
+                    loadTodos(date);
+                } else {
+                    showToast(`同步失败: ${data.error || '未知错误'}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('同步失败:', error);
+                showToast(`同步失败: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = originalText;
+            });
+        }
+
+        // 初始化同步按钮事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            const syncBtn = document.getElementById('syncTasksBtn');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', syncInProgressTasks);
+            }
+        });

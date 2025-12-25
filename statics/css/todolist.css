@@ -2193,3 +2193,37 @@
         font-size: 16px;
     }
 }
+
+/* 同步任务按钮样式 */
+.sync-tasks-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.sync-tasks-btn:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+.sync-tasks-btn:active {
+    transform: translateY(0);
+}
+
+.sync-tasks-btn:disabled {
+    background-color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
