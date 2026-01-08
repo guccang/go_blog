@@ -11,12 +11,15 @@ import (
 
 // TodoItem represents a single todo item
 type TodoItem struct {
-	ID        string    `json:"id"`
-	Content   string    `json:"content"`
-	Completed bool      `json:"completed"`
-	CreatedAt time.Time `json:"created_at"`
-	Hours     int       `json:"hours,omitempty"`
-	Minutes   int       `json:"minutes,omitempty"`
+	ID         string    `json:"id"`
+	Content    string    `json:"content"`
+	Completed  bool      `json:"completed"`
+	CreatedAt  time.Time `json:"created_at"`
+	Hours      int       `json:"hours,omitempty"`
+	Minutes    int       `json:"minutes,omitempty"`
+	Urgency    int       `json:"urgency,omitempty"`     // 紧急程度: 1-3 (1最紧急)
+	Importance int       `json:"importance,omitempty"`  // 重要程度: 1-3 (1最重要)
+	Score      int       `json:"score,omitempty"`       // 积分 (计算字段)
 }
 
 // TodoList represents a collection of todo items for a specific date
@@ -50,7 +53,7 @@ func getDateFromTitle(title string) string {
 }
 
 // AddTodo adds a new todo item to a specific date's list
-func (tm *TodoManager) AddTodo(account, date, content string, hours, minutes int) (*TodoItem, error) {
+func (tm *TodoManager) AddTodo(account, date, content string, hours, minutes, urgency, importance int) (*TodoItem, error) {
 	// Get or create todo list for the date
 	todoList, err := tm.GetTodosByDate(account, date)
 	if err != nil {
@@ -62,12 +65,15 @@ func (tm *TodoManager) AddTodo(account, date, content string, hours, minutes int
 
 	// Create new todo item
 	item := TodoItem{
-		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-		Content:   content,
-		Completed: false,
-		CreatedAt: time.Now(),
-		Hours:     hours,
-		Minutes:   minutes,
+		ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+		Content:    content,
+		Completed:  false,
+		CreatedAt:  time.Now(),
+		Hours:      hours,
+		Minutes:    minutes,
+		Urgency:    urgency,
+		Importance: importance,
+		Score:      calculateScore(urgency, importance, hours, minutes),
 	}
 
 	// Add item to list
@@ -151,6 +157,13 @@ func (tm *TodoManager) UpdateTodoTime(account, date, id string, hours, minutes i
 		if todoList.Items[i].ID == id {
 			todoList.Items[i].Hours = hours
 			todoList.Items[i].Minutes = minutes
+			// Recalculate score when time changes
+			todoList.Items[i].Score = calculateScore(
+				todoList.Items[i].Urgency,
+				todoList.Items[i].Importance,
+				hours,
+				minutes,
+			)
 			found = true
 			break
 		}
@@ -291,4 +304,35 @@ func (tm *TodoManager) UpdateTodoOrder(account, date string, order []string) err
 
 	// Save to blog
 	return tm.saveTodosToBlog(account, todoList)
+}
+
+// calculateScore calculates the priority score for a todo item
+// urgency: 1-3 (1 most urgent), importance: 1-3 (1 most important)
+// returns total score based on urgency, importance, and time
+func calculateScore(urgency, importance, hours, minutes int) int {
+	// Map urgency/importance levels to scores: 1->5, 2->3, 3->1
+	urgencyScore := map[int]int{1: 5, 2: 3, 3: 1}
+	importanceScore := map[int]int{1: 5, 2: 3, 3: 1}
+
+	var uScore, iScore int
+	if urgency >= 1 && urgency <= 3 {
+		uScore = urgencyScore[urgency]
+	}
+	if importance >= 1 && importance <= 3 {
+		iScore = importanceScore[importance]
+	}
+
+	// Calculate time score
+	totalMinutes := hours*60 + minutes
+	var timeScore int
+	switch {
+	case totalMinutes <= 30:
+		timeScore = 5
+	case totalMinutes <= 120:
+		timeScore = 3
+	default:
+		timeScore = 1
+	}
+
+	return uScore + iScore + timeScore
 }

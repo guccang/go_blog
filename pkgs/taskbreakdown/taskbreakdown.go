@@ -1870,7 +1870,7 @@ func (tm *TaskManager) SyncInProgressTasksToTodoList(account, date string) (int,
 		minutes := timeInMinutes % 60
 
 		// 添加到待办事项
-		_, err := todoManager.AddTodo(account, date, task.Title, hours, minutes)
+		_, err := todoManager.AddTodo(account, date, task.Title, hours, minutes, 0, 0)
 		if err != nil {
 			// 记录错误但继续同步其他任务
 			log.ErrorF(log.ModuleTaskBreakdown, "Failed to sync task %s: %v", task.ID, err)

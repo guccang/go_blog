@@ -84,10 +84,12 @@ func (c *Controller) HandleAddTodo(w http.ResponseWriter, r *http.Request) {
     }
     
     var request struct {
-        Content string `json:"content"`
-        Date    string `json:"date"`
-        Hours   int    `json:"hours"`
-        Minutes int    `json:"minutes"`
+        Content    string `json:"content"`
+        Date       string `json:"date"`
+        Hours      int    `json:"hours"`
+        Minutes    int    `json:"minutes"`
+        Urgency    int    `json:"urgency"`
+        Importance int    `json:"importance"`
     }
 
     // Parse request body
@@ -116,7 +118,7 @@ func (c *Controller) HandleAddTodo(w http.ResponseWriter, r *http.Request) {
         date = time.Now().Format("2006-01-02")
     }
 
-    todo, err := c.manager.AddTodo(account, date, request.Content, request.Hours, request.Minutes)
+    todo, err := c.manager.AddTodo(account, date, request.Content, request.Hours, request.Minutes, request.Urgency, request.Importance)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         json.NewEncoder(w).Encode(map[string]string{

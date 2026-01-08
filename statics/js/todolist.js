@@ -295,6 +295,10 @@
                 return;
             }
 
+            // 获取紧急和重要程度
+            const urgency = parseInt(document.getElementById('urgency_select').value) || 0;
+            const importance = parseInt(document.getElementById('importance_select').value) || 0;
+
             console.log("Sending request to add todo:", content);
         
             const xhr = new XMLHttpRequest();
@@ -316,7 +320,10 @@
                             document.getElementById('minutes_display').textContent = '0';
                             document.getElementById('hours_value').textContent = '0';
                             document.getElementById('minutes_value').textContent = '0';
-                            
+                            // 重置优先级选择
+                            document.getElementById('urgency_select').value = '0';
+                            document.getElementById('importance_select').value = '0';
+
                             loadTodos(currentDate);
                             loadHistoricalTodos();
                             showToast('任务已添加', 'success');
@@ -335,7 +342,10 @@
                             document.getElementById('minutes-display').textContent = '0';
                             document.getElementById('hours-value').textContent = '0';
                             document.getElementById('minutes-value').textContent = '0';
-                            
+                            // 重置优先级选择
+                            document.getElementById('urgency_select').value = '0';
+                            document.getElementById('importance_select').value = '0';
+
                             loadTodos(currentDate);
                         }
                     } else if (xhr.status === 401) {
@@ -356,7 +366,9 @@
                 content: content,
                 date: currentDate,
                 hours: hours,
-                minutes: minutes
+                minutes: minutes,
+                urgency: urgency,
+                importance: importance
             });
             
             xhr.send(data);
@@ -802,6 +814,11 @@
                                 <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM12.5 7H11V13L16.2 16.2L17 14.9L12.5 12.2V7Z" fill="currentColor"/>
                             </svg>
                             ${timeDisplay || '未设置时间'}
+                        </div>
+                        <div class="todo-priority">
+                            <span class="priority-badge urgency-${todo.urgency || 0}">急:${todo.urgency || 0}</span>
+                            <span class="priority-badge importance-${todo.importance || 0}">重:${todo.importance || 0}</span>
+                            <span class="priority-badge score-${todo.score || 0}">积分:${todo.score || 0}</span>
                         </div>
                     </div>
                     <div class="todo-actions">
@@ -2197,7 +2214,13 @@
             // 如果没有保存的顺序或加载失败，使用默认排序
             if (!loadOrderFromLocalStorage() || todoOrder.length === 0) {
                 return todos.sort((a, b) => {
-                    // 使用创建时间排序
+                    // 首先按积分排序（降序）
+                    const scoreA = a.score || 0;
+                    const scoreB = b.score || 0;
+                    if (scoreB !== scoreA) {
+                        return scoreB - scoreA; // 高分在前
+                    }
+                    // 积分相同则按创建时间排序
                     const timeA = new Date(a.created_at || 0).getTime();
                     const timeB = new Date(b.created_at || 0).getTime();
                     return timeA - timeB;
@@ -2421,6 +2444,11 @@
                                 <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM12.5 7H11V13L16.2 16.2L17 14.9L12.5 12.2V7Z" fill="currentColor"/>
                             </svg>
                             ${timeDisplay || '未设置时间'}
+                        </div>
+                        <div class="todo-priority">
+                            <span class="priority-badge urgency-${todo.urgency || 0}">急:${todo.urgency || 0}</span>
+                            <span class="priority-badge importance-${todo.importance || 0}">重:${todo.importance || 0}</span>
+                            <span class="priority-badge score-${todo.score || 0}">积分:${todo.score || 0}</span>
                         </div>
                     </div>
                     <div class="todo-actions">

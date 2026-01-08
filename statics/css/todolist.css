@@ -2227,3 +2227,97 @@
     transform: none;
     box-shadow: none;
 }
+
+/* 优先级样式 */
+.todo-priority {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.priority-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.urgency-1, .importance-1 {
+    background-color: #e63946;
+    color: white;
+}
+
+.urgency-2, .importance-2 {
+    background-color: #f4a261;
+    color: white;
+}
+
+.urgency-3, .importance-3 {
+    background-color: #6b9080;
+    color: white;
+}
+
+.score-0 {
+    background-color: #888;
+    color: white;
+}
+
+.score-1, .score-2, .score-3 {
+    background-color: #457b9d;
+    color: white;
+}
+
+.score-4, .score-5, .score-6 {
+    background-color: #1d3557;
+    color: white;
+}
+
+.score-7, .score-8, .score-9, .score-10, .score-11, .score-12 {
+    background-color: #e9c46a;
+    color: #433520;
+}
+
+/* 优先级输入容器 */
+.priority-input-container {
+    display: flex;
+    gap: 15px;
+    margin: 10px 0;
+    justify-content: center;
+}
+
+.priority-input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.priority-input-label {
+    font-size: 13px;
+    color: var(--text-light);
+    font-weight: 500;
+}
+
+.priority-input-controls {
+    display: flex;
+    align-items: center;
+}
+
+.priority-select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    font-size: 14px;
+    min-width: 120px;
+}
+
+.priority-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(231, 111, 81, 0.2);
+}

@@ -64,6 +64,34 @@
                             </div>
                         </div>
                     </div>
+                    <div class="priority-input-container">
+                        <div class="priority-input-group">
+                            <div class="priority-input-label">
+                                <span>紧急程度</span>
+                            </div>
+                            <div class="priority-input-controls">
+                                <select id="urgency_select" class="priority-select">
+                                    <option value="0">未设置</option>
+                                    <option value="1">1 (最紧急)</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3 (一般)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="priority-input-group">
+                            <div class="priority-input-label">
+                                <span>重要程度</span>
+                            </div>
+                            <div class="priority-input-controls">
+                                <select id="importance_select" class="priority-select">
+                                    <option value="0">未设置</option>
+                                    <option value="1">1 (最重要)</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3 (一般)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                     <button class="add-btn" onclick="addTodoAndClearCache()">添加任务</button>
                 </div>
             </div>

@@ -18,3 +18,4 @@ claudecode_config.sh
 go_blog_test
 deepseek_html_20250820_9e351f.html
 *.exe~
+.claude/settings.json
