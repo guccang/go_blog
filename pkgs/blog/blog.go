@@ -3,279 +3,535 @@ package blog
 import (
 	"auth"
 	"config"
-	"core"
 	"encoding/json"
 	"fmt"
+	"ioutils"
 	"module"
 	log "mylog"
+	db "persistence"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 )
 
+// ========== Simple Blog 模块 ==========
+// 无 Actor、无 Channel，使用 sync.RWMutex
+
+// BlogStore 博客存储
+type BlogStore struct {
+	blogs map[string]*module.Blog
+	mu    sync.RWMutex
+}
+
+// BlogManager 多账户管理
+type BlogManager struct {
+	stores map[string]*BlogStore
+	mu     sync.Mutex
+}
+
+var blogManager *BlogManager
+
 func Info() {
-	log.InfoF(log.ModuleBlog, "info blog v3.0")
+	log.InfoF(log.ModuleBlog, "info blog v4.0 (simple)")
 }
 
-// Init initializes the blog module and loads blogs via the actor
+// Init 初始化 Blog 模块
 func Init() {
-	log.Debug(log.ModuleBlog, "blog module Init")
-
+	log.Debug(log.ModuleBlog, "blog module Init (simple)")
 	blogManager = &BlogManager{
-		actors: make(map[string]*BlogActor),
+		stores: make(map[string]*BlogStore),
 	}
 }
 
-// getBlogActor returns the blog actor for the given account
-func getBlogActor(account string) *BlogActor {
-
-	blogManager.mu.RLock()
-	if act, exists := blogManager.actors[account]; exists {
-		blogManager.mu.RUnlock()
-		return act
-	}
-	blogManager.mu.RUnlock()
-
-	newActor := &BlogActor{
-		Actor:   core.NewActor(),
-		Account: account,
-		blogs:   make(map[string]*module.Blog),
-	}
-	newActor.Start(newActor)
-
-	// Create new actor for this account
+// getBlogStore 获取或创建指定账户的博客存储
+func getBlogStore(account string) *BlogStore {
 	blogManager.mu.Lock()
-	blogManager.actors[account] = newActor
-	blogManager.mu.Unlock()
-	return newActor
+	defer blogManager.mu.Unlock()
+
+	if store, ok := blogManager.stores[account]; ok {
+		return store
+	}
+
+	// 创建新存储
+	store := &BlogStore{
+		blogs: make(map[string]*module.Blog),
+	}
+
+	// 从数据库加载
+	blogs := db.GetBlogsByAccount(account)
+	if blogs != nil {
+		for _, b := range blogs {
+			if b.Encrypt == 1 {
+				b.AuthType = module.EAuthType_encrypt
+			}
+			store.blogs[b.Title] = b
+		}
+	}
+	log.DebugF(log.ModuleBlog, "BlogStore loaded account=%s, count=%d", account, len(store.blogs))
+
+	blogManager.stores[account] = store
+	return store
 }
 
+func strTime() string {
+	return time.Now().Format("2006-01-02 15:04:05")
+}
+
+// ========== 对外接口 ==========
+
+// GetBlogsNumWithAccount 获取博客数量
 func GetBlogsNumWithAccount(account string) int {
-	actor := getBlogActor(account)
-	cmd := &getBlogsNumCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return len(store.blogs)
 }
 
-// 多个goroutine 并发访问，会存在问题
-// 但是在当前的场景下使用不会出问题，原因单用户访问操作。不存在并发访问
+// GetBlogsWithAccount 获取所有博客
 func GetBlogsWithAccount(account string) map[string]*module.Blog {
-	actor := getBlogActor(account)
-	return actor.blogs
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return store.blogs
 }
 
-func ImportBlogsFromPathWithAccount(account, dir string) {
-	actor := getBlogActor(account)
-	cmd := &importBlogsCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Dir:          dir,
-	}
-	actor.Send(cmd)
-	<-cmd.Response()
-}
-
+// GetBlogWithAccount 获取单个博客
 func GetBlogWithAccount(account, title string) *module.Blog {
-	actor := getBlogActor(account)
-	cmd := &getBlogCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Title:        title,
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	if b, ok := store.blogs[title]; ok {
+		return b
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	if ret == nil {
-		return nil
-	}
-	return ret.(*module.Blog)
+	return db.GetBlogWithAccount(account, title)
 }
 
+// ImportBlogsFromPathWithAccount 从路径导入博客
+func ImportBlogsFromPathWithAccount(account, dir string) {
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	// 加载数据库博客
+	blogs := db.GetBlogsByAccount(account)
+	if blogs != nil {
+		for _, b := range blogs {
+			if b.Encrypt == 1 {
+				b.AuthType = module.EAuthType_encrypt
+			}
+			store.blogs[b.Title] = b
+		}
+	}
+
+	// 从目录导入
+	files := ioutils.GetFiles(dir)
+	for _, file := range files {
+		name, _ := ioutils.GetBaseAndExt(file)
+		datas, size := ioutils.GetFileDatas(file)
+		if size > 0 {
+			if b, ok := store.blogs[name]; ok {
+				b.Account = account
+				b.Content = datas
+				log.DebugF(log.ModuleBlog, "import update blog %s", name)
+			} else {
+				now := strTime()
+				store.blogs[name] = &module.Blog{
+					Title:      name,
+					Content:    datas,
+					CreateTime: now,
+					ModifyTime: now,
+					AccessTime: now,
+					AuthType:   module.EAuthType_private,
+					Account:    account,
+				}
+				log.DebugF(log.ModuleBlog, "import add blog %s", name)
+			}
+		}
+	}
+	db.SaveBlogs(account, store.blogs)
+}
+
+// AddBlogWithAccount 添加博客
 func AddBlogWithAccount(account string, udb *module.UploadedBlogData) int {
-	actor := getBlogActor(account)
-	cmd := &addBlogCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		UDB:          udb,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	title := udb.Title
+	authType := udb.AuthType
+
+	// 日期后缀
+	if config.IsTitleAddDateSuffix(title) == 1 {
+		title = fmt.Sprintf("%s_%s", title, time.Now().Format("2006-01-02"))
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+
+	if _, ok := store.blogs[title]; ok {
+		return 1 // 已存在
+	}
+
+	// 日记标志
+	if config.IsDiaryBlogWithAccount(account, title) {
+		authType |= module.EAuthType_diary
+		log.DebugF(log.ModuleBlog, "检测到日记博客，设置日记权限: %s", title)
+	}
+
+	now := strTime()
+	b := &module.Blog{
+		Title:      title,
+		Content:    udb.Content,
+		CreateTime: now,
+		ModifyTime: now,
+		AccessTime: now,
+		AuthType:   authType,
+		Tags:       udb.Tags,
+		Encrypt:    udb.Encrypt,
+		Account:    udb.Account,
+	}
+	if b.Encrypt == 1 {
+		b.AuthType = module.EAuthType_encrypt
+	}
+
+	log.DebugF(log.ModuleBlog, "add blog %s", title)
+	store.blogs[title] = b
+	db.SaveBlog(account, b)
+	return 0
 }
 
+// ModifyBlogWithAccount 修改博客
 func ModifyBlogWithAccount(account string, udb *module.UploadedBlogData) int {
-	actor := getBlogActor(account)
-	cmd := &modifyBlogCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		UDB:          udb,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	b, ok := store.blogs[udb.Title]
+	if !ok {
+		return 1
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+
+	authType := udb.AuthType
+	if config.IsDiaryBlogWithAccount(account, udb.Title) {
+		authType |= module.EAuthType_diary
+	}
+
+	log.DebugF(log.ModuleBlog, "modify blog %s", udb.Title)
+	b.Content = udb.Content
+	b.ModifyTime = strTime()
+	b.ModifyNum++
+	b.AuthType = authType
+	b.Tags = udb.Tags
+	if udb.Account != "" {
+		b.Account = udb.Account
+	}
+
+	db.SaveBlog(account, b)
+	return 0
 }
 
+// DeleteBlogWithAccount 删除博客
 func DeleteBlogWithAccount(account, title string) int {
-	actor := getBlogActor(account)
-	cmd := &deleteBlogCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Title:        title,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if _, ok := store.blogs[title]; !ok {
+		return 1
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	if config.IsSysFile(title) == 1 {
+		return 2
+	}
+	if db.DeleteBlogWithAccount(account, title) == 1 {
+		return 3
+	}
+	delete(store.blogs, title)
+	return 0
 }
 
+// GetRecentlyTimedBlogWithAccount 获取最近的定时博客
 func GetRecentlyTimedBlogWithAccount(account, title string) *module.Blog {
-	actor := getBlogActor(account)
-	cmd := &getRecentlyTimedBlogCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Title:        title,
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for i := 1; i < 9999; i++ {
+		str := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		newTitle := fmt.Sprintf("%s_%s", title, str)
+		log.DebugF(log.ModuleBlog, "GetRecentlyTimedBlog title=%s", newTitle)
+		if b, ok := store.blogs[newTitle]; ok {
+			return b
+		}
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	if ret == nil {
-		return nil
-	}
-	return ret.(*module.Blog)
+	return nil
 }
 
+// GetAllWithAccount 获取指定权限的博客列表
 func GetAllWithAccount(account string, num int, flag int) []*module.Blog {
-	actor := getBlogActor(account)
-	cmd := &getAllCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Num:          num,
-		Flag:         flag,
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	s := make([]*module.Blog, 0)
+	for _, b := range store.blogs {
+		if (flag & b.AuthType) != 0 {
+			s = append(s, b)
+		}
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.([]*module.Blog)
+	sort.Slice(s, func(i, j int) bool {
+		ti, _ := time.Parse("2006-01-02 15:04:05", s[i].ModifyTime)
+		tj, _ := time.Parse("2006-01-02 15:04:05", s[j].ModifyTime)
+		return ti.Unix() > tj.Unix()
+	})
+	if num > 0 {
+		num = num - 1
+	}
+	if num > 0 && len(s) > num {
+		return s[:num]
+	}
+	return s
 }
 
+// UpdateAccessTimeWithAccount 更新访问时间
 func UpdateAccessTimeWithAccount(account string, b *module.Blog) {
-	actor := getBlogActor(account)
-	cmd := &updateAccessTimeCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Blog:         b,
-	}
-	actor.Send(cmd)
-	<-cmd.Response()
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	b.AccessTime = strTime()
+	b.AccessNum++
+	db.SaveBlog(account, b)
 }
 
+// GetBlogAuthTypeWithAccount 获取博客权限类型
 func GetBlogAuthTypeWithAccount(account, blogname string) int {
-	actor := getBlogActor(account)
-	cmd := &getBlogAuthTypeCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Blogname:     blogname,
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	if b, ok := store.blogs[blogname]; ok {
+		return b.AuthType
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	return 0
 }
 
+// IsPublicTag 检查是否公开标签
 func IsPublicTag(tag string) int {
 	return config.IsPublicTag(tag)
 }
 
+// TagReplaceWithAccount 替换标签
 func TagReplaceWithAccount(account, from, to string) []*module.Blog {
-	actor := getBlogActor(account)
-	cmd := &tagReplaceCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		From:         from,
-		To:           to,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	blogs := []*module.Blog{}
+	lowerFrom := strings.ToLower(from)
+	lowerTo := strings.ToLower(to)
+
+	for _, b := range store.blogs {
+		if !strings.Contains(strings.ToLower(b.Tags), lowerFrom) {
+			continue
+		}
+
+		if strings.ToLower(b.Tags) == lowerFrom {
+			b.Tags = lowerTo
+		} else {
+			newTags := ""
+			tags := strings.Split(b.Tags, "|")
+			for _, tag := range tags {
+				if strings.ToLower(tag) == lowerFrom {
+					if to != "" {
+						newTags = newTags + lowerTo + "|"
+					}
+				} else {
+					newTags = newTags + tag + "|"
+				}
+			}
+			if len(newTags) > 0 {
+				newTags = newTags[:len(newTags)-1]
+			}
+			log.InfoF(log.ModuleBlog, "blog change tag from %s to %s", b.Tags, newTags)
+			b.Tags = newTags
+		}
+
+		// 去重
+		b.Tags = deduplicateTags(b.Tags)
+		db.SaveBlog(account, b)
+		blogs = append(blogs, b)
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.([]*module.Blog)
+	return blogs
 }
 
-func TagAddWithAccount(account, title, tag string) []*module.Blog {
-	actor := getBlogActor(account)
-	cmd := &tagAddCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Title:        title,
-		Tag:          tag,
+// TagAddWithAccount 添加标签
+func TagAddWithAccount(account, title, newtag string) []*module.Blog {
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	blogs := []*module.Blog{}
+	lowerNewtag := strings.ToLower(newtag)
+
+	for _, b := range store.blogs {
+		if !strings.Contains(strings.ToLower(b.Title), strings.ToLower(title)) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(b.Tags), lowerNewtag) {
+			continue
+		}
+
+		if b.Tags == "" {
+			b.Tags = lowerNewtag
+		} else {
+			b.Tags = fmt.Sprintf("%s|%s", b.Tags, lowerNewtag)
+		}
+		log.InfoF(log.ModuleBlog, "blog add new tag %s", b.Tags)
+
+		b.Tags = deduplicateTags(b.Tags)
+		db.SaveBlog(account, b)
+		blogs = append(blogs, b)
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.([]*module.Blog)
+	return blogs
 }
 
+// deduplicateTags 标签去重
+func deduplicateTags(tags string) string {
+	if tags == "" {
+		return ""
+	}
+	parts := strings.Split(tags, "|")
+	used := make(map[string]bool)
+	result := ""
+	for _, tag := range parts {
+		lt := strings.ToLower(tag)
+		if !used[lt] {
+			used[lt] = true
+			result += tag + "|"
+		}
+	}
+	if len(result) > 0 {
+		result = result[:len(result)-1]
+	}
+	return result
+}
+
+// SetSameAuthWithAccount 设置相同权限
 func SetSameAuthWithAccount(account, blogname string) {
-	actor := getBlogActor(account)
-	cmd := &setSameAuthCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Blogname:     blogname,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	blog, ok := store.blogs[blogname]
+	if !ok {
+		return
 	}
-	actor.Send(cmd)
-	<-cmd.Response()
+
+	names := getURLBlogNames(blog)
+	for _, name := range names {
+		if b, ok := store.blogs[name]; ok {
+			b.AuthType = blog.AuthType
+			db.SaveBlog(account, b)
+		}
+	}
 }
 
+// getURLBlogNames 获取博客内链接的博客名
+func getURLBlogNames(blog *module.Blog) []string {
+	names := make([]string, 0)
+	if blog == nil {
+		return names
+	}
+	linkPattern := regexp.MustCompile(`\[(.*?)\]\(/get\?blogname=(.*?)\)`)
+	for _, t := range strings.Split(blog.Content, "\n") {
+		if m := linkPattern.FindStringSubmatch(t); m != nil {
+			names = append(names, m[2])
+		}
+	}
+	return names
+}
+
+// AddAuthTypeWithAccount 添加权限类型
 func AddAuthTypeWithAccount(account, blogname string, flag int) {
-	actor := getBlogActor(account)
-	cmd := &addAuthTypeCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Blogname:     blogname,
-		Flag:         flag,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if b, ok := store.blogs[blogname]; ok {
+		b.AuthType |= flag
+		db.SaveBlog(account, b)
 	}
-	actor.Send(cmd)
-	<-cmd.Response()
 }
 
+// DelAuthTypeWithAccount 删除权限类型
 func DelAuthTypeWithAccount(account, blogname string, flag int) {
-	actor := getBlogActor(account)
-	cmd := &delAuthTypeCmd{
-		ActorCommand: core.ActorCommand{Res: make(chan interface{})},
-		Blogname:     blogname,
-		Flag:         flag,
+	store := getBlogStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if b, ok := store.blogs[blogname]; ok {
+		b.AuthType &= ^flag
+		if b.AuthType == 0 {
+			b.AuthType = module.EAuthType_private
+		}
+		db.SaveBlog(account, b)
 	}
-	actor.Send(cmd)
-	<-cmd.Response()
 }
 
+// GetURLBlogNamesWithAccount 获取博客内链接的博客名
 func GetURLBlogNamesWithAccount(account, blogname string) []string {
-	actor := getBlogActor(account)
-	cmd := &getURLNamesCmd{ActorCommand: core.ActorCommand{Res: make(chan interface{})}, Blogname: blogname}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	if ret == nil {
+	store := getBlogStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	blog, ok := store.blogs[blogname]
+	if !ok {
 		return []string{}
 	}
-	return ret.([]string)
+	return getURLBlogNames(blog)
 }
 
-// ===== Year plan API remains here, using the facade functions above =====
+// ========== 年度计划 API ==========
 
-// 年度计划相关数据结构
+// YearPlanData 年度计划数据结构
 type YearPlanData struct {
 	YearOverview string                 `json:"yearOverview"`
 	MonthPlans   []string               `json:"monthPlans"`
 	Year         int                    `json:"year"`
-	Tasks        map[string]interface{} `json:"tasks"` // 存储每月任务列表
+	Tasks        map[string]interface{} `json:"tasks"`
 }
 
-// 获取年度计划
+// GetYearPlanWithAccount 获取年度计划
 func GetYearPlanWithAccount(account string, year int) (*YearPlanData, error) {
 	planTitle := fmt.Sprintf("年计划_%d", year)
 	blog := GetBlogWithAccount(account, planTitle)
 	if blog == nil {
 		return nil, fmt.Errorf("未找到年份 %d 的计划", year)
 	}
+
 	var planData YearPlanData
 	if err := json.Unmarshal([]byte(blog.Content), &planData); err != nil {
 		return nil, fmt.Errorf("解析计划数据失败: %v", err)
 	}
+
 	log.DebugF(log.ModuleBlog, "获取年计划 - 年份: %d, 任务数据大小: %d", year, len(planData.Tasks))
 	if planData.Tasks == nil {
 		planData.Tasks = make(map[string]interface{})
-		log.DebugF(log.ModuleBlog, "初始化空任务映射")
 	}
+
+	// 从原始JSON恢复任务数据
 	var rawData map[string]interface{}
 	if err := json.Unmarshal([]byte(blog.Content), &rawData); err == nil {
 		if tasks, ok := rawData["tasks"].(map[string]interface{}); ok && len(tasks) > 0 {
 			if len(planData.Tasks) == 0 {
 				planData.Tasks = tasks
-				log.DebugF(log.ModuleBlog, "从原始JSON中恢复任务数据, 大小: %d", len(tasks))
 			}
 		}
 	}
 	return &planData, nil
 }
 
-// 保存年度计划
+// SaveYearPlanWithAccount 保存年度计划
 func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 	if planData.Year < 2020 || planData.Year > 2100 {
 		return fmt.Errorf("无效的年份: %d", planData.Year)
@@ -283,17 +539,15 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 	if len(planData.MonthPlans) != 12 {
 		return fmt.Errorf("月度计划数量不正确，应为12个月")
 	}
+
 	log.DebugF(log.ModuleBlog, "保存计划 - 年份: %d, 任务数据大小: %d", planData.Year, len(planData.Tasks))
-	for month, tasks := range planData.Tasks {
-		if tasksArray, ok := tasks.([]interface{}); ok {
-			log.DebugF(log.ModuleBlog, "月份 %s 的任务数量: %d", month, len(tasksArray))
-		}
-	}
+
 	planTitle := fmt.Sprintf("年计划_%d", planData.Year)
 	content, err := json.Marshal(planData)
 	if err != nil {
 		return fmt.Errorf("序列化计划数据失败: %v", err)
 	}
+
 	blog := GetBlogWithAccount(account, planTitle)
 	udb := module.UploadedBlogData{
 		Title:    planTitle,
@@ -302,6 +556,7 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 		Tags:     "年计划",
 		Account:  account,
 	}
+
 	var ret int
 	if blog == nil {
 		ret = AddBlogWithAccount(account, &udb)
@@ -310,27 +565,19 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 		ret = ModifyBlogWithAccount(account, &udb)
 		log.DebugF(log.ModuleBlog, "更新年计划博客: %s", planTitle)
 	}
+
 	if ret != 0 {
 		return fmt.Errorf("保存计划失败，错误码: %d", ret)
-	}
-	savedPlan, err := GetYearPlanWithAccount(account, planData.Year)
-	if err != nil {
-		log.ErrorF(log.ModuleBlog, "无法验证保存的计划: %v", err)
-	} else {
-		log.DebugF(log.ModuleBlog, "验证 - 保存后的任务数据大小: %d", len(savedPlan.Tasks))
 	}
 	return nil
 }
 
-// ===== Backward compatibility for system modules =====
+// ========== 向后兼容 ==========
 
-// GetAccountFromSession returns the account from session if available, otherwise default account
+// GetAccountFromSession 从 session 获取账户
 func GetAccountFromSession(session string) string {
 	if session == "" {
 		return ""
 	}
-
-	account := auth.GetAccountBySession(session)
-
-	return account
+	return auth.GetAccountBySession(session)
 }

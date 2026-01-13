@@ -1,121 +1,203 @@
 package login
 
 import (
+	"auth"
+	"blog"
 	"config"
-	"core"
+	"encoding/json"
+	"fmt"
 	"module"
 	log "mylog"
+	"sms"
+	"sync"
 )
 
-// 登录模块actor
-var login_module *LoginActor
+// ========== Simple Login 模块 ==========
+// 无 Actor、无 Channel，使用 sync.RWMutex
+
+var (
+	users     map[string]*module.User
+	sms_codes map[string]string
+	loginMu   sync.RWMutex
+)
 
 func Info() {
-	log.Debug(log.ModuleLogin, "info login v1.0")
+	log.Debug(log.ModuleLogin, "info login v2.0 (simple)")
 }
 
-// 初始化login模块，用于用户登录，短信验证登录，账号密码登录，登出
+// Init 初始化 Login 模块
 func Init() {
-	login_module = &LoginActor{
-		Actor:     core.NewActor(),
-		users:     make(map[string]*module.User),
-		sms_codes: make(map[string]string),
-	}
+	loginMu.Lock()
+	defer loginMu.Unlock()
 
-	login_module.Start(login_module)
+	users = make(map[string]*module.User)
+	sms_codes = make(map[string]string)
 
 	// 管理员账号密码
 	admin_account := config.GetAdminAccount()
 	admin_pwd := config.GetConfigWithAccount(admin_account, "pwd")
-	login_module.users[admin_account] = &module.User{
+	users[admin_account] = &module.User{
 		Account:  admin_account,
 		Password: admin_pwd,
 	}
-	login_module.sms_codes[admin_account] = "901124"
+	sms_codes[admin_account] = "901124"
 
 	// 从sys_accounts博客加载用户数据
-	if err := login_module.loadUsersFromAdminBlog(); err != nil {
+	if err := loadUsersFromAdminBlog(); err != nil {
 		log.ErrorF(log.ModuleLogin, "Failed to load users from admin blog: %v", err)
 	}
 }
 
-// interface
+// ========== 对外接口 ==========
 
+// Login 账号密码登录
 func Login(account string, password string) (string, int) {
-	cmd := &LoginCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:  account,
-		Password: password,
+	loginMu.Lock()
+	defer loginMu.Unlock()
+
+	if _, exists := users[account]; !exists {
+		return "", 1
 	}
-	login_module.Send(cmd)
-	session := <-cmd.Response()
-	code := <-cmd.Response()
-	return session.(string), code.(int)
+	if users[account].Account != account {
+		return "", 2
+	}
+	if users[account].Password != password {
+		return "", 3
+	}
+
+	s := auth.AddSession(account)
+	sms_codes[account] = "901124"
+	return s, 0
 }
 
+// LoginSMS 短信验证登录
 func LoginSMS(account string, verfycode string) (string, int) {
-	cmd := &LoginSMSCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		Verfycode: verfycode,
+	loginMu.Lock()
+	defer loginMu.Unlock()
+
+	if sms_codes[account] != verfycode {
+		return "", 1
 	}
-	login_module.Send(cmd)
-	session := <-cmd.Response()
-	code := <-cmd.Response()
-	return session.(string), code.(int)
+
+	s := auth.AddSession(account)
+	log.InfoF(log.ModuleLogin, "LoginSMS account=%s code=%s verfycode=%s", account, sms_codes[account], verfycode)
+	return s, 0
 }
 
+// Logout 登出
 func Logout(account string) int {
-	cmd := &LoginOutCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	login_module.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	auth.RemoveSession(account)
+	return 0
 }
 
+// GenerateSMSCode 生成短信验证码
 func GenerateSMSCode(account string) (string, int) {
-	cmd := &GenerateSMSCodeCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
+	code, err := sms.SendSMS()
+	if err != nil {
+		log.InfoF(log.ModuleLogin, "GenerateSMSCode err=%s", err.Error())
+		return "", 1
 	}
-	login_module.Send(cmd)
-	code := <-cmd.Response()
-	ret := <-cmd.Response()
-	return code.(string), ret.(int)
+
+	loginMu.Lock()
+	sms_codes[account] = code
+	loginMu.Unlock()
+
+	return code, 0
 }
 
-// 用户注册接口
+// Register 用户注册
 func Register(account string, password string) int {
-	cmd := &RegisterCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
+	if account == "" || password == "" {
+		return 2
+	}
+
+	loginMu.Lock()
+	defer loginMu.Unlock()
+
+	if _, exists := users[account]; exists {
+		return 1
+	}
+
+	// 添加用户
+	users[account] = &module.User{
 		Account:  account,
 		Password: password,
 	}
-	login_module.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+
+	// 保存到博客
+	if err := saveUsersToAdminBlog(); err != nil {
+		log.ErrorF(log.ModuleLogin, "Failed to save users to admin blog: %v", err)
+		delete(users, account)
+		return 3
+	}
+
+	log.InfoF(log.ModuleLogin, "User registered successfully: %s", account)
+	return 0
 }
 
+// GetPwd 获取密码
 func GetPwd(account string) string {
-	cmd := &GetPwdCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
+	loginMu.RLock()
+	defer loginMu.RUnlock()
+
+	if _, exists := users[account]; !exists {
+		return ""
 	}
-	login_module.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(string)
+	if users[account].Account != account {
+		return ""
+	}
+	return users[account].Password
+}
+
+// ========== 内部函数 ==========
+
+// saveUsersToAdminBlog 保存用户到管理员博客
+func saveUsersToAdminBlog() error {
+	usersJSON, err := json.Marshal(users)
+	if err != nil {
+		return err
+	}
+
+	udb := &module.UploadedBlogData{
+		Title:    "sys_accounts",
+		Content:  string(usersJSON),
+		AuthType: module.EAuthType_private,
+		Tags:     "sys_accounts",
+		Account:  config.GetAdminAccount(),
+	}
+
+	existingBlog := blog.GetBlogWithAccount(config.GetAdminAccount(), "sys_accounts")
+	var ret int
+	if existingBlog == nil {
+		ret = blog.AddBlogWithAccount(config.GetAdminAccount(), udb)
+	} else {
+		ret = blog.ModifyBlogWithAccount(config.GetAdminAccount(), udb)
+	}
+
+	if ret != 0 {
+		return fmt.Errorf("failed to save users blog, error code: %d", ret)
+	}
+	return nil
+}
+
+// loadUsersFromAdminBlog 从管理员博客加载用户
+func loadUsersFromAdminBlog() error {
+	accountsBlog := blog.GetBlogWithAccount(config.GetAdminAccount(), "sys_accounts")
+	if accountsBlog == nil {
+		log.InfoF(log.ModuleLogin, "No sys_accounts blog found, starting with empty user database")
+		return nil
+	}
+
+	var loadedUsers map[string]*module.User
+	if err := json.Unmarshal([]byte(accountsBlog.Content), &loadedUsers); err != nil {
+		return fmt.Errorf("failed to parse sys_accounts JSON: %v", err)
+	}
+
+	for account, user := range loadedUsers {
+		users[account] = user
+		log.DebugF(log.ModuleLogin, "Loaded user: %s", account)
+	}
+
+	log.InfoF(log.ModuleLogin, "Successfully loaded %d users from sys_accounts", len(loadedUsers))
+	return nil
 }

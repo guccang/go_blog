@@ -1,29 +1,39 @@
 package exercise
 
 import (
-	"core"
+	"account"
+	"blog"
 	"encoding/json"
+	"fmt"
+	"module"
 	log "mylog"
+	"strings"
+	"sync"
 	"time"
 )
 
-// ExerciseItem represents a single exercise entry
+// ========== Simple Exercise 模块 ==========
+// 无 Actor、无 Channel，使用 sync.RWMutex
+
+var exerciseMu sync.RWMutex
+
+// ========== 数据结构 ==========
+
 type ExerciseItem struct {
 	ID          string     `json:"id"`
-	Name        string     `json:"name"`      // 锻炼项目名称
-	Type        string     `json:"type"`      // 锻炼类型：cardio, strength, flexibility, sports
-	Duration    int        `json:"duration"`  // 持续时间（分钟）
-	Intensity   string     `json:"intensity"` // 强度：low, medium, high
-	Calories    int        `json:"calories"`  // 消耗卡路里
-	Notes       string     `json:"notes"`     // 备注
-	Completed   bool       `json:"completed"` // 是否完成
-	Weight      float64    `json:"weight"`    // 负重 (kg)
+	Name        string     `json:"name"`
+	Type        string     `json:"type"`
+	Duration    int        `json:"duration"`
+	Intensity   string     `json:"intensity"`
+	Calories    int        `json:"calories"`
+	Notes       string     `json:"notes"`
+	Completed   bool       `json:"completed"`
+	Weight      float64    `json:"weight"`
 	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	BodyParts   []string   `json:"body_parts"` // 新增，锻炼部位
+	BodyParts   []string   `json:"body_parts"`
 }
 
-// ExerciseTemplate represents an exercise template
 type ExerciseTemplate struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
@@ -32,11 +42,10 @@ type ExerciseTemplate struct {
 	Intensity string   `json:"intensity"`
 	Calories  int      `json:"calories"`
 	Notes     string   `json:"notes"`
-	Weight    float64  `json:"weight"`     // 负重 (kg)
-	BodyParts []string `json:"body_parts"` // 新增，锻炼部位
+	Weight    float64  `json:"weight"`
+	BodyParts []string `json:"body_parts"`
 }
 
-// ExerciseTemplateCollection represents a collection of exercise templates
 type ExerciseTemplateCollection struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -45,19 +54,17 @@ type ExerciseTemplateCollection struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// UserProfile represents user's basic information for exercise calculation
 type UserProfile struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
-	Gender    string    `json:"gender"` // male, female
-	Weight    float64   `json:"weight"` // kg
-	Height    float64   `json:"height"` // cm
+	Gender    string    `json:"gender"`
+	Weight    float64   `json:"weight"`
+	Height    float64   `json:"height"`
 	Age       int       `json:"age"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// METValue represents metabolic equivalent values for different exercises
 type METValue struct {
 	ExerciseType string  `json:"exercise_type"`
 	Intensity    string  `json:"intensity"`
@@ -65,523 +72,730 @@ type METValue struct {
 	Description  string  `json:"description"`
 }
 
-// ExerciseList represents a collection of exercises for a specific date
 type ExerciseList struct {
 	Date      string             `json:"date"`
 	Items     []ExerciseItem     `json:"items"`
 	Templates []ExerciseTemplate `json:"templates"`
 }
 
-// ExerciseStats represents exercise statistics
 type ExerciseStats struct {
-	Period        string         `json:"period"` // week, month, year
+	Period        string         `json:"period"`
 	StartDate     string         `json:"start_date"`
 	EndDate       string         `json:"end_date"`
 	TotalDays     int            `json:"total_days"`
 	ExerciseDays  int            `json:"exercise_days"`
-	TotalDuration int            `json:"total_duration"` // 总锻炼时间（分钟）
-	TotalCalories int            `json:"total_calories"` // 总消耗卡路里
-	TypeStats     map[string]int `json:"type_stats"`     // 各类型锻炼次数
-	WeeklyAvg     float64        `json:"weekly_avg"`     // 周平均锻炼时间
-	Consistency   float64        `json:"consistency"`    // 坚持率（锻炼天数/总天数）
+	TotalDuration int            `json:"total_duration"`
+	TotalCalories int            `json:"total_calories"`
+	TypeStats     map[string]int `json:"type_stats"`
+	WeeklyAvg     float64        `json:"weekly_avg"`
+	Consistency   float64        `json:"consistency"`
 }
-
-// 锻炼模块actor
-var exercise_module *ExerciseActor
 
 func Info() {
-	log.Debug(log.ModuleExercise, "info exercise v1.0")
+	log.Debug(log.ModuleExercise, "info exercise v2.0 (simple)")
 }
 
-// 初始化exercise模块，用于锻炼管理
 func Init() {
-	exercise_module = &ExerciseActor{
-		Actor: core.NewActor(),
-	}
-	exercise_module.Start(exercise_module)
+	log.Debug(log.ModuleExercise, "exercise module initialized")
 }
 
-// interface
+// ========== 辅助函数 ==========
 
-func AddExercise(account, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
-	cmd := &AddExerciseCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		Date:      date,
-		Name:      name,
-		Type:      exerciseType,
-		Duration:  duration,
-		Intensity: intensity,
-		Calories:  calories,
-		Notes:     notes,
-		Weight:    weight,
-		BodyParts: bodyParts,
+func generateBlogTitle(date string) string { return fmt.Sprintf("exercise-%s", date) }
+func generateTemplateBlogTitle() string    { return "exercise-templates" }
+func generateCollectionBlogTitle() string  { return "exercise-template-collections" }
+func generateUserProfileBlogTitle() string { return "exercise-user-profile" }
+func generateMETValuesBlogTitle() string   { return "exercise-met-values" }
+
+func getDateFromTitle(title string) string {
+	if strings.HasPrefix(title, "exercise-") && title != "exercise-templates" {
+		return strings.TrimPrefix(title, "exercise-")
 	}
-	exercise_module.Send(cmd)
-	item := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return item.(*ExerciseItem), nil
+	return ""
 }
 
-func DeleteExercise(account, date, id string) error {
-	cmd := &DeleteExerciseCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Date:    date,
-		ID:      id,
+func getDefaultMETValues() []METValue {
+	return []METValue{
+		{"cardio", "low", 3.5, "慢走"}, {"cardio", "medium", 6.0, "慢跑"}, {"cardio", "high", 10.0, "快跑"},
+		{"strength", "low", 3.0, "轻度力量训练"}, {"strength", "medium", 5.0, "中等力量训练"}, {"strength", "high", 8.0, "高强度力量训练"},
+		{"flexibility", "low", 2.5, "拉伸"}, {"flexibility", "medium", 3.0, "瑜伽"}, {"flexibility", "high", 4.0, "高强度瑜伽"},
+		{"sports", "low", 4.0, "休闲运动"}, {"sports", "medium", 7.0, "中等强度运动"}, {"sports", "high", 10.0, "激烈运动"},
+		{"other", "low", 2.5, "其他轻度活动"}, {"other", "medium", 4.0, "其他中等活动"}, {"other", "high", 6.0, "其他高强度活动"},
 	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
+}
+
+func getMETValue(exerciseType, intensity string) float64 {
+	for _, mv := range getDefaultMETValues() {
+		if mv.ExerciseType == exerciseType && mv.Intensity == intensity {
+			return mv.MET
+		}
+	}
+	switch intensity {
+	case "low":
+		return 3.0
+	case "medium":
+		return 5.0
+	case "high":
+		return 8.0
+	default:
+		return 4.0
+	}
+}
+
+func calculateCaloriesInternal(exerciseType, intensity string, duration int, weight float64) int {
+	met := getMETValue(exerciseType, intensity)
+	hours := float64(duration) / 60.0
+	return int(met * weight * hours)
+}
+
+// ========== 对外接口 ==========
+
+func AddExercise(acc, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	exerciseList, _ := getExercisesByDateInternal(acc, date)
+	if exerciseList.Date == "" {
+		exerciseList = ExerciseList{Date: date, Items: []ExerciseItem{}}
+	}
+
+	if calories == 0 {
+		if profile, _ := getUserProfileInternal(acc); profile != nil && profile.Weight > 0 {
+			calories = calculateCaloriesInternal(exerciseType, intensity, duration, profile.Weight+weight)
+		}
+	}
+
+	item := ExerciseItem{
+		ID: fmt.Sprintf("%d", time.Now().UnixNano()), Name: name, Type: exerciseType,
+		Duration: duration, Intensity: intensity, Calories: calories, Notes: notes,
+		Completed: false, Weight: weight, CreatedAt: time.Now(), BodyParts: bodyParts,
+	}
+	exerciseList.Items = append(exerciseList.Items, item)
+
+	if err := saveExercisesToBlog(acc, exerciseList); err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func DeleteExercise(acc, date, id string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	exerciseList, err := getExercisesByDateInternal(acc, date)
 	if err != nil {
-		return err.(error)
+		return err
+	}
+
+	found := false
+	updatedItems := make([]ExerciseItem, 0, len(exerciseList.Items))
+	for _, item := range exerciseList.Items {
+		if item.ID != id {
+			updatedItems = append(updatedItems, item)
+		} else {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("exercise item not found")
+	}
+	exerciseList.Items = updatedItems
+	return saveExercisesToBlog(acc, exerciseList)
+}
+
+func UpdateExercise(acc, date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	exerciseList, err := getExercisesByDateInternal(acc, date)
+	if err != nil {
+		return err
+	}
+
+	if calories == 0 {
+		if profile, _ := getUserProfileInternal(acc); profile != nil && profile.Weight > 0 {
+			calories = calculateCaloriesInternal(exerciseType, intensity, duration, profile.Weight+weight)
+		}
+	}
+
+	found := false
+	for i := range exerciseList.Items {
+		if exerciseList.Items[i].ID == id {
+			exerciseList.Items[i].Name = name
+			exerciseList.Items[i].Type = exerciseType
+			exerciseList.Items[i].Duration = duration
+			exerciseList.Items[i].Intensity = intensity
+			exerciseList.Items[i].Calories = calories
+			exerciseList.Items[i].Notes = notes
+			exerciseList.Items[i].Weight = weight
+			exerciseList.Items[i].BodyParts = bodyParts
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("exercise item not found")
+	}
+	return saveExercisesToBlog(acc, exerciseList)
+}
+
+func ToggleExercise(acc, date, id string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	exerciseList, err := getExercisesByDateInternal(acc, date)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i := range exerciseList.Items {
+		if exerciseList.Items[i].ID == id {
+			exerciseList.Items[i].Completed = !exerciseList.Items[i].Completed
+			if exerciseList.Items[i].Completed {
+				now := time.Now()
+				exerciseList.Items[i].CompletedAt = &now
+			} else {
+				exerciseList.Items[i].CompletedAt = nil
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("exercise item not found")
+	}
+	return saveExercisesToBlog(acc, exerciseList)
+}
+
+func GetExercisesByDate(acc, date string) (ExerciseList, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return getExercisesByDateInternal(acc, date)
+}
+
+func getExercisesByDateInternal(acc, date string) (ExerciseList, error) {
+	b := blog.GetBlogWithAccount(acc, generateBlogTitle(date))
+	if b == nil {
+		return ExerciseList{Date: date, Items: []ExerciseItem{}}, nil
+	}
+	var exerciseList ExerciseList
+	if err := json.Unmarshal([]byte(b.Content), &exerciseList); err != nil {
+		return ExerciseList{Date: date, Items: []ExerciseItem{}}, nil
+	}
+	return exerciseList, nil
+}
+
+func GetAllExercises(acc string) (map[string]ExerciseList, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return getAllExercisesInternal(acc)
+}
+
+func getAllExercisesInternal(acc string) (map[string]ExerciseList, error) {
+	result := make(map[string]ExerciseList)
+	for _, b := range blog.GetBlogsWithAccount(acc) {
+		date := getDateFromTitle(b.Title)
+		if date != "" {
+			var exerciseList ExerciseList
+			if err := json.Unmarshal([]byte(b.Content), &exerciseList); err == nil {
+				result[date] = exerciseList
+			}
+		}
+	}
+	return result, nil
+}
+
+func saveExercisesToBlog(acc string, exerciseList ExerciseList) error {
+	title := generateBlogTitle(exerciseList.Date)
+	content, err := json.MarshalIndent(exerciseList, "", "  ")
+	if err != nil {
+		return err
+	}
+	ubd := &module.UploadedBlogData{
+		Title: title, Content: string(content), Tags: "exercise", AuthType: module.EAuthType_private, Account: acc,
+	}
+	if blog.GetBlogWithAccount(acc, title) == nil {
+		blog.AddBlogWithAccount(acc, ubd)
+	} else {
+		blog.ModifyBlogWithAccount(acc, ubd)
 	}
 	return nil
 }
 
-func UpdateExercise(account, date, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
-	cmd := &UpdateExerciseCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		Date:      date,
-		ID:        id,
-		Name:      name,
-		Type:      exerciseType,
-		Duration:  duration,
-		Intensity: intensity,
-		Calories:  calories,
-		Notes:     notes,
-		Weight:    weight,
-		BodyParts: bodyParts,
+// ========== Template 接口 ==========
+
+func AddTemplate(acc, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	templates, _ := getTemplatesInternal(acc)
+	template := ExerciseTemplate{
+		ID: fmt.Sprintf("%d", time.Now().UnixNano()), Name: name, Type: exerciseType,
+		Duration: duration, Intensity: intensity, Calories: calories, Notes: notes, Weight: weight, BodyParts: bodyParts,
 	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
+	templates = append(templates, template)
+	if err := saveTemplatesToBlog(acc, templates); err != nil {
+		return nil, err
+	}
+	return &template, nil
+}
+
+func DeleteTemplate(acc, id string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	templates, _ := getTemplatesInternal(acc)
+	found := false
+	updated := make([]ExerciseTemplate, 0, len(templates))
+	for _, t := range templates {
+		if t.ID != id {
+			updated = append(updated, t)
+		} else {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("template not found")
+	}
+	return saveTemplatesToBlog(acc, updated)
+}
+
+func UpdateTemplate(acc, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	templates, _ := getTemplatesInternal(acc)
+	found := false
+	for i := range templates {
+		if templates[i].ID == id {
+			templates[i] = ExerciseTemplate{ID: id, Name: name, Type: exerciseType, Duration: duration, Intensity: intensity, Calories: calories, Notes: notes, Weight: weight, BodyParts: bodyParts}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("template not found")
+	}
+	return saveTemplatesToBlog(acc, templates)
+}
+
+func GetTemplates(acc string) ([]ExerciseTemplate, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return getTemplatesInternal(acc)
+}
+
+func getTemplatesInternal(acc string) ([]ExerciseTemplate, error) {
+	b := blog.GetBlogWithAccount(acc, generateTemplateBlogTitle())
+	if b == nil {
+		return []ExerciseTemplate{}, nil
+	}
+	var templates []ExerciseTemplate
+	if err := json.Unmarshal([]byte(b.Content), &templates); err != nil {
+		return []ExerciseTemplate{}, nil
+	}
+	return templates, nil
+}
+
+func saveTemplatesToBlog(acc string, templates []ExerciseTemplate) error {
+	title := generateTemplateBlogTitle()
+	content, _ := json.MarshalIndent(templates, "", "  ")
+	ubd := &module.UploadedBlogData{Title: title, Content: string(content), Tags: "exercise-template", AuthType: module.EAuthType_private}
+	if blog.GetBlogWithAccount(acc, title) == nil {
+		blog.AddBlogWithAccount(acc, ubd)
+	} else {
+		blog.ModifyBlogWithAccount(acc, ubd)
 	}
 	return nil
 }
 
-func ToggleExercise(account, date, id string) error {
-	cmd := &ToggleExerciseCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Date:    date,
-		ID:      id,
+// ========== Collection 接口 ==========
+
+func AddCollection(acc, name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	collections, _ := getCollectionsInternal(acc)
+	collection := ExerciseTemplateCollection{
+		ID: fmt.Sprintf("%d", time.Now().UnixNano()), Name: name, Description: description, TemplateIDs: templateIDs, CreatedAt: time.Now(),
 	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
+	collections = append(collections, collection)
+	if err := saveCollectionsToBlog(acc, collections); err != nil {
+		return nil, err
+	}
+	return &collection, nil
+}
+
+func DeleteCollection(acc, id string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	collections, _ := getCollectionsInternal(acc)
+	found := false
+	updated := make([]ExerciseTemplateCollection, 0, len(collections))
+	for _, c := range collections {
+		if c.ID != id {
+			updated = append(updated, c)
+		} else {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("collection not found")
+	}
+	return saveCollectionsToBlog(acc, updated)
+}
+
+func UpdateCollection(acc, id, name, description string, templateIDs []string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	collections, _ := getCollectionsInternal(acc)
+	found := false
+	for i := range collections {
+		if collections[i].ID == id {
+			collections[i].Name = name
+			collections[i].Description = description
+			collections[i].TemplateIDs = templateIDs
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("collection not found")
+	}
+	return saveCollectionsToBlog(acc, collections)
+}
+
+func GetCollections(acc string) ([]ExerciseTemplateCollection, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return getCollectionsInternal(acc)
+}
+
+func getCollectionsInternal(acc string) ([]ExerciseTemplateCollection, error) {
+	b := blog.GetBlogWithAccount(acc, generateCollectionBlogTitle())
+	if b == nil {
+		return []ExerciseTemplateCollection{}, nil
+	}
+	var collections []ExerciseTemplateCollection
+	json.Unmarshal([]byte(b.Content), &collections)
+	return collections, nil
+}
+
+func saveCollectionsToBlog(acc string, collections []ExerciseTemplateCollection) error {
+	title := generateCollectionBlogTitle()
+	content, _ := json.MarshalIndent(collections, "", "  ")
+	ubd := &module.UploadedBlogData{Title: title, Content: string(content), Tags: "exercise-collection", AuthType: module.EAuthType_private}
+	if blog.GetBlogWithAccount(acc, title) == nil {
+		blog.AddBlogWithAccount(acc, ubd)
+	} else {
+		blog.ModifyBlogWithAccount(acc, ubd)
 	}
 	return nil
 }
 
-func GetExercisesByDate(account, date string) (ExerciseList, error) {
-	cmd := &GetExercisesByDateCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Date:    date,
+func GetCollectionWithTemplates(acc, collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+
+	collections, _ := getCollectionsInternal(acc)
+	var targetCollection *ExerciseTemplateCollection
+	for _, c := range collections {
+		if c.ID == collectionID {
+			targetCollection = &c
+			break
+		}
 	}
-	exercise_module.Send(cmd)
-	exercises := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return ExerciseList{}, err.(error)
+	if targetCollection == nil {
+		return nil, nil, fmt.Errorf("collection not found")
 	}
-	return exercises.(ExerciseList), nil
+
+	allTemplates, _ := getTemplatesInternal(acc)
+	var collectionTemplates []ExerciseTemplate
+	for _, templateID := range targetCollection.TemplateIDs {
+		for _, t := range allTemplates {
+			if t.ID == templateID {
+				collectionTemplates = append(collectionTemplates, t)
+				break
+			}
+		}
+	}
+	return targetCollection, collectionTemplates, nil
 }
 
-func GetAllExercises(account string) (map[string]ExerciseList, error) {
-	cmd := &GetAllExercisesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	exercise_module.Send(cmd)
-	exercises := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return exercises.(map[string]ExerciseList), nil
-}
+func AddFromCollection(acc, date, collectionID string) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
 
-func AddTemplate(account, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseTemplate, error) {
-	cmd := &AddTemplateCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		Name:      name,
-		Type:      exerciseType,
-		Duration:  duration,
-		Intensity: intensity,
-		Calories:  calories,
-		Notes:     notes,
-		Weight:    weight,
-		BodyParts: bodyParts,
+	collections, _ := getCollectionsInternal(acc)
+	var targetCollection *ExerciseTemplateCollection
+	for _, c := range collections {
+		if c.ID == collectionID {
+			targetCollection = &c
+			break
+		}
 	}
-	exercise_module.Send(cmd)
-	template := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
+	if targetCollection == nil {
+		return fmt.Errorf("collection not found")
 	}
-	return template.(*ExerciseTemplate), nil
-}
 
-func DeleteTemplate(account, id string) error {
-	cmd := &DeleteTemplateCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		ID:      id,
-	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
+	allTemplates, _ := getTemplatesInternal(acc)
+	for _, templateID := range targetCollection.TemplateIDs {
+		for _, template := range allTemplates {
+			if template.ID == templateID {
+				exerciseList, _ := getExercisesByDateInternal(acc, date)
+				if exerciseList.Date == "" {
+					exerciseList = ExerciseList{Date: date, Items: []ExerciseItem{}}
+				}
+				calories := template.Calories
+				if calories == 0 {
+					if profile, _ := getUserProfileInternal(acc); profile != nil && profile.Weight > 0 {
+						calories = calculateCaloriesInternal(template.Type, template.Intensity, template.Duration, profile.Weight+template.Weight)
+					}
+				}
+				item := ExerciseItem{
+					ID: fmt.Sprintf("%d", time.Now().UnixNano()), Name: template.Name, Type: template.Type,
+					Duration: template.Duration, Intensity: template.Intensity, Calories: calories, Notes: template.Notes,
+					Completed: false, Weight: template.Weight, CreatedAt: time.Now(), BodyParts: template.BodyParts,
+				}
+				exerciseList.Items = append(exerciseList.Items, item)
+				saveExercisesToBlog(acc, exerciseList)
+				break
+			}
+		}
 	}
 	return nil
 }
 
-func UpdateTemplate(account, id, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) error {
-	cmd := &UpdateTemplateCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		ID:        id,
-		Name:      name,
-		Type:      exerciseType,
-		Duration:  duration,
-		Intensity: intensity,
-		Calories:  calories,
-		Notes:     notes,
-		Weight:    weight,
-		BodyParts: bodyParts,
-	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
+// ========== Stats 接口 ==========
+
+func GetWeeklyStats(acc, startDate string) (*ExerciseStats, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+
+	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
-		return err.(error)
+		return nil, err
 	}
-	return nil
+	weekday := int(start.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	monday := start.AddDate(0, 0, -weekday+1)
+	sunday := monday.AddDate(0, 0, 6)
+	return calculateStats(acc, "week", monday.Format("2006-01-02"), sunday.Format("2006-01-02"))
 }
 
-func GetTemplates(account string) ([]ExerciseTemplate, error) {
-	cmd := &GetTemplatesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	exercise_module.Send(cmd)
-	templates := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return templates.([]ExerciseTemplate), nil
+func GetMonthlyStats(acc string, year, month int) (*ExerciseStats, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+
+	start, _ := time.Parse("2006-01-02", fmt.Sprintf("%04d-%02d-01", year, month))
+	end := start.AddDate(0, 1, -1)
+	return calculateStats(acc, "month", start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
-func GetWeeklyStats(account, startDate string) (*ExerciseStats, error) {
-	cmd := &GetWeeklyStatsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:   account,
-		StartDate: startDate,
-	}
-	exercise_module.Send(cmd)
-	stats := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return stats.(*ExerciseStats), nil
+func GetYearlyStats(acc string, year int) (*ExerciseStats, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return calculateStats(acc, "year", fmt.Sprintf("%04d-01-01", year), fmt.Sprintf("%04d-12-31", year))
 }
 
-func GetMonthlyStats(account string, year int, month int) (*ExerciseStats, error) {
-	cmd := &GetMonthlyStatsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Year:    year,
-		Month:   month,
+func calculateStats(acc, period, startDate, endDate string) (*ExerciseStats, error) {
+	allExercises, _ := getAllExercisesInternal(acc)
+	stats := &ExerciseStats{Period: period, StartDate: startDate, EndDate: endDate, TypeStats: make(map[string]int)}
+
+	start, _ := time.Parse("2006-01-02", startDate)
+	end, _ := time.Parse("2006-01-02", endDate)
+	stats.TotalDays = int(end.Sub(start).Hours()/24) + 1
+
+	exerciseDaysSet := make(map[string]bool)
+	for date, exerciseList := range allExercises {
+		exerciseDate, err := time.Parse("2006-01-02", date)
+		if err != nil || exerciseDate.Before(start) || exerciseDate.After(end) {
+			continue
+		}
+		hasCompleted := false
+		for _, item := range exerciseList.Items {
+			if item.Completed {
+				hasCompleted = true
+				stats.TotalDuration += item.Duration
+				stats.TotalCalories += item.Calories
+				stats.TypeStats[item.Type]++
+			}
+		}
+		if hasCompleted {
+			exerciseDaysSet[date] = true
+		}
 	}
-	exercise_module.Send(cmd)
-	stats := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
+	stats.ExerciseDays = len(exerciseDaysSet)
+	if stats.TotalDays > 0 {
+		stats.Consistency = float64(stats.ExerciseDays) / float64(stats.TotalDays) * 100
 	}
-	return stats.(*ExerciseStats), nil
+	if period == "week" {
+		stats.WeeklyAvg = float64(stats.TotalDuration)
+	} else if period == "month" {
+		stats.WeeklyAvg = float64(stats.TotalDuration) / (float64(stats.TotalDays) / 7.0)
+	} else {
+		stats.WeeklyAvg = float64(stats.TotalDuration) / 52.0
+	}
+	return stats, nil
 }
 
-func GetYearlyStats(account string, year int) (*ExerciseStats, error) {
-	cmd := &GetYearlyStatsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Year:    year,
+// ========== Profile & MET 接口 ==========
+
+func CalculateCalories(acc, exerciseType, intensity string, duration int, weight float64) int {
+	if weight <= 0 && acc != "" {
+		if accountInfo, err := account.GetAccountInfo(acc); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
 	}
-	exercise_module.Send(cmd)
-	stats := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return stats.(*ExerciseStats), nil
+	return calculateCaloriesInternal(exerciseType, intensity, duration, weight)
 }
 
-func AddCollection(account, name, description string, templateIDs []string) (*ExerciseTemplateCollection, error) {
-	cmd := &AddCollectionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:     account,
-		Name:        name,
-		Description: description,
-		TemplateIDs: templateIDs,
+func GetMETValueWithDescription(acc, exerciseType, intensity string) (float64, string) {
+	for _, mv := range getDefaultMETValues() {
+		if mv.ExerciseType == exerciseType && mv.Intensity == intensity {
+			return mv.MET, mv.Description
+		}
 	}
-	exercise_module.Send(cmd)
-	collection := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
+	switch intensity {
+	case "low":
+		return 3.0, "低强度活动"
+	case "medium":
+		return 5.0, "中等强度活动"
+	case "high":
+		return 8.0, "高强度活动"
+	default:
+		return 4.0, "一般强度活动"
 	}
-	return collection.(*ExerciseTemplateCollection), nil
 }
 
-func DeleteCollection(account, id string) error {
-	cmd := &DeleteCollectionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		ID:      id,
+func SaveUserProfile(acc, name, gender string, weight, height float64, age int) (*UserProfile, error) {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	profile := &UserProfile{ID: "default", Name: name, Gender: gender, Weight: weight, Height: height, Age: age, UpdatedAt: time.Now()}
+	existing, _ := getUserProfileInternal(acc)
+	if existing == nil {
+		profile.CreatedAt = time.Now()
+	} else {
+		profile.CreatedAt = existing.CreatedAt
 	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
+	if err := saveUserProfileToBlog(acc, profile); err != nil {
+		return nil, err
 	}
-	return nil
+	return profile, nil
 }
 
-func UpdateCollection(account, id, name, description string, templateIDs []string) error {
-	cmd := &UpdateCollectionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:     account,
-		ID:          id,
-		Name:        name,
-		Description: description,
-		TemplateIDs: templateIDs,
-	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
-	}
-	return nil
+func GetUserProfile(acc string) (*UserProfile, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+	return getUserProfileInternal(acc)
 }
 
-func GetCollections(account string) ([]ExerciseTemplateCollection, error) {
-	cmd := &GetCollectionsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	exercise_module.Send(cmd)
-	collections := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return collections.([]ExerciseTemplateCollection), nil
-}
-
-func GetCollectionWithTemplates(account, collectionID string) (*ExerciseTemplateCollection, []ExerciseTemplate, error) {
-	cmd := &GetCollectionWithTemplatesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:      account,
-		CollectionID: collectionID,
-	}
-	exercise_module.Send(cmd)
-	collection := <-cmd.Response()
-	templates := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, nil, err.(error)
-	}
-	return collection.(*ExerciseTemplateCollection), templates.([]ExerciseTemplate), nil
-}
-
-func AddFromCollection(account, date, collectionID string) error {
-	cmd := &AddFromCollectionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:      account,
-		Date:         date,
-		CollectionID: collectionID,
-	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
-	}
-	return nil
-}
-
-func CalculateCalories(account, exerciseType, intensity string, duration int, weight float64) int {
-	cmd := &CalculateCaloriesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:      account,
-		ExerciseType: exerciseType,
-		Intensity:    intensity,
-		Duration:     duration,
-		Weight:       weight,
-	}
-	exercise_module.Send(cmd)
-	calories := <-cmd.Response()
-	return calories.(int)
-}
-
-func GetMETValueWithDescription(account, exerciseType, intensity string) (float64, string) {
-	cmd := &GetMETValueWithDescriptionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:      account,
-		ExerciseType: exerciseType,
-		Intensity:    intensity,
-	}
-	exercise_module.Send(cmd)
-	met := <-cmd.Response()
-	description := <-cmd.Response()
-	return met.(float64), description.(string)
-}
-
-func SaveUserProfile(account, name, gender string, weight, height float64, age int) (*UserProfile, error) {
-	cmd := &SaveUserProfileCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Name:    name,
-		Gender:  gender,
-		Weight:  weight,
-		Height:  height,
-		Age:     age,
-	}
-	exercise_module.Send(cmd)
-	profile := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return profile.(*UserProfile), nil
-}
-
-func GetUserProfile(account string) (*UserProfile, error) {
-	cmd := &GetUserProfileCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	exercise_module.Send(cmd)
-	profile := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	if profile == nil {
+func getUserProfileInternal(acc string) (*UserProfile, error) {
+	b := blog.GetBlogWithAccount(acc, generateUserProfileBlogTitle())
+	if b == nil {
+		if accountInfo, err := account.GetAccountInfo(acc); err == nil && accountInfo != nil && accountInfo.Weight > 0 {
+			return &UserProfile{ID: acc, Name: accountInfo.Name, Weight: accountInfo.Weight, Height: accountInfo.Height, Age: accountInfo.GetAge(), CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+		}
 		return nil, nil
 	}
-	return profile.(*UserProfile), nil
+	var profile UserProfile
+	if err := json.Unmarshal([]byte(b.Content), &profile); err != nil {
+		return nil, err
+	}
+	return &profile, nil
 }
 
-func GetMETValues(account string) ([]METValue, error) {
-	cmd := &GetMETValuesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-	}
-	exercise_module.Send(cmd)
-	metValues := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return nil, err.(error)
-	}
-	return metValues.([]METValue), nil
-}
-
-func UpdateAllTemplateCalories(account string, weight float64) error {
-	cmd := &UpdateAllTemplateCaloriesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Weight:  weight,
-	}
-	exercise_module.Send(cmd)
-	err := <-cmd.Response()
-	if err != nil {
-		return err.(error)
+func saveUserProfileToBlog(acc string, profile *UserProfile) error {
+	title := generateUserProfileBlogTitle()
+	content, _ := json.MarshalIndent(profile, "", "  ")
+	ubd := &module.UploadedBlogData{Title: title, Content: string(content), Tags: "exercise-profile", AuthType: module.EAuthType_private}
+	if blog.GetBlogWithAccount(acc, title) == nil {
+		blog.AddBlogWithAccount(acc, ubd)
+	} else {
+		blog.ModifyBlogWithAccount(acc, ubd)
 	}
 	return nil
 }
 
-func UpdateAllExerciseCalories(account string, weight float64) (int, error) {
-	cmd := &UpdateAllExerciseCaloriesCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account: account,
-		Weight:  weight,
+func GetMETValues(acc string) ([]METValue, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+
+	b := blog.GetBlogWithAccount(acc, generateMETValuesBlogTitle())
+	if b == nil {
+		return getDefaultMETValues(), nil
 	}
-	exercise_module.Send(cmd)
-	updatedCount := <-cmd.Response()
-	err := <-cmd.Response()
-	if err != nil {
-		return 0, err.(error)
+	var metValues []METValue
+	if err := json.Unmarshal([]byte(b.Content), &metValues); err != nil {
+		return getDefaultMETValues(), nil
 	}
-	return updatedCount.(int), nil
+	return metValues, nil
 }
 
-// ParseExerciseFromBlog parses a blog content string into an ExerciseList
+func UpdateAllTemplateCalories(acc string, weight float64) error {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	if weight <= 0 && acc != "" {
+		if accountInfo, err := account.GetAccountInfo(acc); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
+	}
+
+	templates, _ := getTemplatesInternal(acc)
+	updated := false
+	for i := range templates {
+		newCalories := calculateCaloriesInternal(templates[i].Type, templates[i].Intensity, templates[i].Duration, weight+templates[i].Weight)
+		if newCalories != templates[i].Calories {
+			templates[i].Calories = newCalories
+			updated = true
+		}
+	}
+	if updated {
+		return saveTemplatesToBlog(acc, templates)
+	}
+	return nil
+}
+
+func UpdateAllExerciseCalories(acc string, weight float64) (int, error) {
+	exerciseMu.Lock()
+	defer exerciseMu.Unlock()
+
+	if weight <= 0 && acc != "" {
+		if accountInfo, err := account.GetAccountInfo(acc); err == nil && accountInfo != nil {
+			weight = accountInfo.Weight
+		}
+	}
+
+	allExercises, _ := getAllExercisesInternal(acc)
+	updatedCount := 0
+	for date, exerciseList := range allExercises {
+		updated := false
+		for i := range exerciseList.Items {
+			newCalories := calculateCaloriesInternal(exerciseList.Items[i].Type, exerciseList.Items[i].Intensity, exerciseList.Items[i].Duration, weight)
+			if newCalories != exerciseList.Items[i].Calories {
+				exerciseList.Items[i].Calories = newCalories
+				updated = true
+				updatedCount++
+			}
+		}
+		if updated {
+			saveExercisesToBlog(acc, exerciseList)
+		}
+		_ = date
+	}
+	return updatedCount, nil
+}
+
 func ParseExerciseFromBlog(content string) ExerciseList {
 	var exerciseList ExerciseList
 	if err := json.Unmarshal([]byte(content), &exerciseList); err != nil {
-		// Return empty ExerciseList if parsing fails
 		return ExerciseList{Items: []ExerciseItem{}}
 	}
 	return exerciseList

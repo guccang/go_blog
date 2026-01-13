@@ -2,249 +2,370 @@ package config
 
 import (
 	"bufio"
-	"core"
 	"fmt"
 	log "mylog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-var adminAccount string
+// ========== Simple Config 模块 ==========
+// 无 Actor、无 Channel，使用 sync.RWMutex
 
-func Info() {
-	log.Debug(log.ModuleConfig, "info config v13.0")
+// ConfigStore 配置存储
+type ConfigStore struct {
+	Account        string
+	datas          map[string]string
+	autodatesuffix []string
+	publictags     []string
+	diary_keywords []string
+	config_path    string
+	sys_files      []string
+	blog_version   string
+	mu             sync.RWMutex
 }
 
-// 初始化config模块
+// ConfigManager 多账户管理
+type ConfigManager struct {
+	stores map[string]*ConfigStore
+	mu     sync.Mutex
+}
+
+var (
+	configManager *ConfigManager
+	adminAccount  string
+)
+
+func Info() {
+	log.Debug(log.ModuleConfig, "info config v14.0 (simple)")
+}
+
+// Init 初始化 Config 模块
 func Init(filePath string) {
 	InitManager(filePath)
 }
 
-// interface
-
-func GetVersionWithAccount(account string) string {
-	actor := getConfigActor(account)
-	cmd := &GetVersionCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
+// InitManager 初始化配置管理器
+func InitManager(defaultConfigPath string) {
+	configManager = &ConfigManager{
+		stores: make(map[string]*ConfigStore),
 	}
-	actor.Send(cmd)
-	version := <-cmd.Response()
-	return version.(string)
-}
 
-func GetConfigPathWithAccount(account string) string {
-	actor := getConfigActor(account)
-	cmd := &GetConfigPathCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
+	// 创建默认配置存储
+	defaultStore := &ConfigStore{
+		Account:        "",
+		datas:          make(map[string]string),
+		autodatesuffix: make([]string, 0),
+		publictags:     make([]string, 0),
+		diary_keywords: make([]string, 0),
+		config_path:    defaultConfigPath,
+		sys_files:      make([]string, 0),
+		blog_version:   "Version14.0",
 	}
-	actor.Send(cmd)
-	path := <-cmd.Response()
-	return path.(string)
-}
 
-func ReloadConfig(account, filePath string) {
-	ReloadConfigWithAccount(account, filePath)
-}
+	log.DebugF(log.ModuleConfig, "InitManager defaultConfigPath=%s", defaultConfigPath)
 
-func ReloadConfigWithAccount(account, filePath string) {
-	actor := getConfigActor(account)
-	cmd := &ReloadConfigCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Account:  account,
-		FilePath: filePath,
+	if err := defaultStore.loadConfigInternal("", defaultConfigPath); err != nil {
+		log.ErrorF(log.ModuleConfig, "Init default config store err=%s", err.Error())
 	}
-	actor.Send(cmd)
-	<-cmd.Response()
+
+	configManager.stores[defaultStore.Account] = defaultStore
+	adminAccount = defaultStore.Account
+	log.InfoF(log.ModuleConfig, "Config manager initialized with default account: %s", defaultStore.Account)
 }
 
-// 内部方法：加载配置
-func (aconfig *ConfigActor) loadConfigInternal(account string, filePath string) error {
+// getConfigStore 获取或创建指定账户的配置存储
+func getConfigStore(account string) *ConfigStore {
+	configManager.mu.Lock()
+	defer configManager.mu.Unlock()
+
+	if store, exists := configManager.stores[account]; exists {
+		return store
+	}
+
+	// 创建新存储
+	newStore := &ConfigStore{
+		Account:        account,
+		datas:          make(map[string]string),
+		autodatesuffix: make([]string, 0),
+		publictags:     make([]string, 0),
+		diary_keywords: make([]string, 0),
+		config_path:    "",
+		sys_files:      make([]string, 0),
+		blog_version:   "Version14.0",
+	}
+
+	// 加载默认配置
+	isAdmin := true
+	defaultConfigs := getDefaultConfigForAccountSimple(account, isAdmin)
+	for key, value := range defaultConfigs {
+		newStore.datas[key] = value
+	}
+	newStore.parseConfigArrays()
+
+	configManager.stores[account] = newStore
+	log.InfoF(log.ModuleConfig, "Created new config store for account: %s", account)
+	return newStore
+}
+
+// loadConfigInternal 加载配置文件
+func (store *ConfigStore) loadConfigInternal(account string, filePath string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
 	log.DebugF(log.ModuleConfig, "loadConfigInternal account=%s filePath=%s", account, filePath)
 	datas, err := readConfigFile(filePath)
 	if err != nil {
 		return err
 	}
-	aconfig.datas = datas
-	aconfig.config_path = filePath
+	store.datas = datas
+	store.config_path = filePath
 
-	for k, v := range aconfig.datas {
+	for k, v := range store.datas {
 		log.DebugF(log.ModuleConfig, "CONFIG %s=%s", k, v)
 	}
 
-	datetitles, ok := aconfig.datas["title_auto_add_date_suffix"]
-	if ok {
-		arr := strings.Split(datetitles, "|")
-		aconfig.autodatesuffix = arr
-	}
+	store.parseConfigArraysInternal()
 
-	tags, ok := aconfig.datas["publictags"]
-	if ok {
-		arr := strings.Split(tags, "|")
-		aconfig.publictags = arr
-	}
-
-	sysfiles, ok := aconfig.datas["sysfiles"]
-	if ok {
-		arr := strings.Split(sysfiles, "|")
-		aconfig.sys_files = arr
-	}
-
-	// 从 sys_conf.md 文件中读取日记关键字配置
 	if account == "" {
-		account = aconfig.getConfig("admin")
-		aconfig.Account = account
+		account = store.datas["admin"]
+		store.Account = account
 	}
-	aconfig.loadDiaryKeywordsFromSysConf(account)
+	store.loadDiaryKeywordsFromSysConf(account)
 	return nil
 }
 
-// 从 sys_conf.md 文件中读取日记关键字配置
-func (aconfig *ConfigActor) loadDiaryKeywordsFromSysConf(account string) {
-	log.DebugF(log.ModuleConfig, "loadDiaryKeywordsFromSysConf account=%s", account)
-	// 获取 blogs_txt 目录路径
-	sysConfPath := GetSysConfigPath(account)
+// parseConfigArraysInternal 解析配置数组（内部版本，不加锁）
+func (store *ConfigStore) parseConfigArraysInternal() {
+	if datetitles, ok := store.datas["title_auto_add_date_suffix"]; ok {
+		store.autodatesuffix = strings.Split(datetitles, "|")
+	}
+	if tags, ok := store.datas["publictags"]; ok {
+		store.publictags = strings.Split(tags, "|")
+	}
+	if sysfiles, ok := store.datas["sysfiles"]; ok {
+		store.sys_files = strings.Split(sysfiles, "|")
+	}
+	if keywords, ok := store.datas["diary_keywords"]; ok {
+		arr := strings.Split(keywords, "|")
+		store.diary_keywords = make([]string, 0, len(arr))
+		for _, keyword := range arr {
+			keyword = strings.TrimSpace(keyword)
+			if keyword != "" {
+				store.diary_keywords = append(store.diary_keywords, keyword)
+			}
+		}
+	}
+	if len(store.diary_keywords) == 0 {
+		store.diary_keywords = []string{"日记_"}
+	}
+}
 
-	// 检查文件是否存在
+// parseConfigArrays 解析配置数组（公开版本，加锁）
+func (store *ConfigStore) parseConfigArrays() {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.parseConfigArraysInternal()
+}
+
+// loadDiaryKeywordsFromSysConf 从 sys_conf.md 加载日记关键字
+func (store *ConfigStore) loadDiaryKeywordsFromSysConf(account string) {
+	sysConfPath := GetSysConfigPath(account)
 	if _, err := os.Stat(sysConfPath); os.IsNotExist(err) {
-		log.DebugF(log.ModuleConfig, "sys_conf.md 文件不存在: %s", sysConfPath)
-		// 设置默认的日记关键字
-		aconfig.diary_keywords = []string{"日记_"}
+		store.diary_keywords = []string{"日记_"}
 		return
 	}
 
-	// 读取文件内容
 	file, err := os.Open(sysConfPath)
 	if err != nil {
-		log.ErrorF(log.ModuleConfig, "无法打开 sys_conf.md 文件: %v", err)
-		aconfig.diary_keywords = []string{"日记_"}
+		store.diary_keywords = []string{"日记_"}
 		return
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimSpace(line)
-
-		// 跳过空行和注释行
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 查找日记关键字配置行
 		if strings.HasPrefix(line, "diary_keywords=") {
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 {
 				keywordsStr := strings.TrimSpace(parts[1])
 				if keywordsStr != "" {
 					keywords := strings.Split(keywordsStr, "|")
-					aconfig.diary_keywords = make([]string, 0, len(keywords))
+					store.diary_keywords = make([]string, 0, len(keywords))
 					for _, keyword := range keywords {
 						keyword = strings.TrimSpace(keyword)
 						if keyword != "" {
-							aconfig.diary_keywords = append(aconfig.diary_keywords, keyword)
+							store.diary_keywords = append(store.diary_keywords, keyword)
 						}
 					}
-					log.DebugF(log.ModuleConfig, "从 sys_conf.md 加载日记关键字: %v", aconfig.diary_keywords)
 					return
 				}
 			}
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.ErrorF(log.ModuleConfig, "读取 sys_conf.md 文件出错: %v", err)
-	}
-
-	// 如果没有找到配置，使用默认值
-	if len(aconfig.diary_keywords) == 0 {
-		aconfig.diary_keywords = []string{"日记_"}
-		log.DebugF(log.ModuleConfig, "未找到日记关键字配置，使用默认值: %v", aconfig.diary_keywords)
+	if len(store.diary_keywords) == 0 {
+		store.diary_keywords = []string{"日记_"}
 	}
 }
 
+// ========== 对外接口 ==========
+
+// GetVersionWithAccount 获取版本
+func GetVersionWithAccount(account string) string {
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return store.blog_version
+}
+
+// GetConfigPathWithAccount 获取配置路径
+func GetConfigPathWithAccount(account string) string {
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return store.config_path
+}
+
+// ReloadConfig 重新加载配置
+func ReloadConfig(account, filePath string) {
+	ReloadConfigWithAccount(account, filePath)
+}
+
+// ReloadConfigWithAccount 重新加载配置
+func ReloadConfigWithAccount(account, filePath string) {
+	store := getConfigStore(account)
+	store.loadConfigInternal(account, filePath)
+}
+
+// GetDiaryKeywordsWithAccount 获取日记关键字
 func GetDiaryKeywordsWithAccount(account string) []string {
-	actor := getConfigActor(account)
-	cmd := &GetDiaryKeywordsCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-	}
-	actor.Send(cmd)
-	keywords := <-cmd.Response()
-	return keywords.([]string)
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return store.diary_keywords
 }
 
+// IsDiaryBlogWithAccount 检查是否为日记博客
 func IsDiaryBlogWithAccount(account, title string) bool {
-	actor := getConfigActor(account)
-	cmd := &IsDiaryBlogCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Title: title,
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, keyword := range store.diary_keywords {
+		if len(title) >= len(keyword) && title[:len(keyword)] == keyword {
+			return true
+		}
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(bool)
+	return false
 }
 
+// GetConfigWithAccount 获取配置值
 func GetConfigWithAccount(account, name string) string {
-	actor := getConfigActor(account)
-	cmd := &GetConfigCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Name: name,
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	if v, ok := store.datas[name]; ok {
+		return v
 	}
-	actor.Send(cmd)
-	value := <-cmd.Response()
-	return value.(string)
+	return ""
 }
 
-func GetHttpTemplatePath() string {
-	templates_path := GetConfigWithAccount(adminAccount, "templates_path")
-	if templates_path == "" {
-		exePath, _ := os.Executable()
-		templates_path = filepath.Dir(exePath)
-		return filepath.Join(templates_path, "templates")
-	} else {
-		return templates_path
+// IsSysFile 检查是否为系统文件
+func IsSysFile(name string) int {
+	store := getConfigStore(adminAccount)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, v := range store.sys_files {
+		if v == name {
+			return 1
+		}
 	}
+	return 0
 }
 
-func GetHttpStaticPath() string {
-	statics_path := GetConfigWithAccount(adminAccount, "statics_path")
-	if statics_path == "" {
-		exePath, _ := os.Executable()
-		statics_path = filepath.Dir(exePath)
-		return filepath.Join(statics_path, "statics")
-	} else {
-		return statics_path
+// IsPublicTag 检查是否为公开标签
+func IsPublicTag(tag string) int {
+	return IsPublicTagWithAccount("", tag)
+}
+
+// IsPublicTagWithAccount 检查是否为公开标签
+func IsPublicTagWithAccount(account, tag string) int {
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, v := range store.publictags {
+		if v == tag {
+			return 1
+		}
 	}
+	return 0
 }
 
-func GetExePath() string {
-	exePath, _ := os.Executable()
-	exeDir := filepath.Dir(exePath)
-	return exeDir
+// IsTitleAddDateSuffix 检查是否需要添加日期后缀
+func IsTitleAddDateSuffix(title string) int {
+	return IsTitleAddDateSuffixWithAccount("", title)
 }
 
-func GetBlogsPath(account string) string {
-	exeDir := GetExePath()
-	return filepath.Join(exeDir, "blogs_txt", account)
+// IsTitleAddDateSuffixWithAccount 检查是否需要添加日期后缀
+func IsTitleAddDateSuffixWithAccount(account, title string) int {
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, v := range store.autodatesuffix {
+		if v == title {
+			return 1
+		}
+	}
+	return 0
 }
+
+// IsTitleContainsDateSuffix 检查标题是否包含日期后缀
+func IsTitleContainsDateSuffix(title string) int {
+	return IsTitleContainsDateSuffixWithAccount("", title)
+}
+
+// IsTitleContainsDateSuffixWithAccount 检查标题是否包含日期后缀
+func IsTitleContainsDateSuffixWithAccount(account, title string) int {
+	store := getConfigStore(account)
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, v := range store.autodatesuffix {
+		if strings.Contains(strings.ToLower(title), strings.ToLower(v)) {
+			return 1
+		}
+	}
+	return 0
+}
+
+// UpdateConfigFromBlog 从博客内容更新配置
+func UpdateConfigFromBlog(account, blogContent string) {
+	store := getConfigStore(account)
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	configs := parseConfigFromBlogContent(blogContent)
+	for key, value := range configs {
+		store.datas[key] = value
+	}
+	store.parseConfigArraysInternal()
+}
+
+// ========== 辅助函数 ==========
 
 func readConfigFile(filePath string) (map[string]string, error) {
 	config := make(map[string]string)
-
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -253,8 +374,7 @@ func readConfigFile(filePath string) (map[string]string, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimSpace(line)
+		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -265,76 +385,77 @@ func readConfigFile(filePath string) (map[string]string, error) {
 			config[key] = value
 		}
 	}
+	return config, scanner.Err()
+}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
+func parseConfigFromBlogContent(content string) map[string]string {
+	configs := make(map[string]string)
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			configs[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
 	}
-
-	return config, nil
+	return configs
 }
 
-func IsSysFile(name string) int {
-	actor := getConfigActor(adminAccount)
-	cmd := &IsSysFileCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Name: name,
+func getDefaultConfigForAccountSimple(account string, isAdmin bool) map[string]string {
+	if isAdmin {
+		return map[string]string{
+			"port":                       "8888",
+			"redis_ip":                   "127.0.0.1",
+			"redis_port":                 "6666",
+			"redis_pwd":                  "",
+			"publictags":                 "public|share|demo",
+			"sysfiles":                   GetSysConfigs(),
+			"title_auto_add_date_suffix": "日记",
+			"diary_keywords":             "日记_",
+			"diary_password":             "",
+			"main_show_blogs":            "10",
+			"admin":                      account,
+		}
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
-}
-
-func IsPublicTag(tag string) int {
-	return IsPublicTagWithAccount("", tag)
-}
-
-func IsPublicTagWithAccount(account, tag string) int {
-	actor := getConfigActor(account)
-	cmd := &IsPublicTagCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Tag: tag,
+	return map[string]string{
+		"publictags":                 "public|share|demo",
+		"title_auto_add_date_suffix": "日记",
+		"diary_keywords":             "日记_",
+		"diary_password":             "",
+		"main_show_blogs":            "10",
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
 }
 
-func IsTitleAddDateSuffix(title string) int {
-	return IsTitleAddDateSuffixWithAccount("", title)
-}
+// ========== 路径函数 ==========
 
-func IsTitleAddDateSuffixWithAccount(account, title string) int {
-	actor := getConfigActor(account)
-	cmd := &IsTitleAddDateSuffixCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Title: title,
+func GetHttpTemplatePath() string {
+	templates_path := GetConfigWithAccount(adminAccount, "templates_path")
+	if templates_path == "" {
+		exePath, _ := os.Executable()
+		return filepath.Join(filepath.Dir(exePath), "templates")
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	return templates_path
 }
 
-func IsTitleContainsDateSuffix(title string) int {
-	return IsTitleContainsDateSuffixWithAccount("", title)
-}
-
-func IsTitleContainsDateSuffixWithAccount(account, title string) int {
-	actor := getConfigActor(account)
-	cmd := &IsTitleContainsDateSuffixCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		Title: title,
+func GetHttpStaticPath() string {
+	statics_path := GetConfigWithAccount(adminAccount, "statics_path")
+	if statics_path == "" {
+		exePath, _ := os.Executable()
+		return filepath.Join(filepath.Dir(exePath), "statics")
 	}
-	actor.Send(cmd)
-	ret := <-cmd.Response()
-	return ret.(int)
+	return statics_path
+}
+
+func GetExePath() string {
+	exePath, _ := os.Executable()
+	return filepath.Dir(exePath)
+}
+
+func GetBlogsPath(account string) string {
+	return filepath.Join(GetExePath(), "blogs_txt", account)
 }
 
 func GetDownLoadPath() string {
@@ -369,19 +490,6 @@ func GetRecyclePath() string {
 		path = ".go_blog_recycle"
 	}
 	return path
-}
-
-// UpdateConfigFromBlog updates account-specific configuration from blog content
-func UpdateConfigFromBlog(account, blogContent string) {
-	actor := getConfigActor(account)
-	cmd := &UpdateConfigFromBlogCmd{
-		ActorCommand: core.ActorCommand{
-			Res: make(chan interface{}),
-		},
-		BlogContent: blogContent,
-	}
-	actor.Send(cmd)
-	<-cmd.Response()
 }
 
 func GetAdminAccount() string {
