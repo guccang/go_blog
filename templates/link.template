@@ -28,6 +28,7 @@
 				<a href="/statistics" class="nav-item"><span class="nav-icon">📊</span><span class="nav-text">访问统计</span></a>
 				<a href="/tools" class="nav-item"><span class="nav-icon">🛠️</span><span class="nav-text">实用工具</span></a>
 				<a href="/config" class="nav-item"><span class="nav-icon">🔧</span><span class="nav-text">系统配置</span></a>
+				<a href="/agent" class="nav-item"><span class="nav-icon">🤖</span><span class="nav-text">Agent</span></a>
 				<a href="/public?account={{.USER_ACCOUNT}}" class="nav-item"><span class="nav-icon">🌐</span><span class="nav-text">公开博客</span></a>
 			</div>
 			<div class="search-toggle-container">

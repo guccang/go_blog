@@ -284,6 +284,9 @@ func HandleAgentWebSocket(w h.ResponseWriter, r *h.Request) {
 	}
 	hub.Register(client)
 
+	// Sync reminders after connection is established
+	hub.SyncReminders(account)
+
 	// 保持连接并处理心跳
 	defer func() {
 		hub.Unregister(client)

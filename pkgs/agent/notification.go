@@ -9,10 +9,11 @@ import (
 
 // TaskNotification 任务通知
 type TaskNotification struct {
-	TaskID   string  `json:"task_id"`
-	Type     string  `json:"type"` // submitted/started/progress/paused/resumed/canceled/done/error
-	Progress float64 `json:"progress,omitempty"`
-	Message  string  `json:"message,omitempty"`
+	TaskID   string      `json:"task_id"`
+	Type     string      `json:"type"` // submitted/started/progress/paused/resumed/canceled/done/error
+	Progress float64     `json:"progress,omitempty"`
+	Message  string      `json:"message,omitempty"`
+	Data     interface{} `json:"data,omitempty"`
 }
 
 // ClientConnection WebSocket 客户端连接
@@ -163,4 +164,32 @@ func (h *NotificationHub) GetTotalConnections() int {
 		total += len(conns)
 	}
 	return total
+}
+
+// SyncReminders 同步提醒
+func (h *NotificationHub) SyncReminders(account string) {
+	if globalScheduler == nil {
+		return
+	}
+	reminders := globalScheduler.GetReminders(account)
+	if len(reminders) == 0 {
+		return
+	}
+
+	var activeReminders []*Reminder
+	for _, r := range reminders {
+		if r.Enabled {
+			activeReminders = append(activeReminders, r)
+		}
+	}
+
+	if len(activeReminders) == 0 {
+		return
+	}
+
+	notification := TaskNotification{
+		Type: "reminder_sync",
+		Data: activeReminders,
+	}
+	h.BroadcastToAccount(account, notification)
 }

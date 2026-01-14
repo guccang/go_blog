@@ -136,6 +136,7 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 		Expires: time.Now().Add(48 * time.Hour), // 过期时间为两天
 		Path:    "/",
 	}
+
 	h.SetCookie(w, cookie)
 
 	h.Redirect(w, r, "/main", 302)
@@ -201,7 +202,6 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 	h.SetCookie(w, cookie)
 
-	log.DebugF(log.ModuleAuth, "login success account=%s pwd=%s session=%s", account, pwd, session)
 	h.Redirect(w, r, "/main", 302)
 }
 
