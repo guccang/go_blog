@@ -10,6 +10,9 @@ require (
 )
 
 replace mylog => ../mylog
+
 replace config => ../config
+
 replace view => ../view
+
 replace auth => ../auth

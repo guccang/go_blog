@@ -5,6 +5,7 @@ import (
 	"comment"
 	"exercise"
 	"fmt"
+	"module"
 	log "mylog"
 	"sort"
 	"strings"
@@ -551,4 +552,23 @@ func RawGetCurrentTaskByRageDate(account, startDate, endDate string) string {
 func RawCurrentDiaryContent(account string) string {
 	title := "日记_" + RawCurrentDate()
 	return RawGetBlogData(account, title)
+}
+
+// 创建博客
+func RawCreateBlog(account, title, content, tags string, authType int, encrypt int) string {
+	udb := &module.UploadedBlogData{
+		Title:    title,
+		Content:  content,
+		Tags:     tags,
+		AuthType: authType,
+		Encrypt:  encrypt,
+		Account:  account,
+	}
+	ret := blog.AddBlogWithAccount(account, udb)
+	if ret == 0 {
+		return "Success"
+	} else if ret == 1 {
+		return "Error: Blog already exists"
+	}
+	return fmt.Sprintf("Error: Unknown error %d", ret)
 }

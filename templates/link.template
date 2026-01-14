@@ -138,6 +138,7 @@
     	<script src="/js/move_assistant.js"></script>
 		<script src="/js/utils.js"></script>
 		<script src="/js/link.js"></script>
+		<script src="/js/global-reminder.js"></script>
 
 		<script>
 		// 点击标签进行搜索

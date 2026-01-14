@@ -327,6 +327,14 @@ func Init() int {
 	h.HandleFunc("/api/assistant/trends", HandleAssistantTrends)
 	h.HandleFunc("/api/assistant/health-comprehensive", HandleAssistantHealthComprehensive)
 
+	// Agent background task routes
+	h.HandleFunc("/agent", HandleAgentPage)
+	h.HandleFunc("/api/agent/tasks", HandleAgentTasks)
+	h.HandleFunc("/api/agent/task", HandleAgentTask)
+	h.HandleFunc("/api/agent/task/action", HandleAgentTaskAction)
+	h.HandleFunc("/api/agent/status", HandleAgentStatus)
+	h.HandleFunc("/ws/agent/notifications", HandleAgentWebSocket)
+
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)

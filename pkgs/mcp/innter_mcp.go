@@ -1,12 +1,14 @@
 package mcp
 
 import (
+	"fmt"
 	"statistics"
 	"strconv"
 )
 
 // 提供内部mcp接口,接口名称为Inner_blog.xxx
 var callBacks = make(map[string]func(arguments map[string]interface{}) string)
+var callBacksPrompt = make(map[string]string)
 
 func Inner_blog_RawAllBlogName(arguments map[string]interface{}) string {
 	account := arguments["account"].(string)
@@ -129,6 +131,19 @@ func Inner_blog_RawGetCurrentTaskByRageDate(arguments map[string]interface{}) st
 	return statistics.RawGetCurrentTaskByRageDate(account, startDate, endDate)
 }
 
+func Inner_blog_RawCreateBlog(arguments map[string]interface{}) string {
+	account := arguments["account"].(string)
+	title := arguments["title"].(string)
+	content := arguments["content"].(string)
+	tags := arguments["tags"].(string)
+	authType := int(arguments["authType"].(float64))
+	encrypt := 0
+	if val, ok := arguments["encrypt"]; ok {
+		encrypt = int(val.(float64))
+	}
+	return statistics.RawCreateBlog(account, title, content, tags, authType, encrypt)
+}
+
 // =================================== 扩展Inner_blog接口 =========================================
 
 // 博客统计相关接口
@@ -228,7 +243,23 @@ func CallInnerTools(name string, arguments map[string]interface{}) string {
 	if !ok {
 		return "Error NOT find callback: " + name
 	}
-	return callback(arguments)
+
+	tool_result := callback(arguments)
+	prompt, ok := getInnerToolsPrompt(name)
+	if ok {
+		return fmt.Sprintf("%s /n/n %s", tool_result, prompt)
+	} else {
+		return tool_result
+	}
+}
+
+func getInnerToolsPrompt(name string) (string, bool) {
+	prompt, ok := callBacksPrompt[name]
+	return prompt, ok
+}
+
+func RegisterCallBackPrompt(name string, prompt string) {
+	callBacksPrompt[name] = prompt
 }
 
 func RegisterInnerTools() {
@@ -280,6 +311,10 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawGetCurrentTask", Inner_blog_RawGetCurrentTask)
 	RegisterCallBack("RawGetCurrentTaskByDate", Inner_blog_RawGetCurrentTaskByDate)
 	RegisterCallBack("RawGetCurrentTaskByRageDate", Inner_blog_RawGetCurrentTaskByRageDate)
+
+	// 新增接口 - 创建博客
+	RegisterCallBack("RawCreateBlog", Inner_blog_RawCreateBlog)
+	RegisterCallBackPrompt("RawCreateBlog", "完成创建后返回博客链接格式为[title](/get?blogname=title)")
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -712,6 +747,25 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.RawCreateBlog",
+				Description: "创建新博客",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account":  map[string]string{"type": "string", "description": "账号"},
+						"title":    map[string]string{"type": "string", "description": "博客标题"},
+						"content":  map[string]string{"type": "string", "description": "博客内容"},
+						"tags":     map[string]string{"type": "string", "description": "标签,多个标签用|分隔"},
+						"authType": map[string]string{"type": "number", "description": "权限类型:1=私有,2=公开,4=加密,8=协作,16=日记"},
+						"encrypt":  map[string]string{"type": "number", "description": "是否加密:0=否,1=是"},
+					},
+					"required": []string{"account", "title", "content", "tags", "authType"},
+				},
+			},
+		},
 
 		// 查询类工具
 		{
@@ -805,7 +859,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
-
 		// 锻炼类工具
 		{
 			Type: "function",
@@ -839,7 +892,95 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
+
+		// =================================== 定时提醒工具 =========================================
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CreateReminder",
+				Description: "创建定时提醒任务。可以设置间隔时间和重复次数。例如每分钟提醒一次。",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account":  map[string]string{"type": "string", "description": "账号"},
+						"title":    map[string]string{"type": "string", "description": "提醒标题"},
+						"message":  map[string]string{"type": "string", "description": "提醒内容消息"},
+						"interval": map[string]interface{}{"type": "number", "description": "间隔秒数，如60表示每分钟提醒一次"},
+						"repeat":   map[string]interface{}{"type": "number", "description": "重复次数，-1表示无限重复"},
+					},
+					"required": []string{"account", "title", "message", "interval"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.ListReminders",
+				Description: "列出当前用户的所有定时提醒",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.DeleteReminder",
+				Description: "删除指定的定时提醒",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"id":      map[string]string{"type": "string", "description": "提醒ID"},
+					},
+					"required": []string{"account", "id"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.SendNotification",
+				Description: "立即发送一条通知消息给用户",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"message": map[string]string{"type": "string", "description": "通知消息内容"},
+					},
+					"required": []string{"account", "message"},
+				},
+			},
+		},
 	}
 
+	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
+	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射
+
 	return tools
+}
+
+// GetInnerMCPToolsProcessed returns inner MCP tools with processed function names
+// This applies extractFunctionName to simplify tool names (e.g., Inner_blog.RawCurrentDate -> RawCurrentDate)
+// and populates toolNameMapping for CallMCPTool to resolve the original names
+func GetInnerMCPToolsProcessed() []LLMTool {
+	tools := GetInnerMCPTools(nil)
+	processedTools := make([]LLMTool, len(tools))
+
+	for i, tool := range tools {
+		processedTools[i] = LLMTool{
+			Type: tool.Type,
+			Function: LLMFunction{
+				Name:        extractFunctionName(tool.Function.Name),
+				Description: tool.Function.Description,
+				Parameters:  tool.Function.Parameters,
+			},
+		}
+	}
+
+	return processedTools
 }

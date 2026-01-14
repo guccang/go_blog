@@ -72,14 +72,14 @@ type GameData struct {
 }
 
 type LinkDatas struct {
-	LINKS          []LinkData
-	RECENT_LINKS   []LinkData
-	VERSION        string
-	BLOGS_NUMBER   int
-	TAGS           []TagInfo
-	USER_ACCOUNT   string
-	USER_AVATAR    string
-	GAMES          []GameData
+	LINKS           []LinkData
+	RECENT_LINKS    []LinkData
+	VERSION         string
+	BLOGS_NUMBER    int
+	TAGS            []TagInfo
+	USER_ACCOUNT    string
+	USER_AVATAR     string
+	GAMES           []GameData
 	SEARCH_COMMANDS []SearchCommandInfo
 }
 
@@ -1177,6 +1177,24 @@ func PageTaskBreakdown(w h.ResponseWriter) {
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render taskbreakdown template", h.StatusInternalServerError)
+		return
+	}
+}
+
+// PageAgent renders the agent task panel page
+func PageAgent(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "agent.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse agent template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render agent template", h.StatusInternalServerError)
 		return
 	}
 }

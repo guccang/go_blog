@@ -207,6 +207,7 @@
 	<script src="/js/utils.js"></script>
 	<script src="/js/permissions.js"></script>
 	<script src="/js/get.js"></script>
+	<script src="/js/global-reminder.js"></script>
 	
 
 </body>

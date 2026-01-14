@@ -40,6 +40,7 @@ const (
 	ModuleTaskBreakdown
 	ModuleView
 	ModuleControl
+	ModuleAgent
 )
 
 // Logger configuration
@@ -96,6 +97,7 @@ func Info() {
 		ModuleTaskBreakdown: "taskbreakdown",
 		ModuleView:          "view",
 		ModuleControl:       "control",
+		ModuleAgent:         "agent",
 	}
 }
 
