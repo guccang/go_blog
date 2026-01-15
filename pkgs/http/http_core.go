@@ -332,6 +332,9 @@ func Init() int {
 	h.HandleFunc("/api/agent/tasks", HandleAgentTasks)
 	h.HandleFunc("/api/agent/task", HandleAgentTask)
 	h.HandleFunc("/api/agent/task/action", HandleAgentTaskAction)
+	h.HandleFunc("/api/agent/task/graph", HandleAgentTaskGraph)
+	h.HandleFunc("/api/agent/task/input", HandleAgentTaskInput)
+	h.HandleFunc("/api/agent/task/pending-inputs", HandleAgentPendingInputs)
 	h.HandleFunc("/api/agent/status", HandleAgentStatus)
 	h.HandleFunc("/ws/agent/notifications", HandleAgentWebSocket)
 

@@ -41,19 +41,13 @@ func HandleAgentTasks(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case h.MethodGet:
-		// 获取所有任务
-		tasks := agent.GetTasks(account)
+		// 获取所有任务图
+		graphs := agent.GetTaskGraphs(account)
 		reminders := make(map[string]interface{})
-		for _, t := range tasks {
-			if t.LinkedReminderID != "" {
-				if r := agent.GetReminderInfo(t.LinkedReminderID); r != nil {
-					reminders[t.ID] = r
-				}
-			}
-		}
+		// TaskGraph 不再直接关联 reminder，跳过
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":   true,
-			"tasks":     tasks,
+			"tasks":     graphs,
 			"reminders": reminders,
 		})
 
@@ -117,24 +111,18 @@ func HandleAgentTask(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case h.MethodGet:
-		// 获取任务详情
-		task := agent.GetTask(taskID)
-		if task == nil {
+		// 获取任务图详情
+		graph := agent.GetTaskGraph(taskID)
+		if graph == nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"success": false,
 				"error":   "Task not found",
 			})
 			return
 		}
-		// 如果有关联的提醒，获取提醒信息
-		var reminderInfo interface{}
-		if task.LinkedReminderID != "" {
-			reminderInfo = agent.GetReminderInfo(task.LinkedReminderID)
-		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":  true,
-			"task":     task,
-			"reminder": reminderInfo,
+			"success": true,
+			"task":    graph,
 		})
 
 	case h.MethodDelete:
@@ -330,5 +318,119 @@ func HandleAgentStatus(w h.ResponseWriter, r *h.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"status":  status,
+	})
+}
+
+// HandleAgentTaskGraph 获取任务图可视化数据
+func HandleAgentTaskGraph(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAgentTaskGraph", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != h.MethodGet {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	// 获取 taskId/graphId 参数
+	taskID := r.URL.Query().Get("id")
+	if taskID == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Task ID is required",
+		})
+		return
+	}
+
+	// 获取图数据
+	result := agent.GetTaskGraphData(taskID)
+	json.NewEncoder(w).Encode(result)
+}
+
+// HandleAgentTaskInput 处理任务用户输入提交
+func HandleAgentTaskInput(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAgentTaskInput", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != h.MethodPost {
+		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+
+	// 解析请求体
+	var req struct {
+		RequestID string      `json:"request_id"`
+		TaskID    string      `json:"task_id"`
+		NodeID    string      `json:"node_id"`
+		Value     interface{} `json:"value"`
+		Cancelled bool        `json:"cancelled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid request body",
+		})
+		return
+	}
+
+	if req.TaskID == "" || req.NodeID == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Task ID and Node ID are required",
+		})
+		return
+	}
+
+	// 创建响应
+	resp := agent.NewInputResponse(req.RequestID, req.NodeID, req.TaskID, req.Value, req.Cancelled)
+
+	// 提交输入
+	if err := agent.SubmitTaskInput(req.TaskID, req.NodeID, resp); err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Input submitted, task resumed",
+	})
+}
+
+// HandleAgentPendingInputs 获取待处理的输入请求
+func HandleAgentPendingInputs(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleAgentPendingInputs", r)
+	if checkLogin(r) != 0 {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	taskID := r.URL.Query().Get("task_id")
+	if taskID == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Task ID is required",
+		})
+		return
+	}
+
+	inputs := agent.GetPendingInputs(taskID)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"inputs":  inputs,
 	})
 }
