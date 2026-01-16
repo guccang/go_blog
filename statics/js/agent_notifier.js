@@ -3,7 +3,7 @@
  * Can be included in any page to receive agent notifications.
  */
 
-(function() {
+(function () {
     // 防止重复初始化
     if (window.AgentNotifier) return;
 
@@ -11,22 +11,23 @@
         ws: null,
         reconnectTimer: null,
         listeners: [],
+        recentMessages: new Map(), // 去重缓存: message -> timestamp
 
-        init: function() {
+        init: function () {
             this.requestNotificationPermission();
             this.connect();
             this.injectStyles();
         },
 
         // 请求通知权限
-        requestNotificationPermission: function() {
+        requestNotificationPermission: function () {
             if ("Notification" in window && Notification.permission !== "granted") {
                 Notification.requestPermission();
             }
         },
 
         // 连接 WebSocket
-        connect: function() {
+        connect: function () {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             this.ws = new WebSocket(`${protocol}//${window.location.host}/ws/agent/notifications`);
 
@@ -57,7 +58,7 @@
         },
 
         // 处理通知
-        handleNotification: function(notification) {
+        handleNotification: function (notification) {
             // 触发所有监听器
             this.listeners.forEach(callback => callback(notification));
 
@@ -68,8 +69,24 @@
             }
         },
 
-        // 显示页面内 Toast
-        showToast: function(message) {
+        // 显示页面内 Toast (带去重)
+        showToast: function (message) {
+            // 去重检查：5秒内相同消息不重复显示
+            const now = Date.now();
+            const lastTime = this.recentMessages.get(message);
+            if (lastTime && now - lastTime < 5000) {
+                console.log('[Agent] Duplicate toast suppressed:', message.substring(0, 30));
+                return;
+            }
+            this.recentMessages.set(message, now);
+
+            // 清理旧缓存（超过10秒的）
+            for (const [msg, time] of this.recentMessages) {
+                if (now - time > 10000) {
+                    this.recentMessages.delete(msg);
+                }
+            }
+
             let container = document.getElementById('agent-toast-container');
             if (!container) {
                 container = document.createElement('div');
@@ -103,7 +120,7 @@
                 align-items: center;
                 justify-content: space-between;
             `;
-            
+
             toast.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span>🔔</span>
@@ -111,7 +128,7 @@
                 </div>
                 <span style="margin-left: 10px; font-size: 1.2em;">&times;</span>
             `;
-            
+
             toast.onclick = () => {
                 toast.style.animation = 'agentSlideOut 0.3s ease-in';
                 setTimeout(() => {
@@ -121,34 +138,40 @@
                     }
                 }, 300);
             };
-            
+
             container.appendChild(toast);
         },
 
-        // 显示系统通知
-        showSystemNotification: function(message) {
+        // 显示系统通知 (带去重)
+        showSystemNotification: function (message) {
+            // 使用相同的去重缓存（已在 showToast 中更新）
+            const now = Date.now();
+            const lastTime = this.recentMessages.get('sys_' + message);
+            if (lastTime && now - lastTime < 5000) {
+                return;
+            }
+            this.recentMessages.set('sys_' + message, now);
+
             if ("Notification" in window && Notification.permission === "granted") {
-                // 检查页面是否可见，如果可见则不一定需要系统通知（或者两者都显示）
-                // 这里选择始终显示，确保用户不错过
                 new Notification("Agent 提醒", {
                     body: message,
-                    icon: '/statics/logo/favicon.ico' // 假设有这个图标
+                    icon: '/statics/logo/favicon.ico'
                 });
             }
         },
 
         // 注册监听器
-        addListener: function(callback) {
+        addListener: function (callback) {
             this.listeners.push(callback);
         },
 
         // 移除监听器
-        removeListener: function(callback) {
+        removeListener: function (callback) {
             this.listeners = this.listeners.filter(cb => cb !== callback);
         },
 
         // 更新连接状态 UI (如果存在)
-        updateStatus: function(connected) {
+        updateStatus: function (connected) {
             const indicator = document.getElementById('wsIndicator');
             const text = document.getElementById('wsStatusText');
             if (indicator && text) {
@@ -162,7 +185,7 @@
             }
         },
 
-        injectStyles: function() {
+        injectStyles: function () {
             const style = document.createElement('style');
             style.textContent = `
                 @keyframes agentSlideIn {
@@ -177,7 +200,7 @@
             document.head.appendChild(style);
         },
 
-        escapeHtml: function(str) {
+        escapeHtml: function (str) {
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;

@@ -253,59 +253,100 @@ func (e *TaskExecutor) executeSequential(node *TaskNode) error {
 	return nil
 }
 
-// executeParallel 并行执行子节点
+// executeParallel 并行执行子节点（带重试）
 func (e *TaskExecutor) executeParallel(node *TaskNode) error {
 	node.AddLog(LogInfo, "executing", fmt.Sprintf("并行执行 %d 个子任务", len(node.Children)))
 
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(node.Children))
-	doneChan := make(chan string, len(node.Children))
+	maxAttempts := 4 // 初次执行 + 3次重试
 
-	for _, child := range node.Children {
-		wg.Add(1)
-		go func(c *TaskNode) {
-			defer wg.Done()
-
-			// 等待依赖
-			if err := e.waitForDependencies(c); err != nil {
-				errChan <- err
-				return
-			}
-
-			// 执行
-			if err := e.executeNode(c); err != nil {
-				errChan <- err
-				return
-			}
-
-			doneChan <- c.ID
-		}(child)
-	}
-
-	// 等待完成并更新进度
-	go func() {
-		done := 0
-		total := len(node.Children)
-		for range doneChan {
-			done++
-			progress := float64(done) / float64(total) * 100
-			node.SetProgress(progress)
-			e.notifyNodeUpdate("node_progress", node)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			node.AddLog(LogInfo, "retry_round", fmt.Sprintf("并行执行第 %d 轮重试", attempt))
+			log.MessageF(log.ModuleAgent, "Parallel execution retry round %d for node: %s", attempt, node.Title)
 		}
-	}()
 
-	wg.Wait()
-	close(errChan)
-	close(doneChan)
+		// 收集需要执行的节点（pending 或 failed 且可重试）
+		var toExecute []*TaskNode
+		for _, child := range node.Children {
+			if child.Status == NodePending || (child.Status == NodeFailed && child.CanRetry()) {
+				if child.Status == NodeFailed {
+					child.IncrementRetry()
+					child.AddLog(LogWarn, "retry", fmt.Sprintf("重试第 %d/%d 次 (MaxRetries=%d)", child.RetryCount, child.MaxRetries, child.MaxRetries))
+					log.MessageF(log.ModuleAgent, "Retrying node '%s': attempt %d/%d", child.Title, child.RetryCount, child.MaxRetries)
+					child.SetStatus(NodePending)
+				}
+				toExecute = append(toExecute, child)
+			}
+		}
 
-	// 收集错误
-	var errs []error
-	for err := range errChan {
-		errs = append(errs, err)
+		if len(toExecute) == 0 {
+			break // 没有需要执行的节点
+		}
+
+		node.AddLog(LogDebug, "executing", fmt.Sprintf("本轮执行 %d 个节点", len(toExecute)))
+
+		var wg sync.WaitGroup
+		doneChan := make(chan string, len(toExecute))
+
+		for _, child := range toExecute {
+			wg.Add(1)
+			go func(c *TaskNode) {
+				defer wg.Done()
+
+				// 等待依赖
+				if err := e.waitForDependencies(c); err != nil {
+					c.SetStatus(NodeFailed)
+					c.Result = NewTaskResultError(err.Error())
+					// 记录依赖等待失败的详细日志
+					c.AddLog(LogError, "dependency_failed", fmt.Sprintf("依赖等待失败: %v (当前重试次数: %d/%d)", err, c.RetryCount, c.MaxRetries))
+					log.MessageF(log.ModuleAgent, "Node '%s' dependency wait failed: %v (retry %d/%d)", c.Title, err, c.RetryCount, c.MaxRetries)
+					return
+				}
+
+				// 执行
+				if err := e.executeNode(c); err != nil {
+					// executeNode 已经设置了状态
+					log.MessageF(log.ModuleAgent, "Node '%s' execution failed: %v (retry %d/%d)", c.Title, err, c.RetryCount, c.MaxRetries)
+					return
+				}
+
+				doneChan <- c.ID
+			}(child)
+		}
+
+		// 等待本轮完成并更新进度
+		go func() {
+			done := 0
+			total := len(node.Children)
+			for range doneChan {
+				done++
+				// 计算已完成的总数
+				completedCount := 0
+				for _, c := range node.Children {
+					if c.Status == NodeDone {
+						completedCount++
+					}
+				}
+				progress := float64(completedCount) / float64(total) * 100
+				node.SetProgress(progress)
+				e.notifyNodeUpdate("node_progress", node)
+			}
+		}()
+
+		wg.Wait()
+		close(doneChan)
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("parallel execution failed with %d errors: %v", len(errs), errs[0])
+	// 检查最终结果
+	var failedNodes []string
+	for _, child := range node.Children {
+		if child.Status == NodeFailed {
+			failedNodes = append(failedNodes, child.Title)
+		}
+	}
+
+	if len(failedNodes) > 0 {
+		return fmt.Errorf("parallel execution failed, failed nodes: %v", failedNodes)
 	}
 
 	return nil
@@ -438,24 +479,59 @@ func (e *TaskExecutor) propagateSiblingResult(node *TaskNode) {
 	}
 }
 
-// aggregateChildResults 汇总子节点结果
+// aggregateChildResults 汇总子节点结果（LLM 智能整合版）
 func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
 	var summaries []string
+	var detailedOutputs []string
 	var allSuccess = true
 
 	for _, child := range node.Children {
 		if child.Result != nil {
 			summaries = append(summaries, fmt.Sprintf("%s: %s", child.Title, child.Result.Summary))
+			// 包含完整输出内容用于父任务参考
+			if child.Result.Output != "" {
+				detailedOutputs = append(detailedOutputs, fmt.Sprintf("=== %s ===\n%s", child.Title, child.Result.Output))
+			}
 			if !child.Result.Success {
 				allSuccess = false
 			}
 		}
 	}
 
+	// 原始拼接结果
+	rawOutput := joinStrings(detailedOutputs, "\n\n")
+	rawSummary := fmt.Sprintf("完成 %d 个子任务: %s", len(node.Children), joinStrings(summaries, "; "))
+
+	// 尝试使用 LLM 整合结果
+	var synthesizedSummary string
+	if e.planner != nil && len(node.Children) > 0 {
+		childResultsText := joinStrings(summaries, "\n")
+		result, err := e.planner.SynthesizeResults(e.ctx, node, childResultsText)
+		if err == nil && result != "" {
+			synthesizedSummary = result
+			node.AddLog(LogInfo, "synthesis", "LLM 结果整合完成")
+		} else {
+			node.AddLog(LogWarn, "synthesis", fmt.Sprintf("LLM 整合失败，使用原始汇总: %v", err))
+			synthesizedSummary = rawSummary
+		}
+	} else {
+		synthesizedSummary = rawSummary
+	}
+
 	node.Result = &TaskResult{
-		Success: allSuccess,
-		Summary: fmt.Sprintf("完成 %d 个子任务", len(node.Children)),
-		Output:  fmt.Sprintf("子任务结果:\n%s", joinStrings(summaries, "\n")),
+		Success:    allSuccess,
+		Summary:    synthesizedSummary,
+		RawSummary: rawSummary,
+		Output:     fmt.Sprintf("子任务详细结果:\n\n%s", rawOutput),
+	}
+
+	// 更新父节点上下文，包含子任务结果供后续 LLM 调用参考
+	if node.Context != nil {
+		for _, child := range node.Children {
+			if child.Result != nil {
+				node.Context.AddSiblingResult(child.ID, child.Title, child.Status, child.Result.Summary)
+			}
+		}
 	}
 }
 

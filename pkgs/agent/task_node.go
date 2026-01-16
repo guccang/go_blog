@@ -50,12 +50,32 @@ const (
 const (
 	DefaultMaxDepth      = 3    // 默认最大递归深度
 	DefaultMaxContextLen = 4000 // 默认最大上下文长度（字符）
-	DefaultMaxRetries    = 2    // 默认最大重试次数
+	DefaultMaxRetries    = 3    // 默认最大重试次数
 )
 
 // ============================================================================
 // TaskNode - 任务节点
 // ============================================================================
+
+// LLMInteraction LLM交互记录（用于问题追踪）
+type LLMInteraction struct {
+	Timestamp  time.Time      `json:"timestamp"`
+	Phase      string         `json:"phase"`                // planning/execution/synthesis
+	Request    string         `json:"request"`              // 发送给 LLM 的 prompt
+	Response   string         `json:"response"`             // LLM 返回的内容
+	ToolCalls  []ToolCallInfo `json:"tool_calls,omitempty"` // 工具调用记录
+	TokensUsed int            `json:"tokens_used,omitempty"`
+	Duration   int64          `json:"duration_ms,omitempty"` // 耗时毫秒
+}
+
+// ToolCallInfo 工具调用信息
+type ToolCallInfo struct {
+	Name      string      `json:"name"`
+	Arguments interface{} `json:"arguments"`
+	Result    interface{} `json:"result,omitempty"`
+	Success   bool        `json:"success"`
+	Error     string      `json:"error,omitempty"`
+}
 
 // TaskNode 任务节点（支持递归子任务）
 type TaskNode struct {
@@ -98,6 +118,9 @@ type TaskNode struct {
 
 	// 日志
 	Logs []ExecutionLog `json:"logs"`
+
+	// LLM交互历史（用于问题追踪）
+	LLMHistory []LLMInteraction `json:"llm_history,omitempty"`
 
 	// 用户输入等待
 	PendingInput  *InputRequest  `json:"pending_input,omitempty"`
@@ -179,6 +202,35 @@ func (n *TaskNode) AddLog(level LogLevel, phase, message string) {
 		Phase:   phase,
 		Message: message,
 		NodeID:  n.ID,
+	})
+}
+
+// AddLLMInteraction 添加 LLM 交互记录
+func (n *TaskNode) AddLLMInteraction(phase, request, response string, tokensUsed int, duration int64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.LLMHistory = append(n.LLMHistory, LLMInteraction{
+		Timestamp:  time.Now(),
+		Phase:      phase,
+		Request:    request,
+		Response:   response,
+		TokensUsed: tokensUsed,
+		Duration:   duration,
+	})
+}
+
+// AddLLMInteractionWithTools 添加带工具调用的 LLM 交互记录
+func (n *TaskNode) AddLLMInteractionWithTools(phase, request, response string, toolCalls []ToolCallInfo, tokensUsed int, duration int64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.LLMHistory = append(n.LLMHistory, LLMInteraction{
+		Timestamp:  time.Now(),
+		Phase:      phase,
+		Request:    request,
+		Response:   response,
+		ToolCalls:  toolCalls,
+		TokensUsed: tokensUsed,
+		Duration:   duration,
 	})
 }
 
@@ -610,9 +662,10 @@ func (c *TaskContext) BuildLLMContext() string {
 // TaskResult 任务执行结果
 type TaskResult struct {
 	Success     bool                   `json:"success"`
-	Output      string                 `json:"output"`         // 主要输出
-	Summary     string                 `json:"summary"`        // 结果摘要（用于上下文传递）
-	Data        map[string]interface{} `json:"data,omitempty"` // 结构化数据
+	Output      string                 `json:"output"`                // 主要输出
+	Summary     string                 `json:"summary"`               // 结果摘要（LLM整合后）
+	RawSummary  string                 `json:"raw_summary,omitempty"` // 原始摘要（整合前）
+	Data        map[string]interface{} `json:"data,omitempty"`        // 结构化数据
 	Error       string                 `json:"error,omitempty"`
 	ToolResults []ToolCallResult       `json:"tool_results,omitempty"`
 }

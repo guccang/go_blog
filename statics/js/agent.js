@@ -258,25 +258,22 @@ function updateStats(tasks) {
 // ============================================================================
 // Task Detail Modal
 // ============================================================================
-async function viewTaskDetail(taskId) {
-    // 先从摘要显示基本信息
-    const summary = currentTasks.find(t => t.id === taskId);
+let currentDetailGraphData = null; // 保存当前详情图数据
 
+async function viewTaskDetail(taskId) {
+    const summary = currentTasks.find(t => t.id === taskId);
     const modalTitle = document.getElementById('modalTitle');
     if (modalTitle) modalTitle.textContent = summary?.title || '任务详情';
 
-    // 显示弹窗
     const modal = document.getElementById('taskModal');
     if (modal) modal.classList.add('show');
 
-    // 显示加载中
     const taskContent = document.getElementById('taskContent');
     if (taskContent) {
         taskContent.innerHTML = '<p style="color: var(--text-muted);">加载中...</p>';
     }
 
     try {
-        // 获取完整任务数据
         const response = await fetch(`/api/agent/task/graph?id=${taskId}`);
         const data = await response.json();
 
@@ -287,8 +284,9 @@ async function viewTaskDetail(taskId) {
             return;
         }
 
+        currentDetailGraphData = data;
         const graph = data.graph;
-        const task = graph.nodes && graph.nodes.length > 0 ? graph.nodes[0] : {};
+        const rootNode = graph.nodes && graph.nodes.length > 0 ? graph.nodes[0] : {};
 
         // 显示元数据
         const taskMeta = document.getElementById('taskMeta');
@@ -300,57 +298,79 @@ async function viewTaskDetail(taskId) {
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">状态</span>
-                    <span class="meta-value">${getStatusText(task.status)}</span>
+                    <span class="meta-value">${getStatusText(rootNode.status)}</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">进度</span>
-                    <span class="meta-value">${(task.progress || 0).toFixed(0)}%</span>
+                    <span class="meta-value">${graph.stats?.progress?.toFixed(0) || 0}%</span>
                 </div>
                 <div class="meta-item">
-                    <span class="meta-label">创建时间</span>
-                    <span class="meta-value">${formatTime(summary?.created_at)}</span>
+                    <span class="meta-label">节点数</span>
+                    <span class="meta-value">${graph.stats?.total_nodes || 0}</span>
                 </div>
             `;
         }
 
-        // 构建内容
-        let content = `## 任务描述\n\n${task.title || ''}\n\n`;
+        // 构建树结构
+        const nodeMap = {};
+        const nodes = graph.nodes || [];
+        nodes.forEach(n => nodeMap[n.id] = { ...n, children: [] });
 
-        // 子节点
-        if (graph.nodes && graph.nodes.length > 1) {
-            content += `## 子节点(${graph.nodes.length - 1})\n\n`;
-            graph.nodes.slice(1).forEach((node, i) => {
-                const icon = getStatusIcon(node.status);
-                content += `${i + 1}. ${icon} **${node.title || ''}**\n`;
-            });
-        }
-
-        // 日志
-        const logs = data.logs || [];
-        if (logs.length > 0) {
-            content += `\n## 执行日志\n\n`;
-            content += `| 时间 | 消息 |\n|------|------|\n`;
-            logs.slice(-10).forEach(log => {
-                const time = log.time ? new Date(log.time).toLocaleTimeString('zh-CN') : '';
-                content += `| ${time} | ${escapeHtml(log.message)} |\n`;
-            });
-            if (logs.length > 10) {
-                content += `\n*... 共 ${logs.length} 条日志*`;
+        let rootNodes = [];
+        nodes.forEach(n => {
+            if (n.parent_id && nodeMap[n.parent_id]) {
+                nodeMap[n.parent_id].children.push(nodeMap[n.id]);
+            } else if (!n.parent_id || n.id === taskId) {
+                rootNodes.push(nodeMap[n.id]);
             }
-        }
+        });
 
-        // 渲染 markdown
+        // 渲染HTML
+        let html = '<div class="task-detail-container">';
+
+        // 任务树
+        html += '<div class="task-tree-section">';
+        html += '<h3>📊 任务结构</h3>';
+        html += '<div class="task-tree">';
+        rootNodes.forEach(node => {
+            html += renderTaskTreeNode(node, 0);
+        });
+        html += '</div></div>';
+
+        // 提示区
+        html += '<div class="llm-hint-section">';
+        html += '<p class="hint">💡 点击节点查看 LLM 交互详情（弹窗显示）</p>';
+        html += '</div>';
+
+        html += '</div>';
+
+        // 添加样式
+        html += `<style>
+            .task-detail-container { display: flex; flex-direction: column; gap: 20px; }
+            .task-tree-section, .llm-context-panel { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; }
+            .task-tree-section h3, .llm-context-panel h3 { margin: 0 0 10px 0; font-size: 1rem; color: var(--primary); }
+            .task-tree { font-family: monospace; font-size: 0.9rem; }
+            .tree-node { margin: 4px 0; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
+            .tree-node:hover { background: rgba(99, 102, 241, 0.2); }
+            .tree-node.selected { background: rgba(99, 102, 241, 0.4); }
+            .tree-indent { display: inline-block; }
+            .tree-connector { color: var(--text-muted); margin-right: 6px; }
+            .mode-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
+            .mode-parallel { background: rgba(168, 85, 247, 0.3); color: #a855f7; }
+            .mode-sequential { background: rgba(34, 197, 94, 0.3); color: #22c55e; }
+            .status-badge { font-size: 0.8rem; margin-right: 6px; }
+            .llm-context-panel { max-height: 400px; overflow-y: auto; }
+            .llm-context-panel .hint { color: var(--text-muted); font-style: italic; }
+            .llm-item { margin: 10px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border-left: 3px solid var(--primary); }
+            .llm-item-header { font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; }
+            .llm-item-phase { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+            .llm-item-phase.planning { background: rgba(59, 130, 246, 0.3); }
+            .llm-item-phase.execution { background: rgba(245, 158, 11, 0.3); }
+            .llm-code { background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 0.8rem; max-height: 200px; overflow-y: auto; }
+        </style>`;
+
         if (taskContent) {
-            try {
-                if (typeof marked !== 'undefined') {
-                    taskContent.innerHTML = marked.parse(content);
-                } else {
-                    taskContent.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
-                }
-            } catch (error) {
-                console.error('渲染失败:', error);
-                taskContent.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
-            }
+            taskContent.innerHTML = html;
         }
     } catch (error) {
         console.error('获取任务详情失败:', error);
@@ -358,6 +378,239 @@ async function viewTaskDetail(taskId) {
             taskContent.innerHTML = `<p style="color: var(--danger);">获取任务详情失败</p>`;
         }
     }
+}
+
+// 渲染任务树节点
+function renderTaskTreeNode(node, depth) {
+    const indent = '&nbsp;&nbsp;&nbsp;&nbsp;'.repeat(depth);
+    const connector = depth > 0 ? (node.execution_mode === 'parallel' ? '├─' : '├─') : '';
+    const icon = getStatusIcon(node.status);
+    const modeText = node.has_children ?
+        (node.execution_mode === 'parallel' ?
+            '<span class="mode-badge mode-parallel">⇉ 并行</span>' :
+            '<span class="mode-badge mode-sequential">→ 串行</span>') : '';
+
+    let html = `<div class="tree-node" onclick="showNodeLLMContext('${node.id}')" data-nodeid="${node.id}">`;
+    html += `<span class="tree-indent">${indent}</span>`;
+    html += `<span class="tree-connector">${connector}</span>`;
+    html += `<span class="status-badge">${icon}</span>`;
+    html += `<span class="tree-title">${escapeHtml(node.title || node.id)}</span>`;
+    html += modeText;
+    if (node.duration) html += ` <span style="color: var(--text-muted); font-size: 0.8rem;">(${node.duration})</span>`;
+    html += '</div>';
+
+    if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+            html += renderTaskTreeNode(child, depth + 1);
+        });
+    }
+    return html;
+}
+
+// 显示节点的 LLM 上下文 (弹出窗口)
+function showNodeLLMContext(nodeId) {
+    if (!currentDetailGraphData) return;
+
+    // 高亮选中节点
+    document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('selected'));
+    const selectedNode = document.querySelector(`.tree-node[data-nodeid="${nodeId}"]`);
+    if (selectedNode) selectedNode.classList.add('selected');
+
+    // 查找节点
+    const nodes = currentDetailGraphData.graph.nodes || [];
+    const node = nodes.find(n => n.id === nodeId);
+
+    if (!node) {
+        alert('未找到节点');
+        return;
+    }
+
+    // 创建弹窗
+    let popup = document.getElementById('llmContextPopup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'llmContextPopup';
+        popup.innerHTML = `
+            <div class="llm-popup-overlay" onclick="closeLLMPopup()"></div>
+            <div class="llm-popup-content">
+                <div class="llm-popup-header">
+                    <h3 id="llmPopupTitle">💬 LLM 交互记录</h3>
+                    <button class="llm-popup-close" onclick="closeLLMPopup()">✕</button>
+                </div>
+                <div id="llmPopupBody" class="llm-popup-body"></div>
+            </div>
+        `;
+        popup.innerHTML += `<style>
+            #llmContextPopup { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; }
+            .llm-popup-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); }
+            .llm-popup-content { position: relative; background: var(--card-bg, #1e1e2e); border-radius: 12px; width: 90%; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+            .llm-popup-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+            .llm-popup-header h3 { margin: 0; color: var(--primary, #6366f1); font-size: 1.1rem; }
+            .llm-popup-close { background: none; border: none; color: var(--text-muted, #888); font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1; }
+            .llm-popup-close:hover { color: var(--danger, #ef4444); }
+            .llm-popup-body { padding: 20px; overflow-y: auto; flex: 1; }
+            .llm-popup-item { margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 4px solid var(--primary, #6366f1); }
+            .llm-popup-item-header { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: bold; }
+            .llm-popup-phase { padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; }
+            .llm-popup-phase.planning { background: rgba(59, 130, 246, 0.3); color: #60a5fa; }
+            .llm-popup-phase.execution { background: rgba(245, 158, 11, 0.3); color: #fbbf24; }
+            .llm-popup-section { margin: 10px 0; }
+            .llm-popup-section summary { cursor: pointer; padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 6px; font-weight: 500; }
+            .llm-popup-section summary:hover { background: rgba(99, 102, 241, 0.2); }
+            .llm-popup-code { background: rgba(0,0,0,0.4); padding: 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; font-family: monospace; font-size: 0.85rem; margin-top: 8px; line-height: 1.5; }
+            .llm-no-history { color: var(--text-muted, #888); font-style: italic; text-align: center; padding: 40px; }
+            .llm-popup-result { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+            .llm-popup-result h4 { margin: 0 0 10px 0; color: #22c55e; }
+            .result-status { font-size: 0.9rem; margin-bottom: 8px; }
+            .result-status.success { color: #22c55e; }
+            .result-status.failed { color: #ef4444; }
+            .result-summary { margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; }
+            .result-error { margin: 10px 0; padding: 8px; background: rgba(239, 68, 68, 0.2); border-radius: 4px; color: #ef4444; }
+            .llm-popup-phase.synthesis { background: rgba(34, 197, 94, 0.3); color: #22c55e; }
+            .llm-tool-calls { margin: 10px 0; padding: 10px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 6px; }
+            .tool-calls-header { font-weight: bold; color: var(--primary, #6366f1); margin-bottom: 8px; }
+            .tool-call-item { margin: 8px 0; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; }
+            .tool-call-name { font-weight: 500; margin-bottom: 6px; }
+            .tool-call-error { color: #ef4444; margin-top: 4px; font-size: 0.9rem; }
+            .llm-popup-code { position: relative; padding-top: 24px; } /* Make room for button */
+            .copy-btn {
+                position: absolute;
+                top: 4px;
+                right: 4px;
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+                color: var(--text-muted, #ccc);
+                cursor: pointer;
+                padding: 2px 8px;
+                font-size: 0.7rem;
+                transition: all 0.2s;
+                z-index: 10;
+            }
+            .copy-btn:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: var(--text-normal, #fff);
+            }
+        </style>`;
+        document.body.appendChild(popup);
+    }
+
+    // 填充内容
+    document.getElementById('llmPopupTitle').textContent = `💬 ${node.title || node.id}`;
+
+    const body = document.getElementById('llmPopupBody');
+    let html = '';
+
+    // 显示任务结果（子节点汇总数据）
+    if (node.result) {
+        html += '<div class="llm-popup-result">';
+        html += `<h4>📊 任务结果</h4>`;
+        html += `<div class="result-status ${node.result.success ? 'success' : 'failed'}">${node.result.success ? '✅ 成功' : '❌ 失败'}</div>`;
+
+        // 显示 LLM 整合后的摘要
+        if (node.result.summary) {
+            html += `<div class="result-section"><strong>🤖 LLM整合摘要:</strong><div class="result-summary">${escapeHtml(node.result.summary)}</div></div>`;
+        }
+
+        // 显示原始摘要（整合前）
+        if (node.result.raw_summary && node.result.raw_summary !== node.result.summary) {
+            html += `<details class="llm-popup-section"><summary>📝 原始摘要（整合前）</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(node.result.raw_summary)}</div></details>`;
+        }
+
+        // 显示详细输出
+        if (node.result.output) {
+            html += `<details class="llm-popup-section"><summary>📋 详细输出 (${node.result.output.length} 字符)</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(node.result.output)}</div></details>`;
+        }
+        if (node.result.error) {
+            html += `<div class="result-error"><strong>错误:</strong> ${escapeHtml(node.result.error)}</div>`;
+        }
+        html += '</div>';
+    }
+
+    // LLM 交互历史
+    if (!node.llm_history || node.llm_history.length === 0) {
+        if (!node.result) {
+            html += '<p class="llm-no-history">此节点无数据</p>';
+        }
+    } else {
+        html += '<h4 style="margin-top: 20px;">💬 LLM 交互历史</h4>';
+        node.llm_history.forEach((item, idx) => {
+            const phaseClass = item.phase === 'planning' ? 'planning' : (item.phase === 'synthesis' ? 'synthesis' : 'execution');
+            const phaseText = item.phase === 'planning' ? '📋 规划' : (item.phase === 'synthesis' ? '🔄 整合' : '⚡ 执行');
+            const time = item.timestamp ? new Date(item.timestamp).toLocaleTimeString('zh-CN') : '';
+            const duration = item.duration_ms ? `${item.duration_ms}ms` : '';
+
+            html += `<div class="llm-popup-item">`;
+            html += `<div class="llm-popup-item-header">`;
+            html += `<span><span class="llm-popup-phase ${phaseClass}">${phaseText}</span> 交互 #${idx + 1}</span>`;
+            html += `<span style="color: var(--text-muted);">${time} ${duration}</span>`;
+            html += `</div>`;
+            html += `</div>`;
+            html += `<details class="llm-popup-section"><summary>📤 请求 (${(item.request || '').length} 字符)</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(item.request || '')}</div></details>`;
+
+            // 显示工具调用
+            if (item.tool_calls && item.tool_calls.length > 0) {
+                html += `<div class="llm-tool-calls">`;
+                html += `<div class="tool-calls-header">🔧 工具调用 (${item.tool_calls.length})</div>`;
+                item.tool_calls.forEach((tc, tcIdx) => {
+                    const statusIcon = tc.success ? '✅' : '❌';
+                    html += `<div class="tool-call-item">`;
+                    html += `<div class="tool-call-name">${statusIcon} ${escapeHtml(tc.name || '未知工具')}</div>`;
+                    if (tc.arguments) {
+                        html += `<details class="llm-popup-section"><summary>参数</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(JSON.stringify(tc.arguments, null, 2))}</div></details>`;
+                    }
+                    if (tc.result) {
+                        html += `<details class="llm-popup-section"><summary>结果</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</div></details>`;
+                    }
+                    if (tc.error) {
+                        html += `<div class="tool-call-error">错误: ${escapeHtml(tc.error)}</div>`;
+                    }
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            }
+
+            html += `<details class="llm-popup-section"><summary>📥 响应 (${(item.response || '').length} 字符)</summary><div class="llm-popup-code"><button class="copy-btn" onclick="copyCode(this)">复制</button>${escapeHtml(item.response || '')}</div></details>`;
+            html += `</div>`;
+        });
+    }
+
+    body.innerHTML = html;
+
+    popup.style.display = 'flex';
+}
+
+// 复制代码功能
+function copyCode(btn) {
+    const codeBlock = btn.parentElement;
+    // 获取文本内容，排除按钮本身的文本
+    // 这里我们假设按钮是第一个子元素，且文本内容紧随其后
+    // 更稳健的方法是遍历子节点，提取文本节点
+    let text = '';
+    codeBlock.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            text += node.textContent;
+        }
+    });
+
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = '已复制!';
+        btn.style.color = '#4ade80'; // green-400
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.color = '';
+        }, 2000);
+    }).catch(err => {
+        console.error('复制失败:', err);
+        btn.textContent = '失败';
+        setTimeout(() => btn.textContent = '复制', 2000);
+    });
+}
+
+function closeLLMPopup() {
+    const popup = document.getElementById('llmContextPopup');
+    if (popup) popup.style.display = 'none';
 }
 
 function closeModal() {

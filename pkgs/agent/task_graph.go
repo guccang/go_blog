@@ -379,16 +379,18 @@ type GraphVisualization struct {
 
 // VisNode 可视化节点
 type VisNode struct {
-	ID            string        `json:"id"`
-	ParentID      string        `json:"parent_id,omitempty"`
-	Title         string        `json:"title"`
-	Status        NodeStatus    `json:"status"`
-	Progress      float64       `json:"progress"`
-	Depth         int           `json:"depth"`
-	ExecutionMode ExecutionMode `json:"execution_mode"`
-	HasChildren   bool          `json:"has_children"`
-	Duration      string        `json:"duration,omitempty"`
-	Error         string        `json:"error,omitempty"`
+	ID            string           `json:"id"`
+	ParentID      string           `json:"parent_id,omitempty"`
+	Title         string           `json:"title"`
+	Status        NodeStatus       `json:"status"`
+	Progress      float64          `json:"progress"`
+	Depth         int              `json:"depth"`
+	ExecutionMode ExecutionMode    `json:"execution_mode"`
+	HasChildren   bool             `json:"has_children"`
+	Duration      string           `json:"duration,omitempty"`
+	Error         string           `json:"error,omitempty"`
+	LLMHistory    []LLMInteraction `json:"llm_history,omitempty"`
+	Result        *TaskResult      `json:"result,omitempty"` // 任务结果（包含子节点汇总）
 }
 
 // GraphStats 图统计信息
@@ -431,6 +433,8 @@ func (g *TaskGraph) ToVisualization() *GraphVisualization {
 			Depth:         node.Depth,
 			ExecutionMode: node.ExecutionMode,
 			HasChildren:   len(node.Children) > 0,
+			LLMHistory:    node.LLMHistory,
+			Result:        node.Result,
 		}
 
 		if node.Duration > 0 {

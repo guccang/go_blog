@@ -65,12 +65,14 @@ func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 	}
 
 	for _, tool := range mcpTools {
-		if selectedTools == nil || contains(selectedTools, tool.Name) {
+		// 使用短名称进行匹配（与工具目录一致）
+		shortName := extractFunctionName(tool.Name)
+		if contains(selectedTools, shortName) {
 			llmTool := LLMTool{
 				Type: "function",
 				Function: LLMFunction{
 					// file-system.read_file to read_file
-					Name:        extractFunctionName(tool.Name),
+					Name:        shortName,
 					Description: tool.Description,
 					Parameters:  tool.InputSchema,
 				},

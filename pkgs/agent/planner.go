@@ -8,6 +8,7 @@ import (
 	"mcp"
 	log "mylog"
 	"strings"
+	"time"
 )
 
 // TaskPlanner 任务规划器
@@ -72,7 +73,15 @@ func (p *TaskPlanner) PlanNode(ctx context.Context, node *TaskNode) (*NodePlanni
 	)
 
 	// 调用 LLM
+	startTime := time.Now()
 	response, err := p.callPlanningLLM(ctx, prompt)
+	duration := time.Since(startTime).Milliseconds()
+
+	// 记录 LLM 交互历史
+	if node != nil {
+		node.AddLLMInteraction("planning", prompt, response, 0, duration)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("LLM调用失败: %w", err)
 	}
@@ -172,7 +181,15 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 	)
 
 	// 阶段2: 调用 LLM 执行（仅使用选中的工具）
+	startTime := time.Now()
 	response, err := p.callExecutionLLMWithTools(ctx, prompt, selectedTools)
+	duration := time.Since(startTime).Milliseconds()
+
+	// 记录 LLM 交互历史
+	if node != nil {
+		node.AddLLMInteraction("execution", prompt, response, 0, duration)
+	}
+
 	if err != nil {
 		return NewTaskResultError(err.Error()), err
 	}
@@ -189,6 +206,38 @@ func (p *TaskPlanner) summarizeResponse(response string) string {
 		return response
 	}
 	return response[:200] + "..."
+}
+
+// ============================================================================
+// 结果整合
+// ============================================================================
+
+// SynthesizeResults 使用 LLM 整合子任务结果
+func (p *TaskPlanner) SynthesizeResults(ctx context.Context, node *TaskNode, childResults string) (string, error) {
+	log.MessageF(log.ModuleAgent, "Synthesizing results for node: %s", node.Title)
+
+	prompt := BuildResultSynthesisPrompt(node.Title, node.Goal, childResults)
+
+	messages := []llm.Message{
+		{Role: "system", Content: "你是一个结果整合专家，擅长将多个子任务的结果整合为清晰的最终结果。"},
+		{Role: "user", Content: prompt},
+	}
+
+	startTime := time.Now()
+	response, err := llm.SendSyncLLMRequestNoTools(ctx, messages, p.account)
+	duration := time.Since(startTime).Milliseconds()
+
+	// 记录 LLM 交互历史
+	if node != nil {
+		node.AddLLMInteraction("synthesis", prompt, response, 0, duration)
+	}
+
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "Result synthesis failed: %v", err)
+		return "", err
+	}
+
+	return response, nil
 }
 
 // ============================================================================
@@ -273,10 +322,8 @@ func (p *TaskPlanner) callExecutionLLM(ctx context.Context, prompt string) (stri
 
 重要规则:
 1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 如果工具需要 date 参数，使用 RawCurrentDate 先获取当前日期
-3. 如果用户需要创建提醒，使用 CreateReminder 工具
-4. 调用工具时使用正确的参数名，参考工具定义中的 required 字段
-5. 调用完工具后返回简单直接的执行结果给用户
+2. 调用工具时使用正确的参数名，参考工具定义中的 required 字段
+3. 调用完工具后返回简单直接的执行结果给用户
 
 你可以帮助用户完成各种任务，如创建提醒、查询博客、分析数据等。`, p.account, p.account)
 
@@ -296,10 +343,8 @@ func (p *TaskPlanner) callExecutionLLMWithTools(ctx context.Context, prompt stri
 
 重要规则:
 1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 如果工具需要 date 参数，使用 RawCurrentDate 先获取当前日期
-3. 如果用户需要创建提醒，使用 CreateReminder 工具
-4. 调用工具时使用正确的参数名
-5. 调用完工具后返回简单直接的执行结果给用户`, p.account, p.account)
+2. 调用工具时使用正确的参数名
+3. 调用完工具后返回简单直接的执行结果给用户`, p.account, p.account)
 
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},

@@ -38,10 +38,8 @@ var (
 
 重要规则:
 1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 如果工具需要 date 参数，使用 RawCurrentDate 先获取当前日期
-3. 如果用户需要创建提醒，使用 CreateReminder 工具
-4. 调用工具时使用正确的参数名
-5. 调用完工具后返回简单直接的执行结果给用户`,
+2. 调用工具时使用正确的参数名
+3. 调用完工具后返回简单直接的执行结果给用户`,
 	}
 
 	// PromptToolSelectionSystem 工具选择系统提示词
@@ -168,6 +166,30 @@ var (
 
 返回格式: ["工具名1", "工具名2"]`,
 	}
+
+	// PromptResultSynthesis 结果整合提示词
+	PromptResultSynthesis = PromptTemplate{
+		Name:        "result_synthesis",
+		Description: "子任务结果整合提示词",
+		Template: `你是一个结果整合专家。请将多个子任务的执行结果整合为一个清晰的最终结果。
+
+## 父任务信息
+标题: %s
+目标: %s
+
+## 子任务执行结果
+%s
+
+## 整合规则
+1. 提取每个子任务的关键信息
+2. 合并重复或相关的内容
+3. 按逻辑顺序组织结果
+4. 输出简洁明了的最终结果
+5. 如果有任何子任务失败，明确指出
+
+## 返回格式
+请直接返回整合后的结果摘要，不需要 JSON 格式。`,
+	}
 )
 
 // ============================================================================
@@ -200,6 +222,11 @@ func BuildNodeExecutionPrompt(account, title, description, goal, context string)
 // BuildToolSelectionPrompt 构建工具选择提示词
 func BuildToolSelectionPrompt(taskDescription, toolCatalog string) string {
 	return fmt.Sprintf(PromptToolSelection.Template, taskDescription, toolCatalog)
+}
+
+// BuildResultSynthesisPrompt 构建结果整合提示词
+func BuildResultSynthesisPrompt(title, goal, childResults string) string {
+	return fmt.Sprintf(PromptResultSynthesis.Template, title, goal, childResults)
 }
 
 // ============================================================================
