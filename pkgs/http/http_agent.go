@@ -41,14 +41,13 @@ func HandleAgentTasks(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case h.MethodGet:
-		// 获取所有任务图
-		graphs := agent.GetTaskGraphs(account)
-		reminders := make(map[string]interface{})
-		// TaskGraph 不再直接关联 reminder，跳过
+		// 获取任务摘要列表（轻量级）
+		summaries := agent.GetTaskSummaries(account)
+		activeIds := agent.GetActiveTaskIDs()
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":   true,
-			"tasks":     graphs,
-			"reminders": reminders,
+			"tasks":     summaries,
+			"activeIds": activeIds,
 		})
 
 	case h.MethodPost:
@@ -195,7 +194,7 @@ func HandleAgentTaskAction(w h.ResponseWriter, r *h.Request) {
 
 	var req struct {
 		TaskID string `json:"task_id"`
-		Action string `json:"action"` // pause/resume/cancel
+		Action string `json:"action"` // pause/resume/cancel/retry
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -218,6 +217,9 @@ func HandleAgentTaskAction(w h.ResponseWriter, r *h.Request) {
 	case "cancel":
 		success = agent.CancelTask(req.TaskID)
 		message = "Task canceled"
+	case "retry":
+		success = agent.RetryTask(req.TaskID)
+		message = "Task retrying"
 	default:
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,

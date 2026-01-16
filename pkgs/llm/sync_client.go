@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,8 +13,12 @@ import (
 )
 
 // SendSyncLLMRequest sends a synchronous (non-streaming) LLM request with tool calling support
-// This is designed for backend services like agent that don't need HTTP streaming
 func SendSyncLLMRequest(messages []Message, account string) (string, error) {
+	return SendSyncLLMRequestWithContext(context.Background(), messages, account)
+}
+
+// SendSyncLLMRequestWithContext sends a synchronous LLM request with context support
+func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, account string) (string, error) {
 	log.DebugF(log.ModuleLLM, "SendSyncLLMRequest: account=%s, messages=%d", account, len(messages))
 
 	config := GetConfig()
@@ -34,6 +39,13 @@ func SendSyncLLMRequest(messages []Message, account string) (string, error) {
 	var finalResponse string
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
 		// Sanitize messages before sending
 		sanitizedMessages := SanitizeMessages(currentMessages)
 
@@ -58,7 +70,7 @@ func SendSyncLLMRequest(messages []Message, account string) (string, error) {
 		log.DebugF(log.ModuleLLM, "LLM Request Body (iteration %d): %s", iteration, string(jsonData))
 
 		// Create HTTP request
-		req, err := http.NewRequest("POST", config.BaseURL, bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", config.BaseURL, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return "", fmt.Errorf("create request failed: %w", err)
 		}
@@ -154,6 +166,217 @@ func SendSyncLLMRequest(messages []Message, account string) (string, error) {
 		}
 
 		// If last iteration, set default response
+		if iteration == maxIterations-1 {
+			finalResponse = "工具调用已完成"
+		}
+	}
+
+	return finalResponse, nil
+}
+
+// SendSyncLLMRequestNoTools sends a simple LLM request without any tools (for tool selection phase)
+func SendSyncLLMRequestNoTools(ctx context.Context, messages []Message, account string) (string, error) {
+	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestNoTools: account=%s, messages=%d", account, len(messages))
+
+	config := GetConfig()
+	if config.APIKey == "" {
+		return "", fmt.Errorf("LLM API key not configured")
+	}
+
+	// Check context cancellation
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+
+	// Sanitize and convert messages
+	sanitizedMessages := SanitizeMessages(messages)
+	apiMessages := convertMessagesToAPI(sanitizedMessages)
+
+	// Build request WITHOUT tools
+	requestBody := map[string]interface{}{
+		"model":       config.Model,
+		"messages":    apiMessages,
+		"temperature": config.Temperature,
+		"stream":      false,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request failed: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", config.BaseURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("create request failed: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+config.APIKey)
+
+	// Send request
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("send request failed: %w", err)
+	}
+
+	// Read response
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return "", fmt.Errorf("read response failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.ErrorF(log.ModuleLLM, "LLM API error: %d, body: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("LLM API error: %d", resp.StatusCode)
+	}
+
+	// Parse response
+	var llmResp LLMResponse
+	if err := json.Unmarshal(body, &llmResp); err != nil {
+		return "", fmt.Errorf("parse response failed: %w\nBody: %s", err, string(body))
+	}
+
+	if len(llmResp.Choices) == 0 {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	return llmResp.Choices[0].Message.Content, nil
+}
+
+// SendSyncLLMRequestWithSelectedTools sends an LLM request with only selected tools
+func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message, account string, selectedTools []string) (string, error) {
+	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithSelectedTools: account=%s, selectedTools=%v", account, selectedTools)
+
+	config := GetConfig()
+	if config.APIKey == "" {
+		return "", fmt.Errorf("LLM API key not configured")
+	}
+
+	// Get only selected MCP tools
+	var availableTools []mcp.LLMTool
+	if selectedTools == nil || len(selectedTools) == 0 {
+		// Fallback: use all tools
+		availableTools = mcp.GetInnerMCPToolsProcessed()
+	} else {
+		availableTools = mcp.GetAvailableLLMTools(selectedTools)
+	}
+	log.DebugF(log.ModuleLLM, "Using %d tools for LLM call", len(availableTools))
+
+	// Keep track of messages
+	currentMessages := make([]Message, len(messages))
+	copy(currentMessages, messages)
+
+	// Tool calling loop
+	maxIterations := 10
+	var finalResponse string
+
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		sanitizedMessages := SanitizeMessages(currentMessages)
+		apiMessages := convertMessagesToAPI(sanitizedMessages)
+
+		requestBody := map[string]interface{}{
+			"model":       config.Model,
+			"messages":    apiMessages,
+			"tools":       availableTools,
+			"temperature": config.Temperature,
+			"stream":      false,
+		}
+
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			return "", fmt.Errorf("marshal request failed: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", config.BaseURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return "", fmt.Errorf("create request failed: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+config.APIKey)
+
+		client := &http.Client{Timeout: 120 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("send request failed: %w", err)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return "", fmt.Errorf("read response failed: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.ErrorF(log.ModuleLLM, "LLM API error: %d", resp.StatusCode)
+			return "", fmt.Errorf("LLM API error: %d", resp.StatusCode)
+		}
+
+		var llmResp LLMResponse
+		if err := json.Unmarshal(body, &llmResp); err != nil {
+			return "", fmt.Errorf("parse response failed: %w", err)
+		}
+
+		if len(llmResp.Choices) == 0 {
+			return "", fmt.Errorf("empty response from LLM")
+		}
+
+		choice := llmResp.Choices[0]
+		toolCalls := choice.Message.ToolCalls
+
+		if len(toolCalls) == 0 {
+			finalResponse = choice.Message.Content
+			break
+		}
+
+		// Add assistant message
+		assistantMsg := Message{
+			Role:      "assistant",
+			Content:   choice.Message.Content,
+			ToolCalls: choice.Message.ToolCalls,
+		}
+		currentMessages = append(currentMessages, assistantMsg)
+
+		// Execute tool calls
+		for _, toolCall := range toolCalls {
+			toolName := toolCall.Function.Name
+			toolArgs := toolCall.Function.Arguments
+
+			var parsedArgs map[string]interface{}
+			if err := json.Unmarshal([]byte(toolArgs), &parsedArgs); err != nil {
+				parsedArgs = make(map[string]interface{})
+			}
+
+			if _, ok := parsedArgs["account"]; !ok {
+				parsedArgs["account"] = account
+			}
+
+			result := mcp.CallMCPTool(toolName, parsedArgs)
+
+			toolResult := fmt.Sprintf("%v", result.Result)
+			if !result.Success {
+				toolResult = "Error: " + result.Error
+			}
+
+			toolMsg := Message{
+				Role:       "tool",
+				ToolCallId: toolCall.ID,
+				Content:    toolResult,
+			}
+			currentMessages = append(currentMessages, toolMsg)
+		}
+
 		if iteration == maxIterations-1 {
 			finalResponse = "工具调用已完成"
 		}

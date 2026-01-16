@@ -102,7 +102,6 @@ func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 
 // CleanupDisconnected removes disconnected clients from the pool
 func (p *MCPPool) CleanupDisconnected() {
-	log.Debug(log.ModuleMCP, "--- Cleaning Up Disconnected MCP Clients ---")
 
 	cleanedCount := 0
 	activeCount := 0
@@ -122,7 +121,7 @@ func (p *MCPPool) CleanupDisconnected() {
 	if cleanedCount > 0 {
 		log.InfoF(log.ModuleMCP, "Cleaned up %d disconnected MCP clients, %d remain active", cleanedCount, activeCount)
 	} else {
-		log.DebugF(log.ModuleMCP, "No disconnected MCP clients to clean up, %d active clients", activeCount)
+
 	}
 }
 

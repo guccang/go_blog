@@ -5,6 +5,7 @@ import (
 	"mcp"
 	log "mylog"
 	"sync"
+	"time"
 )
 
 // 全局变量
@@ -155,6 +156,49 @@ func GetTaskGraphs(account string) []*TaskGraph {
 	return nil
 }
 
+// TaskSummary 任务摘要（轻量级，用于列表显示）
+type TaskSummary struct {
+	ID        string     `json:"id"`
+	Title     string     `json:"title"`
+	Status    NodeStatus `json:"status"`
+	Progress  float64    `json:"progress"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+// GetTaskSummaries 获取账户的任务摘要列表（轻量级）
+func GetTaskSummaries(account string) []TaskSummary {
+	graphs := GetTaskGraphs(account)
+	summaries := make([]TaskSummary, 0, len(graphs))
+	for _, g := range graphs {
+		if g.Root != nil {
+			summaries = append(summaries, TaskSummary{
+				ID:        g.RootID,
+				Title:     g.Root.Title,
+				Status:    g.Root.Status,
+				Progress:  g.CalculateProgress(),
+				CreatedAt: g.StartTime,
+			})
+		}
+	}
+	return summaries
+}
+
+// GetActiveTaskIDs 获取当前正在执行的任务 ID 列表
+func GetActiveTaskIDs() []string {
+	if globalPool != nil {
+		return globalPool.GetActiveTaskIDs()
+	}
+	return []string{}
+}
+
+// IsTaskActive 检查任务是否正在执行
+func IsTaskActive(taskID string) bool {
+	if globalPool != nil {
+		return globalPool.IsTaskActive(taskID)
+	}
+	return false
+}
+
 // PauseTask 暂停任务
 func PauseTask(taskID string) bool {
 	if globalPool != nil {
@@ -186,18 +230,8 @@ func DeleteTask(taskID string) bool {
 		if globalPool != nil {
 			globalPool.CancelTask(taskID)
 		}
-		// 尝试删除 TaskGraph
-		if err := globalStorage.DeleteTaskGraph(taskID); err == nil {
-			return true
-		}
-		// 回退：尝试删除旧格式 AgentTask
-		task := globalStorage.GetTask(taskID)
-		if task != nil && task.LinkedReminderID != "" {
-			if globalScheduler != nil {
-				globalScheduler.RemoveReminder(task.LinkedReminderID)
-			}
-		}
-		return globalStorage.DeleteTask(taskID) == nil
+		// 删除 TaskGraph
+		return globalStorage.DeleteTaskGraph(taskID) == nil
 	}
 	return false
 }
@@ -256,9 +290,48 @@ func NewExecutionConfig(maxDepth, maxContextLen, maxRetries int) *ExecutionConfi
 		MaxDepth:         maxDepth,
 		MaxContextLen:    maxContextLen,
 		MaxRetries:       maxRetries,
-		ExecutionTimeout: 5 * 60 * 1000000000, // 5 minutes in nanoseconds
+		ExecutionTimeout: 5 * time.Minute,
 		EnableLogging:    true,
 	}
+}
+
+// ============================================================================
+// 任务重试 API
+// ============================================================================
+
+// RetryTask 重试失败的任务（从失败节点继续执行）
+// 保留已完成节点的结果，仅重新执行失败/取消的节点
+func RetryTask(taskID string) bool {
+	if globalStorage == nil || globalPool == nil {
+		log.ErrorF(log.ModuleAgent, "RetryTask: storage or pool not initialized")
+		return false
+	}
+
+	// 从存储加载任务图
+	graph := globalStorage.GetTaskGraph(taskID)
+	if graph == nil {
+		log.ErrorF(log.ModuleAgent, "RetryTask: task not found: %s", taskID)
+		return false
+	}
+
+	// 重置失败节点
+	resetCount := graph.ResetFailedNodes()
+	if resetCount == 0 {
+		log.WarnF(log.ModuleAgent, "RetryTask: no failed nodes to retry in task: %s", taskID)
+		return false
+	}
+
+	log.MessageF(log.ModuleAgent, "RetryTask: reset %d failed nodes, resubmitting task: %s", resetCount, taskID)
+
+	// 保存重置后的状态
+	globalStorage.SaveTaskGraph(graph)
+
+	// 重新提交到工作池
+	if !globalPool.ResubmitGraph(graph) {
+		log.ErrorF(log.ModuleAgent, "RetryTask: failed to resubmit task: %s", taskID)
+		return false
+	}
+	return true
 }
 
 // ============================================================================
@@ -341,118 +414,7 @@ func GetTaskGraphData(rootID string) map[string]interface{} {
 		}
 	}
 
-	// 尝试获取旧版 AgentTask 并转换为图格式
-	task := globalStorage.GetTask(rootID)
-	if task == nil {
-		return map[string]interface{}{"success": false, "error": "Task not found"}
-	}
-
-	// 将旧版任务转换为可视化格式
-	vis := convertLegacyTaskToVisualization(task)
-	logs := convertLegacyLogsToFormat(task)
-
-	return map[string]interface{}{
-		"success": true,
-		"graph":   vis,
-		"logs":    logs,
-		"legacy":  true, // 标记为旧版数据
-	}
-}
-
-// convertLegacyTaskToVisualization 将旧版 AgentTask 转换为可视化格式
-func convertLegacyTaskToVisualization(task *AgentTask) *GraphVisualization {
-	nodes := []VisNode{}
-	edges := []GraphEdge{}
-
-	// 根节点
-	rootNode := VisNode{
-		ID:            task.ID,
-		ParentID:      "",
-		Title:         task.Title,
-		Status:        NodeStatus(task.Status),
-		Progress:      task.Progress,
-		Depth:         0,
-		ExecutionMode: ModeSequential,
-		HasChildren:   len(task.SubTasks) > 0,
-	}
-	nodes = append(nodes, rootNode)
-
-	// 子任务节点
-	for i, st := range task.SubTasks {
-		nodeID := task.ID + "_sub_" + st.ID
-		status := st.Status
-		var progress float64 = 0
-		if status == "done" {
-			progress = 100
-		} else if status == "running" {
-			progress = 50
-		}
-
-		subNode := VisNode{
-			ID:            nodeID,
-			ParentID:      task.ID,
-			Title:         st.Description,
-			Status:        NodeStatus(status),
-			Progress:      progress,
-			Depth:         1,
-			ExecutionMode: ModeSequential,
-			HasChildren:   false,
-		}
-		nodes = append(nodes, subNode)
-
-		// 边
-		edges = append(edges, GraphEdge{
-			From: task.ID,
-			To:   nodeID,
-			Type: "parent_child",
-		})
-
-		// 子任务间的依赖（串行）
-		if i > 0 {
-			prevID := task.ID + "_sub_" + task.SubTasks[i-1].ID
-			edges = append(edges, GraphEdge{
-				From: prevID,
-				To:   nodeID,
-				Type: "dependency",
-			})
-		}
-	}
-
-	// 统计
-	doneCount := 0
-	for _, st := range task.SubTasks {
-		if st.Status == "done" {
-			doneCount++
-		}
-	}
-
-	return &GraphVisualization{
-		Nodes: nodes,
-		Edges: edges,
-		Stats: GraphStats{
-			TotalNodes:  len(nodes),
-			DoneNodes:   doneCount,
-			FailedNodes: 0,
-			ActiveNodes: 0,
-			Progress:    task.Progress,
-			MaxDepth:    1,
-		},
-	}
-}
-
-// convertLegacyLogsToFormat 将旧版日志转换为新格式
-func convertLegacyLogsToFormat(task *AgentTask) []ExecutionLog {
-	logs := []ExecutionLog{}
-	for _, tl := range task.Logs {
-		logs = append(logs, ExecutionLog{
-			Time:    tl.Time,
-			Level:   LogLevel(tl.Level),
-			Phase:   "executing",
-			Message: tl.Message,
-			NodeID:  task.ID,
-		})
-	}
-	return logs
+	return map[string]interface{}{"success": false, "error": "Task not found"}
 }
 
 // SaveTaskGraph 保存任务图（用于执行器）

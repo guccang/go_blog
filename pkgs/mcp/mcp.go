@@ -107,6 +107,94 @@ func GetVersion() string {
 	return mcp_version
 }
 
+// ============================================================================
+// 工具目录（轻量级，用于工具选择阶段）
+// ============================================================================
+
+// ToolSummary 工具摘要（用于第一阶段选择，减少上下文占用）
+type ToolSummary struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Category    string `json:"category"` // blog, reminder, file, general 等
+}
+
+// GetToolCatalog 获取工具目录（轻量级，仅包含名称和简短描述）
+// 用于两阶段工具选择：第一阶段让 LLM 根据目录选择需要的工具
+func GetToolCatalog() []ToolSummary {
+	tools := GetAvailableToolsImproved()
+	var catalog []ToolSummary
+	for _, tool := range tools {
+		name := extractFunctionName(tool.Name)
+		catalog = append(catalog, ToolSummary{
+			Name:        name,
+			Description: truncateDescription(tool.Description, 60),
+			Category:    extractToolCategory(tool.Name),
+		})
+	}
+	return catalog
+}
+
+// GetToolCatalogFormatted 获取格式化的工具目录（用于直接嵌入 prompt）
+func GetToolCatalogFormatted() string {
+	catalog := GetToolCatalog()
+	var sb strings.Builder
+
+	// 按类别分组
+	categories := make(map[string][]ToolSummary)
+	for _, tool := range catalog {
+		categories[tool.Category] = append(categories[tool.Category], tool)
+	}
+
+	for category, tools := range categories {
+		sb.WriteString(fmt.Sprintf("\n### %s\n", category))
+		for _, tool := range tools {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", tool.Name, tool.Description))
+		}
+	}
+	return sb.String()
+}
+
+// truncateDescription 截断描述到指定长度
+func truncateDescription(desc string, maxLen int) string {
+	// 找到第一个句号或换行符
+	if idx := strings.Index(desc, "。"); idx > 0 && idx < maxLen {
+		return desc[:idx+3] // 包含句号
+	}
+	if idx := strings.Index(desc, "."); idx > 0 && idx < maxLen {
+		return desc[:idx+1]
+	}
+	if len(desc) <= maxLen {
+		return desc
+	}
+	return desc[:maxLen] + "..."
+}
+
+// extractToolCategory 从工具名提取分类
+func extractToolCategory(name string) string {
+	// 处理 server.tool 格式
+	parts := strings.Split(name, ".")
+	if len(parts) > 1 {
+		return parts[0]
+	}
+
+	// 处理内部工具命名
+	nameLower := strings.ToLower(name)
+	switch {
+	case strings.Contains(nameLower, "blog") || strings.HasPrefix(name, "Raw"):
+		return "blog"
+	case strings.Contains(nameLower, "reminder"):
+		return "reminder"
+	case strings.Contains(nameLower, "notification"):
+		return "notification"
+	case strings.Contains(nameLower, "date") || strings.Contains(nameLower, "time"):
+		return "datetime"
+	case strings.Contains(nameLower, "file") || strings.Contains(nameLower, "read") || strings.Contains(nameLower, "write"):
+		return "file"
+	default:
+		return "general"
+	}
+}
+
 type MCPConfig struct {
 	Name        string            `json:"name"`
 	Command     string            `json:"command"`

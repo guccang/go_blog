@@ -9,6 +9,7 @@
 let ws = null;
 let currentTasks = [];
 let currentReminders = {};
+let currentActiveIds = [];
 let currentGraphTaskId = null;
 let currentGraphData = null;
 let currentLogs = [];
@@ -22,11 +23,27 @@ let inputValue = null;
 document.addEventListener('DOMContentLoaded', function () {
     loadTasks();
 
+    // 节流控制：避免频繁刷新
+    let loadTasksThrottled = throttle(loadTasks, 2000); // 最多每2秒刷新一次
+    let pendingRefresh = false;
+
     // 使用 AgentNotifier 监听更新
     if (window.AgentNotifier) {
         window.AgentNotifier.addListener(function (notification) {
-            // 刷新任务列表
-            loadTasks();
+            // 只在特定类型通知时刷新任务列表
+            const refreshTypes = ['submitted', 'completed', 'failed', 'canceled', 'retrying'];
+            if (refreshTypes.includes(notification.type)) {
+                loadTasksThrottled();
+            } else if (notification.type && (notification.type.startsWith('node_') || notification.type.startsWith('graph_'))) {
+                // 节点更新：标记需要刷新，但不立即刷新
+                if (!pendingRefresh) {
+                    pendingRefresh = true;
+                    setTimeout(() => {
+                        pendingRefresh = false;
+                        loadTasksThrottled();
+                    }, 3000); // 延迟3秒合并多个节点更新
+                }
+            }
 
             // 处理图表更新
             if (notification.type && notification.type.startsWith('graph_') ||
@@ -105,6 +122,7 @@ async function loadTasks() {
         if (data.success) {
             currentTasks = data.tasks || [];
             currentReminders = data.reminders || {};
+            currentActiveIds = data.activeIds || [];
             renderTasks(currentTasks);
             updateStats(currentTasks);
         }
@@ -135,6 +153,7 @@ async function taskAction(taskId, action) {
 function pauseTask(id) { taskAction(id, 'pause'); }
 function resumeTask(id) { taskAction(id, 'resume'); }
 function cancelTask(id) { taskAction(id, 'cancel'); }
+function retryTask(id) { taskAction(id, 'retry'); }
 
 function deleteTask(id) {
     if (!confirm('确定要删除这个任务吗？')) return;
@@ -168,34 +187,28 @@ function renderTasks(tasks) {
         return;
     }
 
-    container.innerHTML = tasks.map(graph => {
-        // TaskGraph 格式：从 root 获取属性
-        const task = graph.root || graph;
-        const taskId = graph.root_id || task.id;
-        const taskTitle = task.title || task.description || '未命名任务';
+    container.innerHTML = tasks.map(task => {
+        // 简化后的 TaskSummary 格式
+        const taskId = task.id;
+        const taskTitle = task.title || '未命名任务';
         const taskStatus = task.status || 'pending';
-        const taskProgress = task.progress || graph.progress || 0;
-        const taskCreatedAt = task.created_at || graph.created_at;
+        const taskProgress = task.progress || 0;
+        const taskCreatedAt = task.created_at;
 
-        const reminder = currentReminders[taskId];
-        let statusHtml = `<span class="task-status ${taskStatus}">${getStatusText(taskStatus)}</span>`;
+        // 检查是否活跃运行中
+        const isActive = currentActiveIds && currentActiveIds.includes(taskId);
+
+        let statusHtml = isActive
+            ? `<span class="task-status running" style="animation: pulse 1.5s infinite;"><i class="fas fa-sync fa-spin"></i> 执行中</span>`
+            : `<span class="task-status ${taskStatus}">${getStatusText(taskStatus)}</span>`;
         let progressHtml = `
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${taskProgress}%"></div>
+                    <div class="progress-fill${isActive ? ' active' : ''}" style="width: ${taskProgress}%"></div>
                 </div>
                 <div class="progress-text">
                     <span>${taskProgress.toFixed ? taskProgress.toFixed(0) : taskProgress}% 完成</span>
                     <span>${formatTime(taskCreatedAt)}</span>
                 </div>`;
-
-        if (reminder && reminder.enabled) {
-            statusHtml = `<span class="task-status running">🔄 进行中 (重复任务)</span>`;
-            progressHtml = `
-                <div class="progress-text" style="margin-top: 0; font-size: 0.9rem;">
-                    <span><i class="fas fa-redo"></i> 已执行: ${reminder.run_count} 次</span>
-                    <span style="margin-left: 10px;"><i class="fas fa-clock"></i> 下次: ${formatTime(reminder.next_run_at)}</span>
-                </div>`;
-        }
 
         return `
         <div class="task-item" data-id="${taskId}" onclick="viewTaskDetail('${taskId}')">
@@ -213,16 +226,15 @@ function renderTasks(tasks) {
                 <button class="action-btn" onclick="viewTaskGraph('${taskId}')" style="background: rgba(168, 85, 247, 0.2); color: #a855f7;">
                     <i class="fas fa-project-diagram"></i> 图表
                 </button>
-                ${getActionButtons({ ...task, id: taskId, status: taskStatus })}
+                ${getActionButtons({ id: taskId, status: taskStatus })}
             </div>
         </div>
-    `}).join('');
+        `}).join('');
 }
 
 function updateStats(tasks) {
     const stats = { pending: 0, running: 0, done: 0, failed: 0 };
-    tasks.forEach(t => {
-        const task = t.root || t;
+    tasks.forEach(task => {
         const status = task.status || 'pending';
         if (status === 'pending' || status === 'node_pending') stats.pending++;
         else if (status === 'running' || status === 'paused' || status === 'node_running') stats.running++;
@@ -247,75 +259,103 @@ function updateStats(tasks) {
 // Task Detail Modal
 // ============================================================================
 async function viewTaskDetail(taskId) {
-    const graph = currentTasks.find(t => (t.root_id || t.id) === taskId);
-    if (!graph) return;
-
-    const task = graph.root || graph;
+    // 先从摘要显示基本信息
+    const summary = currentTasks.find(t => t.id === taskId);
 
     const modalTitle = document.getElementById('modalTitle');
-    if (modalTitle) modalTitle.textContent = task.title || '任务详情';
-
-    // 显示元数据
-    const taskMeta = document.getElementById('taskMeta');
-    if (taskMeta) {
-        taskMeta.innerHTML = `
-            <div class="meta-item">
-                <span class="meta-label">任务ID</span>
-                <span class="meta-value">${taskId}</span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">状态</span>
-                <span class="meta-value">${getStatusText(task.status)}</span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">进度</span>
-                <span class="meta-value">${(task.progress || 0).toFixed(0)}%</span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">创建时间</span>
-                <span class="meta-value">${formatTime(task.created_at)}</span>
-            </div>
-        `;
-    }
+    if (modalTitle) modalTitle.textContent = summary?.title || '任务详情';
 
     // 显示弹窗
     const modal = document.getElementById('taskModal');
     if (modal) modal.classList.add('show');
 
-    // 构建内容
-    let content = `## 任务描述\n\n${task.description || task.goal || ''}\n\n`;
-
-    // 子节点
-    if (graph.nodes && graph.nodes.length > 1) {
-        content += `## 子节点 (${graph.nodes.length - 1})\n\n`;
-        graph.nodes.slice(1).forEach((node, i) => {
-            const icon = getStatusIcon(node.status);
-            content += `${i + 1}. ${icon} **${node.title || node.description}**\n`;
-        });
-    }
-
-    // 日志
-    if (task.logs && task.logs.length > 0) {
-        content += `\n## 执行日志\n\n`;
-        content += `| 时间 | 消息 |\n|------|------|\n`;
-        task.logs.forEach(log => {
-            const time = log.time ? new Date(log.time).toLocaleTimeString('zh-CN') : '';
-            content += `| ${time} | ${log.message} |\n`;
-        });
-    }
-
-    // 渲染 markdown
+    // 显示加载中
     const taskContent = document.getElementById('taskContent');
     if (taskContent) {
-        try {
-            if (typeof marked !== 'undefined') {
-                taskContent.innerHTML = marked.parse(content);
-            } else {
+        taskContent.innerHTML = '<p style="color: var(--text-muted);">加载中...</p>';
+    }
+
+    try {
+        // 获取完整任务数据
+        const response = await fetch(`/api/agent/task/graph?id=${taskId}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            if (taskContent) {
+                taskContent.innerHTML = `<p style="color: var(--danger);">加载失败: ${data.error || '未知错误'}</p>`;
+            }
+            return;
+        }
+
+        const graph = data.graph;
+        const task = graph.nodes && graph.nodes.length > 0 ? graph.nodes[0] : {};
+
+        // 显示元数据
+        const taskMeta = document.getElementById('taskMeta');
+        if (taskMeta) {
+            taskMeta.innerHTML = `
+                <div class="meta-item">
+                    <span class="meta-label">任务ID</span>
+                    <span class="meta-value">${taskId}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">状态</span>
+                    <span class="meta-value">${getStatusText(task.status)}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">进度</span>
+                    <span class="meta-value">${(task.progress || 0).toFixed(0)}%</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">创建时间</span>
+                    <span class="meta-value">${formatTime(summary?.created_at)}</span>
+                </div>
+            `;
+        }
+
+        // 构建内容
+        let content = `## 任务描述\n\n${task.title || ''}\n\n`;
+
+        // 子节点
+        if (graph.nodes && graph.nodes.length > 1) {
+            content += `## 子节点(${graph.nodes.length - 1})\n\n`;
+            graph.nodes.slice(1).forEach((node, i) => {
+                const icon = getStatusIcon(node.status);
+                content += `${i + 1}. ${icon} **${node.title || ''}**\n`;
+            });
+        }
+
+        // 日志
+        const logs = data.logs || [];
+        if (logs.length > 0) {
+            content += `\n## 执行日志\n\n`;
+            content += `| 时间 | 消息 |\n|------|------|\n`;
+            logs.slice(-10).forEach(log => {
+                const time = log.time ? new Date(log.time).toLocaleTimeString('zh-CN') : '';
+                content += `| ${time} | ${escapeHtml(log.message)} |\n`;
+            });
+            if (logs.length > 10) {
+                content += `\n*... 共 ${logs.length} 条日志*`;
+            }
+        }
+
+        // 渲染 markdown
+        if (taskContent) {
+            try {
+                if (typeof marked !== 'undefined') {
+                    taskContent.innerHTML = marked.parse(content);
+                } else {
+                    taskContent.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+                }
+            } catch (error) {
+                console.error('渲染失败:', error);
                 taskContent.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
             }
-        } catch (error) {
-            console.error('渲染失败:', error);
-            taskContent.innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+        }
+    } catch (error) {
+        console.error('获取任务详情失败:', error);
+        if (taskContent) {
+            taskContent.innerHTML = `<p style="color: var(--danger);">获取任务详情失败</p>`;
         }
     }
 }
@@ -357,7 +397,7 @@ function renderGraphModal(graph, logs) {
     }
     if (graphStats && graph.stats) {
         graphStats.innerHTML = `
-            <span class="stat-badge done">${graph.stats.done_nodes}/${graph.stats.total_nodes} 完成</span>
+            <span class="stat-badge done">${graph.stats.done_nodes} /${graph.stats.total_nodes} 完成</span>
             <span class="stat-badge">${graph.stats.progress.toFixed(0)}%</span>
         `;
     }
@@ -374,53 +414,97 @@ function renderMermaidGraph(graph) {
     const container = document.getElementById('graphDiagram');
     if (!container) return;
 
-    let mermaidDef = 'graph TD\n';
+    // 构建节点树结构
+    const nodeMap = {};
+    graph.nodes.forEach(node => nodeMap[node.id] = { ...node, children: [] });
 
-    // 添加节点
-    graph.nodes.forEach(node => {
-        const icon = getStatusIcon(node.status);
-        const label = `${icon} ${node.title}`;
-        const safeLabel = label.replace(/"/g, "'").replace(/[\[\]]/g, '');
-        mermaidDef += `    ${node.id}["${safeLabel}"]\n`;
-    });
-
-    // 添加边
+    // 找出根节点和建立父子关系
+    let rootId = null;
     graph.edges.forEach(edge => {
-        const style = edge.type === 'dependency' ? '-.->' : '-->';
-        mermaidDef += `    ${edge.from} ${style} ${edge.to}\n`;
+        if (edge.type === 'parent_child' && nodeMap[edge.from] && nodeMap[edge.to]) {
+            nodeMap[edge.from].children.push(nodeMap[edge.to]);
+            nodeMap[edge.to].parentId = edge.from;
+        }
     });
 
-    // 添加样式类
-    graph.nodes.forEach(node => {
-        mermaidDef += `    class ${node.id} ${node.status}\n`;
-    });
+    // 找根节点
+    for (const id in nodeMap) {
+        if (!nodeMap[id].parentId) {
+            rootId = id;
+            break;
+        }
+    }
 
-    // 样式定义
-    mermaidDef += `
-    classDef pending fill:#334155,stroke:#94a3b8,color:#f8fafc
-    classDef running fill:#3730a3,stroke:#6366f1,color:#f8fafc,stroke-width:2px
-    classDef done fill:#065f46,stroke:#10b981,color:#f8fafc
-    classDef failed fill:#7f1d1d,stroke:#ef4444,color:#f8fafc
-    classDef canceled fill:#334155,stroke:#94a3b8,color:#94a3b8
-    classDef paused fill:#78350f,stroke:#f59e0b,color:#f8fafc
-    classDef node_pending fill:#334155,stroke:#94a3b8,color:#f8fafc
-    classDef node_running fill:#3730a3,stroke:#6366f1,color:#f8fafc,stroke-width:2px
-    classDef node_done fill:#065f46,stroke:#10b981,color:#f8fafc
-    classDef node_failed fill:#7f1d1d,stroke:#ef4444,color:#f8fafc
-`;
+    if (!rootId && graph.nodes.length > 0) {
+        rootId = graph.nodes[0].id;
+    }
 
-    container.innerHTML = `<div class="mermaid">${mermaidDef}</div>`;
+    // 渲染树形视图
+    const renderNode = (node, depth = 0) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = depth < 2; // 默认展开前2层
+        const icon = getStatusIcon(node.status);
+        const statusClass = node.status || 'pending';
+        const indent = depth * 20;
 
-    // 点击节点查看详情
-    setTimeout(() => {
-        container.querySelectorAll('.node').forEach(nodeEl => {
-            nodeEl.style.cursor = 'pointer';
-            nodeEl.addEventListener('click', () => {
-                const nodeId = nodeEl.id.split('-')[1];
-                showNodeDetail(nodeId);
-            });
-        });
-    }, 500);
+        let html = `
+            <div class="tree-node" data-id="${node.id}" data-depth="${depth}">
+                <div class="tree-node-header ${statusClass}" style="padding-left: ${indent + 12}px">
+                    ${hasChildren ? `<span class="tree-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleTreeNode(event, '${node.id}')">
+                        <i class="fas fa-chevron-right"></i>
+                    </span>` : '<span class="tree-toggle-placeholder"></span>'}
+                    <span class="tree-icon">${icon}</span>
+                    <span class="tree-title" onclick="showNodeDetail('${node.id}')">${escapeHtml(node.title || '未命名')}</span>
+                    <span class="tree-progress">${(node.progress || 0).toFixed(0)}%</span>
+                    <span class="tree-status ${statusClass}">${getStatusText(node.status)}</span>
+                </div>
+                ${hasChildren ? `<div class="tree-children ${isExpanded ? 'show' : ''}" data-parent="${node.id}">
+                    ${node.children.map(child => renderNode(child, depth + 1)).join('')}
+                </div>` : ''}
+            </div>
+        `;
+        return html;
+    };
+
+    // 统计信息
+    const stats = graph.stats || { total_nodes: graph.nodes.length, done_nodes: 0, progress: 0 };
+
+    container.innerHTML = `
+        <div class="tree-view-container">
+            <div class="tree-toolbar">
+                <button class="tree-btn" onclick="expandAllNodes()"><i class="fas fa-expand-alt"></i> 展开全部</button>
+                <button class="tree-btn" onclick="collapseAllNodes()"><i class="fas fa-compress-alt"></i> 收起全部</button>
+                <span class="tree-stats">${stats.done_nodes || 0}/${stats.total_nodes || graph.nodes.length} 完成</span>
+            </div>
+            <div class="tree-content">
+                ${rootId ? renderNode(nodeMap[rootId]) : '<p class="empty-logs">无节点数据</p>'}
+            </div>
+        </div>
+    `;
+}
+
+// 树节点展开/收起
+function toggleTreeNode(event, nodeId) {
+    event.stopPropagation();
+    const toggle = event.currentTarget;
+    const children = document.querySelector(`.tree-children[data-parent="${nodeId}"]`);
+
+    if (children) {
+        toggle.classList.toggle('expanded');
+        children.classList.toggle('show');
+    }
+}
+
+// 展开所有节点
+function expandAllNodes() {
+    document.querySelectorAll('.tree-toggle').forEach(t => t.classList.add('expanded'));
+    document.querySelectorAll('.tree-children').forEach(c => c.classList.add('show'));
+}
+
+// 收起所有节点
+function collapseAllNodes() {
+    document.querySelectorAll('.tree-toggle').forEach(t => t.classList.remove('expanded'));
+    document.querySelectorAll('.tree-children').forEach(c => c.classList.remove('show'));
 }
 
 function renderLogs(logs) {
@@ -437,14 +521,14 @@ function renderLogs(logs) {
     }
 
     container.innerHTML = filtered.map(log => `
-        <div class="log-entry ${log.level}" onclick="showNodeDetail('${log.node_id}')">
-            <div class="log-header">
-                <span class="log-time">${formatLogTime(log.time)}</span>
-                <span class="log-phase">${log.phase || ''}</span>
+            <div class="log-entry ${log.level}" onclick = "showNodeDetail('${log.node_id}')" >
+                <div class="log-header">
+                    <span class="log-time">${formatLogTime(log.time)}</span>
+                    <span class="log-phase">${log.phase || ''}</span>
+                </div>
+                <div class="log-message">${escapeHtml(log.message)}</div>
             </div>
-            <div class="log-message">${escapeHtml(log.message)}</div>
-        </div>
-    `).join('');
+            `).join('');
 }
 
 function filterLogs(level) {
@@ -464,38 +548,38 @@ function showNodeDetail(nodeId) {
     if (!detailPanel) return;
 
     detailPanel.innerHTML = `
-        <div class="node-detail-header">
+            <div class="node-detail-header">
             <h4>${getStatusIcon(node.status)} ${escapeHtml(node.title)}</h4>
             <button class="close-detail" onclick="hideNodeDetail()">×</button>
-        </div>
-        <div class="node-detail-body">
-            <div class="detail-item">
-                <label>状态</label>
-                <span class="task-status ${node.status}">${getStatusText(node.status)}</span>
-            </div>
-            <div class="detail-item">
-                <label>进度</label>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${node.progress || 0}%"></div>
+        </div >
+            <div class="node-detail-body">
+                <div class="detail-item">
+                    <label>状态</label>
+                    <span class="task-status ${node.status}">${getStatusText(node.status)}</span>
                 </div>
-                <span>${(node.progress || 0).toFixed(0)}%</span>
-            </div>
-            <div class="detail-item">
-                <label>深度</label>
-                <span>第 ${(node.depth || 0) + 1} 层</span>
-            </div>
-            <div class="detail-item">
-                <label>执行模式</label>
-                <span>${node.execution_mode === 'parallel' ? '🔀 并行' : '➡️ 串行'}</span>
-            </div>
-            ${node.duration ? `
+                <div class="detail-item">
+                    <label>进度</label>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${node.progress || 0}%"></div>
+                    </div>
+                    <span>${(node.progress || 0).toFixed(0)}%</span>
+                </div>
+                <div class="detail-item">
+                    <label>深度</label>
+                    <span>第 ${(node.depth || 0) + 1} 层</span>
+                </div>
+                <div class="detail-item">
+                    <label>执行模式</label>
+                    <span>${node.execution_mode === 'parallel' ? '🔀 并行' : '➡️ 串行'}</span>
+                </div>
+                ${node.duration ? `
             <div class="detail-item">
                 <label>耗时</label>
                 <span>${node.duration}</span>
             </div>
             ` : ''}
-        </div>
-    `;
+            </div>
+        `;
     detailPanel.classList.add('show');
 }
 
@@ -534,58 +618,59 @@ function showInputModal(request) {
         case 'password':
         case 'number':
             formGroup.innerHTML = `
-                <input type="${request.input_type}" 
-                       class="input-text" 
-                       id="inputField"
-                       placeholder="${request.placeholder || ''}"
-                       value="${request.default || ''}"
-                       onchange="inputValue = this.value">
+            < input type = "${request.input_type}"
+        class="input-text"
+        id = "inputField"
+        placeholder = "${request.placeholder || ''}"
+        value = "${request.default || ''}"
+        onchange = "inputValue = this.value" >
             `;
             footer.style.display = 'flex';
             break;
 
         case 'textarea':
             formGroup.innerHTML = `
-                <textarea class="input-textarea" 
-                          id="inputField"
-                          placeholder="${request.placeholder || ''}"
-                          onchange="inputValue = this.value">${request.default || ''}</textarea>
+            < textarea class="input-textarea"
+        id = "inputField"
+        placeholder = "${request.placeholder || ''}"
+        onchange = "inputValue = this.value" > ${request.default || ''}</textarea >
             `;
             footer.style.display = 'flex';
             break;
 
         case 'select':
             formGroup.innerHTML = `
-                <div class="input-options">
-                    ${(request.options || []).map(opt => `
+            < div class="input-options" >
+                ${(request.options || []).map(opt => `
                         <label class="input-option ${opt.value === request.default ? 'selected' : ''}" onclick="selectOption(this, '${opt.value}')">
                             <div class="radio"></div>
                             <span>${opt.label}</span>
                         </label>
-                    `).join('')}
-                </div>
+                    `).join('')
+                }
+                </div >
             `;
             footer.style.display = 'flex';
             break;
 
         case 'confirm':
             formGroup.innerHTML = `
-                <div class="confirm-buttons">
+            < div class="confirm-buttons" >
                     <button class="confirm-btn" onclick="submitConfirm(false)">否</button>
                     <button class="confirm-btn yes" onclick="submitConfirm(true)">是</button>
-                </div>
+                </div >
             `;
             footer.style.display = 'none';
             break;
 
         default:
             formGroup.innerHTML = `
-                <input type="text" 
-                       class="input-text" 
-                       id="inputField"
-                       placeholder="${request.placeholder || ''}"
-                       value="${request.default || ''}"
-                       onchange="inputValue = this.value">
+            < input type = "text"
+        class="input-text"
+        id = "inputField"
+        placeholder = "${request.placeholder || ''}"
+        value = "${request.default || ''}"
+        onchange = "inputValue = this.value" >
             `;
             footer.style.display = 'flex';
     }
@@ -750,7 +835,14 @@ function getActionButtons(task) {
         `;
     }
 
-    // 已完成的任务添加删除按钮
+    // 已完成的任务添加重试和删除按钮
+    if (['failed', 'canceled', 'node_failed', 'node_cancelled'].includes(status)) {
+        buttons += `
+            <button class="action-btn retry" onclick="retryTask('${task.id}')" style="background: rgba(34, 197, 94, 0.2); color: #22c55e;">
+                <i class="fas fa-redo"></i> 重试
+            </button>
+        `;
+    }
     if (['done', 'failed', 'canceled', 'node_done', 'node_failed', 'node_cancelled'].includes(status)) {
         buttons += `
             <button class="action-btn delete" onclick="deleteTask('${task.id}')" style="background: rgba(239, 68, 68, 0.2); color: var(--danger);">
@@ -784,6 +876,26 @@ function showToast(message, type) {
     if (window.AgentNotifier && window.AgentNotifier.showToast) {
         window.AgentNotifier.showToast(message);
     } else {
-        console.log(`[${type}] ${message}`);
+        console.log(`[${type}] ${message} `);
     }
+}
+
+// 节流函数：限制函数调用频率
+function throttle(fn, delay) {
+    let lastCall = 0;
+    let timeout = null;
+    return function (...args) {
+        const now = Date.now();
+        if (now - lastCall >= delay) {
+            lastCall = now;
+            fn.apply(this, args);
+        } else if (!timeout) {
+            // 确保最后一次调用会被执行
+            timeout = setTimeout(() => {
+                lastCall = Date.now();
+                timeout = null;
+                fn.apply(this, args);
+            }, delay - (now - lastCall));
+        }
+    };
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"sort"
 	"sync"
 	"time"
 )
@@ -327,16 +328,42 @@ func (g *TaskGraph) GetAllLogs() []ExecutionLog {
 		allLogs = append(allLogs, node.Logs...)
 	}
 
-	// 按时间排序
-	for i := 0; i < len(allLogs)-1; i++ {
-		for j := i + 1; j < len(allLogs); j++ {
-			if allLogs[i].Time.After(allLogs[j].Time) {
-				allLogs[i], allLogs[j] = allLogs[j], allLogs[i]
-			}
+	// 按时间排序（使用高效的标准库排序）
+	sort.Slice(allLogs, func(i, j int) bool {
+		return allLogs[i].Time.Before(allLogs[j].Time)
+	})
+
+	return allLogs
+}
+
+// ResetFailedNodes 重置失败/取消的节点为待执行状态（用于重试）
+// 保留已完成节点的 Context 和 Result，仅重置失败节点
+// 返回重置的节点数量
+func (g *TaskGraph) ResetFailedNodes() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	count := 0
+	for _, node := range g.Nodes {
+		if node.Status == NodeFailed || node.Status == NodeCanceled {
+			node.Status = NodePending
+			node.Progress = 0
+			// 保留 node.Context（上下文）和 node.Result（可能有部分结果）
+			node.AddLog(LogInfo, "retry", "节点已重置，准备重试")
+			count++
 		}
 	}
 
-	return allLogs
+	// 更新图状态
+	if count > 0 {
+		if g.Root != nil {
+			g.Root.Status = NodeRunning
+		}
+		g.EndTime = nil // 清除结束时间
+		g.FailedNodes = 0
+	}
+
+	return count
 }
 
 // ============================================================================

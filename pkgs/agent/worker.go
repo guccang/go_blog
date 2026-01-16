@@ -18,6 +18,9 @@ type WorkerPool struct {
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	mu           sync.RWMutex
+	// 活跃任务追踪
+	activeGraphs map[string]bool // 当前正在执行的 TaskGraph ID
+	activeMu     sync.RWMutex
 }
 
 // Worker 单个工作者
@@ -32,7 +35,7 @@ type Worker struct {
 func NewWorkerPool(maxWorkers int, notification *NotificationHub, planner *TaskPlanner, storage *TaskStorage) *WorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
-		taskQueue:    make(chan *TaskGraph, 100), // 使用 TaskGraph
+		taskQueue:    make(chan *TaskGraph, 100),
 		workers:      make([]*Worker, 0, maxWorkers),
 		maxWorkers:   maxWorkers,
 		notification: notification,
@@ -40,6 +43,7 @@ func NewWorkerPool(maxWorkers int, notification *NotificationHub, planner *TaskP
 		storage:      storage,
 		ctx:          ctx,
 		cancel:       cancel,
+		activeGraphs: make(map[string]bool), // 初始化活跃任务映射
 	}
 }
 
@@ -100,6 +104,29 @@ func (p *WorkerPool) Submit(account, title, description string) *TaskGraph {
 	}
 
 	return graph
+}
+
+// ResubmitGraph 重新提交已有的任务图（用于重试）
+func (p *WorkerPool) ResubmitGraph(graph *TaskGraph) bool {
+	if graph == nil {
+		return false
+	}
+
+	// 发送到队列
+	select {
+	case p.taskQueue <- graph:
+		log.MessageF(log.ModuleAgent, "Task graph resubmitted for retry: %s", graph.RootID)
+		p.notification.Broadcast(TaskNotification{
+			TaskID:   graph.RootID,
+			Type:     "retrying",
+			Progress: graph.CalculateProgress(),
+			Message:  "任务已重新提交执行",
+		})
+		return true
+	default:
+		log.WarnF(log.ModuleAgent, "Task queue full, retry for %s rejected", graph.RootID)
+		return false
+	}
 }
 
 // GetTaskGraphByID 获取任务图
@@ -168,6 +195,24 @@ func (p *WorkerPool) CancelTask(taskID string) bool {
 		}
 	}
 	return false
+}
+
+// IsTaskActive 检查任务是否正在执行
+func (p *WorkerPool) IsTaskActive(taskID string) bool {
+	p.activeMu.RLock()
+	defer p.activeMu.RUnlock()
+	return p.activeGraphs[taskID]
+}
+
+// GetActiveTaskIDs 获取所有正在执行的任务 ID
+func (p *WorkerPool) GetActiveTaskIDs() []string {
+	p.activeMu.RLock()
+	defer p.activeMu.RUnlock()
+	ids := make([]string, 0, len(p.activeGraphs))
+	for id := range p.activeGraphs {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // ============================================================================
@@ -257,7 +302,17 @@ func (w *Worker) executeGraph(graph *TaskGraph) {
 	w.currentGraph = graph
 	w.mu.Unlock()
 
+	// 注册活跃任务
+	w.pool.activeMu.Lock()
+	w.pool.activeGraphs[graph.RootID] = true
+	w.pool.activeMu.Unlock()
+
 	defer func() {
+		// 取消注册活跃任务
+		w.pool.activeMu.Lock()
+		delete(w.pool.activeGraphs, graph.RootID)
+		w.pool.activeMu.Unlock()
+
 		w.mu.Lock()
 		w.currentGraph = nil
 		w.mu.Unlock()

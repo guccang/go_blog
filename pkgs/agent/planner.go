@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"llm"
@@ -52,58 +53,14 @@ type SubTaskPlanNode struct {
 }
 
 // PlanNode 规划任务节点（新版，支持递归拆解）
-func (p *TaskPlanner) PlanNode(node *TaskNode) (*NodePlanningResult, error) {
+func (p *TaskPlanner) PlanNode(ctx context.Context, node *TaskNode) (*NodePlanningResult, error) {
 	log.MessageF(log.ModuleAgent, "Planning node: %s (depth: %d)", node.Title, node.Depth)
 
 	// 构建上下文
 	contextStr := node.Context.BuildLLMContext()
 
-	// 构建规划提示词
-	prompt := fmt.Sprintf(`你是一个任务规划专家。请将任务分解为可执行的子任务。
-
-## 当前账户
-%s
-
-## 任务信息
-标题: %s
-描述: %s
-目标: %s
-
-## 上下文
-%s
-
-## 可用工具
-%s
-
-## 规则
-1. 子任务数量控制在 1-5 个
-2. 每个子任务应该是独立可执行的
-3. 标记需要进一步拆解的复杂子任务 (can_decompose: true)
-4. 明确子任务间的依赖关系 (depends_on: ["依赖的子任务title"])
-5. 选择合适的执行模式：
-   - sequential: 子任务有依赖，必须按顺序执行
-   - parallel: 子任务独立，可以并行执行
-6. 最大拆解深度: %d，当前深度: %d
-7. 如果任务足够简单可以直接执行，返回空的 subtasks 数组
-8. 所有工具调用都需要传递 account: "%s" 参数
-
-## 返回 JSON 格式（无 markdown 标记）
-{
-  "title": "任务标题",
-  "goal": "期望目标",
-  "execution_mode": "sequential 或 parallel",
-  "subtasks": [
-    {
-      "title": "子任务标题",
-      "description": "详细描述",
-      "goal": "子任务目标",
-      "tools": ["工具名1", "工具名2"],
-      "can_decompose": true或false,
-      "depends_on": []
-    }
-  ],
-  "reasoning": "拆解思路说明"
-}`,
+	// 使用集中管理的提示词模板
+	prompt := BuildNodePlanningPrompt(
 		p.account,
 		node.Title,
 		node.Description,
@@ -112,10 +69,10 @@ func (p *TaskPlanner) PlanNode(node *TaskNode) (*NodePlanningResult, error) {
 		p.getAvailableToolsDescription(),
 		p.maxDepth,
 		node.Depth,
-		p.account)
+	)
 
 	// 调用 LLM
-	response, err := p.callPlanningLLM(prompt)
+	response, err := p.callPlanningLLM(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("LLM调用失败: %w", err)
 	}
@@ -146,46 +103,76 @@ func (p *TaskPlanner) PlanNode(node *TaskNode) (*NodePlanningResult, error) {
 	return &result, nil
 }
 
-// ExecuteNode 执行任务节点（新版）
-func (p *TaskPlanner) ExecuteNode(node *TaskNode) (*TaskResult, error) {
+// ============================================================================
+// 两阶段工具选择（减少上下文占用）
+// ============================================================================
+
+// SelectToolsForTask 根据任务描述选择需要的工具（阶段1）
+// 返回选中的工具名称列表，用于第二阶段获取完整定义
+func (p *TaskPlanner) SelectToolsForTask(ctx context.Context, taskDescription string) ([]string, error) {
+	log.DebugF(log.ModuleAgent, "Selecting tools for task: %s", taskDescription)
+
+	// 获取工具目录
+	catalog := mcp.GetToolCatalogFormatted()
+
+	// 使用集中管理的工具选择提示词
+	prompt := BuildToolSelectionPrompt(taskDescription, catalog)
+
+	// 调用简单 LLM（不需要 function calling）
+	response, err := p.callToolSelectionLLM(ctx, prompt)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "Tool selection failed: %v, using all tools", err)
+		return nil, err
+	}
+
+	// 解析选中的工具
+	var selected []string
+	jsonStr := extractJSON(response)
+	if err := json.Unmarshal([]byte(jsonStr), &selected); err != nil {
+		log.WarnF(log.ModuleAgent, "Failed to parse tool selection: %v, response: %s", err, response)
+		return nil, err
+	}
+
+	log.MessageF(log.ModuleAgent, "Selected %d tools: %v", len(selected), selected)
+	return selected, nil
+}
+
+// callToolSelectionLLM 调用 LLM 进行工具选择（简单调用，无 function calling）
+func (p *TaskPlanner) callToolSelectionLLM(ctx context.Context, prompt string) (string, error) {
+	messages := []llm.Message{
+		{Role: "system", Content: PromptToolSelectionSystem.Template},
+		{Role: "user", Content: prompt},
+	}
+
+	// 使用无 tools 的简单调用
+	return llm.SendSyncLLMRequestNoTools(ctx, messages, p.account)
+}
+
+// ExecuteNode 执行任务节点（新版，支持两阶段工具选择）
+func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskResult, error) {
 	log.MessageF(log.ModuleAgent, "Executing node: %s", node.Title)
+
+	// 阶段1: 选择工具（减少上下文占用）
+	selectedTools, err := p.SelectToolsForTask(ctx, node.Description)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "Tool selection failed, using all tools: %v", err)
+		selectedTools = nil // fallback: 使用全部工具
+	}
 
 	// 构建上下文
 	contextStr := node.Context.BuildLLMContext()
 
-	// 构建执行提示词
-	prompt := fmt.Sprintf(`执行以下任务并返回结果。
-
-## 当前账户
-%s
-
-## 任务信息
-标题: %s
-描述: %s
-目标: %s
-
-## 上下文
-%s
-
-## 重要规则
-1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 如果需要使用工具，请按照工具定义中的参数格式调用
-3. 直接执行任务并返回结果
-4. 返回结果要简洁明了，包含关键信息
-
-## 返回格式
-执行完成后，请返回：
-1. 执行结果的简要描述
-2. 关键数据或信息（如有）`,
+	// 使用集中管理的执行提示词
+	prompt := BuildNodeExecutionPrompt(
 		p.account,
 		node.Title,
 		node.Description,
 		node.Goal,
 		contextStr,
-		p.account)
+	)
 
-	// 调用 LLM 执行
-	response, err := p.callExecutionLLM(prompt)
+	// 阶段2: 调用 LLM 执行（仅使用选中的工具）
+	response, err := p.callExecutionLLMWithTools(ctx, prompt, selectedTools)
 	if err != nil {
 		return NewTaskResultError(err.Error()), err
 	}
@@ -204,8 +191,61 @@ func (p *TaskPlanner) summarizeResponse(response string) string {
 	return response[:200] + "..."
 }
 
+// ============================================================================
+// 用户输入请求支持
+// ============================================================================
+
+// InputRequestResult 用户输入请求的结果
+type InputRequestResult struct {
+	NeedsInput bool   `json:"needs_input"`
+	InputType  string `json:"input_type"`
+	Title      string `json:"title"`
+	Message    string `json:"message"`
+	Options    []struct {
+		Value string `json:"value"`
+		Label string `json:"label"`
+	} `json:"options,omitempty"`
+}
+
+// CheckIfNeedsUserInput 检查 LLM 响应是否需要用户输入
+func (p *TaskPlanner) CheckIfNeedsUserInput(response string) (*InputRequestResult, bool) {
+	// 检查 LLM 响应中的特殊标记
+	// LLM 可能会返回类似 [NEEDS_INPUT] 的标记
+	if !strings.Contains(response, "[NEEDS_INPUT]") &&
+		!strings.Contains(response, "需要用户确认") &&
+		!strings.Contains(response, "请用户选择") {
+		return nil, false
+	}
+
+	// 尝试解析输入请求
+	result := &InputRequestResult{
+		NeedsInput: true,
+		InputType:  "text",
+		Title:      "需要确认",
+		Message:    response,
+	}
+
+	// 如果包含确认关键字
+	if strings.Contains(response, "确认") || strings.Contains(response, "是否") {
+		result.InputType = "confirm"
+		result.Options = []struct {
+			Value string `json:"value"`
+			Label string `json:"label"`
+		}{
+			{Value: "yes", Label: "是"},
+			{Value: "no", Label: "否"},
+		}
+	}
+
+	return result, true
+}
+
+// ============================================================================
+// LLM 调用函数
+// ============================================================================
+
 // callPlanningLLM 调用 LLM 进行任务规划
-func (p *TaskPlanner) callPlanningLLM(prompt string) (string, error) {
+func (p *TaskPlanner) callPlanningLLM(ctx context.Context, prompt string) (string, error) {
 	log.DebugF(log.ModuleAgent, "Planning LLM call with prompt length: %d", len(prompt))
 
 	systemPrompt := fmt.Sprintf(`你是一个任务规划专家。你的职责是将复杂任务分解为可执行的子任务。
@@ -222,11 +262,11 @@ func (p *TaskPlanner) callPlanningLLM(prompt string) (string, error) {
 		{Role: "user", Content: prompt},
 	}
 
-	return llm.SendSyncLLMRequest(messages, p.account)
+	return llm.SendSyncLLMRequestWithContext(ctx, messages, p.account)
 }
 
 // callExecutionLLM 调用 LLM 执行任务
-func (p *TaskPlanner) callExecutionLLM(prompt string) (string, error) {
+func (p *TaskPlanner) callExecutionLLM(ctx context.Context, prompt string) (string, error) {
 	log.DebugF(log.ModuleAgent, "Execution LLM call with prompt length: %d", len(prompt))
 
 	systemPrompt := fmt.Sprintf(`你是一个任务执行助手。当前用户账号是: %s
@@ -245,7 +285,28 @@ func (p *TaskPlanner) callExecutionLLM(prompt string) (string, error) {
 		{Role: "user", Content: prompt},
 	}
 
-	return llm.SendSyncLLMRequest(messages, p.account)
+	return llm.SendSyncLLMRequestWithContext(ctx, messages, p.account)
+}
+
+// callExecutionLLMWithTools 调用 LLM 执行任务（使用指定的工具，减少上下文占用）
+func (p *TaskPlanner) callExecutionLLMWithTools(ctx context.Context, prompt string, selectedTools []string) (string, error) {
+	log.DebugF(log.ModuleAgent, "Execution LLM call with %d selected tools", len(selectedTools))
+
+	systemPrompt := fmt.Sprintf(`你是一个任务执行助手。当前用户账号是: %s
+
+重要规则:
+1. 所有工具调用都必须传递 "account": "%s" 参数
+2. 如果工具需要 date 参数，使用 RawCurrentDate 先获取当前日期
+3. 如果用户需要创建提醒，使用 CreateReminder 工具
+4. 调用工具时使用正确的参数名
+5. 调用完工具后返回简单直接的执行结果给用户`, p.account, p.account)
+
+	messages := []llm.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: prompt},
+	}
+
+	return llm.SendSyncLLMRequestWithSelectedTools(ctx, messages, p.account, selectedTools)
 }
 
 // ============================================================================
@@ -254,58 +315,7 @@ func (p *TaskPlanner) callExecutionLLM(prompt string) (string, error) {
 
 // PlanningResult 规划结果（旧版，保留兼容）
 type PlanningResult struct {
-	Title    string        `json:"title"`
-	SubTasks []SubTaskPlan `json:"subtasks"`
-}
-
-// SubTaskPlan 子任务规划（旧版，保留兼容）
-type SubTaskPlan struct {
-	Description string   `json:"description"`
-	Tools       []string `json:"tools"`
-}
-
-// PlanTask 将自然语言分解为可执行任务（旧版兼容接口）
-func (p *TaskPlanner) PlanTask(userInput string) ([]SubTask, error) {
-	log.MessageF(log.ModuleAgent, "Planning task (legacy): %s", userInput)
-
-	// 创建临时节点进行规划
-	tempNode := NewTaskNode(p.account, "临时任务", userInput)
-	result, err := p.PlanNode(tempNode)
-	if err != nil {
-		return nil, err
-	}
-
-	// 转换为旧版 SubTask
-	subtasks := make([]SubTask, len(result.SubTasks))
-	for i, st := range result.SubTasks {
-		subtasks[i] = SubTask{
-			ID:          generateTaskID(),
-			Description: st.Description,
-			ToolCalls:   st.Tools,
-			Status:      "pending",
-		}
-	}
-
-	return subtasks, nil
-}
-
-// ExecuteSubTask 执行子任务（旧版兼容接口）
-func (p *TaskPlanner) ExecuteSubTask(task *AgentTask, subtask *SubTask) (string, error) {
-	log.MessageF(log.ModuleAgent, "Executing subtask (legacy): %s", subtask.Description)
-
-	// 创建临时节点进行执行
-	tempNode := NewTaskNode(p.account, subtask.Description, subtask.Description)
-	result, err := p.ExecuteNode(tempNode)
-	if err != nil {
-		return "", err
-	}
-
-	return result.Output, nil
-}
-
-// callLLM 调用 LLM API（旧版兼容）
-func (p *TaskPlanner) callLLM(prompt string) (string, error) {
-	return p.callExecutionLLM(prompt)
+	Title string `json:"title"`
 }
 
 // ============================================================================

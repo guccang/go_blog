@@ -50,7 +50,7 @@ body {
 }
 
 .back-btn {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     padding: 10px 16px;
     border-radius: 10px;
     color: var(--text);
@@ -60,7 +60,7 @@ body {
 }
 
 .back-btn:hover {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.2);
     transform: translateY(-2px);
 }
 
@@ -120,7 +120,7 @@ body {
     padding: 14px 18px;
     border-radius: 10px;
     border: 1px solid var(--border);
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     color: var(--text);
     font-size: 1rem;
 }
@@ -164,9 +164,21 @@ body {
     text-align: center;
 }
 
-.stat-card .icon { font-size: 2rem; margin-bottom: 10px; }
-.stat-card .value { font-size: 2rem; font-weight: 700; margin-bottom: 5px; }
-.stat-card .label { color: var(--text-muted); font-size: 0.9rem; }
+.stat-card .icon {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.stat-card .value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.stat-card .label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
 
 /* ============================================================================
    Task List
@@ -192,7 +204,7 @@ body {
 }
 
 .refresh-btn {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     border: none;
     padding: 10px 16px;
     border-radius: 8px;
@@ -201,7 +213,9 @@ body {
     transition: all 0.3s;
 }
 
-.refresh-btn:hover { background: rgba(255,255,255,0.2); }
+.refresh-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
 
 .task-list {
     display: flex;
@@ -210,7 +224,7 @@ body {
 }
 
 .task-item {
-    background: rgba(255,255,255,0.03);
+    background: rgba(255, 255, 255, 0.03);
     border-radius: 12px;
     padding: 16px 20px;
     border: 1px solid var(--border);
@@ -231,7 +245,10 @@ body {
     margin-bottom: 12px;
 }
 
-.task-title { font-weight: 600; font-size: 1.1rem; }
+.task-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
 
 /* ============================================================================
    Task Status
@@ -243,35 +260,112 @@ body {
     font-weight: 500;
 }
 
-.task-status.pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-.task-status.running { background: rgba(99, 102, 241, 0.2); color: var(--primary); }
-.task-status.paused { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
-.task-status.done { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-.task-status.failed { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-.task-status.canceled { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
+.task-status.pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning);
+}
+
+.task-status.running {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+}
+
+.task-status.paused {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-muted);
+}
+
+.task-status.done {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.task-status.failed {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+}
+
+.task-status.canceled {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-muted);
+}
 
 /* TaskNode 状态映射 */
-.task-status.node_pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-.task-status.node_running { background: rgba(99, 102, 241, 0.2); color: var(--primary); }
-.task-status.node_done { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-.task-status.node_failed { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-.task-status.node_paused { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
-.task-status.node_skipped { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
-.task-status.node_cancelled { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
-.task-status.node_waiting_input { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.task-status.node_pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning);
+}
+
+.task-status.node_running {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+}
+
+.task-status.node_done {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.task-status.node_failed {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+}
+
+.task-status.node_paused {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-muted);
+}
+
+.task-status.node_skipped {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-muted);
+}
+
+.task-status.node_cancelled {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--text-muted);
+}
+
+.task-status.node_waiting_input {
+    background: rgba(168, 85, 247, 0.2);
+    color: #a855f7;
+}
 
 /* ============================================================================
    Progress Bar
    ============================================================================ */
-.task-progress { margin-bottom: 12px; }
-.progress-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #a855f7); transition: width 0.5s; }
-.progress-text { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.85rem; color: var(--text-muted); }
+.task-progress {
+    margin-bottom: 12px;
+}
+
+.progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #a855f7);
+    transition: width 0.5s;
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
 
 /* ============================================================================
    Action Buttons
    ============================================================================ */
-.task-actions { display: flex; gap: 8px; }
+.task-actions {
+    display: flex;
+    gap: 8px;
+}
 
 .action-btn {
     padding: 8px 14px;
@@ -282,17 +376,44 @@ body {
     transition: all 0.2s;
 }
 
-.action-btn.pause { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-.action-btn.resume { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-.action-btn.cancel { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-.action-btn.view { background: rgba(99, 102, 241, 0.2); color: var(--primary); }
-.action-btn:hover { transform: scale(1.05); }
+.action-btn.pause {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning);
+}
+
+.action-btn.resume {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.action-btn.cancel {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+}
+
+.action-btn.view {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+}
+
+.action-btn:hover {
+    transform: scale(1.05);
+}
 
 /* ============================================================================
    Empty State
    ============================================================================ */
-.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-.empty-state i { font-size: 4rem; margin-bottom: 20px; opacity: 0.3; }
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    opacity: 0.3;
+}
 
 /* ============================================================================
    WebSocket Status
@@ -310,10 +431,29 @@ body {
     border: 1px solid var(--border);
 }
 
-.ws-indicator { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
-.ws-indicator.connected { background: var(--success); animation: pulse 2s infinite; }
+.ws-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--danger);
+}
 
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.ws-indicator.connected {
+    background: var(--success);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
 
 /* ============================================================================
    Task Detail Modal
@@ -331,7 +471,9 @@ body {
     justify-content: center;
 }
 
-.task-modal.show { display: flex; }
+.task-modal.show {
+    display: flex;
+}
 
 .modal-content {
     background: var(--bg-card);
@@ -371,7 +513,9 @@ body {
     transition: all 0.3s;
 }
 
-.modal-close:hover { background: rgba(239, 68, 68, 0.4); }
+.modal-close:hover {
+    background: rgba(239, 68, 68, 0.4);
+}
 
 .modal-body {
     padding: 24px;
@@ -387,19 +531,31 @@ body {
     color: var(--text);
 }
 
-.markdown-content h1, .markdown-content h2, .markdown-content h3 {
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
     color: var(--primary);
     margin: 20px 0 10px;
     border-bottom: 1px solid var(--border);
     padding-bottom: 8px;
 }
 
-.markdown-content p { margin: 12px 0; }
-.markdown-content ul, .markdown-content ol { margin: 12px 0; padding-left: 24px; }
-.markdown-content li { margin: 6px 0; }
+.markdown-content p {
+    margin: 12px 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.markdown-content li {
+    margin: 6px 0;
+}
 
 .markdown-content code {
-    background: rgba(0,0,0,0.3);
+    background: rgba(0, 0, 0, 0.3);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: 'Fira Code', monospace;
@@ -407,7 +563,7 @@ body {
 }
 
 .markdown-content pre {
-    background: rgba(0,0,0,0.4);
+    background: rgba(0, 0, 0, 0.4);
     padding: 16px;
     border-radius: 8px;
     overflow-x: auto;
@@ -433,13 +589,16 @@ body {
     margin: 16px 0;
 }
 
-.markdown-content th, .markdown-content td {
+.markdown-content th,
+.markdown-content td {
     border: 1px solid var(--border);
     padding: 10px 14px;
     text-align: left;
 }
 
-.markdown-content th { background: rgba(99, 102, 241, 0.2); }
+.markdown-content th {
+    background: rgba(99, 102, 241, 0.2);
+}
 
 /* ============================================================================
    Task Meta
@@ -450,7 +609,7 @@ body {
     gap: 16px;
     margin-bottom: 20px;
     padding: 16px;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 10px;
 }
 
@@ -460,19 +619,40 @@ body {
     gap: 4px;
 }
 
-.meta-label { font-size: 0.85rem; color: var(--text-muted); }
-.meta-value { font-weight: 600; }
+.meta-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.meta-value {
+    font-weight: 600;
+}
 
 /* ============================================================================
    Graph Modal
    ============================================================================ */
 @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
+
 @keyframes slideOut {
-    from { transform: translateX(0); opacity: 1; }
-    to { transform: translateX(100%); opacity: 0; }
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
 }
 
 .graph-modal-content {
@@ -513,7 +693,7 @@ body {
 
 .graph-diagram {
     flex: 2;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     padding: 20px;
     overflow: auto;
     display: flex;
@@ -578,7 +758,7 @@ body {
     padding: 10px 12px;
     border-left: 3px solid var(--border);
     margin-bottom: 8px;
-    background: rgba(0,0,0,0.2);
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 0 6px 6px 0;
     cursor: pointer;
     transition: all 0.2s;
@@ -588,10 +768,21 @@ body {
     background: rgba(99, 102, 241, 0.1);
 }
 
-.log-entry.info { border-color: var(--primary); }
-.log-entry.warn { border-color: var(--warning); }
-.log-entry.error { border-color: var(--danger); }
-.log-entry.debug { border-color: var(--text-muted); }
+.log-entry.info {
+    border-color: var(--primary);
+}
+
+.log-entry.warn {
+    border-color: var(--warning);
+}
+
+.log-entry.error {
+    border-color: var(--danger);
+}
+
+.log-entry.debug {
+    border-color: var(--text-muted);
+}
 
 .log-header {
     display: flex;
@@ -713,6 +904,7 @@ body {
         opacity: 0;
         transform: scale(0.9) translateY(20px);
     }
+
     to {
         opacity: 1;
         transform: scale(1) translateY(0);
@@ -908,18 +1100,208 @@ body {
     .graph-container {
         flex-direction: column;
     }
+
     .graph-sidebar {
         max-width: none;
         border-left: none;
         border-top: 1px solid var(--border);
     }
+
     .graph-diagram {
         min-height: 300px;
     }
 }
 
 @media (max-width: 768px) {
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .task-input-group { flex-direction: column; }
-    .task-meta { grid-template-columns: 1fr; }
+    .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .task-input-group {
+        flex-direction: column;
+    }
+
+    .task-meta {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================================
+   Tree View for Task Graph
+   ============================================================================ */
+.tree-view-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.tree-toolbar {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.2);
+    align-items: center;
+}
+
+.tree-btn {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tree-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.tree-stats {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.tree-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.tree-node {
+    margin-bottom: 2px;
+}
+
+.tree-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.tree-node-header:hover {
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.tree-node-header.node_done,
+.tree-node-header.done {
+    border-left: 3px solid var(--success);
+}
+
+.tree-node-header.node_running,
+.tree-node-header.running {
+    border-left: 3px solid var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.tree-node-header.node_failed,
+.tree-node-header.failed {
+    border-left: 3px solid var(--danger);
+}
+
+.tree-node-header.node_pending,
+.tree-node-header.pending {
+    border-left: 3px solid var(--warning);
+}
+
+.tree-toggle {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.tree-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.tree-toggle-placeholder {
+    width: 20px;
+    flex-shrink: 0;
+}
+
+.tree-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.tree-title {
+    flex: 1;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
+.tree-title:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.tree-progress {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-width: 40px;
+    text-align: right;
+}
+
+.tree-status {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+.tree-status.node_done,
+.tree-status.done {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success);
+}
+
+.tree-status.node_running,
+.tree-status.running {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+}
+
+.tree-status.node_failed,
+.tree-status.failed {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+}
+
+.tree-status.node_pending,
+.tree-status.pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning);
+}
+
+.tree-children {
+    display: none;
+    margin-left: 12px;
+    border-left: 1px dashed var(--border);
+    padding-left: 8px;
+}
+
+.tree-children.show {
+    display: block;
 }

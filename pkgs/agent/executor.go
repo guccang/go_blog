@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	log "mylog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,7 +47,7 @@ func (e *TaskExecutor) Execute() error {
 	}
 
 	log.MessageF(log.ModuleAgent, "Starting execution of task: %s", root.Title)
-	root.AddLog(LogInfo, "starting", "开始执行任务")
+	root.AddLog(LogInfo, "starting", fmt.Sprintf("开始执行任务: %s", root.Title))
 
 	// 通知图更新
 	e.notifyGraphUpdate("graph_started", root)
@@ -81,6 +82,12 @@ func (e *TaskExecutor) executeNode(node *TaskNode) error {
 	// 检查节点取消
 	if node.IsCanceled() {
 		return fmt.Errorf("node canceled")
+	}
+
+	// 重试时跳过已完成的节点
+	if node.Status == NodeDone {
+		node.AddLog(LogDebug, "skip", "节点已完成，跳过执行")
+		return nil
 	}
 
 	// 设置运行状态
@@ -160,7 +167,7 @@ func (e *TaskExecutor) decomposeNode(node *TaskNode) error {
 	e.buildNodeContext(node)
 
 	// 调用 planner 进行拆解
-	result, err := e.planner.PlanNode(node)
+	result, err := e.planner.PlanNode(e.ctx, node)
 	if err != nil {
 		return err
 	}
@@ -310,10 +317,10 @@ func (e *TaskExecutor) waitForDependencies(node *TaskNode) error {
 		return nil
 	}
 
-	node.AddLog(LogDebug, "waiting", fmt.Sprintf("等待 %d 个依赖完成", len(node.DependsOn)))
+	node.AddLog(LogDebug, "waiting", fmt.Sprintf("等待 %d 个依赖完成: %v", len(node.DependsOn), node.DependsOn))
 
 	timeout := time.After(e.config.ExecutionTimeout)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(500 * time.Millisecond) // 增加检查间隔以减少 CPU 开销
 	defer ticker.Stop()
 
 	for {
@@ -321,13 +328,26 @@ func (e *TaskExecutor) waitForDependencies(node *TaskNode) error {
 		case <-e.ctx.Done():
 			return fmt.Errorf("context canceled while waiting for dependencies")
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for dependencies")
+			// 超时时提供详细信息
+			var pendingDeps []string
+			for _, depID := range node.DependsOn {
+				dep := e.findDependencyNode(depID)
+				if dep != nil && dep.Status != NodeDone {
+					pendingDeps = append(pendingDeps, fmt.Sprintf("%s(%s)", dep.Title, dep.Status))
+				}
+			}
+			return fmt.Errorf("timeout waiting for dependencies: %v", pendingDeps)
 		case <-ticker.C:
 			allDone := true
 			for _, depID := range node.DependsOn {
-				dep := e.graph.GetNode(depID)
+				dep := e.findDependencyNode(depID)
 				if dep == nil {
-					return fmt.Errorf("dependency node not found: %s", depID)
+					node.AddLog(LogWarn, "waiting", fmt.Sprintf("依赖节点未找到: %s", depID))
+					continue // 跳过未找到的依赖，而不是立即失败
+				}
+				// 检查依赖是否已失败或被取消
+				if dep.Status == NodeFailed || dep.Status == NodeCanceled {
+					return fmt.Errorf("dependency '%s' failed with status: %s", dep.Title, dep.Status)
 				}
 				if dep.Status != NodeDone {
 					allDone = false
@@ -335,21 +355,39 @@ func (e *TaskExecutor) waitForDependencies(node *TaskNode) error {
 				}
 			}
 			if allDone {
+				node.AddLog(LogDebug, "waiting", "所有依赖已完成")
 				return nil
 			}
 		}
 	}
 }
 
+// findDependencyNode 查找依赖节点（支持按ID或标题查找）
+func (e *TaskExecutor) findDependencyNode(idOrTitle string) *TaskNode {
+	// 首先尝试按 ID 查找
+	if node := e.graph.GetNode(idOrTitle); node != nil {
+		return node
+	}
+
+	// 按 ID 未找到，尝试按标题查找（兼容旧数据）
+	for _, node := range e.graph.Nodes {
+		if node.Title == idOrTitle {
+			return node
+		}
+	}
+
+	return nil
+}
+
 // executeLeafNode 执行叶子节点
 func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
-	node.AddLog(LogInfo, "executing", "执行叶子节点")
+	node.AddLog(LogInfo, "executing", fmt.Sprintf("执行叶子节点: %s", node.Title))
 
 	// 构建上下文
 	e.buildNodeContext(node)
 
 	// 调用 planner 执行
-	result, err := e.planner.ExecuteNode(node)
+	result, err := e.planner.ExecuteNode(e.ctx, node)
 	if err != nil {
 		node.Result = NewTaskResultError(err.Error())
 		return err
@@ -485,14 +523,93 @@ func (e *TaskExecutor) Cancel() {
 	e.graph.Root.Cancel()
 }
 
-// joinStrings 连接字符串
+// ============================================================================
+// 用户输入等待支持
+// ============================================================================
+
+// notifyInputRequest 通知前端需要用户输入
+func (e *TaskExecutor) notifyInputRequest(node *TaskNode, req *InputRequest) {
+	if e.hub == nil {
+		return
+	}
+
+	node.AddLog(LogInfo, "waiting_input", fmt.Sprintf("等待用户输入: %s", req.Title))
+
+	e.hub.Broadcast(TaskNotification{
+		TaskID:  e.graph.RootID,
+		Type:    "input_required",
+		Message: req.Title,
+		Data: map[string]interface{}{
+			"request": req,
+			"node_id": node.ID,
+			"node":    node.Title,
+		},
+	})
+}
+
+// RequestUserInput 请求用户输入并等待响应
+// 这是从执行器内部请求用户输入的主方法
+func (e *TaskExecutor) RequestUserInput(node *TaskNode, title, message string, inputType InputType) (*InputResponse, error) {
+	// 创建输入请求
+	req := NewInputRequest(node.ID, e.graph.RootID, node.Account, title, message, inputType)
+
+	// 通知前端
+	e.notifyInputRequest(node, req)
+
+	// 等待用户输入（会阻塞直到用户响应）
+	resp, cancelled := node.WaitForInput(req)
+	if cancelled {
+		node.AddLog(LogWarn, "input_cancelled", "用户取消了输入")
+		return nil, fmt.Errorf("user cancelled input")
+	}
+
+	node.AddLog(LogInfo, "input_received", fmt.Sprintf("收到用户输入: %v", resp.Value))
+	return resp, nil
+}
+
+// RequestUserConfirmation 请求用户确认（是/否）
+func (e *TaskExecutor) RequestUserConfirmation(node *TaskNode, title, message string) (bool, error) {
+	req := NewInputRequest(node.ID, e.graph.RootID, node.Account, title, message, InputTypeConfirm)
+	req.Options = []InputOption{
+		{Value: "yes", Label: "是"},
+		{Value: "no", Label: "否"},
+	}
+
+	e.notifyInputRequest(node, req)
+
+	resp, cancelled := node.WaitForInput(req)
+	if cancelled {
+		return false, fmt.Errorf("user cancelled confirmation")
+	}
+
+	// 解析响应
+	value, ok := resp.Value.(string)
+	if !ok {
+		return false, fmt.Errorf("invalid confirmation response type")
+	}
+	return value == "yes" || value == "true", nil
+}
+
+// RequestUserSelection 请求用户从选项中选择
+func (e *TaskExecutor) RequestUserSelection(node *TaskNode, title, message string, options []InputOption) (string, error) {
+	req := NewInputRequest(node.ID, e.graph.RootID, node.Account, title, message, InputTypeSelect)
+	req.Options = options
+
+	e.notifyInputRequest(node, req)
+
+	resp, cancelled := node.WaitForInput(req)
+	if cancelled {
+		return "", fmt.Errorf("user cancelled selection")
+	}
+
+	value, ok := resp.Value.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid selection response type")
+	}
+	return value, nil
+}
+
+// joinStrings 连接字符串（使用标准库）
 func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
+	return strings.Join(strs, sep)
 }
