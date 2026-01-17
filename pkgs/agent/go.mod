@@ -8,6 +8,7 @@ require (
 	mcp v0.0.0
 	module v0.0.0
 	mylog v0.0.0
+	statistics v0.0.0
 	github.com/gorilla/websocket v1.5.0
 )
 
@@ -17,4 +18,5 @@ replace (
 	mcp => ../mcp
 	module => ../module
 	mylog => ../mylog
+	statistics => ../statistics
 )

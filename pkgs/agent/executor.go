@@ -3,10 +3,17 @@ package agent
 import (
 	"context"
 	"fmt"
+	"mcp"
 	log "mylog"
 	"strings"
 	"sync"
 	"time"
+)
+
+// 输出长度限制常量
+const (
+	MaxOutputLength  = 5000 // 超过此长度保存为博客
+	MaxSummaryLength = 2000 // 摘要最大长度
 )
 
 // ============================================================================
@@ -212,6 +219,18 @@ func (e *TaskExecutor) decomposeNode(node *TaskNode) error {
 		}
 	}
 
+	// 检测循环依赖（包括跨层级循环）
+	if err := e.detectCyclicDependencies(node, createdNodes); err != nil {
+		node.AddLog(LogError, "planning", fmt.Sprintf("检测到循环依赖: %v", err))
+		// 清除已创建的子节点，避免死锁
+		for _, child := range createdNodes {
+			delete(e.graph.Nodes, child.ID)
+		}
+		node.Children = nil
+		node.CanDecompose = false
+		return err
+	}
+
 	node.AddLog(LogInfo, "planning", fmt.Sprintf("任务拆解完成: %d 个子任务，模式: %s", len(node.Children), node.ExecutionMode))
 	e.notifyGraphUpdate("graph_update", node)
 
@@ -403,6 +422,84 @@ func (e *TaskExecutor) waitForDependencies(node *TaskNode) error {
 	}
 }
 
+// detectCyclicDependencies 检测循环依赖（使用 DFS）
+// 检测两种循环：1. 显式依赖形成的循环 2. 子节点依赖祖先节点的跨层级循环
+func (e *TaskExecutor) detectCyclicDependencies(parentNode *TaskNode, createdNodes []*TaskNode) error {
+	// 收集所有祖先节点 ID
+	ancestorIDs := make(map[string]bool)
+	current := parentNode
+	for current != nil {
+		ancestorIDs[current.ID] = true
+		if current.ParentID == "" {
+			break
+		}
+		current = e.graph.GetNode(current.ParentID)
+	}
+
+	// 检查是否有子节点依赖祖先节点（跨层级循环）
+	for _, child := range createdNodes {
+		for _, depID := range child.DependsOn {
+			if ancestorIDs[depID] {
+				depNode := e.graph.GetNode(depID)
+				depTitle := depID
+				if depNode != nil {
+					depTitle = depNode.Title
+				}
+				return fmt.Errorf("子任务 '%s' 依赖祖先任务 '%s'，形成跨层级循环", child.Title, depTitle)
+			}
+		}
+	}
+
+	// 使用 DFS 检测兄弟节点之间的循环依赖
+	visited := make(map[string]int) // 0=未访问, 1=访问中, 2=完成
+	var cyclePath []string
+
+	var dfs func(nodeID string) bool
+	dfs = func(nodeID string) bool {
+		if visited[nodeID] == 1 {
+			cyclePath = append(cyclePath, nodeID)
+			return true
+		}
+		if visited[nodeID] == 2 {
+			return false
+		}
+
+		visited[nodeID] = 1
+		node := e.graph.GetNode(nodeID)
+		if node == nil {
+			visited[nodeID] = 2
+			return false
+		}
+
+		for _, depID := range node.DependsOn {
+			if dfs(depID) {
+				cyclePath = append(cyclePath, nodeID)
+				return true
+			}
+		}
+
+		visited[nodeID] = 2
+		return false
+	}
+
+	for _, node := range createdNodes {
+		if visited[node.ID] == 0 {
+			if dfs(node.ID) {
+				// 构建循环路径描述
+				var pathTitles []string
+				for _, id := range cyclePath {
+					if n := e.graph.GetNode(id); n != nil {
+						pathTitles = append(pathTitles, n.Title)
+					}
+				}
+				return fmt.Errorf("检测到循环依赖链: %v", pathTitles)
+			}
+		}
+	}
+
+	return nil
+}
+
 // findDependencyNode 查找依赖节点（支持按ID或标题查找）
 func (e *TaskExecutor) findDependencyNode(idOrTitle string) *TaskNode {
 	// 首先尝试按 ID 查找
@@ -479,17 +576,37 @@ func (e *TaskExecutor) propagateSiblingResult(node *TaskNode) {
 	}
 }
 
-// aggregateChildResults 汇总子节点结果（LLM 智能整合版）
+// aggregateChildResults 汇总子节点结果（LLM 智能整合版 + 博客引用）
 func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
 	var summaries []string
 	var detailedOutputs []string
+	var allArtifacts []string
 	var allSuccess = true
 
 	for _, child := range node.Children {
 		if child.Result != nil {
-			summaries = append(summaries, fmt.Sprintf("%s: %s", child.Title, child.Result.Summary))
-			// 包含完整输出内容用于父任务参考
-			if child.Result.Output != "" {
+			// 检查输出长度，过长则保存为博客
+			childSummary := child.Result.Summary
+			if len(child.Result.Output) > MaxOutputLength {
+				blogLink, err := e.saveOutputAsBlog(child, child.Result.Output)
+				if err != nil {
+					node.AddLog(LogWarn, "artifact", fmt.Sprintf("保存博客失败: %v", err))
+				} else {
+					node.AddLog(LogInfo, "artifact", fmt.Sprintf("输出已保存为博客: %s", blogLink))
+					allArtifacts = append(allArtifacts, blogLink)
+					// 在摘要中添加博客链接
+					childSummary = fmt.Sprintf("%s (详情: %s)", child.Result.Summary, blogLink)
+					// 更新子节点的 Artifacts
+					if child.Result.Artifacts == nil {
+						child.Result.Artifacts = []string{}
+					}
+					child.Result.Artifacts = append(child.Result.Artifacts, blogLink)
+				}
+			}
+
+			summaries = append(summaries, fmt.Sprintf("%s: %s", child.Title, childSummary))
+			// 只保留较短的输出内容用于父任务参考
+			if child.Result.Output != "" && len(child.Result.Output) <= MaxOutputLength {
 				detailedOutputs = append(detailedOutputs, fmt.Sprintf("=== %s ===\n%s", child.Title, child.Result.Output))
 			}
 			if !child.Result.Success {
@@ -523,6 +640,7 @@ func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
 		Summary:    synthesizedSummary,
 		RawSummary: rawSummary,
 		Output:     fmt.Sprintf("子任务详细结果:\n\n%s", rawOutput),
+		Artifacts:  allArtifacts,
 	}
 
 	// 更新父节点上下文，包含子任务结果供后续 LLM 调用参考
@@ -535,14 +653,75 @@ func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
 	}
 }
 
+// saveOutputAsBlog 将过长的输出保存为博客
+func (e *TaskExecutor) saveOutputAsBlog(node *TaskNode, content string) (string, error) {
+	title := generateBlogTitle(node.Title, node.ID)
+
+	args := map[string]interface{}{
+		"account":  node.Account,
+		"title":    title,
+		"content":  content,
+		"tags":     "Agent|任务输出|自动生成",
+		"authType": float64(1), // 私有
+	}
+
+	result := mcp.CallMCPTool("RawCreateBlog", args)
+	if !result.Success {
+		return "", fmt.Errorf("保存博客失败: %s", result.Error)
+	}
+
+	// 返回链接格式
+	link := fmt.Sprintf("[%s](/get?blogname=%s)", title, title)
+	log.MessageF(log.ModuleAgent, "[博客保存] 任务 '%s' 输出已保存: %s (原长度: %d 字符)", node.Title, link, len(content))
+	return link, nil
+}
+
+// generateBlogTitle 生成博客标题
+func generateBlogTitle(taskTitle string, nodeID string) string {
+	timestamp := time.Now().Format("20060102_150405")
+	// 截断过长的标题
+	if len(taskTitle) > 20 {
+		taskTitle = taskTitle[:20]
+	}
+	return fmt.Sprintf("Agent_%s_%s_%s", taskTitle, nodeID, timestamp)
+}
+
 // handleNodeError 处理节点错误
 func (e *TaskExecutor) handleNodeError(node *TaskNode, err error) error {
 	node.SetStatus(NodeFailed)
 	e.graph.UpdateNodeStatus(node.ID, NodeFailed)
 	node.Result = NewTaskResultError(err.Error())
-	node.AddLog(LogError, "failed", fmt.Sprintf("执行失败: %v", err))
+
+	// 详细错误分类日志
+	errorType := classifyError(err)
+	node.AddLog(LogError, "failed", fmt.Sprintf("[节点: %s] 执行失败 [%s]: %v", node.Title, errorType, err))
+	log.MessageF(log.ModuleAgent, "[执行失败] 节点: '%s', 错误类型: %s, 详情: %v", node.Title, errorType, err)
+
 	e.notifyNodeUpdate("node_failed", node)
 	return err
+}
+
+// classifyError 错误分类
+func classifyError(err error) string {
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "context deadline exceeded"):
+		return "超时"
+	case strings.Contains(errStr, "Client.Timeout"):
+		return "HTTP超时"
+	case strings.Contains(errStr, "connection refused"):
+		return "连接拒绝"
+	case strings.Contains(errStr, "no such host"):
+		return "DNS解析失败"
+	case strings.Contains(errStr, "EOF"):
+		return "连接中断"
+	case strings.Contains(errStr, "LLM"):
+		return "LLM调用失败"
+	case strings.Contains(errStr, "dependency"):
+		return "依赖失败"
+	default:
+		return "未知错误"
+	}
 }
 
 // notifyGraphUpdate 通知图更新

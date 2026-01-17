@@ -290,7 +290,7 @@ func NewExecutionConfig(maxDepth, maxContextLen, maxRetries int) *ExecutionConfi
 		MaxDepth:         maxDepth,
 		MaxContextLen:    maxContextLen,
 		MaxRetries:       maxRetries,
-		ExecutionTimeout: 10 * time.Minute,
+		ExecutionTimeout: 60 * time.Minute, // 1小时
 		EnableLogging:    true,
 	}
 }

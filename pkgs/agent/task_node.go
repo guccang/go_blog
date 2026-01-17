@@ -668,6 +668,7 @@ type TaskResult struct {
 	Data        map[string]interface{} `json:"data,omitempty"`        // 结构化数据
 	Error       string                 `json:"error,omitempty"`
 	ToolResults []ToolCallResult       `json:"tool_results,omitempty"`
+	Artifacts   []string               `json:"artifacts,omitempty"` // 保存的博客链接
 }
 
 // ToolCallResult 工具调用结果
@@ -755,7 +756,7 @@ func DefaultExecutionConfig() *ExecutionConfig {
 		MaxDepth:         DefaultMaxDepth,
 		MaxContextLen:    DefaultMaxContextLen,
 		MaxRetries:       DefaultMaxRetries,
-		ExecutionTimeout: 5 * time.Minute,
+		ExecutionTimeout: 60 * time.Minute, // 1小时
 		EnableLogging:    true,
 	}
 }

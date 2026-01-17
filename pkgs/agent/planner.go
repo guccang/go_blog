@@ -7,8 +7,14 @@ import (
 	"llm"
 	"mcp"
 	log "mylog"
+	"statistics"
 	"strings"
 	"time"
+)
+
+// 上下文长度限制
+const (
+	MaxContextLength = 20000 // 上下文最大长度，超过则保存为博客
 )
 
 // TaskPlanner 任务规划器
@@ -72,6 +78,27 @@ func (p *TaskPlanner) PlanNode(ctx context.Context, node *TaskNode) (*NodePlanni
 		node.Depth,
 	)
 
+	// 诊断日志：记录上下文和提示词长度
+	log.MessageF(log.ModuleAgent, "[规划诊断] 节点: %s, 上下文长度: %d 字符, 提示词长度: %d 字符, 深度: %d",
+		node.Title, len(contextStr), len(prompt), node.Depth)
+
+	// 检查上下文是否超长，超长则保存为博客
+	if len(contextStr) > MaxContextLength {
+		log.WarnF(log.ModuleAgent, "[上下文超长] 节点: '%s', 长度: %d, 阈值: %d, 将保存为博客", node.Title, len(contextStr), MaxContextLength)
+		contextStr = p.truncateContextAsBlog(node, contextStr)
+		prompt = BuildNodePlanningPrompt(
+			p.account,
+			node.Title,
+			node.Description,
+			node.Goal,
+			contextStr,
+			p.getAvailableToolsDescription(),
+			p.maxDepth,
+			node.Depth,
+		)
+		log.MessageF(log.ModuleAgent, "[上下文压缩] 节点: %s, 新上下文长度: %d 字符", node.Title, len(contextStr))
+	}
+
 	// 调用 LLM
 	startTime := time.Now()
 	response, err := p.callPlanningLLM(ctx, prompt)
@@ -83,7 +110,8 @@ func (p *TaskPlanner) PlanNode(ctx context.Context, node *TaskNode) (*NodePlanni
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("LLM调用失败: %w", err)
+		log.WarnF(log.ModuleAgent, "[规划失败] 节点: '%s', 错误: %v", node.Title, err)
+		return nil, fmt.Errorf("LLM调用失败 (节点: %s): %w", node.Title, err)
 	}
 
 	// 解析结果
@@ -180,6 +208,28 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 		contextStr,
 	)
 
+	// 诊断日志：记录执行阶段的上下文和提示词长度
+	toolsInfo := "全部"
+	if selectedTools != nil {
+		toolsInfo = fmt.Sprintf("%d个", len(selectedTools))
+	}
+	log.MessageF(log.ModuleAgent, "[执行诊断] 节点: %s, 上下文长度: %d 字符, 提示词长度: %d 字符, 工具: %s",
+		node.Title, len(contextStr), len(prompt), toolsInfo)
+
+	// 检查上下文是否超长，超长则保存为博客
+	if len(contextStr) > MaxContextLength {
+		log.WarnF(log.ModuleAgent, "[上下文超长] 节点: '%s', 长度: %d, 阈值: %d, 将保存为博客", node.Title, len(contextStr), MaxContextLength)
+		contextStr = p.truncateContextAsBlog(node, contextStr)
+		prompt = BuildNodeExecutionPrompt(
+			p.account,
+			node.Title,
+			node.Description,
+			node.Goal,
+			contextStr,
+		)
+		log.MessageF(log.ModuleAgent, "[上下文压缩] 节点: %s, 新上下文长度: %d 字符", node.Title, len(contextStr))
+	}
+
 	// 阶段2: 调用 LLM 执行（仅使用选中的工具）
 	startTime := time.Now()
 	response, err := p.callExecutionLLMWithTools(ctx, prompt, selectedTools)
@@ -191,7 +241,8 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 	}
 
 	if err != nil {
-		return NewTaskResultError(err.Error()), err
+		log.WarnF(log.ModuleAgent, "[执行失败] 节点: '%s', 错误: %v", node.Title, err)
+		return NewTaskResultError(fmt.Sprintf("节点 '%s' 执行失败: %v", node.Title, err)), err
 	}
 
 	// 创建结果
@@ -233,7 +284,7 @@ func (p *TaskPlanner) SynthesizeResults(ctx context.Context, node *TaskNode, chi
 	}
 
 	if err != nil {
-		log.WarnF(log.ModuleAgent, "Result synthesis failed: %v", err)
+		log.WarnF(log.ModuleAgent, "[结果整合失败] 节点: '%s', 错误: %v", node.Title, err)
 		return "", err
 	}
 
@@ -376,6 +427,47 @@ func (p *TaskPlanner) getAvailableToolsDescription() string {
 			tool.Function.Name, tool.Function.Description))
 	}
 	return strings.Join(descriptions, "\n")
+}
+
+// truncateContextAsBlog 将超长上下文保存为博客，返回简短摘要+链接
+func (p *TaskPlanner) truncateContextAsBlog(node *TaskNode, contextStr string) string {
+	// 生成博客标题
+	timestamp := time.Now().Format("20060102_150405")
+	nodeTitle := node.Title
+	if len(nodeTitle) > 15 {
+		nodeTitle = nodeTitle[:15]
+	}
+	blogTitle := fmt.Sprintf("Agent上下文_%s_%s", nodeTitle, timestamp)
+
+	// 保存为私有博客
+	result := statistics.RawCreateBlog(
+		node.Account,
+		blogTitle,
+		contextStr,
+		"Agent|上下文|自动保存",
+		1, // 私有
+		0, // 不加密
+	)
+
+	log.MessageF(log.ModuleAgent, "[上下文保存] 节点: '%s', 博客: '%s', 保存结果: %s", node.Title, blogTitle, result)
+
+	// 生成简短摘要
+	link := fmt.Sprintf("[%s](/get?blogname=%s)", blogTitle, blogTitle)
+
+	// 提取关键信息作为摘要
+	summary := fmt.Sprintf("## 上下文参考\n完整上下文已保存: %s\n\n", link)
+
+	// 保留原始用户请求部分（通常在开头）
+	if idx := strings.Index(contextStr, "## 父任务执行结果"); idx > 0 && idx < 2000 {
+		summary += contextStr[:idx]
+	} else if len(contextStr) > 1000 {
+		summary += "（原始请求）\n" + contextStr[:1000] + "...\n"
+	}
+
+	// 添加提示
+	summary += fmt.Sprintf("\n> 注意: 完整上下文(%d字符)已保存为博客，请点击链接查看详情。\n", len(contextStr))
+
+	return summary
 }
 
 // extractJSON 从响应中提取 JSON

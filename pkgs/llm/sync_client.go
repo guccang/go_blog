@@ -12,6 +12,16 @@ import (
 	"time"
 )
 
+const maxContentLength = 50000 // 最大内容长度（字符）
+
+// truncateContent 截断过长的内容
+func truncateContent(content string) string {
+	if len(content) <= maxContentLength {
+		return content
+	}
+	return content[:maxContentLength] + fmt.Sprintf("\n\n... [内容已截断，原长度: %d 字符]", len(content))
+}
+
 // SendSyncLLMRequest sends a synchronous (non-streaming) LLM request with tool calling support
 func SendSyncLLMRequest(messages []Message, account string) (string, error) {
 	return SendSyncLLMRequestWithContext(context.Background(), messages, account)
@@ -66,6 +76,15 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 			return "", fmt.Errorf("marshal request failed: %w", err)
 		}
 
+		// 诊断日志：记录请求体大小和上下文长度
+		requestSizeKB := len(jsonData) / 1024
+		totalContentLen := 0
+		for _, msg := range currentMessages {
+			totalContentLen += len(msg.Content)
+		}
+		log.MessageF(log.ModuleLLM, "[LLM诊断] 请求体大小: %d KB, 消息数: %d, 内容总长度: %d 字符, 工具数: %d, 迭代: %d",
+			requestSizeKB, len(currentMessages), totalContentLen, len(availableTools), iteration)
+
 		// Log the full LLM request for debugging
 		log.DebugF(log.ModuleLLM, "LLM Request Body (iteration %d): %s", iteration, string(jsonData))
 
@@ -79,7 +98,7 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 		req.Header.Set("Authorization", "Bearer "+config.APIKey)
 
 		// Send request
-		client := &http.Client{Timeout: 120 * time.Second}
+		client := &http.Client{Timeout: 600 * time.Second} // 10分钟
 		resp, err := client.Do(req)
 		if err != nil {
 			return "", fmt.Errorf("send request failed: %w", err)
@@ -155,6 +174,12 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 			if !result.Success {
 				toolResult = "Error: " + result.Error
 			}
+			// 截断过长的工具结果
+			if len(toolResult) > maxContentLength {
+				log.WarnF(log.ModuleLLM, "[内容截断] 工具 %s 返回过长: %d 字符 -> %d 字符",
+					toolName, len(toolResult), maxContentLength)
+				toolResult = truncateContent(toolResult)
+			}
 
 			// Add tool result message
 			toolMsg := Message{
@@ -217,7 +242,7 @@ func SendSyncLLMRequestNoTools(ctx context.Context, messages []Message, account 
 	req.Header.Set("Authorization", "Bearer "+config.APIKey)
 
 	// Send request
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 600 * time.Second} // 10分钟
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("send request failed: %w", err)
@@ -298,6 +323,15 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 			return "", fmt.Errorf("marshal request failed: %w", err)
 		}
 
+		// 诊断日志：记录请求体大小和上下文长度
+		requestSizeKB := len(jsonData) / 1024
+		totalContentLen := 0
+		for _, msg := range currentMessages {
+			totalContentLen += len(msg.Content)
+		}
+		log.MessageF(log.ModuleLLM, "[LLM诊断-SelectedTools] 请求体大小: %d KB, 消息数: %d, 内容总长度: %d 字符, 工具数: %d, 迭代: %d",
+			requestSizeKB, len(currentMessages), totalContentLen, len(availableTools), iteration)
+
 		req, err := http.NewRequestWithContext(ctx, "POST", config.BaseURL, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return "", fmt.Errorf("create request failed: %w", err)
@@ -306,7 +340,7 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+config.APIKey)
 
-		client := &http.Client{Timeout: 120 * time.Second}
+		client := &http.Client{Timeout: 600 * time.Second} // 10分钟
 		resp, err := client.Do(req)
 		if err != nil {
 			return "", fmt.Errorf("send request failed: %w", err)
@@ -367,6 +401,12 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 			toolResult := fmt.Sprintf("%v", result.Result)
 			if !result.Success {
 				toolResult = "Error: " + result.Error
+			}
+			// 截断过长的工具结果
+			if len(toolResult) > maxContentLength {
+				log.WarnF(log.ModuleLLM, "[内容截断] 工具 %s 返回过长: %d 字符 -> %d 字符",
+					toolName, len(toolResult), maxContentLength)
+				toolResult = truncateContent(toolResult)
 			}
 
 			toolMsg := Message{

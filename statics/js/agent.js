@@ -45,11 +45,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
 
-            // 处理图表更新
+            // 处理图表更新 - 只更新已打开的图表，不重新弹出
             if (notification.type && notification.type.startsWith('graph_') ||
                 notification.type && notification.type.startsWith('node_')) {
                 if (currentGraphTaskId === notification.task_id) {
-                    viewTaskGraph(currentGraphTaskId);
+                    updateGraphIfOpen(currentGraphTaskId);
                 }
             }
 
@@ -621,6 +621,29 @@ function closeModal() {
 // ============================================================================
 // Graph Visualization
 // ============================================================================
+// 仅更新已打开的图表，不重新弹出
+async function updateGraphIfOpen(taskId) {
+    const graphModal = document.getElementById('graphModal');
+    // 只有弹窗已经显示时才更新
+    if (!graphModal || !graphModal.classList.contains('show')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/agent/task/graph?id=${taskId}`);
+        const data = await response.json();
+
+        if (data.success) {
+            currentGraphData = data.graph;
+            currentLogs = data.logs || [];
+            renderGraphModal(data.graph, data.logs);
+            // 不调用 classList.add('show')，避免重复触发弹窗
+        }
+    } catch (error) {
+        console.error('更新任务图失败:', error);
+    }
+}
+
 async function viewTaskGraph(taskId) {
     currentGraphTaskId = taskId;
     try {
