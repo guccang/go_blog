@@ -9,6 +9,7 @@ import (
 	"mcp"
 	log "mylog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -103,10 +104,10 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 		if err != nil {
 			return "", fmt.Errorf("send request failed: %w", err)
 		}
+		defer resp.Body.Close() // 确保 Body 总是被关闭
 
 		// Read response
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
 		if err != nil {
 			return "", fmt.Errorf("read response failed: %w", err)
 		}
@@ -148,9 +149,11 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 		currentMessages = append(currentMessages, assistantMsg)
 
 		// Execute each tool call
+		var lastToolInfo []string
 		for _, toolCall := range toolCalls {
 			toolName := toolCall.Function.Name
 			toolArgs := toolCall.Function.Arguments
+			lastToolInfo = append(lastToolInfo, fmt.Sprintf("%s(%s)", toolName, toolArgs))
 			log.MessageF(log.ModuleLLM, "Sync calling tool: %s with args: %s", toolName, toolArgs)
 
 			// Parse tool arguments
@@ -192,7 +195,7 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 
 		// If last iteration, set default response
 		if iteration == maxIterations-1 {
-			finalResponse = "工具调用已完成"
+			finalResponse = fmt.Sprintf("工具调用已完成(达到最大迭代限制)。最后调用的工具: %s", strings.Join(lastToolInfo, "; "))
 		}
 	}
 
@@ -247,10 +250,10 @@ func SendSyncLLMRequestNoTools(ctx context.Context, messages []Message, account 
 	if err != nil {
 		return "", fmt.Errorf("send request failed: %w", err)
 	}
+	defer resp.Body.Close() // 确保 Body 总是被关闭
 
 	// Read response
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("read response failed: %w", err)
 	}
@@ -345,9 +348,9 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 		if err != nil {
 			return "", fmt.Errorf("send request failed: %w", err)
 		}
+		defer resp.Body.Close() // 确保 Body 总是被关闭
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
 		if err != nil {
 			return "", fmt.Errorf("read response failed: %w", err)
 		}
@@ -383,9 +386,11 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 		currentMessages = append(currentMessages, assistantMsg)
 
 		// Execute tool calls
+		var lastToolInfo []string
 		for _, toolCall := range toolCalls {
 			toolName := toolCall.Function.Name
 			toolArgs := toolCall.Function.Arguments
+			lastToolInfo = append(lastToolInfo, fmt.Sprintf("%s(%s)", toolName, toolArgs))
 
 			var parsedArgs map[string]interface{}
 			if err := json.Unmarshal([]byte(toolArgs), &parsedArgs); err != nil {
@@ -418,7 +423,7 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 		}
 
 		if iteration == maxIterations-1 {
-			finalResponse = "工具调用已完成"
+			finalResponse = fmt.Sprintf("工具调用已完成(达到最大迭代限制)。最后调用的工具: %s", strings.Join(lastToolInfo, "; "))
 		}
 	}
 

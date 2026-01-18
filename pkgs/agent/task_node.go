@@ -617,7 +617,17 @@ func (c *TaskContext) compressIfNeeded() {
 
 // BuildLLMContext 构建 LLM 请求的上下文字符串
 func (c *TaskContext) BuildLLMContext() string {
+	// 预估容量以减少内存分配
+	estimatedSize := len(c.UserInput) + 50
+	for _, pr := range c.ParentResults {
+		estimatedSize += len(pr.Title) + len(pr.Summary) + 20
+	}
+	for _, sr := range c.SiblingResults {
+		estimatedSize += len(sr.Title) + len(sr.Summary) + 30
+	}
+
 	var sb strings.Builder
+	sb.Grow(estimatedSize)
 
 	// 用户输入
 	sb.WriteString("## 原始用户请求\n")

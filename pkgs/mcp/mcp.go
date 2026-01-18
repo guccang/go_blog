@@ -9,11 +9,13 @@ import (
 	"module"
 	log "mylog"
 	"strings"
+	"sync"
 	"time"
 )
 
 var mcp_version = "Version2.0"
 var toolNameMapping = make(map[string]string)
+var toolNameMutex sync.RWMutex // 保护 toolNameMapping 的并发访问
 
 // ToolCall represents a function call
 type ToolCall struct {
@@ -51,23 +53,32 @@ func extractFunctionName(s string) string {
 		return s // 如果没有 `.`，返回整个字符串
 	}
 	var toolName = s[lastDot+1:]
+	toolNameMutex.Lock()
 	toolNameMapping[toolName] = s
+	toolNameMutex.Unlock()
 	return toolName
 }
 
 // GetAvailableLLMTools converts MCP tools to LLM format
+// 使用 map 进行 O(1) 查找，优化性能
 func GetAvailableLLMTools(selectedTools []string) []LLMTool {
-	mcpTools := GetAvailableToolsImproved()
-	var llmTools []LLMTool
-
 	if selectedTools == nil || len(selectedTools) == 0 {
-		return llmTools
+		return nil
 	}
+
+	// 预构建选中工具的 map 用于 O(1) 查找
+	selectedMap := make(map[string]bool, len(selectedTools))
+	for _, t := range selectedTools {
+		selectedMap[t] = true
+	}
+
+	mcpTools := GetAvailableToolsImproved()
+	llmTools := make([]LLMTool, 0, len(selectedTools)) // 预分配容量
 
 	for _, tool := range mcpTools {
 		// 使用短名称进行匹配（与工具目录一致）
 		shortName := extractFunctionName(tool.Name)
-		if contains(selectedTools, shortName) {
+		if selectedMap[shortName] { // O(1) 查找
 			llmTool := LLMTool{
 				Type: "function",
 				Function: LLMFunction{
@@ -87,8 +98,11 @@ func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 // CallMCPTool calls an MCP tool and returns the result
 func CallMCPTool(toolName string, arguments map[string]interface{}) MCPToolResponse {
 	log.DebugF(log.ModuleMCP, "toolcall CallMCPTool: %s, arguments: %v", toolName, arguments)
+	toolNameMutex.RLock()
+	mappedName := toolNameMapping[toolName]
+	toolNameMutex.RUnlock()
 	toolCall := MCPToolCall{
-		Name:      toolNameMapping[toolName],
+		Name:      mappedName,
 		Arguments: arguments,
 	}
 

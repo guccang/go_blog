@@ -12,8 +12,9 @@ import (
 
 // 输出长度限制常量
 const (
-	MaxOutputLength  = 5000 // 超过此长度保存为博客
-	MaxSummaryLength = 2000 // 摘要最大长度
+	MaxOutputLength           = 5000 // 超过此长度保存为博客
+	MaxSummaryLength          = 2000 // 摘要最大长度
+	DefaultMaxParallelRetries = 4    // 并行执行最大重试轮数（初次执行 + 3次重试）
 )
 
 // ============================================================================
@@ -64,6 +65,11 @@ func (e *TaskExecutor) Execute() error {
 
 	// 标记完成
 	e.graph.MarkComplete()
+
+	// 生成任务索引博客
+	if err == nil {
+		e.generateTaskIndex()
+	}
 
 	// 通知完成
 	if err != nil {
@@ -276,9 +282,7 @@ func (e *TaskExecutor) executeSequential(node *TaskNode) error {
 func (e *TaskExecutor) executeParallel(node *TaskNode) error {
 	node.AddLog(LogInfo, "executing", fmt.Sprintf("并行执行 %d 个子任务", len(node.Children)))
 
-	maxAttempts := 4 // 初次执行 + 3次重试
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := 0; attempt < DefaultMaxParallelRetries; attempt++ {
 		if attempt > 0 {
 			node.AddLog(LogInfo, "retry_round", fmt.Sprintf("并行执行第 %d 轮重试", attempt))
 			log.MessageF(log.ModuleAgent, "Parallel execution retry round %d for node: %s", attempt, node.Title)
@@ -334,7 +338,10 @@ func (e *TaskExecutor) executeParallel(node *TaskNode) error {
 		}
 
 		// 等待本轮完成并更新进度
+		var progressWg sync.WaitGroup
+		progressWg.Add(1)
 		go func() {
+			defer progressWg.Done()
 			done := 0
 			total := len(node.Children)
 			for range doneChan {
@@ -354,6 +361,7 @@ func (e *TaskExecutor) executeParallel(node *TaskNode) error {
 
 		wg.Wait()
 		close(doneChan)
+		progressWg.Wait() // 等待进度 goroutine 退出
 	}
 
 	// 检查最终结果
@@ -679,9 +687,10 @@ func (e *TaskExecutor) saveOutputAsBlog(node *TaskNode, content string) (string,
 // generateBlogTitle 生成博客标题
 func generateBlogTitle(taskTitle string, nodeID string) string {
 	timestamp := time.Now().Format("20060102_150405")
-	// 截断过长的标题
-	if len(taskTitle) > 20 {
-		taskTitle = taskTitle[:20]
+	// 使用 rune 截断，避免中文字符被截断导致乱码
+	runes := []rune(taskTitle)
+	if len(runes) > 20 {
+		taskTitle = string(runes[:20])
 	}
 	return fmt.Sprintf("Agent_%s_%s_%s", taskTitle, nodeID, timestamp)
 }
@@ -867,4 +876,163 @@ func (e *TaskExecutor) RequestUserSelection(node *TaskNode, title, message strin
 // joinStrings 连接字符串（使用标准库）
 func joinStrings(strs []string, sep string) string {
 	return strings.Join(strs, sep)
+}
+
+// ============================================================================
+// 任务索引生成
+// ============================================================================
+
+// generateTaskIndex 生成任务文档索引博客
+func (e *TaskExecutor) generateTaskIndex() {
+	root := e.graph.Root
+	if root == nil {
+		return
+	}
+
+	// 构建 Markdown 索引内容
+	content := e.buildIndexContent()
+
+	// 生成索引标题
+	title := generateIndexTitle(root.Title, root.ID)
+
+	// 保存为私有博客
+	args := map[string]interface{}{
+		"account":  root.Account,
+		"title":    title,
+		"content":  content,
+		"tags":     "Agent|任务索引|自动生成",
+		"authType": float64(1), // 私有
+	}
+
+	result := mcp.CallMCPTool("RawCreateBlog", args)
+	if result.Success {
+		log.MessageF(log.ModuleAgent, "[索引生成] 任务 '%s' 索引已保存: %s", root.Title, title)
+		// 将索引链接加入根节点 Artifacts
+		if root.Result != nil {
+			indexLink := fmt.Sprintf("[📚 任务索引](/get?blogname=%s)", title)
+			root.Result.Artifacts = append([]string{indexLink}, root.Result.Artifacts...)
+		}
+	} else {
+		log.WarnF(log.ModuleAgent, "[索引生成] 保存索引博客失败: %s", result.Error)
+	}
+}
+
+// buildIndexContent 构建 Markdown 格式的索引内容
+func (e *TaskExecutor) buildIndexContent() string {
+	var sb strings.Builder
+	sb.Grow(4096)
+
+	root := e.graph.Root
+
+	// 标题和元信息
+	sb.WriteString(fmt.Sprintf("# 📋 任务索引: %s\n\n", root.Title))
+	sb.WriteString(fmt.Sprintf("- **任务ID**: `%s`\n", root.ID))
+	sb.WriteString(fmt.Sprintf("- **创建时间**: %s\n", root.CreatedAt.Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("- **执行耗时**: %s\n", e.graph.GetExecutionTime().Round(time.Second)))
+	sb.WriteString(fmt.Sprintf("- **节点总数**: %d\n", e.graph.TotalNodes))
+	sb.WriteString(fmt.Sprintf("- **完成/失败**: %d / %d\n\n", e.graph.DoneNodes, e.graph.FailedNodes))
+
+	// 树形结构
+	sb.WriteString("## 📂 任务结构\n\n")
+	e.writeNodeTree(&sb, root, 0)
+
+	// 所有生成的文档列表
+	sb.WriteString("\n## 📄 生成的文档\n\n")
+	e.writeArtifactsList(&sb)
+
+	return sb.String()
+}
+
+// writeNodeTree 递归写入节点树
+func (e *TaskExecutor) writeNodeTree(sb *strings.Builder, node *TaskNode, depth int) {
+	indent := strings.Repeat("  ", depth)
+
+	// 状态图标
+	statusIcon := getStatusIcon(node.Status)
+
+	// 节点行
+	sb.WriteString(fmt.Sprintf("%s- %s **%s**", indent, statusIcon, node.Title))
+
+	// 执行时间
+	if node.Duration > 0 {
+		sb.WriteString(fmt.Sprintf(" (%s)", node.Duration.Round(time.Millisecond)))
+	}
+
+	// 生成的文档链接（排除索引本身）
+	if node.Result != nil && len(node.Result.Artifacts) > 0 {
+		var links []string
+		for _, link := range node.Result.Artifacts {
+			if !strings.Contains(link, "任务索引") {
+				links = append(links, link)
+			}
+		}
+		if len(links) > 0 {
+			sb.WriteString(" 📎 ")
+			sb.WriteString(strings.Join(links, " | "))
+		}
+	}
+
+	sb.WriteString("\n")
+
+	// 递归子节点
+	for _, child := range node.Children {
+		e.writeNodeTree(sb, child, depth+1)
+	}
+}
+
+// writeArtifactsList 写入所有文档列表
+func (e *TaskExecutor) writeArtifactsList(sb *strings.Builder) {
+	type artifactInfo struct {
+		NodeTitle string
+		Link      string
+	}
+	var artifacts []artifactInfo
+
+	// 收集所有节点的 Artifacts（排除索引本身）
+	for _, node := range e.graph.Nodes {
+		if node.Result != nil {
+			for _, link := range node.Result.Artifacts {
+				if !strings.Contains(link, "任务索引") {
+					artifacts = append(artifacts, artifactInfo{node.Title, link})
+				}
+			}
+		}
+	}
+
+	if len(artifacts) == 0 {
+		sb.WriteString("*无生成文档*\n")
+		return
+	}
+
+	sb.WriteString("| 来源节点 | 文档链接 |\n")
+	sb.WriteString("|----------|----------|\n")
+	for _, a := range artifacts {
+		sb.WriteString(fmt.Sprintf("| %s | %s |\n", a.NodeTitle, a.Link))
+	}
+}
+
+// getStatusIcon 获取状态图标
+func getStatusIcon(status NodeStatus) string {
+	switch status {
+	case NodeDone:
+		return "✅"
+	case NodeFailed:
+		return "❌"
+	case NodeRunning:
+		return "🔄"
+	case NodeCanceled:
+		return "⏹️"
+	default:
+		return "⏳"
+	}
+}
+
+// generateIndexTitle 生成索引博客标题
+func generateIndexTitle(taskTitle, nodeID string) string {
+	timestamp := time.Now().Format("20060102_150405")
+	runes := []rune(taskTitle)
+	if len(runes) > 15 {
+		taskTitle = string(runes[:15])
+	}
+	return fmt.Sprintf("Agent_Index_%s_%s_%s", taskTitle, nodeID, timestamp)
 }

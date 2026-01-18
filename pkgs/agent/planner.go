@@ -252,11 +252,12 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 
 // summarizeResponse 生成响应摘要
 func (p *TaskPlanner) summarizeResponse(response string) string {
-	// 简单的摘要逻辑：取前 200 个字符
-	if len(response) <= 200 {
+	// 使用 rune 截断，避免中文字符被截断导致乱码
+	runes := []rune(response)
+	if len(runes) <= 200 {
 		return response
 	}
-	return response[:200] + "..."
+	return string(runes[:200]) + "..."
 }
 
 // ============================================================================
@@ -434,8 +435,10 @@ func (p *TaskPlanner) truncateContextAsBlog(node *TaskNode, contextStr string) s
 	// 生成博客标题
 	timestamp := time.Now().Format("20060102_150405")
 	nodeTitle := node.Title
-	if len(nodeTitle) > 15 {
-		nodeTitle = nodeTitle[:15]
+	// 使用 rune 截断，避免中文字符被截断导致乱码
+	runes := []rune(nodeTitle)
+	if len(runes) > 15 {
+		nodeTitle = string(runes[:15])
 	}
 	blogTitle := fmt.Sprintf("Agent上下文_%s_%s", nodeTitle, timestamp)
 
@@ -460,8 +463,12 @@ func (p *TaskPlanner) truncateContextAsBlog(node *TaskNode, contextStr string) s
 	// 保留原始用户请求部分（通常在开头）
 	if idx := strings.Index(contextStr, "## 父任务执行结果"); idx > 0 && idx < 2000 {
 		summary += contextStr[:idx]
-	} else if len(contextStr) > 1000 {
-		summary += "（原始请求）\n" + contextStr[:1000] + "...\n"
+	} else {
+		// 使用 rune 截断，避免中文字符被截断导致乱码
+		runes := []rune(contextStr)
+		if len(runes) > 1000 {
+			summary += "（原始请求）\n" + string(runes[:1000]) + "...\n"
+		}
 	}
 
 	// 添加提示

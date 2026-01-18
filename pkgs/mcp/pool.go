@@ -3,12 +3,14 @@ package mcp
 import (
 	"fmt"
 	log "mylog"
+	"sync"
 	"time"
 )
 
 // MCPPool manages a pool of MCP client connections
 type MCPPool struct {
 	clients map[string]*MCPClient
+	mu      sync.RWMutex // 保护 clients map 的并发访问
 }
 
 var globalPool = &MCPPool{
@@ -24,9 +26,12 @@ func GetPool() *MCPPool {
 func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 	log.DebugF(log.ModuleMCP, "--- Getting MCP Client: %s ---", config.Name)
 
+	// 快速路径：读锁检查已存在的连接
+	p.mu.RLock()
 	if client, exists := p.clients[config.Name]; exists {
 		if client.IsConnected() {
 			log.DebugF(log.ModuleMCP, "Found existing connected MCP client for '%s'", config.Name)
+			p.mu.RUnlock()
 			return client, nil
 		} else {
 			log.DebugF(log.ModuleMCP, "Found existing but disconnected MCP client for '%s'", config.Name)
@@ -34,8 +39,12 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 	} else {
 		log.DebugF(log.ModuleMCP, "No existing MCP client found for '%s'", config.Name)
 	}
+	p.mu.RUnlock()
 
-	// Need to create or reconnect client
+	// 需要创建或重连客户端 - 使用写锁
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	log.DebugF(log.ModuleMCP, "Creating new MCP client connection for '%s'", config.Name)
 
 	// Double-check after acquiring write lock
@@ -66,6 +75,9 @@ func (p *MCPPool) GetClient(config MCPConfig) (*MCPClient, error) {
 func (p *MCPPool) RemoveClient(name string) {
 	log.DebugF(log.ModuleMCP, "--- Removing MCP Client: %s ---", name)
 
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if client, exists := p.clients[name]; exists {
 		log.DebugF(log.ModuleMCP, "Found MCP client '%s' in pool, closing connection", name)
 		client.Close()
@@ -79,6 +91,9 @@ func (p *MCPPool) RemoveClient(name string) {
 // GetAllClients returns all active clients
 func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 	log.Debug(log.ModuleMCP, "--- Getting All Active MCP Clients ---")
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	result := make(map[string]*MCPClient)
 	connectedCount := 0
@@ -102,6 +117,8 @@ func (p *MCPPool) GetAllClients() map[string]*MCPClient {
 
 // CleanupDisconnected removes disconnected clients from the pool
 func (p *MCPPool) CleanupDisconnected() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	cleanedCount := 0
 	activeCount := 0
@@ -120,14 +137,15 @@ func (p *MCPPool) CleanupDisconnected() {
 
 	if cleanedCount > 0 {
 		log.InfoF(log.ModuleMCP, "Cleaned up %d disconnected MCP clients, %d remain active", cleanedCount, activeCount)
-	} else {
-
 	}
 }
 
 // Shutdown closes all clients and clears the pool
 func (p *MCPPool) Shutdown() {
 	log.Debug(log.ModuleMCP, "=== Shutting Down MCP Pool ===")
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	clientCount := len(p.clients)
 	log.DebugF(log.ModuleMCP, "Shutting down %d MCP clients", clientCount)
@@ -144,6 +162,9 @@ func (p *MCPPool) Shutdown() {
 // HealthCheck performs a health check on all clients
 func (p *MCPPool) HealthCheck() map[string]bool {
 	log.Debug(log.ModuleMCP, "--- Performing MCP Health Check ---")
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	result := make(map[string]bool)
 	healthyCount := 0
@@ -190,7 +211,9 @@ func GetAvailableToolsImproved() []MCPTool {
 
 	innerTools := GetInnerMCPTools(toolNameMapping)
 	for _, tool := range innerTools {
+		toolNameMutex.Lock()
 		toolNameMapping[tool.Function.Name] = tool.Function.Name
+		toolNameMutex.Unlock()
 		mcpTool := MCPTool{
 			Name:        tool.Function.Name,
 			Description: tool.Function.Description,
