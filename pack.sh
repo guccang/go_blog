@@ -43,4 +43,4 @@ else
 fi
 
 scp $OUTPUT root@114.115.214.86:/data/program/go/go_blog
-ssh root@114.115.214.86 "cd /data/program/go/go_blog; unzip $OUTPUT;"
+ssh root@114.115.214.86 "cd /data/program/go/go_blog; unzip -o $OUTPUT;"

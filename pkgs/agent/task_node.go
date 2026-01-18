@@ -626,6 +626,14 @@ func (c *TaskContext) BuildLLMContext() string {
 		estimatedSize += len(sr.Title) + len(sr.Summary) + 30
 	}
 
+	// 限制预分配大小，防止 OOM (Max 1MB)
+	// 如果实际内容超过此大小，Builder 会自动增长，虽然可能有轻微性能损耗，
+	// 但能避免因预估过大导致的直接崩溃
+	const MaxPreallocSize = 1024 * 1024
+	if estimatedSize > MaxPreallocSize {
+		estimatedSize = MaxPreallocSize
+	}
+
 	var sb strings.Builder
 	sb.Grow(estimatedSize)
 
