@@ -43,6 +43,16 @@ const (
 	ModuleAgent
 )
 
+// LogLevel definition
+type LogLevel int
+
+const (
+	LevelDebug LogLevel = iota
+	LevelInfo
+	LevelWarn
+	LevelError
+)
+
 // Logger configuration
 type LogConfig struct {
 	LogToFile    bool
@@ -50,6 +60,7 @@ type LogConfig struct {
 	LogDir       string
 	MaxFileSize  int64 // Maximum file size in MB
 	MaxDays      int   // Maximum days to keep log files
+	MinLevel     LogLevel
 }
 
 var (
@@ -57,8 +68,9 @@ var (
 		LogToFile:    true,
 		LogToConsole: true,
 		LogDir:       "logs",
-		MaxFileSize:  100, // 100MB
-		MaxDays:      30,  // 30 days
+		MaxFileSize:  100,       // 100MB
+		MaxDays:      30,        // 30 days
+		MinLevel:     LevelWarn, // Default to Info to hide Debug logs
 	}
 	logFile     *os.File
 	logMutex    sync.Mutex
@@ -281,9 +293,14 @@ func Cleanup() {
 }
 
 // writeLog writes log message to configured outputs
-func writeLog(module LogModule, level, message string) {
+func writeLog(module LogModule, levelName string, level LogLevel, message string) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
+
+	// Filter by level
+	if level < logConfig.MinLevel {
+		return
+	}
 
 	// Check if we need to rotate log daily
 	if logConfig.LogToFile {
@@ -312,7 +329,7 @@ func writeLog(module LogModule, level, message string) {
 	// Format and write log message
 	timestamp := strTime()
 	module_name := logModules[module]
-	logMessage := fmt.Sprintf("[%s] [%s] %s %s\n", module_name, level, timestamp, message)
+	logMessage := fmt.Sprintf("[%s] [%s] %s %s\n", module_name, levelName, timestamp, message)
 
 	if logWriter != nil {
 		logWriter.Write([]byte(logMessage))
@@ -326,44 +343,44 @@ func strTime() string {
 }
 
 func Debug(module LogModule, str string) {
-	writeLog(module, "DEBUG", str)
+	writeLog(module, "DEBUG", LevelDebug, str)
 }
 
 func DebugF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog(module, "DEBUG", str)
+	writeLog(module, "DEBUG", LevelDebug, str)
 }
 
 func InfoF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog(module, "MESSAGE", str)
+	writeLog(module, "MESSAGE", LevelInfo, str)
 }
 
 func ErrorF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog(module, "ERROR", str)
+	writeLog(module, "ERROR", LevelError, str)
 }
 
 // Additional logging functions
 func Error(module LogModule, str string) {
-	writeLog(module, "ERROR", str)
+	writeLog(module, "ERROR", LevelError, str)
 }
 
 func Warn(module LogModule, str string) {
-	writeLog(module, "WARN", str)
+	writeLog(module, "WARN", LevelWarn, str)
 }
 
 func WarnF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog(module, "WARN", str)
+	writeLog(module, "WARN", LevelWarn, str)
 }
 
 func Message(module LogModule, str string) {
-	writeLog(module, "MESSAGE", str)
+	writeLog(module, "MESSAGE", LevelInfo, str)
 }
 func MessageF(module LogModule, f string, a ...any) {
 	str := fmt.Sprintf(f, a...)
-	writeLog(module, "MESSAGE", str)
+	writeLog(module, "MESSAGE", LevelInfo, str)
 }
 
 // GetLogConfig returns current log configuration

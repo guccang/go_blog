@@ -205,6 +205,7 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 		if (b.AuthType & flag) == 0 {
 			continue
 		}
+
 		// 统计标签出现次数（统一转换为小写）
 		if b.Tags != "" {
 			tags := strings.Split(b.Tags, "|")
@@ -227,6 +228,9 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 
 		// not show encrypt blog
 		if (b.AuthType & flag) == 0 {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(b.Title), "agent_") && !strings.HasPrefix(strings.ToLower(b.Title), "agent_index") {
 			continue
 		}
 
