@@ -160,19 +160,39 @@ func (p *WorkerPool) PauseTask(taskID string) bool {
 
 // ResumeTask 恢复任务
 func (p *WorkerPool) ResumeTask(taskID string) bool {
+	// 如果任务已经在执行中，无需恢复
+	if p.IsTaskActive(taskID) {
+		log.MessageF(log.ModuleAgent, "Task %s is already active, ignore resume", taskID)
+		return true
+	}
+
 	graph := p.storage.GetTaskGraph(taskID)
 	if graph != nil && graph.Root != nil {
-		if graph.Root.GetStatus() == NodePaused {
-			graph.Root.Resume()
-			p.storage.SaveTaskGraph(graph)
+		status := graph.Root.GetStatus()
+		// 允许恢复 Paused 状态任务，以及因重启等原因处于 Pending/Running 但未实际执行的任务
+		canResume := status == NodePaused || status == NodeRunning || status == NodePending
+
+		if canResume {
+			// 如果是暂停状态，切换回运行状态
+			if status == NodePaused {
+				graph.Root.Resume()
+				p.storage.SaveTaskGraph(graph)
+			}
+
 			// 重新提交到队列
-			p.taskQueue <- graph
-			p.notification.Broadcast(TaskNotification{
-				TaskID:  taskID,
-				Type:    "resumed",
-				Message: "任务已恢复",
-			})
-			return true
+			select {
+			case p.taskQueue <- graph:
+				log.MessageF(log.ModuleAgent, "Task %s resumed (re-queued)", taskID)
+				p.notification.Broadcast(TaskNotification{
+					TaskID:  taskID,
+					Type:    "resumed",
+					Message: "任务已恢复",
+				})
+				return true
+			default:
+				log.WarnF(log.ModuleAgent, "Task queue full, failed to resume task %s", taskID)
+				return false
+			}
 		}
 	}
 	return false
