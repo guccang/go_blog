@@ -300,8 +300,68 @@
 				from { opacity: 1; transform: translateY(0); }
 				to { opacity: 0; transform: translateY(-10px); }
 			}
+			.tag-hidden {
+				display: none !important;
+			}
+			.toggle-btn {
+				background-color: var(--secondary-color);
+				color: var(--text-color);
+				border: 1px dashed var(--border-color);
+			}
+			.toggle-btn:hover {
+				background-color: var(--accent-color);
+				color: white;
+				border-color: var(--accent-color);
+			}
 		`;
 		document.head.appendChild(style);
+
+		// 标签折叠功能
+		document.addEventListener('DOMContentLoaded', function() {
+			const MAX_VISIBLE_TAGS = 20;
+			const tagContainer = document.querySelector('.tag-filters');
+			if (!tagContainer) return;
+
+			const tags = tagContainer.querySelectorAll('.tag-filter:not(.toggle-btn)');
+			const totalTags = tags.length;
+
+			if (totalTags <= MAX_VISIBLE_TAGS) return;
+
+			// 创建切换按钮
+			const toggleBtn = document.createElement('button');
+			toggleBtn.className = 'tag-filter toggle-btn';
+			toggleBtn.innerHTML = '展开更多 <i class="fas fa-chevron-down"></i>';
+			toggleBtn.onclick = function() {
+				const isExpanded = toggleBtn.getAttribute('data-expanded') === 'true';
+				if (isExpanded) {
+					// 收起
+					tags.forEach((tag, index) => {
+						if (index >= MAX_VISIBLE_TAGS) {
+							tag.classList.add('tag-hidden');
+						}
+					});
+					toggleBtn.innerHTML = '展开更多 <i class="fas fa-chevron-down"></i>';
+					toggleBtn.setAttribute('data-expanded', 'false');
+				} else {
+					// 展开
+					tags.forEach(tag => {
+						tag.classList.remove('tag-hidden');
+					});
+					toggleBtn.innerHTML = '收起 <i class="fas fa-chevron-up"></i>';
+					toggleBtn.setAttribute('data-expanded', 'true');
+				}
+			};
+
+			// 初始隐藏多余标签
+			tags.forEach((tag, index) => {
+				if (index >= MAX_VISIBLE_TAGS) {
+					tag.classList.add('tag-hidden');
+				}
+			});
+
+			// 添加按钮到容器末尾
+			tagContainer.appendChild(toggleBtn);
+		});
 		</script>
 		
 	</body>
