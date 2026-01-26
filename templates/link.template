@@ -107,12 +107,46 @@
 			</svg>
 			热门标签
 		</h2>
-		<div class="tag-filters">
-			{{range .TAGS}}
-				<button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}" onclick="searchByTag('{{.Name}}')">{{.Name}} ({{.Count}})</button>
-			{{end}}
+		<div class="tags-container" id="tagsContainer">
+			<div class="tag-filters" id="tagFilters">
+				{{range .TAGS}}
+					<button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}" onclick="searchByTag('{{.Name}}')">{{.Name}} ({{.Count}})</button>
+				{{end}}
+			</div>
+			<div class="tags-toggle-btn" id="tagsToggleBtn" onclick="toggleTags()">
+				<span id="tagsToggleText">展开更多</span>
+				<i class="fas fa-chevron-down" id="tagsToggleIcon"></i>
+			</div>
 		</div>
 	</div>
+
+	<script>
+	function toggleTags() {
+		const container = document.getElementById('tagsContainer');
+		const btnText = document.getElementById('tagsToggleText');
+		const btnIcon = document.getElementById('tagsToggleIcon');
+		
+		if (container.classList.contains('expanded')) {
+			container.classList.remove('expanded');
+			btnText.textContent = '展开更多';
+			btnIcon.className = 'fas fa-chevron-down';
+		} else {
+			container.classList.add('expanded');
+			btnText.textContent = '收起标签';
+			btnIcon.className = 'fas fa-chevron-up';
+		}
+	}
+
+	// 检查是否需要显示展开按钮
+	document.addEventListener('DOMContentLoaded', function() {
+		const filters = document.getElementById('tagFilters');
+		const btn = document.getElementById('tagsToggleBtn');
+		// 如果标签高度超过一定值（比如100px），显示按钮，否则隐藏
+		if (filters.scrollHeight <= 100) {
+			btn.style.display = 'none';
+		}
+	});
+	</script>
 
 	<div class="container">
 		{{range .LINKS}}

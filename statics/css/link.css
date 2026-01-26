@@ -1156,46 +1156,99 @@ body {
     align-items: center;
 }
 
+.tags-container {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
 .tag-filters {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    justify-content: flex-start; /* 改为左对齐，看起来更整齐 */
+    max-height: 90px; /* 约两行半的高度 */
+    overflow: hidden;
+    transition: max-height 0.4s ease;
+    padding-bottom: 0;
+}
+
+/* 展开状态 */
+.tags-container.expanded .tag-filters {
+    max-height: 1000px; /* 足够大的高度以显示所有标签 */
+}
+
+/* 遮罩效果 - 仅在未展开时显示 */
+.tags-container:not(.expanded) .tag-filters::after {
+    content: '';
+    position: absolute;
+    bottom: 30px; /* 按钮高度之上 */
+    left: 0;
+    width: 100%;
+    height: 40px;
+    background: linear-gradient(to bottom, rgba(250, 246, 240, 0), var(--bg-color));
+    pointer-events: none;
+}
+
+.tags-toggle-btn {
+    display: flex;
+    align-items: center;
     justify-content: center;
+    padding: 8px 0;
+    color: var(--accent-color);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    margin-top: 5px;
+}
+
+.tags-toggle-btn:hover {
+    color: var(--accent-hover);
+}
+
+.tags-toggle-btn i {
+    margin-left: 5px;
 }
 
 .tag-filter {
     padding: 6px 12px;
     background-color: var(--card-bg);
-    border: 2px solid var(--border-color);
+    border: 1px solid var(--border-color); /* 减细边框 */
     border-radius: 20px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     color: var(--text-color);
+    flex-shrink: 0; /* 防止标签被压缩 */
 }
 
 .tag-filter:hover {
     background-color: var(--secondary-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px var(--shadow-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px var(--shadow-color);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
 }
 
 /* Tag size variations based on count */
 .tag-size-small {
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: 12px;
+    padding: 4px 10px;
+    opacity: 0.9;
 }
 
 .tag-size-medium {
     font-size: 13px;
     padding: 6px 12px;
+    font-weight: 500;
 }
 
 .tag-size-large {
-    font-size: 16px;
-    padding: 8px 16px;
+    font-size: 14px;
+    padding: 7px 14px;
     font-weight: 600;
+    background-color: var(--secondary-color); /* 热门标签背景色加深 */
 }
 
 /* 智能助手悬浮按钮 */

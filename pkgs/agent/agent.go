@@ -48,13 +48,13 @@ func Init(account string) {
 		// 注册 MCP 回调
 		registerMCPCallbacks()
 
-		// 恢复未完成的任务
+		// 恢复未完成的任务（仅加载，不自动执行）
 		pendingGraphs := globalStorage.GetPendingTaskGraphs()
-		for _, graph := range pendingGraphs {
-			globalPool.taskQueue <- graph
-		}
+		// for _, graph := range pendingGraphs {
+		// 	globalPool.taskQueue <- graph
+		// }
 
-		log.MessageF(log.ModuleAgent, "Agent module initialized, %d pending tasks recovered", len(pendingGraphs))
+		log.MessageF(log.ModuleAgent, "Agent module initialized, %d pending tasks recovered (awaiting manual start)", len(pendingGraphs))
 	})
 }
 

@@ -348,6 +348,10 @@ func (g *TaskGraph) ResetFailedNodes() int {
 		if node.Status == NodeFailed || node.Status == NodeCanceled {
 			node.Status = NodePending
 			node.Progress = 0
+			// 重置控制通道，否则 IsCanceled() 仍会返回 true
+			node.cancelCh = make(chan struct{}, 1)
+			node.pauseCh = make(chan struct{}, 1)
+
 			// 保留 node.Context（上下文）和 node.Result（可能有部分结果）
 			node.AddLog(LogInfo, "retry", "节点已重置，准备重试")
 			count++
