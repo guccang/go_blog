@@ -210,6 +210,7 @@ func GetAvailableToolsImproved() []MCPTool {
 	pool := GetPool()
 
 	innerTools := GetInnerMCPTools(toolNameMapping)
+	log.InfoF(log.ModuleMCP, "Found %d inner MCP tools", len(innerTools))
 	for _, tool := range innerTools {
 		toolNameMutex.Lock()
 		toolNameMapping[tool.Function.Name] = tool.Function.Name
@@ -219,6 +220,7 @@ func GetAvailableToolsImproved() []MCPTool {
 			Description: tool.Function.Description,
 			InputSchema: tool.Function.Parameters,
 		}
+		log.InfoF(log.ModuleMCP, "Found inner MCP tool: %s", mcpTool.Name)
 		tools = append(tools, mcpTool)
 	}
 

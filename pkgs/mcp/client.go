@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,7 +44,29 @@ func NewMCPClient(config MCPConfig) *MCPClient {
 
 // Connect establishes connection to the MCP server
 func (c *MCPClient) Connect() error {
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
+	// Use a channel to handle connection result
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.connectInternal()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		if c.cmd != nil && c.cmd.Process != nil {
+			c.cmd.Process.Kill()
+		}
+		return fmt.Errorf("connection timeout after 5s")
+	}
+}
+
+func (c *MCPClient) connectInternal() error {
 	if c.connected {
 		return nil
 	}

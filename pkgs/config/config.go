@@ -434,8 +434,7 @@ func getDefaultConfigForAccountSimple(account string, isAdmin bool) map[string]s
 func GetHttpTemplatePath() string {
 	templates_path := GetConfigWithAccount(adminAccount, "templates_path")
 	if templates_path == "" {
-		exePath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(exePath), "templates")
+		return filepath.Join(GetExePath(), "templates")
 	}
 	return templates_path
 }
@@ -443,15 +442,27 @@ func GetHttpTemplatePath() string {
 func GetHttpStaticPath() string {
 	statics_path := GetConfigWithAccount(adminAccount, "statics_path")
 	if statics_path == "" {
-		exePath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(exePath), "statics")
+		return filepath.Join(GetExePath(), "statics")
 	}
 	return statics_path
 }
 
 func GetExePath() string {
 	exePath, _ := os.Executable()
-	return filepath.Dir(exePath)
+	dir := filepath.Dir(exePath)
+
+	// Check if blogs_txt exists in the executable directory
+	if _, err := os.Stat(filepath.Join(dir, "blogs_txt")); err == nil {
+		return dir
+	}
+
+	// If not, check current working directory
+	wd, _ := os.Getwd()
+	if _, err := os.Stat(filepath.Join(wd, "blogs_txt")); err == nil {
+		return wd
+	}
+
+	return dir
 }
 
 func GetBlogsPath(account string) string {

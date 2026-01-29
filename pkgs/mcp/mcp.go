@@ -78,7 +78,7 @@ func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 	for _, tool := range mcpTools {
 		// 使用短名称进行匹配（与工具目录一致）
 		shortName := extractFunctionName(tool.Name)
-		if selectedMap[shortName] { // O(1) 查找
+		if selectedMap[shortName] || selectedMap[tool.Name] { // O(1) 查找
 			llmTool := LLMTool{
 				Type: "function",
 				Function: LLMFunction{
@@ -278,11 +278,16 @@ func loadMCPConfigs() {
 			Title:   title,
 			Content: "",
 		})
+		createDefaultMCPConfig()
 		mcp_blog = control.GetBlog(config.GetAdminAccount(), title)
-		if mcp_blog == nil {
-			log.ErrorF(log.ModuleMCP, "Failed to get blog '%s'", title)
-			return
-		}
+	} else if mcp_blog.Content == "" {
+		createDefaultMCPConfig()
+		mcp_blog = control.GetBlog(config.GetAdminAccount(), title)
+	}
+
+	if mcp_blog == nil {
+		log.ErrorF(log.ModuleMCP, "Failed to get blog '%s'", title)
+		return
 	}
 
 	mcpConfigs = MCPConfigList{}
@@ -314,54 +319,56 @@ func getMCPConfigTitle() string {
 func createDefaultMCPConfig() {
 	log.Debug(log.ModuleMCP, "--- Creating Default MCP Configuration ---")
 
-	// Create default configuration
-	defaultConfig := MCPConfigList{
-		Configs: []MCPConfig{
-			{
-				Name:        "file-system",
-				Command:     "npx",
-				Args:        []string{"-y", "@modelcontextprotocol/server-filesystem", "./blogs_txt"},
-				Environment: map[string]string{},
-				Enabled:     true,
-				Description: "File system MCP server example",
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
+	/*
+		// Create default configuration
+		defaultConfig := MCPConfigList{
+			Configs: []MCPConfig{
+				{
+					Name:        "file-system",
+					Command:     "npx",
+					Args:        []string{"-y", "@modelcontextprotocol/server-filesystem", "./blogs_txt"},
+					Environment: map[string]string{},
+					Enabled:     true,
+					Description: "File system MCP server example",
+					CreatedAt:   time.Now(),
+					UpdatedAt:   time.Now(),
+				},
+				{
+					Name:        "redis",
+					Command:     "npx",
+					Args:        []string{"-y", "@modelcontextprotocol/server-redis", "redis://localhost:6379"},
+					Environment: map[string]string{},
+					Enabled:     true,
+					Description: "Redis MCP server example",
+					CreatedAt:   time.Now(),
+					UpdatedAt:   time.Now(),
+				},
 			},
-			{
-				Name:        "redis",
-				Command:     "npx",
-				Args:        []string{"-y", "@modelcontextprotocol/server-redis", "redis://localhost:6379"},
-				Environment: map[string]string{},
-				Enabled:     true,
-				Description: "Redis MCP server example",
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-			},
-		},
-	}
+		}
 
-	log.DebugF(log.ModuleMCP, "Creating default config with %d entries", len(defaultConfig.Configs))
-	for i, config := range defaultConfig.Configs {
-		log.DebugF(log.ModuleMCP, "Default Config %d: %s (%s) - %s",
-			i+1, config.Name, config.Command, config.Description)
-	}
+		log.DebugF(log.ModuleMCP, "Creating default config with %d entries", len(defaultConfig.Configs))
+		for i, config := range defaultConfig.Configs {
+			log.DebugF(log.ModuleMCP, "Default Config %d: %s (%s) - %s",
+				i+1, config.Name, config.Command, config.Description)
+		}
 
-	// Write to file
-	data, err := json.MarshalIndent(defaultConfig, "", "  ")
-	if err != nil {
-		log.ErrorF(log.ModuleMCP, "Failed to marshal default MCP config: %v", err)
-		return
-	}
+		// Write to file
+		data, err := json.MarshalIndent(defaultConfig, "", "  ")
+		if err != nil {
+			log.ErrorF(log.ModuleMCP, "Failed to marshal default MCP config: %v", err)
+			return
+		}
 
-	title := getMCPConfigTitle()
-	control.ModifyBlog(config.GetAdminAccount(), &module.UploadedBlogData{
-		Title:   title,
-		Content: string(data),
-	})
+		title := getMCPConfigTitle()
+		control.ModifyBlog(config.GetAdminAccount(), &module.UploadedBlogData{
+			Title:   title,
+			Content: string(data),
+		})
 
-	mcpConfigs = defaultConfig
-	log.InfoF(log.ModuleMCP, "Successfully created default MCP configuration with %d entries at: %s",
-		len(defaultConfig.Configs), title)
+		mcpConfigs = defaultConfig
+		log.InfoF(log.ModuleMCP, "Successfully created default MCP configuration with %d entries at: %s",
+			len(defaultConfig.Configs), title)
+	*/
 }
 
 func GetAllConfigs() []MCPConfig {
