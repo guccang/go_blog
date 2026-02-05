@@ -68,9 +68,9 @@ var (
 		LogToFile:    true,
 		LogToConsole: true,
 		LogDir:       "logs",
-		MaxFileSize:  100,       // 100MB
-		MaxDays:      30,        // 30 days
-		MinLevel:     LevelWarn, // Default to Info to hide Debug logs
+		MaxFileSize:  100,        // 100MB
+		MaxDays:      30,         // 30 days
+		MinLevel:     LevelDebug, // Default to Info to hide Debug logs
 	}
 	logFile     *os.File
 	logMutex    sync.Mutex
