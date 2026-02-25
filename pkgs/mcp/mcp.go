@@ -63,7 +63,8 @@ func extractFunctionName(s string) string {
 // 使用 map 进行 O(1) 查找，优化性能
 func GetAvailableLLMTools(selectedTools []string) []LLMTool {
 	if selectedTools == nil || len(selectedTools) == 0 {
-		return nil
+		// 未选择工具时，返回所有内置工具
+		return GetInnerMCPToolsProcessed()
 	}
 
 	// 预构建选中工具的 map 用于 O(1) 查找

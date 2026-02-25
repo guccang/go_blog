@@ -2,6 +2,7 @@ package llm
 
 import (
 	"config"
+	"context"
 	"encoding/json"
 	"fmt"
 	"mcp"
@@ -43,7 +44,12 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 		selectedTools = selectedTools[:maxSelected]
 	}
 
-	sysPrompt := fmt.Sprintf("使用%s账号作为参数,你是一个万能助手，自行决定是否调用工具获取数据，当你得到工具返回结果后，就不需要调用相同工具了，最后返回简单直接的结果给用户。", te.account)
+	sysPrompt := fmt.Sprintf(`你是一个智能助手。
+重要规则：
+1. 当前用户账号是 "%s"，调用任何工具时直接使用此账号作为account参数，不要向用户询问账号。
+2. 需要日期时，先调用 RawCurrentDate 获取当前日期，再基于日期调用其他工具。
+3. 自行决定调用哪些工具获取数据，得到结果后不要重复调用相同工具。
+4. 最后返回简洁直接的分析结果给用户。`, te.account)
 
 	// Initialize messages
 	messages := []Message{
@@ -61,7 +67,21 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 	availableTools := mcp.GetAvailableLLMTools(selectedTools)
 	log.DebugF(log.ModuleLLM, "Available LLM tools: %d", len(availableTools))
 
+	// ========== Phase 1: 智能工具路由（当工具数 > 15 时启用） ==========
+	if len(availableTools) > 15 {
+		routedTools := te.routeTools(query, availableTools)
+		if len(routedTools) > 0 {
+			availableTools = routedTools
+			log.MessageF(log.ModuleLLM, "[工具路由] 从 %d 个工具中筛选出 %d 个相关工具", len(mcp.GetAvailableLLMTools(selectedTools)), len(availableTools))
+		}
+	}
+
 	var fullResponse strings.Builder
+
+	// 在聊天流中显示本次使用的工具数量
+	toolCountMsg := fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(availableTools))
+	fmt.Fprintf(te.writer, "data: %s\n\n", url.QueryEscape(toolCountMsg))
+	te.flusher.Flush()
 
 	// Initial LLM call
 	_, toolCalls, err := SendStreamingLLMRequest(messages, availableTools, te.writer, te.flusher, &fullResponse)
@@ -158,4 +178,75 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 func ProcessQueryStreaming(account string, query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
 	executor := NewToolExecutor(account, nil, w, flusher)
 	return executor.ExecuteToolLoop(query, selectedTools)
+}
+
+// routeTools 工具路由：用 LLM 从工具目录中筛选与用户问题相关的工具
+func (te *ToolExecutor) routeTools(query string, allTools []mcp.LLMTool) []mcp.LLMTool {
+	// 构建工具目录（仅 name + description，不含参数 schema，节省 token）
+	var catalog strings.Builder
+	toolMap := make(map[string]mcp.LLMTool, len(allTools))
+	for i, tool := range allTools {
+		catalog.WriteString(fmt.Sprintf("%d. %s: %s\n", i+1, tool.Function.Name, tool.Function.Description))
+		toolMap[tool.Function.Name] = tool
+	}
+
+	routePrompt := fmt.Sprintf(`你是一个工具路由器。根据用户的问题，从以下工具目录中选择所有可能需要用到的工具。
+
+用户问题: %s
+
+工具目录:
+%s
+选择规则：
+1. 宁多勿少，把所有可能相关的工具都选上
+2. 如果任务需要日期信息，必须包含 RawCurrentDate
+3. 如果涉及查询数据，同时选择获取数据的工具和可能需要的辅助工具
+4. 只返回JSON数组，不要其他文字
+
+示例: ["RawCurrentDate", "RawGetExerciseByDateRange"]
+如果不需要任何工具，返回 []`, query, catalog.String())
+
+	routeMessages := []Message{
+		{Role: "user", Content: routePrompt},
+	}
+
+	resp, err := SendSyncLLMRequestNoTools(context.Background(), routeMessages, te.account)
+	if err != nil {
+		log.WarnF(log.ModuleLLM, "[工具路由] LLM 调用失败: %v, 使用全部工具", err)
+		return nil // fallback 到全部工具
+	}
+
+	// 解析 JSON 数组
+	resp = strings.TrimSpace(resp)
+	// 去掉可能的 markdown 代码块包裹
+	resp = strings.TrimPrefix(resp, "```json")
+	resp = strings.TrimPrefix(resp, "```")
+	resp = strings.TrimSuffix(resp, "```")
+	resp = strings.TrimSpace(resp)
+
+	var toolNames []string
+	if err := json.Unmarshal([]byte(resp), &toolNames); err != nil {
+		log.WarnF(log.ModuleLLM, "[工具路由] 解析失败: %v, 原始响应: %s", err, resp)
+		return nil // fallback 到全部工具
+	}
+
+	if len(toolNames) == 0 {
+		log.MessageF(log.ModuleLLM, "[工具路由] LLM 判断无需工具")
+		return []mcp.LLMTool{} // 返回空，让 LLM 直接回答
+	}
+
+	// 筛选出对应的完整工具定义
+	var selected []mcp.LLMTool
+	for _, name := range toolNames {
+		if tool, ok := toolMap[name]; ok {
+			selected = append(selected, tool)
+		}
+	}
+
+	if len(selected) == 0 {
+		log.WarnF(log.ModuleLLM, "[工具路由] 未匹配到任何工具，使用全部工具")
+		return nil
+	}
+
+	log.MessageF(log.ModuleLLM, "[工具路由] 选中工具: %v", toolNames)
+	return selected
 }

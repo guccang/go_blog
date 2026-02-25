@@ -108,15 +108,15 @@ require (
 require (
 	account v0.0.0 // indirect
 	constellation v0.0.0 // indirect
+	email v0.0.0 // indirect
 	finance v0.0.0 // indirect
 	fruitcrush v0.0.0 // indirect
-	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/gomega v1.39.1 // indirect
 	gomoku v0.0.0 // indirect
-	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	lifecountdown v0.0.0 // indirect
 	linkup v0.0.0 // indirect
 	minesweeper v0.0.0 // indirect

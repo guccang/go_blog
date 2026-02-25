@@ -6,6 +6,7 @@ toolchain go1.24.1
 
 require (
 	control v0.0.0
+	email v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.0
 	llm v0.0.0
@@ -25,6 +26,7 @@ replace (
 	auth => ../auth
 	config => ../config
 	control => ../control
+	email => ../email
 	http => ../http
 	ioutils => ../ioutils
 	llm => ../llm

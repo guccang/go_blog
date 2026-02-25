@@ -41,6 +41,7 @@ const (
 	ModuleView
 	ModuleControl
 	ModuleAgent
+	ModuleEmail
 )
 
 // LogLevel definition
@@ -110,6 +111,7 @@ func Info() {
 		ModuleView:          "view",
 		ModuleControl:       "control",
 		ModuleAgent:         "agent",
+		ModuleEmail:         "email",
 	}
 }
 

@@ -193,3 +193,11 @@ func (h *NotificationHub) SyncReminders(account string) {
 	}
 	h.BroadcastToAccount(account, notification)
 }
+
+// IsAccountOnline 检查账户是否有活跃的 WebSocket 连接
+func (h *NotificationHub) IsAccountOnline(account string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	conns, ok := h.clients[account]
+	return ok && len(conns) > 0
+}

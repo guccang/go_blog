@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"email"
 	"encoding/json"
+	"fmt"
+	"llm"
 	"mcp"
 	log "mylog"
 	"sync"
@@ -44,6 +47,12 @@ func Init(account string) {
 
 		// 初始化调度器
 		InitScheduler(globalHub)
+
+		// 初始化邮件模块
+		email.InitEmailConfig()
+
+		// 初始化报告生成器
+		InitReportGenerator(account)
 
 		// 注册 MCP 回调
 		registerMCPCallbacks()
@@ -106,7 +115,43 @@ func registerMCPCallbacks() {
 		return string(data)
 	})
 
-	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification")
+	// 生成报告工具
+	mcp.RegisterCallBack("GenerateReport", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		reportType, _ := args["type"].(string)
+		if reportType == "" {
+			reportType = "daily"
+		}
+		report, err := GenerateReport(account, reportType)
+		if err != nil {
+			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		}
+		return fmt.Sprintf(`{"success":true,"type":"%s","length":%d}`, reportType, len(report))
+	})
+
+	// 切换模型工具
+	mcp.RegisterCallBack("SwitchModel", func(args map[string]interface{}) string {
+		provider, _ := args["provider"].(string)
+		if provider == "" {
+			return `{"success":false,"error":"missing provider name"}`
+		}
+		if err := llm.SwitchModel(provider); err != nil {
+			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		}
+		data, _ := json.Marshal(llm.GetModelInfo())
+		return string(data)
+	})
+
+	// 获取当前模型信息工具
+	mcp.RegisterCallBack("GetCurrentModel", func(args map[string]interface{}) string {
+		data, _ := json.Marshal(llm.GetModelInfo())
+		return string(data)
+	})
+
+	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel")
 }
 
 // GetHub 获取通知中心

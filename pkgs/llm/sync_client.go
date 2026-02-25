@@ -114,6 +114,14 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 
 		if resp.StatusCode != http.StatusOK {
 			log.ErrorF(log.ModuleLLM, "LLM API error: %d, body: %s", resp.StatusCode, string(body))
+
+			// 5xx 错误时尝试 fallback
+			if resp.StatusCode >= 500 && FallbackToNext() {
+				config = GetConfig()
+				log.WarnF(log.ModuleLLM, "Primary LLM failed with %d, retrying with fallback: %s", resp.StatusCode, GetActiveProvider())
+				continue // 使用新 config 重试当前迭代
+			}
+
 			return "", fmt.Errorf("LLM API error: %d", resp.StatusCode)
 		}
 
@@ -260,6 +268,30 @@ func SendSyncLLMRequestNoTools(ctx context.Context, messages []Message, account 
 
 	if resp.StatusCode != http.StatusOK {
 		log.ErrorF(log.ModuleLLM, "LLM API error: %d, body: %s", resp.StatusCode, string(body))
+
+		// 5xx 错误时尝试 fallback
+		if resp.StatusCode >= 500 && FallbackToNext() {
+			config = GetConfig()
+			log.WarnF(log.ModuleLLM, "LLM NoTools fallback to: %s", GetActiveProvider())
+			requestBody["model"] = config.Model
+			requestBody["temperature"] = config.Temperature
+			jsonData2, _ := json.Marshal(requestBody)
+			req2, _ := http.NewRequestWithContext(ctx, "POST", config.BaseURL, bytes.NewBuffer(jsonData2))
+			req2.Header.Set("Content-Type", "application/json")
+			req2.Header.Set("Authorization", "Bearer "+config.APIKey)
+			resp2, err2 := client.Do(req2)
+			if err2 == nil {
+				defer resp2.Body.Close()
+				body2, _ := io.ReadAll(resp2.Body)
+				if resp2.StatusCode == http.StatusOK {
+					var llmResp2 LLMResponse
+					if err3 := json.Unmarshal(body2, &llmResp2); err3 == nil && len(llmResp2.Choices) > 0 {
+						return llmResp2.Choices[0].Message.Content, nil
+					}
+				}
+			}
+		}
+
 		return "", fmt.Errorf("LLM API error: %d", resp.StatusCode)
 	}
 
@@ -357,6 +389,14 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 
 		if resp.StatusCode != http.StatusOK {
 			log.ErrorF(log.ModuleLLM, "LLM API error: %d", resp.StatusCode)
+
+			// 5xx 错误时尝试 fallback
+			if resp.StatusCode >= 500 && FallbackToNext() {
+				config = GetConfig()
+				log.WarnF(log.ModuleLLM, "LLM SelectedTools fallback to: %s", GetActiveProvider())
+				continue // 使用新 config 重试当前迭代
+			}
+
 			return "", fmt.Errorf("LLM API error: %d", resp.StatusCode)
 		}
 

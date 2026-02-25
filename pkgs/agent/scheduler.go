@@ -1,9 +1,12 @@
 package agent
 
 import (
+	"email"
 	"encoding/json"
 	"fmt"
+	"llm"
 	log "mylog"
+	"statistics"
 	"sync"
 	"time"
 
@@ -24,6 +27,7 @@ type Reminder struct {
 	RepeatCount  int       `json:"repeat_count"`   // -1 = 无限, 0 = 已完成, >0 = 剩余次数
 	RunCount     int       `json:"run_count"`      // 已执行次数
 	LinkedTaskID string    `json:"linked_task_id"` // 关联的任务ID
+	SmartMode    bool      `json:"smart_mode"`     // 是否启用 AI 智能消息
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -94,19 +98,38 @@ func (s *Scheduler) checkReminders(now time.Time) {
 	}
 }
 
-// triggerReminder 触发提醒
+// triggerReminder 触发提醒（智能版）
 func (s *Scheduler) triggerReminder(r *Reminder, now time.Time) {
 	log.MessageF(log.ModuleAgent, "Triggering reminder: %s - %s", r.ID, r.Title)
 
-	// 发送 WebSocket 通知
+	// 决定消息内容：智能模式用 AI 生成，否则用原始消息
+	finalMessage := r.Message
+	if r.SmartMode {
+		if aiMsg := s.generateSmartMessage(r); aiMsg != "" {
+			finalMessage = aiMsg
+		}
+	}
+
+	// 1. Browser WebSocket 推送（如果在线）
 	if s.hub != nil {
 		notification := TaskNotification{
-			Type:     "reminder",
+			Type:     "smart_reminder",
 			TaskID:   r.ID,
 			Progress: 100,
-			Message:  fmt.Sprintf("[%s] %s", r.Title, r.Message),
+			Message:  fmt.Sprintf("[%s] %s", r.Title, finalMessage),
+			Data: map[string]interface{}{
+				"title":      r.Title,
+				"message":    finalMessage,
+				"smart_mode": r.SmartMode,
+				"run_count":  r.RunCount + 1,
+			},
 		}
-		s.hub.Broadcast(notification)
+		s.hub.BroadcastToAccount(r.Account, notification)
+	}
+
+	// 2. Email 推送（异步，不阻塞调度器）
+	if email.IsEnabled() {
+		go s.sendReminderEmail(r, finalMessage)
 	}
 
 	s.mu.Lock()
@@ -126,6 +149,65 @@ func (s *Scheduler) triggerReminder(r *Reminder, now time.Time) {
 		// 已完成所有重复
 		r.Enabled = false
 		log.MessageF(log.ModuleAgent, "Reminder completed: %s", r.ID)
+	}
+}
+
+// generateSmartMessage 使用 AI 生成智能提醒消息
+func (s *Scheduler) generateSmartMessage(r *Reminder) string {
+	// 收集用户上下文
+	today := time.Now().Format("2006-01-02")
+	todoData := statistics.RawGetTodosByDate(r.Account, today)
+	exerciseData := statistics.RawGetExerciseStats(r.Account, 7)
+
+	promptContent := fmt.Sprintf(`你是一个智能提醒助手。请根据以下信息生成一条简洁、有温度的提醒消息。
+
+提醒标题: %s
+原始消息: %s
+当前时间: %s
+
+用户今日待办: %s
+用户近7天运动: %s
+
+要求:
+1. 消息简洁，不超过200字
+2. 结合用户的待办和运动数据给出个性化提醒
+3. 语气温暖友好，带有鼓励
+4. 直接输出消息内容，不要加任何前缀`, r.Title, r.Message, time.Now().Format("15:04"), todoData, exerciseData)
+
+	messages := []llm.Message{
+		{Role: "user", Content: promptContent},
+	}
+
+	resp, err := llm.SendSyncLLMRequest(messages, r.Account)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "Smart message generation failed: %v", err)
+		return ""
+	}
+
+	if resp != "" {
+		return resp
+	}
+	return ""
+}
+
+// sendReminderEmail 发送提醒邮件
+func (s *Scheduler) sendReminderEmail(r *Reminder, message string) {
+	subject := fmt.Sprintf("📌 提醒: %s", r.Title)
+	htmlBody := fmt.Sprintf(`
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); padding: 20px; border-radius: 10px; color: white;">
+    <h2 style="margin: 0;">📌 %s</h2>
+    <p style="margin: 5px 0 0; opacity: 0.8;">%s</p>
+  </div>
+  <div style="padding: 20px; background: #f8f9fa; border-radius: 0 0 10px 10px;">
+    <p style="font-size: 16px; line-height: 1.6; color: #333;">%s</p>
+    <hr style="border: none; border-top: 1px solid #dee2e6; margin: 15px 0;">
+    <p style="font-size: 12px; color: #999;">此邮件由 GoBlog 智能提醒系统自动发送</p>
+  </div>
+</div>`, r.Title, time.Now().Format("2006-01-02 15:04"), message)
+
+	if err := email.SendHTMLEmail("", subject, htmlBody); err != nil {
+		log.WarnF(log.ModuleAgent, "Failed to send reminder email for %s: %v", r.ID, err)
 	}
 }
 

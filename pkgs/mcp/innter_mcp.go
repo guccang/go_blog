@@ -466,6 +466,355 @@ func Inner_blog_RawRecentExerciseRecords(arguments map[string]interface{}) strin
 	return statistics.RawRecentExerciseRecords(account, days)
 }
 
+// ============================================================================
+// TodoList 模块工具函数
+// ============================================================================
+
+func Inner_blog_RawGetTodosByDate(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetTodosByDate(account, date)
+}
+
+func Inner_blog_RawGetTodosRange(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	startDate, err := getStringParam(arguments, "startDate")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	endDate, err := getStringParam(arguments, "endDate")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetTodosRange(account, startDate, endDate)
+}
+
+func Inner_blog_RawAddTodo(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	content, err := getStringParam(arguments, "content")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	hours := getOptionalIntParam(arguments, "hours", 0)
+	minutes := getOptionalIntParam(arguments, "minutes", 0)
+	urgency := getOptionalIntParam(arguments, "urgency", 2)
+	importance := getOptionalIntParam(arguments, "importance", 2)
+	return statistics.RawAddTodo(account, date, content, hours, minutes, urgency, importance)
+}
+
+func Inner_blog_RawToggleTodo(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawToggleTodo(account, date, id)
+}
+
+func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawDeleteTodo(account, date, id)
+}
+
+// ============================================================================
+// Exercise 模块工具函数
+// ============================================================================
+
+func Inner_blog_RawGetExerciseByDate(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetExerciseByDate(account, date)
+}
+
+func Inner_blog_RawGetExerciseRange(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	startDate, err := getStringParam(arguments, "startDate")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	endDate, err := getStringParam(arguments, "endDate")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetExerciseRange(account, startDate, endDate)
+}
+
+func Inner_blog_RawAddExercise(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	name, err := getStringParam(arguments, "name")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	exerciseType, err := getStringParam(arguments, "exerciseType")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	duration, err := getIntParam(arguments, "duration")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	intensity, _ := getStringParam(arguments, "intensity")
+	if intensity == "" {
+		intensity = "medium"
+	}
+	calories := getOptionalIntParam(arguments, "calories", 0)
+	notes, _ := getStringParam(arguments, "notes")
+	return statistics.RawAddExercise(account, date, name, exerciseType, duration, intensity, calories, notes)
+}
+
+func Inner_blog_RawGetExerciseStats(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	days := getOptionalIntParam(arguments, "days", 7)
+	return statistics.RawGetExerciseStats(account, days)
+}
+
+// ============================================================================
+// Reading 模块工具函数
+// ============================================================================
+
+func Inner_blog_RawGetAllBooks(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetAllBooks(account)
+}
+
+func Inner_blog_RawGetBooksByStatus(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	status, err := getStringParam(arguments, "status")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetBooksByStatus(account, status)
+}
+
+func Inner_blog_RawGetReadingStats(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetReadingStats(account)
+}
+
+func Inner_blog_RawUpdateReadingProgress(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	bookID, err := getStringParam(arguments, "bookID")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	currentPage, err := getIntParam(arguments, "currentPage")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	notes, _ := getStringParam(arguments, "notes")
+	return statistics.RawUpdateReadingProgress(account, bookID, currentPage, notes)
+}
+
+func Inner_blog_RawGetBookNotes(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	bookID, err := getStringParam(arguments, "bookID")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetBookNotes(account, bookID)
+}
+
+// ============================================================================
+// YearPlan 模块工具函数
+// ============================================================================
+
+func Inner_blog_RawGetMonthGoal(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	year, err := getIntParam(arguments, "year")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	month, err := getIntParam(arguments, "month")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetMonthGoal(account, year, month)
+}
+
+func Inner_blog_RawGetYearGoals(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	year, err := getIntParam(arguments, "year")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetYearGoals(account, year)
+}
+
+func Inner_blog_RawAddYearTask(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	year, err := getIntParam(arguments, "year")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	month, err := getIntParam(arguments, "month")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	title, err := getStringParam(arguments, "title")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	description, _ := getStringParam(arguments, "description")
+	priority, _ := getStringParam(arguments, "priority")
+	if priority == "" {
+		priority = "medium"
+	}
+	dueDate, _ := getStringParam(arguments, "dueDate")
+	return statistics.RawAddYearTask(account, year, month, title, description, priority, dueDate)
+}
+
+func Inner_blog_RawUpdateYearTask(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	year, err := getIntParam(arguments, "year")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	month, err := getIntParam(arguments, "month")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	taskID, err := getStringParam(arguments, "taskID")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	status, err := getStringParam(arguments, "status")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawUpdateYearTask(account, year, month, taskID, status)
+}
+
+// ============================================================================
+// TaskBreakdown 模块工具函数
+// ============================================================================
+
+func Inner_blog_RawGetAllComplexTasks(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetAllComplexTasks(account)
+}
+
+func Inner_blog_RawGetComplexTasksByStatus(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	status, err := getStringParam(arguments, "status")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetComplexTasksByStatus(account, status)
+}
+
+func Inner_blog_RawGetComplexTaskStats(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawGetComplexTaskStats(account)
+}
+
+func Inner_blog_RawCreateComplexTask(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	title, err := getStringParam(arguments, "title")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	description, _ := getStringParam(arguments, "description")
+	priority, _ := getStringParam(arguments, "priority")
+	if priority == "" {
+		priority = "medium"
+	}
+	startDate, _ := getStringParam(arguments, "startDate")
+	endDate, _ := getStringParam(arguments, "endDate")
+	return statistics.RawCreateComplexTask(account, title, description, priority, startDate, endDate)
+}
+
 func RegisterCallBack(name string, callback func(arguments map[string]interface{}) string) {
 	callBacks[name] = callback
 }
@@ -547,6 +896,40 @@ func RegisterInnerTools() {
 	// 新增接口 - 创建博客
 	RegisterCallBack("RawCreateBlog", Inner_blog_RawCreateBlog)
 	RegisterCallBackPrompt("RawCreateBlog", "完成创建后返回博客链接格式为[title](/get?blogname=title)")
+
+	// ============================================================================
+	// 新增模块工具 - TodoList
+	// ============================================================================
+	RegisterCallBack("RawGetTodosByDate", Inner_blog_RawGetTodosByDate)
+	RegisterCallBack("RawGetTodosRange", Inner_blog_RawGetTodosRange)
+	RegisterCallBack("RawAddTodo", Inner_blog_RawAddTodo)
+	RegisterCallBack("RawToggleTodo", Inner_blog_RawToggleTodo)
+	RegisterCallBack("RawDeleteTodo", Inner_blog_RawDeleteTodo)
+
+	// 新增模块工具 - Exercise
+	RegisterCallBack("RawGetExerciseByDate", Inner_blog_RawGetExerciseByDate)
+	RegisterCallBack("RawGetExerciseRange", Inner_blog_RawGetExerciseRange)
+	RegisterCallBack("RawAddExercise", Inner_blog_RawAddExercise)
+	RegisterCallBack("RawGetExerciseStats", Inner_blog_RawGetExerciseStats)
+
+	// 新增模块工具 - Reading
+	RegisterCallBack("RawGetAllBooks", Inner_blog_RawGetAllBooks)
+	RegisterCallBack("RawGetBooksByStatus", Inner_blog_RawGetBooksByStatus)
+	RegisterCallBack("RawGetReadingStats", Inner_blog_RawGetReadingStats)
+	RegisterCallBack("RawUpdateReadingProgress", Inner_blog_RawUpdateReadingProgress)
+	RegisterCallBack("RawGetBookNotes", Inner_blog_RawGetBookNotes)
+
+	// 新增模块工具 - YearPlan
+	RegisterCallBack("RawGetMonthGoal", Inner_blog_RawGetMonthGoal)
+	RegisterCallBack("RawGetYearGoals", Inner_blog_RawGetYearGoals)
+	RegisterCallBack("RawAddYearTask", Inner_blog_RawAddYearTask)
+	RegisterCallBack("RawUpdateYearTask", Inner_blog_RawUpdateYearTask)
+
+	// 新增模块工具 - TaskBreakdown
+	RegisterCallBack("RawGetAllComplexTasks", Inner_blog_RawGetAllComplexTasks)
+	RegisterCallBack("RawGetComplexTasksByStatus", Inner_blog_RawGetComplexTasksByStatus)
+	RegisterCallBack("RawGetComplexTaskStats", Inner_blog_RawGetComplexTaskStats)
+	RegisterCallBack("RawCreateComplexTask", Inner_blog_RawCreateComplexTask)
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -1125,6 +1508,38 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			},
 		},
 
+		// =================================== TodoList 模块工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosByDate", Description: "获取指定日期的待办列表,返回JSON格式", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期格式为2026-01-01"}}, "required": []string{"account", "date"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosRange", Description: "获取日期范围内的待办列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddTodo", Description: "添加待办事项。urgency/importance: 1=最高 2=中等 3=最低", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "content": map[string]string{"type": "string", "description": "待办内容"}, "hours": map[string]interface{}{"type": "number", "description": "预计小时数"}, "minutes": map[string]interface{}{"type": "number", "description": "预计分钟数"}, "urgency": map[string]interface{}{"type": "number", "description": "紧急度1-3"}, "importance": map[string]interface{}{"type": "number", "description": "重要度1-3"}}, "required": []string{"account", "date", "content"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawToggleTodo", Description: "切换待办事项的完成状态", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteTodo", Description: "删除待办事项", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
+
+		// =================================== Exercise 模块工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseByDate", Description: "获取指定日期的运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}}, "required": []string{"account", "date"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseRange", Description: "获取日期范围内的运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddExercise", Description: "添加运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "name": map[string]string{"type": "string", "description": "运动名称"}, "exerciseType": map[string]string{"type": "string", "description": "运动类型如跑步/游泳/力量训练"}, "duration": map[string]interface{}{"type": "number", "description": "时长(分钟)"}, "intensity": map[string]string{"type": "string", "description": "强度:low/medium/high"}, "calories": map[string]interface{}{"type": "number", "description": "卡路里"}, "notes": map[string]string{"type": "string", "description": "备注"}}, "required": []string{"account", "date", "name", "exerciseType", "duration"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseStats", Description: "获取运动统计数据,可指定天数", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "days": map[string]interface{}{"type": "number", "description": "统计天数,默认7天"}}, "required": []string{"account"}}}},
+
+		// =================================== Reading 模块工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllBooks", Description: "获取所有书籍列表(含状态、作者、页数)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBooksByStatus", Description: "按状态筛选书籍。status: reading/completed/want-to-read/paused", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "状态:reading/completed/want-to-read/paused"}}, "required": []string{"account", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetReadingStats", Description: "获取阅读统计信息(总数、各状态数量等)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateReadingProgress", Description: "更新阅读进度(当前页数和笔记)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}, "currentPage": map[string]interface{}{"type": "number", "description": "当前页数"}, "notes": map[string]string{"type": "string", "description": "阅读笔记"}}, "required": []string{"account", "bookID", "currentPage"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBookNotes", Description: "获取指定书籍的读书笔记", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}}, "required": []string{"account", "bookID"}}}},
+
+		// =================================== YearPlan 模块工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetMonthGoal", Description: "获取指定月份的目标和任务", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份如2026"}, "month": map[string]interface{}{"type": "number", "description": "月份1-12"}}, "required": []string{"account", "year", "month"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetYearGoals", Description: "获取指定年份所有月度目标", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}}, "required": []string{"account", "year"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddYearTask", Description: "添加年度计划任务到指定月份", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "dueDate": map[string]string{"type": "string", "description": "截止日期"}}, "required": []string{"account", "year", "month", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateYearTask", Description: "更新年度计划任务状态", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "taskID": map[string]string{"type": "string", "description": "任务ID"}, "status": map[string]string{"type": "string", "description": "新状态:planning/in-progress/completed"}}, "required": []string{"account", "year", "month", "taskID", "status"}}}},
+
+		// =================================== TaskBreakdown 模块工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllComplexTasks", Description: "获取所有复杂任务列表(含状态、优先级、进度)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTasksByStatus", Description: "按状态筛选复杂任务。status: planning/in-progress/completed/paused", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "任务状态"}}, "required": []string{"account", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTaskStats", Description: "获取复杂任务统计信息(总数、完成率等)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawCreateComplexTask", Description: "创建新的复杂任务", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "startDate": map[string]string{"type": "string", "description": "开始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "title"}}}},
+
 		// =================================== 定时提醒工具 =========================================
 		{
 			Type: "function",
@@ -1188,6 +1603,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
+
+		// =================================== 报告生成工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
+
+		// =================================== 模型管理工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.SwitchModel", Description: "切换LLM模型提供者。可选: deepseek/openai/qwen 或其他已配置的provider", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"provider": map[string]string{"type": "string", "description": "模型提供者名称如deepseek/openai/qwen"}}, "required": []string{"provider"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetCurrentModel", Description: "获取当前使用的LLM模型信息和所有可用模型列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
 	}
 
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
