@@ -440,7 +440,7 @@ func (p *TaskPlanner) truncateContextAsBlog(node *TaskNode, contextStr string) s
 	if len(runes) > 15 {
 		nodeTitle = string(runes[:15])
 	}
-	blogTitle := fmt.Sprintf("Agent上下文_%s_%s", nodeTitle, timestamp)
+	blogTitle := fmt.Sprintf("agent_context/%s_%s", nodeTitle, timestamp)
 
 	// 保存为私有博客
 	result := statistics.RawCreateBlog(

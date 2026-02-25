@@ -120,7 +120,7 @@ func (rg *ReportGenerator) GenerateDailyReport(account string) (string, error) {
 	}
 
 	// 保存为博客
-	title := fmt.Sprintf("日报-%s", today)
+	title := fmt.Sprintf("agent_reports/daily/%s", today)
 	saveResult := statistics.RawCreateBlog(account, title, report, "日报,自动生成", 2, 0)
 	log.MessageF(log.ModuleAgent, "Daily report saved: %s, result: %s", title, saveResult)
 
@@ -182,7 +182,7 @@ func (rg *ReportGenerator) GenerateWeeklyReport(account string) (string, error) 
 		return "", err
 	}
 
-	title := fmt.Sprintf("周报-%s至%s", weekStart, weekEnd)
+	title := fmt.Sprintf("agent_reports/weekly/%s_%s", weekStart, weekEnd)
 	saveResult := statistics.RawCreateBlog(account, title, report, "周报,自动生成", 2, 0)
 	log.MessageF(log.ModuleAgent, "Weekly report saved: %s, result: %s", title, saveResult)
 
@@ -238,7 +238,7 @@ func (rg *ReportGenerator) GenerateMonthlyReport(account string) (string, error)
 		return "", err
 	}
 
-	title := fmt.Sprintf("月报-%d年%02d月", year, month)
+	title := fmt.Sprintf("agent_reports/monthly/%d-%02d", year, month)
 	statistics.RawCreateBlog(account, title, report, "月报,自动生成", 2, 0)
 	rg.notifyReport(account, "月报", title, report)
 	return report, nil

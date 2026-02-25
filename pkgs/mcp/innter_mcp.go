@@ -930,6 +930,12 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawGetComplexTasksByStatus", Inner_blog_RawGetComplexTasksByStatus)
 	RegisterCallBack("RawGetComplexTaskStats", Inner_blog_RawGetComplexTaskStats)
 	RegisterCallBack("RawCreateComplexTask", Inner_blog_RawCreateComplexTask)
+
+	// 新增模块工具 - Web 网页访问
+	RegisterCallBack("FetchWebPage", Inner_web_FetchWebPage)
+	RegisterCallBack("WebSearch", Inner_web_WebSearch)
+	RegisterCallBackPrompt("FetchWebPage", "返回网页的纯文本内容，用于获取网络实时信息")
+	RegisterCallBackPrompt("WebSearch", "返回搜索结果列表，包含标题、URL和摘要，用于搜索互联网信息")
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -1610,6 +1616,38 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		// =================================== 模型管理工具 =========================================
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.SwitchModel", Description: "切换LLM模型提供者。可选: deepseek/openai/qwen 或其他已配置的provider", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"provider": map[string]string{"type": "string", "description": "模型提供者名称如deepseek/openai/qwen"}}, "required": []string{"provider"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetCurrentModel", Description: "获取当前使用的LLM模型信息和所有可用模型列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
+
+		// =================================== 网页访问工具 =========================================
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.FetchWebPage",
+				Description: "抓取指定URL网页内容，返回纯文本。用于获取网络上的新闻、文章、数据等实时信息",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"url":       map[string]string{"type": "string", "description": "要抓取的网页完整URL,如https://example.com"},
+						"maxLength": map[string]string{"type": "integer", "description": "最大返回字符数,默认5000"},
+					},
+					"required": []string{"url"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.WebSearch",
+				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。用于查找最新信息、新闻、研究数据等",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"query": map[string]string{"type": "string", "description": "搜索关键词"},
+						"count": map[string]string{"type": "integer", "description": "返回结果数量,默认5,最大10"},
+					},
+					"required": []string{"query"},
+				},
+			},
+		},
 	}
 
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）

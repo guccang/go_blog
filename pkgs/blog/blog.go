@@ -8,6 +8,7 @@ import (
 	"ioutils"
 	"module"
 	log "mylog"
+	"path/filepath"
 	db "persistence"
 	"regexp"
 	"sort"
@@ -109,7 +110,7 @@ func GetBlogWithAccount(account, title string) *module.Blog {
 	return db.GetBlogWithAccount(account, title)
 }
 
-// ImportBlogsFromPathWithAccount 从路径导入博客
+// ImportBlogsFromPathWithAccount 从路径导入博客（支持子目录递归导入）
 func ImportBlogsFromPathWithAccount(account, dir string) {
 	store := getBlogStore(account)
 	store.mu.Lock()
@@ -126,10 +127,19 @@ func ImportBlogsFromPathWithAccount(account, dir string) {
 		}
 	}
 
-	// 从目录导入
-	files := ioutils.GetFiles(dir)
+	// 从目录递归导入（支持子文件夹）
+	files := ioutils.GetFilesRecursive(dir)
 	for _, file := range files {
-		name, _ := ioutils.GetBaseAndExt(file)
+		// 计算相对路径作为 title（支持子文件夹如 agent_tasks/xxx/output）
+		relPath, err := filepath.Rel(dir, file)
+		if err != nil {
+			name, _ := ioutils.GetBaseAndExt(file)
+			relPath = name + filepath.Ext(file)
+		}
+		// 去掉扩展名，统一使用 / 分隔符
+		name := strings.TrimSuffix(relPath, filepath.Ext(relPath))
+		name = filepath.ToSlash(name)
+
 		datas, size := ioutils.GetFileDatas(file)
 		if size > 0 {
 			if b, ok := store.blogs[name]; ok {

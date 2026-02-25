@@ -31,6 +31,21 @@ func GetFiles(dir string) []string {
 	return files
 }
 
+// GetFilesRecursive 递归获取目录下所有文件（包括子目录）
+func GetFilesRecursive(dir string) []string {
+	files := make([]string, 0)
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
+}
+
 func GetBaseAndExt(full string) (string, string) {
 	filenameWithExt := filepath.Base(full)
 	ext := filepath.Ext(filenameWithExt)

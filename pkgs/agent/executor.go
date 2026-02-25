@@ -663,7 +663,7 @@ func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
 
 // saveOutputAsBlog 将过长的输出保存为博客
 func (e *TaskExecutor) saveOutputAsBlog(node *TaskNode, content string) (string, error) {
-	title := generateBlogTitle(node.Title, node.ID)
+	title := e.generateBlogTitle(node)
 
 	args := map[string]interface{}{
 		"account":  node.Account,
@@ -684,15 +684,48 @@ func (e *TaskExecutor) saveOutputAsBlog(node *TaskNode, content string) (string,
 	return link, nil
 }
 
-// generateBlogTitle 生成博客标题
-func generateBlogTitle(taskTitle string, nodeID string) string {
-	timestamp := time.Now().Format("20060102_150405")
-	// 使用 rune 截断，避免中文字符被截断导致乱码
-	runes := []rune(taskTitle)
-	if len(runes) > 20 {
-		taskTitle = string(runes[:20])
+// generateBlogTitle 根据任务树构建层级路径
+// 例如: agent_tasks/20260225_中国2026年中产如何规划现金流/制定现金流规划方法论/制定储蓄投资模块
+func (e *TaskExecutor) generateBlogTitle(node *TaskNode) string {
+	date := time.Now().Format("20060102")
+
+	// 从当前节点向上遍历到根节点，收集路径
+	path := []string{}
+	current := node
+	for current != nil {
+		title := sanitizeFolderName(truncateTitle(current.Title, 20))
+		path = append([]string{title}, path...)
+		if current.ParentID == "" {
+			break
+		}
+		current = e.graph.GetNode(current.ParentID)
 	}
-	return fmt.Sprintf("Agent_%s_%s_%s", taskTitle, nodeID, timestamp)
+
+	// 根目录加上日期前缀
+	if len(path) > 0 {
+		path[0] = fmt.Sprintf("%s_%s", date, path[0])
+	}
+
+	return fmt.Sprintf("agent_tasks/%s", strings.Join(path, "/"))
+}
+
+// truncateTitle 截断标题（使用 rune 避免中文截断乱码）
+func truncateTitle(title string, maxLen int) string {
+	runes := []rune(title)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen])
+	}
+	return title
+}
+
+// sanitizeFolderName 清理文件夹名中的不安全字符
+func sanitizeFolderName(name string) string {
+	replacer := strings.NewReplacer(
+		"/", "_", "\\", "_", ":", "_",
+		"*", "_", "?", "_", "\"", "_",
+		"<", "_", ">", "_", "|", "_",
+	)
+	return replacer.Replace(name)
 }
 
 // handleNodeError 处理节点错误
@@ -893,7 +926,7 @@ func (e *TaskExecutor) generateTaskIndex() {
 	content := e.buildIndexContent()
 
 	// 生成索引标题
-	title := generateIndexTitle(root.Title, root.ID)
+	title := e.generateIndexTitle()
 
 	// 保存为私有博客
 	args := map[string]interface{}{
@@ -1027,12 +1060,10 @@ func getStatusIcon(status NodeStatus) string {
 	}
 }
 
-// generateIndexTitle 生成索引博客标题
-func generateIndexTitle(taskTitle, nodeID string) string {
-	timestamp := time.Now().Format("20060102_150405")
-	runes := []rune(taskTitle)
-	if len(runes) > 15 {
-		taskTitle = string(runes[:15])
-	}
-	return fmt.Sprintf("Agent_Index_%s_%s_%s", taskTitle, nodeID, timestamp)
+// generateIndexTitle 生成索引博客标题（存储到根任务文件夹下）
+func (e *TaskExecutor) generateIndexTitle() string {
+	root := e.graph.Root
+	date := time.Now().Format("20060102")
+	rootTitle := sanitizeFolderName(truncateTitle(root.Title, 20))
+	return fmt.Sprintf("agent_tasks/%s_%s/index", date, rootTitle)
 }

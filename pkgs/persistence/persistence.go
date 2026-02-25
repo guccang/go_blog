@@ -192,8 +192,9 @@ func saveToFile(account string, blog *module.Blog) {
 		blog.Account = account
 	}
 	path := config.GetBlogsPath(account)
-	ioutils.Mkdir(path)
 	full := fmt.Sprintf("%s.md", filepath.Join(path, blog.Title))
+	// 确保父目录存在（支持子文件夹 Title，如 agent_tasks/xxx/output）
+	ioutils.Mkdir(filepath.Dir(full))
 
 	fcontent, _ := ioutils.GetFileDatas(full)
 	if blog.Content == fcontent {
