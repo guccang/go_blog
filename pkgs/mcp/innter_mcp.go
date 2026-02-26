@@ -934,8 +934,24 @@ func RegisterInnerTools() {
 	// 新增模块工具 - Web 网页访问
 	RegisterCallBack("FetchWebPage", Inner_web_FetchWebPage)
 	RegisterCallBack("WebSearch", Inner_web_WebSearch)
-	RegisterCallBackPrompt("FetchWebPage", "返回网页的纯文本内容，用于获取网络实时信息")
-	RegisterCallBackPrompt("WebSearch", "返回搜索结果列表，包含标题、URL和摘要，用于搜索互联网信息")
+	RegisterCallBackPrompt("FetchWebPage", "返回网页的纯文本内容。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)")
+	RegisterCallBackPrompt("WebSearch", "返回搜索结果列表。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)")
+
+	// ============================================================================
+	// AI 增强工具 - 跨模块智能
+	// ============================================================================
+	RegisterCallBack("SmartDailySummary", Inner_blog_RawSmartDailySummary)
+	RegisterCallBackPrompt("SmartDailySummary", "这是用户的当日全面数据摘要，请根据数据给出综合分析和个性化建议")
+	RegisterCallBack("AutoCarryOverTodos", Inner_blog_RawAutoCarryOverTodos)
+	RegisterCallBackPrompt("AutoCarryOverTodos", "根据昨日未完成+今日待办，帮助用户决定哪些任务需要延续到今天")
+	RegisterCallBack("TodoGoalAlignment", Inner_blog_RawTodoGoalAlignment)
+	RegisterCallBackPrompt("TodoGoalAlignment", "对比待办与月度目标，分析对齐度并给出建议")
+	RegisterCallBack("ExerciseCoachAdvice", Inner_blog_RawExerciseCoachAdvice)
+	RegisterCallBackPrompt("ExerciseCoachAdvice", "像私人教练一样分析运动数据并给出今日训练建议")
+	RegisterCallBack("ReadingCompanion", Inner_blog_RawReadingCompanion)
+	RegisterCallBackPrompt("ReadingCompanion", "像阅读伙伴一样分析阅读数据并给出建议和鼓励")
+	RegisterCallBack("SmartDecomposeTodo", Inner_blog_RawSmartDecomposeTodo)
+	RegisterCallBackPrompt("SmartDecomposeTodo", "将复杂任务拆解为可独立完成的子任务，确认后添加到待办")
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -1622,7 +1638,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.FetchWebPage",
-				Description: "抓取指定URL网页内容，返回纯文本。用于获取网络上的新闻、文章、数据等实时信息",
+				Description: "抓取指定URL网页内容，返回纯文本。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1637,7 +1653,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.WebSearch",
-				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。用于查找最新信息、新闻、研究数据等",
+				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1645,6 +1661,97 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 						"count": map[string]string{"type": "integer", "description": "返回结果数量,默认5,最大10"},
 					},
 					"required": []string{"query"},
+				},
+			},
+		},
+
+		// =================================== AI 增强工具 =========================================
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.SmartDailySummary",
+				Description: "生成智能每日摘要：聚合待办、运动、阅读、年度目标数据，提供跨模块全面分析。当用户问'今天怎么样'、'帮我总结一下'、'今日概览'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"date":    map[string]string{"type": "string", "description": "日期,格式2026-01-01,默认今天"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.AutoCarryOverTodos",
+				Description: "检查昨日未完成待办并建议延续到今天。当用户问'昨天有什么没完成'、'帮我整理待办'、'延续任务'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.TodoGoalAlignment",
+				Description: "对比今日待办与月度/年度目标的对齐度，分析待办是否在推进目标。当用户问'我的待办和目标对齐吗'、'我今天做的有意义吗'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"date":    map[string]string{"type": "string", "description": "日期,格式2026-01-01,默认今天"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.ExerciseCoachAdvice",
+				Description: "AI运动教练：分析近期运动数据，给出个性化训练建议(部位轮换、运动量评估、今日推荐)。当用户问'今天练什么'、'运动建议'、'健身计划'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"days":    map[string]string{"type": "integer", "description": "分析天数,默认7天"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.ReadingCompanion",
+				Description: "AI阅读伴读：分析阅读进度、预测完成时间、推荐下一本书。当用户问'阅读建议'、'下一本读什么'、'读书进度'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.SmartDecomposeTodo",
+				Description: "智能任务拆解：将复杂待办拆解为3-7个可独立完成的子任务。当用户说'帮我拆解这个任务'、'这个事情太复杂了'、'帮我规划一下'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"task":    map[string]string{"type": "string", "description": "需要拆解的复杂任务描述"},
+						"date":    map[string]string{"type": "string", "description": "日期,格式2026-01-01,默认今天"},
+					},
+					"required": []string{"account", "task"},
 				},
 			},
 		},

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/transform"
 )
 
 // ============================================================================
@@ -250,7 +254,32 @@ func fetchURL(targetURL string) (string, error) {
 		return "", fmt.Errorf("读取响应失败: %w", err)
 	}
 
-	return string(body), nil
+	// 编码检测和转换（处理 GBK/GB2312 等中文编码）
+	contentType := resp.Header.Get("Content-Type")
+	utf8Body := convertToUTF8(body, contentType)
+
+	return utf8Body, nil
+}
+
+// convertToUTF8 检测编码并转换为 UTF-8
+func convertToUTF8(body []byte, contentType string) string {
+	// 尝试从 Content-Type header 和 HTML 内容检测编码
+	encoding, name, _ := charset.DetermineEncoding(body, contentType)
+	if name == "utf-8" || name == "" {
+		return string(body)
+	}
+
+	log.DebugF(log.ModuleMCP, "[WebFetch] 检测到编码: %s, 转换为 UTF-8", name)
+
+	// 转码
+	reader := transform.NewReader(bytes.NewReader(body), encoding.NewDecoder())
+	decoded, err := ioutil.ReadAll(reader)
+	if err != nil {
+		log.WarnF(log.ModuleMCP, "[WebFetch] 编码转换失败: %v, 使用原始内容", err)
+		return string(body)
+	}
+
+	return string(decoded)
 }
 
 // searchBing 使用 Bing 搜索引擎（使用中国版）

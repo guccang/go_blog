@@ -1,7 +1,9 @@
 package llm
 
 import (
+	"fmt"
 	"mcp"
+	"strings"
 )
 
 // Message represents a message in conversation
@@ -140,4 +142,71 @@ func SanitizeMessagesWithLimits(original []Message, perMessageMax, totalBudget, 
 		return append([]Message{*system}, resultReversed...)
 	}
 	return resultReversed
+}
+
+// CompactMessages 智能上下文压缩
+// 参考 Anthropic 文章: compaction 将旧消息压缩为摘要而非简单丢弃
+// 当消息总量接近预算时触发，保留 system + 最近消息，将旧消息压缩为一条摘要
+func CompactMessages(messages []Message, account string) []Message {
+	if len(messages) <= 10 {
+		return messages // 消息太少，不需要压缩
+	}
+
+	// 估算当前消息总量
+	totalChars := 0
+	for _, msg := range messages {
+		totalChars += len(msg.Content)
+		for _, tc := range msg.ToolCalls {
+			totalChars += len(tc.Function.Arguments)
+		}
+	}
+
+	// 未超过 80% 预算，不压缩
+	if totalChars < MaxTotalCharsBudget*80/100 {
+		return messages
+	}
+
+	// 保留 system 消息
+	var systemMsg *Message
+	startIdx := 0
+	if len(messages) > 0 && messages[0].Role == "system" {
+		systemMsg = &messages[0]
+		startIdx = 1
+	}
+
+	// 保留最近 8 条消息，将其余压缩
+	keepCount := 8
+	if len(messages)-startIdx <= keepCount {
+		return messages // 不够压缩
+	}
+
+	recentMsgs := messages[len(messages)-keepCount:]
+	oldMsgs := messages[startIdx : len(messages)-keepCount]
+
+	// 构建旧消息摘要
+	var summaryParts []string
+	for _, msg := range oldMsgs {
+		if msg.Role == "user" && msg.Content != "" {
+			summaryParts = append(summaryParts, "用户: "+TruncateString(msg.Content, 100))
+		} else if msg.Role == "assistant" && msg.Content != "" {
+			summaryParts = append(summaryParts, "AI: "+TruncateString(msg.Content, 100))
+		} else if msg.Role == "tool" && msg.Content != "" {
+			summaryParts = append(summaryParts, "工具结果: "+TruncateString(msg.Content, 50))
+		}
+	}
+
+	compactedMsg := Message{
+		Role:    "user",
+		Content: fmt.Sprintf("[之前的对话摘要（已压缩 %d 条消息）]\n%s", len(oldMsgs), strings.Join(summaryParts, "\n")),
+	}
+
+	// 重新组装
+	var result []Message
+	if systemMsg != nil {
+		result = append(result, *systemMsg)
+	}
+	result = append(result, compactedMsg)
+	result = append(result, recentMsgs...)
+
+	return result
 }

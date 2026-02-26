@@ -115,12 +115,12 @@
                                     <p>👋 你好！我是你的智能助手，已配备 <strong>MCP 工具</strong> 和 <strong>智能路由</strong>。</p>
                                     <p>直接问我任何问题，我会自动选择合适的工具来帮你。</p>
                                     <div class="quick-chips">
-                                        <span class="quick-chip" onclick="sendQuickMessage('我今天的待办事项有哪些？')">📋 今日待办</span>
-                                        <span class="quick-chip" onclick="sendQuickMessage('帮我分析最近7天的运动数据')">💪 运动分析</span>
-                                        <span class="quick-chip" onclick="sendQuickMessage('我的阅读进度怎么样？')">📚 阅读进度</span>
-                                        <span class="quick-chip" onclick="sendQuickMessage('帮我生成今天的日报')">📊 生成日报</span>
-                                        <span class="quick-chip" onclick="sendQuickMessage('当前使用什么模型？')">🤖 模型信息</span>
-                                        <span class="quick-chip" onclick="sendQuickMessage('我的年度计划完成情况如何？')">🎯 年度目标</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('帮我总结今天')">📊 今日总结</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('昨天有什么没完成')">📋 延续待办</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('我的待办和目标对齐吗')">🎯 目标对齐</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('今天练什么')">💪 运动建议</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('阅读建议，下一本读什么')">📚 阅读伴读</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('帮我拆解这个任务：')">🧩 任务拆解</span>
                                     </div>
                                 </div>
                                 <div class="message-time">刚刚</div>

@@ -44,12 +44,7 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 		selectedTools = selectedTools[:maxSelected]
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个智能助手。
-重要规则：
-1. 当前用户账号是 "%s"，调用任何工具时直接使用此账号作为account参数，不要向用户询问账号。
-2. 需要日期时，先调用 RawCurrentDate 获取当前日期，再基于日期调用其他工具。
-3. 自行决定调用哪些工具获取数据，得到结果后不要重复调用相同工具。
-4. 最后返回简洁直接的分析结果给用户。`, te.account)
+	sysPrompt := BuildEnhancedSystemPrompt(te.account)
 
 	// Initialize messages
 	messages := []Message{
@@ -77,6 +72,7 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 	}
 
 	var fullResponse strings.Builder
+	var toolCallLog []string // 跟踪本轮调用的工具
 
 	// 在聊天流中显示本次使用的工具数量
 	toolCountMsg := fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(availableTools))
@@ -104,6 +100,7 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 
 			toolName := toolCall.Function.Name
 			toolArgs := make(map[string]interface{})
+			toolCallLog = append(toolCallLog, toolName)
 
 			fmt.Fprintf(te.writer, "data: %s\n\n", url.QueryEscape(fmt.Sprintf("[Calling tool %s with args %s]", toolCall.Function.Name, toolCall.Function.Arguments)))
 			te.flusher.Flush()
@@ -156,6 +153,8 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 
 		// Next LLM call with updated messages
 		log.InfoF(log.ModuleLLM, "Tool calls processed, sending next LLM request")
+		// 上下文压缩：当消息过长时压缩旧消息（参考 Anthropic Compaction）
+		messages = CompactMessages(messages, te.account)
 		_, toolCalls, err = SendStreamingLLMRequest(messages, availableTools, te.writer, te.flusher, &fullResponse)
 		if err != nil {
 			log.ErrorF(log.ModuleLLM, "LLM call failed in tool loop: %v", err)
@@ -171,6 +170,8 @@ func (te *ToolExecutor) ExecuteToolLoop(query string, selectedTools []string) er
 
 	// Save complete response to diary
 	go SaveLLMResponseToDiary(te.account, query, fullResponse.String())
+	// Save structured session progress for cross-session memory
+	go SaveSessionProgress(te.account, query, fullResponse.String(), toolCallLog)
 	return nil
 }
 
