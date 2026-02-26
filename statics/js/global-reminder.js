@@ -207,7 +207,8 @@
     // 处理通知
     function handleNotification(data) {
         // 只处理提醒和通知类型
-        if (data.type !== 'reminder' && data.type !== 'notification') {
+        const allowedTypes = ['reminder', 'notification', 'smart_reminder', 'report_generated'];
+        if (!allowedTypes.includes(data.type)) {
             return;
         }
 

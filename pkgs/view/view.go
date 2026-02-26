@@ -230,9 +230,9 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 		if (b.AuthType & flag) == 0 {
 			continue
 		}
-		if strings.HasPrefix(strings.ToLower(b.Title), "agent_") && !strings.HasPrefix(strings.ToLower(b.Title), "agent_index") {
-			continue
-		}
+		// if strings.HasPrefix(strings.ToLower(b.Title), "agent_") && !strings.HasPrefix(strings.ToLower(b.Title), "agent_index") {
+		// 	continue
+		// }
 
 		// 处理博客标签
 		var blogTags []string

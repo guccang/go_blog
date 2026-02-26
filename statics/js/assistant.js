@@ -93,20 +93,20 @@ function copyMessageToClipboard(content, button) {
     const tempTextArea = document.createElement('textarea');
     tempTextArea.value = content;
     document.body.appendChild(tempTextArea);
-    
+
     try {
         // 选择并复制文本
         tempTextArea.select();
         tempTextArea.setSelectionRange(0, 99999); // 移动端兼容
         document.execCommand('copy');
-        
+
         // 更新按钮状态
         const originalContent = button.innerHTML;
         button.innerHTML = '<i class="fas fa-check"></i> 已复制';
         button.style.background = 'rgba(34, 197, 94, 0.2)';
         button.style.borderColor = 'rgba(34, 197, 94, 0.3)';
         button.style.color = '#22c55e';
-        
+
         // 3秒后恢复原状
         setTimeout(() => {
             button.innerHTML = originalContent;
@@ -114,11 +114,11 @@ function copyMessageToClipboard(content, button) {
             button.style.borderColor = 'rgba(255, 255, 255, 0.2)';
             button.style.color = 'rgba(255, 255, 255, 0.7)';
         }, 3000);
-        
+
         console.log('消息已复制到剪贴板');
     } catch (err) {
         console.error('复制失败:', err);
-        
+
         // 备用方案：使用现代 Clipboard API
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(content).then(() => {
@@ -134,7 +134,7 @@ function copyMessageToClipboard(content, button) {
 }
 
 // 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializePage();
     setupEventListeners();
     loadTodayStats();
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeChatHistoryControls(); // 初始化聊天历史控件
     loadChatHistory(); // 加载聊天历史
     // initializeHealthCharts(); // 延迟到健康标签激活时初始化
-    
+
     // 确保初始状态正确
     initializeTabState();
 });
@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // 初始化页面
 function initializePage() {
     console.log('智能助手页面已加载');
-    
+
     // 页面初始化完成，数据加载由其他函数处理
     console.log('页面初始化完成，等待API数据加载...');
 }
@@ -163,50 +163,50 @@ function setupEventListeners() {
     // 发送消息
     const sendBtn = document.getElementById('sendBtn');
     const messageInput = document.getElementById('messageInput');
-    
+
     sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', function(e) {
+    messageInput.addEventListener('keypress', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-    
+
     // 快速操作按钮
     const quickBtns = document.querySelectorAll('.quick-btn');
     quickBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
             const action = this.dataset.action;
             handleQuickAction(action);
         });
     });
-    
+
     // 快速操作
     const operationBtns = document.querySelectorAll('.operation-btn');
     operationBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
             const action = this.dataset.action;
             handleQuickOperation(action);
         });
     });
-    
+
     // 设置面板
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsPanel = document.getElementById('settingsPanel');
     const closeSettings = document.getElementById('closeSettings');
-    
+
     settingsBtn.addEventListener('click', () => {
         settingsPanel.classList.add('active');
     });
-    
+
     closeSettings.addEventListener('click', () => {
         settingsPanel.classList.remove('active');
     });
-    
+
     // 刷新数据
     const refreshBtn = document.getElementById('refreshData');
     refreshBtn.addEventListener('click', refreshData);
-    
+
     // 设置项变化监听
     setupSettingsListeners();
 }
@@ -215,19 +215,19 @@ function setupEventListeners() {
 function sendMessage() {
     const messageInput = document.getElementById('messageInput');
     const message = messageInput.value.trim();
-    
+
     if (!message || isTyping) return;
-    
+
     // 添加用户消息到对话历史
     chatMessages.push({ role: "user", content: message });
-    
+
     // 显示用户消息
     addMessage('user', message);
     messageInput.value = '';
-    
+
     // 创建AI消息占位符
     const aiMessageElement = createAiMessagePlaceholder();
-    
+
     // 发送流式请求
     sendStreamingRequest(aiMessageElement);
 }
@@ -238,25 +238,25 @@ function createAiMessagePlaceholder() {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message assistant-message';
     messageDiv.id = 'streaming-message';
-    
+
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
     avatar.innerHTML = '<i class="fas fa-robot"></i>';
-    
+
     const messageContent = document.createElement('div');
     messageContent.className = 'message-content';
-    
+
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
     messageText.innerHTML = '<div class="typing-indicator"><span>正在思考</span><div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
-    
+
     messageContent.appendChild(messageText);
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(messageContent);
-    
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    
+
     return messageDiv;
 }
 
@@ -264,7 +264,7 @@ function createAiMessagePlaceholder() {
 async function sendStreamingRequest(aiMessageElement) {
     let toolCallCount = 0;
     let currentToolCall = null;
-    
+
     try {
         const response = await fetch('/api/assistant/chat', {
             method: 'POST',
@@ -277,28 +277,28 @@ async function sendStreamingRequest(aiMessageElement) {
                 selected_tools: getSelectedTools()
             })
         });
-        
+
         if (!response.ok) {
             throw new Error('API请求失败');
         }
-        
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let aiResponse = '';
         let buffer = '';
-        
+
         // 开始流式读取
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n\n');
             buffer = lines.pop() || ''; // 保留最后一个不完整的行
-            
+
             for (const line of lines) {
                 if (line.trim() === '') continue;
-                
+
                 if (line.startsWith('data: ')) {
                     const data = line.replace('data: ', '');
                     if (data === '[DONE]') {
@@ -312,26 +312,26 @@ async function sendStreamingRequest(aiMessageElement) {
                         hideToolCallStatus(aiMessageElement);
                         return;
                     }
-                    
+
                     try {
                         // 先将+替换为%20，再进行URL解码
                         const processedData = data.replace(/\+/g, '%20');
                         console.log('🟨 原始data:', data);
                         console.log('🟨 processedData:', processedData);
-                        
+
                         const decodedContent = decodeURIComponent(processedData);
                         console.log('🟨 decodedContent:', JSON.stringify(decodedContent));
                         console.log('🟨 包含\\n:', decodedContent.includes('\n'));
                         console.log('🟨 包含\\r\\n:', decodedContent.includes('\r\n'));
-                        
+
                         // 检查是否包含markdown标题标记
                         if (decodedContent.includes('#')) {
                             console.log('🔍 检测到标题标记，内容:', JSON.stringify(decodedContent));
                         }
-                        
+
                         // 检测工具调用相关的内容，只过滤明确的工具调用标识
                         const isToolCallContent = decodedContent.includes('[Calling tool ') && decodedContent.includes(' with args ');
-                        
+
                         if (isToolCallContent) {
                             // 完整的工具调用检测
                             toolCallCount++;
@@ -353,15 +353,15 @@ async function sendStreamingRequest(aiMessageElement) {
                             }
                             // 只添加非工具调用相关的内容到响应中
                             aiResponse += decodedContent;
-                            
+
                             console.log('✅ 实时添加到aiResponse:', JSON.stringify(decodedContent), '累计长度:', aiResponse.length);
-                            
+
                             // 特别检查包含标题标记的内容
                             if (decodedContent.includes('#')) {
                                 console.log('🚨 标题相关内容块:', JSON.stringify(decodedContent));
                                 console.log('🚨 当前累计aiResponse末尾20字符:', JSON.stringify(aiResponse.substring(Math.max(0, aiResponse.length - 20))));
                             }
-                            
+
                             // 使用打字机效果更新消息内容 - 立即显示每个内容块
                             const messageText = aiMessageElement.querySelector('.message-text');
                             if (messageText) {
@@ -369,21 +369,21 @@ async function sendStreamingRequest(aiMessageElement) {
                                 updateTypingEffect(messageText, aiResponse);
                             }
                         }
-                        
+
                         // 滚动到底部
                         const chatContainer = document.getElementById('chatMessages');
                         chatContainer.scrollTop = chatContainer.scrollHeight;
-                        
+
                     } catch (e) {
                         console.error('Error decoding content:', e);
                     }
                 }
             }
         }
-        
+
     } catch (error) {
         console.error('发送消息失败:', error);
-        
+
         // 显示错误消息
         const messageText = aiMessageElement.querySelector('.message-text');
         if (messageText) {
@@ -391,7 +391,7 @@ async function sendStreamingRequest(aiMessageElement) {
             stopTypingEffect(messageText, '');
             messageText.innerHTML = '<span class="error">抱歉，请求过程中出现错误。请重试。</span>';
         }
-        
+
         // 降级到本地生成
         setTimeout(() => {
             const lastUserMessage = chatMessages[chatMessages.length - 1];
@@ -415,13 +415,13 @@ async function sendStreamingRequest(aiMessageElement) {
 function showToolCallStatus(messageElement, toolCall) {
     const messageText = messageElement.querySelector('.message-text');
     if (!messageText) return;
-    
+
     // 移除现有的工具调用状态
     const existingStatus = messageElement.querySelector('.tool-call-status');
     if (existingStatus) {
         existingStatus.remove();
     }
-    
+
     // 创建工具调用状态指示器
     const toolStatus = document.createElement('div');
     toolStatus.className = 'tool-call-status';
@@ -448,11 +448,11 @@ function showToolCallStatus(messageElement, toolCall) {
             </div>
         </div>
     `;
-    
+
     // 插入到消息内容之前
     messageText.style.display = 'none'; // 暂时隐藏普通内容
     messageElement.querySelector('.message-content').insertBefore(toolStatus, messageText);
-    
+
     // 开始进度动画
     startProgressAnimation(toolStatus);
 }
@@ -461,13 +461,13 @@ function showToolCallStatus(messageElement, toolCall) {
 function hideToolCallStatus(messageElement) {
     const toolStatus = messageElement.querySelector('.tool-call-status');
     const messageText = messageElement.querySelector('.message-text');
-    
+
     if (toolStatus && messageText) {
         // 显示完成状态
         const progressText = toolStatus.querySelector('.progress-text');
         const progressFill = toolStatus.querySelector('.progress-fill');
         const spinner = toolStatus.querySelector('.tool-call-spinner i');
-        
+
         if (progressText && progressFill && spinner) {
             progressText.textContent = '完成';
             progressFill.style.width = '100%';
@@ -476,7 +476,7 @@ function hideToolCallStatus(messageElement) {
             spinner.style.animation = 'none';
             spinner.style.color = '#00d4aa';
         }
-        
+
         // 延迟移除状态并显示正常内容
         setTimeout(() => {
             toolStatus.style.opacity = '0';
@@ -494,7 +494,7 @@ function formatToolArgs(args) {
     if (!args || args === '{}' || args === 'map[]') {
         return '无参数';
     }
-    
+
     try {
         // 尝试解析并格式化JSON参数
         const parsed = JSON.parse(args.replace(/map\[(.*?)\]/, '{$1}'));
@@ -512,16 +512,16 @@ function formatToolArgs(args) {
 function startProgressAnimation(statusElement) {
     const progressFill = statusElement.querySelector('.progress-fill');
     const progressText = statusElement.querySelector('.progress-text');
-    
+
     if (!progressFill || !progressText) return;
-    
+
     let progress = 0;
     const interval = setInterval(() => {
         progress += Math.random() * 15; // 随机增长
         if (progress > 90) progress = 90; // 最多到90%，等待实际完成
-        
+
         progressFill.style.width = progress + '%';
-        
+
         // 更新状态文本
         if (progress < 30) {
             progressText.textContent = '正在连接...';
@@ -534,7 +534,7 @@ function startProgressAnimation(statusElement) {
             clearInterval(interval);
         }
     }, 300 + Math.random() * 200); // 300-500ms间隔
-    
+
     // 存储interval引用以便清理
     statusElement.setAttribute('data-interval', interval);
 }
@@ -545,9 +545,9 @@ function addTimestamp(messageElement) {
     if (messageContent && !messageContent.querySelector('.message-time')) {
         const messageTime = document.createElement('div');
         messageTime.className = 'message-time';
-        messageTime.textContent = new Date().toLocaleTimeString('zh-CN', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
+        messageTime.textContent = new Date().toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit'
         });
         messageContent.appendChild(messageTime);
     }
@@ -558,14 +558,14 @@ function addMessage(sender, content) {
     const chatContainer = document.getElementById('chatMessages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
-    
+
     const avatar = document.createElement('div');
     avatar.className = 'avatar';
     avatar.innerHTML = sender === 'user' ? '<i class="fas fa-user"></i>' : '<i class="fas fa-robot"></i>';
-    
+
     const messageContent = document.createElement('div');
     messageContent.className = 'message-content';
-    
+
     // 为assistant消息添加复制按钮
     if (sender === 'assistant') {
         messageContent.style.position = 'relative';
@@ -575,29 +575,29 @@ function addMessage(sender, content) {
         copyButton.onclick = () => copyMessageToClipboard(content, copyButton);
         messageContent.appendChild(copyButton);
     }
-    
+
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
-    
+
     // 支持Markdown格式
     messageText.innerHTML = formatMessage(content);
-    
+
     const messageTime = document.createElement('div');
     messageTime.className = 'message-time';
-    messageTime.textContent = new Date().toLocaleTimeString('zh-CN', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+    messageTime.textContent = new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
     });
-    
+
     messageContent.appendChild(messageText);
     messageContent.appendChild(messageTime);
-    
+
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(messageContent);
-    
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    
+
     // 注释掉原有的存储逻辑，现在使用新的对话历史格式
     // chatMessages.push({
     //     sender,
@@ -609,11 +609,11 @@ function addMessage(sender, content) {
 // 使用与博客系统相同的Markdown渲染函数
 function formatMessage(content) {
     if (!content) return '';
-    
+
     console.log('🔵 formatMessage - 原始内容:');
     console.log(content);
     console.log('🔵 内容长度:', content.length);
-    
+
     // 检查是否包含markdown标题
     if (content.includes('#')) {
         console.log('🔍 formatMessage - 检测到标题内容:', JSON.stringify(content));
@@ -623,24 +623,24 @@ function formatMessage(content) {
             console.log('🔍 标题匹配结果:', titleMatches);
         }
     }
-    
+
     // 预处理：移除LLM返回内容中的代码块包裹
     let processedContent = preprocessLLMContent(content);
-    
+
     console.log('🟡 formatMessage - 预处理后内容:');
     console.log(processedContent);
     console.log('🟡 处理后长度:', processedContent.length);
-    
+
     // 检查marked库是否已加载
     if (typeof marked === 'undefined') {
         console.error('❌ marked.js library not loaded!');
         return processedContent.replace(/\n/g, '<br>');
     }
-    
+
     try {
         // 初始化marked配置
         initializeMarkdown();
-        
+
         // 使用marked渲染markdown
         let rendered;
         if (typeof marked.parse === 'function') {
@@ -650,13 +650,13 @@ function formatMessage(content) {
         } else {
             throw new Error('No valid marked parsing method found');
         }
-        
+
         console.log('🟢 formatMessage - 渲染后的HTML:');
         console.log(rendered);
         console.log('🟢 HTML长度:', rendered.length);
-        
+
         return rendered;
-        
+
     } catch (error) {
         console.error('❌ Error rendering markdown:', error);
         return processedContent.replace(/\n/g, '<br>');
@@ -666,10 +666,10 @@ function formatMessage(content) {
 // 预处理LLM返回内容，移除代码块包裹
 function preprocessLLMContent(content) {
     if (!content) return content;
-    
+
     console.log('🔴 preprocessLLMContent - 开始预处理:');
     console.log(content);
-    
+
     // 检查标题格式
     if (content.includes('#')) {
         console.log('🔍 preprocessLLMContent - 输入包含标题:', JSON.stringify(content));
@@ -678,13 +678,13 @@ function preprocessLLMContent(content) {
             console.log('🔍 输入标题匹配:', titleMatches);
         }
     }
-    
+
     let processed = content;
-    
+
     // 1. 匹配并移除 ```markdown ... ``` 或 ```md ... ``` (支持换行和不换行格式)
     const markdownBlockPattern = /```(?:markdown|md)\s*([\s\S]*?)\s*```/gi;
     let matches = processed.match(markdownBlockPattern);
-    
+
     if (matches) {
         console.log('🟠 发现markdown代码块:', matches.length, '个');
         processed = processed.replace(markdownBlockPattern, (match, innerContent) => {
@@ -692,11 +692,11 @@ function preprocessLLMContent(content) {
             return innerContent; // 保留原始格式，不使用trim()
         });
     }
-    
+
     // 2. 匹配并移除普通的 ``` ... ``` 代码块（当整个内容被包裹时）
     const genericCodeBlockPattern = /```\s*([\s\S]*?)\s*```/g;
     matches = processed.match(genericCodeBlockPattern);
-    
+
     if (matches) {
         console.log('🟣 发现普通代码块包裹:', matches.length, '个');
         processed = processed.replace(genericCodeBlockPattern, (match, innerContent) => {
@@ -704,16 +704,16 @@ function preprocessLLMContent(content) {
             return innerContent; // 保留原始格式，不使用trim()
         });
     }
-    
+
     // 3. 只移除明确的工具调用标识，保留markdown格式
     //processed = processed.replace(/^\[Calling tool.*?\]\s*\n?/i, '');
-    
+
     // 4. 只移除开头和结尾的多余空行，但保留必要的换行
     //processed = processed.replace(/^\n+/, '').replace(/\n+$/, '');
-    
+
     console.log('🟢 preprocessLLMContent - 预处理完成:');
     console.log(processed);
-    
+
     // 检查处理后的标题格式
     if (processed.includes('#')) {
         console.log('🔍 preprocessLLMContent - 输出包含标题:', JSON.stringify(processed));
@@ -722,7 +722,7 @@ function preprocessLLMContent(content) {
             console.log('🔍 输出标题匹配:', titleMatches);
         }
     }
-    
+
     return processed;
 }
 
@@ -730,7 +730,7 @@ function preprocessLLMContent(content) {
 let markdownInitialized = false;
 function initializeMarkdown() {
     if (markdownInitialized) return;
-    
+
     try {
         // 先检查marked的可用方法
         if (typeof marked.use === 'function') {
@@ -738,7 +738,7 @@ function initializeMarkdown() {
             marked.use({
                 gfm: true,
                 tables: true,
-                breaks: true, 
+                breaks: true,
                 pedantic: false,
                 smartLists: true,
                 smartypants: false
@@ -757,9 +757,9 @@ function initializeMarkdown() {
                 smartypants: false
             });
         }
-        
+
         markdownInitialized = true;
-        
+
     } catch (error) {
         console.error('Failed to initialize markdown:', error);
     }
@@ -768,13 +768,13 @@ function initializeMarkdown() {
 // 显示打字指示器
 function showTypingIndicator() {
     if (isTyping) return;
-    
+
     isTyping = true;
     const chatContainer = document.getElementById('chatMessages');
     const typingDiv = document.createElement('div');
     typingDiv.className = 'message assistant-message';
     typingDiv.id = 'typing-indicator';
-    
+
     typingDiv.innerHTML = `
         <div class="avatar">
             <i class="fas fa-robot"></i>
@@ -790,7 +790,7 @@ function showTypingIndicator() {
             </div>
         </div>
     `;
-    
+
     chatContainer.appendChild(typingDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
@@ -807,7 +807,7 @@ function hideTypingIndicator() {
 // 生成AI回复
 function generateAIResponse(message) {
     const lowerMessage = message.toLowerCase();
-    
+
     // 简单的意图识别
     if (lowerMessage.includes('状态') || lowerMessage.includes('怎么样') || lowerMessage.includes('分析')) {
         return generateStatusResponse();
@@ -884,12 +884,12 @@ function generateDefaultResponse(message) {
         '基于您的历史数据，我可以为您提供以下见解...',
         '让我帮您分析一下这个问题，根据您的个人数据...'
     ];
-    return responses[Math.floor(Math.random() * responses.length)] + '\n\n' + 
-           '如果您需要具体的数据分析，可以尝试问我：\n' +
-           '• "我最近的状态怎么样？"\n' +
-           '• "帮我分析一下时间分配"\n' +
-           '• "我的目标进度如何？"\n' +
-           '• "给我一些建议"';
+    return responses[Math.floor(Math.random() * responses.length)] + '\n\n' +
+        '如果您需要具体的数据分析，可以尝试问我：\n' +
+        '• "我最近的状态怎么样？"\n' +
+        '• "帮我分析一下时间分配"\n' +
+        '• "我的目标进度如何？"\n' +
+        '• "给我一些建议"';
 }
 
 // 处理快速操作
@@ -900,7 +900,7 @@ function handleQuickAction(action) {
         'goals': '我的目标进度如何？',
         'suggestions': '给我一些建议'
     };
-    
+
     if (actions[action]) {
         document.getElementById('messageInput').value = actions[action];
         sendQuickMessage(actions[action], action);
@@ -910,17 +910,17 @@ function handleQuickAction(action) {
 // 发送快速消息（带类型）
 function sendQuickMessage(message, type) {
     if (!message || isTyping) return;
-    
+
     // 添加用户消息到对话历史
     chatMessages.push({ role: "user", content: message });
-    
+
     // 显示用户消息
     addMessage('user', message);
     document.getElementById('messageInput').value = '';
-    
+
     // 创建AI消息占位符
     const aiMessageElement = createAiMessagePlaceholder();
-    
+
     // 发送流式请求
     sendStreamingRequest(aiMessageElement);
 }
@@ -933,7 +933,7 @@ function handleQuickOperation(action) {
         'write-blog': '/editor',
         'add-reading': '/reading'
     };
-    
+
     if (operations[action]) {
         window.location.href = operations[action];
     }
@@ -947,10 +947,11 @@ function updateTodayStats() {
 
 // 从API数据更新今日统计
 function updateTodayStatsFromAPI(stats) {
-    document.getElementById('todayTasks').textContent = `${stats.tasks.completed}/${stats.tasks.total}`;
-    document.getElementById('todayReading').textContent = `${stats.reading.progress}%`;
-    document.getElementById('todayExercise').textContent = stats.exercise.sessions > 0 ? '已完成' : '未完成';
-    document.getElementById('todayBlogs').textContent = `${stats.blogs.count}篇`;
+    const el = (id) => document.getElementById(id);
+    if (el('todayTasks')) el('todayTasks').textContent = `${stats.tasks.completed}/${stats.tasks.total}`;
+    if (el('todayReading')) el('todayReading').textContent = `${stats.reading.progress}%`;
+    if (el('todayExercise')) el('todayExercise').textContent = stats.exercise.sessions > 0 ? '已完成' : '未完成';
+    if (el('todayBlogs')) el('todayBlogs').textContent = `${stats.blogs.count}篇`;
 }
 
 // 更新建议列表
@@ -962,8 +963,9 @@ function updateSuggestions() {
 // 从API数据更新建议列表
 function updateSuggestionsFromAPI(suggestions) {
     const suggestionsList = document.getElementById('suggestionsList');
+    if (!suggestionsList) return;
     suggestionsList.innerHTML = '';
-    
+
     suggestions.forEach(suggestion => {
         const suggestionDiv = document.createElement('div');
         suggestionDiv.className = 'suggestion-item';
@@ -977,8 +979,10 @@ function updateSuggestionsFromAPI(suggestions) {
 
 // 初始化趋势图表
 function initializeTrendChart() {
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    
+    const trendEl = document.getElementById('trendChart');
+    if (!trendEl) return;
+    const ctx = trendEl.getContext('2d');
+
     // 首先加载真实数据，如果失败则使用模拟数据
     loadTrendData().then(trendData => {
         trendChart = new Chart(ctx, {
@@ -1036,28 +1040,30 @@ function initializeTrendChart() {
 function loadSettings() {
     const saved = localStorage.getItem('assistantSettings');
     if (saved) {
-        currentSettings = {...currentSettings, ...JSON.parse(saved)};
+        currentSettings = { ...currentSettings, ...JSON.parse(saved) };
     }
-    
-    // 应用设置到界面
-    document.getElementById('enableNotifications').checked = currentSettings.enableNotifications;
-    document.getElementById('enableSuggestions').checked = currentSettings.enableSuggestions;
-    document.getElementById('analysisRange').value = currentSettings.analysisRange;
-    document.getElementById('assistantPersonality').value = currentSettings.assistantPersonality;
-    document.getElementById('enableTypingEffect').checked = currentSettings.enableTypingEffect;
+
+    // 应用设置到界面（元素可能不存在）
+    const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+    const setValue = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setChecked('enableNotifications', currentSettings.enableNotifications);
+    setChecked('enableSuggestions', currentSettings.enableSuggestions);
+    setValue('analysisRange', currentSettings.analysisRange);
+    setValue('assistantPersonality', currentSettings.assistantPersonality);
+    setChecked('enableTypingEffect', currentSettings.enableTypingEffect);
 }
 
 // 设置监听器
 function setupSettingsListeners() {
     const settings = ['enableNotifications', 'enableSuggestions', 'analysisRange', 'assistantPersonality', 'enableTypingEffect'];
-    
+
     settings.forEach(setting => {
         const element = document.getElementById(setting);
         if (element) {
-            element.addEventListener('change', function() {
+            element.addEventListener('change', function () {
                 currentSettings[setting] = element.type === 'checkbox' ? element.checked : element.value;
                 saveSettings();
-                
+
                 // 特殊处理打字机效果设置变更
                 if (setting === 'enableTypingEffect') {
                     console.log(`打字机光标效果设置已更新: ${setting} = ${currentSettings[setting]}`);
@@ -1077,7 +1083,7 @@ function saveSettings() {
 function refreshData() {
     const refreshBtn = document.getElementById('refreshData');
     refreshBtn.style.transform = 'rotate(180deg)';
-    
+
     setTimeout(() => {
         loadTodayStats(); // 使用真实API调用
         loadSuggestions(); // 使用真实API调用
@@ -1094,7 +1100,7 @@ function refreshData() {
 // 加载今日统计数据
 function loadTodayStats() {
     console.log('正在加载今日统计数据...');
-    
+
     fetch('/api/assistant/stats')
         .then(response => response.json())
         .then(data => {
@@ -1125,7 +1131,7 @@ function updateTodayStatsFromMockData() {
 // 加载建议数据
 function loadSuggestions() {
     console.log('正在加载智能建议...');
-    
+
     fetch('/api/assistant/suggestions')
         .then(response => response.json())
         .then(data => {
@@ -1156,7 +1162,7 @@ function updateSuggestionsFromMockData() {
 // 加载趋势数据
 function loadTrendData() {
     console.log('正在加载趋势数据...');
-    
+
     return fetch('/api/assistant/trends')
         .then(response => response.json())
         .then(data => {
@@ -1204,16 +1210,16 @@ function handleError(error) {
 
 // 工具函数
 function formatTime(date) {
-    return new Date(date).toLocaleTimeString('zh-CN', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+    return new Date(date).toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
     });
 }
 
 function formatDate(date) {
-    return new Date(date).toLocaleDateString('zh-CN', { 
-        month: 'long', 
-        day: 'numeric' 
+    return new Date(date).toLocaleDateString('zh-CN', {
+        month: 'long',
+        day: 'numeric'
     });
 }
 
@@ -1221,7 +1227,7 @@ function formatDate(date) {
 function getSelectedTools() {
     // 优先从大面板获取选择，如果大面板不存在则从小面板获取
     const selectedTools = [];
-    
+
     // 先尝试从大面板获取
     const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large:checked');
     if (largeCheckboxes.length > 0) {
@@ -1235,7 +1241,7 @@ function getSelectedTools() {
             selectedTools.push(checkbox.value);
         });
     }
-    
+
     // 如果没有选择任何工具，返回null表示使用所有可用工具
     return selectedTools.length > 0 ? selectedTools : null;
 }
@@ -1243,42 +1249,42 @@ function getSelectedTools() {
 // MCP工具相关函数
 function loadMCPTools() {
     console.log('正在加载MCP工具...');
-    
+
     // 并行获取工具列表和服务器状态
     Promise.all([
         fetch('/api/mcp/tools').then(r => r.json()),
         fetch('/api/mcp?action=status').then(r => r.json()).catch(() => ({ data: {} }))
     ])
-    .then(([toolsResponse, statusResponse]) => {
-        if (toolsResponse.success) {
-            mcpTools = toolsResponse.data || [];
-            const serverStatus = statusResponse.data || {};
-            console.log('MCP工具加载成功:', mcpTools);
-            console.log('服务器状态:', serverStatus);
-            updateMCPToolsStatus(mcpTools, serverStatus);
-            updateMCPToolsStatusLarge(mcpTools, serverStatus);
-        } else {
-            console.error('获取MCP工具失败:', toolsResponse.message);
+        .then(([toolsResponse, statusResponse]) => {
+            if (toolsResponse.success) {
+                mcpTools = toolsResponse.data || [];
+                const serverStatus = statusResponse.data || {};
+                console.log('MCP工具加载成功:', mcpTools);
+                console.log('服务器状态:', serverStatus);
+                updateMCPToolsStatus(mcpTools, serverStatus);
+                updateMCPToolsStatusLarge(mcpTools, serverStatus);
+            } else {
+                console.error('获取MCP工具失败:', toolsResponse.message);
+                updateMCPToolsStatus([], {});
+                updateMCPToolsStatusLarge([], {});
+            }
+        })
+        .catch(error => {
+            console.error('MCP工具API调用失败:', error);
             updateMCPToolsStatus([], {});
             updateMCPToolsStatusLarge([], {});
-        }
-    })
-    .catch(error => {
-        console.error('MCP工具API调用失败:', error);
-        updateMCPToolsStatus([], {});
-        updateMCPToolsStatusLarge([], {});
-    });
+        });
 }
 
 // 加载聊天历史
 function loadChatHistory(date) {
     console.log('正在加载聊天历史...');
-    
+
     // 如果没有指定日期，使用今天的日期
     if (!date) {
         date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD格式
     }
-    
+
     fetch(`/api/assistant/chat/history?date=${date}`)
         .then(response => response.json())
         .then(data => {
@@ -1299,30 +1305,30 @@ function loadChatHistory(date) {
 function displayChatHistory(chatHistory) {
     const chatContainer = document.getElementById('chatMessages');
     if (!chatContainer) return;
-    
+
     // 清空当前消息（除了欢迎消息）
     const welcomeMessage = chatContainer.querySelector('.message.assistant-message');
     chatContainer.innerHTML = '';
-    
+
     // 保留欢迎消息
     if (welcomeMessage) {
         chatContainer.appendChild(welcomeMessage);
     }
-    
+
     // 显示历史聊天记录
     chatHistory.forEach(message => {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.role}-message`;
-        
+
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
-        avatar.innerHTML = message.role === 'user' ? 
-            '<i class="fas fa-user"></i>' : 
+        avatar.innerHTML = message.role === 'user' ?
+            '<i class="fas fa-user"></i>' :
             '<i class="fas fa-robot"></i>';
-        
+
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        
+
         // 为assistant消息添加复制按钮
         if (message.role === 'assistant') {
             messageContent.style.position = 'relative';
@@ -1332,21 +1338,21 @@ function displayChatHistory(chatHistory) {
             copyButton.onclick = () => copyMessageToClipboard(message.content, copyButton);
             messageContent.appendChild(copyButton);
         }
-        
+
         const messageText = document.createElement('div');
         messageText.className = 'message-text';
-        
+
         // 使用相同的 Markdown 格式化功能
         console.log("===========message.content", message.content);
         messageText.innerHTML = formatMessage(message.content);
-        
+
         const messageTime = document.createElement('div');
         messageTime.className = 'message-time';
         messageTime.textContent = message.timestamp || '历史消息';
-        
+
         messageContent.appendChild(messageText);
         messageContent.appendChild(messageTime);
-        
+
         if (message.role === 'user') {
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(avatar);
@@ -1354,13 +1360,13 @@ function displayChatHistory(chatHistory) {
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(messageContent);
         }
-        
+
         chatContainer.appendChild(messageDiv);
     });
-    
+
     // 滚动到底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    
+
     console.log('聊天历史显示完成');
 }
 
@@ -1371,7 +1377,7 @@ function loadSelectedDateHistory() {
         alert('请选择一个日期');
         return;
     }
-    
+
     const selectedDate = dateInput.value;
     console.log('加载指定日期的聊天历史:', selectedDate);
     loadChatHistory(selectedDate);
@@ -1383,9 +1389,9 @@ function initializeChatHistoryControls() {
     if (dateInput) {
         // 设置默认日期为今天
         dateInput.value = new Date().toISOString().split('T')[0];
-        
+
         // 添加回车键监听
-        dateInput.addEventListener('keypress', function(e) {
+        dateInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 loadSelectedDateHistory();
             }
@@ -1411,7 +1417,7 @@ function groupToolsByServer(tools) {
 function updateMCPToolsStatus(tools = [], serverStatus = {}) {
     const toolsContainer = document.getElementById('mcp-tools-status');
     if (!toolsContainer) return;
-    
+
     if (tools.length === 0) {
         toolsContainer.innerHTML = `
             <div class="mcp-status-empty">
@@ -1427,7 +1433,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
         `;
         return;
     }
-    
+
     // 按服务器分组显示工具
     const toolsByServer = groupToolsByServer(tools);
     console.log("===========toolsByServer", toolsByServer);
@@ -1436,7 +1442,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
         const isConnected = serverStatus[serverName]?.connected || false;
         const isEnabled = serverStatus[serverName]?.enabled || false;
         const statusClass = isConnected ? 'connected' : (isEnabled ? 'disconnected' : 'disabled');
-        
+
         return `
             <div class="mcp-server-item ${statusClass}">
                 <div class="mcp-server-name">${serverName}</div>
@@ -1444,7 +1450,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
             </div>
         `;
     }).join('');
-    
+
     toolsContainer.innerHTML = `
         <div class="mcp-tools-header">
             <div class="mcp-tools-count">
@@ -1479,9 +1485,9 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
             </summary>
             <div class="mcp-tools-list" id="mcp-tools-list">
                 ${tools.map(tool => {
-                    const serverName = tool.name.split('.')[0];
-                    const toolName = tool.name.split('.').slice(1).join('.');
-                    return `
+        const serverName = tool.name.split('.')[0];
+        const toolName = tool.name.split('.').slice(1).join('.');
+        return `
                         <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
                             <label class="mcp-tool-checkbox-label">
                                 <input type="checkbox" class="mcp-tool-checkbox" value="${tool.name}" checked>
@@ -1495,7 +1501,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
                             </label>
                         </div>
                     `;
-                }).join('')}
+    }).join('')}
             </div>
             <div class="mcp-tools-actions">
                 <button class="mcp-tools-select-all" onclick="selectAllTools()">
@@ -1514,7 +1520,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
             </div>
         </div>
     `;
-    
+
     // 更新选中工具计数（默认全选）
     updateSelectedToolsCount();
 }
@@ -1525,10 +1531,10 @@ function showMCPToolsDialog() {
         showMCPToolsEmptyState();
         return;
     }
-    
+
     // 创建分组工具数据
     const groupedTools = groupToolsByServer(mcpTools);
-    
+
     const dialog = document.createElement('div');
     dialog.className = 'mcp-tools-dialog';
     dialog.innerHTML = `
@@ -1583,17 +1589,17 @@ function showMCPToolsDialog() {
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(dialog);
-    
+
     // 添加动画效果
     requestAnimationFrame(() => {
         dialog.classList.add('active');
     });
-    
+
     // 添加工具选择事件
     setupToolSelectionEvents(dialog);
-    
+
     // 焦点管理
     const searchInput = dialog.querySelector('#toolSearchInput');
     setTimeout(() => searchInput.focus(), 100);
@@ -1639,7 +1645,7 @@ function showMCPToolsEmptyState() {
 // 生成工具网格HTML
 function generateToolsGrid(groupedTools) {
     let html = '';
-    
+
     Object.entries(groupedTools).forEach(([server, tools]) => {
         html += `
             <div class="tools-server-group">
@@ -1654,7 +1660,7 @@ function generateToolsGrid(groupedTools) {
             </div>
         `;
     });
-    
+
     return html;
 }
 
@@ -1662,7 +1668,7 @@ function generateToolsGrid(groupedTools) {
 function generateToolCard(tool) {
     const hasParams = tool.parameters && Object.keys(tool.parameters).length > 0;
     const category = getToolCategory(tool.name, tool.description);
-    
+
     return `
         <div class="tool-card" data-tool-name="${tool.name}" data-server="${tool.server || ''}" data-category="${category}" data-description="${tool.description || ''}">
             <div class="tool-header">
@@ -1699,7 +1705,7 @@ function generateToolCard(tool) {
 function getToolCategory(name, description) {
     const lowerName = (name || '').toLowerCase();
     const lowerDesc = (description || '').toLowerCase();
-    
+
     if (lowerName.includes('data') || lowerName.includes('get') || lowerName.includes('list')) {
         return 'data';
     } else if (lowerName.includes('analysis') || lowerName.includes('stat') || lowerName.includes('count')) {
@@ -1728,7 +1734,7 @@ function setToolFilter(button, filter) {
     // 更新按钮状态
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
-    
+
     // 应用过滤
     const toolCards = document.querySelectorAll('.tool-card');
     toolCards.forEach(card => {
@@ -1739,7 +1745,7 @@ function setToolFilter(button, filter) {
             card.style.display = 'none';
         }
     });
-    
+
     updateVisibleCount();
 }
 
@@ -1748,16 +1754,16 @@ function filterDialogTools(searchTerm) {
     const term = searchTerm.toLowerCase().trim();
     const toolCards = document.querySelectorAll('.tool-card');
     let visibleCount = 0;
-    
+
     toolCards.forEach(card => {
         const name = card.dataset.toolName.toLowerCase();
         const server = card.dataset.server.toLowerCase();
         const description = card.dataset.description.toLowerCase();
-        
-        const matches = name.includes(term) || 
-                       server.includes(term) || 
-                       description.includes(term);
-        
+
+        const matches = name.includes(term) ||
+            server.includes(term) ||
+            description.includes(term);
+
         if (matches || term === '') {
             card.style.display = 'block';
             visibleCount++;
@@ -1765,7 +1771,7 @@ function filterDialogTools(searchTerm) {
             card.style.display = 'none';
         }
     });
-    
+
     updateVisibleCount(visibleCount);
 }
 
@@ -1787,7 +1793,7 @@ function updateVisibleCount(count = null) {
 function toggleParams(button) {
     const paramsContent = button.nextElementSibling;
     const chevron = button.querySelector('.fa-chevron-down');
-    
+
     if (paramsContent.style.display === 'block') {
         paramsContent.style.display = 'none';
         chevron.style.transform = 'rotate(0deg)';
@@ -1800,14 +1806,14 @@ function toggleParams(button) {
 // 设置工具选择事件
 function setupToolSelectionEvents(dialog) {
     // 键盘快捷键
-    dialog.addEventListener('keydown', function(e) {
+    dialog.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
             closeMCPToolsDialog();
         }
     });
-    
+
     // 点击背景关闭
-    dialog.addEventListener('click', function(e) {
+    dialog.addEventListener('click', function (e) {
         if (e.target === dialog) {
             closeMCPToolsDialog();
         }
@@ -1825,16 +1831,16 @@ function filterMCPTools(searchTerm) {
     const toolItems = document.querySelectorAll('.mcp-tool-item');
     const term = searchTerm.toLowerCase().trim();
     let visibleCount = 0;
-    
+
     toolItems.forEach(item => {
         const toolName = item.dataset.toolName || '';
         const server = item.dataset.server || '';
         const desc = item.dataset.desc || '';
-        
-        const matches = toolName.includes(term) || 
-                       server.includes(term) || 
-                       desc.includes(term);
-        
+
+        const matches = toolName.includes(term) ||
+            server.includes(term) ||
+            desc.includes(term);
+
         if (matches || term === '') {
             item.style.display = 'flex';
             visibleCount++;
@@ -1842,7 +1848,7 @@ function filterMCPTools(searchTerm) {
             item.style.display = 'none';
         }
     });
-    
+
     // 更新工具详情摘要
     const summary = document.querySelector('.mcp-tools-details summary');
     if (summary) {
@@ -1859,18 +1865,18 @@ function filterMCPTools(searchTerm) {
 function toggleMCPToolsExpanded() {
     const toolsCard = document.querySelector('#mcp-tools-status').closest('.info-card');
     const currentHeight = toolsCard.style.minHeight;
-    
+
     if (currentHeight === '350px' || !currentHeight) {
         // 展开到更大
         toolsCard.style.minHeight = '500px';
         toolsCard.style.maxHeight = '70vh';
-        
+
         // 更新工具列表最大高度
         const toolsList = document.querySelector('.mcp-tools-list');
         if (toolsList) {
             toolsList.style.maxHeight = '350px';
         }
-        
+
         // 更新按钮图标
         const expandBtn = document.querySelector('button[onclick="toggleMCPToolsExpanded()"] i');
         if (expandBtn) {
@@ -1880,13 +1886,13 @@ function toggleMCPToolsExpanded() {
         // 收缩到正常大小
         toolsCard.style.minHeight = '350px';
         toolsCard.style.maxHeight = 'none';
-        
+
         // 恢复工具列表最大高度
         const toolsList = document.querySelector('.mcp-tools-list');
         if (toolsList) {
             toolsList.style.maxHeight = '200px';
         }
-        
+
         // 更新按钮图标
         const expandBtn = document.querySelector('button[onclick="toggleMCPToolsExpanded()"] i');
         if (expandBtn) {
@@ -1925,7 +1931,7 @@ function selectNoTools() {
 function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
     const toolsContainer = document.getElementById('mcp-tools-status-large');
     if (!toolsContainer) return;
-    
+
     if (tools.length === 0) {
         toolsContainer.innerHTML = `
             <div class="mcp-status-empty">
@@ -1941,7 +1947,7 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
         `;
         return;
     }
-    
+
     // 按服务器分组显示工具
     console.log("===========tools", tools);
     const toolsByServer = groupToolsByServer(tools);
@@ -1970,7 +1976,7 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
             </div>
         `;
     }).join('');
-    
+
     toolsContainer.innerHTML = `
         <div class="mcp-tools-large-grid">
             <div class="mcp-servers-section">
@@ -2012,10 +2018,10 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                 
                 <div class="mcp-tools-list-large" id="mcp-tools-list-large">
                     ${tools.map(tool => {
-                        const serverName = tool.name.split('.')[0];
-                        const toolName = tool.name.split('.').slice(1).join('.');
-                        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
-                        return `
+        const serverName = tool.name.split('.')[0];
+        const toolName = tool.name.split('.').slice(1).join('.');
+        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
+        return `
                             <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
                                 <label class="mcp-tool-checkbox-label">
                                     <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}" ${checked}>
@@ -2029,12 +2035,12 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                                 </label>
                             </div>
                         `;
-                    }).join('')}
+    }).join('')}
                 </div>
             </div>
         </div>
     `;
-    
+
     // 更新大面板选中工具计数（默认全选）
     updateSelectedToolsCountLarge();
 }
@@ -2044,16 +2050,16 @@ function filterMCPToolsLarge(searchTerm) {
     const toolItems = document.querySelectorAll('#mcp-tools-list-large .mcp-tool-item');
     const term = searchTerm.toLowerCase().trim();
     let visibleCount = 0;
-    
+
     toolItems.forEach(item => {
         const toolName = item.dataset.toolName || '';
         const server = item.dataset.server || '';
         const desc = item.dataset.desc || '';
-        
-        const matches = toolName.includes(term) || 
-                       server.includes(term) || 
-                       desc.includes(term);
-        
+
+        const matches = toolName.includes(term) ||
+            server.includes(term) ||
+            desc.includes(term);
+
         if (matches || term === '') {
             item.style.display = 'flex';
             visibleCount++;
@@ -2061,7 +2067,7 @@ function filterMCPToolsLarge(searchTerm) {
             item.style.display = 'none';
         }
     });
-    
+
     // 更新工具部分标题
     const toolsSection = document.querySelector('.mcp-tools-section h4');
     if (toolsSection) {
@@ -2095,7 +2101,7 @@ function selectNoToolsLarge() {
 function syncToolsSelection() {
     const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
     const smallCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)');
-    
+
     // 从大面板同步到小面板
     largeCheckboxes.forEach(largeCheckbox => {
         const toolName = largeCheckbox.value;
@@ -2104,7 +2110,7 @@ function syncToolsSelection() {
             smallCheckbox.checked = largeCheckbox.checked;
         }
     });
-    
+
     updateSelectedToolsCount();
     updateSelectedToolsCountLarge();
 }
@@ -2122,7 +2128,7 @@ function updateSelectedToolsCountLarge() {
 function toggleMCPPanel() {
     const panel = document.querySelector('.mcp-tools-panel');
     const toggleButton = document.querySelector('.mcp-panel-toggle i');
-    
+
     if (panel.classList.contains('collapsed')) {
         panel.classList.remove('collapsed');
         toggleButton.className = 'fas fa-chevron-up';
@@ -2133,7 +2139,7 @@ function toggleMCPPanel() {
 }
 
 // 添加工具选择变化监听
-document.addEventListener('change', function(e) {
+document.addEventListener('change', function (e) {
     if (e.target.classList.contains('mcp-tool-checkbox')) {
         updateSelectedToolsCount();
         if (e.target.classList.contains('mcp-tool-checkbox-large')) {
@@ -2145,14 +2151,14 @@ document.addEventListener('change', function(e) {
 // 标签切换功能
 function switchTab(tabName) {
     console.log('切换到标签:', tabName);
-    
+
     // 移除所有标签的活动状态
     const tabs = document.querySelectorAll('.nav-tab');
     const contents = document.querySelectorAll('.tab-content');
-    
+
     console.log('找到标签按钮数量:', tabs.length);
     console.log('找到内容区域数量:', contents.length);
-    
+
     tabs.forEach(tab => {
         tab.classList.remove('active');
         console.log('移除标签active:', tab.getAttribute('data-tab'));
@@ -2161,20 +2167,20 @@ function switchTab(tabName) {
         content.classList.remove('active');
         console.log('移除内容active:', content.id);
     });
-    
+
     // 激活选中的标签
     const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
     const activeContent = document.getElementById(`${tabName}-content`);
-    
+
     console.log('选中的标签按钮:', activeTab);
     console.log('选中的内容区域:', activeContent);
-    
+
     if (activeTab && activeContent) {
         activeTab.classList.add('active');
         activeContent.classList.add('active');
-        
+
         console.log('成功激活标签:', tabName);
-        
+
         // 如果切换到健康页签，初始化并更新健康数据
         if (tabName === 'health') {
             // 延迟初始化，确保DOM已经显示
@@ -2194,271 +2200,271 @@ function switchTab(tabName) {
 // 初始化健康图表
 function initializeHealthCharts() {
     console.log('初始化新的健康图表...');
-    
+
     // 并行获取所有需要的数据
     Promise.all([
         fetch('/api/assistant/health-comprehensive'),
         fetch('/api/assistant/trends'),
         fetch('/api/assistant/stats')
     ])
-    .then(responses => Promise.all(responses.map(r => r.json())))
-    .then(([healthData, trendsData, statsData]) => {
-        console.log('获取到真实健康数据:', healthData, trendsData, statsData);
-        
-        // 1. 健康维度雷达图 - 使用真实健康数据
-        const radarCtx = document.getElementById('healthRadarChart');
-        if (radarCtx && healthData.success && healthData.healthData.dimensions) {
-            const dimensions = healthData.healthData.dimensions;
-            healthRadarChart = new Chart(radarCtx, {
-                type: 'radar',
-                data: {
-                    labels: ['心理健康', '体能健康', '学习成长', '时间管理', '目标执行', '生活平衡'],
-                    datasets: [{
-                        label: '当前状态',
-                        data: [
-                            dimensions.mental?.score || 70,
-                            dimensions.physical?.score || 85,
-                            dimensions.learning?.score || 80,
-                            dimensions.time?.score || 75,
-                            dimensions.goal?.score || 80,
-                            dimensions.balance?.score || 75
-                        ],
-                        borderColor: '#00d4aa',
-                        backgroundColor: 'rgba(0, 212, 170, 0.2)',
-                        pointBackgroundColor: '#00d4aa',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
+        .then(responses => Promise.all(responses.map(r => r.json())))
+        .then(([healthData, trendsData, statsData]) => {
+            console.log('获取到真实健康数据:', healthData, trendsData, statsData);
+
+            // 1. 健康维度雷达图 - 使用真实健康数据
+            const radarCtx = document.getElementById('healthRadarChart');
+            if (radarCtx && healthData.success && healthData.healthData.dimensions) {
+                const dimensions = healthData.healthData.dimensions;
+                healthRadarChart = new Chart(radarCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['心理健康', '体能健康', '学习成长', '时间管理', '目标执行', '生活平衡'],
+                        datasets: [{
+                            label: '当前状态',
+                            data: [
+                                dimensions.mental?.score || 70,
+                                dimensions.physical?.score || 85,
+                                dimensions.learning?.score || 80,
+                                dimensions.time?.score || 75,
+                                dimensions.goal?.score || 80,
+                                dimensions.balance?.score || 75
+                            ],
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'rgba(0, 212, 170, 0.2)',
+                            pointBackgroundColor: '#00d4aa',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2
+                        }]
                     },
-                    scales: {
-                        r: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: {
-                                color: 'rgba(255, 255, 255, 0.6)',
-                                font: { size: 10 }
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.2)'
-                            },
-                            pointLabels: {
-                                color: 'rgba(255, 255, 255, 0.8)',
-                                font: { size: 11 }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            r: {
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.6)',
+                                    font: { size: 10 }
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.2)'
+                                },
+                                pointLabels: {
+                                    color: 'rgba(255, 255, 255, 0.8)',
+                                    font: { size: 11 }
+                                }
                             }
                         }
                     }
-                }
-            });
-        }
+                });
+            }
 
-        // 2. 情绪波动趋势图 - 使用真实趋势数据
-        const emotionCtx = document.getElementById('emotionTrendChart');
-        if (emotionCtx && trendsData.success && trendsData.trendData) {
-            // 从任务完成率推算情绪波动
-            const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
-            const positiveEmotion = taskData.map(rate => Math.max(60, Math.min(95, rate + Math.random() * 20 - 10)));
-            const negativeEmotion = positiveEmotion.map(pos => Math.max(5, Math.min(40, 100 - pos - Math.random() * 20)));
-            
-            emotionTrendChart = new Chart(emotionCtx, {
-                type: 'line',
-                data: {
-                    labels: trendsData.trendData.labels,
-                    datasets: [{
-                        label: '积极情绪',
-                        data: positiveEmotion,
-                        borderColor: '#00d4aa',
-                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    }, {
-                        label: '消极情绪',
-                        data: negativeEmotion,
-                        borderColor: '#ff6b6b',
-                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    }]
-                },
-                options: getHealthChartOptions()
-            });
-        }
+            // 2. 情绪波动趋势图 - 使用真实趋势数据
+            const emotionCtx = document.getElementById('emotionTrendChart');
+            if (emotionCtx && trendsData.success && trendsData.trendData) {
+                // 从任务完成率推算情绪波动
+                const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
+                const positiveEmotion = taskData.map(rate => Math.max(60, Math.min(95, rate + Math.random() * 20 - 10)));
+                const negativeEmotion = positiveEmotion.map(pos => Math.max(5, Math.min(40, 100 - pos - Math.random() * 20)));
 
-        // 3. 压力水平热力图 - 基于任务完成率和锻炼数据
-        const stressCtx = document.getElementById('stressHeatmapChart');
-        if (stressCtx && trendsData.success) {
-            const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
-            const exerciseData = trendsData.trendData.datasets.find(d => d.label === '锻炼次数')?.data || [];
-            
-            // 计算压力水平：任务完成率低或锻炼少时压力高
-            const stressLevels = taskData.slice(-7).map((task, i) => {
-                const exercise = exerciseData[i] || 0;
-                const stress = Math.max(20, Math.min(90, 100 - task + (exercise === 0 ? 20 : -exercise * 5)));
-                return Math.round(stress);
-            });
-            
-            const stressColors = stressLevels.map(level => {
-                if (level > 70) return '#ff6b6b';      // 高压力 - 红色
-                if (level > 50) return '#ffc107';      // 中压力 - 黄色
-                return '#00d4aa';                       // 低压力 - 绿色
-            });
-            
-            stressHeatmapChart = new Chart(stressCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
-                    datasets: [{
-                        label: '压力水平',
-                        data: stressLevels,
-                        backgroundColor: stressColors,
-                        borderRadius: 4
-                    }]
-                },
-                options: {
-                    ...getHealthChartOptions(),
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    }
-                }
-            });
-        }
+                emotionTrendChart = new Chart(emotionCtx, {
+                    type: 'line',
+                    data: {
+                        labels: trendsData.trendData.labels,
+                        datasets: [{
+                            label: '积极情绪',
+                            data: positiveEmotion,
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        }, {
+                            label: '消极情绪',
+                            data: negativeEmotion,
+                            borderColor: '#ff6b6b',
+                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        }]
+                    },
+                    options: getHealthChartOptions()
+                });
+            }
 
-        // 4. 时间分布分析图 - 基于真实统计数据
-        const timeCtx = document.getElementById('timeDistributionChart');
-        if (timeCtx && statsData.success && statsData.stats) {
-            const stats = statsData.stats;
-            
-            // 基于真实数据计算时间分布
-            const readingHours = (stats.reading?.progress || 0) / 10; // 大致估算阅读时间
-            const exerciseHours = (stats.exercise?.sessions || 0) * 1.5; // 每次锻炼1.5小时
-            const workHours = 8; // 假设工作8小时
-            const restHours = 24 - workHours - readingHours - exerciseHours;
-            const socialHours = Math.max(1, Math.min(3, stats.blogs?.count || 1)); // 基于博客数估算社交时间
-            
-            const total = workHours + restHours + readingHours + exerciseHours + socialHours;
-            
-            timeDistributionChart = new Chart(timeCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['工作学习', '休息娱乐', '阅读学习', '运动健身', '社交互动'],
-                    datasets: [{
-                        data: [
-                            Math.round(workHours / total * 100),
-                            Math.round(restHours / total * 100),
-                            Math.round(readingHours / total * 100),
-                            Math.round(exerciseHours / total * 100),
-                            Math.round(socialHours / total * 100)
-                        ],
-                        backgroundColor: [
-                            '#00d4aa',
-                            '#a1c4fd',
-                            '#ffc107',
-                            '#ff6b6b',
-                            '#9d4edd'
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: 'rgba(255, 255, 255, 0.8)',
-                                font: { size: 10 }
+            // 3. 压力水平热力图 - 基于任务完成率和锻炼数据
+            const stressCtx = document.getElementById('stressHeatmapChart');
+            if (stressCtx && trendsData.success) {
+                const taskData = trendsData.trendData.datasets.find(d => d.label === '任务完成率')?.data || [];
+                const exerciseData = trendsData.trendData.datasets.find(d => d.label === '锻炼次数')?.data || [];
+
+                // 计算压力水平：任务完成率低或锻炼少时压力高
+                const stressLevels = taskData.slice(-7).map((task, i) => {
+                    const exercise = exerciseData[i] || 0;
+                    const stress = Math.max(20, Math.min(90, 100 - task + (exercise === 0 ? 20 : -exercise * 5)));
+                    return Math.round(stress);
+                });
+
+                const stressColors = stressLevels.map(level => {
+                    if (level > 70) return '#ff6b6b';      // 高压力 - 红色
+                    if (level > 50) return '#ffc107';      // 中压力 - 黄色
+                    return '#00d4aa';                       // 低压力 - 绿色
+                });
+
+                stressHeatmapChart = new Chart(stressCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+                        datasets: [{
+                            label: '压力水平',
+                            data: stressLevels,
+                            backgroundColor: stressColors,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        ...getHealthChartOptions(),
+                        plugins: {
+                            legend: {
+                                display: false
                             }
                         }
                     }
-                }
-            });
-        }
+                });
+            }
 
-        // 5. 社交健康指标图 - 基于博客和评论数据
-        const socialCtx = document.getElementById('socialHealthChart');
-        if (socialCtx && statsData.success) {
-            // 使用趋势数据生成社交指标
-            const blogCounts = Array.from({length: 4}, (_, i) => Math.max(1, Math.floor(Math.random() * 10) + 5));
-            const commentCounts = blogCounts.map(blogs => Math.floor(blogs * 0.6 + Math.random() * 5));
-            
-            socialHealthChart = new Chart(socialCtx, {
-                type: 'line',
-                data: {
-                    labels: ['第1周', '第2周', '第3周', '第4周'],
-                    datasets: [{
-                        label: '博客发布',
-                        data: blogCounts,
-                        borderColor: '#00d4aa',
-                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }, {
-                        label: '评论互动',
-                        data: commentCounts,
-                        borderColor: '#a1c4fd',
-                        backgroundColor: 'rgba(161, 196, 253, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: getHealthChartOptions()
-            });
-        }
+            // 4. 时间分布分析图 - 基于真实统计数据
+            const timeCtx = document.getElementById('timeDistributionChart');
+            if (timeCtx && statsData.success && statsData.stats) {
+                const stats = statsData.stats;
 
-        // 6. 心理韧性趋势图 - 基于综合表现计算
-        const resilienceCtx = document.getElementById('resilienceTrendChart');
-        if (resilienceCtx && healthData.success) {
-            const overallScore = healthData.healthData.overallScore || 75;
-            
-            // 生成基于真实评分的韧性趋势
-            const resilienceData = Array.from({length: 6}, (_, i) => {
-                const variation = Math.random() * 20 - 10; // ±10的变化
-                return Math.max(50, Math.min(100, overallScore + variation));
-            });
-            
-            resilienceTrendChart = new Chart(resilienceCtx, {
-                type: 'line',
-                data: {
-                    labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
-                    datasets: [{
-                        label: '心理韧性指数',
-                        data: resilienceData,
-                        borderColor: '#9d4edd',
-                        backgroundColor: 'rgba(157, 78, 221, 0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        pointBackgroundColor: '#9d4edd',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: getHealthChartOptions()
-            });
-        }
-        
-        console.log('所有健康图表初始化完成，使用真实数据');
-    })
-    .catch(error => {
-        console.error('获取健康数据失败，使用默认数据:', error);
-        // 如果API调用失败，回退到原始的模拟数据
-        initializeHealthChartsWithMockData();
-    });
+                // 基于真实数据计算时间分布
+                const readingHours = (stats.reading?.progress || 0) / 10; // 大致估算阅读时间
+                const exerciseHours = (stats.exercise?.sessions || 0) * 1.5; // 每次锻炼1.5小时
+                const workHours = 8; // 假设工作8小时
+                const restHours = 24 - workHours - readingHours - exerciseHours;
+                const socialHours = Math.max(1, Math.min(3, stats.blogs?.count || 1)); // 基于博客数估算社交时间
+
+                const total = workHours + restHours + readingHours + exerciseHours + socialHours;
+
+                timeDistributionChart = new Chart(timeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['工作学习', '休息娱乐', '阅读学习', '运动健身', '社交互动'],
+                        datasets: [{
+                            data: [
+                                Math.round(workHours / total * 100),
+                                Math.round(restHours / total * 100),
+                                Math.round(readingHours / total * 100),
+                                Math.round(exerciseHours / total * 100),
+                                Math.round(socialHours / total * 100)
+                            ],
+                            backgroundColor: [
+                                '#00d4aa',
+                                '#a1c4fd',
+                                '#ffc107',
+                                '#ff6b6b',
+                                '#9d4edd'
+                            ],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: 'rgba(255, 255, 255, 0.8)',
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // 5. 社交健康指标图 - 基于博客和评论数据
+            const socialCtx = document.getElementById('socialHealthChart');
+            if (socialCtx && statsData.success) {
+                // 使用趋势数据生成社交指标
+                const blogCounts = Array.from({ length: 4 }, (_, i) => Math.max(1, Math.floor(Math.random() * 10) + 5));
+                const commentCounts = blogCounts.map(blogs => Math.floor(blogs * 0.6 + Math.random() * 5));
+
+                socialHealthChart = new Chart(socialCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['第1周', '第2周', '第3周', '第4周'],
+                        datasets: [{
+                            label: '博客发布',
+                            data: blogCounts,
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }, {
+                            label: '评论互动',
+                            data: commentCounts,
+                            borderColor: '#a1c4fd',
+                            backgroundColor: 'rgba(161, 196, 253, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: getHealthChartOptions()
+                });
+            }
+
+            // 6. 心理韧性趋势图 - 基于综合表现计算
+            const resilienceCtx = document.getElementById('resilienceTrendChart');
+            if (resilienceCtx && healthData.success) {
+                const overallScore = healthData.healthData.overallScore || 75;
+
+                // 生成基于真实评分的韧性趋势
+                const resilienceData = Array.from({ length: 6 }, (_, i) => {
+                    const variation = Math.random() * 20 - 10; // ±10的变化
+                    return Math.max(50, Math.min(100, overallScore + variation));
+                });
+
+                resilienceTrendChart = new Chart(resilienceCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+                        datasets: [{
+                            label: '心理韧性指数',
+                            data: resilienceData,
+                            borderColor: '#9d4edd',
+                            backgroundColor: 'rgba(157, 78, 221, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#9d4edd',
+                            pointBorderColor: '#ffffff',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: getHealthChartOptions()
+                });
+            }
+
+            console.log('所有健康图表初始化完成，使用真实数据');
+        })
+        .catch(error => {
+            console.error('获取健康数据失败，使用默认数据:', error);
+            // 如果API调用失败，回退到原始的模拟数据
+            initializeHealthChartsWithMockData();
+        });
 }
 
 // 备用函数：使用模拟数据初始化图表
 function initializeHealthChartsWithMockData() {
     console.log('使用模拟数据初始化健康图表...');
-    
+
     // 保持原始的模拟数据实现作为备用
     // ... (保留原始实现)
 }
@@ -2504,7 +2510,7 @@ function getHealthChartOptions() {
 // 加载综合健康数据
 function loadHealthData() {
     console.log('正在加载综合健康数据...');
-    
+
     // 尝试从API获取健康数据
     fetch('/api/assistant/health-comprehensive')
         .then(response => response.json())
@@ -2525,12 +2531,12 @@ function loadHealthData() {
 // 从API数据更新综合健康数据
 function updateComprehensiveHealthData(healthData) {
     console.log('更新综合健康数据:', healthData);
-    
+
     // 更新综合评分
     if (healthData.overallScore) {
         document.getElementById('overallHealthScore').textContent = healthData.overallScore;
     }
-    
+
     // 更新6个维度评分
     if (healthData.dimensions) {
         const dimensions = healthData.dimensions;
@@ -2541,17 +2547,17 @@ function updateComprehensiveHealthData(healthData) {
         if (dimensions.goal) document.getElementById('goalScore').textContent = dimensions.goal.score;
         if (dimensions.balance) document.getElementById('balanceScore').textContent = dimensions.balance.score;
     }
-    
+
     // 更新心理健康数据
     if (healthData.mentalHealth) {
         updateMentalHealthData(healthData.mentalHealth);
     }
-    
+
     // 更新核心指标
     if (healthData.coreMetrics) {
         updateCoreMetricsData(healthData.coreMetrics);
     }
-    
+
     // 更新个性化建议
     if (healthData.recommendations) {
         updateHealthRecommendations(healthData.recommendations);
@@ -2568,7 +2574,7 @@ function updateMentalHealthData(mentalData) {
             stressGauge.style.width = mentalData.stress.level + '%';
             stressValue.textContent = mentalData.stress.label;
         }
-        
+
         // 更新压力因素
         if (mentalData.stress.factors) {
             if (mentalData.stress.factors.unfinishedTasks) {
@@ -2579,7 +2585,7 @@ function updateMentalHealthData(mentalData) {
             }
         }
     }
-    
+
     // 更新情绪健康
     if (mentalData.emotion) {
         if (mentalData.emotion.stability) {
@@ -2592,7 +2598,7 @@ function updateMentalHealthData(mentalData) {
             document.getElementById('emotionRichness').textContent = mentalData.emotion.richness;
         }
     }
-    
+
     // 更新焦虑风险
     if (mentalData.anxiety) {
         const anxietyRisk = document.getElementById('anxietyRisk');
@@ -2600,7 +2606,7 @@ function updateMentalHealthData(mentalData) {
             anxietyRisk.textContent = mentalData.anxiety.level;
             anxietyRisk.className = 'risk-value ' + mentalData.anxiety.level.toLowerCase().replace('-', '-');
         }
-        
+
         if (mentalData.anxiety.lateNightActivity) {
             document.getElementById('lateNightActivity').textContent = mentalData.anxiety.lateNightActivity;
         }
@@ -2621,7 +2627,7 @@ function updateCoreMetricsData(metrics) {
             document.getElementById('mainExercise').textContent = metrics.fitness.mainExercise;
         }
     }
-    
+
     // 学习数据
     if (metrics.learning) {
         if (metrics.learning.readingProgress) {
@@ -2634,7 +2640,7 @@ function updateCoreMetricsData(metrics) {
             document.getElementById('weeklyWriting').textContent = metrics.learning.weeklyWriting;
         }
     }
-    
+
     // 时间管理数据
     if (metrics.timeManagement) {
         if (metrics.timeManagement.efficiency) {
@@ -2647,7 +2653,7 @@ function updateCoreMetricsData(metrics) {
             document.getElementById('routineStreak').textContent = metrics.timeManagement.routineStreak + '天';
         }
     }
-    
+
     // 任务执行数据
     if (metrics.goalExecution) {
         if (metrics.goalExecution.dailyCompletion) {
@@ -2660,7 +2666,7 @@ function updateCoreMetricsData(metrics) {
             document.getElementById('completionStreak').textContent = metrics.goalExecution.completionStreak + '天';
         }
     }
-    
+
     // 生活平衡数据
     if (metrics.lifeBalance) {
         if (metrics.lifeBalance.workLifeBalance) {
@@ -2673,7 +2679,7 @@ function updateCoreMetricsData(metrics) {
             document.getElementById('socialInteraction').textContent = metrics.lifeBalance.socialInteraction;
         }
     }
-    
+
     // 趋势预测
     if (metrics.trend) {
         const trendElement = document.getElementById('healthTrend');
@@ -2707,7 +2713,7 @@ function updateHealthRecommendations(recommendations) {
 // 从模拟数据更新健康数据
 function updateHealthDataFromMockData() {
     console.log('使用模拟健康数据');
-    
+
     const mockHealthData = {
         overallScore: 82,
         dimensions: {
@@ -2778,7 +2784,7 @@ function updateHealthDataFromMockData() {
             ]
         }
     };
-    
+
     updateComprehensiveHealthData(mockHealthData);
 }
 
@@ -2808,20 +2814,20 @@ function updateHealthCharts() {
 // 服务器工具切换函数
 function toggleServerTools(serverName, isChecked) {
     console.log(`切换服务器 ${serverName} 的工具状态:`, isChecked);
-    
+
     // 使用与 groupToolsByServer 相同的逻辑获取该服务器下的所有工具
     const toolsByServer = groupToolsByServer(mcpTools);
     const serverTools = toolsByServer[serverName] || [];
-    
+
     console.log(`找到服务器 ${serverName} 下的工具:`, serverTools.map(tool => tool.name));
-    
+
     // 更新工具选择状态 - 更新所有相关的复选框
     serverTools.forEach(tool => {
         console.log(`处理工具: ${tool.name}`);
-        
+
         // 转义工具名称中的特殊字符用于CSS选择器
         const escapedToolName = CSS.escape(tool.name);
-        
+
         // 更新大面板中的复选框
         const largeCheckbox = document.querySelector(`.mcp-tool-checkbox-large[value="${escapedToolName}"]`);
         if (largeCheckbox) {
@@ -2830,7 +2836,7 @@ function toggleServerTools(serverName, isChecked) {
         } else {
             console.log(`未找到大面板复选框: ${tool.name}`);
         }
-        
+
         // 更新小面板中的复选框
         const smallCheckbox = document.querySelector(`.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)[value="${escapedToolName}"]`);
         if (smallCheckbox) {
@@ -2840,14 +2846,14 @@ function toggleServerTools(serverName, isChecked) {
             console.log(`未找到小面板复选框: ${tool.name}`);
         }
     });
-    
+
     // 更新选择计数
     updateSelectedToolsCount();
     updateSelectedToolsCountLarge();
-    
+
     // 同步工具选择状态
     syncToolsSelection();
-    
+
     console.log(`${isChecked ? '启用' : '禁用'}了服务器 ${serverName} 的 ${serverTools.length} 个工具`);
 }
 
@@ -2894,11 +2900,11 @@ function updateTypingEffect(messageElement, fullText) {
         messageElement.innerHTML = formatMessage(fullText);
         return;
     }
-    
+
     // 实时显示内容并添加打字机光标
     const formattedText = formatMessage(fullText);
     messageElement.innerHTML = formattedText + '<span class="typing-cursor">|</span>';
-    
+
     // 为消息元素添加流式效果类，增强视觉反馈
     messageElement.classList.add('streaming-text');
 }
@@ -2907,7 +2913,7 @@ function updateTypingEffect(messageElement, fullText) {
 function stopTypingEffect(messageElement, finalText) {
     const formattedText = formatMessage(finalText);
     messageElement.innerHTML = formattedText;
-    
+
     // 移除流式效果类
     messageElement.classList.remove('streaming-text');
 }
@@ -2923,22 +2929,22 @@ function handleStreamingText(messageElement, newContent, currentText) {
 // 初始化标签状态
 function initializeTabState() {
     console.log('初始化标签状态');
-    
+
     // 确保智能助手标签是默认激活的
     const assistantTab = document.querySelector('[data-tab="assistant"]');
     const healthTab = document.querySelector('[data-tab="health"]');
     const assistantContent = document.getElementById('assistant-content');
     const healthContent = document.getElementById('health-content');
-    
+
     if (assistantTab && healthTab && assistantContent && healthContent) {
         // 设置标签状态
         assistantTab.classList.add('active');
         healthTab.classList.remove('active');
-        
+
         // 设置内容状态
         assistantContent.classList.add('active');
         healthContent.classList.remove('active');
-        
+
         console.log('初始化标签状态完成 - 智能助手为默认标签');
     } else {
         console.error('无法找到标签或内容元素进行初始化');
@@ -3092,12 +3098,12 @@ function showAlgorithmInfo(type) {
     const modal = document.getElementById('algorithmInfoModal');
     const body = document.getElementById('algorithmInfoBody');
     const data = algorithmData[type];
-    
+
     if (!data) {
         console.error('未找到算法数据:', type);
         return;
     }
-    
+
     // 构建算法信息HTML
     const html = `
         <div class="algorithm-section">
@@ -3128,10 +3134,10 @@ function showAlgorithmInfo(type) {
             </div>
         </div>
     `;
-    
+
     body.innerHTML = html;
     modal.classList.add('active');
-    
+
     // 防止背景滚动
     document.body.style.overflow = 'hidden';
 }
@@ -3140,13 +3146,13 @@ function showAlgorithmInfo(type) {
 function closeAlgorithmInfo() {
     const modal = document.getElementById('algorithmInfoModal');
     modal.classList.remove('active');
-    
+
     // 恢复背景滚动
     document.body.style.overflow = 'auto';
 }
 
 // 点击弹窗外部关闭
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
     const modal = document.getElementById('algorithmInfoModal');
     if (e.target === modal) {
         closeAlgorithmInfo();
@@ -3154,7 +3160,7 @@ document.addEventListener('click', function(e) {
 });
 
 // 按ESC键关闭弹窗
-document.addEventListener('keydown', function(e) {
+document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         closeAlgorithmInfo();
     }

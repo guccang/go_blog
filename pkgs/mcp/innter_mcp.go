@@ -828,17 +828,20 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.CreateReminder",
-				Description: "创建定时提醒任务。可以设置间隔时间和重复次数。例如每分钟提醒一次。",
+				Description: "创建定时提醒任务。支持 cron 表达式(如'0 0 21 * * *'每天21:00)和间隔秒数两种模式。可设置 ai_query 让 AI 定时执行查询。所有提醒会持久化保存，重启不丢失",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"account":  map[string]string{"type": "string", "description": "账号"},
-						"title":    map[string]string{"type": "string", "description": "提醒标题"},
-						"message":  map[string]string{"type": "string", "description": "提醒内容消息"},
-						"interval": map[string]interface{}{"type": "number", "description": "间隔秒数，如60表示每分钟提醒一次"},
-						"repeat":   map[string]interface{}{"type": "number", "description": "重复次数，-1表示无限重复"},
+						"account":     map[string]string{"type": "string", "description": "账号"},
+						"title":       map[string]string{"type": "string", "description": "提醒标题"},
+						"message":     map[string]string{"type": "string", "description": "提醒内容消息"},
+						"cron":        map[string]string{"type": "string", "description": "Cron表达式(秒级),如: '0 0 21 * * *'每天21:00, '0 0 9 * * 1'每周一9:00, '@every 30m'每30分钟"},
+						"interval":    map[string]interface{}{"type": "number", "description": "间隔秒数(与cron二选一),如60表示每分钟"},
+						"repeat":      map[string]interface{}{"type": "number", "description": "重复次数,-1表示无限重复"},
+						"ai_query":    map[string]string{"type": "string", "description": "AI查询,设置后定时执行该查询并推送结果"},
+						"save_result": map[string]interface{}{"type": "boolean", "description": "是否保存AI查询结果到博客"},
 					},
-					"required": []string{"account", "title", "message", "interval"},
+					"required": []string{"account", "title"},
 				},
 			},
 		},
@@ -886,6 +889,9 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
+
+		// AI 定时任务
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAIScheduledTask", Description: "创建AI定时任务,按cron表达式定时执行AI查询并推送结果。例如'每周一早上9点分析运动数据'。重启后自动恢复", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "cron": map[string]string{"type": "string", "description": "Cron表达式,如'0 0 9 * * 1'每周一9:00, '0 0 21 * * *'每天21:00"}, "ai_query": map[string]string{"type": "string", "description": "要定时执行的AI查询"}, "save_result": map[string]interface{}{"type": "boolean", "description": "是否保存结果到博客"}}, "required": []string{"account", "title", "ai_query"}}}},
 
 		// =================================== 报告生成工具 =========================================
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
@@ -1016,6 +1022,12 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 				},
 			},
 		},
+
+		// =================================== AI 技能管理工具 =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ListAISkills", Description: "列出所有已安装的 AI 技能卡，包含创建新技能的模板。当用户问'我有哪些技能'、'技能列表'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAISkill", Description: "创建新的 AI 技能卡。技能卡能让 AI 学会新本领，例如'每次说写周报就自动收集数据生成报告'。当用户说'帮我创建一个技能'、'教你一个新本领'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "description": map[string]string{"type": "string", "description": "一句话描述技能功能"}, "triggers": map[string]string{"type": "string", "description": "触发关键词,逗号分隔,如: 写周报,本周总结"}, "instruction": map[string]string{"type": "string", "description": "详细的技能指令,告诉AI触发时应该怎么做"}, "examples": map[string]string{"type": "string", "description": "可选,示例对话"}}, "required": []string{"account", "name", "instruction"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ToggleAISkill", Description: "启用或停用指定的 AI 技能。当用户说'停用xxx技能'、'启用xxx'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "active": map[string]string{"type": "boolean", "description": "true=启用, false=停用"}}, "required": []string{"account", "name"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetSkillTemplate", Description: "获取 AI 技能卡的创建模板,了解技能卡的格式。当需要创建技能但不确定格式时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
 	}
 
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）

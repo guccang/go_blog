@@ -121,7 +121,72 @@
                                         <span class="quick-chip" onclick="sendQuickMessage('今天练什么')">💪 运动建议</span>
                                         <span class="quick-chip" onclick="sendQuickMessage('阅读建议，下一本读什么')">📚 阅读伴读</span>
                                         <span class="quick-chip" onclick="sendQuickMessage('帮我拆解这个任务：')">🧩 任务拆解</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('我有哪些AI技能')">🔌 技能列表</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('帮我创建一个AI技能')">✨ 创建技能</span>
+                                        <span class="quick-chip" onclick="sendQuickMessage('帮我创建一个定时任务')">⏰ 定时任务</span>
                                     </div>
+                                    <details class="usage-guide" style="margin-top:12px;font-size:0.85rem;color:rgba(255,255,255,0.8);">
+                                        <summary style="cursor:pointer;font-weight:600;color:rgba(255,255,255,0.95);padding:6px 0;">📖 使用指南 — 我能做什么？</summary>
+                                        <div style="margin-top:8px;display:grid;gap:10px;">
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">🧠 智能分析（AI 自动调用工具）</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "帮我总结今天" → 聚合待办/运动/阅读/目标数据<br>
+                                                    • "我的待办和目标对齐吗" → 分析待办与月度目标的匹配度<br>
+                                                    • "今天练什么" → 根据近7天运动数据给出训练建议<br>
+                                                    • "阅读建议" → 分析阅读进度并推荐下一步阅读<br>
+                                                    • "帮我拆解这个任务：XXX" → 将复杂任务拆解为子任务
+                                                </div>
+                                            </div>
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">📋 待办管理</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "今天有哪些待办" / "本周待办完成情况"<br>
+                                                    • "添加一个待办：下午3点开会"<br>
+                                                    • "昨天有什么没完成的" → 自动延续未完成任务
+                                                </div>
+                                            </div>
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">💪 运动 & 📚 阅读 & 🎯 年度计划</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "我最近的运动记录" / "记录今天跑步30分钟"<br>
+                                                    • "我在读什么书" / "更新《XXX》阅读进度到50%"<br>
+                                                    • "我的年度目标进度如何" / "添加一个年度目标"
+                                                </div>
+                                            </div>
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">📝 博客 & 🔍 搜索</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "最近写了哪些博客" / "搜索关于XXX的博客"<br>
+                                                    • "帮我写一篇关于XXX的博客并保存"<br>
+                                                    • "访问网页 https://..." → 抓取并分析网页内容
+                                                </div>
+                                            </div>
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">⏰ 定时任务 & 📊 报告 & 🤖 模型</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "1小时后提醒我喝水" / "每天21点总结今天"<br>
+                                                    • "生成本周周报" / "生成月报"<br>
+                                                    • "切换到openai模型" / "当前用的什么模型"
+                                                </div>
+                                            </div>
+
+                                            <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;">
+                                                <div style="font-weight:600;margin-bottom:4px;">✨ AI 技能</div>
+                                                <div style="opacity:0.85;line-height:1.6;font-size:0.8rem;">
+                                                    • "我有哪些AI技能" → 列出所有已创建的技能卡<br>
+                                                    • "帮我创建一个技能：每次我说写周报时自动收集数据生成周报"<br>
+                                                    • 技能创建后，下次说"写周报" AI 会自动执行
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </details>
                                 </div>
                                 <div class="message-time">刚刚</div>
                             </div>
@@ -373,5 +438,6 @@
         }
     }
     </script>
+    <script src="/js/global-reminder.js"></script>
 </body>
 </html>

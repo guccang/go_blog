@@ -47,6 +47,8 @@ func Init(account string) {
 
 		// 初始化调度器
 		InitScheduler(globalHub)
+		LoadScheduledTasks(account) // 从博客加载持久化的定时任务
+		RegisterSchedulerMCPTools() // 注册 AI 定时任务 MCP 工具
 
 		// 初始化邮件模块
 		email.InitEmailConfig()

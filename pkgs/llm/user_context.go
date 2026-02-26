@@ -113,6 +113,12 @@ func BuildEnhancedSystemPrompt(account string) string {
 		contextParts = append(contextParts, healthCheck)
 	}
 
+	// 加载可插拔 AI 技能
+	skills := LoadActiveSkills(account)
+	if len(skills) > 0 {
+		contextParts = append(contextParts, BuildSkillsPrompt(skills))
+	}
+
 	// 构建用户上下文块
 	var userContext string
 	if len(contextParts) > 0 {

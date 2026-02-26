@@ -116,6 +116,7 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.39.1 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	gomoku v0.0.0 // indirect
