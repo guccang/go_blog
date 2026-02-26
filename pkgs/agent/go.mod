@@ -15,6 +15,7 @@ require (
 	module v0.0.0
 	mylog v0.0.0
 	statistics v0.0.0
+	wechat v0.0.0
 )
 
 require (
@@ -37,4 +38,5 @@ replace (
 	persistence => ../persistence
 	statistics => ../statistics
 	view => ../view
+	wechat => ../wechat
 )

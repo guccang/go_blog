@@ -23,6 +23,7 @@ import (
 	"todolist"
 	"tools"
 	"view"
+	"wechat"
 	"yearplan"
 )
 
@@ -337,6 +338,9 @@ func Init() int {
 	h.HandleFunc("/api/agent/task/pending-inputs", HandleAgentPendingInputs)
 	h.HandleFunc("/api/agent/status", HandleAgentStatus)
 	h.HandleFunc("/ws/agent/notifications", HandleAgentWebSocket)
+
+	// WeChat Work bot callback
+	h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
 
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)

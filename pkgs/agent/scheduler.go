@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"wechat"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -351,6 +352,23 @@ func (s *Scheduler) triggerReminder(reminderID string) {
 	// Email 推送
 	if email.IsEnabled() {
 		go s.sendReminderEmail(r, finalMessage)
+	}
+
+	// 企业微信推送（优先应用消息，降级到 Webhook）
+	if wechat.IsAppEnabled() {
+		go func() {
+			wechatMsg := fmt.Sprintf("⏰ %s\n%s", r.Title, finalMessage)
+			if err := wechat.SendAppMessageToAll(wechatMsg); err != nil {
+				log.WarnF(log.ModuleAgent, "WeChat app push failed: %v", err)
+			}
+		}()
+	} else if wechat.IsEnabled() {
+		go func() {
+			wechatMsg := fmt.Sprintf("⏰ **%s**\n%s", r.Title, finalMessage)
+			if err := wechat.SendMarkdown(wechatMsg); err != nil {
+				log.WarnF(log.ModuleAgent, "WeChat webhook push failed: %v", err)
+			}
+		}()
 	}
 
 	// 更新状态

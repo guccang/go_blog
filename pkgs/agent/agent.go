@@ -9,6 +9,7 @@ import (
 	log "mylog"
 	"sync"
 	"time"
+	"wechat"
 )
 
 // 全局变量
@@ -52,6 +53,10 @@ func Init(account string) {
 
 		// 初始化邮件模块
 		email.InitEmailConfig()
+
+		// 初始化企业微信模块
+		wechat.InitWechatConfig()
+		wechat.SetCommandHandler(handleWechatCommand)
 
 		// 初始化报告生成器
 		InitReportGenerator(account)
@@ -470,6 +475,37 @@ func SaveTaskGraph(graph *TaskGraph) error {
 		return nil
 	}
 	return globalStorage.SaveTaskGraph(graph)
+}
+
+// handleWechatCommand 处理企业微信指令（通过 AI 路由）
+func handleWechatCommand(wechatUser, message string) string {
+	// 优先使用微信传过来的账户，没有则使用管理员账号
+	account := wechatUser
+	if account == "" {
+		account = globalAccount
+	}
+
+	log.MessageF(log.ModuleAgent, "WeChat command from %s (account: %s): %s", wechatUser, account, message)
+
+	// 构建 LLM 请求（注入 system prompt 告知账号，避免 LLM 反问）
+	messages := []llm.Message{
+		{Role: "system", Content: fmt.Sprintf(
+			"你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 \"%s\"，请直接使用此账号调用工具查询数据，不要询问用户账号。回复要简洁，适合手机阅读。", account)},
+		{Role: "user", Content: message},
+	}
+
+	result, err := llm.SendSyncLLMRequest(messages, account)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "WeChat AI processing failed: %v", err)
+		return fmt.Sprintf("⚠️ AI 处理出错: %v", err)
+	}
+
+	// 截断过长回复（企业微信文本限 2048 字符）
+	if len(result) > 1800 {
+		result = result[:1800] + "\n...(内容过长已截断)"
+	}
+
+	return result
 }
 
 // Shutdown 关闭 Agent 模块

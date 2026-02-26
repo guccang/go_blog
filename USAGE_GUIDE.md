@@ -395,3 +395,10 @@ tail -f logs/access.log
 ---
 
 **提示**：本系统采用"一切皆博客"的设计理念，所有功能数据都以博客形式存储。这种设计提供了极大的灵活性和数据可控性，同时也意味着您可以完全掌控自己的所有数据。
+
+## 微信机器人配置
+仅配置 webhook 即可推送通知。如需接收指令，还需配置corp_id token encoding_aes_key 
+wechat_webhook: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
+wechat_corp_id: wwxxxxxx
+wechat_token: 你的token
+wechat_encoding_aes_key: 你的key

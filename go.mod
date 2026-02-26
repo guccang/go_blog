@@ -80,6 +80,8 @@ replace taskbreakdown => ./pkgs/taskbreakdown
 
 replace agent => ./pkgs/agent
 
+replace wechat => ./pkgs/wechat
+
 require (
 	agent v0.0.0
 	auth v0.0.0
@@ -127,5 +129,6 @@ require (
 	taskbreakdown v0.0.0 // indirect
 	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
+	wechat v0.0.0 // indirect
 	yearplan v0.0.0 // indirect
 )
