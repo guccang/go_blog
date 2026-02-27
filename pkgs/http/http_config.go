@@ -359,7 +359,7 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 		"openai_api_key", "openai_api_url", "deepseek_api_key", "deepseek_api_url",
 		"qwen_api_key", "qwen_api_url", "llm_fallback_models", "assistant_save_mcp_result",
 		// CodeGen 编码
-		"codegen_workspace", "codegen_claude_path", "codegen_max_turns", "codegen_mode", "codegen_agent_token",
+		"codegen_workspace", "codegen_max_turns", "codegen_agent_token",
 		// 企业微信
 		"wechat_corp_id", "wechat_secret", "wechat_agent_id", "wechat_token", "wechat_encoding_aes_key", "wechat_webhook",
 		// 邮件通知

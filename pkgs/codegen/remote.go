@@ -201,7 +201,6 @@ func (p *AgentPool) handleTaskComplete(agent *RemoteAgent, payload *TaskComplete
 	if payload.Error != "" {
 		session.Error = payload.Error
 	}
-	session.process = nil
 	session.mu.Unlock()
 
 	if payload.Status == StatusError {
@@ -318,7 +317,11 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		"3. 运行程序并验证输出正确；" +
 		"4. 如有测试则运行测试；" +
 		"5. 最后汇报结果：创建了哪些文件、构建是否成功、运行输出是什么。" +
-		"不要只写代码就停止，必须验证代码能正常工作。"
+		"不要只写代码就停止，必须验证代码能正常工作。" +
+		"绝对禁止使用 AskUserQuestion 工具或任何需要用户交互的操作。" +
+		"你在无人值守的自动化环境中运行，没有人可以回答你的问题。" +
+		"遇到不确定的地方自己做出最合理的决定，不要询问用户。" +
+		"不要进入 plan mode，不要使用 EnterPlanMode，直接执行任务。"
 
 	payload := TaskAssignPayload{
 		SessionID:     session.ID,

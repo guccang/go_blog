@@ -48,10 +48,8 @@ const CONFIG_METADATA = {
 
     // ─── CodeGen 编码助手 ───
     codegen_workspace:    { category: 'CodeGen 编码', icon: '💻', order: 1, desc: '编码项目工作区目录，多个用逗号分隔，默认 ./codegen' },
-    codegen_claude_path:  { category: 'CodeGen 编码', icon: '💻', order: 2, desc: 'Claude CLI 可执行文件路径，默认 claude' },
-    codegen_max_turns:    { category: 'CodeGen 编码', icon: '💻', order: 3, desc: 'Claude 单次会话最大交互轮数，默认 20' },
-    codegen_mode:         { category: 'CodeGen 编码', icon: '💻', order: 4, desc: '执行模式：local（本地）/ remote（远程Agent）/ auto（自动选择）' },
-    codegen_agent_token:  { category: 'CodeGen 编码', icon: '💻', order: 5, desc: '远程 CodeGen Agent 认证 Token' },
+    codegen_max_turns:    { category: 'CodeGen 编码', icon: '💻', order: 2, desc: 'Claude 单次会话最大交互轮数，默认 20' },
+    codegen_agent_token:  { category: 'CodeGen 编码', icon: '💻', order: 3, desc: '远程 CodeGen Agent 认证 Token' },
 
     // ─── 企业微信 ───
     wechat_corp_id:          { category: '企业微信', icon: '💬', order: 1, desc: '企业微信 Corp ID（企业ID）' },
