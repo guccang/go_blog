@@ -1202,3 +1202,21 @@ func PageAgent(w h.ResponseWriter) {
 		return
 	}
 }
+
+// PageCodeGen renders the codegen page
+func PageCodeGen(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "codegen.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse codegen template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render codegen template", h.StatusInternalServerError)
+		return
+	}
+}

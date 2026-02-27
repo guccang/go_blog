@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGen - AI 编程助手</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-hover: #30363d;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #484f58;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --green: #3fb950;
+            --yellow: #d29922;
+            --red: #f85149;
+            --purple: #bc8cff;
+            --orange: #f0883e;
+            --cyan: #39d2c0;
+            --radius: 8px;
+            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+            --font-sans: 'Inter', -apple-system, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        .app {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: 56px 1fr;
+            height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .header .workspace-path {
+            margin-left: auto;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .header .btn-home {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .header .btn-home:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn-new {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: var(--radius);
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn-new:hover { background: var(--accent-hover); }
+
+        .project-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .project-item {
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background 0.15s;
+            margin-bottom: 2px;
+        }
+        .project-item:hover { background: var(--bg-tertiary); }
+        .project-item.active {
+            background: var(--bg-tertiary);
+            border-left: 2px solid var(--accent);
+        }
+        .project-item .name {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+        .project-item .meta {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Main */
+        .main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Welcome */
+        .welcome {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .welcome .icon { font-size: 48px; }
+        .welcome h2 { font-size: 22px; color: var(--text-primary); }
+        .welcome p { color: var(--text-secondary); max-width: 400px; text-align: center; line-height: 1.6; }
+
+        /* Output */
+        .output-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: none;
+        }
+        .output-area.active { display: block; }
+
+        .event-item {
+            padding: 8px 12px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+        .event-item.system {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .event-item.tool {
+            background: rgba(88, 166, 255, 0.08);
+            border-left: 3px solid var(--accent);
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+        .event-item.assistant {
+            background: var(--bg-tertiary);
+            white-space: pre-wrap;
+        }
+        .event-item.result {
+            background: rgba(63, 185, 80, 0.1);
+            border-left: 3px solid var(--green);
+            color: var(--green);
+        }
+        .event-item.error {
+            background: rgba(248, 81, 73, 0.1);
+            border-left: 3px solid var(--red);
+            color: var(--red);
+        }
+        .event-item .cost {
+            float: right;
+            color: var(--yellow);
+            font-size: 11px;
+        }
+
+        /* Status bar */
+        .status-bar {
+            padding: 6px 20px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+        .status-dot.running {
+            background: var(--green);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* Input */
+        .input-area {
+            padding: 12px 20px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+        .input-area input {
+            flex: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-area input:focus { border-color: var(--accent); }
+        .input-area input::placeholder { color: var(--text-muted); }
+
+        .btn-send {
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+        .btn-send:hover { opacity: 0.9; }
+        .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-stop {
+            background: var(--red);
+            color: #fff;
+            border: none;
+            padding: 10px 16px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            cursor: pointer;
+            display: none;
+        }
+        .btn-stop.visible { display: block; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 400px;
+        }
+        .modal h3 { margin-bottom: 16px; font-size: 16px; }
+        .modal input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px 14px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 16px;
+        }
+        .modal input:focus { border-color: var(--accent); }
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .modal-actions button {
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            cursor: pointer;
+            border: none;
+        }
+        .modal-actions .btn-cancel {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+        .modal-actions .btn-confirm {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <div class="header">
+            <h1>⚡ CodeGen</h1>
+            <span class="badge">Claude Code</span>
+            <span class="workspace-path" id="workspacePath"></span>
+            <a href="/main" class="btn-home">← 返回</a>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3>📂 项目</h3>
+                <button class="btn-new" onclick="showNewProjectModal()">+ 新建</button>
+            </div>
+            <div class="project-list" id="projectList">
+                <div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">
+                    加载中...
+                </div>
+            </div>
+        </div>
+
+        <!-- Main -->
+        <div class="main">
+            <div class="welcome" id="welcomeView">
+                <div class="icon">⚡</div>
+                <h2>AI 编程助手</h2>
+                <p>选择左侧项目或新建项目，然后输入编码需求，Claude Code 将自动完成代码编写并实时反馈进度。</p>
+            </div>
+
+            <div class="output-area" id="outputArea"></div>
+
+            <div class="status-bar" id="statusBar">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">就绪</span>
+                <span style="margin-left: auto" id="costText"></span>
+            </div>
+
+            <div class="input-area">
+                <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)" 
+                       onkeydown="if(event.key==='Enter')sendPrompt()">
+                <button class="btn-send" id="btnSend" onclick="sendPrompt()">发送</button>
+                <button class="btn-stop" id="btnStop" onclick="stopSession()">⏹ 停止</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Project Modal -->
+    <div class="modal-overlay" id="newProjectModal">
+        <div class="modal">
+            <h3>📁 新建项目</h3>
+            <input type="text" id="newProjectName" placeholder="项目名称 (如: my-web-app)" 
+                   onkeydown="if(event.key==='Enter')createProject()">
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="hideNewProjectModal()">取消</button>
+                <button class="btn-confirm" onclick="createProject()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    let currentProject = null;
+    let currentSessionId = null;
+    let ws = null;
+
+    // 页面加载
+    document.addEventListener('DOMContentLoaded', loadProjects);
+
+    // 加载项目列表
+    async function loadProjects() {
+        try {
+            const resp = await fetch('/api/codegen/projects');
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+            
+            document.getElementById('workspacePath').textContent = data.data.workspace;
+            renderProjects(data.data.projects || []);
+        } catch (err) {
+            console.error('Load projects failed:', err);
+        }
+    }
+
+    function renderProjects(projects) {
+        const list = document.getElementById('projectList');
+        if (projects.length === 0) {
+            list.innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">暂无项目<br>点击 + 新建 创建</div>';
+            return;
+        }
+        list.innerHTML = projects.map(p => `
+            <div class="project-item ${currentProject === p.name ? 'active' : ''}" onclick="selectProject('${p.name}')">
+                <div class="name">📁 ${p.name}</div>
+                <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}</div>
+            </div>
+        `).join('');
+    }
+
+    function selectProject(name) {
+        currentProject = name;
+        currentSessionId = null; // 切换项目时重置会话
+        loadProjects(); // refresh highlight
+        document.getElementById('welcomeView').style.display = 'none';
+        const output = document.getElementById('outputArea');
+        output.innerHTML = ''; // 清空之前的输出
+        output.classList.add('active');
+        addEvent('system', `📂 已选择项目: ${name}`);
+        
+        // 尝试加载 README
+        loadProjectReadme(name);
+        document.getElementById('promptInput').focus();
+    }
+
+    async function loadProjectReadme(project) {
+        // 尝试多个常见 README 文件名
+        const readmeNames = ['README.md', 'readme.md', 'README', 'readme.txt'];
+        for (const name of readmeNames) {
+            try {
+                const resp = await fetch(`/api/codegen/file?project=${encodeURIComponent(project)}&path=${encodeURIComponent(name)}`);
+                const data = await resp.json();
+                if (data.success && data.data && data.data.content) {
+                    let content = data.data.content;
+                    if (content.length > 1000) content = content.substring(0, 1000) + '\n...';
+                    addEvent('assistant', `📄 ${name}\n${content}`);
+                    return;
+                }
+            } catch (e) { /* ignore */ }
+        }
+        // 没有 README
+        const area = document.getElementById('outputArea');
+        const div = document.createElement('div');
+        div.className = 'event-item system';
+        div.innerHTML = `📝 该项目暂无 README。<a href="#" style="color: var(--accent); text-decoration: underline;" onclick="suggestReadme(); return false;">点击让 Claude Code 生成一个</a>`;
+        area.appendChild(div);
+    }
+
+    function suggestReadme() {
+        const input = document.getElementById('promptInput');
+        input.value = '请分析项目代码，生成一个详细的 README.md，包含项目简介、使用方法、技术栈等信息。';
+        input.focus();
+    }
+
+    // 新建项目
+    function showNewProjectModal() {
+        document.getElementById('newProjectModal').classList.add('active');
+        document.getElementById('newProjectName').value = '';
+        document.getElementById('newProjectName').focus();
+    }
+    function hideNewProjectModal() {
+        document.getElementById('newProjectModal').classList.remove('active');
+    }
+    async function createProject() {
+        const name = document.getElementById('newProjectName').value.trim();
+        if (!name) return;
+        try {
+            const resp = await fetch('/api/codegen/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+            hideNewProjectModal();
+            selectProject(name);
+            loadProjects();
+        } catch (err) {
+            alert('创建失败: ' + err.message);
+        }
+    }
+
+    // 发送编码请求
+    async function sendPrompt() {
+        const input = document.getElementById('promptInput');
+        const prompt = input.value.trim();
+        if (!prompt || !currentProject) {
+            if (!currentProject) alert('请先选择或创建项目');
+            return;
+        }
+
+        input.value = '';
+        addEvent('user', prompt);
+        setStatus('running', '正在启动 Claude Code...');
+        document.getElementById('btnSend').disabled = true;
+        document.getElementById('btnStop').classList.add('visible');
+
+        try {
+            let endpoint = '/api/codegen/run';
+            let body = { project: currentProject, prompt };
+
+            if (currentSessionId) {
+                endpoint = '/api/codegen/message';
+                body = { session_id: currentSessionId, prompt };
+            }
+
+            const resp = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+
+            if (data.data.session_id) {
+                currentSessionId = data.data.session_id;
+            }
+
+            // 连接 WebSocket
+            connectWebSocket(currentSessionId);
+        } catch (err) {
+            addEvent('error', '启动失败: ' + err.message);
+            resetUI();
+        }
+    }
+
+    // WebSocket 连接
+    function connectWebSocket(sessionId) {
+        if (ws) ws.close();
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${location.host}/ws/codegen?session_id=${sessionId}`);
+
+        ws.onmessage = function(e) {
+            const event = JSON.parse(e.data);
+            
+            if (event.type === 'tool') {
+                addEvent('tool', event.text || `🔧 ${event.tool_name}`);
+            } else if (event.type === 'assistant') {
+                addEvent('assistant', event.text);
+            } else if (event.type === 'result') {
+                // 显示结果和统计信息
+                let summary = event.text || '✅ 编码完成';
+                addEvent('result', summary);
+                // 显示 cost/token 统计
+                let stats = [];
+                if (event.cost_usd > 0) stats.push(`💰 $${event.cost_usd.toFixed(4)}`);
+                if (event.tokens_in > 0 || event.tokens_out > 0) stats.push(`📊 ${event.tokens_in || 0} → ${event.tokens_out || 0} tokens`);
+                if (event.duration_ms > 0) stats.push(`⏱ ${(event.duration_ms / 1000).toFixed(1)}s`);
+                if (event.num_turns > 0) stats.push(`🔄 ${event.num_turns} turns`);
+                if (stats.length > 0) {
+                    document.getElementById('costText').textContent = stats.join(' · ');
+                    addEvent('system', stats.join(' · '));
+                }
+            } else if (event.type === 'error') {
+                addEvent('error', event.text);
+            } else if (event.type === 'system') {
+                addEvent('system', event.text);
+            } else {
+                addEvent('system', event.text || JSON.stringify(event));
+            }
+
+            if (event.done) {
+                if (event.type === 'error') {
+                    setStatus('error', '❌ 失败');
+                } else {
+                    setStatus('done', '✅ 完成');
+                }
+                resetUI();
+            } else {
+                setStatus('running', '编码中...');
+            }
+        };
+
+        ws.onerror = function() {
+            addEvent('error', 'WebSocket 连接失败');
+            resetUI();
+        };
+
+        ws.onclose = function() {
+            // don't overwrite error/done status
+        };
+    }
+
+    // 停止会话
+    async function stopSession() {
+        if (!currentSessionId) return;
+        try {
+            await fetch('/api/codegen/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: currentSessionId })
+            });
+        } catch (err) {
+            console.error('Stop failed:', err);
+        }
+        resetUI();
+    }
+
+    // UI 工具函数
+    function addEvent(type, text) {
+        const area = document.getElementById('outputArea');
+        const div = document.createElement('div');
+        div.className = `event-item ${type}`;
+        
+        if (type === 'user') {
+            div.innerHTML = `<strong>👤 你:</strong> ${escapeHtml(text)}`;
+        } else {
+            div.textContent = text;
+        }
+        
+        area.appendChild(div);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function setStatus(state, text) {
+        const dot = document.getElementById('statusDot');
+        dot.className = `status-dot ${state === 'running' ? 'running' : ''}`;
+        document.getElementById('statusText').textContent = text;
+    }
+
+    function resetUI() {
+        document.getElementById('btnSend').disabled = false;
+        document.getElementById('btnStop').classList.remove('visible');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    </script>
+</body>
+</html>

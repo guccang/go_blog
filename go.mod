@@ -82,6 +82,8 @@ replace agent => ./pkgs/agent
 
 replace wechat => ./pkgs/wechat
 
+replace codegen => ./pkgs/codegen
+
 require (
 	agent v0.0.0
 	auth v0.0.0
@@ -130,5 +132,6 @@ require (
 	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
 	wechat v0.0.0 // indirect
+	codegen v0.0.0 // indirect
 	yearplan v0.0.0 // indirect
 )

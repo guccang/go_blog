@@ -16,6 +16,7 @@ require (
 	mylog v0.0.0
 	statistics v0.0.0
 	wechat v0.0.0
+	codegen v0.0.0
 )
 
 require (
@@ -39,4 +40,5 @@ replace (
 	statistics => ../statistics
 	view => ../view
 	wechat => ../wechat
+	codegen => ../codegen
 )

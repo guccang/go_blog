@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"codegen"
 	"email"
 	"encoding/json"
 	"fmt"
@@ -57,6 +58,9 @@ func Init(account string) {
 		// 初始化企业微信模块
 		wechat.InitWechatConfig()
 		wechat.SetCommandHandler(handleWechatCommand)
+
+		// 初始化编码助手模块
+		codegen.Init()
 
 		// 初始化报告生成器
 		InitReportGenerator(account)

@@ -342,6 +342,17 @@ func Init() int {
 	// WeChat Work bot callback
 	h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
 
+	// CodeGen routes
+	h.HandleFunc("/codegen", HandleCodeGen)
+	h.HandleFunc("/api/codegen/projects", HandleCodeGenProjects)
+	h.HandleFunc("/api/codegen/run", HandleCodeGenRun)
+	h.HandleFunc("/api/codegen/message", HandleCodeGenMessage)
+	h.HandleFunc("/api/codegen/sessions", HandleCodeGenSessions)
+	h.HandleFunc("/api/codegen/stop", HandleCodeGenStop)
+	h.HandleFunc("/api/codegen/tree", HandleCodeGenTree)
+	h.HandleFunc("/api/codegen/file", HandleCodeGenFile)
+	h.HandleFunc("/ws/codegen", HandleCodeGenWS)
+
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)
