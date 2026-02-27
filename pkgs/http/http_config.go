@@ -345,18 +345,25 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 	content.WriteString("# 系统配置文件\n")
 	content.WriteString("# 修改后需要重启服务生效\n\n")
 
-	// 定义配置项的顺序
+	// 定义配置项的顺序（按逻辑分类排列）
 	configOrder := []string{
-		"port",
-		"redis_ip",
-		"redis_port",
-		"redis_pwd",
-		"publictags",
-		"sysfiles",
-		"title_auto_add_date_suffix",
-		"diary_keywords",
-		"diary_password",
-		"main_show_blogs",
+		// 基础设置
+		"port", "pwd", "admin", "logs_dir", "statics_path", "templates_path", "download_path", "recycle_path",
+		// Redis 缓存
+		"redis_ip", "redis_port", "redis_pwd",
+		// 博客设置
+		"publictags", "sysfiles", "main_show_blogs", "max_blog_comments", "share_days", "help_blog_name",
+		// 日记设置
+		"title_auto_add_date_suffix", "diary_keywords", "diary_password",
+		// AI / LLM
+		"openai_api_key", "openai_api_url", "deepseek_api_key", "deepseek_api_url",
+		"qwen_api_key", "qwen_api_url", "llm_fallback_models", "assistant_save_mcp_result",
+		// CodeGen 编码
+		"codegen_workspace", "codegen_claude_path", "codegen_max_turns", "codegen_mode", "codegen_agent_token",
+		// 企业微信
+		"wechat_corp_id", "wechat_secret", "wechat_agent_id", "wechat_token", "wechat_encoding_aes_key", "wechat_webhook",
+		// 邮件通知
+		"smtp_host", "smtp_port", "email_from", "email_password", "email_to", "sms_phone", "sms_send_url",
 	}
 
 	// 按顺序输出配置项

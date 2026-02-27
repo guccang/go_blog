@@ -255,6 +255,101 @@
     gap: 16px;
 }
 
+/* 分类区块 */
+.config-category {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px;
+    background: linear-gradient(135deg, var(--lighter-bg) 0%, var(--card-bg) 100%);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    user-select: none;
+    transition: var(--transition);
+}
+
+.category-header:hover {
+    background: linear-gradient(135deg, var(--secondary-color) 0%, var(--lighter-bg) 100%);
+}
+
+.category-icon {
+    font-size: 20px;
+}
+
+.category-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-color);
+    flex: 1;
+}
+
+.category-count {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.6;
+    background: var(--lighter-bg);
+    padding: 2px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.category-toggle {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.5;
+    transition: var(--transition);
+}
+
+.category-body {
+    display: grid;
+    gap: 0;
+    transition: var(--transition);
+}
+
+.config-category.collapsed .category-body {
+    display: none;
+}
+
+.config-category .config-item {
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: none;
+    animation: none;
+}
+
+.config-category .config-item:last-child {
+    border-bottom: none;
+}
+
+.config-category .config-item:hover {
+    transform: none;
+    background-color: var(--lighter-bg);
+}
+
+.config-category .config-item::before {
+    display: none;
+}
+
+/* 配置项描述 */
+.config-desc {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.7;
+    line-height: 1.4;
+    margin-top: 4px;
+    padding: 4px 0;
+}
+
 .config-item {
     display: grid;
     grid-template-columns: minmax(200px, 1fr) minmax(250px, 2fr) minmax(200px, 1.5fr) auto;

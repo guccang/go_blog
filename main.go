@@ -4,6 +4,7 @@ import (
 	"agent"
 	"auth"
 	"blog"
+	"codegen"
 	"comment"
 	"config"
 	"control"
@@ -103,6 +104,7 @@ func main() {
 	exercise.Init()
 	share.Init()
 	agent.Init(account)
+	codegen.Init()
 	log.Debug(log.ModuleCommon, "go_blog started")
 
 	certFile := ""

@@ -213,6 +213,10 @@ func RegisterInnerTools() {
 	RegisterCallBackPrompt("ReadingCompanion", "像阅读伙伴一样分析阅读数据并给出建议和鼓励")
 	RegisterCallBack("SmartDecomposeTodo", Inner_blog_RawSmartDecomposeTodo)
 	RegisterCallBackPrompt("SmartDecomposeTodo", "将复杂任务拆解为可独立完成的子任务，确认后添加到待办")
+
+	// 注意: CodeGen 工具的回调由 agent 包通过 mcp.RegisterCallBack() 注册
+	// 工具名: CodegenListProjects, CodegenCreateProject, CodegenStartSession,
+	//         CodegenSendMessage, CodegenGetStatus, CodegenStopSession
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -1028,6 +1032,97 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAISkill", Description: "创建新的 AI 技能卡。技能卡能让 AI 学会新本领，例如'每次说写周报就自动收集数据生成报告'。当用户说'帮我创建一个技能'、'教你一个新本领'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "description": map[string]string{"type": "string", "description": "一句话描述技能功能"}, "triggers": map[string]string{"type": "string", "description": "触发关键词,逗号分隔,如: 写周报,本周总结"}, "instruction": map[string]string{"type": "string", "description": "详细的技能指令,告诉AI触发时应该怎么做"}, "examples": map[string]string{"type": "string", "description": "可选,示例对话"}}, "required": []string{"account", "name", "instruction"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ToggleAISkill", Description: "启用或停用指定的 AI 技能。当用户说'停用xxx技能'、'启用xxx'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "active": map[string]string{"type": "boolean", "description": "true=启用, false=停用"}}, "required": []string{"account", "name"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetSkillTemplate", Description: "获取 AI 技能卡的创建模板,了解技能卡的格式。当需要创建技能但不确定格式时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
+
+		// =================================== CodeGen 编码助手工具 =========================================
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenListProjects",
+				Description: "列出所有可用的AI编码项目。当用户问'有哪些项目'、'项目列表'、'编码项目'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenCreateProject",
+				Description: "创建一个新的编码项目目录。可以指定在某个远程agent上创建。当用户说'创建项目'、'新建一个项目'、'在xxx机器上创建项目'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+						"name":    map[string]string{"type": "string", "description": "项目名称（英文，无空格）"},
+						"agent":   map[string]string{"type": "string", "description": "可选，远程agent名称。指定后在该agent机器上创建项目"},
+					},
+					"required": []string{"account", "name"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenStartSession",
+				Description: "启动AI编码会话，让AI在指定项目中编写代码。这是一个异步操作，启动后进度会通过微信推送。当用户说'写个程序'、'帮我写代码'、'在xxx项目里开发'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+						"project": map[string]string{"type": "string", "description": "项目名称"},
+						"prompt":  map[string]string{"type": "string", "description": "编码需求描述"},
+					},
+					"required": []string{"account", "project", "prompt"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenSendMessage",
+				Description: "向当前活跃的编码会话追加消息/指令。当用户说'继续编码'、'修改一下'、'再加个功能'时使用（需要先有活跃会话）",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+						"prompt":  map[string]string{"type": "string", "description": "追加的消息/指令"},
+					},
+					"required": []string{"account", "prompt"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenGetStatus",
+				Description: "查看当前编码会话的运行状态。当用户问'编码进度怎么样'、'完成了吗'、'编码状态'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenStopSession",
+				Description: "停止当前正在运行的编码会话。当用户说'停掉编码'、'取消编码'、'停止开发'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
 	}
 
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）

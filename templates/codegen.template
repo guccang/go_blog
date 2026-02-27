@@ -153,6 +153,43 @@
             font-size: 11px;
             color: var(--text-muted);
         }
+        .project-item .agent-badge {
+            display: inline-block;
+            background: rgba(188, 140, 255, 0.15);
+            color: var(--purple);
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 500;
+        }
+
+        /* Agent status */
+        .agent-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: 12px;
+        }
+        .agent-status .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+        .agent-status .dot.online {
+            background: var(--green);
+        }
+        .agent-section-header {
+            padding: 8px 12px 4px;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
 
         /* Main */
         .main {
@@ -202,6 +239,20 @@
             border-left: 3px solid var(--accent);
             font-family: var(--font-mono);
             font-size: 12px;
+        }
+        .tool-header {
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+        .tool-detail {
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 4px 0;
+            line-height: 1.4;
         }
         .event-item.assistant {
             background: var(--bg-tertiary);
@@ -361,6 +412,10 @@
             <h1>⚡ CodeGen</h1>
             <span class="badge">Claude Code</span>
             <span class="workspace-path" id="workspacePath"></span>
+            <div class="agent-status" id="agentStatus" style="display:none">
+                <span class="dot" id="agentDot"></span>
+                <span id="agentText"></span>
+            </div>
             <a href="/main" class="btn-home">← 返回</a>
         </div>
 
@@ -369,6 +424,11 @@
             <div class="sidebar-header">
                 <h3>📂 项目</h3>
                 <button class="btn-new" onclick="showNewProjectModal()">+ 新建</button>
+            </div>
+            <div style="padding: 6px 8px; border-bottom: 1px solid var(--border);">
+                <input type="text" id="projectSearch" placeholder="搜索项目..."
+                       oninput="filterProjects()"
+                       style="width:100%; background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px; color:var(--text-primary); font-size:12px; outline:none;">
             </div>
             <div class="project-list" id="projectList">
                 <div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">
@@ -419,9 +479,47 @@
     let currentProject = null;
     let currentSessionId = null;
     let ws = null;
+    let remoteProjectMap = {}; // project name -> agent info
+    let cachedLocalProjects = [];
+    let cachedRemoteOnly = [];
+
+    // 每个项目的会话状态缓存: project -> { sessionId, outputHtml, status, costText }
+    let projectStates = {};
 
     // 页面加载
-    document.addEventListener('DOMContentLoaded', loadProjects);
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadProjects();
+        await loadRunningSessions();
+    });
+
+    // 加载已有运行中的会话
+    async function loadRunningSessions() {
+        try {
+            const resp = await fetch('/api/codegen/sessions');
+            const data = await resp.json();
+            if (!data.success) return;
+            const sessions = data.data.sessions || [];
+            for (const s of sessions) {
+                if (!projectStates[s.project]) {
+                    projectStates[s.project] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
+                }
+                const state = projectStates[s.project];
+                // 保留最新的 session
+                if (!state.sessionId || s.status === 'running') {
+                    state.sessionId = s.id;
+                    state.status = s.status === 'running' ? 'running' : 'done';
+                }
+            }
+            renderProjects();
+        } catch (e) { /* ignore */ }
+    }
+
+    function getProjectState(project) {
+        if (!projectStates[project]) {
+            projectStates[project] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
+        }
+        return projectStates[project];
+    }
 
     // 加载项目列表
     async function loadProjects() {
@@ -429,41 +527,158 @@
             const resp = await fetch('/api/codegen/projects');
             const data = await resp.json();
             if (!data.success) throw new Error(data.error);
-            
+
             document.getElementById('workspacePath').textContent = data.data.workspace;
-            renderProjects(data.data.projects || []);
+
+            // 更新 agent 状态
+            updateAgentStatus(data.data.agents || []);
+
+            // 合并本地和远程项目
+            const localProjects = data.data.projects || [];
+            const remoteProjects = data.data.remote_projects || [];
+            remoteProjectMap = {};
+            remoteProjects.forEach(rp => { remoteProjectMap[rp.name] = rp; });
+
+            // 去重 + 按名称排序（稳定）
+            const localNames = new Set(localProjects.map(p => p.name));
+            cachedLocalProjects = localProjects.slice().sort((a, b) => a.name.localeCompare(b.name));
+            cachedRemoteOnly = remoteProjects
+                .filter(rp => !localNames.has(rp.name))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            renderProjects();
         } catch (err) {
             console.error('Load projects failed:', err);
         }
     }
 
-    function renderProjects(projects) {
-        const list = document.getElementById('projectList');
-        if (projects.length === 0) {
-            list.innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">暂无项目<br>点击 + 新建 创建</div>';
+    function updateAgentStatus(agents) {
+        const el = document.getElementById('agentStatus');
+        const dot = document.getElementById('agentDot');
+        const text = document.getElementById('agentText');
+
+        if (!agents || agents.length === 0) {
+            el.style.display = 'none';
             return;
         }
-        list.innerHTML = projects.map(p => `
-            <div class="project-item ${currentProject === p.name ? 'active' : ''}" onclick="selectProject('${p.name}')">
-                <div class="name">📁 ${p.name}</div>
-                <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}</div>
-            </div>
-        `).join('');
+
+        el.style.display = 'flex';
+        dot.className = 'dot online';
+        text.textContent = agents.length + ' 个 Agent 在线';
+    }
+
+    function filterProjects() {
+        renderProjects();
+    }
+
+    function getProjectStatusIndicator(projectName) {
+        const state = projectStates[projectName];
+        if (!state) return '';
+        if (state.status === 'running') {
+            return '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:6px;animation:pulse 1.5s infinite;vertical-align:middle;" title="运行中"></span>';
+        }
+        return '';
+    }
+
+    function renderProjects() {
+        const list = document.getElementById('projectList');
+        const query = (document.getElementById('projectSearch').value || '').toLowerCase().trim();
+
+        const localFiltered = cachedLocalProjects.filter(p => !query || p.name.toLowerCase().includes(query));
+        const remoteFiltered = cachedRemoteOnly.filter(rp => !query || rp.name.toLowerCase().includes(query));
+
+        if (localFiltered.length === 0 && remoteFiltered.length === 0) {
+            list.innerHTML = query
+                ? '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">未找到匹配项目</div>'
+                : '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">暂无项目<br>点击 + 新建 创建</div>';
+            return;
+        }
+
+        let html = '';
+
+        // 本地项目
+        if (localFiltered.length > 0) {
+            html += localFiltered.map(p => {
+                const agentBadge = remoteProjectMap[p.name]
+                    ? `<span class="agent-badge">${remoteProjectMap[p.name].agent}</span>`
+                    : '';
+                const statusDot = getProjectStatusIndicator(p.name);
+                const state = projectStates[p.name];
+                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                return `
+                <div class="project-item ${currentProject === p.name ? 'active' : ''}" onclick="selectProject('${p.name}')">
+                    <div class="name">📁 ${p.name}${agentBadge}${statusDot}</div>
+                    <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}${statusMeta}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // 远程独有项目
+        if (remoteFiltered.length > 0) {
+            html += '<div class="agent-section-header">🌐 远程项目</div>';
+            html += remoteFiltered.map(rp => {
+                const statusDot = getProjectStatusIndicator(rp.name);
+                const state = projectStates[rp.name];
+                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                return `
+                <div class="project-item ${currentProject === rp.name ? 'active' : ''}" onclick="selectProject('${rp.name}')">
+                    <div class="name">📁 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
+                    <div class="meta">远程 · ${rp.agent}${statusMeta}</div>
+                </div>`;
+            }).join('');
+        }
+
+        list.innerHTML = html;
     }
 
     function selectProject(name) {
+        // 保存当前项目的输出
+        if (currentProject) {
+            saveCurrentProjectState();
+        }
+
         currentProject = name;
-        currentSessionId = null; // 切换项目时重置会话
-        loadProjects(); // refresh highlight
+        const state = getProjectState(name);
+        currentSessionId = state.sessionId;
+
+        renderProjects();
         document.getElementById('welcomeView').style.display = 'none';
         const output = document.getElementById('outputArea');
-        output.innerHTML = ''; // 清空之前的输出
         output.classList.add('active');
-        addEvent('system', `📂 已选择项目: ${name}`);
-        
-        // 尝试加载 README
-        loadProjectReadme(name);
+
+        // 恢复该项目的输出
+        if (state.outputHtml) {
+            output.innerHTML = state.outputHtml;
+            output.scrollTop = output.scrollHeight;
+        } else {
+            output.innerHTML = '';
+            addEvent('system', `📂 已选择项目: ${name}`);
+            loadProjectReadme(name);
+        }
+
+        // 恢复状态栏
+        if (state.status === 'running') {
+            setStatus('running', '编码中...');
+            document.getElementById('btnSend').disabled = true;
+            document.getElementById('btnStop').classList.add('visible');
+            // 重连 WebSocket
+            if (currentSessionId) {
+                connectWebSocket(currentSessionId);
+            }
+        } else {
+            setStatus('idle', '就绪');
+            document.getElementById('costText').textContent = state.costText || '';
+            resetUI();
+        }
+
         document.getElementById('promptInput').focus();
+    }
+
+    function saveCurrentProjectState() {
+        if (!currentProject) return;
+        const state = getProjectState(currentProject);
+        state.outputHtml = document.getElementById('outputArea').innerHTML;
+        state.costText = document.getElementById('costText').textContent;
     }
 
     async function loadProjectReadme(project) {
@@ -538,6 +753,10 @@
         document.getElementById('btnSend').disabled = true;
         document.getElementById('btnStop').classList.add('visible');
 
+        const state = getProjectState(currentProject);
+        state.status = 'running';
+        renderProjects(); // 更新侧边栏运行指示
+
         try {
             let endpoint = '/api/codegen/run';
             let body = { project: currentProject, prompt };
@@ -557,12 +776,15 @@
 
             if (data.data.session_id) {
                 currentSessionId = data.data.session_id;
+                state.sessionId = currentSessionId;
             }
 
             // 连接 WebSocket
             connectWebSocket(currentSessionId);
         } catch (err) {
             addEvent('error', '启动失败: ' + err.message);
+            state.status = 'error';
+            renderProjects();
             resetUI();
         }
     }
@@ -571,57 +793,94 @@
     function connectWebSocket(sessionId) {
         if (ws) ws.close();
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsProject = currentProject; // 捕获当前项目
         ws = new WebSocket(`${protocol}//${location.host}/ws/codegen?session_id=${sessionId}`);
 
         ws.onmessage = function(e) {
             const event = JSON.parse(e.data);
-            
+            const isActiveProject = (currentProject === wsProject);
+
             if (event.type === 'tool') {
-                addEvent('tool', event.text || `🔧 ${event.tool_name}`);
+                if (isActiveProject) addToolEvent(event);
             } else if (event.type === 'assistant') {
-                addEvent('assistant', event.text);
+                if (isActiveProject) addEvent('assistant', event.text);
             } else if (event.type === 'result') {
-                // 显示结果和统计信息
                 let summary = event.text || '✅ 编码完成';
-                addEvent('result', summary);
-                // 显示 cost/token 统计
+                if (isActiveProject) addEvent('result', summary);
                 let stats = [];
                 if (event.cost_usd > 0) stats.push(`💰 $${event.cost_usd.toFixed(4)}`);
                 if (event.tokens_in > 0 || event.tokens_out > 0) stats.push(`📊 ${event.tokens_in || 0} → ${event.tokens_out || 0} tokens`);
                 if (event.duration_ms > 0) stats.push(`⏱ ${(event.duration_ms / 1000).toFixed(1)}s`);
                 if (event.num_turns > 0) stats.push(`🔄 ${event.num_turns} turns`);
                 if (stats.length > 0) {
-                    document.getElementById('costText').textContent = stats.join(' · ');
-                    addEvent('system', stats.join(' · '));
+                    const statsText = stats.join(' · ');
+                    if (isActiveProject) {
+                        document.getElementById('costText').textContent = statsText;
+                        addEvent('system', statsText);
+                    }
+                    const state = getProjectState(wsProject);
+                    state.costText = stats.join(' · ');
                 }
             } else if (event.type === 'error') {
-                addEvent('error', event.text);
+                if (isActiveProject) addEvent('error', event.text);
             } else if (event.type === 'system') {
-                addEvent('system', event.text);
+                if (isActiveProject) addEvent('system', event.text);
             } else {
-                addEvent('system', event.text || JSON.stringify(event));
+                if (isActiveProject) addEvent('system', event.text || JSON.stringify(event));
+            }
+
+            // 保存非活跃项目的输出到缓存
+            if (!isActiveProject) {
+                // 构建事件 HTML 追加到缓存
+                const state = getProjectState(wsProject);
+                state.outputHtml += buildEventHtml(event);
             }
 
             if (event.done) {
-                if (event.type === 'error') {
-                    setStatus('error', '❌ 失败');
-                } else {
-                    setStatus('done', '✅ 完成');
+                const state = getProjectState(wsProject);
+                state.status = (event.type === 'error') ? 'error' : 'done';
+                if (isActiveProject) {
+                    if (event.type === 'error') {
+                        setStatus('error', '❌ 失败');
+                    } else {
+                        setStatus('done', '✅ 完成');
+                    }
+                    resetUI();
                 }
-                resetUI();
+                // 保存最终输出
+                if (isActiveProject) {
+                    saveCurrentProjectState();
+                }
+                renderProjects(); // 更新侧边栏状态
             } else {
-                setStatus('running', '编码中...');
+                if (isActiveProject) setStatus('running', '编码中...');
             }
         };
 
         ws.onerror = function() {
-            addEvent('error', 'WebSocket 连接失败');
-            resetUI();
+            if (currentProject === wsProject) {
+                addEvent('error', 'WebSocket 连接失败');
+                resetUI();
+            }
         };
 
         ws.onclose = function() {
             // don't overwrite error/done status
         };
+    }
+
+    // 构建事件 HTML（用于缓存非活跃项目的输出）
+    function buildEventHtml(event) {
+        let cls = event.type || 'system';
+        let content = '';
+        if (event.type === 'user') {
+            content = `<strong>👤 你:</strong> ${escapeHtml(event.text || '')}`;
+        } else if (event.type === 'tool') {
+            content = buildToolContent(event);
+        } else {
+            content = escapeHtml(event.text || '');
+        }
+        return `<div class="event-item ${cls}">${content}</div>`;
     }
 
     // 停止会话
@@ -636,7 +895,68 @@
         } catch (err) {
             console.error('Stop failed:', err);
         }
+        if (currentProject) {
+            const state = getProjectState(currentProject);
+            state.status = 'stopped';
+        }
+        renderProjects();
         resetUI();
+    }
+
+    // 添加工具事件（详细显示）
+    function addToolEvent(event) {
+        const area = document.getElementById('outputArea');
+        const div = document.createElement('div');
+        div.className = 'event-item tool';
+        div.innerHTML = buildToolContent(event);
+        area.appendChild(div);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    // 构建工具详细内容
+    function buildToolContent(event) {
+        const name = event.tool_name || 'unknown';
+        let input = event.tool_input || '';
+
+        // 尝试格式化 JSON
+        let detail = '';
+        try {
+            const parsed = JSON.parse(input);
+            detail = formatToolDetail(name, parsed);
+        } catch (e) {
+            detail = input;
+        }
+
+        return `<div class="tool-header">🔧 ${escapeHtml(name)}</div><div class="tool-detail">${escapeHtml(detail)}</div>`;
+    }
+
+    // 根据工具类型格式化详细参数
+    function formatToolDetail(toolName, params) {
+        switch (toolName) {
+            case 'Write': case 'write_file': case 'write':
+                return `文件: ${params.file_path || ''}${params.content ? '\n内容:\n' + params.content : ''}`;
+            case 'Read': case 'read_file': case 'read':
+                return `文件: ${params.file_path || ''}${params.offset ? '  offset=' + params.offset : ''}${params.limit ? '  limit=' + params.limit : ''}`;
+            case 'Edit': case 'edit_file':
+                let s = `文件: ${params.file_path || ''}`;
+                if (params.old_string) s += `\n查找:\n${params.old_string}`;
+                if (params.new_string) s += `\n替换:\n${params.new_string}`;
+                return s;
+            case 'Bash': case 'bash': case 'run_command':
+                return `命令: ${params.command || ''}${params.description ? '\n说明: ' + params.description : ''}`;
+            case 'Glob': case 'glob':
+                return `模式: ${params.pattern || ''}${params.path ? '  路径: ' + params.path : ''}`;
+            case 'Grep': case 'grep': case 'Search': case 'search':
+                return `模式: ${params.pattern || ''}${params.path ? '  路径: ' + params.path : ''}${params.glob ? '  文件: ' + params.glob : ''}`;
+            case 'ListDir': case 'list_dir':
+                return `路径: ${params.path || '.'}`;
+            default:
+                // 通用：显示所有参数
+                return Object.entries(params).map(([k, v]) => {
+                    const val = typeof v === 'string' ? v : JSON.stringify(v);
+                    return `${k}: ${val}`;
+                }).join('\n');
+        }
     }
 
     // UI 工具函数

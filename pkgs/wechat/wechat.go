@@ -393,5 +393,6 @@ func getHelpText() string {
 		"📋 数据查询\n• 待办 / todo — 今日待办\n• 运动 / exercise — 运动统计\n• 阅读 / reading — 阅读进度\n\n" +
 		"📊 报告\n• 日报 — 生成今日报告\n• 周报 — 生成本周报告\n\n" +
 		"⏰ 提醒\n• 提醒列表 — 查看定时提醒\n• 状态 / status — 服务器状态\n\n" +
+		"💻 编码\n• cg list — 项目列表\n• cg start <项目> <需求> — 启动编码\n• cg status — 查看进度\n• cg stop — 停止编码\n• 也可用自然语言，如「在myapp里写个HTTP服务器」\n\n" +
 		"🧠 AI — 其他任意问题直接发送"
 }

@@ -20,4 +20,5 @@ deepseek_html_20250820_9e351f.html
 *.exe~
 .claude/settings.json
 go_blog
-go_blog
+./codegen
+/codegen

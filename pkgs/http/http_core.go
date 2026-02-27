@@ -351,7 +351,9 @@ func Init() int {
 	h.HandleFunc("/api/codegen/stop", HandleCodeGenStop)
 	h.HandleFunc("/api/codegen/tree", HandleCodeGenTree)
 	h.HandleFunc("/api/codegen/file", HandleCodeGenFile)
+	h.HandleFunc("/api/codegen/agents", HandleCodeGenAgents)
 	h.HandleFunc("/ws/codegen", HandleCodeGenWS)
+	h.HandleFunc("/ws/codegen/agent", HandleCodeGenAgentWS)
 
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)

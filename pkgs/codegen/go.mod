@@ -6,6 +6,7 @@ toolchain go1.24.10
 
 require (
 	config v0.0.0
+	github.com/gorilla/websocket v1.5.0
 	mylog v0.0.0
 )
 

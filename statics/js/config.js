@@ -6,6 +6,77 @@ let originalConfigs = {};
 let originalComments = {};
 let filteredConfigs = {};
 
+// 配置项元数据：分类、描述、排序
+const CONFIG_METADATA = {
+    // ─── 基础设置 ───
+    port:           { category: '基础设置', icon: '🌐', order: 1, desc: 'HTTP 服务监听端口号，修改后需重启生效' },
+    pwd:            { category: '基础设置', icon: '🌐', order: 2, desc: '管理员登录密码' },
+    admin:          { category: '基础设置', icon: '🌐', order: 3, desc: '管理员账户名称' },
+    logs_dir:       { category: '基础设置', icon: '🌐', order: 4, desc: '日志文件存放目录路径' },
+    statics_path:   { category: '基础设置', icon: '🌐', order: 5, desc: '静态资源（CSS/JS/图片）目录路径' },
+    templates_path: { category: '基础设置', icon: '🌐', order: 6, desc: 'HTML 模板文件目录路径' },
+    download_path:  { category: '基础设置', icon: '🌐', order: 7, desc: '文件下载保存目录路径' },
+    recycle_path:   { category: '基础设置', icon: '🌐', order: 8, desc: '删除博客的回收站目录路径' },
+
+    // ─── Redis 配置 ───
+    redis_ip:   { category: 'Redis 缓存', icon: '🗄️', order: 1, desc: 'Redis 服务器 IP 地址，默认 127.0.0.1' },
+    redis_port: { category: 'Redis 缓存', icon: '🗄️', order: 2, desc: 'Redis 服务器端口号，默认 6666' },
+    redis_pwd:  { category: 'Redis 缓存', icon: '🗄️', order: 3, desc: 'Redis 连接密码，留空表示无密码' },
+
+    // ─── 博客设置 ───
+    publictags:       { category: '博客设置', icon: '📝', order: 1, desc: '公开可见的标签列表，多个用 | 分隔（如 public|share|demo）' },
+    sysfiles:         { category: '博客设置', icon: '📝', order: 2, desc: '系统文件名列表，这些文件不会在博客列表中显示' },
+    main_show_blogs:  { category: '博客设置', icon: '📝', order: 3, desc: '主页默认显示的博客数量' },
+    max_blog_comments:{ category: '博客设置', icon: '📝', order: 4, desc: '每篇博客允许的最大评论数' },
+    share_days:       { category: '博客设置', icon: '📝', order: 5, desc: '分享链接的有效天数' },
+    help_blog_name:   { category: '博客设置', icon: '📝', order: 6, desc: '帮助文档对应的博客标题名称' },
+
+    // ─── 日记设置 ───
+    title_auto_add_date_suffix: { category: '日记设置', icon: '📔', order: 1, desc: '标题包含该关键字时自动添加日期后缀，多个用 | 分隔' },
+    diary_keywords:             { category: '日记设置', icon: '📔', order: 2, desc: '日记识别关键字，标题含此前缀会被标记为日记，多个用 | 分隔' },
+    diary_password:             { category: '日记设置', icon: '📔', order: 3, desc: '日记加密密码，设置后日记内容需输入密码才能查看' },
+
+    // ─── AI / LLM 配置 ───
+    openai_api_key:           { category: 'AI / LLM', icon: '🤖', order: 1, desc: 'OpenAI API 密钥（用于智能助手和 Agent）' },
+    openai_api_url:           { category: 'AI / LLM', icon: '🤖', order: 2, desc: 'OpenAI API 请求地址，可配置代理或自部署端点' },
+    deepseek_api_key:         { category: 'AI / LLM', icon: '🤖', order: 3, desc: 'DeepSeek API 密钥' },
+    deepseek_api_url:         { category: 'AI / LLM', icon: '🤖', order: 4, desc: 'DeepSeek API 请求地址' },
+    qwen_api_key:             { category: 'AI / LLM', icon: '🤖', order: 5, desc: '通义千问(Qwen) API 密钥' },
+    qwen_api_url:             { category: 'AI / LLM', icon: '🤖', order: 6, desc: '通义千问(Qwen) API 请求地址' },
+    llm_fallback_models:      { category: 'AI / LLM', icon: '🤖', order: 7, desc: 'LLM 备用模型配置（JSON 格式），主模型失败时自动切换' },
+    assistant_save_mcp_result: { category: 'AI / LLM', icon: '🤖', order: 8, desc: '是否保存 MCP 工具调用结果到博客（true/false）' },
+
+    // ─── CodeGen 编码助手 ───
+    codegen_workspace:    { category: 'CodeGen 编码', icon: '💻', order: 1, desc: '编码项目工作区目录，多个用逗号分隔，默认 ./codegen' },
+    codegen_claude_path:  { category: 'CodeGen 编码', icon: '💻', order: 2, desc: 'Claude CLI 可执行文件路径，默认 claude' },
+    codegen_max_turns:    { category: 'CodeGen 编码', icon: '💻', order: 3, desc: 'Claude 单次会话最大交互轮数，默认 20' },
+    codegen_mode:         { category: 'CodeGen 编码', icon: '💻', order: 4, desc: '执行模式：local（本地）/ remote（远程Agent）/ auto（自动选择）' },
+    codegen_agent_token:  { category: 'CodeGen 编码', icon: '💻', order: 5, desc: '远程 CodeGen Agent 认证 Token' },
+
+    // ─── 企业微信 ───
+    wechat_corp_id:          { category: '企业微信', icon: '💬', order: 1, desc: '企业微信 Corp ID（企业ID）' },
+    wechat_secret:           { category: '企业微信', icon: '💬', order: 2, desc: '企业微信应用 Secret' },
+    wechat_agent_id:         { category: '企业微信', icon: '💬', order: 3, desc: '企业微信应用 Agent ID' },
+    wechat_token:            { category: '企业微信', icon: '💬', order: 4, desc: '企业微信回调 Token（用于验证消息来源）' },
+    wechat_encoding_aes_key: { category: '企业微信', icon: '💬', order: 5, desc: '企业微信消息加密 AES Key（43位字符）' },
+    wechat_webhook:          { category: '企业微信', icon: '💬', order: 6, desc: '企业微信群机器人 Webhook 地址' },
+
+    // ─── 邮件 / 通知 ───
+    smtp_host:      { category: '邮件通知', icon: '📧', order: 1, desc: 'SMTP 邮件服务器地址（如 smtp.qq.com）' },
+    smtp_port:      { category: '邮件通知', icon: '📧', order: 2, desc: 'SMTP 服务器端口号（如 465 或 587）' },
+    email_from:     { category: '邮件通知', icon: '📧', order: 3, desc: '发件人邮箱地址' },
+    email_password: { category: '邮件通知', icon: '📧', order: 4, desc: '发件人邮箱密码或授权码' },
+    email_to:       { category: '邮件通知', icon: '📧', order: 5, desc: '默认收件人邮箱地址' },
+    sms_phone:      { category: '邮件通知', icon: '📧', order: 6, desc: '短信通知接收手机号' },
+    sms_send_url:   { category: '邮件通知', icon: '📧', order: 7, desc: '短信发送接口 URL' },
+};
+
+// 分类显示顺序
+const CATEGORY_ORDER = [
+    '基础设置', 'Redis 缓存', '博客设置', '日记设置',
+    'AI / LLM', 'CodeGen 编码', '企业微信', '邮件通知'
+];
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     loadConfigs();
@@ -76,14 +147,14 @@ async function loadConfigs() {
     }
 }
 
-// 渲染配置列表
+// 渲染配置列表（按分类分组）
 function renderConfigs() {
     const configList = document.getElementById('configList');
     configList.innerHTML = '';
 
-    const sortedKeys = Object.keys(filteredConfigs).sort();
-    
-    if (sortedKeys.length === 0) {
+    const keys = Object.keys(filteredConfigs);
+
+    if (keys.length === 0) {
         configList.innerHTML = `
             <div class="empty-state">
                 <h3>没有找到配置项</h3>
@@ -94,11 +165,86 @@ function renderConfigs() {
         return;
     }
 
-    sortedKeys.forEach(key => {
-        const value = filteredConfigs[key];
-        const configItem = createConfigItem(key, value);
-        configList.appendChild(configItem);
+    // 按分类分组
+    const groups = {};
+    const ungrouped = [];
+
+    keys.forEach(key => {
+        const meta = CONFIG_METADATA[key];
+        if (meta) {
+            const cat = meta.category;
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(key);
+        } else {
+            ungrouped.push(key);
+        }
     });
+
+    // 每个分类内按 order 排序
+    Object.keys(groups).forEach(cat => {
+        groups[cat].sort((a, b) => {
+            const oa = (CONFIG_METADATA[a] || {}).order || 999;
+            const ob = (CONFIG_METADATA[b] || {}).order || 999;
+            return oa - ob;
+        });
+    });
+
+    // 按分类顺序渲染
+    CATEGORY_ORDER.forEach(cat => {
+        if (!groups[cat] || groups[cat].length === 0) return;
+        const meta0 = CONFIG_METADATA[groups[cat][0]];
+        const icon = meta0 ? meta0.icon : '📦';
+
+        const section = document.createElement('div');
+        section.className = 'config-category';
+        section.innerHTML = `<div class="category-header" onclick="toggleCategory(this)">
+            <span class="category-icon">${icon}</span>
+            <span class="category-title">${cat}</span>
+            <span class="category-count">${groups[cat].length} 项</span>
+            <span class="category-toggle">▼</span>
+        </div>`;
+
+        const body = document.createElement('div');
+        body.className = 'category-body';
+
+        groups[cat].forEach(key => {
+            body.appendChild(createConfigItem(key, filteredConfigs[key]));
+        });
+
+        section.appendChild(body);
+        configList.appendChild(section);
+    });
+
+    // 未分类的配置项
+    if (ungrouped.length > 0) {
+        ungrouped.sort();
+        const section = document.createElement('div');
+        section.className = 'config-category';
+        section.innerHTML = `<div class="category-header" onclick="toggleCategory(this)">
+            <span class="category-icon">📦</span>
+            <span class="category-title">其他配置</span>
+            <span class="category-count">${ungrouped.length} 项</span>
+            <span class="category-toggle">▼</span>
+        </div>`;
+
+        const body = document.createElement('div');
+        body.className = 'category-body';
+
+        ungrouped.forEach(key => {
+            body.appendChild(createConfigItem(key, filteredConfigs[key]));
+        });
+
+        section.appendChild(body);
+        configList.appendChild(section);
+    }
+}
+
+// 折叠/展开分类
+function toggleCategory(header) {
+    const section = header.parentElement;
+    section.classList.toggle('collapsed');
+    const toggle = header.querySelector('.category-toggle');
+    toggle.textContent = section.classList.contains('collapsed') ? '▶' : '▼';
 }
 
 // 创建配置项元素
@@ -106,7 +252,7 @@ function createConfigItem(key, value) {
     const item = document.createElement('div');
     item.className = 'config-item';
     item.dataset.originalKey = key;
-    
+
     // 检查是否是新配置或修改的配置
     if (!originalConfigs.hasOwnProperty(key)) {
         item.classList.add('new');
@@ -115,31 +261,34 @@ function createConfigItem(key, value) {
     }
 
     const comment = configComments[key] || '';
-    
+    const meta = CONFIG_METADATA[key];
+    const description = meta ? meta.desc : '';
+
     item.innerHTML = `
         <div class="config-key">
             <div class="config-key-label">配置项名称</div>
-            <input type="text" class="config-key-input" value="${escapeHtml(key)}" 
+            <input type="text" class="config-key-input" value="${escapeHtml(key)}"
                    onchange="updateConfigKey('${escapeHtml(key)}', this.value)"
-                   title="配置项名称，建议使用小写字母和下划线">
+                   title="${escapeHtml(description || key)}">
+            ${description ? `<div class="config-desc">${escapeHtml(description)}</div>` : ''}
         </div>
         <div class="config-value">
             <div class="config-value-label">配置值</div>
-            <input type="text" class="config-value-input" value="${escapeHtml(value)}" 
+            <input type="text" class="config-value-input" value="${escapeHtml(value)}"
                    onchange="updateConfigValue('${escapeHtml(key)}', this.value)"
                    title="配置项的值">
             <div class="config-type-hint">${getConfigTypeHint(value)}</div>
         </div>
         <div class="config-comment">
             <div class="config-comment-label">注释说明</div>
-            <textarea class="config-comment-input" 
+            <textarea class="config-comment-input"
                       onchange="updateConfigComment('${escapeHtml(key)}', this.value)"
                       placeholder="配置项注释说明">${escapeHtml(comment)}</textarea>
         </div>
         <div class="config-actions">
-            <button class="btn btn-warning" onclick="resetConfig('${escapeHtml(key)}')" 
+            <button class="btn btn-warning" onclick="resetConfig('${escapeHtml(key)}')"
                     title="重置为原始值">重置</button>
-            <button class="btn btn-danger" onclick="deleteConfig('${escapeHtml(key)}')" 
+            <button class="btn btn-danger" onclick="deleteConfig('${escapeHtml(key)}')"
                     title="删除此配置项">删除</button>
         </div>
     `;
@@ -277,23 +426,28 @@ function deleteConfig(key) {
     }
 }
 
-// 过滤配置项
+// 过滤配置项（支持按名称、值、描述搜索）
 function filterConfigs() {
     const searchText = document.getElementById('searchInput').value.toLowerCase();
-    
+
     if (searchText === '') {
         filteredConfigs = JSON.parse(JSON.stringify(allConfigs));
     } else {
         filteredConfigs = {};
         Object.keys(allConfigs).forEach(key => {
             const value = allConfigs[key];
-            if (key.toLowerCase().includes(searchText) || 
-                value.toLowerCase().includes(searchText)) {
+            const meta = CONFIG_METADATA[key];
+            const desc = meta ? meta.desc : '';
+            const cat = meta ? meta.category : '';
+            if (key.toLowerCase().includes(searchText) ||
+                value.toLowerCase().includes(searchText) ||
+                desc.toLowerCase().includes(searchText) ||
+                cat.toLowerCase().includes(searchText)) {
                 filteredConfigs[key] = value;
             }
         });
     }
-    
+
     renderConfigs();
     updateConfigCount();
 }

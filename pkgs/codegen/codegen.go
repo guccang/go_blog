@@ -42,6 +42,7 @@ type CodeSession struct {
 	EndTime       time.Time        `json:"end_time,omitempty"`
 	CostUSD       float64          `json:"cost_usd"`
 	Error         string           `json:"error,omitempty"`
+	AgentID       string           `json:"agent_id,omitempty"` // 执行此任务的远程 agent
 
 	mu          sync.Mutex
 	process     *os.Process
@@ -66,20 +67,20 @@ type StreamEvent struct {
 
 // 全局状态
 var (
-	sessions   = make(map[string]*CodeSession)
-	sessionsMu sync.RWMutex
-	workspaces []string // 多个工作区路径
-	claudePath string
-	maxTurns   int
+	sessions      = make(map[string]*CodeSession)
+	sessionsMu    sync.RWMutex
+	workspaces    []string // 多个工作区路径
+	claudePath    string
+	maxTurns      int
+	executionMode string     // "local" | "remote" | "auto"
+	agentPool     *AgentPool // 远程 agent 连接池
+	agentToken    string     // agent 认证 token
 )
 
 // Init 初始化 CodeGen 模块
 func Init() {
 	adminAccount := config.GetAdminAccount()
 	wsConfig := config.GetConfigWithAccount(adminAccount, "codegen_workspace")
-	if wsConfig == "" {
-		wsConfig = "./codegen"
-	}
 
 	claudePath = config.GetConfigWithAccount(adminAccount, "codegen_claude_path")
 	if claudePath == "" {
@@ -94,6 +95,9 @@ func Init() {
 
 	// 解析多个工作区路径（逗号分隔）
 	workspaces = make([]string, 0)
+	if wsConfig == "" {
+		wsConfig = "./codegen"
+	}
 	for _, ws := range strings.Split(wsConfig, ",") {
 		ws = strings.TrimSpace(ws)
 		if ws == "" {
@@ -107,14 +111,21 @@ func Init() {
 		workspaces = append(workspaces, absWs)
 	}
 
-	if len(workspaces) == 0 {
-		absWs, _ := filepath.Abs("./codegen")
-		os.MkdirAll(absWs, 0755)
-		workspaces = []string{absWs}
+	// 远程 agent 模式配置
+	executionMode = config.GetConfigWithAccount(adminAccount, "codegen_mode")
+	if executionMode == "" {
+		executionMode = "local"
+	}
+	agentToken = config.GetConfigWithAccount(adminAccount, "codegen_agent_token")
+
+	if executionMode != "local" {
+		agentPool = NewAgentPool()
+		go agentPool.CleanupLoop()
+		log.MessageF(log.ModuleAgent, "CodeGen: remote agent pool enabled (mode=%s)", executionMode)
 	}
 
-	log.MessageF(log.ModuleAgent, "CodeGen initialized: workspaces=%v, claude=%s, maxTurns=%d",
-		workspaces, claudePath, maxTurns)
+	log.MessageF(log.ModuleAgent, "CodeGen initialized: workspaces=%v, claude=%s, maxTurns=%d, mode=%s",
+		workspaces, claudePath, maxTurns, executionMode)
 }
 
 // GetWorkspace 获取所有工作区路径（展示用）
@@ -224,7 +235,14 @@ func StartSession(project, prompt string) (*CodeSession, error) {
 
 	// 异步执行 Claude
 	go func() {
-		err := RunClaude(session)
+		var err error
+		// 按执行模式分发
+		if executionMode == "remote" || (executionMode == "auto" && agentPool != nil && agentPool.HasAgents()) {
+			err = agentPool.Execute(session)
+		}
+		if executionMode == "local" || (executionMode == "auto" && err != nil) {
+			err = RunClaude(session)
+		}
 		if err != nil {
 			session.mu.Lock()
 			session.Status = StatusError
@@ -251,18 +269,45 @@ func SendMessage(sessionID, prompt string) error {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
+	// 检查上一个进程是否还在运行
+	session.mu.Lock()
+	if session.Status == StatusRunning {
+		session.mu.Unlock()
+		return fmt.Errorf("session is still running, please wait for it to finish")
+	}
+	if session.process != nil {
+		// 上一个进程刚结束但引用还在，等待清理
+		session.mu.Unlock()
+		time.Sleep(500 * time.Millisecond)
+		session.mu.Lock()
+	}
+	session.Status = StatusRunning
+	session.mu.Unlock()
+
 	session.addMessage(SessionMessage{
 		Role:    "user",
 		Content: prompt,
 		Time:    time.Now(),
 	})
 
-	session.mu.Lock()
-	session.Status = StatusRunning
-	session.mu.Unlock()
-
 	go func() {
-		err := RunClaudeResume(session, prompt)
+		var err error
+		useRemote := false
+
+		// 如果之前由远程 agent 执行，继续用远程
+		if session.AgentID != "" && agentPool != nil {
+			useRemote = true
+		} else if executionMode == "remote" || (executionMode == "auto" && agentPool != nil && agentPool.HasAgents()) {
+			useRemote = true
+		}
+
+		if useRemote {
+			err = agentPool.ExecuteResume(session, prompt)
+		}
+		// local 模式，或 auto 模式远程失败时回退本地
+		if !useRemote || (executionMode == "auto" && err != nil) {
+			err = RunClaudeResume(session, prompt)
+		}
 		if err != nil {
 			session.mu.Lock()
 			session.Status = StatusError
@@ -285,9 +330,13 @@ func StopSession(sessionID string) error {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 
-	if session.process != nil {
+	// 远程模式：发送 task_stop 给 agent
+	if session.AgentID != "" && agentPool != nil {
+		agentPool.StopRemoteTask(session)
+	} else if session.process != nil {
 		session.process.Kill()
 	}
+
 	session.Status = StatusStopped
 	session.EndTime = time.Now()
 
@@ -311,6 +360,16 @@ func GetSessions() []*CodeSession {
 		result = append(result, s)
 	}
 	return result
+}
+
+// GetAgentPool 获取 agent 连接池（供 HTTP 层使用）
+func GetAgentPool() *AgentPool {
+	return agentPool
+}
+
+// GetAgentToken 获取 agent 认证 token
+func GetAgentToken() string {
+	return agentToken
 }
 
 // isSubPath 检查 child 是否在 parent 下（防止路径穿越）

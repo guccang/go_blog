@@ -36,9 +36,21 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 			jsonError(w, err.Error())
 			return
 		}
+
+		// 合并远程 agent 项目
+		var agents []map[string]interface{}
+		var remoteProjects []codegen.RemoteProjectInfo
+		pool := codegen.GetAgentPool()
+		if pool != nil {
+			agents = pool.GetAgents()
+			remoteProjects = pool.ListRemoteProjects()
+		}
+
 		jsonOK(w, map[string]interface{}{
-			"projects":  projects,
-			"workspace": codegen.GetWorkspace(),
+			"projects":        projects,
+			"workspace":       codegen.GetWorkspace(),
+			"agents":          agents,
+			"remote_projects": remoteProjects,
 		})
 
 	case h.MethodPost:
@@ -167,7 +179,15 @@ func HandleCodeGenTree(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
+	// 先尝试本地
 	tree, err := codegen.GetProjectTree(project, 5)
+	if err != nil {
+		// 尝试远程 agent
+		pool := codegen.GetAgentPool()
+		if pool != nil {
+			tree, err = pool.ReadRemoteTree(project, 5)
+		}
+	}
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -190,7 +210,15 @@ func HandleCodeGenFile(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
+	// 先尝试本地
 	content, err := codegen.ReadProjectFile(project, filePath)
+	if err != nil {
+		// 尝试远程 agent
+		pool := codegen.GetAgentPool()
+		if pool != nil {
+			content, err = pool.ReadRemoteFile(project, filePath)
+		}
+	}
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -275,6 +303,63 @@ func HandleCodeGenWS(w h.ResponseWriter, r *h.Request) {
 			break
 		}
 	}
+}
+
+// HandleCodeGenAgentWS WebSocket: 远程 Agent 连接端点
+func HandleCodeGenAgentWS(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleCodeGenAgentWS", r)
+
+	pool := codegen.GetAgentPool()
+	if pool == nil {
+		h.Error(w, "Remote agent not enabled", h.StatusServiceUnavailable)
+		return
+	}
+
+	// token 验证（query param 或 header）
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.Header.Get("X-Agent-Token")
+	}
+	expectedToken := codegen.GetAgentToken()
+	if expectedToken != "" && token != expectedToken {
+		h.Error(w, "Unauthorized", h.StatusUnauthorized)
+		return
+	}
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *h.Request) bool { return true },
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.ErrorF(log.ModuleHandler, "CodeGen Agent WS upgrade failed: %v", err)
+		return
+	}
+
+	// 交给 AgentPool 处理（阻塞直到连接断开）
+	pool.HandleAgentWebSocket(conn)
+}
+
+// HandleCodeGenAgents GET: 列出已连接的远程 agent
+func HandleCodeGenAgents(w h.ResponseWriter, r *h.Request) {
+	if checkLogin(r) != 0 {
+		jsonError(w, "Unauthorized")
+		return
+	}
+
+	pool := codegen.GetAgentPool()
+	if pool == nil {
+		jsonOK(w, map[string]interface{}{
+			"agents": []interface{}{},
+			"mode":   "local",
+		})
+		return
+	}
+
+	jsonOK(w, map[string]interface{}{
+		"agents": pool.GetAgents(),
+		"mode":   "remote",
+	})
 }
 
 // jsonOK 返回成功 JSON 响应

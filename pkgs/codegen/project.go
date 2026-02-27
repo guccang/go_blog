@@ -3,6 +3,7 @@ package codegen
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -90,7 +91,13 @@ func CreateProject(name string) error {
 	}
 
 	projectPath := filepath.Join(GetDefaultWorkspace(), name)
-	return os.MkdirAll(projectPath, 0755)
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
+		return err
+	}
+
+	// 初始化独立 git 仓库，防止 Claude Code 向上找到父仓库
+	ensureGitInit(projectPath)
+	return nil
 }
 
 // GetProjectTree 获取项目目录树
@@ -190,4 +197,15 @@ func countFiles(dir string) int {
 		return nil
 	})
 	return count
+}
+
+// ensureGitInit 确保项目目录有独立的 .git，防止 Claude Code 向上查找到父仓库
+func ensureGitInit(projectPath string) {
+	gitDir := filepath.Join(projectPath, ".git")
+	if _, err := os.Stat(gitDir); err == nil {
+		return // 已有 .git
+	}
+	cmd := exec.Command("git", "init")
+	cmd.Dir = projectPath
+	cmd.Run()
 }

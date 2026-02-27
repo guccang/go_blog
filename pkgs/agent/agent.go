@@ -8,6 +8,7 @@ import (
 	"llm"
 	"mcp"
 	log "mylog"
+	"strings"
 	"sync"
 	"time"
 	"wechat"
@@ -61,6 +62,11 @@ func Init(account string) {
 
 		// 初始化编码助手模块
 		codegen.Init()
+
+		// 初始化 CodeGen 微信桥接
+		codegen.InitWeChatBridge(func(toUser, content string) error {
+			return wechat.SendAppMessage(toUser, content)
+		})
 
 		// 初始化报告生成器
 		InitReportGenerator(account)
@@ -162,7 +168,94 @@ func registerMCPCallbacks() {
 		return string(data)
 	})
 
-	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel")
+	// ============================================================================
+	// CodeGen 编码助手工具
+	// ============================================================================
+
+	// 列出所有编码项目
+	mcp.RegisterCallBack("CodegenListProjects", func(args map[string]interface{}) string {
+		return codegen.ListProjectsJSON()
+	})
+
+	// 创建新编码项目（支持本地或指定 agent）
+	mcp.RegisterCallBack("CodegenCreateProject", func(args map[string]interface{}) string {
+		name, _ := args["name"].(string)
+		if name == "" {
+			return `{"success":false,"error":"缺少项目名称"}`
+		}
+		agentName, _ := args["agent"].(string)
+		if agentName != "" {
+			pool := codegen.GetAgentPool()
+			if pool == nil {
+				return `{"success":false,"error":"远程 agent 模式未启用"}`
+			}
+			if err := pool.CreateRemoteProject(agentName, name); err != nil {
+				return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+			}
+			return fmt.Sprintf(`{"success":true,"message":"项目 %s 已在 agent %s 上创建"}`, name, agentName)
+		}
+		return codegen.CreateProjectJSON(name)
+	})
+
+	// 启动 AI 编码会话（异步，后台推送进度）
+	mcp.RegisterCallBack("CodegenStartSession", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		project, _ := args["project"].(string)
+		prompt, _ := args["prompt"].(string)
+		if project == "" || prompt == "" {
+			return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
+		}
+		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt)
+		if err != nil {
+			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		}
+		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已启动，进度将通过微信推送"}`, sessionID)
+	})
+
+	// 向活跃编码会话追加消息
+	mcp.RegisterCallBack("CodegenSendMessage", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		prompt, _ := args["prompt"].(string)
+		if prompt == "" {
+			return `{"success":false,"error":"缺少 prompt 参数"}`
+		}
+		sessionID, err := codegen.SendMessageForWeChat(account, prompt)
+		if err != nil {
+			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		}
+		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"消息已发送，后续进度将通过微信推送"}`, sessionID)
+	})
+
+	// 查看编码会话运行状态
+	mcp.RegisterCallBack("CodegenGetStatus", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		status := codegen.GetStatusForWeChat(account)
+		return fmt.Sprintf(`{"success":true,"status":"%s"}`, status)
+	})
+
+	// 停止当前编码会话
+	mcp.RegisterCallBack("CodegenStopSession", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		sessionID, err := codegen.StopSessionForWeChat(account)
+		if err != nil {
+			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		}
+		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已停止"}`, sessionID)
+	})
+
+	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession")
 }
 
 // GetHub 获取通知中心
@@ -491,6 +584,11 @@ func handleWechatCommand(wechatUser, message string) string {
 
 	log.MessageF(log.ModuleAgent, "WeChat command from %s (account: %s): %s", wechatUser, account, message)
 
+	// 方案A：拦截 cg 命令，直接处理，不经过 LLM
+	if strings.HasPrefix(message, "cg ") || message == "cg" {
+		return handleCodegenCommand(account, message)
+	}
+
 	// 构建 LLM 请求（注入 system prompt 告知账号，限制回复长度）
 	messages := []llm.Message{
 		{Role: "system", Content: fmt.Sprintf(
@@ -511,6 +609,181 @@ func handleWechatCommand(wechatUser, message string) string {
 	}
 
 	return result
+}
+
+// handleCodegenCommand 处理 cg 快捷命令（方案A：确定性命令，不经过 LLM）
+func handleCodegenCommand(userID, message string) string {
+	// 去掉 "cg " 前缀，解析子命令
+	args := strings.TrimPrefix(message, "cg")
+	args = strings.TrimSpace(args)
+
+	if args == "" {
+		return getCodegenHelpText()
+	}
+
+	parts := strings.SplitN(args, " ", 2)
+	subCmd := parts[0]
+	var param string
+	if len(parts) > 1 {
+		param = strings.TrimSpace(parts[1])
+	}
+
+	switch subCmd {
+	case "help", "h":
+		return getCodegenHelpText()
+
+	case "list", "ls":
+		var sb strings.Builder
+
+		// 本地项目
+		projects, err := codegen.ListProjects()
+		if err != nil {
+			return fmt.Sprintf("❌ %v", err)
+		}
+
+		// 远程 agent 项目
+		var remoteProjects []codegen.RemoteProjectInfo
+		pool := codegen.GetAgentPool()
+		if pool != nil {
+			remoteProjects = pool.ListRemoteProjects()
+		}
+
+		totalCount := len(projects) + len(remoteProjects)
+		if totalCount == 0 {
+			return fmt.Sprintf("📂 暂无编码项目\n工作区: %s\n\n使用 cg create <名称> 创建项目", codegen.GetWorkspace())
+		}
+
+		sb.WriteString(fmt.Sprintf("📂 编码项目 (%d个)\n\n", totalCount))
+
+		if len(projects) > 0 {
+			sb.WriteString(fmt.Sprintf("**本地** [%s]\n", codegen.GetWorkspace()))
+			for i, p := range projects {
+				sb.WriteString(fmt.Sprintf("%d. %s — %d文件 (%s)\n", i+1, p.Name, p.FileCount, p.ModTime))
+			}
+		}
+
+		if len(remoteProjects) > 0 {
+			if len(projects) > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString("**远程Agent**\n")
+			for i, p := range remoteProjects {
+				sb.WriteString(fmt.Sprintf("%d. %s — agent: %s\n", len(projects)+i+1, p.Name, p.Agent))
+			}
+		}
+
+		return sb.String()
+
+	case "create", "new":
+		if param == "" {
+			return "⚠️ 请指定项目名称\n用法: cg create <名称>\n远程: cg create <名称> @<agent名>"
+		}
+		parts := strings.Fields(param)
+		projectName := parts[0]
+		agentTarget := ""
+		for _, p := range parts[1:] {
+			if strings.HasPrefix(p, "@") {
+				agentTarget = strings.TrimPrefix(p, "@")
+			}
+		}
+
+		if agentTarget != "" {
+			// 在远程 agent 上创建
+			pool := codegen.GetAgentPool()
+			if pool == nil {
+				return "❌ 远程 agent 模式未启用"
+			}
+			if err := pool.CreateRemoteProject(agentTarget, projectName); err != nil {
+				return fmt.Sprintf("❌ 远程创建失败: %v", err)
+			}
+			return fmt.Sprintf("✅ 项目 **%s** 已在 agent **%s** 上创建", projectName, agentTarget)
+		}
+
+		// 本地创建
+		if err := codegen.CreateProject(projectName); err != nil {
+			return fmt.Sprintf("❌ 创建失败: %v", err)
+		}
+		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
+
+	case "start", "run":
+		// cg start <project> <prompt>
+		if param == "" {
+			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> <编码需求>"
+		}
+		startParts := strings.SplitN(param, " ", 2)
+		project := startParts[0]
+		prompt := ""
+		if len(startParts) > 1 {
+			prompt = strings.TrimSpace(startParts[1])
+		}
+		if prompt == "" {
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> <编码需求>"
+		}
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, prompt)
+		if err != nil {
+			return fmt.Sprintf("❌ 启动失败: %v", err)
+		}
+		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s\n会话: %s\n\n进度将通过微信推送", project, sessionID)
+
+	case "send", "msg":
+		// cg send <prompt>
+		if param == "" {
+			return "⚠️ 请提供消息内容\n用法: cg send <消息>"
+		}
+		sessionID, err := codegen.SendMessageForWeChat(userID, param)
+		if err != nil {
+			return fmt.Sprintf("❌ 发送失败: %v", err)
+		}
+		return fmt.Sprintf("📨 消息已发送到会话 %s", sessionID)
+
+	case "status", "st":
+		return codegen.GetStatusForWeChat(userID)
+
+	case "stop":
+		sessionID, err := codegen.StopSessionForWeChat(userID)
+		if err != nil {
+			return fmt.Sprintf("❌ 停止失败: %v", err)
+		}
+		return fmt.Sprintf("⏹ 编码会话 %s 已停止", sessionID)
+
+	case "agents":
+		pool := codegen.GetAgentPool()
+		if pool == nil {
+			return "远程 agent 模式未启用"
+		}
+		agents := pool.GetAgents()
+		if len(agents) == 0 {
+			return "当前无在线 agent"
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("🖥 在线 Agent (%d个)\n\n", len(agents)))
+		for i, a := range agents {
+			name, _ := a["name"].(string)
+			status, _ := a["status"].(string)
+			active, _ := a["active_sessions"].(int)
+			projects, _ := a["projects"].([]string)
+			sb.WriteString(fmt.Sprintf("%d. **%s** [%s] 活跃:%d 项目:%d\n",
+				i+1, name, status, active, len(projects)))
+		}
+		return sb.String()
+
+	default:
+		return fmt.Sprintf("⚠️ 未知命令: cg %s\n\n%s", subCmd, getCodegenHelpText())
+	}
+}
+
+// getCodegenHelpText 返回 cg 命令帮助
+func getCodegenHelpText() string {
+	return "💻 CodeGen 编码助手命令\n\n" +
+		"cg list — 列出所有项目（本地+远程）\n" +
+		"cg create <名称> — 本地创建项目\n" +
+		"cg create <名称> @<agent> — 在远程agent上创建\n" +
+		"cg start <项目> <需求> — 启动编码\n" +
+		"cg send <消息> — 追加指令\n" +
+		"cg status — 查看进度\n" +
+		"cg stop — 停止编码\n" +
+		"cg agents — 查看在线agent\n\n" +
+		"也可用自然语言，如「在myapp里写个HTTP服务器」"
 }
 
 // Shutdown 关闭 Agent 模块

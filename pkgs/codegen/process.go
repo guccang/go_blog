@@ -27,11 +27,11 @@ type claudeStreamMsg struct {
 }
 
 type claudeContent struct {
-	Type  string `json:"type"`
-	Text  string `json:"text,omitempty"`
-	Name  string `json:"name,omitempty"`  // tool_use 的工具名
-	Input string `json:"input,omitempty"` // tool_use 的参数（JSON string）
-	ID    string `json:"id,omitempty"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	Name  string          `json:"name,omitempty"`  // tool_use 的工具名
+	Input json.RawMessage `json:"input,omitempty"` // tool_use 的参数（JSON）
+	ID    string          `json:"id,omitempty"`
 }
 
 type claudeAssistantMessage struct {
@@ -76,14 +76,23 @@ func RunClaudeResume(session *CodeSession, prompt string) error {
 	}
 
 	if session.ClaudeSession != "" {
-		args = append(args, "--session-id", session.ClaudeSession)
+		args = append(args, "--resume", "--session-id", session.ClaudeSession)
 	}
 
 	if maxTurns > 0 {
 		args = append(args, "--max-turns", fmt.Sprintf("%d", maxTurns))
 	}
 
-	return runClaudeProcess(session, args)
+	err := runClaudeProcess(session, args)
+	if err != nil && strings.Contains(err.Error(), "already in use") {
+		// session ID 冲突，清除旧 session 重新开始
+		log.WarnF(log.ModuleAgent, "CodeGen: session ID conflict, starting fresh session")
+		session.mu.Lock()
+		session.ClaudeSession = ""
+		session.mu.Unlock()
+		return RunClaude(session)
+	}
+	return err
 }
 
 // runClaudeProcess 执行 claude 命令并解析流式输出
@@ -92,6 +101,9 @@ func runClaudeProcess(session *CodeSession, args []string) error {
 	if err != nil {
 		projectPath = filepath.Join(GetDefaultWorkspace(), session.Project)
 	}
+	// 确保项目有独立的 .git，防止 Claude Code 向上找到父仓库的 .git
+	ensureGitInit(projectPath)
+
 	log.MessageF(log.ModuleAgent, "CodeGen: running %s %s (dir=%s)", claudePath, strings.Join(args, " "), projectPath)
 
 	cmd := exec.Command(claudePath, args...)
@@ -237,8 +249,7 @@ func parseStreamLine(line string) *StreamEvent {
 					}
 				}
 			case "tool_use":
-				inputStr := block.Input
-				// 如果 input 是 JSON 对象，格式化显示
+				inputStr := string(block.Input)
 				return &StreamEvent{
 					Type:      "tool",
 					ToolName:  block.Name,
