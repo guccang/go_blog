@@ -22,3 +22,4 @@ deepseek_html_20250820_9e351f.html
 go_blog
 ./codegen
 /codegen
+/cmd/codegen-agent/settings

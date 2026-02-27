@@ -80,6 +80,7 @@ func (c *Connection) register() {
 		Name:          c.cfg.AgentName,
 		Workspaces:    c.cfg.Workspaces,
 		Projects:      c.agent.ScanProjects(),
+		Models:        c.agent.ScanSettings(),
 		MaxConcurrent: c.cfg.MaxConcurrent,
 		AuthToken:     c.cfg.AuthToken,
 	}
@@ -195,6 +196,7 @@ func (c *Connection) heartbeatLoop() {
 				ActiveSessions: c.agent.ActiveCount(),
 				Load:           c.agent.LoadFactor(),
 				Projects:       c.agent.ScanProjects(),
+				Models:         c.agent.ScanSettings(),
 			})
 		case <-c.stopCh:
 			return

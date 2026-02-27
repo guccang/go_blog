@@ -347,6 +347,22 @@
         }
         .btn-stop.visible { display: block; }
 
+        .model-select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            cursor: pointer;
+            min-width: 100px;
+            transition: border-color 0.2s;
+        }
+        .model-select:focus { border-color: var(--accent); }
+        .model-select option { background: var(--bg-secondary); color: var(--text-primary); }
+
         /* Modal */
         .modal-overlay {
             position: fixed;
@@ -454,7 +470,10 @@
             </div>
 
             <div class="input-area">
-                <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)" 
+                <select id="modelSelect" class="model-select" title="选择模型配置">
+                    <option value="">默认</option>
+                </select>
+                <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)"
                        onkeydown="if(event.key==='Enter')sendPrompt()">
                 <button class="btn-send" id="btnSend" onclick="sendPrompt()">发送</button>
                 <button class="btn-stop" id="btnStop" onclick="stopSession()">⏹ 停止</button>
@@ -533,6 +552,9 @@
             // 更新 agent 状态
             updateAgentStatus(data.data.agents || []);
 
+            // 更新模型选择器
+            updateModelSelect(data.data.models || []);
+
             // 合并本地和远程项目
             const localProjects = data.data.projects || [];
             const remoteProjects = data.data.remote_projects || [];
@@ -565,6 +587,28 @@
         el.style.display = 'flex';
         dot.className = 'dot online';
         text.textContent = agents.length + ' 个 Agent 在线';
+    }
+
+    function updateModelSelect(models) {
+        const select = document.getElementById('modelSelect');
+        const currentVal = select.value;
+        // 保留第一个默认选项
+        select.innerHTML = '<option value="">默认</option>';
+        if (models && models.length > 0) {
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                select.appendChild(opt);
+            });
+            select.style.display = '';
+        } else {
+            select.style.display = 'none';
+        }
+        // 恢复之前的选择
+        if (currentVal) {
+            select.value = currentVal;
+        }
     }
 
     function filterProjects() {
@@ -759,11 +803,21 @@
 
         try {
             let endpoint = '/api/codegen/run';
-            let body = { project: currentProject, prompt };
+            let selectedModel = document.getElementById('modelSelect').value;
+            let body = { project: currentProject, prompt, model: selectedModel };
+            let isFollowUp = false;
 
             if (currentSessionId) {
-                endpoint = '/api/codegen/message';
-                body = { session_id: currentSessionId, prompt };
+                // 检查模型是否变更，变更则开新会话
+                if (state.model && state.model !== selectedModel) {
+                    // 模型切换，开全新会话
+                    currentSessionId = null;
+                    state.sessionId = null;
+                } else {
+                    endpoint = '/api/codegen/message';
+                    body = { session_id: currentSessionId, prompt };
+                    isFollowUp = true;
+                }
             }
 
             const resp = await fetch(endpoint, {
@@ -777,10 +831,11 @@
             if (data.data.session_id) {
                 currentSessionId = data.data.session_id;
                 state.sessionId = currentSessionId;
+                state.model = selectedModel;
             }
 
-            // 连接 WebSocket
-            connectWebSocket(currentSessionId);
+            // 连接 WebSocket（追加消息时跳过历史，避免重复显示）
+            connectWebSocket(currentSessionId, isFollowUp);
         } catch (err) {
             addEvent('error', '启动失败: ' + err.message);
             state.status = 'error';
@@ -790,11 +845,15 @@
     }
 
     // WebSocket 连接
-    function connectWebSocket(sessionId) {
+    function connectWebSocket(sessionId, skipHistory) {
         if (ws) ws.close();
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsProject = currentProject; // 捕获当前项目
-        ws = new WebSocket(`${protocol}//${location.host}/ws/codegen?session_id=${sessionId}`);
+        let wsUrl = `${protocol}//${location.host}/ws/codegen?session_id=${sessionId}`;
+        if (skipHistory) {
+            wsUrl += '&skip_history=1';
+        }
+        ws = new WebSocket(wsUrl);
 
         ws.onmessage = function(e) {
             const event = JSON.parse(e.data);

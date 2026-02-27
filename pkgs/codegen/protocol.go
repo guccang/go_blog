@@ -34,7 +34,8 @@ type RegisterPayload struct {
 	AgentID       string   `json:"agent_id"`
 	Name          string   `json:"name"`
 	Workspaces    []string `json:"workspaces"`
-	Projects      []string `json:"projects"`       // agent 上报的可用项目列表
+	Projects      []string `json:"projects"`              // agent 上报的可用项目列表
+	Models        []string `json:"models,omitempty"`      // agent 支持的模型配置列表
 	MaxConcurrent int      `json:"max_concurrent"`
 	AuthToken     string   `json:"auth_token,omitempty"`
 }
@@ -51,6 +52,7 @@ type HeartbeatPayload struct {
 	ActiveSessions int      `json:"active_sessions"`
 	Load           float64  `json:"load"`
 	Projects       []string `json:"projects,omitempty"` // 定期更新项目列表
+	Models         []string `json:"models,omitempty"`   // 定期更新模型配置列表
 }
 
 // TaskAssignPayload 任务分派
@@ -61,6 +63,7 @@ type TaskAssignPayload struct {
 	MaxTurns      int    `json:"max_turns"`
 	SystemPrompt  string `json:"system_prompt"`
 	ClaudeSession string `json:"claude_session,omitempty"`
+	Model         string `json:"model,omitempty"` // 指定模型配置名称
 }
 
 // TaskAcceptedPayload 任务接受确认

@@ -38,6 +38,7 @@ type RegisterPayload struct {
 	Name          string   `json:"name"`
 	Workspaces    []string `json:"workspaces"`
 	Projects      []string `json:"projects"`
+	Models        []string `json:"models,omitempty"`
 	MaxConcurrent int      `json:"max_concurrent"`
 	AuthToken     string   `json:"auth_token,omitempty"`
 }
@@ -54,6 +55,7 @@ type HeartbeatPayload struct {
 	ActiveSessions int      `json:"active_sessions"`
 	Load           float64  `json:"load"`
 	Projects       []string `json:"projects,omitempty"`
+	Models         []string `json:"models,omitempty"`
 }
 
 // TaskAssignPayload 任务分派
@@ -64,6 +66,7 @@ type TaskAssignPayload struct {
 	MaxTurns      int    `json:"max_turns"`
 	SystemPrompt  string `json:"system_prompt"`
 	ClaudeSession string `json:"claude_session,omitempty"`
+	Model         string `json:"model,omitempty"`
 }
 
 // TaskAcceptedPayload 任务接受确认

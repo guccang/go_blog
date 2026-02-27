@@ -75,6 +75,29 @@ func (a *Agent) ScanProjects() []string {
 	return projects
 }
 
+// ScanSettings 扫描 SettingsDir 下所有 .json 文件，返回不含后缀的文件名列表
+func (a *Agent) ScanSettings() []string {
+	if a.cfg.SettingsDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(a.cfg.SettingsDir)
+	if err != nil {
+		return nil
+	}
+	var models []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".json") {
+			models = append(models, strings.TrimSuffix(name, filepath.Ext(name)))
+		}
+	}
+	sort.Strings(models)
+	return models
+}
+
 // StopTask 停止指定任务
 func (a *Agent) StopTask(sessionID string) {
 	a.mu.Lock()
@@ -222,9 +245,9 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 		args = append(args, "--append-system-prompt", task.SystemPrompt)
 	}
 
-	if task.ClaudeSession != "" {
-		args = append(args, "--resume", "--session-id", task.ClaudeSession)
-	}
+	// 不使用 -c/--continue 续接会话：
+	// 第三方模型（如 DeepSeek）续接时 thinking block signature 校验失败
+	// 每次交互独立启动 Claude CLI，前端 UI 已维护对话历史展示
 
 	maxTurns := task.MaxTurns
 	if maxTurns <= 0 {
@@ -232,6 +255,14 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 	}
 	if maxTurns > 0 {
 		args = append(args, "--max-turns", fmt.Sprintf("%d", maxTurns))
+	}
+
+	// 如果指定了模型配置，查找对应的 settings 文件
+	if task.Model != "" && a.cfg.SettingsDir != "" {
+		settingsFile := filepath.Join(a.cfg.SettingsDir, task.Model+".json")
+		if _, err := os.Stat(settingsFile); err == nil {
+			args = append(args, "--settings", settingsFile)
+		}
 	}
 
 	return args

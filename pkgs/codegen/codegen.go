@@ -69,6 +69,7 @@ type CodeSession struct {
 	ClaudeSession string           `json:"claude_session"` // claude --session-id
 	Project       string           `json:"project"`
 	Prompt        string           `json:"prompt"`
+	Model         string           `json:"model,omitempty"` // 指定模型配置名称
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -219,7 +220,7 @@ func (s *CodeSession) addMessage(msg SessionMessage) {
 }
 
 // StartSession 启动编码会话
-func StartSession(project, prompt string) (*CodeSession, error) {
+func StartSession(project, prompt, model string) (*CodeSession, error) {
 	// 查找项目所在工作区
 	projectPath, err := ResolveProjectPath(project)
 	if err != nil {
@@ -236,6 +237,7 @@ func StartSession(project, prompt string) (*CodeSession, error) {
 		ID:        fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
 		Project:   project,
 		Prompt:    prompt,
+		Model:     model,
 		Status:    StatusRunning,
 		Messages:  make([]SessionMessage, 0),
 		StartTime: time.Now(),

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "mylog"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type RemoteAgent struct {
 	Conn           *websocket.Conn
 	Workspaces     []string
 	Projects       []string // agent 上报的可用项目
+	Models         []string // agent 支持的模型配置列表
 	MaxConcurrent  int
 	ActiveSessions map[string]bool
 	LastHeartbeat  time.Time
@@ -92,6 +94,7 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				Conn:           conn,
 				Workspaces:     payload.Workspaces,
 				Projects:       payload.Projects,
+				Models:         payload.Models,
 				MaxConcurrent:  payload.MaxConcurrent,
 				ActiveSessions: make(map[string]bool),
 				LastHeartbeat:  time.Now(),
@@ -111,6 +114,9 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				agent.LastHeartbeat = time.Now()
 				if len(payload.Projects) > 0 {
 					agent.Projects = payload.Projects
+				}
+				if len(payload.Models) > 0 {
+					agent.Models = payload.Models
 				}
 				agent.mu.Unlock()
 			}
@@ -330,6 +336,7 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		MaxTurns:      maxTurns,
 		SystemPrompt:  systemPrompt,
 		ClaudeSession: claudeSession,
+		Model:         session.Model,
 	}
 
 	return sendAgentMsg(agent.Conn, MsgTaskAssign, payload)
@@ -367,6 +374,7 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 			"name":            agent.Name,
 			"workspaces":      agent.Workspaces,
 			"projects":        agent.Projects,
+			"models":          agent.Models,
 			"max_concurrent":  agent.MaxConcurrent,
 			"active_sessions": len(agent.ActiveSessions),
 			"last_heartbeat":  agent.LastHeartbeat.Format("2006-01-02 15:04:05"),
@@ -375,6 +383,28 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 		agent.mu.Unlock()
 	}
 	return result
+}
+
+// GetAllModels 聚合所有在线 agent 的 Models，去重排序
+func (p *AgentPool) GetAllModels() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	for _, agent := range p.agents {
+		agent.mu.Lock()
+		for _, m := range agent.Models {
+			seen[m] = true
+		}
+		agent.mu.Unlock()
+	}
+
+	models := make([]string, 0, len(seen))
+	for m := range seen {
+		models = append(models, m)
+	}
+	sort.Strings(models)
+	return models
 }
 
 // ListRemoteProjects 获取所有远程 agent 上报的项目（去重，附带 agent 信息）

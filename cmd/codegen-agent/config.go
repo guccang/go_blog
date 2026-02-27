@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -17,6 +18,7 @@ type AgentConfig struct {
 	ClaudePath    string
 	MaxConcurrent int
 	MaxTurns      int
+	SettingsDir   string // Claude CLI --settings 配置文件目录
 }
 
 // LoadConfig 从配置文件加载配置
@@ -70,6 +72,8 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				cfg.MaxTurns = n
 			}
+		case "settings_dir":
+			cfg.SettingsDir = val
 		}
 	}
 
@@ -81,6 +85,19 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	}
 	if len(cfg.Workspaces) == 0 {
 		return nil, fmt.Errorf("workspaces is required")
+	}
+
+	// 默认 settings_dir 为配置文件同目录下的 settings/
+	if cfg.SettingsDir == "" {
+		cfg.SettingsDir = filepath.Join(filepath.Dir(path), "settings")
+	}
+
+	// 将相对路径转为绝对路径（避免 Claude CLI 在项目目录下找不到）
+	if !filepath.IsAbs(cfg.SettingsDir) {
+		abs, err := filepath.Abs(cfg.SettingsDir)
+		if err == nil {
+			cfg.SettingsDir = abs
+		}
 	}
 
 	return cfg, nil

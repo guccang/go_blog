@@ -205,10 +205,11 @@ func registerMCPCallbacks() {
 		}
 		project, _ := args["project"].(string)
 		prompt, _ := args["prompt"].(string)
+		model, _ := args["model"].(string)
 		if project == "" || prompt == "" {
 			return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
 		}
-		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt)
+		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model)
 		if err != nil {
 			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 		}
@@ -706,24 +707,42 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
 
 	case "start", "run":
-		// cg start <project> <prompt>
+		// cg start <project> [#model] <prompt>
 		if param == "" {
-			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> <编码需求>"
+			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务"
 		}
 		startParts := strings.SplitN(param, " ", 2)
 		project := startParts[0]
-		prompt := ""
+		rest := ""
 		if len(startParts) > 1 {
-			prompt = strings.TrimSpace(startParts[1])
+			rest = strings.TrimSpace(startParts[1])
 		}
-		if prompt == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> <编码需求>"
+		if rest == "" {
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] <编码需求>"
 		}
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, prompt)
+		// 解析可选的 #model
+		model := ""
+		if strings.HasPrefix(rest, "#") {
+			modelParts := strings.SplitN(rest, " ", 2)
+			model = strings.TrimPrefix(modelParts[0], "#")
+			if len(modelParts) > 1 {
+				rest = strings.TrimSpace(modelParts[1])
+			} else {
+				rest = ""
+			}
+		}
+		if rest == "" {
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] <编码需求>"
+		}
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model)
 		if err != nil {
 			return fmt.Sprintf("❌ 启动失败: %v", err)
 		}
-		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s\n会话: %s\n\n进度将通过微信推送", project, sessionID)
+		modelInfo := ""
+		if model != "" {
+			modelInfo = fmt.Sprintf("\n模型: %s", model)
+		}
+		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, sessionID)
 
 	case "send", "msg":
 		// cg send <prompt>
@@ -767,6 +786,23 @@ func handleCodegenCommand(userID, message string) string {
 		}
 		return sb.String()
 
+	case "models":
+		pool := codegen.GetAgentPool()
+		if pool == nil {
+			return "远程 agent 模式未启用"
+		}
+		models := pool.GetAllModels()
+		if len(models) == 0 {
+			return "当前无可用模型配置\n\n在 agent 的 settings/ 目录下放置 .json 配置文件即可"
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("🤖 可用模型配置 (%d个)\n\n", len(models)))
+		for i, m := range models {
+			sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, m))
+		}
+		sb.WriteString("\n用法: cg start <项目> #模型名 <需求>")
+		return sb.String()
+
 	default:
 		return fmt.Sprintf("⚠️ 未知命令: cg %s\n\n%s", subCmd, getCodegenHelpText())
 	}
@@ -778,12 +814,14 @@ func getCodegenHelpText() string {
 		"cg list — 列出所有项目（本地+远程）\n" +
 		"cg create <名称> — 本地创建项目\n" +
 		"cg create <名称> @<agent> — 在远程agent上创建\n" +
-		"cg start <项目> <需求> — 启动编码\n" +
+		"cg start <项目> <需求> — 启动编码（默认模型）\n" +
+		"cg start <项目> #<模型> <需求> — 指定模型编码\n" +
 		"cg send <消息> — 追加指令\n" +
 		"cg status — 查看进度\n" +
 		"cg stop — 停止编码\n" +
+		"cg models — 查看可用模型配置\n" +
 		"cg agents — 查看在线agent\n\n" +
-		"也可用自然语言，如「在myapp里写个HTTP服务器」"
+		"示例: cg start myapp #sonnet 写个HTTP服务"
 }
 
 // Shutdown 关闭 Agent 模块

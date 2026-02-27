@@ -40,10 +40,12 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 		// 合并远程 agent 项目
 		var agents []map[string]interface{}
 		var remoteProjects []codegen.RemoteProjectInfo
+		var models []string
 		pool := codegen.GetAgentPool()
 		if pool != nil {
 			agents = pool.GetAgents()
 			remoteProjects = pool.ListRemoteProjects()
+			models = pool.GetAllModels()
 		}
 
 		jsonOK(w, map[string]interface{}{
@@ -51,6 +53,7 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 			"workspace":       codegen.GetWorkspace(),
 			"agents":          agents,
 			"remote_projects": remoteProjects,
+			"models":          models,
 		})
 
 	case h.MethodPost:
@@ -82,6 +85,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 	var req struct {
 		Project string `json:"project"`
 		Prompt  string `json:"prompt"`
+		Model   string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request")
@@ -93,7 +97,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt)
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model)
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -239,6 +243,7 @@ func HandleCodeGenWS(w h.ResponseWriter, r *h.Request) {
 	}
 
 	sessionID := r.URL.Query().Get("session_id")
+	skipHistory := r.URL.Query().Get("skip_history") == "1"
 	session := codegen.GetSession(sessionID)
 	if session == nil {
 		h.Error(w, "Session not found", h.StatusNotFound)
@@ -256,16 +261,18 @@ func HandleCodeGenWS(w h.ResponseWriter, r *h.Request) {
 	}
 	defer conn.Close()
 
-	// 先发送已有消息历史
-	for _, msg := range session.Messages {
-		data, _ := json.Marshal(map[string]interface{}{
-			"type":       msg.Role,
-			"text":       msg.Content,
-			"tool_name":  msg.ToolName,
-			"tool_input": msg.ToolInput,
-			"time":       msg.Time.Format("15:04:05"),
-		})
-		conn.WriteMessage(websocket.TextMessage, data)
+	// 先发送已有消息历史（除非客户端要求跳过）
+	if !skipHistory {
+		for _, msg := range session.Messages {
+			data, _ := json.Marshal(map[string]interface{}{
+				"type":       msg.Role,
+				"text":       msg.Content,
+				"tool_name":  msg.ToolName,
+				"tool_input": msg.ToolInput,
+				"time":       msg.Time.Format("15:04:05"),
+			})
+			conn.WriteMessage(websocket.TextMessage, data)
+		}
 	}
 
 	// 如果已完成，发送 done 事件后退出
