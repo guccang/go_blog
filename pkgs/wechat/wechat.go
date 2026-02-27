@@ -159,10 +159,10 @@ func SendAppMessage(toUser, content string) error {
 	}
 
 	msg := map[string]interface{}{
-		"touser":  toUser,
-		"msgtype": "text",
-		"agentid": globalConfig.AgentID,
-		"text":    map[string]string{"content": content},
+		"touser":   toUser,
+		"msgtype":  "markdown",
+		"agentid":  globalConfig.AgentID,
+		"markdown": map[string]string{"content": content},
 	}
 
 	data, _ := json.Marshal(msg)

@@ -75,6 +75,8 @@ wechat_agent_id=1000002
 wechat_secret=你的应用secret
 wechat_token=你的回调token
 wechat_encoding_aes_key=你的加密key
+
+# 企业微信用户 ID ≠ go_blog 账号，始终使用管理员账号调用 MCP 工具
 ```
 
 #### 📱 短信通知

@@ -487,10 +487,11 @@ func handleWechatCommand(wechatUser, message string) string {
 
 	log.MessageF(log.ModuleAgent, "WeChat command from %s (account: %s): %s", wechatUser, account, message)
 
-	// 构建 LLM 请求（注入 system prompt 告知账号，避免 LLM 反问）
+	// 构建 LLM 请求（注入 system prompt 告知账号，限制回复长度）
 	messages := []llm.Message{
 		{Role: "system", Content: fmt.Sprintf(
-			"你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 \"%s\"，请直接使用此账号调用工具查询数据，不要询问用户账号。回复要简洁，适合手机阅读。", account)},
+			"你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 \"%s\"，请直接使用此账号调用工具查询数据，不要询问用户账号。"+
+				"重要：回复必须精简，控制在500字以内，只输出关键数据和结论，不要冗余解释。适合手机屏幕阅读。", account)},
 		{Role: "user", Content: message},
 	}
 
@@ -500,9 +501,9 @@ func handleWechatCommand(wechatUser, message string) string {
 		return fmt.Sprintf("⚠️ AI 处理出错: %v", err)
 	}
 
-	// 截断过长回复（企业微信文本限 2048 字符）
-	if len(result) > 1800 {
-		result = result[:1800] + "\n...(内容过长已截断)"
+	// 截断过长回复（企业微信应用消息限制 2048 字符）
+	if len(result) > 2000 {
+		result = result[:2000] + "\n..."
 	}
 
 	return result
