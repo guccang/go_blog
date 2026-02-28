@@ -388,7 +388,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 			Event: StreamEvent{
 				Type: "summary",
 				Text: report,
-				Done: true,
+				Done: false, // 不在这里标记完成，由 TaskComplete 统一触发
 			},
 		})
 	}
@@ -440,6 +440,7 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 
 // buildOpenCodeArgs 构建 OpenCode CLI 参数
 // OpenCode 使用 --model "provider/model" 格式
+// OpenCode 不支持 --append-system-prompt，系统指令注入 prompt 前缀
 func (a *Agent) buildOpenCodeArgs(task *TaskAssignPayload) []string {
 	args := []string{"run", "--format", "json"}
 
@@ -451,8 +452,14 @@ func (a *Agent) buildOpenCodeArgs(task *TaskAssignPayload) []string {
 		}
 	}
 
+	// OpenCode 不支持 system prompt flag，注入到 prompt 前缀
+	prompt := task.Prompt
+	if task.SystemPrompt != "" {
+		prompt = "[系统指令] " + task.SystemPrompt + "\n\n[用户需求] " + prompt
+	}
+
 	// prompt 放最后
-	args = append(args, task.Prompt)
+	args = append(args, prompt)
 
 	return args
 }
