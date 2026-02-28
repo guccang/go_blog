@@ -17,6 +17,23 @@ import (
 	"view"
 )
 
+// sanitizeBlogTitle 强制格式化博客标题，将不符合规范的字符替换为下划线
+// 只保留中文、字母、数字、下划线、点、连字符
+func sanitizeBlogTitle(title string) string {
+	if title == "" {
+		return ""
+	}
+	// 替换所有不符合规范的字符为下划线
+	invalidChars := regexp.MustCompile(`[^\p{Han}a-zA-Z0-9\._-]`)
+	title = invalidChars.ReplaceAllString(title, "_")
+	// 合并连续下划线
+	multiUnderscores := regexp.MustCompile(`_+`)
+	title = multiUnderscores.ReplaceAllString(title, "_")
+	// 去除首尾下划线
+	title = strings.Trim(title, "_")
+	return title
+}
+
 // HandleSave handles blog saving functionality
 func HandleSave(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleSave", r)
@@ -35,12 +52,15 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 
 	// 获取单个字段值
 	title := r.FormValue("title")
-	pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
-	reg := regexp.MustCompile(pattern)
-	match := reg.MatchString(title)
-	if !match {
-		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
+	// 强制格式化博客标题，不符合规范的字符替换为下划线
+	original := title
+	title = sanitizeBlogTitle(title)
+	if title == "" {
+		h.Error(w, "save failed! title is empty after sanitization!", h.StatusBadRequest)
 		return
+	}
+	if original != title {
+		log.InfoF(log.ModuleBlog, "blog title sanitized: [%s] -> [%s]", original, title)
 	}
 
 	log.DebugF(log.ModuleBlog, "title:%s", title)

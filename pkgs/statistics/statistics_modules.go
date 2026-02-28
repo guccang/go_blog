@@ -5,6 +5,7 @@ import (
 	"exercise"
 	"fmt"
 	"reading"
+	"strings"
 	"taskbreakdown"
 	"time"
 	"todolist"
@@ -253,6 +254,45 @@ func RawUpdateReadingProgress(account, bookID string, currentPage int, notes str
 		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
 	}
 	return `{"success": true}`
+}
+
+// RawAddBook 添加书籍
+func RawAddBook(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl string, totalPages int, category, tags string) string {
+	var cats []string
+	if category != "" {
+		for _, c := range splitAndTrim(category) {
+			if c != "" {
+				cats = append(cats, c)
+			}
+		}
+	}
+	var tagList []string
+	if tags != "" {
+		for _, t := range splitAndTrim(tags) {
+			if t != "" {
+				tagList = append(tagList, t)
+			}
+		}
+	}
+
+	book, err := reading.AddBookWithAccount(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl, totalPages, cats, tagList)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(book)
+	return string(data)
+}
+
+// splitAndTrim 按逗号分割并去除空白
+func splitAndTrim(s string) []string {
+	parts := make([]string, 0)
+	for _, p := range strings.Split(s, ",") {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
 }
 
 // RawGetBookNotes 获取读书笔记

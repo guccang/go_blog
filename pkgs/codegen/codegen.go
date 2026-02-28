@@ -246,16 +246,10 @@ func NormalizeTool(tool string) string {
 
 // StartSession 启动编码会话
 func StartSession(project, prompt, model, tool string, autoDeploy, deployOnly bool) (*CodeSession, error) {
-	// 查找项目所在工作区
-	projectPath, err := ResolveProjectPath(project)
-	if err != nil {
-		// 如果项目不存在，在默认工作区创建
-		projectPath = filepath.Join(GetDefaultWorkspace(), project)
-	}
-
-	// 确保项目目录存在
-	if err := os.MkdirAll(projectPath, 0755); err != nil {
-		return nil, fmt.Errorf("create project dir: %v", err)
+	// 项目目录由远程 agent 管理，服务端不需要创建本地目录
+	// 仅验证项目名合法性
+	if project == "" {
+		return nil, fmt.Errorf("project name is empty")
 	}
 
 	normalizedTool := NormalizeTool(tool)
