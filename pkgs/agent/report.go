@@ -41,32 +41,37 @@ func InitReportGenerator(account string) {
 
 // ScheduleReports 注册定时报告任务
 func (rg *ReportGenerator) ScheduleReports() {
-	// 日报：每天 21:00（每天触发一次，间隔 86400 秒）
-	// 计算到今天 21:00 的秒数
-	now := time.Now()
-	dailyTarget := time.Date(now.Year(), now.Month(), now.Day(), 21, 0, 0, 0, now.Location())
-	if now.After(dailyTarget) {
-		dailyTarget = dailyTarget.Add(24 * time.Hour)
+	// 先检查是否已有日报/周报任务（从持久化加载的），避免每次重启重复创建
+	existingReminders := rg.scheduler.GetReminders(rg.account)
+	hasDailyReport := false
+	hasWeeklyReport := false
+	for _, r := range existingReminders {
+		if r.Title == "📊 日报生成" && r.Enabled {
+			hasDailyReport = true
+		}
+		if r.Title == "📊 周报生成" && r.Enabled {
+			hasWeeklyReport = true
+		}
 	}
-	dailyDelay := int(dailyTarget.Sub(now).Seconds())
 
-	dailyReminder := rg.scheduler.AddReminder(rg.account, "📊 日报生成", "自动生成今日日报", dailyDelay, -1)
-	dailyReminder.SmartMode = false // 报告用专门逻辑，不用SmartMode
-	dailyReminder.Interval = 86400  // 之后每24小时触发一次
-
-	// 周报：每周日 20:00
-	weekdayDiff := (7 - int(now.Weekday())) % 7
-	if weekdayDiff == 0 && now.Hour() >= 20 {
-		weekdayDiff = 7
+	if hasDailyReport && hasWeeklyReport {
+		log.Message(log.ModuleAgent, "Report schedules already loaded from persistence, skipping creation")
+		return
 	}
-	weeklyTarget := time.Date(now.Year(), now.Month(), now.Day()+weekdayDiff, 20, 0, 0, 0, now.Location())
-	weeklyDelay := int(weeklyTarget.Sub(now).Seconds())
 
-	weeklyReminder := rg.scheduler.AddReminder(rg.account, "📊 周报生成", "自动生成本周周报", weeklyDelay, -1)
-	weeklyReminder.SmartMode = false
-	weeklyReminder.Interval = 604800 // 7天
+	if !hasDailyReport {
+		// 日报：每天 21:00，使用 cron 表达式避免漂移
+		dailyReminder := rg.scheduler.AddCronReminder(rg.account, "📊 日报生成", "自动生成今日日报", "0 0 21 * * *", -1)
+		dailyReminder.SmartMode = false
+		log.Message(log.ModuleAgent, "Scheduled daily report at 21:00 (cron)")
+	}
 
-	log.MessageF(log.ModuleAgent, "Scheduled daily report at 21:00 (in %ds), weekly report on Sunday 20:00 (in %ds)", dailyDelay, weeklyDelay)
+	if !hasWeeklyReport {
+		// 周报：每周日 20:00，使用 cron 表达式
+		weeklyReminder := rg.scheduler.AddCronReminder(rg.account, "📊 周报生成", "自动生成本周周报", "0 0 20 * * 0", -1)
+		weeklyReminder.SmartMode = false
+		log.Message(log.ModuleAgent, "Scheduled weekly report on Sunday 20:00 (cron)")
+	}
 }
 
 // GenerateDailyReport 生成日报

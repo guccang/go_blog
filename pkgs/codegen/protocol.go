@@ -36,6 +36,7 @@ type RegisterPayload struct {
 	Workspaces    []string `json:"workspaces"`
 	Projects      []string `json:"projects"`              // agent 上报的可用项目列表
 	Models        []string `json:"models,omitempty"`      // agent 支持的模型配置列表
+	Tools         []string `json:"tools,omitempty"`       // agent 支持的编码工具列表 (claudecode, opencode)
 	MaxConcurrent int      `json:"max_concurrent"`
 	AuthToken     string   `json:"auth_token,omitempty"`
 }
@@ -53,6 +54,7 @@ type HeartbeatPayload struct {
 	Load           float64  `json:"load"`
 	Projects       []string `json:"projects,omitempty"` // 定期更新项目列表
 	Models         []string `json:"models,omitempty"`   // 定期更新模型配置列表
+	Tools          []string `json:"tools,omitempty"`    // 定期更新编码工具列表
 }
 
 // TaskAssignPayload 任务分派
@@ -64,6 +66,7 @@ type TaskAssignPayload struct {
 	SystemPrompt  string `json:"system_prompt"`
 	ClaudeSession string `json:"claude_session,omitempty"`
 	Model         string `json:"model,omitempty"` // 指定模型配置名称
+	Tool          string `json:"tool,omitempty"`  // 编码工具: claudecode, opencode（默认 claudecode）
 }
 
 // TaskAcceptedPayload 任务接受确认

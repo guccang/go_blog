@@ -298,7 +298,7 @@ func flushBuffer(state *UserSessionState) {
 	state.mu.Unlock()
 }
 
-// sendCompletionSummary 发送完成摘要（精简版）
+// sendCompletionSummary 发送完成摘要（精简版，含修改内容简介）
 func sendCompletionSummary(state *UserSessionState, session *CodeSession, event StreamEvent) {
 	session.mu.Lock()
 	status := session.Status
@@ -306,6 +306,8 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 	startTime := session.StartTime
 	endTime := session.EndTime
 	errMsg := session.Error
+	msgs := make([]SessionMessage, len(session.Messages))
+	copy(msgs, session.Messages)
 	session.mu.Unlock()
 
 	state.mu.Lock()
@@ -313,6 +315,9 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 	state.mu.Unlock()
 
 	elapsed := endTime.Sub(startTime).Round(time.Second)
+
+	// 提取最后一条 assistant 消息作为修改内容摘要
+	changeSummary := extractChangeSummary(msgs)
 
 	var summary string
 	switch status {
@@ -330,11 +335,41 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 			state.Project, elapsed, totalSteps, cost)
 	}
 
+	if changeSummary != "" {
+		summary += "\n\n" + changeSummary
+	}
+
 	if wechatBridge != nil && wechatBridge.sendMsg != nil {
 		if err := wechatBridge.sendMsg(state.UserID, summary); err != nil {
 			log.WarnF(log.ModuleAgent, "CodeGen WeChat completion notify failed: %v", err)
 		}
 	}
+}
+
+// extractChangeSummary 从会话消息中提取修改内容摘要（100字以内）
+func extractChangeSummary(msgs []SessionMessage) string {
+	// 从后往前找最后一条 assistant 消息
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" && strings.TrimSpace(msgs[i].Content) != "" {
+			return truncateRunes(strings.TrimSpace(msgs[i].Content), 100)
+		}
+	}
+	return ""
+}
+
+// truncateRunes 按 rune（字符）截断字符串，保证不截断中文字符
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	// 将换行替换为空格，使摘要更紧凑
+	for i, r := range runes {
+		if r == '\n' || r == '\r' {
+			runes[i] = ' '
+		}
+	}
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 // formatEventForWeChat 格式化流式事件为微信可读文本

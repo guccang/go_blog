@@ -19,6 +19,7 @@ type RemoteAgent struct {
 	Workspaces     []string
 	Projects       []string // agent 上报的可用项目
 	Models         []string // agent 支持的模型配置列表
+	Tools          []string // agent 支持的编码工具列表 (claudecode, opencode)
 	MaxConcurrent  int
 	ActiveSessions map[string]bool
 	LastHeartbeat  time.Time
@@ -95,6 +96,7 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				Workspaces:     payload.Workspaces,
 				Projects:       payload.Projects,
 				Models:         payload.Models,
+				Tools:          payload.Tools,
 				MaxConcurrent:  payload.MaxConcurrent,
 				ActiveSessions: make(map[string]bool),
 				LastHeartbeat:  time.Now(),
@@ -117,6 +119,9 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				}
 				if len(payload.Models) > 0 {
 					agent.Models = payload.Models
+				}
+				if len(payload.Tools) > 0 {
+					agent.Tools = payload.Tools
 				}
 				agent.mu.Unlock()
 			}
@@ -228,8 +233,8 @@ func (p *AgentPool) handleTaskComplete(agent *RemoteAgent, payload *TaskComplete
 		payload.SessionID, payload.Status)
 }
 
-// SelectAgent 按负载选择可用 agent（支持项目匹配）
-func (p *AgentPool) SelectAgent(project string) *RemoteAgent {
+// SelectAgent 按负载选择可用 agent（支持项目和工具匹配）
+func (p *AgentPool) SelectAgent(project, tool string) *RemoteAgent {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -263,6 +268,26 @@ func (p *AgentPool) SelectAgent(project string) *RemoteAgent {
 			agent.mu.Unlock()
 			continue
 		}
+		// 检查 agent 是否支持指定的编码工具
+		supportsTool := false
+		if tool == "" || tool == ToolClaudeCode {
+			// 默认工具，所有 agent 都支持
+			supportsTool = true
+		} else if len(agent.Tools) == 0 {
+			// agent 未上报工具列表，仅支持 claudecode
+			supportsTool = (tool == ToolClaudeCode)
+		} else {
+			for _, t := range agent.Tools {
+				if t == tool {
+					supportsTool = true
+					break
+				}
+			}
+		}
+		if !supportsTool {
+			agent.mu.Unlock()
+			continue
+		}
 		// 选负载最低的
 		available := agent.MaxConcurrent - active
 		if best == nil || available > bestLoad {
@@ -277,8 +302,11 @@ func (p *AgentPool) SelectAgent(project string) *RemoteAgent {
 
 // Execute 通过远程 agent 执行任务
 func (p *AgentPool) Execute(session *CodeSession) error {
-	agent := p.SelectAgent(session.Project)
+	agent := p.SelectAgent(session.Project, session.Tool)
 	if agent == nil {
+		if session.Tool != "" && session.Tool != ToolClaudeCode {
+			return fmt.Errorf("no available agent supporting tool '%s'", session.Tool)
+		}
 		return fmt.Errorf("no available agent")
 	}
 
@@ -300,7 +328,7 @@ func (p *AgentPool) ExecuteResume(session *CodeSession, prompt string) error {
 		p.mu.RUnlock()
 	}
 	if agent == nil {
-		agent = p.SelectAgent(session.Project)
+		agent = p.SelectAgent(session.Project, session.Tool)
 	}
 	if agent == nil {
 		return fmt.Errorf("no available agent")
@@ -315,7 +343,35 @@ func (p *AgentPool) ExecuteResume(session *CodeSession, prompt string) error {
 
 // dispatchTask 发送 task_assign 给 agent
 func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, prompt, claudeSession string) error {
-	systemPrompt := "重要：你的工作目录就是当前项目目录，只能在当前目录（.）下操作，" +
+	tool := session.Tool
+	if tool == "" {
+		tool = ToolClaudeCode
+	}
+
+	var systemPrompt string
+	if tool == ToolOpenCode {
+		systemPrompt = buildOpenCodeSystemPrompt()
+	} else {
+		systemPrompt = buildClaudeCodeSystemPrompt()
+	}
+
+	payload := TaskAssignPayload{
+		SessionID:     session.ID,
+		Project:       session.Project,
+		Prompt:        prompt,
+		MaxTurns:      maxTurns,
+		SystemPrompt:  systemPrompt,
+		ClaudeSession: claudeSession,
+		Model:         session.Model,
+		Tool:          tool,
+	}
+
+	return sendAgentMsg(agent.Conn, MsgTaskAssign, payload)
+}
+
+// buildClaudeCodeSystemPrompt 构建 Claude Code 系统提示
+func buildClaudeCodeSystemPrompt() string {
+	return "重要：你的工作目录就是当前项目目录，只能在当前目录（.）下操作，" +
 		"禁止访问上级目录或其他项目的文件。所有文件操作必须在当前目录内。" +
 		"你必须完成完整的开发流程：" +
 		"1. 编写代码；" +
@@ -328,18 +384,22 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		"你在无人值守的自动化环境中运行，没有人可以回答你的问题。" +
 		"遇到不确定的地方自己做出最合理的决定，不要询问用户。" +
 		"不要进入 plan mode，不要使用 EnterPlanMode，直接执行任务。"
+}
 
-	payload := TaskAssignPayload{
-		SessionID:     session.ID,
-		Project:       session.Project,
-		Prompt:        prompt,
-		MaxTurns:      maxTurns,
-		SystemPrompt:  systemPrompt,
-		ClaudeSession: claudeSession,
-		Model:         session.Model,
-	}
-
-	return sendAgentMsg(agent.Conn, MsgTaskAssign, payload)
+// buildOpenCodeSystemPrompt 构建 OpenCode 系统提示
+func buildOpenCodeSystemPrompt() string {
+	return "重要：你的工作目录就是当前项目目录，只能在当前目录（.）下操作，" +
+		"禁止访问上级目录或其他项目的文件。所有文件操作必须在当前目录内。" +
+		"你必须完成完整的开发流程：" +
+		"1. 编写代码；" +
+		"2. 构建/编译项目（如 go build、npm run build 等），确认无编译错误；" +
+		"3. 运行程序并验证输出正确；" +
+		"4. 如有测试则运行测试；" +
+		"5. 最后汇报结果：创建了哪些文件、构建是否成功、运行输出是什么。" +
+		"不要只写代码就停止，必须验证代码能正常工作。" +
+		"你在无人值守的自动化环境中运行，没有人可以回答你的问题。" +
+		"遇到不确定的地方自己做出最合理的决定，不要询问用户。" +
+		"直接执行任务，不要进行多余的交互式确认。"
 }
 
 // StopRemoteTask 发送 task_stop 给 agent
@@ -405,6 +465,46 @@ func (p *AgentPool) GetAllModels() []string {
 	}
 	sort.Strings(models)
 	return models
+}
+
+// GetAllTools 聚合所有在线 agent 的编码工具，去重排序
+func (p *AgentPool) GetAllTools() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	// 默认始终包含 claudecode
+	seen[ToolClaudeCode] = true
+	for _, agent := range p.agents {
+		agent.mu.Lock()
+		for _, t := range agent.Tools {
+			seen[t] = true
+		}
+		agent.mu.Unlock()
+	}
+
+	tools := make([]string, 0, len(seen))
+	for t := range seen {
+		tools = append(tools, t)
+	}
+	sort.Strings(tools)
+	return tools
+}
+
+// AgentSupportsTool 检查 agent 是否支持指定工具
+func (a *RemoteAgent) AgentSupportsTool(tool string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	// 如果 agent 没有上报 tools 列表，默认支持 claudecode
+	if len(a.Tools) == 0 {
+		return tool == ToolClaudeCode || tool == ""
+	}
+	for _, t := range a.Tools {
+		if t == tool {
+			return true
+		}
+	}
+	return false
 }
 
 // ListRemoteProjects 获取所有远程 agent 上报的项目（去重，附带 agent 信息）

@@ -66,10 +66,11 @@ type SessionMessage struct {
 // CodeSession 编码会话
 type CodeSession struct {
 	ID            string           `json:"id"`
-	ClaudeSession string           `json:"claude_session"` // claude --session-id
+	ClaudeSession string           `json:"claude_session"` // claude --session-id / opencode --session
 	Project       string           `json:"project"`
 	Prompt        string           `json:"prompt"`
 	Model         string           `json:"model,omitempty"` // 指定模型配置名称
+	Tool          string           `json:"tool,omitempty"`  // 编码工具: claudecode, opencode（默认 claudecode）
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -219,8 +220,26 @@ func (s *CodeSession) addMessage(msg SessionMessage) {
 	s.Messages = append(s.Messages, msg)
 }
 
+// ToolClaudeCode Claude Code 编码工具
+const ToolClaudeCode = "claudecode"
+
+// ToolOpenCode OpenCode 编码工具
+const ToolOpenCode = "opencode"
+
+// NormalizeTool 规范化工具名称，返回合法工具名
+func NormalizeTool(tool string) string {
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case "opencode", "oc":
+		return ToolOpenCode
+	case "claudecode", "cc", "claude", "":
+		return ToolClaudeCode
+	default:
+		return ToolClaudeCode
+	}
+}
+
 // StartSession 启动编码会话
-func StartSession(project, prompt, model string) (*CodeSession, error) {
+func StartSession(project, prompt, model, tool string) (*CodeSession, error) {
 	// 查找项目所在工作区
 	projectPath, err := ResolveProjectPath(project)
 	if err != nil {
@@ -233,11 +252,14 @@ func StartSession(project, prompt, model string) (*CodeSession, error) {
 		return nil, fmt.Errorf("create project dir: %v", err)
 	}
 
+	normalizedTool := NormalizeTool(tool)
+
 	session := &CodeSession{
 		ID:        fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
 		Project:   project,
 		Prompt:    prompt,
 		Model:     model,
+		Tool:      normalizedTool,
 		Status:    StatusRunning,
 		Messages:  make([]SessionMessage, 0),
 		StartTime: time.Now(),

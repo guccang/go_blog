@@ -141,17 +141,33 @@ func (s *Scheduler) LoadReminders(account string) {
 		return
 	}
 
-	loaded := 0
+	// 去重：同一 Title 只保留最新创建的一个（修复历史重复任务问题）
+	titleLatest := make(map[string]*Reminder) // title -> latest reminder
 	for _, r := range reminders {
 		if !r.Enabled {
 			continue
 		}
-		// 重新注册到 cron
+		if existing, ok := titleLatest[r.Title]; !ok || r.CreatedAt.After(existing.CreatedAt) {
+			titleLatest[r.Title] = r
+		}
+	}
+
+	loaded := 0
+	dedupReminders := make([]*Reminder, 0, len(titleLatest))
+	for _, r := range titleLatest {
 		s.registerCronJob(r)
 		s.mu.Lock()
 		s.reminders[r.ID] = r
 		s.mu.Unlock()
+		dedupReminders = append(dedupReminders, r)
 		loaded++
+	}
+
+	if len(dedupReminders) < len(reminders) {
+		removed := len(reminders) - len(dedupReminders)
+		log.MessageF(log.ModuleAgent, "Deduplicated scheduled tasks: removed %d duplicates for %s", removed, account)
+		// 保存去重后的结果
+		go s.SaveReminders(account)
 	}
 
 	log.MessageF(log.ModuleAgent, "Loaded %d scheduled tasks for %s from blog", loaded, account)
