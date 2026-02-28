@@ -44,9 +44,19 @@ func InitWeChatBridge(sender SendFunc) {
 }
 
 // StartSessionForWeChat 启动编码会话并订阅通知
-func StartSessionForWeChat(userID, project, prompt, model, tool string) (string, error) {
+func StartSessionForWeChat(userID, project, prompt, model, tool string, deployOpts ...bool) (string, error) {
 	if wechatBridge == nil {
 		return "", fmt.Errorf("WeChat bridge not initialized")
+	}
+
+	// 解析部署选项: deployOpts[0]=autoDeploy, deployOpts[1]=deployOnly
+	autoDeploy := false
+	deployOnly := false
+	if len(deployOpts) > 0 {
+		autoDeploy = deployOpts[0]
+	}
+	if len(deployOpts) > 1 {
+		deployOnly = deployOpts[1]
 	}
 
 	// 检查用户是否已有运行中的会话
@@ -61,7 +71,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool string) (string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, false, false)
+	session, err := StartSession(project, prompt, model, tool, autoDeploy, deployOnly)
 	if err != nil {
 		return "", err
 	}

@@ -747,9 +747,9 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
 
 	case "start", "run":
-		// cg start <project> [#model] [@tool] <prompt>
+		// cg start <project> [#model] [@tool] [!deploy] <prompt>
 		if param == "" {
-			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务\n示例: cg start myapp @oc 用OpenCode编码"
+			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务\n示例: cg start myapp @oc 用OpenCode编码\n示例: cg start myapp !deploy 增加健康检查接口"
 		}
 		startParts := strings.SplitN(param, " ", 2)
 		project := startParts[0]
@@ -758,12 +758,13 @@ func handleCodegenCommand(userID, message string) string {
 			rest = strings.TrimSpace(startParts[1])
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>"
 		}
-		// 解析可选的 #model 和 @tool（顺序不限）
+		// 解析可选的 #model、@tool、!deploy（顺序不限）
 		model := ""
 		tool := ""
-		for strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") {
+		autoDeploy := false
+		for strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") || strings.HasPrefix(rest, "!") {
 			optParts := strings.SplitN(rest, " ", 2)
 			opt := optParts[0]
 			if strings.HasPrefix(opt, "#") {
@@ -771,6 +772,8 @@ func handleCodegenCommand(userID, message string) string {
 			} else if strings.HasPrefix(opt, "@") {
 				toolAlias := strings.TrimPrefix(opt, "@")
 				tool = codegen.NormalizeTool(toolAlias)
+			} else if strings.EqualFold(opt, "!deploy") {
+				autoDeploy = true
 			}
 			if len(optParts) > 1 {
 				rest = strings.TrimSpace(optParts[1])
@@ -780,9 +783,9 @@ func handleCodegenCommand(userID, message string) string {
 			}
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>"
 		}
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model, tool)
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model, tool, autoDeploy)
 		if err != nil {
 			return fmt.Sprintf("❌ 启动失败: %v", err)
 		}
@@ -794,7 +797,23 @@ func handleCodegenCommand(userID, message string) string {
 		if tool != "" && tool != "claudecode" {
 			toolInfo = fmt.Sprintf("\n工具: %s", tool)
 		}
-		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, toolInfo, sessionID)
+		deployInfo := ""
+		if autoDeploy {
+			deployInfo = "\n部署: 编码完成后自动部署"
+		}
+		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, toolInfo, deployInfo, sessionID)
+
+	case "deploy", "dp":
+		// cg deploy <project> — 仅部署，不编码
+		if param == "" {
+			return "⚠️ 请指定项目名称\n用法: cg deploy <项目名>\n示例: cg deploy myapp"
+		}
+		project := strings.Fields(param)[0]
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, "", "", "", false, true)
+		if err != nil {
+			return fmt.Sprintf("❌ 部署启动失败: %v", err)
+		}
+		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s\n会话: %s\n\n进度将通过微信推送", project, sessionID)
 
 	case "send", "msg":
 		// cg send <prompt>
@@ -895,7 +914,9 @@ func getCodegenHelpText() string {
 		"cg start <项目> <需求> — 启动编码（默认模型+工具）\n" +
 		"cg start <项目> #<模型> <需求> — 指定模型编码\n" +
 		"cg start <项目> @oc <需求> — 用OpenCode编码\n" +
-		"cg start <项目> #<模型> @oc <需求> — 指定模型+工具\n" +
+		"cg start <项目> !deploy <需求> — 编码完成后自动部署\n" +
+		"cg start <项目> #<模型> @oc !deploy <需求> — 全选项\n" +
+		"cg deploy <项目> — 仅部署（不编码）\n" +
 		"cg send <消息> — 追加指令\n" +
 		"cg status — 查看进度\n" +
 		"cg stop — 停止编码\n" +
@@ -903,7 +924,7 @@ func getCodegenHelpText() string {
 		"cg tools — 查看可用编码工具\n" +
 		"cg agents — 查看在线agent\n\n" +
 		"工具别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode\n" +
-		"示例: cg start myapp #sonnet @oc 写个HTTP服务"
+		"示例: cg start myapp #sonnet @oc !deploy 写个HTTP服务"
 }
 
 // Shutdown 关闭 Agent 模块
