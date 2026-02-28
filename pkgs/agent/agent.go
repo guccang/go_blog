@@ -76,6 +76,15 @@ func Init(account string) {
 
 		// 恢复未完成的任务（仅加载，不自动执行）
 		pendingGraphs := globalStorage.GetPendingTaskGraphs()
+
+		// 启动 graphCache 定期清理（每 30 分钟清理 7 天前已完成的图，缓存上限 200）
+		go func() {
+			ticker := time.NewTicker(30 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				GraphCacheCleanup(7*24*time.Hour, 200)
+			}
+		}()
 		// for _, graph := range pendingGraphs {
 		// 	globalPool.taskQueue <- graph
 		// }

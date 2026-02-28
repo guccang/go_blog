@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // TaskStorage 任务存储（使用 blog 系统）
@@ -256,4 +257,55 @@ func (s *TaskStorage) GetPendingTaskGraphs() []*TaskGraph {
 		}
 	}
 	return pending
+}
+
+// GraphCacheCleanup 清理已完成且超过指定时间的任务图缓存
+// 只从内存移除，不删除持久化数据，需要时可重新从 blog 加载
+func GraphCacheCleanup(maxAge time.Duration, maxKeep int) {
+	graphCacheMu.Lock()
+	defer graphCacheMu.Unlock()
+
+	if len(graphCache) <= maxKeep {
+		return
+	}
+
+	now := time.Now()
+	var removable []struct {
+		id        string
+		createdAt time.Time
+	}
+
+	for id, graph := range graphCache {
+		if graph.Root == nil {
+			continue
+		}
+		if !graph.IsComplete() {
+			continue // 不清理运行中的图
+		}
+		age := now.Sub(graph.Root.CreatedAt)
+		if age > maxAge {
+			removable = append(removable, struct {
+				id        string
+				createdAt time.Time
+			}{id, graph.Root.CreatedAt})
+		}
+	}
+
+	// 按创建时间升序，优先删除最老的
+	sort.Slice(removable, func(i, j int) bool {
+		return removable[i].createdAt.Before(removable[j].createdAt)
+	})
+
+	removed := 0
+	for _, e := range removable {
+		if len(graphCache)-removed <= maxKeep {
+			break
+		}
+		delete(graphCache, e.id)
+		removed++
+	}
+
+	if removed > 0 {
+		log.DebugF(log.ModuleAgent, "GraphCache cleanup: removed %d, remaining %d", removed, len(graphCache))
+	}
 }

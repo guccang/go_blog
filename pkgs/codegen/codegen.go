@@ -6,6 +6,7 @@ import (
 	log "mylog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,9 @@ func Init() {
 	// 始终初始化 agent 连接池
 	agentPool = NewAgentPool()
 	go agentPool.CleanupLoop()
+
+	// 定期清理已完成的旧会话，防止内存泄漏
+	go sessionCleanupLoop()
 
 	log.MessageF(log.ModuleAgent, "CodeGen initialized: workspaces=%v, maxTurns=%d",
 		workspaces, maxTurns)
@@ -382,6 +386,87 @@ func GetAgentPool() *AgentPool {
 // GetAgentToken 获取 agent 认证 token
 func GetAgentToken() string {
 	return agentToken
+}
+
+// sessionCleanupLoop 定期清理已完成的旧会话，防止 sessions map 无限增长
+func sessionCleanupLoop() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		cleanupSessions()
+	}
+}
+
+// cleanupSessions 清理已完成且超过 1 小时的会话，保留最近 50 个
+func cleanupSessions() {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+
+	now := time.Now()
+	maxAge := 1 * time.Hour
+	maxKeep := 50
+
+	// 如果总数没超限，只清理超时的
+	if len(sessions) <= maxKeep {
+		for id, s := range sessions {
+			s.mu.Lock()
+			status := s.Status
+			endTime := s.EndTime
+			s.mu.Unlock()
+			if status != StatusRunning && !endTime.IsZero() && now.Sub(endTime) > maxAge {
+				delete(sessions, id)
+			}
+		}
+		return
+	}
+
+	// 超限时，删除所有已完成且超时的；如果仍超限，删除最老的已完成会话
+	type sessionEntry struct {
+		id      string
+		endTime time.Time
+		running bool
+	}
+	var entries []sessionEntry
+	for id, s := range sessions {
+		s.mu.Lock()
+		entries = append(entries, sessionEntry{
+			id:      id,
+			endTime: s.EndTime,
+			running: s.Status == StatusRunning,
+		})
+		s.mu.Unlock()
+	}
+
+	// 先删除超时的已完成会话
+	for _, e := range entries {
+		if !e.running && !e.endTime.IsZero() && now.Sub(e.endTime) > maxAge {
+			delete(sessions, e.id)
+		}
+	}
+
+	// 如果仍超限，按 endTime 升序删除最旧的已完成会话
+	if len(sessions) > maxKeep {
+		// 重新收集剩余的非运行会话
+		var removable []sessionEntry
+		for id, s := range sessions {
+			s.mu.Lock()
+			if s.Status != StatusRunning {
+				removable = append(removable, sessionEntry{id: id, endTime: s.EndTime})
+			}
+			s.mu.Unlock()
+		}
+		sort.Slice(removable, func(i, j int) bool {
+			return removable[i].endTime.Before(removable[j].endTime)
+		})
+		for _, e := range removable {
+			if len(sessions) <= maxKeep {
+				break
+			}
+			delete(sessions, e.id)
+		}
+	}
+
+	log.DebugF(log.ModuleAgent, "Session cleanup: %d sessions remaining", len(sessions))
 }
 
 // isSubPath 检查 child 是否在 parent 下（防止路径穿越）

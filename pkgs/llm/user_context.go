@@ -60,6 +60,7 @@ func CollectUserContext(account string) UserContextSummary {
 
 	// 汇总结果（超时 3 秒）
 	timeout := time.After(3 * time.Second)
+collectLoop:
 	for i := 0; i < 4; i++ {
 		select {
 		case r := <-ch:
@@ -75,7 +76,7 @@ func CollectUserContext(account string) UserContextSummary {
 			}
 		case <-timeout:
 			log.WarnF(log.ModuleLLM, "User context collection timed out after 3s")
-			break
+			break collectLoop
 		}
 	}
 
