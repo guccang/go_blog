@@ -585,6 +585,25 @@ func SaveTaskGraph(graph *TaskGraph) error {
 	return globalStorage.SaveTaskGraph(graph)
 }
 
+// toolNameMap 工具名称中文映射
+var toolNameMap = map[string]string{
+	"ListReminders":   "查询定时任务列表",
+	"CreateReminder":  "创建定时任务",
+	"DeleteReminder":  "删除定时任务",
+	"SendNotification": "发送通知",
+	"GenerateReport":  "生成报告",
+	"SwitchModel":     "切换模型",
+	"GetCurrentModel": "获取当前模型",
+}
+
+// getToolDisplayName 获取工具的中文显示名称
+func getToolDisplayName(toolName string) string {
+	if name, ok := toolNameMap[toolName]; ok {
+		return name
+	}
+	return toolName
+}
+
 // handleWechatCommand 处理企业微信指令（通过 AI 路由）
 func handleWechatCommand(wechatUser, message string) string {
 	// 优先使用微信传过来的账户，没有则使用管理员账号
@@ -600,6 +619,9 @@ func handleWechatCommand(wechatUser, message string) string {
 		return handleCodegenCommand(account, message)
 	}
 
+	// 发送即时确认
+	wechat.SendAppMessage(wechatUser, "⏳ 收到指令，正在处理...")
+
 	// 构建 LLM 请求（注入 system prompt 告知账号，限制回复长度）
 	messages := []llm.Message{
 		{Role: "system", Content: fmt.Sprintf(
@@ -608,7 +630,15 @@ func handleWechatCommand(wechatUser, message string) string {
 		{Role: "user", Content: message},
 	}
 
-	result, err := llm.SendSyncLLMRequest(messages, account)
+	// 进度回调：只在 tool_call 事件时发送进度消息
+	progressCallback := func(eventType string, detail string) {
+		if eventType == "tool_call" {
+			displayName := getToolDisplayName(detail)
+			wechat.SendAppMessage(wechatUser, fmt.Sprintf("🔧 正在执行: %s...", displayName))
+		}
+	}
+
+	result, err := llm.SendSyncLLMRequestWithProgress(messages, account, progressCallback)
 	if err != nil {
 		log.WarnF(log.ModuleAgent, "WeChat AI processing failed: %v", err)
 		return fmt.Sprintf("⚠️ AI 处理出错: %v", err)

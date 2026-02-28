@@ -23,13 +23,27 @@ func truncateContent(content string) string {
 	return content[:maxContentLength] + fmt.Sprintf("\n\n... [内容已截断，原长度: %d 字符]", len(content))
 }
 
+// ProgressCallback 进度回调类型
+// eventType: "start" / "tool_call" / "tool_result"
+type ProgressCallback func(eventType string, detail string)
+
 // SendSyncLLMRequest sends a synchronous (non-streaming) LLM request with tool calling support
 func SendSyncLLMRequest(messages []Message, account string) (string, error) {
 	return SendSyncLLMRequestWithContext(context.Background(), messages, account)
 }
 
+// SendSyncLLMRequestWithProgress sends a synchronous LLM request with progress callback
+func SendSyncLLMRequestWithProgress(messages []Message, account string, callback ProgressCallback) (string, error) {
+	return sendSyncLLMRequestInternal(context.Background(), messages, account, callback)
+}
+
 // SendSyncLLMRequestWithContext sends a synchronous LLM request with context support
 func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, account string) (string, error) {
+	return sendSyncLLMRequestInternal(ctx, messages, account, nil)
+}
+
+// sendSyncLLMRequestInternal is the shared implementation for sync LLM requests with optional progress callback
+func sendSyncLLMRequestInternal(ctx context.Context, messages []Message, account string, callback ProgressCallback) (string, error) {
 	log.DebugF(log.ModuleLLM, "SendSyncLLMRequest: account=%s, messages=%d", account, len(messages))
 
 	config := GetConfig()
@@ -164,6 +178,11 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 			lastToolInfo = append(lastToolInfo, fmt.Sprintf("%s(%s)", toolName, toolArgs))
 			log.MessageF(log.ModuleLLM, "Sync calling tool: %s with args: %s", toolName, toolArgs)
 
+			// Progress callback: tool_call
+			if callback != nil {
+				callback("tool_call", toolName)
+			}
+
 			// Parse tool arguments
 			var parsedArgs map[string]interface{}
 			if err := json.Unmarshal([]byte(toolArgs), &parsedArgs); err != nil {
@@ -179,6 +198,11 @@ func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, acco
 			// Call tool
 			result := mcp.CallMCPTool(toolName, parsedArgs)
 			log.MessageF(log.ModuleLLM, "Tool result: %v", result)
+
+			// Progress callback: tool_result
+			if callback != nil {
+				callback("tool_result", toolName+" 完成")
+			}
 
 			// Add tool result to messages
 			toolResult := fmt.Sprintf("%v", result.Result)
