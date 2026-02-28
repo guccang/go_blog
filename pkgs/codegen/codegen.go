@@ -70,8 +70,10 @@ type CodeSession struct {
 	ClaudeSession string           `json:"claude_session"` // claude --session-id / opencode --session
 	Project       string           `json:"project"`
 	Prompt        string           `json:"prompt"`
-	Model         string           `json:"model,omitempty"` // 指定模型配置名称
-	Tool          string           `json:"tool,omitempty"`  // 编码工具: claudecode, opencode（默认 claudecode）
+	Model         string           `json:"model,omitempty"`       // 指定模型配置名称
+	Tool          string           `json:"tool,omitempty"`        // 编码工具: claudecode, opencode（默认 claudecode）
+	AutoDeploy    bool             `json:"auto_deploy,omitempty"`  // 编码完成后自动部署+验证
+	DeployOnly    bool             `json:"deploy_only,omitempty"` // 跳过编码，直接部署+验证
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -243,7 +245,7 @@ func NormalizeTool(tool string) string {
 }
 
 // StartSession 启动编码会话
-func StartSession(project, prompt, model, tool string) (*CodeSession, error) {
+func StartSession(project, prompt, model, tool string, autoDeploy, deployOnly bool) (*CodeSession, error) {
 	// 查找项目所在工作区
 	projectPath, err := ResolveProjectPath(project)
 	if err != nil {
@@ -259,14 +261,16 @@ func StartSession(project, prompt, model, tool string) (*CodeSession, error) {
 	normalizedTool := NormalizeTool(tool)
 
 	session := &CodeSession{
-		ID:        fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
-		Project:   project,
-		Prompt:    prompt,
-		Model:     model,
-		Tool:      normalizedTool,
-		Status:    StatusRunning,
-		Messages:  make([]SessionMessage, 0),
-		StartTime: time.Now(),
+		ID:         fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
+		Project:    project,
+		Prompt:     prompt,
+		Model:      model,
+		Tool:       normalizedTool,
+		AutoDeploy: autoDeploy,
+		DeployOnly: deployOnly,
+		Status:     StatusRunning,
+		Messages:   make([]SessionMessage, 0),
+		StartTime:  time.Now(),
 	}
 
 	sessionsMu.Lock()

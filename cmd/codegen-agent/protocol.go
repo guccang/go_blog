@@ -74,6 +74,8 @@ type TaskAssignPayload struct {
 	ClaudeSession string `json:"claude_session,omitempty"`
 	Model         string `json:"model,omitempty"`
 	Tool          string `json:"tool,omitempty"`
+	AutoDeploy    bool   `json:"auto_deploy,omitempty"`  // 编码完成后自动部署+验证
+	DeployOnly    bool   `json:"deploy_only,omitempty"` // 跳过编码，直接部署+验证
 }
 
 // TaskAcceptedPayload 任务接受确认

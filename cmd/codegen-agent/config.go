@@ -21,6 +21,10 @@ type AgentConfig struct {
 	MaxTurns              int
 	ClaudeCodeSettingsDir string // Claude Code --settings 配置目录
 	OpenCodeSettingsDir   string // OpenCode 模型映射配置目录
+	DeployAgentPath       string // deploy-agent.exe 路径（留空则不启用 auto_deploy）
+	DeployAgentConfig     string // deploy.conf 路径
+	VerifyURL             string // 部署验证 URL（HTTP GET）
+	VerifyTimeout         int    // 验证超时秒数，默认 10
 }
 
 // LoadConfig 从配置文件加载配置
@@ -30,6 +34,7 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		OpenCodePath:  "opencode",
 		MaxConcurrent: 3,
 		MaxTurns:      20,
+		VerifyTimeout: 10,
 	}
 
 	file, err := os.Open(path)
@@ -81,6 +86,16 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			cfg.ClaudeCodeSettingsDir = val
 		case "opencode_settings_dir":
 			cfg.OpenCodeSettingsDir = val
+		case "deploy_agent_path":
+			cfg.DeployAgentPath = val
+		case "deploy_agent_config":
+			cfg.DeployAgentConfig = val
+		case "verify_url":
+			cfg.VerifyURL = val
+		case "verify_timeout":
+			if n, err := strconv.Atoi(val); err == nil && n > 0 {
+				cfg.VerifyTimeout = n
+			}
 		}
 	}
 
@@ -116,6 +131,20 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		abs, err := filepath.Abs(cfg.OpenCodeSettingsDir)
 		if err == nil {
 			cfg.OpenCodeSettingsDir = abs
+		}
+	}
+
+	// deploy-agent 路径转绝对
+	if cfg.DeployAgentPath != "" && !filepath.IsAbs(cfg.DeployAgentPath) {
+		abs, err := filepath.Abs(cfg.DeployAgentPath)
+		if err == nil {
+			cfg.DeployAgentPath = abs
+		}
+	}
+	if cfg.DeployAgentConfig != "" && !filepath.IsAbs(cfg.DeployAgentConfig) {
+		abs, err := filepath.Abs(cfg.DeployAgentConfig)
+		if err == nil {
+			cfg.DeployAgentConfig = abs
 		}
 	}
 

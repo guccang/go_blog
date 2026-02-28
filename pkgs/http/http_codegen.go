@@ -89,22 +89,34 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 	}
 
 	var req struct {
-		Project string `json:"project"`
-		Prompt  string `json:"prompt"`
-		Model   string `json:"model"`
-		Tool    string `json:"tool"`
+		Project    string `json:"project"`
+		Prompt     string `json:"prompt"`
+		Model      string `json:"model"`
+		Tool       string `json:"tool"`
+		AutoDeploy bool   `json:"auto_deploy"`
+		DeployOnly bool   `json:"deploy_only"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request")
 		return
 	}
 
-	if req.Project == "" || req.Prompt == "" {
-		jsonError(w, "project and prompt are required")
+	// deploy_only 模式不需要 prompt
+	if req.Project == "" {
+		jsonError(w, "project is required")
+		return
+	}
+	if !req.DeployOnly && req.Prompt == "" {
+		jsonError(w, "prompt is required")
 		return
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool)
+	// deploy_only 隐含 auto_deploy
+	if req.DeployOnly {
+		req.AutoDeploy = true
+	}
+
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AutoDeploy, req.DeployOnly)
 	if err != nil {
 		jsonError(w, err.Error())
 		return

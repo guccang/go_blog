@@ -377,6 +377,8 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		ClaudeSession: claudeSession,
 		Model:         session.Model,
 		Tool:          tool,
+		AutoDeploy:    session.AutoDeploy,
+		DeployOnly:    session.DeployOnly,
 	}
 
 	return sendAgentMsg(agent.Conn, MsgTaskAssign, payload)

@@ -28,6 +28,18 @@ func main() {
 	log.Printf("[INFO] MaxConcurrent: %d, MaxTurns: %d", cfg.MaxConcurrent, cfg.MaxTurns)
 
 	agent := NewAgent(agentID, cfg)
+
+	// 初始化 pipeline（deploy + verify）
+	if cfg.DeployAgentPath != "" {
+		agent.pipeline = &Pipeline{
+			deployPath:    cfg.DeployAgentPath,
+			deployConfig:  cfg.DeployAgentConfig,
+			verifyURL:     cfg.VerifyURL,
+			verifyTimeout: cfg.VerifyTimeout,
+		}
+		log.Printf("[INFO] Pipeline enabled: deploy=%s, verify=%s", cfg.DeployAgentPath, cfg.VerifyURL)
+	}
+
 	conn := NewConnection(cfg, agent)
 
 	// 优雅退出

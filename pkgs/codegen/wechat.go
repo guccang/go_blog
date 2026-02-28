@@ -61,7 +61,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool string) (string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool)
+	session, err := StartSession(project, prompt, model, tool, false, false)
 	if err != nil {
 		return "", err
 	}
