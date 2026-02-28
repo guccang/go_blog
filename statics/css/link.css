@@ -1289,6 +1289,115 @@ body {
     100% { transform: scale(1); }
 }
 
+/* ========== 博客分类折叠样式 ========== */
+.category-section {
+    margin-bottom: 8px;
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-color);
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    margin-bottom: 0;
+}
+
+.category-header:hover {
+    background-color: var(--secondary-color);
+    box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.category-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.category-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.category-count {
+    font-size: 12px;
+    font-weight: 500;
+    color: white;
+    background-color: var(--accent-color);
+    border-radius: 10px;
+    padding: 1px 8px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.category-toggle {
+    color: var(--text-color);
+    font-size: 14px;
+    transition: transform 0.2s;
+}
+
+.category-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-gap: 12px;
+    padding: 12px 0;
+    transition: all 0.3s ease;
+}
+
+.category-body.collapsed {
+    display: none;
+}
+
+/* 列表视图下的分类内容 */
+.container.list-view .category-body {
+    grid-template-columns: 1fr;
+}
+
+/* 分类容器覆盖原始 container 的 grid */
+.container.categorized {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .category-header {
+        padding: 8px 12px;
+    }
+    .category-label {
+        font-size: 14px;
+    }
+    .category-body {
+        grid-template-columns: 1fr;
+        grid-gap: 10px;
+        padding: 8px 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .category-header {
+        padding: 6px 10px;
+    }
+    .category-label {
+        font-size: 13px;
+    }
+    .category-count {
+        font-size: 11px;
+        padding: 0 6px;
+    }
+}
+
+/* 确保分类视图中的卡片始终可见（覆盖入场动画） */
+.category-section .link-card {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+}
+
 @media (max-width: 1024px) {
     .assistant-floating-btn {
         right: 20px;

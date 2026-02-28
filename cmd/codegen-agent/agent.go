@@ -261,7 +261,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		args = a.buildArgs(task)
 	}
 
-	log.Printf("[INFO] executing: %s %s (dir=%s, tool=%s)", cmdPath, strings.Join(args, " "), projectPath, toolName)
+	log.Printf("[INFO] executing: %s %s (dir=%s, tool=%s, prompt_len=%d)", cmdPath, strings.Join(args, " "), projectPath, toolName, len(task.Prompt))
 
 	cmd := exec.Command(cmdPath, args...)
 	cmd.Dir = projectPath
@@ -363,9 +363,12 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		// 收集事件用于总结
 		summary.UpdateFromEvent(event)
 
+		// Done 仅由 TaskComplete 统一触发，防止 result 事件提前关闭 WeChat 通知
+		evt := *event
+		evt.Done = false
 		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
-			Event:     *event,
+			Event:     evt,
 		})
 	}
 
@@ -435,9 +438,12 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 }
 
 // buildArgs 构建 Claude CLI 参数
+// prompt 通过 -p 参数传递，换行符已被 sanitize 为空格
+// 因为 Windows CreateProcess 无法正确处理参数中的换行符
 func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
+	prompt := sanitizePromptForCLI(task.Prompt)
 	args := []string{
-		"-p", task.Prompt,
+		"-p", prompt,
 		"--verbose",
 		"--output-format", "stream-json",
 		"--dangerously-skip-permissions",
@@ -490,10 +496,22 @@ func (a *Agent) buildOpenCodeArgs(task *TaskAssignPayload) []string {
 		prompt = "[系统指令] " + task.SystemPrompt + "\n\n[用户需求] " + prompt
 	}
 
+	// 清理 prompt 中的换行符，避免 Windows 命令行参数截断
+	prompt = sanitizePromptForCLI(prompt)
+
 	// prompt 放最后
 	args = append(args, prompt)
 
 	return args
+}
+
+// sanitizePromptForCLI 清理 prompt 中的换行符用于命令行参数传递
+// Windows CreateProcess 无法正确处理命令行参数中的换行符
+func sanitizePromptForCLI(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
 }
 
 // resolveOpenCodeModel 将配置名解析为 OpenCode 可用的 model ID

@@ -10,11 +10,17 @@ import (
 
 // TaskSummary 任务总结
 type TaskSummary struct {
-	FilesWritten []string
-	FilesRead    []string
-	CommandsRun  []string
-	TotalCost    float64
-	TotalTokens  int
+	FilesWritten  []string
+	FilesEdited   []string
+	FilesRead     []string
+	CommandsRun   []string
+	ResultText    string // 最终结果文本（Claude Code result / OpenCode 最后一段 assistant）
+	AssistantText string // 累积的 assistant 文本输出
+	TotalCost     float64
+	TotalTokens   int
+	TokensIn      int
+	Duration      float64
+	NumTurns      int
 }
 
 // UpdateFromEvent 从事件更新总结
@@ -22,36 +28,67 @@ func (s *TaskSummary) UpdateFromEvent(event *StreamEvent) {
 	if event == nil {
 		return
 	}
+
+	// 收集费用和 token 统计
 	if event.CostUSD > 0 {
 		s.TotalCost += event.CostUSD
 	}
 	if event.TokensOut > 0 {
 		s.TotalTokens += event.TokensOut
 	}
+	if event.TokensIn > 0 {
+		s.TokensIn += event.TokensIn
+	}
+	if event.Duration > 0 {
+		s.Duration = event.Duration // 取最后一次（result 事件的是总时长）
+	}
+	if event.NumTurns > 0 {
+		s.NumTurns = event.NumTurns
+	}
+
+	// 收集 AI 的文本输出（assistant 类型）
+	if event.Type == "assistant" && event.Text != "" {
+		s.AssistantText += event.Text + "\n"
+	}
+
+	// 收集最终结果文本（Claude Code 的 result 事件）
+	if event.Type == "result" && event.Text != "" {
+		s.ResultText = event.Text
+	}
+
+	// 收集工具调用信息
 	if event.ToolName != "" && event.ToolInput != "" {
 		var input map[string]interface{}
 		json.Unmarshal([]byte(event.ToolInput), &input)
 		switch event.ToolName {
 		case "write", "Write":
-			if fp, ok := input["filePath"].(string); ok && fp != "" {
+			if fp := extractFilePath(input); fp != "" {
 				s.FilesWritten = append(s.FilesWritten, fp)
 			}
-			if fp, ok := input["file_path"].(string); ok && fp != "" {
-				s.FilesWritten = append(s.FilesWritten, fp)
+		case "edit", "Edit", "edit_file":
+			if fp := extractFilePath(input); fp != "" {
+				s.FilesEdited = append(s.FilesEdited, fp)
 			}
-		case "read", "Read":
-			if fp, ok := input["filePath"].(string); ok && fp != "" {
+		case "read", "Read", "read_file":
+			if fp := extractFilePath(input); fp != "" {
 				s.FilesRead = append(s.FilesRead, fp)
 			}
-			if fp, ok := input["file_path"].(string); ok && fp != "" {
-				s.FilesRead = append(s.FilesRead, fp)
-			}
-		case "bash", "Bash":
+		case "bash", "Bash", "run_command":
 			if cmd, ok := input["command"].(string); ok && cmd != "" {
 				s.CommandsRun = append(s.CommandsRun, cmd)
 			}
 		}
 	}
+}
+
+// extractFilePath 从工具输入中提取文件路径
+func extractFilePath(input map[string]interface{}) string {
+	for _, key := range []string{"file_path", "filePath", "path", "file"} {
+		if fp, ok := input[key].(string); ok && fp != "" {
+			return fp
+		}
+	}
+	return ""
 }
 
 // GenerateReport 生成总结报告
@@ -60,29 +97,99 @@ func (s *TaskSummary) GenerateReport() string {
 	lines = append(lines, "📋 任务完成报告")
 	lines = append(lines, "━━━━━━━━━━━━━━━━")
 
-	if len(s.FilesWritten) > 0 {
-		lines = append(lines, fmt.Sprintf("✏️ 修改文件 (%d):", len(s.FilesWritten)))
-		for _, f := range uniqueStrings(s.FilesWritten) {
-			lines = append(lines, fmt.Sprintf("   • %s", filepath.Base(f)))
+	// 最重要：展示 AI 完成了什么（result 或 assistant 的最后内容）
+	resultText := s.ResultText
+	if resultText == "" {
+		// 没有 result 事件（如 OpenCode），使用 assistant 最后输出
+		resultText = s.lastAssistantBlock()
+	}
+	if resultText != "" {
+		// 限制长度，但给足够空间展示完整内容
+		if len(resultText) > 3000 {
+			resultText = resultText[:3000] + "\n..."
+		}
+		lines = append(lines, "")
+		lines = append(lines, "📝 完成内容:")
+		lines = append(lines, resultText)
+		lines = append(lines, "")
+		lines = append(lines, "━━━━━━━━━━━━━━━━")
+	}
+
+	// 文件变更统计
+	writtenFiles := uniqueStrings(s.FilesWritten)
+	editedFiles := uniqueStrings(s.FilesEdited)
+	if len(writtenFiles) > 0 {
+		lines = append(lines, fmt.Sprintf("✏️ 新建文件 (%d):", len(writtenFiles)))
+		for _, f := range writtenFiles {
+			lines = append(lines, fmt.Sprintf("   • %s", shortenPath(f)))
+		}
+	}
+	if len(editedFiles) > 0 {
+		lines = append(lines, fmt.Sprintf("✏️ 编辑文件 (%d):", len(editedFiles)))
+		for _, f := range editedFiles {
+			lines = append(lines, fmt.Sprintf("   • %s", shortenPath(f)))
 		}
 	}
 
 	if len(s.FilesRead) > 0 {
-		lines = append(lines, fmt.Sprintf("📖 读取文件 (%d)", len(s.FilesRead)))
+		lines = append(lines, fmt.Sprintf("📖 读取文件 (%d)", len(uniqueStrings(s.FilesRead))))
 	}
 
 	if len(s.CommandsRun) > 0 {
 		lines = append(lines, fmt.Sprintf("💻 执行命令 (%d)", len(s.CommandsRun)))
 	}
 
+	// 统计信息
+	var stats []string
 	if s.TotalCost > 0 {
-		lines = append(lines, fmt.Sprintf("💰 费用: $%.4f", s.TotalCost))
+		stats = append(stats, fmt.Sprintf("$%.4f", s.TotalCost))
 	}
 	if s.TotalTokens > 0 {
-		lines = append(lines, fmt.Sprintf("📊 输出: %d tokens", s.TotalTokens))
+		stats = append(stats, fmt.Sprintf("%d tokens", s.TotalTokens))
+	}
+	if s.NumTurns > 0 {
+		stats = append(stats, fmt.Sprintf("%d turns", s.NumTurns))
+	}
+	if s.Duration > 0 {
+		secs := s.Duration / 1000
+		if secs >= 60 {
+			stats = append(stats, fmt.Sprintf("%.1f min", secs/60))
+		} else {
+			stats = append(stats, fmt.Sprintf("%.0fs", secs))
+		}
+	}
+	if len(stats) > 0 {
+		lines = append(lines, fmt.Sprintf("📊 %s", strings.Join(stats, " | ")))
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// lastAssistantBlock 提取 assistant 文本的最后一段有意义内容
+func (s *TaskSummary) lastAssistantBlock() string {
+	text := strings.TrimSpace(s.AssistantText)
+	if text == "" {
+		return ""
+	}
+	// 取最后 3000 字符作为最终总结
+	if len(text) > 3000 {
+		text = text[len(text)-3000:]
+		// 找到第一个完整段落开始
+		if idx := strings.Index(text, "\n"); idx >= 0 && idx < 200 {
+			text = text[idx+1:]
+		}
+	}
+	return text
+}
+
+// shortenPath 缩短路径显示，保留最后两级
+func shortenPath(p string) string {
+	p = filepath.ToSlash(p)
+	parts := strings.Split(p, "/")
+	if len(parts) <= 2 {
+		return p
+	}
+	return ".../" + strings.Join(parts[len(parts)-2:], "/")
 }
 
 func uniqueStrings(strs []string) []string {
@@ -194,8 +301,8 @@ func parseStreamLine(line string) *StreamEvent {
 		for _, block := range userMsg.Content {
 			if block.Type == "tool_result" && block.Content != "" {
 				text := block.Content
-				if len(text) > 500 {
-					text = text[:500] + "..."
+				if len(text) > 2000 {
+					text = text[:2000] + "..."
 				}
 				eventType := "system"
 				if block.IsError {

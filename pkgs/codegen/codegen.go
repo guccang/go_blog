@@ -42,6 +42,22 @@ func processEvent(session *CodeSession, event *StreamEvent) {
 			ToolInput: event.ToolInput,
 			Time:      time.Now(),
 		})
+	case "result":
+		if event.Text != "" {
+			session.addMessage(SessionMessage{
+				Role:    "result",
+				Content: event.Text,
+				Time:    time.Now(),
+			})
+		}
+	case "summary":
+		if event.Text != "" {
+			session.addMessage(SessionMessage{
+				Role:    "summary",
+				Content: event.Text,
+				Time:    time.Now(),
+			})
+		}
 	}
 }
 

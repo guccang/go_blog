@@ -149,9 +149,9 @@
 	});
 	</script>
 
-	<div class="container">
+	<div class="container" id="blogContainer">
 		{{range .LINKS}}
-			<div class="link-card">
+			<div class="link-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}">
 				<a class="link-with-dot" href="{{.URL}}">
 				{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
 				</a>
@@ -350,6 +350,96 @@
 			}
 		`;
 		document.head.appendChild(style);
+
+		// ========== 博客分类折叠功能 ==========
+		(function() {
+			const container = document.getElementById('blogContainer');
+			if (!container) return;
+
+			const cards = Array.from(container.querySelectorAll('.link-card'));
+			if (cards.length === 0) return;
+
+			const categories = [
+				{ key: 'system',   label: '⚙️ 系统文件',  color: '#6c757d' },
+				{ key: 'ai',       label: '🤖 AI生成',    color: '#9b59b6' },
+				{ key: 'memory',   label: '🧠 记忆文件',  color: '#3498db' },
+				{ key: 'exercise', label: '💪 锻炼文件',  color: '#27ae60' },
+				{ key: 'diary',    label: '📔 日记文件',  color: '#e67e22' },
+				{ key: 'blog',     label: '📝 日常博客',  color: '#e76f51' },
+			];
+
+			function classifyCard(card) {
+				const title = (card.getAttribute('data-title') || '').toLowerCase();
+				const isDiary = card.getAttribute('data-diary') === 'true';
+
+				if (title.startsWith('sys_') || title.startsWith('mcp_') || title === 'sys_accounts') return 'system';
+				if (title.startsWith('agent_')) return 'ai';
+				if (title.includes('memory') || title.includes('记忆')) return 'memory';
+				if (title.includes('exercise') || title.includes('锻炼') || title.includes('workout') || title.includes('健身')) return 'exercise';
+				if (isDiary || title.startsWith('日记_') || title.startsWith('diary_')) return 'diary';
+				return 'blog';
+			}
+
+			const groups = {};
+			categories.forEach(c => groups[c.key] = []);
+			cards.forEach(card => groups[classifyCard(card)].push(card));
+
+			function getCollapseState(key) {
+				try {
+					const saved = localStorage.getItem('blog_category_state');
+					if (saved) { const s = JSON.parse(saved); if (s[key] !== undefined) return s[key]; }
+				} catch(e) {}
+				return true;
+			}
+
+			function saveCollapseState(key, collapsed) {
+				try {
+					let s = {};
+					const saved = localStorage.getItem('blog_category_state');
+					if (saved) s = JSON.parse(saved);
+					s[key] = collapsed;
+					localStorage.setItem('blog_category_state', JSON.stringify(s));
+				} catch(e) {}
+			}
+
+			container.innerHTML = '';
+
+			categories.forEach(cat => {
+				const items = groups[cat.key];
+				if (items.length === 0) return;
+
+				const collapsed = getCollapseState(cat.key);
+
+				const section = document.createElement('div');
+				section.className = 'category-section';
+
+				const header = document.createElement('div');
+				header.className = 'category-header';
+				header.style.borderLeftColor = cat.color;
+				header.innerHTML =
+					'<div class="category-header-left">' +
+						'<span class="category-label">' + cat.label + '</span>' +
+						'<span class="category-count">' + items.length + '</span>' +
+					'</div>' +
+					'<span class="category-toggle">' +
+						'<i class="fas fa-chevron-' + (collapsed ? 'right' : 'down') + '"></i>' +
+					'</span>';
+
+				const body = document.createElement('div');
+				body.className = 'category-body' + (collapsed ? ' collapsed' : '');
+				items.forEach(card => body.appendChild(card));
+
+				header.addEventListener('click', function() {
+					const isC = body.classList.toggle('collapsed');
+					header.querySelector('.category-toggle i').className = 'fas fa-chevron-' + (isC ? 'right' : 'down');
+					saveCollapseState(cat.key, isC);
+				});
+
+				section.appendChild(header);
+				section.appendChild(body);
+				container.appendChild(section);
+			});
+		})();
 
 		// 标签折叠功能
 		document.addEventListener('DOMContentLoaded', function() {

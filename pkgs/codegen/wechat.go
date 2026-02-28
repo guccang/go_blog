@@ -324,10 +324,16 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 	totalSteps := state.StepCount
 	state.mu.Unlock()
 
-	elapsed := endTime.Sub(startTime).Round(time.Second)
+	elapsed := formatDuration(startTime, endTime)
 
-	// 提取最后一条 assistant 消息作为修改内容摘要
+	// 提取最后一条 result/assistant 消息作为修改内容摘要
 	changeSummary := extractChangeSummary(msgs)
+
+	// 构建状态行：耗时 · 步数 [· 费用]
+	statsLine := fmt.Sprintf("%s · %d步", elapsed, totalSteps)
+	if cost > 0 {
+		statsLine += fmt.Sprintf(" · $%.4f", cost)
+	}
 
 	var summary string
 	switch status {
@@ -335,14 +341,14 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 		if len(errMsg) > 200 {
 			errMsg = errMsg[:200] + "..."
 		}
-		summary = fmt.Sprintf("❌ %s 编码失败\n%s · %d步 · $%.4f\n\n%s",
-			state.Project, elapsed, totalSteps, cost, errMsg)
+		summary = fmt.Sprintf("❌ %s 编码失败\n%s\n\n%s",
+			state.Project, statsLine, errMsg)
 	case StatusStopped:
-		summary = fmt.Sprintf("⏹ %s 已停止\n%s · %d步 · $%.4f",
-			state.Project, elapsed, totalSteps, cost)
+		summary = fmt.Sprintf("⏹ %s 已停止\n%s",
+			state.Project, statsLine)
 	default:
-		summary = fmt.Sprintf("✅ %s 编码完成\n%s · %d步 · $%.4f",
-			state.Project, elapsed, totalSteps, cost)
+		summary = fmt.Sprintf("✅ %s 编码完成\n%s",
+			state.Project, statsLine)
 	}
 
 	if changeSummary != "" {
@@ -356,30 +362,68 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 	}
 }
 
-// extractChangeSummary 从会话消息中提取修改内容摘要（100字以内）
+// extractChangeSummary 从会话消息中提取修改内容摘要
+// 优先级: result（Claude Code 最终结果）> summary（agent 报告）> assistant
 func extractChangeSummary(msgs []SessionMessage) string {
-	// 从后往前找最后一条 assistant 消息
+	// 优先从 result 消息提取（Claude Code 的最终结果文本）
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "result" && strings.TrimSpace(msgs[i].Content) != "" {
+			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
+		}
+	}
+	// 再尝试 summary（agent 生成的任务报告）
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "summary" && strings.TrimSpace(msgs[i].Content) != "" {
+			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
+		}
+	}
+	// 最后回退到 assistant 消息
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == "assistant" && strings.TrimSpace(msgs[i].Content) != "" {
-			return truncateRunes(strings.TrimSpace(msgs[i].Content), 100)
+			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
 		}
 	}
 	return ""
 }
 
-// truncateRunes 按 rune（字符）截断字符串，保证不截断中文字符
-func truncateRunes(s string, maxRunes int) string {
-	runes := []rune(s)
-	// 将换行替换为空格，使摘要更紧凑
-	for i, r := range runes {
-		if r == '\n' || r == '\r' {
-			runes[i] = ' '
-		}
+// truncateForWeChat 为微信消息截断文本
+// 保留换行（微信支持），折叠多余空行，限制 800 rune
+func truncateForWeChat(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	// 折叠连续多个空行为两个换行
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
 	}
-	if len(runes) <= maxRunes {
+	runes := []rune(s)
+	if len(runes) <= 800 {
 		return string(runes)
 	}
-	return string(runes[:maxRunes]) + "..."
+	return string(runes[:800]) + "\n..."
+}
+
+// formatDuration 格式化耗时，处理零值和负值
+func formatDuration(startTime, endTime time.Time) string {
+	if endTime.IsZero() {
+		endTime = time.Now()
+	}
+	d := endTime.Sub(startTime)
+	if d < 0 {
+		d = time.Since(startTime)
+	}
+	d = d.Round(time.Second)
+
+	if d >= time.Hour {
+		h := int(d.Hours())
+		m := int(d.Minutes()) % 60
+		return fmt.Sprintf("%dh%dm", h, m)
+	}
+	if d >= time.Minute {
+		m := int(d.Minutes())
+		s := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	return fmt.Sprintf("%ds", int(d.Seconds()))
 }
 
 // formatEventForWeChat 格式化流式事件为微信可读文本

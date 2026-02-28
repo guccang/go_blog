@@ -200,6 +200,8 @@ func (p *AgentPool) handleStreamEvent(payload *StreamEventPayload) {
 	}
 	// 更新 session 状态（同 processEvent 逻辑）
 	processEvent(session, &payload.Event)
+	// Done 仅由 handleTaskComplete 触发，防止 result 事件提前关闭 WeChat 通知
+	payload.Event.Done = false
 	session.broadcast(payload.Event)
 }
 
