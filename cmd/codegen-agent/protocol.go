@@ -34,13 +34,16 @@ type AgentMessage struct {
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {
-	AgentID       string   `json:"agent_id"`
-	Name          string   `json:"name"`
-	Workspaces    []string `json:"workspaces"`
-	Projects      []string `json:"projects"`
-	Models        []string `json:"models,omitempty"`
-	MaxConcurrent int      `json:"max_concurrent"`
-	AuthToken     string   `json:"auth_token,omitempty"`
+	AgentID          string   `json:"agent_id"`
+	Name             string   `json:"name"`
+	Workspaces       []string `json:"workspaces"`
+	Projects         []string `json:"projects"`
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`
+	MaxConcurrent    int      `json:"max_concurrent"`
+	AuthToken        string   `json:"auth_token,omitempty"`
 }
 
 // RegisterAckPayload 注册确认
@@ -51,11 +54,14 @@ type RegisterAckPayload struct {
 
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
-	AgentID        string   `json:"agent_id"`
-	ActiveSessions int      `json:"active_sessions"`
-	Load           float64  `json:"load"`
-	Projects       []string `json:"projects,omitempty"`
-	Models         []string `json:"models,omitempty"`
+	AgentID          string   `json:"agent_id"`
+	ActiveSessions   int      `json:"active_sessions"`
+	Load             float64  `json:"load"`
+	Projects         []string `json:"projects,omitempty"`
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`
 }
 
 // TaskAssignPayload 任务分派
@@ -67,6 +73,7 @@ type TaskAssignPayload struct {
 	SystemPrompt  string `json:"system_prompt"`
 	ClaudeSession string `json:"claude_session,omitempty"`
 	Model         string `json:"model,omitempty"`
+	Tool          string `json:"tool,omitempty"`
 }
 
 // TaskAcceptedPayload 任务接受确认

@@ -40,20 +40,26 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 		// 合并远程 agent 项目
 		var agents []map[string]interface{}
 		var remoteProjects []codegen.RemoteProjectInfo
-		var models []string
+		var claudeCodeModels []string
+		var openCodeModels []string
+		var tools []string
 		pool := codegen.GetAgentPool()
 		if pool != nil {
 			agents = pool.GetAgents()
 			remoteProjects = pool.ListRemoteProjects()
-			models = pool.GetAllModels()
+			claudeCodeModels = pool.GetAllClaudeCodeModels()
+			openCodeModels = pool.GetAllOpenCodeModels()
+			tools = pool.GetAllTools()
 		}
 
 		jsonOK(w, map[string]interface{}{
-			"projects":        projects,
-			"workspace":       codegen.GetWorkspace(),
-			"agents":          agents,
-			"remote_projects": remoteProjects,
-			"models":          models,
+			"projects":          projects,
+			"workspace":         codegen.GetWorkspace(),
+			"agents":            agents,
+			"remote_projects":   remoteProjects,
+			"claudecode_models": claudeCodeModels,
+			"opencode_models":   openCodeModels,
+			"tools":             tools,
 		})
 
 	case h.MethodPost:
@@ -86,6 +92,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		Project string `json:"project"`
 		Prompt  string `json:"prompt"`
 		Model   string `json:"model"`
+		Tool    string `json:"tool"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request")
@@ -97,7 +104,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model)
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool)
 	if err != nil {
 		jsonError(w, err.Error())
 		return

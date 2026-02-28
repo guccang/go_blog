@@ -11,20 +11,23 @@ import (
 
 // AgentConfig agent 配置
 type AgentConfig struct {
-	ServerURL     string
-	AgentName     string
-	AuthToken     string
-	Workspaces    []string
-	ClaudePath    string
-	MaxConcurrent int
-	MaxTurns      int
-	SettingsDir   string // Claude CLI --settings 配置文件目录
+	ServerURL             string
+	AgentName             string
+	AuthToken             string
+	Workspaces            []string
+	ClaudePath            string
+	OpenCodePath          string
+	MaxConcurrent         int
+	MaxTurns              int
+	ClaudeCodeSettingsDir string // Claude Code --settings 配置目录
+	OpenCodeSettingsDir   string // OpenCode 模型映射配置目录
 }
 
 // LoadConfig 从配置文件加载配置
 func LoadConfig(path string) (*AgentConfig, error) {
 	cfg := &AgentConfig{
 		ClaudePath:    "claude",
+		OpenCodePath:  "opencode",
 		MaxConcurrent: 3,
 		MaxTurns:      20,
 	}
@@ -64,6 +67,8 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			}
 		case "claude_path":
 			cfg.ClaudePath = val
+		case "opencode_path":
+			cfg.OpenCodePath = val
 		case "max_concurrent":
 			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				cfg.MaxConcurrent = n
@@ -72,8 +77,10 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				cfg.MaxTurns = n
 			}
-		case "settings_dir":
-			cfg.SettingsDir = val
+		case "claudecode_settings_dir":
+			cfg.ClaudeCodeSettingsDir = val
+		case "opencode_settings_dir":
+			cfg.OpenCodeSettingsDir = val
 		}
 	}
 
@@ -87,16 +94,28 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		return nil, fmt.Errorf("workspaces is required")
 	}
 
-	// 默认 settings_dir 为配置文件同目录下的 settings/
-	if cfg.SettingsDir == "" {
-		cfg.SettingsDir = filepath.Join(filepath.Dir(path), "settings")
+	configDir := filepath.Dir(path)
+
+	// 默认 claudecode_settings_dir 为 settings/claudecode/
+	if cfg.ClaudeCodeSettingsDir == "" {
+		cfg.ClaudeCodeSettingsDir = filepath.Join(configDir, "settings", "claudecode")
+	}
+	// 默认 opencode_settings_dir 为 settings/opencode/
+	if cfg.OpenCodeSettingsDir == "" {
+		cfg.OpenCodeSettingsDir = filepath.Join(configDir, "settings", "opencode")
 	}
 
-	// 将相对路径转为绝对路径（避免 Claude CLI 在项目目录下找不到）
-	if !filepath.IsAbs(cfg.SettingsDir) {
-		abs, err := filepath.Abs(cfg.SettingsDir)
+	// 将相对路径转为绝对路径
+	if !filepath.IsAbs(cfg.ClaudeCodeSettingsDir) {
+		abs, err := filepath.Abs(cfg.ClaudeCodeSettingsDir)
 		if err == nil {
-			cfg.SettingsDir = abs
+			cfg.ClaudeCodeSettingsDir = abs
+		}
+	}
+	if !filepath.IsAbs(cfg.OpenCodeSettingsDir) {
+		abs, err := filepath.Abs(cfg.OpenCodeSettingsDir)
+		if err == nil {
+			cfg.OpenCodeSettingsDir = abs
 		}
 	}
 

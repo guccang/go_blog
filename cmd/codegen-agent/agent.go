@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -14,18 +15,20 @@ import (
 
 // Agent 远程执行器
 type Agent struct {
-	ID            string
-	cfg           *AgentConfig
-	activeTasks   map[string]*exec.Cmd
-	mu            sync.Mutex
+	ID           string
+	cfg          *AgentConfig
+	activeTasks  map[string]*exec.Cmd
+	stoppedTasks map[string]bool
+	mu           sync.Mutex
 }
 
 // NewAgent 创建 Agent
 func NewAgent(id string, cfg *AgentConfig) *Agent {
 	return &Agent{
-		ID:          id,
-		cfg:         cfg,
-		activeTasks: make(map[string]*exec.Cmd),
+		ID:           id,
+		cfg:          cfg,
+		activeTasks:  make(map[string]*exec.Cmd),
+		stoppedTasks: make(map[string]bool),
 	}
 }
 
@@ -75,12 +78,61 @@ func (a *Agent) ScanProjects() []string {
 	return projects
 }
 
-// ScanSettings 扫描 SettingsDir 下所有 .json 文件，返回不含后缀的文件名列表
+// ScanSettings 扫描 ClaudeCode 和 OpenCode 配置目录，返回合并后的配置名列表
 func (a *Agent) ScanSettings() []string {
-	if a.cfg.SettingsDir == "" {
+	seen := make(map[string]bool)
+	var models []string
+
+	// 扫描 Claude Code 配置目录
+	if a.cfg.ClaudeCodeSettingsDir != "" {
+		entries, err := os.ReadDir(a.cfg.ClaudeCodeSettingsDir)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				if strings.HasSuffix(strings.ToLower(name), ".json") {
+					modelName := strings.TrimSuffix(name, filepath.Ext(name))
+					if !seen[modelName] {
+						seen[modelName] = true
+						models = append(models, modelName)
+					}
+				}
+			}
+		}
+	}
+
+	// 扫描 OpenCode 配置目录
+	if a.cfg.OpenCodeSettingsDir != "" {
+		entries, err := os.ReadDir(a.cfg.OpenCodeSettingsDir)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				if strings.HasSuffix(strings.ToLower(name), ".json") {
+					modelName := strings.TrimSuffix(name, filepath.Ext(name))
+					if !seen[modelName] {
+						seen[modelName] = true
+						models = append(models, modelName)
+					}
+				}
+			}
+		}
+	}
+
+	sort.Strings(models)
+	return models
+}
+
+// ScanClaudeCodeSettings 扫描 Claude Code 配置目录
+func (a *Agent) ScanClaudeCodeSettings() []string {
+	if a.cfg.ClaudeCodeSettingsDir == "" {
 		return nil
 	}
-	entries, err := os.ReadDir(a.cfg.SettingsDir)
+	entries, err := os.ReadDir(a.cfg.ClaudeCodeSettingsDir)
 	if err != nil {
 		return nil
 	}
@@ -98,21 +150,82 @@ func (a *Agent) ScanSettings() []string {
 	return models
 }
 
+// ScanOpenCodeSettings 扫描 OpenCode 配置目录
+func (a *Agent) ScanOpenCodeSettings() []string {
+	if a.cfg.OpenCodeSettingsDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(a.cfg.OpenCodeSettingsDir)
+	if err != nil {
+		return nil
+	}
+	var models []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".json") {
+			models = append(models, strings.TrimSuffix(name, filepath.Ext(name)))
+		}
+	}
+	sort.Strings(models)
+	return models
+}
+
+// ScanTools 检测本机安装的编码工具
+func (a *Agent) ScanTools() []string {
+	var tools []string
+	if _, err := exec.LookPath(a.cfg.ClaudePath); err == nil {
+		tools = append(tools, "claudecode")
+	}
+	if _, err := exec.LookPath(a.cfg.OpenCodePath); err == nil {
+		tools = append(tools, "opencode")
+	}
+	return tools
+}
+
 // StopTask 停止指定任务
 func (a *Agent) StopTask(sessionID string) {
 	a.mu.Lock()
 	cmd, ok := a.activeTasks[sessionID]
+	if ok {
+		a.stoppedTasks[sessionID] = true
+	}
 	a.mu.Unlock()
 
 	if ok && cmd.Process != nil {
 		log.Printf("[INFO] killing task %s", sessionID)
+		// Windows 需要杀死整个进程组
+		if cmd.Process.Pid > 0 {
+			killCmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", cmd.Process.Pid))
+			killCmd.Run()
+		}
 		cmd.Process.Kill()
 	}
+}
+
+// IsTaskStopped 检查任务是否被停止
+func (a *Agent) IsTaskStopped(sessionID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.stoppedTasks[sessionID]
+}
+
+// ClearStopped 清除停止标记
+func (a *Agent) ClearStopped(sessionID string) {
+	a.mu.Lock()
+	delete(a.stoppedTasks, sessionID)
+	a.mu.Unlock()
 }
 
 // ExecuteTask 执行编码任务
 func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	sessionID := task.SessionID
+
+	// 调试：打印收到的任务参数
+	log.Printf("[DEBUG] ExecuteTask: session=%s, project=%s, tool=%s, model=%s",
+		sessionID, task.Project, task.Tool, task.Model)
 
 	// 解析项目路径
 	projectPath := a.resolveProject(task.Project)
@@ -128,12 +241,22 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 确保 .git 存在
 	ensureGitInit(projectPath)
 
-	// 构建 Claude CLI 参数
-	args := a.buildArgs(task)
+	// 根据工具类型选择可执行文件和参数
+	var cmdPath string
+	var args []string
+	toolName := "Claude Code"
+	if task.Tool == "opencode" {
+		cmdPath = a.cfg.OpenCodePath
+		args = a.buildOpenCodeArgs(task)
+		toolName = "OpenCode"
+	} else {
+		cmdPath = a.cfg.ClaudePath
+		args = a.buildArgs(task)
+	}
 
-	log.Printf("[INFO] executing: %s %s (dir=%s)", a.cfg.ClaudePath, strings.Join(args, " "), projectPath)
+	log.Printf("[INFO] executing: %s %s (dir=%s, tool=%s)", cmdPath, strings.Join(args, " "), projectPath, toolName)
 
-	cmd := exec.Command(a.cfg.ClaudePath, args...)
+	cmd := exec.Command(cmdPath, args...)
 	cmd.Dir = projectPath
 
 	stdout, err := cmd.StdoutPipe()
@@ -175,24 +298,42 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		SessionID: sessionID,
 		Event: StreamEvent{
 			Type: "system",
-			Text: fmt.Sprintf("🔧 Claude Code 开始编码... (项目: %s, Agent: %s)", task.Project, a.cfg.AgentName),
+			Text: fmt.Sprintf("🔧 %s 开始编码... (项目: %s, Agent: %s)", toolName, task.Project, a.cfg.AgentName),
 		},
 	})
+
+	// 标记是否使用 OpenCode（stderr/stdout 解析策略不同）
+	useOpenCode := task.Tool == "opencode"
+
+	// 任务总结收集器
+	var summary TaskSummary
 
 	// 异步读取 stderr
 	go func() {
 		scanner := bufio.NewScanner(stderr)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			log.Printf("[STDERR] %s", line)
-			conn.SendMsg(MsgStreamEvent, StreamEventPayload{
-				SessionID: sessionID,
-				Event:     StreamEvent{Type: "error", Text: "⚠️ " + line},
-			})
+			if useOpenCode {
+				// OpenCode 的进度输出（工具调用、命令执行）走 stderr
+				event := parseOpenCodeStderr(line)
+				if event != nil {
+					conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+						SessionID: sessionID,
+						Event:     *event,
+					})
+				}
+			} else {
+				conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+					SessionID: sessionID,
+					Event:     StreamEvent{Type: "error", Text: "⚠️ " + line},
+				})
+			}
 		}
 	}()
 
-	// 逐行读取 stream-json 并转发
+	// 逐行读取输出并转发
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
@@ -202,10 +343,18 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 			continue
 		}
 
-		event := parseStreamLine(line)
+		var event *StreamEvent
+		if useOpenCode {
+			event = parseOpenCodeLine(line)
+		} else {
+			event = parseStreamLine(line)
+		}
 		if event == nil {
 			continue
 		}
+
+		// 收集事件用于总结
+		summary.UpdateFromEvent(event)
 
 		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
@@ -216,11 +365,32 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 等待进程完成
 	err = cmd.Wait()
 
+	// 清除停止标记
+	defer a.ClearStopped(sessionID)
+
 	status := "done"
 	errMsg := ""
 	if err != nil {
-		status = "error"
-		errMsg = err.Error()
+		// 检查是否是被用户停止
+		if a.IsTaskStopped(sessionID) {
+			status = "stopped"
+		} else {
+			status = "error"
+			errMsg = err.Error()
+		}
+	}
+
+	// 发送任务总结报告
+	if status == "done" {
+		report := summary.GenerateReport()
+		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+			SessionID: sessionID,
+			Event: StreamEvent{
+				Type: "summary",
+				Text: report,
+				Done: true,
+			},
+		})
 	}
 
 	conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
@@ -258,14 +428,58 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 	}
 
 	// 如果指定了模型配置，查找对应的 settings 文件
-	if task.Model != "" && a.cfg.SettingsDir != "" {
-		settingsFile := filepath.Join(a.cfg.SettingsDir, task.Model+".json")
+	if task.Model != "" && a.cfg.ClaudeCodeSettingsDir != "" {
+		settingsFile := filepath.Join(a.cfg.ClaudeCodeSettingsDir, task.Model+".json")
 		if _, err := os.Stat(settingsFile); err == nil {
 			args = append(args, "--settings", settingsFile)
 		}
 	}
 
 	return args
+}
+
+// buildOpenCodeArgs 构建 OpenCode CLI 参数
+// OpenCode 使用 --model "provider/model" 格式
+func (a *Agent) buildOpenCodeArgs(task *TaskAssignPayload) []string {
+	args := []string{"run", "--format", "json"}
+
+	// 模型选择：OpenCode 使用 provider/model 格式
+	if task.Model != "" {
+		modelID := a.resolveOpenCodeModel(task.Model)
+		if modelID != "" {
+			args = append(args, "--model", modelID)
+		}
+	}
+
+	// prompt 放最后
+	args = append(args, task.Prompt)
+
+	return args
+}
+
+// resolveOpenCodeModel 将配置名解析为 OpenCode 可用的 model ID
+// 从 opencode 配置目录读取 model 字段
+func (a *Agent) resolveOpenCodeModel(model string) string {
+	if a.cfg.OpenCodeSettingsDir == "" {
+		return model
+	}
+
+	settingsFile := filepath.Join(a.cfg.OpenCodeSettingsDir, model+".json")
+	data, err := os.ReadFile(settingsFile)
+	if err != nil {
+		return model
+	}
+
+	var settings struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return model
+	}
+	if settings.Model != "" {
+		return settings.Model
+	}
+	return model
 }
 
 // resolveProject 在 workspaces 中查找项目

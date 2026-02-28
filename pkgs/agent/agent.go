@@ -206,10 +206,11 @@ func registerMCPCallbacks() {
 		project, _ := args["project"].(string)
 		prompt, _ := args["prompt"].(string)
 		model, _ := args["model"].(string)
+		tool, _ := args["tool"].(string)
 		if project == "" || prompt == "" {
 			return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
 		}
-		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model)
+		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model, tool)
 		if err != nil {
 			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 		}
@@ -707,9 +708,9 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
 
 	case "start", "run":
-		// cg start <project> [#model] <prompt>
+		// cg start <project> [#model] [@tool] <prompt>
 		if param == "" {
-			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务"
+			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务\n示例: cg start myapp @oc 用OpenCode编码"
 		}
 		startParts := strings.SplitN(param, " ", 2)
 		project := startParts[0]
@@ -718,23 +719,31 @@ func handleCodegenCommand(userID, message string) string {
 			rest = strings.TrimSpace(startParts[1])
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>"
 		}
-		// 解析可选的 #model
+		// 解析可选的 #model 和 @tool（顺序不限）
 		model := ""
-		if strings.HasPrefix(rest, "#") {
-			modelParts := strings.SplitN(rest, " ", 2)
-			model = strings.TrimPrefix(modelParts[0], "#")
-			if len(modelParts) > 1 {
-				rest = strings.TrimSpace(modelParts[1])
+		tool := ""
+		for strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") {
+			optParts := strings.SplitN(rest, " ", 2)
+			opt := optParts[0]
+			if strings.HasPrefix(opt, "#") {
+				model = strings.TrimPrefix(opt, "#")
+			} else if strings.HasPrefix(opt, "@") {
+				toolAlias := strings.TrimPrefix(opt, "@")
+				tool = codegen.NormalizeTool(toolAlias)
+			}
+			if len(optParts) > 1 {
+				rest = strings.TrimSpace(optParts[1])
 			} else {
 				rest = ""
+				break
 			}
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] <编码需求>"
 		}
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model)
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model, tool)
 		if err != nil {
 			return fmt.Sprintf("❌ 启动失败: %v", err)
 		}
@@ -742,7 +751,11 @@ func handleCodegenCommand(userID, message string) string {
 		if model != "" {
 			modelInfo = fmt.Sprintf("\n模型: %s", model)
 		}
-		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, sessionID)
+		toolInfo := ""
+		if tool != "" && tool != "claudecode" {
+			toolInfo = fmt.Sprintf("\n工具: %s", tool)
+		}
+		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, toolInfo, sessionID)
 
 	case "send", "msg":
 		// cg send <prompt>
@@ -803,6 +816,32 @@ func handleCodegenCommand(userID, message string) string {
 		sb.WriteString("\n用法: cg start <项目> #模型名 <需求>")
 		return sb.String()
 
+	case "tools":
+		pool := codegen.GetAgentPool()
+		if pool == nil {
+			return "远程 agent 模式未启用"
+		}
+		tools := pool.GetAllTools()
+		if len(tools) == 0 {
+			return "当前无可用编码工具"
+		}
+		toolLabels := map[string]string{
+			"claudecode": "Claude Code (默认)",
+			"opencode":   "OpenCode",
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("🔧 可用编码工具 (%d个)\n\n", len(tools)))
+		for i, t := range tools {
+			label := toolLabels[t]
+			if label == "" {
+				label = t
+			}
+			sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, label))
+		}
+		sb.WriteString("\n用法: cg start <项目> @oc <需求>")
+		sb.WriteString("\n别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode")
+		return sb.String()
+
 	default:
 		return fmt.Sprintf("⚠️ 未知命令: cg %s\n\n%s", subCmd, getCodegenHelpText())
 	}
@@ -814,14 +853,18 @@ func getCodegenHelpText() string {
 		"cg list — 列出所有项目（本地+远程）\n" +
 		"cg create <名称> — 本地创建项目\n" +
 		"cg create <名称> @<agent> — 在远程agent上创建\n" +
-		"cg start <项目> <需求> — 启动编码（默认模型）\n" +
+		"cg start <项目> <需求> — 启动编码（默认模型+工具）\n" +
 		"cg start <项目> #<模型> <需求> — 指定模型编码\n" +
+		"cg start <项目> @oc <需求> — 用OpenCode编码\n" +
+		"cg start <项目> #<模型> @oc <需求> — 指定模型+工具\n" +
 		"cg send <消息> — 追加指令\n" +
 		"cg status — 查看进度\n" +
 		"cg stop — 停止编码\n" +
 		"cg models — 查看可用模型配置\n" +
+		"cg tools — 查看可用编码工具\n" +
 		"cg agents — 查看在线agent\n\n" +
-		"示例: cg start myapp #sonnet 写个HTTP服务"
+		"工具别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode\n" +
+		"示例: cg start myapp #sonnet @oc 写个HTTP服务"
 }
 
 // Shutdown 关闭 Agent 模块

@@ -31,14 +31,16 @@ type AgentMessage struct {
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {
-	AgentID       string   `json:"agent_id"`
-	Name          string   `json:"name"`
-	Workspaces    []string `json:"workspaces"`
-	Projects      []string `json:"projects"`              // agent 上报的可用项目列表
-	Models        []string `json:"models,omitempty"`      // agent 支持的模型配置列表
-	Tools         []string `json:"tools,omitempty"`       // agent 支持的编码工具列表 (claudecode, opencode)
-	MaxConcurrent int      `json:"max_concurrent"`
-	AuthToken     string   `json:"auth_token,omitempty"`
+	AgentID          string   `json:"agent_id"`
+	Name             string   `json:"name"`
+	Workspaces       []string `json:"workspaces"`
+	Projects         []string `json:"projects"`                    // agent 上报的可用项目列表
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`             // agent 支持的编码工具列表 (claudecode, opencode)
+	MaxConcurrent    int      `json:"max_concurrent"`
+	AuthToken        string   `json:"auth_token,omitempty"`
 }
 
 // RegisterAckPayload 注册确认
@@ -49,12 +51,14 @@ type RegisterAckPayload struct {
 
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
-	AgentID        string   `json:"agent_id"`
-	ActiveSessions int      `json:"active_sessions"`
-	Load           float64  `json:"load"`
-	Projects       []string `json:"projects,omitempty"` // 定期更新项目列表
-	Models         []string `json:"models,omitempty"`   // 定期更新模型配置列表
-	Tools          []string `json:"tools,omitempty"`    // 定期更新编码工具列表
+	AgentID          string   `json:"agent_id"`
+	ActiveSessions   int      `json:"active_sessions"`
+	Load             float64  `json:"load"`
+	Projects         []string `json:"projects,omitempty"`          // 定期更新项目列表
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`             // 定期更新编码工具列表
 }
 
 // TaskAssignPayload 任务分派

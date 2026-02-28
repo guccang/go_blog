@@ -14,8 +14,19 @@ workspaces=/home/user/projects
 # Claude CLI 路径（默认 claude）
 claude_path=claude
 
+# OpenCode CLI 路径（默认 opencode）
+opencode_path=opencode
+
 # 最大并发任务数
 max_concurrent=3
 
 # 最大对话轮次
 max_turns=20
+
+# Claude Code 配置目录（包含 API 密钥等）
+# 默认为配置文件同目录的 settings/claudecode/
+# claudecode_settings_dir=/path/to/claudecode/settings
+
+# OpenCode 配置目录（包含模型映射）
+# 默认为配置文件同目录的 settings/opencode/
+# opencode_settings_dir=/path/to/opencode/settings

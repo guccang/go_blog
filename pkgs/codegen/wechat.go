@@ -44,7 +44,7 @@ func InitWeChatBridge(sender SendFunc) {
 }
 
 // StartSessionForWeChat 启动编码会话并订阅通知
-func StartSessionForWeChat(userID, project, prompt, model string) (string, error) {
+func StartSessionForWeChat(userID, project, prompt, model, tool string) (string, error) {
 	if wechatBridge == nil {
 		return "", fmt.Errorf("WeChat bridge not initialized")
 	}
@@ -61,7 +61,7 @@ func StartSessionForWeChat(userID, project, prompt, model string) (string, error
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model)
+	session, err := StartSession(project, prompt, model, tool)
 	if err != nil {
 		return "", err
 	}

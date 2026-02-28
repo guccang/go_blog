@@ -473,6 +473,9 @@
                 <select id="modelSelect" class="model-select" title="选择模型配置">
                     <option value="">默认</option>
                 </select>
+                <select id="toolSelect" class="model-select" title="选择编码工具" style="min-width:120px;">
+                    <option value="">Claude Code</option>
+                </select>
                 <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)"
                        onkeydown="if(event.key==='Enter')sendPrompt()">
                 <button class="btn-send" id="btnSend" onclick="sendPrompt()">发送</button>
@@ -501,6 +504,8 @@
     let remoteProjectMap = {}; // project name -> agent info
     let cachedLocalProjects = [];
     let cachedRemoteOnly = [];
+    let cachedClaudeCodeModels = [];
+    let cachedOpenCodeModels = [];
 
     // 每个项目的会话状态缓存: project -> { sessionId, outputHtml, status, costText }
     let projectStates = {};
@@ -552,8 +557,18 @@
             // 更新 agent 状态
             updateAgentStatus(data.data.agents || []);
 
-            // 更新模型选择器
-            updateModelSelect(data.data.models || []);
+            // 缓存两种模型列表
+            cachedClaudeCodeModels = data.data.claudecode_models || [];
+            cachedOpenCodeModels = data.data.opencode_models || [];
+
+            // 更新模型选择器（根据当前选择的工具）
+            const toolSelect = document.getElementById('toolSelect');
+            const currentTool = toolSelect.value;
+            const models = currentTool === 'opencode' ? cachedOpenCodeModels : cachedClaudeCodeModels;
+            updateModelSelect(models);
+
+            // 更新工具选择器
+            updateToolSelect(data.data.tools || []);
 
             // 合并本地和远程项目
             const localProjects = data.data.projects || [];
@@ -586,7 +601,7 @@
 
         el.style.display = 'flex';
         dot.className = 'dot online';
-        text.textContent = agents.length + ' 个 Agent 在线';
+        text.textContent = `${agents.length} Agent 在线`;
     }
 
     function updateModelSelect(models) {
@@ -609,6 +624,44 @@
         if (currentVal) {
             select.value = currentVal;
         }
+    }
+
+    function updateToolSelect(tools) {
+        const select = document.getElementById('toolSelect');
+        const currentVal = select.value;
+        const toolLabels = { 'claudecode': 'Claude Code', 'opencode': 'OpenCode' };
+        select.innerHTML = '';
+        // 默认选项
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'Claude Code';
+        select.appendChild(defaultOpt);
+        if (tools && tools.length > 0) {
+            tools.forEach(t => {
+                if (t === 'claudecode') return; // 已是默认
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = toolLabels[t] || t;
+                select.appendChild(opt);
+            });
+            // 只有一个工具时隐藏选择器
+            select.style.display = tools.length > 1 ? '' : 'none';
+        } else {
+            select.style.display = 'none';
+        }
+        if (currentVal) {
+            select.value = currentVal;
+        }
+        // 添加工具切换事件
+        select.onchange = function() {
+            updateModelSelectByTool(this.value);
+        };
+    }
+
+    // 根据工具类型更新模型选择器
+    function updateModelSelectByTool(tool) {
+        let models = tool === 'opencode' ? cachedOpenCodeModels : cachedClaudeCodeModels;
+        updateModelSelect(models || []);
     }
 
     function filterProjects() {
@@ -804,13 +857,15 @@
         try {
             let endpoint = '/api/codegen/run';
             let selectedModel = document.getElementById('modelSelect').value;
-            let body = { project: currentProject, prompt, model: selectedModel };
+            let selectedTool = document.getElementById('toolSelect').value;
+            let body = { project: currentProject, prompt, model: selectedModel, tool: selectedTool };
             let isFollowUp = false;
 
             if (currentSessionId) {
-                // 检查模型是否变更，变更则开新会话
-                if (state.model && state.model !== selectedModel) {
-                    // 模型切换，开全新会话
+                // 检查模型或工具是否变更，变更则开新会话
+                if ((state.model && state.model !== selectedModel) ||
+                    (state.tool !== undefined && state.tool !== selectedTool)) {
+                    // 模型/工具切换，开全新会话
                     currentSessionId = null;
                     state.sessionId = null;
                 } else {
@@ -832,6 +887,7 @@
                 currentSessionId = data.data.session_id;
                 state.sessionId = currentSessionId;
                 state.model = selectedModel;
+                state.tool = selectedTool;
             }
 
             // 连接 WebSocket（追加消息时跳过历史，避免重复显示）
@@ -864,8 +920,11 @@
             } else if (event.type === 'assistant') {
                 if (isActiveProject) addEvent('assistant', event.text);
             } else if (event.type === 'result') {
-                let summary = event.text || '✅ 编码完成';
-                if (isActiveProject) addEvent('result', summary);
+                // 只有 done=true 或有 text 时才显示
+                if (event.done || (event.text && event.text.trim())) {
+                    let summary = event.text || '✅ 编码完成';
+                    if (isActiveProject) addEvent('result', summary);
+                }
                 let stats = [];
                 if (event.cost_usd > 0) stats.push(`💰 $${event.cost_usd.toFixed(4)}`);
                 if (event.tokens_in > 0 || event.tokens_out > 0) stats.push(`📊 ${event.tokens_in || 0} → ${event.tokens_out || 0} tokens`);
@@ -873,15 +932,20 @@
                 if (event.num_turns > 0) stats.push(`🔄 ${event.num_turns} turns`);
                 if (stats.length > 0) {
                     const statsText = stats.join(' · ');
-                    if (isActiveProject) {
+                    // 只有 done=true 时才在输出区显示统计
+                    if (isActiveProject && event.done) {
                         document.getElementById('costText').textContent = statsText;
                         addEvent('system', statsText);
                     }
                     const state = getProjectState(wsProject);
-                    state.costText = stats.join(' · ');
+                    if (event.done) {
+                        state.costText = stats.join(' · ');
+                    }
                 }
             } else if (event.type === 'error') {
                 if (isActiveProject) addEvent('error', event.text);
+            } else if (event.type === 'summary') {
+                if (isActiveProject) addEvent('result', event.text);
             } else if (event.type === 'system') {
                 if (isActiveProject) addEvent('system', event.text);
             } else {
@@ -936,10 +1000,16 @@
             content = `<strong>👤 你:</strong> ${escapeHtml(event.text || '')}`;
         } else if (event.type === 'tool') {
             content = buildToolContent(event);
+        } else if (event.type === 'result') {
+            // 只有 done=true 或有 text 时才记录
+            if (!event.done && !(event.text && event.text.trim())) {
+                return '';
+            }
+            content = escapeHtml(event.text || '✅ 编码完成');
         } else {
             content = escapeHtml(event.text || '');
         }
-        return `<div class="event-item ${cls}">${content}</div>`;
+        return content ? `<div class="event-item ${cls}">${content}</div>` : '';
     }
 
     // 停止会话
@@ -976,8 +1046,13 @@
     function buildToolContent(event) {
         const name = event.tool_name || 'unknown';
         let input = event.tool_input || '';
+        
+        // 优先使用后端生成的 Text（已格式化）
+        if (event.text && event.text.trim()) {
+            return `<div class="tool-header">🔧 ${escapeHtml(name)}</div><div class="tool-detail">${escapeHtml(event.text)}</div>`;
+        }
 
-        // 尝试格式化 JSON
+        // 否则尝试解析 tool_input
         let detail = '';
         try {
             const parsed = JSON.parse(input);
@@ -991,28 +1066,38 @@
 
     // 根据工具类型格式化详细参数
     function formatToolDetail(toolName, params) {
-        switch (toolName) {
-            case 'Write': case 'write_file': case 'write':
-                return `文件: ${params.file_path || ''}${params.content ? '\n内容:\n' + params.content : ''}`;
-            case 'Read': case 'read_file': case 'read':
-                return `文件: ${params.file_path || ''}${params.offset ? '  offset=' + params.offset : ''}${params.limit ? '  limit=' + params.limit : ''}`;
-            case 'Edit': case 'edit_file':
-                let s = `文件: ${params.file_path || ''}`;
+        // 兼容不同字段名
+        const filePath = params.filePath || params.file_path || params.path || '';
+        const cmd = params.command || params.cmd || '';
+        
+        switch (toolName.toLowerCase()) {
+            case 'write':
+            case 'write_file':
+                return `文件: ${filePath}${params.content ? '\n内容:\n' + (params.content.length > 500 ? params.content.substring(0, 500) + '...' : params.content) : ''}`;
+            case 'read':
+            case 'read_file':
+                return `文件: ${filePath}${params.offset ? '  offset=' + params.offset : ''}${params.limit ? '  limit=' + params.limit : ''}`;
+            case 'edit':
+            case 'edit_file':
+                let s = `文件: ${filePath}`;
                 if (params.old_string) s += `\n查找:\n${params.old_string}`;
                 if (params.new_string) s += `\n替换:\n${params.new_string}`;
                 return s;
-            case 'Bash': case 'bash': case 'run_command':
-                return `命令: ${params.command || ''}${params.description ? '\n说明: ' + params.description : ''}`;
-            case 'Glob': case 'glob':
+            case 'bash':
+            case 'run_command':
+                return `命令: ${cmd}${params.description ? '\n说明: ' + params.description : ''}`;
+            case 'glob':
                 return `模式: ${params.pattern || ''}${params.path ? '  路径: ' + params.path : ''}`;
-            case 'Grep': case 'grep': case 'Search': case 'search':
+            case 'grep':
+            case 'search':
                 return `模式: ${params.pattern || ''}${params.path ? '  路径: ' + params.path : ''}${params.glob ? '  文件: ' + params.glob : ''}`;
-            case 'ListDir': case 'list_dir':
+            case 'listdir':
+            case 'list_dir':
                 return `路径: ${params.path || '.'}`;
             default:
                 // 通用：显示所有参数
                 return Object.entries(params).map(([k, v]) => {
-                    const val = typeof v === 'string' ? v : JSON.stringify(v);
+                    const val = typeof v === 'string' ? (v.length > 500 ? v.substring(0, 500) + '...' : v) : JSON.stringify(v);
                     return `${k}: ${val}`;
                 }).join('\n');
         }

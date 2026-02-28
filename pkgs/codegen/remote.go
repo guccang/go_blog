@@ -13,26 +13,28 @@ import (
 
 // RemoteAgent 远程 Agent 连接
 type RemoteAgent struct {
-	ID             string
-	Name           string
-	Conn           *websocket.Conn
-	Workspaces     []string
-	Projects       []string // agent 上报的可用项目
-	Models         []string // agent 支持的模型配置列表
-	Tools          []string // agent 支持的编码工具列表 (claudecode, opencode)
-	MaxConcurrent  int
-	ActiveSessions map[string]bool
-	LastHeartbeat  time.Time
-	Status         string // online, busy, offline
-	mu             sync.Mutex
+	ID               string
+	Name             string
+	Conn             *websocket.Conn
+	Workspaces       []string
+	Projects         []string // agent 上报的可用项目
+	Models           []string // agent 支持的模型配置列表（兼容旧版）
+	ClaudeCodeModels []string // Claude Code 模型配置
+	OpenCodeModels   []string // OpenCode 模型配置
+	Tools            []string // agent 支持的编码工具列表 (claudecode, opencode)
+	MaxConcurrent    int
+	ActiveSessions   map[string]bool
+	LastHeartbeat    time.Time
+	Status           string // online, busy, offline
+	mu               sync.Mutex
 }
 
 // AgentPool Agent 连接池
 type AgentPool struct {
-	agents   map[string]*RemoteAgent
-	mu       sync.RWMutex
-	pending  map[string]chan json.RawMessage // request_id -> response channel
-	pendMu   sync.Mutex
+	agents  map[string]*RemoteAgent
+	mu      sync.RWMutex
+	pending map[string]chan json.RawMessage // request_id -> response channel
+	pendMu  sync.Mutex
 }
 
 // NewAgentPool 创建 Agent 连接池
@@ -90,23 +92,25 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 			}
 
 			agent = &RemoteAgent{
-				ID:             payload.AgentID,
-				Name:           payload.Name,
-				Conn:           conn,
-				Workspaces:     payload.Workspaces,
-				Projects:       payload.Projects,
-				Models:         payload.Models,
-				Tools:          payload.Tools,
-				MaxConcurrent:  payload.MaxConcurrent,
-				ActiveSessions: make(map[string]bool),
-				LastHeartbeat:  time.Now(),
-				Status:         "online",
+				ID:               payload.AgentID,
+				Name:             payload.Name,
+				Conn:             conn,
+				Workspaces:       payload.Workspaces,
+				Projects:         payload.Projects,
+				Models:           payload.Models,
+				ClaudeCodeModels: payload.ClaudeCodeModels,
+				OpenCodeModels:   payload.OpenCodeModels,
+				Tools:            payload.Tools,
+				MaxConcurrent:    payload.MaxConcurrent,
+				ActiveSessions:   make(map[string]bool),
+				LastHeartbeat:    time.Now(),
+				Status:           "online",
 			}
 			p.addAgent(agent)
 
 			sendAgentMsg(conn, MsgRegisterAck, RegisterAckPayload{Success: true})
-			log.MessageF(log.ModuleAgent, "CodeGen: agent registered: %s (%s), workspaces=%v",
-				agent.ID, agent.Name, agent.Workspaces)
+			log.MessageF(log.ModuleAgent, "CodeGen: agent registered: %s (%s), workspaces=%v, claudecode_models=%d, opencode_models=%d",
+				agent.ID, agent.Name, agent.Workspaces, len(agent.ClaudeCodeModels), len(agent.OpenCodeModels))
 
 		case MsgHeartbeat:
 			var payload HeartbeatPayload
@@ -119,6 +123,12 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				}
 				if len(payload.Models) > 0 {
 					agent.Models = payload.Models
+				}
+				if len(payload.ClaudeCodeModels) > 0 {
+					agent.ClaudeCodeModels = payload.ClaudeCodeModels
+				}
+				if len(payload.OpenCodeModels) > 0 {
+					agent.OpenCodeModels = payload.OpenCodeModels
 				}
 				if len(payload.Tools) > 0 {
 					agent.Tools = payload.Tools
@@ -348,6 +358,9 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		tool = ToolClaudeCode
 	}
 
+	log.MessageF(log.ModuleAgent, "CodeGen dispatchTask: session=%s, project=%s, tool=%s, model=%s",
+		session.ID, session.Project, tool, session.Model)
+
 	var systemPrompt string
 	if tool == ToolOpenCode {
 		systemPrompt = buildOpenCodeSystemPrompt()
@@ -445,15 +458,20 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 	return result
 }
 
-// GetAllModels 聚合所有在线 agent 的 Models，去重排序
+// GetAllModels 聚合所有在线 agent 的 Models（兼容旧版）
 func (p *AgentPool) GetAllModels() []string {
+	return p.GetAllClaudeCodeModels()
+}
+
+// GetAllClaudeCodeModels 聚合所有在线 agent 的 ClaudeCode 模型配置
+func (p *AgentPool) GetAllClaudeCodeModels() []string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	seen := make(map[string]bool)
 	for _, agent := range p.agents {
 		agent.mu.Lock()
-		for _, m := range agent.Models {
+		for _, m := range agent.ClaudeCodeModels {
 			seen[m] = true
 		}
 		agent.mu.Unlock()
@@ -463,6 +481,30 @@ func (p *AgentPool) GetAllModels() []string {
 	for m := range seen {
 		models = append(models, m)
 	}
+
+	sort.Strings(models)
+	return models
+}
+
+// GetAllOpenCodeModels 聚合所有在线 agent 的 OpenCode 模型配置
+func (p *AgentPool) GetAllOpenCodeModels() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	for _, agent := range p.agents {
+		agent.mu.Lock()
+		for _, m := range agent.OpenCodeModels {
+			seen[m] = true
+		}
+		agent.mu.Unlock()
+	}
+
+	models := make([]string, 0, len(seen))
+	for m := range seen {
+		models = append(models, m)
+	}
+
 	sort.Strings(models)
 	return models
 }

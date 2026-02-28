@@ -12,13 +12,13 @@ import (
 
 // Connection WebSocket 客户端连接管理
 type Connection struct {
-	cfg          *AgentConfig
-	conn         *websocket.Conn
-	agent        *Agent
-	mu           sync.Mutex
-	connected    bool
-	stopCh       chan struct{}
-	backoffIdx   int
+	cfg        *AgentConfig
+	conn       *websocket.Conn
+	agent      *Agent
+	mu         sync.Mutex
+	connected  bool
+	stopCh     chan struct{}
+	backoffIdx int
 }
 
 // NewConnection 创建连接管理器
@@ -76,13 +76,16 @@ func (c *Connection) connect() error {
 // register 发送注册消息
 func (c *Connection) register() {
 	payload := RegisterPayload{
-		AgentID:       c.agent.ID,
-		Name:          c.cfg.AgentName,
-		Workspaces:    c.cfg.Workspaces,
-		Projects:      c.agent.ScanProjects(),
-		Models:        c.agent.ScanSettings(),
-		MaxConcurrent: c.cfg.MaxConcurrent,
-		AuthToken:     c.cfg.AuthToken,
+		AgentID:          c.agent.ID,
+		Name:             c.cfg.AgentName,
+		Workspaces:       c.cfg.Workspaces,
+		Projects:         c.agent.ScanProjects(),
+		Models:           c.agent.ScanSettings(),           // 兼容旧版
+		ClaudeCodeModels: c.agent.ScanClaudeCodeSettings(), // Claude Code 配置
+		OpenCodeModels:   c.agent.ScanOpenCodeSettings(),   // OpenCode 配置
+		Tools:            c.agent.ScanTools(),
+		MaxConcurrent:    c.cfg.MaxConcurrent,
+		AuthToken:        c.cfg.AuthToken,
 	}
 	c.SendMsg(MsgRegister, payload)
 }
@@ -192,11 +195,14 @@ func (c *Connection) heartbeatLoop() {
 				return
 			}
 			c.SendMsg(MsgHeartbeat, HeartbeatPayload{
-				AgentID:        c.agent.ID,
-				ActiveSessions: c.agent.ActiveCount(),
-				Load:           c.agent.LoadFactor(),
-				Projects:       c.agent.ScanProjects(),
-				Models:         c.agent.ScanSettings(),
+				AgentID:          c.agent.ID,
+				ActiveSessions:   c.agent.ActiveCount(),
+				Load:             c.agent.LoadFactor(),
+				Projects:         c.agent.ScanProjects(),
+				Models:           c.agent.ScanSettings(),           // 兼容旧版
+				ClaudeCodeModels: c.agent.ScanClaudeCodeSettings(), // Claude Code 配置
+				OpenCodeModels:   c.agent.ScanOpenCodeSettings(),   // OpenCode 配置
+				Tools:            c.agent.ScanTools(),
 			})
 		case <-c.stopCh:
 			return
