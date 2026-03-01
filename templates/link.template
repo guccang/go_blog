@@ -360,12 +360,12 @@
 			if (cards.length === 0) return;
 
 			const categories = [
-				{ key: 'system',   label: '⚙️ 系统文件',  color: '#6c757d' },
-				{ key: 'ai',       label: '🤖 AI生成',    color: '#9b59b6' },
-				{ key: 'memory',   label: '🧠 记忆文件',  color: '#3498db' },
-				{ key: 'exercise', label: '💪 锻炼文件',  color: '#27ae60' },
-				{ key: 'diary',    label: '📔 日记文件',  color: '#e67e22' },
 				{ key: 'blog',     label: '📝 日常博客',  color: '#e76f51' },
+				{ key: 'diary',    label: '📔 日记文件',  color: '#e67e22' },
+				{ key: 'exercise', label: '💪 锻炼文件',  color: '#27ae60' },
+				{ key: 'memory',   label: '🧠 记忆文件',  color: '#3498db' },
+				{ key: 'ai',       label: '🤖 AI生成',    color: '#9b59b6' },
+				{ key: 'system',   label: '⚙️ 系统文件',  color: '#6c757d' },
 			];
 
 			function classifyCard(card) {
@@ -389,7 +389,7 @@
 					const saved = localStorage.getItem('blog_category_state');
 					if (saved) { const s = JSON.parse(saved); if (s[key] !== undefined) return s[key]; }
 				} catch(e) {}
-				return true;
+				return key !== 'blog';
 			}
 
 			function saveCollapseState(key, collapsed) {

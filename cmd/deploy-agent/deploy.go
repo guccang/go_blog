@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -16,25 +17,47 @@ import (
 
 // Deployer 部署编排器
 type Deployer struct {
-	cfg          *DeployConfig
+	cfg          *DeployConfig   // 全局配置（SSH 等）
+	proj         *ProjectConfig  // 当前项目配置
 	password     string
 	packFile     string // 打包后的 zip 文件名（不含路径）
 	SSHConnected bool   // SSH 连接是否成功过（密码有效）
+	OnProgress   func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
 }
 
 // NewDeployer 创建部署器
-func NewDeployer(cfg *DeployConfig, password string) *Deployer {
-	return &Deployer{cfg: cfg, password: password}
+func NewDeployer(cfg *DeployConfig, proj *ProjectConfig, password string) *Deployer {
+	return &Deployer{cfg: cfg, proj: proj, password: password}
+}
+
+// logf 输出进度信息（daemon 模式通过回调，CLI 模式输出到 stdout）
+func (d *Deployer) logf(level, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	if d.OnProgress != nil {
+		d.OnProgress(level, msg)
+	} else {
+		fmt.Print(msg)
+	}
+}
+
+// isLocalTarget 判断是否为本机部署目标
+func isLocalTarget(host string) bool {
+	_, h := parseHost(host)
+	switch strings.ToLower(h) {
+	case "local", "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // Run 执行部署 pipeline
 func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	start := time.Now()
 
-	targets := d.cfg.Targets
+	targets := d.proj.Targets
 	if targetFilter != "" {
 		targets = nil
-		for _, t := range d.cfg.Targets {
+		for _, t := range d.proj.Targets {
 			if t.Name == targetFilter || t.Host == targetFilter {
 				targets = []*Target{t}
 				break
@@ -51,73 +74,178 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	}
 
 	// Step 1: 打包
-	fmt.Printf("[STEP 1/%d] 打包项目...\n", totalSteps)
+	d.logf("info", "[STEP 1/%d] 打包项目 [%s]...\n", totalSteps, d.proj.Name)
 	if err := d.pack(); err != nil {
 		return fmt.Errorf("打包失败: %v", err)
 	}
-	packPath := filepath.Join(d.cfg.ProjectDir, d.packFile)
+	packPath := filepath.Join(d.proj.ProjectDir, d.packFile)
 	info, err := os.Stat(packPath)
 	if err != nil {
 		return fmt.Errorf("找不到打包文件: %v", err)
 	}
-	fmt.Printf("[STEP 1/%d] 打包完成: %s (%s)\n", totalSteps, d.packFile, formatSize(info.Size()))
+	d.logf("info", "[STEP 1/%d] 打包完成: %s (%s)\n", totalSteps, d.packFile, formatSize(info.Size()))
 
 	if packOnly {
-		fmt.Printf("[DONE] 打包完成，耗时 %s\n", formatDuration(time.Since(start)))
+		d.logf("info", "[DONE] 打包完成，耗时 %s\n", formatDuration(time.Since(start)))
 		return nil
 	}
 
 	// Step 2-4: 逐个目标部署
+	var errs []string
 	for _, t := range targets {
-		label := t.Host
-		if t.Name != "" && !strings.HasPrefix(t.Name, "default-") {
-			label = fmt.Sprintf("%s (%s)", t.Name, t.Host)
-		}
-
-		// 建立 SSH 连接
-		user, host := parseHost(t.Host)
-		fmt.Printf("[STEP 2/%d] 连接 %s...\n", totalSteps, label)
-		client, err := d.connectSSH(user, host, t.Port)
-		if err != nil {
-			fmt.Printf("[ERROR] 连接 %s 失败: %v\n", label, err)
-			continue
-		}
-
-		// Step 2: 上传
-		fmt.Printf("[STEP 2/%d] 上传到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
-		if err := d.upload(client, t); err != nil {
-			client.Close()
-			fmt.Printf("[ERROR] 上传到 %s 失败: %v\n", label, err)
-			continue
-		}
-
-		// Step 3: 解压
-		fmt.Printf("[STEP 3/%d] 解压到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
-		cmd := fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
-		if err := d.runRemoteCmd(client, cmd); err != nil {
-			client.Close()
-			fmt.Printf("[ERROR] 解压到 %s 失败: %v\n", label, err)
-			continue
-		}
-
-		// Step 4: 发布
-		if t.RemoteScript != "" {
-			fmt.Printf("[STEP 4/%d] 执行 %s on %s...\n", totalSteps, t.RemoteScript, label)
-			if err := d.runPublishCmd(client, t); err != nil {
-				client.Close()
-				fmt.Printf("[ERROR] 执行 %s on %s 失败: %v\n", t.RemoteScript, label, err)
-				continue
-			}
+		var err error
+		if isLocalTarget(t.Host) {
+			err = d.deployLocal(t, totalSteps)
 		} else {
-			fmt.Printf("[STEP 4/%d] 无发布脚本，跳过\n", totalSteps)
+			err = d.deployRemote(t, totalSteps)
 		}
-
-		client.Close()
-		fmt.Printf("[OK] %s 部署成功\n", label)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("[%s] %v", t.Name, err))
+		}
 	}
 
-	fmt.Printf("[DONE] 部署完成，耗时 %s\n", formatDuration(time.Since(start)))
+	if len(errs) > 0 {
+		return fmt.Errorf("部署失败: %s", strings.Join(errs, "; "))
+	}
+
+	d.logf("info", "[DONE] 项目 [%s] 部署完成，耗时 %s\n", d.proj.Name, formatDuration(time.Since(start)))
 	return nil
+}
+
+// deployRemote 远程 SSH 部署（原有逻辑）
+func (d *Deployer) deployRemote(t *Target, totalSteps int) error {
+	label := t.Host
+	if t.Name != "" && !strings.HasPrefix(t.Name, "default-") {
+		label = fmt.Sprintf("%s (%s)", t.Name, t.Host)
+	}
+
+	user, host := parseHost(t.Host)
+	d.logf("info", "[STEP 2/%d] 连接 %s...\n", totalSteps, label)
+	client, err := d.connectSSH(user, host, t.Port)
+	if err != nil {
+		d.logf("error", "[ERROR] 连接 %s 失败: %v\n", label, err)
+		return fmt.Errorf("连接 %s 失败: %v", label, err)
+	}
+	defer client.Close()
+
+	d.logf("info", "[STEP 2/%d] 上传到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
+	if err := d.upload(client, t); err != nil {
+		d.logf("error", "[ERROR] 上传到 %s 失败: %v\n", label, err)
+		return fmt.Errorf("上传到 %s 失败: %v", label, err)
+	}
+
+	d.logf("info", "[STEP 3/%d] 解压到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
+	cmd := fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
+	if err := d.runRemoteCmd(client, cmd); err != nil {
+		d.logf("error", "[ERROR] 解压到 %s 失败: %v\n", label, err)
+		return fmt.Errorf("解压到 %s 失败: %v", label, err)
+	}
+
+	if t.RemoteScript != "" {
+		d.logf("info", "[STEP 4/%d] 执行 %s on %s...\n", totalSteps, t.RemoteScript, label)
+		if err := d.runPublishCmd(client, t); err != nil {
+			d.logf("error", "[ERROR] 执行 %s on %s 失败: %v\n", t.RemoteScript, label, err)
+			return fmt.Errorf("执行 %s on %s 失败: %v", t.RemoteScript, label, err)
+		}
+	} else {
+		d.logf("info", "[STEP 4/%d] 无发布脚本，跳过\n", totalSteps)
+	}
+
+	d.logf("info", "[OK] %s 部署成功\n", label)
+	return nil
+}
+
+// deployLocal 本机部署：复制 → 解压 → 执行发布脚本
+func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
+	label := "local"
+	if t.Name != "" && !strings.HasPrefix(t.Name, "default-") {
+		label = t.Name + " (local)"
+	}
+
+	targetDir := t.RemoteDir
+	d.logf("info", "[STEP 2/%d] 本机部署到 %s...\n", totalSteps, targetDir)
+
+	// 确保目标目录存在
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		d.logf("error", "[ERROR] 创建目录 %s 失败: %v\n", targetDir, err)
+		return fmt.Errorf("创建目录 %s 失败: %v", targetDir, err)
+	}
+
+	// 复制 zip 到目标目录（如果源和目标相同则跳过）
+	srcPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+	dstPath := filepath.Join(targetDir, d.packFile)
+	absSrc, _ := filepath.Abs(srcPath)
+	absDst, _ := filepath.Abs(dstPath)
+	if absSrc != absDst {
+		if err := copyFile(srcPath, dstPath); err != nil {
+			d.logf("error", "[ERROR] 复制到 %s 失败: %v\n", dstPath, err)
+			return fmt.Errorf("复制到 %s 失败: %v", dstPath, err)
+		}
+		d.logf("info", "  > 已复制 %s\n", dstPath)
+	} else {
+		d.logf("info", "  > 源与目标相同，跳过复制\n")
+	}
+
+	// 解压（Windows 使用 7z，Linux/Mac 使用 unzip）
+	d.logf("info", "[STEP 3/%d] 解压到 %s...\n", totalSteps, targetDir)
+	if err := d.localUnzip(dstPath, targetDir); err != nil {
+		d.logf("error", "[ERROR] 解压失败: %v\n", err)
+		return fmt.Errorf("解压失败: %v", err)
+	}
+
+	// 执行发布脚本
+	if t.RemoteScript != "" {
+		d.logf("info", "[STEP 4/%d] 执行 %s (local)...\n", totalSteps, t.RemoteScript)
+		scriptPath := filepath.Join(targetDir, t.RemoteScript)
+		if err := d.runLocalScript(scriptPath, targetDir); err != nil {
+			d.logf("error", "[ERROR] 执行 %s 失败: %v\n", t.RemoteScript, err)
+			return fmt.Errorf("执行 %s 失败: %v", t.RemoteScript, err)
+		}
+	} else {
+		d.logf("info", "[STEP 4/%d] 无发布脚本，跳过\n", totalSteps)
+	}
+
+	d.logf("info", "[OK] %s 部署成功\n", label)
+	return nil
+}
+
+// localUnzip 本地解压 zip 文件
+func (d *Deployer) localUnzip(zipPath, targetDir string) error {
+	if runtime.GOOS == "windows" {
+		// Windows: 优先 7z，回退到 PowerShell Expand-Archive
+		if sevenZip, err := exec.LookPath("7z"); err == nil {
+			return d.runLocalCmd(sevenZip, []string{"x", "-y", "-o" + targetDir, zipPath}, "")
+		}
+		psCmd := fmt.Sprintf("Expand-Archive -Force -Path '%s' -DestinationPath '%s'", zipPath, targetDir)
+		return d.runLocalCmd("powershell", []string{"-Command", psCmd}, "")
+	}
+	return d.runLocalCmd("unzip", []string{"-o", zipPath, "-d", targetDir}, "")
+}
+
+// runLocalScript 执行本地脚本（自动适配 .bat/.sh）
+func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
+	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
+		return d.runLocalCmd("cmd", []string{"/c", scriptPath}, workDir)
+	}
+	return d.runLocalCmd("bash", []string{scriptPath}, workDir)
+}
+
+// copyFile 本地文件复制
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // pack 执行本地打包脚本
@@ -125,21 +253,21 @@ func (d *Deployer) pack() error {
 	var name string
 	var args []string
 
-	if strings.HasSuffix(d.cfg.PackScript, ".bat") || strings.HasSuffix(d.cfg.PackScript, ".cmd") {
+	if strings.HasSuffix(d.proj.PackScript, ".bat") || strings.HasSuffix(d.proj.PackScript, ".cmd") {
 		name = "cmd"
-		args = []string{"/c", d.cfg.PackScript}
+		args = []string{"/c", d.proj.PackScript}
 	} else {
 		name = "bash"
-		args = []string{d.cfg.PackScript}
+		args = []string{d.proj.PackScript}
 	}
 
-	if err := d.runLocalCmd(name, args, d.cfg.ProjectDir); err != nil {
+	if err := d.runLocalCmd(name, args, d.proj.ProjectDir); err != nil {
 		return err
 	}
 
 	// 查找最新 zip 文件
-	globPattern := strings.ReplaceAll(d.cfg.PackPattern, "{date}", "*")
-	matches, err := filepath.Glob(filepath.Join(d.cfg.ProjectDir, globPattern))
+	globPattern := strings.ReplaceAll(d.proj.PackPattern, "{date}", "*")
+	matches, err := filepath.Glob(filepath.Join(d.proj.ProjectDir, globPattern))
 	if err != nil {
 		return fmt.Errorf("glob zip files: %v", err)
 	}
@@ -208,7 +336,7 @@ func (d *Deployer) upload(client *ssh.Client, t *Target) error {
 	}
 	defer sftpClient.Close()
 
-	localPath := filepath.Join(d.cfg.ProjectDir, d.packFile)
+	localPath := filepath.Join(d.proj.ProjectDir, d.packFile)
 	remotePath := t.RemoteDir + "/" + d.packFile
 
 	localFile, err := os.Open(localPath)
@@ -234,7 +362,7 @@ func (d *Deployer) upload(client *ssh.Client, t *Target) error {
 	}
 
 	elapsed := time.Since(start)
-	fmt.Printf("  > 已上传 %s (%s, %.1fs)\n", remotePath, formatSize(localInfo.Size()), elapsed.Seconds())
+	d.logf("info", "  > 已上传 %s (%s, %.1fs)\n", remotePath, formatSize(localInfo.Size()), elapsed.Seconds())
 	_ = written
 	return nil
 }
@@ -250,7 +378,7 @@ func (d *Deployer) runRemoteCmd(client *ssh.Client, cmd string) error {
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 
-	fmt.Printf("  > %s\n", cmd)
+	d.logf("info", "  > %s\n", cmd)
 	start := time.Now()
 	err = session.Run(cmd)
 	elapsed := time.Since(start)
@@ -258,7 +386,7 @@ func (d *Deployer) runRemoteCmd(client *ssh.Client, cmd string) error {
 	if err != nil {
 		return fmt.Errorf("命令执行失败 (%.1fs): %v", elapsed.Seconds(), err)
 	}
-	fmt.Printf("  > 完成 (%.1fs)\n", elapsed.Seconds())
+	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
 	return nil
 }
 
@@ -282,7 +410,7 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 
-	fmt.Printf("  > %s\n", t.RemoteScript)
+	d.logf("info", "  > %s\n", t.RemoteScript)
 	start := time.Now()
 	err = session.Run(cmd)
 	elapsed := time.Since(start)
@@ -290,14 +418,14 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 	if err != nil {
 		return fmt.Errorf("命令执行失败 (%.1fs): %v", elapsed.Seconds(), err)
 	}
-	fmt.Printf("  > 完成 (%.1fs)\n", elapsed.Seconds())
+	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
 	return nil
 }
 
 // runLocalCmd 执行本地命令
 func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
 	start := time.Now()
-	fmt.Printf("  > %s %s\n", name, strings.Join(args, " "))
+	d.logf("info", "  > %s %s\n", name, strings.Join(args, " "))
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
@@ -311,7 +439,7 @@ func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
 	if err != nil {
 		return fmt.Errorf("%s failed (%.1fs): %v", name, elapsed.Seconds(), err)
 	}
-	fmt.Printf("  > 完成 (%.1fs)\n", elapsed.Seconds())
+	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
 	return nil
 }
 

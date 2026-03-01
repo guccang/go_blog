@@ -427,7 +427,7 @@ func formatDuration(startTime, endTime time.Time) string {
 }
 
 // formatEventForWeChat 格式化流式事件为微信可读文本
-// 只保留工具操作步骤，丢弃 assistant 思考文本和 system 噪音
+// 只保留工具操作步骤，丢弃 assistant/thinking 思考文本和 system 噪音
 func formatEventForWeChat(event StreamEvent) string {
 	switch event.Type {
 	case "tool":

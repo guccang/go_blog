@@ -28,6 +28,12 @@ func processEvent(session *CodeSession, event *StreamEvent) {
 
 	// 记录到消息历史
 	switch event.Type {
+	case "thinking":
+		session.addMessage(SessionMessage{
+			Role:    "thinking",
+			Content: event.Text,
+			Time:    time.Now(),
+		})
 	case "assistant":
 		session.addMessage(SessionMessage{
 			Role:    "assistant",
@@ -105,7 +111,7 @@ type CodeSession struct {
 
 // StreamEvent 流式事件（推送给前端）
 type StreamEvent struct {
-	Type      string  `json:"type"` // system, assistant, tool, result, error
+	Type      string  `json:"type"` // system, assistant, thinking, tool, result, error
 	Text      string  `json:"text,omitempty"`
 	ToolName  string  `json:"tool_name,omitempty"`
 	ToolInput string  `json:"tool_input,omitempty"`
@@ -247,6 +253,9 @@ const ToolClaudeCode = "claudecode"
 
 // ToolOpenCode OpenCode 编码工具
 const ToolOpenCode = "opencode"
+
+// ToolDeploy 部署工具（deploy-agent）
+const ToolDeploy = "deploy"
 
 // NormalizeTool 规范化工具名称，返回合法工具名
 func NormalizeTool(tool string) string {

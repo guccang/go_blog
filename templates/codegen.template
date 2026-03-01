@@ -258,6 +258,43 @@
             background: var(--bg-tertiary);
             white-space: pre-wrap;
         }
+        .event-item.thinking {
+            background: rgba(188, 140, 255, 0.06);
+            border-left: 3px solid var(--purple);
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .event-item.thinking .thinking-header {
+            color: var(--purple);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .event-item.thinking .thinking-header .toggle-icon {
+            font-size: 10px;
+            transition: transform 0.2s ease;
+        }
+        .event-item.thinking:not(.collapsed) .thinking-header .toggle-icon {
+            transform: rotate(90deg);
+        }
+        .event-item.thinking .thinking-content {
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: rgba(188, 140, 255, 0.04);
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            line-height: 1.5;
+        }
+        .event-item.thinking.collapsed .thinking-content {
+            display: none;
+        }
         .event-item.result {
             background: rgba(63, 185, 80, 0.1);
             border-left: 3px solid var(--green);
@@ -458,7 +495,7 @@
             <div class="welcome" id="welcomeView">
                 <div class="icon">⚡</div>
                 <h2>AI 编程助手</h2>
-                <p>选择左侧项目或新建项目，然后输入编码需求，Claude Code 将自动完成代码编写并实时反馈进度。</p>
+                <p>选择左侧编码项目输入需求，或选择部署项目一键部署。</p>
             </div>
 
             <div class="output-area" id="outputArea"></div>
@@ -469,7 +506,7 @@
                 <span style="margin-left: auto" id="costText"></span>
             </div>
 
-            <div class="input-area">
+            <div class="input-area" id="codeInputArea">
                 <select id="modelSelect" class="model-select" title="选择模型配置">
                     <option value="">默认</option>
                 </select>
@@ -479,8 +516,11 @@
                 <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)"
                        onkeydown="if(event.key==='Enter')sendPrompt()">
                 <button class="btn-send" id="btnSend" onclick="sendPrompt()">发送</button>
-                <button class="btn-send" id="btnDeploy" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red));" title="跳过编码，直接打包部署到服务器">🚀 部署</button>
                 <button class="btn-stop" id="btnStop" onclick="stopSession()">⏹ 停止</button>
+            </div>
+            <div class="input-area" id="deployInputArea" style="display:none;">
+                <button class="btn-send" id="btnDeployRun" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red)); flex:1;">🚀 部署项目</button>
+                <button class="btn-stop" id="btnDeployStop" onclick="stopSession()">⏹ 停止</button>
             </div>
         </div>
     </div>
@@ -501,10 +541,13 @@
     <script>
     let currentProject = null;
     let currentSessionId = null;
+    let currentMode = 'code'; // 'code' or 'deploy'
     let ws = null;
     let remoteProjectMap = {}; // project name -> agent info
     let cachedLocalProjects = [];
     let cachedRemoteOnly = [];
+    let cachedCodingRemote = [];   // 远程项目中支持编码的
+    let cachedDeployProjects = []; // 远程项目中支持部署的
     let cachedClaudeCodeModels = [];
     let cachedOpenCodeModels = [];
 
@@ -582,6 +625,15 @@
             cachedLocalProjects = localProjects.slice().sort((a, b) => a.name.localeCompare(b.name));
             cachedRemoteOnly = remoteProjects
                 .filter(rp => !localNames.has(rp.name))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            // 按 tools 拆分远程项目为编码和部署两组
+            const codingTools = ['claudecode', 'opencode'];
+            cachedCodingRemote = remoteProjects
+                .filter(rp => !localNames.has(rp.name) && rp.tools && rp.tools.some(t => codingTools.includes(t)))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            cachedDeployProjects = remoteProjects
+                .filter(rp => rp.tools && rp.tools.includes('deploy'))
                 .sort((a, b) => a.name.localeCompare(b.name));
 
             renderProjects();
@@ -683,9 +735,10 @@
         const query = (document.getElementById('projectSearch').value || '').toLowerCase().trim();
 
         const localFiltered = cachedLocalProjects.filter(p => !query || p.name.toLowerCase().includes(query));
-        const remoteFiltered = cachedRemoteOnly.filter(rp => !query || rp.name.toLowerCase().includes(query));
+        const codingRemoteFiltered = cachedCodingRemote.filter(rp => !query || rp.name.toLowerCase().includes(query));
+        const deployFiltered = cachedDeployProjects.filter(rp => !query || rp.name.toLowerCase().includes(query));
 
-        if (localFiltered.length === 0 && remoteFiltered.length === 0) {
+        if (localFiltered.length === 0 && codingRemoteFiltered.length === 0 && deployFiltered.length === 0) {
             list.innerHTML = query
                 ? '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">未找到匹配项目</div>'
                 : '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">暂无项目<br>点击 + 新建 创建</div>';
@@ -694,8 +747,11 @@
 
         let html = '';
 
-        // 本地项目
-        if (localFiltered.length > 0) {
+        // 编码项目区域
+        const hasCodingProjects = localFiltered.length > 0 || codingRemoteFiltered.length > 0;
+        if (hasCodingProjects) {
+            html += '<div class="agent-section-header">💻 编码项目</div>';
+            // 本地项目
             html += localFiltered.map(p => {
                 const agentBadge = remoteProjectMap[p.name]
                     ? `<span class="agent-badge">${remoteProjectMap[p.name].agent}</span>`
@@ -703,25 +759,40 @@
                 const statusDot = getProjectStatusIndicator(p.name);
                 const state = projectStates[p.name];
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                const isActive = currentProject === p.name && currentMode === 'code';
                 return `
-                <div class="project-item ${currentProject === p.name ? 'active' : ''}" onclick="selectProject('${p.name}')">
+                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.name}', 'code')">
                     <div class="name">📁 ${p.name}${agentBadge}${statusDot}</div>
                     <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}${statusMeta}</div>
                 </div>`;
             }).join('');
-        }
 
-        // 远程独有项目
-        if (remoteFiltered.length > 0) {
-            html += '<div class="agent-section-header">🌐 远程项目</div>';
-            html += remoteFiltered.map(rp => {
+            // 远程编码项目
+            html += codingRemoteFiltered.map(rp => {
                 const statusDot = getProjectStatusIndicator(rp.name);
                 const state = projectStates[rp.name];
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                const isActive = currentProject === rp.name && currentMode === 'code';
                 return `
-                <div class="project-item ${currentProject === rp.name ? 'active' : ''}" onclick="selectProject('${rp.name}')">
+                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'code')">
                     <div class="name">📁 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
                     <div class="meta">远程 · ${rp.agent}${statusMeta}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // 部署项目区域
+        if (deployFiltered.length > 0) {
+            html += '<div class="agent-section-header">🚀 部署项目</div>';
+            html += deployFiltered.map(rp => {
+                const statusDot = getProjectStatusIndicator(rp.name);
+                const state = projectStates[rp.name];
+                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                const isActive = currentProject === rp.name && currentMode === 'deploy';
+                return `
+                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'deploy')">
+                    <div class="name">📦 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
+                    <div class="meta">部署 · ${rp.agent}${statusMeta}</div>
                 </div>`;
             }).join('');
         }
@@ -729,13 +800,14 @@
         list.innerHTML = html;
     }
 
-    function selectProject(name) {
+    function selectProject(name, mode) {
         // 保存当前项目的输出
         if (currentProject) {
             saveCurrentProjectState();
         }
 
         currentProject = name;
+        currentMode = mode || 'code';
         const state = getProjectState(name);
         currentSessionId = state.sessionId;
 
@@ -744,21 +816,36 @@
         const output = document.getElementById('outputArea');
         output.classList.add('active');
 
+        // 根据 mode 切换输入区域
+        if (currentMode === 'deploy') {
+            document.getElementById('codeInputArea').style.display = 'none';
+            document.getElementById('deployInputArea').style.display = 'flex';
+        } else {
+            document.getElementById('codeInputArea').style.display = 'flex';
+            document.getElementById('deployInputArea').style.display = 'none';
+        }
+
         // 恢复该项目的输出
         if (state.outputHtml) {
             output.innerHTML = state.outputHtml;
             output.scrollTop = output.scrollHeight;
         } else {
             output.innerHTML = '';
-            addEvent('system', `📂 已选择项目: ${name}`);
-            loadProjectReadme(name);
+            const modeLabel = currentMode === 'deploy' ? '部署' : '编码';
+            addEvent('system', `📂 已选择${modeLabel}项目: ${name}`);
+            if (currentMode !== 'deploy') {
+                loadProjectReadme(name);
+            }
         }
 
         // 恢复状态栏
         if (state.status === 'running') {
-            setStatus('running', '编码中...');
+            const runLabel = currentMode === 'deploy' ? '部署中...' : '编码中...';
+            setStatus('running', runLabel);
             document.getElementById('btnSend').disabled = true;
             document.getElementById('btnStop').classList.add('visible');
+            document.getElementById('btnDeployRun').disabled = true;
+            document.getElementById('btnDeployStop').classList.add('visible');
             // 重连 WebSocket
             if (currentSessionId) {
                 connectWebSocket(currentSessionId);
@@ -769,7 +856,9 @@
             resetUI();
         }
 
-        document.getElementById('promptInput').focus();
+        if (currentMode === 'code') {
+            document.getElementById('promptInput').focus();
+        }
     }
 
     function saveCurrentProjectState() {
@@ -910,9 +999,8 @@
 
         addEvent('user', '🚀 直接部署项目');
         setStatus('running', '正在部署...');
-        document.getElementById('btnSend').disabled = true;
-        document.getElementById('btnDeploy').disabled = true;
-        document.getElementById('btnStop').classList.add('visible');
+        document.getElementById('btnDeployRun').disabled = true;
+        document.getElementById('btnDeployStop').classList.add('visible');
 
         const state = getProjectState(currentProject);
         state.status = 'running';
@@ -955,6 +1043,8 @@
 
             if (event.type === 'tool') {
                 if (isActiveProject) addToolEvent(event);
+            } else if (event.type === 'thinking') {
+                if (isActiveProject) addThinkingEvent(event.text);
             } else if (event.type === 'assistant') {
                 if (isActiveProject) addEvent('assistant', event.text);
             } else if (event.type === 'result') {
@@ -1036,6 +1126,11 @@
         let content = '';
         if (event.type === 'user') {
             content = `<strong>👤 你:</strong> ${escapeHtml(event.text || '')}`;
+        } else if (event.type === 'thinking') {
+            const text = event.text || '';
+            const preview = text.length > 80 ? text.substring(0, 80).replace(/\n/g, ' ') + '...' : text.replace(/\n/g, ' ');
+            content = `<div class="thinking-header"><span class="toggle-icon">▶</span> 💭 思考: ${escapeHtml(preview)}</div><div class="thinking-content">${escapeHtml(text)}</div>`;
+            return `<div class="event-item thinking collapsed" onclick="this.classList.toggle('collapsed')">${content}</div>`;
         } else if (event.type === 'tool') {
             content = buildToolContent(event);
         } else if (event.type === 'result') {
@@ -1076,6 +1171,20 @@
         const div = document.createElement('div');
         div.className = 'event-item tool';
         div.innerHTML = buildToolContent(event);
+        area.appendChild(div);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    // 添加思考过程事件（可折叠）
+    function addThinkingEvent(text) {
+        const area = document.getElementById('outputArea');
+        const div = document.createElement('div');
+        div.className = 'event-item thinking collapsed';
+        const preview = text.length > 80 ? text.substring(0, 80).replace(/\n/g, ' ') + '...' : text.replace(/\n/g, ' ');
+        div.innerHTML = `<div class="thinking-header"><span class="toggle-icon">▶</span> 💭 思考: ${escapeHtml(preview)}</div><div class="thinking-content">${escapeHtml(text)}</div>`;
+        div.addEventListener('click', function() {
+            div.classList.toggle('collapsed');
+        });
         area.appendChild(div);
         area.scrollTop = area.scrollHeight;
     }
@@ -1165,8 +1274,9 @@
 
     function resetUI() {
         document.getElementById('btnSend').disabled = false;
-        document.getElementById('btnDeploy').disabled = false;
         document.getElementById('btnStop').classList.remove('visible');
+        document.getElementById('btnDeployRun').disabled = false;
+        document.getElementById('btnDeployStop').classList.remove('visible');
     }
 
     function escapeHtml(text) {

@@ -314,8 +314,17 @@ func (p *AgentPool) SelectAgent(project, tool string) *RemoteAgent {
 
 // Execute 通过远程 agent 执行任务
 func (p *AgentPool) Execute(session *CodeSession) error {
-	agent := p.SelectAgent(session.Project, session.Tool)
+	// deploy_only 模式直接路由到 deploy-agent
+	tool := session.Tool
+	if session.DeployOnly {
+		tool = ToolDeploy
+	}
+
+	agent := p.SelectAgent(session.Project, tool)
 	if agent == nil {
+		if session.DeployOnly {
+			return fmt.Errorf("no available deploy agent for project '%s'", session.Project)
+		}
 		if session.Tool != "" && session.Tool != ToolClaudeCode {
 			return fmt.Errorf("no available agent supporting tool '%s'", session.Tool)
 		}
@@ -356,17 +365,23 @@ func (p *AgentPool) ExecuteResume(session *CodeSession, prompt string) error {
 // dispatchTask 发送 task_assign 给 agent
 func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, prompt, claudeSession string) error {
 	tool := session.Tool
-	if tool == "" {
+	if session.DeployOnly {
+		tool = ToolDeploy
+	} else if tool == "" {
 		tool = ToolClaudeCode
 	}
 
 	log.MessageF(log.ModuleAgent, "CodeGen dispatchTask: session=%s, project=%s, tool=%s, model=%s",
 		session.ID, session.Project, tool, session.Model)
 
+	// deploy-agent 不需要 system prompt
 	var systemPrompt string
-	if tool == ToolOpenCode {
+	switch tool {
+	case ToolDeploy:
+		// deploy-agent 无需 system prompt
+	case ToolOpenCode:
 		systemPrompt = buildOpenCodeSystemPrompt()
-	} else {
+	default:
 		systemPrompt = buildClaudeCodeSystemPrompt()
 	}
 
@@ -553,35 +568,74 @@ func (a *RemoteAgent) AgentSupportsTool(tool string) bool {
 	return false
 }
 
-// ListRemoteProjects 获取所有远程 agent 上报的项目（去重，附带 agent 信息）
+// ListRemoteProjects 获取所有远程 agent 上报的项目（聚合同名项目的 tools）
 func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	seen := make(map[string]bool)
-	var result []RemoteProjectInfo
+	// 按项目名聚合：收集所有 agent 的 tools
+	type projInfo struct {
+		agentID string
+		agent   string
+		tools   map[string]bool
+	}
+	projMap := make(map[string]*projInfo)
+	var order []string // 保持插入顺序
+
 	for _, agent := range p.agents {
 		agent.mu.Lock()
+		agentTools := agent.Tools
+		agentID := agent.ID
+		agentName := agent.Name
+		agent.mu.Unlock()
+
 		for _, proj := range agent.Projects {
-			if !seen[proj] {
-				seen[proj] = true
-				result = append(result, RemoteProjectInfo{
-					Name:    proj,
-					AgentID: agent.ID,
-					Agent:   agent.Name,
-				})
+			pi, exists := projMap[proj]
+			if !exists {
+				pi = &projInfo{
+					agentID: agentID,
+					agent:   agentName,
+					tools:   make(map[string]bool),
+				}
+				projMap[proj] = pi
+				order = append(order, proj)
+			}
+			// 聚合该 agent 的 tools 到项目
+			if len(agentTools) == 0 {
+				// agent 未上报 tools，默认 claudecode
+				pi.tools[ToolClaudeCode] = true
+			} else {
+				for _, t := range agentTools {
+					pi.tools[t] = true
+				}
 			}
 		}
-		agent.mu.Unlock()
+	}
+
+	result := make([]RemoteProjectInfo, 0, len(order))
+	for _, name := range order {
+		pi := projMap[name]
+		tools := make([]string, 0, len(pi.tools))
+		for t := range pi.tools {
+			tools = append(tools, t)
+		}
+		sort.Strings(tools)
+		result = append(result, RemoteProjectInfo{
+			Name:    name,
+			AgentID: pi.agentID,
+			Agent:   pi.agent,
+			Tools:   tools,
+		})
 	}
 	return result
 }
 
 // RemoteProjectInfo 远程项目信息
 type RemoteProjectInfo struct {
-	Name    string `json:"name"`
-	AgentID string `json:"agent_id"`
-	Agent   string `json:"agent"`
+	Name    string   `json:"name"`
+	AgentID string   `json:"agent_id"`
+	Agent   string   `json:"agent"`
+	Tools   []string `json:"tools"` // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
 }
 
 // FindAgentForProject 查找拥有指定项目的 agent

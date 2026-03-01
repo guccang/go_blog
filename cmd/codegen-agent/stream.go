@@ -219,11 +219,12 @@ type claudeStreamMsg struct {
 }
 
 type claudeContent struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
-	ID    string          `json:"id,omitempty"`
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	Thinking string          `json:"thinking,omitempty"` // thinking block 内容
+	Name     string          `json:"name,omitempty"`
+	Input    json.RawMessage `json:"input,omitempty"`
+	ID       string          `json:"id,omitempty"`
 }
 
 type claudeAssistantMessage struct {
@@ -254,6 +255,10 @@ func parseStreamLine(line string) *StreamEvent {
 		}
 		for _, block := range assistMsg.Content {
 			switch block.Type {
+			case "thinking":
+				if block.Thinking != "" {
+					return &StreamEvent{Type: "thinking", Text: block.Thinking}
+				}
 			case "text":
 				if block.Text != "" {
 					return &StreamEvent{Type: "assistant", Text: block.Text}
