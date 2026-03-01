@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/zalando/go-keyring"
 	"golang.org/x/term"
 )
 
@@ -20,7 +19,7 @@ func main() {
 	targetName := flag.String("target", "", "只部署指定目标（name 或 host）")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
 	password := flag.String("password", "", "SSH 密码")
-	savePwd := flag.Bool("save-password", false, "保存密码到系统凭据管理器")
+	savePwd := flag.Bool("save-password", false, "保存密码到凭据存储")
 	listProjects := flag.Bool("list", false, "列出所有配置的项目")
 	flag.Parse()
 
@@ -29,6 +28,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
+
+	cred := newCredentialStore()
 
 	// 列出所有项目
 	if *listProjects {
@@ -68,16 +69,16 @@ func main() {
 			pwd = cfg.SSHPassword
 		}
 		if pwd == "" {
-			// 从 keyring 取第一个项目的第一个 target 密码
+			// 从凭据存储取第一个项目的第一个 target 密码
 			for _, name := range cfg.ProjectOrder {
 				proj := cfg.Projects[name]
 				if len(proj.Targets) > 0 {
 					t := proj.Targets[0]
 					user, host := parseHost(t.Host)
 					accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
-					if saved, err := keyring.Get(keyringService, accountKey); err == nil && saved != "" {
+					if saved, err := cred.Get(accountKey); err == nil && saved != "" {
 						pwd = saved
-						fmt.Printf("已从系统凭据管理器获取密码 (%s)\n", accountKey)
+						fmt.Printf("已从凭据存储获取密码 (%s)\n", accountKey)
 						break
 					}
 				}
@@ -132,14 +133,14 @@ func main() {
 	// 解析密码（pack-only 时跳过）
 	pwd := *password
 	if pwd == "" && !*packOnly {
-		// 尝试从系统凭据管理器获取
+		// 尝试从凭据存储获取
 		if len(proj.Targets) > 0 {
 			t := proj.Targets[0]
 			user, host := parseHost(t.Host)
 			accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
-			if saved, err := keyring.Get(keyringService, accountKey); err == nil && saved != "" {
+			if saved, err := cred.Get(accountKey); err == nil && saved != "" {
 				pwd = saved
-				fmt.Printf("已从系统凭据管理器获取密码 (%s)\n", accountKey)
+				fmt.Printf("已从凭据存储获取密码 (%s)\n", accountKey)
 			}
 		}
 	}
@@ -165,10 +166,10 @@ func main() {
 		for _, t := range proj.Targets {
 			user, host := parseHost(t.Host)
 			accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
-			if err := keyring.Set(keyringService, accountKey, pwd); err != nil {
+			if err := cred.Set(accountKey, pwd); err != nil {
 				fmt.Fprintf(os.Stderr, "保存密码失败 (%s): %v\n", accountKey, err)
 			} else {
-				fmt.Printf("密码已保存到系统凭据管理器 (%s)\n", accountKey)
+				fmt.Printf("密码已保存到凭据存储 (%s)\n", accountKey)
 			}
 		}
 	}
