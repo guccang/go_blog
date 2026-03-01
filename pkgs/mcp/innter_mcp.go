@@ -217,7 +217,8 @@ func RegisterInnerTools() {
 
 	// 注意: CodeGen 工具的回调由 agent 包通过 mcp.RegisterCallBack() 注册
 	// 工具名: CodegenListProjects, CodegenCreateProject, CodegenStartSession,
-	//         CodegenSendMessage, CodegenGetStatus, CodegenStopSession
+	//         CodegenSendMessage, CodegenGetStatus, CodegenStopSession,
+	//         CodegenListDeployProjects, CodegenStartDeploy
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -1122,6 +1123,35 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
 					},
 					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenListDeployProjects",
+				Description: "列出所有支持部署的项目。当用户问'有哪些可以部署的项目'、'部署项目列表'、'哪些项目能部署'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号"},
+					},
+					"required": []string{"account"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: LLMFunction{
+				Name:        "Inner_blog.CodegenStartDeploy",
+				Description: "启动项目部署，跳过编码直接部署指定项目。这是一个异步操作，部署进度会通过微信推送。当用户说'部署项目'、'发布xxx'、'上线xxx'时使用",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+						"project": map[string]string{"type": "string", "description": "要部署的项目名称"},
+					},
+					"required": []string{"account", "project"},
 				},
 			},
 		},

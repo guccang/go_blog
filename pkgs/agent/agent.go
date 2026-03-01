@@ -266,7 +266,25 @@ func registerMCPCallbacks() {
 		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已停止"}`, sessionID)
 	})
 
-	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession")
+	// 列出所有支持部署的项目
+	mcp.RegisterCallBack("CodegenListDeployProjects", func(args map[string]interface{}) string {
+		return codegen.ListDeployProjectsJSON()
+	})
+
+	// 启动部署会话（跳过编码，直接部署）
+	mcp.RegisterCallBack("CodegenStartDeploy", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		project, _ := args["project"].(string)
+		if project == "" {
+			return `{"success":false,"error":"缺少 project 参数"}`
+		}
+		return codegen.StartDeployJSON(account, project)
+	})
+
+	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession, CodegenListDeployProjects, CodegenStartDeploy")
 }
 
 // GetHub 获取通知中心

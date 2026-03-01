@@ -466,6 +466,45 @@ func ListProjectsJSON() string {
 	return string(data)
 }
 
+// ListDeployProjectsJSON 列出支持部署的项目并返回 JSON（供 MCP 工具调用）
+func ListDeployProjectsJSON() string {
+	result := map[string]interface{}{
+		"success": true,
+	}
+
+	if agentPool != nil {
+		allProjects := agentPool.ListRemoteProjects()
+		deployProjects := make([]RemoteProjectInfo, 0)
+		for _, p := range allProjects {
+			for _, t := range p.Tools {
+				if t == ToolDeploy {
+					deployProjects = append(deployProjects, p)
+					break
+				}
+			}
+		}
+		result["deploy_projects"] = deployProjects
+	} else {
+		result["deploy_projects"] = []interface{}{}
+	}
+
+	data, _ := json.Marshal(result)
+	return string(data)
+}
+
+// StartDeployJSON 启动部署会话并返回 JSON（供 MCP 工具调用）
+func StartDeployJSON(account, project string) string {
+	if wechatBridge == nil {
+		return `{"success":false,"error":"WeChat bridge not initialized"}`
+	}
+
+	sessionID, err := StartSessionForWeChat(account, project, "deploy", "", "", false, true)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+	}
+	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"部署会话已启动，进度将通过微信推送"}`, sessionID)
+}
+
 // CreateProjectJSON 创建项目并返回 JSON
 func CreateProjectJSON(name string) string {
 	if err := CreateProject(name); err != nil {

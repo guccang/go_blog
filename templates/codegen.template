@@ -513,8 +513,7 @@
                 <select id="toolSelect" class="model-select" title="选择编码工具" style="min-width:120px;">
                     <option value="">Claude Code</option>
                 </select>
-                <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)"
-                       onkeydown="if(event.key==='Enter')sendPrompt()">
+                <input type="text" id="promptInput" placeholder="描述编码需求... (如: 创建一个 Go HTTP 服务)">
                 <button class="btn-send" id="btnSend" onclick="sendPrompt()">发送</button>
                 <button class="btn-stop" id="btnStop" onclick="stopSession()">⏹ 停止</button>
             </div>
@@ -529,8 +528,7 @@
     <div class="modal-overlay" id="newProjectModal">
         <div class="modal">
             <h3>📁 新建项目</h3>
-            <input type="text" id="newProjectName" placeholder="项目名称 (如: my-web-app)" 
-                   onkeydown="if(event.key==='Enter')createProject()">
+            <input type="text" id="newProjectName" placeholder="项目名称 (如: my-web-app)">
             <div class="modal-actions">
                 <button class="btn-cancel" onclick="hideNewProjectModal()">取消</button>
                 <button class="btn-confirm" onclick="createProject()">创建</button>

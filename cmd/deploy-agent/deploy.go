@@ -223,9 +223,15 @@ func (d *Deployer) localUnzip(zipPath, targetDir string) error {
 }
 
 // runLocalScript 执行本地脚本（自动适配 .bat/.sh）
+// 对于 Unix 系统，优先使用 setsid 创建新会话，使脚本中启动的后台进程与 deploy-agent 完全分离
 func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
 	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
 		return d.runLocalCmd("cmd", []string{"/c", scriptPath}, workDir)
+	}
+	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行，
+	// 与远程部署的 runPublishCmd 保持一致的进程分离行为
+	if setsid, err := exec.LookPath("setsid"); err == nil {
+		return d.runLocalCmd(setsid, []string{"bash", scriptPath}, workDir)
 	}
 	return d.runLocalCmd("bash", []string{scriptPath}, workDir)
 }
