@@ -320,7 +320,34 @@ func (p *AgentPool) Execute(session *CodeSession) error {
 		tool = ToolDeploy
 	}
 
-	agent := p.SelectAgent(session.Project, tool)
+	var agent *RemoteAgent
+
+	// 如果指定了 agentID，优先使用该 agent
+	if session.AgentID != "" {
+		p.mu.RLock()
+		candidate := p.agents[session.AgentID]
+		p.mu.RUnlock()
+		if candidate != nil {
+			candidate.mu.Lock()
+			isOnline := candidate.Status != "offline"
+			hasProject := false
+			for _, proj := range candidate.Projects {
+				if proj == session.Project {
+					hasProject = true
+					break
+				}
+			}
+			candidate.mu.Unlock()
+			if isOnline && hasProject {
+				agent = candidate
+			}
+		}
+	}
+
+	// fallback 到负载均衡选择
+	if agent == nil {
+		agent = p.SelectAgent(session.Project, tool)
+	}
 	if agent == nil {
 		if session.DeployOnly {
 			return fmt.Errorf("no available deploy agent for project '%s'", session.Project)
@@ -568,65 +595,46 @@ func (a *RemoteAgent) AgentSupportsTool(tool string) bool {
 	return false
 }
 
-// ListRemoteProjects 获取所有远程 agent 上报的项目（聚合同名项目的 tools）
+// ListRemoteProjects 获取所有远程 agent 上报的项目（每个 agent-项目 组合独立输出）
 func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	// 按项目名聚合：收集所有 agent 的 tools
-	type projInfo struct {
-		agentID string
-		agent   string
-		tools   map[string]bool
-	}
-	projMap := make(map[string]*projInfo)
-	var order []string // 保持插入顺序
+	var result []RemoteProjectInfo
 
 	for _, agent := range p.agents {
 		agent.mu.Lock()
 		agentTools := agent.Tools
 		agentID := agent.ID
 		agentName := agent.Name
+		projects := agent.Projects
 		agent.mu.Unlock()
 
-		for _, proj := range agent.Projects {
-			pi, exists := projMap[proj]
-			if !exists {
-				pi = &projInfo{
-					agentID: agentID,
-					agent:   agentName,
-					tools:   make(map[string]bool),
-				}
-				projMap[proj] = pi
-				order = append(order, proj)
-			}
-			// 聚合该 agent 的 tools 到项目
+		for _, proj := range projects {
+			tools := make([]string, 0)
 			if len(agentTools) == 0 {
-				// agent 未上报 tools，默认 claudecode
-				pi.tools[ToolClaudeCode] = true
+				tools = append(tools, ToolClaudeCode)
 			} else {
-				for _, t := range agentTools {
-					pi.tools[t] = true
-				}
+				tools = append(tools, agentTools...)
 			}
+			sort.Strings(tools)
+			result = append(result, RemoteProjectInfo{
+				Name:    proj,
+				AgentID: agentID,
+				Agent:   agentName,
+				Tools:   tools,
+			})
 		}
 	}
 
-	result := make([]RemoteProjectInfo, 0, len(order))
-	for _, name := range order {
-		pi := projMap[name]
-		tools := make([]string, 0, len(pi.tools))
-		for t := range pi.tools {
-			tools = append(tools, t)
+	// 按项目名排序，同名按 agent 名排序
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name != result[j].Name {
+			return result[i].Name < result[j].Name
 		}
-		sort.Strings(tools)
-		result = append(result, RemoteProjectInfo{
-			Name:    name,
-			AgentID: pi.agentID,
-			Agent:   pi.agent,
-			Tools:   tools,
-		})
-	}
+		return result[i].Agent < result[j].Agent
+	})
+
 	return result
 }
 

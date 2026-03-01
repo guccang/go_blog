@@ -269,8 +269,8 @@ func NormalizeTool(tool string) string {
 	}
 }
 
-// StartSession 启动编码会话
-func StartSession(project, prompt, model, tool string, autoDeploy, deployOnly bool) (*CodeSession, error) {
+// StartSession 启动编码会话，agentID 可选指定目标 agent
+func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool) (*CodeSession, error) {
 	// 项目目录由远程 agent 管理，服务端不需要创建本地目录
 	// 仅验证项目名合法性
 	if project == "" {
@@ -287,6 +287,7 @@ func StartSession(project, prompt, model, tool string, autoDeploy, deployOnly bo
 		Tool:       normalizedTool,
 		AutoDeploy: autoDeploy,
 		DeployOnly: deployOnly,
+		AgentID:    agentID,
 		Status:     StatusRunning,
 		Messages:   make([]SessionMessage, 0),
 		StartTime:  time.Now(),

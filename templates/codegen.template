@@ -540,8 +540,9 @@
     let currentProject = null;
     let currentSessionId = null;
     let currentMode = 'code'; // 'code' or 'deploy'
+    let currentAgentId = null; // 当前选中项目对应的 agent ID
     let ws = null;
-    let remoteProjectMap = {}; // project name -> agent info
+    let remoteProjectMap = {}; // project name -> [{agent_id, agent, tools}] 数组映射
     let cachedLocalProjects = [];
     let cachedRemoteOnly = [];
     let cachedCodingRemote = [];   // 远程项目中支持编码的
@@ -616,7 +617,10 @@
             const localProjects = data.data.projects || [];
             const remoteProjects = data.data.remote_projects || [];
             remoteProjectMap = {};
-            remoteProjects.forEach(rp => { remoteProjectMap[rp.name] = rp; });
+            remoteProjects.forEach(rp => {
+                if (!remoteProjectMap[rp.name]) remoteProjectMap[rp.name] = [];
+                remoteProjectMap[rp.name].push(rp);
+            });
 
             // 去重 + 按名称排序（稳定）
             const localNames = new Set(localProjects.map(p => p.name));
@@ -625,14 +629,14 @@
                 .filter(rp => !localNames.has(rp.name))
                 .sort((a, b) => a.name.localeCompare(b.name));
 
-            // 按 tools 拆分远程项目为编码和部署两组
+            // 按 tools 拆分远程项目为编码和部署两组（同名项目按 agent 独立展示，不去重）
             const codingTools = ['claudecode', 'opencode'];
             cachedCodingRemote = remoteProjects
-                .filter(rp => !localNames.has(rp.name) && rp.tools && rp.tools.some(t => codingTools.includes(t)))
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .filter(rp => rp.tools && rp.tools.some(t => codingTools.includes(t)))
+                .sort((a, b) => a.name.localeCompare(b.name) || a.agent.localeCompare(b.agent));
             cachedDeployProjects = remoteProjects
                 .filter(rp => rp.tools && rp.tools.includes('deploy'))
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => a.name.localeCompare(b.name) || a.agent.localeCompare(b.agent));
 
             renderProjects();
         } catch (err) {
@@ -751,13 +755,12 @@
             html += '<div class="agent-section-header">💻 编码项目</div>';
             // 本地项目
             html += localFiltered.map(p => {
-                const agentBadge = remoteProjectMap[p.name]
-                    ? `<span class="agent-badge">${remoteProjectMap[p.name].agent}</span>`
-                    : '';
+                const agents = remoteProjectMap[p.name] || [];
+                const agentBadge = agents.map(a => `<span class="agent-badge">${a.agent}</span>`).join('');
                 const statusDot = getProjectStatusIndicator(p.name);
                 const state = projectStates[p.name];
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === p.name && currentMode === 'code';
+                const isActive = currentProject === p.name && currentMode === 'code' && !currentAgentId;
                 return `
                 <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.name}', 'code')">
                     <div class="name">📁 ${p.name}${agentBadge}${statusDot}</div>
@@ -765,14 +768,14 @@
                 </div>`;
             }).join('');
 
-            // 远程编码项目
+            // 远程编码项目（每个 agent 独立展示）
             html += codingRemoteFiltered.map(rp => {
                 const statusDot = getProjectStatusIndicator(rp.name);
-                const state = projectStates[rp.name];
+                const state = projectStates[rp.name + ':' + rp.agent_id] || projectStates[rp.name];
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === rp.name && currentMode === 'code';
+                const isActive = currentProject === rp.name && currentMode === 'code' && currentAgentId === rp.agent_id;
                 return `
-                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'code')">
+                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'code', '${rp.agent_id}')">
                     <div class="name">📁 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
                     <div class="meta">远程 · ${rp.agent}${statusMeta}</div>
                 </div>`;
@@ -784,11 +787,11 @@
             html += '<div class="agent-section-header">🚀 部署项目</div>';
             html += deployFiltered.map(rp => {
                 const statusDot = getProjectStatusIndicator(rp.name);
-                const state = projectStates[rp.name];
+                const state = projectStates[rp.name + ':' + rp.agent_id] || projectStates[rp.name];
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === rp.name && currentMode === 'deploy';
+                const isActive = currentProject === rp.name && currentMode === 'deploy' && currentAgentId === rp.agent_id;
                 return `
-                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'deploy')">
+                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'deploy', '${rp.agent_id}')">
                     <div class="name">📦 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
                     <div class="meta">部署 · ${rp.agent}${statusMeta}</div>
                 </div>`;
@@ -798,7 +801,7 @@
         list.innerHTML = html;
     }
 
-    function selectProject(name, mode) {
+    function selectProject(name, mode, agentId) {
         // 保存当前项目的输出
         if (currentProject) {
             saveCurrentProjectState();
@@ -806,6 +809,7 @@
 
         currentProject = name;
         currentMode = mode || 'code';
+        currentAgentId = agentId || null;
         const state = getProjectState(name);
         currentSessionId = state.sessionId;
 
@@ -946,7 +950,7 @@
             let endpoint = '/api/codegen/run';
             let selectedModel = document.getElementById('modelSelect').value;
             let selectedTool = document.getElementById('toolSelect').value;
-            let body = { project: currentProject, prompt, model: selectedModel, tool: selectedTool };
+            let body = { project: currentProject, prompt, model: selectedModel, tool: selectedTool, agent_id: currentAgentId || '' };
             let isFollowUp = false;
 
             if (currentSessionId) {
@@ -1008,7 +1012,7 @@
             const resp = await fetch('/api/codegen/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ project: currentProject, deploy_only: true })
+                body: JSON.stringify({ project: currentProject, deploy_only: true, agent_id: currentAgentId || '' })
             });
             const data = await resp.json();
             if (!data.success) throw new Error(data.error);

@@ -93,6 +93,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		Prompt     string `json:"prompt"`
 		Model      string `json:"model"`
 		Tool       string `json:"tool"`
+		AgentID    string `json:"agent_id"`
 		AutoDeploy bool   `json:"auto_deploy"`
 		DeployOnly bool   `json:"deploy_only"`
 	}
@@ -116,7 +117,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		req.AutoDeploy = true
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AutoDeploy, req.DeployOnly)
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AgentID, req.AutoDeploy, req.DeployOnly)
 	if err != nil {
 		jsonError(w, err.Error())
 		return
