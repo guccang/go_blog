@@ -468,6 +468,7 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 	// 如果指定了模型配置，查找对应的 settings 文件
 	if task.Model != "" && a.cfg.ClaudeCodeSettingsDir != "" {
 		settingsFile := filepath.Join(a.cfg.ClaudeCodeSettingsDir, task.Model+".json")
+		fmt.Printf("settingsFile %s",settingsFile)
 		if _, err := os.Stat(settingsFile); err == nil {
 			args = append(args, "--settings", settingsFile)
 		}
