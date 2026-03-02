@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/google/uuid"
+	"uap"
 )
 
 func main() {
@@ -21,9 +21,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	agentID := "agent_" + uuid.New().String()[:8]
+	agentID := "codegen_" + uap.NewMsgID()
 	log.Printf("[INFO] CodeGen Agent starting: id=%s name=%s", agentID, cfg.AgentName)
-	log.Printf("[INFO] Server: %s", cfg.ServerURL)
+	log.Printf("[INFO] Gateway: %s → go_blog-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
 	log.Printf("[INFO] Workspaces: %v", cfg.Workspaces)
 	log.Printf("[INFO] MaxConcurrent: %d, MaxTurns: %d", cfg.MaxConcurrent, cfg.MaxTurns)
 
@@ -51,6 +51,9 @@ func main() {
 		conn.Stop()
 		os.Exit(0)
 	}()
+
+	// 启动 codegen 协议层（注册 + 心跳，在 UAP 连接后发送）
+	go conn.StartCodegenProtocol()
 
 	// 阻塞运行（自动重连）
 	conn.Run()

@@ -353,7 +353,7 @@ func Init() int {
 	h.HandleFunc("/api/codegen/file", HandleCodeGenFile)
 	h.HandleFunc("/api/codegen/agents", HandleCodeGenAgents)
 	h.HandleFunc("/ws/codegen", HandleCodeGenWS)
-	h.HandleFunc("/ws/codegen/agent", HandleCodeGenAgentWS)
+	// [Phase 2] /ws/codegen/agent 已移除，agent 通过 gateway 连接
 
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)

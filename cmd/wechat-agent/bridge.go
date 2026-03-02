@@ -23,6 +23,10 @@ type Bridge struct {
 	cachedToken   string
 	tokenExpireAt time.Time
 	tokenMu       sync.Mutex
+
+	// codegen 事件节流
+	lastEventTime map[string]time.Time // session_id → 上次推送时间
+	eventMu       sync.Mutex
 }
 
 // NewBridge 创建桥接器
@@ -49,8 +53,9 @@ func NewBridge(cfg *Config) *Bridge {
 	}
 
 	b := &Bridge{
-		cfg:    cfg,
-		client: client,
+		cfg:           cfg,
+		client:        client,
+		lastEventTime: make(map[string]time.Time),
 	}
 
 	// 设置消息回调
@@ -148,6 +153,14 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 		}
 		b.handleToolCall(msg, &payload)
 
+	case "stream_event":
+		// [Phase 2] 收到 codegen 流式事件（从 go_blog-agent 转发）
+		b.handleCodegenStreamEvent(msg)
+
+	case "task_complete":
+		// [Phase 2] 收到 codegen 任务完成（从 go_blog-agent 转发）
+		b.handleCodegenTaskComplete(msg)
+
 	case uap.MsgError:
 		var payload uap.ErrorPayload
 		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
@@ -200,6 +213,109 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 		Success:   success,
 		Result:    result,
 	})
+}
+
+// ========================= CodeGen 事件处理 =========================
+
+// codegenStreamEvent codegen stream_event 的 payload 结构
+type codegenStreamEvent struct {
+	SessionID string `json:"session_id"`
+	Event     struct {
+		Type      string  `json:"type"`
+		Text      string  `json:"text,omitempty"`
+		ToolName  string  `json:"tool_name,omitempty"`
+		CostUSD   float64 `json:"cost_usd,omitempty"`
+		Done      bool    `json:"done,omitempty"`
+	} `json:"event"`
+}
+
+// codegenTaskComplete codegen task_complete 的 payload 结构
+type codegenTaskComplete struct {
+	SessionID string `json:"session_id"`
+	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
+}
+
+// handleCodegenStreamEvent 处理 codegen 流式事件，节流后推送微信
+func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
+	var payload codegenStreamEvent
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[Bridge] invalid stream_event payload: %v", err)
+		return
+	}
+
+	// 节流：同一 session 每 10 秒最多推送一次
+	b.eventMu.Lock()
+	lastTime := b.lastEventTime[payload.SessionID]
+	now := time.Now()
+	shouldSend := now.Sub(lastTime) >= 10*time.Second
+	if shouldSend {
+		b.lastEventTime[payload.SessionID] = now
+	}
+	b.eventMu.Unlock()
+
+	if !shouldSend {
+		return
+	}
+
+	// 格式化事件为微信消息
+	text := formatEventForWeChat(&payload)
+	if text == "" {
+		return
+	}
+
+	// 推送给配置的默认用户（codegen 事件目前不携带用户信息）
+	if b.cfg.WebhookURL != "" {
+		b.sendWebhookMarkdown(text)
+	}
+}
+
+// handleCodegenTaskComplete 处理 codegen 任务完成
+func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
+	var payload codegenTaskComplete
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[Bridge] invalid task_complete payload: %v", err)
+		return
+	}
+
+	// 清理节流状态
+	b.eventMu.Lock()
+	delete(b.lastEventTime, payload.SessionID)
+	b.eventMu.Unlock()
+
+	// 构建完成消息
+	var text string
+	if payload.Status == "error" {
+		text = fmt.Sprintf("❌ 编码任务失败\n会话: %s\n错误: %s", payload.SessionID, payload.Error)
+	} else {
+		text = fmt.Sprintf("✅ 编码任务完成\n会话: %s", payload.SessionID)
+	}
+
+	if b.cfg.WebhookURL != "" {
+		b.sendWebhookMarkdown(text)
+	}
+}
+
+// formatEventForWeChat 将 stream_event 格式化为微信推送文本
+func formatEventForWeChat(payload *codegenStreamEvent) string {
+	switch payload.Event.Type {
+	case "system":
+		return fmt.Sprintf("📦 [%s] %s", payload.SessionID[:8], payload.Event.Text)
+	case "tool":
+		if payload.Event.ToolName != "" {
+			return fmt.Sprintf("🔧 [%s] 执行: %s", payload.SessionID[:8], payload.Event.ToolName)
+		}
+		return ""
+	case "error":
+		return fmt.Sprintf("⚠️ [%s] %s", payload.SessionID[:8], payload.Event.Text)
+	case "result":
+		if payload.Event.CostUSD > 0 {
+			return fmt.Sprintf("📊 [%s] %s (费用: $%.4f)", payload.SessionID[:8], payload.Event.Text, payload.Event.CostUSD)
+		}
+		return fmt.Sprintf("📊 [%s] %s", payload.SessionID[:8], payload.Event.Text)
+	default:
+		return ""
+	}
 }
 
 // ========================= 微信 API =========================

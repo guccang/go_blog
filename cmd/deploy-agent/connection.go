@@ -8,136 +8,62 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"uap"
 )
 
-// Connection WebSocket 客户端连接管理
+// Connection 通过 UAP gateway 的客户端连接管理
 type Connection struct {
 	cfg         *DeployConfig
 	password    string
-	conn        *websocket.Conn
 	agentID     string
-	mu          sync.Mutex
-	connected   bool
-	stopCh      chan struct{}
-	backoffIdx  int
+	client      *uap.Client
 	activeTasks map[string]bool
 	taskMu      sync.Mutex
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *DeployConfig, password string, agentID string) *Connection {
-	return &Connection{
+	client := uap.NewClient(cfg.ServerURL, agentID, "deploy", cfg.AgentName)
+	client.AuthToken = cfg.AuthToken
+	client.Capacity = cfg.MaxConcurrent
+	client.Meta = map[string]any{
+		"projects": cfg.ProjectNames(),
+	}
+
+	c := &Connection{
 		cfg:         cfg,
 		password:    password,
 		agentID:     agentID,
-		stopCh:      make(chan struct{}),
+		client:      client,
 		activeTasks: make(map[string]bool),
 	}
+
+	client.OnMessage = c.handleUAPMessage
+
+	return c
 }
 
 // Run 启动连接（阻塞，自动重连）
 func (c *Connection) Run() {
-	for {
-		select {
-		case <-c.stopCh:
-			return
-		default:
-		}
-
-		if err := c.connect(); err != nil {
-			log.Printf("[WARN] connect failed: %v", err)
-			c.backoffSleep()
-			continue
-		}
-
-		c.register()
-		c.runLoop()
-	}
+	// uap.Client.Run() 内置自动重连和心跳
+	c.client.Run()
 }
 
-// connect 建立 WebSocket 连接
-func (c *Connection) connect() error {
-	url := c.cfg.ServerURL
-	if c.cfg.AuthToken != "" {
-		url += "?token=" + c.cfg.AuthToken
-	}
-
-	log.Printf("[INFO] connecting to %s ...", c.cfg.ServerURL)
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
-	if err != nil {
-		return fmt.Errorf("dial: %v", err)
-	}
-
-	c.mu.Lock()
-	c.conn = conn
-	c.connected = true
-	c.backoffIdx = 0
-	c.mu.Unlock()
-
-	log.Printf("[INFO] connected to server")
-	return nil
+// Stop 停止连接
+func (c *Connection) Stop() {
+	c.client.Stop()
 }
 
-// register 发送注册消息（包含支持的项目列表）
-func (c *Connection) register() {
-	payload := RegisterPayload{
-		AgentID:       c.agentID,
-		Name:          c.cfg.AgentName,
-		Workspaces:    []string{},
-		Projects:      c.cfg.ProjectNames(),
-		Tools:         []string{"deploy"},
-		MaxConcurrent: c.cfg.MaxConcurrent,
-		AuthToken:     c.cfg.AuthToken,
-	}
-	c.SendMsg(MsgRegister, payload)
-}
-
-// runLoop 消息读取主循环
-func (c *Connection) runLoop() {
-	defer func() {
-		c.mu.Lock()
-		c.connected = false
-		if c.conn != nil {
-			c.conn.Close()
-		}
-		c.mu.Unlock()
-	}()
-
-	go c.heartbeatLoop()
-
-	for {
-		_, data, err := c.conn.ReadMessage()
-		if err != nil {
-			log.Printf("[WARN] ws read error: %v, reconnecting...", err)
-			return
-		}
-
-		var msg AgentMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
-			log.Printf("[WARN] parse message error: %v", err)
-			continue
-		}
-
-		c.handleMessage(&msg)
-	}
-}
-
-// handleMessage 处理服务端消息
-func (c *Connection) handleMessage(msg *AgentMessage) {
+// handleUAPMessage 处理来自 gateway 的 UAP 消息
+func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	switch msg.Type {
 	case MsgRegisterAck:
 		var payload RegisterAckPayload
 		json.Unmarshal(msg.Payload, &payload)
 		if payload.Success {
-			log.Printf("[INFO] registered successfully as deploy agent (projects: %v)", c.cfg.ProjectNames())
+			log.Printf("[INFO] registered with go_blog backend as deploy agent (projects: %v)", c.cfg.ProjectNames())
 		} else {
-			log.Printf("[ERROR] register rejected: %s", payload.Error)
-			c.mu.Lock()
-			if c.conn != nil {
-				c.conn.Close()
-			}
-			c.mu.Unlock()
+			log.Printf("[ERROR] go_blog register rejected: %s", payload.Error)
 		}
 
 	case MsgTaskAssign:
@@ -162,6 +88,9 @@ func (c *Connection) handleMessage(msg *AgentMessage) {
 
 	case MsgHeartbeatAck:
 		// ok
+
+	default:
+		log.Printf("[WARN] unhandled message type: %s from %s", msg.Type, msg.From)
 	}
 }
 
@@ -175,7 +104,6 @@ func (c *Connection) resolveProject(projectName string) (*ProjectConfig, error) 
 		return nil, fmt.Errorf("project %q not found, available: %v", projectName, c.cfg.ProjectNames())
 	}
 
-	// 未指定项目名：仅一个项目时自动选择
 	proj := c.cfg.DefaultProject()
 	if proj != nil {
 		return proj, nil
@@ -202,7 +130,6 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 		})
 	}
 
-	// 解析目标项目
 	proj, err := c.resolveProject(projectName)
 	if err != nil {
 		sendEvent("error", fmt.Sprintf("❌ %v", err))
@@ -216,7 +143,6 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 
 	sendEvent("system", fmt.Sprintf("🚀 开始部署项目 [%s]...", proj.Name))
 
-	// 创建新的 Deployer（避免并发冲突）
 	deployer := NewDeployer(c.cfg, proj, c.password)
 	deployer.OnProgress = func(level, message string) {
 		evtType := "system"
@@ -230,7 +156,6 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 
 	err = deployer.Run(false, "")
 
-	// 部署后验证
 	if err == nil && proj.VerifyURL != "" {
 		sendEvent("system", "⏳ 等待服务启动 (5s)...")
 		time.Sleep(5 * time.Second)
@@ -268,8 +193,8 @@ func (c *Connection) verify(proj *ProjectConfig) error {
 		timeout = 10
 	}
 
-	client := &http.Client{Timeout: time.Duration(timeout) * time.Second}
-	resp, err := client.Get(proj.VerifyURL)
+	httpClient := &http.Client{Timeout: time.Duration(timeout) * time.Second}
+	resp, err := httpClient.Get(proj.VerifyURL)
 	if err != nil {
 		return fmt.Errorf("连接失败: %v", err)
 	}
@@ -296,85 +221,56 @@ func (c *Connection) activeCount() int {
 	return len(c.activeTasks)
 }
 
-// heartbeatLoop 定时发送心跳
-func (c *Connection) heartbeatLoop() {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			c.mu.Lock()
-			connected := c.connected
-			c.mu.Unlock()
-			if !connected {
-				return
-			}
-			c.SendMsg(MsgHeartbeat, HeartbeatPayload{
-				AgentID:        c.agentID,
-				ActiveSessions: c.activeCount(),
-				Load:           float64(c.activeCount()) / float64(c.cfg.MaxConcurrent),
-				Tools:          []string{"deploy"},
-			})
-		case <-c.stopCh:
-			return
-		}
-	}
-}
-
-// SendMsg 发送消息给服务端
+// SendMsg 发送消息给 go_blog-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	msg := AgentMessage{
-		Type:    msgType,
-		Payload: json.RawMessage(data),
-		Ts:      time.Now().UnixMilli(),
-	}
-	msgData, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	return c.conn.WriteMessage(websocket.TextMessage, msgData)
+	targetAgent := c.cfg.GoBackendAgentID
+	return c.client.SendTo(targetAgent, msgType, payload)
 }
 
-// backoffSleep 指数退避重连等待
-func (c *Connection) backoffSleep() {
-	delays := []time.Duration{
-		1 * time.Second,
-		2 * time.Second,
-		5 * time.Second,
-		10 * time.Second,
-		30 * time.Second,
-		60 * time.Second,
+// sendDeployRegister 发送 deploy 协议注册消息给 go_blog-agent
+func (c *Connection) sendDeployRegister() {
+	payload := RegisterPayload{
+		AgentID:       c.agentID,
+		Name:          c.cfg.AgentName,
+		Workspaces:    []string{},
+		Projects:      c.cfg.ProjectNames(),
+		Tools:         []string{"deploy"},
+		MaxConcurrent: c.cfg.MaxConcurrent,
+		AuthToken:     c.cfg.AuthToken,
 	}
-
-	delay := delays[c.backoffIdx]
-	if c.backoffIdx < len(delays)-1 {
-		c.backoffIdx++
-	}
-
-	select {
-	case <-c.stopCh:
-		return
-	case <-time.After(delay):
-	}
+	c.SendMsg(MsgRegister, payload)
 }
 
-// Stop 停止连接
-func (c *Connection) Stop() {
-	close(c.stopCh)
-	c.mu.Lock()
-	if c.conn != nil {
-		c.conn.Close()
+// sendDeployHeartbeat 发送心跳给 go_blog-agent
+func (c *Connection) sendDeployHeartbeat() {
+	c.SendMsg(MsgHeartbeat, HeartbeatPayload{
+		AgentID:        c.agentID,
+		ActiveSessions: c.activeCount(),
+		Load:           float64(c.activeCount()) / float64(c.cfg.MaxConcurrent),
+		Tools:          []string{"deploy"},
+	})
+}
+
+// StartDeployProtocol 启动 deploy 协议层（注册 + 心跳）
+func (c *Connection) StartDeployProtocol() {
+	// 等待 UAP 连接就绪
+	for !c.client.IsConnected() {
+		time.Sleep(100 * time.Millisecond)
 	}
-	c.mu.Unlock()
+
+	c.sendDeployRegister()
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if !c.client.IsConnected() {
+				for !c.client.IsConnected() {
+					time.Sleep(1 * time.Second)
+				}
+				c.sendDeployRegister()
+			}
+			c.sendDeployHeartbeat()
+		}
+	}()
 }

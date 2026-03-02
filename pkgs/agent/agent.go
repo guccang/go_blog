@@ -2,6 +2,7 @@ package agent
 
 import (
 	"codegen"
+	"config"
 	"email"
 	"encoding/json"
 	"fmt"
@@ -57,14 +58,18 @@ func Init(account string) {
 		email.InitEmailConfig()
 
 		// [Phase 1] 微信模块已迁移至独立 wechat-agent，不再在 go_blog 中初始化
-		// wechat.InitWechatConfig()
-		// wechat.SetCommandHandler(handleWechatCommand)
 
 		// 初始化编码助手模块
 		codegen.Init()
 
-		// [Phase 1] CodeGen 微信桥接已迁移至 wechat-agent
-		// codegen.InitWeChatBridge(...)
+		// [Phase 2] 如果配置了 gateway_url，连接 gateway 注册为 go_blog-agent
+		gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
+		if gatewayURL != "" {
+			gatewayToken := config.GetConfigWithAccount(account, "gateway_token")
+			codegen.InitGatewayBridge(gatewayURL, gatewayToken)
+			codegen.SetWechatHandler(handleWechatCommand)
+			log.MessageF(log.ModuleAgent, "Gateway bridge initialized: %s", gatewayURL)
+		}
 
 		// 初始化报告生成器
 		InitReportGenerator(account)
@@ -83,9 +88,6 @@ func Init(account string) {
 				GraphCacheCleanup(7*24*time.Hour, 200)
 			}
 		}()
-		// for _, graph := range pendingGraphs {
-		// 	globalPool.taskQueue <- graph
-		// }
 
 		log.MessageF(log.ModuleAgent, "Agent module initialized, %d pending tasks recovered (awaiting manual start)", len(pendingGraphs))
 	})

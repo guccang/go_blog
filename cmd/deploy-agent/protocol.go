@@ -1,7 +1,5 @@
 package main
 
-import "encoding/json"
-
 // WebSocket 消息类型常量
 const (
 	MsgRegister     = "register"
@@ -18,13 +16,6 @@ const (
 
 // SessionStatus 会话状态
 type SessionStatus string
-
-// AgentMessage WebSocket 统一消息信封
-type AgentMessage struct {
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
-	Ts      int64           `json:"ts"`
-}
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {

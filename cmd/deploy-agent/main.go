@@ -96,8 +96,10 @@ func main() {
 			fmt.Println()
 		}
 
-		agentID := fmt.Sprintf("%s-%d", cfg.AgentName, os.Getpid())
+		agentID := fmt.Sprintf("deploy_%s_%d", cfg.AgentName, os.Getpid())
 		conn := NewConnection(cfg, pwd, agentID)
+		// 启动 deploy 协议层（注册 + 心跳）
+		go conn.StartDeployProtocol()
 		conn.Run()
 		return
 	}

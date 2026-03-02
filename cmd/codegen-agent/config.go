@@ -26,6 +26,7 @@ type AgentConfig struct {
 	VerifyURL             string   // 部署验证 URL（HTTP GET）
 	VerifyTimeout         int      // 验证超时秒数，默认 10
 	ResumeModels          []string // 支持 --resume 的模型名列表（空字符串代表默认模型）
+	GoBackendAgentID      string   // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
 }
 
 // LoadConfig 从配置文件加载配置
@@ -101,6 +102,8 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			for _, m := range strings.Split(val, ",") {
 				cfg.ResumeModels = append(cfg.ResumeModels, strings.TrimSpace(m))
 			}
+		case "go_blog_agent_id":
+			cfg.GoBackendAgentID = val
 		}
 	}
 
@@ -112,6 +115,9 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	}
 	if len(cfg.Workspaces) == 0 {
 		return nil, fmt.Errorf("workspaces is required")
+	}
+	if cfg.GoBackendAgentID == "" {
+		cfg.GoBackendAgentID = "go_blog"
 	}
 
 	configDir := filepath.Dir(path)

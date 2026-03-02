@@ -11,11 +11,40 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// MessageSender 消息发送接口（支持直连 WebSocket 和 gateway 路由两种模式）
+type MessageSender interface {
+	SendAgentMsg(msgType string, payload interface{}) error
+}
+
+// WebSocketSender 直连 WebSocket 发送器
+type WebSocketSender struct {
+	Conn *websocket.Conn
+}
+
+// SendAgentMsg 通过 WebSocket 直接发送消息
+func (s *WebSocketSender) SendAgentMsg(msgType string, payload interface{}) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	msg := AgentMessage{
+		Type:    msgType,
+		Payload: json.RawMessage(data),
+		Ts:      time.Now().UnixMilli(),
+	}
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return s.Conn.WriteMessage(websocket.TextMessage, msgData)
+}
+
 // RemoteAgent 远程 Agent 连接
 type RemoteAgent struct {
 	ID               string
 	Name             string
-	Conn             *websocket.Conn
+	Sender           MessageSender       // 统一发送接口
+	Conn             *websocket.Conn     // 直连模式保留（gateway 模式为 nil）
 	Workspaces       []string
 	Projects         []string // agent 上报的可用项目
 	Models           []string // agent 支持的模型配置列表（兼容旧版）
@@ -94,6 +123,7 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 			agent = &RemoteAgent{
 				ID:               payload.AgentID,
 				Name:             payload.Name,
+				Sender:           &WebSocketSender{Conn: conn},
 				Conn:             conn,
 				Workspaces:       payload.Workspaces,
 				Projects:         payload.Projects,
@@ -425,7 +455,7 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		DeployOnly:    session.DeployOnly,
 	}
 
-	return sendAgentMsg(agent.Conn, MsgTaskAssign, payload)
+	return agent.Sender.SendAgentMsg(MsgTaskAssign, payload)
 }
 
 // buildClaudeCodeSystemPrompt 构建 Claude Code 系统提示
@@ -475,7 +505,7 @@ func (p *AgentPool) StopRemoteTask(session *CodeSession) error {
 		return fmt.Errorf("agent not found: %s", session.AgentID)
 	}
 
-	return sendAgentMsg(agent.Conn, MsgTaskStop, TaskStopPayload{
+	return agent.Sender.SendAgentMsg(MsgTaskStop, TaskStopPayload{
 		SessionID: session.ID,
 	})
 }
@@ -683,7 +713,7 @@ func (p *AgentPool) ReadRemoteFile(project, path string) (string, error) {
 		p.pendMu.Unlock()
 	}()
 
-	err := sendAgentMsg(agent.Conn, MsgFileRead, FileReadPayload{
+	err := agent.Sender.SendAgentMsg(MsgFileRead, FileReadPayload{
 		RequestID: reqID,
 		Project:   project,
 		Path:      path,
@@ -724,7 +754,7 @@ func (p *AgentPool) ReadRemoteTree(project string, maxDepth int) (*DirNode, erro
 		p.pendMu.Unlock()
 	}()
 
-	err := sendAgentMsg(agent.Conn, MsgTreeRead, TreeReadPayload{
+	err := agent.Sender.SendAgentMsg(MsgTreeRead, TreeReadPayload{
 		RequestID: reqID,
 		Project:   project,
 		MaxDepth:  maxDepth,
@@ -772,7 +802,7 @@ func (p *AgentPool) CreateRemoteProject(agentName, projectName string) error {
 		p.pendMu.Unlock()
 	}()
 
-	err := sendAgentMsg(agent.Conn, MsgProjectCreate, ProjectCreatePayload{
+	err := agent.Sender.SendAgentMsg(MsgProjectCreate, ProjectCreatePayload{
 		RequestID: reqID,
 		Name:      projectName,
 	})
@@ -823,7 +853,9 @@ func (p *AgentPool) addAgent(agent *RemoteAgent) {
 	defer p.mu.Unlock()
 	// 如果已有同 ID 的旧连接，关闭它
 	if old, ok := p.agents[agent.ID]; ok {
-		old.Conn.Close()
+		if old.Conn != nil {
+			old.Conn.Close()
+		}
 	}
 	p.agents[agent.ID] = agent
 }
@@ -874,7 +906,9 @@ func (p *AgentPool) cleanupStaleAgents() {
 		agent.mu.Lock()
 		if now.Sub(agent.LastHeartbeat) > 45*time.Second {
 			agent.Status = "offline"
-			agent.Conn.Close()
+			if agent.Conn != nil {
+				agent.Conn.Close()
+			}
 			delete(p.agents, id)
 			log.WarnF(log.ModuleAgent, "CodeGen: agent %s timed out, removed", id)
 		}
@@ -882,7 +916,7 @@ func (p *AgentPool) cleanupStaleAgents() {
 	}
 }
 
-// sendAgentMsg 发送消息给 agent
+// sendAgentMsg 直连模式：发送消息给 agent WebSocket（仅 HandleAgentWebSocket 使用）
 func sendAgentMsg(conn *websocket.Conn, msgType string, payload interface{}) error {
 	data, err := json.Marshal(payload)
 	if err != nil {

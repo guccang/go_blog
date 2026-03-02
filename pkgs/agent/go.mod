@@ -6,6 +6,7 @@ toolchain go1.24.10
 
 require (
 	control v0.0.0
+	config v0.0.0
 	email v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.0
@@ -21,7 +22,6 @@ require (
 
 require (
 	auth v0.0.0 // indirect
-	config v0.0.0 // indirect
 	view v0.0.0 // indirect
 )
 
@@ -38,6 +38,7 @@ replace (
 	mylog => ../mylog
 	persistence => ../persistence
 	statistics => ../statistics
+	uap => ../uap
 	view => ../view
 	wechat => ../wechat
 	codegen => ../codegen

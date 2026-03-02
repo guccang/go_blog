@@ -39,7 +39,7 @@ type DeployConfig struct {
 	SSHPassword string // SSH 密码（daemon 模式可配置，优先级低于 keyring）
 
 	// WebSocket daemon 模式配置（设置 server_url 启用）
-	ServerURL     string // go_blog WebSocket 地址
+	ServerURL     string // gateway WebSocket 地址
 	AgentName     string // Agent 名称（默认使用主机名）
 	AuthToken     string // 认证 token
 	MaxConcurrent int    // 最大并发部署任务数，默认 1
@@ -50,6 +50,9 @@ type DeployConfig struct {
 	// 多项目配置
 	Projects     map[string]*ProjectConfig // 项目名 → 配置
 	ProjectOrder []string                  // 保持声明顺序
+
+	// UAP gateway 配置
+	GoBackendAgentID string // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
 }
 
 // DefaultProject 获取默认项目（仅一个项目时返回，否则返回 nil）
@@ -198,6 +201,10 @@ func LoadConfig(path string) (*DeployConfig, error) {
 		return nil, fmt.Errorf("no projects found (check settings_dir or [project] sections)")
 	}
 
+	if cfg.GoBackendAgentID == "" {
+		cfg.GoBackendAgentID = "go_blog"
+	}
+
 	return cfg, nil
 }
 
@@ -294,6 +301,8 @@ func parseGlobalKey(cfg *DeployConfig, key, val string) {
 		}
 	case "settings_dir":
 		cfg.SettingsDir = val
+	case "go_blog_agent_id":
+		cfg.GoBackendAgentID = val
 	}
 }
 
