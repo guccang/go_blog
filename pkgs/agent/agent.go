@@ -62,6 +62,32 @@ func Init(account string) {
 		// 初始化编码助手模块
 		codegen.Init()
 
+		// 初始化报告生成器
+		InitReportGenerator(account)
+
+		// 注册 MCP 回调（在 gateway 初始化之前，确保所有工具回调就绪）
+		registerMCPCallbacks()
+
+		// [Phase 3] 注入 MCP 桥接函数到 codegen，避免 codegen 直接依赖 mcp 的重量级传递依赖链
+		codegen.MCPCallInnerTools = mcp.CallInnerTools
+		codegen.MCPGetToolInfos = func() []codegen.MCPToolInfo {
+			tools := mcp.GetInnerMCPTools(nil)
+			infos := make([]codegen.MCPToolInfo, 0, len(tools))
+			for _, t := range tools {
+				// 提取回调名（去掉 Inner_blog. 前缀）
+				name := t.Function.Name
+				if idx := len("Inner_blog."); len(name) > idx && name[:idx] == "Inner_blog." {
+					name = name[idx:]
+				}
+				infos = append(infos, codegen.MCPToolInfo{
+					Name:        name,
+					Description: t.Function.Description,
+					Parameters:  t.Function.Parameters,
+				})
+			}
+			return infos
+		}
+
 		// [Phase 2] 如果配置了 gateway_url，连接 gateway 注册为 go_blog-agent
 		gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
 		if gatewayURL != "" {
@@ -70,12 +96,6 @@ func Init(account string) {
 			codegen.SetWechatHandler(handleWechatCommand)
 			log.MessageF(log.ModuleAgent, "Gateway bridge initialized: %s", gatewayURL)
 		}
-
-		// 初始化报告生成器
-		InitReportGenerator(account)
-
-		// 注册 MCP 回调
-		registerMCPCallbacks()
 
 		// 恢复未完成的任务（仅加载，不自动执行）
 		pendingGraphs := globalStorage.GetPendingTaskGraphs()

@@ -48,6 +48,15 @@ func main() {
 		})
 	})
 
+	mux.HandleFunc("/api/gateway/tools", func(w http.ResponseWriter, r *http.Request) {
+		tools := registry.GetAllTools()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"success": true,
+			"tools":   tools,
+		})
+	})
+
 	mux.HandleFunc("/api/gateway/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

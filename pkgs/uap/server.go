@@ -348,6 +348,33 @@ func (s *Server) GetAllAgents() []map[string]any {
 	return result
 }
 
+// GetAllTools 返回所有在线 agent 的完整工具定义（含 description + JSON Schema）
+func (s *Server) GetAllTools() []map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var result []map[string]any
+	for _, a := range s.agents {
+		if !a.Online {
+			continue
+		}
+		for _, t := range a.Tools {
+			item := map[string]any{
+				"agent_id":    a.ID,
+				"name":        t.Name,
+				"description": t.Description,
+			}
+			if len(t.Parameters) > 0 {
+				var params any
+				if err := json.Unmarshal(t.Parameters, &params); err == nil {
+					item["parameters"] = params
+				}
+			}
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 // SendToAgent 从外部向指定 agent 发送消息
 func (s *Server) SendToAgent(agentID string, msg *Message) error {
 	agent := s.GetAgent(agentID)

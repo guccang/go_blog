@@ -40,6 +40,14 @@ func (r *Registry) GetAllAgents() []map[string]any {
 	return r.server.GetAllAgents()
 }
 
+// GetAllTools 获取所有在线 agent 的完整工具定义
+func (r *Registry) GetAllTools() []map[string]any {
+	if r.server == nil {
+		return nil
+	}
+	return r.server.GetAllTools()
+}
+
 // OnlineCount 在线 agent 数量
 func (r *Registry) OnlineCount() int {
 	agents := r.GetAllAgents()

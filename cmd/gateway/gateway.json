@@ -1,0 +1,4 @@
+  {
+    "port": 9000,
+    "go_backend_url": "http://localhost:8888"
+  }

@@ -10,6 +10,21 @@ import (
 	"uap"
 )
 
+// MCPToolInfo MCP 工具定义信息（用于依赖注入，避免直接依赖 mcp 包）
+type MCPToolInfo struct {
+	Name        string      // MCP 回调名（如 RawAllBlogName）
+	Description string      // 工具描述
+	Parameters  interface{} // JSON Schema 参数
+}
+
+// MCP 桥接函数（由 agent 包注入，避免 codegen 直接依赖 mcp 的重量级传递依赖链）
+var (
+	// MCPCallInnerTools 调用 MCP 内部工具
+	MCPCallInnerTools func(name string, args map[string]interface{}) string
+	// MCPGetToolInfos 获取 MCP 工具定义列表
+	MCPGetToolInfos func() []MCPToolInfo
+)
+
 // GatewaySender 通过 gateway 路由发送消息
 type GatewaySender struct {
 	client      *uap.Client
@@ -29,6 +44,9 @@ type GatewayBridge struct {
 	// wechat notify 处理器
 	wechatHandler func(wechatUser, message string) string
 
+	// UAP tool_name → MCP callback name 映射
+	toolMapping map[string]string
+
 	mu sync.Mutex
 }
 
@@ -37,16 +55,21 @@ var gatewayBridge *GatewayBridge
 
 // InitGatewayBridge 初始化 go_blog 到 gateway 的连接
 func InitGatewayBridge(gatewayURL, authToken string) {
+	// 构建工具定义和映射表
+	toolDefs, toolMapping := buildToolDefs()
+
 	client := uap.NewClient(gatewayURL, "go_blog", "go_blog", "Go Blog Server")
 	client.AuthToken = authToken
 	client.Capacity = 100
+	client.Tools = toolDefs
 	client.Meta = map[string]any{
 		"role": "backend",
 	}
 
 	bridge := &GatewayBridge{
-		client: client,
-		pool:   agentPool,
+		client:      client,
+		pool:        agentPool,
+		toolMapping: toolMapping,
 	}
 
 	client.OnMessage = bridge.handleMessage
@@ -55,7 +78,7 @@ func InitGatewayBridge(gatewayURL, authToken string) {
 
 	// 后台连接 gateway（非阻塞）
 	go func() {
-		log.MessageF(log.ModuleAgent, "CodeGen: connecting to gateway at %s", gatewayURL)
+		log.MessageF(log.ModuleAgent, "CodeGen: connecting to gateway at %s (tools=%d)", gatewayURL, len(toolDefs))
 		client.Run()
 	}()
 }
@@ -159,6 +182,9 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 
 	case uap.MsgNotify:
 		b.handleNotify(msg)
+
+	case uap.MsgToolCall:
+		go b.handleToolCall(msg) // 异步处理，避免阻塞消息循环
 
 	default:
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: unhandled message type=%s from=%s", msg.Type, msg.From)
@@ -319,4 +345,156 @@ func (b *GatewayBridge) getAgent(agentID string) *RemoteAgent {
 	agent := b.pool.agents[agentID]
 	b.pool.mu.RUnlock()
 	return agent
+}
+
+// handleToolCall 处理跨 agent 工具调用请求
+func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
+	var payload uap.ToolCallPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid tool_call payload: %v", err)
+		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     "invalid tool_call payload",
+		})
+		return
+	}
+
+	// 查映射表：UAP tool_name → MCP callback name
+	mcpName, ok := b.toolMapping[payload.ToolName]
+	if !ok {
+		// 兼容：直接用原名尝试（可能调用者已经使用 MCP 回调名）
+		mcpName = payload.ToolName
+	}
+
+	// 解析 arguments
+	var args map[string]interface{}
+	if len(payload.Arguments) > 0 {
+		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid tool_call arguments: %v", err)
+			b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   false,
+				Error:     "invalid arguments: " + err.Error(),
+			})
+			return
+		}
+	} else {
+		args = make(map[string]interface{})
+	}
+
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s)", msg.From, payload.ToolName, mcpName)
+
+	// 调用 MCP 内部工具（通过注入的函数）
+	if MCPCallInnerTools == nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: MCPCallInnerTools not initialized")
+		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     "MCP bridge not initialized",
+		})
+		return
+	}
+	result := MCPCallInnerTools(mcpName, args)
+
+	// 发送结果
+	b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		RequestID: msg.ID,
+		Success:   true,
+		Result:    result,
+	})
+}
+
+// buildToolDefs 构建 UAP 工具定义列表和映射表
+// 从 MCP 已注册的 LLMTool 定义中提取，转换为 UAP ToolDef 格式
+func buildToolDefs() ([]uap.ToolDef, map[string]string) {
+	toolMapping := make(map[string]string) // UAP name → MCP callback name
+
+	// 从注入的 MCP 工具定义获取完整参数信息
+	mcpToolMap := make(map[string]MCPToolInfo)
+	if MCPGetToolInfos != nil {
+		for _, t := range MCPGetToolInfos() {
+			mcpToolMap[t.Name] = t
+		}
+	}
+
+	// 24 个核心工具的映射定义
+	entries := []struct {
+		uapName string
+		mcpName string
+		desc    string // 覆盖描述（空则使用 MCP 原始描述）
+	}{
+		// Blog
+		{"blog.GetBlogs", "RawAllBlogName", "获取博客列表"},
+		{"blog.GetBlog", "RawGetBlogData", "获取博客内容"},
+		{"blog.CreateBlog", "RawCreateBlog", "创建博客"},
+		{"blog.SearchBlog", "RawSearchBlogContent", "搜索博客内容"},
+		// TodoList
+		{"todolist.GetTodos", "RawGetTodosByDate", "获取指定日期的待办列表"},
+		{"todolist.CreateTodo", "RawAddTodo", "创建待办事项"},
+		{"todolist.ToggleTodo", "RawToggleTodo", "切换待办完成状态"},
+		{"todolist.DeleteTodo", "RawDeleteTodo", "删除待办事项"},
+		// Exercise
+		{"exercise.GetRecords", "RawGetExerciseByDate", "获取指定日期运动记录"},
+		{"exercise.AddRecord", "RawAddExercise", "添加运动记录"},
+		{"exercise.GetStats", "RawGetExerciseStats", "获取运动统计数据"},
+		// Reading
+		{"reading.GetBooks", "RawGetAllBooks", "获取阅读书籍列表"},
+		{"reading.UpdateProgress", "RawUpdateReadingProgress", "更新阅读进度"},
+		// Reminder
+		{"reminder.Create", "CreateReminder", "创建定时提醒"},
+		{"reminder.List", "ListReminders", "列出所有提醒"},
+		{"reminder.Delete", "DeleteReminder", "删除提醒"},
+		// Notification
+		{"notification.Send", "SendNotification", "发送通知"},
+		// Report
+		{"report.Generate", "GenerateReport", "生成报告(日报/周报/月报)"},
+		// Model
+		{"model.Switch", "SwitchModel", "切换LLM模型"},
+		{"model.GetCurrent", "GetCurrentModel", "获取当前模型信息"},
+		// CodeGen
+		{"codegen.ListProjects", "CodegenListProjects", "列出编码项目"},
+		{"codegen.StartSession", "CodegenStartSession", "启动编码会话"},
+		{"codegen.GetStatus", "CodegenGetStatus", "查看编码状态"},
+		{"codegen.StopSession", "CodegenStopSession", "停止编码会话"},
+	}
+
+	var toolDefs []uap.ToolDef
+
+	for _, e := range entries {
+		toolMapping[e.uapName] = e.mcpName
+
+		// 从 MCP 工具定义获取参数 schema
+		desc := e.desc
+		var params interface{}
+		if mcpTool, ok := mcpToolMap[e.mcpName]; ok {
+			if desc == "" {
+				desc = mcpTool.Description
+			}
+			params = mcpTool.Parameters
+		} else {
+			// MCP 中没有该工具的定义（如 codegen 工具由 agent 包动态注册）
+			// 使用空参数 schema
+			params = map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			}
+		}
+
+		// 序列化参数为 json.RawMessage
+		paramsJSON, err := json.Marshal(params)
+		if err != nil {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to marshal params for %s: %v", e.uapName, err)
+			paramsJSON = []byte(`{"type":"object","properties":{}}`)
+		}
+
+		toolDefs = append(toolDefs, uap.ToolDef{
+			Name:        e.uapName,
+			Description: desc,
+			Parameters:  json.RawMessage(paramsJSON),
+		})
+	}
+
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: built %d tool definitions for UAP registration", len(toolDefs))
+	return toolDefs, toolMapping
 }
