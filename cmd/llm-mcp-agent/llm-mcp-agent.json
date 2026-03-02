@@ -2,7 +2,7 @@
   "gateway_url": "ws://127.0.0.1:9000/ws/uap",
   "gateway_http": "http://127.0.0.1:9000",
   "auth_token": "",
-  "agent_id": "llm-mcp",
+  "agent_id": "llm-mcp-agent",
   "agent_name": "LLM MCP Agent",
   "llm": {
     "api_key": "sk-77c3be5eef604cfa91d01da2fb0c299c",

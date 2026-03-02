@@ -88,10 +88,10 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 		return http.StatusInternalServerError
 	}
 	account := auth.GetAccountBySession(session.Value)
-	log.InfoF(log.ModuleLLM, "Processing query with streaming LLM: account=%s %s", account, userQuery)
-	err = ProcessQueryStreaming(account, userQuery, request.Tools, w, flusher)
+	log.InfoF(log.ModuleLLM, "Processing query via llm-mcp-agent: account=%s %s", account, userQuery)
+	err = ProcessRequestViaAgent(account, userQuery, request.Tools, w, flusher)
 	if err != nil {
-		log.ErrorF(log.ModuleLLM, "Streaming ProcessQuery failed: %v", err)
+		log.ErrorF(log.ModuleLLM, "Agent ProcessQuery failed: %v", err)
 		fmt.Fprintf(w, "data: Error processing query: %v\n\n", err)
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
@@ -102,7 +102,7 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	log.Debug(log.ModuleLLM, "=== Assistant Chat Request Completed (MCP Mode) ===")
+	log.Debug(log.ModuleLLM, "=== Assistant Chat Request Completed (Agent Mode) ===")
 
 	return http.StatusOK
 }

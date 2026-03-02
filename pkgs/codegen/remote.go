@@ -875,16 +875,47 @@ func (p *AgentPool) findOnlineAgentByName(name string) *RemoteAgent {
 	return nil
 }
 
-// removeAgent 移除 agent
+// removeAgent 移除 agent，并将其活跃 session 标记为 error
 func (p *AgentPool) removeAgent(agentID string) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if agent, ok := p.agents[agentID]; ok {
-		agent.mu.Lock()
-		agent.Status = "offline"
-		agent.mu.Unlock()
-		delete(p.agents, agentID)
-		log.MessageF(log.ModuleAgent, "CodeGen: agent disconnected: %s", agentID)
+	agent, ok := p.agents[agentID]
+	if !ok {
+		p.mu.Unlock()
+		return
+	}
+
+	agent.mu.Lock()
+	agent.Status = "offline"
+	// 收集活跃 session ID
+	activeSessions := make([]string, 0, len(agent.ActiveSessions))
+	for sid := range agent.ActiveSessions {
+		activeSessions = append(activeSessions, sid)
+	}
+	agent.mu.Unlock()
+
+	delete(p.agents, agentID)
+	p.mu.Unlock()
+
+	log.MessageF(log.ModuleAgent, "CodeGen: agent disconnected: %s, active sessions: %d", agentID, len(activeSessions))
+
+	// 通知所有活跃 session：agent 已离线
+	for _, sid := range activeSessions {
+		if session := GetSession(sid); session != nil {
+			session.mu.Lock()
+			if session.Status == StatusRunning {
+				session.Status = StatusError
+				session.Error = "agent disconnected: " + agentID
+				session.EndTime = time.Now()
+				session.mu.Unlock()
+				session.broadcast(StreamEvent{
+					Type: "error",
+					Text: "Agent 已离线，任务中断",
+					Done: true,
+				})
+			} else {
+				session.mu.Unlock()
+			}
+		}
 	}
 }
 
@@ -898,21 +929,23 @@ func (p *AgentPool) CleanupLoop() {
 }
 
 func (p *AgentPool) cleanupStaleAgents() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
+	// 先收集超时的 agent ID
+	p.mu.RLock()
+	var staleIDs []string
 	now := time.Now()
 	for id, agent := range p.agents {
 		agent.mu.Lock()
 		if now.Sub(agent.LastHeartbeat) > 45*time.Second {
-			agent.Status = "offline"
-			if agent.Conn != nil {
-				agent.Conn.Close()
-			}
-			delete(p.agents, id)
-			log.WarnF(log.ModuleAgent, "CodeGen: agent %s timed out, removed", id)
+			staleIDs = append(staleIDs, id)
 		}
 		agent.mu.Unlock()
+	}
+	p.mu.RUnlock()
+
+	// 逐个移除（removeAgent 内部会加锁并通知 session）
+	for _, id := range staleIDs {
+		log.WarnF(log.ModuleAgent, "CodeGen: agent %s timed out", id)
+		p.removeAgent(id)
 	}
 }
 

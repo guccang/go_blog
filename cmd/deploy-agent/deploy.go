@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -224,16 +225,17 @@ func (d *Deployer) localUnzip(zipPath, targetDir string) error {
 
 // runLocalScript 执行本地脚本（自动适配 .bat/.sh）
 // 对于 Unix 系统，优先使用 setsid 创建新会话，使脚本中启动的后台进程与 deploy-agent 完全分离
+// macOS 没有 setsid，改用 Setpgid 将脚本放入新进程组，避免 deploy-agent 退出时信号传播到子进程
 func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
 	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
 		return d.runLocalCmd("cmd", []string{"/c", scriptPath}, workDir)
 	}
-	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行，
-	// 与远程部署的 runPublishCmd 保持一致的进程分离行为
+	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行
 	if setsid, err := exec.LookPath("setsid"); err == nil {
 		return d.runLocalCmd(setsid, []string{"bash", scriptPath}, workDir)
 	}
-	return d.runLocalCmd("bash", []string{scriptPath}, workDir)
+	// macOS fallback: 用 Setpgid 创建新进程组，防止信号传播
+	return d.runLocalCmdDetached("bash", []string{scriptPath}, workDir)
 }
 
 // copyFile 本地文件复制
@@ -436,6 +438,29 @@ func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	if dir != "" {
+		cmd.Dir = dir
+	}
+
+	err := cmd.Run()
+	elapsed := time.Since(start)
+	if err != nil {
+		return fmt.Errorf("%s failed (%.1fs): %v", name, elapsed.Seconds(), err)
+	}
+	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
+	return nil
+}
+
+// runLocalCmdDetached 在新进程组中执行本地命令（macOS 兼容）
+// 设置 Setpgid=true 使子进程脱离当前进程组，deploy-agent 退出时不会向其发送信号
+func (d *Deployer) runLocalCmdDetached(name string, args []string, dir string) error {
+	start := time.Now()
+	d.logf("info", "  > %s %s (detached)\n", name, strings.Join(args, " "))
+
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if dir != "" {
 		cmd.Dir = dir
 	}

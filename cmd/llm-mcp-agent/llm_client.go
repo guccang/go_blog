@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -130,4 +132,146 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 
 	choice := llmResp.Choices[0]
 	return choice.Message.Content, choice.Message.ToolCalls, nil
+}
+
+// SendStreamingLLMRequest 发送流式 LLM 请求，逐 chunk 回调 onChunk，同时检测 tool_call
+func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	reqBody := struct {
+		Model       string    `json:"model"`
+		Messages    []Message `json:"messages"`
+		Tools       []LLMTool `json:"tools,omitempty"`
+		MaxTokens   int       `json:"max_tokens,omitempty"`
+		Temperature float64   `json:"temperature,omitempty"`
+		Stream      bool      `json:"stream"`
+	}{
+		Model:       cfg.Model,
+		Messages:    messages,
+		MaxTokens:   cfg.MaxTokens,
+		Temperature: cfg.Temperature,
+		Stream:      true,
+	}
+	if len(tools) > 0 {
+		reqBody.Tools = tools
+	}
+
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal request: %v", err)
+	}
+
+	apiURL := fmt.Sprintf("%s/chat/completions", cfg.BaseURL)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(data))
+	if err != nil {
+		return "", nil, fmt.Errorf("create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.APIKey))
+
+	client := &http.Client{Timeout: 180 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("http request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", nil, fmt.Errorf("API error status=%d: %s", resp.StatusCode, string(body))
+	}
+
+	return parseStreamingResponse(resp.Body, onChunk)
+}
+
+// parseStreamingResponse 解析 SSE 流式响应，提取文本和 tool_calls
+func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []ToolCall, error) {
+	scanner := bufio.NewScanner(body)
+	// 增大 buffer 以处理大 chunk
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	var fullText strings.Builder
+	var toolCalls []ToolCall
+	// 用于累积 tool_call 的增量数据
+	toolCallBuilders := make(map[int]*ToolCall)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content   string                   `json:"content"`
+					ToolCalls []map[string]interface{} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+
+		delta := chunk.Choices[0].Delta
+
+		// 文本 chunk
+		if delta.Content != "" {
+			fullText.WriteString(delta.Content)
+			if onChunk != nil {
+				onChunk(delta.Content)
+			}
+		}
+
+		// tool_call 增量
+		for _, tcRaw := range delta.ToolCalls {
+			idx := 0
+			if idxF, ok := tcRaw["index"].(float64); ok {
+				idx = int(idxF)
+			}
+
+			tc, exists := toolCallBuilders[idx]
+			if !exists {
+				tc = &ToolCall{}
+				toolCallBuilders[idx] = tc
+			}
+
+			if id, ok := tcRaw["id"].(string); ok {
+				tc.ID = id
+			}
+			if t, ok := tcRaw["type"].(string); ok {
+				tc.Type = t
+			}
+			if fn, ok := tcRaw["function"].(map[string]interface{}); ok {
+				if name, ok := fn["name"].(string); ok {
+					tc.Function.Name = name
+				}
+				if args, ok := fn["arguments"].(string); ok {
+					tc.Function.Arguments += args
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", nil, fmt.Errorf("read stream: %v", err)
+	}
+
+	// 收集完整的 tool_calls
+	for i := 0; i < len(toolCallBuilders); i++ {
+		if tc, ok := toolCallBuilders[i]; ok && tc.ID != "" {
+			toolCalls = append(toolCalls, *tc)
+		}
+	}
+
+	return fullText.String(), toolCalls, nil
 }

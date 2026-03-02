@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -29,6 +30,8 @@ func (r *Registry) SetServer(server *uap.Server) {
 	}
 	server.OnAgentOffline = func(agent *uap.AgentConn) {
 		log.Printf("[Registry] agent offline: %s (type=%s, name=%s)", agent.ID, agent.AgentType, agent.Name)
+		// 广播 agent_offline 通知给所有其他在线 agent，使其立即移除离线 agent
+		r.broadcastAgentOffline(agent)
 	}
 }
 
@@ -74,5 +77,34 @@ func (r *Registry) GetAgentsByType(agentType string) []*uap.AgentConn {
 func (r *Registry) StartHealthCheck(timeout time.Duration) {
 	if r.server != nil {
 		r.server.StartHealthCheck(timeout)
+	}
+}
+
+// broadcastAgentOffline 向所有其他在线 agent 广播某 agent 离线通知
+func (r *Registry) broadcastAgentOffline(offlineAgent *uap.AgentConn) {
+	if r.server == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{
+		"event":      "agent_offline",
+		"agent_id":   offlineAgent.ID,
+		"agent_type": offlineAgent.AgentType,
+		"agent_name": offlineAgent.Name,
+	})
+	agents := r.server.GetAllAgents()
+	for _, a := range agents {
+		id, _ := a["agent_id"].(string)
+		if id == "" || id == offlineAgent.ID {
+			continue
+		}
+		err := r.server.SendToAgent(id, &uap.Message{
+			Type:    uap.MsgNotify,
+			From:    "gateway",
+			To:      id,
+			Payload: payload,
+		})
+		if err != nil {
+			log.Printf("[Registry] failed to notify %s about agent_offline: %v", id, err)
+		}
 	}
 }

@@ -274,6 +274,24 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			}
 		}
 
+	case uap.MsgTaskAssign:
+		var taskPayload uap.TaskAssignPayload
+		if err := json.Unmarshal(msg.Payload, &taskPayload); err != nil {
+			log.Printf("[Bridge] invalid task_assign payload: %v", err)
+			return
+		}
+		// 解析内部 payload
+		var assistantPayload AssistantTaskPayload
+		if err := json.Unmarshal(taskPayload.Payload, &assistantPayload); err != nil {
+			log.Printf("[Bridge] invalid assistant task payload: %v", err)
+			return
+		}
+		if assistantPayload.TaskType == "assistant_chat" {
+			go b.handleAssistantTask(taskPayload.TaskID, &assistantPayload)
+		} else {
+			log.Printf("[Bridge] unknown task_type: %s", assistantPayload.TaskType)
+		}
+
 	default:
 		log.Printf("[Bridge] unhandled message type: %s from %s", msg.Type, msg.From)
 	}

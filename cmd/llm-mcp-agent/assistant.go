@@ -1,0 +1,222 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	"uap"
+)
+
+// AssistantTaskPayload assistant_chat 任务的 payload
+type AssistantTaskPayload struct {
+	TaskType      string   `json:"task_type"`       // "assistant_chat"
+	Messages      []Message `json:"messages"`        // 对话历史（仅含最后一条 user 消息）
+	SelectedTools []string `json:"selected_tools"`  // 用户选择的工具
+	Account       string   `json:"account"`         // 用户账号
+	Query         string   `json:"query"`           // 用户问题
+}
+
+// AssistantEventPayload MsgTaskEvent 的事件数据
+type AssistantEventPayload struct {
+	Event string `json:"event"` // "chunk" | "tool_info"
+	Text  string `json:"text"`
+}
+
+// handleAssistantTask 处理 assistant_chat 任务：流式 LLM + 工具调用循环
+func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayload) {
+	log.Printf("[Assistant] task=%s account=%s query=%s", taskID, payload.Account, payload.Query)
+
+	// 发送 task_accepted
+	b.client.Send(&uap.Message{
+		Type: uap.MsgTaskAccepted,
+		ID:   uap.NewMsgID(),
+		From: b.cfg.AgentID,
+		To:   "go_blog",
+		Payload: mustMarshal(uap.TaskAcceptedPayload{
+			TaskID: taskID,
+		}),
+		Ts: time.Now().UnixMilli(),
+	})
+
+	// 构建 system prompt
+	systemPrompt := b.buildAssistantSystemPrompt(payload.Account)
+
+	// 初始化消息列表
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: payload.Query},
+	}
+
+	// 获取工具列表
+	tools := b.getLLMTools()
+
+	// 发送工具数量信息
+	toolCountMsg := fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(tools))
+	b.sendTaskEvent(taskID, "tool_info", toolCountMsg)
+
+	// 工具调用循环
+	maxIter := b.cfg.MaxToolIterations
+	if maxIter <= 0 {
+		maxIter = 15
+	}
+
+	var finalErr error
+
+	for i := 0; i < maxIter; i++ {
+		log.Printf("[Assistant] iteration %d/%d, messages=%d", i+1, maxIter, len(messages))
+
+		// 流式 LLM 请求，每个 chunk 通过 MsgTaskEvent 发回
+		text, toolCalls, err := SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, func(chunk string) {
+			b.sendTaskEvent(taskID, "chunk", chunk)
+		})
+		if err != nil {
+			log.Printf("[Assistant] LLM error: %v", err)
+			finalErr = err
+			// 发送错误信息给前端
+			b.sendTaskEvent(taskID, "chunk", fmt.Sprintf("\n\n抱歉，AI 服务暂时不可用: %v", err))
+			break
+		}
+
+		// 无工具调用 → 对话结束
+		if len(toolCalls) == 0 {
+			break
+		}
+
+		// 有工具调用 → 追加 assistant 消息
+		messages = append(messages, Message{
+			Role:      "assistant",
+			Content:   text,
+			ToolCalls: toolCalls,
+		})
+
+		// 执行每个工具调用
+		for _, tc := range toolCalls {
+			originalName := unsanitizeToolName(tc.Function.Name)
+
+			// 发送工具调用状态
+			toolInfoMsg := fmt.Sprintf("[Calling tool %s with args %s]", originalName, tc.Function.Arguments)
+			b.sendTaskEvent(taskID, "tool_info", toolInfoMsg)
+
+			log.Printf("[Assistant] tool_call: %s args=%s", originalName, tc.Function.Arguments)
+
+			result, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			if err != nil {
+				log.Printf("[Assistant] tool_call %s failed: %v", originalName, err)
+				result = fmt.Sprintf("工具调用失败: %v", err)
+			}
+
+			// 追加 tool 消息
+			messages = append(messages, Message{
+				Role:       "tool",
+				Content:    result,
+				ToolCallID: tc.ID,
+			})
+		}
+
+		// 最后一次迭代
+		if i == maxIter-1 {
+			b.sendTaskEvent(taskID, "chunk", "\n\n抱歉，处理过程过于复杂，请尝试简化您的请求。")
+		}
+	}
+
+	// 发送 task_complete
+	status := "success"
+	errMsg := ""
+	if finalErr != nil {
+		status = "failed"
+		errMsg = finalErr.Error()
+	}
+
+	b.client.Send(&uap.Message{
+		Type: uap.MsgTaskComplete,
+		ID:   uap.NewMsgID(),
+		From: b.cfg.AgentID,
+		To:   "go_blog",
+		Payload: mustMarshal(uap.TaskCompletePayload{
+			TaskID: taskID,
+			Status: status,
+			Error:  errMsg,
+		}),
+		Ts: time.Now().UnixMilli(),
+	})
+
+	log.Printf("[Assistant] task=%s completed status=%s", taskID, status)
+}
+
+// sendTaskEvent 发送任务进度事件
+func (b *Bridge) sendTaskEvent(taskID, event, text string) {
+	eventData := mustMarshal(AssistantEventPayload{
+		Event: event,
+		Text:  text,
+	})
+
+	b.client.Send(&uap.Message{
+		Type: uap.MsgTaskEvent,
+		ID:   uap.NewMsgID(),
+		From: b.cfg.AgentID,
+		To:   "go_blog",
+		Payload: mustMarshal(uap.TaskEventPayload{
+			TaskID: taskID,
+			Event:  json.RawMessage(eventData),
+		}),
+		Ts: time.Now().UnixMilli(),
+	})
+}
+
+// buildAssistantSystemPrompt 构建 assistant 的系统提示（复用 chat.go 的上下文获取逻辑）
+func (b *Bridge) buildAssistantSystemPrompt(account string) string {
+	var sb strings.Builder
+	sb.WriteString(b.cfg.SystemPromptPrefix)
+	sb.WriteString("\n\n")
+
+	today := time.Now().Format("2006-01-02")
+	sb.WriteString(fmt.Sprintf("当前用户: %s\n", account))
+	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
+
+	// 复用 chat.go 的并发上下文获取
+	type ctxResult struct {
+		label string
+		data  string
+	}
+
+	ch := make(chan ctxResult, 2)
+	done := make(chan struct{}, 2)
+
+	go func() {
+		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+		data, err := b.callToolWithTimeout("todolist.GetTodos", args, 3*time.Second)
+		if err == nil && data != "" {
+			ch <- ctxResult{label: "今日待办", data: data}
+		}
+		done <- struct{}{}
+	}()
+
+	go func() {
+		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+		data, err := b.callToolWithTimeout("exercise.GetRecords", args, 3*time.Second)
+		if err == nil && data != "" {
+			ch <- ctxResult{label: "今日运动", data: data}
+		}
+		done <- struct{}{}
+	}()
+
+	// 等待两个 goroutine 完成
+	<-done
+	<-done
+	close(ch)
+
+	var ctxParts []string
+	for r := range ch {
+		ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
+	}
+
+	if len(ctxParts) > 0 {
+		sb.WriteString("\n用户当前数据:\n")
+		sb.WriteString(strings.Join(ctxParts, "\n\n"))
+	}
+
+	return sb.String()
+}

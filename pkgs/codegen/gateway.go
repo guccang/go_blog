@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	log "mylog"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,16 +38,30 @@ func (s *GatewaySender) SendAgentMsg(msgType string, payload interface{}) error 
 	return s.client.SendTo(s.toAgentID, msgType, payload)
 }
 
+// TaskEvent assistant 任务事件（投递给监听者）
+type TaskEvent struct {
+	Event    string // "chunk" | "tool_info" | "complete" | "error"
+	Text     string
+	TaskID   string
+	Complete bool   // 是否为最终事件
+	Error    string // 仅 complete 时有效
+}
+
 // GatewayBridge go_blog 的 gateway 适配层
 type GatewayBridge struct {
-	client *uap.Client
-	pool   *AgentPool
+	client     *uap.Client
+	pool       *AgentPool
+	gatewayHTTP string // gateway HTTP 地址（如 http://127.0.0.1:9000）
 
 	// wechat notify 处理器
 	wechatHandler func(wechatUser, message string) string
 
 	// UAP tool_name → MCP callback name 映射
 	toolMapping map[string]string
+
+	// assistant 任务事件通道（taskID → event channel）
+	taskEventChannels map[string]chan TaskEvent
+	taskEventMu       sync.Mutex
 
 	mu sync.Mutex
 }
@@ -66,10 +82,20 @@ func InitGatewayBridge(gatewayURL, authToken string) {
 		"role": "backend",
 	}
 
+	// 从 WebSocket URL 推导 HTTP URL（ws://host:port/ws/uap → http://host:port）
+	httpURL := gatewayURL
+	httpURL = strings.Replace(httpURL, "wss://", "https://", 1)
+	httpURL = strings.Replace(httpURL, "ws://", "http://", 1)
+	if idx := strings.Index(httpURL, "/ws/"); idx > 0 {
+		httpURL = httpURL[:idx]
+	}
+
 	bridge := &GatewayBridge{
-		client:      client,
-		pool:        agentPool,
-		toolMapping: toolMapping,
+		client:            client,
+		pool:              agentPool,
+		gatewayHTTP:       httpURL,
+		toolMapping:       toolMapping,
+		taskEventChannels: make(map[string]chan TaskEvent),
 	}
 
 	client.OnMessage = bridge.handleMessage
@@ -111,18 +137,28 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 		b.handleHeartbeat(msg)
 
 	case MsgTaskAccepted:
-		var payload TaskAcceptedPayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		// 兼容 codegen 协议（SessionID）和 UAP 协议（TaskID）
+		var raw struct {
+			SessionID string `json:"session_id"`
+			TaskID    string `json:"task_id"`
+		}
+		if err := json.Unmarshal(msg.Payload, &raw); err != nil {
 			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid task_accepted payload: %v", err)
 			return
 		}
-		agent := b.getAgent(msg.From)
-		if agent != nil {
-			agent.mu.Lock()
-			agent.ActiveSessions[payload.SessionID] = true
-			agent.mu.Unlock()
+		if raw.SessionID != "" {
+			// codegen agent
+			agent := b.getAgent(msg.From)
+			if agent != nil {
+				agent.mu.Lock()
+				agent.ActiveSessions[raw.SessionID] = true
+				agent.mu.Unlock()
+			}
+			log.MessageF(log.ModuleAgent, "CodeGen: gateway agent %s accepted task %s", msg.From, raw.SessionID)
+		} else if raw.TaskID != "" {
+			// llm-mcp-agent assistant 任务
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: llm-mcp-agent accepted task %s", raw.TaskID)
 		}
-		log.MessageF(log.ModuleAgent, "CodeGen: gateway agent %s accepted task %s", msg.From, payload.SessionID)
 
 	case MsgTaskRejected:
 		var payload TaskRejectedPayload
@@ -157,16 +193,42 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 		b.forwardToWechatAgents(msg)
 
 	case MsgTaskComplete:
-		var payload TaskCompletePayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		// 兼容 codegen 协议（SessionID）和 UAP 协议（TaskID）
+		var raw struct {
+			SessionID string `json:"session_id"`
+			TaskID    string `json:"task_id"`
+			Status    string `json:"status"`
+			Error     string `json:"error"`
+		}
+		if err := json.Unmarshal(msg.Payload, &raw); err != nil {
 			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid task_complete payload: %v", err)
 			return
 		}
-		agent := b.getAgent(msg.From)
-		b.pool.handleTaskComplete(agent, &payload)
-
-		// 转发 task_complete 给所有 wechat-agent
-		b.forwardToWechatAgents(msg)
+		if raw.TaskID != "" {
+			// llm-mcp-agent assistant 任务完成 → 投递到 taskEventChannels
+			b.taskEventMu.Lock()
+			ch, ok := b.taskEventChannels[raw.TaskID]
+			b.taskEventMu.Unlock()
+			if ok {
+				select {
+				case ch <- TaskEvent{
+					Event:    "complete",
+					TaskID:   raw.TaskID,
+					Complete: true,
+					Error:    raw.Error,
+				}:
+				default:
+				}
+			}
+		}
+		if raw.SessionID != "" {
+			// codegen agent 任务完成
+			var payload TaskCompletePayload
+			json.Unmarshal(msg.Payload, &payload)
+			agent := b.getAgent(msg.From)
+			b.pool.handleTaskComplete(agent, &payload)
+			b.forwardToWechatAgents(msg)
+		}
 
 	case MsgFileReadResp, MsgTreeReadResp, MsgProjectCreateResp:
 		var base struct {
@@ -185,6 +247,53 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 
 	case uap.MsgToolCall:
 		go b.handleToolCall(msg) // 异步处理，避免阻塞消息循环
+
+	case uap.MsgError:
+		var payload uap.ErrorPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid error payload: %v", err)
+			return
+		}
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: error from %s: [%s] %s", msg.From, payload.Code, payload.Message)
+
+		// agent_offline: 释放对应的 pending 请求
+		if payload.Code == "agent_offline" && msg.ID != "" {
+			b.pool.pendMu.Lock()
+			if ch, ok := b.pool.pending[msg.ID]; ok {
+				close(ch)
+				delete(b.pool.pending, msg.ID)
+			}
+			b.pool.pendMu.Unlock()
+		}
+
+	case uap.MsgTaskEvent:
+		// llm-mcp-agent 发来的 assistant 任务进度事件
+		var taskEventPayload uap.TaskEventPayload
+		if err := json.Unmarshal(msg.Payload, &taskEventPayload); err != nil {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid uap task_event payload: %v", err)
+			return
+		}
+		// 解析内部事件
+		var evt struct {
+			Event string `json:"event"`
+			Text  string `json:"text"`
+		}
+		if err := json.Unmarshal(taskEventPayload.Event, &evt); err != nil {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid assistant event data: %v", err)
+			return
+		}
+		// 投递到 pending channel
+		b.taskEventMu.Lock()
+		ch, ok := b.taskEventChannels[taskEventPayload.TaskID]
+		b.taskEventMu.Unlock()
+		if ok {
+			select {
+			case ch <- TaskEvent{Event: evt.Event, Text: evt.Text, TaskID: taskEventPayload.TaskID}:
+			default:
+				// channel 满了，丢弃（不阻塞消息循环）
+				log.WarnF(log.ModuleAgent, "CodeGen gateway: task event channel full, dropping event for task %s", taskEventPayload.TaskID)
+			}
+		}
 
 	default:
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: unhandled message type=%s from=%s", msg.Type, msg.From)
@@ -289,8 +398,22 @@ func (b *GatewayBridge) handleHeartbeat(msg *uap.Message) {
 	b.client.SendTo(msg.From, MsgHeartbeatAck, struct{}{})
 }
 
-// handleNotify 处理通知消息（来自 wechat-agent）
+// handleNotify 处理通知消息（来自 gateway 或 wechat-agent）
 func (b *GatewayBridge) handleNotify(msg *uap.Message) {
+	// 先尝试解析为通用事件（gateway 广播的 agent_offline 等）
+	var event struct {
+		Event     string `json:"event"`
+		AgentID   string `json:"agent_id"`
+		AgentType string `json:"agent_type"`
+		AgentName string `json:"agent_name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &event); err == nil && event.Event == "agent_offline" {
+		log.MessageF(log.ModuleAgent, "CodeGen gateway: agent offline notification: %s (%s)", event.AgentID, event.AgentName)
+		b.pool.removeAgent(event.AgentID)
+		return
+	}
+
+	// 解析为 NotifyPayload（wechat 等）
 	var payload uap.NotifyPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid notify payload: %v", err)
@@ -497,4 +620,94 @@ func buildToolDefs() ([]uap.ToolDef, map[string]string) {
 
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: built %d tool definitions for UAP registration", len(toolDefs))
 	return toolDefs, toolMapping
+}
+
+// ========================= Assistant 任务桥接 =========================
+
+// SendTaskToLLMAgent 发送 MsgTaskAssign 给 llm-mcp-agent
+func SendTaskToLLMAgent(taskID string, payload interface{}) error {
+	if gatewayBridge == nil || gatewayBridge.client == nil {
+		return fmt.Errorf("gateway bridge not initialized")
+	}
+
+	// 动态查找 llm_mcp 类型的 agent ID
+	agentID := findLLMAgentID()
+	if agentID == "" {
+		return fmt.Errorf("llm-mcp-agent not found")
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %v", err)
+	}
+
+	return gatewayBridge.client.SendTo(agentID, uap.MsgTaskAssign, uap.TaskAssignPayload{
+		TaskID:  taskID,
+		Payload: json.RawMessage(payloadJSON),
+	})
+}
+
+// RegisterTaskListener 注册任务事件监听器，返回事件 channel
+func RegisterTaskListener(taskID string) chan TaskEvent {
+	if gatewayBridge == nil {
+		return nil
+	}
+	ch := make(chan TaskEvent, 1024) // 足够大的 buffer 避免丢事件
+	gatewayBridge.taskEventMu.Lock()
+	gatewayBridge.taskEventChannels[taskID] = ch
+	gatewayBridge.taskEventMu.Unlock()
+	return ch
+}
+
+// UnregisterTaskListener 注销任务事件监听器
+func UnregisterTaskListener(taskID string) {
+	if gatewayBridge == nil {
+		return
+	}
+	gatewayBridge.taskEventMu.Lock()
+	delete(gatewayBridge.taskEventChannels, taskID)
+	gatewayBridge.taskEventMu.Unlock()
+}
+
+// IsLLMAgentOnline 检查 llm-mcp-agent 是否在线
+func IsLLMAgentOnline() bool {
+	return findLLMAgentID() != ""
+}
+
+// findLLMAgentID 通过 gateway HTTP API 查找 llm_mcp 类型的 agent ID
+func findLLMAgentID() string {
+	if gatewayBridge == nil || gatewayBridge.gatewayHTTP == "" {
+		return ""
+	}
+	if !gatewayBridge.client.IsConnected() {
+		return ""
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(gatewayBridge.gatewayHTTP + "/api/gateway/agents")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Agents []struct {
+			AgentID   string `json:"agent_id"`
+			AgentType string `json:"agent_type"`
+		} `json:"agents"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ""
+	}
+	if !result.Success {
+		return ""
+	}
+
+	for _, a := range result.Agents {
+		if a.AgentType == "llm_mcp" {
+			return a.AgentID
+		}
+	}
+	return ""
 }
