@@ -23,7 +23,7 @@ import (
 	"todolist"
 	"tools"
 	"view"
-	"wechat"
+	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
 	"yearplan"
 )
 
@@ -339,8 +339,8 @@ func Init() int {
 	h.HandleFunc("/api/agent/status", HandleAgentStatus)
 	h.HandleFunc("/ws/agent/notifications", HandleAgentWebSocket)
 
-	// WeChat Work bot callback
-	h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
+	// [Phase 1] WeChat callback 已迁移至独立 wechat-agent
+	// h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
 
 	// CodeGen routes
 	h.HandleFunc("/codegen", HandleCodeGen)

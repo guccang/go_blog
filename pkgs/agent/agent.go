@@ -56,17 +56,15 @@ func Init(account string) {
 		// 初始化邮件模块
 		email.InitEmailConfig()
 
-		// 初始化企业微信模块
-		wechat.InitWechatConfig()
-		wechat.SetCommandHandler(handleWechatCommand)
+		// [Phase 1] 微信模块已迁移至独立 wechat-agent，不再在 go_blog 中初始化
+		// wechat.InitWechatConfig()
+		// wechat.SetCommandHandler(handleWechatCommand)
 
 		// 初始化编码助手模块
 		codegen.Init()
 
-		// 初始化 CodeGen 微信桥接
-		codegen.InitWeChatBridge(func(toUser, content string) error {
-			return wechat.SendAppMessage(toUser, content)
-		})
+		// [Phase 1] CodeGen 微信桥接已迁移至 wechat-agent
+		// codegen.InitWeChatBridge(...)
 
 		// 初始化报告生成器
 		InitReportGenerator(account)
