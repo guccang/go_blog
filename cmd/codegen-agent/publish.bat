@@ -5,17 +5,16 @@
 
 echo 停止 codegen-agent...
 taskkill /F /IM codegen-agent.exe 2>nul
-ping -n 3 127.0.0.1 >nul
 
 echo 启动 codegen-agent...
-start "" /B cmd /c "codegen-agent.exe -config agent.conf >codegen-agent.log 2>&1"
+start "codegen-agent" cmd /c "codegen-agent.exe -config agent.conf"
+
 ping -n 3 127.0.0.1 >nul
 
 tasklist /FI "IMAGENAME eq codegen-agent.exe" 2>nul | find /I "codegen-agent.exe" >nul
 if %errorlevel%==0 (
     echo codegen-agent 启动成功
 ) else (
-    echo codegen-agent 启动失败
-    type codegen-agent.log
+    echo codegen-agent 启动失败，请检查新窗口中的输出
     exit /b 1
 )

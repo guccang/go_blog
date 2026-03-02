@@ -44,7 +44,7 @@ func InitWeChatBridge(sender SendFunc) {
 }
 
 // StartSessionForWeChat 启动编码会话并订阅通知
-func StartSessionForWeChat(userID, project, prompt, model, tool string, deployOpts ...bool) (string, error) {
+func StartSessionForWeChat(userID, project, prompt, model, tool, agentID string, deployOpts ...bool) (string, error) {
 	if wechatBridge == nil {
 		return "", fmt.Errorf("WeChat bridge not initialized")
 	}
@@ -71,7 +71,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool string, deployOp
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, "", autoDeploy, deployOnly)
+	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly)
 	if err != nil {
 		return "", err
 	}
@@ -223,6 +223,20 @@ func StopSessionForWeChat(userID string) (string, error) {
 func subscribeAndRelay(state *UserSessionState, session *CodeSession) {
 	ch := session.Subscribe()
 	defer session.Unsubscribe(ch)
+
+	// 订阅后立即检查会话是否已结束（防止订阅前事件已广播的竞态）
+	session.mu.Lock()
+	status := session.Status
+	session.mu.Unlock()
+	if status == StatusError || status == StatusDone || status == StatusStopped {
+		sendCompletionSummary(state, session, StreamEvent{Done: true})
+		if wechatBridge != nil {
+			wechatBridge.mu.Lock()
+			delete(wechatBridge.userSessions, state.UserID)
+			wechatBridge.mu.Unlock()
+		}
+		return
+	}
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -498,7 +512,7 @@ func StartDeployJSON(account, project string) string {
 		return `{"success":false,"error":"WeChat bridge not initialized"}`
 	}
 
-	sessionID, err := StartSessionForWeChat(account, project, "deploy", "", "", false, true)
+	sessionID, err := StartSessionForWeChat(account, project, "deploy", "", "", "", false, true)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}

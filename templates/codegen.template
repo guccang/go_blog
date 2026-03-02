@@ -191,6 +191,57 @@
             font-weight: 600;
         }
 
+        /* Agent Group (collapsible) */
+        .agent-group { margin-bottom: 2px; }
+        .agent-group-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-radius: var(--radius);
+            transition: background 0.15s;
+            user-select: none;
+        }
+        .agent-group-header:hover { background: var(--bg-tertiary); }
+        .agent-group-header .arrow {
+            font-size: 10px;
+            transition: transform 0.2s;
+            color: var(--text-muted);
+            display: inline-block;
+        }
+        .agent-group.collapsed .agent-group-header .arrow { transform: rotate(-90deg); }
+        .agent-group-header .grp-count {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: auto;
+        }
+        .agent-group-body { padding-left: 4px; }
+        .agent-group.collapsed .agent-group-body { display: none; }
+        .toggle-btns {
+            display: flex;
+            gap: 4px;
+        }
+        .toggle-btns button {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 3px 7px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.15s;
+            line-height: 1;
+        }
+        .toggle-btns button:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
         /* Main */
         .main {
             display: flex;
@@ -478,10 +529,14 @@
                 <h3>📂 项目</h3>
                 <button class="btn-new" onclick="showNewProjectModal()">+ 新建</button>
             </div>
-            <div style="padding: 6px 8px; border-bottom: 1px solid var(--border);">
+            <div style="padding: 6px 8px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; align-items: center;">
                 <input type="text" id="projectSearch" placeholder="搜索项目..."
                        oninput="filterProjects()"
-                       style="width:100%; background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px; color:var(--text-primary); font-size:12px; outline:none;">
+                       style="flex:1; background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px; color:var(--text-primary); font-size:12px; outline:none;">
+                <div class="toggle-btns">
+                    <button onclick="expandAllAgents()" title="展开全部">▼全</button>
+                    <button onclick="collapseAllAgents()" title="折叠全部">▶全</button>
+                </div>
             </div>
             <div class="project-list" id="projectList">
                 <div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">
@@ -547,11 +602,18 @@
     let cachedRemoteOnly = [];
     let cachedCodingRemote = [];   // 远程项目中支持编码的
     let cachedDeployProjects = []; // 远程项目中支持部署的
+    let cachedAllRemote = [];      // 全部远程项目（用于按 agent 分组）
+    let expandedAgents = new Set(); // 已展开的 agent 组 ID
     let cachedClaudeCodeModels = [];
     let cachedOpenCodeModels = [];
 
-    // 每个项目的会话状态缓存: project -> { sessionId, outputHtml, status, costText }
+    // 每个项目的会话状态缓存: stateKey -> { sessionId, outputHtml, status, costText }
+    // stateKey 格式: 远程项目 "name:agentId", 本地项目 "name"
     let projectStates = {};
+
+    function getStateKey(name, agentId) {
+        return agentId ? name + ':' + agentId : name;
+    }
 
     // 页面加载
     document.addEventListener('DOMContentLoaded', async function() {
@@ -567,10 +629,11 @@
             if (!data.success) return;
             const sessions = data.data.sessions || [];
             for (const s of sessions) {
-                if (!projectStates[s.project]) {
-                    projectStates[s.project] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
+                const key = getStateKey(s.project, s.agent_id);
+                if (!projectStates[key]) {
+                    projectStates[key] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
                 }
-                const state = projectStates[s.project];
+                const state = projectStates[key];
                 // 保留最新的 session
                 if (!state.sessionId || s.status === 'running') {
                     state.sessionId = s.id;
@@ -581,11 +644,12 @@
         } catch (e) { /* ignore */ }
     }
 
-    function getProjectState(project) {
-        if (!projectStates[project]) {
-            projectStates[project] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
+    function getProjectState(project, agentId) {
+        const key = getStateKey(project, agentId);
+        if (!projectStates[key]) {
+            projectStates[key] = { sessionId: null, outputHtml: '', status: 'idle', costText: '' };
         }
-        return projectStates[project];
+        return projectStates[key];
     }
 
     // 加载项目列表
@@ -621,6 +685,7 @@
                 if (!remoteProjectMap[rp.name]) remoteProjectMap[rp.name] = [];
                 remoteProjectMap[rp.name].push(rp);
             });
+            cachedAllRemote = remoteProjects;
 
             // 去重 + 按名称排序（稳定）
             const localNames = new Set(localProjects.map(p => p.name));
@@ -723,8 +788,29 @@
         renderProjects();
     }
 
-    function getProjectStatusIndicator(projectName) {
-        const state = projectStates[projectName];
+    function toggleAgentGroup(groupId) {
+        if (expandedAgents.has(groupId)) {
+            expandedAgents.delete(groupId);
+        } else {
+            expandedAgents.add(groupId);
+        }
+        renderProjects();
+    }
+
+    function expandAllAgents() {
+        expandedAgents.add('__local__');
+        cachedAllRemote.forEach(rp => expandedAgents.add(rp.agent_id));
+        renderProjects();
+    }
+
+    function collapseAllAgents() {
+        expandedAgents.clear();
+        renderProjects();
+    }
+
+    function getProjectStatusIndicator(projectName, agentId) {
+        const key = getStateKey(projectName, agentId);
+        const state = projectStates[key];
         if (!state) return '';
         if (state.status === 'running') {
             return '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:6px;animation:pulse 1.5s infinite;vertical-align:middle;" title="运行中"></span>';
@@ -736,67 +822,113 @@
         const list = document.getElementById('projectList');
         const query = (document.getElementById('projectSearch').value || '').toLowerCase().trim();
 
-        const localFiltered = cachedLocalProjects.filter(p => !query || p.name.toLowerCase().includes(query));
-        const codingRemoteFiltered = cachedCodingRemote.filter(rp => !query || rp.name.toLowerCase().includes(query));
-        const deployFiltered = cachedDeployProjects.filter(rp => !query || rp.name.toLowerCase().includes(query));
+        let groups = [];
 
-        if (localFiltered.length === 0 && codingRemoteFiltered.length === 0 && deployFiltered.length === 0) {
+        // 本地项目组
+        const localFiltered = cachedLocalProjects.filter(p => !query || p.name.toLowerCase().includes(query));
+        if (localFiltered.length > 0) {
+            groups.push({
+                id: '__local__',
+                icon: '💻',
+                name: '本地',
+                count: localFiltered.length,
+                html: localFiltered.map(p => {
+                    const statusDot = getProjectStatusIndicator(p.name);
+                    const state = getProjectState(p.name);
+                    const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                    const isActive = currentProject === p.name && currentMode === 'code' && !currentAgentId;
+                    return `<div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.name}', 'code')">
+                        <div class="name">📁 ${p.name}${statusDot}</div>
+                        <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}${statusMeta}</div>
+                    </div>`;
+                }).join('')
+            });
+        }
+
+        // 远程项目按 agent 分组
+        const codingToolNames = ['claudecode', 'opencode'];
+        let agentMap = new Map();
+
+        cachedAllRemote
+            .filter(rp => !query || rp.name.toLowerCase().includes(query))
+            .forEach(rp => {
+                if (!agentMap.has(rp.agent_id)) {
+                    agentMap.set(rp.agent_id, { name: rp.agent, entries: [] });
+                }
+                const g = agentMap.get(rp.agent_id);
+                const hasCoding = rp.tools && rp.tools.some(t => codingToolNames.includes(t));
+                const hasDeploy = rp.tools && rp.tools.includes('deploy');
+
+                if (hasCoding) {
+                    g.entries.push({ name: rp.name, agent_id: rp.agent_id, mode: 'code', icon: '💻' });
+                }
+                if (hasDeploy) {
+                    g.entries.push({ name: rp.name, agent_id: rp.agent_id, mode: 'deploy', icon: '🚀' });
+                }
+                if (!hasCoding && !hasDeploy) {
+                    g.entries.push({ name: rp.name, agent_id: rp.agent_id, mode: 'code', icon: '📁' });
+                }
+            });
+
+        agentMap.forEach((g, agentId) => {
+            g.entries.sort((a, b) => a.mode.localeCompare(b.mode) || a.name.localeCompare(b.name));
+            const itemsHtml = g.entries.map(e => {
+                const statusDot = getProjectStatusIndicator(e.name, e.agent_id);
+                const state = getProjectState(e.name, e.agent_id);
+                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
+                const isActive = currentProject === e.name && currentAgentId === e.agent_id && currentMode === e.mode;
+                const modeLabel = e.mode === 'deploy' ? '部署' : '编码';
+                return `<div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${e.name}', '${e.mode}', '${e.agent_id}')">
+                    <div class="name">${e.icon} ${e.name}${statusDot}</div>
+                    <div class="meta">${modeLabel}${statusMeta}</div>
+                </div>`;
+            }).join('');
+
+            groups.push({
+                id: agentId,
+                icon: '🖥',
+                name: g.name,
+                count: g.entries.length,
+                html: itemsHtml
+            });
+        });
+
+        if (groups.length === 0) {
             list.innerHTML = query
                 ? '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">未找到匹配项目</div>'
                 : '<div style="padding: 20px; color: var(--text-muted); text-align: center; font-size: 13px;">暂无项目<br>点击 + 新建 创建</div>';
             return;
         }
 
+        // 初次加载时展开第一个组
+        if (expandedAgents.size === 0) {
+            expandedAgents.add(groups[0].id);
+        }
+        // 搜索时展开所有匹配组
+        if (query) {
+            groups.forEach(g => expandedAgents.add(g.id));
+        }
+        // 当前选中项目的组自动展开
+        if (currentAgentId) {
+            expandedAgents.add(currentAgentId);
+        } else if (currentProject && !currentAgentId) {
+            expandedAgents.add('__local__');
+        }
+
         let html = '';
-
-        // 编码项目区域
-        const hasCodingProjects = localFiltered.length > 0 || codingRemoteFiltered.length > 0;
-        if (hasCodingProjects) {
-            html += '<div class="agent-section-header">💻 编码项目</div>';
-            // 本地项目
-            html += localFiltered.map(p => {
-                const agents = remoteProjectMap[p.name] || [];
-                const agentBadge = agents.map(a => `<span class="agent-badge">${a.agent}</span>`).join('');
-                const statusDot = getProjectStatusIndicator(p.name);
-                const state = projectStates[p.name];
-                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === p.name && currentMode === 'code' && !currentAgentId;
-                return `
-                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.name}', 'code')">
-                    <div class="name">📁 ${p.name}${agentBadge}${statusDot}</div>
-                    <div class="meta">${p.file_count} 文件 · ${p.mod_time || '未知'}${statusMeta}</div>
-                </div>`;
-            }).join('');
-
-            // 远程编码项目（每个 agent 独立展示）
-            html += codingRemoteFiltered.map(rp => {
-                const statusDot = getProjectStatusIndicator(rp.name);
-                const state = projectStates[rp.name + ':' + rp.agent_id] || projectStates[rp.name];
-                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === rp.name && currentMode === 'code' && currentAgentId === rp.agent_id;
-                return `
-                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'code', '${rp.agent_id}')">
-                    <div class="name">📁 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
-                    <div class="meta">远程 · ${rp.agent}${statusMeta}</div>
-                </div>`;
-            }).join('');
-        }
-
-        // 部署项目区域
-        if (deployFiltered.length > 0) {
-            html += '<div class="agent-section-header">🚀 部署项目</div>';
-            html += deployFiltered.map(rp => {
-                const statusDot = getProjectStatusIndicator(rp.name);
-                const state = projectStates[rp.name + ':' + rp.agent_id] || projectStates[rp.name];
-                const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
-                const isActive = currentProject === rp.name && currentMode === 'deploy' && currentAgentId === rp.agent_id;
-                return `
-                <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${rp.name}', 'deploy', '${rp.agent_id}')">
-                    <div class="name">📦 ${rp.name}<span class="agent-badge">${rp.agent}</span>${statusDot}</div>
-                    <div class="meta">部署 · ${rp.agent}${statusMeta}</div>
-                </div>`;
-            }).join('');
-        }
+        groups.forEach(group => {
+            const isExpanded = expandedAgents.has(group.id);
+            html += `<div class="agent-group ${isExpanded ? '' : 'collapsed'}" data-group-id="${group.id}">
+                <div class="agent-group-header" onclick="toggleAgentGroup('${group.id}')">
+                    <span class="arrow">▼</span>
+                    <span>${group.icon} ${group.name}</span>
+                    <span class="grp-count">${group.count}个</span>
+                </div>
+                <div class="agent-group-body">
+                    ${group.html}
+                </div>
+            </div>`;
+        });
 
         list.innerHTML = html;
     }
@@ -810,7 +942,7 @@
         currentProject = name;
         currentMode = mode || 'code';
         currentAgentId = agentId || null;
-        const state = getProjectState(name);
+        const state = getProjectState(name, currentAgentId);
         currentSessionId = state.sessionId;
 
         renderProjects();
@@ -865,7 +997,7 @@
 
     function saveCurrentProjectState() {
         if (!currentProject) return;
-        const state = getProjectState(currentProject);
+        const state = getProjectState(currentProject, currentAgentId);
         state.outputHtml = document.getElementById('outputArea').innerHTML;
         state.costText = document.getElementById('costText').textContent;
     }
@@ -942,7 +1074,7 @@
         document.getElementById('btnSend').disabled = true;
         document.getElementById('btnStop').classList.add('visible');
 
-        const state = getProjectState(currentProject);
+        const state = getProjectState(currentProject, currentAgentId);
         state.status = 'running';
         renderProjects(); // 更新侧边栏运行指示
 
@@ -1004,7 +1136,7 @@
         document.getElementById('btnDeployRun').disabled = true;
         document.getElementById('btnDeployStop').classList.add('visible');
 
-        const state = getProjectState(currentProject);
+        const state = getProjectState(currentProject, currentAgentId);
         state.status = 'running';
         renderProjects();
 
@@ -1033,6 +1165,7 @@
         if (ws) ws.close();
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsProject = currentProject; // 捕获当前项目
+        const wsAgentId = currentAgentId; // 捕获当前 agent ID
         let wsUrl = `${protocol}//${location.host}/ws/codegen?session_id=${sessionId}`;
         if (skipHistory) {
             wsUrl += '&skip_history=1';
@@ -1041,7 +1174,7 @@
 
         ws.onmessage = function(e) {
             const event = JSON.parse(e.data);
-            const isActiveProject = (currentProject === wsProject);
+            const isActiveProject = (currentProject === wsProject && currentAgentId === wsAgentId);
 
             if (event.type === 'tool') {
                 if (isActiveProject) addToolEvent(event);
@@ -1067,7 +1200,7 @@
                         document.getElementById('costText').textContent = statsText;
                         addEvent('system', statsText);
                     }
-                    const state = getProjectState(wsProject);
+                    const state = getProjectState(wsProject, wsAgentId);
                     if (event.done) {
                         state.costText = stats.join(' · ');
                     }
@@ -1085,12 +1218,12 @@
             // 保存非活跃项目的输出到缓存
             if (!isActiveProject) {
                 // 构建事件 HTML 追加到缓存
-                const state = getProjectState(wsProject);
+                const state = getProjectState(wsProject, wsAgentId);
                 state.outputHtml += buildEventHtml(event);
             }
 
             if (event.done) {
-                const state = getProjectState(wsProject);
+                const state = getProjectState(wsProject, wsAgentId);
                 state.status = (event.type === 'error') ? 'error' : 'done';
                 if (isActiveProject) {
                     if (event.type === 'error') {
@@ -1111,7 +1244,7 @@
         };
 
         ws.onerror = function() {
-            if (currentProject === wsProject) {
+            if (currentProject === wsProject && currentAgentId === wsAgentId) {
                 addEvent('error', 'WebSocket 连接失败');
                 resetUI();
             }
@@ -1160,7 +1293,7 @@
             console.error('Stop failed:', err);
         }
         if (currentProject) {
-            const state = getProjectState(currentProject);
+            const state = getProjectState(currentProject, currentAgentId);
             state.status = 'stopped';
         }
         renderProjects();

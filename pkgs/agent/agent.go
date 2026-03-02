@@ -219,7 +219,7 @@ func registerMCPCallbacks() {
 		if project == "" || prompt == "" {
 			return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
 		}
-		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model, tool)
+		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model, tool, "")
 		if err != nil {
 			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 		}
@@ -670,6 +670,58 @@ func handleWechatCommand(wechatUser, message string) string {
 	return result
 }
 
+// parseProjectAgent 从 "myapp@win" 解析出 (project, agentName)
+// 从 "myapp" 解析出 ("myapp", "")
+func parseProjectAgent(s string) (project, agentName string) {
+	if idx := strings.LastIndex(s, "@"); idx > 0 {
+		return s[:idx], s[idx+1:]
+	}
+	return s, ""
+}
+
+// resolveAgentID 根据 project 和 agentName 解析出目标 agentID
+// agentName 非空：通过 FindAgentByName 查找
+// agentName 为空：遍历远程项目，若只有一个 agent 持有该项目则自动使用，多个则报错
+func resolveAgentID(project, agentName string) (string, error) {
+	pool := codegen.GetAgentPool()
+	if pool == nil {
+		if agentName != "" {
+			return "", fmt.Errorf("远程 agent 模式未启用")
+		}
+		return "", nil // 本地模式
+	}
+
+	if agentName != "" {
+		agent := pool.FindAgentByName(agentName)
+		if agent == nil {
+			return "", fmt.Errorf("未找到在线 agent: %s", agentName)
+		}
+		return agent.ID, nil
+	}
+
+	// agentName 为空：检查远程项目中是否有同名项目
+	remoteProjects := pool.ListRemoteProjects()
+	var matched []codegen.RemoteProjectInfo
+	for _, p := range remoteProjects {
+		if p.Name == project {
+			matched = append(matched, p)
+		}
+	}
+	if len(matched) == 1 {
+		return matched[0].AgentID, nil
+	}
+	if len(matched) > 1 {
+		var agents []string
+		for _, m := range matched {
+			agents = append(agents, m.Agent)
+		}
+		return "", fmt.Errorf("多个 agent 都有项目 %s，请用 %s@<agent> 指定\n可选: %s",
+			project, project, strings.Join(agents, ", "))
+	}
+
+	return "", nil // 没有远程匹配，走本地
+}
+
 // handleCodegenCommand 处理 cg 快捷命令（方案A：确定性命令，不经过 LLM）
 func handleCodegenCommand(userID, message string) string {
 	// 去掉 "cg " 前缀，解析子命令
@@ -727,7 +779,7 @@ func handleCodegenCommand(userID, message string) string {
 			}
 			sb.WriteString("**远程Agent**\n")
 			for i, p := range remoteProjects {
-				sb.WriteString(fmt.Sprintf("%d. %s — agent: %s\n", len(projects)+i+1, p.Name, p.Agent))
+				sb.WriteString(fmt.Sprintf("%d. %s@%s\n", len(projects)+i+1, p.Name, p.Agent))
 			}
 		}
 
@@ -735,14 +787,17 @@ func handleCodegenCommand(userID, message string) string {
 
 	case "create", "new":
 		if param == "" {
-			return "⚠️ 请指定项目名称\n用法: cg create <名称>\n远程: cg create <名称> @<agent名>"
+			return "⚠️ 请指定项目名称\n用法: cg create <名称[@agent]>\n远程: cg create <名称>@<agent名>"
 		}
 		parts := strings.Fields(param)
-		projectName := parts[0]
-		agentTarget := ""
-		for _, p := range parts[1:] {
-			if strings.HasPrefix(p, "@") {
-				agentTarget = strings.TrimPrefix(p, "@")
+		projectName, agentTarget := parseProjectAgent(parts[0])
+
+		// 兼容旧语法: cg create myapp @agent
+		if agentTarget == "" {
+			for _, p := range parts[1:] {
+				if strings.HasPrefix(p, "@") {
+					agentTarget = strings.TrimPrefix(p, "@")
+				}
 			}
 		}
 
@@ -765,18 +820,18 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
 
 	case "start", "run":
-		// cg start <project> [#model] [@tool] [!deploy] <prompt>
+		// cg start <project[@agent]> [#model] [@tool] [!deploy] <prompt>
 		if param == "" {
-			return "⚠️ 请指定项目和需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务\n示例: cg start myapp @oc 用OpenCode编码\n示例: cg start myapp !deploy 增加健康检查接口"
+			return "⚠️ 请指定项目和需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>\n示例: cg start myapp #sonnet 写个HTTP服务\n示例: cg start myapp@win 用指定agent编码\n示例: cg start myapp !deploy 增加健康检查接口"
 		}
 		startParts := strings.SplitN(param, " ", 2)
-		project := startParts[0]
+		project, agentName := parseProjectAgent(startParts[0])
 		rest := ""
 		if len(startParts) > 1 {
 			rest = strings.TrimSpace(startParts[1])
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>"
 		}
 		// 解析可选的 #model、@tool、!deploy（顺序不限）
 		model := ""
@@ -801,9 +856,13 @@ func handleCodegenCommand(userID, message string) string {
 			}
 		}
 		if rest == "" {
-			return "⚠️ 请提供编码需求\n用法: cg start <项目名> [#模型] [@工具] [!deploy] <编码需求>"
+			return "⚠️ 请提供编码需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>"
 		}
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model, tool, autoDeploy)
+		agentID, err := resolveAgentID(project, agentName)
+		if err != nil {
+			return fmt.Sprintf("❌ %v", err)
+		}
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, rest, model, tool, agentID, autoDeploy)
 		if err != nil {
 			return fmt.Sprintf("❌ 启动失败: %v", err)
 		}
@@ -819,19 +878,31 @@ func handleCodegenCommand(userID, message string) string {
 		if autoDeploy {
 			deployInfo = "\n部署: 编码完成后自动部署"
 		}
-		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, modelInfo, toolInfo, deployInfo, sessionID)
+		agentInfo := ""
+		if agentName != "" {
+			agentInfo = fmt.Sprintf("\nAgent: %s", agentName)
+		}
+		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, modelInfo, toolInfo, deployInfo, sessionID)
 
 	case "deploy", "dp":
-		// cg deploy <project> — 仅部署，不编码
+		// cg deploy <project[@agent]> — 仅部署，不编码
 		if param == "" {
-			return "⚠️ 请指定项目名称\n用法: cg deploy <项目名>\n示例: cg deploy myapp"
+			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]>\n示例: cg deploy myapp\n示例: cg deploy myapp@mac"
 		}
-		project := strings.Fields(param)[0]
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, "", "", "", false, true)
+		project, agentName := parseProjectAgent(strings.Fields(param)[0])
+		agentID, err := resolveAgentID(project, agentName)
+		if err != nil {
+			return fmt.Sprintf("❌ %v", err)
+		}
+		sessionID, err := codegen.StartSessionForWeChat(userID, project, "", "", "", agentID, false, true)
 		if err != nil {
 			return fmt.Sprintf("❌ 部署启动失败: %v", err)
 		}
-		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s\n会话: %s\n\n进度将通过微信推送", project, sessionID)
+		agentInfo := ""
+		if agentName != "" {
+			agentInfo = fmt.Sprintf(" (agent: %s)", agentName)
+		}
+		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, sessionID)
 
 	case "send", "msg":
 		// cg send <prompt>
@@ -927,22 +998,21 @@ func handleCodegenCommand(userID, message string) string {
 func getCodegenHelpText() string {
 	return "💻 CodeGen 编码助手命令\n\n" +
 		"cg list — 列出所有项目（本地+远程）\n" +
-		"cg create <名称> — 本地创建项目\n" +
-		"cg create <名称> @<agent> — 在远程agent上创建\n" +
-		"cg start <项目> <需求> — 启动编码（默认模型+工具）\n" +
-		"cg start <项目> #<模型> <需求> — 指定模型编码\n" +
-		"cg start <项目> @oc <需求> — 用OpenCode编码\n" +
-		"cg start <项目> !deploy <需求> — 编码完成后自动部署\n" +
-		"cg start <项目> #<模型> @oc !deploy <需求> — 全选项\n" +
-		"cg deploy <项目> — 仅部署（不编码）\n" +
+		"cg create <名称[@agent]> — 创建项目\n" +
+		"cg start <项目[@agent]> <需求> — 启动编码\n" +
+		"cg start <项目[@agent]> #<模型> <需求> — 指定模型\n" +
+		"cg start <项目[@agent]> @oc <需求> — 用OpenCode\n" +
+		"cg start <项目[@agent]> !deploy <需求> — 编码后自动部署\n" +
+		"cg deploy <项目[@agent]> — 仅部署（不编码）\n" +
 		"cg send <消息> — 追加指令\n" +
 		"cg status — 查看进度\n" +
 		"cg stop — 停止编码\n" +
 		"cg models — 查看可用模型配置\n" +
 		"cg tools — 查看可用编码工具\n" +
 		"cg agents — 查看在线agent\n\n" +
+		"@agent 语法: 多agent同名项目时用 项目@agent 指定目标\n" +
 		"工具别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode\n" +
-		"示例: cg start myapp #sonnet @oc !deploy 写个HTTP服务"
+		"示例: cg start myapp@win #sonnet !deploy 写个HTTP服务"
 }
 
 // Shutdown 关闭 Agent 模块
