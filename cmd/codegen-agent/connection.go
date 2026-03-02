@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"uap"
@@ -13,6 +14,10 @@ type Connection struct {
 	cfg    *AgentConfig
 	agent  *Agent
 	client *uap.Client
+
+	// 是否已向 go_blog-agent 注册成功
+	backendRegistered bool
+	regMu             sync.Mutex
 }
 
 // NewConnection 创建连接管理器
@@ -52,14 +57,20 @@ func (c *Connection) Stop() {
 func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	switch msg.Type {
 	case MsgRegisterAck:
-		// gateway 的 register_ack 由 uap.Client 内部处理
-		// 这里处理 go_blog-agent 发来的 register_ack
+		// go_blog-agent 发来的 register_ack
 		var payload RegisterAckPayload
 		json.Unmarshal(msg.Payload, &payload)
 		if payload.Success {
+			c.regMu.Lock()
+			c.backendRegistered = true
+			c.regMu.Unlock()
 			log.Printf("[INFO] registered with go_blog backend")
 		} else {
-			log.Printf("[ERROR] go_blog register rejected: %s", payload.Error)
+			// go_blog 可能重启过，重置注册状态以便重试
+			c.regMu.Lock()
+			c.backendRegistered = false
+			c.regMu.Unlock()
+			log.Printf("[WARN] go_blog register: %s, will retry", payload.Error)
 		}
 
 	case MsgTaskAssign:
@@ -100,6 +111,12 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 
 	case MsgHeartbeatAck:
 		// ok
+
+	case uap.MsgError:
+		// gateway 返回错误（如目标 agent 不在线）
+		var payload uap.ErrorPayload
+		json.Unmarshal(msg.Payload, &payload)
+		log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
 
 	default:
 		log.Printf("[WARN] unhandled message type: %s from %s", msg.Type, msg.From)
@@ -162,11 +179,25 @@ func (c *Connection) StartCodegenProtocol() {
 		for range ticker.C {
 			if !c.client.IsConnected() {
 				// 断线后等待重连，重连后重新注册
+				c.regMu.Lock()
+				c.backendRegistered = false
+				c.regMu.Unlock()
 				for !c.client.IsConnected() {
 					time.Sleep(1 * time.Second)
 				}
 				c.sendCodegenRegister()
 			}
+
+			// 如果尚未注册成功（go_blog 可能晚于本 agent 启动），重试注册
+			c.regMu.Lock()
+			registered := c.backendRegistered
+			c.regMu.Unlock()
+			if !registered {
+				log.Printf("[INFO] go_blog backend not registered yet, retrying...")
+				c.sendCodegenRegister()
+				continue
+			}
+
 			c.sendCodegenHeartbeat()
 		}
 	}()

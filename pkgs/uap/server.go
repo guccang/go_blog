@@ -120,6 +120,12 @@ func (s *Server) handleConn(conn *websocket.Conn) {
 
 		switch msg.Type {
 		case MsgRegister:
+			// 如果 To 非空，说明是应用层的 register 消息（如 codegen 协议），应路由而非拦截
+			if msg.To != "" && agent != nil {
+				msg.From = agent.ID
+				s.routeMessage(agent, &msg)
+				continue
+			}
 			if agent != nil {
 				log.Printf("[UAP] duplicate register from %s, ignoring", agent.ID)
 				continue
@@ -127,6 +133,12 @@ func (s *Server) handleConn(conn *websocket.Conn) {
 			agent = s.handleRegister(conn, &msg)
 
 		case MsgHeartbeat:
+			// 如果 To 非空，说明是应用层的 heartbeat 消息，应路由而非拦截
+			if msg.To != "" && agent != nil {
+				msg.From = agent.ID
+				s.routeMessage(agent, &msg)
+				continue
+			}
 			if agent != nil {
 				agent.LastHB = time.Now()
 				s.sendTo(agent, &Message{

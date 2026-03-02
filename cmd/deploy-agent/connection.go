@@ -19,6 +19,10 @@ type Connection struct {
 	client      *uap.Client
 	activeTasks map[string]bool
 	taskMu      sync.Mutex
+
+	// 是否已向 go_blog-agent 注册成功
+	backendRegistered bool
+	regMu             sync.Mutex
 }
 
 // NewConnection 创建连接管理器
@@ -61,9 +65,15 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 		var payload RegisterAckPayload
 		json.Unmarshal(msg.Payload, &payload)
 		if payload.Success {
+			c.regMu.Lock()
+			c.backendRegistered = true
+			c.regMu.Unlock()
 			log.Printf("[INFO] registered with go_blog backend as deploy agent (projects: %v)", c.cfg.ProjectNames())
 		} else {
-			log.Printf("[ERROR] go_blog register rejected: %s", payload.Error)
+			c.regMu.Lock()
+			c.backendRegistered = false
+			c.regMu.Unlock()
+			log.Printf("[WARN] go_blog register: %s, will retry", payload.Error)
 		}
 
 	case MsgTaskAssign:
@@ -88,6 +98,11 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 
 	case MsgHeartbeatAck:
 		// ok
+
+	case uap.MsgError:
+		var payload uap.ErrorPayload
+		json.Unmarshal(msg.Payload, &payload)
+		log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
 
 	default:
 		log.Printf("[WARN] unhandled message type: %s from %s", msg.Type, msg.From)
@@ -265,11 +280,25 @@ func (c *Connection) StartDeployProtocol() {
 		defer ticker.Stop()
 		for range ticker.C {
 			if !c.client.IsConnected() {
+				c.regMu.Lock()
+				c.backendRegistered = false
+				c.regMu.Unlock()
 				for !c.client.IsConnected() {
 					time.Sleep(1 * time.Second)
 				}
 				c.sendDeployRegister()
 			}
+
+			// 如果尚未注册成功（go_blog 可能晚于本 agent 启动），重试注册
+			c.regMu.Lock()
+			registered := c.backendRegistered
+			c.regMu.Unlock()
+			if !registered {
+				log.Printf("[INFO] go_blog backend not registered yet, retrying...")
+				c.sendDeployRegister()
+				continue
+			}
+
 			c.sendDeployHeartbeat()
 		}
 	}()

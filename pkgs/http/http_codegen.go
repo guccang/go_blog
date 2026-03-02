@@ -52,6 +52,9 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 			tools = pool.GetAllTools()
 		}
 
+		log.MessageF(log.ModuleAgent, "API /api/codegen/projects: pool=%v agents=%d remote_projects=%d",
+			pool != nil, len(agents), len(remoteProjects))
+
 		jsonOK(w, map[string]interface{}{
 			"projects":          projects,
 			"workspace":         codegen.GetWorkspace(),

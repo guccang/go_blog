@@ -232,26 +232,34 @@ func (b *GatewayBridge) handleHeartbeat(msg *uap.Message) {
 	}
 
 	agent := b.getAgent(msg.From)
-	if agent != nil {
-		agent.mu.Lock()
-		agent.LastHeartbeat = time.Now()
-		if len(payload.Projects) > 0 {
-			agent.Projects = payload.Projects
-		}
-		if len(payload.Models) > 0 {
-			agent.Models = payload.Models
-		}
-		if len(payload.ClaudeCodeModels) > 0 {
-			agent.ClaudeCodeModels = payload.ClaudeCodeModels
-		}
-		if len(payload.OpenCodeModels) > 0 {
-			agent.OpenCodeModels = payload.OpenCodeModels
-		}
-		if len(payload.Tools) > 0 {
-			agent.Tools = payload.Tools
-		}
-		agent.mu.Unlock()
+	if agent == nil {
+		// agent 不在 pool 中（可能 go_blog 重启过），通知它重新注册
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: heartbeat from unknown agent %s, asking to re-register", msg.From)
+		b.client.SendTo(msg.From, MsgRegisterAck, RegisterAckPayload{
+			Success: false,
+			Error:   "not_registered",
+		})
+		return
 	}
+
+	agent.mu.Lock()
+	agent.LastHeartbeat = time.Now()
+	if len(payload.Projects) > 0 {
+		agent.Projects = payload.Projects
+	}
+	if len(payload.Models) > 0 {
+		agent.Models = payload.Models
+	}
+	if len(payload.ClaudeCodeModels) > 0 {
+		agent.ClaudeCodeModels = payload.ClaudeCodeModels
+	}
+	if len(payload.OpenCodeModels) > 0 {
+		agent.OpenCodeModels = payload.OpenCodeModels
+	}
+	if len(payload.Tools) > 0 {
+		agent.Tools = payload.Tools
+	}
+	agent.mu.Unlock()
 	b.client.SendTo(msg.From, MsgHeartbeatAck, struct{}{})
 }
 

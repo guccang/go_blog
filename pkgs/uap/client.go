@@ -133,16 +133,30 @@ func (c *Client) runLoop() {
 
 		switch msg.Type {
 		case MsgRegisterAck:
-			var ack RegisterAckPayload
-			json.Unmarshal(msg.Payload, &ack)
-			if ack.Success {
-				log.Printf("[UAP-Client] registered as %s (%s)", c.Name, c.AgentID)
+			if msg.From != "" {
+				// 来自其他 agent（如 go_blog 的 codegen 协议 ack），转给 OnMessage
+				if c.OnMessage != nil {
+					c.OnMessage(&msg)
+				}
 			} else {
-				log.Printf("[UAP-Client] register rejected: %s", ack.Error)
+				// gateway 自身的注册确认
+				var ack RegisterAckPayload
+				json.Unmarshal(msg.Payload, &ack)
+				if ack.Success {
+					log.Printf("[UAP-Client] registered as %s (%s)", c.Name, c.AgentID)
+				} else {
+					log.Printf("[UAP-Client] register rejected: %s", ack.Error)
+				}
 			}
 
 		case MsgHeartbeatAck:
-			// ok
+			if msg.From != "" {
+				// 来自其他 agent 的心跳回复，转给 OnMessage
+				if c.OnMessage != nil {
+					c.OnMessage(&msg)
+				}
+			}
+			// else: gateway 自身的心跳确认，忽略
 
 		default:
 			if c.OnMessage != nil {
