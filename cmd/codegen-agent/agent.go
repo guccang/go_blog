@@ -258,7 +258,14 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		toolName = "OpenCode"
 	} else {
 		cmdPath = a.cfg.ClaudePath
-		args = a.buildArgs(task)
+		var buildErr error
+		args, buildErr = a.buildArgs(task)
+		if buildErr != nil {
+			conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+				SessionID: sessionID, Status: "error", Error: buildErr.Error(),
+			})
+			return
+		}
 	}
 
 	log.Printf("[INFO] executing: %s %s (dir=%s, tool=%s, prompt_len=%d)", cmdPath, strings.Join(args, " "), projectPath, toolName, len(task.Prompt))
@@ -321,6 +328,11 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
+			// 过滤 Windows libuv 已知断言错误（进程退出时竞态，不影响结果）
+			if strings.Contains(line, "UV_HANDLE_CLOSING") {
+				log.Printf("[STDERR] (ignored libuv assertion) %s", line)
+				continue
+			}
 			log.Printf("[STDERR] %s", line)
 			if useOpenCode {
 				// OpenCode 的进度输出（工具调用、命令执行）走 stderr
@@ -384,6 +396,10 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		// 检查是否是被用户停止
 		if a.IsTaskStopped(sessionID) {
 			status = "stopped"
+		} else if summary.ResultText != "" {
+			// 已收到 result 事件说明编码完成，忽略进程退出码错误
+			// （Windows 上 Claude CLI/libuv 退出时可能触发断言失败）
+			log.Printf("[WARN] task %s process exited with error but result received, treating as done: %v", sessionID, err)
 		} else {
 			status = "error"
 			errMsg = err.Error()
@@ -440,7 +456,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 // buildArgs 构建 Claude CLI 参数
 // prompt 通过 -p 参数传递，换行符已被 sanitize 为空格
 // 因为 Windows CreateProcess 无法正确处理参数中的换行符
-func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
+func (a *Agent) buildArgs(task *TaskAssignPayload) ([]string, error) {
 	prompt := sanitizePromptForCLI(task.Prompt)
 	args := []string{
 		"-p", prompt,
@@ -453,9 +469,10 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 		args = append(args, "--append-system-prompt", task.SystemPrompt)
 	}
 
-	// 不使用 -c/--continue 续接会话：
-	// 第三方模型（如 DeepSeek）续接时 thinking block signature 校验失败
-	// 每次交互独立启动 Claude CLI，前端 UI 已维护对话历史展示
+	// 支持 resume 的模型使用 --resume 续接会话，减少 tokens 浪费
+	if task.ClaudeSession != "" && a.isResumableModel(task.Model) {
+		args = append(args, "--resume", task.ClaudeSession)
+	}
 
 	maxTurns := task.MaxTurns
 	if maxTurns <= 0 {
@@ -465,16 +482,26 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) []string {
 		args = append(args, "--max-turns", fmt.Sprintf("%d", maxTurns))
 	}
 
-	// 如果指定了模型配置，查找对应的 settings 文件
+	// 查找对应的 settings 文件，不存在则报错
 	if task.Model != "" && a.cfg.ClaudeCodeSettingsDir != "" {
 		settingsFile := filepath.Join(a.cfg.ClaudeCodeSettingsDir, task.Model+".json")
-		fmt.Printf("settingsFile %s",settingsFile)
-		if _, err := os.Stat(settingsFile); err == nil {
-			args = append(args, "--settings", settingsFile)
+		if _, err := os.Stat(settingsFile); err != nil {
+			return nil, fmt.Errorf("settings file not found: %s (请确保 %s.json 存在)", settingsFile, task.Model)
 		}
+		args = append(args, "--settings", settingsFile)
 	}
 
-	return args
+	return args, nil
+}
+
+// isResumableModel 检查模型是否支持 --resume 续接
+func (a *Agent) isResumableModel(model string) bool {
+	for _, m := range a.cfg.ResumeModels {
+		if m == model {
+			return true
+		}
+	}
+	return false
 }
 
 // buildOpenCodeArgs 构建 OpenCode CLI 参数

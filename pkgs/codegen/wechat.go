@@ -230,11 +230,7 @@ func subscribeAndRelay(state *UserSessionState, session *CodeSession) {
 	session.mu.Unlock()
 	if status == StatusError || status == StatusDone || status == StatusStopped {
 		sendCompletionSummary(state, session, StreamEvent{Done: true})
-		if wechatBridge != nil {
-			wechatBridge.mu.Lock()
-			delete(wechatBridge.userSessions, state.UserID)
-			wechatBridge.mu.Unlock()
-		}
+		// 不删除 userSessions 映射，保留供 cg send 续接使用
 		return
 	}
 
@@ -259,12 +255,7 @@ func subscribeAndRelay(state *UserSessionState, session *CodeSession) {
 				// 会话结束，先刷新缓冲区再发送完成摘要
 				flushBuffer(state)
 				sendCompletionSummary(state, session, event)
-				// 清理用户状态
-				if wechatBridge != nil {
-					wechatBridge.mu.Lock()
-					delete(wechatBridge.userSessions, state.UserID)
-					wechatBridge.mu.Unlock()
-				}
+				// 不删除 userSessions 映射，保留供 cg send 续接使用
 				return
 			}
 

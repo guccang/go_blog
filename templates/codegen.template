@@ -563,7 +563,7 @@
 
             <div class="input-area" id="codeInputArea">
                 <select id="modelSelect" class="model-select" title="选择模型配置">
-                    <option value="">默认</option>
+                    <option value="default">default</option>
                 </select>
                 <select id="toolSelect" class="model-select" title="选择编码工具" style="min-width:120px;">
                     <option value="">Claude Code</option>
@@ -728,9 +728,10 @@
         const select = document.getElementById('modelSelect');
         const currentVal = select.value;
         // 保留第一个默认选项
-        select.innerHTML = '<option value="">默认</option>';
+        select.innerHTML = '<option value="default">default</option>';
         if (models && models.length > 0) {
             models.forEach(m => {
+                if (m === 'default') return; // 已有硬编码的 default 选项
                 const opt = document.createElement('option');
                 opt.value = m;
                 opt.textContent = m;

@@ -22,9 +22,10 @@ type AgentConfig struct {
 	ClaudeCodeSettingsDir string // Claude Code --settings 配置目录
 	OpenCodeSettingsDir   string // OpenCode 模型映射配置目录
 	DeployAgentPath       string // deploy-agent.exe 路径（留空则不启用 auto_deploy）
-	DeployAgentConfig     string // deploy.conf 路径
-	VerifyURL             string // 部署验证 URL（HTTP GET）
-	VerifyTimeout         int    // 验证超时秒数，默认 10
+	DeployAgentConfig     string   // deploy.conf 路径
+	VerifyURL             string   // 部署验证 URL（HTTP GET）
+	VerifyTimeout         int      // 验证超时秒数，默认 10
+	ResumeModels          []string // 支持 --resume 的模型名列表（空字符串代表默认模型）
 }
 
 // LoadConfig 从配置文件加载配置
@@ -95,6 +96,10 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		case "verify_timeout":
 			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				cfg.VerifyTimeout = n
+			}
+		case "resume_models":
+			for _, m := range strings.Split(val, ",") {
+				cfg.ResumeModels = append(cfg.ResumeModels, strings.TrimSpace(m))
 			}
 		}
 	}
