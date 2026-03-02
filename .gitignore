@@ -23,3 +23,8 @@ go_blog
 ./codegen
 /codegen
 /cmd/codegen-agent/settings
+cmd/codegen-agent/codegen-agent
+cmd/deploy-agent/nohup.out
+cmd/gateway/gateway
+cmd/llm-mcp-agent/llm-mcp-agent
+cmd/wechat-agent/wechat-agent
