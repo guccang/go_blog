@@ -92,13 +92,16 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 	}
 
 	var req struct {
-		Project    string `json:"project"`
-		Prompt     string `json:"prompt"`
-		Model      string `json:"model"`
-		Tool       string `json:"tool"`
-		AgentID    string `json:"agent_id"`
-		AutoDeploy bool   `json:"auto_deploy"`
-		DeployOnly bool   `json:"deploy_only"`
+		Project       string `json:"project"`
+		Prompt        string `json:"prompt"`
+		Model         string `json:"model"`
+		Tool          string `json:"tool"`
+		AgentID       string `json:"agent_id"`
+		AutoDeploy    bool   `json:"auto_deploy"`
+		DeployOnly    bool   `json:"deploy_only"`
+		DeployTarget  string `json:"deploy_target"`
+		BuildPlatform string `json:"build_platform"`
+		PackOnly      bool   `json:"pack_only"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request")
@@ -120,7 +123,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		req.AutoDeploy = true
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AgentID, req.AutoDeploy, req.DeployOnly)
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AgentID, req.AutoDeploy, req.DeployOnly, req.DeployTarget, req.BuildPlatform, req.PackOnly)
 	if err != nil {
 		jsonError(w, err.Error())
 		return

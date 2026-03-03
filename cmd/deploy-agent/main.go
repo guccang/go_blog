@@ -42,12 +42,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// daemon 模式需要加载所有 target 和所有平台配置，以支持前端动态选择
+	// 检测 daemon 模式（有 server_url 且未显式指定 CLI 参数）
+	isCliMode := *projectName != "" || *targetName != "" || *packOnly
+	if cfg.ServerURL != "" && !isCliMode && !*listProjects {
+		cfg, err = LoadConfigForDaemon(*configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载配置失败 (daemon): %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	cred := newCredentialStore()
 
 	// 列出所有项目
 	if *listProjects {
 		fmt.Printf("配置文件: %s\n", *configPath)
-		fmt.Printf("打包平台: %s\n", cfg.BuildPlatform)
+		fmt.Printf("主机平台: %s\n", cfg.HostPlatform)
+		if cfg.HostPlatform != cfg.BuildPlatform {
+			fmt.Printf("目标平台: %s (交叉编译)\n", cfg.BuildPlatform)
+		} else {
+			fmt.Printf("目标平台: %s\n", cfg.BuildPlatform)
+		}
 		if len(cfg.TargetNames) > 0 {
 			fmt.Printf("可用目标: %s\n", strings.Join(cfg.TargetNames, ", "))
 		}
@@ -73,7 +89,7 @@ func main() {
 	}
 
 	// 是否强制使用 CLI 模式（当用户显式指定了项目、目标或只打包时）
-	isCliMode := *projectName != "" || *targetName != "" || *packOnly
+	// （isCliMode 已在上面 daemon 检测中定义）
 
 	// daemon 模式（WebSocket）
 	if cfg.ServerURL != "" && !isCliMode {
@@ -180,6 +196,9 @@ func main() {
 		fmt.Printf("项目: [%s]\n", proj.Name)
 		fmt.Printf("项目目录: %s\n", proj.ProjectDir)
 		fmt.Printf("打包脚本: %s\n", proj.PackScript)
+		if cfg.HostPlatform != cfg.BuildPlatform {
+			fmt.Printf("交叉编译: %s → %s\n", cfg.HostPlatform, cfg.BuildPlatform)
+		}
 		fmt.Printf("部署目标: %d 个\n", len(proj.Targets))
 		for _, t := range proj.Targets {
 			fmt.Printf("  - %s (%s) -> %s\n", t.Name, t.Host, t.RemoteDir)

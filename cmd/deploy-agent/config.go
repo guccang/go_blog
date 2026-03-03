@@ -48,7 +48,8 @@ type DeployConfig struct {
 	SettingsDir string // 部署配置目录
 
 	// 运行时参数（CLI 传入）
-	BuildPlatform string   // 打包平台（默认当前平台，支持交叉编译）
+	HostPlatform  string   // 当前主机平台（自动检测，用于 build 配置）
+	BuildPlatform string   // 目标平台（用于 publish 配置和交叉编译）
 	TargetFilter  string   // 发布目标过滤（默认 local，可选 all 或具体 target 名）
 	TargetNames   []string // 可用的 target 名称列表（从 publish/ 扫描）
 
@@ -58,6 +59,9 @@ type DeployConfig struct {
 
 	// UAP gateway 配置
 	GoBackendAgentID string // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
+
+	// daemon 模式标记
+	LoadAllPlatforms bool // 加载所有平台的 publish 配置（daemon 模式用于动态选择）
 }
 
 // DefaultProject 获取默认项目（仅一个项目时返回，否则返回 nil）
@@ -83,6 +87,35 @@ type configLine struct {
 	key, val string
 }
 
+// LoadConfigForDaemon daemon 模式配置加载：加载所有 target 和所有平台配置
+// buildPlatform 留空（运行时每个任务动态指定），targetFilter 强制 "all"
+func LoadConfigForDaemon(path string) (*DeployConfig, error) {
+	cfg, err := LoadConfig(path, "", "all")
+	if err != nil {
+		return nil, err
+	}
+	cfg.LoadAllPlatforms = true
+
+	// 需要重新加载 settings，因为 LoadAllPlatforms 影响 publish 配置扫描
+	if cfg.SettingsDir != "" {
+		settingsDir := cfg.SettingsDir
+		if !filepath.IsAbs(settingsDir) {
+			settingsDir = filepath.Join(filepath.Dir(path), settingsDir)
+		}
+		// 清除 LoadConfig 加载的项目（可能不完整），重新加载
+		cfg.Projects = make(map[string]*ProjectConfig)
+		cfg.ProjectOrder = nil
+		if err := cfg.loadSettingsDir(settingsDir); err != nil {
+			return nil, fmt.Errorf("load settings_dir %q (daemon): %v", settingsDir, err)
+		}
+	}
+
+	if len(cfg.Projects) == 0 {
+		return nil, fmt.Errorf("no projects found (daemon mode)")
+	}
+	return cfg, nil
+}
+
 // LoadConfig 从配置文件加载全局配置
 // 支持两种模式：
 //  1. settings_dir 模式：deploy.conf 仅全局配置 + settings_dir 指向项目配置目录
@@ -95,9 +128,11 @@ func LoadConfig(path string, buildPlatform, targetFilter string) (*DeployConfig,
 		TargetFilter:  targetFilter,
 	}
 
-	// 默认打包平台 = 当前平台
+	// 主机平台 = 当前 OS（始终自动检测）
+	cfg.HostPlatform = platformSubdir()
+	// 目标平台：未指定时默认 = 主机平台（不交叉编译）
 	if cfg.BuildPlatform == "" {
-		cfg.BuildPlatform = platformSubdir()
+		cfg.BuildPlatform = cfg.HostPlatform
 	}
 	// 默认发布目标 = local
 	if cfg.TargetFilter == "" {
@@ -189,6 +224,16 @@ func LoadConfig(path string, buildPlatform, targetFilter string) (*DeployConfig,
 		if !filepath.IsAbs(settingsDir) {
 			settingsDir = filepath.Join(filepath.Dir(path), settingsDir)
 		}
+
+		// 自动推断目标平台：用户未指定 --build-platform 且 target 是 SSH 时，
+		// 扫描 publish/<target>/ 下的平台目录，若只有一个则自动设为 BuildPlatform
+		if buildPlatform == "" && cfg.TargetFilter != "" && cfg.TargetFilter != "all" && !strings.HasPrefix(cfg.TargetFilter, "local") {
+			inferredPlat := inferBuildPlatform(filepath.Join(settingsDir, "publish", cfg.TargetFilter))
+			if inferredPlat != "" && inferredPlat != cfg.HostPlatform {
+				cfg.BuildPlatform = inferredPlat
+			}
+		}
+
 		if err := cfg.loadSettingsDir(settingsDir); err != nil {
 			return nil, fmt.Errorf("load settings_dir %q: %v", settingsDir, err)
 		}
@@ -239,6 +284,25 @@ func normalizePlatform(p string) string {
 	}
 }
 
+// inferBuildPlatform 从 publish target 目录推断目标平台
+// 如果该目录下只有一个平台子目录，返回该平台名；否则返回空串
+func inferBuildPlatform(targetDir string) string {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		return ""
+	}
+	var platforms []string
+	for _, e := range entries {
+		if e.IsDir() {
+			platforms = append(platforms, e.Name())
+		}
+	}
+	if len(platforms) == 1 {
+		return platforms[0]
+	}
+	return ""
+}
+
 // dirExists 判断目录是否存在
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
@@ -260,8 +324,8 @@ func (c *DeployConfig) loadSettingsDir(dir string) error {
 			return c.loadNewSettings(dir)
 		}
 		// 旧分离模式：publish/<platform>/
-		buildDir := filepath.Join(buildBaseDir, c.BuildPlatform)
-		pubDir := filepath.Join(publishDir, platformSubdir())
+		buildDir := filepath.Join(buildBaseDir, c.HostPlatform)
+		pubDir := filepath.Join(publishDir, c.BuildPlatform)
 		if dirExists(buildDir) || dirExists(pubDir) {
 			return c.loadSplitSettings(buildDir, pubDir, dirExists(buildDir), dirExists(pubDir))
 		}
@@ -300,9 +364,9 @@ func (c *DeployConfig) isNewPublishLayout(publishDir string) bool {
 	return false
 }
 
-// loadNewSettings 新模式：build/<platform>/ + publish/<target>/<platform>/
+// loadNewSettings 新模式：build/<HostPlatform>/ + publish/<target>/<BuildPlatform>/
 func (c *DeployConfig) loadNewSettings(dir string) error {
-	buildDir := filepath.Join(dir, "build", c.BuildPlatform)
+	buildDir := filepath.Join(dir, "build", c.HostPlatform)
 	publishBaseDir := filepath.Join(dir, "publish")
 
 	// 读取 build 配置
@@ -311,7 +375,7 @@ func (c *DeployConfig) loadNewSettings(dir string) error {
 	if dirExists(buildDir) {
 		confs, files, err := readConfDir(buildDir)
 		if err != nil {
-			return fmt.Errorf("read build/%s: %v", c.BuildPlatform, err)
+			return fmt.Errorf("read build/%s: %v", c.HostPlatform, err)
 		}
 		buildConfs = confs
 		buildFiles = files
@@ -411,20 +475,22 @@ func (c *DeployConfig) loadPublishTarget(publishBaseDir, targetName, projName st
 
 	isLocal := strings.HasPrefix(targetName, "local")
 
-	// 确定平台子目录：local target 用当前平台，ssh target 扫描所有平台
+	// 确定平台子目录：
+	// - daemon 模式 (LoadAllPlatforms): 扫描所有平台子目录，取第一个匹配
+	// - local target: 用主机平台
+	// - ssh target: 用目标平台
 	var platDirs []string
-	if isLocal {
-		platDirs = []string{platformSubdir()}
-	} else {
-		entries, err := os.ReadDir(targetDir)
-		if err != nil {
-			return nil, "", err
-		}
+	if c.LoadAllPlatforms {
+		entries, _ := os.ReadDir(targetDir)
 		for _, e := range entries {
 			if e.IsDir() {
 				platDirs = append(platDirs, e.Name())
 			}
 		}
+	} else if isLocal {
+		platDirs = []string{c.HostPlatform}
+	} else {
+		platDirs = []string{c.BuildPlatform}
 	}
 
 	var targets []*Target
@@ -447,6 +513,7 @@ func (c *DeployConfig) loadPublishTarget(publishBaseDir, targetName, projName st
 			return nil, "", fmt.Errorf("%s: %v", confPath, err)
 		}
 		targets = append(targets, parsed...)
+		break // 使用第一个匹配的平台配置即可
 	}
 
 	return targets, pubFile, nil

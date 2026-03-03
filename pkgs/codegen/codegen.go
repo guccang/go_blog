@@ -92,10 +92,13 @@ type CodeSession struct {
 	ClaudeSession string           `json:"claude_session"` // claude --session-id / opencode --session
 	Project       string           `json:"project"`
 	Prompt        string           `json:"prompt"`
-	Model         string           `json:"model,omitempty"`       // 指定模型配置名称
-	Tool          string           `json:"tool,omitempty"`        // 编码工具: claudecode, opencode（默认 claudecode）
-	AutoDeploy    bool             `json:"auto_deploy,omitempty"`  // 编码完成后自动部署+验证
-	DeployOnly    bool             `json:"deploy_only,omitempty"` // 跳过编码，直接部署+验证
+	Model         string           `json:"model,omitempty"`          // 指定模型配置名称
+	Tool          string           `json:"tool,omitempty"`           // 编码工具: claudecode, opencode（默认 claudecode）
+	AutoDeploy    bool             `json:"auto_deploy,omitempty"`    // 编码完成后自动部署+验证
+	DeployOnly    bool             `json:"deploy_only,omitempty"`    // 跳过编码，直接部署+验证
+	DeployTarget  string           `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
+	BuildPlatform string           `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
+	PackOnly      bool             `json:"pack_only,omitempty"`      // 仅打包不部署
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -163,7 +166,8 @@ func Init() {
 		workspaces = append(workspaces, absWs)
 	}
 
-	// agent 认证 token
+	// agent 认证 token：由 InitGatewayBridge 从 gateway_token 统一设置
+	// 兼容旧模式（无 gateway 直连）：回退到 codegen_agent_token
 	agentToken = config.GetConfigWithAccount(adminAccount, "codegen_agent_token")
 
 	// 始终初始化 agent 连接池
@@ -270,7 +274,7 @@ func NormalizeTool(tool string) string {
 }
 
 // StartSession 启动编码会话，agentID 可选指定目标 agent
-func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool) (*CodeSession, error) {
+func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool, deployTarget, buildPlatform string, packOnly bool) (*CodeSession, error) {
 	// 项目目录由远程 agent 管理，服务端不需要创建本地目录
 	// 仅验证项目名合法性
 	if project == "" {
@@ -280,17 +284,20 @@ func StartSession(project, prompt, model, tool, agentID string, autoDeploy, depl
 	normalizedTool := NormalizeTool(tool)
 
 	session := &CodeSession{
-		ID:         fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
-		Project:    project,
-		Prompt:     prompt,
-		Model:      model,
-		Tool:       normalizedTool,
-		AutoDeploy: autoDeploy,
-		DeployOnly: deployOnly,
-		AgentID:    agentID,
-		Status:     StatusRunning,
-		Messages:   make([]SessionMessage, 0),
-		StartTime:  time.Now(),
+		ID:            fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
+		Project:       project,
+		Prompt:        prompt,
+		Model:         model,
+		Tool:          normalizedTool,
+		AutoDeploy:    autoDeploy,
+		DeployOnly:    deployOnly,
+		DeployTarget:  deployTarget,
+		BuildPlatform: buildPlatform,
+		PackOnly:      packOnly,
+		AgentID:       agentID,
+		Status:        StatusRunning,
+		Messages:      make([]SessionMessage, 0),
+		StartTime:     time.Now(),
 	}
 
 	sessionsMu.Lock()

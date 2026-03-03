@@ -451,6 +451,23 @@
         .model-select:focus { border-color: var(--accent); }
         .model-select option { background: var(--bg-secondary); color: var(--text-primary); }
 
+        .deploy-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: nowrap;
+            padding: 0 4px;
+        }
+        .deploy-checkbox input[type="checkbox"] {
+            accent-color: var(--orange);
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+        }
+
         /* Modal */
         .modal-overlay {
             position: fixed;
@@ -573,7 +590,17 @@
                 <button class="btn-stop" id="btnStop" onclick="stopSession()">⏹ 停止</button>
             </div>
             <div class="input-area" id="deployInputArea" style="display:none;">
-                <button class="btn-send" id="btnDeployRun" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red)); flex:1;">🚀 部署项目</button>
+                <select id="deployTarget" class="model-select" title="部署目标">
+                    <option value="">默认目标</option>
+                </select>
+                <select id="deployPlatform" class="model-select" title="目标平台">
+                    <option value="">当前平台</option>
+                    <option value="linux">linux</option>
+                    <option value="macos">macos</option>
+                    <option value="win">win</option>
+                </select>
+                <label class="deploy-checkbox"><input type="checkbox" id="deployPackOnly"> 仅打包</label>
+                <button class="btn-send" id="btnDeployRun" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red)); flex:1;">🚀 部署</button>
                 <button class="btn-stop" id="btnDeployStop" onclick="stopSession()">⏹ 停止</button>
             </div>
         </div>
@@ -957,6 +984,8 @@
         if (currentMode === 'deploy') {
             document.getElementById('codeInputArea').style.display = 'none';
             document.getElementById('deployInputArea').style.display = 'flex';
+            // 填充部署目标下拉框
+            populateDeployTargets(name, agentId);
         } else {
             document.getElementById('codeInputArea').style.display = 'flex';
             document.getElementById('deployInputArea').style.display = 'none';
@@ -995,6 +1024,33 @@
 
         if (currentMode === 'code') {
             document.getElementById('promptInput').focus();
+        }
+    }
+
+    // 填充部署目标下拉框（从 remoteProjectMap 获取该 agent 的 deploy_targets）
+    function populateDeployTargets(projectName, agentId) {
+        const sel = document.getElementById('deployTarget');
+        // 保留第一个默认选项，清除其余
+        while (sel.options.length > 1) sel.remove(1);
+
+        const entries = remoteProjectMap[projectName] || [];
+        for (const rp of entries) {
+            if (rp.agent_id === agentId && rp.deploy_targets && rp.deploy_targets.length > 0) {
+                rp.deploy_targets.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    opt.textContent = t;
+                    sel.appendChild(opt);
+                });
+                // 添加 "all" 选项
+                if (rp.deploy_targets.length > 1) {
+                    const allOpt = document.createElement('option');
+                    allOpt.value = 'all';
+                    allOpt.textContent = '全部目标';
+                    sel.appendChild(allOpt);
+                }
+                break;
+            }
         }
     }
 
@@ -1134,8 +1190,19 @@
             return;
         }
 
-        addEvent('user', '🚀 直接部署项目');
-        setStatus('running', '正在部署...');
+        const deployTarget = document.getElementById('deployTarget').value;
+        const buildPlatform = document.getElementById('deployPlatform').value;
+        const packOnly = document.getElementById('deployPackOnly').checked;
+
+        // 构建用户提示信息
+        const parts = [];
+        if (packOnly) parts.push('仅打包');
+        else parts.push('部署');
+        if (deployTarget) parts.push(`目标: ${deployTarget}`);
+        if (buildPlatform) parts.push(`平台: ${buildPlatform}`);
+        addEvent('user', `🚀 ${parts.join(' · ')}`);
+
+        setStatus('running', packOnly ? '正在打包...' : '正在部署...');
         document.getElementById('btnDeployRun').disabled = true;
         document.getElementById('btnDeployStop').classList.add('visible');
 
@@ -1144,10 +1211,18 @@
         renderProjects();
 
         try {
+            const body = {
+                project: currentProject,
+                deploy_only: true,
+                agent_id: currentAgentId || '',
+                deploy_target: deployTarget,
+                build_platform: buildPlatform,
+                pack_only: packOnly
+            };
             const resp = await fetch('/api/codegen/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ project: currentProject, deploy_only: true, agent_id: currentAgentId || '' })
+                body: JSON.stringify(body)
             });
             const data = await resp.json();
             if (!data.success) throw new Error(data.error);

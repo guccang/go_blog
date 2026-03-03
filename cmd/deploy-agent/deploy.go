@@ -229,12 +229,14 @@ func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
 	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
 		return d.runLocalCmd("cmd", []string{"/c", "start", "cmd", "/c", scriptPath}, workDir)
 	}
+	// bash 需要正斜杠路径（Windows 反斜杠会被解释为转义字符）
+	bashPath := filepath.ToSlash(scriptPath)
 	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行
 	if setsid, err := exec.LookPath("setsid"); err == nil {
-		return d.runLocalCmd(setsid, []string{"bash", scriptPath}, workDir)
+		return d.runLocalCmd(setsid, []string{"bash", bashPath}, workDir)
 	}
 	// macOS fallback: 用 Setpgid 创建新进程组，防止信号传播
-	return d.runLocalCmdDetached("bash", []string{scriptPath}, workDir)
+	return d.runLocalCmdDetached("bash", []string{bashPath}, workDir)
 }
 
 // copyFile 本地文件复制
@@ -255,6 +257,20 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// platformToGoEnv 将平台子目录名转换为 Go 交叉编译环境变量
+func platformToGoEnv(platform string) (goos, goarch string) {
+	switch platform {
+	case "linux":
+		return "linux", "amd64"
+	case "macos":
+		return "darwin", "amd64"
+	case "win":
+		return "windows", "amd64"
+	default:
+		return platform, "amd64"
+	}
+}
+
 // pack 执行本地打包脚本
 func (d *Deployer) pack() error {
 	var name string
@@ -268,7 +284,15 @@ func (d *Deployer) pack() error {
 		args = []string{d.proj.PackScript}
 	}
 
-	if err := d.runLocalCmd(name, args, d.proj.ProjectDir); err != nil {
+	// 交叉编译：目标平台 ≠ 主机平台时设置环境变量
+	var extraEnv []string
+	if d.cfg.HostPlatform != d.cfg.BuildPlatform {
+		goos, goarch := platformToGoEnv(d.cfg.BuildPlatform)
+		extraEnv = []string{"GOOS=" + goos, "GOARCH=" + goarch, "CGO_ENABLED=0"}
+		d.logf("info", "  > 交叉编译: GOOS=%s GOARCH=%s\n", goos, goarch)
+	}
+
+	if err := d.runLocalCmdWithEnv(name, args, d.proj.ProjectDir, extraEnv); err != nil {
 		return err
 	}
 
@@ -408,10 +432,11 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 	defer session.Close()
 
 	// 脚本输出写入临时文件；成功时不显示，失败时 cat 输出帮助排查
+	// sed 去除 Windows CRLF 行尾（\r），防止 Windows 打包的 .sh 在 Linux 上乱码无法执行
 	tmpLog := "/tmp/deploy_publish_$$.log"
 	cmd := fmt.Sprintf(
-		"cd %s && setsid bash %s > %s 2>&1 < /dev/null; ec=$?; if [ $ec -ne 0 ]; then cat %s; fi; rm -f %s; exit $ec",
-		t.RemoteDir, t.RemoteScript, tmpLog, tmpLog, tmpLog,
+		"cd %s && sed -i 's/\\r$//' %s && setsid bash %s > %s 2>&1 < /dev/null; ec=$?; if [ $ec -ne 0 ]; then cat %s; fi; rm -f %s; exit $ec",
+		t.RemoteDir, t.RemoteScript, t.RemoteScript, tmpLog, tmpLog, tmpLog,
 	)
 
 	session.Stdout = os.Stdout
@@ -431,6 +456,11 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 
 // runLocalCmd 执行本地命令
 func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
+	return d.runLocalCmdWithEnv(name, args, dir, nil)
+}
+
+// runLocalCmdWithEnv 执行本地命令（支持额外环境变量）
+func (d *Deployer) runLocalCmdWithEnv(name string, args []string, dir string, extraEnv []string) error {
 	start := time.Now()
 	d.logf("info", "  > %s %s\n", name, strings.Join(args, " "))
 
@@ -439,6 +469,9 @@ func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
 	cmd.Stderr = os.Stderr
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
 	}
 
 	err := cmd.Run()

@@ -51,6 +51,8 @@ type RemoteAgent struct {
 	ClaudeCodeModels []string // Claude Code 模型配置
 	OpenCodeModels   []string // OpenCode 模型配置
 	Tools            []string // agent 支持的编码工具列表 (claudecode, opencode)
+	DeployTargets    []string // 可用部署目标列表
+	HostPlatform     string   // 主机平台
 	MaxConcurrent    int
 	ActiveSessions   map[string]bool
 	LastHeartbeat    time.Time
@@ -131,6 +133,8 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				ClaudeCodeModels: payload.ClaudeCodeModels,
 				OpenCodeModels:   payload.OpenCodeModels,
 				Tools:            payload.Tools,
+				DeployTargets:    payload.DeployTargets,
+				HostPlatform:     payload.HostPlatform,
 				MaxConcurrent:    payload.MaxConcurrent,
 				ActiveSessions:   make(map[string]bool),
 				LastHeartbeat:    time.Now(),
@@ -453,6 +457,9 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		Tool:          tool,
 		AutoDeploy:    session.AutoDeploy,
 		DeployOnly:    session.DeployOnly,
+		DeployTarget:  session.DeployTarget,
+		BuildPlatform: session.BuildPlatform,
+		PackOnly:      session.PackOnly,
 	}
 
 	return agent.Sender.SendAgentMsg(MsgTaskAssign, payload)
@@ -524,6 +531,8 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 			"workspaces":      agent.Workspaces,
 			"projects":        agent.Projects,
 			"models":          agent.Models,
+			"deploy_targets":  agent.DeployTargets,
+			"host_platform":   agent.HostPlatform,
 			"max_concurrent":  agent.MaxConcurrent,
 			"active_sessions": len(agent.ActiveSessions),
 			"last_heartbeat":  agent.LastHeartbeat.Format("2006-01-02 15:04:05"),
@@ -638,6 +647,8 @@ func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 		agentID := agent.ID
 		agentName := agent.Name
 		projects := agent.Projects
+		deployTargets := agent.DeployTargets
+		hostPlatform := agent.HostPlatform
 		agent.mu.Unlock()
 
 		for _, proj := range projects {
@@ -648,12 +659,21 @@ func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 				tools = append(tools, agentTools...)
 			}
 			sort.Strings(tools)
-			result = append(result, RemoteProjectInfo{
+			info := RemoteProjectInfo{
 				Name:    proj,
 				AgentID: agentID,
 				Agent:   agentName,
 				Tools:   tools,
-			})
+			}
+			// deploy 类 agent 附加部署信息
+			for _, t := range tools {
+				if t == ToolDeploy {
+					info.DeployTargets = deployTargets
+					info.HostPlatform = hostPlatform
+					break
+				}
+			}
+			result = append(result, info)
 		}
 	}
 
@@ -670,10 +690,12 @@ func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 
 // RemoteProjectInfo 远程项目信息
 type RemoteProjectInfo struct {
-	Name    string   `json:"name"`
-	AgentID string   `json:"agent_id"`
-	Agent   string   `json:"agent"`
-	Tools   []string `json:"tools"` // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
+	Name          string   `json:"name"`
+	AgentID       string   `json:"agent_id"`
+	Agent         string   `json:"agent"`
+	Tools         []string `json:"tools"`                      // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
+	DeployTargets []string `json:"deploy_targets,omitempty"`   // deploy 项目的可用部署目标
+	HostPlatform  string   `json:"host_platform,omitempty"`    // deploy agent 的主机平台
 }
 
 // FindAgentForProject 查找拥有指定项目的 agent

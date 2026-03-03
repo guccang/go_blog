@@ -71,6 +71,11 @@ var gatewayBridge *GatewayBridge
 
 // InitGatewayBridge 初始化 go_blog 到 gateway 的连接
 func InitGatewayBridge(gatewayURL, authToken string) {
+	// 统一 token：gateway_token 同时作为 agent 认证 token
+	if authToken != "" {
+		agentToken = authToken
+	}
+
 	// 构建工具定义和映射表
 	toolDefs, toolMapping := buildToolDefs()
 
@@ -347,6 +352,8 @@ func (b *GatewayBridge) handleRegister(msg *uap.Message) {
 		ClaudeCodeModels: payload.ClaudeCodeModels,
 		OpenCodeModels:   payload.OpenCodeModels,
 		Tools:            payload.Tools,
+		DeployTargets:    payload.DeployTargets,
+		HostPlatform:     payload.HostPlatform,
 		MaxConcurrent:    payload.MaxConcurrent,
 		ActiveSessions:   make(map[string]bool),
 		LastHeartbeat:    time.Now(),

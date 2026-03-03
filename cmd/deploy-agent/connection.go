@@ -79,11 +79,12 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	case MsgTaskAssign:
 		var payload TaskAssignPayload
 		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received deploy task: session=%s project=%s", payload.SessionID, payload.Project)
+		log.Printf("[INFO] received deploy task: session=%s project=%s target=%s platform=%s pack_only=%v",
+			payload.SessionID, payload.Project, payload.DeployTarget, payload.BuildPlatform, payload.PackOnly)
 
 		if c.canAccept() {
 			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-			go c.executeDeploy(payload.SessionID, payload.Project)
+			go c.executeDeploy(payload)
 		} else {
 			c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
 				SessionID: payload.SessionID,
@@ -127,7 +128,9 @@ func (c *Connection) resolveProject(projectName string) (*ProjectConfig, error) 
 }
 
 // executeDeploy 执行部署任务
-func (c *Connection) executeDeploy(sessionID string, projectName string) {
+func (c *Connection) executeDeploy(task TaskAssignPayload) {
+	sessionID := task.SessionID
+
 	c.taskMu.Lock()
 	c.activeTasks[sessionID] = true
 	c.taskMu.Unlock()
@@ -145,7 +148,7 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 		})
 	}
 
-	proj, err := c.resolveProject(projectName)
+	proj, err := c.resolveProject(task.Project)
 	if err != nil {
 		sendEvent("error", fmt.Sprintf("❌ %v", err))
 		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
@@ -156,9 +159,26 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 		return
 	}
 
-	sendEvent("system", fmt.Sprintf("🚀 开始部署项目 [%s]...", proj.Name))
+	packOnly := task.PackOnly
+	targetFilter := task.DeployTarget
 
-	deployer := NewDeployer(c.cfg, proj, c.password)
+	// 浅拷贝 cfg 以设置 BuildPlatform（线程安全，不影响其他并发任务）
+	deployCfg := *c.cfg
+	if task.BuildPlatform != "" {
+		deployCfg.BuildPlatform = normalizePlatform(task.BuildPlatform)
+	}
+
+	if packOnly {
+		sendEvent("system", fmt.Sprintf("📦 开始打包项目 [%s] (平台: %s)...", proj.Name, deployCfg.BuildPlatform))
+	} else {
+		targetLabel := targetFilter
+		if targetLabel == "" {
+			targetLabel = "默认"
+		}
+		sendEvent("system", fmt.Sprintf("🚀 开始部署项目 [%s] (目标: %s, 平台: %s)...", proj.Name, targetLabel, deployCfg.BuildPlatform))
+	}
+
+	deployer := NewDeployer(&deployCfg, proj, c.password)
 	deployer.OnProgress = func(level, message string) {
 		evtType := "system"
 		prefix := "📦 "
@@ -169,7 +189,7 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 		sendEvent(evtType, prefix+message)
 	}
 
-	err = deployer.Run(false, "")
+	err = deployer.Run(packOnly, targetFilter)
 
 	// 验证：检查所有 target 的 VerifyURL
 	if err == nil {
@@ -266,6 +286,8 @@ func (c *Connection) sendDeployRegister() {
 		Tools:         []string{"deploy"},
 		MaxConcurrent: c.cfg.MaxConcurrent,
 		AuthToken:     c.cfg.AuthToken,
+		DeployTargets: c.cfg.TargetNames,
+		HostPlatform:  c.cfg.HostPlatform,
 	}
 	c.SendMsg(MsgRegister, payload)
 }

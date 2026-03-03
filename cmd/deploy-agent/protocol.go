@@ -26,6 +26,8 @@ type RegisterPayload struct {
 	Tools         []string `json:"tools,omitempty"`
 	MaxConcurrent int      `json:"max_concurrent"`
 	AuthToken     string   `json:"auth_token,omitempty"`
+	DeployTargets []string `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
+	HostPlatform  string   `json:"host_platform,omitempty"`  // 主机平台 "win"
 }
 
 // RegisterAckPayload 注册确认
@@ -44,11 +46,14 @@ type HeartbeatPayload struct {
 
 // TaskAssignPayload 任务分派
 type TaskAssignPayload struct {
-	SessionID  string `json:"session_id"`
-	Project    string `json:"project"`
-	Prompt     string `json:"prompt"`
-	AutoDeploy bool   `json:"auto_deploy,omitempty"`
-	DeployOnly bool   `json:"deploy_only,omitempty"`
+	SessionID     string `json:"session_id"`
+	Project       string `json:"project"`
+	Prompt        string `json:"prompt"`
+	AutoDeploy    bool   `json:"auto_deploy,omitempty"`
+	DeployOnly    bool   `json:"deploy_only,omitempty"`
+	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
+	BuildPlatform string `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
+	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
 }
 
 // TaskAcceptedPayload 任务接受确认
