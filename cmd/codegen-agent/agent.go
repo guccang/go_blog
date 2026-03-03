@@ -495,9 +495,14 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) ([]string, error) {
 }
 
 // isResumableModel 检查模型是否支持 --resume 续接
+// 空字符串视为 "default"（未指定模型时使用 Claude Code 默认模型）
 func (a *Agent) isResumableModel(model string) bool {
+	checkModel := model
+	if checkModel == "" {
+		checkModel = "default"
+	}
 	for _, m := range a.cfg.ResumeModels {
-		if m == model {
+		if m == checkModel {
 			return true
 		}
 	}

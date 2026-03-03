@@ -701,8 +701,9 @@ func parseProjectAgent(s string) (project, agentName string) {
 
 // resolveAgentID 根据 project 和 agentName 解析出目标 agentID
 // agentName 非空：通过 FindAgentByName 查找
-// agentName 为空：遍历远程项目，若只有一个 agent 持有该项目则自动使用，多个则报错
-func resolveAgentID(project, agentName string) (string, error) {
+// agentName 为空：遍历远程项目，按 toolFilter 过滤，若只有一个 agent 持有该项目则自动使用，多个则报错
+// toolFilter 为空时不过滤工具类型
+func resolveAgentID(project, agentName, toolFilter string) (string, error) {
 	pool := codegen.GetAgentPool()
 	if pool == nil {
 		if agentName != "" {
@@ -719,13 +720,26 @@ func resolveAgentID(project, agentName string) (string, error) {
 		return agent.ID, nil
 	}
 
-	// agentName 为空：检查远程项目中是否有同名项目
+	// agentName 为空：检查远程项目中是否有同名项目，按工具类型过滤
 	remoteProjects := pool.ListRemoteProjects()
 	var matched []codegen.RemoteProjectInfo
 	for _, p := range remoteProjects {
-		if p.Name == project {
-			matched = append(matched, p)
+		if p.Name != project {
+			continue
 		}
+		if toolFilter != "" {
+			hasTools := false
+			for _, t := range p.Tools {
+				if t == toolFilter {
+					hasTools = true
+					break
+				}
+			}
+			if !hasTools {
+				continue
+			}
+		}
+		matched = append(matched, p)
 	}
 	if len(matched) == 1 {
 		return matched[0].AgentID, nil
@@ -878,7 +892,7 @@ func handleCodegenCommand(userID, message string) string {
 		if rest == "" {
 			return "⚠️ 请提供编码需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>"
 		}
-		agentID, err := resolveAgentID(project, agentName)
+		agentID, err := resolveAgentID(project, agentName, codegen.ToolClaudeCode)
 		if err != nil {
 			return fmt.Sprintf("❌ %v", err)
 		}
@@ -910,7 +924,7 @@ func handleCodegenCommand(userID, message string) string {
 			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]>\n示例: cg deploy myapp\n示例: cg deploy myapp@mac"
 		}
 		project, agentName := parseProjectAgent(strings.Fields(param)[0])
-		agentID, err := resolveAgentID(project, agentName)
+		agentID, err := resolveAgentID(project, agentName, codegen.ToolDeploy)
 		if err != nil {
 			return fmt.Sprintf("❌ %v", err)
 		}

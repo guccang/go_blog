@@ -368,22 +368,32 @@ func sendCompletionSummary(state *UserSessionState, session *CodeSession, event 
 }
 
 // extractChangeSummary 从会话消息中提取修改内容摘要
+// 只在最后一次 user 消息之后的范围内查找，避免 cg send 续接时使用上一轮的结果
 // 优先级: result（Claude Code 最终结果）> summary（agent 报告）> assistant
 func extractChangeSummary(msgs []SessionMessage) string {
-	// 优先从 result 消息提取（Claude Code 的最终结果文本）
+	// 找到最后一条 user 消息的位置，只在其之后搜索
+	lastUserIdx := 0
 	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			lastUserIdx = i
+			break
+		}
+	}
+
+	// 优先从 result 消息提取（Claude Code 的最终结果文本）
+	for i := len(msgs) - 1; i >= lastUserIdx; i-- {
 		if msgs[i].Role == "result" && strings.TrimSpace(msgs[i].Content) != "" {
 			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
 		}
 	}
 	// 再尝试 summary（agent 生成的任务报告）
-	for i := len(msgs) - 1; i >= 0; i-- {
+	for i := len(msgs) - 1; i >= lastUserIdx; i-- {
 		if msgs[i].Role == "summary" && strings.TrimSpace(msgs[i].Content) != "" {
 			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
 		}
 	}
 	// 最后回退到 assistant 消息
-	for i := len(msgs) - 1; i >= 0; i-- {
+	for i := len(msgs) - 1; i >= lastUserIdx; i-- {
 		if msgs[i].Role == "assistant" && strings.TrimSpace(msgs[i].Content) != "" {
 			return truncateForWeChat(strings.TrimSpace(msgs[i].Content))
 		}
