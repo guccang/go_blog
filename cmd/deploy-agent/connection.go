@@ -191,12 +191,15 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 
 	err = deployer.Run(packOnly, targetFilter)
 
-	// 验证：检查所有 target 的 VerifyURL
-	if err == nil {
+	// 验证：从实际部署的 target 中获取 VerifyURL
+	if err == nil && !packOnly {
 		verifyURL := ""
 		verifyTimeout := 10
-		// 优先从 target 获取，兼容旧模式从 proj 获取
+		// 只检查本次实际部署的 target（按 targetFilter 过滤）
 		for _, t := range proj.Targets {
+			if targetFilter != "" && t.Name != targetFilter && t.Host != targetFilter {
+				continue
+			}
 			if t.VerifyURL != "" {
 				verifyURL = t.VerifyURL
 				verifyTimeout = t.VerifyTimeout
