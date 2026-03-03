@@ -1,0 +1,14 @@
+{
+  "http_port": 8884,
+  "gateway_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "guccang@blog.guccang.cn",
+  "agent_name": "wechat-agent",
+
+  "corp_id": "ww4e91ba1cb976b12b",
+  "agent_id": "1000002",
+  "secret": "WRMUWBxO-cBQwrnxXZfkPM94J7r8L9Hy4A0E6P3VXTI",
+  "token": "eg3NoeRL",
+  "encoding_aes_key": "om5sfgTQGWPvLLdxjHG6cMQDP2V7MqzqDRVxqI1Npdm",
+
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=57fe586b-005d-4313-a87d-dca18ac6e645"
+}

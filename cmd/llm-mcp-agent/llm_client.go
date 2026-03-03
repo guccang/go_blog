@@ -3,14 +3,35 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// 共享 HTTP 客户端，避免每次请求都重新建立 TCP/TLS 连接
+var llmHTTPClient = &http.Client{
+	Timeout: 180 * time.Second,
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSClientConfig:     &tls.Config{},
+		MaxIdleConns:         10,
+		MaxIdleConnsPerHost:  5,
+		IdleConnTimeout:      90 * time.Second,
+		TLSHandshakeTimeout:  15 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		DisableKeepAlives:    false,
+		ForceAttemptHTTP2:    true,
+	},
+}
 
 // ========================= LLM 消息结构 =========================
 
@@ -100,8 +121,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.APIKey))
 
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
 		return "", nil, fmt.Errorf("http request: %v", err)
 	}
@@ -135,7 +155,40 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 }
 
 // SendStreamingLLMRequest 发送流式 LLM 请求，逐 chunk 回调 onChunk，同时检测 tool_call
+// 内置重试逻辑，遇到 unexpected EOF 等瞬态错误会自动重试
 func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	const maxRetries = 2
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("[LLM] retry attempt %d/%d after error: %v", attempt, maxRetries, lastErr)
+			time.Sleep(time.Duration(attempt) * time.Second) // 递增退避：1s, 2s
+		}
+
+		text, toolCalls, err := sendStreamingLLMRequestOnce(cfg, messages, tools, onChunk)
+		if err == nil {
+			return text, toolCalls, nil
+		}
+
+		// 只对瞬态错误重试（EOF、连接重置等）
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "unexpected EOF") ||
+			strings.Contains(errMsg, "EOF") ||
+			strings.Contains(errMsg, "connection reset") ||
+			strings.Contains(errMsg, "broken pipe") {
+			lastErr = err
+			continue
+		}
+
+		// 非瞬态错误直接返回
+		return "", nil, err
+	}
+	return "", nil, fmt.Errorf("after %d retries: %v", maxRetries, lastErr)
+}
+
+// sendStreamingLLMRequestOnce 单次流式 LLM 请求
+func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
 	reqBody := struct {
 		Model       string    `json:"model"`
 		Messages    []Message `json:"messages"`
@@ -168,8 +221,7 @@ func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.APIKey))
 
-	client := &http.Client{Timeout: 180 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
 		return "", nil, fmt.Errorf("http request: %v", err)
 	}
@@ -196,6 +248,7 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		// log.Printf("[LLM Debug] Raw line: %s", line) // optional: too verbose, but we can print first few lines
 		if line == "" {
 			continue
 		}
@@ -264,6 +317,7 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 	}
 
 	if err := scanner.Err(); err != nil {
+		log.Printf("[LLM Debug] Scanner error: %v, text gathered so far: %s", err, fullText.String())
 		return "", nil, fmt.Errorf("read stream: %v", err)
 	}
 

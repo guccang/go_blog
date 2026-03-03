@@ -1,4 +1,5 @@
   {
-    "port": 9000,
-    "go_backend_url": "http://localhost:8881"
+    "port": 10086,
+    "go_backend_url": "http://localhost:8881",
+    "auth_token": "guccang@blog.guccang.cn"
   }

@@ -50,8 +50,11 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		{Role: "user", Content: payload.Query},
 	}
 
-	// 获取工具列表
-	tools := b.getLLMTools()
+	// 获取工具列表（先按用户选择过滤，再智能路由）
+	tools := b.filterToolsBySelection(payload.SelectedTools)
+	if len(tools) > 15 {
+		tools = b.routeTools(payload.Query, tools)
+	}
 
 	// 发送工具数量信息
 	toolCountMsg := fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(tools))

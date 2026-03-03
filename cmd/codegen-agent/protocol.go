@@ -27,6 +27,7 @@ type SessionStatus string
 type RegisterPayload struct {
 	AgentID          string   `json:"agent_id"`
 	Name             string   `json:"name"`
+	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
 	Workspaces       []string `json:"workspaces"`
 	Projects         []string `json:"projects"`
 	Models           []string `json:"models,omitempty"`            // 兼容旧版
@@ -46,6 +47,7 @@ type RegisterAckPayload struct {
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
 	AgentID          string   `json:"agent_id"`
+	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
 	ActiveSessions   int      `json:"active_sessions"`
 	Load             float64  `json:"load"`
 	Projects         []string `json:"projects,omitempty"`

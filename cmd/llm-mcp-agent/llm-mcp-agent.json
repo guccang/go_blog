@@ -1,7 +1,7 @@
 {
-  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
-  "gateway_http": "http://127.0.0.1:9000",
-  "auth_token": "",
+  "gateway_url": "ws://127.0.0.1:10086/ws/uap",
+  "gateway_http": "http://127.0.0.1:10086",
+  "auth_token": "guccang@blog.guccang.cn",
   "agent_id": "llm-mcp-agent",
   "agent_name": "LLM MCP Agent",
   "llm": {

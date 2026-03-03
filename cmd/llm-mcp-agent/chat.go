@@ -24,8 +24,11 @@ func (b *Bridge) handleChat(fromAgent, wechatUser, content string) {
 		{Role: "user", Content: content},
 	}
 
-	// 3. 获取工具列表
+	// 3. 获取工具列表（智能路由：>15 时用 LLM 筛选相关工具）
 	tools := b.getLLMTools()
+	if len(tools) > 15 {
+		tools = b.routeTools(content, tools)
+	}
 
 	// 4. 工具调用循环
 	maxIter := b.cfg.MaxToolIterations

@@ -25,6 +25,9 @@ func main() {
 	// 创建 Bridge
 	bridge := NewBridge(cfg)
 
+	// 预热 LLM 连接（建立 TCP+TLS，避免首次请求 EOF）
+	WarmupLLM(&cfg.LLM)
+
 	// 首次工具发现
 	if err := bridge.DiscoverTools(); err != nil {
 		log.Printf("[LLM-MCP] initial tool discovery failed (will retry): %v", err)

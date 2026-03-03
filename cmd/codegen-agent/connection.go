@@ -112,6 +112,12 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	case MsgHeartbeatAck:
 		// ok
 
+	case uap.MsgNotify:
+		// 来自其他 agent 的单向通知（如微信消息通知等）
+		var payload uap.NotifyPayload
+		json.Unmarshal(msg.Payload, &payload)
+		log.Printf("[INFO] notify from %s: channel=%s to=%s content=%s", msg.From, payload.Channel, payload.To, payload.Content)
+
 	case uap.MsgError:
 		// gateway 返回错误（如目标 agent 不在线）
 		var payload uap.ErrorPayload
@@ -135,6 +141,7 @@ func (c *Connection) sendCodegenRegister() {
 	payload := RegisterPayload{
 		AgentID:          c.agent.ID,
 		Name:             c.cfg.AgentName,
+		AgentType:        c.cfg.AgentType,
 		Workspaces:       c.cfg.Workspaces,
 		Projects:         c.agent.ScanProjects(),
 		Models:           c.agent.ScanSettings(),
@@ -151,6 +158,7 @@ func (c *Connection) sendCodegenRegister() {
 func (c *Connection) sendCodegenHeartbeat() {
 	c.SendMsg(MsgHeartbeat, HeartbeatPayload{
 		AgentID:          c.agent.ID,
+		AgentType:        c.cfg.AgentType,
 		ActiveSessions:   c.agent.ActiveCount(),
 		Load:             c.agent.LoadFactor(),
 		Projects:         c.agent.ScanProjects(),

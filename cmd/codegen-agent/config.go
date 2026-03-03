@@ -13,6 +13,7 @@ import (
 type AgentConfig struct {
 	ServerURL             string
 	AgentName             string
+	AgentType             string   // agent 类型: codegen(编码) / deploy(发布)，默认 codegen
 	AuthToken             string
 	Workspaces            []string
 	ClaudePath            string
@@ -63,6 +64,8 @@ func LoadConfig(path string) (*AgentConfig, error) {
 			cfg.ServerURL = val
 		case "agent_name":
 			cfg.AgentName = val
+		case "agent_type":
+			cfg.AgentType = val
 		case "auth_token":
 			cfg.AuthToken = val
 		case "workspaces":
@@ -118,6 +121,9 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	}
 	if cfg.GoBackendAgentID == "" {
 		cfg.GoBackendAgentID = "go_blog"
+	}
+	if cfg.AgentType == "" {
+		cfg.AgentType = "codegen"
 	}
 
 	configDir := filepath.Dir(path)
