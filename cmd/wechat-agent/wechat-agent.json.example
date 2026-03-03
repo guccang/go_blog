@@ -1,0 +1,14 @@
+{
+  "http_port": 8884,
+  "gateway_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "your-auth-token",
+  "agent_name": "wechat-agent",
+
+  "corp_id": "your-corp-id",
+  "agent_id": "your-agent-id",
+  "secret": "your-secret",
+  "token": "your-token",
+  "encoding_aes_key": "your-encoding-aes-key",
+
+  "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-webhook-key"
+}

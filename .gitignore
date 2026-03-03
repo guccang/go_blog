@@ -29,3 +29,10 @@ cmd/gateway/gateway
 cmd/llm-mcp-agent/llm-mcp-agent
 cmd/wechat-agent/wechat-agent
 plan.txt
+
+# 含 auth_token/密码等敏感信息的运行配置（保留 .example 作为模板）
+cmd/codegen-agent/agent.conf
+cmd/deploy-agent/deploy.conf
+cmd/gateway/gateway.json
+cmd/llm-mcp-agent/llm-mcp-agent.json
+cmd/wechat-agent/wechat-agent.json

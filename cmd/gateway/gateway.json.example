@@ -1,0 +1,5 @@
+{
+  "port": 10086,
+  "go_backend_url": "http://localhost:8881",
+  "auth_token": "your-auth-token"
+}
