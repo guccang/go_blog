@@ -604,6 +604,7 @@
     let cachedDeployProjects = []; // 远程项目中支持部署的
     let cachedAllRemote = [];      // 全部远程项目（用于按 agent 分组）
     let expandedAgents = new Set(); // 已展开的 agent 组 ID
+    let initialExpandDone = false; // 是否已经完成过初始的自动展开
     let cachedClaudeCodeModels = [];
     let cachedOpenCodeModels = [];
 
@@ -902,8 +903,9 @@
         }
 
         // 初次加载时展开第一个组
-        if (expandedAgents.size === 0) {
+        if (!initialExpandDone && groups.length > 0) {
             expandedAgents.add(groups[0].id);
+            initialExpandDone = true;
         }
         // 搜索时展开所有匹配组
         if (query) {

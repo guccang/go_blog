@@ -3,6 +3,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+taskkill /F /IM go_blog.exe 2>nul
+del /q *.zip 2>nul
+
 :: 获取当前时间，使用 PowerShell 提取精确格式
 for /f %%a in ('powershell -command "Get-Date -Format \"yyyy-MM-dd-HH_mm_ss\""') do (
     set TIMESTAMP=%%a

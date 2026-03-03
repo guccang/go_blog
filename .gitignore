@@ -28,3 +28,4 @@ cmd/deploy-agent/nohup.out
 cmd/gateway/gateway
 cmd/llm-mcp-agent/llm-mcp-agent
 cmd/wechat-agent/wechat-agent
+plan.txt

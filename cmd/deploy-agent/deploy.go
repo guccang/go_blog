@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -18,11 +17,11 @@ import (
 
 // Deployer 部署编排器
 type Deployer struct {
-	cfg          *DeployConfig   // 全局配置（SSH 等）
-	proj         *ProjectConfig  // 当前项目配置
+	cfg          *DeployConfig  // 全局配置（SSH 等）
+	proj         *ProjectConfig // 当前项目配置
 	password     string
-	packFile     string // 打包后的 zip 文件名（不含路径）
-	SSHConnected bool   // SSH 连接是否成功过（密码有效）
+	packFile     string                      // 打包后的 zip 文件名（不含路径）
+	SSHConnected bool                        // SSH 连接是否成功过（密码有效）
 	OnProgress   func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
 }
 
@@ -228,7 +227,7 @@ func (d *Deployer) localUnzip(zipPath, targetDir string) error {
 // macOS 没有 setsid，改用 Setpgid 将脚本放入新进程组，避免 deploy-agent 退出时信号传播到子进程
 func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
 	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
-		return d.runLocalCmd("cmd", []string{"/c", scriptPath}, workDir)
+		return d.runLocalCmd("cmd", []string{"/c", "start", "cmd", "/c", scriptPath}, workDir)
 	}
 	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行
 	if setsid, err := exec.LookPath("setsid"); err == nil {
@@ -451,8 +450,8 @@ func (d *Deployer) runLocalCmd(name string, args []string, dir string) error {
 	return nil
 }
 
-// runLocalCmdDetached 在新进程组中执行本地命令（macOS 兼容）
-// 设置 Setpgid=true 使子进程脱离当前进程组，deploy-agent 退出时不会向其发送信号
+// runLocalCmdDetached 在新进程组中执行本地命令
+// Unix 系统设置 Setpgid=true 使子进程脱离当前进程组，deploy-agent 退出时不会向其发送信号
 func (d *Deployer) runLocalCmdDetached(name string, args []string, dir string) error {
 	start := time.Now()
 	d.logf("info", "  > %s %s (detached)\n", name, strings.Join(args, " "))
@@ -460,7 +459,7 @@ func (d *Deployer) runLocalCmdDetached(name string, args []string, dir string) e
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}

@@ -16,7 +16,7 @@ import (
 
 // Message LLM 对话消息
 type Message struct {
-	Role       string     `json:"role"`                  // "system", "user", "assistant", "tool"
+	Role       string     `json:"role"`                   // "system", "user", "assistant", "tool"
 	Content    string     `json:"content,omitempty"`      // 文本内容
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // assistant 返回的工具调用
 	ToolCallID string     `json:"tool_call_id,omitempty"` // tool 消息的关联 ID
@@ -158,6 +158,7 @@ func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal request: %v", err)
 	}
+	log.Printf("[LLM Debug] Streaming Request Payload: %s", string(data))
 
 	apiURL := fmt.Sprintf("%s/chat/completions", cfg.BaseURL)
 	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(data))

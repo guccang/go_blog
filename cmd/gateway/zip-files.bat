@@ -1,6 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
+taskkill /F /IM gateway.exe 2>nul
 
 del /q *.zip 2>nul
 
@@ -9,21 +10,22 @@ for /f %%a in ('powershell -command "Get-Date -Format \"yyyy-MM-dd-HH_mm_ss\""')
     set TIMESTAMP=%%a
 )
 
-set OUTPUT=codegen_agent_%TIMESTAMP%.zip
+set OUTPUT=gateway_%TIMESTAMP%.zip
 set SEVENZIP="C:\Program Files\7-Zip\7z.exe"
 
-:: 关闭运行中的实例以防文件被占用报错拒绝访问
-taskkill /f /im codegen-agent.exe >nul 2>&1
-go build -o codegen-agent.exe
+:: 清理编译产物
+del gateway.exe
+
+go build -o gateway.exe
 if errorlevel 1 (
     echo 编译失败
     exit /b 1
 )
 
 :: 打包二进制 + 配置
-%SEVENZIP% a -tzip "%OUTPUT%" codegen-agent.exe agent.conf settings\
+%SEVENZIP% a -tzip "%OUTPUT%" gateway.exe gateway.json
 
 :: 清理编译产物
-del codegen-agent.exe
+del gateway.exe
 
 echo 成功生成: %OUTPUT%

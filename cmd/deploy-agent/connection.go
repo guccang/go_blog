@@ -171,14 +171,29 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 
 	err = deployer.Run(false, "")
 
-	if err == nil && proj.VerifyURL != "" {
-		sendEvent("system", "⏳ 等待服务启动 (5s)...")
-		time.Sleep(5 * time.Second)
-
-		if verifyErr := c.verify(proj); verifyErr != nil {
-			err = fmt.Errorf("部署验证失败: %v", verifyErr)
-		} else {
-			sendEvent("system", "✅ 部署验证通过（HTTP 200）")
+	// 验证：检查所有 target 的 VerifyURL
+	if err == nil {
+		verifyURL := ""
+		verifyTimeout := 10
+		// 优先从 target 获取，兼容旧模式从 proj 获取
+		for _, t := range proj.Targets {
+			if t.VerifyURL != "" {
+				verifyURL = t.VerifyURL
+				verifyTimeout = t.VerifyTimeout
+				break
+			}
+		}
+		if verifyURL == "" && proj.VerifyURL != "" {
+			verifyURL = proj.VerifyURL
+		}
+		if verifyURL != "" {
+			sendEvent("system", "⏳ 等待服务启动 (5s)...")
+			time.Sleep(5 * time.Second)
+			if verifyErr := c.verifyURL(verifyURL, verifyTimeout); verifyErr != nil {
+				err = fmt.Errorf("部署验证失败: %v", verifyErr)
+			} else {
+				sendEvent("system", "✅ 部署验证通过（HTTP 200）")
+			}
 		}
 	}
 
@@ -201,15 +216,14 @@ func (c *Connection) executeDeploy(sessionID string, projectName string) {
 	log.Printf("[INFO] deploy task %s (project=%s) completed, status=%s", sessionID, proj.Name, status)
 }
 
-// verify HTTP GET 验证部署结果
-func (c *Connection) verify(proj *ProjectConfig) error {
-	timeout := proj.VerifyTimeout
+// verifyURL HTTP GET 验证部署结果
+func (c *Connection) verifyURL(url string, timeout int) error {
 	if timeout <= 0 {
 		timeout = 10
 	}
 
 	httpClient := &http.Client{Timeout: time.Duration(timeout) * time.Second}
-	resp, err := httpClient.Get(proj.VerifyURL)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("连接失败: %v", err)
 	}
