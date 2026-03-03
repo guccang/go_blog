@@ -107,6 +107,12 @@ func InitGatewayBridge(gatewayURL, authToken string) {
 
 	gatewayBridge = bridge
 
+	// 初始化 WeChat Bridge（通过 gateway 路由发送微信消息）
+	// 使 cg start 等命令可以通过 StartSessionForWeChat 启动编码会话并推送进度
+	InitWeChatBridge(func(toUser, content string) error {
+		return bridge.sendWechatViaGateway(toUser, content)
+	})
+
 	// 后台连接 gateway（非阻塞）
 	go func() {
 		log.MessageF(log.ModuleAgent, "CodeGen: connecting to gateway at %s (tools=%d)", gatewayURL, len(toolDefs))
@@ -449,6 +455,17 @@ func (b *GatewayBridge) handleNotify(msg *uap.Message) {
 		Channel: "wechat",
 		To:      payload.To,
 		Content: result,
+	})
+}
+
+// sendWechatViaGateway 通过 gateway 路由发送微信消息给用户
+// 发送 notify 消息到 wechat-agent，由其调用企业微信 API
+func (b *GatewayBridge) sendWechatViaGateway(toUser, content string) error {
+	wechatAgentID := "wechat-wechat-agent"
+	return b.client.SendTo(wechatAgentID, uap.MsgNotify, uap.NotifyPayload{
+		Channel: "wechat",
+		To:      toUser,
+		Content: content,
 	})
 }
 

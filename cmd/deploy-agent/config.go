@@ -476,19 +476,19 @@ func (c *DeployConfig) loadPublishTarget(publishBaseDir, targetName, projName st
 	isLocal := strings.HasPrefix(targetName, "local")
 
 	// 确定平台子目录：
-	// - daemon 模式 (LoadAllPlatforms): 扫描所有平台子目录，取第一个匹配
-	// - local target: 用主机平台
-	// - ssh target: 用目标平台
+	// - local target: 始终用主机平台（本机部署只能用当前 OS 的脚本）
+	// - daemon 模式 SSH target (LoadAllPlatforms): 扫描所有平台子目录，取第一个匹配
+	// - CLI 模式 SSH target: 用目标平台
 	var platDirs []string
-	if c.LoadAllPlatforms {
+	if isLocal {
+		platDirs = []string{c.HostPlatform}
+	} else if c.LoadAllPlatforms {
 		entries, _ := os.ReadDir(targetDir)
 		for _, e := range entries {
 			if e.IsDir() {
 				platDirs = append(platDirs, e.Name())
 			}
 		}
-	} else if isLocal {
-		platDirs = []string{c.HostPlatform}
 	} else {
 		platDirs = []string{c.BuildPlatform}
 	}
