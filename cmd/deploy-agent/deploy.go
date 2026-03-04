@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -225,18 +226,48 @@ func (d *Deployer) localUnzip(zipPath, targetDir string) error {
 // runLocalScript 执行本地脚本（自动适配 .bat/.sh）
 // 对于 Unix 系统，优先使用 setsid 创建新会话，使脚本中启动的后台进程与 deploy-agent 完全分离
 // macOS 没有 setsid，改用 Setpgid 将脚本放入新进程组，避免 deploy-agent 退出时信号传播到子进程
+//
+// 注意：脚本执行使用 fire-and-forget 模式，stdout/stderr 设为 nil（丢弃），
+// 避免 cmd.Run() 因等待 pipe 关闭而卡住（子进程继承 pipe 句柄导致）
 func (d *Deployer) runLocalScript(scriptPath, workDir string) error {
+	start := time.Now()
+	var name string
+	var args []string
+
 	if strings.HasSuffix(scriptPath, ".bat") || strings.HasSuffix(scriptPath, ".cmd") {
-		return d.runLocalCmd("cmd", []string{"/c", "start", "cmd", "/c", scriptPath}, workDir)
+		name = "cmd"
+		args = []string{"/c", "start", "cmd", "/c", scriptPath}
+	} else {
+		// bash 需要正斜杠路径（Windows 反斜杠会被解释为转义字符）
+		bashPath := filepath.ToSlash(scriptPath)
+		// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行
+		if setsid, err := exec.LookPath("setsid"); err == nil {
+			name = setsid
+			args = []string{"bash", bashPath}
+		} else {
+			// macOS fallback: 用 Setpgid 创建新进程组，防止信号传播
+			return d.runLocalCmdDetached("bash", []string{bashPath}, workDir)
+		}
 	}
-	// bash 需要正斜杠路径（Windows 反斜杠会被解释为转义字符）
-	bashPath := filepath.ToSlash(scriptPath)
-	// 优先使用 setsid（Linux 可用），使发布脚本在新会话中运行
-	if setsid, err := exec.LookPath("setsid"); err == nil {
-		return d.runLocalCmd(setsid, []string{"bash", bashPath}, workDir)
+
+	d.logf("info", "  > %s %s\n", name, strings.Join(args, " "))
+	cmd := exec.Command(name, args...)
+	// stdout/stderr 设为 nil（丢弃）：
+	// start/setsid 启动的子进程会继承 pipe 句柄，如果用 buffer 捕获，
+	// cmd.Run() 会等待 pipe 关闭，但子进程持有句柄不释放 → 永久卡住
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if workDir != "" {
+		cmd.Dir = workDir
 	}
-	// macOS fallback: 用 Setpgid 创建新进程组，防止信号传播
-	return d.runLocalCmdDetached("bash", []string{bashPath}, workDir)
+
+	err := cmd.Run()
+	elapsed := time.Since(start)
+	if err != nil {
+		return fmt.Errorf("%s failed (%.1fs): %v", name, elapsed.Seconds(), err)
+	}
+	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
+	return nil
 }
 
 // copyFile 本地文件复制
@@ -406,15 +437,26 @@ func (d *Deployer) runRemoteCmd(client *ssh.Client, cmd string) error {
 	}
 	defer session.Close()
 
-	session.Stdout = os.Stdout
-	session.Stderr = os.Stderr
+	// 捕获 stdout/stderr 到 buffer，失败时可以返回具体原因
+	var stdoutBuf, stderrBuf bytes.Buffer
+	session.Stdout = &stdoutBuf
+	session.Stderr = &stderrBuf
 
 	d.logf("info", "  > %s\n", cmd)
 	start := time.Now()
 	err = session.Run(cmd)
 	elapsed := time.Since(start)
 
+	// 输出 stdout（如 unzip 文件列表）
+	if out := strings.TrimSpace(stdoutBuf.String()); out != "" {
+		d.logf("info", "%s\n", out)
+	}
+
 	if err != nil {
+		errDetail := strings.TrimSpace(stderrBuf.String())
+		if errDetail != "" {
+			return fmt.Errorf("命令执行失败 (%.1fs): %s", elapsed.Seconds(), errDetail)
+		}
 		return fmt.Errorf("命令执行失败 (%.1fs): %v", elapsed.Seconds(), err)
 	}
 	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
@@ -439,8 +481,10 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 		t.RemoteDir, t.RemoteScript, t.RemoteScript, tmpLog, tmpLog, tmpLog,
 	)
 
-	session.Stdout = os.Stdout
-	session.Stderr = os.Stderr
+	// 捕获输出（失败时 cat 的内容会出现在 stdout）
+	var stdoutBuf, stderrBuf bytes.Buffer
+	session.Stdout = &stdoutBuf
+	session.Stderr = &stderrBuf
 
 	d.logf("info", "  > %s\n", t.RemoteScript)
 	start := time.Now()
@@ -448,6 +492,15 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 	elapsed := time.Since(start)
 
 	if err != nil {
+		// 优先用 stdout（cat 的脚本输出），其次 stderr
+		errDetail := strings.TrimSpace(stdoutBuf.String())
+		if errDetail == "" {
+			errDetail = strings.TrimSpace(stderrBuf.String())
+		}
+		if errDetail != "" {
+			d.logf("error", "%s\n", errDetail)
+			return fmt.Errorf("命令执行失败 (%.1fs): %s", elapsed.Seconds(), errDetail)
+		}
 		return fmt.Errorf("命令执行失败 (%.1fs): %v", elapsed.Seconds(), err)
 	}
 	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
@@ -465,8 +518,9 @@ func (d *Deployer) runLocalCmdWithEnv(name string, args []string, dir string, ex
 	d.logf("info", "  > %s %s\n", name, strings.Join(args, " "))
 
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -476,7 +530,18 @@ func (d *Deployer) runLocalCmdWithEnv(name string, args []string, dir string, ex
 
 	err := cmd.Run()
 	elapsed := time.Since(start)
+
+	// 输出 stdout
+	if out := strings.TrimSpace(stdoutBuf.String()); out != "" {
+		d.logf("info", "%s\n", out)
+	}
+
 	if err != nil {
+		errDetail := strings.TrimSpace(stderrBuf.String())
+		if errDetail != "" {
+			d.logf("error", "%s\n", errDetail)
+			return fmt.Errorf("%s failed (%.1fs): %s", name, elapsed.Seconds(), errDetail)
+		}
 		return fmt.Errorf("%s failed (%.1fs): %v", name, elapsed.Seconds(), err)
 	}
 	d.logf("info", "  > 完成 (%.1fs)\n", elapsed.Seconds())
@@ -485,13 +550,14 @@ func (d *Deployer) runLocalCmdWithEnv(name string, args []string, dir string, ex
 
 // runLocalCmdDetached 在新进程组中执行本地命令
 // Unix 系统设置 Setpgid=true 使子进程脱离当前进程组，deploy-agent 退出时不会向其发送信号
+// stdout/stderr 设为 nil，避免子进程继承 pipe 句柄导致 cmd.Run() 卡住
 func (d *Deployer) runLocalCmdDetached(name string, args []string, dir string) error {
 	start := time.Now()
 	d.logf("info", "  > %s %s (detached)\n", name, strings.Join(args, " "))
 
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	setSysProcAttr(cmd)
 	if dir != "" {
 		cmd.Dir = dir
