@@ -1,0 +1,153 @@
+package codegen
+
+import "encoding/json"
+
+// WebSocket 消息类型常量
+const (
+	MsgRegister          = "register"
+	MsgRegisterAck       = "register_ack"
+	MsgHeartbeat         = "heartbeat"
+	MsgHeartbeatAck      = "heartbeat_ack"
+	MsgTaskAssign        = "task_assign"
+	MsgTaskAccepted      = "task_accepted"
+	MsgTaskRejected      = "task_rejected"
+	MsgTaskStop          = "task_stop"
+	MsgStreamEvent       = "stream_event"
+	MsgTaskComplete      = "task_complete"
+	MsgFileRead          = "file_read"
+	MsgFileReadResp      = "file_read_resp"
+	MsgTreeRead          = "tree_read"
+	MsgTreeReadResp      = "tree_read_resp"
+	MsgProjectCreate     = "project_create"
+	MsgProjectCreateResp = "project_create_resp"
+)
+
+// AgentMessage WebSocket 统一消息信封
+type AgentMessage struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+	Ts      int64           `json:"ts"`
+}
+
+// RegisterPayload Agent 注册信息
+type RegisterPayload struct {
+	AgentID          string   `json:"agent_id"`
+	Name             string   `json:"name"`
+	Workspaces       []string `json:"workspaces"`
+	Projects         []string `json:"projects"`                    // agent 上报的可用项目列表
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`             // agent 支持的编码工具列表 (claudecode, opencode)
+	MaxConcurrent    int      `json:"max_concurrent"`
+	AuthToken        string   `json:"auth_token,omitempty"`
+	DeployTargets    []string `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
+	HostPlatform     string   `json:"host_platform,omitempty"`  // 主机平台 "win"
+	Pipelines        []string `json:"pipelines,omitempty"`      // deploy agent 可用 pipeline
+}
+
+// RegisterAckPayload 注册确认
+type RegisterAckPayload struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// HeartbeatPayload Agent 心跳
+type HeartbeatPayload struct {
+	AgentID          string   `json:"agent_id"`
+	ActiveSessions   int      `json:"active_sessions"`
+	Load             float64  `json:"load"`
+	Projects         []string `json:"projects,omitempty"`          // 定期更新项目列表
+	Models           []string `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string `json:"tools,omitempty"`             // 定期更新编码工具列表
+}
+
+// TaskAssignPayload 任务分派
+type TaskAssignPayload struct {
+	SessionID     string `json:"session_id"`
+	Project       string `json:"project"`
+	Prompt        string `json:"prompt"`
+	MaxTurns      int    `json:"max_turns"`
+	SystemPrompt  string `json:"system_prompt"`
+	ClaudeSession string `json:"claude_session,omitempty"`
+	Model         string `json:"model,omitempty"`          // 指定模型配置名称
+	Tool          string `json:"tool,omitempty"`           // 编码工具: claudecode, opencode（默认 claudecode）
+	AutoDeploy    bool   `json:"auto_deploy,omitempty"`    // 编码完成后自动部署+验证
+	DeployOnly    bool   `json:"deploy_only,omitempty"`    // 跳过编码，直接部署+验证
+	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
+	BuildPlatform string `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
+	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
+	Pipeline      string `json:"pipeline,omitempty"`       // deploy pipeline 名称
+}
+
+// TaskAcceptedPayload 任务接受确认
+type TaskAcceptedPayload struct {
+	SessionID string `json:"session_id"`
+}
+
+// TaskRejectedPayload 任务拒绝
+type TaskRejectedPayload struct {
+	SessionID string `json:"session_id"`
+	Reason    string `json:"reason"`
+}
+
+// TaskStopPayload 停止任务
+type TaskStopPayload struct {
+	SessionID string `json:"session_id"`
+}
+
+// StreamEventPayload 流式事件转发
+type StreamEventPayload struct {
+	SessionID string      `json:"session_id"`
+	Event     StreamEvent `json:"event"`
+}
+
+// TaskCompletePayload 任务完成
+type TaskCompletePayload struct {
+	SessionID string        `json:"session_id"`
+	Status    SessionStatus `json:"status"`
+	Error     string        `json:"error,omitempty"`
+}
+
+// FileReadPayload 请求读取远程文件
+type FileReadPayload struct {
+	RequestID string `json:"request_id"`
+	Project   string `json:"project"`
+	Path      string `json:"path"`
+}
+
+// FileReadRespPayload 远程文件读取响应
+type FileReadRespPayload struct {
+	RequestID string `json:"request_id"`
+	Content   string `json:"content,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// TreeReadPayload 请求读取远程目录树
+type TreeReadPayload struct {
+	RequestID string `json:"request_id"`
+	Project   string `json:"project"`
+	MaxDepth  int    `json:"max_depth"`
+}
+
+// TreeReadRespPayload 远程目录树响应
+type TreeReadRespPayload struct {
+	RequestID string   `json:"request_id"`
+	Tree      *DirNode `json:"tree,omitempty"`
+	Error     string   `json:"error,omitempty"`
+}
+
+// ProjectCreatePayload 请求在远程 agent 上创建项目
+type ProjectCreatePayload struct {
+	RequestID string `json:"request_id"`
+	Name      string `json:"name"`
+}
+
+// ProjectCreateRespPayload 远程项目创建响应
+type ProjectCreateRespPayload struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	Error     string `json:"error,omitempty"`
+}
