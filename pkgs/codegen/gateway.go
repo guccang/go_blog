@@ -254,7 +254,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 		b.pool.pendMu.Unlock()
 
 	case uap.MsgNotify:
-		b.handleNotify(msg)
+		go b.handleNotify(msg) // 异步处理，避免 LLM 处理阻塞消息循环
 
 	case uap.MsgToolCall:
 		go b.handleToolCall(msg) // 异步处理，避免阻塞消息循环
@@ -470,20 +470,42 @@ func (b *GatewayBridge) sendWechatViaGateway(toUser, content string) error {
 }
 
 // forwardToWechatAgents 转发消息给所有连接的 wechat-agent（通过 gateway 路由）
+// 尝试从 payload 中提取 session_id，注入关联的 account 字段
 func (b *GatewayBridge) forwardToWechatAgents(msg *uap.Message) {
-	// 使用约定的 wechat-agent ID 前缀
-	// wechat-agent 注册时 ID 为 "wechat-<name>"
-	// 这里直接广播给已知的 wechat-agent
-	// 简单实现：发给 "wechat-wechat-agent"（默认 wechat-agent ID）
 	wechatAgentID := "wechat-wechat-agent"
+	payload := enrichPayloadWithAccount(msg.Payload)
 	b.client.Send(&uap.Message{
 		Type:    msg.Type,
 		ID:      uap.NewMsgID(),
 		From:    "go_blog",
 		To:      wechatAgentID,
-		Payload: msg.Payload,
+		Payload: payload,
 		Ts:      time.Now().UnixMilli(),
 	})
+}
+
+// enrichPayloadWithAccount 尝试从 payload 提取 session_id，注入关联的 account
+func enrichPayloadWithAccount(raw json.RawMessage) json.RawMessage {
+	var base struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(raw, &base) != nil || base.SessionID == "" {
+		return raw
+	}
+	account := GetSessionUser(base.SessionID)
+	if account == "" {
+		return raw
+	}
+	var m map[string]interface{}
+	if json.Unmarshal(raw, &m) != nil {
+		return raw
+	}
+	m["account"] = account
+	enriched, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return enriched
 }
 
 // getAgent 从 pool 中获取 agent
@@ -691,6 +713,23 @@ func UnregisterTaskListener(taskID string) {
 	gatewayBridge.taskEventMu.Lock()
 	delete(gatewayBridge.taskEventChannels, taskID)
 	gatewayBridge.taskEventMu.Unlock()
+}
+
+// SendWechatNotify 通过 gateway → wechat-agent 推送微信通知
+// toUser 为微信用户ID，"@all" 表示发送给所有人
+func SendWechatNotify(toUser, content string) error {
+	if gatewayBridge == nil || gatewayBridge.client == nil {
+		return fmt.Errorf("gateway bridge not initialized")
+	}
+	if !gatewayBridge.client.IsConnected() {
+		return fmt.Errorf("gateway not connected")
+	}
+	return gatewayBridge.sendWechatViaGateway(toUser, content)
+}
+
+// IsGatewayConnected 检查 gateway 是否已连接
+func IsGatewayConnected() bool {
+	return gatewayBridge != nil && gatewayBridge.client != nil && gatewayBridge.client.IsConnected()
 }
 
 // IsLLMAgentOnline 检查 llm-mcp-agent 是否在线

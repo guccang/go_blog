@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"codegen"
+	"config"
 	"email"
 	"fmt"
 	"llm"
@@ -86,33 +88,7 @@ func (rg *ReportGenerator) GenerateDailyReport(account string) (string, error) {
 	readingStats := statistics.RawGetReadingStats(account)
 	taskStats := statistics.RawGetComplexTaskStats(account)
 
-	prompt := fmt.Sprintf(`你是一个智能报告助手。请根据以下数据生成一份简洁的日报。
-
-日期: %s
-
-## 今日数据
-
-### 待办事项
-%s
-
-### 运动记录
-%s
-
-### 运动统计
-%s
-
-### 阅读情况
-%s
-
-### 任务进度
-%s
-
-## 报告要求
-1. 用 Markdown 格式输出
-2. 包含以下部分：今日总结、完成情况、运动数据、阅读进展、明日建议
-3. 语气专业但友好
-4. 如果某部分没有数据，简要说明即可
-5. 在末尾给出1-2条针对性的改进建议`, today, todoData, exerciseData, exerciseStats, readingStats, taskStats)
+	prompt := config.SafeSprintf(config.GetPrompt(account, "daily_report"), today, todoData, exerciseData, exerciseStats, readingStats, taskStats)
 
 	messages := []llm.Message{
 		{Role: "user", Content: prompt},
@@ -149,33 +125,7 @@ func (rg *ReportGenerator) GenerateWeeklyReport(account string) (string, error) 
 	readingStats := statistics.RawGetReadingStats(account)
 	taskStats := statistics.RawGetComplexTaskStats(account)
 
-	prompt := fmt.Sprintf(`你是一个智能报告助手。请根据以下数据生成一份详细的周报。
-
-周期: %s 至 %s
-
-## 本周数据
-
-### 待办事项（本周所有）
-%s
-
-### 运动统计（7天）
-%s
-
-### 运动详情
-%s
-
-### 阅读情况
-%s
-
-### 任务进度
-%s
-
-## 报告要求
-1. 用 Markdown 格式输出
-2. 包含：本周总结、待办完成率分析、运动趋势、阅读进展、任务推进、下周计划建议
-3. 对比上周数据给出趋势分析（如果有的话）
-4. 给出2-3条具体可执行的改进建议
-5. 语气专业、有洞察力`, weekStart, weekEnd, todoData, exerciseStats, exerciseRange, readingStats, taskStats)
+	prompt := config.SafeSprintf(config.GetPrompt(account, "weekly_report"), weekStart, weekEnd, todoData, exerciseStats, exerciseRange, readingStats, taskStats)
 
 	messages := []llm.Message{
 		{Role: "user", Content: prompt},
@@ -209,30 +159,7 @@ func (rg *ReportGenerator) GenerateMonthlyReport(account string) (string, error)
 	yearGoal := statistics.RawGetMonthGoal(account, year, month)
 	taskStats := statistics.RawGetComplexTaskStats(account)
 
-	prompt := fmt.Sprintf(`你是一个智能报告助手。请根据以下数据生成一份全面的月报。
-
-月份: %d年%d月
-
-### 待办数据
-%s
-
-### 运动统计（30天）
-%s
-
-### 阅读情况
-%s
-
-### 本月目标
-%s
-
-### 任务进度
-%s
-
-## 报告要求
-1. Markdown 格式
-2. 包含：月度总结、目标达成率、运动/阅读分析、关键成就、不足与改进
-3. 给出下月目标调整建议
-4. 数据驱动，有具体数字`, year, month, todoData, exerciseStats, readingStats, yearGoal, taskStats)
+	prompt := config.SafeSprintf(config.GetPrompt(account, "monthly_report"), year, month, todoData, exerciseStats, readingStats, yearGoal, taskStats)
 
 	messages := []llm.Message{
 		{Role: "user", Content: prompt},
@@ -286,6 +213,20 @@ func (rg *ReportGenerator) notifyReport(account, reportType, title, content stri
   </div>
 </div>`, title, time.Now().Format("2006-01-02 15:04"), summary)
 		go email.SendHTMLEmail("", subject, htmlBody)
+	}
+
+	// 企业微信推送（通过 gateway → wechat-agent）
+	if codegen.IsGatewayConnected() {
+		go func() {
+			wechatSummary := content
+			if len(wechatSummary) > 500 {
+				wechatSummary = wechatSummary[:500] + "\n...(完整报告请查看博客)"
+			}
+			wechatMsg := fmt.Sprintf("📊 %s已生成\n\n%s", reportType, wechatSummary)
+			if err := codegen.SendWechatNotify("@all", wechatMsg); err != nil {
+				log.WarnF(log.ModuleAgent, "WeChat report push via gateway failed: %v", err)
+			}
+		}()
 	}
 }
 

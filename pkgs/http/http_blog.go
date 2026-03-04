@@ -118,6 +118,11 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 
 	ret := control.AddBlog(account, &ubd)
 
+	// 如果保存的是提示词配置，自动重载
+	if ret == 0 && title == config.GetSysPromptsConfigTitle() {
+		config.ReloadPrompts(account)
+	}
+
 	// 响应客户端
 	if ret == 0 {
 		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d", ret)))

@@ -34,6 +34,21 @@ type UserSessionState struct {
 // 全局桥接实例
 var wechatBridge *WeChatBridge
 
+// GetSessionUser 根据 sessionID 查找关联的微信用户
+func GetSessionUser(sessionID string) string {
+	if wechatBridge == nil {
+		return ""
+	}
+	wechatBridge.mu.RLock()
+	defer wechatBridge.mu.RUnlock()
+	for _, state := range wechatBridge.userSessions {
+		if state.SessionID == sessionID {
+			return state.UserID
+		}
+	}
+	return ""
+}
+
 // InitWeChatBridge 初始化微信桥接，注入发送函数
 func InitWeChatBridge(sender SendFunc) {
 	wechatBridge = &WeChatBridge{

@@ -27,6 +27,10 @@ type Bridge struct {
 	// codegen 事件节流
 	lastEventTime map[string]time.Time // session_id → 上次推送时间
 	eventMu       sync.Mutex
+
+	// session → wechat user 映射（从 payload.Account 学习）
+	sessionUsers map[string]string // session_id → wechat user
+	sessionMu    sync.Mutex
 }
 
 // NewBridge 创建桥接器
@@ -56,6 +60,7 @@ func NewBridge(cfg *Config) *Bridge {
 		cfg:           cfg,
 		client:        client,
 		lastEventTime: make(map[string]time.Time),
+		sessionUsers:  make(map[string]string),
 	}
 
 	// 设置消息回调
@@ -141,7 +146,7 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 			return
 		}
 		if payload.Channel == "wechat" && payload.To != "" {
-			b.sendAppMessage(payload.To, payload.Content)
+			b.sendNotification(payload.To, payload.Content)
 		}
 
 	case uap.MsgToolCall:
@@ -220,6 +225,7 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 // codegenStreamEvent codegen stream_event 的 payload 结构
 type codegenStreamEvent struct {
 	SessionID string `json:"session_id"`
+	Account   string `json:"account,omitempty"`
 	Event     struct {
 		Type      string  `json:"type"`
 		Text      string  `json:"text,omitempty"`
@@ -232,6 +238,7 @@ type codegenStreamEvent struct {
 // codegenTaskComplete codegen task_complete 的 payload 结构
 type codegenTaskComplete struct {
 	SessionID string `json:"session_id"`
+	Account   string `json:"account,omitempty"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
 }
@@ -243,6 +250,17 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		log.Printf("[Bridge] invalid stream_event payload: %v", err)
 		return
 	}
+
+	// 学习/查找 session → user 映射
+	toUser := ""
+	b.sessionMu.Lock()
+	if payload.Account != "" {
+		b.sessionUsers[payload.SessionID] = payload.Account
+		toUser = payload.Account
+	} else {
+		toUser = b.sessionUsers[payload.SessionID]
+	}
+	b.sessionMu.Unlock()
 
 	// 节流：同一 session 每 10 秒最多推送一次
 	b.eventMu.Lock()
@@ -264,10 +282,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 
-	// 推送给配置的默认用户（codegen 事件目前不携带用户信息）
-	if b.cfg.WebhookURL != "" {
-		b.sendWebhookMarkdown(text)
-	}
+	b.sendNotification(toUser, text)
 }
 
 // handleCodegenTaskComplete 处理 codegen 任务完成
@@ -283,6 +298,18 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	delete(b.lastEventTime, payload.SessionID)
 	b.eventMu.Unlock()
 
+	// 查找/学习 session → user 映射
+	toUser := ""
+	b.sessionMu.Lock()
+	if payload.Account != "" {
+		toUser = payload.Account
+	} else {
+		toUser = b.sessionUsers[payload.SessionID]
+	}
+	// 完成后清理映射
+	delete(b.sessionUsers, payload.SessionID)
+	b.sessionMu.Unlock()
+
 	// 构建完成消息
 	var text string
 	if payload.Status == "error" {
@@ -291,9 +318,7 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 		text = fmt.Sprintf("✅ 编码任务完成\n会话: %s", payload.SessionID)
 	}
 
-	if b.cfg.WebhookURL != "" {
-		b.sendWebhookMarkdown(text)
-	}
+	b.sendNotification(toUser, text)
 }
 
 // formatEventForWeChat 将 stream_event 格式化为微信推送文本
@@ -316,6 +341,30 @@ func formatEventForWeChat(payload *codegenStreamEvent) string {
 	default:
 		return ""
 	}
+}
+
+// ========================= 统一推送 =========================
+
+const maxAppMessageSize = 256 * 1024 // 256KB
+
+// truncateForApp 截断过长内容
+func truncateForApp(content string) string {
+	if len(content) <= maxAppMessageSize {
+		return content
+	}
+	return content[:maxAppMessageSize-20] + "\n...(内容已截断)"
+}
+
+// sendNotification 统一推送：应用优先 → webhook 兜底
+func (b *Bridge) sendNotification(toUser, content string) {
+	content = truncateForApp(content)
+	if toUser != "" {
+		if err := b.sendAppMessage(toUser, content); err == nil {
+			return
+		}
+		log.Printf("[Bridge] app push failed, fallback to webhook")
+	}
+	b.sendWebhookMarkdown(content)
 }
 
 // ========================= 微信 API =========================

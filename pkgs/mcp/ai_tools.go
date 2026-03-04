@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"config"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -183,7 +184,7 @@ func Inner_blog_RawExerciseCoachAdvice(arguments map[string]interface{}) string 
 		"exercise_stats": exerciseStats,
 		"today_exercise": todayExercise,
 		"recent_records": recentRecords,
-		"instruction":    "你是用户的私人健身教练。请根据以上运动数据，给出以下建议：\n1. 今日运动推荐（考虑最近训练的身体部位，避免连续练同一位置）\n2. 本周运动趋势评价（运动量是否足够、是否规律）\n3. 如果用户运动量不足，给出温和的鼓励和具体建议",
+		"instruction":    config.GetPrompt(account, "exercise_companion"),
 	}
 	jsonBytes, _ := json.Marshal(result)
 	return string(jsonBytes)
@@ -217,7 +218,7 @@ func Inner_blog_RawReadingCompanion(arguments map[string]interface{}) string {
 		"reading_stats": readingStats,
 		"reading_books": readingBooks,
 		"all_books":     allBooks,
-		"instruction":   "你是用户的阅读伙伴。请根据以上数据，给出以下建议：\n1. 正在阅读的书籍的进度评价和预计完成时间\n2. 阅读速度分析\n3. 如果有已完成的书，推荐下一本应该读什么\n4. 鼓励用户保持阅读习惯",
+		"instruction":   config.GetPrompt(account, "reading_companion"),
 	}
 	jsonBytes, _ := json.Marshal(result)
 	return string(jsonBytes)
@@ -253,7 +254,7 @@ func Inner_blog_RawSmartDecomposeTodo(arguments map[string]interface{}) string {
 		"date":           date,
 		"original_task":  task,
 		"existing_todos": existingTodos,
-		"instruction":    "请将用户的复杂任务拆解为3-7个具体的、可独立完成的子任务。每个子任务应该:\n1. 足够具体，一次可以完成\n2. 有明确的完成标准\n3. 不与已有待办重复\n\n拆解后，询问用户是否同意添加这些子任务。如果用户同意，使用 RawAddTodo 工具逐一添加。",
+		"instruction":    config.GetPrompt(account, "task_decomposition"),
 	}
 	jsonBytes, _ := json.Marshal(result)
 	return string(jsonBytes)

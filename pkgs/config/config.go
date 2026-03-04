@@ -45,6 +45,7 @@ func Info() {
 // Init 初始化 Config 模块
 func Init(filePath string) {
 	InitManager(filePath)
+	InitPromptManager()
 }
 
 // InitManager 初始化配置管理器
@@ -524,5 +525,5 @@ func GetSysConfigTitleMCP() string {
 }
 
 func GetSysConfigs() string {
-	return fmt.Sprintf("%s | %s | %s", GetSysConfigTitle(), GetSysConfigTitleMCP(), "sys_accounts")
+	return fmt.Sprintf("%s | %s | %s | %s", GetSysConfigTitle(), GetSysConfigTitleMCP(), "sys_accounts", GetSysPromptsConfigTitle())
 }

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"wechat"
 )
 
 // 全局变量
@@ -657,22 +656,29 @@ func handleWechatCommand(wechatUser, message string) string {
 		return handleCodegenCommand(account, message)
 	}
 
-	// 发送即时确认
-	wechat.SendAppMessage(wechatUser, "⏳ 收到指令，正在处理...")
+	// 拦截"刷新提示词"命令
+	if message == "刷新提示词" || strings.EqualFold(message, "reload prompts") {
+		config.ReloadPrompts(account)
+		return "✅ 提示词配置已重新加载"
+	}
+
+	// 发送即时确认（通过 gateway → wechat-agent 路由，因 go_blog 不直连微信 API）
+	codegen.SendWechatNotify(wechatUser, "⏳ 收到指令，正在处理...")
 
 	// 构建 LLM 请求（注入 system prompt 告知账号，限制回复长度）
 	messages := []llm.Message{
-		{Role: "system", Content: fmt.Sprintf(
-			"你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 \"%s\"，请直接使用此账号调用工具查询数据，不要询问用户账号。"+
-				"重要：回复必须精简，控制在500字以内，只输出关键数据和结论，不要冗余解释。适合手机屏幕阅读。", account)},
+		{Role: "system", Content: config.SafeSprintf(config.GetPrompt(account, "wechat_system"), account)},
 		{Role: "user", Content: message},
 	}
 
-	// 进度回调：只在 tool_call 事件时发送进度消息
+	// 进度回调：thinking / tool_call 事件时发送进度消息
 	progressCallback := func(eventType string, detail string) {
-		if eventType == "tool_call" {
+		switch eventType {
+		case "thinking":
+			codegen.SendWechatNotify(wechatUser, "🤔 正在思考...")
+		case "tool_call":
 			displayName := getToolDisplayName(detail)
-			wechat.SendAppMessage(wechatUser, fmt.Sprintf("🔧 正在执行: %s...", displayName))
+			codegen.SendWechatNotify(wechatUser, fmt.Sprintf("🔧 正在执行: %s...", displayName))
 		}
 	}
 

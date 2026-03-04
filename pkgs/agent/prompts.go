@@ -1,6 +1,8 @@
 package agent
 
-import "fmt"
+import (
+	"config"
+)
 
 // ============================================================================
 // 提示词管理模块
@@ -203,35 +205,35 @@ var (
 
 // BuildPlanningSystemPrompt 构建规划系统提示词
 func BuildPlanningSystemPrompt(account string) string {
-	return fmt.Sprintf(PromptPlanningSystem.Template, account)
+	return config.SafeSprintf(config.GetPrompt(account, "planning_system"), account)
 }
 
 // BuildExecutionSystemPrompt 构建执行系统提示词
 func BuildExecutionSystemPrompt(account string) string {
-	return fmt.Sprintf(PromptExecutionSystem.Template, account, account)
+	return config.SafeSprintf(config.GetPrompt(account, "execution_system"), account, account)
 }
 
 // BuildNodePlanningPrompt 构建节点规划提示词
 func BuildNodePlanningPrompt(account, title, description, goal, context, tools string, maxDepth, currentDepth int) string {
-	return fmt.Sprintf(PromptNodePlanning.Template,
+	return config.SafeSprintf(config.GetPrompt(account, "node_planning"),
 		account, title, description, goal, context, tools,
 		maxDepth, currentDepth, account)
 }
 
 // BuildNodeExecutionPrompt 构建节点执行提示词
 func BuildNodeExecutionPrompt(account, title, description, goal, context string) string {
-	return fmt.Sprintf(PromptNodeExecution.Template,
+	return config.SafeSprintf(config.GetPrompt(account, "node_execution"),
 		account, title, description, goal, context, account)
 }
 
 // BuildToolSelectionPrompt 构建工具选择提示词
-func BuildToolSelectionPrompt(taskDescription, toolCatalog string) string {
-	return fmt.Sprintf(PromptToolSelection.Template, taskDescription, toolCatalog)
+func BuildToolSelectionPrompt(account, taskDescription, toolCatalog string) string {
+	return config.SafeSprintf(config.GetPrompt(account, "tool_selection"), taskDescription, toolCatalog)
 }
 
 // BuildResultSynthesisPrompt 构建结果整合提示词
-func BuildResultSynthesisPrompt(title, goal, childResults string) string {
-	return fmt.Sprintf(PromptResultSynthesis.Template, title, goal, childResults)
+func BuildResultSynthesisPrompt(account, title, goal, childResults string) string {
+	return config.SafeSprintf(config.GetPrompt(account, "result_synthesis"), title, goal, childResults)
 }
 
 // ============================================================================

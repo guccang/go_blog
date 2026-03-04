@@ -90,7 +90,6 @@ require (
 	agent v0.0.0
 	auth v0.0.0
 	blog v0.0.0
-	codegen v0.0.0
 	comment v0.0.0
 	config v0.0.0
 	control v0.0.0
@@ -114,6 +113,7 @@ require (
 
 require (
 	account v0.0.0 // indirect
+	codegen v0.0.0 // indirect
 	constellation v0.0.0 // indirect
 	email v0.0.0 // indirect
 	finance v0.0.0 // indirect
@@ -136,6 +136,5 @@ require (
 	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
 	uap v0.0.0 // indirect
-	wechat v0.0.0 // indirect
 	yearplan v0.0.0 // indirect
 )

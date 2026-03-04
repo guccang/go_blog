@@ -193,6 +193,9 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	sys_conf_path := config.GetSysConfigPath(account)
 	config.ReloadConfigWithAccount(account, sys_conf_path)
 
+	// 重新加载提示词配置
+	config.ReloadPrompts(account)
+
 	// set cookie
 	cookie := &h.Cookie{
 		Name:    "session",

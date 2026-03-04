@@ -202,6 +202,28 @@ func SendAppMessageToAll(content string) error {
 	return SendAppMessage("@all", content)
 }
 
+// ========================= 统一推送（应用优先 → webhook 兜底）=========================
+
+const maxAppMessageSize = 256 * 1024 // 256KB
+
+// truncateForApp 截断过长内容，确保不超过应用消息大小限制
+func truncateForApp(content string) string {
+	if len(content) <= maxAppMessageSize {
+		return content
+	}
+	return content[:maxAppMessageSize-20] + "\n...(内容已截断)"
+}
+
+// SendNotification 统一推送：优先应用消息 → 失败降级 webhook
+func SendNotification(toUser, content string) {
+	content = truncateForApp(content)
+	if err := SendAppMessage(toUser, content); err == nil {
+		return
+	}
+	log.WarnF(log.ModuleAgent, "App push failed, fallback to webhook")
+	SendMarkdown(content)
+}
+
 // ========================= Webhook 推送 =========================
 
 type webhookMessage struct {

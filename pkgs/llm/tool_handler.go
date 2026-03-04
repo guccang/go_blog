@@ -191,20 +191,7 @@ func (te *ToolExecutor) routeTools(query string, allTools []mcp.LLMTool) []mcp.L
 		toolMap[tool.Function.Name] = tool
 	}
 
-	routePrompt := fmt.Sprintf(`你是一个工具路由器。根据用户的问题，从以下工具目录中选择所有可能需要用到的工具。
-
-用户问题: %s
-
-工具目录:
-%s
-选择规则：
-1. 宁多勿少，把所有可能相关的工具都选上
-2. 如果任务需要日期信息，必须包含 RawCurrentDate
-3. 如果涉及查询数据，同时选择获取数据的工具和可能需要的辅助工具
-4. 只返回JSON数组，不要其他文字
-
-示例: ["RawCurrentDate", "RawGetExerciseByDateRange"]
-如果不需要任何工具，返回 []`, query, catalog.String())
+	routePrompt := config.SafeSprintf(config.GetPrompt(te.account, "tool_routing"), query, catalog.String())
 
 	routeMessages := []Message{
 		{Role: "user", Content: routePrompt},

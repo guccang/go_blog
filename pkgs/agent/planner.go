@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"config"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -153,7 +154,7 @@ func (p *TaskPlanner) SelectToolsForTask(ctx context.Context, taskDescription st
 	catalog := mcp.GetToolCatalogFormatted()
 
 	// 使用集中管理的工具选择提示词
-	prompt := BuildToolSelectionPrompt(taskDescription, catalog)
+	prompt := BuildToolSelectionPrompt(p.account, taskDescription, catalog)
 
 	// 调用简单 LLM（不需要 function calling）
 	response, err := p.callToolSelectionLLM(ctx, prompt)
@@ -268,10 +269,10 @@ func (p *TaskPlanner) summarizeResponse(response string) string {
 func (p *TaskPlanner) SynthesizeResults(ctx context.Context, node *TaskNode, childResults string) (string, error) {
 	log.MessageF(log.ModuleAgent, "Synthesizing results for node: %s", node.Title)
 
-	prompt := BuildResultSynthesisPrompt(node.Title, node.Goal, childResults)
+	prompt := BuildResultSynthesisPrompt(p.account, node.Title, node.Goal, childResults)
 
 	messages := []llm.Message{
-		{Role: "system", Content: "你是一个结果整合专家，擅长将多个子任务的结果整合为清晰的最终结果。"},
+		{Role: "system", Content: config.GetPrompt(p.account, "result_synthesis_system")},
 		{Role: "user", Content: prompt},
 	}
 
@@ -349,14 +350,7 @@ func (p *TaskPlanner) CheckIfNeedsUserInput(response string) (*InputRequestResul
 func (p *TaskPlanner) callPlanningLLM(ctx context.Context, prompt string) (string, error) {
 	log.DebugF(log.ModuleAgent, "Planning LLM call with prompt length: %d", len(prompt))
 
-	systemPrompt := fmt.Sprintf(`你是一个任务规划专家。你的职责是将复杂任务分解为可执行的子任务。
-
-重要规则:
-1. 分析任务的复杂度和依赖关系
-2. 选择合适的执行模式（串行/并行）
-3. 标记需要进一步拆解的复杂子任务
-4. 返回严格的 JSON 格式
-5. 当前用户账号: %s`, p.account)
+	systemPrompt := config.SafeSprintf(config.GetPrompt(p.account, "planning_system"), p.account)
 
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},
@@ -370,14 +364,7 @@ func (p *TaskPlanner) callPlanningLLM(ctx context.Context, prompt string) (strin
 func (p *TaskPlanner) callExecutionLLM(ctx context.Context, prompt string) (string, error) {
 	log.DebugF(log.ModuleAgent, "Execution LLM call with prompt length: %d", len(prompt))
 
-	systemPrompt := fmt.Sprintf(`你是一个任务执行助手。当前用户账号是: %s
-
-重要规则:
-1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 调用工具时使用正确的参数名，参考工具定义中的 required 字段
-3. 调用完工具后返回简单直接的执行结果给用户
-
-你可以帮助用户完成各种任务，如创建提醒、查询博客、分析数据等。`, p.account, p.account)
+	systemPrompt := config.SafeSprintf(config.GetPrompt(p.account, "planner_execution_system"), p.account, p.account)
 
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},
@@ -391,12 +378,7 @@ func (p *TaskPlanner) callExecutionLLM(ctx context.Context, prompt string) (stri
 func (p *TaskPlanner) callExecutionLLMWithTools(ctx context.Context, prompt string, selectedTools []string) (string, error) {
 	log.DebugF(log.ModuleAgent, "Execution LLM call with %d selected tools", len(selectedTools))
 
-	systemPrompt := fmt.Sprintf(`你是一个任务执行助手。当前用户账号是: %s
-
-重要规则:
-1. 所有工具调用都必须传递 "account": "%s" 参数
-2. 调用工具时使用正确的参数名
-3. 调用完工具后返回简单直接的执行结果给用户`, p.account, p.account)
+	systemPrompt := config.SafeSprintf(config.GetPrompt(p.account, "planner_execution_tools_system"), p.account, p.account)
 
 	messages := []llm.Message{
 		{Role: "system", Content: systemPrompt},

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"config"
 	"control"
 	"email"
 	"encoding/json"
@@ -13,7 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"wechat"
+	"codegen"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -370,19 +371,12 @@ func (s *Scheduler) triggerReminder(reminderID string) {
 		go s.sendReminderEmail(r, finalMessage)
 	}
 
-	// 企业微信推送（优先应用消息，降级到 Webhook）
-	if wechat.IsAppEnabled() {
+	// 企业微信推送（通过 gateway → wechat-agent）
+	if codegen.IsGatewayConnected() {
 		go func() {
 			wechatMsg := fmt.Sprintf("⏰ %s\n%s", r.Title, finalMessage)
-			if err := wechat.SendAppMessageToAll(wechatMsg); err != nil {
-				log.WarnF(log.ModuleAgent, "WeChat app push failed: %v", err)
-			}
-		}()
-	} else if wechat.IsEnabled() {
-		go func() {
-			wechatMsg := fmt.Sprintf("⏰ **%s**\n%s", r.Title, finalMessage)
-			if err := wechat.SendMarkdown(wechatMsg); err != nil {
-				log.WarnF(log.ModuleAgent, "WeChat webhook push failed: %v", err)
+			if err := codegen.SendWechatNotify("@all", wechatMsg); err != nil {
+				log.WarnF(log.ModuleAgent, "WeChat push via gateway failed: %v", err)
 			}
 		}()
 	}
@@ -436,20 +430,7 @@ func (s *Scheduler) generateSmartMessage(r *Reminder) string {
 	todoData := statistics.RawGetTodosByDate(r.Account, today)
 	exerciseData := statistics.RawGetExerciseStats(r.Account, 7)
 
-	promptContent := fmt.Sprintf(`你是一个智能提醒助手。请根据以下信息生成一条简洁、有温度的提醒消息。
-
-提醒标题: %s
-原始消息: %s
-当前时间: %s
-
-用户今日待办: %s
-用户近7天运动: %s
-
-要求:
-1. 消息简洁，不超过200字
-2. 结合用户的待办和运动数据给出个性化提醒
-3. 语气温暖友好，带有鼓励
-4. 直接输出消息内容，不要加任何前缀`, r.Title, r.Message, time.Now().Format("15:04"), todoData, exerciseData)
+	promptContent := config.SafeSprintf(config.GetPrompt(r.Account, "smart_reminder"), r.Title, r.Message, time.Now().Format("15:04"), todoData, exerciseData)
 
 	messages := []llm.Message{
 		{Role: "user", Content: promptContent},

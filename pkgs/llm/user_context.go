@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"config"
 	"fmt"
 	"mcp"
 	log "mylog"
@@ -123,22 +124,10 @@ func BuildEnhancedSystemPrompt(account string) string {
 	// 构建用户上下文块
 	var userContext string
 	if len(contextParts) > 0 {
-		userContext = fmt.Sprintf(`
-
-以下是用户当前的个人数据摘要（今天是 %s）：
-%s
-
-请结合以上用户数据摘要，给出个性化、具体的回答。如果用户询问的内容与其个人数据相关，优先使用上述数据。如果需要更详细的数据，可以使用工具获取。
-如果有"近期对话记忆"，可以自然地引用之前的对话，例如"上次你问过..."。`, ctx.Date, strings.Join(contextParts, "\n"))
+		userContext = config.SafeSprintf(config.GetPrompt(account, "ai_assistant_context"), ctx.Date, strings.Join(contextParts, "\n"))
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个智能助手，是用户的私人AI管家。
-重要规则：
-1. 当前用户账号是 "%s"，调用任何工具时直接使用此账号作为account参数，不要向用户询问账号。
-2. 需要日期时，先调用 RawCurrentDate 获取当前日期，再基于日期调用其他工具。
-3. 自行决定调用哪些工具获取数据，得到结果后不要重复调用相同工具。
-4. 最后返回简洁直接的分析结果给用户。
-5. 你了解用户的待办事项、运动记录、阅读进度和年度目标，可以主动给出建议。%s`, account, userContext)
+	sysPrompt := config.SafeSprintf(config.GetPrompt(account, "ai_assistant_system"), account, userContext)
 
 	return sysPrompt
 }

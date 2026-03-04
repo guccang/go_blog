@@ -63,6 +63,11 @@ func sendSyncLLMRequestInternal(ctx context.Context, messages []Message, account
 	maxIterations := 10
 	var finalResponse string
 
+	// 触发 thinking 回调（进入 tool-calling 循环前）
+	if callback != nil {
+		callback("thinking", "")
+	}
+
 	for iteration := 0; iteration < maxIterations; iteration++ {
 		// Check context cancellation
 		select {
