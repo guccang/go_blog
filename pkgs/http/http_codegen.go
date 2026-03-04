@@ -31,13 +31,7 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case h.MethodGet:
-		projects, err := codegen.ListProjects()
-		if err != nil {
-			jsonError(w, err.Error())
-			return
-		}
-
-		// 合并远程 agent 项目
+		// 远程 agent 项目
 		var agents []map[string]interface{}
 		var remoteProjects []codegen.RemoteProjectInfo
 		var claudeCodeModels []string
@@ -56,8 +50,6 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 			pool != nil, len(agents), len(remoteProjects))
 
 		jsonOK(w, map[string]interface{}{
-			"projects":          projects,
-			"workspace":         codegen.GetWorkspace(),
 			"agents":            agents,
 			"remote_projects":   remoteProjects,
 			"claudecode_models": claudeCodeModels,
@@ -67,17 +59,33 @@ func HandleCodeGenProjects(w h.ResponseWriter, r *h.Request) {
 
 	case h.MethodPost:
 		var req struct {
-			Name string `json:"name"`
+			Name      string `json:"name"`
+			AgentName string `json:"agent_name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jsonError(w, "invalid request")
 			return
 		}
-		if err := codegen.CreateProject(req.Name); err != nil {
+		pool := codegen.GetAgentPool()
+		if pool == nil {
+			jsonError(w, "远程 agent 模式未启用")
+			return
+		}
+		// 若未指定 agent，自动选择第一个在线 agent
+		agentName := req.AgentName
+		if agentName == "" {
+			names := pool.GetAgentNames()
+			if len(names) == 0 {
+				jsonError(w, "无在线 agent")
+				return
+			}
+			agentName = names[0]
+		}
+		if err := pool.CreateRemoteProject(agentName, req.Name); err != nil {
 			jsonError(w, err.Error())
 			return
 		}
-		jsonOK(w, map[string]interface{}{"name": req.Name})
+		jsonOK(w, map[string]interface{}{"name": req.Name, "agent": agentName})
 
 	default:
 		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
@@ -102,6 +110,7 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		DeployTarget  string `json:"deploy_target"`
 		BuildPlatform string `json:"build_platform"`
 		PackOnly      bool   `json:"pack_only"`
+		Pipeline      string `json:"pipeline"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request")
@@ -109,11 +118,11 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// deploy_only 模式不需要 prompt
-	if req.Project == "" {
-		jsonError(w, "project is required")
+	if req.Project == "" && req.Pipeline == "" {
+		jsonError(w, "project or pipeline is required")
 		return
 	}
-	if !req.DeployOnly && req.Prompt == "" {
+	if !req.DeployOnly && req.Pipeline == "" && req.Prompt == "" {
 		jsonError(w, "prompt is required")
 		return
 	}
@@ -123,7 +132,16 @@ func HandleCodeGenRun(w h.ResponseWriter, r *h.Request) {
 		req.AutoDeploy = true
 	}
 
-	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AgentID, req.AutoDeploy, req.DeployOnly, req.DeployTarget, req.BuildPlatform, req.PackOnly)
+	// pipeline 模式
+	if req.Pipeline != "" {
+		req.DeployOnly = true
+		req.AutoDeploy = true
+		if req.Project == "" {
+			req.Project = req.Pipeline
+		}
+	}
+
+	session, err := codegen.StartSession(req.Project, req.Prompt, req.Model, req.Tool, req.AgentID, req.AutoDeploy, req.DeployOnly, req.DeployTarget, req.BuildPlatform, req.PackOnly, req.Pipeline)
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -209,15 +227,13 @@ func HandleCodeGenTree(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 先尝试本地
-	tree, err := codegen.GetProjectTree(project, 5)
-	if err != nil {
-		// 尝试远程 agent
-		pool := codegen.GetAgentPool()
-		if pool != nil {
-			tree, err = pool.ReadRemoteTree(project, 5)
-		}
+	// 通过远程 agent 读取目录树
+	pool := codegen.GetAgentPool()
+	if pool == nil {
+		jsonError(w, "远程 agent 模式未启用")
+		return
 	}
+	tree, err := pool.ReadRemoteTree(project, 5)
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -240,15 +256,13 @@ func HandleCodeGenFile(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 先尝试本地
-	content, err := codegen.ReadProjectFile(project, filePath)
-	if err != nil {
-		// 尝试远程 agent
-		pool := codegen.GetAgentPool()
-		if pool != nil {
-			content, err = pool.ReadRemoteFile(project, filePath)
-		}
+	// 通过远程 agent 读取文件
+	pool := codegen.GetAgentPool()
+	if pool == nil {
+		jsonError(w, "远程 agent 模式未启用")
+		return
 	}
+	content, err := pool.ReadRemoteFile(project, filePath)
 	if err != nil {
 		jsonError(w, err.Error())
 		return
@@ -384,14 +398,12 @@ func HandleCodeGenAgents(w h.ResponseWriter, r *h.Request) {
 	if pool == nil {
 		jsonOK(w, map[string]interface{}{
 			"agents": []interface{}{},
-			"mode":   "local",
 		})
 		return
 	}
 
 	jsonOK(w, map[string]interface{}{
 		"agents": pool.GetAgents(),
-		"mode":   "remote",
 	})
 }
 

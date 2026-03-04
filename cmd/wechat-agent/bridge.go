@@ -109,17 +109,20 @@ func (b *Bridge) HandleWechatMessage(msg *WechatMessage) {
 		return
 	}
 
-	// 过渡期：将消息转发给 go_blog-agent 处理
-	targetAgent := b.cfg.GoBackendAgentID
-	if targetAgent == "" {
-		log.Printf("[Bridge] no target agent configured, dropping message from %s", msg.FromUserName)
-		b.sendAppMessage(msg.FromUserName, "⚠️ 消息路由未配置")
-		return
-	}
-
 	if !b.IsConnected() {
 		log.Printf("[Bridge] not connected to gateway, dropping message from %s", msg.FromUserName)
 		b.sendAppMessage(msg.FromUserName, "⚠️ Gateway 连接断开，请稍后重试")
+		return
+	}
+
+	// 路由：结构化命令 → go_blog，自然语言 → llm-mcp-agent
+	targetAgent := b.cfg.LLMAgentID
+	if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
+		targetAgent = b.cfg.BackendAgentID
+	}
+	if targetAgent == "" {
+		log.Printf("[Bridge] no target agent configured, dropping message from %s", msg.FromUserName)
+		b.sendAppMessage(msg.FromUserName, "⚠️ 消息路由未配置")
 		return
 	}
 
@@ -491,6 +494,12 @@ func (b *Bridge) sendWebhookMarkdown(content string) error {
 }
 
 // ========================= 帮助文本 =========================
+
+// isBackendCommand 判断消息是否为结构化命令（直接路由到 go_blog，不经过 LLM）
+func isBackendCommand(content string) bool {
+	return strings.HasPrefix(content, "cg ") || content == "cg" ||
+		content == "刷新提示词" || strings.EqualFold(content, "reload prompts")
+}
 
 func getHelpText() string {
 	return "📖 Go Blog 企业微信指令\n\n" +

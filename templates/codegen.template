@@ -603,6 +603,10 @@
                 <button class="btn-send" id="btnDeployRun" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red)); flex:1;">🚀 部署</button>
                 <button class="btn-stop" id="btnDeployStop" onclick="stopSession()">⏹ 停止</button>
             </div>
+            <div class="input-area" id="pipelineInputArea" style="display:none;">
+                <button class="btn-send" id="btnPipelineRun" onclick="runPipeline()" style="background:linear-gradient(135deg, #667eea, #764ba2); flex:1;">🔄 执行 Pipeline</button>
+                <button class="btn-stop" id="btnPipelineStop" onclick="stopSession()">⏹ 停止</button>
+            </div>
         </div>
     </div>
 
@@ -621,7 +625,7 @@
     <script>
     let currentProject = null;
     let currentSessionId = null;
-    let currentMode = 'code'; // 'code' or 'deploy'
+    let currentMode = 'code'; // 'code', 'deploy', or 'pipeline'
     let currentAgentId = null; // 当前选中项目对应的 agent ID
     let ws = null;
     let remoteProjectMap = {}; // project name -> [{agent_id, agent, tools}] 数组映射
@@ -894,6 +898,14 @@
                 if (hasDeploy) {
                     g.entries.push({ name: rp.name, agent_id: rp.agent_id, mode: 'deploy', icon: '🚀' });
                 }
+                // pipeline 条目：同一个 deploy agent 的 pipelines
+                if (hasDeploy && rp.pipelines && rp.pipelines.length > 0) {
+                    rp.pipelines.forEach(pip => {
+                        if (!g.entries.some(e => e.mode === 'pipeline' && e.name === pip)) {
+                            g.entries.push({ name: pip, agent_id: rp.agent_id, mode: 'pipeline', icon: '🔄' });
+                        }
+                    });
+                }
                 if (!hasCoding && !hasDeploy) {
                     g.entries.push({ name: rp.name, agent_id: rp.agent_id, mode: 'code', icon: '📁' });
                 }
@@ -906,7 +918,7 @@
                 const state = getProjectState(e.name, e.agent_id);
                 const statusMeta = state && state.status === 'running' ? ' · <span style="color:var(--green)">运行中</span>' : '';
                 const isActive = currentProject === e.name && currentAgentId === e.agent_id && currentMode === e.mode;
-                const modeLabel = e.mode === 'deploy' ? '部署' : '编码';
+                const modeLabel = e.mode === 'deploy' ? '部署' : e.mode === 'pipeline' ? '编排' : '编码';
                 return `<div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${e.name}', '${e.mode}', '${e.agent_id}')">
                     <div class="name">${e.icon} ${e.name}${statusDot}</div>
                     <div class="meta">${modeLabel}${statusMeta}</div>
@@ -984,11 +996,17 @@
         if (currentMode === 'deploy') {
             document.getElementById('codeInputArea').style.display = 'none';
             document.getElementById('deployInputArea').style.display = 'flex';
+            document.getElementById('pipelineInputArea').style.display = 'none';
             // 填充部署目标下拉框
             populateDeployTargets(name, agentId);
+        } else if (currentMode === 'pipeline') {
+            document.getElementById('codeInputArea').style.display = 'none';
+            document.getElementById('deployInputArea').style.display = 'none';
+            document.getElementById('pipelineInputArea').style.display = 'flex';
         } else {
             document.getElementById('codeInputArea').style.display = 'flex';
             document.getElementById('deployInputArea').style.display = 'none';
+            document.getElementById('pipelineInputArea').style.display = 'none';
         }
 
         // 恢复该项目的输出
@@ -997,21 +1015,23 @@
             output.scrollTop = output.scrollHeight;
         } else {
             output.innerHTML = '';
-            const modeLabel = currentMode === 'deploy' ? '部署' : '编码';
+            const modeLabel = currentMode === 'deploy' ? '部署' : currentMode === 'pipeline' ? '编排' : '编码';
             addEvent('system', `📂 已选择${modeLabel}项目: ${name}`);
-            if (currentMode !== 'deploy') {
+            if (currentMode !== 'deploy' && currentMode !== 'pipeline') {
                 loadProjectReadme(name);
             }
         }
 
         // 恢复状态栏
         if (state.status === 'running') {
-            const runLabel = currentMode === 'deploy' ? '部署中...' : '编码中...';
+            const runLabel = currentMode === 'deploy' ? '部署中...' : currentMode === 'pipeline' ? '编排中...' : '编码中...';
             setStatus('running', runLabel);
             document.getElementById('btnSend').disabled = true;
             document.getElementById('btnStop').classList.add('visible');
             document.getElementById('btnDeployRun').disabled = true;
             document.getElementById('btnDeployStop').classList.add('visible');
+            document.getElementById('btnPipelineRun').disabled = true;
+            document.getElementById('btnPipelineStop').classList.add('visible');
             // 重连 WebSocket
             if (currentSessionId) {
                 connectWebSocket(currentSessionId);
@@ -1177,6 +1197,43 @@
             connectWebSocket(currentSessionId, isFollowUp);
         } catch (err) {
             addEvent('error', '启动失败: ' + err.message);
+            state.status = 'error';
+            renderProjects();
+            resetUI();
+        }
+    }
+
+    // 执行 Pipeline 编排
+    async function runPipeline() {
+        if (!currentProject) return;
+
+        addEvent('user', `🔄 执行 Pipeline: ${currentProject}`);
+        setStatus('running', '正在执行 Pipeline...');
+        document.getElementById('btnPipelineRun').disabled = true;
+        document.getElementById('btnPipelineStop').classList.add('visible');
+
+        const state = getProjectState(currentProject, currentAgentId);
+        state.status = 'running';
+        renderProjects();
+
+        try {
+            const body = {
+                pipeline: currentProject,
+                agent_id: currentAgentId || ''
+            };
+            const resp = await fetch('/api/codegen/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+
+            currentSessionId = data.data.session_id;
+            state.sessionId = currentSessionId;
+            connectWebSocket(currentSessionId, false);
+        } catch (err) {
+            addEvent('error', 'Pipeline 启动失败: ' + err.message);
             state.status = 'error';
             renderProjects();
             resetUI();
@@ -1490,6 +1547,8 @@
         document.getElementById('btnStop').classList.remove('visible');
         document.getElementById('btnDeployRun').disabled = false;
         document.getElementById('btnDeployStop').classList.remove('visible');
+        document.getElementById('btnPipelineRun').disabled = false;
+        document.getElementById('btnPipelineStop').classList.remove('visible');
     }
 
     function escapeHtml(text) {

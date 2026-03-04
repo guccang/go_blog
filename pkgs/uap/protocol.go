@@ -122,6 +122,7 @@ type TaskCompletePayload struct {
 	TaskID string `json:"task_id"`
 	Status string `json:"status"` // "success", "failed", "cancelled"
 	Error  string `json:"error,omitempty"`
+	Result string `json:"result,omitempty"` // LLM 结果文本
 }
 
 // TaskStopPayload 停止任务

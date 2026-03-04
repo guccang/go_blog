@@ -4,8 +4,6 @@ import (
 	"config"
 	"fmt"
 	log "mylog"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -99,6 +97,7 @@ type CodeSession struct {
 	DeployTarget  string           `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
 	BuildPlatform string           `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
 	PackOnly      bool             `json:"pack_only,omitempty"`      // 仅打包不部署
+	Pipeline      string           `json:"pipeline,omitempty"`       // deploy pipeline 名称
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -131,40 +130,14 @@ type StreamEvent struct {
 var (
 	sessions   = make(map[string]*CodeSession)
 	sessionsMu sync.RWMutex
-	workspaces []string   // 多个工作区路径
-	maxTurns   int
-	agentPool  *AgentPool // 远程 agent 连接池
-	agentToken string     // agent 认证 token
+	maxTurns   = 20         // 默认最大轮数
+	agentPool  *AgentPool   // 远程 agent 连接池
+	agentToken string       // agent 认证 token
 )
 
 // Init 初始化 CodeGen 模块
 func Init() {
 	adminAccount := config.GetAdminAccount()
-	wsConfig := config.GetConfigWithAccount(adminAccount, "codegen_workspace")
-
-	maxTurnsStr := config.GetConfigWithAccount(adminAccount, "codegen_max_turns")
-	maxTurns = 20
-	if maxTurnsStr != "" {
-		fmt.Sscanf(maxTurnsStr, "%d", &maxTurns)
-	}
-
-	// 解析多个工作区路径（逗号分隔）
-	workspaces = make([]string, 0)
-	if wsConfig == "" {
-		wsConfig = "./codegen"
-	}
-	for _, ws := range strings.Split(wsConfig, ",") {
-		ws = strings.TrimSpace(ws)
-		if ws == "" {
-			continue
-		}
-		absWs, _ := filepath.Abs(ws)
-		if err := os.MkdirAll(absWs, 0755); err != nil {
-			log.ErrorF(log.ModuleAgent, "CodeGen: failed to create workspace %s: %v", absWs, err)
-			continue
-		}
-		workspaces = append(workspaces, absWs)
-	}
 
 	// agent 认证 token：由 InitGatewayBridge 从 gateway_token 统一设置
 	// 兼容旧模式（无 gateway 直连）：回退到 codegen_agent_token
@@ -177,37 +150,7 @@ func Init() {
 	// 定期清理已完成的旧会话，防止内存泄漏
 	go sessionCleanupLoop()
 
-	log.MessageF(log.ModuleAgent, "CodeGen initialized: workspaces=%v, maxTurns=%d",
-		workspaces, maxTurns)
-}
-
-// GetWorkspace 获取所有工作区路径（展示用）
-func GetWorkspace() string {
-	return strings.Join(workspaces, " ; ")
-}
-
-// GetWorkspaces 获取所有工作区路径
-func GetWorkspaces() []string {
-	return workspaces
-}
-
-// GetDefaultWorkspace 获取默认工作区（第一个）
-func GetDefaultWorkspace() string {
-	if len(workspaces) > 0 {
-		return workspaces[0]
-	}
-	return ""
-}
-
-// ResolveProjectPath 根据项目名查找所在的工作区绝对路径
-func ResolveProjectPath(project string) (string, error) {
-	for _, ws := range workspaces {
-		p := filepath.Join(ws, project)
-		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("project not found: %s", project)
+	log.MessageF(log.ModuleAgent, "CodeGen initialized (remote-only mode)")
 }
 
 // Subscribe 订阅会话事件
@@ -274,7 +217,7 @@ func NormalizeTool(tool string) string {
 }
 
 // StartSession 启动编码会话，agentID 可选指定目标 agent
-func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool, deployTarget, buildPlatform string, packOnly bool) (*CodeSession, error) {
+func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool, deployTarget, buildPlatform string, packOnly bool, pipeline string) (*CodeSession, error) {
 	// 项目目录由远程 agent 管理，服务端不需要创建本地目录
 	// 仅验证项目名合法性
 	if project == "" {
@@ -294,6 +237,7 @@ func StartSession(project, prompt, model, tool, agentID string, autoDeploy, depl
 		DeployTarget:  deployTarget,
 		BuildPlatform: buildPlatform,
 		PackOnly:      packOnly,
+		Pipeline:      pipeline,
 		AgentID:       agentID,
 		Status:        StatusRunning,
 		Messages:      make([]SessionMessage, 0),
@@ -500,13 +444,3 @@ func cleanupSessions() {
 	log.DebugF(log.ModuleAgent, "Session cleanup: %d sessions remaining", len(sessions))
 }
 
-// isSubPath 检查 child 是否在 parent 下（防止路径穿越）
-func isSubPath(parent, child string) bool {
-	absParent, _ := filepath.Abs(parent)
-	absChild, _ := filepath.Abs(child)
-	rel, err := filepath.Rel(absParent, absChild)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && len(rel) > 0 && rel[0] != '.'
-}

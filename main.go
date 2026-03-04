@@ -71,7 +71,6 @@ func main() {
 	share.Info()
 	statistics.Info()
 	mcp.Info()
-	llm.Info()
 	tools.Info()
 	exercise.Info()
 	reading.Info()

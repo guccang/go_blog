@@ -12,6 +12,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// DirNode 目录树节点
+type DirNode struct {
+	Name     string     `json:"name"`
+	Path     string     `json:"path"`
+	IsDir    bool       `json:"is_dir"`
+	Size     int64      `json:"size,omitempty"`
+	Children []*DirNode `json:"children,omitempty"`
+}
+
 // MessageSender 消息发送接口（支持直连 WebSocket 和 gateway 路由两种模式）
 type MessageSender interface {
 	SendAgentMsg(msgType string, payload interface{}) error
@@ -54,6 +63,7 @@ type RemoteAgent struct {
 	Tools            []string // agent 支持的编码工具列表 (claudecode, opencode)
 	DeployTargets    []string // 可用部署目标列表
 	HostPlatform     string   // 主机平台
+	Pipelines        []string // deploy agent 上报的可用 pipeline 列表
 	MaxConcurrent    int
 	ActiveSessions   map[string]bool
 	LastHeartbeat    time.Time
@@ -136,6 +146,7 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				Tools:            payload.Tools,
 				DeployTargets:    payload.DeployTargets,
 				HostPlatform:     payload.HostPlatform,
+				Pipelines:        payload.Pipelines,
 				MaxConcurrent:    payload.MaxConcurrent,
 				ActiveSessions:   make(map[string]bool),
 				LastHeartbeat:    time.Now(),
@@ -299,12 +310,14 @@ func (p *AgentPool) SelectAgent(project, tool string) *RemoteAgent {
 			agent.mu.Unlock()
 			continue
 		}
-		// 检查 agent 是否有该项目
-		hasProject := false
-		for _, proj := range agent.Projects {
-			if proj == project {
-				hasProject = true
-				break
+		// 检查 agent 是否有该项目（project 为空时跳过匹配，适用于 pipeline 模式）
+		hasProject := project == ""
+		if !hasProject {
+			for _, proj := range agent.Projects {
+				if proj == project {
+					hasProject = true
+					break
+				}
 			}
 		}
 		// 如果 agent 没有上报项目列表，按 workspace 宽松匹配
@@ -349,9 +362,9 @@ func (p *AgentPool) SelectAgent(project, tool string) *RemoteAgent {
 
 // Execute 通过远程 agent 执行任务
 func (p *AgentPool) Execute(session *CodeSession) error {
-	// deploy_only 模式直接路由到 deploy-agent
+	// deploy_only 或 pipeline 模式直接路由到 deploy-agent
 	tool := session.Tool
-	if session.DeployOnly {
+	if session.DeployOnly || session.Pipeline != "" {
 		tool = ToolDeploy
 	}
 
@@ -365,11 +378,14 @@ func (p *AgentPool) Execute(session *CodeSession) error {
 		if candidate != nil {
 			candidate.mu.Lock()
 			isOnline := candidate.Status != "offline"
-			hasProject := false
-			for _, proj := range candidate.Projects {
-				if proj == session.Project {
-					hasProject = true
-					break
+			// pipeline 模式跳过项目匹配（project 是 pipeline 名称，不是实际项目名）
+			hasProject := session.Pipeline != ""
+			if !hasProject {
+				for _, proj := range candidate.Projects {
+					if proj == session.Project {
+						hasProject = true
+						break
+					}
 				}
 			}
 			candidate.mu.Unlock()
@@ -379,11 +395,18 @@ func (p *AgentPool) Execute(session *CodeSession) error {
 		}
 	}
 
-	// fallback 到负载均衡选择
+	// fallback 到负载均衡选择（pipeline 模式传空 project，匹配任意 deploy agent）
 	if agent == nil {
-		agent = p.SelectAgent(session.Project, tool)
+		selectProject := session.Project
+		if session.Pipeline != "" {
+			selectProject = ""
+		}
+		agent = p.SelectAgent(selectProject, tool)
 	}
 	if agent == nil {
+		if session.Pipeline != "" {
+			return fmt.Errorf("no available deploy agent for pipeline '%s'", session.Pipeline)
+		}
 		if session.DeployOnly {
 			return fmt.Errorf("no available deploy agent for project '%s'", session.Project)
 		}
@@ -461,6 +484,7 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		DeployTarget:  session.DeployTarget,
 		BuildPlatform: session.BuildPlatform,
 		PackOnly:      session.PackOnly,
+		Pipeline:      session.Pipeline,
 	}
 
 	return agent.Sender.SendAgentMsg(MsgTaskAssign, payload)
@@ -596,6 +620,33 @@ func (p *AgentPool) GetAllTools() []string {
 	return tools
 }
 
+// PipelineInfo pipeline 信息（聚合自 deploy agent 上报）
+type PipelineInfo struct {
+	Name    string
+	Agent   string
+	AgentID string
+}
+
+// ListPipelines 聚合所有在线 deploy agent 的 pipeline 列表
+func (p *AgentPool) ListPipelines() []PipelineInfo {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	var result []PipelineInfo
+	seen := make(map[string]bool)
+	for _, agent := range p.agents {
+		agent.mu.Lock()
+		for _, pip := range agent.Pipelines {
+			if !seen[pip] {
+				seen[pip] = true
+				result = append(result, PipelineInfo{Name: pip, Agent: agent.Name, AgentID: agent.ID})
+			}
+		}
+		agent.mu.Unlock()
+	}
+	return result
+}
+
 // AgentSupportsTool 检查 agent 是否支持指定工具
 func (a *RemoteAgent) AgentSupportsTool(tool string) bool {
 	a.mu.Lock()
@@ -627,6 +678,7 @@ func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 		projects := agent.Projects
 		deployTargets := agent.DeployTargets
 		hostPlatform := agent.HostPlatform
+		pipelines := agent.Pipelines
 		agent.mu.Unlock()
 
 		for _, proj := range projects {
@@ -648,6 +700,7 @@ func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
 				if t == ToolDeploy {
 					info.DeployTargets = deployTargets
 					info.HostPlatform = hostPlatform
+					info.Pipelines = pipelines
 					break
 				}
 			}
@@ -674,6 +727,7 @@ type RemoteProjectInfo struct {
 	Tools         []string `json:"tools"`                      // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
 	DeployTargets []string `json:"deploy_targets,omitempty"`   // deploy 项目的可用部署目标
 	HostPlatform  string   `json:"host_platform,omitempty"`    // deploy agent 的主机平台
+	Pipelines     []string `json:"pipelines,omitempty"`        // deploy agent 的可用 pipeline
 }
 
 // FindAgentForProject 查找拥有指定项目的 agent

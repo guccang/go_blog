@@ -177,25 +177,6 @@ func registerMCPCallbacks() {
 		return fmt.Sprintf(`{"success":true,"type":"%s","length":%d}`, reportType, len(report))
 	})
 
-	// 切换模型工具
-	mcp.RegisterCallBack("SwitchModel", func(args map[string]interface{}) string {
-		provider, _ := args["provider"].(string)
-		if provider == "" {
-			return `{"success":false,"error":"missing provider name"}`
-		}
-		if err := llm.SwitchModel(provider); err != nil {
-			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
-		}
-		data, _ := json.Marshal(llm.GetModelInfo())
-		return string(data)
-	})
-
-	// 获取当前模型信息工具
-	mcp.RegisterCallBack("GetCurrentModel", func(args map[string]interface{}) string {
-		data, _ := json.Marshal(llm.GetModelInfo())
-		return string(data)
-	})
-
 	// ============================================================================
 	// CodeGen 编码助手工具
 	// ============================================================================
@@ -205,24 +186,14 @@ func registerMCPCallbacks() {
 		return codegen.ListProjectsJSON()
 	})
 
-	// 创建新编码项目（支持本地或指定 agent）
+	// 创建新编码项目（在远程 agent 上）
 	mcp.RegisterCallBack("CodegenCreateProject", func(args map[string]interface{}) string {
 		name, _ := args["name"].(string)
 		if name == "" {
 			return `{"success":false,"error":"缺少项目名称"}`
 		}
 		agentName, _ := args["agent"].(string)
-		if agentName != "" {
-			pool := codegen.GetAgentPool()
-			if pool == nil {
-				return `{"success":false,"error":"远程 agent 模式未启用"}`
-			}
-			if err := pool.CreateRemoteProject(agentName, name); err != nil {
-				return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
-			}
-			return fmt.Sprintf(`{"success":true,"message":"项目 %s 已在 agent %s 上创建"}`, name, agentName)
-		}
-		return codegen.CreateProjectJSON(name)
+		return codegen.CreateProjectJSON(agentName, name)
 	})
 
 	// 启动 AI 编码会话（异步，后台推送进度）
@@ -303,7 +274,20 @@ func registerMCPCallbacks() {
 		return codegen.StartDeployJSON(account, project)
 	})
 
-	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, SwitchModel, GetCurrentModel, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession, CodegenListDeployProjects, CodegenStartDeploy")
+	// 启动 pipeline 编排（按步骤顺序部署多个项目）
+	mcp.RegisterCallBack("CodegenStartPipeline", func(args map[string]interface{}) string {
+		account, _ := args["account"].(string)
+		if account == "" {
+			account = globalAccount
+		}
+		pipeline, _ := args["pipeline"].(string)
+		if pipeline == "" {
+			return `{"success":false,"error":"缺少 pipeline 参数"}`
+		}
+		return codegen.StartPipelineJSON(account, pipeline)
+	})
+
+	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession, CodegenListDeployProjects, CodegenStartDeploy, CodegenStartPipeline")
 }
 
 // GetHub 获取通知中心
@@ -629,8 +613,6 @@ var toolNameMap = map[string]string{
 	"DeleteReminder":  "删除定时任务",
 	"SendNotification": "发送通知",
 	"GenerateReport":  "生成报告",
-	"SwitchModel":     "切换模型",
-	"GetCurrentModel": "获取当前模型",
 }
 
 // getToolDisplayName 获取工具的中文显示名称
@@ -712,10 +694,7 @@ func parseProjectAgent(s string) (project, agentName string) {
 func resolveAgentID(project, agentName, toolFilter string) (string, error) {
 	pool := codegen.GetAgentPool()
 	if pool == nil {
-		if agentName != "" {
-			return "", fmt.Errorf("远程 agent 模式未启用")
-		}
-		return "", nil // 本地模式
+		return "", fmt.Errorf("远程 agent 模式未启用")
 	}
 
 	if agentName != "" {
@@ -759,7 +738,7 @@ func resolveAgentID(project, agentName, toolFilter string) (string, error) {
 			project, project, strings.Join(agents, ", "))
 	}
 
-	return "", nil // 没有远程匹配，走本地
+	return "", nil // 没有远程匹配，交由后续流程处理
 }
 
 // handleCodegenCommand 处理 cg 快捷命令（方案A：确定性命令，不经过 LLM）
@@ -786,12 +765,6 @@ func handleCodegenCommand(userID, message string) string {
 	case "list", "ls":
 		var sb strings.Builder
 
-		// 本地项目
-		projects, err := codegen.ListProjects()
-		if err != nil {
-			return fmt.Sprintf("❌ %v", err)
-		}
-
 		// 远程 agent 项目
 		var remoteProjects []codegen.RemoteProjectInfo
 		pool := codegen.GetAgentPool()
@@ -799,28 +772,14 @@ func handleCodegenCommand(userID, message string) string {
 			remoteProjects = pool.ListRemoteProjects()
 		}
 
-		totalCount := len(projects) + len(remoteProjects)
-		if totalCount == 0 {
-			return fmt.Sprintf("📂 暂无编码项目\n工作区: %s\n\n使用 cg create <名称> 创建项目", codegen.GetWorkspace())
+		if len(remoteProjects) == 0 {
+			return "📂 暂无编码项目\n\n请确保远程 agent 已连接并上报项目\n使用 cg create <名称[@agent]> 创建项目"
 		}
 
-		sb.WriteString(fmt.Sprintf("📂 编码项目 (%d个)\n\n", totalCount))
+		sb.WriteString(fmt.Sprintf("📂 编码项目 (%d个)\n\n", len(remoteProjects)))
 
-		if len(projects) > 0 {
-			sb.WriteString(fmt.Sprintf("**本地** [%s]\n", codegen.GetWorkspace()))
-			for i, p := range projects {
-				sb.WriteString(fmt.Sprintf("%d. %s — %d文件 (%s)\n", i+1, p.Name, p.FileCount, p.ModTime))
-			}
-		}
-
-		if len(remoteProjects) > 0 {
-			if len(projects) > 0 {
-				sb.WriteString("\n")
-			}
-			sb.WriteString("**远程Agent**\n")
-			for i, p := range remoteProjects {
-				sb.WriteString(fmt.Sprintf("%d. %s@%s\n", len(projects)+i+1, p.Name, p.Agent))
-			}
+		for i, p := range remoteProjects {
+			sb.WriteString(fmt.Sprintf("%d. %s@%s\n", i+1, p.Name, p.Agent))
 		}
 
 		return sb.String()
@@ -841,23 +800,24 @@ func handleCodegenCommand(userID, message string) string {
 			}
 		}
 
-		if agentTarget != "" {
-			// 在远程 agent 上创建
-			pool := codegen.GetAgentPool()
-			if pool == nil {
-				return "❌ 远程 agent 模式未启用"
-			}
-			if err := pool.CreateRemoteProject(agentTarget, projectName); err != nil {
-				return fmt.Sprintf("❌ 远程创建失败: %v", err)
-			}
-			return fmt.Sprintf("✅ 项目 **%s** 已在 agent **%s** 上创建", projectName, agentTarget)
+		pool := codegen.GetAgentPool()
+		if pool == nil {
+			return "❌ 远程 agent 模式未启用"
 		}
 
-		// 本地创建
-		if err := codegen.CreateProject(projectName); err != nil {
+		// 若未指定 agent，自动选择第一个在线 agent
+		if agentTarget == "" {
+			names := pool.GetAgentNames()
+			if len(names) == 0 {
+				return "❌ 无在线 agent，请先连接 agent 或用 cg create <名称>@<agent名> 指定"
+			}
+			agentTarget = names[0]
+		}
+
+		if err := pool.CreateRemoteProject(agentTarget, projectName); err != nil {
 			return fmt.Sprintf("❌ 创建失败: %v", err)
 		}
-		return fmt.Sprintf("✅ 项目 **%s** 创建成功（本地）", projectName)
+		return fmt.Sprintf("✅ 项目 **%s** 已在 agent **%s** 上创建", projectName, agentTarget)
 
 	case "start", "run":
 		// cg start <project[@agent]> [#model] [@tool] [!deploy] <prompt>
@@ -943,6 +903,66 @@ func handleCodegenCommand(userID, message string) string {
 			agentInfo = fmt.Sprintf(" (agent: %s)", agentName)
 		}
 		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, sessionID)
+
+	case "pipeline", "pip":
+		// cg pipeline list — 列出可用 pipeline
+		if param == "" || param == "list" || param == "ls" {
+			pool := codegen.GetAgentPool()
+			if pool == nil {
+				return "❌ 远程 agent 模式未启用"
+			}
+			pipelines := pool.ListPipelines()
+			if len(pipelines) == 0 {
+				return "暂无可用 pipeline（deploy agent 未上报或未在线）"
+			}
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("📋 可用 Pipeline (%d个)\n\n", len(pipelines)))
+			for _, p := range pipelines {
+				sb.WriteString(fmt.Sprintf("  🔄 %s (agent: %s)\n", p.Name, p.Agent))
+			}
+			sb.WriteString("\n用法: cg pipeline <名称[@agent]>")
+			return sb.String()
+		}
+		// cg pipeline <name[@agent]> — 执行部署编排
+		if param == "" {
+			return "⚠️ 请指定 pipeline 名称\n用法: cg pipeline <名称[@agent]>\n示例: cg pipeline prod-all\n示例: cg pipeline prod-all@mac"
+		}
+		pipelineName, agentName := parseProjectAgent(strings.Fields(param)[0])
+		agentID, err := resolveAgentID(pipelineName, agentName, codegen.ToolDeploy)
+		if err != nil {
+			return fmt.Sprintf("❌ %v", err)
+		}
+		// pipeline 需要找到拥有 deploy 工具的 agent
+		if agentID == "" {
+			// 尝试从 deploy agent 中任选一个
+			pool := codegen.GetAgentPool()
+			if pool != nil {
+				remoteProjects := pool.ListRemoteProjects()
+				for _, p := range remoteProjects {
+					for _, t := range p.Tools {
+						if t == codegen.ToolDeploy {
+							agentID = p.AgentID
+							break
+						}
+					}
+					if agentID != "" {
+						break
+					}
+				}
+			}
+		}
+		if agentID == "" {
+			return "❌ 未找到可用的 deploy agent"
+		}
+		sessionID, err := codegen.StartPipelineForWeChat(userID, pipelineName, agentID)
+		if err != nil {
+			return fmt.Sprintf("❌ Pipeline 启动失败: %v", err)
+		}
+		agentInfo := ""
+		if agentName != "" {
+			agentInfo = fmt.Sprintf(" (agent: %s)", agentName)
+		}
+		return fmt.Sprintf("🔄 Pipeline 已启动\n\n编排: %s%s\n会话: %s\n\n进度将通过微信推送", pipelineName, agentInfo, sessionID)
 
 	case "send", "msg":
 		// cg send <prompt>
@@ -1037,13 +1057,15 @@ func handleCodegenCommand(userID, message string) string {
 // getCodegenHelpText 返回 cg 命令帮助
 func getCodegenHelpText() string {
 	return "💻 CodeGen 编码助手命令\n\n" +
-		"cg list — 列出所有项目（本地+远程）\n" +
+		"cg list — 列出所有项目\n" +
 		"cg create <名称[@agent]> — 创建项目\n" +
 		"cg start <项目[@agent]> <需求> — 启动编码\n" +
 		"cg start <项目[@agent]> #<模型> <需求> — 指定模型\n" +
 		"cg start <项目[@agent]> @oc <需求> — 用OpenCode\n" +
 		"cg start <项目[@agent]> !deploy <需求> — 编码后自动部署\n" +
 		"cg deploy <项目[@agent]> — 仅部署（不编码）\n" +
+		"cg pipeline list — 列出可用编排\n" +
+		"cg pipeline <编排名[@agent]> — 执行部署编排\n" +
 		"cg send <消息> — 追加指令\n" +
 		"cg status — 查看进度\n" +
 		"cg stop — 停止编码\n" +
@@ -1052,7 +1074,8 @@ func getCodegenHelpText() string {
 		"cg agents — 查看在线agent\n\n" +
 		"@agent 语法: 多agent同名项目时用 项目@agent 指定目标\n" +
 		"工具别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode\n" +
-		"示例: cg start myapp@win #sonnet !deploy 写个HTTP服务"
+		"示例: cg start myapp@win #sonnet !deploy 写个HTTP服务\n" +
+		"示例: cg pipeline prod-all"
 }
 
 // Shutdown 关闭 Agent 模块

@@ -1,14 +1,12 @@
 // Package llm provides LLM (Large Language Model) integration functionality.
 //
-// This package is organized into the following modules:
-//   - config.go: Configuration management (LLMConfig, InitConfig)
+// This package delegates all LLM calls to llm-mcp-agent via gateway.
+// Kept modules:
 //   - message.go: Message types and sanitization (Message, SanitizeMessages)
-//   - diary.go: Diary/blog saving functionality (SaveLLMResponseToDiary)
-//   - stream.go: Stream processing and tool detection (ProcessStreamingResponseWithToolDetection)
-//   - client.go: LLM API client (SendStreamingLLMRequest)
-//   - tool_handler.go: Tool execution loop (ToolExecutor, ProcessQueryStreaming)
-//   - http_handler.go: HTTP request handling (ProcessRequest)
-//   - ai_skill.go: Pluggable AI skills system
+//   - sync_client.go: Bridge functions that route to llm-mcp-agent via codegen.SendSyncLLMTask
+//   - http_handler.go: Web assistant SSE route (ProcessRequest)
+//   - agent_bridge.go: Web assistant streaming bridge (ProcessRequestViaAgent)
+//   - ai_skill.go: Pluggable AI skills system (operates blog data, no LLM calls)
 package llm
 
 import (
@@ -18,14 +16,8 @@ import (
 	"strings"
 )
 
-// Info prints module version information
-func Info() {
-	log.Debug(log.ModuleLLM, "info llm v1.0")
-}
-
 // Init initializes the LLM module
 func Init() error {
-	InitConfig()
 	registerSkillTools()
 	return nil
 }

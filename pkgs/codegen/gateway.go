@@ -210,6 +210,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 			TaskID    string `json:"task_id"`
 			Status    string `json:"status"`
 			Error     string `json:"error"`
+			Result    string `json:"result"`
 		}
 		if err := json.Unmarshal(msg.Payload, &raw); err != nil {
 			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid task_complete payload: %v", err)
@@ -225,6 +226,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 				case ch <- TaskEvent{
 					Event:    "complete",
 					TaskID:   raw.TaskID,
+					Text:     raw.Result,
 					Complete: true,
 					Error:    raw.Error,
 				}:
@@ -360,6 +362,7 @@ func (b *GatewayBridge) handleRegister(msg *uap.Message) {
 		Tools:            payload.Tools,
 		DeployTargets:    payload.DeployTargets,
 		HostPlatform:     payload.HostPlatform,
+		Pipelines:        payload.Pipelines,
 		MaxConcurrent:    payload.MaxConcurrent,
 		ActiveSessions:   make(map[string]bool),
 		LastHeartbeat:    time.Now(),
@@ -575,96 +578,46 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 }
 
 // buildToolDefs 构建 UAP 工具定义列表和映射表
-// 从 MCP 已注册的 LLMTool 定义中提取，转换为 UAP ToolDef 格式
+// 自动注册所有 MCP 工具到 gateway，使用 MCP 回调名作为 UAP 工具名
 func buildToolDefs() ([]uap.ToolDef, map[string]string) {
-	toolMapping := make(map[string]string) // UAP name → MCP callback name
+	toolMapping := make(map[string]string) // UAP name → MCP callback name（identity mapping）
 
-	// 从注入的 MCP 工具定义获取完整参数信息
-	mcpToolMap := make(map[string]MCPToolInfo)
+	// 从注入的 MCP 工具定义获取全部工具
+	var mcpTools []MCPToolInfo
 	if MCPGetToolInfos != nil {
-		for _, t := range MCPGetToolInfos() {
-			mcpToolMap[t.Name] = t
-		}
-	}
-
-	// 24 个核心工具的映射定义
-	entries := []struct {
-		uapName string
-		mcpName string
-		desc    string // 覆盖描述（空则使用 MCP 原始描述）
-	}{
-		// Blog
-		{"blog.GetBlogs", "RawAllBlogName", "获取博客列表"},
-		{"blog.GetBlog", "RawGetBlogData", "获取博客内容"},
-		{"blog.CreateBlog", "RawCreateBlog", "创建博客"},
-		{"blog.SearchBlog", "RawSearchBlogContent", "搜索博客内容"},
-		// TodoList
-		{"todolist.GetTodos", "RawGetTodosByDate", "获取指定日期的待办列表"},
-		{"todolist.CreateTodo", "RawAddTodo", "创建待办事项"},
-		{"todolist.ToggleTodo", "RawToggleTodo", "切换待办完成状态"},
-		{"todolist.DeleteTodo", "RawDeleteTodo", "删除待办事项"},
-		// Exercise
-		{"exercise.GetRecords", "RawGetExerciseByDate", "获取指定日期运动记录"},
-		{"exercise.AddRecord", "RawAddExercise", "添加运动记录"},
-		{"exercise.GetStats", "RawGetExerciseStats", "获取运动统计数据"},
-		// Reading
-		{"reading.GetBooks", "RawGetAllBooks", "获取阅读书籍列表"},
-		{"reading.UpdateProgress", "RawUpdateReadingProgress", "更新阅读进度"},
-		// Reminder
-		{"reminder.Create", "CreateReminder", "创建定时提醒"},
-		{"reminder.List", "ListReminders", "列出所有提醒"},
-		{"reminder.Delete", "DeleteReminder", "删除提醒"},
-		// Notification
-		{"notification.Send", "SendNotification", "发送通知"},
-		// Report
-		{"report.Generate", "GenerateReport", "生成报告(日报/周报/月报)"},
-		// Model
-		{"model.Switch", "SwitchModel", "切换LLM模型"},
-		{"model.GetCurrent", "GetCurrentModel", "获取当前模型信息"},
-		// CodeGen
-		{"codegen.ListProjects", "CodegenListProjects", "列出编码项目"},
-		{"codegen.StartSession", "CodegenStartSession", "启动编码会话"},
-		{"codegen.GetStatus", "CodegenGetStatus", "查看编码状态"},
-		{"codegen.StopSession", "CodegenStopSession", "停止编码会话"},
+		mcpTools = MCPGetToolInfos()
 	}
 
 	var toolDefs []uap.ToolDef
 
-	for _, e := range entries {
-		toolMapping[e.uapName] = e.mcpName
+	for _, t := range mcpTools {
+		toolMapping[t.Name] = t.Name
 
-		// 从 MCP 工具定义获取参数 schema
-		desc := e.desc
-		var params interface{}
-		if mcpTool, ok := mcpToolMap[e.mcpName]; ok {
-			if desc == "" {
-				desc = mcpTool.Description
-			}
-			params = mcpTool.Parameters
-		} else {
-			// MCP 中没有该工具的定义（如 codegen 工具由 agent 包动态注册）
-			// 使用空参数 schema
+		desc := t.Description
+		if desc == "" {
+			desc = t.Name
+		}
+		params := t.Parameters
+		if params == nil {
 			params = map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
 			}
 		}
 
-		// 序列化参数为 json.RawMessage
 		paramsJSON, err := json.Marshal(params)
 		if err != nil {
-			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to marshal params for %s: %v", e.uapName, err)
 			paramsJSON = []byte(`{"type":"object","properties":{}}`)
 		}
 
 		toolDefs = append(toolDefs, uap.ToolDef{
-			Name:        e.uapName,
+			Name:        t.Name,
 			Description: desc,
 			Parameters:  json.RawMessage(paramsJSON),
 		})
 	}
 
-	log.MessageF(log.ModuleAgent, "CodeGen gateway: built %d tool definitions for UAP registration", len(toolDefs))
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: registered %d MCP tools for UAP", len(toolDefs))
 	return toolDefs, toolMapping
 }
 
@@ -773,4 +726,65 @@ func findLLMAgentID() string {
 		}
 	}
 	return ""
+}
+
+// ========================= 同步 LLM 请求桥接 =========================
+
+// SendSyncLLMTask 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回
+// messages 可以是任意可 JSON 序列化的消息列表
+func SendSyncLLMTask(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration) (string, error) {
+	if gatewayBridge == nil || gatewayBridge.client == nil {
+		return "", fmt.Errorf("gateway bridge not initialized")
+	}
+	if !gatewayBridge.client.IsConnected() {
+		return "", fmt.Errorf("gateway not connected")
+	}
+
+	// 生成 taskID
+	taskID := fmt.Sprintf("llm_%d", time.Now().UnixNano())
+
+	// 注册事件监听
+	eventCh := RegisterTaskListener(taskID)
+	if eventCh == nil {
+		return "", fmt.Errorf("failed to register task listener")
+	}
+	defer UnregisterTaskListener(taskID)
+
+	// 构建 payload
+	taskPayload := map[string]interface{}{
+		"task_type":      "llm_request",
+		"messages":       messages,
+		"account":        account,
+		"selected_tools": selectedTools,
+		"no_tools":       noTools,
+	}
+
+	// 发送 MsgTaskAssign
+	if err := SendTaskToLLMAgent(taskID, taskPayload); err != nil {
+		return "", fmt.Errorf("send task failed: %v", err)
+	}
+
+	log.MessageF(log.ModuleAgent, "SendSyncLLMTask: task=%s account=%s noTools=%v timeout=%v", taskID, account, noTools, timeout)
+
+	// 等待完成事件
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case evt, ok := <-eventCh:
+			if !ok {
+				return "", fmt.Errorf("event channel closed")
+			}
+			if evt.Complete {
+				if evt.Error != "" {
+					return "", fmt.Errorf("llm task failed: %s", evt.Error)
+				}
+				return evt.Text, nil
+			}
+			// 非 complete 事件（chunk/tool_info），忽略
+		case <-timer.C:
+			return "", fmt.Errorf("llm task timeout after %v", timeout)
+		}
+	}
 }

@@ -96,7 +96,7 @@ func BuildSkillsPrompt(skills []AISkill) string {
 		sb.WriteString(fmt.Sprintf("- 【%s】%s (触发: %s)\n",
 			skill.Name, skill.Description, strings.Join(skill.Triggers, "/")))
 		if skill.Instruction != "" {
-			sb.WriteString(fmt.Sprintf("  指令: %s\n", truncateForSession(skill.Instruction, 200)))
+			sb.WriteString(fmt.Sprintf("  指令: %s\n", TruncateString(skill.Instruction, 200)))
 		}
 	}
 

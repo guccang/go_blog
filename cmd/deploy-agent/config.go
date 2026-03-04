@@ -60,6 +60,9 @@ type DeployConfig struct {
 	// UAP gateway 配置
 	GoBackendAgentID string // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
 
+	// Pipeline 编排
+	PipelinesDir string // pipelines/ 目录路径（自动推断）
+
 	// daemon 模式标记
 	LoadAllPlatforms bool // 加载所有平台的 publish 配置（daemon 模式用于动态选择）
 }
@@ -254,6 +257,9 @@ func LoadConfig(path string, buildPlatform, targetFilter string) (*DeployConfig,
 	if cfg.GoBackendAgentID == "" {
 		cfg.GoBackendAgentID = "go_blog"
 	}
+
+	// 自动探测 pipelines 目录
+	cfg.detectPipelinesDir(path)
 
 	return cfg, nil
 }
@@ -807,6 +813,27 @@ func loadProjectFile(name, path string) (*ProjectConfig, error) {
 		return nil, fmt.Errorf("open: %v", err)
 	}
 	return parseProjectSection(name, lines)
+}
+
+// detectPipelinesDir 自动探测 pipelines/ 目录路径
+// 优先 settings_dir/pipelines/，其次 deploy.conf 同目录/pipelines/
+func (c *DeployConfig) detectPipelinesDir(configPath string) {
+	candidates := []string{}
+	if c.SettingsDir != "" {
+		settingsDir := c.SettingsDir
+		if !filepath.IsAbs(settingsDir) {
+			settingsDir = filepath.Join(filepath.Dir(configPath), settingsDir)
+		}
+		candidates = append(candidates, filepath.Join(settingsDir, "pipelines"))
+	}
+	candidates = append(candidates, filepath.Join(filepath.Dir(configPath), "pipelines"))
+
+	for _, p := range candidates {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			c.PipelinesDir = p
+			return
+		}
+	}
 }
 
 // parseGlobalKey 解析全局配置键值

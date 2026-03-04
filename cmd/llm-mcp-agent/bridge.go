@@ -412,16 +412,29 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			log.Printf("[Bridge] invalid task_assign payload: %v", err)
 			return
 		}
-		// 解析内部 payload
-		var assistantPayload AssistantTaskPayload
-		if err := json.Unmarshal(taskPayload.Payload, &assistantPayload); err != nil {
-			log.Printf("[Bridge] invalid assistant task payload: %v", err)
-			return
+		// 先探测 task_type 字段
+		var taskType struct {
+			TaskType string `json:"task_type"`
 		}
-		if assistantPayload.TaskType == "assistant_chat" {
+		json.Unmarshal(taskPayload.Payload, &taskType)
+
+		switch taskType.TaskType {
+		case "assistant_chat":
+			var assistantPayload AssistantTaskPayload
+			if err := json.Unmarshal(taskPayload.Payload, &assistantPayload); err != nil {
+				log.Printf("[Bridge] invalid assistant task payload: %v", err)
+				return
+			}
 			go b.handleAssistantTask(taskPayload.TaskID, &assistantPayload)
-		} else {
-			log.Printf("[Bridge] unknown task_type: %s", assistantPayload.TaskType)
+		case "llm_request":
+			var llmPayload LLMRequestPayload
+			if err := json.Unmarshal(taskPayload.Payload, &llmPayload); err != nil {
+				log.Printf("[Bridge] invalid llm_request payload: %v", err)
+				return
+			}
+			go b.handleLLMRequestTask(taskPayload.TaskID, &llmPayload)
+		default:
+			log.Printf("[Bridge] unknown task_type: %s", taskType.TaskType)
 		}
 
 	default:

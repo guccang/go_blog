@@ -1,0 +1,10 @@
+{                                                                                  
+    "name": "go_blog_dev",                                                          
+    "description": "生产环境全量部署",                                                   
+    "steps": [                                                                   
+                {"project": "llm-mcp-agent", "target": "ssh-prod", "build_platform": "linux"},   
+                {"project": "wechat-agent", "target": "ssh-prod", "build_platform": "linux"},
+                {"project": "codegen-agent", "target": "local", "build_platform": "win"},   
+                {"project": "go_blog", "target": "ssh-prod", "build_platform": "linux"}
+    ]
+ } 

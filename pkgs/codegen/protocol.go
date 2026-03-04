@@ -43,6 +43,7 @@ type RegisterPayload struct {
 	AuthToken        string   `json:"auth_token,omitempty"`
 	DeployTargets    []string `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
 	HostPlatform     string   `json:"host_platform,omitempty"`  // 主机平台 "win"
+	Pipelines        []string `json:"pipelines,omitempty"`      // deploy agent 可用 pipeline
 }
 
 // RegisterAckPayload 注册确认
@@ -78,6 +79,7 @@ type TaskAssignPayload struct {
 	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
 	BuildPlatform string `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
 	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
+	Pipeline      string `json:"pipeline,omitempty"`       // deploy pipeline 名称
 }
 
 // TaskAcceptedPayload 任务接受确认

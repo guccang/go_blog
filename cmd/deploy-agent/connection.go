@@ -79,12 +79,16 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	case MsgTaskAssign:
 		var payload TaskAssignPayload
 		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received deploy task: session=%s project=%s target=%s platform=%s pack_only=%v",
-			payload.SessionID, payload.Project, payload.DeployTarget, payload.BuildPlatform, payload.PackOnly)
+		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s platform=%s pack_only=%v",
+			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.BuildPlatform, payload.PackOnly)
 
 		if c.canAccept() {
 			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-			go c.executeDeploy(payload)
+			if payload.Pipeline != "" {
+				go c.executePipeline(payload)
+			} else {
+				go c.executeDeploy(payload)
+			}
 		} else {
 			c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
 				SessionID: payload.SessionID,
@@ -99,6 +103,9 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 
 	case MsgHeartbeatAck:
 		// ok
+
+	case uap.MsgNotify:
+		// gateway 广播通知（如 agent_offline），deploy-agent 无需处理
 
 	case uap.MsgError:
 		var payload uap.ErrorPayload
@@ -239,6 +246,166 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 	log.Printf("[INFO] deploy task %s (project=%s) completed, status=%s", sessionID, proj.Name, status)
 }
 
+// executePipeline 执行 pipeline 编排任务（顺序执行，失败即停）
+func (c *Connection) executePipeline(task TaskAssignPayload) {
+	sessionID := task.SessionID
+
+	c.taskMu.Lock()
+	c.activeTasks[sessionID] = true
+	c.taskMu.Unlock()
+
+	defer func() {
+		c.taskMu.Lock()
+		delete(c.activeTasks, sessionID)
+		c.taskMu.Unlock()
+	}()
+
+	sendEvent := func(evtType, text string) {
+		c.SendMsg(MsgStreamEvent, StreamEventPayload{
+			SessionID: sessionID,
+			Event:     StreamEvent{Type: evtType, Text: text},
+		})
+	}
+
+	// 加载 pipelines 目录
+	if c.cfg.PipelinesDir == "" {
+		sendEvent("error", "❌ 未配置 pipelines/ 目录")
+		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			SessionID: sessionID,
+			Status:    "error",
+			Error:     "pipelines directory not found",
+		})
+		return
+	}
+
+	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
+	if err != nil {
+		sendEvent("error", fmt.Sprintf("❌ 加载 pipelines 失败: %v", err))
+		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			SessionID: sessionID,
+			Status:    "error",
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	pip := pipCfg.Get(task.Pipeline)
+	if pip == nil {
+		errMsg := fmt.Sprintf("pipeline %q 不存在，可用: %v", task.Pipeline, pipCfg.Names())
+		sendEvent("error", "❌ "+errMsg)
+		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			SessionID: sessionID,
+			Status:    "error",
+			Error:     errMsg,
+		})
+		return
+	}
+
+	if err := ValidatePipeline(pip, c.cfg); err != nil {
+		sendEvent("error", fmt.Sprintf("❌ %v", err))
+		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			SessionID: sessionID,
+			Status:    "error",
+			Error:     err.Error(),
+		})
+		return
+	}
+
+	desc := ""
+	if pip.Description != "" {
+		desc = " — " + pip.Description
+	}
+	sendEvent("system", fmt.Sprintf("🔄 开始执行 Pipeline: %s%s (%d 步)", pip.Name, desc, len(pip.Steps)))
+
+	for i, step := range pip.Steps {
+		proj := c.cfg.GetProject(step.Project)
+
+		// 浅拷贝 cfg 以应用步骤级覆盖
+		deployCfg := *c.cfg
+		if step.BuildPlatform != "" {
+			deployCfg.BuildPlatform = normalizePlatform(step.BuildPlatform)
+		}
+
+		packOnly := step.PackOnly
+		targetFilter := step.Target
+
+		if packOnly {
+			sendEvent("system", fmt.Sprintf("📦 [%d/%d] 打包项目 [%s] (平台: %s)...",
+				i+1, len(pip.Steps), proj.Name, deployCfg.BuildPlatform))
+		} else {
+			targetLabel := targetFilter
+			if targetLabel == "" {
+				targetLabel = "默认"
+			}
+			sendEvent("system", fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s] (目标: %s, 平台: %s)...",
+				i+1, len(pip.Steps), proj.Name, targetLabel, deployCfg.BuildPlatform))
+		}
+
+		deployer := NewDeployer(&deployCfg, proj, c.password)
+		deployer.OnProgress = func(level, message string) {
+			evtType := "system"
+			prefix := "📦 "
+			if level == "error" {
+				evtType = "error"
+				prefix = "⚠️ "
+			}
+			sendEvent(evtType, prefix+message)
+		}
+
+		stepErr := deployer.Run(packOnly, targetFilter)
+
+		// 验证
+		if stepErr == nil && !packOnly {
+			verifyURL := ""
+			verifyTimeout := 10
+			for _, t := range proj.Targets {
+				if targetFilter != "" && t.Name != targetFilter && t.Host != targetFilter {
+					continue
+				}
+				if t.VerifyURL != "" {
+					verifyURL = t.VerifyURL
+					verifyTimeout = t.VerifyTimeout
+					break
+				}
+			}
+			if verifyURL == "" && proj.VerifyURL != "" {
+				verifyURL = proj.VerifyURL
+			}
+			if verifyURL != "" {
+				sendEvent("system", "⏳ 等待服务启动 (5s)...")
+				time.Sleep(5 * time.Second)
+				if verifyErr := c.verifyURL(verifyURL, verifyTimeout); verifyErr != nil {
+					stepErr = fmt.Errorf("部署验证失败: %v", verifyErr)
+				} else {
+					sendEvent("system", "✅ 部署验证通过（HTTP 200）")
+				}
+			}
+		}
+
+		if stepErr != nil {
+			errMsg := fmt.Sprintf("Pipeline %q 在步骤 [%d/%d] %s 失败: %v",
+				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
+			sendEvent("error", "❌ "+errMsg)
+			c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+				SessionID: sessionID,
+				Status:    "error",
+				Error:     errMsg,
+			})
+			log.Printf("[INFO] pipeline task %s failed at step %d/%d, status=error", sessionID, i+1, len(pip.Steps))
+			return
+		}
+
+		sendEvent("system", fmt.Sprintf("✅ [%d/%d] %s 完成", i+1, len(pip.Steps), proj.Name))
+	}
+
+	sendEvent("system", fmt.Sprintf("✅ Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
+	c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+		SessionID: sessionID,
+		Status:    "done",
+	})
+	log.Printf("[INFO] pipeline task %s completed, all %d steps done", sessionID, len(pip.Steps))
+}
+
 // verifyURL HTTP GET 验证部署结果
 func (c *Connection) verifyURL(url string, timeout int) error {
 	if timeout <= 0 {
@@ -281,6 +448,14 @@ func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 
 // sendDeployRegister 发送 deploy 协议注册消息给 go_blog-agent
 func (c *Connection) sendDeployRegister() {
+	// 加载 pipeline 名称
+	var pipelineNames []string
+	if c.cfg.PipelinesDir != "" {
+		if pipCfg, err := LoadPipelines(c.cfg.PipelinesDir); err == nil {
+			pipelineNames = pipCfg.Names()
+		}
+	}
+
 	payload := RegisterPayload{
 		AgentID:       c.agentID,
 		Name:          c.cfg.AgentName,
@@ -291,6 +466,7 @@ func (c *Connection) sendDeployRegister() {
 		AuthToken:     c.cfg.AuthToken,
 		DeployTargets: c.cfg.TargetNames,
 		HostPlatform:  c.cfg.HostPlatform,
+		Pipelines:     pipelineNames,
 	}
 	c.SendMsg(MsgRegister, payload)
 }

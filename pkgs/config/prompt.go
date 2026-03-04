@@ -242,7 +242,8 @@ func getDefaultPrompt(key string) string {
 var promptKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // parsePromptSections 解析 markdown 格式的提示词配置
-// 格式：## key 作为分隔符，下方内容作为提示词模板
+// 新格式：## key 后用 ``` 代码块包裹内容，代码块内所有行原样保留
+// 旧格式（兼容）：## key 后直接写内容，到下一个有效 key 为止
 // 只有符合 [a-z][a-z0-9_]* 格式的 ## 标题才被视为 key，
 // 其他 ## 标题（如 "## 当前账户"）视为内容的一部分
 func parsePromptSections(content string) map[string]string {
@@ -251,9 +252,39 @@ func parsePromptSections(content string) map[string]string {
 
 	var currentKey string
 	var currentContent strings.Builder
+	inCodeBlock := false
+	waitingForCodeBlock := false // 刚遇到 ## key，等待判断是代码块还是旧格式
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// 检测代码块边界 ```
+		if currentKey != "" && strings.TrimSpace(line) == "```" {
+			if inCodeBlock {
+				// 代码块结束 → 保存内容并重置
+				prompts[currentKey] = strings.TrimSpace(currentContent.String())
+				currentKey = ""
+				currentContent.Reset()
+				inCodeBlock = false
+				waitingForCodeBlock = false
+				continue
+			}
+			if waitingForCodeBlock {
+				// 代码块开始
+				inCodeBlock = true
+				waitingForCodeBlock = false
+				continue
+			}
+		}
+
+		// 代码块内：原样累积所有行（包括 ## 中文标题等）
+		if inCodeBlock {
+			if currentContent.Len() > 0 {
+				currentContent.WriteString("\n")
+			}
+			currentContent.WriteString(line)
+			continue
+		}
 
 		// 检测 ## key 格式的标题（key 必须是英文小写+下划线格式）
 		if strings.HasPrefix(line, "## ") {
@@ -263,19 +294,29 @@ func parsePromptSections(content string) map[string]string {
 				if currentKey != "" {
 					prompts[currentKey] = strings.TrimSpace(currentContent.String())
 				}
-				// 开始新的 key
+				// 开始新的 key，等待判断格式
 				currentKey = candidate
 				currentContent.Reset()
+				waitingForCodeBlock = true
 				continue
 			}
 		}
 
-		// # 一级标题和注释行跳过（不累积到内容中）
+		// 无当前 key 时跳过
 		if currentKey == "" {
 			continue
 		}
 
-		// 累积内容（包括内容中的 ## 中文标题）
+		// 等待代码块期间，跳过空行
+		if waitingForCodeBlock {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			// 遇到非空非 ``` 行 → 进入旧格式兼容模式
+			waitingForCodeBlock = false
+		}
+
+		// 累积内容（旧格式兼容，包括内容中的 ## 中文标题）
 		if currentContent.Len() > 0 || line != "" {
 			if currentContent.Len() > 0 {
 				currentContent.WriteString("\n")
@@ -284,7 +325,7 @@ func parsePromptSections(content string) map[string]string {
 		}
 	}
 
-	// 保存最后一个 key
+	// 保存最后一个 key（兼容旧格式或未关闭的代码块）
 	if currentKey != "" {
 		prompts[currentKey] = strings.TrimSpace(currentContent.String())
 	}
@@ -314,7 +355,7 @@ func registerDefaultPrompts() {
 	d := promptManager.defaults
 
 	// === agent/agent.go ===
-	d["wechat_system"] = `你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 "%s"，请直接使用此账号调用工具查询数据，不要询问用户账号。重要：回复必须精简，控制在500字以内，只输出关键数据和结论，不要冗余解释。适合手机屏幕阅读。`
+	d["wechat_system"] = `你是 Go Blog 智能助手，通过企业微信与用户对话。当前用户账号是 "%s"，请直接使用此账号调用工具，不要询问用户账号。重要规则：1. 收到指令后直接执行，不要反问确认、不要列出方案让用户选择，自行决定最合理的参数并立即调用工具。2. 回复必须精简，控制在500字以内，只输出执行结果和关键数据，不要冗余解释。适合手机屏幕阅读。`
 
 	// === agent/prompts.go ===
 	d["planning_system"] = `你是一个任务规划专家。你的职责是将复杂任务分解为可执行的子任务。

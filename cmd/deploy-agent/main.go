@@ -22,6 +22,7 @@ func main() {
 	password := flag.String("password", "", "SSH 密码")
 	savePwd := flag.Bool("save-password", false, "保存密码到凭据存储")
 	listProjects := flag.Bool("list", false, "列出所有配置的项目和可用目标")
+	pipelineName := flag.String("pipeline", "", "执行指定的部署编排")
 	flag.Parse()
 
 	// 标准化 build-platform
@@ -30,9 +31,9 @@ func main() {
 		bp = normalizePlatform(*buildPlatform)
 	}
 
-	// --list 模式：加载 all targets 以显示完整信息
+	// --list / --pipeline 模式：加载 all targets
 	tf := *targetName
-	if *listProjects {
+	if *listProjects || *pipelineName != "" {
 		tf = "all"
 	}
 
@@ -42,9 +43,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// pipeline 模式：需要加载所有平台配置（步骤可能跨平台）
+	if *pipelineName != "" {
+		cfg, err = LoadConfigForDaemon(*configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载配置失败 (pipeline): %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	// daemon 模式需要加载所有 target 和所有平台配置，以支持前端动态选择
 	// 检测 daemon 模式（有 server_url 且未显式指定 CLI 参数）
-	isCliMode := *projectName != "" || *targetName != "" || *packOnly
+	isCliMode := *projectName != "" || *targetName != "" || *packOnly || *pipelineName != ""
 	if cfg.ServerURL != "" && !isCliMode && !*listProjects {
 		cfg, err = LoadConfigForDaemon(*configPath)
 		if err != nil {
@@ -85,11 +95,40 @@ func main() {
 			}
 			fmt.Println()
 		}
+
+		// 列出 pipeline 编排
+		if cfg.PipelinesDir != "" {
+			pipCfg, err := LoadPipelines(cfg.PipelinesDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "加载 pipelines 失败: %v\n", err)
+			} else if len(pipCfg.Pipelines) > 0 {
+				fmt.Printf("部署编排 (%d个):\n", len(pipCfg.Pipelines))
+				for _, p := range pipCfg.Pipelines {
+					desc := ""
+					if p.Description != "" {
+						desc = " — " + p.Description
+					}
+					fmt.Printf("  [%s]%s\n", p.Name, desc)
+					for i, s := range p.Steps {
+						extra := ""
+						if s.Target != "" {
+							extra += " target=" + s.Target
+						}
+						if s.BuildPlatform != "" {
+							extra += " platform=" + s.BuildPlatform
+						}
+						if s.PackOnly {
+							extra += " pack_only"
+						}
+						fmt.Printf("    %d. %s%s\n", i+1, s.Project, extra)
+					}
+				}
+				fmt.Println()
+			}
+		}
+
 		return
 	}
-
-	// 是否强制使用 CLI 模式（当用户显式指定了项目、目标或只打包时）
-	// （isCliMode 已在上面 daemon 检测中定义）
 
 	// daemon 模式（WebSocket）
 	if cfg.ServerURL != "" && !isCliMode {
@@ -152,6 +191,95 @@ func main() {
 		// 启动 deploy 协议层（注册 + 心跳）
 		go conn.StartDeployProtocol()
 		conn.Run()
+		return
+	}
+
+	// CLI pipeline 模式
+	if *pipelineName != "" {
+		if cfg.PipelinesDir == "" {
+			fmt.Fprintf(os.Stderr, "未找到 pipelines/ 配置目录\n")
+			os.Exit(1)
+		}
+		pipCfg, err := LoadPipelines(cfg.PipelinesDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载 pipelines 失败: %v\n", err)
+			os.Exit(1)
+		}
+		pip := pipCfg.Get(*pipelineName)
+		if pip == nil {
+			fmt.Fprintf(os.Stderr, "pipeline %q 不存在，可用: %v\n", *pipelineName, pipCfg.Names())
+			os.Exit(1)
+		}
+		if err := ValidatePipeline(pip, cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("执行 Pipeline: %s\n", pip.Name)
+		if pip.Description != "" {
+			fmt.Printf("描述: %s\n", pip.Description)
+		}
+		fmt.Printf("步骤数: %d\n\n", len(pip.Steps))
+
+		currentPassword := *password
+		for i, step := range pip.Steps {
+			proj := cfg.GetProject(step.Project)
+			fmt.Printf("==================== [%d/%d] %s ====================\n", i+1, len(pip.Steps), step.Project)
+
+			// 浅拷贝 cfg 以应用步骤级覆盖
+			stepCfg := *cfg
+			if step.BuildPlatform != "" {
+				stepCfg.BuildPlatform = normalizePlatform(step.BuildPlatform)
+			}
+
+			packOnly := step.PackOnly
+			targetFilter := step.Target
+
+			// 判断是否需要密码
+			allLocal := true
+			for _, t := range proj.Targets {
+				if !isLocalTarget(t.Host) {
+					allLocal = false
+					break
+				}
+			}
+
+			pwd := currentPassword
+			if pwd == "" && !packOnly && !allLocal {
+				// 从凭据存储获取
+				if len(proj.Targets) > 0 {
+					t := proj.Targets[0]
+					user, host := parseHost(t.Host)
+					accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
+					if saved, err := cred.Get(accountKey); err == nil && saved != "" {
+						pwd = saved
+						fmt.Printf("已从凭据存储获取密码 (%s)\n", accountKey)
+					}
+				}
+			}
+			if pwd == "" && !packOnly && !allLocal {
+				fmt.Print("SSH 密码: ")
+				if pwdBytes, err := term.ReadPassword(int(syscall.Stdin)); err == nil {
+					pwd = string(pwdBytes)
+				} else {
+					reader := bufio.NewReader(os.Stdin)
+					line, _ := reader.ReadString('\n')
+					pwd = strings.TrimSpace(line)
+				}
+				fmt.Println()
+				currentPassword = pwd
+			}
+
+			deployer := NewDeployer(&stepCfg, proj, pwd)
+			if deployErr := deployer.Run(packOnly, targetFilter); deployErr != nil {
+				fmt.Fprintf(os.Stderr, "\n❌ Pipeline %q 在步骤 [%d/%d] %s 失败: %v\n",
+					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
+				os.Exit(1)
+			}
+			fmt.Printf("\n✅ 步骤 [%d/%d] %s 完成\n\n", i+1, len(pip.Steps), step.Project)
+		}
+
+		fmt.Printf("✅ Pipeline %q 全部完成 (%d 步)\n", pip.Name, len(pip.Steps))
 		return
 	}
 

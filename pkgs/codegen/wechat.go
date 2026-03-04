@@ -86,7 +86,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool, agentID string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", "", false)
+	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", "", false, "")
 	if err != nil {
 		return "", err
 	}
@@ -477,19 +477,12 @@ func ListProjectsJSON() string {
 		"success": true,
 	}
 
-	// 本地项目
-	projects, err := ListProjects()
-	if err != nil {
-		result["local_projects"] = []interface{}{}
-		result["local_error"] = err.Error()
-	} else {
-		result["local_projects"] = projects
-	}
-
 	// 远程 agent 项目
 	if agentPool != nil {
 		remoteProjects := agentPool.ListRemoteProjects()
 		result["remote_projects"] = remoteProjects
+	} else {
+		result["remote_projects"] = []interface{}{}
 	}
 
 	data, _ := json.Marshal(result)
@@ -535,10 +528,79 @@ func StartDeployJSON(account, project string) string {
 	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"部署会话已启动，进度将通过微信推送"}`, sessionID)
 }
 
-// CreateProjectJSON 创建项目并返回 JSON
-func CreateProjectJSON(name string) string {
-	if err := CreateProject(name); err != nil {
+// StartPipelineForWeChat 启动 pipeline 会话并订阅通知
+func StartPipelineForWeChat(userID, pipeline, agentID string) (string, error) {
+	if wechatBridge == nil {
+		return "", fmt.Errorf("WeChat bridge not initialized")
+	}
+
+	// 检查用户是否已有运行中的会话
+	wechatBridge.mu.RLock()
+	existing := wechatBridge.userSessions[userID]
+	wechatBridge.mu.RUnlock()
+	if existing != nil {
+		s := GetSession(existing.SessionID)
+		if s != nil && s.Status == StatusRunning {
+			return "", fmt.Errorf("你已有运行中的编码会话（项目: %s），请等待完成或先停止", existing.Project)
+		}
+	}
+
+	// pipeline 模式：project 用 pipeline 名称标识，prompt 留空
+	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", "", false, pipeline)
+	if err != nil {
+		return "", err
+	}
+
+	// 创建用户状态
+	state := &UserSessionState{
+		UserID:      userID,
+		SessionID:   session.ID,
+		Project:     "pipeline:" + pipeline,
+		LastNotify:  time.Now(),
+		EventBuffer: make([]string, 0),
+		stopCh:      make(chan struct{}),
+	}
+
+	wechatBridge.mu.Lock()
+	wechatBridge.userSessions[userID] = state
+	wechatBridge.mu.Unlock()
+
+	go subscribeAndRelay(state, session)
+
+	return session.ID, nil
+}
+
+// StartPipelineJSON 启动 pipeline 会话并返回 JSON（供 MCP 工具调用）
+func StartPipelineJSON(account, pipeline string) string {
+	if wechatBridge == nil {
+		return `{"success":false,"error":"WeChat bridge not initialized"}`
+	}
+
+	sessionID, err := StartPipelineForWeChat(account, pipeline, "")
+	if err != nil {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
-	return fmt.Sprintf(`{"success":true,"message":"项目 %s 创建成功"}`, name)
+	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"Pipeline %s 已启动，进度将通过微信推送"}`, sessionID, pipeline)
+}
+
+// CreateProjectJSON 在远程 agent 上创建项目并返回 JSON
+func CreateProjectJSON(agentName, name string) string {
+	pool := agentPool
+	if pool == nil {
+		return `{"success":false,"error":"远程 agent 模式未启用"}`
+	}
+
+	// 若未指定 agent，自动选择第一个在线 agent
+	if agentName == "" {
+		names := pool.GetAgentNames()
+		if len(names) == 0 {
+			return `{"success":false,"error":"无在线 agent"}`
+		}
+		agentName = names[0]
+	}
+
+	if err := pool.CreateRemoteProject(agentName, name); err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+	}
+	return fmt.Sprintf(`{"success":true,"message":"项目 %s 已在 agent %s 上创建"}`, name, agentName)
 }

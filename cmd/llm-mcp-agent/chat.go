@@ -131,7 +131,7 @@ func (b *Bridge) buildSystemPrompt(wechatUser string) string {
 	go func() {
 		defer wg.Done()
 		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-		data, err := b.callToolWithTimeout("todolist.GetTodos", args, 3*time.Second)
+		data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
 		if err == nil && data != "" {
 			results <- ctxResult{label: "今日待办", data: data}
 		}
@@ -142,7 +142,7 @@ func (b *Bridge) buildSystemPrompt(wechatUser string) string {
 	go func() {
 		defer wg.Done()
 		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-		data, err := b.callToolWithTimeout("exercise.GetRecords", args, 3*time.Second)
+		data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
 		if err == nil && data != "" {
 			results <- ctxResult{label: "今日运动", data: data}
 		}

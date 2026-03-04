@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+// Context overflow prevention constants
+const (
+	MaxToolResultChars    = 4000   // per tool result passed back to the model
+	MaxToolArgumentsChars = 4000   // per tool-call arguments embedded in assistant message
+	MaxMessageChars       = 8000   // per message content clamp
+	MaxMessagesToSend     = 60     // overall message count cap
+	MaxTotalCharsBudget   = 200000 // rough total-char budget for all messages
+)
+
 // Message represents a message in conversation
 type Message struct {
 	Role       string         `json:"role"`

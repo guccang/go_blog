@@ -3,6 +3,8 @@
   "gateway_url": "ws://127.0.0.1:10086/ws/uap",
   "auth_token": "your-auth-token",
   "agent_name": "wechat-agent",
+  "llm_agent_id": "llm-mcp-agent",
+  "backend_agent_id": "go_blog",
 
   "corp_id": "your-corp-id",
   "agent_id": "your-agent-id",
