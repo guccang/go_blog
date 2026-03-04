@@ -433,6 +433,13 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				return
 			}
 			go b.handleLLMRequestTask(taskPayload.TaskID, &llmPayload)
+		case "resume_task":
+			var resumePayload ResumeTaskPayload
+			if err := json.Unmarshal(taskPayload.Payload, &resumePayload); err != nil {
+				log.Printf("[Bridge] invalid resume_task payload: %v", err)
+				return
+			}
+			go b.handleResumeTask(taskPayload.TaskID, &resumePayload)
 		default:
 			log.Printf("[Bridge] unknown task_type: %s", taskType.TaskType)
 		}

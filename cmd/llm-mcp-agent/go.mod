@@ -4,7 +4,7 @@ go 1.24.0
 
 require uap v0.0.0
 
-replace uap => ../../pkgs/uap
+replace uap => ../blog-agent/pkgs/uap
 
 require (
 	github.com/google/uuid v1.6.0 // indirect

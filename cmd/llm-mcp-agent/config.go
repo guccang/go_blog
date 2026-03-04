@@ -28,6 +28,12 @@ type Config struct {
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
 	MaxToolIterations  int    `json:"max_tool_iterations"`
 	SystemPromptPrefix string `json:"system_prompt_prefix"`
+
+	// 任务拆解与编排配置
+	MaxSubTasks          int    `json:"max_sub_tasks"`           // 最大子任务数（默认 10）
+	SubTaskMaxIterations int    `json:"sub_task_max_iterations"` // 子任务最大 agentic loop 轮次（默认 10）
+	SubTaskTimeoutSec    int    `json:"sub_task_timeout_sec"`    // 子任务超时秒数（默认 120）
+	SessionDir           string `json:"session_dir"`             // 会话持久化目录（默认 agent_sessions）
 }
 
 // DefaultConfig 默认配置
@@ -43,10 +49,14 @@ func DefaultConfig() *Config {
 			MaxTokens:   4096,
 			Temperature: 0.7,
 		},
-		DefaultAccount:     "ztj",
-		ToolCallTimeoutSec: 30,
-		MaxToolIterations:  15,
-		SystemPromptPrefix: "你是 Go Blog 智能助手，通过企业微信与用户对话。重要规则：1. 收到指令后直接执行，不要反问确认、不要列出方案让用户选择，自行决定最合理的参数并立即调用工具。2. 回复必须精简，控制在500字以内，只输出执行结果和关键数据。适合手机屏幕阅读。",
+		DefaultAccount:       "ztj",
+		ToolCallTimeoutSec:   30,
+		MaxToolIterations:    15,
+		SystemPromptPrefix:   "你是 Go Blog 智能助手，通过企业微信与用户对话。重要规则：1. 收到指令后直接执行，不要反问确认、不要列出方案让用户选择，自行决定最合理的参数并立即调用工具。2. 回复必须精简，控制在500字以内，只输出执行结果和关键数据。适合手机屏幕阅读。",
+		MaxSubTasks:          10,
+		SubTaskMaxIterations: 10,
+		SubTaskTimeoutSec:    120,
+		SessionDir:           "agent_sessions",
 	}
 }
 
