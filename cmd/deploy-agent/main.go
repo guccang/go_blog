@@ -258,7 +258,7 @@ func main() {
 			}
 
 			deployer := NewDeployer(&stepCfg, proj, pwd)
-			if deployErr := deployer.Run(packOnly, targetFilter); deployErr != nil {
+			if deployErr := deployer.Run(packOnly, targetFilter, step.BuildPlatform); deployErr != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Pipeline %q 在步骤 [%d/%d] %s 失败: %v\n",
 					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
 				os.Exit(1)
@@ -356,7 +356,7 @@ func main() {
 		}
 
 		deployer := NewDeployer(cfg, proj, pwd)
-		deployErr := deployer.Run(*packOnly, "")
+		deployErr := deployer.Run(*packOnly, "", "")
 
 		// SSH 连接成功即保存密码（证明密码有效），不依赖后续步骤
 		if *savePwd && pwd != "" && deployer.SSHConnected {

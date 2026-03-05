@@ -79,8 +79,8 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	case MsgTaskAssign:
 		var payload TaskAssignPayload
 		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s pack_only=%v",
-			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.PackOnly)
+		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s platform=%s pack_only=%v",
+			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.BuildPlatform, payload.PackOnly)
 
 		if c.canAccept() {
 			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
@@ -168,6 +168,7 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 
 	packOnly := task.PackOnly
 	targetFilter := task.DeployTarget
+	buildPlatform := task.BuildPlatform
 
 	// 浅拷贝 cfg
 	deployCfg := *c.cfg
@@ -193,7 +194,7 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 		sendEvent(evtType, prefix+message)
 	}
 
-	err = deployer.Run(packOnly, targetFilter)
+	err = deployer.Run(packOnly, targetFilter, buildPlatform)
 
 	// 验证：从实际部署的 target 中获取 VerifyURL
 	if err == nil && !packOnly {
@@ -322,6 +323,7 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 
 		packOnly := step.PackOnly
 		targetFilter := step.Target
+		buildPlatform := step.BuildPlatform
 
 		if packOnly {
 			sendEvent("system", fmt.Sprintf("📦 [%d/%d] 打包项目 [%s]...",
@@ -346,7 +348,7 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 			sendEvent(evtType, prefix+message)
 		}
 
-		stepErr := deployer.Run(packOnly, targetFilter)
+		stepErr := deployer.Run(packOnly, targetFilter, buildPlatform)
 
 		// 验证
 		if stepErr == nil && !packOnly {

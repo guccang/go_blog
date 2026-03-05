@@ -482,6 +482,7 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		AutoDeploy:    session.AutoDeploy,
 		DeployOnly:    session.DeployOnly,
 		DeployTarget:  session.DeployTarget,
+		BuildPlatform: session.BuildPlatform,
 		PackOnly:      session.PackOnly,
 		Pipeline:      session.Pipeline,
 	}

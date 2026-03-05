@@ -86,7 +86,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool, agentID string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", false, "")
+	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", "", false, "")
 	if err != nil {
 		return "", err
 	}
@@ -521,11 +521,53 @@ func StartDeployJSON(account, project string) string {
 		return `{"success":false,"error":"WeChat bridge not initialized"}`
 	}
 
-	sessionID, err := StartSessionForWeChat(account, project, "deploy", "", "", "", false, true)
+	sessionID, err := StartDeployForWeChat(account, project, "", "", "", false)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
 	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"部署会话已启动，进度将通过微信推送"}`, sessionID)
+}
+
+// StartDeployForWeChat 启动部署会话并订阅通知（支持 target/platform/packOnly）
+func StartDeployForWeChat(userID, project, agentID, deployTarget, buildPlatform string, packOnly bool) (string, error) {
+	if wechatBridge == nil {
+		return "", fmt.Errorf("WeChat bridge not initialized")
+	}
+
+	// 检查用户是否已有运行中的会话
+	wechatBridge.mu.RLock()
+	existing := wechatBridge.userSessions[userID]
+	wechatBridge.mu.RUnlock()
+	if existing != nil {
+		s := GetSession(existing.SessionID)
+		if s != nil && s.Status == StatusRunning {
+			return "", fmt.Errorf("你已有运行中的编码会话（项目: %s），请等待完成或先停止", existing.Project)
+		}
+	}
+
+	// 启动会话
+	session, err := StartSession(project, "", "", "", agentID, false, true, deployTarget, buildPlatform, packOnly, "")
+	if err != nil {
+		return "", err
+	}
+
+	// 创建用户状态
+	state := &UserSessionState{
+		UserID:      userID,
+		SessionID:   session.ID,
+		Project:     project,
+		LastNotify:  time.Now(),
+		EventBuffer: make([]string, 0),
+		stopCh:      make(chan struct{}),
+	}
+
+	wechatBridge.mu.Lock()
+	wechatBridge.userSessions[userID] = state
+	wechatBridge.mu.Unlock()
+
+	go subscribeAndRelay(state, session)
+
+	return session.ID, nil
 }
 
 // StartPipelineForWeChat 启动 pipeline 会话并订阅通知
@@ -546,7 +588,7 @@ func StartPipelineForWeChat(userID, pipeline, agentID string) (string, error) {
 	}
 
 	// pipeline 模式：project 用 pipeline 名称标识，prompt 留空
-	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", false, pipeline)
+	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", "", false, pipeline)
 	if err != nil {
 		return "", err
 	}

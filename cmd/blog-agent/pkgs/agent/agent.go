@@ -885,24 +885,61 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, modelInfo, toolInfo, deployInfo, sessionID)
 
 	case "deploy", "dp":
-		// cg deploy <project[@agent]> — 仅部署，不编码
+		// cg deploy <project[@agent]> [#target] [@platform] [!pack]
 		if param == "" {
-			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]>\n示例: cg deploy myapp\n示例: cg deploy myapp@mac"
+			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]> [#目标] [@平台] [!pack]\n示例: cg deploy myapp\n示例: cg deploy myapp@mac #ssh-prod @linux\n示例: cg deploy myapp !pack"
 		}
-		project, agentName := parseProjectAgent(strings.Fields(param)[0])
+		deployParts := strings.SplitN(param, " ", 2)
+		project, agentName := parseProjectAgent(deployParts[0])
+		rest := ""
+		if len(deployParts) > 1 {
+			rest = strings.TrimSpace(deployParts[1])
+		}
+		// 解析可选的 #target、@platform、!pack（顺序不限）
+		deployTarget := ""
+		buildPlatform := ""
+		packOnly := false
+		for rest != "" && (strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") || strings.HasPrefix(rest, "!")) {
+			optParts := strings.SplitN(rest, " ", 2)
+			opt := optParts[0]
+			if strings.HasPrefix(opt, "#") {
+				deployTarget = strings.TrimPrefix(opt, "#")
+			} else if strings.HasPrefix(opt, "@") {
+				buildPlatform = strings.TrimPrefix(opt, "@")
+			} else if strings.EqualFold(opt, "!pack") {
+				packOnly = true
+			}
+			if len(optParts) > 1 {
+				rest = strings.TrimSpace(optParts[1])
+			} else {
+				rest = ""
+			}
+		}
 		agentID, err := resolveAgentID(project, agentName, codegen.ToolDeploy)
 		if err != nil {
 			return fmt.Sprintf("❌ %v", err)
 		}
-		sessionID, err := codegen.StartSessionForWeChat(userID, project, "", "", "", agentID, false, true)
+		sessionID, err := codegen.StartDeployForWeChat(userID, project, agentID, deployTarget, buildPlatform, packOnly)
 		if err != nil {
 			return fmt.Sprintf("❌ 部署启动失败: %v", err)
 		}
 		agentInfo := ""
 		if agentName != "" {
-			agentInfo = fmt.Sprintf(" (agent: %s)", agentName)
+			agentInfo = fmt.Sprintf("\nAgent: %s", agentName)
 		}
-		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, sessionID)
+		targetInfo := ""
+		if deployTarget != "" {
+			targetInfo = fmt.Sprintf("\n目标: %s", deployTarget)
+		}
+		platformInfo := ""
+		if buildPlatform != "" {
+			platformInfo = fmt.Sprintf("\n平台: %s", buildPlatform)
+		}
+		packInfo := ""
+		if packOnly {
+			packInfo = "\n模式: 仅打包"
+		}
+		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, targetInfo, platformInfo, packInfo, sessionID)
 
 	case "pipeline", "pip":
 		// cg pipeline list — 列出可用 pipeline

@@ -17,7 +17,6 @@ import (
 type Agent struct {
 	ID           string
 	cfg          *AgentConfig
-	pipeline     *Pipeline
 	activeTasks  map[string]*exec.Cmd
 	stoppedTasks map[string]bool
 	mu           sync.Mutex
@@ -242,12 +241,6 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 确保 .git 存在
 	ensureGitInit(projectPath)
 
-	// deploy_only 模式：跳过编码，直接部署+验证
-	if task.DeployOnly {
-		a.executeDeployOnly(conn, sessionID)
-		return
-	}
-
 	// 根据工具类型选择可执行文件和参数
 	var cmdPath string
 	var args []string
@@ -417,31 +410,6 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 				Done: false, // 不在这里标记完成，由 TaskComplete 统一触发
 			},
 		})
-
-		// pipeline: 编码成功 + auto_deploy → deploy + verify
-		if task.AutoDeploy {
-			if a.pipeline != nil {
-				sendEvent := func(sid, evtType, text string) {
-					conn.SendMsg(MsgStreamEvent, StreamEventPayload{
-						SessionID: sid,
-						Event:     StreamEvent{Type: evtType, Text: text},
-					})
-				}
-				pipelineErr := a.pipeline.Run(sessionID, sendEvent)
-				if pipelineErr != nil {
-					log.Printf("[WARN] pipeline failed: %v", pipelineErr)
-					// pipeline 失败不改变 codegen 状态（编码本身成功），错误已通过 stream event 报告
-				}
-			} else {
-				conn.SendMsg(MsgStreamEvent, StreamEventPayload{
-					SessionID: sessionID,
-					Event: StreamEvent{
-						Type: "system",
-						Text: "⚠️ auto_deploy 已启用但未配置 deploy_agent_path，跳过部署",
-					},
-				})
-			}
-		}
 	}
 
 	conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
@@ -721,40 +689,6 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 		RequestID: req.RequestID,
 		Success:   true,
 	})
-}
-
-// executeDeployOnly deploy_only 模式：跳过编码，直接运行 pipeline
-func (a *Agent) executeDeployOnly(conn *Connection, sessionID string) {
-	sendEvent := func(sid, evtType, text string) {
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
-			SessionID: sid,
-			Event:     StreamEvent{Type: evtType, Text: text},
-		})
-	}
-
-	status := "done"
-	errMsg := ""
-
-	if a.pipeline == nil {
-		status = "error"
-		errMsg = "deploy_only 模式需要配置 deploy_agent_path"
-		sendEvent(sessionID, "error", "❌ "+errMsg)
-	} else {
-		sendEvent(sessionID, "system", "📦 deploy_only 模式：跳过编码，直接部署...")
-		if err := a.pipeline.Run(sessionID, sendEvent); err != nil {
-			log.Printf("[WARN] deploy_only pipeline failed: %v", err)
-			// pipeline 错误已通过 stream event 报告，标记任务状态为 error
-			status = "error"
-			errMsg = err.Error()
-		}
-	}
-
-	conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
-		SessionID: sessionID,
-		Status:    SessionStatus(status),
-		Error:     errMsg,
-	})
-	log.Printf("[INFO] deploy_only task %s completed, status=%s", sessionID, status)
 }
 
 // findProjectPath 在 workspaces 中查找已存在的项目（不自动创建）
