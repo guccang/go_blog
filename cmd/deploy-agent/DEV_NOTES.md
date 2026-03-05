@@ -67,3 +67,61 @@ taskkill /F /IM go_blog.exe 2>nul
 **正确做法**：
 1. **纯英文/ASCII 化**：在提供或编写供 `cmd.exe` 执行的发布脚本时，**尽量全篇使用纯英文的注释和提示 (ASCII字符)**，彻底避开由于编辑器保存的 UTF-8 编码或平台环境引起的乱码与崩溃风险。
 2. 或手动将 `.bat` 文件另存为 ANSI (GB2312/GBK) 编码。
+
+## 5. Settings 目录结构（项目中心模式）
+
+`settings/` 采用**以项目为中心**的配置格式，每个项目一个 `.conf` 文件，包含所有平台和部署目标配置。
+
+### 目录结构
+
+```
+settings/
+├── projects/              # 每个项目一个文件
+│   ├── gateway.conf
+│   ├── codegen-agent.conf
+│   └── ...
+├── pipelines/             # 部署编排
+│   └── go_blog_dev.json
+```
+
+### 项目 Conf 文件格式
+
+```ini
+# 通用配置
+pack_pattern=gateway_{date}.zip
+
+# [build.<platform>] — deploy-agent 运行在该平台时的构建参数
+# 代码根据 runtime.GOOS 自动选择匹配的 section
+[build.win]
+project_dir=E:\githubdesktop\go_blog\cmd\gateway
+pack_script=zip-files.bat
+
+[build.linux]
+project_dir=/data/program/go/go_blog/cmd/gateway
+pack_script=zip-files.sh
+
+# [target.local.<platform>] — 本机部署（按目标平台区分）
+[target.local.win]
+remote_dir=E:\githubdesktop\go_blog\cmd\gateway
+remote_script=publish.bat
+
+[target.local.linux]
+remote_dir=/data/program/go/go_blog/cmd/gateway
+remote_script=publish.sh
+
+# [target.<name>] — SSH 远程部署（需指定 platform=）
+[target.ssh-prod]
+platform=linux
+host=root@114.115.214.86
+remote_dir=/data/program/go/go_blog/cmd/gateway
+remote_script=publish.sh
+```
+
+### 交叉编译自动推导
+
+当 `HostPlatform ≠ Target.Platform` 时自动设置 `GOOS/GOARCH` 环境变量。
+例如 deploy-agent 在 Windows 上运行，部署到 `ssh-prod`（`platform=linux`）：
+1. 读 `[build.win]` 获取 `pack_script=zip-files.bat`
+2. 检测 `win ≠ linux` → 设置 `GOOS=linux GOARCH=amd64`
+3. 执行打包脚本（交叉编译出 Linux 二进制）
+4. SSH 上传并执行 `publish.sh`

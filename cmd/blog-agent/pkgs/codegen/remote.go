@@ -53,8 +53,8 @@ func (s *WebSocketSender) SendAgentMsg(msgType string, payload interface{}) erro
 type RemoteAgent struct {
 	ID               string
 	Name             string
-	Sender           MessageSender       // 统一发送接口
-	Conn             *websocket.Conn     // 直连模式保留（gateway 模式为 nil）
+	Sender           MessageSender   // 统一发送接口
+	Conn             *websocket.Conn // 直连模式保留（gateway 模式为 nil）
 	Workspaces       []string
 	Projects         []string // agent 上报的可用项目
 	Models           []string // agent 支持的模型配置列表（兼容旧版）
@@ -482,7 +482,6 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 		AutoDeploy:    session.AutoDeploy,
 		DeployOnly:    session.DeployOnly,
 		DeployTarget:  session.DeployTarget,
-		BuildPlatform: session.BuildPlatform,
 		PackOnly:      session.PackOnly,
 		Pipeline:      session.Pipeline,
 	}
@@ -724,10 +723,10 @@ type RemoteProjectInfo struct {
 	Name          string   `json:"name"`
 	AgentID       string   `json:"agent_id"`
 	Agent         string   `json:"agent"`
-	Tools         []string `json:"tools"`                      // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
-	DeployTargets []string `json:"deploy_targets,omitempty"`   // deploy 项目的可用部署目标
-	HostPlatform  string   `json:"host_platform,omitempty"`    // deploy agent 的主机平台
-	Pipelines     []string `json:"pipelines,omitempty"`        // deploy agent 的可用 pipeline
+	Tools         []string `json:"tools"`                    // 该项目支持的工具列表，如 ["claudecode"], ["deploy"], 或 ["claudecode","deploy"]
+	DeployTargets []string `json:"deploy_targets,omitempty"` // deploy 项目的可用部署目标
+	HostPlatform  string   `json:"host_platform,omitempty"`  // deploy agent 的主机平台
+	Pipelines     []string `json:"pipelines,omitempty"`      // deploy agent 的可用 pipeline
 }
 
 // FindAgentForProject 查找拥有指定项目的 agent

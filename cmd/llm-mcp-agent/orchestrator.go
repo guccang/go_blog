@@ -173,11 +173,16 @@ func (o *Orchestrator) executeSubTask(
 	tools []LLMTool,
 	sendEvent func(event, text string),
 ) SubTaskResult {
+	subtaskStart := time.Now()
 	session.SetStatus("running")
+	log.Printf("[Orchestrator] ▶ 子任务开始 id=%s title=%s desc=%s",
+		subtask.ID, subtask.Title, truncate(subtask.Description, 150))
 
 	// 构建子任务的 system prompt
 	var systemContent strings.Builder
 	systemContent.WriteString("你正在执行一个子任务。直接执行，不要反问。\n\n")
+	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
+	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n\n", time.Now().Format("2006-01-02")))
 	systemContent.WriteString(fmt.Sprintf("## 子任务: %s\n", subtask.Title))
 	systemContent.WriteString(fmt.Sprintf("%s\n", subtask.Description))
 
@@ -207,6 +212,7 @@ func (o *Orchestrator) executeSubTask(
 	}
 	// 排除虚拟工具 plan_and_execute
 	filteredTools = excludePlanTool(filteredTools)
+	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
 
 	maxIter := o.cfg.SubTaskMaxIterations
 	if maxIter <= 0 {
@@ -224,6 +230,7 @@ func (o *Orchestrator) executeSubTask(
 	for i := 0; i < maxIter; i++ {
 		// 超时检查
 		if time.Now().After(deadline) {
+			log.Printf("[Orchestrator] ✗ 子任务超时 id=%s duration=%v", subtask.ID, time.Since(subtaskStart))
 			session.SetStatus("failed")
 			session.SetError("subtask timeout")
 			o.store.Save(session)
@@ -235,11 +242,15 @@ func (o *Orchestrator) executeSubTask(
 			}
 		}
 
-		log.Printf("[Orchestrator] subtask=%s iteration %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
+		log.Printf("[Orchestrator] subtask=%s 迭代 %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
 
 		// LLM 请求（子任务不需要流式）
+		llmStart := time.Now()
 		text, toolCalls, err := SendLLMRequest(&o.cfg.LLM, messages, filteredTools)
+		llmDuration := time.Since(llmStart)
+
 		if err != nil {
+			log.Printf("[Orchestrator] ✗ 子任务 %s LLM失败 duration=%v error=%v", subtask.ID, llmDuration, err)
 			session.SetStatus("failed")
 			session.SetError(err.Error())
 			o.store.Save(session)
@@ -261,6 +272,7 @@ func (o *Orchestrator) executeSubTask(
 
 		// 无工具调用 → 子任务完成
 		if len(toolCalls) == 0 {
+			log.Printf("[Orchestrator] ✓ 子任务 %s 对话结束（无工具调用） textLen=%d", subtask.ID, len(text))
 			finalText = text
 			break
 		}
@@ -272,7 +284,8 @@ func (o *Orchestrator) executeSubTask(
 			originalName := unsanitizeToolName(tc.Function.Name)
 
 			sendEvent("tool_info", fmt.Sprintf("[%s] 调用工具: %s", subtask.ID, originalName))
-			log.Printf("[Orchestrator] subtask=%s tool_call: %s", subtask.ID, originalName)
+			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
+				subtask.ID, originalName, truncate(tc.Function.Arguments, 200))
 
 			start := time.Now()
 			result, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
@@ -282,7 +295,11 @@ func (o *Orchestrator) executeSubTask(
 			if err != nil {
 				success = false
 				result = fmt.Sprintf("工具调用失败: %v", err)
-				log.Printf("[Orchestrator] subtask=%s tool %s failed: %v", subtask.ID, originalName, err)
+				log.Printf("[Orchestrator] subtask=%s ✗ 工具失败: %s duration=%v error=%v",
+					subtask.ID, originalName, duration, err)
+			} else {
+				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s duration=%v resultLen=%d result=%s",
+					subtask.ID, originalName, duration, len(result), truncate(result, 200))
 			}
 
 			// 记录工具调用
@@ -317,6 +334,9 @@ func (o *Orchestrator) executeSubTask(
 	session.SetStatus("done")
 	session.SetResult(finalText)
 	o.store.Save(session)
+
+	log.Printf("[Orchestrator] ◀ 子任务完成 id=%s duration=%v resultLen=%d",
+		subtask.ID, time.Since(subtaskStart), len(finalText))
 
 	return SubTaskResult{
 		SubTaskID: subtask.ID,
@@ -362,6 +382,8 @@ func (o *Orchestrator) Synthesize(
 	originalQuery string,
 	sendEvent func(event, text string),
 ) string {
+	log.Printf("[Orchestrator] ── 汇总开始 results=%d query=%s", len(results), truncate(originalQuery, 100))
+	synthStart := time.Now()
 	sendEvent("synthesis", "正在整理最终结果...")
 
 	var context strings.Builder
@@ -407,7 +429,7 @@ func (o *Orchestrator) Synthesize(
 
 	resp, _, err := SendLLMRequest(&o.cfg.LLM, messages, nil)
 	if err != nil {
-		log.Printf("[Orchestrator] synthesis LLM error: %v", err)
+		log.Printf("[Orchestrator] ✗ 汇总LLM失败 duration=%v error=%v", time.Since(synthStart), err)
 		// 降级：直接拼接子任务结果
 		var fallback strings.Builder
 		for _, r := range results {
@@ -419,6 +441,7 @@ func (o *Orchestrator) Synthesize(
 		return fallback.String()
 	}
 
+	log.Printf("[Orchestrator] ✓ 汇总完成 duration=%v summaryLen=%d", time.Since(synthStart), len(resp))
 	return resp
 }
 
@@ -428,6 +451,8 @@ func (o *Orchestrator) Resume(
 	tools []LLMTool,
 	sendEvent func(event, text string),
 ) (string, error) {
+	log.Printf("[Resume] ▶ 开始恢复 rootSessionID=%s", rootSessionID)
+	resumeStart := time.Now()
 	sendEvent("resume", "正在恢复任务...")
 
 	// 加载会话树
@@ -435,6 +460,7 @@ func (o *Orchestrator) Resume(
 	if err != nil {
 		return "", fmt.Errorf("load session tree: %v", err)
 	}
+	log.Printf("[Resume] 加载会话树 subtasks=%d children=%d", len(rootSession.ChildIDs), len(children))
 
 	if rootSession.Plan == nil {
 		return "", fmt.Errorf("root session has no plan")
@@ -545,6 +571,7 @@ func (o *Orchestrator) Resume(
 	}
 	o.store.SaveIndex(rootSession, childList)
 
+	log.Printf("[Resume] ◀ 恢复完成 duration=%v summaryLen=%d", time.Since(resumeStart), len(summary))
 	return summary, nil
 }
 
@@ -556,6 +583,14 @@ func (o *Orchestrator) resumeSubTask(
 	tools []LLMTool,
 	sendEvent func(event, text string),
 ) SubTaskResult {
+	log.Printf("[Resume] ▶ 恢复子任务 id=%s messages=%d lastRole=%s",
+		subtask.ID, len(session.Messages), func() string {
+			if len(session.Messages) > 0 {
+				return session.Messages[len(session.Messages)-1].Role
+			}
+			return "none"
+		}())
+	resumeStart := time.Now()
 	session.SetStatus("running")
 
 	// 从 session.Messages 恢复
@@ -617,6 +652,7 @@ func (o *Orchestrator) resumeSubTask(
 
 	var finalText string
 	for i := 0; i < maxIter; i++ {
+		log.Printf("[Resume] subtask=%s 迭代 %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
 		text, toolCalls, err := SendLLMRequest(&o.cfg.LLM, messages, filteredTools)
 		if err != nil {
 			session.SetStatus("failed")
@@ -655,6 +691,9 @@ func (o *Orchestrator) resumeSubTask(
 	session.SetStatus("done")
 	session.SetResult(finalText)
 	o.store.Save(session)
+
+	log.Printf("[Resume] ◀ 子任务恢复完成 id=%s duration=%v resultLen=%d",
+		subtask.ID, time.Since(resumeStart), len(finalText))
 
 	return SubTaskResult{
 		SubTaskID: subtask.ID,

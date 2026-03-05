@@ -79,8 +79,8 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 	case MsgTaskAssign:
 		var payload TaskAssignPayload
 		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s platform=%s pack_only=%v",
-			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.BuildPlatform, payload.PackOnly)
+		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s pack_only=%v",
+			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.PackOnly)
 
 		if c.canAccept() {
 			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
@@ -169,20 +169,17 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 	packOnly := task.PackOnly
 	targetFilter := task.DeployTarget
 
-	// 浅拷贝 cfg 以设置 BuildPlatform（线程安全，不影响其他并发任务）
+	// 浅拷贝 cfg
 	deployCfg := *c.cfg
-	if task.BuildPlatform != "" {
-		deployCfg.BuildPlatform = normalizePlatform(task.BuildPlatform)
-	}
 
 	if packOnly {
-		sendEvent("system", fmt.Sprintf("📦 开始打包项目 [%s] (平台: %s)...", proj.Name, deployCfg.BuildPlatform))
+		sendEvent("system", fmt.Sprintf("📦 开始打包项目 [%s]...", proj.Name))
 	} else {
 		targetLabel := targetFilter
 		if targetLabel == "" {
 			targetLabel = "默认"
 		}
-		sendEvent("system", fmt.Sprintf("🚀 开始部署项目 [%s] (目标: %s, 平台: %s)...", proj.Name, targetLabel, deployCfg.BuildPlatform))
+		sendEvent("system", fmt.Sprintf("🚀 开始部署项目 [%s] (目标: %s)...", proj.Name, targetLabel))
 	}
 
 	deployer := NewDeployer(&deployCfg, proj, c.password)
@@ -320,25 +317,22 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 	for i, step := range pip.Steps {
 		proj := c.cfg.GetProject(step.Project)
 
-		// 浅拷贝 cfg 以应用步骤级覆盖
+		// 浅拷贝 cfg
 		deployCfg := *c.cfg
-		if step.BuildPlatform != "" {
-			deployCfg.BuildPlatform = normalizePlatform(step.BuildPlatform)
-		}
 
 		packOnly := step.PackOnly
 		targetFilter := step.Target
 
 		if packOnly {
-			sendEvent("system", fmt.Sprintf("📦 [%d/%d] 打包项目 [%s] (平台: %s)...",
-				i+1, len(pip.Steps), proj.Name, deployCfg.BuildPlatform))
+			sendEvent("system", fmt.Sprintf("📦 [%d/%d] 打包项目 [%s]...",
+				i+1, len(pip.Steps), proj.Name))
 		} else {
 			targetLabel := targetFilter
 			if targetLabel == "" {
 				targetLabel = "默认"
 			}
-			sendEvent("system", fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s] (目标: %s, 平台: %s)...",
-				i+1, len(pip.Steps), proj.Name, targetLabel, deployCfg.BuildPlatform))
+			sendEvent("system", fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s] (目标: %s)...",
+				i+1, len(pip.Steps), proj.Name, targetLabel))
 		}
 
 		deployer := NewDeployer(&deployCfg, proj, c.password)

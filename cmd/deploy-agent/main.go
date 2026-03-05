@@ -17,7 +17,7 @@ func main() {
 	configPath := flag.String("config", "deploy.conf", "配置文件路径")
 	projectName := flag.String("project", "", "指定要部署的项目名称（多项目时必须指定）")
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
-	buildPlatform := flag.String("build-platform", "", "打包平台（win/macos/linux，默认当前平台）")
+	buildPlatform := flag.String("build-platform", "", "(unused, kept for compatibility)")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
 	password := flag.String("password", "", "SSH 密码")
 	savePwd := flag.Bool("save-password", false, "保存密码到凭据存储")
@@ -25,11 +25,7 @@ func main() {
 	pipelineName := flag.String("pipeline", "", "执行指定的部署编排")
 	flag.Parse()
 
-	// 标准化 build-platform
-	bp := ""
-	if *buildPlatform != "" {
-		bp = normalizePlatform(*buildPlatform)
-	}
+	_ = buildPlatform // unused, kept for compatibility
 
 	// --list / --pipeline 模式：加载 all targets
 	tf := *targetName
@@ -37,7 +33,7 @@ func main() {
 		tf = "all"
 	}
 
-	cfg, err := LoadConfig(*configPath, bp, tf)
+	cfg, err := LoadConfig(*configPath, tf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
@@ -69,11 +65,6 @@ func main() {
 	if *listProjects {
 		fmt.Printf("配置文件: %s\n", *configPath)
 		fmt.Printf("主机平台: %s\n", cfg.HostPlatform)
-		if cfg.HostPlatform != cfg.BuildPlatform {
-			fmt.Printf("目标平台: %s (交叉编译)\n", cfg.BuildPlatform)
-		} else {
-			fmt.Printf("目标平台: %s\n", cfg.BuildPlatform)
-		}
 		if len(cfg.TargetNames) > 0 {
 			fmt.Printf("可用目标: %s\n", strings.Join(cfg.TargetNames, ", "))
 		}
@@ -226,11 +217,7 @@ func main() {
 			proj := cfg.GetProject(step.Project)
 			fmt.Printf("==================== [%d/%d] %s ====================\n", i+1, len(pip.Steps), step.Project)
 
-			// 浅拷贝 cfg 以应用步骤级覆盖
 			stepCfg := *cfg
-			if step.BuildPlatform != "" {
-				stepCfg.BuildPlatform = normalizePlatform(step.BuildPlatform)
-			}
 
 			packOnly := step.PackOnly
 			targetFilter := step.Target
@@ -324,9 +311,6 @@ func main() {
 		fmt.Printf("项目: [%s]\n", proj.Name)
 		fmt.Printf("项目目录: %s\n", proj.ProjectDir)
 		fmt.Printf("打包脚本: %s\n", proj.PackScript)
-		if cfg.HostPlatform != cfg.BuildPlatform {
-			fmt.Printf("交叉编译: %s → %s\n", cfg.HostPlatform, cfg.BuildPlatform)
-		}
 		fmt.Printf("部署目标: %d 个\n", len(proj.Targets))
 		for _, t := range proj.Targets {
 			fmt.Printf("  - %s (%s) -> %s\n", t.Name, t.Host, t.RemoteDir)

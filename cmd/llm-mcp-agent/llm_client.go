@@ -98,6 +98,16 @@ type llmError struct {
 
 // SendLLMRequest 发送 LLM 请求（同步），返回响应文本和工具调用
 func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	// 构建消息摘要用于日志
+	var msgSummary []string
+	for _, m := range messages {
+		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
+	}
+	log.Printf("[LLM] → 同步请求 model=%s messages=[%s] tools=%d",
+		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+
+	reqStart := time.Now()
+
 	reqBody := llmRequest{
 		Model:       cfg.Model,
 		Messages:    messages,
@@ -123,6 +133,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 
 	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
+		log.Printf("[LLM] ✗ HTTP 请求失败 duration=%v error=%v", time.Since(reqStart), err)
 		return "", nil, fmt.Errorf("http request: %v", err)
 	}
 	defer resp.Body.Close()
@@ -133,7 +144,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[LLM] API error status=%d body=%s", resp.StatusCode, string(body))
+		log.Printf("[LLM] ✗ API错误 status=%d duration=%v body=%s", resp.StatusCode, time.Since(reqStart), string(body))
 		return "", nil, fmt.Errorf("API error status=%d: %s", resp.StatusCode, string(body))
 	}
 
@@ -151,6 +162,16 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	}
 
 	choice := llmResp.Choices[0]
+	duration := time.Since(reqStart)
+
+	// 构建工具调用摘要
+	var tcNames []string
+	for _, tc := range choice.Message.ToolCalls {
+		tcNames = append(tcNames, tc.Function.Name)
+	}
+	log.Printf("[LLM] ← 同步响应 duration=%v finish=%s textLen=%d toolCalls=%d tools=%v",
+		duration, choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls), tcNames)
+
 	return choice.Message.Content, choice.Message.ToolCalls, nil
 }
 
@@ -189,6 +210,16 @@ func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool
 
 // sendStreamingLLMRequestOnce 单次流式 LLM 请求
 func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	// 构建消息摘要用于日志
+	var msgSummary []string
+	for _, m := range messages {
+		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
+	}
+	log.Printf("[LLM] → 流式请求 model=%s messages=[%s] tools=%d",
+		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+
+	reqStart := time.Now()
+
 	reqBody := struct {
 		Model       string    `json:"model"`
 		Messages    []Message `json:"messages"`
@@ -211,7 +242,6 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal request: %v", err)
 	}
-	log.Printf("[LLM Debug] Streaming Request Payload: %s", string(data))
 
 	apiURL := fmt.Sprintf("%s/chat/completions", cfg.BaseURL)
 	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(data))
@@ -223,16 +253,34 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 
 	resp, err := llmHTTPClient.Do(req)
 	if err != nil {
+		log.Printf("[LLM] ✗ HTTP 请求失败 duration=%v error=%v", time.Since(reqStart), err)
 		return "", nil, fmt.Errorf("http request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[LLM] ✗ API错误 status=%d duration=%v body=%s", resp.StatusCode, time.Since(reqStart), string(body))
 		return "", nil, fmt.Errorf("API error status=%d: %s", resp.StatusCode, string(body))
 	}
 
-	return parseStreamingResponse(resp.Body, onChunk)
+	log.Printf("[LLM] ← 流式响应开始 首字节耗时=%v", time.Since(reqStart))
+	text, toolCalls, err := parseStreamingResponse(resp.Body, onChunk)
+	duration := time.Since(reqStart)
+
+	if err != nil {
+		log.Printf("[LLM] ✗ 流式解析失败 duration=%v error=%v", duration, err)
+		return "", nil, err
+	}
+
+	var tcNames []string
+	for _, tc := range toolCalls {
+		tcNames = append(tcNames, tc.Function.Name)
+	}
+	log.Printf("[LLM] ← 流式响应完成 duration=%v textLen=%d toolCalls=%d tools=%v",
+		duration, len(text), len(toolCalls), tcNames)
+
+	return text, toolCalls, nil
 }
 
 // parseStreamingResponse 解析 SSE 流式响应，提取文本和 tool_calls

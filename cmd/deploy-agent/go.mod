@@ -12,7 +12,7 @@ require (
 	uap v0.0.0
 )
 
-replace uap => ../../pkgs/uap
+replace uap => ../blog-agent/pkgs/uap
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect

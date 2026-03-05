@@ -47,267 +47,43 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 
 	// 发送 task_accepted
 	b.client.Send(&uap.Message{
-		Type: uap.MsgTaskAccepted,
-		ID:   uap.NewMsgID(),
-		From: b.cfg.AgentID,
-		To:   "go_blog",
-		Payload: mustMarshal(uap.TaskAcceptedPayload{
-			TaskID: taskID,
-		}),
-		Ts: time.Now().UnixMilli(),
+		Type:    uap.MsgTaskAccepted,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      "go_blog",
+		Payload: mustMarshal(uap.TaskAcceptedPayload{TaskID: taskID}),
+		Ts:      time.Now().UnixMilli(),
 	})
 
-	// 创建会话存储和根会话
-	store := NewSessionStore(b.cfg.SessionDir)
-	rootSession := NewRootSession(taskID, payload.Query, payload.Account)
-
-	// 构建 system prompt（含任务拆解指引）
-	systemPrompt := b.buildAssistantSystemPrompt(payload.Account)
-
-	// 初始化消息列表
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: payload.Query},
+	ctx := &TaskContext{
+		TaskID:        taskID,
+		Account:       payload.Account,
+		Query:         payload.Query,
+		Source:        "web",
+		SelectedTools: payload.SelectedTools,
+		Sink:          &StreamingSink{bridge: b, taskID: taskID},
 	}
 
-	// 记录到 session
-	rootSession.AppendMessage(messages[0])
-	rootSession.AppendMessage(messages[1])
-
-	// 获取工具列表（先按用户选择过滤，再智能路由）
-	tools := b.filterToolsBySelection(payload.SelectedTools)
-	if len(tools) > 15 {
-		tools = b.routeTools(payload.Query, tools)
-	}
-
-	// 注入 plan_and_execute 虚拟工具
-	tools = append(tools, planAndExecuteTool)
-
-	// 发送工具数量信息
-	toolCountMsg := fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(tools))
-	b.sendTaskEvent(taskID, "tool_info", toolCountMsg)
-
-	// 工具调用循环
-	maxIter := b.cfg.MaxToolIterations
-	if maxIter <= 0 {
-		maxIter = 15
-	}
-
-	var finalErr error
-
-	for i := 0; i < maxIter; i++ {
-		log.Printf("[Assistant] iteration %d/%d, messages=%d", i+1, maxIter, len(messages))
-
-		// 流式 LLM 请求，每个 chunk 通过 MsgTaskEvent 发回
-		text, toolCalls, err := SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, func(chunk string) {
-			b.sendTaskEvent(taskID, "chunk", chunk)
-		})
-		if err != nil {
-			log.Printf("[Assistant] LLM error: %v", err)
-			finalErr = err
-			b.sendTaskEvent(taskID, "chunk", fmt.Sprintf("\n\n抱歉，AI 服务暂时不可用: %v", err))
-			break
-		}
-
-		// 记录 assistant 消息到 session
-		assistantMsg := Message{Role: "assistant", Content: text, ToolCalls: toolCalls}
-		rootSession.AppendMessage(assistantMsg)
-
-		// 无工具调用 → 对话结束
-		if len(toolCalls) == 0 {
-			rootSession.SetResult(text)
-			break
-		}
-
-		// 检查是否调用了 plan_and_execute
-		planCallIdx := -1
-		for idx, tc := range toolCalls {
-			if tc.Function.Name == "plan_and_execute" {
-				planCallIdx = idx
-				break
-			}
-		}
-
-		if planCallIdx >= 0 {
-			// 进入复杂任务处理流程
-			var reasoning string
-			var args struct {
-				Reasoning string `json:"reasoning"`
-			}
-			if err := json.Unmarshal([]byte(toolCalls[planCallIdx].Function.Arguments), &args); err == nil {
-				reasoning = args.Reasoning
-			}
-			log.Printf("[Assistant] plan_and_execute triggered: %s", reasoning)
-
-			// 执行复杂任务（plan → orchestrate → synthesize）
-			result := b.handleComplexTask(taskID, payload, rootSession, store, tools)
-
-			// 发送结果作为 chunk
-			b.sendTaskEvent(taskID, "chunk", result)
-			break
-		}
-
-		// 普通工具调用 → 追加 assistant 消息
-		messages = append(messages, Message{
-			Role:      "assistant",
-			Content:   text,
-			ToolCalls: toolCalls,
-		})
-
-		// 执行每个工具调用
-		for _, tc := range toolCalls {
-			originalName := unsanitizeToolName(tc.Function.Name)
-
-			toolInfoMsg := fmt.Sprintf("[Calling tool %s with args %s]", originalName, tc.Function.Arguments)
-			b.sendTaskEvent(taskID, "tool_info", toolInfoMsg)
-
-			log.Printf("[Assistant] tool_call: %s args=%s", originalName, tc.Function.Arguments)
-
-			start := time.Now()
-			result, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
-			duration := time.Since(start)
-
-			success := true
-			if err != nil {
-				log.Printf("[Assistant] tool_call %s failed: %v", originalName, err)
-				result = fmt.Sprintf("工具调用失败: %v", err)
-				success = false
-			}
-
-			// 记录工具调用到 session
-			rootSession.RecordToolCall(ToolCallRecord{
-				ID:         tc.ID,
-				ToolName:   originalName,
-				Arguments:  tc.Function.Arguments,
-				Result:     result,
-				Success:    success,
-				DurationMs: duration.Milliseconds(),
-				Timestamp:  time.Now(),
-				Iteration:  i,
-			})
-
-			// 追加 tool 消息
-			toolMsg := Message{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: tc.ID,
-			}
-			rootSession.AppendMessage(toolMsg)
-			messages = append(messages, toolMsg)
-		}
-
-		// 最后一次迭代
-		if i == maxIter-1 {
-			b.sendTaskEvent(taskID, "chunk", "\n\n抱歉，处理过程过于复杂，请尝试简化您的请求。")
-		}
-	}
-
-	// 保存根会话
-	if finalErr != nil {
-		rootSession.SetStatus("failed")
-		rootSession.SetError(finalErr.Error())
-	} else {
-		rootSession.SetStatus("done")
-	}
-	store.Save(rootSession)
-	store.SaveIndex(rootSession, nil)
+	_, err := b.processTask(ctx)
 
 	// 发送 task_complete
 	status := "success"
 	errMsg := ""
-	if finalErr != nil {
+	if err != nil {
 		status = "failed"
-		errMsg = finalErr.Error()
+		errMsg = err.Error()
 	}
 
 	b.client.Send(&uap.Message{
-		Type: uap.MsgTaskComplete,
-		ID:   uap.NewMsgID(),
-		From: b.cfg.AgentID,
-		To:   "go_blog",
-		Payload: mustMarshal(uap.TaskCompletePayload{
-			TaskID: taskID,
-			Status: status,
-			Error:  errMsg,
-		}),
-		Ts: time.Now().UnixMilli(),
+		Type:    uap.MsgTaskComplete,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      "go_blog",
+		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
+		Ts:      time.Now().UnixMilli(),
 	})
 
 	log.Printf("[Assistant] task=%s completed status=%s", taskID, status)
-}
-
-// handleComplexTask 处理复杂任务：规划 → 编排 → 汇总
-func (b *Bridge) handleComplexTask(
-	taskID string,
-	payload *AssistantTaskPayload,
-	rootSession *TaskSession,
-	store *SessionStore,
-	tools []LLMTool,
-) string {
-	sendEvent := func(event, text string) {
-		b.sendTaskEvent(taskID, event, text)
-	}
-
-	// ① 规划阶段
-	sendEvent("plan_start", "正在分析任务...")
-
-	maxSubTasks := b.cfg.MaxSubTasks
-	if maxSubTasks <= 0 {
-		maxSubTasks = 10
-	}
-
-	plan, err := PlanTask(&b.cfg.LLM, payload.Query, tools, payload.Account, maxSubTasks)
-	if err != nil {
-		log.Printf("[Assistant] planning failed: %v", err)
-		sendEvent("plan_done", fmt.Sprintf("任务规划失败: %v", err))
-		return fmt.Sprintf("抱歉，任务规划失败: %v", err)
-	}
-
-	rootSession.Plan = plan
-	store.Save(rootSession)
-
-	// 发送计划摘要
-	var planSummary strings.Builder
-	planSummary.WriteString(fmt.Sprintf("拆解为 %d 个子任务: ", len(plan.SubTasks)))
-	for i, st := range plan.SubTasks {
-		if i > 0 {
-			planSummary.WriteString(" → ")
-		}
-		planSummary.WriteString(fmt.Sprintf("(%d)%s", i+1, st.Title))
-	}
-	sendEvent("plan_done", planSummary.String())
-
-	// ② 为每个子任务创建 ChildSession
-	childSessions := make(map[string]*TaskSession)
-	for _, st := range plan.SubTasks {
-		child := NewChildSession(rootSession, st.Title, st.Description)
-		child.ID = st.ID // 使用计划中的 ID，方便关联
-		childSessions[st.ID] = child
-		rootSession.AddChildID(st.ID)
-		store.Save(child)
-	}
-	store.Save(rootSession)
-
-	// ③ 编排执行
-	orchestrator := NewOrchestrator(b, store)
-	results := orchestrator.Execute(taskID, rootSession, childSessions, tools, sendEvent)
-
-	// ④ 汇总
-	summary := orchestrator.Synthesize(rootSession, results, payload.Query, sendEvent)
-
-	rootSession.SetStatus("done")
-	rootSession.SetResult(summary)
-	rootSession.Summary = summary
-	store.Save(rootSession)
-
-	// 保存索引
-	var childList []*TaskSession
-	for _, c := range childSessions {
-		childList = append(childList, c)
-	}
-	store.SaveIndex(rootSession, childList)
-
-	return summary
 }
 
 // handleResumeTask 处理断点续传请求
@@ -366,121 +142,50 @@ func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
 	log.Printf("[Resume] task=%s completed status=%s", taskID, status)
 }
 
-// handleLLMRequestTask 处理 llm_request 任务：直接使用调用方预构建的消息列表 + 工具调用循环
+// handleLLMRequestTask 处理 llm_request 任务：使用预构建消息 + 工具调用循环
 func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload) {
 	log.Printf("[LLMRequest] task=%s account=%s messages=%d noTools=%v", taskID, payload.Account, len(payload.Messages), payload.NoTools)
 
 	// 发送 task_accepted
 	b.client.Send(&uap.Message{
-		Type: uap.MsgTaskAccepted,
-		ID:   uap.NewMsgID(),
-		From: b.cfg.AgentID,
-		To:   "go_blog",
-		Payload: mustMarshal(uap.TaskAcceptedPayload{
-			TaskID: taskID,
-		}),
-		Ts: time.Now().UnixMilli(),
+		Type:    uap.MsgTaskAccepted,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      "go_blog",
+		Payload: mustMarshal(uap.TaskAcceptedPayload{TaskID: taskID}),
+		Ts:      time.Now().UnixMilli(),
 	})
 
-	// 直接使用调用方提供的消息列表（不注入额外 system prompt）
-	messages := make([]Message, len(payload.Messages))
-	copy(messages, payload.Messages)
-
-	// 确定工具列表
-	var tools []LLMTool
-	if payload.NoTools {
-		tools = nil
-	} else if len(payload.SelectedTools) > 0 {
-		tools = b.filterToolsBySelection(payload.SelectedTools)
-	} else {
-		tools = b.getLLMTools()
+	ctx := &TaskContext{
+		TaskID:        taskID,
+		Account:       payload.Account,
+		Source:        "llm_request",
+		Messages:      payload.Messages,
+		SelectedTools: payload.SelectedTools,
+		NoTools:       payload.NoTools,
+		Sink:          &BufferSink{},
 	}
 
-	// 工具调用循环
-	maxIter := b.cfg.MaxToolIterations
-	if maxIter <= 0 {
-		maxIter = 15
-	}
-
-	var finalText string
-	var finalErr error
-
-	for i := 0; i < maxIter; i++ {
-		log.Printf("[LLMRequest] iteration %d/%d, messages=%d", i+1, maxIter, len(messages))
-
-		text, toolCalls, err := SendLLMRequest(&b.cfg.LLM, messages, tools)
-		if err != nil {
-			log.Printf("[LLMRequest] LLM error: %v", err)
-			finalErr = err
-			break
-		}
-
-		// 无工具调用 → 对话结束
-		if len(toolCalls) == 0 {
-			finalText = text
-			break
-		}
-
-		// 如果 NoTools 但 LLM 仍然返回了工具调用，忽略并取文本
-		if payload.NoTools {
-			finalText = text
-			break
-		}
-
-		// 有工具调用 → 追加 assistant 消息
-		messages = append(messages, Message{
-			Role:      "assistant",
-			Content:   text,
-			ToolCalls: toolCalls,
-		})
-
-		// 执行每个工具调用
-		for _, tc := range toolCalls {
-			originalName := unsanitizeToolName(tc.Function.Name)
-			log.Printf("[LLMRequest] tool_call: %s args=%s", originalName, tc.Function.Arguments)
-
-			result, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
-			if err != nil {
-				log.Printf("[LLMRequest] tool_call %s failed: %v", originalName, err)
-				result = fmt.Sprintf("工具调用失败: %v", err)
-			}
-
-			messages = append(messages, Message{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: tc.ID,
-			})
-		}
-
-		// 最后一次迭代
-		if i == maxIter-1 {
-			finalText = "工具调用已完成(达到最大迭代限制)"
-		}
-	}
+	result, err := b.processTask(ctx)
 
 	// 发送 task_complete（含结果文本）
 	status := "success"
 	errMsg := ""
-	if finalErr != nil {
+	if err != nil {
 		status = "failed"
-		errMsg = finalErr.Error()
+		errMsg = err.Error()
 	}
 
 	b.client.Send(&uap.Message{
-		Type: uap.MsgTaskComplete,
-		ID:   uap.NewMsgID(),
-		From: b.cfg.AgentID,
-		To:   "go_blog",
-		Payload: mustMarshal(uap.TaskCompletePayload{
-			TaskID: taskID,
-			Status: status,
-			Error:  errMsg,
-			Result: finalText,
-		}),
-		Ts: time.Now().UnixMilli(),
+		Type:    uap.MsgTaskComplete,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      "go_blog",
+		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg, Result: result}),
+		Ts:      time.Now().UnixMilli(),
 	})
 
-	log.Printf("[LLMRequest] task=%s completed status=%s resultLen=%d", taskID, status, len(finalText))
+	log.Printf("[LLMRequest] task=%s completed status=%s resultLen=%d", taskID, status, len(result))
 }
 
 // sendTaskEvent 发送任务进度事件
@@ -510,15 +215,35 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) string {
 	sb.WriteString("\n\n")
 
 	today := time.Now().Format("2006-01-02")
-	sb.WriteString(fmt.Sprintf("当前用户: %s\n", account))
+	sb.WriteString(fmt.Sprintf("account: %s\n", account))
 	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
 
 	// 任务拆解指引
 	sb.WriteString(`
-
+使用account:%s账户填充字段，不要向用户询问使用哪个字段了直接使用,account填充。
 ## 任务拆解能力
 当你判断用户的请求包含多个独立步骤，且这些步骤之间有明确的依赖关系时，
 你应该调用 plan_and_execute 工具来拆解和编排执行。
+
+**任务处理流程：**
+
+1. **初步判断**
+   - 分析任务复杂度，决定是否拆解
+   - 简单任务：直接调用工具执行
+   - 复杂任务：进入规划阶段
+
+2. **任务规划**
+   - 评估现有工具是否能完成任务
+   - 收集完成任务所需的信息
+   - 将复杂任务拆解为可执行的简单子任务
+
+3. **执行与整合**
+   - 按序执行简单任务
+   - 多个并行任务完成后整合结果
+   - 确保任务执行的完整性和连贯性
+   - 将最终汇总结果反馈给用户
+
+**原则：** 先探索信息，再拆解任务，最后整合汇报。
 
 适合拆解的场景：
 - 需要先获取数据，再基于数据做分析，再基于分析创建内容

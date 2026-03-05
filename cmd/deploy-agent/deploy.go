@@ -74,9 +74,10 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 		totalSteps = 1
 	}
 
-	// Step 1: 打包
+	// Step 1: 打包（根据 target 平台决定是否交叉编译）
 	d.logf("info", "[STEP 1/%d] 打包项目 [%s]...\n", totalSteps, d.proj.Name)
-	if err := d.pack(); err != nil {
+	targetPlatform := d.inferTargetPlatform(targets)
+	if err := d.pack(targetPlatform); err != nil {
 		return fmt.Errorf("打包失败: %v", err)
 	}
 	packPath := filepath.Join(d.proj.ProjectDir, d.packFile)
@@ -302,8 +303,27 @@ func platformToGoEnv(platform string) (goos, goarch string) {
 	}
 }
 
+// inferTargetPlatform 从 target 列表推断目标平台
+// 如果所有 target 平台相同，返回该平台；否则返回空串（不交叉编译）
+func (d *Deployer) inferTargetPlatform(targets []*Target) string {
+	if len(targets) == 0 {
+		return d.cfg.HostPlatform
+	}
+	platform := targets[0].Platform
+	for _, t := range targets[1:] {
+		if t.Platform != platform {
+			return "" // 多平台混合，不设置交叉编译
+		}
+	}
+	if platform == "" {
+		return d.cfg.HostPlatform
+	}
+	return platform
+}
+
 // pack 执行本地打包脚本
-func (d *Deployer) pack() error {
+// targetPlatform: 目标平台，若与 HostPlatform 不同则交叉编译
+func (d *Deployer) pack(targetPlatform string) error {
 	var name string
 	var args []string
 
@@ -317,8 +337,8 @@ func (d *Deployer) pack() error {
 
 	// 交叉编译：目标平台 ≠ 主机平台时设置环境变量
 	var extraEnv []string
-	if d.cfg.HostPlatform != d.cfg.BuildPlatform {
-		goos, goarch := platformToGoEnv(d.cfg.BuildPlatform)
+	if targetPlatform != "" && d.cfg.HostPlatform != targetPlatform {
+		goos, goarch := platformToGoEnv(targetPlatform)
 		extraEnv = []string{"GOOS=" + goos, "GOARCH=" + goarch, "CGO_ENABLED=0"}
 		d.logf("info", "  > 交叉编译: GOOS=%s GOARCH=%s\n", goos, goarch)
 	}

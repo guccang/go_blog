@@ -154,11 +154,14 @@ func (b *Bridge) DiscoverTools() error {
 	}
 
 	b.catalogMu.Lock()
+	prevCount := len(b.llmTools)
 	b.toolCatalog = catalog
 	b.llmTools = llmTools
 	b.catalogMu.Unlock()
 
-	log.Printf("[Bridge] discovered %d unique tools from %d entries. Tools: %v", len(llmTools), len(result.Tools), toolNames)
+	if len(llmTools) != prevCount {
+		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), prevCount, toolNames)
+	}
 	return nil
 }
 
@@ -369,7 +372,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			return
 		}
 		if payload.Channel == "wechat" {
-			go b.handleChat(msg.From, payload.To, payload.Content)
+			go b.handleWechatMessage(msg.From, payload.To, payload.Content)
 		} else {
 			log.Printf("[Bridge] unhandled notify channel: %s", payload.Channel)
 		}

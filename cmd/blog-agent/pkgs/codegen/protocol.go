@@ -72,14 +72,13 @@ type TaskAssignPayload struct {
 	MaxTurns      int    `json:"max_turns"`
 	SystemPrompt  string `json:"system_prompt"`
 	ClaudeSession string `json:"claude_session,omitempty"`
-	Model         string `json:"model,omitempty"`          // 指定模型配置名称
-	Tool          string `json:"tool,omitempty"`           // 编码工具: claudecode, opencode（默认 claudecode）
-	AutoDeploy    bool   `json:"auto_deploy,omitempty"`    // 编码完成后自动部署+验证
-	DeployOnly    bool   `json:"deploy_only,omitempty"`    // 跳过编码，直接部署+验证
-	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	BuildPlatform string `json:"build_platform,omitempty"` // 目标平台: linux/macos/win
-	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
-	Pipeline      string `json:"pipeline,omitempty"`       // deploy pipeline 名称
+	Model         string `json:"model,omitempty"`         // 指定模型配置名称
+	Tool          string `json:"tool,omitempty"`          // 编码工具: claudecode, opencode（默认 claudecode）
+	AutoDeploy    bool   `json:"auto_deploy,omitempty"`   // 编码完成后自动部署+验证
+	DeployOnly    bool   `json:"deploy_only,omitempty"`   // 跳过编码，直接部署+验证
+	DeployTarget  string `json:"deploy_target,omitempty"` // 部署目标: local/ssh-prod/all
+	PackOnly      bool   `json:"pack_only,omitempty"`     // 仅打包不部署
+	Pipeline      string `json:"pipeline,omitempty"`      // deploy pipeline 名称
 }
 
 // TaskAcceptedPayload 任务接受确认

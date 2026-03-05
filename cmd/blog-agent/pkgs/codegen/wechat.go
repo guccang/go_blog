@@ -86,7 +86,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool, agentID string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", "", false, "")
+	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", false, "")
 	if err != nil {
 		return "", err
 	}
@@ -546,7 +546,7 @@ func StartPipelineForWeChat(userID, pipeline, agentID string) (string, error) {
 	}
 
 	// pipeline 模式：project 用 pipeline 名称标识，prompt 留空
-	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", "", false, pipeline)
+	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", false, pipeline)
 	if err != nil {
 		return "", err
 	}

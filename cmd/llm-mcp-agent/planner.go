@@ -49,6 +49,8 @@ var planAndExecuteTool = LLMTool{
 
 // PlanTask 调用 LLM 生成结构化任务计划
 func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int) (*TaskPlan, error) {
+	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d",
+		truncate(query, 100), account, maxSubTasks, len(tools))
 	// 构建工具目录（仅 name + description，节省 token）
 	var toolCatalog strings.Builder
 	for i, tool := range tools {
@@ -65,6 +67,10 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 	planPrompt := fmt.Sprintf(`你是一个任务规划专家。请分析用户的请求，将其拆解为可执行的子任务。
 
+## 用户信息
+当前用户账号: %s
+当前日期: %s
+
 ## 用户请求
 %s
 
@@ -77,6 +83,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 3. 子任务数量不超过 %d 个
 4. 每个子任务的描述要清晰，包含足够的上下文让 AI 独立执行
 5. tools_hint 列出该子任务可能需要的工具名称
+6. 子任务描述中必须包含用户账号（account=%s），不要再向用户询问账号信息
 
 ## 输出格式
 仅返回 JSON，不要其他文字：
@@ -99,16 +106,19 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
   ],
   "execution_mode": "dag",
   "reasoning": "拆解理由和执行顺序说明"
-}`, query, toolCatalog.String(), maxSubTasks)
+}`, account, time.Now().Format("2006-01-02"), query, toolCatalog.String(), maxSubTasks, account)
 
 	messages := []Message{
 		{Role: "user", Content: planPrompt},
 	}
 
+	planStart := time.Now()
 	resp, _, err := SendLLMRequest(cfg, messages, nil)
 	if err != nil {
+		log.Printf("[Planner] ✗ LLM规划失败 duration=%v error=%v", time.Since(planStart), err)
 		return nil, fmt.Errorf("LLM planning failed: %v", err)
 	}
+	log.Printf("[Planner] ← LLM规划响应 duration=%v responseLen=%d", time.Since(planStart), len(resp))
 
 	// 解析 JSON 响应
 	resp = strings.TrimSpace(resp)
@@ -149,6 +159,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 // MakeFailureDecision 子任务失败后调用 LLM 决策
 func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, completedResults map[string]string) (*FailureDecision, error) {
+	log.Printf("[Planner] ▶ 失败决策 subtask=%s error=%s", subtask.ID, truncate(errorMsg, 100))
 	// 构建上下文
 	var context strings.Builder
 	context.WriteString(fmt.Sprintf("子任务 [%s] %s 执行失败\n", subtask.ID, subtask.Title))
