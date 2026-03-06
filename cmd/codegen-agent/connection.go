@@ -200,7 +200,7 @@ func buildCodegenToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenStartSession",
-			Description: "启动 AI 编码会话（异步执行，进度通过 stream_event 推送）",
+			Description: "启动 AI 编码会话（同步等待完成，进度通过 stream_event 推送）",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -214,7 +214,7 @@ func buildCodegenToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenSendMessage",
-			Description: "向编码会话追加消息（基于上一次会话续接）",
+			Description: "向编码会话追加消息并等待完成（基于上一次会话续接）",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -342,7 +342,7 @@ func (c *Connection) toolCreateProject(args map[string]interface{}) string {
 	return fmt.Sprintf(`{"success":true,"message":"项目 %s 已创建"}`, name)
 }
 
-// toolStartSession 启动编码会话
+// toolStartSession 启动编码会话（同步等待完成）
 func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
@@ -365,13 +365,20 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 		Tool:      tool,
 	}
 
+	// 注册完成通知，同步等待任务完成
+	completionCh := c.agent.RegisterCompletion(sessionID)
 	c.agent.RecordSession(sessionID, project, model, tool)
 	go c.agent.ExecuteTask(c, task)
 
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已启动"}`, sessionID)
+	result := <-completionCh
+	if result.Status != "done" {
+		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, result.Error)
+	}
+	return fmt.Sprintf(`{"success":true,"session_id":"%s","summary":"%s"}`,
+		sessionID, escapeJSON(result.Summary))
 }
 
-// toolSendMessage 向编码会话追加消息（基于上一次会话续接）
+// toolSendMessage 向编码会话追加消息（同步等待完成）
 func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	prompt, _ := args["prompt"].(string)
 	sessionID, _ := args["session_id"].(string)
@@ -408,10 +415,17 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		ClaudeSession: rec.ClaudeSession,
 	}
 
+	// 注册完成通知，同步等待任务完成
+	completionCh := c.agent.RegisterCompletion(newSessionID)
 	c.agent.RecordSession(newSessionID, rec.Project, rec.Model, rec.Tool)
 	go c.agent.ExecuteTask(c, task)
 
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"消息已发送，基于会话 %s 续接"}`, newSessionID, sessionID)
+	result := <-completionCh
+	if result.Status != "done" {
+		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, newSessionID, result.Error)
+	}
+	return fmt.Sprintf(`{"success":true,"session_id":"%s","summary":"%s"}`,
+		newSessionID, escapeJSON(result.Summary))
 }
 
 // toolGetStatus 查看当前编码会话状态
@@ -462,6 +476,16 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return json.RawMessage(data)
+}
+
+// escapeJSON 转义字符串中的特殊字符以嵌入 JSON 字符串值
+func escapeJSON(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return s
+	}
+	// json.Marshal 返回带引号的字符串，去掉首尾引号
+	return string(b[1 : len(b)-1])
 }
 
 // StartCodegenProtocol 启动 codegen 协议层（注册 + 心跳）

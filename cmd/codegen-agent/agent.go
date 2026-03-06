@@ -24,6 +24,10 @@ type Agent struct {
 	// 会话记录（用于 tool_call 流的 SendMessage/GetStatus/StopSession）
 	sessions   map[string]*sessionRecord
 	sessionsMu sync.Mutex
+
+	// 完成通知（用于 tool_call 同步等待任务完成）
+	completionChs map[string]chan taskResult
+	completionMu  sync.Mutex
 }
 
 // sessionRecord 记录编码会话状态（用于 tool_call 续接）
@@ -35,14 +39,22 @@ type sessionRecord struct {
 	Active        bool
 }
 
+// taskResult 任务完成结果
+type taskResult struct {
+	Status  string // done / error / stopped
+	Error   string
+	Summary string // 任务总结报告
+}
+
 // NewAgent 创建 Agent
 func NewAgent(id string, cfg *AgentConfig) *Agent {
 	return &Agent{
-		ID:           id,
-		cfg:          cfg,
-		activeTasks:  make(map[string]*exec.Cmd),
-		stoppedTasks: make(map[string]bool),
-		sessions:     make(map[string]*sessionRecord),
+		ID:            id,
+		cfg:           cfg,
+		activeTasks:   make(map[string]*exec.Cmd),
+		stoppedTasks:  make(map[string]bool),
+		sessions:      make(map[string]*sessionRecord),
+		completionChs: make(map[string]chan taskResult),
 	}
 }
 
@@ -440,6 +452,13 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 标记会话完成
 	a.CompleteSession(sessionID)
 
+	// 通知同步等待者（tool_call 流）
+	completionResult := taskResult{Status: status, Error: errMsg}
+	if status == "done" {
+		completionResult.Summary = summary.GenerateReport()
+	}
+	a.SignalCompletion(sessionID, completionResult)
+
 	log.Printf("[INFO] task %s completed, status=%s", sessionID, status)
 }
 
@@ -603,6 +622,31 @@ func (a *Agent) CompleteSession(sessionID string) {
 		rec.Active = false
 	}
 	a.sessionsMu.Unlock()
+}
+
+// RegisterCompletion 注册完成通知 channel（tool_call 同步等待用）
+func (a *Agent) RegisterCompletion(sessionID string) chan taskResult {
+	ch := make(chan taskResult, 1)
+	a.completionMu.Lock()
+	a.completionChs[sessionID] = ch
+	a.completionMu.Unlock()
+	return ch
+}
+
+// SignalCompletion 发送完成信号（ExecuteTask 完成时调用）
+func (a *Agent) SignalCompletion(sessionID string, result taskResult) {
+	a.completionMu.Lock()
+	ch, ok := a.completionChs[sessionID]
+	if ok {
+		delete(a.completionChs, sessionID)
+	}
+	a.completionMu.Unlock()
+	if ok {
+		select {
+		case ch <- result:
+		default:
+		}
+	}
 }
 
 // UpdateSessionClaudeID 更新会话的 Claude 内部 session ID
