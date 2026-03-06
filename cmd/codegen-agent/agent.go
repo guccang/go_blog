@@ -20,6 +20,19 @@ type Agent struct {
 	activeTasks  map[string]*exec.Cmd
 	stoppedTasks map[string]bool
 	mu           sync.Mutex
+
+	// 会话记录（用于 tool_call 流的 SendMessage/GetStatus/StopSession）
+	sessions   map[string]*sessionRecord
+	sessionsMu sync.Mutex
+}
+
+// sessionRecord 记录编码会话状态（用于 tool_call 续接）
+type sessionRecord struct {
+	Project       string
+	Model         string
+	Tool          string
+	ClaudeSession string // Claude 内部 session ID（用于 --resume）
+	Active        bool
 }
 
 // NewAgent 创建 Agent
@@ -29,6 +42,7 @@ func NewAgent(id string, cfg *AgentConfig) *Agent {
 		cfg:          cfg,
 		activeTasks:  make(map[string]*exec.Cmd),
 		stoppedTasks: make(map[string]bool),
+		sessions:     make(map[string]*sessionRecord),
 	}
 }
 
@@ -368,6 +382,11 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		// 收集事件用于总结
 		summary.UpdateFromEvent(event)
 
+		// 捕获 Claude 内部 session ID（用于 --resume 续接）
+		if event.SessionID != "" {
+			a.UpdateSessionClaudeID(sessionID, event.SessionID)
+		}
+
 		// Done 仅由 TaskComplete 统一触发，防止 result 事件提前关闭 WeChat 通知
 		evt := *event
 		evt.Done = false
@@ -417,6 +436,9 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		Status:    SessionStatus(status),
 		Error:     errMsg,
 	})
+
+	// 标记会话完成
+	a.CompleteSession(sessionID)
 
 	log.Printf("[INFO] task %s completed, status=%s", sessionID, status)
 }
@@ -560,6 +582,64 @@ func (a *Agent) resolveProject(project string) string {
 		return ""
 	}
 	return p
+}
+
+// RecordSession 记录新会话
+func (a *Agent) RecordSession(sessionID, project, model, tool string) {
+	a.sessionsMu.Lock()
+	a.sessions[sessionID] = &sessionRecord{
+		Project: project,
+		Model:   model,
+		Tool:    tool,
+		Active:  true,
+	}
+	a.sessionsMu.Unlock()
+}
+
+// CompleteSession 标记会话完成
+func (a *Agent) CompleteSession(sessionID string) {
+	a.sessionsMu.Lock()
+	if rec, ok := a.sessions[sessionID]; ok {
+		rec.Active = false
+	}
+	a.sessionsMu.Unlock()
+}
+
+// UpdateSessionClaudeID 更新会话的 Claude 内部 session ID
+func (a *Agent) UpdateSessionClaudeID(sessionID, claudeSession string) {
+	a.sessionsMu.Lock()
+	if rec, ok := a.sessions[sessionID]; ok && claudeSession != "" {
+		rec.ClaudeSession = claudeSession
+	}
+	a.sessionsMu.Unlock()
+}
+
+// GetSession 获取会话记录
+func (a *Agent) GetSession(sessionID string) *sessionRecord {
+	a.sessionsMu.Lock()
+	defer a.sessionsMu.Unlock()
+	if rec, ok := a.sessions[sessionID]; ok {
+		// 返回副本
+		copy := *rec
+		return &copy
+	}
+	return nil
+}
+
+// GetLastSession 获取最近的会话记录（不论是否活跃）
+func (a *Agent) GetLastSession() (string, *sessionRecord) {
+	a.sessionsMu.Lock()
+	defer a.sessionsMu.Unlock()
+	var lastID string
+	var lastRec *sessionRecord
+	for id, rec := range a.sessions {
+		if lastID == "" || id > lastID {
+			lastID = id
+			copy := *rec
+			lastRec = &copy
+		}
+	}
+	return lastID, lastRec
 }
 
 // ensureGitInit 确保项目有独立 .git

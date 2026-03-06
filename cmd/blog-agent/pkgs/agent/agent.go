@@ -78,6 +78,10 @@ func Init(account string) {
 				if idx := len("Inner_blog."); len(name) > idx && name[:idx] == "Inner_blog." {
 					name = name[idx:]
 				}
+				// 跳过 Codegen*/Deploy* 工具（由各自的 agent 自注册）
+				if strings.HasPrefix(name, "Codegen") || strings.HasPrefix(name, "Deploy") {
+					continue
+				}
 				infos = append(infos, codegen.MCPToolInfo{
 					Name:        name,
 					Description: t.Function.Description,
@@ -177,122 +181,7 @@ func registerMCPCallbacks() {
 		return fmt.Sprintf(`{"success":true,"type":"%s","length":%d}`, reportType, len(report))
 	})
 
-	// ============================================================================
-	// CodeGen 编码助手工具
-	// ============================================================================
-
-	// 列出所有编码项目
-	mcp.RegisterCallBack("CodegenListProjects", func(args map[string]interface{}) string {
-		return codegen.ListProjectsJSON()
-	})
-
-	// 创建新编码项目（在远程 agent 上）
-	mcp.RegisterCallBack("CodegenCreateProject", func(args map[string]interface{}) string {
-		name, _ := args["name"].(string)
-		if name == "" {
-			return `{"success":false,"error":"缺少项目名称(name参数)"}`
-		}
-		agentName, _ := args["agent"].(string)
-		return codegen.CreateProjectJSON(agentName, name)
-	})
-
-	// 启动 AI 编码会话（异步，后台推送进度）
-	mcp.RegisterCallBack("CodegenStartSession", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		project, _ := args["project"].(string)
-		prompt, _ := args["prompt"].(string)
-		model, _ := args["model"].(string)
-		tool, _ := args["tool"].(string)
-		if project == "" || prompt == "" {
-			return `{"success":false,"error":"缺少 project 或 prompt 参数。project 为项目名称，prompt 为编码需求描述，两者均为必填"}`
-		}
-		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model, tool, "")
-		if err != nil {
-			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
-		}
-		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已启动，进度将通过微信推送"}`, sessionID)
-	})
-
-	// 向活跃编码会话追加消息
-	mcp.RegisterCallBack("CodegenSendMessage", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		prompt, _ := args["prompt"].(string)
-		if prompt == "" {
-			return `{"success":false,"error":"缺少 prompt 参数"}`
-		}
-		sessionID, err := codegen.SendMessageForWeChat(account, prompt)
-		if err != nil {
-			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
-		}
-		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"消息已发送，后续进度将通过微信推送"}`, sessionID)
-	})
-
-	// 查看编码会话运行状态
-	mcp.RegisterCallBack("CodegenGetStatus", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		status := codegen.GetStatusForWeChat(account)
-		if strings.Contains(status, "没有活跃") || strings.Contains(status, "未初始化") || strings.Contains(status, "已过期") {
-			return fmt.Sprintf(`{"success":true,"active":false,"status":"%s"}`, status)
-		}
-		return fmt.Sprintf(`{"success":true,"active":true,"status":"%s"}`, status)
-	})
-
-	// 停止当前编码会话
-	mcp.RegisterCallBack("CodegenStopSession", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		sessionID, err := codegen.StopSessionForWeChat(account)
-		if err != nil {
-			return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
-		}
-		return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已停止"}`, sessionID)
-	})
-
-	// 列出所有支持部署的项目
-	mcp.RegisterCallBack("CodegenListDeployProjects", func(args map[string]interface{}) string {
-		return codegen.ListDeployProjectsJSON()
-	})
-
-	// 启动部署会话（跳过编码，直接部署）
-	mcp.RegisterCallBack("CodegenStartDeploy", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		project, _ := args["project"].(string)
-		if project == "" {
-			return `{"success":false,"error":"缺少 project 参数"}`
-		}
-		deployTarget, _ := args["deploy_target"].(string)
-		port, _ := args["port"].(string)
-		return codegen.StartDeployJSON(account, project, deployTarget, port)
-	})
-
-	// 启动 pipeline 编排（按步骤顺序部署多个项目）
-	mcp.RegisterCallBack("CodegenStartPipeline", func(args map[string]interface{}) string {
-		account, _ := args["account"].(string)
-		if account == "" {
-			account = globalAccount
-		}
-		pipeline, _ := args["pipeline"].(string)
-		if pipeline == "" {
-			return `{"success":false,"error":"缺少 pipeline 参数"}`
-		}
-		return codegen.StartPipelineJSON(account, pipeline)
-	})
-
-	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport, CodegenListProjects, CodegenCreateProject, CodegenStartSession, CodegenSendMessage, CodegenGetStatus, CodegenStopSession, CodegenListDeployProjects, CodegenStartDeploy, CodegenStartPipeline")
+	log.Message(log.ModuleAgent, "Agent MCP callbacks registered: CreateReminder, ListReminders, DeleteReminder, SendNotification, GenerateReport")
 }
 
 // GetHub 获取通知中心

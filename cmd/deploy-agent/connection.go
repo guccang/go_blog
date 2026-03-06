@@ -30,6 +30,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 	client := uap.NewClient(cfg.ServerURL, agentID, "deploy", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
 	client.Capacity = cfg.MaxConcurrent
+	client.Tools = buildDeployToolDefs(cfg)
 	client.Meta = map[string]any{
 		"projects": cfg.ProjectNames(),
 	}
@@ -103,6 +104,9 @@ func (c *Connection) handleUAPMessage(msg *uap.Message) {
 
 	case MsgHeartbeatAck:
 		// ok
+
+	case uap.MsgToolCall:
+		go c.handleToolCall(msg)
 
 	case uap.MsgNotify:
 		// gateway 广播通知（如 agent_offline），deploy-agent 无需处理
@@ -438,6 +442,239 @@ func (c *Connection) activeCount() int {
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
 	return c.client.SendTo(targetAgent, msgType, payload)
+}
+
+// ========================= Tool 自注册 =========================
+
+// buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表
+func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
+	return []uap.ToolDef{
+		{
+			Name:        "DeployListProjects",
+			Description: "列出已配置的可部署项目（项目名、部署目标、构建平台）",
+			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+		},
+		{
+			Name:        "DeployProject",
+			Description: "部署指定项目到目标服务器",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project":       map[string]interface{}{"type": "string", "description": "项目名称"},
+					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标（如 local, ssh-prod），不填则使用默认"},
+					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
+				},
+				"required": []string{"project"},
+			}),
+		},
+		{
+			Name:        "DeployListPipelines",
+			Description: "列出可用的部署编排 pipeline",
+			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+		},
+		{
+			Name:        "DeployPipeline",
+			Description: "执行部署编排 pipeline（按步骤顺序部署多个项目）",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"pipeline": map[string]interface{}{"type": "string", "description": "pipeline 名称"},
+				},
+				"required": []string{"pipeline"},
+			}),
+		},
+	}
+}
+
+// handleToolCall 处理来自 gateway 的工具调用请求
+func (c *Connection) handleToolCall(msg *uap.Message) {
+	var payload uap.ToolCallPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[WARN] invalid tool_call payload: %v", err)
+		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     "invalid tool_call payload",
+		})
+		return
+	}
+
+	// 解析 arguments
+	var args map[string]interface{}
+	if len(payload.Arguments) > 0 {
+		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
+			log.Printf("[WARN] invalid tool_call arguments: %v", err)
+			c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   false,
+				Error:     "invalid arguments: " + err.Error(),
+			})
+			return
+		}
+	} else {
+		args = make(map[string]interface{})
+	}
+
+	log.Printf("[INFO] tool_call from=%s tool=%s", msg.From, payload.ToolName)
+
+	var result string
+	switch payload.ToolName {
+	case "DeployListProjects":
+		result = c.toolListProjects()
+	case "DeployProject":
+		result = c.toolDeployProject(args)
+	case "DeployListPipelines":
+		result = c.toolListPipelines()
+	case "DeployPipeline":
+		result = c.toolDeployPipeline(args)
+	default:
+		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     fmt.Sprintf("unknown tool: %s", payload.ToolName),
+		})
+		return
+	}
+
+	c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		RequestID: msg.ID,
+		Success:   true,
+		Result:    result,
+	})
+}
+
+// toolListProjects 列出已配置的可部署项目
+func (c *Connection) toolListProjects() string {
+	type projectInfo struct {
+		Name     string   `json:"name"`
+		Targets  []string `json:"targets"`
+		Platform string   `json:"platform"`
+	}
+	var projects []projectInfo
+	for _, name := range c.cfg.ProjectOrder {
+		proj := c.cfg.Projects[name]
+		var targets []string
+		for _, t := range proj.Targets {
+			targets = append(targets, t.Name)
+		}
+		projects = append(projects, projectInfo{
+			Name:     proj.Name,
+			Targets:  targets,
+			Platform: c.cfg.HostPlatform,
+		})
+	}
+	return string(mustMarshalJSON(map[string]interface{}{
+		"success":  true,
+		"projects": projects,
+	}))
+}
+
+// toolDeployProject 部署指定项目
+func (c *Connection) toolDeployProject(args map[string]interface{}) string {
+	projectName, _ := args["project"].(string)
+	deployTarget, _ := args["deploy_target"].(string)
+	packOnly, _ := args["pack_only"].(bool)
+
+	proj, err := c.resolveProject(projectName)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+	}
+
+	// 浅拷贝 cfg
+	deployCfg := *c.cfg
+
+	deployer := NewDeployer(&deployCfg, proj, c.password)
+	err = deployer.Run(packOnly, deployTarget)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
+	}
+
+	action := "部署"
+	if packOnly {
+		action = "打包"
+	}
+	return fmt.Sprintf(`{"success":true,"message":"%s项目 %s 完成"}`, action, proj.Name)
+}
+
+// toolListPipelines 列出可用 pipeline
+func (c *Connection) toolListPipelines() string {
+	if c.cfg.PipelinesDir == "" {
+		return `{"success":true,"pipelines":[]}`
+	}
+
+	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
+	}
+
+	type pipInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description,omitempty"`
+		Steps       int    `json:"steps"`
+	}
+	var pipelines []pipInfo
+	for _, p := range pipCfg.Pipelines {
+		pipelines = append(pipelines, pipInfo{
+			Name:        p.Name,
+			Description: p.Description,
+			Steps:       len(p.Steps),
+		})
+	}
+	return string(mustMarshalJSON(map[string]interface{}{
+		"success":   true,
+		"pipelines": pipelines,
+	}))
+}
+
+// toolDeployPipeline 执行部署编排 pipeline
+func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
+	pipelineName, _ := args["pipeline"].(string)
+	if pipelineName == "" {
+		return `{"success":false,"error":"缺少 pipeline 参数"}`
+	}
+
+	if c.cfg.PipelinesDir == "" {
+		return `{"success":false,"error":"未配置 pipelines 目录"}`
+	}
+
+	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
+	}
+
+	pip := pipCfg.Get(pipelineName)
+	if pip == nil {
+		return fmt.Sprintf(`{"success":false,"error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
+	}
+
+	if err := ValidatePipeline(pip, c.cfg); err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+	}
+
+	// 逐步执行
+	for i, step := range pip.Steps {
+		proj := c.cfg.GetProject(step.Project)
+		deployCfg := *c.cfg
+
+		deployer := NewDeployer(&deployCfg, proj, c.password)
+		stepErr := deployer.Run(step.PackOnly, step.Target)
+
+		if stepErr != nil {
+			return fmt.Sprintf(`{"success":false,"error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
+				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
+		}
+	}
+
+	return fmt.Sprintf(`{"success":true,"message":"Pipeline %q 全部完成 (%d 步)"}`, pip.Name, len(pip.Steps))
+}
+
+// mustMarshalJSON 将值序列化为 JSON，失败时返回空对象
+func mustMarshalJSON(v interface{}) json.RawMessage {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return json.RawMessage(data)
 }
 
 // sendDeployRegister 发送 deploy 协议注册消息给 go_blog-agent
