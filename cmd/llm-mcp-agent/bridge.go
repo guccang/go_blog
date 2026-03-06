@@ -227,8 +227,8 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 	}
 
 	if len(filtered) == 0 {
-		log.Printf("[Bridge] no tools matched selection %v, falling back to all %d tools", selectedTools, len(allTools))
-		return allTools
+		log.Printf("[Bridge] no tools matched selection %v, not using tools", selectedTools)
+		return nil
 	}
 
 	log.Printf("[Bridge] filtered %d tools from %d by user selection", len(filtered), len(allTools))
@@ -268,8 +268,8 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 	// 无工具的 LLM 请求用于路由
 	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
 	if err != nil {
-		log.Printf("[工具路由] LLM 调用失败: %v, 使用全部工具", err)
-		return tools // fallback 到全部工具
+		log.Printf("[工具路由] LLM 调用失败: %v, 不使用工具", err)
+		return nil
 	}
 
 	// 解析 JSON 数组
@@ -281,8 +281,8 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 
 	var toolNames []string
 	if err := json.Unmarshal([]byte(resp), &toolNames); err != nil {
-		log.Printf("[工具路由] 解析失败: %v, 原始响应: %s, 使用全部工具", err, resp)
-		return tools // fallback 到全部工具
+		log.Printf("[工具路由] 解析失败: %v, 原始响应: %s, 不使用工具", err, resp)
+		return nil
 	}
 
 	if len(toolNames) == 0 {
@@ -299,8 +299,8 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 	}
 
 	if len(selected) == 0 {
-		log.Printf("[工具路由] 未匹配到任何工具，使用全部工具")
-		return tools
+		log.Printf("[工具路由] 未匹配到任何工具，不使用工具")
+		return nil
 	}
 
 	log.Printf("[工具路由] 从 %d 个工具中筛选出 %d 个: %v", len(tools), len(selected), toolNames)

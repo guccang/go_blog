@@ -51,14 +51,20 @@ var planAndExecuteTool = LLMTool{
 func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int) (*TaskPlan, error) {
 	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d",
 		truncate(query, 100), account, maxSubTasks, len(tools))
-	// 构建工具目录（仅 name + description，节省 token）
+	// 构建工具目录（name + description + 核心参数，帮助 LLM 精确规划）
 	var toolCatalog strings.Builder
 	for i, tool := range tools {
 		// 跳过虚拟工具
 		if tool.Function.Name == "plan_and_execute" {
 			continue
 		}
-		toolCatalog.WriteString(fmt.Sprintf("- %s: %s\n", tool.Function.Name, tool.Function.Description))
+		// 提取核心参数信息
+		paramInfo := extractParamInfo(tool.Function.Parameters)
+		if paramInfo != "" {
+			toolCatalog.WriteString(fmt.Sprintf("- %s: %s [参数: %s]\n", tool.Function.Name, tool.Function.Description, paramInfo))
+		} else {
+			toolCatalog.WriteString(fmt.Sprintf("- %s: %s\n", tool.Function.Name, tool.Function.Description))
+		}
 		if i > 50 {
 			toolCatalog.WriteString("... (更多工具省略)\n")
 			break
@@ -84,6 +90,9 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 4. 每个子任务的描述要清晰，包含足够的上下文让 AI 独立执行
 5. tools_hint 列出该子任务可能需要的工具名称
 6. 子任务描述中必须包含用户账号（account=%s），不要再向用户询问账号信息
+7. 异步操作（如编码 CodegenStartSession、部署 CodegenStartDeploy）会自动推送进度和结果，不需要额外的"检查状态"或"发送通知"子任务
+8. CodegenStartSession 会在项目不存在时自动创建项目，通常不需要单独的 CodegenCreateProject 步骤
+9. 编码和部署是两个核心步骤，不要将"创建项目""检查状态""发送通知"拆为独立子任务
 
 ## 输出格式
 仅返回 JSON，不要其他文字：
@@ -243,4 +252,54 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 		Modifications: decision.Modifications,
 		Timestamp:     time.Now(),
 	}, nil
+}
+
+// extractParamInfo 从工具的 Parameters JSON schema 中提取核心参数描述
+// 返回格式如: "project(必填), deploy_target(部署目标), port(可选)"
+func extractParamInfo(params json.RawMessage) string {
+	if len(params) == 0 {
+		return ""
+	}
+
+	var schema struct {
+		Properties map[string]struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(params, &schema); err != nil {
+		return ""
+	}
+	if len(schema.Properties) == 0 {
+		return ""
+	}
+
+	requiredSet := make(map[string]bool)
+	for _, r := range schema.Required {
+		requiredSet[r] = true
+	}
+
+	// 跳过 account（几乎所有工具都有，冗余信息）
+	var parts []string
+	for name, prop := range schema.Properties {
+		if name == "account" {
+			continue
+		}
+		label := name
+		if prop.Description != "" {
+			// 使用简短描述
+			desc := prop.Description
+			if len([]rune(desc)) > 15 {
+				desc = string([]rune(desc)[:15])
+			}
+			label = fmt.Sprintf("%s(%s)", name, desc)
+		}
+		if requiredSet[name] {
+			label += "[必填]"
+		}
+		parts = append(parts, label)
+	}
+
+	return strings.Join(parts, ", ")
 }

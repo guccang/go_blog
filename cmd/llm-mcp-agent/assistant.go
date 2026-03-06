@@ -163,7 +163,7 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 		Messages:      payload.Messages,
 		SelectedTools: payload.SelectedTools,
 		NoTools:       payload.NoTools,
-		Sink:          &BufferSink{},
+		Sink:          &LLMRequestSink{bridge: b, taskID: taskID},
 	}
 
 	result, err := b.processTask(ctx)

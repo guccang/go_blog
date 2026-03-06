@@ -12,11 +12,48 @@ import (
 
 // SubTaskResult 子任务执行结果
 type SubTaskResult struct {
-	SubTaskID string `json:"sub_task_id"`
-	Title     string `json:"title"`
-	Status    string `json:"status"` // done/failed/skipped
-	Result    string `json:"result"`
-	Error     string `json:"error,omitempty"`
+	SubTaskID     string             `json:"sub_task_id"`
+	Title         string             `json:"title"`
+	Status        string             `json:"status"` // done/failed/skipped/async/deferred
+	Result        string             `json:"result"`
+	Error         string             `json:"error,omitempty"`
+	AsyncSessions []AsyncSessionInfo `json:"async_sessions,omitempty"`
+}
+
+// AsyncSessionInfo 异步会话信息（从工具调用结果中检测）
+type AsyncSessionInfo struct {
+	ToolName  string `json:"tool_name"`
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
+}
+
+// detectAsyncResults 从子任务的工具调用记录中检测异步会话
+// 基于响应模式检测：任何工具返回 {"success":true,"session_id":"非空"} 即视为异步
+func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
+	session.mu.Lock()
+	records := make([]ToolCallRecord, len(session.ToolCalls))
+	copy(records, session.ToolCalls)
+	session.mu.Unlock()
+
+	var results []AsyncSessionInfo
+	for _, rec := range records {
+		if !rec.Success {
+			continue
+		}
+		var parsed struct {
+			Success   bool   `json:"success"`
+			SessionID string `json:"session_id"`
+			Message   string `json:"message"`
+		}
+		if json.Unmarshal([]byte(rec.Result), &parsed) == nil && parsed.Success && parsed.SessionID != "" {
+			results = append(results, AsyncSessionInfo{
+				ToolName:  rec.ToolName,
+				SessionID: parsed.SessionID,
+				Message:   parsed.Message,
+			})
+		}
+	}
+	return results
 }
 
 // Orchestrator 任务编排器
@@ -107,6 +144,36 @@ func (o *Orchestrator) Execute(
 				continue
 			}
 
+			// 检查依赖是否为 async/deferred
+			deferDueToAsync := false
+			if !skipDueToDepFailure {
+				for _, depID := range subtask.DependsOn {
+					for _, r := range allResults {
+						if r.SubTaskID == depID && (r.Status == "async" || r.Status == "deferred") {
+							deferDueToAsync = true
+							break
+						}
+					}
+					if deferDueToAsync {
+						break
+					}
+				}
+			}
+
+			if deferDueToAsync {
+				session.SetStatus("deferred")
+				session.SetError("前置任务仍在异步执行中")
+				o.store.Save(session)
+				sendEvent("subtask_defer", fmt.Sprintf("[%s] %s — 等待前置任务完成", subtask.ID, subtask.Title))
+				allResults = append(allResults, SubTaskResult{
+					SubTaskID: subtask.ID,
+					Title:     subtask.Title,
+					Status:    "deferred",
+					Error:     "前置任务仍在异步执行中",
+				})
+				continue
+			}
+
 			// 构建兄弟结果上下文
 			siblingContext := buildSiblingContext(subtask.DependsOn, completedResults)
 
@@ -116,6 +183,24 @@ func (o *Orchestrator) Execute(
 
 			// 执行子任务
 			result := o.executeSubTask(taskID, *subtask, session, siblingContext, tools, sendEvent)
+
+			// 检测异步工具调用
+			if result.Status == "done" {
+				asyncInfos := detectAsyncResults(session)
+				if len(asyncInfos) > 0 {
+					result.Status = "async"
+					result.AsyncSessions = asyncInfos
+					session.SetStatus("async")
+					o.store.Save(session)
+					var sids []string
+					for _, a := range asyncInfos {
+						sids = append(sids, a.SessionID)
+					}
+					log.Printf("[Orchestrator] async detected: subtask=%s sessions=%v", subtask.ID, sids)
+					sendEvent("subtask_async", fmt.Sprintf("[%d/%d] %s — 异步执行中 (%s)",
+						taskIdx+1, len(plan.SubTasks), subtask.Title, strings.Join(sids, ", ")))
+				}
+			}
 
 			// 处理失败
 			if result.Status == "failed" {
@@ -180,7 +265,9 @@ func (o *Orchestrator) executeSubTask(
 
 	// 构建子任务的 system prompt
 	var systemContent strings.Builder
-	systemContent.WriteString("你正在执行一个子任务。直接执行，不要反问。\n\n")
+	systemContent.WriteString("你正在执行一个子任务。必须通过调用工具来完成任务。\n")
+	systemContent.WriteString("如果工具调用失败，请分析原因并尝试修正参数后重试。不要仅用文字回复而不调用工具。\n")
+	systemContent.WriteString("直接执行，不要反问。\n\n")
 	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
 	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n\n", time.Now().Format("2006-01-02")))
 	systemContent.WriteString(fmt.Sprintf("## 子任务: %s\n", subtask.Title))
@@ -327,6 +414,37 @@ func (o *Orchestrator) executeSubTask(
 		// 最后一次迭代
 		if i == maxIter-1 {
 			finalText = text
+		}
+	}
+
+	// 任务完成度判定：如果子任务有 tools_hint 但一个工具都没成功调用过，降级为 "failed"
+	session.mu.Lock()
+	toolCallRecords := make([]ToolCallRecord, len(session.ToolCalls))
+	copy(toolCallRecords, session.ToolCalls)
+	session.mu.Unlock()
+
+	hasSuccessfulToolCall := false
+	for _, rec := range toolCallRecords {
+		if rec.Success {
+			hasSuccessfulToolCall = true
+			break
+		}
+	}
+
+	if !hasSuccessfulToolCall && len(subtask.ToolsHint) > 0 && len(toolCallRecords) == 0 {
+		session.SetStatus("failed")
+		session.SetError("子任务未调用任何工具即结束，可能是前置任务失败或参数缺失")
+		o.store.Save(session)
+
+		log.Printf("[Orchestrator] ◀ 子任务降级为失败 id=%s reason=no_tool_calls duration=%v",
+			subtask.ID, time.Since(subtaskStart))
+
+		return SubTaskResult{
+			SubTaskID: subtask.ID,
+			Title:     subtask.Title,
+			Status:    "failed",
+			Result:    finalText,
+			Error:     "子任务未调用任何工具即结束",
 		}
 	}
 
@@ -512,6 +630,16 @@ func (o *Orchestrator) Resume(
 
 		case "skipped":
 			sendEvent("resume_info", fmt.Sprintf("[%s] %s — 之前已跳过", subtask.ID, subtask.Title))
+
+		case "async":
+			// 之前是异步状态，当作 pending 重新评估
+			sendEvent("resume_info", fmt.Sprintf("[%s] %s — 之前为异步，重新评估", subtask.ID, subtask.Title))
+			pendingSubTasks = append(pendingSubTasks, subtask)
+
+		case "deferred":
+			// 之前被推迟，当作 pending 重新评估
+			sendEvent("resume_info", fmt.Sprintf("[%s] %s — 之前被推迟，重新评估", subtask.ID, subtask.Title))
+			pendingSubTasks = append(pendingSubTasks, subtask)
 		}
 	}
 

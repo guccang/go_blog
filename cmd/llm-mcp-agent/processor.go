@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 )
@@ -37,6 +38,18 @@ func (s *BufferSink) OnEvent(event, text string) {}
 func (s *BufferSink) Streaming() bool            { return false }
 func (s *BufferSink) Result() string             { return s.buf.String() }
 
+// LLMRequestSink 缓冲文本 + 转发事件（用于 llm_request 任务，支持 Path 2 进度推送）
+type LLMRequestSink struct {
+	buf    strings.Builder
+	bridge *Bridge
+	taskID string
+}
+
+func (s *LLMRequestSink) OnChunk(text string)       { s.buf.WriteString(text) }
+func (s *LLMRequestSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.taskID, event, text) }
+func (s *LLMRequestSink) Streaming() bool            { return false }
+func (s *LLMRequestSink) Result() string             { return s.buf.String() }
+
 // ========================= TaskContext =========================
 
 // TaskContext 统一任务输入
@@ -49,6 +62,60 @@ type TaskContext struct {
 	SelectedTools []string
 	NoTools       bool
 	Sink          EventSink
+}
+
+func isMCPToolListQuery(query string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return false
+	}
+
+	hasMCP := strings.Contains(q, "mcp")
+	hasTool := strings.Contains(q, "tool") ||
+		strings.Contains(q, "tools") ||
+		strings.Contains(q, "??")
+	if !hasMCP || !hasTool {
+		return false
+	}
+
+	intents := []string{
+		"??", "??", "??", "??", "??", "??", "??", "???", "??", "??", "??", "??",
+		"all", "list", "show", "catalog", "inventory", "enumerate",
+	}
+	for _, intent := range intents {
+		if strings.Contains(q, intent) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildMCPToolListReply(query string, tools []LLMTool) (string, bool) {
+	if !isMCPToolListQuery(query) {
+		return "", false
+	}
+
+	if len(tools) == 0 {
+		return "??????? MCP ???", true
+	}
+
+	sorted := make([]LLMTool, len(tools))
+	copy(sorted, tools)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Function.Name < sorted[j].Function.Name
+	})
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("????? %d ? MCP ???\n", len(sorted)))
+	for i, tool := range sorted {
+		name := unsanitizeToolName(tool.Function.Name)
+		desc := strings.TrimSpace(tool.Function.Description)
+		if desc == "" {
+			desc = "???"
+		}
+		sb.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, name, desc))
+	}
+	return strings.TrimSpace(sb.String()), true
 }
 
 // ========================= 统一处理函数 =========================
@@ -104,10 +171,24 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(tools))
 	} else {
 		tools = b.getLLMTools()
-		log.Printf("[processTask] 工具模式: 全部 count=%d", len(tools))
+		log.Printf("[processTask] 工具模式: 默认加载全部 count=%d", len(tools))
 	}
 
 	// 工具路由：>15 时智能筛选
+
+	// ????? MCP ?????????????????? tools schema ??? LLM
+	if !ctx.NoTools {
+		if directReply, ok := buildMCPToolListReply(query, tools); ok {
+			rootSession.AppendMessage(Message{Role: "assistant", Content: directReply})
+			rootSession.SetResult(directReply)
+			rootSession.SetStatus("done")
+			store.Save(rootSession)
+			store.SaveIndex(rootSession, nil)
+			log.Printf("[processTask] ? direct MCP tool list reply, toolCount=%d", len(tools))
+			return directReply, nil
+		}
+	}
+
 	if !ctx.NoTools && len(tools) > 15 && query != "" {
 		beforeCount := len(tools)
 		tools = b.routeTools(query, tools)
@@ -136,6 +217,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	for i := 0; i < maxIter; i++ {
 		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
+
+		// 发射 thinking 事件
+		if i == 0 {
+			ctx.Sink.OnEvent("thinking", "正在思考...")
+		} else {
+			ctx.Sink.OnEvent("thinking", fmt.Sprintf("正在分析工具结果（第%d轮）...", i+1))
+		}
 
 		var text string
 		var toolCalls []ToolCall
@@ -382,7 +470,8 @@ func (b *Bridge) handleComplexTask(
 	execDuration := time.Since(execStart)
 
 	// 统计结果
-	var doneCount, failCount, skipCount int
+	var doneCount, failCount, skipCount, asyncCount, deferCount int
+	var asyncInfos []AsyncSessionInfo
 	for _, r := range results {
 		switch r.Status {
 		case "done":
@@ -391,12 +480,40 @@ func (b *Bridge) handleComplexTask(
 			failCount++
 		case "skipped":
 			skipCount++
+		case "async":
+			asyncCount++
+			asyncInfos = append(asyncInfos, r.AsyncSessions...)
+		case "deferred":
+			deferCount++
 		}
 	}
-	log.Printf("[ComplexTask] ✓ 编排执行完成 duration=%v total=%d done=%d failed=%d skipped=%d",
-		execDuration, len(results), doneCount, failCount, skipCount)
+	log.Printf("[ComplexTask] ✓ 编排执行完成 duration=%v total=%d done=%d failed=%d skipped=%d async=%d deferred=%d",
+		execDuration, len(results), doneCount, failCount, skipCount, asyncCount, deferCount)
 
-	// ④ 汇总
+	// 检测异步子任务 → 跳过 Synthesize，返回即时确认
+	if asyncCount > 0 {
+		log.Printf("[ComplexTask] async subtasks detected: async=%d deferred=%d, skip synthesis", asyncCount, deferCount)
+		_ = asyncInfos // asyncInfos 已包含在 results 中
+
+		summary := buildAsyncAcknowledgment(results)
+		rootSession.SetStatus("async")
+		rootSession.SetResult(summary)
+		rootSession.Summary = summary
+		store.Save(rootSession)
+
+		var childList []*TaskSession
+		for _, c := range childSessions {
+			childList = append(childList, c)
+		}
+		store.SaveIndex(rootSession, childList)
+
+		totalDuration := time.Since(complexStart)
+		log.Printf("[ComplexTask] ◀ 异步任务确认 taskID=%s duration=%v async=%d deferred=%d",
+			ctx.TaskID, totalDuration, asyncCount, deferCount)
+		return summary
+	}
+
+	// ④ 汇总（仅在无异步子任务时执行）
 	log.Printf("[ComplexTask] ── 开始汇总 ──")
 	synthStart := time.Now()
 	summary := orchestrator.Synthesize(rootSession, results, query, sendEvent)
@@ -428,4 +545,30 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// buildAsyncAcknowledgment 构建异步任务即时确认消息
+func buildAsyncAcknowledgment(results []SubTaskResult) string {
+	var sb strings.Builder
+	sb.WriteString("📋 任务已派发，进度将通过微信推送\n\n")
+
+	for _, r := range results {
+		switch r.Status {
+		case "done":
+			sb.WriteString(fmt.Sprintf("✅ %s\n", r.Title))
+		case "failed":
+			sb.WriteString(fmt.Sprintf("❌ %s: %s\n", r.Title, r.Error))
+		case "skipped":
+			sb.WriteString(fmt.Sprintf("⏭ %s\n", r.Title))
+		case "async":
+			var sids []string
+			for _, a := range r.AsyncSessions {
+				sids = append(sids, a.SessionID)
+			}
+			sb.WriteString(fmt.Sprintf("⏳ %s (后台执行中: %s)\n", r.Title, strings.Join(sids, ", ")))
+		case "deferred":
+			sb.WriteString(fmt.Sprintf("⏸ %s (等待前置任务完成)\n", r.Title))
+		}
+	}
+	return sb.String()
 }

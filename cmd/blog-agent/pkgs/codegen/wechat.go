@@ -86,7 +86,7 @@ func StartSessionForWeChat(userID, project, prompt, model, tool, agentID string,
 	}
 
 	// 启动会话
-	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", "", false, "")
+	session, err := StartSession(project, prompt, model, tool, agentID, autoDeploy, deployOnly, "", false, "")
 	if err != nil {
 		return "", err
 	}
@@ -516,20 +516,37 @@ func ListDeployProjectsJSON() string {
 }
 
 // StartDeployJSON 启动部署会话并返回 JSON（供 MCP 工具调用）
-func StartDeployJSON(account, project string) string {
+func StartDeployJSON(account, project, deployTarget, port string) string {
 	if wechatBridge == nil {
 		return `{"success":false,"error":"WeChat bridge not initialized"}`
 	}
 
-	sessionID, err := StartDeployForWeChat(account, project, "", "", "", false)
+	// 如果指定了 port，将其附加到 deployTarget 信息中
+	// deploy-agent 通过 deployTarget 和项目配置确定端口
+	effectiveTarget := deployTarget
+
+	sessionID, err := StartDeployForWeChat(account, project, "", effectiveTarget, false, port)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"部署会话已启动，进度将通过微信推送"}`, sessionID)
+
+	result := map[string]interface{}{
+		"success":    true,
+		"session_id": sessionID,
+		"message":    "部署会话已启动，进度将通过微信推送",
+	}
+	if deployTarget != "" {
+		result["deploy_target"] = deployTarget
+	}
+	if port != "" {
+		result["port"] = port
+	}
+	data, _ := json.Marshal(result)
+	return string(data)
 }
 
-// StartDeployForWeChat 启动部署会话并订阅通知（支持 target/platform/packOnly）
-func StartDeployForWeChat(userID, project, agentID, deployTarget, buildPlatform string, packOnly bool) (string, error) {
+// StartDeployForWeChat 启动部署会话并订阅通知（支持 target/packOnly/port）
+func StartDeployForWeChat(userID, project, agentID, deployTarget string, packOnly bool, port ...string) (string, error) {
 	if wechatBridge == nil {
 		return "", fmt.Errorf("WeChat bridge not initialized")
 	}
@@ -546,7 +563,11 @@ func StartDeployForWeChat(userID, project, agentID, deployTarget, buildPlatform 
 	}
 
 	// 启动会话
-	session, err := StartSession(project, "", "", "", agentID, false, true, deployTarget, buildPlatform, packOnly, "")
+	deployPort := ""
+	if len(port) > 0 {
+		deployPort = port[0]
+	}
+	session, err := StartSession(project, "", "", "", agentID, false, true, deployTarget, packOnly, "", deployPort)
 	if err != nil {
 		return "", err
 	}
@@ -588,7 +609,7 @@ func StartPipelineForWeChat(userID, pipeline, agentID string) (string, error) {
 	}
 
 	// pipeline 模式：project 用 pipeline 名称标识，prompt 留空
-	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", "", false, pipeline)
+	session, err := StartSession(pipeline, "pipeline", "", "", agentID, false, true, "", false, pipeline)
 	if err != nil {
 		return "", err
 	}
@@ -636,7 +657,7 @@ func CreateProjectJSON(agentName, name string) string {
 	if agentName == "" {
 		names := pool.GetAgentNames()
 		if len(names) == 0 {
-			return `{"success":false,"error":"无在线 agent"}`
+			return `{"success":false,"error":"无在线编码agent。请确保编码agent已连接，或用 agent 参数指定编码机器名称（如 win、mac）。注意：编码agent不是部署目标服务器"}`
 		}
 		agentName = names[0]
 	}

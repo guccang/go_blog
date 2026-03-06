@@ -1055,13 +1055,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.CodegenCreateProject",
-				Description: "创建一个新的编码项目目录。可以指定在某个远程agent上创建。当用户说'创建项目'、'新建一个项目'、'在xxx机器上创建项目'时使用",
+				Description: "在远程编码agent上创建一个新的编码项目目录。注意：agent 是运行编码工具的机器（如 win、mac），不是部署目标服务器。当用户说'创建项目'、'新建一个项目'时使用",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
 						"account": map[string]string{"type": "string", "description": "账号"},
 						"name":    map[string]string{"type": "string", "description": "项目名称（英文，无空格）"},
-						"agent":   map[string]string{"type": "string", "description": "可选，远程agent名称。指定后在该agent机器上创建项目"},
+						"agent":   map[string]string{"type": "string", "description": "可选，远程编码agent名称（如 win、mac），用于指定在哪台编码机器上创建项目。注意：这不是部署目标，部署目标通过 CodegenStartDeploy 的 deploy_target 参数指定"},
 					},
 					"required": []string{"account", "name"},
 				},
@@ -1144,12 +1144,14 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.CodegenStartDeploy",
-				Description: "启动项目部署，跳过编码直接部署指定项目。这是一个异步操作，部署进度会通过微信推送。当用户说'部署项目'、'发布xxx'、'上线xxx'时使用",
+				Description: "启动项目部署，跳过编码直接部署指定项目到目标服务器。这是一个异步操作，部署进度会通过微信推送。当用户说'部署项目'、'发布xxx'、'上线xxx'、'部署到xxx服务器'时使用",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"account": map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
-						"project": map[string]string{"type": "string", "description": "要部署的项目名称"},
+						"account":       map[string]string{"type": "string", "description": "账号（即微信用户ID）"},
+						"project":       map[string]string{"type": "string", "description": "要部署的项目名称"},
+						"deploy_target": map[string]string{"type": "string", "description": "可选，部署目标服务器名称（如 prod-ssh、local）。不指定则使用项目默认部署目标"},
+						"port":          map[string]string{"type": "string", "description": "可选，服务端口号（如 9000、8080）"},
 					},
 					"required": []string{"account", "project"},
 				},

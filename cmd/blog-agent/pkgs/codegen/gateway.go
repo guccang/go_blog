@@ -730,9 +730,17 @@ func findLLMAgentID() string {
 
 // ========================= 同步 LLM 请求桥接 =========================
 
-// SendSyncLLMTask 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回
+// LLMProgressCallback 同步 LLM 请求的进度回调（nil 表示不需要进度通知）
+type LLMProgressCallback func(event, text string)
+
+// SendSyncLLMTask 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回（不含进度回调）
 // messages 可以是任意可 JSON 序列化的消息列表
 func SendSyncLLMTask(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration) (string, error) {
+	return SendSyncLLMTaskWithProgress(messages, account, selectedTools, noTools, timeout, nil)
+}
+
+// SendSyncLLMTaskWithProgress 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回（支持进度回调）
+func SendSyncLLMTaskWithProgress(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration, progressCb LLMProgressCallback) (string, error) {
 	if gatewayBridge == nil || gatewayBridge.client == nil {
 		return "", fmt.Errorf("gateway bridge not initialized")
 	}
@@ -782,7 +790,10 @@ func SendSyncLLMTask(messages interface{}, account string, selectedTools []strin
 				}
 				return evt.Text, nil
 			}
-			// 非 complete 事件（chunk/tool_info），忽略
+			// 非 complete 事件 → 转发给 callback
+			if progressCb != nil {
+				progressCb(evt.Event, evt.Text)
+			}
 		case <-timer.C:
 			return "", fmt.Errorf("llm task timeout after %v", timeout)
 		}

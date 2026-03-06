@@ -17,15 +17,39 @@ func main() {
 	configPath := flag.String("config", "deploy.conf", "配置文件路径")
 	projectName := flag.String("project", "", "指定要部署的项目名称（多项目时必须指定）")
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
-	buildPlatform := flag.String("build-platform", "", "(unused, kept for compatibility)")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
 	password := flag.String("password", "", "SSH 密码")
 	savePwd := flag.Bool("save-password", false, "保存密码到凭据存储")
 	listProjects := flag.Bool("list", false, "列出所有配置的项目和可用目标")
 	pipelineName := flag.String("pipeline", "", "执行指定的部署编排")
+	// --init flags
+	initDir := flag.String("init", "", "Initialize deploy scripts for a Go project directory")
+	initArgs := flag.String("init-args", "", "Startup arguments for --init (e.g. 'config.json')")
+	initSSH := flag.String("init-ssh", "", "SSH target for --init (e.g. root@1.2.3.4)")
+	initRemote := flag.String("init-remote-dir", "", "Remote deploy directory for --init SSH target")
+	initVerify := flag.String("init-verify-url", "", "Health check URL for --init")
+	initLinux := flag.String("init-linux-dir", "", "Linux project directory for --init")
+	initMac := flag.String("init-mac-dir", "", "macOS project directory for --init")
+	initYes := flag.Bool("yes", false, "Non-interactive mode, accept all defaults")
 	flag.Parse()
 
-	_ = buildPlatform // unused, kept for compatibility
+	// --init early exit (before LoadConfig, since the project may not have a config yet)
+	if *initDir != "" {
+		opts := &InitOptions{
+			StartArgs:      *initArgs,
+			SSHHost:        *initSSH,
+			RemoteDir:      *initRemote,
+			VerifyURL:      *initVerify,
+			LinuxDir:       *initLinux,
+			MacDir:         *initMac,
+			NonInteractive: *initYes,
+		}
+		if err := runInit(*initDir, *configPath, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// --list / --pipeline 模式：加载 all targets
 	tf := *targetName
@@ -258,7 +282,7 @@ func main() {
 			}
 
 			deployer := NewDeployer(&stepCfg, proj, pwd)
-			if deployErr := deployer.Run(packOnly, targetFilter, step.BuildPlatform); deployErr != nil {
+			if deployErr := deployer.Run(packOnly, targetFilter); deployErr != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Pipeline %q 在步骤 [%d/%d] %s 失败: %v\n",
 					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
 				os.Exit(1)
@@ -356,7 +380,7 @@ func main() {
 		}
 
 		deployer := NewDeployer(cfg, proj, pwd)
-		deployErr := deployer.Run(*packOnly, "", "")
+		deployErr := deployer.Run(*packOnly, "")
 
 		// SSH 连接成功即保存密码（证明密码有效），不依赖后续步骤
 		if *savePwd && pwd != "" && deployer.SSHConnected {

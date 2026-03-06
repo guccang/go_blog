@@ -95,7 +95,7 @@ type CodeSession struct {
 	AutoDeploy    bool             `json:"auto_deploy,omitempty"`   // 编码完成后自动部署+验证
 	DeployOnly    bool             `json:"deploy_only,omitempty"`   // 跳过编码，直接部署+验证
 	DeployTarget  string           `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	BuildPlatform string           `json:"build_platform,omitempty"` // 构建目标平台: linux/macos/win
+	DeployPort    string           `json:"deploy_port,omitempty"`    // 部署端口号
 	PackOnly      bool             `json:"pack_only,omitempty"`      // 仅打包不部署
 	Pipeline      string           `json:"pipeline,omitempty"`       // deploy pipeline 名称
 	Status        SessionStatus    `json:"status"`
@@ -217,7 +217,7 @@ func NormalizeTool(tool string) string {
 }
 
 // StartSession 启动编码会话，agentID 可选指定目标 agent
-func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool, deployTarget, buildPlatform string, packOnly bool, pipeline string) (*CodeSession, error) {
+func StartSession(project, prompt, model, tool, agentID string, autoDeploy, deployOnly bool, deployTarget string, packOnly bool, pipeline string, port ...string) (*CodeSession, error) {
 	// 项目目录由远程 agent 管理，服务端不需要创建本地目录
 	// 仅验证项目名合法性
 	if project == "" {
@@ -225,6 +225,11 @@ func StartSession(project, prompt, model, tool, agentID string, autoDeploy, depl
 	}
 
 	normalizedTool := NormalizeTool(tool)
+
+	deployPort := ""
+	if len(port) > 0 {
+		deployPort = port[0]
+	}
 
 	session := &CodeSession{
 		ID:           fmt.Sprintf("cg_%d", time.Now().UnixMilli()),
@@ -235,7 +240,7 @@ func StartSession(project, prompt, model, tool, agentID string, autoDeploy, depl
 		AutoDeploy:   autoDeploy,
 		DeployOnly:   deployOnly,
 		DeployTarget:  deployTarget,
-		BuildPlatform: buildPlatform,
+		DeployPort:    deployPort,
 		PackOnly:      packOnly,
 		Pipeline:      pipeline,
 		AgentID:      agentID,

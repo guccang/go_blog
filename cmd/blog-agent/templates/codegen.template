@@ -593,12 +593,6 @@
                 <select id="deployTarget" class="model-select" title="部署目标">
                     <option value="">默认目标</option>
                 </select>
-                <select id="deployPlatform" class="model-select" title="目标平台">
-                    <option value="">当前平台</option>
-                    <option value="linux">linux</option>
-                    <option value="macos">macos</option>
-                    <option value="win">win</option>
-                </select>
                 <label class="deploy-checkbox"><input type="checkbox" id="deployPackOnly"> 仅打包</label>
                 <button class="btn-send" id="btnDeployRun" onclick="deployProject()" style="background:linear-gradient(135deg, var(--orange), var(--red)); flex:1;">🚀 部署</button>
                 <button class="btn-stop" id="btnDeployStop" onclick="stopSession()">⏹ 停止</button>
@@ -1248,7 +1242,6 @@
         }
 
         const deployTarget = document.getElementById('deployTarget').value;
-        const buildPlatform = document.getElementById('deployPlatform').value;
         const packOnly = document.getElementById('deployPackOnly').checked;
 
         // 构建用户提示信息
@@ -1256,7 +1249,6 @@
         if (packOnly) parts.push('仅打包');
         else parts.push('部署');
         if (deployTarget) parts.push(`目标: ${deployTarget}`);
-        if (buildPlatform) parts.push(`平台: ${buildPlatform}`);
         addEvent('user', `🚀 ${parts.join(' · ')}`);
 
         setStatus('running', packOnly ? '正在打包...' : '正在部署...');
@@ -1273,7 +1265,6 @@
                 deploy_only: true,
                 agent_id: currentAgentId || '',
                 deploy_target: deployTarget,
-                build_platform: buildPlatform,
                 pack_only: packOnly
             };
             const resp = await fetch('/api/codegen/run', {

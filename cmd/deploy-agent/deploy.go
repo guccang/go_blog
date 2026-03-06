@@ -52,8 +52,7 @@ func isLocalTarget(host string) bool {
 }
 
 // Run 执行部署 pipeline
-// buildPlatform: 显式指定构建平台（优先于 target 推断），为空时自动推断
-func (d *Deployer) Run(packOnly bool, targetFilter string, buildPlatform string) error {
+func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	start := time.Now()
 
 	targets := d.proj.Targets
@@ -77,10 +76,7 @@ func (d *Deployer) Run(packOnly bool, targetFilter string, buildPlatform string)
 
 	// Step 1: 打包（根据 target 平台决定是否交叉编译）
 	d.logf("info", "[STEP 1/%d] 打包项目 [%s]...\n", totalSteps, d.proj.Name)
-	targetPlatform := buildPlatform
-	if targetPlatform == "" {
-		targetPlatform = d.inferTargetPlatform(targets)
-	}
+	targetPlatform := d.inferTargetPlatform(targets)
 	if err := d.pack(targetPlatform); err != nil {
 		return fmt.Errorf("打包失败: %v", err)
 	}

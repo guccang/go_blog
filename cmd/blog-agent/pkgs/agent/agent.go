@@ -190,7 +190,7 @@ func registerMCPCallbacks() {
 	mcp.RegisterCallBack("CodegenCreateProject", func(args map[string]interface{}) string {
 		name, _ := args["name"].(string)
 		if name == "" {
-			return `{"success":false,"error":"缺少项目名称"}`
+			return `{"success":false,"error":"缺少项目名称(name参数)"}`
 		}
 		agentName, _ := args["agent"].(string)
 		return codegen.CreateProjectJSON(agentName, name)
@@ -207,7 +207,7 @@ func registerMCPCallbacks() {
 		model, _ := args["model"].(string)
 		tool, _ := args["tool"].(string)
 		if project == "" || prompt == "" {
-			return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
+			return `{"success":false,"error":"缺少 project 或 prompt 参数。project 为项目名称，prompt 为编码需求描述，两者均为必填"}`
 		}
 		sessionID, err := codegen.StartSessionForWeChat(account, project, prompt, model, tool, "")
 		if err != nil {
@@ -240,7 +240,10 @@ func registerMCPCallbacks() {
 			account = globalAccount
 		}
 		status := codegen.GetStatusForWeChat(account)
-		return fmt.Sprintf(`{"success":true,"status":"%s"}`, status)
+		if strings.Contains(status, "没有活跃") || strings.Contains(status, "未初始化") || strings.Contains(status, "已过期") {
+			return fmt.Sprintf(`{"success":true,"active":false,"status":"%s"}`, status)
+		}
+		return fmt.Sprintf(`{"success":true,"active":true,"status":"%s"}`, status)
 	})
 
 	// 停止当前编码会话
@@ -271,7 +274,9 @@ func registerMCPCallbacks() {
 		if project == "" {
 			return `{"success":false,"error":"缺少 project 参数"}`
 		}
-		return codegen.StartDeployJSON(account, project)
+		deployTarget, _ := args["deploy_target"].(string)
+		port, _ := args["port"].(string)
+		return codegen.StartDeployJSON(account, project, deployTarget, port)
 	})
 
 	// 启动 pipeline 编排（按步骤顺序部署多个项目）
@@ -653,8 +658,13 @@ func handleWechatCommand(wechatUser, message string) string {
 		{Role: "user", Content: message},
 	}
 
-	// 进度回调：thinking / tool_call 事件时发送进度消息
+	// 进度回调：thinking / tool_call 事件时发送进度消息（带节流）
+	var lastProgressTime time.Time
 	progressCallback := func(eventType string, detail string) {
+		// 节流：两次进度推送间隔至少 3 秒
+		if time.Since(lastProgressTime) < 3*time.Second {
+			return
+		}
 		switch eventType {
 		case "thinking":
 			codegen.SendWechatNotify(wechatUser, "🤔 正在思考...")
@@ -662,6 +672,7 @@ func handleWechatCommand(wechatUser, message string) string {
 			displayName := getToolDisplayName(detail)
 			codegen.SendWechatNotify(wechatUser, fmt.Sprintf("🔧 正在执行: %s...", displayName))
 		}
+		lastProgressTime = time.Now()
 	}
 
 	result, err := llm.SendSyncLLMRequestWithProgress(messages, account, progressCallback)
@@ -885,9 +896,9 @@ func handleCodegenCommand(userID, message string) string {
 		return fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s%s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, modelInfo, toolInfo, deployInfo, sessionID)
 
 	case "deploy", "dp":
-		// cg deploy <project[@agent]> [#target] [@platform] [!pack]
+		// cg deploy <project[@agent]> [#target] [!pack]
 		if param == "" {
-			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]> [#目标] [@平台] [!pack]\n示例: cg deploy myapp\n示例: cg deploy myapp@mac #ssh-prod @linux\n示例: cg deploy myapp !pack"
+			return "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]> [#目标] [!pack]\n示例: cg deploy myapp\n示例: cg deploy myapp@mac #ssh-prod\n示例: cg deploy myapp !pack"
 		}
 		deployParts := strings.SplitN(param, " ", 2)
 		project, agentName := parseProjectAgent(deployParts[0])
@@ -895,17 +906,14 @@ func handleCodegenCommand(userID, message string) string {
 		if len(deployParts) > 1 {
 			rest = strings.TrimSpace(deployParts[1])
 		}
-		// 解析可选的 #target、@platform、!pack（顺序不限）
+		// 解析可选的 #target、!pack（顺序不限）
 		deployTarget := ""
-		buildPlatform := ""
 		packOnly := false
-		for rest != "" && (strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") || strings.HasPrefix(rest, "!")) {
+		for rest != "" && (strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "!")) {
 			optParts := strings.SplitN(rest, " ", 2)
 			opt := optParts[0]
 			if strings.HasPrefix(opt, "#") {
 				deployTarget = strings.TrimPrefix(opt, "#")
-			} else if strings.HasPrefix(opt, "@") {
-				buildPlatform = strings.TrimPrefix(opt, "@")
 			} else if strings.EqualFold(opt, "!pack") {
 				packOnly = true
 			}
@@ -919,7 +927,7 @@ func handleCodegenCommand(userID, message string) string {
 		if err != nil {
 			return fmt.Sprintf("❌ %v", err)
 		}
-		sessionID, err := codegen.StartDeployForWeChat(userID, project, agentID, deployTarget, buildPlatform, packOnly)
+		sessionID, err := codegen.StartDeployForWeChat(userID, project, agentID, deployTarget, packOnly)
 		if err != nil {
 			return fmt.Sprintf("❌ 部署启动失败: %v", err)
 		}
@@ -931,15 +939,11 @@ func handleCodegenCommand(userID, message string) string {
 		if deployTarget != "" {
 			targetInfo = fmt.Sprintf("\n目标: %s", deployTarget)
 		}
-		platformInfo := ""
-		if buildPlatform != "" {
-			platformInfo = fmt.Sprintf("\n平台: %s", buildPlatform)
-		}
 		packInfo := ""
 		if packOnly {
 			packInfo = "\n模式: 仅打包"
 		}
-		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, targetInfo, platformInfo, packInfo, sessionID)
+		return fmt.Sprintf("🚀 部署已启动\n\n项目: %s%s%s%s\n会话: %s\n\n进度将通过微信推送", project, agentInfo, targetInfo, packInfo, sessionID)
 
 	case "pipeline", "pip":
 		// cg pipeline list — 列出可用 pipeline

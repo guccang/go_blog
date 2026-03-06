@@ -53,7 +53,6 @@ type TaskAssignPayload struct {
 	AutoDeploy    bool   `json:"auto_deploy,omitempty"`
 	DeployOnly    bool   `json:"deploy_only,omitempty"`
 	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	BuildPlatform string `json:"build_platform,omitempty"` // 构建目标平台: linux/macos/win
 	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
 	Pipeline      string `json:"pipeline,omitempty"`       // pipeline 名称（远程触发）
 }

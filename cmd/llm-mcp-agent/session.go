@@ -79,17 +79,19 @@ type FailureDecision struct {
 
 // SessionIndex 索引文件结构（用于列表页）
 type SessionIndex struct {
-	RootID       string              `json:"root_id"`
-	Title        string              `json:"title"`
-	Account      string              `json:"account"`
-	Status       string              `json:"status"`
-	CreatedAt    time.Time           `json:"created_at"`
-	FinishedAt   *time.Time          `json:"finished_at,omitempty"`
-	TotalSessions int               `json:"total_sessions"`
-	DoneCount    int                 `json:"done_count"`
-	FailedCount  int                 `json:"failed_count"`
-	SkippedCount int                 `json:"skipped_count"`
-	Children     []SessionIndexChild `json:"children"`
+	RootID        string              `json:"root_id"`
+	Title         string              `json:"title"`
+	Account       string              `json:"account"`
+	Status        string              `json:"status"`
+	CreatedAt     time.Time           `json:"created_at"`
+	FinishedAt    *time.Time          `json:"finished_at,omitempty"`
+	TotalSessions int                `json:"total_sessions"`
+	DoneCount     int                `json:"done_count"`
+	FailedCount   int                `json:"failed_count"`
+	SkippedCount  int                `json:"skipped_count"`
+	AsyncCount    int                `json:"async_count"`
+	DeferredCount int                `json:"deferred_count"`
+	Children      []SessionIndexChild `json:"children"`
 }
 
 // SessionIndexChild 索引中的子任务摘要
@@ -168,7 +170,7 @@ func (s *TaskSession) SetStatus(status string) {
 		now := time.Now()
 		s.StartedAt = &now
 	}
-	if status == "done" || status == "failed" || status == "skipped" {
+	if status == "done" || status == "failed" || status == "skipped" || status == "async" || status == "deferred" {
 		now := time.Now()
 		s.FinishedAt = &now
 	}
@@ -312,6 +314,10 @@ func (s *SessionStore) SaveIndex(root *TaskSession, children []*TaskSession) err
 			index.FailedCount++
 		case "skipped":
 			index.SkippedCount++
+		case "async":
+			index.AsyncCount++
+		case "deferred":
+			index.DeferredCount++
 		}
 
 		index.Children = append(index.Children, SessionIndexChild{
