@@ -36,3 +36,8 @@ cmd/deploy-agent/deploy.conf
 cmd/gateway/gateway.json
 cmd/llm-mcp-agent/llm-mcp-agent.json
 cmd/wechat-agent/wechat-agent.json
+cmd/blog-agent/blog-agent
+cmd/deploy-agent/deploy-agent
+cmd/deploy-agent/deploy-agent-test
+cmd/deploy-agent/E:\githubdesktop\go_blog\cmd\llm-mcp-agent/llm-mcp-agent
+*.json
