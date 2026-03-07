@@ -519,6 +519,31 @@ func (p *AgentPool) StopRemoteTask(session *CodeSession) error {
 	})
 }
 
+// StopAllRunningTasks 向所有 agent 发送 task_stop，停止所有活跃任务
+func (p *AgentPool) StopAllRunningTasks() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	stopped := 0
+	for _, agent := range p.agents {
+		agent.mu.Lock()
+		sessionIDs := make([]string, 0, len(agent.ActiveSessions))
+		for sid := range agent.ActiveSessions {
+			sessionIDs = append(sessionIDs, sid)
+		}
+		agent.mu.Unlock()
+
+		for _, sid := range sessionIDs {
+			if err := agent.Sender.SendAgentMsg(MsgTaskStop, TaskStopPayload{SessionID: sid}); err != nil {
+				log.WarnF(log.ModuleAgent, "StopAllRunningTasks: failed to stop %s on %s: %v", sid, agent.Name, err)
+			} else {
+				stopped++
+			}
+		}
+	}
+	return stopped
+}
+
 // GetAgents 获取所有 agent 信息（管理用）
 func (p *AgentPool) GetAgents() []map[string]interface{} {
 	p.mu.RLock()

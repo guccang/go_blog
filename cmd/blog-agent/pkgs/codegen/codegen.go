@@ -340,6 +340,43 @@ func StopSession(sessionID string) error {
 	return nil
 }
 
+// StopAllSessions 停止所有运行中的会话（本地 + 远程 agent）
+// 返回停止的会话数量
+func StopAllSessions() int {
+	stopped := 0
+
+	// 停止 blog-agent 跟踪的所有运行中会话
+	sessionsMu.RLock()
+	var runningSessions []*CodeSession
+	for _, s := range sessions {
+		s.mu.Lock()
+		if s.Status == StatusRunning {
+			runningSessions = append(runningSessions, s)
+		}
+		s.mu.Unlock()
+	}
+	sessionsMu.RUnlock()
+
+	for _, s := range runningSessions {
+		s.mu.Lock()
+		if s.AgentID != "" {
+			agentPool.StopRemoteTask(s)
+		}
+		s.Status = StatusStopped
+		s.EndTime = time.Now()
+		s.broadcast(StreamEvent{Type: "system", Text: "会话已停止", Done: true})
+		s.mu.Unlock()
+		stopped++
+	}
+
+	// 停止所有远程 agent 上的活跃任务（包括 llm-mcp-agent 直接派发的）
+	if agentPool != nil {
+		stopped += agentPool.StopAllRunningTasks()
+	}
+
+	return stopped
+}
+
 // GetSession 获取会话
 func GetSession(sessionID string) *CodeSession {
 	sessionsMu.RLock()

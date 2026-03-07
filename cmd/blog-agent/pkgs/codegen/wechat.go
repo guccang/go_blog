@@ -199,39 +199,48 @@ func GetStatusForWeChat(userID string) string {
 		project, statusText, elapsed, cost, state.SessionID)
 }
 
-// StopSessionForWeChat 停止用户当前编码会话
+// StopSessionForWeChat 停止用户当前编码会话 + 所有远程 agent 上的运行中任务
 func StopSessionForWeChat(userID string) (string, error) {
 	if wechatBridge == nil {
 		return "", fmt.Errorf("WeChat bridge not initialized")
 	}
 
+	var stoppedSessionID string
+
+	// 停止用户自己的跟踪会话（通过 cg start 启动的）
 	wechatBridge.mu.RLock()
 	state := wechatBridge.userSessions[userID]
 	wechatBridge.mu.RUnlock()
 
-	if state == nil {
-		return "", fmt.Errorf("当前没有活跃的编码会话")
+	if state != nil {
+		stoppedSessionID = state.SessionID
+
+		// 停止通知 goroutine
+		select {
+		case <-state.stopCh:
+		default:
+			close(state.stopCh)
+		}
+
+		// 停止该会话
+		StopSession(state.SessionID)
+
+		// 清理用户状态
+		wechatBridge.mu.Lock()
+		delete(wechatBridge.userSessions, userID)
+		wechatBridge.mu.Unlock()
 	}
 
-	// 停止通知 goroutine
-	select {
-	case <-state.stopCh:
-		// already closed
-	default:
-		close(state.stopCh)
+	// 停止所有运行中的会话（包括 llm-mcp-agent 直接派发到 codegen-agent 的任务）
+	stopped := StopAllSessions()
+
+	if stoppedSessionID != "" {
+		return stoppedSessionID, nil
 	}
-
-	// 停止会话
-	if err := StopSession(state.SessionID); err != nil {
-		return "", err
+	if stopped > 0 {
+		return fmt.Sprintf("all(%d)", stopped), nil
 	}
-
-	// 清理用户状态
-	wechatBridge.mu.Lock()
-	delete(wechatBridge.userSessions, userID)
-	wechatBridge.mu.Unlock()
-
-	return state.SessionID, nil
+	return "", fmt.Errorf("当前没有运行中的编码会话")
 }
 
 // subscribeAndRelay 后台 goroutine：订阅会话事件并中继到微信
