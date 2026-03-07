@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"codegen"
 	"context"
 	"fmt"
 	"mcp"
@@ -59,6 +60,7 @@ func (e *TaskExecutor) Execute() error {
 
 	// 通知图更新
 	e.notifyGraphUpdate("graph_started", root)
+	e.notifyWechat(fmt.Sprintf("📋 任务开始: %s", root.Title))
 
 	// 执行根节点
 	err := e.executeNode(root)
@@ -74,8 +76,18 @@ func (e *TaskExecutor) Execute() error {
 	// 通知完成
 	if err != nil {
 		e.notifyGraphUpdate("graph_failed", root)
+		// 收集失败节点名称
+		var failedNames []string
+		for _, n := range e.graph.Nodes {
+			if n.Status == NodeFailed {
+				failedNames = append(failedNames, n.Title)
+			}
+		}
+		e.notifyWechat(fmt.Sprintf("❌ 任务失败: %s\n失败节点: %s", root.Title, strings.Join(failedNames, ", ")))
 	} else {
 		e.notifyGraphUpdate("graph_completed", root)
+		duration := e.graph.GetExecutionTime().Round(time.Second)
+		e.notifyWechat(fmt.Sprintf("🎉 任务完成: %s\n⏱ 耗时: %s\n📈 完成: %d/%d", root.Title, duration, e.graph.DoneNodes, e.graph.TotalNodes))
 	}
 
 	log.MessageF(log.ModuleAgent, "Execution completed for task: %s, success: %v", root.Title, err == nil)
@@ -239,6 +251,14 @@ func (e *TaskExecutor) decomposeNode(node *TaskNode) error {
 
 	node.AddLog(LogInfo, "planning", fmt.Sprintf("任务拆解完成: %d 个子任务，模式: %s", len(node.Children), node.ExecutionMode))
 	e.notifyGraphUpdate("graph_update", node)
+
+	// 微信推送拆解结果
+	var childTitles []string
+	for i, child := range node.Children {
+		childTitles = append(childTitles, fmt.Sprintf("%d. %s", i+1, child.Title))
+	}
+	e.notifyWechat(fmt.Sprintf("🔀 任务拆解: %s\n→ %d个子任务 (%s)\n%s",
+		node.Title, len(node.Children), string(node.ExecutionMode), strings.Join(childTitles, "\n")))
 
 	return nil
 }
@@ -528,6 +548,7 @@ func (e *TaskExecutor) findDependencyNode(idOrTitle string) *TaskNode {
 // executeLeafNode 执行叶子节点
 func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
 	node.AddLog(LogInfo, "executing", fmt.Sprintf("执行叶子节点: %s", node.Title))
+	e.notifyWechat(fmt.Sprintf("▶️ 执行: %s", node.Title))
 
 	// 构建上下文
 	e.buildNodeContext(node)
@@ -539,6 +560,7 @@ func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
 			log.MessageF(log.ModuleAgent, "[断点续传] 节点: '%s', 重试次数: %d, 历史记录: %d 条",
 				node.Title, node.RetryCount, len(node.LLMHistory))
 			node.AddLog(LogInfo, "retry", fmt.Sprintf("从断点继续执行（第 %d 次重试，%d 条历史记录）", node.RetryCount, len(node.LLMHistory)))
+			e.notifyWechat(fmt.Sprintf("🔄 重试(#%d): %s", node.RetryCount, node.Title))
 
 			result, err := e.planner.ExecuteNodeWithRetry(e.ctx, node, retryHistory)
 			if err != nil {
@@ -548,6 +570,7 @@ func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
 
 			node.Result = result
 			node.AddLog(LogInfo, "completed", fmt.Sprintf("重试执行结果: %s", result.Summary))
+			e.notifyWechat(fmt.Sprintf("✅ 完成: %s\n结果: %s", node.Title, truncateTitle(result.Summary, 100)))
 			return nil
 		}
 	}
@@ -561,6 +584,7 @@ func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
 
 	node.Result = result
 	node.AddLog(LogInfo, "completed", fmt.Sprintf("执行结果: %s", result.Summary))
+	e.notifyWechat(fmt.Sprintf("✅ 完成: %s\n结果: %s", node.Title, truncateTitle(result.Summary, 100)))
 
 	return nil
 }
@@ -606,6 +630,7 @@ func (e *TaskExecutor) propagateSiblingResult(node *TaskNode) {
 
 // aggregateChildResults 汇总子节点结果（LLM 智能整合版 + 博客引用）
 func (e *TaskExecutor) aggregateChildResults(node *TaskNode) {
+	e.notifyWechat(fmt.Sprintf("📊 整合结果: %s (%d个子任务)", node.Title, len(node.Children)))
 	var summaries []string
 	var detailedOutputs []string
 	var allArtifacts []string
@@ -759,6 +784,7 @@ func (e *TaskExecutor) handleNodeError(node *TaskNode, err error) error {
 	node.AddLog(LogError, "failed", fmt.Sprintf("[节点: %s] 执行失败 [%s]: %v", node.Title, errorType, err))
 	log.MessageF(log.ModuleAgent, "[执行失败] 节点: '%s', 错误类型: %s, 详情: %v", node.Title, errorType, err)
 
+	e.notifyWechat(fmt.Sprintf("⚠️ 节点失败: %s [%s]", node.Title, errorType))
 	e.notifyNodeUpdate("node_failed", node)
 	return err
 }
@@ -832,6 +858,19 @@ func (e *TaskExecutor) notifyNodeUpdate(notifType string, node *TaskNode) {
 		Message:  node.Title,
 		Data:     notif,
 	})
+}
+
+// notifyWechat 推送任务进度到微信（异步，非阻塞）
+func (e *TaskExecutor) notifyWechat(msg string) {
+	if !codegen.IsGatewayConnected() {
+		return
+	}
+	account := e.graph.Root.Account
+	go func() {
+		if err := codegen.SendWechatNotify(account, msg); err != nil {
+			log.WarnF(log.ModuleAgent, "WeChat task notify failed: %v", err)
+		}
+	}()
 }
 
 // Cancel 取消执行
