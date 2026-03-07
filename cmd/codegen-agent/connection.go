@@ -226,8 +226,13 @@ func buildCodegenToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenGetStatus",
-			Description: "查看当前编码会话运行状态",
-			Parameters: mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+			Description: "查看编码会话状态。传入 session_id 查询指定会话的状态（in_progress/completed/failed），不传则返回全局概览",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_id": map[string]interface{}{"type": "string", "description": "要查询的会话ID（可选，不传返回全局状态）"},
+				},
+			}),
 		},
 		{
 			Name:        "CodegenStopSession",
@@ -284,7 +289,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "CodegenSendMessage":
 		result = c.toolSendMessage(args)
 	case "CodegenGetStatus":
-		result = c.toolGetStatus()
+		result = c.toolGetStatus(args)
 	case "CodegenStopSession":
 		result = c.toolStopSession(args)
 	default:
@@ -310,6 +315,7 @@ func (c *Connection) toolListProjects() string {
 	models := c.agent.ScanSettings()
 	return string(mustMarshalJSON(map[string]interface{}{
 		"success":  true,
+		"status":   "completed",
 		"projects": projects,
 		"tools":    tools,
 		"models":   models,
@@ -321,25 +327,25 @@ func (c *Connection) toolListProjects() string {
 func (c *Connection) toolCreateProject(args map[string]interface{}) string {
 	name, _ := args["name"].(string)
 	if name == "" {
-		return `{"success":false,"error":"缺少项目名称(name参数)"}`
+		return `{"success":false,"status":"failed","error":"缺少项目名称(name参数)"}`
 	}
 	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		return `{"success":false,"error":"无效的项目名称"}`
+		return `{"success":false,"status":"failed","error":"无效的项目名称"}`
 	}
 	if existing := c.agent.findProjectPath(name); existing != "" {
-		return fmt.Sprintf(`{"success":false,"error":"项目 %s 已存在"}`, name)
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"项目 %s 已存在"}`, name)
 	}
 	if len(c.agent.cfg.Workspaces) == 0 {
-		return `{"success":false,"error":"未配置 workspace"}`
+		return `{"success":false,"status":"failed","error":"未配置 workspace"}`
 	}
 
 	projectPath := filepath.Join(c.agent.cfg.Workspaces[0], name)
 	if err := os.MkdirAll(projectPath, 0755); err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"创建失败: %v"}`, err)
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"创建失败: %v"}`, err)
 	}
 	ensureGitInit(projectPath)
 	log.Printf("[INFO] project created via tool_call: %s at %s", name, projectPath)
-	return fmt.Sprintf(`{"success":true,"message":"项目 %s 已创建"}`, name)
+	return fmt.Sprintf(`{"success":true,"status":"completed","message":"项目 %s 已创建"}`, name)
 }
 
 // toolStartSession 启动编码会话（同步等待完成）
@@ -350,10 +356,10 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	tool, _ := args["tool"].(string)
 
 	if project == "" || prompt == "" {
-		return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
+		return `{"success":false,"status":"failed","error":"缺少 project 或 prompt 参数"}`
 	}
 	if !c.agent.CanAccept() {
-		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
+		return `{"success":false,"status":"failed","error":"agent 繁忙，无法接受新任务"}`
 	}
 
 	sessionID := fmt.Sprintf("tc_%d", time.Now().UnixNano())
@@ -372,9 +378,9 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 
 	result := <-completionCh
 	if result.Status != "done" {
-		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, result.Error)
+		return fmt.Sprintf(`{"success":false,"status":"failed","session_id":"%s","error":"%s"}`, sessionID, result.Error)
 	}
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","summary":"%s"}`,
+	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","summary":"%s"}`,
 		sessionID, escapeJSON(result.Summary))
 }
 
@@ -384,7 +390,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	sessionID, _ := args["session_id"].(string)
 
 	if prompt == "" {
-		return `{"success":false,"error":"缺少 prompt 参数"}`
+		return `{"success":false,"status":"failed","error":"缺少 prompt 参数"}`
 	}
 
 	// 查找要续接的会话
@@ -395,13 +401,13 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		sessionID, rec = c.agent.GetLastSession()
 	}
 	if rec == nil {
-		return `{"success":false,"error":"未找到可续接的会话"}`
+		return `{"success":false,"status":"failed","error":"未找到可续接的会话"}`
 	}
 	if rec.Active {
-		return `{"success":false,"error":"会话正在执行中，请等待完成后再发送消息"}`
+		return `{"success":false,"status":"failed","error":"会话正在执行中，请等待完成后再发送消息"}`
 	}
 	if !c.agent.CanAccept() {
-		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
+		return `{"success":false,"status":"failed","error":"agent 繁忙，无法接受新任务"}`
 	}
 
 	// 启动新会话续接上一次（通过 --resume）
@@ -422,14 +428,36 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 
 	result := <-completionCh
 	if result.Status != "done" {
-		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, newSessionID, result.Error)
+		return fmt.Sprintf(`{"success":false,"status":"failed","session_id":"%s","error":"%s"}`, newSessionID, result.Error)
 	}
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","summary":"%s"}`,
+	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","summary":"%s"}`,
 		newSessionID, escapeJSON(result.Summary))
 }
 
-// toolGetStatus 查看当前编码会话状态
-func (c *Connection) toolGetStatus() string {
+// toolGetStatus 查看编码会话状态（支持 per-session 查询）
+func (c *Connection) toolGetStatus(args map[string]interface{}) string {
+	sessionID, _ := args["session_id"].(string)
+
+	// 指定 session_id → 返回该会话状态
+	if sessionID != "" {
+		rec := c.agent.GetSession(sessionID)
+		if rec == nil {
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"会话 %s 不存在"}`, sessionID)
+		}
+		result := map[string]interface{}{
+			"success":    true,
+			"status":     rec.Status,
+			"session_id": sessionID,
+			"project":    rec.Project,
+			"active":     rec.Active,
+		}
+		if rec.Summary != "" {
+			result["summary"] = rec.Summary
+		}
+		return string(mustMarshalJSON(result))
+	}
+
+	// 无 session_id → 返回全局概览（原行为）
 	c.agent.mu.Lock()
 	activeCount := len(c.agent.activeTasks)
 	var activeSessions []string
@@ -440,6 +468,7 @@ func (c *Connection) toolGetStatus() string {
 
 	return string(mustMarshalJSON(map[string]interface{}{
 		"success":         true,
+		"status":          "completed",
 		"active":          activeCount > 0,
 		"active_count":    activeCount,
 		"active_sessions": activeSessions,
@@ -462,11 +491,11 @@ func (c *Connection) toolStopSession(args map[string]interface{}) string {
 	}
 
 	if sessionID == "" {
-		return `{"success":false,"error":"没有活跃的编码会话"}`
+		return `{"success":false,"status":"failed","error":"没有活跃的编码会话"}`
 	}
 
 	c.agent.StopTask(sessionID)
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"编码会话已停止"}`, sessionID)
+	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","message":"编码会话已停止"}`, sessionID)
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

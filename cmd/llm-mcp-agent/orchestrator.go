@@ -28,7 +28,7 @@ type AsyncSessionInfo struct {
 }
 
 // detectAsyncResults 从子任务的工具调用记录中检测异步会话
-// 基于响应模式检测：任何工具返回 {"success":true,"session_id":"非空"} 即视为异步
+// 通过工具响应中的 status 字段判断：completed/failed 视为同步，in_progress/started 视为异步
 func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 	session.mu.Lock()
 	records := make([]ToolCallRecord, len(session.ToolCalls))
@@ -42,10 +42,35 @@ func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 		}
 		var parsed struct {
 			Success   bool   `json:"success"`
+			Status    string `json:"status"`
 			SessionID string `json:"session_id"`
 			Message   string `json:"message"`
 		}
-		if json.Unmarshal([]byte(rec.Result), &parsed) == nil && parsed.Success && parsed.SessionID != "" {
+		if err := json.Unmarshal([]byte(rec.Result), &parsed); err != nil {
+			continue
+		}
+		if !parsed.Success || parsed.SessionID == "" {
+			continue
+		}
+
+		// 通过 status 字段通用判断（不硬编码工具名）
+		switch parsed.Status {
+		case "completed", "failed":
+			// 工具已同步完成，不视为异步
+			log.Printf("[Orchestrator] tool %s returned status=%s session=%s, sync completed",
+				rec.ToolName, parsed.Status, parsed.SessionID)
+			continue
+		case "in_progress", "started":
+			// 工具确认任务进行中，视为异步
+			results = append(results, AsyncSessionInfo{
+				ToolName:  rec.ToolName,
+				SessionID: parsed.SessionID,
+				Message:   parsed.Message,
+			})
+		default:
+			// 无 status 字段（向后兼容未升级的 agent）→ 保持原逻辑视为异步
+			log.Printf("[Orchestrator] tool %s has session_id=%s but no status field, treating as async (compat)",
+				rec.ToolName, parsed.SessionID)
 			results = append(results, AsyncSessionInfo{
 				ToolName:  rec.ToolName,
 				SessionID: parsed.SessionID,
@@ -179,7 +204,7 @@ func (o *Orchestrator) Execute(
 
 			// 发送进度事件
 			taskIdx := indexOf(plan.SubTasks, subtask.ID)
-			sendEvent("subtask_start", fmt.Sprintf("[%d/%d] %s", taskIdx+1, len(plan.SubTasks), subtask.Title))
+			sendEvent("subtask_start", fmt.Sprintf("[%d/%d] %s\n描述: %s", taskIdx+1, len(plan.SubTasks), subtask.Title, subtask.Description))
 
 			// 执行子任务
 			result := o.executeSubTask(taskID, *subtask, session, siblingContext, tools, sendEvent)
@@ -192,13 +217,17 @@ func (o *Orchestrator) Execute(
 					result.AsyncSessions = asyncInfos
 					session.SetStatus("async")
 					o.store.Save(session)
-					var sids []string
+					var asyncDetails []string
 					for _, a := range asyncInfos {
-						sids = append(sids, a.SessionID)
+						detail := fmt.Sprintf("%s→%s", a.ToolName, a.SessionID)
+						if a.Message != "" {
+							detail += ": " + a.Message
+						}
+						asyncDetails = append(asyncDetails, detail)
 					}
-					log.Printf("[Orchestrator] async detected: subtask=%s sessions=%v", subtask.ID, sids)
-					sendEvent("subtask_async", fmt.Sprintf("[%d/%d] %s — 异步执行中 (%s)",
-						taskIdx+1, len(plan.SubTasks), subtask.Title, strings.Join(sids, ", ")))
+					log.Printf("[Orchestrator] async detected: subtask=%s sessions=%v", subtask.ID, asyncDetails)
+					sendEvent("subtask_async", fmt.Sprintf("[%d/%d] %s — 异步执行中\n%s",
+						taskIdx+1, len(plan.SubTasks), subtask.Title, strings.Join(asyncDetails, "\n")))
 				}
 			}
 
@@ -240,6 +269,9 @@ func (o *Orchestrator) Execute(
 			if result.Status == "done" {
 				completedResults[subtask.ID] = result.Result
 				sendEvent("subtask_done", fmt.Sprintf("[%d/%d] %s — 完成", taskIdx+1, len(plan.SubTasks), subtask.Title))
+				if result.Result != "" {
+					sendEvent("subtask_result", fmt.Sprintf("[%s] 结果: %s", subtask.ID, truncate(result.Result, 500)))
+				}
 			}
 
 			allResults = append(allResults, result)
@@ -310,6 +342,17 @@ func (o *Orchestrator) executeSubTask(
 	if timeout <= 0 {
 		timeout = 120 * time.Second
 	}
+	// 子任务涉及长时间工具时，自动扩展超时
+	if hasLongRunningToolHint(subtask.ToolsHint) {
+		longTimeout := time.Duration(o.cfg.LongToolTimeoutSec) * time.Second
+		if longTimeout <= 0 {
+			longTimeout = 600 * time.Second
+		}
+		// 子任务超时 = 长工具超时 + 额外裕量（LLM 思考 + 多轮迭代）
+		if longTimeout+60*time.Second > timeout {
+			timeout = longTimeout + 60*time.Second
+		}
+	}
 	deadline := time.Now().Add(timeout)
 
 	var finalText string
@@ -370,7 +413,7 @@ func (o *Orchestrator) executeSubTask(
 		for _, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
-			sendEvent("tool_info", fmt.Sprintf("[%s] 调用工具: %s", subtask.ID, originalName))
+			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s\n参数: %s", subtask.ID, originalName, tc.Function.Arguments))
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
 				subtask.ID, originalName, truncate(tc.Function.Arguments, 200))
 
@@ -384,9 +427,11 @@ func (o *Orchestrator) executeSubTask(
 				result = fmt.Sprintf("工具调用失败: %v", err)
 				log.Printf("[Orchestrator] subtask=%s ✗ 工具失败: %s duration=%v error=%v",
 					subtask.ID, originalName, duration, err)
+				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 (%.1fs): %v", subtask.ID, originalName, duration.Seconds(), err))
 			} else {
 				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s duration=%v resultLen=%d result=%s",
 					subtask.ID, originalName, duration, len(result), truncate(result, 200))
+				sendEvent("tool_result", fmt.Sprintf("✅ [%s] %s 完成 (%.1fs)\n结果: %s", subtask.ID, originalName, duration.Seconds(), truncate(result, 300)))
 			}
 
 			// 记录工具调用
@@ -933,6 +978,16 @@ func excludePlanTool(tools []LLMTool) []LLMTool {
 		}
 	}
 	return filtered
+}
+
+// hasLongRunningToolHint 检查子任务的 tools_hint 是否包含长时间运行的工具
+func hasLongRunningToolHint(hints []string) bool {
+	for _, h := range hints {
+		if isLongRunningTool(h) {
+			return true
+		}
+	}
+	return false
 }
 
 // indexOf 查找子任务在计划中的位置

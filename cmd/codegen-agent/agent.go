@@ -30,13 +30,15 @@ type Agent struct {
 	completionMu  sync.Mutex
 }
 
-// sessionRecord 记录编码会话状态（用于 tool_call 续接）
+// sessionRecord 记录编码会话状态（用于 tool_call 续接 + 状态查询）
 type sessionRecord struct {
 	Project       string
 	Model         string
 	Tool          string
 	ClaudeSession string // Claude 内部 session ID（用于 --resume）
 	Active        bool
+	Status        string // "in_progress", "completed", "failed", "stopped"
+	Summary       string // 完成摘要（completed 时有值）
 }
 
 // taskResult 任务完成结果
@@ -449,13 +451,17 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		Error:     errMsg,
 	})
 
-	// 标记会话完成
-	a.CompleteSession(sessionID)
+	// 标记会话完成（含最终状态和摘要）
+	taskSummary := ""
+	if status == "done" {
+		taskSummary = summary.GenerateReport()
+	}
+	a.CompleteSession(sessionID, status, taskSummary)
 
 	// 通知同步等待者（tool_call 流）
 	completionResult := taskResult{Status: status, Error: errMsg}
 	if status == "done" {
-		completionResult.Summary = summary.GenerateReport()
+		completionResult.Summary = taskSummary
 	}
 	a.SignalCompletion(sessionID, completionResult)
 
@@ -611,15 +617,27 @@ func (a *Agent) RecordSession(sessionID, project, model, tool string) {
 		Model:   model,
 		Tool:    tool,
 		Active:  true,
+		Status:  "in_progress",
 	}
 	a.sessionsMu.Unlock()
 }
 
-// CompleteSession 标记会话完成
-func (a *Agent) CompleteSession(sessionID string) {
+// CompleteSession 标记会话完成（含最终状态和摘要）
+func (a *Agent) CompleteSession(sessionID, status, summary string) {
 	a.sessionsMu.Lock()
 	if rec, ok := a.sessions[sessionID]; ok {
 		rec.Active = false
+		switch status {
+		case "done":
+			rec.Status = "completed"
+		case "error":
+			rec.Status = "failed"
+		case "stopped":
+			rec.Status = "stopped"
+		default:
+			rec.Status = status
+		}
+		rec.Summary = summary
 	}
 	a.sessionsMu.Unlock()
 }

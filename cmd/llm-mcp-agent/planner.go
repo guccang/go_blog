@@ -19,11 +19,12 @@ type TaskPlan struct {
 
 // SubTaskPlan 子任务计划
 type SubTaskPlan struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	DependsOn   []string `json:"depends_on"`
-	ToolsHint   []string `json:"tools_hint,omitempty"` // 提示可能用到的工具
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	DependsOn   []string               `json:"depends_on"`
+	ToolsHint   []string               `json:"tools_hint,omitempty"`  // 提示可能用到的工具
+	ToolParams  map[string]interface{} `json:"tool_params,omitempty"` // 预期工具调用参数
 }
 
 // ========================= 规划器 =========================
@@ -48,9 +49,10 @@ var planAndExecuteTool = LLMTool{
 }
 
 // PlanTask 调用 LLM 生成结构化任务计划
-func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int) (*TaskPlan, error) {
-	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d",
-		truncate(query, 100), account, maxSubTasks, len(tools))
+// completedWork: 之前简单路径中已完成的工具调用摘要（可为空）
+func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string) (*TaskPlan, error) {
+	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d completedWork=%v",
+		truncate(query, 100), account, maxSubTasks, len(tools), completedWork != "")
 	// 构建工具目录（name + description + 核心参数，帮助 LLM 精确规划）
 	var toolCatalog strings.Builder
 	for i, tool := range tools {
@@ -71,6 +73,16 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 		}
 	}
 
+	// 构建已完成工作上下文（如果有）
+	var completedSection string
+	if completedWork != "" {
+		completedSection = fmt.Sprintf(`
+## 已完成的工作（之前已执行过的工具调用，不要重复执行）
+%s
+重要：上述工具调用已经执行完毕。请只规划尚未完成的剩余工作。已成功的步骤不要再作为子任务。
+`, completedWork)
+	}
+
 	planPrompt := fmt.Sprintf(`你是一个任务规划专家。请分析用户的请求，将其拆解为可执行的子任务。
 
 ## 用户信息
@@ -79,7 +91,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 ## 用户请求
 %s
-
+%s
 ## 可用工具
 %s
 
@@ -90,9 +102,11 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 4. 每个子任务的描述要清晰，包含足够的上下文让 AI 独立执行
 5. tools_hint 列出该子任务可能需要的工具名称
 6. 子任务描述中必须包含用户账号（account=%s），不要再向用户询问账号信息
-7. 异步操作（如编码 CodegenStartSession、部署 CodegenStartDeploy）会自动推送进度和结果，不需要额外的"检查状态"或"发送通知"子任务
-8. CodegenStartSession 会在项目不存在时自动创建项目，通常不需要单独的 CodegenCreateProject 步骤
-9. 编码和部署是两个核心步骤，不要将"创建项目""检查状态""发送通知"拆为独立子任务
+7. 工具描述中标注"同步等待完成"的工具，调用后会阻塞直到任务完成并返回完整结果（status=completed），不需要创建额外的"检查状态""等待完成""轮询结果"子任务
+8. 状态查询工具（如 CodegenGetStatus）支持传入 session_id 查询指定任务状态。只有当某个工具明确返回"进行中"状态时，才需要后续的状态检查子任务
+9. CodegenStartSession 会在项目不存在时自动创建项目，通常不需要单独的 CodegenCreateProject 步骤
+10. 编码和部署是两个核心步骤，不要将"创建项目""发送通知"拆为独立子任务
+11. tool_params 必须列出每个子任务预期的工具调用参数（key-value），参数值要具体明确，这些参数将直接用于工具调用
 
 ## 输出格式
 仅返回 JSON，不要其他文字：
@@ -103,19 +117,21 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
       "title": "子任务标题",
       "description": "详细描述，包含执行目标和所需参数",
       "depends_on": [],
-      "tools_hint": ["ToolName1"]
+      "tools_hint": ["ToolName1"],
+      "tool_params": {"param1": "value1", "param2": "value2"}
     },
     {
       "id": "t2",
       "title": "子任务标题",
       "description": "详细描述，可以引用 t1 的结果",
       "depends_on": ["t1"],
-      "tools_hint": ["ToolName2"]
+      "tools_hint": ["ToolName2"],
+      "tool_params": {"param1": "value1"}
     }
   ],
   "execution_mode": "dag",
   "reasoning": "拆解理由和执行顺序说明"
-}`, account, time.Now().Format("2006-01-02"), query, toolCatalog.String(), maxSubTasks, account)
+}`, account, time.Now().Format("2006-01-02"), query, completedSection, toolCatalog.String(), maxSubTasks, account)
 
 	messages := []Message{
 		{Role: "user", Content: planPrompt},
@@ -252,6 +268,102 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 		Modifications: decision.Modifications,
 		Timestamp:     time.Now(),
 	}, nil
+}
+
+// ========================= 计划审查 =========================
+
+// PlanReview 计划审查结果
+type PlanReview struct {
+	Action string    `json:"action"` // "execute" | "optimize"
+	Reason string    `json:"reason"`
+	Plan   *TaskPlan `json:"plan,omitempty"` // action=optimize 时返回修改后的计划
+}
+
+// ReviewPlan LLM 审查任务计划，检查参数是否正确、子任务是否合理
+func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string) (*PlanReview, error) {
+	log.Printf("[Planner] ▶ 审查计划 subtasks=%d", len(plan.SubTasks))
+
+	// 序列化当前计划
+	planJSON, _ := json.MarshalIndent(plan, "", "  ")
+
+	// 构建工具参数 schema 参考
+	var toolSchemas strings.Builder
+	for _, tool := range tools {
+		if tool.Function.Name == "plan_and_execute" {
+			continue
+		}
+		toolSchemas.WriteString(fmt.Sprintf("- %s: %s\n  参数schema: %s\n",
+			tool.Function.Name, tool.Function.Description, string(tool.Function.Parameters)))
+	}
+
+	reviewPrompt := fmt.Sprintf(`你是一个任务计划审查专家。请审查以下任务计划，确认是否可以直接执行。
+
+## 用户原始请求
+%s
+
+## 当前任务计划
+%s
+
+## 可用工具及参数定义
+%s
+
+## 审查要点
+1. 每个子任务的 tool_params 参数是否完整、正确（对照工具参数schema）
+2. 子任务是否有遗漏或冗余
+3. 依赖关系是否合理（后续步骤是否正确依赖前置步骤）
+4. 参数值是否具体明确（不能是占位符）
+5. 对于描述中标注"同步等待完成"的工具，计划中是否存在冗余的状态检查子任务（应删除）
+
+## 输出格式
+仅返回 JSON：
+- 如果计划可以直接执行：{"action": "execute", "reason": "审查通过的理由"}
+- 如果需要优化：{"action": "optimize", "reason": "需要优化的原因", "plan": {优化后的完整计划JSON，格式与输入相同}}
+
+注意：只有参数明显错误、子任务缺失或依赖关系不合理时才需要优化。小问题可以在执行时自行修正。`,
+		query, string(planJSON), toolSchemas.String())
+
+	messages := []Message{
+		{Role: "user", Content: reviewPrompt},
+	}
+
+	reviewStart := time.Now()
+	resp, _, err := SendLLMRequest(cfg, messages, nil)
+	if err != nil {
+		log.Printf("[Planner] ✗ 计划审查失败 duration=%v error=%v", time.Since(reviewStart), err)
+		return nil, fmt.Errorf("plan review failed: %v", err)
+	}
+	log.Printf("[Planner] ← 审查响应 duration=%v responseLen=%d", time.Since(reviewStart), len(resp))
+
+	resp = strings.TrimSpace(resp)
+	resp = strings.TrimPrefix(resp, "```json")
+	resp = strings.TrimPrefix(resp, "```")
+	resp = strings.TrimSuffix(resp, "```")
+	resp = strings.TrimSpace(resp)
+
+	var review PlanReview
+	if err := json.Unmarshal([]byte(resp), &review); err != nil {
+		log.Printf("[Planner] warn: parse review failed: %v, defaulting to execute", err)
+		return &PlanReview{Action: "execute", Reason: "审查响应解析失败，直接执行"}, nil
+	}
+
+	// 校验 action
+	if review.Action != "execute" && review.Action != "optimize" {
+		review.Action = "execute"
+		review.Reason = "未知审查动作，直接执行"
+	}
+
+	// optimize 时校验返回的计划
+	if review.Action == "optimize" && review.Plan != nil {
+		if len(review.Plan.SubTasks) == 0 {
+			log.Printf("[Planner] warn: optimized plan has no subtasks, keeping original")
+			review.Action = "execute"
+			review.Reason = "优化后计划为空，保持原计划执行"
+			review.Plan = nil
+		}
+	}
+
+	log.Printf("[Planner] ✓ 审查结果: action=%s reason=%s", review.Action, review.Reason)
+	return &review, nil
 }
 
 // extractParamInfo 从工具的 Parameters JSON schema 中提取核心参数描述

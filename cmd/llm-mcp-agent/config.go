@@ -26,6 +26,7 @@ type Config struct {
 
 	DefaultAccount     string `json:"default_account"`
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
+	LongToolTimeoutSec int    `json:"long_tool_timeout_sec"` // 长时间工具超时秒数（默认 600）
 	MaxToolIterations  int    `json:"max_tool_iterations"`
 	SystemPromptPrefix string `json:"system_prompt_prefix"`
 
@@ -51,6 +52,7 @@ func DefaultConfig() *Config {
 		},
 		DefaultAccount:       "ztj",
 		ToolCallTimeoutSec:   30,
+		LongToolTimeoutSec:   600,
 		MaxToolIterations:    15,
 		SystemPromptPrefix:   "你是 Go Blog 智能助手，通过企业微信与用户对话。重要规则：1. 收到指令后直接执行，不要反问确认、不要列出方案让用户选择，自行决定最合理的参数并立即调用工具。2. 回复必须精简，控制在500字以内，只输出执行结果和关键数据。适合手机屏幕阅读。",
 		MaxSubTasks:          10,

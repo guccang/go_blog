@@ -456,13 +456,14 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 		},
 		{
 			Name:        "DeployProject",
-			Description: "部署指定项目到目标服务器",
+			Description: "部署指定项目到目标服务器。支持两种模式：1) 已配置项目：直接按项目名部署；2) 未配置项目：提供 project_dir 参数，自动生成部署配置（打包脚本、发布脚本、项目配置文件）后部署",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project":       map[string]interface{}{"type": "string", "description": "项目名称"},
+					"project":       map[string]interface{}{"type": "string", "description": "项目名称（Go 项目的二进制名，即 go.mod module 路径最后一段）"},
 					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标（如 local, ssh-prod），不填则使用默认"},
 					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
+					"project_dir":   map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（项目未配置时必填，会自动检测 go.mod 并生成部署配置文件）"},
 				},
 				"required": []string{"project"},
 			}),
@@ -565,6 +566,7 @@ func (c *Connection) toolListProjects() string {
 	}
 	return string(mustMarshalJSON(map[string]interface{}{
 		"success":  true,
+		"status":   "completed",
 		"projects": projects,
 	}))
 }
@@ -574,10 +576,29 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	projectName, _ := args["project"].(string)
 	deployTarget, _ := args["deploy_target"].(string)
 	packOnly, _ := args["pack_only"].(bool)
+	projectDir, _ := args["project_dir"].(string)
 
 	proj, err := c.resolveProject(projectName)
-	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+	if err != nil && projectDir != "" {
+		// 项目配置不存在，自动初始化
+		log.Printf("[INFO] project %q not found, auto-initializing from %s", projectName, projectDir)
+		initOpts := &InitOptions{NonInteractive: true}
+		if initErr := runInit(projectDir, c.cfg.ConfigPath, initOpts); initErr != nil {
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"自动初始化失败: %s"}`, initErr.Error())
+		}
+		// 重新加载配置
+		newCfg, reloadErr := LoadConfigForDaemon(c.cfg.ConfigPath)
+		if reloadErr != nil {
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"重新加载配置失败: %s"}`, reloadErr.Error())
+		}
+		c.cfg = newCfg
+		proj = c.cfg.GetProject(projectName)
+		if proj == nil {
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"初始化完成但未找到项目 %q，请检查项目目录"}`, projectName)
+		}
+		log.Printf("[INFO] project %q auto-initialized successfully", projectName)
+	} else if err != nil {
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"%s"}`, err.Error())
 	}
 
 	// 浅拷贝 cfg
@@ -586,25 +607,25 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	deployer := NewDeployer(&deployCfg, proj, c.password)
 	err = deployer.Run(packOnly, deployTarget)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"部署失败: %s"}`, err.Error())
 	}
 
 	action := "部署"
 	if packOnly {
 		action = "打包"
 	}
-	return fmt.Sprintf(`{"success":true,"message":"%s项目 %s 完成"}`, action, proj.Name)
+	return fmt.Sprintf(`{"success":true,"status":"completed","message":"%s项目 %s 完成"}`, action, proj.Name)
 }
 
 // toolListPipelines 列出可用 pipeline
 func (c *Connection) toolListPipelines() string {
 	if c.cfg.PipelinesDir == "" {
-		return `{"success":true,"pipelines":[]}`
+		return `{"success":true,"status":"completed","pipelines":[]}`
 	}
 
 	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"加载 pipelines 失败: %s"}`, err.Error())
 	}
 
 	type pipInfo struct {
@@ -622,6 +643,7 @@ func (c *Connection) toolListPipelines() string {
 	}
 	return string(mustMarshalJSON(map[string]interface{}{
 		"success":   true,
+		"status":    "completed",
 		"pipelines": pipelines,
 	}))
 }
@@ -630,25 +652,25 @@ func (c *Connection) toolListPipelines() string {
 func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
 	pipelineName, _ := args["pipeline"].(string)
 	if pipelineName == "" {
-		return `{"success":false,"error":"缺少 pipeline 参数"}`
+		return `{"success":false,"status":"failed","error":"缺少 pipeline 参数"}`
 	}
 
 	if c.cfg.PipelinesDir == "" {
-		return `{"success":false,"error":"未配置 pipelines 目录"}`
+		return `{"success":false,"status":"failed","error":"未配置 pipelines 目录"}`
 	}
 
 	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"加载 pipelines 失败: %s"}`, err.Error())
 	}
 
 	pip := pipCfg.Get(pipelineName)
 	if pip == nil {
-		return fmt.Sprintf(`{"success":false,"error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
 	}
 
 	if err := ValidatePipeline(pip, c.cfg); err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"status":"failed","error":"%s"}`, err.Error())
 	}
 
 	// 逐步执行
@@ -660,12 +682,12 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
 		stepErr := deployer.Run(step.PackOnly, step.Target)
 
 		if stepErr != nil {
-			return fmt.Sprintf(`{"success":false,"error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
 				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
 		}
 	}
 
-	return fmt.Sprintf(`{"success":true,"message":"Pipeline %q 全部完成 (%d 步)"}`, pip.Name, len(pip.Steps))
+	return fmt.Sprintf(`{"success":true,"status":"completed","message":"Pipeline %q 全部完成 (%d 步)"}`, pip.Name, len(pip.Steps))
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

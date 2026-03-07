@@ -309,6 +309,19 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 
 // ========================= 跨 Agent 工具调用 =========================
 
+// longRunningTools 需要长超时的工具（编码、部署等耗时操作）
+var longRunningTools = map[string]bool{
+	"CodegenStartSession": true,
+	"CodegenSendMessage":  true,
+	"DeployProject":       true,
+	"DeployPipeline":      true,
+}
+
+// isLongRunningTool 判断是否为长时间运行的工具
+func isLongRunningTool(toolName string) bool {
+	return longRunningTools[toolName]
+}
+
 // CallTool 发送 MsgToolCall 到目标 agent 并等待 MsgToolResult
 func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error) {
 	// 查找目标 agent
@@ -347,8 +360,15 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error)
 		return "", fmt.Errorf("send tool_call: %v", err)
 	}
 
-	// 等待结果
+	// 等待结果（长时间工具使用更长超时）
 	timeout := time.Duration(b.cfg.ToolCallTimeoutSec) * time.Second
+	if isLongRunningTool(toolName) {
+		longTimeout := time.Duration(b.cfg.LongToolTimeoutSec) * time.Second
+		if longTimeout <= 0 {
+			longTimeout = 600 * time.Second
+		}
+		timeout = longTimeout
+	}
 	select {
 	case result := <-ch:
 		if !result.Success {

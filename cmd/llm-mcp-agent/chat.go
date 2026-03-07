@@ -18,14 +18,26 @@ type WechatSink struct {
 	fromAgent     string
 	wechatUser    string
 	buf           strings.Builder // 缓冲最终结果
-	lastEventTime time.Time       // 节流：两次进度推送间隔至少 3 秒
+	lastEventTime time.Time       // 节流：两次普通事件推送间隔至少 1 秒
 }
 
 func (s *WechatSink) OnChunk(text string) { s.buf.WriteString(text) }
 
+// isImportantEvent 判断是否为重要事件（不受节流限制）
+func isImportantEvent(event string) bool {
+	switch event {
+	case "plan_done", "plan_detail", "plan_review_start", "plan_review_result",
+		"subtask_start", "subtask_done",
+		"subtask_fail", "subtask_skip", "subtask_async", "subtask_defer",
+		"tool_result", "failure_decision":
+		return true
+	}
+	return false
+}
+
 func (s *WechatSink) OnEvent(event, text string) {
-	// 节流：两次进度推送间隔至少 3 秒
-	if time.Since(s.lastEventTime) < 3*time.Second {
+	// 重要事件不受节流限制；普通事件间隔至少 1 秒
+	if !isImportantEvent(event) && time.Since(s.lastEventTime) < 1*time.Second {
 		return
 	}
 
@@ -34,11 +46,17 @@ func (s *WechatSink) OnEvent(event, text string) {
 	case "thinking":
 		msg = "🤔 " + text
 	case "tool_info":
-		msg = text // tool_info 的 text 已包含格式化内容，如 "[🔧 本次加载 5 个工具]"
+		msg = text
 	case "plan_start":
 		msg = "🔍 " + text
 	case "plan_done":
 		msg = "📋 " + text
+	case "plan_detail":
+		msg = text // 已包含格式化内容
+	case "plan_review_start":
+		msg = "🔍 " + text
+	case "plan_review_result":
+		msg = "✅ " + text
 	case "subtask_start":
 		msg = "▶ " + text
 	case "subtask_done":
@@ -47,6 +65,12 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "❌ " + text
 	case "subtask_skip":
 		msg = "⏭ " + text
+	case "subtask_result":
+		msg = "📄 " + text
+	case "tool_call":
+		msg = "🔧 " + text
+	case "tool_result":
+		msg = text // 已包含格式化内容
 	case "failure_decision":
 		msg = "🔄 " + text
 	case "synthesis":

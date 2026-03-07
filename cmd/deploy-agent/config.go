@@ -65,6 +65,9 @@ type DeployConfig struct {
 
 	// daemon 模式标记
 	LoadAllPlatforms bool // 加载所有平台的 target 配置（daemon 模式用于动态选择）
+
+	// 配置文件路径（用于 runInit 等需要引用配置路径的场景）
+	ConfigPath string
 }
 
 // DefaultProject 获取默认项目（仅一个项目时返回，否则返回 nil）
@@ -133,6 +136,8 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 		Projects:      make(map[string]*ProjectConfig),
 		TargetFilter:  targetFilter,
 	}
+
+	cfg.ConfigPath = path
 
 	// 主机平台 = 当前 OS（始终自动检测）
 	cfg.HostPlatform = platformSubdir()

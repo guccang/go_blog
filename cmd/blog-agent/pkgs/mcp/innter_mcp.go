@@ -903,10 +903,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		// =================================== 报告生成工具 =========================================
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
 
-		// =================================== 模型管理工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.SwitchModel", Description: "切换LLM模型提供者。可选: deepseek/openai/qwen 或其他已配置的provider", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"provider": map[string]string{"type": "string", "description": "模型提供者名称如deepseek/openai/qwen"}}, "required": []string{"provider"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetCurrentModel", Description: "获取当前使用的LLM模型信息和所有可用模型列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
-
 		// =================================== 网页访问工具 =========================================
 		{
 			Type: "function",

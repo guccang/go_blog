@@ -195,14 +195,18 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] 工具路由: %d → %d", beforeCount, len(tools))
 	}
 
+	// 发送工具数量信息（在注入虚拟工具之前，只展示真实工具）
+	if !ctx.NoTools && len(tools) > 0 {
+		var toolNames []string
+		for _, t := range tools {
+			toolNames = append(toolNames, unsanitizeToolName(t.Function.Name))
+		}
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 本次加载 %d 个工具]\n%s", len(tools), strings.Join(toolNames, ", ")))
+	}
+
 	// 注入 plan_and_execute（除非 NoTools）
 	if !ctx.NoTools {
 		tools = append(tools, planAndExecuteTool)
-	}
-
-	// 发送工具数量信息
-	if !ctx.NoTools && len(tools) > 0 {
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 本次加载 %d 个工具]", len(tools)))
 	}
 
 	// 4. LLM 循环
@@ -293,10 +297,31 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			if err := json.Unmarshal([]byte(toolCalls[planCallIdx].Function.Arguments), &args); err == nil {
 				reasoning = args.Reasoning
 			}
-			log.Printf("[processTask] plan_and_execute triggered: %s", reasoning)
+			log.Printf("[processTask] plan_and_execute triggered at iteration %d: %s", i, reasoning)
+
+			// 收集简单路径中已完成的工具调用历史（避免子任务重复执行）
+			var completedWork string
+			rootSession.mu.Lock()
+			existingCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
+			copy(existingCalls, rootSession.ToolCalls)
+			rootSession.mu.Unlock()
+
+			if len(existingCalls) > 0 {
+				var workSummary strings.Builder
+				for _, rec := range existingCalls {
+					status := "✅ 成功"
+					if !rec.Success {
+						status = "❌ 失败"
+					}
+					workSummary.WriteString(fmt.Sprintf("- %s(%s) → %s: %s\n",
+						rec.ToolName, truncate(rec.Arguments, 100), status, truncate(rec.Result, 200)))
+				}
+				completedWork = workSummary.String()
+				log.Printf("[processTask] passing %d completed tool calls to planner", len(existingCalls))
+			}
 
 			// 进入复杂任务处理流程（内部处理会话保存）
-			result := b.handleComplexTask(ctx, rootSession, store, tools)
+			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork)
 			ctx.Sink.OnChunk(result)
 			finalText = result
 			complexTaskHandled = true
@@ -313,7 +338,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		for _, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
-			ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[Calling tool %s with args %s]", originalName, tc.Function.Arguments))
+			ctx.Sink.OnEvent("tool_call", fmt.Sprintf("调用 %s\n参数: %s", originalName, tc.Function.Arguments))
 			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 200))
 
 			start := time.Now()
@@ -325,9 +350,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				log.Printf("[processTask] ✗ 工具调用失败: %s duration=%v error=%v", originalName, duration, err)
 				result = fmt.Sprintf("工具调用失败: %v", err)
 				success = false
+				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("❌ %s 失败 (%.1fs): %v", originalName, duration.Seconds(), err))
 			} else {
 				log.Printf("[processTask] ← 工具返回: %s duration=%v resultLen=%d result=%s",
 					originalName, duration, len(result), truncate(result, 200))
+				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s 完成 (%.1fs)\n结果: %s", originalName, duration.Seconds(), truncate(result, 300)))
 			}
 
 			// 记录工具调用到 session
@@ -395,6 +422,7 @@ func (b *Bridge) handleComplexTask(
 	rootSession *TaskSession,
 	store *SessionStore,
 	tools []LLMTool,
+	completedWork string, // 简单路径中已完成的工具调用摘要（可为空）
 ) string {
 	complexStart := time.Now()
 	sendEvent := func(event, text string) {
@@ -416,7 +444,7 @@ func (b *Bridge) handleComplexTask(
 	}
 
 	planStart := time.Now()
-	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks)
+	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork)
 	planDuration := time.Since(planStart)
 
 	if err != nil {
@@ -451,7 +479,63 @@ func (b *Bridge) handleComplexTask(
 	}
 	sendEvent("plan_done", planSummary.String())
 
-	// ② 为每个子任务创建 ChildSession
+	// 发送每个子任务的详细信息（含 tool_params）
+	sendPlanDetails := func(subtasks []SubTaskPlan) {
+		for i, st := range subtasks {
+			var detail strings.Builder
+			detail.WriteString(fmt.Sprintf("📌 子任务[%d/%d] %s\n", i+1, len(subtasks), st.Title))
+			detail.WriteString(fmt.Sprintf("  描述: %s\n", st.Description))
+			if len(st.DependsOn) > 0 {
+				detail.WriteString(fmt.Sprintf("  依赖: %s\n", strings.Join(st.DependsOn, ", ")))
+			}
+			if len(st.ToolsHint) > 0 {
+				detail.WriteString(fmt.Sprintf("  工具: %s\n", strings.Join(st.ToolsHint, ", ")))
+			}
+			if len(st.ToolParams) > 0 {
+				detail.WriteString("  参数:\n")
+				for k, v := range st.ToolParams {
+					detail.WriteString(fmt.Sprintf("    - %s: %v\n", k, v))
+				}
+			}
+			sendEvent("plan_detail", detail.String())
+		}
+	}
+	sendPlanDetails(plan.SubTasks)
+
+	// ② LLM审查计划
+	sendEvent("plan_review_start", "正在审查计划参数...")
+	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account)
+	if err != nil {
+		log.Printf("[ComplexTask] ⚠ 计划审查失败 error=%v，继续执行原计划", err)
+		sendEvent("plan_review_result", fmt.Sprintf("计划审查跳过: %v", err))
+	} else if review.Action == "optimize" && review.Plan != nil {
+		log.Printf("[ComplexTask] 计划已优化: %s", review.Reason)
+		plan = review.Plan
+		rootSession.Plan = plan
+		store.Save(rootSession)
+		sendEvent("plan_review_result", fmt.Sprintf("计划已优化: %s", review.Reason))
+		// 重新展示优化后的计划摘要
+		var optimizedSummary strings.Builder
+		optimizedSummary.WriteString(fmt.Sprintf("优化后 %d 个子任务: ", len(plan.SubTasks)))
+		for i, st := range plan.SubTasks {
+			if i > 0 {
+				optimizedSummary.WriteString(" → ")
+			}
+			optimizedSummary.WriteString(fmt.Sprintf("(%d)%s", i+1, st.Title))
+		}
+		sendEvent("plan_done", optimizedSummary.String())
+		// 重新展示优化后的子任务详情
+		sendPlanDetails(plan.SubTasks)
+	} else {
+		reason := "审查通过"
+		if review != nil && review.Reason != "" {
+			reason = review.Reason
+		}
+		log.Printf("[ComplexTask] 计划审查通过: %s", reason)
+		sendEvent("plan_review_result", fmt.Sprintf("计划审查通过: %s", reason))
+	}
+
+	// ③ 为每个子任务创建 ChildSession
 	childSessions := make(map[string]*TaskSession)
 	for _, st := range plan.SubTasks {
 		child := NewChildSession(rootSession, st.Title, st.Description)
@@ -462,7 +546,7 @@ func (b *Bridge) handleComplexTask(
 	}
 	store.Save(rootSession)
 
-	// ③ 编排执行
+	// ④ 编排执行
 	log.Printf("[ComplexTask] ── 开始编排执行 ──")
 	execStart := time.Now()
 	orchestrator := NewOrchestrator(b, store)
@@ -513,7 +597,7 @@ func (b *Bridge) handleComplexTask(
 		return summary
 	}
 
-	// ④ 汇总（仅在无异步子任务时执行）
+	// ⑤ 汇总（仅在无异步子任务时执行）
 	log.Printf("[ComplexTask] ── 开始汇总 ──")
 	synthStart := time.Now()
 	summary := orchestrator.Synthesize(rootSession, results, query, sendEvent)

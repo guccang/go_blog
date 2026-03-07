@@ -37,7 +37,7 @@ type ResumeTaskPayload struct {
 
 // AssistantEventPayload MsgTaskEvent 的事件数据
 type AssistantEventPayload struct {
-	Event string `json:"event"` // "chunk" | "tool_info" | "plan_start" | "plan_done" | "subtask_start" | "subtask_done" | "subtask_fail" | "subtask_skip" | "failure_decision" | "synthesis" | "resume" | "resume_info"
+	Event string `json:"event"` // "chunk" | "tool_info" | "plan_start" | "plan_done" | "plan_review_start" | "plan_review_result" | "subtask_start" | "subtask_done" | "subtask_fail" | "subtask_skip" | "failure_decision" | "synthesis" | "resume" | "resume_info"
 	Text  string `json:"text"`
 }
 
