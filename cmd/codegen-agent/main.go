@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "agent.conf", "path to agent config file")
+	configPath := flag.String("config", "codegen-agent.conf", "path to agent config file")
 	flag.Parse()
 
 	cfg, err := LoadConfig(*configPath)

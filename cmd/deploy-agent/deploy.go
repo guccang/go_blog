@@ -60,13 +60,25 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 		targets = nil
 		for _, t := range d.proj.Targets {
 			if t.Name == targetFilter || t.Host == targetFilter {
-				targets = []*Target{t}
-				break
+				targets = append(targets, t)
 			}
 		}
 		if len(targets) == 0 {
 			return fmt.Errorf("target %q not found", targetFilter)
 		}
+	}
+
+	// local target 按 HostPlatform 过滤（配置加载了所有平台，部署时只用当前平台）
+	var filteredTargets []*Target
+	for _, t := range targets {
+		if isLocalTarget(t.Host) && t.Platform != "" && t.Platform != d.cfg.HostPlatform {
+			continue
+		}
+		filteredTargets = append(filteredTargets, t)
+	}
+	targets = filteredTargets
+	if len(targets) == 0 {
+		return fmt.Errorf("no matching targets (host_platform=%s)", d.cfg.HostPlatform)
 	}
 
 	totalSteps := 4

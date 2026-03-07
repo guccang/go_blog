@@ -63,9 +63,6 @@ type DeployConfig struct {
 	// Pipeline 编排
 	PipelinesDir string // pipelines/ 目录路径（自动推断）
 
-	// daemon 模式标记
-	LoadAllPlatforms bool // 加载所有平台的 target 配置（daemon 模式用于动态选择）
-
 	// 配置文件路径（用于 runInit 等需要引用配置路径的场景）
 	ConfigPath string
 }
@@ -99,33 +96,10 @@ type configSection struct {
 	lines []configLine // 键值对列表
 }
 
-// LoadConfigForDaemon daemon 模式配置加载：加载所有 target 和所有平台配置
-// buildPlatform 留空（运行时每个任务动态指定），targetFilter 强制 "all"
+// LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
+// targetFilter 强制 "all"，所有平台的 local target 均加载（部署时按 HostPlatform 过滤）
 func LoadConfigForDaemon(path string) (*DeployConfig, error) {
-	cfg, err := LoadConfig(path, "all")
-	if err != nil {
-		return nil, err
-	}
-	cfg.LoadAllPlatforms = true
-
-	// 需要重新加载 settings，因为 LoadAllPlatforms 影响 target 配置扫描
-	if cfg.SettingsDir != "" {
-		settingsDir := cfg.SettingsDir
-		if !filepath.IsAbs(settingsDir) {
-			settingsDir = filepath.Join(filepath.Dir(path), settingsDir)
-		}
-		// 清除 LoadConfig 加载的项目（可能不完整），重新加载
-		cfg.Projects = make(map[string]*ProjectConfig)
-		cfg.ProjectOrder = nil
-		if err := cfg.loadProjectsDir(settingsDir); err != nil {
-			return nil, fmt.Errorf("load settings_dir %q (daemon): %v", settingsDir, err)
-		}
-	}
-
-	if len(cfg.Projects) == 0 {
-		return nil, fmt.Errorf("no projects found (daemon mode)")
-	}
-	return cfg, nil
+	return LoadConfig(path, "all")
 }
 
 // LoadConfig 从配置文件加载全局配置
@@ -307,18 +281,16 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 	return nil
 }
 
-// shouldIncludeTarget 根据 TargetFilter 和 LoadAllPlatforms 判断是否包含该 target
+// shouldIncludeTarget 根据 TargetFilter 判断是否包含该 target
 func (c *DeployConfig) shouldIncludeTarget(t *Target) bool {
-	if c.TargetFilter == "all" || c.LoadAllPlatforms {
+	if c.TargetFilter == "all" {
 		return true
 	}
-	// 支持按 target 名精确匹配或按 target 名前缀匹配
-	// 例如 --target=local 同时匹配 "local"（完整名）
-	// 或 --target=ssh-prod 匹配 "ssh-prod"
+	// 按 target 名精确匹配
+	// 例如 --target=local 匹配 "local"，--target=ssh-prod 匹配 "ssh-prod"
 	if c.TargetFilter == t.Name {
 		return true
 	}
-	// target.local.win → Name="local", 如果 filter="local" 也应该匹配
 	return false
 }
 
@@ -431,11 +403,6 @@ func (c *DeployConfig) parseTargetSection(sec *configSection) (*Target, error) {
 		// [target.local.win] → 本机部署，平台从 section 名提取
 		targetPlatform = parts[2]
 		targetName = "local"
-
-		// 非 daemon 模式：只加载匹配当前 HostPlatform 的 local target
-		if !c.LoadAllPlatforms && targetPlatform != c.HostPlatform {
-			return nil, nil // 跳过不匹配的平台
-		}
 	} else if isLocal && len(parts) == 2 {
 		// [target.local] — 无平台限定的 local target
 		targetName = "local"

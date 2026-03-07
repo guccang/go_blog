@@ -14,7 +14,7 @@ import (
 const keyringService = "deploy-agent"
 
 func main() {
-	configPath := flag.String("config", "deploy.conf", "配置文件路径")
+	configPath := flag.String("config", "deploy-agent.conf", "配置文件路径")
 	projectName := flag.String("project", "", "指定要部署的项目名称（多项目时必须指定）")
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
