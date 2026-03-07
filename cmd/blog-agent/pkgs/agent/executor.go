@@ -532,7 +532,27 @@ func (e *TaskExecutor) executeLeafNode(node *TaskNode) error {
 	// 构建上下文
 	e.buildNodeContext(node)
 
-	// 调用 planner 执行
+	// 检测重试场景：如果有重试历史，从断点继续
+	if node.RetryCount > 0 && len(node.LLMHistory) > 0 {
+		retryHistory := BuildRetryContextSummary(node.LLMHistory, node.RetryCount)
+		if retryHistory != "" {
+			log.MessageF(log.ModuleAgent, "[断点续传] 节点: '%s', 重试次数: %d, 历史记录: %d 条",
+				node.Title, node.RetryCount, len(node.LLMHistory))
+			node.AddLog(LogInfo, "retry", fmt.Sprintf("从断点继续执行（第 %d 次重试，%d 条历史记录）", node.RetryCount, len(node.LLMHistory)))
+
+			result, err := e.planner.ExecuteNodeWithRetry(e.ctx, node, retryHistory)
+			if err != nil {
+				node.Result = NewTaskResultError(err.Error())
+				return err
+			}
+
+			node.Result = result
+			node.AddLog(LogInfo, "completed", fmt.Sprintf("重试执行结果: %s", result.Summary))
+			return nil
+		}
+	}
+
+	// 首次执行
 	result, err := e.planner.ExecuteNode(e.ctx, node)
 	if err != nil {
 		node.Result = NewTaskResultError(err.Error())

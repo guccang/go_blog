@@ -2,6 +2,8 @@ package agent
 
 import (
 	"config"
+	"fmt"
+	"strings"
 )
 
 // ============================================================================
@@ -153,6 +155,40 @@ var (
 2. 关键数据或信息（如有）`,
 	}
 
+	// PromptNodeExecutionRetry 节点重试执行提示词
+	PromptNodeExecutionRetry = PromptTemplate{
+		Name:        "node_execution_retry",
+		Description: "任务节点重试执行提示词（包含之前执行历史）",
+		Template: `这是一个重试执行的任务。之前的执行尝试失败了，请从失败点继续执行。
+
+## 当前账户
+%s
+
+## 任务信息
+标题: %s
+描述: %s
+目标: %s
+
+## 上下文
+%s
+
+## 之前的执行历史
+以下是之前执行尝试中已完成的工具调用记录，请不要重复这些已成功的操作：
+%s
+
+## 重要规则
+1. 所有工具调用都必须传递 "account": "%s" 参数
+2. **不要重复已成功的工具调用**，从失败点继续执行
+3. 参考之前的执行结果，在此基础上继续完成任务
+4. 如果之前的工具调用结果中已包含所需数据，直接使用即可
+5. 返回结果要简洁明了，包含关键信息
+
+## 返回格式
+执行完成后，请返回：
+1. 执行结果的简要描述
+2. 关键数据或信息（如有）`,
+	}
+
 	// PromptToolSelection 工具选择提示词
 	PromptToolSelection = PromptTemplate{
 		Name:        "tool_selection",
@@ -226,6 +262,58 @@ func BuildNodeExecutionPrompt(account, title, description, goal, context string)
 		account, title, description, goal, context, account)
 }
 
+// BuildNodeExecutionRetryPrompt 构建节点重试执行提示词
+func BuildNodeExecutionRetryPrompt(account, title, description, goal, context, retryHistory string) string {
+	return config.SafeSprintf(config.GetPrompt(account, "node_execution_retry"),
+		account, title, description, goal, context, retryHistory, account)
+}
+
+// BuildRetryContextSummary 构建重试上下文摘要（从 LLMHistory 中提取之前执行的工具调用记录）
+func BuildRetryContextSummary(history []LLMInteraction, retryCount int) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("### 重试信息\n当前是第 %d 次重试。\n\n", retryCount))
+
+	hasContent := false
+	attemptIdx := 0
+
+	for _, interaction := range history {
+		// 只关注 execution 阶段的交互记录
+		if interaction.Phase != "execution" {
+			continue
+		}
+		attemptIdx++
+
+		// 记录工具调用
+		if len(interaction.ToolCalls) > 0 {
+			hasContent = true
+			sb.WriteString(fmt.Sprintf("### 第 %d 次尝试的工具调用记录\n", attemptIdx))
+			for i, tc := range interaction.ToolCalls {
+				status := "成功"
+				if !tc.Success {
+					status = fmt.Sprintf("失败: %s", tc.Error)
+				}
+				sb.WriteString(fmt.Sprintf("%d. 工具: %s [%s]\n", i+1, tc.Name, status))
+			}
+			sb.WriteString("\n")
+		}
+
+		// 记录最后一次的响应（如有）
+		if interaction.Response != "" {
+			hasContent = true
+			sb.WriteString(fmt.Sprintf("### 第 %d 次尝试的执行结果\n", attemptIdx))
+			sb.WriteString(interaction.Response)
+			sb.WriteString("\n\n")
+		}
+	}
+
+	if !hasContent {
+		return ""
+	}
+
+	return sb.String()
+}
+
 // BuildToolSelectionPrompt 构建工具选择提示词
 func BuildToolSelectionPrompt(account, taskDescription, toolCatalog string) string {
 	return config.SafeSprintf(config.GetPrompt(account, "tool_selection"), taskDescription, toolCatalog)
@@ -248,6 +336,7 @@ func GetAllPromptTemplates() []PromptTemplate {
 		PromptToolSelectionSystem,
 		PromptNodePlanning,
 		PromptNodeExecution,
+		PromptNodeExecutionRetry,
 		PromptToolSelection,
 	}
 }

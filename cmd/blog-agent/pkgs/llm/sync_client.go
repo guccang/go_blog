@@ -71,6 +71,31 @@ func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message
 	return codegen.SendSyncLLMTask(messages, account, selectedTools, false, 3*time.Minute)
 }
 
+// ToolCallEvent 工具调用事件（从进度回调中捕获）
+type ToolCallEvent struct {
+	ToolName string // 工具名称
+	RawText  string // 原始事件文本
+}
+
+// SendSyncLLMRequestWithSelectedToolsAndCallback 带进度回调的工具调用 LLM 请求
+// 在执行过程中通过 callback 捕获每次工具调用事件
+func SendSyncLLMRequestWithSelectedToolsAndCallback(ctx context.Context, messages []Message, account string, selectedTools []string, callback func(event ToolCallEvent)) (string, error) {
+	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithSelectedToolsAndCallback via agent: account=%s, selectedTools=%v", account, selectedTools)
+
+	var progressCb codegen.LLMProgressCallback
+	if callback != nil {
+		progressCb = func(event, text string) {
+			if event == "tool_info" {
+				toolName := extractToolName(text)
+				if toolName != "" {
+					callback(ToolCallEvent{ToolName: toolName, RawText: text})
+				}
+			}
+		}
+	}
+	return codegen.SendSyncLLMTaskWithProgress(messages, account, selectedTools, false, 3*time.Minute, progressCb)
+}
+
 // SendSyncLLMRequestWithContext sends a synchronous LLM request with context support via llm-mcp-agent
 func SendSyncLLMRequestWithContext(ctx context.Context, messages []Message, account string) (string, error) {
 	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithContext via agent: account=%s, messages=%d", account, len(messages))

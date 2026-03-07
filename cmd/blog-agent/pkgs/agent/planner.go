@@ -15,7 +15,14 @@ import (
 
 // 上下文长度限制
 const (
-	MaxContextLength = 20000 // 上下文最大长度，超过则保存为博客
+	MaxContextLength = 20000 // 上下文最大长度，超过则保存为博客（旧逻辑兼容）
+
+	// LLM 最大上下文长度（字符数），默认按 128k tokens ≈ 300k 字符估算
+	LLMMaxContextChars = 300000
+	// 安全阈值 = 80%，超过则压缩
+	LLMContextSafeRatio = 0.8
+	// 安全上下文字符数
+	LLMContextSafeLimit = 240000 // int(LLMMaxContextChars * LLMContextSafeRatio)
 )
 
 // TaskPlanner 任务规划器
@@ -83,10 +90,12 @@ func (p *TaskPlanner) PlanNode(ctx context.Context, node *TaskNode) (*NodePlanni
 	log.MessageF(log.ModuleAgent, "[规划诊断] 节点: %s, 上下文长度: %d 字符, 提示词长度: %d 字符, 深度: %d",
 		node.Title, len(contextStr), len(prompt), node.Depth)
 
-	// 检查上下文是否超长，超长则保存为博客
-	if len(contextStr) > MaxContextLength {
-		log.WarnF(log.ModuleAgent, "[上下文超长] 节点: '%s', 长度: %d, 阈值: %d, 将保存为博客", node.Title, len(contextStr), MaxContextLength)
-		contextStr = p.truncateContextAsBlog(node, contextStr)
+	// 检查上下文是否超长，使用统一的上下文保护
+	contextStr = p.ensureContextFitsLLM(ctx, node, contextStr, fmt.Sprintf("规划节点'%s'的上下文", node.Title))
+	if len(contextStr) <= MaxContextLength {
+		// 无需重新构建 prompt
+	} else {
+		// ensureContextFitsLLM 已压缩但仍超过旧阈值，重新构建 prompt
 		prompt = BuildNodePlanningPrompt(
 			p.account,
 			node.Title,
@@ -217,28 +226,25 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 	log.MessageF(log.ModuleAgent, "[执行诊断] 节点: %s, 上下文长度: %d 字符, 提示词长度: %d 字符, 工具: %s",
 		node.Title, len(contextStr), len(prompt), toolsInfo)
 
-	// 检查上下文是否超长，超长则保存为博客
-	if len(contextStr) > MaxContextLength {
-		log.WarnF(log.ModuleAgent, "[上下文超长] 节点: '%s', 长度: %d, 阈值: %d, 将保存为博客", node.Title, len(contextStr), MaxContextLength)
-		contextStr = p.truncateContextAsBlog(node, contextStr)
-		prompt = BuildNodeExecutionPrompt(
-			p.account,
-			node.Title,
-			node.Description,
-			node.Goal,
-			contextStr,
-		)
-		log.MessageF(log.ModuleAgent, "[上下文压缩] 节点: %s, 新上下文长度: %d 字符", node.Title, len(contextStr))
-	}
+	// 检查上下文是否超长，使用统一的上下文保护
+	contextStr = p.ensureContextFitsLLM(ctx, node, contextStr, fmt.Sprintf("执行节点'%s'的上下文", node.Title))
+	// 如果上下文被压缩，重新构建 prompt
+	prompt = BuildNodeExecutionPrompt(
+		p.account,
+		node.Title,
+		node.Description,
+		node.Goal,
+		contextStr,
+	)
 
-	// 阶段2: 调用 LLM 执行（仅使用选中的工具）
+	// 阶段2: 调用 LLM 执行（仅使用选中的工具，捕获工具调用记录）
 	startTime := time.Now()
-	response, err := p.callExecutionLLMWithTools(ctx, prompt, selectedTools)
+	response, capturedTools, err := p.callExecutionLLMWithToolsAndCapture(ctx, prompt, selectedTools)
 	duration := time.Since(startTime).Milliseconds()
 
-	// 记录 LLM 交互历史
+	// 记录 LLM 交互历史（包含工具调用记录）
 	if node != nil {
-		node.AddLLMInteraction("execution", prompt, response, 0, duration)
+		node.AddLLMInteractionWithTools("execution", prompt, response, capturedTools, 0, duration)
 	}
 
 	if err != nil {
@@ -247,6 +253,61 @@ func (p *TaskPlanner) ExecuteNode(ctx context.Context, node *TaskNode) (*TaskRes
 	}
 
 	// 创建结果
+	result := NewTaskResult(response, p.summarizeResponse(response))
+	return result, nil
+}
+
+// ExecuteNodeWithRetry 执行任务节点（重试模式，包含之前执行的历史摘要）
+func (p *TaskPlanner) ExecuteNodeWithRetry(ctx context.Context, node *TaskNode, retryHistory string) (*TaskResult, error) {
+	log.MessageF(log.ModuleAgent, "Executing node with retry: %s (retry #%d)", node.Title, node.RetryCount)
+
+	// 阶段1: 选择工具
+	selectedTools, err := p.SelectToolsForTask(ctx, node.Description)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "Tool selection failed, using all tools: %v", err)
+		selectedTools = nil
+	}
+
+	// 构建上下文
+	contextStr := node.Context.BuildLLMContext()
+
+	// 使用统一的上下文保护（对 context + retryHistory 整体校验）
+	contextStr = p.ensureContextFitsLLM(ctx, node, contextStr, fmt.Sprintf("重试节点'%s'的上下文", node.Title))
+	retryHistory = p.ensureContextFitsLLM(ctx, node, retryHistory, fmt.Sprintf("重试节点'%s'的执行历史", node.Title))
+
+	// 使用重试专用提示词模板
+	prompt := BuildNodeExecutionRetryPrompt(
+		p.account,
+		node.Title,
+		node.Description,
+		node.Goal,
+		contextStr,
+		retryHistory,
+	)
+
+	// 诊断日志
+	toolsInfo := "全部"
+	if selectedTools != nil {
+		toolsInfo = fmt.Sprintf("%d个", len(selectedTools))
+	}
+	log.MessageF(log.ModuleAgent, "[重试执行诊断] 节点: %s, 重试次数: %d, 上下文长度: %d, 历史长度: %d, 提示词长度: %d, 工具: %s",
+		node.Title, node.RetryCount, len(contextStr), len(retryHistory), len(prompt), toolsInfo)
+
+	// 调用 LLM 执行（带工具调用捕获）
+	startTime := time.Now()
+	response, capturedTools, err := p.callExecutionLLMWithToolsAndCapture(ctx, prompt, selectedTools)
+	duration := time.Since(startTime).Milliseconds()
+
+	// 记录 LLM 交互历史（包含工具调用记录）
+	if node != nil {
+		node.AddLLMInteractionWithTools("execution", prompt, response, capturedTools, 0, duration)
+	}
+
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "[重试执行失败] 节点: '%s', 重试次数: %d, 错误: %v", node.Title, node.RetryCount, err)
+		return NewTaskResultError(fmt.Sprintf("节点 '%s' 重试执行失败: %v", node.Title, err)), err
+	}
+
 	result := NewTaskResult(response, p.summarizeResponse(response))
 	return result, nil
 }
@@ -388,6 +449,29 @@ func (p *TaskPlanner) callExecutionLLMWithTools(ctx context.Context, prompt stri
 	return llm.SendSyncLLMRequestWithSelectedTools(ctx, messages, p.account, selectedTools)
 }
 
+// callExecutionLLMWithToolsAndCapture 调用 LLM 执行任务并捕获工具调用记录
+func (p *TaskPlanner) callExecutionLLMWithToolsAndCapture(ctx context.Context, prompt string, selectedTools []string) (string, []ToolCallInfo, error) {
+	log.DebugF(log.ModuleAgent, "Execution LLM call with %d selected tools (with capture)", len(selectedTools))
+
+	systemPrompt := config.SafeSprintf(config.GetPrompt(p.account, "planner_execution_tools_system"), p.account, p.account)
+
+	messages := []llm.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: prompt},
+	}
+
+	var capturedTools []ToolCallInfo
+	callback := func(evt llm.ToolCallEvent) {
+		capturedTools = append(capturedTools, ToolCallInfo{
+			Name:    evt.ToolName,
+			Success: true, // 进度回调中的工具调用都是成功的（失败会直接导致任务失败）
+		})
+	}
+
+	response, err := llm.SendSyncLLMRequestWithSelectedToolsAndCallback(ctx, messages, p.account, selectedTools, callback)
+	return response, capturedTools, err
+}
+
 // ============================================================================
 // 旧版兼容接口（保留向后兼容）
 // ============================================================================
@@ -410,6 +494,50 @@ func (p *TaskPlanner) getAvailableToolsDescription() string {
 			tool.Function.Name, tool.Function.Description))
 	}
 	return strings.Join(descriptions, "\n")
+}
+
+// ensureContextFitsLLM 确保内容不超过 LLM 上下文安全阈值
+// 如果超过 80%，调用 LLM 压缩摘要；压缩失败则 fallback 到 truncateContextAsBlog
+func (p *TaskPlanner) ensureContextFitsLLM(ctx context.Context, node *TaskNode, content string, contentLabel string) string {
+	if len(content) <= LLMContextSafeLimit {
+		return content
+	}
+
+	log.WarnF(log.ModuleAgent, "[上下文压缩] %s, 原长度: %d 字符, 阈值: %d", contentLabel, len(content), LLMContextSafeLimit)
+
+	// 尝试 LLM 压缩
+	compressPrompt := fmt.Sprintf("请将以下内容压缩为关键信息摘要，保留所有重要的工具调用结果、数据和结论，去除冗余描述。\n\n%s", content)
+	messages := []llm.Message{
+		{Role: "system", Content: "你是一个信息压缩专家，擅长提取文本中的关键信息。"},
+		{Role: "user", Content: compressPrompt},
+	}
+
+	compressed, err := llm.SendSyncLLMRequestNoTools(ctx, messages, p.account)
+	if err == nil && len(compressed) > 0 && len(compressed) < len(content) {
+		log.MessageF(log.ModuleAgent, "[上下文压缩] %s, LLM压缩成功: %d → %d 字符", contentLabel, len(content), len(compressed))
+		return compressed
+	}
+
+	// LLM 压缩失败，fallback 到 truncateContextAsBlog
+	log.WarnF(log.ModuleAgent, "[上下文压缩] %s, LLM压缩失败(err=%v), fallback到博客保存", contentLabel, err)
+	return p.truncateContextAsBlog(node, content)
+}
+
+// validatePromptLength 校验装配后的完整 prompt 长度
+// 如果超长则对 userPrompt 进行压缩
+func (p *TaskPlanner) validatePromptLength(ctx context.Context, node *TaskNode, systemPrompt, userPrompt string) (string, string) {
+	totalLen := len(systemPrompt) + len(userPrompt)
+	if totalLen <= LLMContextSafeLimit {
+		return systemPrompt, userPrompt
+	}
+
+	log.WarnF(log.ModuleAgent, "[Prompt超长] 节点: '%s', 总长度: %d (system: %d, user: %d), 阈值: %d",
+		node.Title, totalLen, len(systemPrompt), len(userPrompt), LLMContextSafeLimit)
+
+	// 压缩 userPrompt（systemPrompt 通常较短，保持不变）
+	userPrompt = p.ensureContextFitsLLM(ctx, node, userPrompt, fmt.Sprintf("节点'%s'的userPrompt", node.Title))
+
+	return systemPrompt, userPrompt
 }
 
 // truncateContextAsBlog 将超长上下文保存为博客，返回简短摘要+链接
