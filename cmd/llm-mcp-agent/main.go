@@ -36,6 +36,9 @@ func main() {
 	// 启动后台工具目录刷新
 	bridge.StartRefreshLoop()
 
+	// 启动微信对话过期清理
+	bridge.StartWechatCleanupLoop()
+
 	// 优雅退出
 	go func() {
 		sigCh := make(chan os.Signal, 1)

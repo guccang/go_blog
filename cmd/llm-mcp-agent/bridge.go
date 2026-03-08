@@ -31,6 +31,9 @@ type Bridge struct {
 	// 请求-响应关联
 	pending map[string]chan *uap.ToolResultPayload // request_id → result channel
 	pendMu  sync.Mutex
+
+	// 微信对话上下文管理
+	wechatConvMgr *WechatConversationManager
 }
 
 // NewBridge 创建 Bridge
@@ -40,11 +43,26 @@ func NewBridge(cfg *Config) *Bridge {
 	client.Tools = nil // llm-mcp-agent 不对外注册工具
 	client.Capacity = 10
 
+	// 初始化微信对话管理器
+	timeout := time.Duration(cfg.WechatSessionTimeoutMin) * time.Minute
+	if timeout <= 0 {
+		timeout = 30 * time.Minute
+	}
+	maxMessages := cfg.WechatMaxMessages
+	if maxMessages <= 0 {
+		maxMessages = 40
+	}
+	maxTurns := cfg.WechatMaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 15
+	}
+
 	b := &Bridge{
-		cfg:         cfg,
-		client:      client,
-		toolCatalog: make(map[string]string),
-		pending:     make(map[string]chan *uap.ToolResultPayload),
+		cfg:           cfg,
+		client:        client,
+		toolCatalog:   make(map[string]string),
+		pending:       make(map[string]chan *uap.ToolResultPayload),
+		wechatConvMgr: NewWechatConversationManager(timeout, maxMessages, maxTurns),
 	}
 
 	client.OnMessage = b.handleMessage
