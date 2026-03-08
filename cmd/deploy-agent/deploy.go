@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"os"
@@ -126,6 +127,79 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	return nil
 }
 
+// ========================= 二进制 MD5 对比 =========================
+
+// binaryName 根据 target 平台返回二进制文件名
+func (d *Deployer) binaryName(t *Target) string {
+	name := d.proj.Name
+	if t.Platform == "win" {
+		name += ".exe"
+	}
+	return name
+}
+
+// md5File 计算本地文件 MD5（返回十六进制字符串，失败返回空串）
+func md5File(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// md5Remote 通过 SSH 计算远程文件 MD5（失败返回空串）
+func md5Remote(client *ssh.Client, remotePath string) string {
+	session, err := client.NewSession()
+	if err != nil {
+		return ""
+	}
+	defer session.Close()
+	var buf bytes.Buffer
+	session.Stdout = &buf
+	// md5sum 输出格式: "hash  filename\n"
+	if session.Run(fmt.Sprintf("md5sum %s 2>/dev/null", remotePath)) != nil {
+		return ""
+	}
+	parts := strings.Fields(buf.String())
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
+}
+
+// shortMD5 截取 MD5 前16字符用于显示
+func shortMD5(hash string) string {
+	if len(hash) > 16 {
+		return hash[:16]
+	}
+	return hash
+}
+
+// logMD5Diff 对比并输出二进制变更信息
+func (d *Deployer) logMD5Diff(before, after string) {
+	if before == "" && after == "" {
+		return
+	}
+	if before == "" && after != "" {
+		d.logf("info", "🔖 二进制已部署: %s\n", shortMD5(after))
+		return
+	}
+	if after == "" {
+		d.logf("info", "⚠ 无法获取部署后二进制信息\n")
+		return
+	}
+	if before != after {
+		d.logf("info", "🔖 二进制已更新: %s → %s\n", shortMD5(before), shortMD5(after))
+	} else {
+		d.logf("info", "⚠ 二进制未变化: %s — 解压或覆盖可能失败\n", shortMD5(after))
+	}
+}
+
 // deployRemote 远程 SSH 部署（原有逻辑）
 func (d *Deployer) deployRemote(t *Target, totalSteps int) error {
 	label := t.Host
@@ -141,6 +215,10 @@ func (d *Deployer) deployRemote(t *Target, totalSteps int) error {
 		return fmt.Errorf("连接 %s 失败: %v", label, err)
 	}
 	defer client.Close()
+
+	// 读取部署前二进制 MD5
+	binaryPath := t.RemoteDir + "/" + d.binaryName(t)
+	beforeMD5 := md5Remote(client, binaryPath)
 
 	d.logf("info", "[STEP 2/%d] 上传到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
 	if err := d.upload(client, t); err != nil {
@@ -165,6 +243,10 @@ func (d *Deployer) deployRemote(t *Target, totalSteps int) error {
 		d.logf("info", "[STEP 4/%d] 无发布脚本，跳过\n", totalSteps)
 	}
 
+	// 读取部署后二进制 MD5 并对比
+	afterMD5 := md5Remote(client, binaryPath)
+	d.logMD5Diff(beforeMD5, afterMD5)
+
 	d.logf("info", "[OK] %s 部署成功\n", label)
 	return nil
 }
@@ -178,6 +260,10 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 
 	targetDir := t.RemoteDir
 	d.logf("info", "[STEP 2/%d] 本机部署到 %s...\n", totalSteps, targetDir)
+
+	// 读取部署前二进制 MD5
+	binaryPath := filepath.Join(targetDir, d.binaryName(t))
+	beforeMD5 := md5File(binaryPath)
 
 	// 确保目标目录存在
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -218,6 +304,10 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 	} else {
 		d.logf("info", "[STEP 4/%d] 无发布脚本，跳过\n", totalSteps)
 	}
+
+	// 读取部署后二进制 MD5 并对比
+	afterMD5 := md5File(binaryPath)
+	d.logMD5Diff(beforeMD5, afterMD5)
 
 	d.logf("info", "[OK] %s 部署成功\n", label)
 	return nil
