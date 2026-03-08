@@ -6,7 +6,7 @@ toolchain go1.24.10
 
 require uap v0.0.0
 
-replace uap => ../blog-agent/pkgs/uap
+replace uap => ../common/uap
 
 require (
 	github.com/google/uuid v1.6.0 // indirect

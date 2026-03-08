@@ -9,7 +9,7 @@ require (
 
 replace config => ../config
 
-replace mylog => ../mylog
+replace mylog => ../../../common/mylog
 
 replace persistence => ../persistence
 

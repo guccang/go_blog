@@ -9,4 +9,4 @@ replace todolist => ../todolist
 replace blog => ../blog
 replace module => ../module
 replace auth => ../auth
-replace mylog => ../mylog
+replace mylog => ../../../common/mylog

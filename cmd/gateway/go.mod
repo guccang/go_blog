@@ -2,7 +2,7 @@ module gateway
 
 go 1.24.0
 
-replace uap => ../blog-agent/pkgs/uap
+replace uap => ../common/uap
 
 require uap v0.0.0
 

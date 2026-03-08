@@ -3,7 +3,7 @@ module account
 go 1.21
 
 replace config => ../config
-replace mylog => ../mylog
+replace mylog => ../../../common/mylog
 replace control => ../control
 replace module => ../module
 

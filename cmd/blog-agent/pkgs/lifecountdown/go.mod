@@ -8,4 +8,4 @@ require (
 )
 
 replace module => ../module
-replace mylog => ../mylog 
+replace mylog => ../../../common/mylog 

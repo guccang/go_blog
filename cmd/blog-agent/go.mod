@@ -14,7 +14,7 @@ replace view => ./pkgs/view
 
 replace http => ./pkgs/http
 
-replace mylog => ./pkgs/mylog
+replace mylog => ../common/mylog
 
 replace config => ./pkgs/config
 
@@ -84,7 +84,7 @@ replace wechat => ./pkgs/wechat
 
 replace codegen => ./pkgs/codegen
 
-replace uap => ./pkgs/uap
+replace uap => ../common/uap
 
 require (
 	agent v0.0.0

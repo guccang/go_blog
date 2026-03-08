@@ -2,7 +2,7 @@ module tools
 
 go 1.21
 
-replace mylog => ../mylog
+replace mylog => ../../../common/mylog
 replace view => ../view
 
 require (

@@ -36,7 +36,7 @@ replace exercise => ../exercise
 
 replace module => ../module
 
-replace mylog => ../mylog
+replace mylog => ../../../common/mylog
 
 replace todolist => ../todolist
 
