@@ -239,6 +239,7 @@ func (o *Orchestrator) Execute(
 
 				switch decision.Action {
 				case "retry":
+					sendEvent("retry_detail", fmt.Sprintf("[%s] 重试原因: %s\n原始错误: %s", subtask.ID, decision.Reason, result.Error))
 					sendEvent("subtask_start", fmt.Sprintf("[%d/%d] 重试: %s", taskIdx+1, len(plan.SubTasks), subtask.Title))
 					result = o.executeSubTask(taskID, *subtask, session, siblingContext, tools, sendEvent)
 
@@ -246,6 +247,7 @@ func (o *Orchestrator) Execute(
 					// 用修改后的描述重试
 					modifiedSubtask := *subtask
 					modifiedSubtask.Description = decision.Modifications
+					sendEvent("modify_detail", fmt.Sprintf("[%s] 修改后重试\n原描述: %s\n新描述: %s", subtask.ID, truncate(subtask.Description, 200), truncate(decision.Modifications, 200)))
 					sendEvent("subtask_start", fmt.Sprintf("[%d/%d] 修改后重试: %s", taskIdx+1, len(plan.SubTasks), subtask.Title))
 					result = o.executeSubTask(taskID, modifiedSubtask, session, siblingContext, tools, sendEvent)
 
@@ -275,6 +277,9 @@ func (o *Orchestrator) Execute(
 			}
 
 			allResults = append(allResults, result)
+
+			// 整体进度计数
+			sendEvent("progress", fmt.Sprintf("[%d/%d 子任务已处理]", len(allResults), len(plan.SubTasks)))
 		}
 	}
 
@@ -361,6 +366,7 @@ func (o *Orchestrator) executeSubTask(
 		// 超时检查
 		if time.Now().After(deadline) {
 			log.Printf("[Orchestrator] ✗ 子任务超时 id=%s duration=%v", subtask.ID, time.Since(subtaskStart))
+			sendEvent("subtask_timeout", fmt.Sprintf("[%s] %s — 执行超时 (%s)", subtask.ID, subtask.Title, fmtDuration(time.Since(subtaskStart))))
 			session.SetStatus("failed")
 			session.SetError("subtask timeout")
 			o.store.Save(session)
@@ -381,6 +387,7 @@ func (o *Orchestrator) executeSubTask(
 
 		if err != nil {
 			log.Printf("[Orchestrator] ✗ 子任务 %s LLM失败 duration=%v error=%v", subtask.ID, llmDuration, err)
+			sendEvent("subtask_llm_error", fmt.Sprintf("[%s] %s — LLM调用失败: %v", subtask.ID, subtask.Title, err))
 			session.SetStatus("failed")
 			session.SetError(err.Error())
 			o.store.Save(session)
@@ -410,10 +417,10 @@ func (o *Orchestrator) executeSubTask(
 		messages = append(messages, assistantMsg)
 
 		// 执行工具调用
-		for _, tc := range toolCalls {
+		for tcIdx, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
-			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s\n参数: %s", subtask.ID, originalName, tc.Function.Arguments))
+			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
 				subtask.ID, originalName, truncate(tc.Function.Arguments, 200))
 
@@ -605,6 +612,7 @@ func (o *Orchestrator) Synthesize(
 	}
 
 	log.Printf("[Orchestrator] ✓ 汇总完成 duration=%v summaryLen=%d", time.Since(synthStart), len(resp))
+	sendEvent("synthesis_done", fmt.Sprintf("结果汇总完成，耗时 %s", fmtDuration(time.Since(synthStart))))
 	return resp
 }
 

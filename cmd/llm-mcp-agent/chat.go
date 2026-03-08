@@ -11,6 +11,17 @@ import (
 	"uap"
 )
 
+// fmtDuration 格式化耗时为易读字符串
+func fmtDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return fmt.Sprintf("%.1fmin", d.Minutes())
+}
+
 // ========================= WechatSink =========================
 
 // WechatSink 微信实时进度推送 + 结果缓冲
@@ -30,7 +41,12 @@ func isImportantEvent(event string) bool {
 	case "plan_done", "plan_detail", "plan_review_start", "plan_review_result",
 		"subtask_start", "subtask_done",
 		"subtask_fail", "subtask_skip", "subtask_async", "subtask_defer",
-		"tool_result", "failure_decision":
+		"tool_result", "failure_decision",
+		"task_complete", "task_forced_summary",
+		"plan_timing", "review_timing",
+		"synthesis_done",
+		"subtask_timeout", "subtask_llm_error",
+		"progress", "retry_detail", "modify_detail":
 		return true
 	}
 	return false
@@ -80,6 +96,26 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "⏳ " + text
 	case "subtask_defer":
 		msg = "⏸ " + text
+	case "task_complete":
+		msg = "✅ " + text
+	case "task_forced_summary":
+		msg = "⚠ " + text
+	case "plan_timing":
+		msg = "⏱ " + text
+	case "review_timing":
+		msg = "⏱ " + text
+	case "synthesis_done":
+		msg = "📝 " + text
+	case "subtask_timeout":
+		msg = "⏰ " + text
+	case "subtask_llm_error":
+		msg = "💥 " + text
+	case "progress":
+		msg = "📊 " + text
+	case "retry_detail":
+		msg = "🔄 " + text
+	case "modify_detail":
+		msg = "✏ " + text
 	default:
 		return
 	}
@@ -256,11 +292,20 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	conv.processing.Lock()
 	defer conv.processing.Unlock()
 
-	// 3. 即时反馈
+	// 3. 即时反馈：区分新/续会话
+	var feedbackMsg string
+	if isNew {
+		feedbackMsg = "⏳ 收到消息，开始新对话..."
+	} else {
+		conv.mu.Lock()
+		turnNum := conv.TurnCount + 1
+		conv.mu.Unlock()
+		feedbackMsg = fmt.Sprintf("⏳ 收到消息，继续对话（第%d轮）...", turnNum)
+	}
 	b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 		Channel: "wechat",
 		To:      wechatUser,
-		Content: "⏳ 收到消息，正在处理...",
+		Content: feedbackMsg,
 	})
 
 	// 4. 构建/追加消息
@@ -309,7 +354,12 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		Sink:     sink,
 	}
 
+	taskStart := time.Now()
 	result, _ := b.processTask(ctx)
+	taskDuration := time.Since(taskStart)
+
+	// 发送完成耗时事件
+	sink.OnEvent("task_complete", fmt.Sprintf("处理完成，耗时 %s", fmtDuration(taskDuration)))
 
 	if result == "" {
 		result = "抱歉，未能生成回复。"

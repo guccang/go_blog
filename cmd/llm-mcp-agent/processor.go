@@ -222,6 +222,18 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	for i := 0; i < maxIter; i++ {
 		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
 
+		// 接近迭代上限：强制 LLM 收敛
+		if i == maxIter-1 {
+			// 最后一轮：移除所有工具，强制 LLM 用文本总结
+			tools = nil
+			messages = append(messages, Message{
+				Role:    "system",
+				Content: "你已经进行了多轮工具调用。请立即给出最终回复，总结目前已完成的工作和结果。不要再调用任何工具。",
+			})
+			ctx.Sink.OnEvent("task_forced_summary", fmt.Sprintf("已执行 %d 轮工具调用，正在强制总结结果...", i))
+			log.Printf("[processTask] ⚠ 达到迭代上限，移除工具强制总结")
+		}
+
 		// 发射 thinking 事件
 		if i == 0 {
 			ctx.Sink.OnEvent("thinking", "正在思考...")
@@ -260,6 +272,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] ← LLM 响应 duration=%v textLen=%d toolCalls=%d tools=%v",
 			llmDuration, len(text), len(toolCalls), tcNames)
 
+		// LLM 响应反馈
+		if len(toolCalls) > 0 {
+			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，需要调用 %d 个工具...", fmtDuration(llmDuration), len(toolCalls)))
+		} else {
+			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，正在整理结果...", fmtDuration(llmDuration)))
+		}
+
 		// 记录 assistant 消息到 session
 		assistantMsg := Message{Role: "assistant", Content: text, ToolCalls: toolCalls}
 		rootSession.AppendMessage(assistantMsg)
@@ -269,6 +288,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			log.Printf("[processTask] ✓ 对话结束（无工具调用） resultLen=%d", len(text))
 			finalText = text
 			rootSession.SetResult(text)
+			ctx.Sink.OnEvent("task_complete", fmt.Sprintf("处理完成，耗时 %s", fmtDuration(time.Since(taskStart))))
 			break
 		}
 
@@ -335,10 +355,10 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			ToolCalls: toolCalls,
 		})
 
-		for _, tc := range toolCalls {
+		for tcIdx, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
-			ctx.Sink.OnEvent("tool_call", fmt.Sprintf("调用 %s\n参数: %s", originalName, tc.Function.Arguments))
+			ctx.Sink.OnEvent("tool_call", fmt.Sprintf("调用 %s (%d/%d)\n参数: %s", originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
 			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 200))
 
 			start := time.Now()
@@ -376,12 +396,6 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			rootSession.AppendMessage(toolMsg)
 			messages = append(messages, toolMsg)
-		}
-
-		// 最后一次迭代
-		if i == maxIter-1 {
-			finalText = "抱歉，处理过程过于复杂，请尝试简化您的请求。"
-			ctx.Sink.OnChunk("\n\n抱歉，处理过程过于复杂，请尝试简化您的请求。")
 		}
 	}
 
@@ -468,6 +482,9 @@ func (b *Bridge) handleComplexTask(
 	rootSession.Plan = plan
 	store.Save(rootSession)
 
+	// 发送规划耗时
+	sendEvent("plan_timing", fmt.Sprintf("任务规划完成，耗时 %s，拆解为 %d 个子任务", fmtDuration(planDuration), len(plan.SubTasks)))
+
 	// 发送计划摘要
 	var planSummary strings.Builder
 	planSummary.WriteString(fmt.Sprintf("拆解为 %d 个子任务: ", len(plan.SubTasks)))
@@ -504,7 +521,9 @@ func (b *Bridge) handleComplexTask(
 
 	// ② LLM审查计划
 	sendEvent("plan_review_start", "正在审查计划参数...")
+	reviewStart := time.Now()
 	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account)
+	reviewDuration := time.Since(reviewStart)
 	if err != nil {
 		log.Printf("[ComplexTask] ⚠ 计划审查失败 error=%v，继续执行原计划", err)
 		sendEvent("plan_review_result", fmt.Sprintf("计划审查跳过: %v", err))
@@ -534,6 +553,7 @@ func (b *Bridge) handleComplexTask(
 		log.Printf("[ComplexTask] 计划审查通过: %s", reason)
 		sendEvent("plan_review_result", fmt.Sprintf("计划审查通过: %s", reason))
 	}
+	sendEvent("review_timing", fmt.Sprintf("审查完成，耗时 %s", fmtDuration(reviewDuration)))
 
 	// ③ 为每个子任务创建 ChildSession
 	childSessions := make(map[string]*TaskSession)
@@ -573,6 +593,10 @@ func (b *Bridge) handleComplexTask(
 	}
 	log.Printf("[ComplexTask] ✓ 编排执行完成 duration=%v total=%d done=%d failed=%d skipped=%d async=%d deferred=%d",
 		execDuration, len(results), doneCount, failCount, skipCount, asyncCount, deferCount)
+
+	// 发送编排执行完成统计
+	sendEvent("progress", fmt.Sprintf("编排执行完成，耗时 %s — 成功:%d 失败:%d 跳过:%d",
+		fmtDuration(execDuration), doneCount, failCount, skipCount))
 
 	// 检测异步子任务 → 跳过 Synthesize，返回即时确认
 	if asyncCount > 0 {
