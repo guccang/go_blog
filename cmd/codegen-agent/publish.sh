@@ -1,11 +1,21 @@
 #!/bin/bash
 # codegen-agent 发布脚本
-# 在远程服务器上执行：kill旧进程 → 启动新进程
+# 在远程服务器上执行：kill旧进程（含子进程树） → 启动新进程
 
 cd "$(dirname "$0")"
 
 # 停止旧进程
 echo "停止 codegen-agent..."
+
+# 优先通过 PID 文件杀进程树（含 claude 子进程）
+if [ -f codegen-agent.pid ]; then
+    OLD_PID=$(cat codegen-agent.pid)
+    echo "通过 PID 文件终止进程组: PID=$OLD_PID"
+    # 杀掉进程组（负号表示进程组）
+    kill -9 -$OLD_PID 2>/dev/null || kill -9 $OLD_PID 2>/dev/null || true
+    rm -f codegen-agent.pid
+fi
+# 兜底：按名称杀残留
 pkill -f '\./codegen-agent' 2>/dev/null || true
 sleep 1
 

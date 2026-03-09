@@ -41,3 +41,7 @@ cmd/deploy-agent/deploy-agent
 cmd/deploy-agent/deploy-agent-test
 cmd/deploy-agent/E:\githubdesktop\go_blog\cmd\llm-mcp-agent/llm-mcp-agent
 *.json
+/cmd/welcome-page
+cmd/logs.txt
+cmd/logs.txt
+cmd/deploy-agent/settings/projects/calculator.conf
