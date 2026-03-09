@@ -13,9 +13,9 @@ import (
 
 // EventSink 抽象不同来源的输出差异
 type EventSink interface {
-	OnChunk(text string)          // LLM 文本片段
-	OnEvent(event, text string)   // 结构化事件 (tool_info, plan_start, plan_done, subtask_*, etc.)
-	Streaming() bool              // 是否使用流式 LLM 调用
+	OnChunk(text string)        // LLM 文本片段
+	OnEvent(event, text string) // 结构化事件 (tool_info, plan_start, plan_done, subtask_*, etc.)
+	Streaming() bool            // 是否使用流式 LLM 调用
 }
 
 // StreamingSink Web 前端流式输出
@@ -24,7 +24,7 @@ type StreamingSink struct {
 	taskID string
 }
 
-func (s *StreamingSink) OnChunk(text string)       { s.bridge.sendTaskEvent(s.taskID, "chunk", text) }
+func (s *StreamingSink) OnChunk(text string)        { s.bridge.sendTaskEvent(s.taskID, "chunk", text) }
 func (s *StreamingSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.taskID, event, text) }
 func (s *StreamingSink) Streaming() bool            { return true }
 
@@ -33,7 +33,7 @@ type BufferSink struct {
 	buf strings.Builder
 }
 
-func (s *BufferSink) OnChunk(text string)       { s.buf.WriteString(text) }
+func (s *BufferSink) OnChunk(text string)        { s.buf.WriteString(text) }
 func (s *BufferSink) OnEvent(event, text string) {}
 func (s *BufferSink) Streaming() bool            { return false }
 func (s *BufferSink) Result() string             { return s.buf.String() }
@@ -45,7 +45,7 @@ type LLMRequestSink struct {
 	taskID string
 }
 
-func (s *LLMRequestSink) OnChunk(text string)       { s.buf.WriteString(text) }
+func (s *LLMRequestSink) OnChunk(text string)        { s.buf.WriteString(text) }
 func (s *LLMRequestSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.taskID, event, text) }
 func (s *LLMRequestSink) Streaming() bool            { return false }
 func (s *LLMRequestSink) Result() string             { return s.buf.String() }
@@ -191,7 +191,28 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	if !ctx.NoTools && len(tools) > 15 && query != "" {
 		beforeCount := len(tools)
+		// 路由前保存 ExecuteCode 工具（确保不被过滤掉）
+		var executeCodeTool *LLMTool
+		for i, t := range tools {
+			if t.Function.Name == "ExecuteCode" {
+				executeCodeTool = &tools[i]
+				break
+			}
+		}
 		tools = b.routeTools(query, tools)
+		// 确保 ExecuteCode 始终保留
+		if executeCodeTool != nil {
+			found := false
+			for _, t := range tools {
+				if t.Function.Name == "ExecuteCode" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				tools = append(tools, *executeCodeTool)
+			}
+		}
 		log.Printf("[processTask] 工具路由: %d → %d", beforeCount, len(tools))
 	}
 
@@ -358,23 +379,55 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		for tcIdx, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
-			ctx.Sink.OnEvent("tool_call", fmt.Sprintf("调用 %s (%d/%d)\n参数: %s", originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
+			// ExecuteCode 特殊展示：提取 description + code
+			toolCallEvent := fmt.Sprintf("调用 %s (%d/%d)\n参数: %s", originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments)
+			if originalName == "ExecuteCode" {
+				toolCallEvent = formatExecuteCodeEvent(tc.Function.Arguments, tcIdx+1, len(toolCalls))
+			}
+			ctx.Sink.OnEvent("tool_call", toolCallEvent)
 			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 200))
 
 			start := time.Now()
-			result, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			tcResult, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
 			duration := time.Since(start)
+
+			var result string
+			var toAgent, fromAgent string
+			if tcResult != nil {
+				result = tcResult.Result
+				toAgent = tcResult.AgentID
+				fromAgent = tcResult.FromID
+			}
+
+			// ExecuteCode 特殊处理：解析结构化 JSON，提取 stdout 给 LLM，tool_calls 展示给用户
+			var execToolCallsSummary string
+			if originalName == "ExecuteCode" && result != "" {
+				stdout, summary := parseExecuteCodeResult(result)
+				if stdout != "" {
+					result = stdout // LLM 只看到 stdout
+				}
+				execToolCallsSummary = summary
+			}
 
 			success := true
 			if err != nil {
-				log.Printf("[processTask] ✗ 工具调用失败: %s duration=%v error=%v", originalName, duration, err)
+				log.Printf("[processTask] ✗ 工具调用失败: %s →agent=%s duration=%v error=%v", originalName, toAgent, duration, err)
 				result = fmt.Sprintf("工具调用失败: %v", err)
 				success = false
-				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("❌ %s 失败 (%.1fs): %v", originalName, duration.Seconds(), err))
+				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("❌ %s 失败 →%s (%.1fs): %v", originalName, toAgent, duration.Seconds(), err))
+			} else if originalName == "ExecuteCode" {
+				log.Printf("[processTask] ← ExecuteCode返回: →agent=%s duration=%v stdoutLen=%d",
+					toAgent, duration, len(result))
+				eventText := fmt.Sprintf("✅ ExecuteCode (%.1fs)", duration.Seconds())
+				if execToolCallsSummary != "" {
+					eventText += "\n" + execToolCallsSummary
+				}
+				eventText += fmt.Sprintf("\n输出: %s", truncate(result, 300))
+				ctx.Sink.OnEvent("tool_result", eventText)
 			} else {
-				log.Printf("[processTask] ← 工具返回: %s duration=%v resultLen=%d result=%s",
-					originalName, duration, len(result), truncate(result, 200))
-				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s 完成 (%.1fs)\n结果: %s", originalName, duration.Seconds(), truncate(result, 300)))
+				log.Printf("[processTask] ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
+					originalName, toAgent, fromAgent, duration, len(result), truncate(result, 200))
+				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s [%s→%s] (%.1fs)\n结果: %s", originalName, toAgent, fromAgent, duration.Seconds(), truncate(result, 300)))
 			}
 
 			// 记录工具调用到 session
@@ -647,12 +700,13 @@ func (b *Bridge) handleComplexTask(
 	return summary
 }
 
-// truncate 截断字符串用于日志显示
+// truncate 截断字符串用于日志显示（UTF-8 安全，按字符数截断）
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // buildAsyncAcknowledgment 构建异步任务即时确认消息
@@ -679,4 +733,82 @@ func buildAsyncAcknowledgment(results []SubTaskResult) string {
 		}
 	}
 	return sb.String()
+}
+
+// formatExecuteCodeEvent 格式化 ExecuteCode 工具调用的展示
+func formatExecuteCodeEvent(argsJSON string, idx, total int) string {
+	var args struct {
+		Code        string   `json:"code"`
+		Description string   `json:"description"`
+		ToolsHint   []string `json:"tools_hint"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return fmt.Sprintf("调用 ExecuteCode (%d/%d)\n参数: %s", idx, total, argsJSON)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🐍 ExecuteCode (%d/%d)", idx, total))
+	if args.Description != "" {
+		sb.WriteString(fmt.Sprintf("\n说明: %s", args.Description))
+	}
+	if len(args.ToolsHint) > 0 {
+		sb.WriteString(fmt.Sprintf("\n工具: %s", strings.Join(args.ToolsHint, ", ")))
+	}
+
+	// 限制代码显示长度，防止超出微信消息长度限制
+	const maxCodeDisplay = 190000 // 字符数（预留头部空间，微信限制约204800）
+	code := args.Code
+	codeRunes := []rune(code)
+	if len(codeRunes) > maxCodeDisplay {
+		code = string(codeRunes[:maxCodeDisplay]) + "\n# ... [代码已截断，共" + fmt.Sprintf("%d", len(codeRunes)) + "字符]"
+	}
+
+	sb.WriteString(fmt.Sprintf("\n```python\n%s\n```", code))
+	return sb.String()
+}
+
+// parseExecuteCodeResult 解析 execute-code-agent 返回的结构化 JSON
+// 返回 (stdout 给 LLM, tool_calls 摘要给用户展示)
+func parseExecuteCodeResult(resultJSON string) (string, string) {
+	var execResult struct {
+		Success    bool   `json:"success"`
+		Stdout     string `json:"stdout"`
+		Stderr     string `json:"stderr"`
+		DurationMs int64  `json:"duration_ms"`
+		ToolCalls  []struct {
+			Tool     string `json:"tool"`
+			AgentID  string `json:"agent_id"`
+			Success  bool   `json:"success"`
+			Duration int64  `json:"duration_ms"`
+			Error    string `json:"error"`
+		} `json:"tool_calls"`
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &execResult); err != nil {
+		// 不是结构化 JSON，原样返回
+		return resultJSON, ""
+	}
+
+	// 构建工具调用链摘要
+	var summary string
+	if len(execResult.ToolCalls) > 0 {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("📡 内部调用 %d 个工具:", len(execResult.ToolCalls)))
+		for _, tc := range execResult.ToolCalls {
+			status := "✅"
+			if !tc.Success {
+				status = "❌"
+			}
+			agent := tc.AgentID
+			if agent == "" {
+				agent = "?"
+			}
+			sb.WriteString(fmt.Sprintf("\n  %s %s →%s (%dms)", status, tc.Tool, agent, tc.Duration))
+			if tc.Error != "" {
+				sb.WriteString(fmt.Sprintf(" %s", truncate(tc.Error, 80)))
+			}
+		}
+		summary = sb.String()
+	}
+
+	return execResult.Stdout, summary
 }

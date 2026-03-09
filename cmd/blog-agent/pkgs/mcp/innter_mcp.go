@@ -248,7 +248,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentDiaryContent",
-				Description: "获取当天日记数据",
+				Description: "获取当天日记数据。返回str(markdown纯文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -262,7 +262,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTask",
-				Description: "获取当天todolist数据,返回json格式",
+				Description: "获取当天todolist数据。返回JSON(list,每项含id/content/done字段)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -276,7 +276,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByDate",
-				Description: "获取指定日期的todolist数据,返回json格式",
+				Description: "获取指定日期的todolist数据。返回JSON(list)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -291,7 +291,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetCurrentTaskByRageDate",
-				Description: "获取指定日期范围的todolist数据,返回json格式",
+				Description: "获取指定日期范围的todolist数据。返回JSON(dict,key为日期)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -307,7 +307,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllDiaryContent",
-				Description: "获取所有日记内容",
+				Description: "获取所有日记内容。返回str(纯文本,每篇以'日记_日期:'开头,不是JSON,不可调用.get())",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -321,7 +321,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetBlogByTitleMatch",
-				Description: "通过名称获取blog内容",
+				Description: "通过名称匹配获取blog内容。返回str(markdown纯文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -336,7 +336,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseCalories",
-				Description: "获取锻炼总卡路里,单位千卡",
+				Description: "获取锻炼总卡路里,单位千卡。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -350,7 +350,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseDistance",
-				Description: "获取锻炼总距离,单位公里",
+				Description: "获取锻炼总距离,单位公里。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -364,7 +364,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseTotalMinutes",
-				Description: "获取锻炼总时长,单位分钟",
+				Description: "获取锻炼总时长,单位分钟。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -378,7 +378,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllDiaryCount",
-				Description: "获取日记数量",
+				Description: "获取日记数量。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -392,7 +392,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllExerciseCount",
-				Description: "获取锻炼次数",
+				Description: "获取锻炼次数。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -406,7 +406,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogName",
-				Description: "获取所有blog名称,以空格分割",
+				Description: "获取所有blog名称,以空格分割。返回str",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -420,7 +420,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetBlogData",
-				Description: "通过名称获取blog内容",
+				Description: "通过名称获取blog内容。返回str(markdown纯文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -435,7 +435,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawGetBlogDataByDate",
-				Description: "根据日期获取blog内容,如2025-01-01的所有博客",
+				Description: "根据日期获取blog内容,如2025-01-01的所有博客。返回str(空格分隔的标题列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -450,7 +450,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllCommentData",
-				Description: "通过名称获取comment内容",
+				Description: "通过名称获取comment内容。返回str",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -465,7 +465,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogNameByDateRange",
-				Description: "通过日期范围获取blog内容,如2025-01-01到2025-02-01之间的博客",
+				Description: "通过日期范围获取blog内容,如2025-01-01到2025-02-01之间的博客。返回str(空格分隔的标题列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -481,7 +481,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogNameByDateRangeCount",
-				Description: "通过日期范围获取blog数量,如2025-01-01到2025-02-01之间的博客数量",
+				Description: "通过日期范围获取blog数量,如2025-01-01到2025-02-01之间的博客数量。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -497,7 +497,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAllBlogCount",
-				Description: "获取blog数量",
+				Description: "获取blog数量。返回str(数字)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -511,7 +511,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentDate",
-				Description: "获取当前日期",
+				Description: "获取当前日期。返回str(YYYY-MM-DD格式)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -525,7 +525,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCurrentTime",
-				Description: "获取当前时间",
+				Description: "获取当前时间。返回str",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -543,7 +543,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawBlogStatistics",
-				Description: "获取博客详细统计信息,包括总数、权限分布、时间统计等",
+				Description: "获取博客详细统计信息,包括总数、权限分布、时间统计等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -557,7 +557,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawAccessStatistics",
-				Description: "获取博客访问统计信息,包括总访问量、今日/周/月访问等",
+				Description: "获取博客访问统计信息,包括总访问量、今日/周/月访问等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -571,7 +571,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawTopAccessedBlogs",
-				Description: "获取热门博客列表(前10名),按访问量排序",
+				Description: "获取热门博客列表(前10名),按访问量排序。返回str(格式化列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -585,7 +585,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawRecentAccessedBlogs",
-				Description: "获取最近访问的博客列表,按访问时间排序",
+				Description: "获取最近访问的博客列表,按访问时间排序。返回str(格式化列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -599,7 +599,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawEditStatistics",
-				Description: "获取博客编辑统计信息,包括编辑次数、频率等",
+				Description: "获取博客编辑统计信息,包括编辑次数、频率等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -613,7 +613,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawTagStatistics",
-				Description: "获取标签统计信息,包括标签总数和热门标签排行",
+				Description: "获取标签统计信息,包括标签总数和热门标签排行。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -627,7 +627,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCommentStatistics",
-				Description: "获取评论统计信息,包括评论总数、活跃度等",
+				Description: "获取评论统计信息,包括评论总数、活跃度等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -641,7 +641,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawContentStatistics",
-				Description: "获取内容统计信息,包括字符数、文章长度分布等",
+				Description: "获取内容统计信息,包括字符数、文章长度分布等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -655,7 +655,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawCreateBlog",
-				Description: "创建新博客",
+				Description: "创建新博客。返回str(操作结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -676,7 +676,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawBlogsByAuthType",
-				Description: "按权限类型获取博客列表。权限类型:1=私有,2=公开,4=加密,8=协作,16=日记",
+				Description: "按权限类型获取博客列表。权限类型:1=私有,2=公开,4=加密,8=协作,16=日记。返回str(空格分隔标题)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -694,7 +694,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawBlogsByTag",
-				Description: "按标签获取博客列表",
+				Description: "按标签获取博客列表。返回str(空格分隔标题)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -709,7 +709,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawBlogMetadata",
-				Description: "获取指定博客的元数据信息(不包含内容),如创建时间、访问次数等",
+				Description: "获取指定博客的元数据信息(不包含内容),如创建时间、访问次数等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -724,7 +724,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawRecentActiveBlog",
-				Description: "获取近期活跃博客列表(近7天有访问或修改的博客)",
+				Description: "获取近期活跃博客列表(近7天有访问或修改的博客)。返回str(格式化列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -738,7 +738,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawMonthlyCreationTrend",
-				Description: "获取博客月度创建趋势统计,显示每月创建的博客数量",
+				Description: "获取博客月度创建趋势统计,显示每月创建的博客数量。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -752,7 +752,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawSearchBlogContent",
-				Description: "在博客标题和内容中搜索关键词,返回匹配的博客列表",
+				Description: "在博客标题和内容中搜索关键词,返回匹配的博客列表。返回str(格式化结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -768,7 +768,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawExerciseDetailedStats",
-				Description: "获取锻炼详细统计信息,包括总次数、时长、卡路里、类型分布等",
+				Description: "获取锻炼详细统计信息,包括总次数、时长、卡路里、类型分布等。返回str(格式化文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -782,7 +782,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.RawRecentExerciseRecords",
-				Description: "获取近期锻炼记录,可指定天数范围",
+				Description: "获取近期锻炼记录,可指定天数范围。返回str(格式化列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -798,44 +798,44 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		},
 
 		// =================================== TodoList 模块工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosByDate", Description: "获取指定日期的待办列表,返回JSON格式", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期格式为2026-01-01"}}, "required": []string{"account", "date"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosRange", Description: "获取日期范围内的待办列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddTodo", Description: "添加待办事项。urgency/importance: 1=最高 2=中等 3=最低", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "content": map[string]string{"type": "string", "description": "待办内容"}, "hours": map[string]interface{}{"type": "number", "description": "预计小时数"}, "minutes": map[string]interface{}{"type": "number", "description": "预计分钟数"}, "urgency": map[string]interface{}{"type": "number", "description": "紧急度1-3"}, "importance": map[string]interface{}{"type": "number", "description": "重要度1-3"}}, "required": []string{"account", "date", "content"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawToggleTodo", Description: "切换待办事项的完成状态", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteTodo", Description: "删除待办事项", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosByDate", Description: "获取指定日期的待办列表。返回JSON(list,每项含id/content/done等字段)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期格式为2026-01-01"}}, "required": []string{"account", "date"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetTodosRange", Description: "获取日期范围内的待办列表。返回JSON(dict,key为日期)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddTodo", Description: "添加待办事项。urgency/importance: 1=最高 2=中等 3=最低。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "content": map[string]string{"type": "string", "description": "待办内容"}, "hours": map[string]interface{}{"type": "number", "description": "预计小时数"}, "minutes": map[string]interface{}{"type": "number", "description": "预计分钟数"}, "urgency": map[string]interface{}{"type": "number", "description": "紧急度1-3"}, "importance": map[string]interface{}{"type": "number", "description": "重要度1-3"}}, "required": []string{"account", "date", "content"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawToggleTodo", Description: "切换待办事项的完成状态。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteTodo", Description: "删除待办事项。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "id": map[string]string{"type": "string", "description": "待办ID"}}, "required": []string{"account", "date", "id"}}}},
 
 		// =================================== Exercise 模块工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseByDate", Description: "获取指定日期的运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}}, "required": []string{"account", "date"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseRange", Description: "获取日期范围内的运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddExercise", Description: "添加运动记录", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "name": map[string]string{"type": "string", "description": "运动名称"}, "exerciseType": map[string]string{"type": "string", "description": "运动类型如跑步/游泳/力量训练"}, "duration": map[string]interface{}{"type": "number", "description": "时长(分钟)"}, "intensity": map[string]string{"type": "string", "description": "强度:low/medium/high"}, "calories": map[string]interface{}{"type": "number", "description": "卡路里"}, "notes": map[string]string{"type": "string", "description": "备注"}}, "required": []string{"account", "date", "name", "exerciseType", "duration"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseStats", Description: "获取运动统计数据,可指定天数", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "days": map[string]interface{}{"type": "number", "description": "统计天数,默认7天"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseByDate", Description: "获取指定日期的运动记录。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}}, "required": []string{"account", "date"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseRange", Description: "获取日期范围内的运动记录。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "startDate", "endDate"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddExercise", Description: "添加运动记录。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期"}, "name": map[string]string{"type": "string", "description": "运动名称"}, "exerciseType": map[string]string{"type": "string", "description": "运动类型如跑步/游泳/力量训练"}, "duration": map[string]interface{}{"type": "number", "description": "时长(分钟)"}, "intensity": map[string]string{"type": "string", "description": "强度:low/medium/high"}, "calories": map[string]interface{}{"type": "number", "description": "卡路里"}, "notes": map[string]string{"type": "string", "description": "备注"}}, "required": []string{"account", "date", "name", "exerciseType", "duration"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseStats", Description: "获取运动统计数据,可指定天数。返回str(格式化文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "days": map[string]interface{}{"type": "number", "description": "统计天数,默认7天"}}, "required": []string{"account"}}}},
 
 		// =================================== Reading 模块工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllBooks", Description: "获取所有书籍列表(含状态、作者、页数)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBooksByStatus", Description: "按状态筛选书籍。status: reading/completed/want-to-read/paused", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "状态:reading/completed/want-to-read/paused"}}, "required": []string{"account", "status"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetReadingStats", Description: "获取阅读统计信息(总数、各状态数量等)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateReadingProgress", Description: "更新阅读进度(当前页数和笔记)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}, "currentPage": map[string]interface{}{"type": "number", "description": "当前页数"}, "notes": map[string]string{"type": "string", "description": "阅读笔记"}}, "required": []string{"account", "bookID", "currentPage"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBookNotes", Description: "获取指定书籍的读书笔记", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}}, "required": []string{"account", "bookID"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddBook", Description: "添加新书籍到阅读列表", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "书名"}, "author": map[string]string{"type": "string", "description": "作者"}, "isbn": map[string]string{"type": "string", "description": "ISBN号"}, "publisher": map[string]string{"type": "string", "description": "出版社"}, "publishDate": map[string]string{"type": "string", "description": "出版日期"}, "coverUrl": map[string]string{"type": "string", "description": "封面URL"}, "description": map[string]string{"type": "string", "description": "书籍简介"}, "sourceUrl": map[string]string{"type": "string", "description": "来源URL"}, "totalPages": map[string]interface{}{"type": "number", "description": "总页数"}, "category": map[string]string{"type": "string", "description": "分类,多个用逗号分隔"}, "tags": map[string]string{"type": "string", "description": "标签,多个用逗号分隔"}}, "required": []string{"account", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllBooks", Description: "获取所有书籍列表(含状态、作者、页数)。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBooksByStatus", Description: "按状态筛选书籍。status: reading/completed/want-to-read/paused。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "状态:reading/completed/want-to-read/paused"}}, "required": []string{"account", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetReadingStats", Description: "获取阅读统计信息(总数、各状态数量等)。返回str(格式化文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateReadingProgress", Description: "更新阅读进度(当前页数和笔记)。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}, "currentPage": map[string]interface{}{"type": "number", "description": "当前页数"}, "notes": map[string]string{"type": "string", "description": "阅读笔记"}}, "required": []string{"account", "bookID", "currentPage"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBookNotes", Description: "获取指定书籍的读书笔记。返回str(纯文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}}, "required": []string{"account", "bookID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddBook", Description: "添加新书籍到阅读列表。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "书名"}, "author": map[string]string{"type": "string", "description": "作者"}, "isbn": map[string]string{"type": "string", "description": "ISBN号"}, "publisher": map[string]string{"type": "string", "description": "出版社"}, "publishDate": map[string]string{"type": "string", "description": "出版日期"}, "coverUrl": map[string]string{"type": "string", "description": "封面URL"}, "description": map[string]string{"type": "string", "description": "书籍简介"}, "sourceUrl": map[string]string{"type": "string", "description": "来源URL"}, "totalPages": map[string]interface{}{"type": "number", "description": "总页数"}, "category": map[string]string{"type": "string", "description": "分类,多个用逗号分隔"}, "tags": map[string]string{"type": "string", "description": "标签,多个用逗号分隔"}}, "required": []string{"account", "title"}}}},
 
 		// =================================== YearPlan 模块工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetMonthGoal", Description: "获取指定月份的目标和任务", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份如2026"}, "month": map[string]interface{}{"type": "number", "description": "月份1-12"}}, "required": []string{"account", "year", "month"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetYearGoals", Description: "获取指定年份所有月度目标", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}}, "required": []string{"account", "year"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddYearTask", Description: "添加年度计划任务到指定月份", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "dueDate": map[string]string{"type": "string", "description": "截止日期"}}, "required": []string{"account", "year", "month", "title"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateYearTask", Description: "更新年度计划任务状态", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "taskID": map[string]string{"type": "string", "description": "任务ID"}, "status": map[string]string{"type": "string", "description": "新状态:planning/in-progress/completed"}}, "required": []string{"account", "year", "month", "taskID", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetMonthGoal", Description: "获取指定月份的目标和任务。返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份如2026"}, "month": map[string]interface{}{"type": "number", "description": "月份1-12"}}, "required": []string{"account", "year", "month"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetYearGoals", Description: "获取指定年份所有月度目标。返回JSON(dict,key为月份)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}}, "required": []string{"account", "year"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddYearTask", Description: "添加年度计划任务到指定月份。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "dueDate": map[string]string{"type": "string", "description": "截止日期"}}, "required": []string{"account", "year", "month", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateYearTask", Description: "更新年度计划任务状态。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "year": map[string]interface{}{"type": "number", "description": "年份"}, "month": map[string]interface{}{"type": "number", "description": "月份"}, "taskID": map[string]string{"type": "string", "description": "任务ID"}, "status": map[string]string{"type": "string", "description": "新状态:planning/in-progress/completed"}}, "required": []string{"account", "year", "month", "taskID", "status"}}}},
 
 		// =================================== TaskBreakdown 模块工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllComplexTasks", Description: "获取所有复杂任务列表(含状态、优先级、进度)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTasksByStatus", Description: "按状态筛选复杂任务。status: planning/in-progress/completed/paused", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "任务状态"}}, "required": []string{"account", "status"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTaskStats", Description: "获取复杂任务统计信息(总数、完成率等)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawCreateComplexTask", Description: "创建新的复杂任务", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "startDate": map[string]string{"type": "string", "description": "开始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetAllComplexTasks", Description: "获取所有复杂任务列表(含状态、优先级、进度)。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTasksByStatus", Description: "按状态筛选复杂任务。status: planning/in-progress/completed/paused。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "status": map[string]string{"type": "string", "description": "任务状态"}}, "required": []string{"account", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetComplexTaskStats", Description: "获取复杂任务统计信息(总数、完成率等)。返回str(格式化文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawCreateComplexTask", Description: "创建新的复杂任务。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:highest/high/medium/low/lowest"}, "startDate": map[string]string{"type": "string", "description": "开始日期"}, "endDate": map[string]string{"type": "string", "description": "结束日期"}}, "required": []string{"account", "title"}}}},
 
 		// =================================== 定时提醒工具 =========================================
 		{
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.CreateReminder",
-				Description: "创建定时提醒任务。支持 cron 表达式(如'0 0 21 * * *'每天21:00)和间隔秒数两种模式。可设置 ai_query 让 AI 定时执行查询。所有提醒会持久化保存，重启不丢失",
+				Description: "创建定时提醒任务。支持 cron 表达式(如'0 0 21 * * *'每天21:00)和间隔秒数两种模式。可设置 ai_query 让 AI 定时执行查询。所有提醒会持久化保存，重启不丢失。返回str(操作结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -856,7 +856,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.ListReminders",
-				Description: "列出当前用户的所有定时提醒",
+				Description: "列出当前用户的所有定时提醒。返回JSON(list)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -870,7 +870,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.DeleteReminder",
-				Description: "删除指定的定时提醒",
+				Description: "删除指定的定时提醒。返回str(操作结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -885,7 +885,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.SendNotification",
-				Description: "立即发送一条通知消息给用户",
+				Description: "立即发送一条通知消息给用户。返回str(操作结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -898,17 +898,17 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		},
 
 		// AI 定时任务
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAIScheduledTask", Description: "创建AI定时任务,按cron表达式定时执行AI查询并推送结果。例如'每周一早上9点分析运动数据'。重启后自动恢复", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "cron": map[string]string{"type": "string", "description": "Cron表达式,如'0 0 9 * * 1'每周一9:00, '0 0 21 * * *'每天21:00"}, "ai_query": map[string]string{"type": "string", "description": "要定时执行的AI查询"}, "save_result": map[string]interface{}{"type": "boolean", "description": "是否保存结果到博客"}}, "required": []string{"account", "title", "ai_query"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAIScheduledTask", Description: "创建AI定时任务,按cron表达式定时执行AI查询并推送结果。例如'每周一早上9点分析运动数据'。重启后自动恢复。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "cron": map[string]string{"type": "string", "description": "Cron表达式,如'0 0 9 * * 1'每周一9:00, '0 0 21 * * *'每天21:00"}, "ai_query": map[string]string{"type": "string", "description": "要定时执行的AI查询"}, "save_result": map[string]interface{}{"type": "boolean", "description": "是否保存结果到博客"}}, "required": []string{"account", "title", "ai_query"}}}},
 
 		// =================================== 报告生成工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知。返回str(报告内容)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
 
 		// =================================== 网页访问工具 =========================================
 		{
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.FetchWebPage",
-				Description: "抓取指定URL网页内容，返回纯文本。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)",
+				Description: "抓取指定URL网页内容，返回纯文本。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)。返回str(纯文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -923,7 +923,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.WebSearch",
-				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)",
+				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)。返回str(格式化结果)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -940,7 +940,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.SmartDailySummary",
-				Description: "生成智能每日摘要：聚合待办、运动、阅读、年度目标数据，提供跨模块全面分析。当用户问'今天怎么样'、'帮我总结一下'、'今日概览'时使用",
+				Description: "生成智能每日摘要：聚合待办、运动、阅读、年度目标数据，提供跨模块全面分析。当用户问'今天怎么样'、'帮我总结一下'、'今日概览'时使用。返回str(分析文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -955,7 +955,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.AutoCarryOverTodos",
-				Description: "检查昨日未完成待办并建议延续到今天。当用户问'昨天有什么没完成'、'帮我整理待办'、'延续任务'时使用",
+				Description: "检查昨日未完成待办并建议延续到今天。当用户问'昨天有什么没完成'、'帮我整理待办'、'延续任务'时使用。返回str(分析文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -969,7 +969,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.TodoGoalAlignment",
-				Description: "对比今日待办与月度/年度目标的对齐度，分析待办是否在推进目标。当用户问'我的待办和目标对齐吗'、'我今天做的有意义吗'时使用",
+				Description: "对比今日待办与月度/年度目标的对齐度，分析待办是否在推进目标。当用户问'我的待办和目标对齐吗'、'我今天做的有意义吗'时使用。返回str(分析文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -984,7 +984,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.ExerciseCoachAdvice",
-				Description: "AI运动教练：分析近期运动数据，给出个性化训练建议(部位轮换、运动量评估、今日推荐)。当用户问'今天练什么'、'运动建议'、'健身计划'时使用",
+				Description: "AI运动教练：分析近期运动数据，给出个性化训练建议(部位轮换、运动量评估、今日推荐)。当用户问'今天练什么'、'运动建议'、'健身计划'时使用。返回str(建议文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -999,7 +999,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.ReadingCompanion",
-				Description: "AI阅读伴读：分析阅读进度、预测完成时间、推荐下一本书。当用户问'阅读建议'、'下一本读什么'、'读书进度'时使用",
+				Description: "AI阅读伴读：分析阅读进度、预测完成时间、推荐下一本书。当用户问'阅读建议'、'下一本读什么'、'读书进度'时使用。返回str(建议文本)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1013,7 +1013,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			Type: "function",
 			Function: LLMFunction{
 				Name:        "Inner_blog.SmartDecomposeTodo",
-				Description: "智能任务拆解：将复杂待办拆解为3-7个可独立完成的子任务。当用户说'帮我拆解这个任务'、'这个事情太复杂了'、'帮我规划一下'时使用",
+				Description: "智能任务拆解：将复杂待办拆解为3-7个可独立完成的子任务。当用户说'帮我拆解这个任务'、'这个事情太复杂了'、'帮我规划一下'时使用。返回str(子任务列表)",
 				Parameters: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
@@ -1027,10 +1027,10 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		},
 
 		// =================================== AI 技能管理工具 =========================================
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ListAISkills", Description: "列出所有已安装的 AI 技能卡，包含创建新技能的模板。当用户问'我有哪些技能'、'技能列表'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAISkill", Description: "创建新的 AI 技能卡。技能卡能让 AI 学会新本领，例如'每次说写周报就自动收集数据生成报告'。当用户说'帮我创建一个技能'、'教你一个新本领'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "description": map[string]string{"type": "string", "description": "一句话描述技能功能"}, "triggers": map[string]string{"type": "string", "description": "触发关键词,逗号分隔,如: 写周报,本周总结"}, "instruction": map[string]string{"type": "string", "description": "详细的技能指令,告诉AI触发时应该怎么做"}, "examples": map[string]string{"type": "string", "description": "可选,示例对话"}}, "required": []string{"account", "name", "instruction"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ToggleAISkill", Description: "启用或停用指定的 AI 技能。当用户说'停用xxx技能'、'启用xxx'时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "active": map[string]string{"type": "boolean", "description": "true=启用, false=停用"}}, "required": []string{"account", "name"}}}},
-		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetSkillTemplate", Description: "获取 AI 技能卡的创建模板,了解技能卡的格式。当需要创建技能但不确定格式时使用", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ListAISkills", Description: "列出所有已安装的 AI 技能卡，包含创建新技能的模板。当用户问'我有哪些技能'、'技能列表'时使用。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.CreateAISkill", Description: "创建新的 AI 技能卡。技能卡能让 AI 学会新本领，例如'每次说写周报就自动收集数据生成报告'。当用户说'帮我创建一个技能'、'教你一个新本领'时使用。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "description": map[string]string{"type": "string", "description": "一句话描述技能功能"}, "triggers": map[string]string{"type": "string", "description": "触发关键词,逗号分隔,如: 写周报,本周总结"}, "instruction": map[string]string{"type": "string", "description": "详细的技能指令,告诉AI触发时应该怎么做"}, "examples": map[string]string{"type": "string", "description": "可选,示例对话"}}, "required": []string{"account", "name", "instruction"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.ToggleAISkill", Description: "启用或停用指定的 AI 技能。当用户说'停用xxx技能'、'启用xxx'时使用。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "name": map[string]string{"type": "string", "description": "技能名称"}, "active": map[string]string{"type": "boolean", "description": "true=启用, false=停用"}}, "required": []string{"account", "name"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GetSkillTemplate", Description: "获取 AI 技能卡的创建模板,了解技能卡的格式。当需要创建技能但不确定格式时使用。返回str(模板文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}}},
 	}
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
 	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射

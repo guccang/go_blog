@@ -41,7 +41,7 @@ func isImportantEvent(event string) bool {
 	case "plan_done", "plan_detail", "plan_review_start", "plan_review_result",
 		"subtask_start", "subtask_done",
 		"subtask_fail", "subtask_skip", "subtask_async", "subtask_defer",
-		"tool_result", "failure_decision",
+		"tool_call", "tool_result", "failure_decision",
 		"task_complete", "task_forced_summary",
 		"plan_timing", "review_timing",
 		"synthesis_done",
@@ -406,7 +406,11 @@ func (b *Bridge) callToolWithTimeout(toolName string, args json.RawMessage, time
 	}
 	ch := make(chan result, 1)
 	go func() {
-		data, err := b.CallTool(toolName, args)
+		tcResult, err := b.CallTool(toolName, args)
+		var data string
+		if tcResult != nil {
+			data = tcResult.Result
+		}
 		ch <- result{data, err}
 	}()
 

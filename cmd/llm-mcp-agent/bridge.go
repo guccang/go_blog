@@ -18,6 +18,12 @@ var gatewayHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
+// toolResultWithFrom 工具结果（含来源 agent ID）
+type toolResultWithFrom struct {
+	uap.ToolResultPayload
+	FromID string // 返回结果的 agent ID
+}
+
 // Bridge UAP 客户端 + 工具路由层
 type Bridge struct {
 	cfg    *Config
@@ -29,7 +35,7 @@ type Bridge struct {
 	catalogMu   sync.RWMutex
 
 	// 请求-响应关联
-	pending map[string]chan *uap.ToolResultPayload // request_id → result channel
+	pending map[string]chan *toolResultWithFrom // request_id → result channel
 	pendMu  sync.Mutex
 
 	// 微信对话上下文管理
@@ -61,7 +67,7 @@ func NewBridge(cfg *Config) *Bridge {
 		cfg:           cfg,
 		client:        client,
 		toolCatalog:   make(map[string]string),
-		pending:       make(map[string]chan *uap.ToolResultPayload),
+		pending:       make(map[string]chan *toolResultWithFrom),
 		wechatConvMgr: NewWechatConversationManager(timeout, maxMessages, maxTurns),
 	}
 
@@ -333,6 +339,7 @@ var longRunningTools = map[string]bool{
 	"CodegenSendMessage":  true,
 	"DeployProject":       true,
 	"DeployPipeline":      true,
+	"ExecuteCode":         true,
 }
 
 // isLongRunningTool 判断是否为长时间运行的工具
@@ -340,17 +347,24 @@ func isLongRunningTool(toolName string) bool {
 	return longRunningTools[toolName]
 }
 
+// ToolCallResult 工具调用结果（含路由信息）
+type ToolCallResult struct {
+	Result  string // 工具返回内容
+	AgentID string // 目标 agent ID（发送方）
+	FromID  string // 结果来源 agent ID（响应方）
+}
+
 // CallTool 发送 MsgToolCall 到目标 agent 并等待 MsgToolResult
-func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error) {
+func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResult, error) {
 	// 查找目标 agent
 	agentID, ok := b.getToolAgent(toolName)
 	if !ok {
-		return "", fmt.Errorf("tool %s not found in catalog", toolName)
+		return nil, fmt.Errorf("tool %s not found in catalog", toolName)
 	}
 
 	// 创建 pending channel
 	msgID := uap.NewMsgID()
-	ch := make(chan *uap.ToolResultPayload, 1)
+	ch := make(chan *toolResultWithFrom, 1)
 
 	b.pendMu.Lock()
 	b.pending[msgID] = ch
@@ -361,6 +375,8 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error)
 		delete(b.pending, msgID)
 		b.pendMu.Unlock()
 	}()
+
+	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
 
 	// 发送 tool_call
 	err := b.client.Send(&uap.Message{
@@ -375,7 +391,7 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error)
 		Ts: time.Now().UnixMilli(),
 	})
 	if err != nil {
-		return "", fmt.Errorf("send tool_call: %v", err)
+		return nil, fmt.Errorf("send tool_call: %v", err)
 	}
 
 	// 等待结果（长时间工具使用更长超时）
@@ -390,11 +406,18 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (string, error)
 	select {
 	case result := <-ch:
 		if !result.Success {
-			return "", fmt.Errorf("tool error: %s", result.Error)
+			return &ToolCallResult{AgentID: agentID, FromID: result.FromID},
+				fmt.Errorf("tool error: %s", result.Error)
 		}
-		return result.Result, nil
+		log.Printf("[Bridge] tool_result ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)
+		return &ToolCallResult{
+			Result:  result.Result,
+			AgentID: agentID,
+			FromID:  result.FromID,
+		}, nil
 	case <-time.After(timeout):
-		return "", fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
+		return &ToolCallResult{AgentID: agentID},
+			fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
 	}
 }
 
@@ -425,9 +448,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		ch, ok := b.pending[payload.RequestID]
 		b.pendMu.Unlock()
 		if ok {
-			ch <- &payload
+			ch <- &toolResultWithFrom{ToolResultPayload: payload, FromID: msg.From}
 		} else {
-			log.Printf("[Bridge] no pending request for %s", payload.RequestID)
+			log.Printf("[Bridge] no pending request for %s (from=%s)", payload.RequestID, msg.From)
 		}
 
 	case uap.MsgError:
@@ -439,10 +462,13 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			ch, ok := b.pending[msg.ID]
 			b.pendMu.Unlock()
 			if ok {
-				ch <- &uap.ToolResultPayload{
-					RequestID: msg.ID,
-					Success:   false,
-					Error:     payload.Message,
+				ch <- &toolResultWithFrom{
+					ToolResultPayload: uap.ToolResultPayload{
+						RequestID: msg.ID,
+						Success:   false,
+						Error:     payload.Message,
+					},
+					FromID: msg.From,
 				}
 			}
 		}

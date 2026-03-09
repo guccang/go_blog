@@ -425,20 +425,28 @@ func (o *Orchestrator) executeSubTask(
 				subtask.ID, originalName, truncate(tc.Function.Arguments, 200))
 
 			start := time.Now()
-			result, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
 			duration := time.Since(start)
+
+			var result string
+			var toAgent, fromAgent string
+			if tcResult != nil {
+				result = tcResult.Result
+				toAgent = tcResult.AgentID
+				fromAgent = tcResult.FromID
+			}
 
 			success := true
 			if err != nil {
 				success = false
 				result = fmt.Sprintf("工具调用失败: %v", err)
-				log.Printf("[Orchestrator] subtask=%s ✗ 工具失败: %s duration=%v error=%v",
-					subtask.ID, originalName, duration, err)
-				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 (%.1fs): %v", subtask.ID, originalName, duration.Seconds(), err))
+				log.Printf("[Orchestrator] subtask=%s ✗ 工具失败: %s →agent=%s duration=%v error=%v",
+					subtask.ID, originalName, toAgent, duration, err)
+				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 →%s (%.1fs): %v", subtask.ID, originalName, toAgent, duration.Seconds(), err))
 			} else {
-				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s duration=%v resultLen=%d result=%s",
-					subtask.ID, originalName, duration, len(result), truncate(result, 200))
-				sendEvent("tool_result", fmt.Sprintf("✅ [%s] %s 完成 (%.1fs)\n结果: %s", subtask.ID, originalName, duration.Seconds(), truncate(result, 300)))
+				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
+					subtask.ID, originalName, toAgent, fromAgent, duration, len(result), truncate(result, 200))
+				sendEvent("tool_result", fmt.Sprintf("✅ [%s] %s [%s→%s] (%.1fs)\n结果: %s", subtask.ID, originalName, toAgent, fromAgent, duration.Seconds(), truncate(result, 300)))
 			}
 
 			// 记录工具调用
@@ -793,7 +801,12 @@ func (o *Orchestrator) resumeSubTask(
 				originalName := unsanitizeToolName(tc.Function.Name)
 				sendEvent("tool_info", fmt.Sprintf("[%s] 恢复工具调用: %s", subtask.ID, originalName))
 
-				result, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+				tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+				var result string
+				if tcResult != nil {
+					result = tcResult.Result
+					log.Printf("[Orchestrator] resume tool_call: %s →agent=%s ←from=%s", originalName, tcResult.AgentID, tcResult.FromID)
+				}
 				if err != nil {
 					result = fmt.Sprintf("工具调用失败: %v", err)
 				}
@@ -859,7 +872,12 @@ func (o *Orchestrator) resumeSubTask(
 
 		for _, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
-			result, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			var result string
+			if tcResult != nil {
+				result = tcResult.Result
+				log.Printf("[Resume] tool_call: %s →agent=%s ←from=%s", originalName, tcResult.AgentID, tcResult.FromID)
+			}
 			if err != nil {
 				result = fmt.Sprintf("工具调用失败: %v", err)
 			}

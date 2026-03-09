@@ -38,7 +38,7 @@ var llmHTTPClient = &http.Client{
 // Message LLM 对话消息
 type Message struct {
 	Role       string     `json:"role"`                   // "system", "user", "assistant", "tool"
-	Content    string     `json:"content,omitempty"`      // 文本内容
+	Content    string     `json:"content"`                // 文本内容
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // assistant 返回的工具调用
 	ToolCallID string     `json:"tool_call_id,omitempty"` // tool 消息的关联 ID
 }
