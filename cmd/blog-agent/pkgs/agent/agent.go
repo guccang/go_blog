@@ -927,12 +927,35 @@ func handleCodegenCommand(userID, message string) string {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("🖥 在线 Agent (%d个)\n\n", len(agents)))
 		for i, a := range agents {
+			// 兼容两种数据格式：本地 pool 和 gateway API
 			name, _ := a["name"].(string)
+			agentType, _ := a["agent_type"].(string)
 			status, _ := a["status"].(string)
-			active, _ := a["active_sessions"].(int)
-			projects, _ := a["projects"].([]string)
-			sb.WriteString(fmt.Sprintf("%d. **%s** [%s] 活跃:%d 项目:%d\n",
-				i+1, name, status, active, len(projects)))
+			if status == "" {
+				status = "online" // gateway API 没有 status 字段，默认为 online
+			}
+
+			// active_sessions 可能是 int 或不存在
+			active := 0
+			if val, ok := a["active_sessions"].(int); ok {
+				active = val
+			}
+
+			// projects 可能是 []string 或不存在
+			var projectCount int
+			if projects, ok := a["projects"].([]interface{}); ok {
+				projectCount = len(projects)
+			} else if projects, ok := a["projects"].([]string); ok {
+				projectCount = len(projects)
+			}
+
+			// 显示格式：名称 [类型] [状态] 活跃:N 项目:N
+			typeLabel := ""
+			if agentType != "" {
+				typeLabel = fmt.Sprintf(" (%s)", agentType)
+			}
+			sb.WriteString(fmt.Sprintf("%d. **%s**%s [%s] 活跃:%d 项目:%d\n",
+				i+1, name, typeLabel, status, active, projectCount))
 		}
 		return sb.String()
 
