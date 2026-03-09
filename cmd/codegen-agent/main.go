@@ -41,8 +41,8 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// 启动 codegen 协议层（注册 + 心跳，在 UAP 连接后发送）
-	go conn.StartCodegenProtocol()
+	// 启动协议层（注册 + 心跳）
+	go conn.StartProtocolLayer()
 
 	// 阻塞运行（自动重连）
 	conn.Run()

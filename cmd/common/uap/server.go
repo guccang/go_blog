@@ -324,13 +324,14 @@ func (s *Server) GetAgentsByType(agentType string) []*AgentConn {
 	return result
 }
 
-// GetAllAgents 获取所有在线 agent 信息
+// GetAllAgents 获取所有在线 agent 信息（排除 gateway 自身）
 func (s *Server) GetAllAgents() []map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []map[string]any
 	for _, a := range s.agents {
-		if a.Online {
+		// 排除 gateway 自身（AgentType == "go_blog"）
+		if a.Online && a.AgentType != "go_blog" {
 			tools := make([]string, 0, len(a.Tools))
 			for _, t := range a.Tools {
 				tools = append(tools, t.Name)

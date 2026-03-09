@@ -25,7 +25,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" agent.conf.example settings/
+zip -r "${OUTPUT}" "$BINNAME" agent.conf settings/ 
 
 # 清理编译产物
 rm -f "$BINNAME"

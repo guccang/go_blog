@@ -7,146 +7,139 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
+	"agentbase"
 	"uap"
 )
 
 // Connection 通过 UAP gateway 的客户端连接管理
 type Connection struct {
-	cfg    *AgentConfig
-	agent  *Agent
-	client *uap.Client
+	*agentbase.AgentBase // 组合基类
 
-	// 是否已向 go_blog-agent 注册成功
-	backendRegistered bool
-	regMu             sync.Mutex
+	cfg   *AgentConfig
+	agent *Agent
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
-	// 构建 UAP 客户端
-	client := uap.NewClient(cfg.ServerURL, agent.ID, "codegen", cfg.AgentName)
-	client.AuthToken = cfg.AuthToken
-	client.Capacity = cfg.MaxConcurrent
-	client.Tools = buildCodegenToolDefs()
-	client.Meta = map[string]any{
-		"workspaces": cfg.Workspaces,
+	baseCfg := &agentbase.Config{
+		ServerURL: cfg.ServerURL,
+		AgentID:   agent.ID,
+		AgentType: "codegen",
+		AgentName: cfg.AgentName,
+		AuthToken: cfg.AuthToken,
+		Capacity:  cfg.MaxConcurrent,
+		Tools:     buildCodegenToolDefs(),
+		Meta: map[string]any{
+			"workspaces": cfg.Workspaces,
+		},
 	}
 
 	c := &Connection{
-		cfg:    cfg,
-		agent:  agent,
-		client: client,
+		AgentBase: agentbase.NewAgentBase(baseCfg),
+		cfg:       cfg,
+		agent:     agent,
 	}
 
-	// 设置消息回调
-	client.OnMessage = c.handleUAPMessage
+	// 注册消息处理器
+	c.RegisterHandler(MsgTaskAssign, c.handleTaskAssign)
+	c.RegisterHandler(MsgTaskStop, c.handleTaskStop)
+	c.RegisterHandler(MsgFileRead, c.handleFileRead)
+	c.RegisterHandler(MsgTreeRead, c.handleTreeRead)
+	c.RegisterHandler(MsgProjectCreate, c.handleProjectCreate)
+	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterHandler(uap.MsgNotify, c.handleNotify)
+	c.RegisterHandler(uap.MsgError, c.handleError)
+
+	// 启用协议层
+	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
+		TargetAgentID: cfg.GoBackendAgentID,
+		BuildRegister: c.buildRegisterPayload,
+		BuildHeartbeat: c.buildHeartbeatPayload,
+	})
 
 	return c
 }
 
-// Run 启动连接（阻塞，自动重连）
-func (c *Connection) Run() {
-	// uap.Client.Run() 内置自动重连和心跳
-	c.client.Run()
-}
+// ========================= 消息处理器 =========================
 
-// Stop 停止连接
-func (c *Connection) Stop() {
-	c.client.Stop()
-}
+// handleTaskAssign 处理任务分配
+func (c *Connection) handleTaskAssign(msg *uap.Message) {
+	var payload TaskAssignPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[INFO] received task: session=%s project=%s", payload.SessionID, payload.Project)
 
-// handleUAPMessage 处理来自 gateway 的 UAP 消息
-func (c *Connection) handleUAPMessage(msg *uap.Message) {
-	switch msg.Type {
-	case MsgRegisterAck:
-		// go_blog-agent 发来的 register_ack
-		var payload RegisterAckPayload
-		json.Unmarshal(msg.Payload, &payload)
-		if payload.Success {
-			c.regMu.Lock()
-			c.backendRegistered = true
-			c.regMu.Unlock()
-			log.Printf("[INFO] registered with go_blog backend")
-		} else {
-			// go_blog 可能重启过，重置注册状态以便重试
-			c.regMu.Lock()
-			c.backendRegistered = false
-			c.regMu.Unlock()
-			log.Printf("[WARN] go_blog register: %s, will retry", payload.Error)
-		}
-
-	case MsgTaskAssign:
-		var payload TaskAssignPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received task: session=%s project=%s", payload.SessionID, payload.Project)
-
-		if c.agent.CanAccept() {
-			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-			go c.agent.ExecuteTask(c, &payload)
-		} else {
-			c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
-				SessionID: payload.SessionID,
-				Reason:    "agent at max capacity",
-			})
-		}
-
-	case MsgTaskStop:
-		var payload TaskStopPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] stop task: session=%s", payload.SessionID)
-		c.agent.StopTask(payload.SessionID)
-
-	case MsgFileRead:
-		var payload FileReadPayload
-		json.Unmarshal(msg.Payload, &payload)
-		go c.agent.HandleFileRead(c, &payload)
-
-	case MsgTreeRead:
-		var payload TreeReadPayload
-		json.Unmarshal(msg.Payload, &payload)
-		go c.agent.HandleTreeRead(c, &payload)
-
-	case MsgProjectCreate:
-		var payload ProjectCreatePayload
-		json.Unmarshal(msg.Payload, &payload)
-		go c.agent.HandleProjectCreate(c, &payload)
-
-	case MsgHeartbeatAck:
-		// ok
-
-	case uap.MsgToolCall:
-		go c.handleToolCall(msg)
-
-	case uap.MsgNotify:
-		// 来自其他 agent 的单向通知（如微信消息通知等）
-		var payload uap.NotifyPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] notify from %s: channel=%s to=%s content=%s", msg.From, payload.Channel, payload.To, payload.Content)
-
-	case uap.MsgError:
-		// gateway 返回错误（如目标 agent 不在线）
-		var payload uap.ErrorPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
-
-	default:
-		log.Printf("[WARN] unhandled message type: %s from %s", msg.Type, msg.From)
+	if c.agent.CanAccept() {
+		c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
+		go c.agent.ExecuteTask(c, &payload)
+	} else {
+		c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
+			SessionID: payload.SessionID,
+			Reason:    "agent at max capacity",
+		})
 	}
 }
+
+// handleTaskStop 处理停止任务
+func (c *Connection) handleTaskStop(msg *uap.Message) {
+	var payload TaskStopPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[INFO] stop task: session=%s", payload.SessionID)
+	c.agent.StopTask(payload.SessionID)
+}
+
+// handleFileRead 处理文件读取请求
+func (c *Connection) handleFileRead(msg *uap.Message) {
+	var payload FileReadPayload
+	json.Unmarshal(msg.Payload, &payload)
+	go c.agent.HandleFileRead(c, &payload)
+}
+
+// handleTreeRead 处理目录树读取请求
+func (c *Connection) handleTreeRead(msg *uap.Message) {
+	var payload TreeReadPayload
+	json.Unmarshal(msg.Payload, &payload)
+	go c.agent.HandleTreeRead(c, &payload)
+}
+
+// handleProjectCreate 处理项目创建请求
+func (c *Connection) handleProjectCreate(msg *uap.Message) {
+	var payload ProjectCreatePayload
+	json.Unmarshal(msg.Payload, &payload)
+	go c.agent.HandleProjectCreate(c, &payload)
+}
+
+// handleToolCallMsg 处理工具调用（包装器）
+func (c *Connection) handleToolCallMsg(msg *uap.Message) {
+	go c.handleToolCall(msg)
+}
+
+// handleNotify 处理通知消息
+func (c *Connection) handleNotify(msg *uap.Message) {
+	var payload uap.NotifyPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[INFO] notify from %s: channel=%s to=%s content=%s", msg.From, payload.Channel, payload.To, payload.Content)
+}
+
+// handleError 处理错误消息
+func (c *Connection) handleError(msg *uap.Message) {
+	var payload uap.ErrorPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
+}
+
+// ========================= 协议层载荷构建 =========================
 
 // SendMsg 发送消息给 go_blog-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
-	return c.client.SendTo(targetAgent, msgType, payload)
+	return c.Client.SendTo(targetAgent, msgType, payload)
 }
 
-// onConnected UAP 客户端连接后发送注册消息给 go_blog-agent
-// 注：uap.Client 会自动向 gateway 注册。这里额外向 go_blog-agent 发送 codegen 协议的 register 消息
-func (c *Connection) sendCodegenRegister() {
-	payload := RegisterPayload{
+// buildRegisterPayload 构建注册消息载荷
+func (c *Connection) buildRegisterPayload() interface{} {
+	return RegisterPayload{
 		AgentID:          c.agent.ID,
 		Name:             c.cfg.AgentName,
 		AgentType:        c.cfg.AgentType,
@@ -159,12 +152,11 @@ func (c *Connection) sendCodegenRegister() {
 		MaxConcurrent:    c.cfg.MaxConcurrent,
 		AuthToken:        c.cfg.AuthToken,
 	}
-	c.SendMsg(MsgRegister, payload)
 }
 
-// SendHeartbeat 发送心跳给 go_blog-agent（由外部定时调用）
-func (c *Connection) sendCodegenHeartbeat() {
-	c.SendMsg(MsgHeartbeat, HeartbeatPayload{
+// buildHeartbeatPayload 构建心跳消息载荷
+func (c *Connection) buildHeartbeatPayload() interface{} {
+	return HeartbeatPayload{
 		AgentID:          c.agent.ID,
 		AgentType:        c.cfg.AgentType,
 		ActiveSessions:   c.agent.ActiveCount(),
@@ -174,7 +166,7 @@ func (c *Connection) sendCodegenHeartbeat() {
 		ClaudeCodeModels: c.agent.ScanClaudeCodeSettings(),
 		OpenCodeModels:   c.agent.ScanOpenCodeSettings(),
 		Tools:            c.agent.ScanTools(),
-	})
+	}
 }
 
 // ========================= Tool 自注册 =========================
@@ -252,7 +244,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[WARN] invalid tool_call payload: %v", err)
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     "invalid tool_call payload",
@@ -265,7 +257,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	if len(payload.Arguments) > 0 {
 		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
 			log.Printf("[WARN] invalid tool_call arguments: %v", err)
-			c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 				RequestID: msg.ID,
 				Success:   false,
 				Error:     "invalid arguments: " + err.Error(),
@@ -293,7 +285,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "CodegenStopSession":
 		result = c.toolStopSession(args)
 	default:
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     fmt.Sprintf("unknown tool: %s", payload.ToolName),
@@ -301,7 +293,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		return
 	}
 
-	c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+	c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   true,
 		Result:    result,
@@ -517,44 +509,3 @@ func escapeJSON(s string) string {
 	return string(b[1 : len(b)-1])
 }
 
-// StartCodegenProtocol 启动 codegen 协议层（注册 + 心跳）
-// 在 uap.Client 连接成功后调用
-func (c *Connection) StartCodegenProtocol() {
-	// 等待 UAP 连接就绪
-	for !c.client.IsConnected() {
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// 发送 codegen 注册消息
-	c.sendCodegenRegister()
-
-	// 启动 codegen 层心跳（补充 UAP 心跳之外的业务心跳）
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			if !c.client.IsConnected() {
-				// 断线后等待重连，重连后重新注册
-				c.regMu.Lock()
-				c.backendRegistered = false
-				c.regMu.Unlock()
-				for !c.client.IsConnected() {
-					time.Sleep(1 * time.Second)
-				}
-				c.sendCodegenRegister()
-			}
-
-			// 如果尚未注册成功（go_blog 可能晚于本 agent 启动），重试注册
-			c.regMu.Lock()
-			registered := c.backendRegistered
-			c.regMu.Unlock()
-			if !registered {
-				log.Printf("[INFO] go_blog backend not registered yet, retrying...")
-				c.sendCodegenRegister()
-				continue
-			}
-
-			c.sendCodegenHeartbeat()
-		}
-	}()
-}

@@ -3,26 +3,22 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"agentbase"
 	"uap"
 )
 
 // Connection UAP 客户端连接管理
 type Connection struct {
-	cfg      *Config
-	agentID  string
-	client   *uap.Client
-	executor *Executor
+	*agentbase.AgentBase // 组合基类
 
-	// 工具目录: tool_name → agent_id
-	toolCatalog map[string]string
-	catalogMu   sync.RWMutex
+	cfg         *Config
+	executor    *Executor
+	toolCatalog *agentbase.ToolCatalog
 
 	// 请求-响应关联（pending channel 模式）
 	pending map[string]chan *uap.ToolResultPayload
@@ -31,16 +27,20 @@ type Connection struct {
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *Config, agentID string) *Connection {
-	client := uap.NewClient(cfg.ServerURL, agentID, "execute_code", cfg.AgentName)
-	client.AuthToken = cfg.AuthToken
-	client.Capacity = cfg.MaxConcurrent
-	client.Tools = buildToolDefs()
+	baseCfg := &agentbase.Config{
+		ServerURL: cfg.ServerURL,
+		AgentID:   agentID,
+		AgentType: "execute_code",
+		AgentName: cfg.AgentName,
+		AuthToken: cfg.AuthToken,
+		Capacity:  cfg.MaxConcurrent,
+		Tools:     buildToolDefs(),
+	}
 
 	c := &Connection{
+		AgentBase:   agentbase.NewAgentBase(baseCfg),
 		cfg:         cfg,
-		agentID:     agentID,
-		client:      client,
-		toolCatalog: make(map[string]string),
+		toolCatalog: agentbase.NewToolCatalog(cfg.GatewayHTTP),
 		pending:     make(map[string]chan *uap.ToolResultPayload),
 	}
 
@@ -49,18 +49,11 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	// 注入工具调用桥接函数
 	c.executor.callTool = c.callToolWithRetry
 
-	client.OnMessage = c.handleMessage
+	// 注册消息处理器
+	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterHandler(uap.MsgToolResult, c.handleToolResult)
+
 	return c
-}
-
-// Run 启动连接（阻塞，自动重连）
-func (c *Connection) Run() {
-	c.client.Run()
-}
-
-// Stop 停止连接
-func (c *Connection) Stop() {
-	c.client.Stop()
 }
 
 // ========================= 工具注册 =========================
@@ -96,28 +89,23 @@ func buildToolDefs() []uap.ToolDef {
 
 // ========================= 消息处理 =========================
 
-// handleMessage 处理来自 gateway 的 UAP 消息
-func (c *Connection) handleMessage(msg *uap.Message) {
-	switch msg.Type {
-	case uap.MsgToolCall:
-		go c.handleToolCall(msg)
+// handleToolCallMsg 处理 tool_call 消息（包装器）
+func (c *Connection) handleToolCallMsg(msg *uap.Message) {
+	go c.handleToolCall(msg)
+}
 
-	case uap.MsgToolResult:
-		// 工具调用结果 → 分发到 pending channel
-		var payload uap.ToolResultPayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			log.Printf("[Connection] invalid tool_result payload: %v", err)
-			return
-		}
-		c.pendMu.Lock()
-		ch, ok := c.pending[payload.RequestID]
-		c.pendMu.Unlock()
-		if ok {
-			ch <- &payload
-		}
-
-	default:
-		log.Printf("[Connection] unhandled message type: %s from %s", msg.Type, msg.From)
+// handleToolResult 处理 tool_result 消息
+func (c *Connection) handleToolResult(msg *uap.Message) {
+	var payload uap.ToolResultPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[Connection] invalid tool_result payload: %v", err)
+		return
+	}
+	c.pendMu.Lock()
+	ch, ok := c.pending[payload.RequestID]
+	c.pendMu.Unlock()
+	if ok {
+		ch <- &payload
 	}
 }
 
@@ -126,7 +114,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[WARN] invalid tool_call payload: %v", err)
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     "invalid tool_call payload",
@@ -135,7 +123,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	}
 
 	if payload.ToolName != "ExecuteCode" {
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     fmt.Sprintf("unknown tool: %s", payload.ToolName),
@@ -150,7 +138,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		ToolsHint   []string `json:"tools_hint"`
 	}
 	if err := json.Unmarshal(payload.Arguments, &args); err != nil {
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     "invalid arguments: " + err.Error(),
@@ -159,7 +147,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	}
 
 	if args.Code == "" {
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     "code parameter is required",
@@ -206,7 +194,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 
 	resultJSON, _ := json.Marshal(resultData)
 
-	c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+	c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   execResult.Success,
 		Result:    string(resultJSON),
@@ -245,70 +233,12 @@ func conditionalError(r *ExecutionResult) string {
 
 // DiscoverTools 从 gateway HTTP API 获取所有在线 agent 的工具目录
 func (c *Connection) DiscoverTools() error {
-	url := fmt.Sprintf("%s/api/gateway/tools", c.cfg.GatewayHTTP)
-
-	resp, err := http.DefaultClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("GET %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %v", err)
-	}
-
-	var result struct {
-		Success bool              `json:"success"`
-		Tools   []json.RawMessage `json:"tools"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("parse response: %v", err)
-	}
-
-	catalog := make(map[string]string)
-	for _, raw := range result.Tools {
-		var tool struct {
-			AgentID string `json:"agent_id"`
-			Name    string `json:"name"`
-		}
-		if err := json.Unmarshal(raw, &tool); err != nil {
-			continue
-		}
-		// 排除自己的工具
-		if tool.AgentID == c.agentID {
-			continue
-		}
-		catalog[tool.Name] = tool.AgentID
-	}
-
-	c.catalogMu.Lock()
-	c.toolCatalog = catalog
-	c.catalogMu.Unlock()
-
-	log.Printf("[Connection] discovered %d tools from gateway", len(catalog))
-	return nil
+	return c.toolCatalog.Discover(c.AgentID)
 }
 
 // StartRefreshLoop 后台定时刷新工具目录
 func (c *Connection) StartRefreshLoop() {
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := c.DiscoverTools(); err != nil {
-				log.Printf("[Connection] refresh tools failed: %v", err)
-			}
-		}
-	}()
-}
-
-// getToolAgent 从工具目录查找工具所属的 agent ID
-func (c *Connection) getToolAgent(toolName string) (string, bool) {
-	c.catalogMu.RLock()
-	defer c.catalogMu.RUnlock()
-	agentID, ok := c.toolCatalog[toolName]
-	return agentID, ok
+	c.toolCatalog.StartRefreshLoop(60*time.Second, c.AgentID)
 }
 
 // ========================= 工具调用桥接 =========================
@@ -326,7 +256,7 @@ func (c *Connection) callToolWithRetry(toolName string, args json.RawMessage) (s
 
 // callToolOnce 单次工具调用
 func (c *Connection) callToolOnce(toolName string, args json.RawMessage) (string, string, error) {
-	agentID, ok := c.getToolAgent(toolName)
+	agentID, ok := c.toolCatalog.GetAgentID(toolName)
 	if !ok {
 		return "", "", fmt.Errorf("tool %s not found in catalog", toolName)
 	}
@@ -347,10 +277,10 @@ func (c *Connection) callToolOnce(toolName string, args json.RawMessage) (string
 	log.Printf("[ExecuteCode] tool_call → agent=%s tool=%s", agentID, toolName)
 
 	// 发送 tool_call
-	err := c.client.Send(&uap.Message{
+	err := c.Client.Send(&uap.Message{
 		Type: uap.MsgToolCall,
 		ID:   msgID,
-		From: c.agentID,
+		From: c.AgentID,
 		To:   agentID,
 		Payload: mustMarshalJSON(uap.ToolCallPayload{
 			ToolName:  toolName,

@@ -8,117 +8,99 @@ import (
 	"sync"
 	"time"
 
+	"agentbase"
 	"uap"
 )
 
 // Connection 通过 UAP gateway 的客户端连接管理
 type Connection struct {
+	*agentbase.AgentBase // 组合基类
+
 	cfg         *DeployConfig
 	password    string
-	agentID     string
-	client      *uap.Client
 	activeTasks map[string]bool
 	taskMu      sync.Mutex
-
-	// 是否已向 go_blog-agent 注册成功
-	backendRegistered bool
-	regMu             sync.Mutex
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *DeployConfig, password string, agentID string) *Connection {
-	client := uap.NewClient(cfg.ServerURL, agentID, "deploy", cfg.AgentName)
-	client.AuthToken = cfg.AuthToken
-	client.Capacity = cfg.MaxConcurrent
-	client.Tools = buildDeployToolDefs(cfg)
-	client.Meta = map[string]any{
-		"projects": cfg.ProjectNames(),
+	baseCfg := &agentbase.Config{
+		ServerURL: cfg.ServerURL,
+		AgentID:   agentID,
+		AgentType: "deploy",
+		AgentName: cfg.AgentName,
+		AuthToken: cfg.AuthToken,
+		Capacity:  cfg.MaxConcurrent,
+		Tools:     buildDeployToolDefs(cfg),
+		Meta: map[string]any{
+			"projects": cfg.ProjectNames(),
+		},
 	}
 
 	c := &Connection{
+		AgentBase:   agentbase.NewAgentBase(baseCfg),
 		cfg:         cfg,
 		password:    password,
-		agentID:     agentID,
-		client:      client,
 		activeTasks: make(map[string]bool),
 	}
 
-	client.OnMessage = c.handleUAPMessage
+	// 注册消息处理器
+	c.RegisterHandler(MsgTaskAssign, c.handleTaskAssign)
+	c.RegisterHandler(MsgTaskStop, c.handleTaskStop)
+	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterHandler(uap.MsgError, c.handleError)
+
+	// 启用协议层
+	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
+		TargetAgentID:  cfg.GoBackendAgentID,
+		BuildRegister:  c.buildRegisterPayload,
+		BuildHeartbeat: c.buildHeartbeatPayload,
+	})
 
 	return c
 }
 
-// Run 启动连接（阻塞，自动重连）
-func (c *Connection) Run() {
-	// uap.Client.Run() 内置自动重连和心跳
-	c.client.Run()
-}
+// ========================= 消息处理器 =========================
 
-// Stop 停止连接
-func (c *Connection) Stop() {
-	c.client.Stop()
-}
+// handleTaskAssign 处理任务分配
+func (c *Connection) handleTaskAssign(msg *uap.Message) {
+	var payload TaskAssignPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s pack_only=%v",
+		payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.PackOnly)
 
-// handleUAPMessage 处理来自 gateway 的 UAP 消息
-func (c *Connection) handleUAPMessage(msg *uap.Message) {
-	switch msg.Type {
-	case MsgRegisterAck:
-		var payload RegisterAckPayload
-		json.Unmarshal(msg.Payload, &payload)
-		if payload.Success {
-			c.regMu.Lock()
-			c.backendRegistered = true
-			c.regMu.Unlock()
-			log.Printf("[INFO] registered with go_blog backend as deploy agent (projects: %v)", c.cfg.ProjectNames())
+	if c.canAccept() {
+		c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
+		if payload.Pipeline != "" {
+			go c.executePipeline(payload)
 		} else {
-			c.regMu.Lock()
-			c.backendRegistered = false
-			c.regMu.Unlock()
-			log.Printf("[WARN] go_blog register: %s, will retry", payload.Error)
+			go c.executeDeploy(payload)
 		}
-
-	case MsgTaskAssign:
-		var payload TaskAssignPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s pack_only=%v",
-			payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.PackOnly)
-
-		if c.canAccept() {
-			c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-			if payload.Pipeline != "" {
-				go c.executePipeline(payload)
-			} else {
-				go c.executeDeploy(payload)
-			}
-		} else {
-			c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
-				SessionID: payload.SessionID,
-				Reason:    "deploy agent busy",
-			})
-		}
-
-	case MsgTaskStop:
-		var payload TaskStopPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[INFO] stop deploy task: session=%s (deploy not interruptible)", payload.SessionID)
-
-	case MsgHeartbeatAck:
-		// ok
-
-	case uap.MsgToolCall:
-		go c.handleToolCall(msg)
-
-	case uap.MsgNotify:
-		// gateway 广播通知（如 agent_offline），deploy-agent 无需处理
-
-	case uap.MsgError:
-		var payload uap.ErrorPayload
-		json.Unmarshal(msg.Payload, &payload)
-		log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
-
-	default:
-		log.Printf("[WARN] unhandled message type: %s from %s", msg.Type, msg.From)
+	} else {
+		c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
+			SessionID: payload.SessionID,
+			Reason:    "deploy agent busy",
+		})
 	}
+}
+
+// handleTaskStop 处理停止任务
+func (c *Connection) handleTaskStop(msg *uap.Message) {
+	var payload TaskStopPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[INFO] stop deploy task: session=%s (deploy not interruptible)", payload.SessionID)
+}
+
+// handleToolCallMsg 处理工具调用（包装器）
+func (c *Connection) handleToolCallMsg(msg *uap.Message) {
+	go c.handleToolCall(msg)
+}
+
+// handleError 处理错误消息
+func (c *Connection) handleError(msg *uap.Message) {
+	var payload uap.ErrorPayload
+	json.Unmarshal(msg.Payload, &payload)
+	log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
 }
 
 // resolveProject 根据项目名称查找配置，支持空名称时使用默认项目
@@ -441,7 +423,7 @@ func (c *Connection) activeCount() int {
 // SendMsg 发送消息给 go_blog-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
-	return c.client.SendTo(targetAgent, msgType, payload)
+	return c.Client.SendTo(targetAgent, msgType, payload)
 }
 
 // ========================= Tool 自注册 =========================
@@ -492,7 +474,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[WARN] invalid tool_call payload: %v", err)
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     "invalid tool_call payload",
@@ -505,7 +487,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	if len(payload.Arguments) > 0 {
 		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
 			log.Printf("[WARN] invalid tool_call arguments: %v", err)
-			c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 				RequestID: msg.ID,
 				Success:   false,
 				Error:     "invalid arguments: " + err.Error(),
@@ -529,7 +511,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args)
 	default:
-		c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
 			Error:     fmt.Sprintf("unknown tool: %s", payload.ToolName),
@@ -537,7 +519,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		return
 	}
 
-	c.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+	c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   true,
 		Result:    result,
@@ -699,9 +681,10 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 	return json.RawMessage(data)
 }
 
-// sendDeployRegister 发送 deploy 协议注册消息给 go_blog-agent
-func (c *Connection) sendDeployRegister() {
-	// 加载 pipeline 名称
+// ========================= 协议层载荷构建 =========================
+
+// buildRegisterPayload 构建注册消息载荷
+func (c *Connection) buildRegisterPayload() interface{} {
 	var pipelineNames []string
 	if c.cfg.PipelinesDir != "" {
 		if pipCfg, err := LoadPipelines(c.cfg.PipelinesDir); err == nil {
@@ -709,8 +692,8 @@ func (c *Connection) sendDeployRegister() {
 		}
 	}
 
-	payload := RegisterPayload{
-		AgentID:       c.agentID,
+	return RegisterPayload{
+		AgentID:       c.AgentID,
 		Name:          c.cfg.AgentName,
 		Workspaces:    []string{},
 		Projects:      c.cfg.ProjectNames(),
@@ -721,53 +704,14 @@ func (c *Connection) sendDeployRegister() {
 		HostPlatform:  c.cfg.HostPlatform,
 		Pipelines:     pipelineNames,
 	}
-	c.SendMsg(MsgRegister, payload)
 }
 
-// sendDeployHeartbeat 发送心跳给 go_blog-agent
-func (c *Connection) sendDeployHeartbeat() {
-	c.SendMsg(MsgHeartbeat, HeartbeatPayload{
-		AgentID:        c.agentID,
+// buildHeartbeatPayload 构建心跳消息载荷
+func (c *Connection) buildHeartbeatPayload() interface{} {
+	return HeartbeatPayload{
+		AgentID:        c.AgentID,
 		ActiveSessions: c.activeCount(),
 		Load:           float64(c.activeCount()) / float64(c.cfg.MaxConcurrent),
 		Tools:          []string{"deploy"},
-	})
-}
-
-// StartDeployProtocol 启动 deploy 协议层（注册 + 心跳）
-func (c *Connection) StartDeployProtocol() {
-	// 等待 UAP 连接就绪
-	for !c.client.IsConnected() {
-		time.Sleep(100 * time.Millisecond)
 	}
-
-	c.sendDeployRegister()
-
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			if !c.client.IsConnected() {
-				c.regMu.Lock()
-				c.backendRegistered = false
-				c.regMu.Unlock()
-				for !c.client.IsConnected() {
-					time.Sleep(1 * time.Second)
-				}
-				c.sendDeployRegister()
-			}
-
-			// 如果尚未注册成功（go_blog 可能晚于本 agent 启动），重试注册
-			c.regMu.Lock()
-			registered := c.backendRegistered
-			c.regMu.Unlock()
-			if !registered {
-				log.Printf("[INFO] go_blog backend not registered yet, retrying...")
-				c.sendDeployRegister()
-				continue
-			}
-
-			c.sendDeployHeartbeat()
-		}
-	}()
 }

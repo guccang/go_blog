@@ -203,8 +203,8 @@ func main() {
 
 		agentID := fmt.Sprintf("deploy_%s_%d", cfg.AgentName, os.Getpid())
 		conn := NewConnection(cfg, pwd, agentID)
-		// 启动 deploy 协议层（注册 + 心跳）
-		go conn.StartDeployProtocol()
+		// 启动协议层（注册 + 心跳）
+		go conn.StartProtocolLayer()
 		conn.Run()
 		return
 	}

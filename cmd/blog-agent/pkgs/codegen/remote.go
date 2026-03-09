@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "mylog"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -546,6 +547,14 @@ func (p *AgentPool) StopAllRunningTasks() int {
 
 // GetAgents 获取所有 agent 信息（管理用）
 func (p *AgentPool) GetAgents() []map[string]interface{} {
+	// 优先从 gateway HTTP API 获取所有 UAP agent
+	if gatewayBridge != nil && gatewayBridge.gatewayHTTP != "" {
+		if agents := fetchAgentsFromGateway(); agents != nil {
+			return agents
+		}
+	}
+
+	// 降级：返回本地 pool（兼容直连模式）
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -568,6 +577,38 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 		agent.mu.Unlock()
 	}
 	return result
+}
+
+// fetchAgentsFromGateway 从 gateway HTTP API 获取所有 agent
+func fetchAgentsFromGateway() []map[string]interface{} {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(gatewayBridge.gatewayHTTP + "/api/gateway/agents")
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "fetch agents from gateway failed: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.WarnF(log.ModuleAgent, "gateway agents API returned status %d", resp.StatusCode)
+		return nil
+	}
+
+	var result struct {
+		Success bool                     `json:"success"`
+		Agents  []map[string]interface{} `json:"agents"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.WarnF(log.ModuleAgent, "decode gateway agents response failed: %v", err)
+		return nil
+	}
+
+	if !result.Success {
+		log.WarnF(log.ModuleAgent, "gateway agents API returned success=false")
+		return nil
+	}
+
+	return result.Agents
 }
 
 // GetAllModels 聚合所有在线 agent 的 Models（兼容旧版）

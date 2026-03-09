@@ -25,9 +25,12 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" publish.sh publish.bat templates/ statics/
+zip -r "${OUTPUT}" "$BINNAME" publish.sh publish.bat templates/ statics/ 
+cd ..
+zip -r "./blog-agent/${OUTPUT}" common/
 
 # 清理编译产物
+cd ./blog-agent
 rm -f "$BINNAME"
 
 echo "成功生成: ${OUTPUT}"
