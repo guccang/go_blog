@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG/英语学习追踪</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/english-learning-tracker.css">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <div class="top-sidebar-container">
+        <div class="top-sidebar">
+            <a href="/main">
+                <div class="img-cycle">G</div>
+            </a>
+            <a href="/main" style="font-size: 18px;">主页</a>
+            <a href="/english" style="font-size: 18px; color: var(--accent-color);">📚 英语学习追踪</a>
+            <div class="nav-buttons">
+                <button class="nav-btn active" data-view="dashboard" onclick="showView('dashboard')">📊 数据面板</button>
+                <button class="nav-btn" data-view="log" onclick="window.openLogModal()">📝 记录学习</button>
+                <button class="nav-btn" data-view="vocab" onclick="window.openVocabModal()">📖 单词本</button>
+                <button class="nav-btn" data-view="reports" onclick="showView('reports')">📈 报告</button>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:6px">
+                <button class="btn-secondary btn-small" onclick="window.syncWithTodolist()"><i class="fas fa-sync"></i> 同步待办</button>
+                <button class="btn-secondary btn-small" onclick="window.exportData()"><i class="fas fa-download"></i> 导出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView" class="content-view active">
+        <div class="main-layout">
+            <!-- Top Section - Goal Banner -->
+            <div class="top-section">
+                <div class="goal-banner">
+                    <div class="goal-icon">🎯</div>
+                    <div class="goal-info">
+                        <h2>英语学习目标: 达到B2水平</h2>
+                        <p>系统化学习英语，从基础到精通，每天坚持30分钟</p>
+                        <div class="overall-progress-bar">
+                            <div class="overall-progress-fill" id="overallProgressFill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="goal-stats">
+                        <div class="goal-stat">
+                            <span class="goal-stat-value" id="goalStatDays">0</span>
+                            <span class="goal-stat-label">连续天数</span>
+                        </div>
+                        <div class="goal-stat">
+                            <span class="goal-stat-value" id="goalStatVocab">0</span>
+                            <span class="goal-stat-label">词汇量</span>
+                        </div>
+                        <div class="goal-stat">
+                            <span class="goal-stat-value" id="goalStatXP">0</span>
+                            <span class="goal-stat-label">总XP</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Left Sidebar - Roadmap & Streak -->
+            <div class="left-sidebar">
+                <!-- Learning Roadmap -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-route"></i> 学习路线图</h3>
+                    </div>
+                    <div class="card-body">
+                        <ul class="roadmap-list" id="roadmapList">
+                            <!-- Dynamic roadmap items -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Streak Counter -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-fire"></i> 连续学习</h3>
+                    </div>
+                    <div class="streak-card">
+                        <div class="streak-number" id="streakNumber">0</div>
+                        <div class="streak-label">连续学习天数</div>
+                        <div class="streak-flames" id="streakFlames">💤</div>
+                        <div class="streak-best" id="streakBest">最佳记录: 0 天</div>
+                    </div>
+                </div>
+
+                <!-- Weekly Heatmap -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-th"></i> 学习热力图</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="heatmap-labels">
+                            <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
+                        </div>
+                        <div class="heatmap-grid" id="heatmapGrid">
+                            <!-- Dynamic heatmap -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Panel - Data Dashboard -->
+            <div class="center-panel">
+                <!-- Stats Overview -->
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📝</div>
+                        <span class="stat-value" id="statVocabTotal">0</span>
+                        <div class="stat-label">总词汇量</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🦉</div>
+                        <span class="stat-value" id="statXPTotal">0</span>
+                        <div class="stat-label">多邻国XP</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎧</div>
+                        <span class="stat-value" id="statListeningRate">0%</span>
+                        <div class="stat-label">听力理解率</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔥</div>
+                        <span class="stat-value" id="statStreakDays">0</span>
+                        <div class="stat-label">连续天数</div>
+                    </div>
+                </div>
+
+                <!-- Daily Progress -->
+                <div class="card daily-progress">
+                    <div class="card-header">
+                        <h3><i class="fas fa-tasks"></i> 今日进度</h3>
+                        <div>
+                            <button class="btn-primary btn-small" onclick="window.openLogModal()"><i class="fas fa-plus"></i> 记录</button>
+                            <button class="btn-secondary btn-small" onclick="window.resetDailyProgress()" style="margin-left:4px">重置</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="dailyProgressList">
+                            <!-- Dynamic daily progress items -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- XP Chart -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-bar"></i> 多邻国XP记录</h3>
+                        <div class="xp-log-form">
+                            <input type="number" id="xpInput" min="0" placeholder="输入XP">
+                            <button class="btn-primary btn-small" onclick="window.logXP()">记录</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="xpChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="chart-row">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> 词汇量增长</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="vocabChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-headphones"></i> 听力理解率</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="listeningChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar - Tools & Reminders -->
+            <div class="right-sidebar">
+                <!-- Reminder Setup -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-bell"></i> 学习提醒</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="reminder-form">
+                            <input type="time" id="reminderTime" placeholder="提醒时间">
+                            <input type="text" id="reminderText" placeholder="提醒内容...">
+                            <select id="reminderType">
+                                <option value="vocab">词汇学习</option>
+                                <option value="listen">听力练习</option>
+                                <option value="speak">口语练习</option>
+                                <option value="general">综合学习</option>
+                                <option value="duolingo">多邻国打卡</option>
+                            </select>
+                            <button class="btn-primary" onclick="window.addReminder()"><i class="fas fa-plus"></i> 添加提醒</button>
+                        </div>
+                        <ul class="reminder-list" id="reminderList">
+                            <!-- Dynamic reminder items -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-bolt"></i> 快捷操作</h3>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn-primary" onclick="window.openLogModal()" style="width:100%;margin-bottom:8px"><i class="fas fa-pencil-alt"></i> 记录今日学习</button>
+                        <button class="btn-secondary" onclick="window.openVocabModal()" style="width:100%;margin-bottom:8px"><i class="fas fa-book"></i> 添加新单词</button>
+                        <button class="btn-secondary" onclick="window.syncWithTodolist()" style="width:100%;margin-bottom:8px"><i class="fas fa-list-check"></i> 同步到待办</button>
+                        <button class="btn-secondary" onclick="window.importData()" style="width:100%"><i class="fas fa-upload"></i> 导入数据</button>
+                    </div>
+                </div>
+
+                <!-- Learning Resources -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-lightbulb"></i> 学习资源</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="resourceList">
+                            <!-- Dynamic resource items -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Section - History & Reports -->
+            <div class="bottom-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-history"></i> 学习记录</h3>
+                    </div>
+                    <div class="card-body" style="overflow-x:auto">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>活动</th>
+                                    <th>详情</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody">
+                                <!-- Dynamic history entries -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports View -->
+    <div id="reportsView" class="content-view">
+        <div style="max-width:1200px;margin:20px auto;padding:0 20px">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-pie"></i> 学习报告</h3>
+                </div>
+                <div class="card-body">
+                    <div class="report-tabs">
+                        <button class="report-tab active" onclick="window.generateReport('weekly')">周度报告</button>
+                        <button class="report-tab" onclick="window.generateReport('monthly')">月度报告</button>
+                    </div>
+                    <div id="reportSummary" class="report-summary">
+                        <div class="report-summary-card">
+                            <div class="summary-value">--</div>
+                            <div class="summary-label">总XP</div>
+                        </div>
+                        <div class="report-summary-card">
+                            <div class="summary-value">--</div>
+                            <div class="summary-label">新词汇</div>
+                        </div>
+                        <div class="report-summary-card">
+                            <div class="summary-value">--</div>
+                            <div class="summary-label">学习天数</div>
+                        </div>
+                        <div class="report-summary-card">
+                            <div class="summary-value">--</div>
+                            <div class="summary-label">平均听力率</div>
+                        </div>
+                    </div>
+                    <p style="text-align:center;opacity:0.5;padding:20px">点击上方按钮生成报告</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">详情</h3>
+                <button class="modal-close" onclick="window.closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dynamic modal content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Main JS -->
+    <script src="/js/english-learning-tracker.js"></script>
+</body>
+</html>

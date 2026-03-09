@@ -29,7 +29,7 @@ if errorlevel 1 (
 )
 
 :: 打包二进制 + 配置
-%SEVENZIP% a -tzip "%OUTPUT%" publish.sh pkgs/ statics/ templates/ ./main.go ./go.mod ./go.sum
+%SEVENZIP% a -tzip "%OUTPUT%" publish.sh pkgs/ statics/ templates/ ./main.go ./go.mod ./go.sum ../common
  
 :: 清理编译产物
 del %BINNAME%

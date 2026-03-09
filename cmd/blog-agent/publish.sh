@@ -10,6 +10,10 @@ echo "停止 blog-agent..."
 ps aux | grep "$svr" | grep -v "grep" |  awk '{print $2}' | xargs kill -9
 sleep 1
 
+# common模块
+rm -rf ../common
+cp -rf ./common ../
+
 # 确保可执行
 go build
 chmod +x blog-agent

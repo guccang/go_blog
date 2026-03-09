@@ -1220,3 +1220,21 @@ func PageCodeGen(w h.ResponseWriter) {
 		return
 	}
 }
+
+// PageEnglishLearning renders the English learning tracker page
+func PageEnglishLearning(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "english-learning-tracker.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse english-learning-tracker template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render english-learning-tracker template", h.StatusInternalServerError)
+		return
+	}
+}

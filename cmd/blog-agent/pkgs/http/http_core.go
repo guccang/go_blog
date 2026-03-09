@@ -412,6 +412,9 @@ func Init() int {
 	h.HandleFunc("/api/linkup/race/state", linkup.HandleRaceState)
 	h.HandleFunc("/api/linkup/race/list", linkup.HandleRaceList)
 
+	// English Learning Tracker route
+	h.HandleFunc("/english", HandleEnglishLearning)
+
 	// Skill routes
 	h.HandleFunc("/skill", HandleSkill)
 	RegisterSkillRoutes()
