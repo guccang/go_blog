@@ -608,7 +608,16 @@ func fetchAgentsFromGateway() []map[string]interface{} {
 		return nil
 	}
 
-	return result.Agents
+	// 过滤：只返回 codegen 和 deploy 类型的 agent
+	filtered := make([]map[string]interface{}, 0)
+	for _, agent := range result.Agents {
+		agentType, _ := agent["agent_type"].(string)
+		if agentType == "codegen" || agentType == "deploy" {
+			filtered = append(filtered, agent)
+		}
+	}
+
+	return filtered
 }
 
 // GetAllModels 聚合所有在线 agent 的 Models（兼容旧版）
