@@ -27,6 +27,7 @@ type RegisterPayload struct {
 	MaxConcurrent int      `json:"max_concurrent"`
 	AuthToken     string   `json:"auth_token,omitempty"`
 	DeployTargets []string `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
+	SSHHosts      []string `json:"ssh_hosts,omitempty"`      // 可用 SSH 服务器 ["root@114.115.214.86"]
 	HostPlatform  string   `json:"host_platform,omitempty"`  // 主机平台 "win"
 	Pipelines     []string `json:"pipelines,omitempty"`      // 可用 pipeline 名称列表
 }

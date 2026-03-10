@@ -177,6 +177,9 @@ func main() {
 		if len(cfg.TargetNames) > 0 {
 			fmt.Printf("可用目标: %s\n", strings.Join(cfg.TargetNames, ", "))
 		}
+		if len(cfg.SSHHosts) > 0 {
+			fmt.Printf("SSH 服务器: %s\n", strings.Join(cfg.SSHHosts, ", "))
+		}
 		fmt.Printf("项目数量: %d\n\n", len(cfg.Projects))
 		for _, name := range cfg.ProjectOrder {
 			proj := cfg.Projects[name]

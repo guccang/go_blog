@@ -53,6 +53,7 @@ type DeployConfig struct {
 	HostPlatform string   // 当前主机平台（自动检测，用于 build 配置）
 	TargetFilter string   // 发布目标过滤（默认 local，可选 all 或具体 target 名）
 	TargetNames  []string // 可用的 target 名称列表（从项目配置扫描）
+	SSHHosts     []string // 可用 SSH 服务器列表（去重，如 root@114.115.214.86）
 
 	// Workspace 目录列表（扫描子目录发现项目）
 	Workspaces []string
@@ -295,8 +296,9 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		return confFiles[i].Name() < confFiles[j].Name()
 	})
 
-	// 收集所有 target 名称
+	// 收集所有 target 名称和 SSH 主机
 	allTargetNames := map[string]bool{}
+	allSSHHosts := map[string]bool{}
 
 	for _, entry := range confFiles {
 		filePath := filepath.Join(projectsDir, entry.Name())
@@ -311,6 +313,10 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		var filteredTargets []*Target
 		for _, t := range targets {
 			allTargetNames[t.Name] = true
+			// 收集非 local 的 SSH 主机
+			if !isLocalTarget(t.Host) {
+				allSSHHosts[t.Host] = true
+			}
 			if c.shouldIncludeTarget(t) {
 				filteredTargets = append(filteredTargets, t)
 			}
@@ -353,6 +359,14 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 	}
 	sort.Strings(names)
 	c.TargetNames = names
+
+	// 更新可用 SSH 主机列表
+	var hosts []string
+	for h := range allSSHHosts {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	c.SSHHosts = hosts
 
 	return nil
 }

@@ -609,9 +609,10 @@ func (c *Connection) toolListProjects() string {
 		})
 	}
 	return string(mustMarshalJSON(map[string]interface{}{
-		"success":  true,
-		"status":   "completed",
-		"projects": projects,
+		"success":   true,
+		"status":    "completed",
+		"projects":  projects,
+		"ssh_hosts": c.cfg.SSHHosts,
 	}))
 }
 
@@ -799,6 +800,7 @@ func (c *Connection) buildRegisterPayload() interface{} {
 		MaxConcurrent: c.cfg.MaxConcurrent,
 		AuthToken:     c.cfg.AuthToken,
 		DeployTargets: c.cfg.TargetNames,
+		SSHHosts:      c.cfg.SSHHosts,
 		HostPlatform:  c.cfg.HostPlatform,
 		Pipelines:     pipelineNames,
 	}
