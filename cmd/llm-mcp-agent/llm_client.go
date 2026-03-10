@@ -94,6 +94,56 @@ type llmError struct {
 	Type    string `json:"type"`
 }
 
+// ========================= LLM 上下文日志 =========================
+
+// logLLMContext 打印 LLM 调用时的完整上下文（消息 + 工具列表）
+func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTool) {
+	log.Printf("[LLM-Context][%s] ========== LLM 调用上下文 ==========", tag)
+	log.Printf("[LLM-Context][%s] model=%s max_tokens=%d temperature=%.2f", tag, cfg.Model, cfg.MaxTokens, cfg.Temperature)
+	log.Printf("[LLM-Context][%s] messages 数量: %d", tag, len(messages))
+
+	for i, m := range messages {
+		// 打印角色和内容
+		contentPreview := m.Content
+		runes := []rune(contentPreview)
+		if len(runes) > 500 {
+			contentPreview = string(runes[:500]) + fmt.Sprintf("...(%d chars total)", len(runes))
+		}
+		log.Printf("[LLM-Context][%s] msg[%d] role=%s content_len=%d content:\n%s",
+			tag, i, m.Role, len(m.Content), contentPreview)
+
+		// 打印 assistant 消息中的 tool_calls
+		if len(m.ToolCalls) > 0 {
+			for j, tc := range m.ToolCalls {
+				argsPreview := tc.Function.Arguments
+				argsRunes := []rune(argsPreview)
+				if len(argsRunes) > 300 {
+					argsPreview = string(argsRunes[:300]) + "..."
+				}
+				log.Printf("[LLM-Context][%s] msg[%d].tool_calls[%d] id=%s name=%s args=%s",
+					tag, i, j, tc.ID, tc.Function.Name, argsPreview)
+			}
+		}
+
+		// 打印 tool 消息的 tool_call_id
+		if m.ToolCallID != "" {
+			log.Printf("[LLM-Context][%s] msg[%d] tool_call_id=%s", tag, i, m.ToolCallID)
+		}
+	}
+
+	// 打印工具列表
+	if len(tools) > 0 {
+		var toolNames []string
+		for _, t := range tools {
+			toolNames = append(toolNames, t.Function.Name)
+		}
+		log.Printf("[LLM-Context][%s] tools(%d): %s", tag, len(tools), strings.Join(toolNames, ", "))
+	} else {
+		log.Printf("[LLM-Context][%s] tools: (none)", tag)
+	}
+	log.Printf("[LLM-Context][%s] ========== 上下文结束 ==========", tag)
+}
+
 // ========================= LLM API 客户端 =========================
 
 // SendLLMRequest 发送 LLM 请求（同步），返回响应文本和工具调用
@@ -105,6 +155,9 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	}
 	log.Printf("[LLM] → 同步请求 model=%s messages=[%s] tools=%d",
 		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+
+	// 打印完整上下文
+	logLLMContext("sync", cfg, messages, tools)
 
 	reqStart := time.Now()
 
@@ -217,6 +270,9 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	}
 	log.Printf("[LLM] → 流式请求 model=%s messages=[%s] tools=%d",
 		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+
+	// 打印完整上下文
+	logLLMContext("stream", cfg, messages, tools)
 
 	reqStart := time.Now()
 

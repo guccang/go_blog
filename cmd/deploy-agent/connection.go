@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -483,6 +484,13 @@ func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 
 // buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表
 func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
+	// 动态生成 ssh_host 参数描述，嵌入真实可用服务器列表
+	sshHostDesc := "SSH 目标，提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件"
+	if len(cfg.SSHHosts) > 0 {
+		sshHostDesc = fmt.Sprintf("SSH 目标（可用服务器: %s），提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件",
+			strings.Join(cfg.SSHHosts, ", "))
+	}
+
 	return []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
@@ -499,7 +507,7 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标（如 local, ssh-prod），不填则使用默认"},
 					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
 					"project_dir":   map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（项目未配置时必填，会自动检测 go.mod 并生成部署配置文件）"},
-					"ssh_host":      map[string]interface{}{"type": "string", "description": "SSH 目标（如 root@1.2.3.4），提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件"},
+					"ssh_host":      map[string]interface{}{"type": "string", "description": sshHostDesc},
 					"ssh_port":      map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22，仅 adhoc 模式）"},
 					"remote_dir":    map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>，仅 adhoc 模式）"},
 					"start_args":    map[string]interface{}{"type": "string", "description": "启动参数（仅 adhoc 模式）"},

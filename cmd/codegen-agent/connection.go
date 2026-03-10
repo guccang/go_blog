@@ -372,8 +372,8 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	if result.Status != "done" {
 		return fmt.Sprintf(`{"success":false,"status":"failed","session_id":"%s","error":"%s"}`, sessionID, result.Error)
 	}
-	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","summary":"%s"}`,
-		sessionID, escapeJSON(result.Summary))
+	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","project_dir":"%s","summary":"%s"}`,
+		sessionID, escapeJSON(result.ProjectDir), escapeJSON(result.Summary))
 }
 
 // toolSendMessage 向编码会话追加消息（同步等待完成）
@@ -422,8 +422,8 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	if result.Status != "done" {
 		return fmt.Sprintf(`{"success":false,"status":"failed","session_id":"%s","error":"%s"}`, newSessionID, result.Error)
 	}
-	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","summary":"%s"}`,
-		newSessionID, escapeJSON(result.Summary))
+	return fmt.Sprintf(`{"success":true,"status":"completed","session_id":"%s","project_dir":"%s","summary":"%s"}`,
+		newSessionID, escapeJSON(result.ProjectDir), escapeJSON(result.Summary))
 }
 
 // toolGetStatus 查看编码会话状态（支持 per-session 查询）
