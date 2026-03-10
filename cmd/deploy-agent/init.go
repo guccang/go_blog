@@ -338,6 +338,34 @@ func promptYesNo(reader *bufio.Reader, prompt string, defaultYes bool) bool {
 	return line == "y" || line == "yes"
 }
 
+// ensurePackScripts 确保打包+发布脚本存在（不覆盖已有文件）
+// 用于 adhoc 部署模式，在执行部署前确保必要的脚本文件存在
+func ensurePackScripts(cfg *InitConfig) error {
+	type scriptFile struct {
+		path    string
+		content string
+		mode    os.FileMode
+	}
+
+	scripts := []scriptFile{
+		{filepath.Join(cfg.ProjectDir, "zip-files.bat"), generateZipFilesBat(cfg), 0644},
+		{filepath.Join(cfg.ProjectDir, "zip-files.sh"), generateZipFilesSh(cfg), 0755},
+		{filepath.Join(cfg.ProjectDir, "publish.bat"), generatePublishBat(cfg), 0644},
+		{filepath.Join(cfg.ProjectDir, "publish.sh"), generatePublishSh(cfg), 0755},
+	}
+
+	for _, s := range scripts {
+		if _, err := os.Stat(s.path); err == nil {
+			continue // 文件已存在，不覆盖
+		}
+		if err := os.WriteFile(s.path, []byte(s.content), s.mode); err != nil {
+			return fmt.Errorf("write %s: %v", s.path, err)
+		}
+	}
+
+	return nil
+}
+
 // --- Script generators ---
 
 // generateZipFilesBat generates Windows build/pack script content

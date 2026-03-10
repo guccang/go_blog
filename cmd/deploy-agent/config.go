@@ -32,6 +32,7 @@ type ProjectConfig struct {
 	Targets     []*Target // 部署目标列表
 	VerifyURL   string    // 部署验证 URL（兼容旧模式，新模式用 Target.VerifyURL）
 	ConfigFile  string    // 来源 settings 文件路径
+	Configured  bool      // 是否有持久化 settings（.conf 文件）
 }
 
 // DeployConfig 全局部署配置
@@ -52,6 +53,9 @@ type DeployConfig struct {
 	HostPlatform string   // 当前主机平台（自动检测，用于 build 配置）
 	TargetFilter string   // 发布目标过滤（默认 local，可选 all 或具体 target 名）
 	TargetNames  []string // 可用的 target 名称列表（从项目配置扫描）
+
+	// Workspace 目录列表（扫描子目录发现项目）
+	Workspaces []string
 
 	// 多项目配置
 	Projects     map[string]*ProjectConfig // 项目名 → 配置
@@ -142,14 +146,22 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 		parseGlobalKey(cfg, key, val)
 	}
 
-	// settings_dir 模式：加载 projects/ 目录
+	// workspace 扫描：发现含 go.mod 的子目录
+	cfg.scanWorkspaces()
+
+	// settings_dir 模式：加载 projects/ 目录（叠加到 workspace 发现的项目上）
 	if cfg.SettingsDir != "" {
 		settingsDir := cfg.SettingsDir
 		if !filepath.IsAbs(settingsDir) {
 			settingsDir = filepath.Join(filepath.Dir(path), settingsDir)
 		}
 		if err := cfg.loadProjectsDir(settingsDir); err != nil {
-			return nil, fmt.Errorf("load settings_dir %q: %v", settingsDir, err)
+			// workspace 有项目时 settings_dir 加载失败不致命
+			if len(cfg.Projects) == 0 {
+				return nil, fmt.Errorf("load settings_dir %q: %v", settingsDir, err)
+			}
+			// 有 workspace 项目，只打 log 警告
+			fmt.Fprintf(os.Stderr, "warning: load settings_dir %q: %v\n", settingsDir, err)
 		}
 	}
 
@@ -163,7 +175,7 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 		}
 	}
 	if len(cfg.Projects) == 0 {
-		return nil, fmt.Errorf("no projects found (check settings_dir and projects/ directory)")
+		return nil, fmt.Errorf("no projects found (check workspaces, settings_dir and projects/ directory)")
 	}
 	if cfg.GoBackendAgentID == "" {
 		cfg.GoBackendAgentID = "go_blog"
@@ -205,6 +217,50 @@ func normalizePlatform(p string) string {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// scanWorkspaces 扫描 workspace 目录，发现含 go.mod 的子目录作为项目
+func (c *DeployConfig) scanWorkspaces() {
+	for _, ws := range c.Workspaces {
+		if !dirExists(ws) {
+			continue
+		}
+		entries, err := os.ReadDir(ws)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			projDir := filepath.Join(ws, entry.Name())
+			_, projName, err := detectGoProject(projDir)
+			if err != nil || projName == "" {
+				continue // 不含 go.mod，跳过
+			}
+			if _, exists := c.Projects[projName]; exists {
+				continue // 已存在（可能另一个 workspace 先发现了同名项目）
+			}
+
+			// 自动检测 PackScript
+			var packScript string
+			if runtime.GOOS == "windows" {
+				packScript = filepath.Join(projDir, "pack.bat")
+			} else {
+				packScript = filepath.Join(projDir, "pack.sh")
+			}
+
+			proj := &ProjectConfig{
+				Name:        projName,
+				ProjectDir:  projDir,
+				PackScript:  packScript,
+				PackPattern: projName + "_{date}.zip",
+				Configured:  false,
+			}
+			c.Projects[projName] = proj
+			c.ProjectOrder = append(c.ProjectOrder, projName)
+		}
+	}
 }
 
 // loadProjectsDir 扫描 settings/projects/ 目录加载项目配置
@@ -264,10 +320,30 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			continue // 该项目在当前过滤条件下没有可用 target
 		}
 
-		proj.Targets = filteredTargets
-		proj.ConfigFile = filePath
-		c.Projects[projName] = proj
-		c.ProjectOrder = append(c.ProjectOrder, projName)
+		// 叠加到 workspace 发现的项目，或新建（向后兼容无 workspace 的 .conf 项目）
+		if existing, ok := c.Projects[projName]; ok {
+			// workspace 已发现该项目，叠加 settings
+			existing.Targets = filteredTargets
+			existing.ConfigFile = filePath
+			existing.Configured = true
+			// 覆盖构建参数（.conf 优先）
+			if proj.ProjectDir != "" {
+				existing.ProjectDir = proj.ProjectDir
+			}
+			if proj.PackScript != "" {
+				existing.PackScript = proj.PackScript
+			}
+			if proj.PackPattern != "" {
+				existing.PackPattern = proj.PackPattern
+			}
+		} else {
+			// 纯 .conf 项目（不在 workspace 中），向后兼容
+			proj.Targets = filteredTargets
+			proj.ConfigFile = filePath
+			proj.Configured = true
+			c.Projects[projName] = proj
+			c.ProjectOrder = append(c.ProjectOrder, projName)
+		}
 	}
 
 	// 更新可用 target 名称列表
@@ -589,6 +665,13 @@ func parseGlobalKey(cfg *DeployConfig, key, val string) {
 		}
 	case "settings_dir":
 		cfg.SettingsDir = val
+	case "workspaces":
+		for _, ws := range strings.Split(val, ",") {
+			ws = strings.TrimSpace(ws)
+			if ws != "" {
+				cfg.Workspaces = append(cfg.Workspaces, ws)
+			}
+		}
 	case "go_blog_agent_id":
 		cfg.GoBackendAgentID = val
 	}

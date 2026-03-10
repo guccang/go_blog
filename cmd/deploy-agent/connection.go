@@ -141,6 +141,59 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 		})
 	}
 
+	// adhoc 模式：ssh_host 存在时走一次性部署
+	if task.SSHHost != "" {
+		if task.ProjectDir == "" {
+			sendEvent("error", "❌ adhoc 模式需要 project_dir 参数")
+			c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+				SessionID: sessionID,
+				Status:    "error",
+				Error:     "adhoc mode requires project_dir",
+			})
+			return
+		}
+
+		adhoc := &AdhocConfig{
+			ProjectDir: task.ProjectDir,
+			SSHHost:    task.SSHHost,
+			SSHPort:    task.SSHPort,
+			RemoteDir:  task.RemoteDir,
+			StartArgs:  task.StartArgs,
+			VerifyURL:  task.VerifyURL,
+		}
+
+		sendEvent("system", fmt.Sprintf("🚀 开始 adhoc 部署到 %s...", task.SSHHost))
+
+		deployCfg := *c.cfg
+		err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
+			evtType := "system"
+			prefix := "📦 "
+			if level == "error" {
+				evtType = "error"
+				prefix = "⚠️ "
+			}
+			sendEvent(evtType, prefix+message)
+		})
+
+		status := SessionStatus("done")
+		errMsg := ""
+		if err != nil {
+			status = "error"
+			errMsg = err.Error()
+			sendEvent("error", fmt.Sprintf("❌ adhoc 部署失败: %v", err))
+		} else {
+			sendEvent("system", "✅ adhoc 部署完成")
+		}
+
+		c.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			SessionID: sessionID,
+			Status:    status,
+			Error:     errMsg,
+		})
+		log.Printf("[INFO] adhoc deploy task %s completed, status=%s", sessionID, status)
+		return
+	}
+
 	proj, err := c.resolveProject(task.Project)
 	if err != nil {
 		sendEvent("error", fmt.Sprintf("❌ %v", err))
@@ -433,12 +486,12 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
-			Description: "列出已配置的可部署项目（项目名、部署目标、构建平台）",
+			Description: "列出所有可部署项目（含 workspace 发现的未配置项目）。configured=true 的项目可直接按名称部署；configured=false 的项目需要通过 adhoc 参数（ssh_host 等）部署",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
 			Name:        "DeployProject",
-			Description: "部署指定项目到目标服务器。支持两种模式：1) 已配置项目：直接按项目名部署；2) 未配置项目：提供 project_dir 参数，自动生成部署配置（打包脚本、发布脚本、项目配置文件）后部署",
+			Description: "部署指定项目到目标服务器。支持两种模式：1) 已配置项目：直接按项目名部署；2) 未配置项目：提供 project_dir 参数，自动生成部署配置后部署；3) Adhoc 一次性部署：提供 ssh_host 参数，无需预配置，直接构建并部署到指定服务器",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -446,6 +499,11 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标（如 local, ssh-prod），不填则使用默认"},
 					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
 					"project_dir":   map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（项目未配置时必填，会自动检测 go.mod 并生成部署配置文件）"},
+					"ssh_host":      map[string]interface{}{"type": "string", "description": "SSH 目标（如 root@1.2.3.4），提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件"},
+					"ssh_port":      map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22，仅 adhoc 模式）"},
+					"remote_dir":    map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>，仅 adhoc 模式）"},
+					"start_args":    map[string]interface{}{"type": "string", "description": "启动参数（仅 adhoc 模式）"},
+					"verify_url":    map[string]interface{}{"type": "string", "description": "部署后健康检查 URL（仅 adhoc 模式）"},
 				},
 				"required": []string{"project"},
 			}),
@@ -526,12 +584,14 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	})
 }
 
-// toolListProjects 列出已配置的可部署项目
+// toolListProjects 列出所有可部署项目（含 workspace 发现的未配置项目）
 func (c *Connection) toolListProjects() string {
 	type projectInfo struct {
-		Name     string   `json:"name"`
-		Targets  []string `json:"targets"`
-		Platform string   `json:"platform"`
+		Name       string   `json:"name"`
+		Configured bool     `json:"configured"`
+		ProjectDir string   `json:"project_dir"`
+		Targets    []string `json:"targets"`
+		Platform   string   `json:"platform"`
 	}
 	var projects []projectInfo
 	for _, name := range c.cfg.ProjectOrder {
@@ -541,9 +601,11 @@ func (c *Connection) toolListProjects() string {
 			targets = append(targets, t.Name)
 		}
 		projects = append(projects, projectInfo{
-			Name:     proj.Name,
-			Targets:  targets,
-			Platform: c.cfg.HostPlatform,
+			Name:       proj.Name,
+			Configured: proj.Configured,
+			ProjectDir: proj.ProjectDir,
+			Targets:    targets,
+			Platform:   c.cfg.HostPlatform,
 		})
 	}
 	return string(mustMarshalJSON(map[string]interface{}{
@@ -559,6 +621,37 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	deployTarget, _ := args["deploy_target"].(string)
 	packOnly, _ := args["pack_only"].(bool)
 	projectDir, _ := args["project_dir"].(string)
+	sshHost, _ := args["ssh_host"].(string)
+
+	// adhoc 模式：ssh_host 存在时直接走一次性部署
+	if sshHost != "" {
+		if projectDir == "" {
+			return `{"success":false,"status":"failed","error":"adhoc 模式需要 project_dir 参数"}`
+		}
+		sshPort := 22
+		if p, ok := args["ssh_port"].(float64); ok && p > 0 {
+			sshPort = int(p)
+		}
+		remoteDir, _ := args["remote_dir"].(string)
+		startArgs, _ := args["start_args"].(string)
+		verifyURL, _ := args["verify_url"].(string)
+
+		adhoc := &AdhocConfig{
+			ProjectDir: projectDir,
+			SSHHost:    sshHost,
+			SSHPort:    sshPort,
+			RemoteDir:  remoteDir,
+			StartArgs:  startArgs,
+			VerifyURL:  verifyURL,
+		}
+
+		deployCfg := *c.cfg
+		err := adhocDeploy(&deployCfg, adhoc, c.password, nil)
+		if err != nil {
+			return fmt.Sprintf(`{"success":false,"status":"failed","error":"adhoc 部署失败: %s"}`, err.Error())
+		}
+		return fmt.Sprintf(`{"success":true,"status":"completed","message":"adhoc 部署项目 %s 完成"}`, projectName)
+	}
 
 	proj, err := c.resolveProject(projectName)
 	if err != nil && projectDir != "" {
@@ -692,10 +785,15 @@ func (c *Connection) buildRegisterPayload() interface{} {
 		}
 	}
 
+	workspaces := c.cfg.Workspaces
+	if workspaces == nil {
+		workspaces = []string{}
+	}
+
 	return RegisterPayload{
 		AgentID:       c.AgentID,
 		Name:          c.cfg.AgentName,
-		Workspaces:    []string{},
+		Workspaces:    workspaces,
 		Projects:      c.cfg.ProjectNames(),
 		Tools:         []string{"deploy"},
 		MaxConcurrent: c.cfg.MaxConcurrent,

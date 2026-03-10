@@ -192,12 +192,12 @@ func buildCodegenToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenStartSession",
-			Description: "启动 AI 编码会话（同步等待完成，进度通过 stream_event 推送）",
+			Description: "启动 AI 编码会话（同步等待完成，进度通过 stream_event 推送）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"project": map[string]interface{}{"type": "string", "description": "项目名称"},
-					"prompt":  map[string]interface{}{"type": "string", "description": "编码需求描述"},
+					"prompt":  map[string]interface{}{"type": "string", "description": "用户的原始编码需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
 					"model":   map[string]interface{}{"type": "string", "description": "模型配置名称（可选）"},
 					"tool":    map[string]interface{}{"type": "string", "description": "编码工具（可选，claudecode/opencode）"},
 				},
@@ -206,11 +206,11 @@ func buildCodegenToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenSendMessage",
-			Description: "向编码会话追加消息并等待完成（基于上一次会话续接）",
+			Description: "向编码会话追加消息并等待完成（基于上一次会话续接）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"prompt":     map[string]interface{}{"type": "string", "description": "追加的消息内容"},
+					"prompt":     map[string]interface{}{"type": "string", "description": "用户的原始消息内容，必须完整保留用户输入的原文，不得修改或重新措辞"},
 					"session_id": map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
 				},
 				"required": []string{"prompt"},

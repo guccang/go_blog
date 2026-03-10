@@ -55,6 +55,13 @@ type TaskAssignPayload struct {
 	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
 	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
 	Pipeline      string `json:"pipeline,omitempty"`       // pipeline 名称（远程触发）
+	// Adhoc 一次性部署参数（ssh_host 存在时进入 adhoc 模式）
+	ProjectDir    string `json:"project_dir,omitempty"`    // Go 项目目录
+	SSHHost       string `json:"ssh_host,omitempty"`       // SSH 目标（如 root@1.2.3.4）
+	SSHPort       int    `json:"ssh_port,omitempty"`       // SSH 端口（默认 22）
+	RemoteDir     string `json:"remote_dir,omitempty"`     // 远程部署目录
+	StartArgs     string `json:"start_args,omitempty"`     // 启动参数
+	VerifyURL     string `json:"verify_url,omitempty"`     // 部署后健康检查 URL
 }
 
 // TaskAcceptedPayload 任务接受确认

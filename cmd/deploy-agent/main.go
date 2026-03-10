@@ -31,6 +31,14 @@ func main() {
 	initLinux := flag.String("init-linux-dir", "", "Linux project directory for --init")
 	initMac := flag.String("init-mac-dir", "", "macOS project directory for --init")
 	initYes := flag.Bool("yes", false, "Non-interactive mode, accept all defaults")
+	// --adhoc flags
+	adhocMode := flag.Bool("adhoc", false, "一次性部署模式（无需 .conf 配置文件）")
+	adhocProjectDir := flag.String("project-dir", "", "Go 项目目录（adhoc 模式必填）")
+	adhocSSHHost := flag.String("ssh-host", "", "SSH 目标（如 root@114.115.214.86）（adhoc 模式必填）")
+	adhocSSHPort := flag.Int("ssh-port", 22, "SSH 端口（adhoc 模式，默认 22）")
+	adhocRemoteDir := flag.String("remote-dir", "", "远程部署目录（adhoc 模式，默认 /data/program/<项目名>）")
+	adhocStartArgs := flag.String("start-args", "", "启动参数（adhoc 模式）")
+	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
 	flag.Parse()
 
 	// --init early exit (before LoadConfig, since the project may not have a config yet)
@@ -47,6 +55,80 @@ func main() {
 		if err := runInit(*initDir, *configPath, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
 			os.Exit(1)
+		}
+		return
+	}
+
+	// --adhoc early exit (before LoadConfig, since no .conf is needed)
+	if *adhocMode {
+		if *adhocProjectDir == "" {
+			fmt.Fprintf(os.Stderr, "adhoc 模式需要 --project-dir 参数\n")
+			os.Exit(1)
+		}
+		if *adhocSSHHost == "" {
+			fmt.Fprintf(os.Stderr, "adhoc 模式需要 --ssh-host 参数\n")
+			os.Exit(1)
+		}
+
+		adhoc := &AdhocConfig{
+			ProjectDir: *adhocProjectDir,
+			SSHHost:    *adhocSSHHost,
+			SSHPort:    *adhocSSHPort,
+			RemoteDir:  *adhocRemoteDir,
+			StartArgs:  *adhocStartArgs,
+			VerifyURL:  *adhocVerifyURL,
+		}
+
+		cfg := &DeployConfig{
+			HostPlatform: platformSubdir(),
+		}
+
+		// 解析密码
+		pwd := *password
+		if pwd == "" {
+			cred := newCredentialStore()
+			user, host := parseHost(*adhocSSHHost)
+			accountKey := fmt.Sprintf("%s@%s:%d", user, host, *adhocSSHPort)
+			if saved, err := cred.Get(accountKey); err == nil && saved != "" {
+				pwd = saved
+				fmt.Printf("已从凭据存储获取密码 (%s)\n", accountKey)
+			}
+		}
+		if pwd == "" {
+			fmt.Print("SSH 密码: ")
+			if pwdBytes, err := term.ReadPassword(int(syscall.Stdin)); err == nil {
+				pwd = string(pwdBytes)
+			} else {
+				reader := bufio.NewReader(os.Stdin)
+				line, _ := reader.ReadString('\n')
+				pwd = strings.TrimSpace(line)
+			}
+			fmt.Println()
+		}
+
+		fmt.Printf("Adhoc Deploy\n")
+		fmt.Printf("项目目录: %s\n", *adhocProjectDir)
+		fmt.Printf("SSH 目标: %s\n", *adhocSSHHost)
+		if *adhocRemoteDir != "" {
+			fmt.Printf("远程目录: %s\n", *adhocRemoteDir)
+		}
+		fmt.Println()
+
+		if err := adhocDeploy(cfg, adhoc, pwd, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "adhoc 部署失败: %v\n", err)
+			os.Exit(1)
+		}
+
+		// 保存密码（如果指定 --save-password）
+		if *savePwd && pwd != "" {
+			cred := newCredentialStore()
+			user, host := parseHost(*adhocSSHHost)
+			accountKey := fmt.Sprintf("%s@%s:%d", user, host, *adhocSSHPort)
+			if err := cred.Set(accountKey, pwd); err != nil {
+				fmt.Fprintf(os.Stderr, "保存密码失败 (%s): %v\n", accountKey, err)
+			} else {
+				fmt.Printf("密码已保存到凭据存储 (%s)\n", accountKey)
+			}
 		}
 		return
 	}
@@ -89,23 +171,32 @@ func main() {
 	if *listProjects {
 		fmt.Printf("配置文件: %s\n", *configPath)
 		fmt.Printf("主机平台: %s\n", cfg.HostPlatform)
+		if len(cfg.Workspaces) > 0 {
+			fmt.Printf("Workspaces: %s\n", strings.Join(cfg.Workspaces, ", "))
+		}
 		if len(cfg.TargetNames) > 0 {
 			fmt.Printf("可用目标: %s\n", strings.Join(cfg.TargetNames, ", "))
 		}
 		fmt.Printf("项目数量: %d\n\n", len(cfg.Projects))
 		for _, name := range cfg.ProjectOrder {
 			proj := cfg.Projects[name]
-			fmt.Printf("[%s]\n", name)
+			if proj.Configured {
+				fmt.Printf("[%s]\n", name)
+			} else {
+				fmt.Printf("[%s] (未配置 - 需要 adhoc 参数)\n", name)
+			}
 			if proj.ConfigFile != "" {
 				fmt.Printf("  配置来源: %s\n", proj.ConfigFile)
 			}
 			fmt.Printf("  项目目录: %s\n", proj.ProjectDir)
-			fmt.Printf("  打包脚本: %s\n", proj.PackScript)
-			fmt.Printf("  部署目标: %d 个\n", len(proj.Targets))
-			for _, t := range proj.Targets {
-				fmt.Printf("    - %s (%s) -> %s\n", t.Name, t.Host, t.RemoteDir)
-				if t.VerifyURL != "" {
-					fmt.Printf("      验证URL: %s\n", t.VerifyURL)
+			if proj.Configured {
+				fmt.Printf("  打包脚本: %s\n", proj.PackScript)
+				fmt.Printf("  部署目标: %d 个\n", len(proj.Targets))
+				for _, t := range proj.Targets {
+					fmt.Printf("    - %s (%s) -> %s\n", t.Name, t.Host, t.RemoteDir)
+					if t.VerifyURL != "" {
+						fmt.Printf("      验证URL: %s\n", t.VerifyURL)
+					}
 				}
 			}
 			fmt.Println()
