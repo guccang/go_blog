@@ -78,8 +78,6 @@ replace fruitcrush => ./pkgs/fruitcrush
 
 replace taskbreakdown => ./pkgs/taskbreakdown
 
-replace agent => ./pkgs/agent
-
 replace wechat => ./pkgs/wechat
 
 replace codegen => ./pkgs/codegen
@@ -87,7 +85,6 @@ replace codegen => ./pkgs/codegen
 replace uap => ../common/uap
 
 require (
-	agent v0.0.0
 	auth v0.0.0
 	blog v0.0.0
 	comment v0.0.0
@@ -115,7 +112,6 @@ require (
 	account v0.0.0 // indirect
 	codegen v0.0.0 // indirect
 	constellation v0.0.0 // indirect
-	email v0.0.0 // indirect
 	finance v0.0.0 // indirect
 	fruitcrush v0.0.0 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible // indirect
@@ -123,7 +119,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/text v0.34.0 // indirect

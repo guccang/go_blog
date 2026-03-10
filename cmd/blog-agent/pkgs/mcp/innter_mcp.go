@@ -215,10 +215,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("SmartDecomposeTodo", Inner_blog_RawSmartDecomposeTodo)
 	RegisterCallBackPrompt("SmartDecomposeTodo", "将复杂任务拆解为可独立完成的子任务，确认后添加到待办")
 
-	// 注意: CodeGen 工具的回调由 agent 包通过 mcp.RegisterCallBack() 注册
-	// 工具名: CodegenListProjects, CodegenCreateProject, CodegenStartSession,
-	//         CodegenSendMessage, CodegenGetStatus, CodegenStopSession,
-	//         CodegenListDeployProjects, CodegenStartDeploy
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {

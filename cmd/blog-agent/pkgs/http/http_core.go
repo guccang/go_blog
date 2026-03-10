@@ -328,17 +328,6 @@ func Init() int {
 	h.HandleFunc("/api/assistant/trends", HandleAssistantTrends)
 	h.HandleFunc("/api/assistant/health-comprehensive", HandleAssistantHealthComprehensive)
 
-	// Agent background task routes
-	h.HandleFunc("/agent", HandleAgentPage)
-	h.HandleFunc("/api/agent/tasks", HandleAgentTasks)
-	h.HandleFunc("/api/agent/task", HandleAgentTask)
-	h.HandleFunc("/api/agent/task/action", HandleAgentTaskAction)
-	h.HandleFunc("/api/agent/task/graph", HandleAgentTaskGraph)
-	h.HandleFunc("/api/agent/task/input", HandleAgentTaskInput)
-	h.HandleFunc("/api/agent/task/pending-inputs", HandleAgentPendingInputs)
-	h.HandleFunc("/api/agent/status", HandleAgentStatus)
-	h.HandleFunc("/ws/agent/notifications", HandleAgentWebSocket)
-
 	// [Phase 1] WeChat callback 已迁移至独立 wechat-agent
 	// h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
 

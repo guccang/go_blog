@@ -1,7 +1,6 @@
 package main
 
 import (
-	"agent"
 	"auth"
 	"blog"
 	"comment"
@@ -31,7 +30,6 @@ import (
 
 func clearup() {
 	log.Debug(log.ModuleCommon, "go_blog clearup")
-	agent.Shutdown()
 	mcp.GetPool().Shutdown()
 }
 
@@ -74,7 +72,6 @@ func main() {
 	tools.Info()
 	exercise.Info()
 	reading.Info()
-	agent.Info()
 
 	// Init
 	config.Init(args[1])
@@ -101,7 +98,6 @@ func main() {
 	sms.Init()
 	exercise.Init()
 	share.Init()
-	agent.Init(account)
 	log.Debug(log.ModuleCommon, "go_blog started")
 
 	certFile := ""

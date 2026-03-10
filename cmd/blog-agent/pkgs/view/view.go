@@ -1185,24 +1185,6 @@ func PageTaskBreakdown(w h.ResponseWriter) {
 	}
 }
 
-// PageAgent renders the agent task panel page
-func PageAgent(w h.ResponseWriter) {
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "agent.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse agent template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render agent template", h.StatusInternalServerError)
-		return
-	}
-}
-
 // PageCodeGen renders the codegen page
 func PageCodeGen(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
