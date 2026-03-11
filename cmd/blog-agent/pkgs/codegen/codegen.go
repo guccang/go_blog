@@ -24,33 +24,33 @@ func processEvent(session *CodeSession, event *StreamEvent) {
 		session.mu.Unlock()
 	}
 
-	// 记录到消息历史
+	// 记录到消息历史（截断内容防止 OOM）
 	switch event.Type {
 	case "thinking":
 		session.addMessage(SessionMessage{
 			Role:    "thinking",
-			Content: event.Text,
+			Content: truncateContent(event.Text, maxThinkingChars),
 			Time:    time.Now(),
 		})
 	case "assistant":
 		session.addMessage(SessionMessage{
 			Role:    "assistant",
-			Content: event.Text,
+			Content: truncateContent(event.Text, maxAssistantChars),
 			Time:    time.Now(),
 		})
 	case "tool":
 		session.addMessage(SessionMessage{
 			Role:      "tool",
-			Content:   event.Text,
+			Content:   truncateContent(event.Text, maxToolContentChars),
 			ToolName:  event.ToolName,
-			ToolInput: event.ToolInput,
+			ToolInput: truncateContent(event.ToolInput, maxToolInputChars),
 			Time:      time.Now(),
 		})
 	case "result":
 		if event.Text != "" {
 			session.addMessage(SessionMessage{
 				Role:    "result",
-				Content: event.Text,
+				Content: truncateContent(event.Text, maxResultChars),
 				Time:    time.Now(),
 			})
 		}
@@ -58,7 +58,7 @@ func processEvent(session *CodeSession, event *StreamEvent) {
 		if event.Text != "" {
 			session.addMessage(SessionMessage{
 				Role:    "summary",
-				Content: event.Text,
+				Content: truncateContent(event.Text, maxSummaryChars),
 				Time:    time.Now(),
 			})
 		}
@@ -131,6 +131,15 @@ var (
 	sessions   = make(map[string]*CodeSession)
 	sessionsMu sync.RWMutex
 	maxTurns   = 20       // 默认最大轮数
+
+	// Session 消息内容截断限制（防止 OOM）
+	maxThinkingChars      = 2000  // thinking 冗长，对历史不重要
+	maxAssistantChars     = 8000  // 主输出，保留更多
+	maxToolInputChars     = 2000  // 工具调用 JSON 参数
+	maxToolContentChars   = 4000  // 工具结果（对齐 llm.MaxToolResultChars）
+	maxResultChars        = 8000  // 最终结果
+	maxSummaryChars       = 4000  // summary 文本
+	maxMessagesPerSession = 500   // 每 session 最大消息数（滚动窗口）
 	agentPool  *AgentPool // 远程 agent 连接池
 	agentToken string     // agent 认证 token
 )
@@ -151,6 +160,31 @@ func Init() {
 	go sessionCleanupLoop()
 
 	log.MessageF(log.ModuleAgent, "CodeGen initialized (remote-only mode)")
+}
+
+// truncateContent 截断字符串，防止单条消息过大
+func truncateContent(s string, maxLen int) string {
+	if maxLen <= 0 || len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...[truncated]"
+}
+
+// truncateStreamEvent 截断流式事件，防止 WebSocket 广播过大
+func truncateStreamEvent(event *StreamEvent) {
+	switch event.Type {
+	case "thinking":
+		event.Text = truncateContent(event.Text, maxThinkingChars)
+	case "assistant":
+		event.Text = truncateContent(event.Text, maxAssistantChars)
+	case "tool":
+		event.Text = truncateContent(event.Text, maxToolContentChars)
+		event.ToolInput = truncateContent(event.ToolInput, maxToolInputChars)
+	case "result":
+		event.Text = truncateContent(event.Text, maxResultChars)
+	case "summary":
+		event.Text = truncateContent(event.Text, maxSummaryChars)
+	}
 }
 
 // Subscribe 订阅会话事件
@@ -188,11 +222,20 @@ func (s *CodeSession) broadcast(event StreamEvent) {
 	}
 }
 
-// addMessage 添加消息到历史
+// addMessage 添加消息到历史（超过上限时滚动窗口，保留首条 user prompt）
 func (s *CodeSession) addMessage(msg SessionMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Messages = append(s.Messages, msg)
+	if len(s.Messages) > maxMessagesPerSession {
+		// 保留第 0 条（原始 user prompt）+ 最近的 N-1 条
+		keep := maxMessagesPerSession - 1
+		tail := s.Messages[len(s.Messages)-keep:]
+		trimmed := make([]SessionMessage, 0, maxMessagesPerSession)
+		trimmed = append(trimmed, s.Messages[0])
+		trimmed = append(trimmed, tail...)
+		s.Messages = trimmed
+	}
 }
 
 // ToolClaudeCode Claude Code 编码工具

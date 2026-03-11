@@ -21,10 +21,21 @@ type Connection struct {
 	password    string
 	activeTasks map[string]bool
 	taskMu      sync.Mutex
+	fileToolKit *agentbase.FileToolKit
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *DeployConfig, password string, agentID string) *Connection {
+	// deploy-agent 的 ProjectResolver
+	resolver := func(project string) string {
+		proj := cfg.GetProject(project)
+		if proj == nil {
+			return ""
+		}
+		return proj.ProjectDir
+	}
+	fileToolKit := agentbase.NewFileToolKit("Deploy", resolver)
+
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
 		AgentID:     agentID,
@@ -33,7 +44,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		Description: "项目部署、流水线管理、服务器操作",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       buildDeployToolDefs(cfg),
+		Tools:       append(buildDeployToolDefs(cfg), fileToolKit.ToolDefs()...),
 		Meta: map[string]any{
 			"projects": cfg.ProjectNames(),
 		},
@@ -44,6 +55,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		cfg:         cfg,
 		password:    password,
 		activeTasks: make(map[string]bool),
+		fileToolKit: fileToolKit,
 	}
 
 	// 注册消息处理器
@@ -578,6 +590,14 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args)
 	default:
+		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   true,
+				Result:    result,
+			})
+			return
+		}
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,

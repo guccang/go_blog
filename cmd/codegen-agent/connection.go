@@ -17,12 +17,15 @@ import (
 type Connection struct {
 	*agentbase.AgentBase // 组合基类
 
-	cfg   *AgentConfig
-	agent *Agent
+	cfg         *AgentConfig
+	agent       *Agent
+	fileToolKit *agentbase.FileToolKit
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
+	fileToolKit := agentbase.NewFileToolKit("Codegen", agent.findProjectPath)
+
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
 		AgentID:     agent.ID,
@@ -31,16 +34,17 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Description: "代码编写、项目管理、编码会话",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       buildCodegenToolDefs(),
+		Tools:       append(buildCodegenToolDefs(), fileToolKit.ToolDefs()...),
 		Meta: map[string]any{
 			"workspaces": cfg.Workspaces,
 		},
 	}
 
 	c := &Connection{
-		AgentBase: agentbase.NewAgentBase(baseCfg),
-		cfg:       cfg,
-		agent:     agent,
+		AgentBase:   agentbase.NewAgentBase(baseCfg),
+		cfg:         cfg,
+		agent:       agent,
+		fileToolKit: fileToolKit,
 	}
 
 	// 注册消息处理器
@@ -286,6 +290,14 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "CodegenStopSession":
 		result = c.toolStopSession(args)
 	default:
+		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   true,
+				Result:    result,
+			})
+			return
+		}
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
 			Success:   false,
