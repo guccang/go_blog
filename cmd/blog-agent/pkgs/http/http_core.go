@@ -10,7 +10,6 @@ import (
 	"fruitcrush"
 	"gomoku"
 	"linkup"
-	"mcp"
 	"minesweeper"
 	"module"
 	log "mylog"
@@ -348,9 +347,7 @@ func Init() int {
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)
 
-	// MCP configuration routes
-	h.HandleFunc("/mcp", mcp.HandleMCPPage)
-	h.HandleFunc("/api/mcp", mcp.HandleMCPAPI)
+	// MCP internal tools API
 	h.HandleFunc("/api/mcp/tools", HandleMCPToolsAPI)
 
 	// Constellation divination routes

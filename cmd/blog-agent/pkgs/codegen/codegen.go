@@ -94,10 +94,10 @@ type CodeSession struct {
 	Tool          string           `json:"tool,omitempty"`          // 编码工具: claudecode, opencode（默认 claudecode）
 	AutoDeploy    bool             `json:"auto_deploy,omitempty"`   // 编码完成后自动部署+验证
 	DeployOnly    bool             `json:"deploy_only,omitempty"`   // 跳过编码，直接部署+验证
-	DeployTarget  string           `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	DeployPort    string           `json:"deploy_port,omitempty"`    // 部署端口号
-	PackOnly      bool             `json:"pack_only,omitempty"`      // 仅打包不部署
-	Pipeline      string           `json:"pipeline,omitempty"`       // deploy pipeline 名称
+	DeployTarget  string           `json:"deploy_target,omitempty"` // 部署目标: local/ssh-prod/all
+	DeployPort    string           `json:"deploy_port,omitempty"`   // 部署端口号
+	PackOnly      bool             `json:"pack_only,omitempty"`     // 仅打包不部署
+	Pipeline      string           `json:"pipeline,omitempty"`      // deploy pipeline 名称
 	Status        SessionStatus    `json:"status"`
 	Messages      []SessionMessage `json:"messages"`
 	StartTime     time.Time        `json:"start_time"`
@@ -130,18 +130,18 @@ type StreamEvent struct {
 var (
 	sessions   = make(map[string]*CodeSession)
 	sessionsMu sync.RWMutex
-	maxTurns   = 20       // 默认最大轮数
+	maxTurns   = 20 // 默认最大轮数
 
 	// Session 消息内容截断限制（防止 OOM）
-	maxThinkingChars      = 2000  // thinking 冗长，对历史不重要
-	maxAssistantChars     = 8000  // 主输出，保留更多
-	maxToolInputChars     = 2000  // 工具调用 JSON 参数
-	maxToolContentChars   = 4000  // 工具结果（对齐 llm.MaxToolResultChars）
-	maxResultChars        = 8000  // 最终结果
-	maxSummaryChars       = 4000  // summary 文本
-	maxMessagesPerSession = 500   // 每 session 最大消息数（滚动窗口）
-	agentPool  *AgentPool // 远程 agent 连接池
-	agentToken string     // agent 认证 token
+	maxThinkingChars      = 2000     // thinking 冗长，对历史不重要
+	maxAssistantChars     = 8000     // 主输出，保留更多
+	maxToolInputChars     = 2000     // 工具调用 JSON 参数
+	maxToolContentChars   = 4000     // 工具结果（对齐 llm.MaxToolResultChars）
+	maxResultChars        = 8000     // 最终结果
+	maxSummaryChars       = 4000     // summary 文本
+	maxMessagesPerSession = 500      // 每 session 最大消息数（滚动窗口）
+	agentPool             *AgentPool // 远程 agent 连接池
+	agentToken            string     // agent 认证 token
 )
 
 // Init 初始化 CodeGen 模块
@@ -282,10 +282,10 @@ func StartSession(project, prompt, model, tool, agentID string, autoDeploy, depl
 		Tool:         normalizedTool,
 		AutoDeploy:   autoDeploy,
 		DeployOnly:   deployOnly,
-		DeployTarget:  deployTarget,
-		DeployPort:    deployPort,
-		PackOnly:      packOnly,
-		Pipeline:      pipeline,
+		DeployTarget: deployTarget,
+		DeployPort:   deployPort,
+		PackOnly:     packOnly,
+		Pipeline:     pipeline,
 		AgentID:      agentID,
 		Status:       StatusRunning,
 		Messages:     make([]SessionMessage, 0),

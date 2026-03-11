@@ -73,7 +73,6 @@ func errorJSON(msg string) string {
 //   inner_exercise_tools.go  - Exercise module
 //   inner_reading_tools.go   - Reading module
 //   inner_yearplan_tasks_tools.go - YearPlan and TaskBreakdown modules
-//   web_fetch.go             - Web fetch and search
 // ============================================================================
 
 func RegisterCallBack(name string, callback func(arguments map[string]interface{}) string) {
@@ -192,12 +191,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawGetComplexTasksByStatus", Inner_blog_RawGetComplexTasksByStatus)
 	RegisterCallBack("RawGetComplexTaskStats", Inner_blog_RawGetComplexTaskStats)
 	RegisterCallBack("RawCreateComplexTask", Inner_blog_RawCreateComplexTask)
-
-	// 新增模块工具 - Web 网页访问
-	RegisterCallBack("FetchWebPage", Inner_web_FetchWebPage)
-	RegisterCallBack("WebSearch", Inner_web_WebSearch)
-	RegisterCallBackPrompt("FetchWebPage", "返回网页的纯文本内容。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)")
-	RegisterCallBackPrompt("WebSearch", "返回搜索结果列表。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)")
 
 	// ============================================================================
 	// AI 增强工具 - 跨模块智能
@@ -898,38 +891,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 
 		// =================================== 报告生成工具 =========================================
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.GenerateReport", Description: "生成报告(日报/周报/月报)。报告包含待办、运动、阅读、任务等数据的AI分析，自动保存为博客并推送通知。返回str(报告内容)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "type": map[string]string{"type": "string", "description": "报告类型: daily/weekly/monthly"}}, "required": []string{"account", "type"}}}},
-
-		// =================================== 网页访问工具 =========================================
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.FetchWebPage",
-				Description: "抓取指定URL网页内容，返回纯文本。使用网页内容时必须在输出中标注来源URL，格式: [来源](URL)。返回str(纯文本)",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"url":       map[string]string{"type": "string", "description": "要抓取的网页完整URL,如https://example.com"},
-						"maxLength": map[string]string{"type": "integer", "description": "最大返回字符数,默认5000"},
-					},
-					"required": []string{"url"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.WebSearch",
-				Description: "搜索互联网，返回搜索结果列表(标题+URL+摘要)。引用搜索结果时必须在文末添加参考来源链接，格式: ## 参考来源\n- [标题](URL)。返回str(格式化结果)",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"query": map[string]string{"type": "string", "description": "搜索关键词"},
-						"count": map[string]string{"type": "integer", "description": "返回结果数量,默认5,最大10"},
-					},
-					"required": []string{"query"},
-				},
-			},
-		},
 
 		// =================================== AI 增强工具 =========================================
 		{

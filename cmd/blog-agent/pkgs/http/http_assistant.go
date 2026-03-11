@@ -32,28 +32,14 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 
 	switch r.Method {
 	case "GET":
-		// 获取可用工具列表和服务器状态
-		action := r.URL.Query().Get("action")
-
-		switch action {
-		case "status":
-			// 获取服务器状态
-			status := mcp.GetServerStatus()
-			response := map[string]interface{}{
-				"success": true,
-				"status":  status,
-			}
-			json.NewEncoder(w).Encode(response)
-		default:
-			// 获取工具列表
-			tools := mcp.GetAvailableToolsImproved()
-			response := map[string]interface{}{
-				"success": true,
-				"message": "MCP tools retrieved successfully",
-				"data":    tools,
-			}
-			json.NewEncoder(w).Encode(response)
+		// 获取可用工具列表
+		tools := mcp.GetAvailableTools()
+		response := map[string]interface{}{
+			"success": true,
+			"message": "MCP tools retrieved successfully",
+			"data":    tools,
 		}
+		json.NewEncoder(w).Encode(response)
 
 	case "POST":
 		// 测试工具调用
@@ -67,7 +53,7 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
-		result := mcp.CallToolImproved(toolCall)
+		result := mcp.CallToolForAPI(toolCall)
 		json.NewEncoder(w).Encode(result)
 
 	default:
