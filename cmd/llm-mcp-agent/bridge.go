@@ -283,7 +283,7 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 const executeCodeAgentType = "execute_code"
 
 // routeAgents Level 1 agent 选择：用 LLM 从 agent 列表中筛选与用户问题相关的 agent
-// execute-code-agent 作为元工具始终保留，不参与 LLM 筛选
+// execute-code-agent 和文件工具 agent 作为基础能力始终保留，不参与 LLM 筛选
 func (b *Bridge) routeAgents(query string) []string {
 	b.catalogMu.RLock()
 	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
@@ -306,8 +306,8 @@ func (b *Bridge) routeAgents(query string) []string {
 	var routeableIDs []string
 
 	for _, info := range agentInfoCopy {
-		// execute-code-agent 始终保留，不参与路由
-		if isExecuteCodeAgent(info) {
+		// execute-code-agent 和文件工具 agent 始终保留，不参与路由
+		if isExecuteCodeAgent(info) || isFileToolAgent(info) {
 			alwaysInclude = append(alwaysInclude, info.ID)
 			continue
 		}
@@ -378,6 +378,23 @@ func isExecuteCodeAgent(info AgentInfo) bool {
 	// 通过工具名判断（更可靠，不依赖 agent_id 命名）
 	for _, name := range info.ToolNames {
 		if name == "ExecuteCode" {
+			return true
+		}
+	}
+	return false
+}
+
+// isFileToolName 判断工具名是否为文件操作工具（始终保留）
+func isFileToolName(name string) bool {
+	return strings.HasSuffix(name, "ReadFile") ||
+		strings.HasSuffix(name, "WriteFile") ||
+		strings.HasSuffix(name, "ExecBash")
+}
+
+// isFileToolAgent 判断 agent 是否提供文件操作工具
+func isFileToolAgent(info AgentInfo) bool {
+	for _, name := range info.ToolNames {
+		if isFileToolName(name) {
 			return true
 		}
 	}
@@ -481,13 +498,13 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 }
 
 // routeTools 智能工具路由：用 LLM 从工具目录中筛选与用户问题相关的工具
-// ExecuteCode 作为元工具始终保留，不参与 LLM 筛选
+// ExecuteCode 和文件工具（ReadFile/WriteFile/ExecBash）作为基础能力始终保留，不参与 LLM 筛选
 func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
-	// 分离 ExecuteCode（元工具，始终保留）和待路由工具
+	// 分离 ExecuteCode 和文件工具（元工具，始终保留）和待路由工具
 	var alwaysKeep []LLMTool
 	var routable []LLMTool
 	for _, tool := range tools {
-		if tool.Function.Name == "ExecuteCode" {
+		if tool.Function.Name == "ExecuteCode" || isFileToolName(tool.Function.Name) {
 			alwaysKeep = append(alwaysKeep, tool)
 		} else {
 			routable = append(routable, tool)

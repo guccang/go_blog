@@ -206,7 +206,11 @@ func (ft *FileToolKit) toolExecBash(args map[string]interface{}) string {
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		if bashPath, err := exec.LookPath("bash"); err == nil {
+			cmd = exec.CommandContext(ctx, bashPath, "-c", command)
+		} else {
+			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		}
 	} else {
 		cmd = exec.CommandContext(ctx, "bash", "-c", command)
 	}
