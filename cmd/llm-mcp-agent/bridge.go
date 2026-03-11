@@ -24,6 +24,14 @@ type toolResultWithFrom struct {
 	FromID string // 返回结果的 agent ID
 }
 
+// AgentInfo agent 元数据（用于两级路由）
+type AgentInfo struct {
+	ID          string
+	Name        string
+	Description string
+	ToolNames   []string
+}
+
 // Bridge UAP 客户端 + 工具路由层
 type Bridge struct {
 	cfg    *Config
@@ -33,6 +41,10 @@ type Bridge struct {
 	toolCatalog map[string]string // tool_name → agent_id
 	llmTools    []LLMTool         // LLM function calling 工具列表
 	catalogMu   sync.RWMutex
+
+	// agent 感知存储（两级路由用）
+	agentInfo  map[string]AgentInfo   // agent_id → 元数据
+	agentTools map[string][]LLMTool   // agent_id → 该 agent 的工具列表
 
 	// 请求-响应关联
 	pending map[string]chan *toolResultWithFrom // request_id → result channel
@@ -67,6 +79,8 @@ func NewBridge(cfg *Config) *Bridge {
 		cfg:           cfg,
 		client:        client,
 		toolCatalog:   make(map[string]string),
+		agentInfo:     make(map[string]AgentInfo),
+		agentTools:    make(map[string][]LLMTool),
 		pending:       make(map[string]chan *toolResultWithFrom),
 		wechatConvMgr: NewWechatConversationManager(timeout, maxMessages, maxTurns),
 	}
@@ -172,21 +186,228 @@ func (b *Bridge) DiscoverTools() error {
 
 	var llmTools []LLMTool
 	var toolNames []string
+	agentToolsMap := make(map[string][]LLMTool)
 	for name, entry := range dedupMap {
 		llmTools = append(llmTools, entry.Tool)
 		toolNames = append(toolNames, name)
+		agentToolsMap[entry.AgentID] = append(agentToolsMap[entry.AgentID], entry.Tool)
 	}
 
 	b.catalogMu.Lock()
 	prevCount := len(b.llmTools)
 	b.toolCatalog = catalog
 	b.llmTools = llmTools
+	b.agentTools = agentToolsMap
 	b.catalogMu.Unlock()
 
 	if len(llmTools) != prevCount {
 		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), prevCount, toolNames)
 	}
 	return nil
+}
+
+// DiscoverAgents 从 gateway 获取所有在线 agent 的元数据
+func (b *Bridge) DiscoverAgents() error {
+	url := fmt.Sprintf("%s/api/gateway/agents", b.cfg.GatewayHTTP)
+
+	resp, err := gatewayHTTPClient.Get(url)
+	if err != nil {
+		return fmt.Errorf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %v", err)
+	}
+
+	var result struct {
+		Success bool `json:"success"`
+		Agents  []struct {
+			AgentID     string   `json:"agent_id"`
+			AgentType   string   `json:"agent_type"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Tools       []string `json:"tools"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("parse response: %v", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("gateway returned success=false")
+	}
+
+	infoMap := make(map[string]AgentInfo, len(result.Agents))
+	for _, a := range result.Agents {
+		if a.AgentID == b.cfg.AgentID {
+			continue // 跳过自身
+		}
+		infoMap[a.AgentID] = AgentInfo{
+			ID:          a.AgentID,
+			Name:        a.Name,
+			Description: a.Description,
+			ToolNames:   a.Tools,
+		}
+	}
+
+	b.catalogMu.Lock()
+	b.agentInfo = infoMap
+	b.catalogMu.Unlock()
+
+	log.Printf("[Bridge] discovered %d agents", len(infoMap))
+	return nil
+}
+
+// getAgentDescriptionBlock 构建 agent 描述文本用于注入系统提示
+func (b *Bridge) getAgentDescriptionBlock() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	if len(b.agentInfo) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n## 可用 Agent 能力\n")
+	for _, info := range b.agentInfo {
+		if info.Description == "" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
+	}
+	return sb.String()
+}
+
+// executeCodeAgentType execute-code-agent 的类型标识（元工具，始终保留不参与路由筛选）
+const executeCodeAgentType = "execute_code"
+
+// routeAgents Level 1 agent 选择：用 LLM 从 agent 列表中筛选与用户问题相关的 agent
+// execute-code-agent 作为元工具始终保留，不参与 LLM 筛选
+func (b *Bridge) routeAgents(query string) []string {
+	b.catalogMu.RLock()
+	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
+	for k, v := range b.agentInfo {
+		agentInfoCopy[k] = v
+	}
+	agentToolsCopy := make(map[string][]LLMTool, len(b.agentTools))
+	for k, v := range b.agentTools {
+		agentToolsCopy[k] = v
+	}
+	b.catalogMu.RUnlock()
+
+	if len(agentInfoCopy) == 0 {
+		return nil
+	}
+
+	// 分离 execute-code-agent（元工具，始终保留）和待路由 agent
+	var alwaysInclude []string
+	var catalog strings.Builder
+	var routeableIDs []string
+
+	for _, info := range agentInfoCopy {
+		// execute-code-agent 始终保留，不参与路由
+		if isExecuteCodeAgent(info) {
+			alwaysInclude = append(alwaysInclude, info.ID)
+			continue
+		}
+		toolNames := make([]string, 0, len(agentToolsCopy[info.ID]))
+		for _, t := range agentToolsCopy[info.ID] {
+			toolNames = append(toolNames, t.Function.Name)
+		}
+		catalog.WriteString(fmt.Sprintf("- agent_id=%s name=%s description=%s tools=[%s]\n",
+			info.ID, info.Name, info.Description, strings.Join(toolNames, ", ")))
+		routeableIDs = append(routeableIDs, info.ID)
+	}
+
+	// 没有需要路由的 agent → 直接返回始终保留的
+	if len(routeableIDs) == 0 {
+		return alwaysInclude
+	}
+
+	routePrompt := fmt.Sprintf(`你是一个 Agent 路由器。根据用户问题，从以下 Agent 列表中选择所有可能需要的 Agent。
+
+用户问题: %s
+
+Agent 列表:
+%s
+选择规则：
+1. 宁多勿少，把所有可能相关的 Agent 都选上
+2. 只返回 agent_id 的 JSON 数组，不要其他文字
+3. 如果不确定，返回所有 agent_id
+
+示例: ["go_blog", "codegen-xxx"]`, query, catalog.String())
+
+	messages := []Message{
+		{Role: "user", Content: routePrompt},
+	}
+
+	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
+	if err != nil {
+		log.Printf("[Agent路由] LLM 调用失败: %v, 返回全部 agent", err)
+		return append(alwaysInclude, routeableIDs...) // 降级兜底
+	}
+
+	// 解析 JSON 数组
+	resp = strings.TrimSpace(resp)
+	resp = strings.TrimPrefix(resp, "```json")
+	resp = strings.TrimPrefix(resp, "```")
+	resp = strings.TrimSuffix(resp, "```")
+	resp = strings.TrimSpace(resp)
+
+	var selectedIDs []string
+	if err := json.Unmarshal([]byte(resp), &selectedIDs); err != nil {
+		log.Printf("[Agent路由] 解析失败: %v, 返回全部 agent", err)
+		return append(alwaysInclude, routeableIDs...) // 降级兜底
+	}
+
+	if len(selectedIDs) == 0 {
+		log.Printf("[Agent路由] LLM 未选择任何 agent, 返回全部")
+		return append(alwaysInclude, routeableIDs...)
+	}
+
+	// 合并：始终保留 + LLM 选中
+	result := append(alwaysInclude, selectedIDs...)
+	log.Printf("[Agent路由] 从 %d 个 agent 中选择了 %d 个 (always=%d routed=%d): %v",
+		len(agentInfoCopy), len(result), len(alwaysInclude), len(selectedIDs), result)
+	return result
+}
+
+// isExecuteCodeAgent 判断是否为 execute-code-agent（元工具）
+func isExecuteCodeAgent(info AgentInfo) bool {
+	// 通过工具名判断（更可靠，不依赖 agent_id 命名）
+	for _, name := range info.ToolNames {
+		if name == "ExecuteCode" {
+			return true
+		}
+	}
+	return false
+}
+
+// getToolsForAgents 从 agentTools 收集指定 agent 的工具
+func (b *Bridge) getToolsForAgents(agentIDs []string) []LLMTool {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	idSet := make(map[string]bool, len(agentIDs))
+	for _, id := range agentIDs {
+		idSet[id] = true
+	}
+
+	var tools []LLMTool
+	seen := make(map[string]bool)
+	for agentID, agentToolList := range b.agentTools {
+		if !idSet[agentID] {
+			continue
+		}
+		for _, tool := range agentToolList {
+			if !seen[tool.Function.Name] {
+				tools = append(tools, tool)
+				seen[tool.Function.Name] = true
+			}
+		}
+	}
+	return tools
 }
 
 // sanitizeToolName 将工具名转为 LLM 兼容格式（. → _）
@@ -260,12 +481,27 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 }
 
 // routeTools 智能工具路由：用 LLM 从工具目录中筛选与用户问题相关的工具
-// 当可用工具数 > maxToolsBeforeRoute 时自动启用
+// ExecuteCode 作为元工具始终保留，不参与 LLM 筛选
 func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
+	// 分离 ExecuteCode（元工具，始终保留）和待路由工具
+	var alwaysKeep []LLMTool
+	var routable []LLMTool
+	for _, tool := range tools {
+		if tool.Function.Name == "ExecuteCode" {
+			alwaysKeep = append(alwaysKeep, tool)
+		} else {
+			routable = append(routable, tool)
+		}
+	}
+
+	if len(routable) == 0 {
+		return alwaysKeep
+	}
+
 	// 构建工具目录（仅 name + description，不含参数 schema，节省 token）
 	var catalog strings.Builder
-	toolMap := make(map[string]LLMTool, len(tools))
-	for i, tool := range tools {
+	toolMap := make(map[string]LLMTool, len(routable))
+	for i, tool := range routable {
 		catalog.WriteString(fmt.Sprintf("%d. %s: %s\n", i+1, tool.Function.Name, tool.Function.Description))
 		toolMap[tool.Function.Name] = tool
 	}
@@ -292,8 +528,8 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 	// 无工具的 LLM 请求用于路由
 	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
 	if err != nil {
-		log.Printf("[工具路由] LLM 调用失败: %v, 不使用工具", err)
-		return nil
+		log.Printf("[工具路由] LLM 调用失败: %v, 保留元工具", err)
+		return alwaysKeep // 降级：至少保留 ExecuteCode
 	}
 
 	// 解析 JSON 数组
@@ -305,13 +541,13 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 
 	var toolNames []string
 	if err := json.Unmarshal([]byte(resp), &toolNames); err != nil {
-		log.Printf("[工具路由] 解析失败: %v, 原始响应: %s, 不使用工具", err, resp)
-		return nil
+		log.Printf("[工具路由] 解析失败: %v, 原始响应: %s, 保留元工具", err, resp)
+		return alwaysKeep
 	}
 
 	if len(toolNames) == 0 {
-		log.Printf("[工具路由] LLM 判断无需工具")
-		return []LLMTool{} // 返回空，让 LLM 直接回答
+		log.Printf("[工具路由] LLM 判断无需业务工具，保留元工具")
+		return alwaysKeep // ExecuteCode 始终可用
 	}
 
 	// 筛选出对应的完整工具定义
@@ -322,13 +558,11 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 		}
 	}
 
-	if len(selected) == 0 {
-		log.Printf("[工具路由] 未匹配到任何工具，不使用工具")
-		return nil
-	}
-
-	log.Printf("[工具路由] 从 %d 个工具中筛选出 %d 个: %v", len(tools), len(selected), toolNames)
-	return selected
+	// 合并：始终保留 + LLM 选中
+	result := append(alwaysKeep, selected...)
+	log.Printf("[工具路由] 从 %d 个工具中筛选出 %d 个 (always=%d routed=%d): %v",
+		len(tools), len(result), len(alwaysKeep), len(selected), toolNames)
+	return result
 }
 
 // ========================= 跨 Agent 工具调用 =========================
@@ -518,7 +752,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 
 // ========================= 后台刷新 =========================
 
-// StartRefreshLoop 后台定时刷新工具目录
+// StartRefreshLoop 后台定时刷新工具目录和 agent 信息
 func (b *Bridge) StartRefreshLoop() {
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
@@ -526,6 +760,9 @@ func (b *Bridge) StartRefreshLoop() {
 		for range ticker.C {
 			if err := b.DiscoverTools(); err != nil {
 				log.Printf("[Bridge] refresh tools failed: %v", err)
+			}
+			if err := b.DiscoverAgents(); err != nil {
+				log.Printf("[Bridge] refresh agents failed: %v", err)
 			}
 		}
 	}()

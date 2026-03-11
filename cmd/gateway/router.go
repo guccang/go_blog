@@ -42,5 +42,5 @@ func (r *Router) HandleUAP(w http.ResponseWriter, req *http.Request) {
 
 // StartHealthCheck 启动心跳检测
 func (r *Router) StartHealthCheck() {
-	r.registry.StartHealthCheck(60 * time.Second)
+	r.registry.StartHealthCheck(120 * time.Second)
 }

@@ -90,7 +90,7 @@ func isMCPToolListQuery(query string) bool {
 	return false
 }
 
-func buildMCPToolListReply(query string, tools []LLMTool) (string, bool) {
+func (b *Bridge) buildMCPToolListReply(query string, tools []LLMTool) (string, bool) {
 	if !isMCPToolListQuery(query) {
 		return "", false
 	}
@@ -99,21 +99,76 @@ func buildMCPToolListReply(query string, tools []LLMTool) (string, bool) {
 		return "??????? MCP ???", true
 	}
 
+	// 按 agent 分组
+	b.catalogMu.RLock()
+	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
+	for k, v := range b.agentInfo {
+		agentInfoCopy[k] = v
+	}
+	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
+	for k, v := range b.toolCatalog {
+		toolCatalogCopy[k] = v
+	}
+	b.catalogMu.RUnlock()
+
+	// 构建 tool → agent 映射（使用 sanitized name）
+	type groupedTool struct {
+		Name string
+		Desc string
+	}
+	agentGroups := make(map[string][]groupedTool)
+	ungrouped := make([]groupedTool, 0)
+
 	sorted := make([]LLMTool, len(tools))
 	copy(sorted, tools)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].Function.Name < sorted[j].Function.Name
 	})
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("????? %d ? MCP ???\n", len(sorted)))
-	for i, tool := range sorted {
-		name := unsanitizeToolName(tool.Function.Name)
+	for _, tool := range sorted {
+		originalName := unsanitizeToolName(tool.Function.Name)
 		desc := strings.TrimSpace(tool.Function.Description)
 		if desc == "" {
 			desc = "???"
 		}
-		sb.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, name, desc))
+		gt := groupedTool{Name: originalName, Desc: desc}
+
+		agentID, ok := toolCatalogCopy[originalName]
+		if !ok {
+			agentID, ok = toolCatalogCopy[tool.Function.Name]
+		}
+		if ok {
+			agentGroups[agentID] = append(agentGroups[agentID], gt)
+		} else {
+			ungrouped = append(ungrouped, gt)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("????? %d ? MCP ???\n\n", len(sorted)))
+
+	idx := 1
+	for agentID, groupTools := range agentGroups {
+		info, hasInfo := agentInfoCopy[agentID]
+		if hasInfo && info.Description != "" {
+			sb.WriteString(fmt.Sprintf("?? %s (%s)\n", info.Name, info.Description))
+		} else if hasInfo {
+			sb.WriteString(fmt.Sprintf("?? %s\n", info.Name))
+		} else {
+			sb.WriteString(fmt.Sprintf("?? %s\n", agentID))
+		}
+		for _, gt := range groupTools {
+			sb.WriteString(fmt.Sprintf("  %d. %s - %s\n", idx, gt.Name, gt.Desc))
+			idx++
+		}
+		sb.WriteString("\n")
+	}
+	if len(ungrouped) > 0 {
+		sb.WriteString("?? ???\n")
+		for _, gt := range ungrouped {
+			sb.WriteString(fmt.Sprintf("  %d. %s - %s\n", idx, gt.Name, gt.Desc))
+			idx++
+		}
 	}
 	return strings.TrimSpace(sb.String()), true
 }
@@ -178,7 +233,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// ????? MCP ?????????????????? tools schema ??? LLM
 	if !ctx.NoTools {
-		if directReply, ok := buildMCPToolListReply(query, tools); ok {
+		if directReply, ok := b.buildMCPToolListReply(query, tools); ok {
 			rootSession.AppendMessage(Message{Role: "assistant", Content: directReply})
 			rootSession.SetResult(directReply)
 			rootSession.SetStatus("done")
@@ -191,28 +246,22 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	if !ctx.NoTools && len(tools) > 15 && query != "" {
 		beforeCount := len(tools)
-		// 路由前保存 ExecuteCode 工具（确保不被过滤掉）
-		var executeCodeTool *LLMTool
-		for i, t := range tools {
-			if t.Function.Name == "ExecuteCode" {
-				executeCodeTool = &tools[i]
-				break
+
+		// Level 1: Agent 选择（execute-code-agent 作为元工具始终保留）
+		selectedAgentIDs := b.routeAgents(query)
+		if len(selectedAgentIDs) > 0 {
+			agentFilteredTools := b.getToolsForAgents(selectedAgentIDs)
+			if len(agentFilteredTools) > 0 {
+				tools = agentFilteredTools
+				log.Printf("[processTask] Agent路由: %d → %d (agents=%v)", beforeCount, len(tools), selectedAgentIDs)
 			}
 		}
-		tools = b.routeTools(query, tools)
-		// 确保 ExecuteCode 始终保留
-		if executeCodeTool != nil {
-			found := false
-			for _, t := range tools {
-				if t.Function.Name == "ExecuteCode" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				tools = append(tools, *executeCodeTool)
-			}
+
+		// Level 2: 工具筛选（选完 agent 后仍 >10 个工具，ExecuteCode 内部始终保留）
+		if len(tools) > 10 {
+			tools = b.routeTools(query, tools)
 		}
+
 		log.Printf("[processTask] 工具路由: %d → %d", beforeCount, len(tools))
 	}
 
@@ -241,6 +290,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	complexTaskHandled := false
 
 	for i := 0; i < maxIter; i++ {
+		// 消息历史压缩：防止上下文溢出
+		if len(messages) > 30 {
+			before := len(messages)
+			messages = compactProcessMessages(messages, 30)
+			log.Printf("[processTask] 消息压缩: %d → %d", before, len(messages))
+		}
+
 		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
 
 		// 接近迭代上限：强制 LLM 收敛
@@ -427,7 +483,16 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			} else {
 				log.Printf("[processTask] ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
 					originalName, toAgent, fromAgent, duration, len(result), truncate(result, 200))
-				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s [%s→%s] (%.1fs)\n结果: %s", originalName, toAgent, fromAgent, duration.Seconds(), truncate(result, 300)))
+				// 尝试提取标准格式的 message
+				var stdResult struct {
+					Data    any    `json:"data"`
+					Message string `json:"message"`
+				}
+				if json.Unmarshal([]byte(result), &stdResult) == nil && stdResult.Message != "" {
+					ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s: %s", originalName, stdResult.Message))
+				} else {
+					ctx.Sink.OnEvent("tool_result", fmt.Sprintf("✅ %s [%s→%s] (%.1fs)\n结果: %s", originalName, toAgent, fromAgent, duration.Seconds(), truncate(result, 300)))
+				}
 			}
 
 			// 记录工具调用到 session
@@ -444,7 +509,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 			toolMsg := Message{
 				Role:       "tool",
-				Content:    result,
+				Content:    truncateToolResult(result, i),
 				ToolCallID: tc.ID,
 			}
 			rootSession.AppendMessage(toolMsg)
@@ -765,6 +830,59 @@ func formatExecuteCodeEvent(argsJSON string, idx, total int) string {
 
 	sb.WriteString(fmt.Sprintf("\n```python\n%s\n```", code))
 	return sb.String()
+}
+
+// truncateToolResult 截断工具结果，防止上下文溢出
+// 前 3 轮 max 3000 字符，之后 max 1500 字符
+func truncateToolResult(result string, iteration int) string {
+	maxLen := 3000
+	if iteration >= 3 {
+		maxLen = 1500
+	}
+	runes := []rune(result)
+	if len(runes) <= maxLen {
+		return result
+	}
+	return string(runes[:maxLen]) + "\n...[结果已截断]"
+}
+
+// compactProcessMessages 压缩消息历史，防止上下文溢出
+// 当 messages > maxCount 时：保留 system prompt + 最近 20 条完整 + 中间的工具结果截断为 200 字符摘要
+func compactProcessMessages(messages []Message, maxCount int) []Message {
+	if len(messages) <= maxCount {
+		return messages
+	}
+
+	// 保留第一条（system prompt）
+	result := make([]Message, 0, maxCount+2)
+	result = append(result, messages[0])
+
+	// 最近 keepRecent 条完整保留
+	keepRecent := 20
+	if keepRecent > len(messages)-1 {
+		keepRecent = len(messages) - 1
+	}
+	recentStart := len(messages) - keepRecent
+
+	// 中间部分压缩
+	for i := 1; i < recentStart; i++ {
+		msg := messages[i]
+		if msg.Role == "tool" {
+			// 工具结果截断为 200 字符摘要
+			compressed := Message{
+				Role:       msg.Role,
+				Content:    truncate(msg.Content, 200),
+				ToolCallID: msg.ToolCallID,
+			}
+			result = append(result, compressed)
+		} else {
+			result = append(result, msg)
+		}
+	}
+
+	// 追加最近的完整消息
+	result = append(result, messages[recentStart:]...)
+	return result
 }
 
 // parseExecuteCodeResult 解析 execute-code-agent 返回的结构化 JSON

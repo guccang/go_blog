@@ -14,14 +14,15 @@ import (
 // Client UAP agent 侧客户端 SDK
 type Client struct {
 	// 配置
-	GatewayURL string
-	AgentID    string
-	AgentType  string
-	Name       string
-	Tools      []ToolDef
-	Capacity   int
-	Meta       map[string]any
-	AuthToken  string
+	GatewayURL  string
+	AgentID     string
+	AgentType   string
+	Name        string
+	Description string // agent 能力简述
+	Tools       []ToolDef
+	Capacity    int
+	Meta        map[string]any
+	AuthToken   string
 
 	// 内部状态
 	conn       *websocket.Conn
@@ -87,13 +88,14 @@ func (c *Client) connect() error {
 // register 发送注册消息
 func (c *Client) register() {
 	payload := RegisterPayload{
-		AgentID:   c.AgentID,
-		AgentType: c.AgentType,
-		Name:      c.Name,
-		Tools:     c.Tools,
-		Capacity:  c.Capacity,
-		Meta:      c.Meta,
-		AuthToken: c.AuthToken,
+		AgentID:     c.AgentID,
+		AgentType:   c.AgentType,
+		Name:        c.Name,
+		Description: c.Description,
+		Tools:       c.Tools,
+		Capacity:    c.Capacity,
+		Meta:        c.Meta,
+		AuthToken:   c.AuthToken,
 	}
 	c.Send(&Message{
 		Type:    MsgRegister,
@@ -178,16 +180,19 @@ func (c *Client) heartbeatLoop() {
 			connected := c.connected
 			c.mu.Unlock()
 			if !connected {
+				log.Printf("[UAP-Client] heartbeat loop exiting: not connected")
 				return
 			}
-			c.Send(&Message{
+			if err := c.Send(&Message{
 				Type: MsgHeartbeat,
 				From: c.AgentID,
 				Payload: mustMarshal(HeartbeatPayload{
 					AgentID: c.AgentID,
 				}),
 				Ts: time.Now().UnixMilli(),
-			})
+			}); err != nil {
+				log.Printf("[UAP-Client] heartbeat send failed: %v", err)
+			}
 		case <-c.stopCh:
 			return
 		}

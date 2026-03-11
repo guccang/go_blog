@@ -225,6 +225,7 @@ func isConversationResetCommand(content string) bool {
 
 // compactWechatMessages 压缩微信对话消息，防止上下文溢出
 // 保留 system prompt + 最近的消息，将旧消息压缩为摘要
+// 工具调用/结果类消息压缩为单行摘要，只保留 assistant 最终回复完整文本
 func compactWechatMessages(messages []Message, maxMessages int) []Message {
 	if len(messages) <= maxMessages {
 		return messages
@@ -249,7 +250,19 @@ func compactWechatMessages(messages []Message, maxMessages int) []Message {
 		case "user":
 			summaryParts = append(summaryParts, "用户: "+truncate(msg.Content, 100))
 		case "assistant":
-			summaryParts = append(summaryParts, "AI: "+truncate(msg.Content, 150))
+			if len(msg.ToolCalls) > 0 {
+				// 工具调用消息压缩为单行摘要
+				var toolNames []string
+				for _, tc := range msg.ToolCalls {
+					toolNames = append(toolNames, tc.Function.Name)
+				}
+				summaryParts = append(summaryParts, fmt.Sprintf("AI调用工具: %s", strings.Join(toolNames, ", ")))
+			} else {
+				summaryParts = append(summaryParts, "AI: "+truncate(msg.Content, 150))
+			}
+		case "tool":
+			// 工具结果压缩为单行
+			summaryParts = append(summaryParts, "工具结果: "+truncate(msg.Content, 80))
 		}
 	}
 

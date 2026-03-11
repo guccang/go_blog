@@ -46,13 +46,14 @@ type Message struct {
 
 // RegisterPayload agent 注册信息
 type RegisterPayload struct {
-	AgentID   string         `json:"agent_id"`
-	AgentType string         `json:"agent_type"` // "wechat", "go_blog", "llm_mcp", "codegen", "deploy"
-	Name      string         `json:"name"`       // 人类可读名称
-	Tools     []ToolDef      `json:"tools"`      // 注册的工具列表
-	Capacity  int            `json:"capacity"`   // 最大并发
-	Meta      map[string]any `json:"meta"`       // 扩展字段
-	AuthToken string         `json:"auth_token"`
+	AgentID     string         `json:"agent_id"`
+	AgentType   string         `json:"agent_type"`   // "wechat", "go_blog", "llm_mcp", "codegen", "deploy"
+	Name        string         `json:"name"`         // 人类可读名称
+	Description string         `json:"description"`  // agent 能力简述
+	Tools       []ToolDef      `json:"tools"`        // 注册的工具列表
+	Capacity    int            `json:"capacity"`     // 最大并发
+	Meta        map[string]any `json:"meta"`         // 扩展字段
+	AuthToken   string         `json:"auth_token"`
 }
 
 // ToolDef 工具定义
@@ -85,11 +86,39 @@ type ToolCallPayload struct {
 }
 
 // ToolResultPayload 跨 agent 工具调用结果
+// 约定:
+// - Success: 操作是否成功（唯一判断标准）
+// - Result: 成功时为业务数据（JSON 字符串），标准格式:
+//   {"data": <具体数据>, "message": "可选的人类可读摘要"}
+// - Error: 失败时的错误描述
+// - Result 中不再重复放 success/status 字段
 type ToolResultPayload struct {
 	RequestID string `json:"request_id"` // 对应 Message.ID
 	Success   bool   `json:"success"`
 	Result    string `json:"result,omitempty"`
 	Error     string `json:"error,omitempty"`
+}
+
+// BuildToolResult 构建标准化工具返回结果
+func BuildToolResult(requestID string, data any, message string) ToolResultPayload {
+	result, _ := json.Marshal(map[string]any{
+		"data":    data,
+		"message": message,
+	})
+	return ToolResultPayload{
+		RequestID: requestID,
+		Success:   true,
+		Result:    string(result),
+	}
+}
+
+// BuildToolError 构建标准化工具错误返回
+func BuildToolError(requestID string, err string) ToolResultPayload {
+	return ToolResultPayload{
+		RequestID: requestID,
+		Success:   false,
+		Error:     err,
+	}
 }
 
 // ========================= 长任务载荷 =========================

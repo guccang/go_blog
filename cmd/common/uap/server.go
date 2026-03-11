@@ -13,16 +13,17 @@ import (
 
 // AgentConn 表示一个已连接的 agent
 type AgentConn struct {
-	ID        string
-	AgentType string
-	Name      string
-	Tools     []ToolDef
-	Capacity  int
-	Meta      map[string]any
-	Conn      *websocket.Conn
-	mu        sync.Mutex
-	LastHB    time.Time
-	Online    bool
+	ID          string
+	AgentType   string
+	Name        string
+	Description string // agent 能力简述
+	Tools       []ToolDef
+	Capacity    int
+	Meta        map[string]any
+	Conn        *websocket.Conn
+	mu          sync.Mutex
+	LastHB      time.Time
+	Online      bool
 }
 
 // Send 向此 agent 发送消息
@@ -206,15 +207,16 @@ func (s *Server) handleRegister(conn *websocket.Conn, msg *Message) *AgentConn {
 	}
 
 	agent := &AgentConn{
-		ID:        payload.AgentID,
-		AgentType: payload.AgentType,
-		Name:      payload.Name,
-		Tools:     payload.Tools,
-		Capacity:  payload.Capacity,
-		Meta:      payload.Meta,
-		Conn:      conn,
-		LastHB:    time.Now(),
-		Online:    true,
+		ID:          payload.AgentID,
+		AgentType:   payload.AgentType,
+		Name:        payload.Name,
+		Description: payload.Description,
+		Tools:       payload.Tools,
+		Capacity:    payload.Capacity,
+		Meta:        payload.Meta,
+		Conn:        conn,
+		LastHB:      time.Now(),
+		Online:      true,
 	}
 	s.agents[payload.AgentID] = agent
 	s.mu.Unlock()
@@ -324,25 +326,25 @@ func (s *Server) GetAgentsByType(agentType string) []*AgentConn {
 	return result
 }
 
-// GetAllAgents 获取所有在线 agent 信息（排除 gateway 自身）
+// GetAllAgents 获取所有在线 agent 信息
 func (s *Server) GetAllAgents() []map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []map[string]any
 	for _, a := range s.agents {
-		// 排除 gateway 自身（AgentType == "go_blog"）
-		if a.Online && a.AgentType != "go_blog" {
+		if a.Online {
 			tools := make([]string, 0, len(a.Tools))
 			for _, t := range a.Tools {
 				tools = append(tools, t.Name)
 			}
 			result = append(result, map[string]any{
-				"agent_id":   a.ID,
-				"agent_type": a.AgentType,
-				"name":       a.Name,
-				"tools":      tools,
-				"capacity":   a.Capacity,
-				"last_hb":    a.LastHB.Format(time.RFC3339),
+				"agent_id":    a.ID,
+				"agent_type":  a.AgentType,
+				"name":        a.Name,
+				"description": a.Description,
+				"tools":       tools,
+				"capacity":    a.Capacity,
+				"last_hb":     a.LastHB.Format(time.RFC3339),
 			})
 		}
 	}

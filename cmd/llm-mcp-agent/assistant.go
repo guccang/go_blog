@@ -218,6 +218,12 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) string {
 	sb.WriteString(fmt.Sprintf("account: %s\n", account))
 	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
 
+	// 注入 agent 能力描述
+	agentBlock := b.getAgentDescriptionBlock()
+	if agentBlock != "" {
+		sb.WriteString(agentBlock)
+	}
+
 	// 任务拆解指引
 	sb.WriteString(`
 使用account:%s账户填充字段，不要向用户询问使用哪个字段了直接使用,account填充。

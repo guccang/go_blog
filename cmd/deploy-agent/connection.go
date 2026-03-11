@@ -26,13 +26,14 @@ type Connection struct {
 // NewConnection 创建连接管理器
 func NewConnection(cfg *DeployConfig, password string, agentID string) *Connection {
 	baseCfg := &agentbase.Config{
-		ServerURL: cfg.ServerURL,
-		AgentID:   agentID,
-		AgentType: "deploy",
-		AgentName: cfg.AgentName,
-		AuthToken: cfg.AuthToken,
-		Capacity:  cfg.MaxConcurrent,
-		Tools:     buildDeployToolDefs(cfg),
+		ServerURL:   cfg.ServerURL,
+		AgentID:     agentID,
+		AgentType:   "deploy",
+		AgentName:   cfg.AgentName,
+		Description: "项目部署、流水线管理、服务器操作",
+		AuthToken:   cfg.AuthToken,
+		Capacity:    cfg.MaxConcurrent,
+		Tools:       buildDeployToolDefs(cfg),
 		Meta: map[string]any{
 			"projects": cfg.ProjectNames(),
 		},
@@ -616,12 +617,12 @@ func (c *Connection) toolListProjects() string {
 			Platform:   c.cfg.HostPlatform,
 		})
 	}
-	return string(mustMarshalJSON(map[string]interface{}{
-		"success":   true,
-		"status":    "completed",
+	data := map[string]interface{}{
 		"projects":  projects,
 		"ssh_hosts": c.cfg.SSHHosts,
-	}))
+	}
+	tr := uap.BuildToolResult("", data, fmt.Sprintf("列出%d个项目", len(projects)))
+	return tr.Result
 }
 
 // toolDeployProject 部署指定项目
@@ -635,7 +636,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	// adhoc 模式：ssh_host 存在时直接走一次性部署
 	if sshHost != "" {
 		if projectDir == "" {
-			return `{"success":false,"status":"failed","error":"adhoc 模式需要 project_dir 参数"}`
+			return `{"success":false,"error":"adhoc 模式需要 project_dir 参数"}`
 		}
 		sshPort := 22
 		if p, ok := args["ssh_port"].(float64); ok && p > 0 {
@@ -657,9 +658,10 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 		deployCfg := *c.cfg
 		err := adhocDeploy(&deployCfg, adhoc, c.password, nil)
 		if err != nil {
-			return fmt.Sprintf(`{"success":false,"status":"failed","error":"adhoc 部署失败: %s"}`, err.Error())
+			return fmt.Sprintf(`{"success":false,"error":"adhoc 部署失败: %s"}`, err.Error())
 		}
-		return fmt.Sprintf(`{"success":true,"status":"completed","message":"adhoc 部署项目 %s 完成"}`, projectName)
+		tr := uap.BuildToolResult("", nil, fmt.Sprintf("adhoc 部署项目 %s 完成", projectName))
+		return tr.Result
 	}
 
 	proj, err := c.resolveProject(projectName)
@@ -668,21 +670,21 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 		log.Printf("[INFO] project %q not found, auto-initializing from %s", projectName, projectDir)
 		initOpts := &InitOptions{NonInteractive: true}
 		if initErr := runInit(projectDir, c.cfg.ConfigPath, initOpts); initErr != nil {
-			return fmt.Sprintf(`{"success":false,"status":"failed","error":"自动初始化失败: %s"}`, initErr.Error())
+			return fmt.Sprintf(`{"success":false,"error":"自动初始化失败: %s"}`, initErr.Error())
 		}
 		// 重新加载配置
 		newCfg, reloadErr := LoadConfigForDaemon(c.cfg.ConfigPath)
 		if reloadErr != nil {
-			return fmt.Sprintf(`{"success":false,"status":"failed","error":"重新加载配置失败: %s"}`, reloadErr.Error())
+			return fmt.Sprintf(`{"success":false,"error":"重新加载配置失败: %s"}`, reloadErr.Error())
 		}
 		c.cfg = newCfg
 		proj = c.cfg.GetProject(projectName)
 		if proj == nil {
-			return fmt.Sprintf(`{"success":false,"status":"failed","error":"初始化完成但未找到项目 %q，请检查项目目录"}`, projectName)
+			return fmt.Sprintf(`{"success":false,"error":"初始化完成但未找到项目 %q，请检查项目目录"}`, projectName)
 		}
 		log.Printf("[INFO] project %q auto-initialized successfully", projectName)
 	} else if err != nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"%s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
 
 	// 浅拷贝 cfg
@@ -691,25 +693,27 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	deployer := NewDeployer(&deployCfg, proj, c.password)
 	err = deployer.Run(packOnly, deployTarget)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"部署失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
 	}
 
 	action := "部署"
 	if packOnly {
 		action = "打包"
 	}
-	return fmt.Sprintf(`{"success":true,"status":"completed","message":"%s项目 %s 完成"}`, action, proj.Name)
+	tr := uap.BuildToolResult("", nil, fmt.Sprintf("%s项目 %s 完成", action, proj.Name))
+	return tr.Result
 }
 
 // toolListPipelines 列出可用 pipeline
 func (c *Connection) toolListPipelines() string {
 	if c.cfg.PipelinesDir == "" {
-		return `{"success":true,"status":"completed","pipelines":[]}`
+		tr := uap.BuildToolResult("", []interface{}{}, "无可用 pipeline")
+		return tr.Result
 	}
 
 	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"加载 pipelines 失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
 	}
 
 	type pipInfo struct {
@@ -725,36 +729,33 @@ func (c *Connection) toolListPipelines() string {
 			Steps:       len(p.Steps),
 		})
 	}
-	return string(mustMarshalJSON(map[string]interface{}{
-		"success":   true,
-		"status":    "completed",
-		"pipelines": pipelines,
-	}))
+	tr := uap.BuildToolResult("", pipelines, fmt.Sprintf("列出%d个 pipeline", len(pipelines)))
+	return tr.Result
 }
 
 // toolDeployPipeline 执行部署编排 pipeline
 func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
 	pipelineName, _ := args["pipeline"].(string)
 	if pipelineName == "" {
-		return `{"success":false,"status":"failed","error":"缺少 pipeline 参数"}`
+		return `{"success":false,"error":"缺少 pipeline 参数"}`
 	}
 
 	if c.cfg.PipelinesDir == "" {
-		return `{"success":false,"status":"failed","error":"未配置 pipelines 目录"}`
+		return `{"success":false,"error":"未配置 pipelines 目录"}`
 	}
 
 	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"加载 pipelines 失败: %s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
 	}
 
 	pip := pipCfg.Get(pipelineName)
 	if pip == nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
+		return fmt.Sprintf(`{"success":false,"error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
 	}
 
 	if err := ValidatePipeline(pip, c.cfg); err != nil {
-		return fmt.Sprintf(`{"success":false,"status":"failed","error":"%s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
 
 	// 逐步执行
@@ -766,12 +767,13 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
 		stepErr := deployer.Run(step.PackOnly, step.Target)
 
 		if stepErr != nil {
-			return fmt.Sprintf(`{"success":false,"status":"failed","error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
+			return fmt.Sprintf(`{"success":false,"error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
 				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
 		}
 	}
 
-	return fmt.Sprintf(`{"success":true,"status":"completed","message":"Pipeline %q 全部完成 (%d 步)"}`, pip.Name, len(pip.Steps))
+	tr := uap.BuildToolResult("", nil, fmt.Sprintf("Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
+	return tr.Result
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

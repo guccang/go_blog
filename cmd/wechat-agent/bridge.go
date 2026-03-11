@@ -39,6 +39,7 @@ func NewBridge(cfg *Config) *Bridge {
 
 	client := uap.NewClient(cfg.GatewayURL, agentID, "wechat", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
+	client.Description = "企业微信消息发送"
 	client.Tools = []uap.ToolDef{
 		{
 			Name:        "wechat.SendMessage",
@@ -182,8 +183,7 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 
 // handleToolCall 处理工具调用
 func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) {
-	var result string
-	var success bool
+	var result uap.ToolResultPayload
 
 	switch payload.ToolName {
 	case "wechat.SendMessage":
@@ -193,10 +193,9 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 		}
 		json.Unmarshal(payload.Arguments, &args)
 		if err := b.sendAppMessage(args.ToUser, args.Content); err != nil {
-			result = fmt.Sprintf("send failed: %v", err)
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("send failed: %v", err))
 		} else {
-			result = "sent"
-			success = true
+			result = uap.BuildToolResult(msg.ID, nil, "消息已发送")
 		}
 
 	case "wechat.SendMarkdown":
@@ -205,22 +204,17 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 		}
 		json.Unmarshal(payload.Arguments, &args)
 		if err := b.sendWebhookMarkdown(args.Content); err != nil {
-			result = fmt.Sprintf("send failed: %v", err)
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("send failed: %v", err))
 		} else {
-			result = "sent"
-			success = true
+			result = uap.BuildToolResult(msg.ID, nil, "Markdown消息已发送")
 		}
 
 	default:
-		result = fmt.Sprintf("unknown tool: %s", payload.ToolName)
+		result = uap.BuildToolError(msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName))
 	}
 
 	// 发送结果
-	b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-		RequestID: msg.ID,
-		Success:   success,
-		Result:    result,
-	})
+	b.client.SendTo(msg.From, uap.MsgToolResult, result)
 }
 
 // ========================= CodeGen 事件处理 =========================

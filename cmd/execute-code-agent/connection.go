@@ -28,13 +28,14 @@ type Connection struct {
 // NewConnection 创建连接管理器
 func NewConnection(cfg *Config, agentID string) *Connection {
 	baseCfg := &agentbase.Config{
-		ServerURL: cfg.ServerURL,
-		AgentID:   agentID,
-		AgentType: "execute_code",
-		AgentName: cfg.AgentName,
-		AuthToken: cfg.AuthToken,
-		Capacity:  cfg.MaxConcurrent,
-		Tools:     buildToolDefs(),
+		ServerURL:   cfg.ServerURL,
+		AgentID:     agentID,
+		AgentType:   "execute_code",
+		AgentName:   cfg.AgentName,
+		Description: "Python代码执行、MCP工具批量调用",
+		AuthToken:   cfg.AuthToken,
+		Capacity:    cfg.MaxConcurrent,
+		Tools:       buildToolDefs(),
 	}
 
 	c := &Connection{
@@ -52,6 +53,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	// 注册消息处理器
 	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
 	c.RegisterHandler(uap.MsgToolResult, c.handleToolResult)
+	c.RegisterHandler(uap.MsgError, c.handleError)
 
 	return c
 }
@@ -106,6 +108,33 @@ func (c *Connection) handleToolResult(msg *uap.Message) {
 	c.pendMu.Unlock()
 	if ok {
 		ch <- &payload
+	} else {
+		log.Printf("[Connection] tool_result requestID=%s has no pending channel (from=%s success=%v)",
+			payload.RequestID, msg.From, payload.Success)
+	}
+}
+
+// handleError 处理 gateway 错误消息（如 agent_offline）
+// gateway 使用原始 msg.ID 作为错误消息的 ID，用于匹配 pending 请求
+func (c *Connection) handleError(msg *uap.Message) {
+	var payload uap.ErrorPayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[Connection] invalid error payload: %v", err)
+		return
+	}
+
+	log.Printf("[Connection] error from=%s code=%s msg=%s (id=%s)", msg.From, payload.Code, payload.Message, msg.ID)
+
+	// 释放 pending channel，让工具调用快速失败而非等待超时
+	c.pendMu.Lock()
+	ch, ok := c.pending[msg.ID]
+	c.pendMu.Unlock()
+	if ok {
+		ch <- &uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     payload.Message,
+		}
 	}
 }
 
@@ -176,28 +205,31 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		stdout += "\n[输出已截断，原始输出超过限制]"
 	}
 
-	resultData := map[string]interface{}{
-		"success":     execResult.Success,
+	execData := map[string]interface{}{
 		"stdout":      stdout,
 		"duration_ms": execResult.DurationMs,
 	}
 	if len(execResult.ToolCalls) > 0 {
-		resultData["tool_calls"] = execResult.ToolCalls
+		execData["tool_calls"] = execResult.ToolCalls
 	}
 	if !execResult.Success {
-		resultData["error_type"] = execResult.ErrorType
-		resultData["stderr"] = truncate(execResult.Stderr, 2000)
+		execData["error_type"] = execResult.ErrorType
+		execData["stderr"] = truncate(execResult.Stderr, 2000)
 	}
 	if execResult.Truncated {
-		resultData["truncated"] = true
+		execData["truncated"] = true
 	}
 
-	resultJSON, _ := json.Marshal(resultData)
+	message := "执行完成"
+	if !execResult.Success {
+		message = "执行失败"
+	}
+	tr := uap.BuildToolResult(msg.ID, execData, message)
 
 	c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   execResult.Success,
-		Result:    string(resultJSON),
+		Result:    tr.Result,
 		Error:     conditionalError(execResult),
 	})
 }

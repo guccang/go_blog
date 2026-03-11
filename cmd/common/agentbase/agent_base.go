@@ -11,14 +11,15 @@ type MessageHandler func(msg *uap.Message)
 
 // Config AgentBase 配置
 type Config struct {
-	ServerURL string         // Gateway WebSocket URL
-	AgentID   string         // Agent 唯一标识
-	AgentType string         // Agent 类型
-	AgentName string         // 人类可读名称
-	AuthToken string         // 认证令牌
-	Capacity  int            // 最大并发数
-	Tools     []uap.ToolDef  // 注册的工具列表
-	Meta      map[string]any // 扩展字段
+	ServerURL   string         // Gateway WebSocket URL
+	AgentID     string         // Agent 唯一标识
+	AgentType   string         // Agent 类型
+	AgentName   string         // 人类可读名称
+	Description string         // Agent 能力简述
+	AuthToken   string         // 认证令牌
+	Capacity    int            // 最大并发数
+	Tools       []uap.ToolDef  // 注册的工具列表
+	Meta        map[string]any // 扩展字段
 }
 
 // AgentBase Agent 基础连接管理
@@ -43,6 +44,7 @@ type AgentBase struct {
 func NewAgentBase(cfg *Config) *AgentBase {
 	client := uap.NewClient(cfg.ServerURL, cfg.AgentID, cfg.AgentType, cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
+	client.Description = cfg.Description
 	client.Capacity = cfg.Capacity
 	client.Tools = cfg.Tools
 	client.Meta = cfg.Meta

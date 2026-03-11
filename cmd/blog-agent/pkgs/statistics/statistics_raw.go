@@ -435,22 +435,58 @@ func RawMonthlyCreationTrend(account string) string {
 	return result
 }
 
-// 搜索博客内容
+// 搜索博客内容（返回标题+关键词上下文片段，避免返回全文导致数据量过大）
 func RawSearchBlogContent(account, keyword string) string {
 	blogs := blog.GetBlogsWithAccount(account)
-	matchedBlogs := make([]string, 0)
+	const maxResults = 20
+	const snippetLen = 200
+
+	var results []string
+	lowerKeyword := strings.ToLower(keyword)
 
 	for _, b := range blogs {
-		if strings.Contains(strings.ToLower(b.Content), strings.ToLower(keyword)) ||
-			strings.Contains(strings.ToLower(b.Title), strings.ToLower(keyword)) {
-			matchedBlogs = append(matchedBlogs, b.Content)
+		lowerContent := strings.ToLower(b.Content)
+		lowerTitle := strings.ToLower(b.Title)
+
+		if !strings.Contains(lowerContent, lowerKeyword) && !strings.Contains(lowerTitle, lowerKeyword) {
+			continue
+		}
+
+		// 提取关键词周围的上下文片段
+		snippet := ""
+		idx := strings.Index(lowerContent, lowerKeyword)
+		if idx >= 0 {
+			start := idx - snippetLen/2
+			if start < 0 {
+				start = 0
+			}
+			end := idx + len(keyword) + snippetLen/2
+			if end > len(b.Content) {
+				end = len(b.Content)
+			}
+			snippet = b.Content[start:end]
+			if start > 0 {
+				snippet = "..." + snippet
+			}
+			if end < len(b.Content) {
+				snippet = snippet + "..."
+			}
+		}
+
+		entry := fmt.Sprintf("【%s】\n%s", b.Title, snippet)
+		results = append(results, entry)
+
+		if len(results) >= maxResults {
+			break
 		}
 	}
 
-	if len(matchedBlogs) == 0 {
+	if len(results) == 0 {
 		return fmt.Sprintf("未找到包含关键词'%s'的博客", keyword)
 	}
-	return strings.Join(matchedBlogs, " ")
+
+	header := fmt.Sprintf("找到 %d 篇包含'%s'的博客（最多显示%d篇）:\n\n", len(results), keyword, maxResults)
+	return header + strings.Join(results, "\n\n")
 }
 
 // 获取锻炼详细统计

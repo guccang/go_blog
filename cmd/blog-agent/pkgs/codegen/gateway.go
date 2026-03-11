@@ -81,6 +81,7 @@ func InitGatewayBridge(gatewayURL, authToken string) {
 
 	client := uap.NewClient(gatewayURL, "go_blog", "go_blog", "Go Blog Server")
 	client.AuthToken = authToken
+	client.Description = "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏"
 	client.Capacity = 100
 	client.Tools = toolDefs
 	client.Meta = map[string]any{
@@ -555,9 +556,9 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 		args = make(map[string]interface{})
 	}
 
-	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s)", msg.From, payload.ToolName, mcpName)
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s) msgID=%s", msg.From, payload.ToolName, mcpName, msg.ID)
 
-	// 调用 MCP 内部工具（通过注入的函数）
+	// 调用 MCP 内部工具（通过注入的函数，带超时保护）
 	if MCPCallInnerTools == nil {
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: MCPCallInnerTools not initialized")
 		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
@@ -567,14 +568,42 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 		})
 		return
 	}
-	result := MCPCallInnerTools(mcpName, args)
+
+	// 超时保护：MCP 工具调用最多 90 秒
+	type mcpResult struct {
+		result string
+	}
+	resultCh := make(chan mcpResult, 1)
+	go func() {
+		r := MCPCallInnerTools(mcpName, args)
+		resultCh <- mcpResult{result: r}
+	}()
+
+	var result string
+	select {
+	case r := <-resultCh:
+		result = r.result
+	case <-time.After(90 * time.Second):
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: tool_call timeout (90s) tool=%s msgID=%s", payload.ToolName, msg.ID)
+		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     fmt.Sprintf("tool %s timeout after 90s", payload.ToolName),
+		})
+		return
+	}
+
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_result to=%s tool=%s msgID=%s resultLen=%d",
+		msg.From, payload.ToolName, msg.ID, len(result))
 
 	// 发送结果
-	b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+	if err := b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   true,
 		Result:    result,
-	})
+	}); err != nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: send tool_result failed to=%s msgID=%s: %v", msg.From, msg.ID, err)
+	}
 }
 
 // buildToolDefs 构建 UAP 工具定义列表和映射表
