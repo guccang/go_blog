@@ -313,7 +313,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		conv.mu.Lock()
 		turnNum := conv.TurnCount + 1
 		conv.mu.Unlock()
-		feedbackMsg = fmt.Sprintf("⏳ 收到消息，继续对话（第%d轮）...", turnNum)
+		feedbackMsg = fmt.Sprintf("⏳ 收到消息，继续对话（第%d轮）...\n发送「新对话」可清空上下文", turnNum)
 	}
 	b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 		Channel: "wechat",
