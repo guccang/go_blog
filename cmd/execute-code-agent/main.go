@@ -6,7 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
+
+	"agentbase"
 )
 
 func main() {
@@ -14,6 +17,12 @@ func main() {
 	flag.Parse()
 
 	cfg := LoadConfig(*configPath)
+
+	// 加载 env.json
+	envCfg, err := agentbase.LoadEnvConfig(filepath.Dir(*configPath))
+	if err != nil {
+		log.Printf("[ExecuteCodeAgent] env.json 加载失败: %v", err)
+	}
 
 	agentID := fmt.Sprintf("exec_code_%d", os.Getpid())
 
@@ -31,6 +40,11 @@ func main() {
 
 	// 启动后台工具目录刷新
 	conn.StartRefreshLoop()
+
+	// 启动环境检测（异步，不阻塞 agent 启动）
+	if envCfg != nil {
+		go startEnvCheck(conn, envCfg)
+	}
 
 	// 优雅退出
 	go func() {

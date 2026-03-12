@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,7 +60,7 @@ func runInit(goProjectDir, configPath string, opts *InitOptions) error {
 	// Scan extra files
 	extras := scanExtraFiles(absDir, binName)
 
-	// Resolve settings dir from deploy.conf
+	// Resolve settings dir from deploy-agent.json
 	settingsDir, _ := resolveSettingsDir(configPath)
 
 	// Build InitConfig with defaults
@@ -219,28 +220,21 @@ func applyInitOptions(cfg *InitConfig, opts *InitOptions) {
 	}
 }
 
-// resolveSettingsDir reads settings_dir from deploy.conf
+// resolveSettingsDir reads settings_dir from deploy-agent.json
 func resolveSettingsDir(configPath string) (string, error) {
-	f, err := os.Open(configPath)
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return "", fmt.Errorf("open config %s: %v", configPath, err)
 	}
-	defer f.Close()
 
-	var sd string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 && strings.TrimSpace(parts[0]) == "settings_dir" {
-			sd = strings.TrimSpace(parts[1])
-			break
-		}
+	var raw struct {
+		SettingsDir string `json:"settings_dir"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return "", fmt.Errorf("parse config %s: %v", configPath, err)
 	}
 
+	sd := raw.SettingsDir
 	if sd == "" {
 		return "", fmt.Errorf("settings_dir not found in %s", configPath)
 	}
@@ -580,101 +574,57 @@ fi
 	return content
 }
 
-// generateProjectConf generates deploy-agent project .conf content
-func generateProjectConf(cfg *InitConfig) string {
+// generateProjectJSON generates deploy-agent project .json content
+func generateProjectJSON(cfg *InitConfig) string {
 	name := cfg.ProjectName
 
-	var lines []string
-	lines = append(lines,
-		fmt.Sprintf("# %s project deploy config", name),
-		fmt.Sprintf("pack_pattern=%s_{date}.zip", name),
-		"",
-		"# === Build config per platform ===",
-	)
+	pj := projectJSON{
+		PackPattern: name + "_{date}.zip",
+		Build:       make(map[string]buildJSON),
+		Targets:     make(map[string]targetJSON),
+	}
 
-	// [build.win]
+	// build 配置
 	if cfg.WinProjectDir != "" {
-		lines = append(lines,
-			"[build.win]",
-			fmt.Sprintf("project_dir=%s", cfg.WinProjectDir),
-			"pack_script=zip-files.bat",
-			"",
-		)
+		pj.Build["win"] = buildJSON{ProjectDir: cfg.WinProjectDir, PackScript: "zip-files.bat"}
 	}
-
-	// [build.linux]
 	if cfg.LinuxProjectDir != "" {
-		lines = append(lines,
-			"[build.linux]",
-			fmt.Sprintf("project_dir=%s", cfg.LinuxProjectDir),
-			"pack_script=zip-files.sh",
-			"",
-		)
+		pj.Build["linux"] = buildJSON{ProjectDir: cfg.LinuxProjectDir, PackScript: "zip-files.sh"}
 	}
-
-	// [build.macos]
 	if cfg.MacProjectDir != "" {
-		lines = append(lines,
-			"[build.macos]",
-			fmt.Sprintf("project_dir=%s", cfg.MacProjectDir),
-			"pack_script=zip-files.sh",
-			"",
-		)
+		pj.Build["macos"] = buildJSON{ProjectDir: cfg.MacProjectDir, PackScript: "zip-files.sh"}
 	}
 
-	lines = append(lines, "# === Deploy targets ===")
-
-	// [target.local.win]
+	// target 配置
 	if cfg.WinProjectDir != "" {
-		lines = append(lines,
-			"[target.local.win]",
-			fmt.Sprintf("remote_dir=%s", cfg.WinProjectDir),
-			"remote_script=publish.bat",
-			"",
-		)
+		pj.Targets["local.win"] = targetJSON{RemoteDir: cfg.WinProjectDir, RemoteScript: "publish.bat"}
 	}
-
-	// [target.local.linux]
 	if cfg.LinuxProjectDir != "" {
-		lines = append(lines,
-			"[target.local.linux]",
-			fmt.Sprintf("remote_dir=%s", cfg.LinuxProjectDir),
-			"remote_script=publish.sh",
-			"",
-		)
+		pj.Targets["local.linux"] = targetJSON{RemoteDir: cfg.LinuxProjectDir, RemoteScript: "publish.sh"}
 	}
-
-	// [target.local.macos]
 	if cfg.MacProjectDir != "" {
-		lines = append(lines,
-			"[target.local.macos]",
-			fmt.Sprintf("remote_dir=%s", cfg.MacProjectDir),
-			"remote_script=publish.sh",
-			"",
-		)
+		pj.Targets["local.macos"] = targetJSON{RemoteDir: cfg.MacProjectDir, RemoteScript: "publish.sh"}
 	}
 
 	// SSH target (optional)
 	if cfg.SSHHost != "" {
-		lines = append(lines,
-			"[target.ssh-prod]",
-			"platform=linux",
-			fmt.Sprintf("host=%s", cfg.SSHHost),
-		)
+		t := targetJSON{
+			Platform:     "linux",
+			Host:         cfg.SSHHost,
+			RemoteScript: "publish.sh",
+		}
 		if cfg.RemoteDir != "" {
-			lines = append(lines, fmt.Sprintf("remote_dir=%s", cfg.RemoteDir))
+			t.RemoteDir = cfg.RemoteDir
 		}
-		lines = append(lines, "remote_script=publish.sh")
 		if cfg.VerifyURL != "" {
-			lines = append(lines,
-				fmt.Sprintf("verify_url=%s", cfg.VerifyURL),
-				"verify_timeout=10",
-			)
+			t.VerifyURL = cfg.VerifyURL
+			t.VerifyTimeout = 10
 		}
-		lines = append(lines, "")
+		pj.Targets["ssh-prod"] = t
 	}
 
-	return strings.Join(lines, "\n") + "\n"
+	data, _ := json.MarshalIndent(pj, "", "  ")
+	return string(data) + "\n"
 }
 
 // writeInitFiles writes all generated files to disk
@@ -695,19 +645,19 @@ func writeInitFiles(cfg *InitConfig) ([]string, error) {
 		fileEntry{filepath.Join(cfg.ProjectDir, "publish.sh"), generatePublishSh(cfg), 0755},
 	)
 
-	// Project conf file
+	// Project json file
 	confDir := ""
 	if cfg.SettingsDir != "" {
 		confDir = filepath.Join(cfg.SettingsDir, "projects")
 	} else {
-		// Fallback: put .conf in project directory
+		// Fallback: put .json in project directory
 		confDir = cfg.ProjectDir
-		fmt.Println("Warning: Could not read deploy.conf to find settings_dir.")
-		fmt.Println("         .conf file will be written to project directory.")
+		fmt.Println("Warning: Could not read deploy-agent.json to find settings_dir.")
+		fmt.Println("         .json file will be written to project directory.")
 		fmt.Println("         Move it to settings/projects/ for deploy-agent to recognize it.")
 	}
-	confPath := filepath.Join(confDir, cfg.ProjectName+".conf")
-	files = append(files, fileEntry{confPath, generateProjectConf(cfg), 0644})
+	confPath := filepath.Join(confDir, cfg.ProjectName+".json")
+	files = append(files, fileEntry{confPath, generateProjectJSON(cfg), 0644})
 
 	// Show files to generate (interactive mode)
 	if !cfg.NonInteractive {

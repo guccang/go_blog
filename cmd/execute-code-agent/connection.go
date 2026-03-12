@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"agentbase"
@@ -16,14 +15,11 @@ import (
 type Connection struct {
 	*agentbase.AgentBase // 组合基类
 
-	cfg         *Config
-	executor    *Executor
-	toolCatalog *agentbase.ToolCatalog
-	fileToolKit *agentbase.FileToolKit
-
-	// 请求-响应关联（pending channel 模式）
-	pending map[string]chan *uap.ToolResultPayload
-	pendMu  sync.Mutex
+	cfg          *Config
+	executor     *Executor
+	toolCatalog  *agentbase.ToolCatalog
+	fileToolKit  *agentbase.FileToolKit
+	remoteCaller *agentbase.RemoteCaller
 }
 
 // NewConnection 创建连接管理器
@@ -47,13 +43,15 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		cfg:         cfg,
 		toolCatalog: agentbase.NewToolCatalog(cfg.GatewayHTTP),
 		fileToolKit: ftk,
-		pending:     make(map[string]chan *uap.ToolResultPayload),
 	}
+
+	// 创建 RemoteCaller
+	c.remoteCaller = agentbase.NewRemoteCaller(c.AgentBase, c.toolCatalog)
 
 	// 创建 executor
 	c.executor = NewExecutor(cfg)
 	// 注入工具调用桥接函数
-	c.executor.callTool = c.callToolWithRetry
+	c.executor.callTool = c.remoteCallToolBridge
 
 	// 注册消息处理器
 	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
@@ -115,15 +113,12 @@ func (c *Connection) handleToolResult(msg *uap.Message) {
 		log.Printf("[Connection] invalid tool_result payload: %v", err)
 		return
 	}
-	c.pendMu.Lock()
-	ch, ok := c.pending[payload.RequestID]
-	c.pendMu.Unlock()
-	if ok {
-		ch <- &payload
-	} else {
-		log.Printf("[Connection] tool_result requestID=%s has no pending channel (from=%s success=%v)",
-			payload.RequestID, msg.From, payload.Success)
+	// 尝试分发到 RemoteCaller
+	if c.remoteCaller.DispatchToolResult(&payload) {
+		return
 	}
+	log.Printf("[Connection] tool_result requestID=%s has no pending channel (from=%s success=%v)",
+		payload.RequestID, msg.From, payload.Success)
 }
 
 // handleError 处理 gateway 错误消息（如 agent_offline）
@@ -137,17 +132,8 @@ func (c *Connection) handleError(msg *uap.Message) {
 
 	log.Printf("[Connection] error from=%s code=%s msg=%s (id=%s)", msg.From, payload.Code, payload.Message, msg.ID)
 
-	// 释放 pending channel，让工具调用快速失败而非等待超时
-	c.pendMu.Lock()
-	ch, ok := c.pending[msg.ID]
-	c.pendMu.Unlock()
-	if ok {
-		ch <- &uap.ToolResultPayload{
-			RequestID: msg.ID,
-			Success:   false,
-			Error:     payload.Message,
-		}
-	}
+	// 尝试分发到 RemoteCaller，让工具调用快速失败而非等待超时
+	c.remoteCaller.DispatchError(msg.ID, payload.Message)
 }
 
 // handleToolCall 处理 ExecuteCode / ExecEnvBash 工具调用
@@ -306,70 +292,7 @@ func (c *Connection) StartRefreshLoop() {
 
 // ========================= 工具调用桥接 =========================
 
-// callToolWithRetry 带瞬态错误重试的工具调用
-func (c *Connection) callToolWithRetry(toolName string, args json.RawMessage) (string, string, error) {
-	result, agentID, err := c.callToolOnce(toolName, args)
-	if err != nil && isTransientError(err) {
-		log.Printf("[ExecuteCode] tool %s transient error, retrying: %v", toolName, err)
-		time.Sleep(1 * time.Second)
-		result, agentID, err = c.callToolOnce(toolName, args)
-	}
-	return result, agentID, err
-}
-
-// callToolOnce 单次工具调用
-func (c *Connection) callToolOnce(toolName string, args json.RawMessage) (string, string, error) {
-	agentID, ok := c.toolCatalog.GetAgentID(toolName)
-	if !ok {
-		return "", "", fmt.Errorf("tool %s not found in catalog", toolName)
-	}
-
-	msgID := uap.NewMsgID()
-	ch := make(chan *uap.ToolResultPayload, 1)
-
-	c.pendMu.Lock()
-	c.pending[msgID] = ch
-	c.pendMu.Unlock()
-
-	defer func() {
-		c.pendMu.Lock()
-		delete(c.pending, msgID)
-		c.pendMu.Unlock()
-	}()
-
-	log.Printf("[ExecuteCode] tool_call → agent=%s tool=%s", agentID, toolName)
-
-	// 发送 tool_call
-	err := c.Client.Send(&uap.Message{
-		Type: uap.MsgToolCall,
-		ID:   msgID,
-		From: c.AgentID,
-		To:   agentID,
-		Payload: mustMarshalJSON(uap.ToolCallPayload{
-			ToolName:  toolName,
-			Arguments: args,
-		}),
-		Ts: time.Now().UnixMilli(),
-	})
-	if err != nil {
-		return "", agentID, fmt.Errorf("send tool_call: %v", err)
-	}
-
-	// 等待结果
-	select {
-	case result := <-ch:
-		if !result.Success {
-			return "", agentID, fmt.Errorf("tool error: %s", result.Error)
-		}
-		log.Printf("[ExecuteCode] tool_result ← agent=%s tool=%s resultLen=%d", agentID, toolName, len(result.Result))
-		return result.Result, agentID, nil
-	case <-time.After(120 * time.Second):
-		return "", agentID, fmt.Errorf("tool %s timeout after 120s", toolName)
-	}
-}
-
-// isTransientError 判断是否是瞬态网络错误（值得重试）
-func isTransientError(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "timeout") || strings.Contains(msg, "not connected")
+// remoteCallToolBridge 桥接 executor 的 callTool 到 RemoteCaller
+func (c *Connection) remoteCallToolBridge(toolName string, args json.RawMessage) (string, string, error) {
+	return c.remoteCaller.CallToolWithRetry(toolName, args, 120*time.Second)
 }

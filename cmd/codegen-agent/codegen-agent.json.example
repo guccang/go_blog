@@ -1,0 +1,11 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "agent_name": "codegen-agent-mac",
+  "agent_type": "codegen",
+  "auth_token": "your-auth-token",
+  "workspaces": ["your-workspace"],
+  "claude_path": "claude",
+  "opencode_path": "opencode",
+  "max_concurrent": 3,
+  "max_turns": 20
+}

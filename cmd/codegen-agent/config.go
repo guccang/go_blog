@@ -1,32 +1,30 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 // AgentConfig agent 配置
 type AgentConfig struct {
-	ServerURL             string
-	AgentName             string
-	AgentType             string   // agent 类型: codegen(编码) / deploy(发布)，默认 codegen
-	AuthToken             string
-	Workspaces            []string
-	ClaudePath            string
-	OpenCodePath          string
-	MaxConcurrent         int
-	MaxTurns              int
-	ClaudeCodeSettingsDir string // Claude Code --settings 配置目录
-	OpenCodeSettingsDir   string // OpenCode 模型映射配置目录
-	ResumeModels          []string // 支持 --resume 的模型名列表（空字符串代表默认模型）
-	GoBackendAgentID      string   // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
+	ServerURL             string   `json:"server_url"`
+	AgentName             string   `json:"agent_name"`
+	AgentType             string   `json:"agent_type"`               // agent 类型: codegen(编码) / deploy(发布)，默认 codegen
+	AuthToken             string   `json:"auth_token"`
+	Workspaces            []string `json:"workspaces"`
+	ClaudePath            string   `json:"claude_path"`
+	OpenCodePath          string   `json:"opencode_path"`
+	MaxConcurrent         int      `json:"max_concurrent"`
+	MaxTurns              int      `json:"max_turns"`
+	ClaudeCodeSettingsDir string   `json:"claudecode_settings_dir"`  // Claude Code --settings 配置目录
+	OpenCodeSettingsDir   string   `json:"opencode_settings_dir"`    // OpenCode 模型映射配置目录
+	ResumeModels          []string `json:"resume_models,omitempty"`  // 支持 --resume 的模型名列表（空字符串代表默认模型）
+	GoBackendAgentID      string   `json:"go_backend_agent_id"`      // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
 }
 
-// LoadConfig 从配置文件加载配置
+// LoadConfig 从 JSON 配置文件加载配置
 func LoadConfig(path string) (*AgentConfig, error) {
 	cfg := &AgentConfig{
 		ClaudePath:    "claude",
@@ -35,80 +33,44 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		MaxTurns:      20,
 	}
 
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open config: %v", err)
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-
-		switch key {
-		case "server_url":
-			cfg.ServerURL = val
-		case "agent_name":
-			cfg.AgentName = val
-		case "agent_type":
-			cfg.AgentType = val
-		case "auth_token":
-			cfg.AuthToken = val
-		case "workspaces":
-			for _, ws := range strings.Split(val, ",") {
-				ws = strings.TrimSpace(ws)
-				if ws != "" {
-					cfg.Workspaces = append(cfg.Workspaces, ws)
-				}
-			}
-		case "claude_path":
-			cfg.ClaudePath = val
-		case "opencode_path":
-			cfg.OpenCodePath = val
-		case "max_concurrent":
-			if n, err := strconv.Atoi(val); err == nil && n > 0 {
-				cfg.MaxConcurrent = n
-			}
-		case "max_turns":
-			if n, err := strconv.Atoi(val); err == nil && n > 0 {
-				cfg.MaxTurns = n
-			}
-		case "claudecode_settings_dir":
-			cfg.ClaudeCodeSettingsDir = val
-		case "opencode_settings_dir":
-			cfg.OpenCodeSettingsDir = val
-		case "resume_models":
-			for _, m := range strings.Split(val, ",") {
-				cfg.ResumeModels = append(cfg.ResumeModels, strings.TrimSpace(m))
-			}
-		case "go_blog_agent_id":
-			cfg.GoBackendAgentID = val
-		}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %v", err)
 	}
 
+	// 必填字段校验
 	if cfg.ServerURL == "" {
 		return nil, fmt.Errorf("server_url is required")
-	}
-	if cfg.AgentName == "" {
-		cfg.AgentName, _ = os.Hostname()
 	}
 	if len(cfg.Workspaces) == 0 {
 		return nil, fmt.Errorf("workspaces is required")
 	}
-	if cfg.GoBackendAgentID == "" {
-		cfg.GoBackendAgentID = "go_blog"
+
+	// 默认值填充
+	if cfg.AgentName == "" {
+		cfg.AgentName, _ = os.Hostname()
 	}
 	if cfg.AgentType == "" {
 		cfg.AgentType = "codegen"
+	}
+	if cfg.ClaudePath == "" {
+		cfg.ClaudePath = "claude"
+	}
+	if cfg.OpenCodePath == "" {
+		cfg.OpenCodePath = "opencode"
+	}
+	if cfg.MaxConcurrent <= 0 {
+		cfg.MaxConcurrent = 3
+	}
+	if cfg.MaxTurns <= 0 {
+		cfg.MaxTurns = 20
+	}
+	if cfg.GoBackendAgentID == "" {
+		cfg.GoBackendAgentID = "go_blog"
 	}
 
 	configDir := filepath.Dir(path)

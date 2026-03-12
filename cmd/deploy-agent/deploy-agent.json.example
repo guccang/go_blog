@@ -1,0 +1,8 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "agent_name": "deploy-agent-mac",
+  "auth_token": "your-auth-token",
+  "max_concurrent": 2,
+  "settings_dir": "./settings",
+  "workspaces": ["your-workspace"]
+}

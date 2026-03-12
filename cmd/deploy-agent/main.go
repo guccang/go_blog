@@ -2,19 +2,23 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
+	"agentbase"
 	"golang.org/x/term"
+	"uap"
 )
 
 const keyringService = "deploy-agent"
 
 func main() {
-	configPath := flag.String("config", "deploy-agent.conf", "配置文件路径")
+	configPath := flag.String("config", "deploy-agent.json", "配置文件路径")
 	projectName := flag.String("project", "", "指定要部署的项目名称（多项目时必须指定）")
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
@@ -167,6 +171,12 @@ func main() {
 
 	cred := newCredentialStore()
 
+	// 加载 env.json
+	envCfg, envErr := agentbase.LoadEnvConfig(filepath.Dir(*configPath))
+	if envErr != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] env.json 加载失败: %v\n", envErr)
+	}
+
 	// 列出所有项目
 	if *listProjects {
 		fmt.Printf("配置文件: %s\n", *configPath)
@@ -297,6 +307,23 @@ func main() {
 
 		agentID := fmt.Sprintf("deploy_%s_%d", cfg.AgentName, os.Getpid())
 		conn := NewConnection(cfg, pwd, agentID)
+
+		// 启动环境检测（异步，不阻塞 agent 启动）
+		if envCfg != nil && len(envCfg.Requirements) > 0 {
+			gatewayHTTP := envCfg.GatewayHTTP
+			catalog := agentbase.NewToolCatalog(gatewayHTTP)
+			rc := agentbase.NewRemoteCaller(conn.AgentBase, catalog)
+			// 注册 MsgToolResult handler 给 RemoteCaller
+			conn.RegisterHandler(uap.MsgToolResult, func(msg *uap.Message) {
+				var payload uap.ToolResultPayload
+				if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+					return
+				}
+				rc.DispatchToolResult(&payload)
+			})
+			go agentbase.NewEnvChecker(conn.AgentBase, catalog, rc, envCfg, nil).Run()
+		}
+
 		// 启动协议层（注册 + 心跳）
 		go conn.StartProtocolLayer()
 		conn.Run()

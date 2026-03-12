@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -32,7 +31,7 @@ type ProjectConfig struct {
 	Targets     []*Target // 部署目标列表
 	VerifyURL   string    // 部署验证 URL（兼容旧模式，新模式用 Target.VerifyURL）
 	ConfigFile  string    // 来源 settings 文件路径
-	Configured  bool      // 是否有持久化 settings（.conf 文件）
+	Configured  bool      // 是否有持久化 settings（.json 文件）
 }
 
 // DeployConfig 全局部署配置
@@ -72,6 +71,19 @@ type DeployConfig struct {
 	ConfigPath string
 }
 
+// deployConfigJSON 全局 JSON 配置（仅用于 unmarshal）
+type deployConfigJSON struct {
+	ServerURL        string   `json:"server_url"`
+	AgentName        string   `json:"agent_name"`
+	AuthToken        string   `json:"auth_token"`
+	MaxConcurrent    int      `json:"max_concurrent"`
+	SSHKey           string   `json:"ssh_key,omitempty"`
+	SSHPassword      string   `json:"ssh_password,omitempty"`
+	SettingsDir      string   `json:"settings_dir"`
+	Workspaces       []string `json:"workspaces"`
+	GoBackendAgentID string   `json:"go_backend_agent_id,omitempty"`
+}
+
 // DefaultProject 获取默认项目（仅一个项目时返回，否则返回 nil）
 func (c *DeployConfig) DefaultProject() *ProjectConfig {
 	if len(c.ProjectOrder) == 1 {
@@ -90,15 +102,29 @@ func (c *DeployConfig) ProjectNames() []string {
 	return c.ProjectOrder
 }
 
-// configLine 配置文件中的键值对
-type configLine struct {
-	key, val string
+// projectJSON 项目 JSON 配置（仅用于 unmarshal）
+type projectJSON struct {
+	PackPattern string                `json:"pack_pattern,omitempty"`
+	Build       map[string]buildJSON  `json:"build"`
+	Targets     map[string]targetJSON `json:"targets"`
 }
 
-// configSection 配置文件中的一个 section
-type configSection struct {
-	name  string       // section 名称（空 = 全局）
-	lines []configLine // 键值对列表
+// buildJSON 构建配置
+type buildJSON struct {
+	ProjectDir  string `json:"project_dir"`
+	PackScript  string `json:"pack_script,omitempty"`
+	PackPattern string `json:"pack_pattern,omitempty"`
+}
+
+// targetJSON 部署目标配置
+type targetJSON struct {
+	Host          string `json:"host,omitempty"`
+	Port          int    `json:"ssh_port,omitempty"`
+	RemoteDir     string `json:"remote_dir,omitempty"`
+	RemoteScript  string `json:"remote_script,omitempty"`
+	Platform      string `json:"platform,omitempty"`
+	VerifyURL     string `json:"verify_url,omitempty"`
+	VerifyTimeout int    `json:"verify_timeout,omitempty"`
 }
 
 // LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
@@ -107,8 +133,7 @@ func LoadConfigForDaemon(path string) (*DeployConfig, error) {
 	return LoadConfig(path, "all")
 }
 
-// LoadConfig 从配置文件加载全局配置
-// settings_dir 指向 projects/ 目录所在的 settings 目录
+// LoadConfig 从 JSON 配置文件加载全局配置
 func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 	cfg := &DeployConfig{
 		MaxConcurrent: 1,
@@ -125,27 +150,28 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 		cfg.TargetFilter = "local"
 	}
 
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open config: %v", err)
 	}
-	defer file.Close()
 
-	// 逐行读取全局配置（deploy.conf 不再支持 [project] section）
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		parseGlobalKey(cfg, key, val)
+	var jcfg deployConfigJSON
+	if err := json.Unmarshal(data, &jcfg); err != nil {
+		return nil, fmt.Errorf("parse config: %v", err)
 	}
+
+	// 映射 JSON 字段到 DeployConfig
+	cfg.ServerURL = jcfg.ServerURL
+	cfg.AgentName = jcfg.AgentName
+	cfg.AuthToken = jcfg.AuthToken
+	if jcfg.MaxConcurrent > 0 {
+		cfg.MaxConcurrent = jcfg.MaxConcurrent
+	}
+	cfg.SSHKey = jcfg.SSHKey
+	cfg.SSHPassword = jcfg.SSHPassword
+	cfg.SettingsDir = jcfg.SettingsDir
+	cfg.Workspaces = jcfg.Workspaces
+	cfg.GoBackendAgentID = jcfg.GoBackendAgentID
 
 	// workspace 扫描：发现含 go.mod 的子目录
 	cfg.scanWorkspaces()
@@ -265,13 +291,7 @@ func (c *DeployConfig) scanWorkspaces() {
 }
 
 // loadProjectsDir 扫描 settings/projects/ 目录加载项目配置
-// 每个 <project>.conf 文件包含完整的构建和部署目标配置
-// 格式：
-//
-//	pack_pattern=xxx              # 通用配置
-//	[build.<platform>]            # 按 HostPlatform 区分的构建参数
-//	[target.<name>]               # SSH 远程部署目标（含 platform= 字段）
-//	[target.local.<platform>]     # 本机部署目标（按平台区分）
+// 每个 <project>.json 文件包含完整的构建和部署目标配置
 func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 	projectsDir := filepath.Join(settingsDir, "projects")
 	if !dirExists(projectsDir) {
@@ -283,28 +303,28 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		return fmt.Errorf("read projects dir: %v", err)
 	}
 
-	var confFiles []os.DirEntry
+	var jsonFiles []os.DirEntry
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		if strings.HasSuffix(strings.ToLower(entry.Name()), ".conf") {
-			confFiles = append(confFiles, entry)
+		if strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+			jsonFiles = append(jsonFiles, entry)
 		}
 	}
-	sort.Slice(confFiles, func(i, j int) bool {
-		return confFiles[i].Name() < confFiles[j].Name()
+	sort.Slice(jsonFiles, func(i, j int) bool {
+		return jsonFiles[i].Name() < jsonFiles[j].Name()
 	})
 
 	// 收集所有 target 名称和 SSH 主机
 	allTargetNames := map[string]bool{}
 	allSSHHosts := map[string]bool{}
 
-	for _, entry := range confFiles {
+	for _, entry := range jsonFiles {
 		filePath := filepath.Join(projectsDir, entry.Name())
 		projName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 
-		proj, targets, err := c.parseProjectConf(projName, filePath)
+		proj, targets, err := c.parseProjectJSON(projName, filePath)
 		if err != nil {
 			return fmt.Errorf("project [%s]: %v", projName, err)
 		}
@@ -326,13 +346,13 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			continue // 该项目在当前过滤条件下没有可用 target
 		}
 
-		// 叠加到 workspace 发现的项目，或新建（向后兼容无 workspace 的 .conf 项目）
+		// 叠加到 workspace 发现的项目，或新建（向后兼容无 workspace 的 .json 项目）
 		if existing, ok := c.Projects[projName]; ok {
 			// workspace 已发现该项目，叠加 settings
 			existing.Targets = filteredTargets
 			existing.ConfigFile = filePath
 			existing.Configured = true
-			// 覆盖构建参数（.conf 优先）
+			// 覆盖构建参数（.json 优先）
 			if proj.ProjectDir != "" {
 				existing.ProjectDir = proj.ProjectDir
 			}
@@ -343,7 +363,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 				existing.PackPattern = proj.PackPattern
 			}
 		} else {
-			// 纯 .conf 项目（不在 workspace 中），向后兼容
+			// 纯 .json 项目（不在 workspace 中），向后兼容
 			proj.Targets = filteredTargets
 			proj.ConfigFile = filePath
 			proj.Configured = true
@@ -384,12 +404,17 @@ func (c *DeployConfig) shouldIncludeTarget(t *Target) bool {
 	return false
 }
 
-// parseProjectConf 解析单个项目的 .conf 文件
+// parseProjectJSON 解析单个项目的 .json 文件
 // 返回 ProjectConfig（构建配置）和 Target 列表（部署目标）
-func (c *DeployConfig) parseProjectConf(projName, filePath string) (*ProjectConfig, []*Target, error) {
-	sections, err := readConfSections(filePath)
+func (c *DeployConfig) parseProjectJSON(projName, filePath string) (*ProjectConfig, []*Target, error) {
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %v", filePath, err)
+	}
+
+	var pj projectJSON
+	if err := json.Unmarshal(data, &pj); err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %v", filePath, err)
 	}
 
 	proj := &ProjectConfig{
@@ -397,38 +422,28 @@ func (c *DeployConfig) parseProjectConf(projName, filePath string) (*ProjectConf
 		PackPattern: projName + "_{date}.zip",
 	}
 
-	// 解析全局 section（无 section 名）
-	for _, sec := range sections {
-		if sec.name == "" {
-			for _, kv := range sec.lines {
-				switch kv.key {
-				case "pack_pattern":
-					proj.PackPattern = kv.val
-				}
-			}
-		}
+	// 全局 pack_pattern
+	if pj.PackPattern != "" {
+		proj.PackPattern = pj.PackPattern
 	}
 
-	// 解析 [build.<platform>] section — 匹配 HostPlatform
-	buildSection := findSection(sections, "build."+c.HostPlatform)
-	if buildSection == nil {
-		return nil, nil, fmt.Errorf("missing [build.%s] section (deploy-agent is running on %s)", c.HostPlatform, c.HostPlatform)
+	// 解析 build.<platform> — 匹配 HostPlatform
+	buildCfg, ok := pj.Build[c.HostPlatform]
+	if !ok {
+		return nil, nil, fmt.Errorf("missing build.%s (deploy-agent is running on %s)", c.HostPlatform, c.HostPlatform)
 	}
 
-	for _, kv := range buildSection.lines {
-		switch kv.key {
-		case "project_dir":
-			proj.ProjectDir = kv.val
-		case "pack_script":
-			proj.PackScript = kv.val
-		case "pack_pattern":
-			proj.PackPattern = kv.val
-		}
+	proj.ProjectDir = buildCfg.ProjectDir
+	if buildCfg.PackScript != "" {
+		proj.PackScript = buildCfg.PackScript
+	}
+	if buildCfg.PackPattern != "" {
+		proj.PackPattern = buildCfg.PackPattern
 	}
 
 	// 验证 project_dir
 	if proj.ProjectDir == "" {
-		return nil, nil, fmt.Errorf("project_dir is required in [build.%s]", c.HostPlatform)
+		return nil, nil, fmt.Errorf("project_dir is required in build.%s", c.HostPlatform)
 	}
 	if !filepath.IsAbs(proj.ProjectDir) {
 		abs, err := filepath.Abs(proj.ProjectDir)
@@ -456,16 +471,21 @@ func (c *DeployConfig) parseProjectConf(projName, filePath string) (*ProjectConf
 		proj.PackScript = filepath.Join(proj.ProjectDir, proj.PackScript)
 	}
 
-	// 解析 [target.*] sections
+	// 解析 targets
 	var targets []*Target
-	for _, sec := range sections {
-		if !strings.HasPrefix(sec.name, "target.") {
-			continue
-		}
 
-		t, err := c.parseTargetSection(sec)
+	// 按名称排序保证稳定输出
+	var targetNames []string
+	for name := range pj.Targets {
+		targetNames = append(targetNames, name)
+	}
+	sort.Strings(targetNames)
+
+	for _, name := range targetNames {
+		tj := pj.Targets[name]
+		t, err := c.parseTargetJSON(name, &tj)
 		if err != nil {
-			return nil, nil, fmt.Errorf("[%s]: %v", sec.name, err)
+			return nil, nil, fmt.Errorf("target %q: %v", name, err)
 		}
 		if t != nil {
 			targets = append(targets, t)
@@ -475,176 +495,84 @@ func (c *DeployConfig) parseProjectConf(projName, filePath string) (*ProjectConf
 	return proj, targets, nil
 }
 
-// parseTargetSection 解析 [target.*] section
+// parseTargetJSON 解析 target JSON 配置
 // 支持两种格式：
 //
-//	[target.local.<platform>]  — 本机部署（platform 从 section 名提取）
-//	[target.<name>]            — SSH 远程部署（platform 从 platform= 字段读取）
-func (c *DeployConfig) parseTargetSection(sec *configSection) (*Target, error) {
-	// 解析 section 名：target.<name> 或 target.local.<platform>
-	parts := strings.SplitN(sec.name, ".", 3)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid target section name: %s", sec.name)
-	}
-
-	targetBaseName := parts[1] // "local" 或 "ssh-prod" 等
-	isLocal := targetBaseName == "local"
+//	"local.<platform>"  — 本机部署（platform 从 key 名提取）
+//	"<name>"            — SSH 远程部署（platform 从 platform 字段读取）
+func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, error) {
+	// 解析 target 名：local.<platform> 或 ssh-prod 等
+	parts := strings.SplitN(name, ".", 2)
+	isLocal := parts[0] == "local"
 
 	var targetName string
 	var targetPlatform string
 
-	if isLocal && len(parts) == 3 {
-		// [target.local.win] → 本机部署，平台从 section 名提取
-		targetPlatform = parts[2]
+	if isLocal && len(parts) == 2 {
+		// "local.win" → 本机部署，平台从 key 名提取
+		targetPlatform = parts[1]
 		targetName = "local"
-	} else if isLocal && len(parts) == 2 {
-		// [target.local] — 无平台限定的 local target
+	} else if isLocal && len(parts) == 1 {
+		// "local" — 无平台限定的 local target
 		targetName = "local"
 		targetPlatform = c.HostPlatform
 	} else {
-		// [target.ssh-prod] — SSH 远程部署
-		targetName = strings.Join(parts[1:], ".")
+		// "ssh-prod" — SSH 远程部署
+		targetName = name
 	}
 
-	var (
-		hosts        string
-		remoteDir    string
-		remoteScript string
-		port         = 22
-		verifyURL    string
-		verifyTmout  = 10
-	)
-
-	for _, kv := range sec.lines {
-		switch kv.key {
-		case "host":
-			hosts = kv.val
-		case "remote_dir":
-			remoteDir = kv.val
-		case "remote_script":
-			remoteScript = kv.val
-		case "ssh_port":
-			if n, err := strconv.Atoi(kv.val); err == nil && n > 0 {
-				port = n
-			}
-		case "platform":
-			targetPlatform = normalizePlatform(kv.val)
-		case "verify_url":
-			verifyURL = kv.val
-		case "verify_timeout":
-			if n, err := strconv.Atoi(kv.val); err == nil && n > 0 {
-				verifyTmout = n
-			}
-		}
+	port := 22
+	if tj.Port > 0 {
+		port = tj.Port
+	}
+	verifyTimeout := 10
+	if tj.VerifyTimeout > 0 {
+		verifyTimeout = tj.VerifyTimeout
+	}
+	if tj.Platform != "" {
+		targetPlatform = normalizePlatform(tj.Platform)
 	}
 
 	if isLocal {
-		// local target: host 自动设为 local
 		return &Target{
 			Name:          targetName,
 			Host:          "local",
 			Port:          port,
-			RemoteDir:     remoteDir,
-			RemoteScript:  remoteScript,
-			VerifyURL:     verifyURL,
-			VerifyTimeout: verifyTmout,
+			RemoteDir:     tj.RemoteDir,
+			RemoteScript:  tj.RemoteScript,
+			VerifyURL:     tj.VerifyURL,
+			VerifyTimeout: verifyTimeout,
 			Platform:      targetPlatform,
 		}, nil
 	}
 
 	// SSH target: 需要 host
-	if hosts == "" {
+	if tj.Host == "" {
 		return nil, fmt.Errorf("host is required for ssh target %q", targetName)
 	}
-
 	// SSH target: 需要 platform
 	if targetPlatform == "" {
 		return nil, fmt.Errorf("platform is required for ssh target %q", targetName)
 	}
 
 	// 支持多 IP（逗号分隔）
-	hostList := strings.Split(hosts, ",")
-	if len(hostList) == 1 {
-		return &Target{
-			Name:          targetName,
-			Host:          strings.TrimSpace(hostList[0]),
-			Port:          port,
-			RemoteDir:     remoteDir,
-			RemoteScript:  remoteScript,
-			VerifyURL:     verifyURL,
-			VerifyTimeout: verifyTmout,
-			Platform:      targetPlatform,
-		}, nil
-	}
+	hostList := strings.Split(tj.Host, ",")
+	host := strings.TrimSpace(hostList[0])
 
-	// 多 IP 时只返回第一个匹配的（后续可扩展为返回多个）
-	// 目前的逻辑：多 host 会创建多个 Target，但 parseTargetSection 只返回一个
-	// 为了兼容多 host，这里创建第一个
-	// TODO: 如果需要多 host 支持，需改为返回 []*Target
-	h := strings.TrimSpace(hostList[0])
 	return &Target{
 		Name:          targetName,
-		Host:          h,
+		Host:          host,
 		Port:          port,
-		RemoteDir:     remoteDir,
-		RemoteScript:  remoteScript,
-		VerifyURL:     verifyURL,
-		VerifyTimeout: verifyTmout,
+		RemoteDir:     tj.RemoteDir,
+		RemoteScript:  tj.RemoteScript,
+		VerifyURL:     tj.VerifyURL,
+		VerifyTimeout: verifyTimeout,
 		Platform:      targetPlatform,
 	}, nil
 }
 
-// readConfSections 读取 .conf 文件并按 section 分组
-func readConfSections(path string) ([]*configSection, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var sections []*configSection
-	current := &configSection{name: ""} // 全局 section
-	sections = append(sections, current)
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			name := strings.TrimSpace(line[1 : len(line)-1])
-			if name == "" {
-				continue
-			}
-			current = &configSection{name: name}
-			sections = append(sections, current)
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		current.lines = append(current.lines, configLine{
-			key: strings.TrimSpace(parts[0]),
-			val: strings.TrimSpace(parts[1]),
-		})
-	}
-	return sections, nil
-}
-
-// findSection 在 sections 列表中查找指定名称的 section
-func findSection(sections []*configSection, name string) *configSection {
-	for _, sec := range sections {
-		if sec.name == name {
-			return sec
-		}
-	}
-	return nil
-}
-
 // detectPipelinesDir 自动探测 pipelines/ 目录路径
-// 优先 settings_dir/pipelines/，其次 deploy.conf 同目录/pipelines/
+// 优先 settings_dir/pipelines/，其次 deploy.json 同目录/pipelines/
 func (c *DeployConfig) detectPipelinesDir(configPath string) {
 	candidates := []string{}
 	if c.SettingsDir != "" {
@@ -664,33 +592,3 @@ func (c *DeployConfig) detectPipelinesDir(configPath string) {
 	}
 }
 
-// parseGlobalKey 解析全局配置键值
-func parseGlobalKey(cfg *DeployConfig, key, val string) {
-	switch key {
-	case "ssh_key":
-		cfg.SSHKey = val
-	case "ssh_password":
-		cfg.SSHPassword = val
-	case "server_url":
-		cfg.ServerURL = val
-	case "agent_name":
-		cfg.AgentName = val
-	case "auth_token":
-		cfg.AuthToken = val
-	case "max_concurrent":
-		if n, err := strconv.Atoi(val); err == nil && n > 0 {
-			cfg.MaxConcurrent = n
-		}
-	case "settings_dir":
-		cfg.SettingsDir = val
-	case "workspaces":
-		for _, ws := range strings.Split(val, ",") {
-			ws = strings.TrimSpace(ws)
-			if ws != "" {
-				cfg.Workspaces = append(cfg.Workspaces, ws)
-			}
-		}
-	case "go_blog_agent_id":
-		cfg.GoBackendAgentID = val
-	}
-}

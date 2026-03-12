@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 
 :: 打包二进制 + 配置
-%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% agent.conf settings\ 
+%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% codegen-agent.json settings\ 
 
 :: 清理编译产物
 del %BINNAME%
