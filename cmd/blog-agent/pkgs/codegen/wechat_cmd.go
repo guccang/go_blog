@@ -393,22 +393,12 @@ func handleCgAgents() string {
 		if status == "" {
 			status = "online"
 		}
-		active := 0
-		if val, ok := a["active_sessions"].(int); ok {
-			active = val
-		}
-		var projectCount int
-		if projects, ok := a["projects"].([]interface{}); ok {
-			projectCount = len(projects)
-		} else if projects, ok := a["projects"].([]string); ok {
-			projectCount = len(projects)
-		}
 		typeLabel := ""
 		if agentType != "" {
 			typeLabel = fmt.Sprintf(" (%s)", agentType)
 		}
-		sb.WriteString(fmt.Sprintf("%d. **%s**%s [%s] 活跃:%d 项目:%d\n",
-			i+1, name, typeLabel, status, active, projectCount))
+		sb.WriteString(fmt.Sprintf("%d. **%s**%s [%s]\n",
+			i+1, name, typeLabel, status))
 	}
 	return sb.String()
 }

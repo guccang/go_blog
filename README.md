@@ -172,227 +172,177 @@ func Init() {
 
 ---
 
-## 🤖 多Agent系统架构
+## 🤖 多 Agent 系统与 LLM 核心技术
 
-Go Blog 采用**微服务+多Agent**架构设计，通过 `cmd/` 目录下的多个独立Agent实现功能解耦和水平扩展。所有Agent通过统一的 `gateway` 进行通信和协调，形成一个智能的分布式系统。
+Go Blog 采用 **UAP (Unified Agent Protocol) + 多 Agent** 架构，通过 Gateway 实现 Agent 间的工具发现、消息路由和跨 Agent 工具调用。LLM-MCP-Agent 作为系统大脑，集成了多项 LLM 工程化技术。
 
-### 🧭 系统架构图
+### 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    用户界面 & API 调用                         │
-└─────────────────────────────┬───────────────────────────────┘
+                        企业微信 / Web UI
                               │
                     ┌─────────▼──────────┐
-                    │     Gateway        │  ←─ Agent通信中枢
-                    │   (消息路由/注册中心)  │
+                    │      Gateway       │  WebSocket + HTTP
+                    │  (UAP 消息路由中枢)  │  Agent 注册/发现/心跳
                     └─────────┬──────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-┌───────▼──────┐     ┌───────▼──────┐     ┌───────▼──────┐
-│  LLM-MCP-Agent │     │  WeChat-Agent  │     │  Deploy-Agent   │
-│   (AI大脑)     │     │  (微信接入)    │     │  (部署引擎)     │
-└───────┬──────┘     └───────┬──────┘     └───────┬──────┘
-        │                     │                     │
-┌───────▼──────┐     ┌───────▼──────┐     ┌───────▼──────┐
-│  CodeGen-Agent │     │  外部微信服务  │     │  部署目标服务器  │
-│  (代码生成)    │     │              │     │              │
-└───────────────┘     └──────────────┘     └──────────────┘
+          ┌───────────┬───────┼───────┬────────────┐
+          │           │       │       │            │
+   ┌──────▼───┐ ┌────▼────┐ ┌▼────┐ ┌▼─────────┐ ┌▼──────────┐
+   │ LLM-MCP  │ │ Codegen │ │Blog │ │  Deploy   │ │Execute-Code│
+   │  Agent   │ │  Agent  │ │Agent│ │  Agent    │ │   Agent    │
+   │ (AI大脑) │ │(编码引擎)│ │(数据)│ │(部署引擎) │ │ (代码沙箱) │
+   └──────────┘ └─────────┘ └─────┘ └──────────┘ └───────────┘
 ```
 
-### 🚪 Gateway (网关/消息路由)
+### 🧠 LLM 渐进式披露 (Progressive Disclosure)
 
-**位置**: `cmd/gateway/`  
-**作用**: Agent通信中枢，负责：
-- **Agent注册与发现**: 管理所有Agent的连接状态
-- **消息路由**: 在Agent间转发请求和响应
-- **工具目录管理**: 收集并发布所有Agent提供的工具
-- **健康检查**: 监控Agent状态，自动重连
-- **HTTP反向代理**: 将用户请求转发到主博客应用
+当系统中 Agent 和工具数量增长时，将全部工具一次性注入 LLM 上下文会浪费 token 并降低准确率。渐进式披露通过**两级路由**按需筛选：
 
-**关键特性**:
-- 基于WebSocket的UAP (Universal Agent Protocol) 协议
-- 支持Agent动态加入和离开
-- 提供统一的工具发现API
-- 与主博客应用无缝集成
-
-### 🧠 LLM-MCP-Agent (AI大脑)
-
-**位置**: `cmd/llm-mcp-agent/`  
-**作用**: 系统的智能指挥中心，负责：
-- **多模型LLM集成**: 支持DeepSeek、OpenAI、Qwen等模型
-- **MCP协议支持**: 提供文件访问、Redis操作、博客查询等工具
-- **任务协调**: 根据用户指令调用其他Agent完成任务
-- **工具发现**: 动态发现并利用其他Agent提供的工具
-- **模型降级**: 智能切换模型确保服务可用性
-
-**工作流程**:
-1. 连接Gateway，注册自身为"大脑"Agent
-2. 从Gateway获取所有可用工具目录
-3. 接收用户指令，分析任务需求
-4. 调用合适的工具和Agent完成任务
-5. 将结果返回给用户
-
-### 💻 CodeGen-Agent (代码生成)
-
-**位置**: `cmd/codegen-agent/`  
-**作用**: 自动化代码生成和工程任务，负责：
-- **代码生成**: 根据模板和需求生成代码文件
-- **代码重构**: 自动重构和优化现有代码
-- **项目分析**: 分析代码结构，提供改进建议
-- **与Deploy-Agent协同**: 生成代码后自动触发部署
-
-**开发部署**:
-```bash
-# 1. 配置Agent连接
-cd cmd/codegen-agent
-cp agent.conf.example agent.conf
-# 编辑agent.conf，设置Gateway地址和工作空间
-
-# 2. 编译运行
-go build -o codegen-agent main.go
-./codegen-agent
-
-# 3. 通过LLM-MCP-Agent调用
-# LLM会自动发现并调用CodeGen-Agent的工具
+```
+用户问题
+  │
+  ▼
+Level 1: Agent 路由 (工具数 > 15 时触发)
+  │  LLM 从 Agent 目录中选择相关 Agent
+  │  execute-code-agent + 文件工具 agent 始终保留
+  ▼
+Level 2: Tool 路由 (工具数 > 10 时触发)
+  │  LLM 从工具目录中选择相关工具
+  │  ExecuteCode + ReadFile/WriteFile/ExecBash 始终保留
+  ▼
+最终工具列表 → LLM Function Calling
 ```
 
-### 🚀 Deploy-Agent (部署引擎)
+- Level 1 只传 agent 摘要（name + description + tool names），不传参数 schema
+- Level 2 只传工具摘要（name + description），不传参数 schema
+- 两级路由各自独立调用 LLM，均有降级兜底（LLM 失败时返回全部）
+- 基础能力（代码执行、文件操作）不参与筛选，始终可用
 
-**位置**: `cmd/deploy-agent/`  
-**作用**: 自动化部署和发布，负责：
-- **多目标部署**: 支持本地、SSH、多服务器部署
-- **交叉编译**: 自动为不同平台编译二进制文件
-- **流水线执行**: 支持复杂的部署流水线
-- **凭据管理**: 安全存储SSH密码和部署密钥
-- **部署验证**: 自动验证部署结果
+### ⚡ Execute-Code-with-MCP
 
-**代码编写示例**:
-```go
-// 部署配置示例 (deploy.conf)
-[projects]
-[projects.go_blog]
-project_dir = "/path/to/go_blog"
-pack_script = "./scripts/build.sh"
-targets = [
-    { name = "local", host = "localhost", remote_dir = "/tmp/deploy" },
-    { name = "prod", host = "192.168.1.100", remote_dir = "/opt/go_blog" }
-]
+代码执行作为**元工具**始终注入 LLM 上下文，不受路由筛选影响。LLM 可以在任何对话中直接调用代码执行来完成计算、数据处理等任务。
 
-// 通过LLM-MCP-Agent触发部署
-// LLM可以调用 deploy_agent.execute_pipeline 工具
+```
+LLM-MCP-Agent                    Execute-Code-Agent
+     │                                  │
+     │── tool_call(ExecuteCode) ───────▶│
+     │                                  │── 沙箱执行代码
+     │◀── tool_result(stdout/stderr) ───│
+     │                                  │
 ```
 
-### 💬 WeChat-Agent (微信接入)
+同时，每个 Agent 通过 **FileToolKit** 暴露文件操作能力：
 
-**位置**: `cmd/wechat-agent/`  
-**作用**: 企业微信集成，负责：
-- **消息接收**: 处理企业微信回调消息
-- **消息转发**: 将微信消息转发给LLM-MCP-Agent处理
-- **响应发送**: 将AI响应发送回企业微信
-- **指令解析**: 解析微信消息中的指令和参数
+| 工具 | 说明 |
+|------|------|
+| `{Prefix}ReadFile` | 读取项目文件（路径安全校验，防目录穿越） |
+| `{Prefix}WriteFile` | 写入文件（自动创建父目录） |
+| `{Prefix}ExecBash` | 在项目目录执行命令（超时保护，上限 300s） |
 
-**微信接入配置**:
-1. 在企业微信后台创建应用，获取Webhook URL
-2. 配置回调地址指向WeChat-Agent
-3. WeChat-Agent连接Gateway，注册微信工具
-4. LLM-MCP-Agent通过Gateway调用微信发送能力
+文件工具与 ExecuteCode 一样作为基础能力始终保留，确保 LLM 在任何场景下都能读写文件和执行命令。
 
-**配置示例** (`wechat-agent.json`):
-```json
-{
-  "http_port": 8081,
-  "gateway_url": "ws://localhost:8080/ws/uap",
-  "wechat_webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY",
-  "callback_token": "YOUR_CALLBACK_TOKEN"
-}
+### 📝 提示词工程 (Prompt Engineering)
+
+系统中有多个精心设计的提示词层：
+
+**1. 系统提示词** — 动态构建，注入当前上下文：
+- 可用 Agent 能力描述（从 Gateway 实时发现）
+- 当前日期时间
+- 用户账户信息
+- 工具使用规范
+
+**2. 路由提示词** — Agent 路由和工具路由各有专用提示词：
+- 强调"宁多勿少"的选择策略
+- 要求返回纯 JSON 数组，便于解析
+- 包含示例输出格式
+
+**3. 任务规划提示词** — 指导 LLM 进行任务拆解：
+- 提供完整工具目录（含参数 hint）
+- 强调子任务间的依赖关系
+- 区分同步工具和异步工具（sync-wait 标记）
+
+**4. 失败决策提示词** — 子任务失败时的 LLM 决策：
+- 注入失败上下文（错误信息 + 已完成的兄弟任务结果）
+- 四种决策：retry / skip / abort / modify
+
+### 🔄 上下文工程 (Context Engineering)
+
+**消息历史管理**：
+- 会话消息超过 30 条时自动压缩：保留 system prompt + 最近消息
+- 子任务执行时注入兄弟任务结果作为上下文
+- 工具调用记录完整保留（参数、结果、耗时）
+
+**会话持久化**：
+- 根会话（Root Session）：主任务入口
+- 子会话（Child Session）：每个子任务独立会话
+- 文件级持久化（JSON），支持任务恢复和续跑
+
+**微信对话管理**：
+- 按用户维度的独立会话，超时自动清理（默认 30 分钟）
+- 单会话最大消息数 40，最大轮次 15
+- 会话隔离，不同用户互不干扰
+
+### 🔀 任务拆解与任务循环 (Task Decomposition & Loop)
+
+LLM-MCP-Agent 支持两条执行路径：
+
+**简单路径** — 直接 Function Calling 循环：
+```
+用户问题 → LLM → tool_call → 执行 → LLM → ... → 最终回答
+                    (最多 15 轮迭代)
 ```
 
-### 🔧 各Agent协同工作示例
-
-**场景**: 用户通过企业微信发送指令"请更新博客系统并部署到生产环境"
-
-1. **WeChat-Agent** 接收微信消息，通过Gateway转发给LLM-MCP-Agent
-2. **LLM-MCP-Agent** 分析指令，拆解为两个任务：
-   - 任务A: 使用CodeGen-Agent更新博客代码
-   - 任务B: 使用Deploy-Agent部署到生产环境
-3. **LLM-MCP-Agent** 通过Gateway调用CodeGen-Agent的代码生成工具
-4. **CodeGen-Agent** 完成代码更新，返回结果
-5. **LLM-MCP-Agent** 通过Gateway调用Deploy-Agent的部署工具
-6. **Deploy-Agent** 执行部署流水线，返回部署结果
-7. **LLM-MCP-Agent** 汇总结果，通过Gateway发送给WeChat-Agent
-8. **WeChat-Agent** 将最终结果发送回企业微信
-
-### ⚙️ Agent开发指南
-
-#### 1. 创建新的Agent
-```bash
-# 创建Agent目录结构
-mkdir -p cmd/new-agent
-cd cmd/new-agent
-
-# 初始化Go模块
-go mod init new-agent
-
-# 实现Agent主程序
-# 参考现有Agent实现连接Gateway的逻辑
+**复杂路径** — Plan-and-Execute（LLM 主动触发）：
+```
+用户问题 → LLM 调用 plan_and_execute 虚拟工具
+  │
+  ▼
+Planner: LLM 生成结构化任务计划
+  │  每个子任务: id, title, description, dependencies, tools_hint
+  │  执行模式: sequential / parallel / DAG
+  ▼
+Plan Review: LLM 审核计划（参数正确性、依赖逻辑）
+  │
+  ▼
+Orchestrator: DAG 拓扑排序执行
+  │  每个子任务独立 agentic loop（最多 10 轮）
+  │  异步操作检测（tool result 中的 status 字段）
+  │  失败处理: LLM 决策 retry/skip/abort/modify
+  ▼
+Synthesizer: LLM 聚合所有子任务结果，生成统一回答
 ```
 
-#### 2. 实现UAP协议连接
-```go
-// 连接Gateway的示例代码
-func connectToGateway(gatewayURL string, agentID string) {
-    conn, _, err := websocket.DefaultDialer.Dial(gatewayURL, nil)
-    if err != nil {
-        log.Fatal("连接Gateway失败:", err)
-    }
-    
-    // 发送注册消息
-    registerMsg := map[string]interface{}{
-        "type": "register",
-        "agent_id": agentID,
-        "capabilities": []string{"tool1", "tool2"},
-    }
-    conn.WriteJSON(registerMsg)
-    
-    // 处理消息循环
-    for {
-        var msg map[string]interface{}
-        err := conn.ReadJSON(&msg)
-        if err != nil {
-            break
-        }
-        processMessage(msg)
-    }
-}
+关键设计：
+- `plan_and_execute` 是虚拟工具，由 LLM 自主判断是否需要任务拆解
+- 子任务支持 DAG 依赖，非阻塞的子任务可并行执行
+- 每个子任务有独立的 agentic loop，可多轮调用工具
+- 任务失败不直接终止，而是由 LLM 分析上下文后决策下一步
+- 全程会话持久化，支持断点续跑
+
+### 🛠️ Agent 技能一览
+
+| Agent | 工具 | 能力 |
+|-------|------|------|
+| **Blog Agent** | `blog.*` `exercise.*` `reading.*` `finance.*` `todolist.*` 等 | 博客 CRUD、锻炼记录、读书管理、财务统计、待办事项 |
+| **Codegen Agent** | `CodegenStartSession` `CodegenSendMessage` `CodegenReadFile` `CodegenWriteFile` `CodegenExecBash` | 集成 Claude Code / OpenCode，管理编码会话，文件读写，命令执行 |
+| **Deploy Agent** | `DeployProject` `DeployPipeline` `DeployGetStatus` `DeployReadFile` `DeployWriteFile` `DeployExecBash` | 多目标部署（本地/SSH）、交叉编译、流水线、SFTP 上传 |
+| **Execute-Code Agent** | `ExecuteCode` | 代码沙箱执行，支持多语言，超时保护 |
+| **WeChat Agent** | 消息接收/转发 | 企业微信接入，消息路由到 LLM-MCP-Agent |
+
+### 微信指令（cg 系列）
+
+通过企业微信发送 `cg` 前缀指令，直接操控编码和部署流程：
+
 ```
-
-#### 3. 提供工具接口
-```go
-// 定义工具描述
-type Tool struct {
-    Name        string   `json:"name"`
-    Description string   `json:"description"`
-    Parameters  []Param  `json:"parameters"`
-}
-
-// 注册工具到Gateway
-func registerTools(conn *websocket.Conn, tools []Tool) {
-    msg := map[string]interface{}{
-        "type": "tool_list",
-        "tools": tools,
-    }
-    conn.WriteJSON(msg)
-}
+cg list                          — 列出所有编码项目
+cg create <名称[@agent]>         — 创建项目
+cg start <项目> <需求>           — 启动编码会话
+cg start <项目> #<模型> <需求>   — 指定模型编码
+cg start <项目> !deploy <需求>   — 编码后自动部署
+cg deploy <项目>                 — 仅部署
+cg agents                        — 查看在线 Agent
+cg models                        — 查看可用模型
 ```
-
-#### 4. 配置管理
-每个Agent应有独立的配置文件，支持：
-- Gateway连接地址
-- Agent特定参数
-- 凭据和安全配置
-- 工作目录和资源路径
 
 ---
 

@@ -438,7 +438,11 @@ func (c *DeployConfig) parseProjectConf(projName, filePath string) (*ProjectConf
 		proj.ProjectDir = abs
 	}
 	if info, err := os.Stat(proj.ProjectDir); err != nil || !info.IsDir() {
-		return nil, nil, fmt.Errorf("project_dir does not exist or is not a directory: %s", proj.ProjectDir)
+		// 路径不存在则自动创建
+		if err := os.MkdirAll(proj.ProjectDir, 0755); err != nil {
+			return nil, nil, fmt.Errorf("project_dir does not exist and create failed: %s: %v", proj.ProjectDir, err)
+		}
+		fmt.Fprintf(os.Stderr, "info: created project_dir: %s\n", proj.ProjectDir)
 	}
 
 	// PackScript 自动检测

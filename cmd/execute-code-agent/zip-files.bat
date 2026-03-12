@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 
 :: 打包二进制 + 配置
-%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% execute-code-agent.conf
+%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% execute-code-agent.json publish.sh
 
 :: 清理编译产物
 del %BINNAME%

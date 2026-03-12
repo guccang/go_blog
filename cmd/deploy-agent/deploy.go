@@ -535,6 +535,11 @@ func (d *Deployer) upload(client *ssh.Client, t *Target) error {
 		return err
 	}
 
+	// 远程目录不存在则自动创建
+	if err := sftpClient.MkdirAll(t.RemoteDir); err != nil {
+		return fmt.Errorf("创建远程目录失败: %v", err)
+	}
+
 	remoteFile, err := sftpClient.Create(remotePath)
 	if err != nil {
 		return fmt.Errorf("创建远程文件失败: %v", err)
