@@ -19,6 +19,7 @@ type Connection struct {
 	cfg         *Config
 	executor    *Executor
 	toolCatalog *agentbase.ToolCatalog
+	fileToolKit *agentbase.FileToolKit
 
 	// 请求-响应关联（pending channel 模式）
 	pending map[string]chan *uap.ToolResultPayload
@@ -27,6 +28,9 @@ type Connection struct {
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *Config, agentID string) *Connection {
+	// FileToolKit 用于 ExecEnvBash（不需要 project resolver）
+	ftk := agentbase.NewFileToolKit("Exec", nil)
+
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
 		AgentID:     agentID,
@@ -35,13 +39,14 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		Description: "Python代码执行、MCP工具批量调用",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       buildToolDefs(),
+		Tools:       buildToolDefs(ftk),
 	}
 
 	c := &Connection{
 		AgentBase:   agentbase.NewAgentBase(baseCfg),
 		cfg:         cfg,
 		toolCatalog: agentbase.NewToolCatalog(cfg.GatewayHTTP),
+		fileToolKit: ftk,
 		pending:     make(map[string]chan *uap.ToolResultPayload),
 	}
 
@@ -61,8 +66,8 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 // ========================= 工具注册 =========================
 
 // buildToolDefs 构建 execute-code-agent 注册的 UAP 工具
-func buildToolDefs() []uap.ToolDef {
-	return []uap.ToolDef{
+func buildToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
+	tools := []uap.ToolDef{
 		{
 			Name:        "ExecuteCode",
 			Description: "在 Python 沙箱中执行代码。代码可通过 call_tool(name, args) 调用其他 MCP 工具。只有 print() 的输出会返回。用于：多工具编排、数据过滤/转换/聚合、循环批量操作。safe_call_tool(name, args, default) 失败时返回 default 而不抛异常。",
@@ -87,6 +92,13 @@ func buildToolDefs() []uap.ToolDef {
 			}),
 		},
 	}
+	// 追加 ExecEnvBash（只取这一个工具）
+	for _, td := range ftk.ToolDefs() {
+		if strings.HasSuffix(td.Name, "ExecEnvBash") {
+			tools = append(tools, td)
+		}
+	}
+	return tools
 }
 
 // ========================= 消息处理 =========================
@@ -138,7 +150,7 @@ func (c *Connection) handleError(msg *uap.Message) {
 	}
 }
 
-// handleToolCall 处理 ExecuteCode 工具调用
+// handleToolCall 处理 ExecuteCode / ExecEnvBash 工具调用
 func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -149,6 +161,25 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 			Error:     "invalid tool_call payload",
 		})
 		return
+	}
+
+	// 尝试 FileToolKit 处理（ExecEnvBash）
+	var ftkArgs map[string]interface{}
+	if err := json.Unmarshal(payload.Arguments, &ftkArgs); err == nil {
+		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, ftkArgs); handled {
+			log.Printf("[ExecEnvBash] from=%s command=%v", msg.From, ftkArgs["command"])
+			// 解析 result JSON 判断 success
+			var res struct {
+				Success bool `json:"success"`
+			}
+			json.Unmarshal([]byte(result), &res)
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   res.Success,
+				Result:    result,
+			})
+			return
+		}
 	}
 
 	if payload.ToolName != "ExecuteCode" {

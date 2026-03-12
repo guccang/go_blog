@@ -41,7 +41,7 @@ func (ft *FileToolKit) SetBashTimeout(d time.Duration) {
 	ft.bashTimeout = d
 }
 
-// ToolDefs 返回 3 个 UAP 工具定义
+// ToolDefs 返回 4 个 UAP 工具定义
 func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
@@ -82,6 +82,19 @@ func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
 				"required": []string{"project", "command"},
 			}),
 		},
+		{
+			Name:        ft.prefix + "ExecEnvBash",
+			Description: "执行环境检测/安装命令（不限项目目录，用于 env-agent 远程调用）",
+			Parameters: MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string", "description": "要执行的命令"},
+					"timeout": map[string]interface{}{"type": "integer", "description": "超时秒数（可选，默认120，上限600）"},
+					"workdir": map[string]interface{}{"type": "string", "description": "工作目录（可选，默认 /tmp）"},
+				},
+				"required": []string{"command"},
+			}),
+		},
 	}
 }
 
@@ -95,6 +108,8 @@ func (ft *FileToolKit) HandleTool(toolName string, args map[string]interface{}) 
 		return ft.toolWriteFile(args), true
 	case ft.prefix + "ExecBash":
 		return ft.toolExecBash(args), true
+	case ft.prefix + "ExecEnvBash":
+		return ft.toolExecEnvBash(args), true
 	default:
 		return "", false
 	}
@@ -215,6 +230,71 @@ func (ft *FileToolKit) toolExecBash(args map[string]interface{}) string {
 		cmd = exec.CommandContext(ctx, "bash", "-c", command)
 	}
 	cmd.Dir = projectPath
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	result := map[string]interface{}{
+		"stdout":    stdout.String(),
+		"stderr":    stderr.String(),
+		"exit_code": 0,
+	}
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result["exit_code"] = exitErr.ExitCode()
+		} else if ctx.Err() == context.DeadlineExceeded {
+			return marshalResult(false, fmt.Sprintf("命令超时（%ds）", int(timeout.Seconds())), result)
+		} else {
+			return marshalResult(false, err.Error(), result)
+		}
+	}
+
+	return marshalResult(true, "", result)
+}
+
+// toolExecEnvBash 执行环境检测/安装命令（不限项目目录）
+func (ft *FileToolKit) toolExecEnvBash(args map[string]interface{}) string {
+	command, _ := args["command"].(string)
+	if command == "" {
+		return marshalResult(false, "缺少 command 参数", nil)
+	}
+
+	// 工作目录：默认 /tmp（Windows 用 os.TempDir()）
+	workdir, _ := args["workdir"].(string)
+	if workdir == "" {
+		if runtime.GOOS == "windows" {
+			workdir = os.TempDir()
+		} else {
+			workdir = "/tmp"
+		}
+	}
+
+	// 超时处理：默认 120s，上限 600s
+	timeout := 120 * time.Second
+	if t, ok := args["timeout"].(float64); ok && t > 0 {
+		timeout = time.Duration(t) * time.Second
+	}
+	if timeout > 600*time.Second {
+		timeout = 600 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		if bashPath, err := exec.LookPath("bash"); err == nil {
+			cmd = exec.CommandContext(ctx, bashPath, "-c", command)
+		} else {
+			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		}
+	} else {
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
+	}
+	cmd.Dir = workdir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
