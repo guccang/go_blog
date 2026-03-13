@@ -47,3 +47,4 @@ cmd/execute-code-agent/execute-code-agent
 /cmd/welcome-page
 cmd/logs.txt
 cmd/logs.txt
+cmd/llm-mcp-agent/llm-mcp-agent-openrouter.json

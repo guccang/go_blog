@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -21,15 +22,21 @@ func NewRegistry() *Registry {
 }
 
 // SetServer 绑定 UAP server
-func (r *Registry) SetServer(server *uap.Server) {
+func (r *Registry) SetServer(server *uap.Server, tracker *Tracker) {
 	r.server = server
 
 	// 注册回调
 	server.OnAgentOnline = func(agent *uap.AgentConn) {
 		log.Printf("[Registry] agent online: %s (type=%s, name=%s)", agent.ID, agent.AgentType, agent.Name)
+		if tracker != nil {
+			tracker.RecordLifecycle(EventKindAgentOn, agent, fmt.Sprintf("type=%s", agent.AgentType))
+		}
 	}
 	server.OnAgentOffline = func(agent *uap.AgentConn) {
 		log.Printf("[Registry] agent offline: %s (type=%s, name=%s)", agent.ID, agent.AgentType, agent.Name)
+		if tracker != nil {
+			tracker.RecordLifecycle(EventKindAgentOff, agent, fmt.Sprintf("type=%s", agent.AgentType))
+		}
 		// 广播 agent_offline 通知给所有其他在线 agent，使其立即移除离线 agent
 		r.broadcastAgentOffline(agent)
 	}

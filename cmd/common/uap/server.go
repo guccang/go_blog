@@ -65,6 +65,12 @@ type Server struct {
 
 	// OnMessage 处理无法路由的消息（如 To 为空或目标不在线）
 	OnMessage func(from *AgentConn, msg *Message)
+
+	// 事件追踪回调（均为可选，nil 则跳过）
+	OnMessageReceived  func(from *AgentConn, msg *Message)               // 收到消息
+	OnMessageForwarded func(from *AgentConn, to *AgentConn, msg *Message) // 转发成功
+	OnRouteError       func(from *AgentConn, msg *Message)               // 路由失败（目标离线）
+	OnHeartbeatTimeout func(agent *AgentConn)                            // 心跳超时
 }
 
 // NewServer 创建 UAP 网关服务
@@ -117,6 +123,11 @@ func (s *Server) handleConn(conn *websocket.Conn) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			log.Printf("[UAP] parse error: %v", err)
 			continue
+		}
+
+		// 事件追踪：记录收到的每条消息
+		if s.OnMessageReceived != nil {
+			s.OnMessageReceived(agent, &msg)
 		}
 
 		switch msg.Type {
@@ -259,6 +270,10 @@ func (s *Server) routeMessage(from *AgentConn, msg *Message) {
 	if !ok || !target.Online {
 		// 目标 agent 不在线，返回错误给发送方
 		log.Printf("[UAP] target agent %s not online, returning error to %s", msg.To, from.ID)
+		// 事件追踪：路由失败
+		if s.OnRouteError != nil {
+			s.OnRouteError(from, msg)
+		}
 		from.Send(&Message{
 			Type: MsgError,
 			ID:   msg.ID,
@@ -276,6 +291,11 @@ func (s *Server) routeMessage(from *AgentConn, msg *Message) {
 	// 转发给目标 agent
 	if err := target.Send(msg); err != nil {
 		log.Printf("[UAP] forward to %s failed: %v", msg.To, err)
+	} else {
+		// 事件追踪：转发成功
+		if s.OnMessageForwarded != nil {
+			s.OnMessageForwarded(from, target, msg)
+		}
 	}
 }
 
@@ -404,6 +424,10 @@ func (s *Server) StartHealthCheck(timeout time.Duration) {
 
 			for _, a := range expired {
 				log.Printf("[UAP] agent %s heartbeat timeout, removing", a.ID)
+				// 事件追踪：心跳超时
+				if s.OnHeartbeatTimeout != nil {
+					s.OnHeartbeatTimeout(a)
+				}
 				s.removeAgent(a)
 			}
 		}
