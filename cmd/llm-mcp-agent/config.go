@@ -37,6 +37,11 @@ type Config struct {
 	SessionDir           string `json:"session_dir"`             // 会话持久化目录（默认 agent_sessions）
 	WorkspaceDir         string `json:"workspace_dir"`           // 工作区提示文件目录（默认 workspace）
 
+	// 并发控制配置
+	MaxConcurrent       int `json:"max_concurrent"`         // 最大并发任务数（默认 3）
+	TaskQueueSize       int `json:"task_queue_size"`         // 任务缓冲队列容量（默认 10）
+	MaxParallelSubtasks int `json:"max_parallel_subtasks"`   // DAG 同层最大并行子任务数（默认 3）
+
 	// 微信对话上下文配置
 	WechatSessionTimeoutMin int `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
 	WechatMaxMessages       int `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
@@ -66,6 +71,10 @@ func DefaultConfig() *Config {
 		SubTaskTimeoutSec:    120,
 		SessionDir:           "agent_sessions",
 		WorkspaceDir:         "workspace",
+
+		MaxConcurrent:       3,
+		TaskQueueSize:       10,
+		MaxParallelSubtasks: 3,
 
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,

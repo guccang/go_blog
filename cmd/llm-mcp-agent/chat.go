@@ -46,7 +46,8 @@ func isImportantEvent(event string) bool {
 		"plan_timing", "review_timing",
 		"synthesis_done",
 		"subtask_timeout", "subtask_llm_error",
-		"progress", "retry_detail", "modify_detail":
+		"progress", "retry_detail", "modify_detail",
+		"route_info":
 		return true
 	}
 	return false
@@ -116,6 +117,8 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "🔄 " + text
 	case "modify_detail":
 		msg = "✏ " + text
+	case "route_info":
+		msg = "🧭 " + text
 	default:
 		return
 	}
@@ -327,7 +330,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	if isNew || len(conv.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
-		systemPrompt := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount)
+		systemPrompt := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
 		conv.Messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: content},

@@ -182,44 +182,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	log.Printf("[processTask] ▶ 开始处理 taskID=%s source=%s account=%s streaming=%v query=%s",
 		ctx.TaskID, ctx.Source, ctx.Account, streaming, truncate(ctx.Query, 100))
 
-	// 1. 构建消息
+	// 1. 获取工具
 	var messages []Message
-	if ctx.Messages != nil {
-		// llm_request: 直接使用预构建消息
-		messages = make([]Message, len(ctx.Messages))
-		copy(messages, ctx.Messages)
-		log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
-	} else {
-		// web / wechat: 构建 system prompt + user query
-		systemPrompt := b.buildAssistantSystemPrompt(ctx.Account)
-		messages = []Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: ctx.Query},
-		}
-		log.Printf("[processTask] 构建系统提示 promptLen=%d", len(systemPrompt))
-	}
-
-	// 2. 创建会话（所有来源都持久化）
-	store := NewSessionStore(b.cfg.SessionDir)
-	query := ctx.Query
-	if query == "" && len(messages) > 0 {
-		// 对 llm_request，从消息中提取最后一条 user 消息
-		for i := len(messages) - 1; i >= 0; i-- {
-			if messages[i].Role == "user" {
-				query = messages[i].Content
-				break
-			}
-		}
-	}
-	rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
-	for _, msg := range messages {
-		rootSession.AppendMessage(msg)
-	}
-
-	// 触发任务开始 hook
-	b.hooks.FireTaskStart(ctx)
-
-	// 3. 获取工具
 	var tools []LLMTool
 	if ctx.NoTools {
 		tools = nil
@@ -232,41 +196,113 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] 工具模式: 默认加载全部 count=%d", len(tools))
 	}
 
-	// 工具路由：>15 时智能筛选
+	// 提取 query（构建消息前就需要，用于工具路由和 skill 匹配）
+	query := ctx.Query
+	if query == "" && ctx.Messages != nil {
+		for i := len(ctx.Messages) - 1; i >= 0; i-- {
+			if ctx.Messages[i].Role == "user" {
+				query = ctx.Messages[i].Content
+				break
+			}
+		}
+	}
 
-	// ????? MCP ?????????????????? tools schema ??? LLM
+	// 2. MCP 工具列表查询拦截（在路由之前，使用全量工具展示）
 	if !ctx.NoTools {
 		if directReply, ok := b.buildMCPToolListReply(query, tools); ok {
+			store := NewSessionStore(b.cfg.SessionDir)
+			rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
 			rootSession.AppendMessage(Message{Role: "assistant", Content: directReply})
 			rootSession.SetResult(directReply)
 			rootSession.SetStatus("done")
 			store.Save(rootSession)
 			store.SaveIndex(rootSession, nil)
-			log.Printf("[processTask] ? direct MCP tool list reply, toolCount=%d", len(tools))
+			log.Printf("[processTask] direct MCP tool list reply, toolCount=%d", len(tools))
 			return directReply, nil
 		}
 	}
 
-	if !ctx.NoTools && len(tools) > 15 && query != "" {
+	// 3. 工具路由：两次 LLM 筛选（Pass 1 能力选择 + Pass 2 工具精选）
+	var selectedSkills []SkillEntry
+
+	if !ctx.NoTools && query != "" {
 		beforeCount := len(tools)
 
-		// Level 1: Agent 选择（execute-code-agent 作为元工具始终保留）
-		selectedAgentIDs := b.routeAgents(query)
-		if len(selectedAgentIDs) > 0 {
-			agentFilteredTools := b.getToolsForAgents(selectedAgentIDs)
-			if len(agentFilteredTools) > 0 {
-				tools = agentFilteredTools
-				log.Printf("[processTask] Agent路由: %d → %d (agents=%v)", beforeCount, len(tools), selectedAgentIDs)
+		// Pass 1: 能力选择（agent + skill 联合路由）
+		ctx.Sink.OnEvent("route_info", "正在分析任务，匹配能力...")
+		selection := b.routeCapabilities(query)
+
+		if selection != nil && (len(selection.Agents) > 0 || len(selection.Skills) > 0) {
+			selectedSkills = selection.Skills
+
+			// 推送 Pass 1 路由结果
+			var routeDetail strings.Builder
+			routeDetail.WriteString(fmt.Sprintf("Agent: %s", strings.Join(selection.Agents, ", ")))
+			if len(selection.Skills) > 0 {
+				var skillNames []string
+				for _, s := range selection.Skills {
+					skillNames = append(skillNames, s.Name)
+				}
+				routeDetail.WriteString(fmt.Sprintf("\nSkill: %s", strings.Join(skillNames, ", ")))
 			}
+			ctx.Sink.OnEvent("route_info", routeDetail.String())
+
+			// 收集候选工具：agent 工具 + skill 工具 + 基础工具
+			candidateTools := b.mergeCapabilityTools(selection, tools)
+			if len(candidateTools) > 0 {
+				// Pass 2: 工具精选（从候选工具中精确筛选）
+				if len(candidateTools) > 10 {
+					tools = b.routeTools(query, candidateTools)
+				} else {
+					tools = candidateTools
+				}
+			}
+		} else if len(tools) > 15 {
+			ctx.Sink.OnEvent("route_info", "回退到 Agent 级路由...")
+			// 无选中 → 回退原有逻辑（routeAgents → routeTools）
+			selectedAgentIDs := b.routeAgents(query)
+			if len(selectedAgentIDs) > 0 {
+				agentFilteredTools := b.getToolsForAgents(selectedAgentIDs)
+				if len(agentFilteredTools) > 0 {
+					tools = agentFilteredTools
+				}
+			}
+			if len(tools) > 10 {
+				tools = b.routeTools(query, tools)
+			}
+		} else {
+			ctx.Sink.OnEvent("route_info", "工具数量较少，跳过路由筛选")
 		}
 
-		// Level 2: 工具筛选（选完 agent 后仍 >10 个工具，ExecuteCode 内部始终保留）
-		if len(tools) > 10 {
-			tools = b.routeTools(query, tools)
-		}
-
+		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具路由: %d → %d", beforeCount, len(tools)))
 		log.Printf("[processTask] 工具路由: %d → %d", beforeCount, len(tools))
 	}
+
+	// 4. 构建消息（使用路由后的 tools 做 skill 匹配）
+	if ctx.Messages != nil {
+		// llm_request: 直接使用预构建消息
+		messages = make([]Message, len(ctx.Messages))
+		copy(messages, ctx.Messages)
+		log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
+	} else {
+		// web / wechat: 构建 system prompt + user query（传入预选 skill）
+		systemPrompt := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, selectedSkills)
+		messages = []Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: ctx.Query},
+		}
+		log.Printf("[processTask] 构建系统提示 promptLen=%d", len(systemPrompt))
+	}
+
+	// 5. 创建会话（所有来源都持久化）
+	store := NewSessionStore(b.cfg.SessionDir)
+	rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
+	for _, msg := range messages {
+		rootSession.AppendMessage(msg)
+	}
+
+	// 触发任务开始 hook
+	b.hooks.FireTaskStart(ctx)
 
 	// 发送工具数量信息（在注入虚拟工具之前，只展示真实工具）
 	if !ctx.NoTools && len(tools) > 0 {
@@ -421,7 +457,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 
 			// 进入复杂任务处理流程（内部处理会话保存）
-			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork)
+			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork, selectedSkills)
 			ctx.Sink.OnChunk(result)
 			finalText = result
 			complexTaskHandled = true
@@ -569,6 +605,7 @@ func (b *Bridge) handleComplexTask(
 	store *SessionStore,
 	tools []LLMTool,
 	completedWork string, // 简单路径中已完成的工具调用摘要（可为空）
+	selectedSkills []SkillEntry, // Pass 1 预选的 skill（可为空）
 ) string {
 	complexStart := time.Now()
 	sendEvent := func(event, text string) {
@@ -589,8 +626,14 @@ func (b *Bridge) handleComplexTask(
 		maxSubTasks = 10
 	}
 
+	// 使用 Pass 1 预选的 skill 构建规划指引
+	var skillBlock string
+	if b.skillMgr != nil && len(selectedSkills) > 0 {
+		skillBlock = b.skillMgr.BuildSkillBlock(selectedSkills)
+	}
+
 	planStart := time.Now()
-	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork)
+	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork, skillBlock)
 	planDuration := time.Since(planStart)
 
 	if err != nil {

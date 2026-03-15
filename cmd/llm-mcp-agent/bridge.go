@@ -13,6 +13,14 @@ import (
 	"uap"
 )
 
+// queuedTask 缓冲队列中的待执行任务
+type queuedTask struct {
+	taskID    string
+	taskType  string
+	handler   func()
+	createdAt time.Time
+}
+
 // 共享的 gateway HTTP 客户端
 var gatewayHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
@@ -53,15 +61,26 @@ type Bridge struct {
 	// 微信对话上下文管理
 	wechatConvMgr *WechatConversationManager
 
+	// Skill 管理器
+	skillMgr *SkillManager
+
 	// 任务生命周期 hook
 	hooks *HookManager
+
+	// 并发控制
+	activeTasks  map[string]string // taskID → task_type
+	activeTaskMu sync.Mutex
+
+	// 任务缓冲队列
+	taskQueue chan *queuedTask
+	queueDone chan struct{}
 }
 
 // NewBridge 创建 Bridge
 func NewBridge(cfg *Config) *Bridge {
 	client := uap.NewClient(cfg.GatewayURL, cfg.AgentID, "llm_mcp", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
-	client.Capacity = 10
+	client.Capacity = cfg.MaxConcurrent
 	client.Tools = nil // llm-mcp-agent 不对外注册工具
 
 	// 初始化微信对话管理器
@@ -86,6 +105,9 @@ func NewBridge(cfg *Config) *Bridge {
 		agentTools:    make(map[string][]LLMTool),
 		pending:       make(map[string]chan *toolResultWithFrom),
 		wechatConvMgr: NewWechatConversationManager(timeout, maxMessages, maxTurns),
+		activeTasks:   make(map[string]string),
+		taskQueue:     make(chan *queuedTask, cfg.TaskQueueSize),
+		queueDone:     make(chan struct{}),
 	}
 
 	client.OnMessage = b.handleMessage
@@ -93,6 +115,14 @@ func NewBridge(cfg *Config) *Bridge {
 	// 初始化 hook 管理器
 	b.hooks = NewHookManager()
 	b.hooks.Register(&WechatUsageSummaryHook{bridge: b})
+
+	// 初始化 Skill 管理器
+	if cfg.WorkspaceDir != "" {
+		b.skillMgr = NewSkillManager(cfg.WorkspaceDir)
+		if err := b.skillMgr.Load(); err != nil {
+			log.Printf("[Bridge] load skills: %v", err)
+		}
+	}
 
 	return b
 }
@@ -104,7 +134,97 @@ func (b *Bridge) Run() {
 
 // Stop 停止
 func (b *Bridge) Stop() {
+	close(b.queueDone)
 	b.client.Stop()
+}
+
+// ========================= 并发控制 =========================
+
+// canAccept 是否可以接受新任务
+func (b *Bridge) canAccept() bool {
+	b.activeTaskMu.Lock()
+	defer b.activeTaskMu.Unlock()
+	return len(b.activeTasks) < b.cfg.MaxConcurrent
+}
+
+// registerTask 注册活跃任务
+func (b *Bridge) registerTask(taskID, taskType string) {
+	b.activeTaskMu.Lock()
+	defer b.activeTaskMu.Unlock()
+	b.activeTasks[taskID] = taskType
+	log.Printf("[Bridge] task registered: %s (type=%s, active=%d/%d)", taskID, taskType, len(b.activeTasks), b.cfg.MaxConcurrent)
+}
+
+// deregisterTask 注销活跃任务，并尝试从队列消费下一个
+func (b *Bridge) deregisterTask(taskID string) {
+	b.activeTaskMu.Lock()
+	delete(b.activeTasks, taskID)
+	active := len(b.activeTasks)
+	b.activeTaskMu.Unlock()
+	log.Printf("[Bridge] task deregistered: %s (active=%d/%d)", taskID, active, b.cfg.MaxConcurrent)
+	b.drainQueue()
+}
+
+// activeCount 当前活跃任务数
+func (b *Bridge) activeCount() int {
+	b.activeTaskMu.Lock()
+	defer b.activeTaskMu.Unlock()
+	return len(b.activeTasks)
+}
+
+// loadFactor 负载因子 0.0~1.0
+func (b *Bridge) loadFactor() float64 {
+	if b.cfg.MaxConcurrent <= 0 {
+		return 1.0
+	}
+	return float64(b.activeCount()) / float64(b.cfg.MaxConcurrent)
+}
+
+// enqueueOrReject 非阻塞入队，队列满时返回 false
+func (b *Bridge) enqueueOrReject(qt *queuedTask) bool {
+	select {
+	case b.taskQueue <- qt:
+		log.Printf("[Bridge] task enqueued: %s (type=%s, queueLen=%d/%d)", qt.taskID, qt.taskType, len(b.taskQueue), b.cfg.TaskQueueSize)
+		return true
+	default:
+		log.Printf("[Bridge] task queue full, rejecting: %s (type=%s)", qt.taskID, qt.taskType)
+		return false
+	}
+}
+
+// drainQueue 从队列取出一个可执行任务并启动
+func (b *Bridge) drainQueue() {
+	if !b.canAccept() {
+		return
+	}
+	select {
+	case qt := <-b.taskQueue:
+		log.Printf("[Bridge] task dequeued: %s (type=%s, queueLen=%d)", qt.taskID, qt.taskType, len(b.taskQueue))
+		b.registerTask(qt.taskID, qt.taskType)
+		go func() {
+			defer b.deregisterTask(qt.taskID)
+			qt.handler()
+		}()
+	default:
+		// 队列为空
+	}
+}
+
+// StartQueueConsumer 后台定时消费队列（兜底，正常流程靠 deregisterTask 触发 drainQueue）
+func (b *Bridge) StartQueueConsumer() {
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-b.queueDone:
+				return
+			case <-ticker.C:
+				b.drainQueue()
+			}
+		}
+	}()
+	log.Printf("[Bridge] queue consumer started (MaxConcurrent=%d TaskQueueSize=%d)", b.cfg.MaxConcurrent, b.cfg.TaskQueueSize)
 }
 
 // ========================= 工具发现 =========================
@@ -333,16 +453,17 @@ func (b *Bridge) routeAgents(query string) []string {
 		return alwaysInclude
 	}
 
-	routePrompt := fmt.Sprintf(`你是一个 Agent 路由器。根据用户问题，从以下 Agent 列表中选择所有可能需要的 Agent。
+	routePrompt := fmt.Sprintf(`你是一个 Agent 路由器。根据用户问题，从以下 Agent 列表中选择与任务直接相关的 Agent。
 
 用户问题: %s
 
 Agent 列表:
 %s
 选择规则：
-1. 宁多勿少，把所有可能相关的 Agent 都选上
-2. 只返回 agent_id 的 JSON 数组，不要其他文字
-3. 如果不确定，返回所有 agent_id
+1. 根据 Agent 的 description 和 tools 判断相关性，只选直接相关的
+2. 与任务无关的 Agent 不要选
+3. 只返回 agent_id 的 JSON 数组，不要其他文字
+4. 简单问答不需要任何 Agent，返回空数组 []
 
 示例: ["go_blog", "codegen-xxx"]`, query, catalog.String())
 
@@ -370,8 +491,8 @@ Agent 列表:
 	}
 
 	if len(selectedIDs) == 0 {
-		log.Printf("[Agent路由] LLM 未选择任何 agent, 返回全部")
-		return append(alwaysInclude, routeableIDs...)
+		log.Printf("[Agent路由] LLM 未选择任何 agent, 仅保留基础 agent")
+		return alwaysInclude
 	}
 
 	// 合并：始终保留 + LLM 选中
@@ -505,6 +626,207 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 	return filtered
 }
 
+// CapabilitySelection Pass 1 的 LLM 选择结果
+type CapabilitySelection struct {
+	Agents []string     // 选中的 agent_id 列表
+	Skills []SkillEntry // 选中的 skill 列表（完整条目）
+}
+
+// routeCapabilities Pass 1 能力选择：用 LLM 从 agent + skill 列表中选择与用户问题相关的能力
+// execute-code-agent 和文件工具 agent 作为基础能力始终保留，不参与 LLM 筛选
+func (b *Bridge) routeCapabilities(query string) *CapabilitySelection {
+	b.catalogMu.RLock()
+	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
+	for k, v := range b.agentInfo {
+		agentInfoCopy[k] = v
+	}
+	agentToolsCopy := make(map[string][]LLMTool, len(b.agentTools))
+	for k, v := range b.agentTools {
+		agentToolsCopy[k] = v
+	}
+	b.catalogMu.RUnlock()
+
+	// 收集 skill 信息
+	var allSkills []SkillEntry
+	if b.skillMgr != nil {
+		allSkills = b.skillMgr.GetAllSkills()
+	}
+
+	if len(agentInfoCopy) == 0 && len(allSkills) == 0 {
+		return nil
+	}
+
+	// 分离 execute-code-agent 和文件工具 agent（始终保留）
+	var alwaysIncludeAgents []string
+	var catalog strings.Builder
+
+	// Agent 列表
+	var routeableAgentIDs []string
+	for _, info := range agentInfoCopy {
+		if isExecuteCodeAgent(info) || isFileToolAgent(info) {
+			alwaysIncludeAgents = append(alwaysIncludeAgents, info.ID)
+			continue
+		}
+		toolNames := make([]string, 0, len(agentToolsCopy[info.ID]))
+		for _, t := range agentToolsCopy[info.ID] {
+			toolNames = append(toolNames, t.Function.Name)
+		}
+		catalog.WriteString(fmt.Sprintf("- agent_id=%s name=%s description=%s tools=[%s]\n",
+			info.ID, info.Name, info.Description, strings.Join(toolNames, ", ")))
+		routeableAgentIDs = append(routeableAgentIDs, info.ID)
+	}
+
+	// Skill 列表
+	var skillCatalog strings.Builder
+	var skillNames []string
+	for _, skill := range allSkills {
+		skillCatalog.WriteString(fmt.Sprintf("- skill_name=%s description=%s tools=[%s]\n",
+			skill.Name, skill.Description, strings.Join(skill.Tools, ", ")))
+		skillNames = append(skillNames, skill.Name)
+	}
+
+	// 没有需要路由的 agent 和 skill → 直接返回始终保留的 agent
+	if len(routeableAgentIDs) == 0 && len(allSkills) == 0 {
+		return &CapabilitySelection{Agents: alwaysIncludeAgents}
+	}
+
+	routePrompt := fmt.Sprintf(`你是一个能力路由器。根据用户问题，从以下 Agent 和 Skill 列表中精确选择需要的能力。
+注意：execute-code-agent（ExecuteCode）和文件工具 agent 已自动包含，不需要你选择。
+
+用户问题: %s
+
+Agent 列表（数据源和执行工具）:
+%s
+Skill 列表（任务指引和专业知识）:
+%s
+选择规则：
+1. 重点查看每个 Agent 的 tools 列表，选择拥有任务所需工具的 Agent
+   - 数据查询/分析任务：必须选择拥有数据工具（如 Raw 开头的工具）的 Agent
+   - 编码任务：选择拥有 Codegen 工具的 Agent
+   - 部署任务：选择拥有 Deploy 工具的 Agent
+2. 根据 Skill 的 description 判断是否匹配用户意图
+3. 与任务无关的 Agent 坚决不选
+4. 混合任务可同时选多种能力
+5. 简单问答（闲聊、常识问题）返回空
+6. 只返回 JSON，不要其他文字
+
+返回格式: {"agents": ["agent_id1"], "skills": ["skill_name1"]}
+简单问答: {"agents": [], "skills": []}`, query, catalog.String(), skillCatalog.String())
+
+	messages := []Message{
+		{Role: "user", Content: routePrompt},
+	}
+
+	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
+	if err != nil {
+		log.Printf("[能力路由] LLM 调用失败: %v, 返回全部能力", err)
+		return &CapabilitySelection{
+			Agents: append(alwaysIncludeAgents, routeableAgentIDs...),
+			Skills: allSkills,
+		}
+	}
+
+	// 解析 JSON
+	resp = strings.TrimSpace(resp)
+	resp = strings.TrimPrefix(resp, "```json")
+	resp = strings.TrimPrefix(resp, "```")
+	resp = strings.TrimSuffix(resp, "```")
+	resp = strings.TrimSpace(resp)
+
+	var selection struct {
+		Agents []string `json:"agents"`
+		Skills []string `json:"skills"`
+	}
+	if err := json.Unmarshal([]byte(resp), &selection); err != nil {
+		log.Printf("[能力路由] 解析失败: %v, 返回全部能力", err)
+		return &CapabilitySelection{
+			Agents: append(alwaysIncludeAgents, routeableAgentIDs...),
+			Skills: allSkills,
+		}
+	}
+
+	// 合并 agent：始终保留 + LLM 选中
+	resultAgents := append(alwaysIncludeAgents, selection.Agents...)
+
+	// 匹配 skill：从 LLM 选中的 skill name 查找完整条目
+	skillNameSet := make(map[string]bool, len(selection.Skills))
+	for _, name := range selection.Skills {
+		skillNameSet[name] = true
+	}
+	var resultSkills []SkillEntry
+	for _, skill := range allSkills {
+		if skillNameSet[skill.Name] {
+			resultSkills = append(resultSkills, skill)
+		}
+	}
+
+	log.Printf("[能力路由] 从 %d agent + %d skill 中选择了 %d agent + %d skill: agents=%v skills=%v",
+		len(agentInfoCopy), len(allSkills), len(resultAgents), len(resultSkills), resultAgents, selection.Skills)
+
+	return &CapabilitySelection{
+		Agents: resultAgents,
+		Skills: resultSkills,
+	}
+}
+
+// collectSkillTools 从选中的 skill 收集关联工具
+func collectSkillTools(selectedSkills []SkillEntry, allTools []LLMTool) []LLMTool {
+	if len(selectedSkills) == 0 {
+		return nil
+	}
+
+	// 收集所有选中 skill 的工具名
+	needSet := make(map[string]bool)
+	for _, skill := range selectedSkills {
+		for _, t := range skill.Tools {
+			needSet[t] = true
+			needSet[sanitizeToolName(t)] = true // 同时支持 sanitized 格式
+		}
+	}
+
+	var result []LLMTool
+	for _, tool := range allTools {
+		if needSet[tool.Function.Name] || needSet[unsanitizeToolName(tool.Function.Name)] {
+			result = append(result, tool)
+		}
+	}
+	return result
+}
+
+// mergeCapabilityTools 合并 agent 工具 + skill 工具 + 基础工具，去重
+func (b *Bridge) mergeCapabilityTools(selection *CapabilitySelection, allTools []LLMTool) []LLMTool {
+	seen := make(map[string]bool)
+	var merged []LLMTool
+
+	addTool := func(tool LLMTool) {
+		if !seen[tool.Function.Name] {
+			seen[tool.Function.Name] = true
+			merged = append(merged, tool)
+		}
+	}
+
+	// 1. agent 工具
+	agentTools := b.getToolsForAgents(selection.Agents)
+	for _, t := range agentTools {
+		addTool(t)
+	}
+
+	// 2. skill 工具
+	skillTools := collectSkillTools(selection.Skills, allTools)
+	for _, t := range skillTools {
+		addTool(t)
+	}
+
+	// 3. 基础工具始终保留（ExecuteCode + 文件工具）
+	for _, t := range allTools {
+		if t.Function.Name == "ExecuteCode" || isFileToolName(t.Function.Name) {
+			addTool(t)
+		}
+	}
+
+	return merged
+}
+
 // routeTools 智能工具路由：用 LLM 从工具目录中筛选与用户问题相关的工具
 // ExecuteCode 和文件工具（ReadFile/WriteFile/ExecBash）作为基础能力始终保留，不参与 LLM 筛选
 func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
@@ -531,19 +853,19 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 		toolMap[tool.Function.Name] = tool
 	}
 
-	routePrompt := fmt.Sprintf(`你是一个工具路由器。根据用户的问题，从以下工具目录中选择所有可能需要用到的工具。
+	routePrompt := fmt.Sprintf(`你是一个工具路由器。根据用户的问题，从以下工具目录中选择需要用到的工具。
 
 用户问题: %s
 
 工具目录:
 %s
 选择规则：
-1. 宁多勿少，把所有可能相关的工具都选上
-2. 如果任务需要日期信息，必须包含 RawCurrentDate
-3. 如果涉及查询数据，同时选择获取数据的工具和可能需要的辅助工具
-4. 只返回JSON数组，不要其他文字
+1. 只选与任务直接相关的工具
+2. 如果选了 ExecuteCode，数据查询类工具（Raw 开头的）可以不选，因为 ExecuteCode 内部可通过 call_tool 调用所有工具
+3. 根据工具 description 判断相关性
+4. 只返回 JSON 数组，不要其他文字
 
-示例: ["RawCurrentDate", "RawGetExerciseByDateRange"]
+示例: ["ExecuteCode", "RawCurrentDate"]
 如果不需要任何工具，返回 []`, query, catalog.String())
 
 	messages := []Message{
@@ -744,6 +1066,8 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		}
 		json.Unmarshal(taskPayload.Payload, &taskType)
 
+		// 构建 handler（根据 task_type 解析 payload）
+		var handler func()
 		switch taskType.TaskType {
 		case "assistant_chat":
 			var assistantPayload AssistantTaskPayload
@@ -751,23 +1075,64 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				log.Printf("[Bridge] invalid assistant task payload: %v", err)
 				return
 			}
-			go b.handleAssistantTask(taskPayload.TaskID, &assistantPayload)
+			handler = func() { b.handleAssistantTask(taskPayload.TaskID, &assistantPayload) }
 		case "llm_request":
 			var llmPayload LLMRequestPayload
 			if err := json.Unmarshal(taskPayload.Payload, &llmPayload); err != nil {
 				log.Printf("[Bridge] invalid llm_request payload: %v", err)
 				return
 			}
-			go b.handleLLMRequestTask(taskPayload.TaskID, &llmPayload)
+			handler = func() { b.handleLLMRequestTask(taskPayload.TaskID, &llmPayload) }
 		case "resume_task":
 			var resumePayload ResumeTaskPayload
 			if err := json.Unmarshal(taskPayload.Payload, &resumePayload); err != nil {
 				log.Printf("[Bridge] invalid resume_task payload: %v", err)
 				return
 			}
-			go b.handleResumeTask(taskPayload.TaskID, &resumePayload)
+			handler = func() { b.handleResumeTask(taskPayload.TaskID, &resumePayload) }
 		default:
 			log.Printf("[Bridge] unknown task_type: %s", taskType.TaskType)
+			return
+		}
+
+		// 统一发送 task_accepted（无论直接执行还是入队，都告知 gateway 已收到）
+		b.client.Send(&uap.Message{
+			Type:    uap.MsgTaskAccepted,
+			ID:      uap.NewMsgID(),
+			From:    b.cfg.AgentID,
+			To:      "go_blog",
+			Payload: mustMarshal(uap.TaskAcceptedPayload{TaskID: taskPayload.TaskID}),
+			Ts:      time.Now().UnixMilli(),
+		})
+
+		// 准入控制：直接执行 / 入队 / 拒绝
+		if b.canAccept() {
+			b.registerTask(taskPayload.TaskID, taskType.TaskType)
+			go func() {
+				defer b.deregisterTask(taskPayload.TaskID)
+				handler()
+			}()
+		} else if b.enqueueOrReject(&queuedTask{
+			taskID:    taskPayload.TaskID,
+			taskType:  taskType.TaskType,
+			handler:   handler,
+			createdAt: time.Now(),
+		}) {
+			// 入队成功，等待 drainQueue 触发执行
+		} else {
+			// 队列也满了，发送 task_rejected
+			b.client.Send(&uap.Message{
+				Type: uap.MsgTaskRejected,
+				ID:   uap.NewMsgID(),
+				From: b.cfg.AgentID,
+				To:   "go_blog",
+				Payload: mustMarshal(uap.TaskRejectedPayload{
+					TaskID: taskPayload.TaskID,
+					Reason: fmt.Sprintf("agent at max capacity (active=%d/%d, queue=%d/%d)",
+						b.activeCount(), b.cfg.MaxConcurrent, len(b.taskQueue), b.cfg.TaskQueueSize),
+				}),
+				Ts: time.Now().UnixMilli(),
+			})
 		}
 
 	default:

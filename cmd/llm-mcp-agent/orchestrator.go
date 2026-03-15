@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -83,9 +84,11 @@ func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 
 // defaultSubtaskPrompt 子任务 system prompt 的默认内容（workspace/SUBTASK.md 不存在时的 fallback）
 var defaultSubtaskPrompt = `你正在执行一个子任务。必须通过调用工具来完成任务。
-如果工具调用失败，请分析原因并尝试修正参数后重试。不要仅用文字回复而不调用工具。
-特别是 ExecuteCode 失败时（syntax error、运行时错误），必须修正 Python 代码后再次调用 ExecuteCode，禁止放弃沙箱执行而改用其他方式。
-直接执行，不要反问。`
+- 如果任务需要调用多个工具或处理数据，优先使用 ExecuteCode 编写 Python 代码（代码内通过 call_tool() 调用工具）
+- call_tool 返回值类型不确定（可能是 str 或 dict），使用前先检查类型
+- 工具调用失败时，分析原因并修正参数重试。ExecuteCode 代码报错时修正代码重试，不要放弃沙箱转而逐个调工具
+- 直接执行，不要反问
+- 回复包含执行结果和关键数据，供后续任务引用`
 
 // Orchestrator 任务编排器
 type Orchestrator struct {
@@ -127,7 +130,33 @@ func (o *Orchestrator) Execute(
 	for layerIdx, layer := range layers {
 		log.Printf("[Orchestrator] executing layer %d/%d: %v", layerIdx+1, len(layers), layer)
 
+		// 同层并行执行：semaphore 控制并发度 + WaitGroup 等待全部完成
+		maxP := o.cfg.MaxParallelSubtasks
+		if maxP <= 0 {
+			maxP = 3
+		}
+		if maxP > len(layer) {
+			maxP = len(layer)
+		}
+		sem := make(chan struct{}, maxP)
+		var wg sync.WaitGroup
+		var layerResults []SubTaskResult
+		var layerResultsMu sync.Mutex
+		var eventMu sync.Mutex
+		aborted := false
+
+		// safeSendEvent 保证并行子任务的事件不会交错
+		safeSendEvent := func(event, text string) {
+			eventMu.Lock()
+			defer eventMu.Unlock()
+			sendEvent(event, text)
+		}
+
 		for _, subtaskID := range layer {
+			if aborted {
+				break
+			}
+
 			// 查找子任务计划
 			var subtask *SubTaskPlan
 			for i := range plan.SubTasks {
@@ -147,7 +176,7 @@ func (o *Orchestrator) Execute(
 				continue
 			}
 
-			// 检查依赖是否被跳过/失败
+			// 检查依赖是否被跳过/失败（依赖检查只读前层已完成的 allResults）
 			skipDueToDepFailure := false
 			for _, depID := range subtask.DependsOn {
 				for _, r := range allResults {
@@ -165,29 +194,29 @@ func (o *Orchestrator) Execute(
 				session.SetStatus("skipped")
 				session.SetError("依赖任务失败或被跳过")
 				o.store.Save(session)
-				sendEvent("subtask_skip", fmt.Sprintf("[%s] %s — 跳过（依赖任务未完成）", subtask.ID, subtask.Title))
-				allResults = append(allResults, SubTaskResult{
+				safeSendEvent("subtask_skip", fmt.Sprintf("[%s] %s — 跳过（依赖任务未完成）", subtask.ID, subtask.Title))
+				layerResultsMu.Lock()
+				layerResults = append(layerResults, SubTaskResult{
 					SubTaskID: subtask.ID,
 					Title:     subtask.Title,
 					Status:    "skipped",
 					Error:     "依赖任务失败或被跳过",
 				})
+				layerResultsMu.Unlock()
 				continue
 			}
 
 			// 检查依赖是否为 async/deferred
 			deferDueToAsync := false
-			if !skipDueToDepFailure {
-				for _, depID := range subtask.DependsOn {
-					for _, r := range allResults {
-						if r.SubTaskID == depID && (r.Status == "async" || r.Status == "deferred") {
-							deferDueToAsync = true
-							break
-						}
-					}
-					if deferDueToAsync {
+			for _, depID := range subtask.DependsOn {
+				for _, r := range allResults {
+					if r.SubTaskID == depID && (r.Status == "async" || r.Status == "deferred") {
+						deferDueToAsync = true
 						break
 					}
+				}
+				if deferDueToAsync {
+					break
 				}
 			}
 
@@ -195,97 +224,119 @@ func (o *Orchestrator) Execute(
 				session.SetStatus("deferred")
 				session.SetError("前置任务仍在异步执行中")
 				o.store.Save(session)
-				sendEvent("subtask_defer", fmt.Sprintf("[%s] %s — 等待前置任务完成", subtask.ID, subtask.Title))
-				allResults = append(allResults, SubTaskResult{
+				safeSendEvent("subtask_defer", fmt.Sprintf("[%s] %s — 等待前置任务完成", subtask.ID, subtask.Title))
+				layerResultsMu.Lock()
+				layerResults = append(layerResults, SubTaskResult{
 					SubTaskID: subtask.ID,
 					Title:     subtask.Title,
 					Status:    "deferred",
 					Error:     "前置任务仍在异步执行中",
 				})
+				layerResultsMu.Unlock()
 				continue
 			}
 
-			// 构建兄弟结果上下文
+			// 构建兄弟结果上下文（只读前层的 completedResults，同层执行期间安全）
 			siblingContext := buildSiblingContext(subtask.DependsOn, completedResults)
-
-			// 发送进度事件
 			taskIdx := indexOf(plan.SubTasks, subtask.ID)
-			sendEvent("subtask_start", fmt.Sprintf("[%d/%d] %s\n描述: %s", taskIdx+1, len(plan.SubTasks), subtask.Title, subtask.Description))
 
-			// 执行子任务
-			result := o.executeSubTask(taskID, *subtask, session, siblingContext, tools, sendEvent)
+			// 获取信号量，并行执行子任务
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(st SubTaskPlan, sess *TaskSession, sibCtx string, tIdx int) {
+				defer func() { <-sem; wg.Done() }()
 
-			// 检测异步工具调用
-			if result.Status == "done" {
-				asyncInfos := detectAsyncResults(session)
-				if len(asyncInfos) > 0 {
-					result.Status = "async"
-					result.AsyncSessions = asyncInfos
-					session.SetStatus("async")
-					o.store.Save(session)
-					var asyncDetails []string
-					for _, a := range asyncInfos {
-						detail := fmt.Sprintf("%s→%s", a.ToolName, a.SessionID)
-						if a.Message != "" {
-							detail += ": " + a.Message
+				safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] %s\n描述: %s", tIdx+1, len(plan.SubTasks), st.Title, st.Description))
+
+				result := o.executeSubTask(taskID, st, sess, sibCtx, tools, safeSendEvent)
+
+				// 检测异步工具调用
+				if result.Status == "done" {
+					asyncInfos := detectAsyncResults(sess)
+					if len(asyncInfos) > 0 {
+						result.Status = "async"
+						result.AsyncSessions = asyncInfos
+						sess.SetStatus("async")
+						o.store.Save(sess)
+						var asyncDetails []string
+						for _, a := range asyncInfos {
+							detail := fmt.Sprintf("%s→%s", a.ToolName, a.SessionID)
+							if a.Message != "" {
+								detail += ": " + a.Message
+							}
+							asyncDetails = append(asyncDetails, detail)
 						}
-						asyncDetails = append(asyncDetails, detail)
+						log.Printf("[Orchestrator] async detected: subtask=%s sessions=%v", st.ID, asyncDetails)
+						safeSendEvent("subtask_async", fmt.Sprintf("[%d/%d] %s — 异步执行中\n%s",
+							tIdx+1, len(plan.SubTasks), st.Title, strings.Join(asyncDetails, "\n")))
 					}
-					log.Printf("[Orchestrator] async detected: subtask=%s sessions=%v", subtask.ID, asyncDetails)
-					sendEvent("subtask_async", fmt.Sprintf("[%d/%d] %s — 异步执行中\n%s",
-						taskIdx+1, len(plan.SubTasks), subtask.Title, strings.Join(asyncDetails, "\n")))
 				}
-			}
 
-			// 处理失败
-			if result.Status == "failed" {
-				sendEvent("subtask_fail", fmt.Sprintf("[%s] %s — 失败: %s", subtask.ID, subtask.Title, result.Error))
+				// 处理失败
+				if result.Status == "failed" {
+					safeSendEvent("subtask_fail", fmt.Sprintf("[%s] %s — 失败: %s", st.ID, st.Title, result.Error))
 
-				decision := o.handleSubTaskFailure(subtask, result.Error, completedResults, rootSession, sendEvent)
+					decision := o.handleSubTaskFailure(&st, result.Error, completedResults, rootSession, safeSendEvent)
 
-				switch decision.Action {
-				case "retry":
-					sendEvent("retry_detail", fmt.Sprintf("[%s] 重试原因: %s\n原始错误: %s", subtask.ID, decision.Reason, result.Error))
-					sendEvent("subtask_start", fmt.Sprintf("[%d/%d] 重试: %s", taskIdx+1, len(plan.SubTasks), subtask.Title))
-					result = o.executeSubTask(taskID, *subtask, session, siblingContext, tools, sendEvent)
+					switch decision.Action {
+					case "retry":
+						safeSendEvent("retry_detail", fmt.Sprintf("[%s] 重试原因: %s\n原始错误: %s", st.ID, decision.Reason, result.Error))
+						safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] 重试: %s", tIdx+1, len(plan.SubTasks), st.Title))
+						result = o.executeSubTask(taskID, st, sess, sibCtx, tools, safeSendEvent)
 
-				case "modify":
-					// 用修改后的描述重试
-					modifiedSubtask := *subtask
-					modifiedSubtask.Description = decision.Modifications
-					sendEvent("modify_detail", fmt.Sprintf("[%s] 修改后重试\n原描述: %s\n新描述: %s", subtask.ID, truncate(subtask.Description, 200), truncate(decision.Modifications, 200)))
-					sendEvent("subtask_start", fmt.Sprintf("[%d/%d] 修改后重试: %s", taskIdx+1, len(plan.SubTasks), subtask.Title))
-					result = o.executeSubTask(taskID, modifiedSubtask, session, siblingContext, tools, sendEvent)
+					case "modify":
+						modifiedSubtask := st
+						modifiedSubtask.Description = decision.Modifications
+						safeSendEvent("modify_detail", fmt.Sprintf("[%s] 修改后重试\n原描述: %s\n新描述: %s", st.ID, truncate(st.Description, 200), truncate(decision.Modifications, 200)))
+						safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] 修改后重试: %s", tIdx+1, len(plan.SubTasks), st.Title))
+						result = o.executeSubTask(taskID, modifiedSubtask, sess, sibCtx, tools, safeSendEvent)
 
-				case "skip":
-					result.Status = "skipped"
-					session.SetStatus("skipped")
-					o.store.Save(session)
-					sendEvent("subtask_skip", fmt.Sprintf("[%s] %s — 已跳过", subtask.ID, subtask.Title))
+					case "skip":
+						result.Status = "skipped"
+						sess.SetStatus("skipped")
+						o.store.Save(sess)
+						safeSendEvent("subtask_skip", fmt.Sprintf("[%s] %s — 已跳过", st.ID, st.Title))
 
-				case "abort":
-					result.Status = "failed"
-					session.SetStatus("failed")
-					o.store.Save(session)
-					sendEvent("subtask_fail", fmt.Sprintf("编排终止: %s", decision.Reason))
-					allResults = append(allResults, result)
-					// 中止后续执行
-					return allResults
+					case "abort":
+						result.Status = "failed"
+						sess.SetStatus("failed")
+						o.store.Save(sess)
+						safeSendEvent("subtask_fail", fmt.Sprintf("编排终止: %s", decision.Reason))
+						layerResultsMu.Lock()
+						aborted = true
+						layerResultsMu.Unlock()
+					}
 				}
-			}
 
-			if result.Status == "done" {
-				completedResults[subtask.ID] = result.Result
-				sendEvent("subtask_done", fmt.Sprintf("[%d/%d] %s — 完成", taskIdx+1, len(plan.SubTasks), subtask.Title))
-				if result.Result != "" {
-					sendEvent("subtask_result", fmt.Sprintf("[%s] 结果: %s", subtask.ID, truncate(result.Result, 500)))
+				if result.Status == "done" {
+					safeSendEvent("subtask_done", fmt.Sprintf("[%d/%d] %s — 完成", tIdx+1, len(plan.SubTasks), st.Title))
+					if result.Result != "" {
+						safeSendEvent("subtask_result", fmt.Sprintf("[%s] 结果: %s", st.ID, truncate(result.Result, 500)))
+					}
 				}
+
+				layerResultsMu.Lock()
+				layerResults = append(layerResults, result)
+				layerResultsMu.Unlock()
+			}(*subtask, session, siblingContext, taskIdx)
+		}
+
+		wg.Wait()
+
+		// 本层结果汇入总结果
+		for _, r := range layerResults {
+			allResults = append(allResults, r)
+			if r.Status == "done" {
+				completedResults[r.SubTaskID] = r.Result
 			}
+		}
 
-			allResults = append(allResults, result)
+		// 整体进度计数
+		sendEvent("progress", fmt.Sprintf("[%d/%d 子任务已处理]", len(allResults), len(plan.SubTasks)))
 
-			// 整体进度计数
-			sendEvent("progress", fmt.Sprintf("[%d/%d 子任务已处理]", len(allResults), len(plan.SubTasks)))
+		// 如果本层有 abort 决策，中止后续层
+		if aborted {
+			return allResults
 		}
 	}
 
@@ -319,6 +370,15 @@ func (o *Orchestrator) executeSubTask(
 	if siblingContext != "" {
 		systemContent.WriteString("\n## 前置任务结果（可直接引用）\n")
 		systemContent.WriteString(siblingContext)
+	}
+
+	// 注入与子任务相关的 skill 指引
+	if o.bridge.skillMgr != nil && len(subtask.ToolsHint) > 0 {
+		matched := o.bridge.skillMgr.MatchByTools(subtask.ToolsHint)
+		if len(matched) > 0 {
+			skillBlock := o.bridge.skillMgr.BuildSkillBlock(matched)
+			systemContent.WriteString(skillBlock)
+		}
 	}
 
 	// 初始化消息
@@ -597,15 +657,16 @@ func (o *Orchestrator) Synthesize(
 		}
 	}
 
-	synthesisPrompt := fmt.Sprintf(`请基于以下子任务执行结果，为用户生成一个完整、简洁的回复。
+	synthesisPrompt := fmt.Sprintf(`请基于以下子任务执行结果，为用户生成一个完整的回复。
 
 %s
 
 要求：
 1. 整合所有子任务的结果为统一的回复
-2. 如果有失败或跳过的任务，简要说明
-3. 回复应直接面向用户，不要暴露内部的子任务结构
-4. 保持简洁，控制在500字以内`, context.String())
+2. 如果结果包含数据表格或统计数据，保留完整数据，不要压缩
+3. 如果有失败或跳过的任务，简要说明
+4. 回复直接面向用户，不要暴露内部子任务结构
+5. 使用 markdown 格式，便于阅读`, context.String())
 
 	messages := []Message{
 		{Role: "user", Content: synthesisPrompt},

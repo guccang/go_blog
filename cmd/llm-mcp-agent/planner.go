@@ -50,7 +50,8 @@ var planAndExecuteTool = LLMTool{
 
 // PlanTask 调用 LLM 生成结构化任务计划
 // completedWork: 之前简单路径中已完成的工具调用摘要（可为空）
-func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string) (*TaskPlan, error) {
+// skillBlock: 匹配到的 skill 领域指引（可为空）
+func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string, skillBlock string) (*TaskPlan, error) {
 	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d completedWork=%v",
 		truncate(query, 100), account, maxSubTasks, len(tools), completedWork != "")
 	// 构建工具目录（name + description + 核心参数，帮助 LLM 精确规划）
@@ -83,7 +84,16 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 `, completedWork)
 	}
 
-	planPrompt := fmt.Sprintf(`你是一个任务规划专家。请分析用户的请求，将其拆解为可执行的子任务。
+	// 构建领域指引（来自 skill 匹配）
+	var skillSection string
+	if skillBlock != "" {
+		skillSection = fmt.Sprintf(`
+## 领域指引
+%s
+`, skillBlock)
+	}
+
+	planPrompt := fmt.Sprintf(`你是一个任务规划专家。请分析用户的请求，将其拆解为最少数量的可执行子任务。
 
 ## 用户信息
 当前用户账号: %s
@@ -91,47 +101,54 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 ## 用户请求
 %s
-%s
+%s%s
 ## 可用工具
 %s
 
-## 规划要求
-1. 每个子任务必须是独立的执行单元，可以通过工具调用完成
-2. 正确标注子任务之间的依赖关系（depends_on 引用其他子任务的 id）
-3. 子任务数量不超过 %d 个
-4. 每个子任务的描述要清晰，包含足够的上下文让 AI 独立执行
-5. tools_hint 列出该子任务可能需要的工具名称
-6. 子任务描述中必须包含用户账号（account=%s），不要再向用户询问账号信息
-7. 工具描述中标注"同步等待完成"的工具，调用后会阻塞直到任务完成并返回完整结果（status=completed），不需要创建额外的"检查状态""等待完成""轮询结果"子任务
-8. 状态查询工具（如 CodegenGetStatus）支持传入 session_id 查询指定任务状态。只有当某个工具明确返回"进行中"状态时，才需要后续的状态检查子任务
-9. CodegenStartSession 会在项目不存在时自动创建项目，通常不需要单独的 CodegenCreateProject 步骤
-10. 编码和部署是两个核心步骤，不要将"创建项目""发送通知"拆为独立子任务
-11. tool_params 必须列出每个子任务预期的工具调用参数（key-value），参数值要具体明确，这些参数将直接用于工具调用
+## 核心规划原则
+
+### 1. 优先使用 ExecuteCode 合并操作
+- 数据获取+分析类任务：用一个 ExecuteCode 子任务编写 Python 代码，在代码内通过 call_tool() 批量调用数据工具并完成分析
+- 不要拆分为"获取数据A""获取数据B""分析数据"等多个子任务，应合并为 1 个 ExecuteCode
+- ExecuteCode 内部可调用任意 MCP 工具（call_tool），比分开的子任务更高效
+
+### 2. 最大化并行执行
+- 没有数据依赖的子任务必须设置为并行（depends_on 为空）
+- 只有真正需要前一步结果的子任务才设置 depends_on
+
+### 3. 精简子任务数量
+- 目标：用最少的子任务完成任务（通常 2-3 个）
+- 能用 1 个 ExecuteCode 完成的不要拆成多个
+
+## 其他要求
+1. 每个子任务描述要包含足够上下文让 AI 独立执行
+2. tools_hint 列出该子任务需要的工具名
+3. 子任务描述中包含用户账号（account=%s）
+4. "同步等待完成"的工具不需要额外的"检查状态"子任务
+5. 子任务数量不超过 %d 个
 
 ## 输出格式
-仅返回 JSON，不要其他文字：
+仅返回 JSON：
 {
   "subtasks": [
     {
       "id": "t1",
-      "title": "子任务标题",
-      "description": "详细描述，包含执行目标和所需参数",
+      "title": "获取并分析所有数据",
+      "description": "使用 ExecuteCode 编写 Python 代码，通过 call_tool 批量获取锻炼数据和待办数据，在代码中完成统计分析，account=xxx",
       "depends_on": [],
-      "tools_hint": ["ToolName1"],
-      "tool_params": {"param1": "value1", "param2": "value2"}
+      "tools_hint": ["ExecuteCode"]
     },
     {
       "id": "t2",
-      "title": "子任务标题",
-      "description": "详细描述，可以引用 t1 的结果",
+      "title": "生成综合报告",
+      "description": "基于 t1 的数据分析结果，生成用户可读的综合报告",
       "depends_on": ["t1"],
-      "tools_hint": ["ToolName2"],
-      "tool_params": {"param1": "value1"}
+      "tools_hint": []
     }
   ],
   "execution_mode": "dag",
-  "reasoning": "拆解理由和执行顺序说明"
-}`, account, time.Now().Format("2006-01-02"), query, completedSection, toolCatalog.String(), maxSubTasks, account)
+  "reasoning": "用 ExecuteCode 一步完成所有数据获取和分析，再汇总报告"
+}`, account, time.Now().Format("2006-01-02"), query, completedSection, skillSection, toolCatalog.String(), account, maxSubTasks)
 
 	messages := []Message{
 		{Role: "user", Content: planPrompt},
@@ -212,10 +229,10 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 }
 
 决策指南：
-- retry: 可能是临时错误（超时、网络问题），重试一次
-- modify: 任务描述有问题或参数不对，修改后重新执行
-- skip: 该子任务非关键，跳过不影响最终结果
-- abort: 该子任务是关键步骤，失败后无法继续`, context.String())
+- retry: 临时错误（超时、网络问题、agent_offline），重试一次即可
+- modify: 参数错误或代码错误。Python 语法/运行时错误（syntax error、TypeError、KeyError 等）必须选 modify，在 modifications 中修正代码或参数后重新执行
+- skip: 非关键子任务，跳过不影响最终结果
+- abort: 关键步骤失败且无法修复，后续子任务无法继续`, context.String())
 
 	messages := []Message{
 		{Role: "user", Content: decisionPrompt},
@@ -280,16 +297,34 @@ type PlanReview struct {
 }
 
 // ReviewPlan LLM 审查任务计划，检查参数是否正确、子任务是否合理
+// 子任务 ≤2 时跳过审查（简单计划不需要额外 LLM 调用）
 func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string) (*PlanReview, error) {
+	// 简单计划跳过审查
+	if len(plan.SubTasks) <= 2 {
+		log.Printf("[Planner] 跳过审查: 子任务数=%d ≤ 2", len(plan.SubTasks))
+		return &PlanReview{Action: "execute", Reason: "子任务数量较少，直接执行"}, nil
+	}
+
 	log.Printf("[Planner] ▶ 审查计划 subtasks=%d", len(plan.SubTasks))
 
 	// 序列化当前计划
 	planJSON, _ := json.MarshalIndent(plan, "", "  ")
 
-	// 构建工具参数 schema 参考
+	// 只发送计划中引用的工具 schema（而非全量），节省 token
+	hintSet := make(map[string]bool)
+	for _, st := range plan.SubTasks {
+		for _, h := range st.ToolsHint {
+			hintSet[h] = true
+			hintSet[sanitizeToolName(h)] = true
+		}
+	}
+
 	var toolSchemas strings.Builder
 	for _, tool := range tools {
 		if tool.Function.Name == "plan_and_execute" {
+			continue
+		}
+		if len(hintSet) > 0 && !hintSet[tool.Function.Name] && !hintSet[unsanitizeToolName(tool.Function.Name)] {
 			continue
 		}
 		toolSchemas.WriteString(fmt.Sprintf("- %s: %s\n  参数schema: %s\n",
@@ -304,22 +339,21 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 ## 当前任务计划
 %s
 
-## 可用工具及参数定义
+## 相关工具参数定义
 %s
 
 ## 审查要点
-1. 每个子任务的 tool_params 参数是否完整、正确（对照工具参数schema）
-2. 子任务是否有遗漏或冗余
-3. 依赖关系是否合理（后续步骤是否正确依赖前置步骤）
-4. 参数值是否具体明确（不能是占位符）
-5. 对于描述中标注"同步等待完成"的工具，计划中是否存在冗余的状态检查子任务（应删除）
+1. 子任务是否有遗漏或冗余（能合并为 ExecuteCode 的是否已合并）
+2. 依赖关系是否合理（独立的子任务是否正确设置为并行，即 depends_on 为空）
+3. 子任务描述是否包含足够上下文让 AI 独立执行
+4. "同步等待完成"的工具是否有冗余的状态检查子任务（应删除）
 
 ## 输出格式
 仅返回 JSON：
-- 如果计划可以直接执行：{"action": "execute", "reason": "审查通过的理由"}
-- 如果需要优化：{"action": "optimize", "reason": "需要优化的原因", "plan": {优化后的完整计划JSON，格式与输入相同}}
+- 计划合理：{"action": "execute", "reason": "审查通过的理由"}
+- 需要优化：{"action": "optimize", "reason": "原因", "plan": {优化后的完整计划JSON}}
 
-注意：只有参数明显错误、子任务缺失或依赖关系不合理时才需要优化。小问题可以在执行时自行修正。`,
+注意：只有明显问题才需要优化。小问题可以在执行时自行修正。`,
 		query, string(planJSON), toolSchemas.String())
 
 	messages := []Message{

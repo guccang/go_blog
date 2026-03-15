@@ -11,6 +11,8 @@
     let activeReminders = {};
     // 重连定时器
     let reconnectTimer = null;
+    // 重连退避间隔 (ms)
+    let reconnectDelay = 5000;
 
     // 初始化
     function init() {
@@ -166,19 +168,22 @@
 
             ws.onopen = function() {
                 console.log('[GlobalReminder] WebSocket connected');
+                reconnectDelay = 5000; // 连接成功，重置退避间隔
                 if (reconnectTimer) {
                     clearTimeout(reconnectTimer);
                     reconnectTimer = null;
                 }
             };
 
-            ws.onclose = function() {
-                console.log('[GlobalReminder] WebSocket disconnected');
+            ws.onclose = function(event) {
+                if (event.code !== 1000) {
+                    console.log('[GlobalReminder] WebSocket disconnected (code=' + event.code + ')');
+                }
                 scheduleReconnect();
             };
 
-            ws.onerror = function(error) {
-                console.error('[GlobalReminder] WebSocket error:', error);
+            ws.onerror = function() {
+                // onerror 不含有用信息（浏览器安全限制），onclose 会随后触发并处理重连
             };
 
             ws.onmessage = function(event) {
@@ -195,13 +200,14 @@
         }
     }
 
-    // 重连计划
+    // 重连计划（指数退避，最大 60s）
     function scheduleReconnect() {
         if (reconnectTimer) return;
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
             connectWebSocket();
-        }, 5000);
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 60000);
     }
 
     // 处理通知

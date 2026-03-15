@@ -21,6 +21,7 @@ func main() {
 
 	log.Printf("[LLM-MCP] starting agent_id=%s, gateway=%s", cfg.AgentID, cfg.GatewayURL)
 	log.Printf("[LLM-MCP] LLM model=%s, base_url=%s", cfg.LLM.Model, cfg.LLM.BaseURL)
+	log.Printf("[LLM-MCP] concurrency: MaxConcurrent=%d TaskQueueSize=%d MaxParallelSubtasks=%d", cfg.MaxConcurrent, cfg.TaskQueueSize, cfg.MaxParallelSubtasks)
 
 	// 创建 Bridge
 	bridge := NewBridge(cfg)
@@ -35,6 +36,9 @@ func main() {
 
 	// 启动后台工具目录刷新
 	bridge.StartRefreshLoop()
+
+	// 启动任务队列消费
+	bridge.StartQueueConsumer()
 
 	// 启动微信对话过期清理
 	bridge.StartWechatCleanupLoop()
