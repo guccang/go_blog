@@ -216,6 +216,9 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		rootSession.AppendMessage(msg)
 	}
 
+	// 触发任务开始 hook
+	b.hooks.FireTaskStart(ctx)
+
 	// 3. 获取工具
 	var tools []LLMTool
 	if ctx.NoTools {
@@ -496,7 +499,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 
 			// 记录工具调用到 session
-			rootSession.RecordToolCall(ToolCallRecord{
+			toolRecord := ToolCallRecord{
 				ID:         tc.ID,
 				ToolName:   originalName,
 				Arguments:  tc.Function.Arguments,
@@ -505,7 +508,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				DurationMs: duration.Milliseconds(),
 				Timestamp:  time.Now(),
 				Iteration:  i,
-			})
+			}
+			rootSession.RecordToolCall(toolRecord)
+
+			// 触发工具调用 hook
+			b.hooks.FireToolCall(ctx, toolRecord)
 
 			toolMsg := Message{
 				Role:       "tool",
@@ -544,6 +551,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	}
 	log.Printf("[processTask] ◀ 处理完成 taskID=%s source=%s status=%s duration=%v resultLen=%d",
 		ctx.TaskID, ctx.Source, status, totalDuration, len(finalText))
+
+	// 触发任务结束 hook（收集所有工具调用记录）
+	rootSession.mu.Lock()
+	allToolCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
+	copy(allToolCalls, rootSession.ToolCalls)
+	rootSession.mu.Unlock()
+	b.hooks.FireTaskEnd(ctx, finalText, allToolCalls, finalErr)
 
 	return finalText, finalErr
 }
@@ -599,6 +613,9 @@ func (b *Bridge) handleComplexTask(
 
 	rootSession.Plan = plan
 	store.Save(rootSession)
+
+	// 触发计划创建 hook
+	b.hooks.FirePlanCreated(ctx, plan)
 
 	// 发送规划耗时
 	sendEvent("plan_timing", fmt.Sprintf("任务规划完成，耗时 %s，拆解为 %d 个子任务", fmtDuration(planDuration), len(plan.SubTasks)))
@@ -690,6 +707,22 @@ func (b *Bridge) handleComplexTask(
 	orchestrator := NewOrchestrator(b, store)
 	results := orchestrator.Execute(ctx.TaskID, rootSession, childSessions, tools, sendEvent)
 	execDuration := time.Since(execStart)
+
+	// 触发子任务完成 hook + 汇总子任务工具调用到 rootSession
+	for _, r := range results {
+		b.hooks.FireSubTaskDone(ctx, r)
+
+		// 将子任务的 ToolCalls 汇总到 rootSession（供 FireTaskEnd 使用）
+		if child, ok := childSessions[r.SubTaskID]; ok {
+			child.mu.Lock()
+			childCalls := make([]ToolCallRecord, len(child.ToolCalls))
+			copy(childCalls, child.ToolCalls)
+			child.mu.Unlock()
+			for _, tc := range childCalls {
+				rootSession.RecordToolCall(tc)
+			}
+		}
+	}
 
 	// 统计结果
 	var doneCount, failCount, skipCount, asyncCount, deferCount int

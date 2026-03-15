@@ -22,6 +22,7 @@ type Connection struct {
 	activeTasks map[string]bool
 	taskMu      sync.Mutex
 	fileToolKit *agentbase.FileToolKit
+	logToolKit  *agentbase.LogToolKit
 }
 
 // NewConnection 创建连接管理器
@@ -35,6 +36,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		return proj.ProjectDir
 	}
 	fileToolKit := agentbase.NewFileToolKit("Deploy", resolver)
+	logToolKit := agentbase.NewLogToolKit("Deploy", "deploy-agent.log")
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
@@ -44,7 +46,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		Description: "项目部署、流水线管理、服务器操作",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       append(buildDeployToolDefs(cfg), fileToolKit.ToolDefs()...),
+		Tools:       append(append(buildDeployToolDefs(cfg), fileToolKit.ToolDefs()...), logToolKit.ToolDefs()...),
 		Meta: map[string]any{
 			"projects": cfg.ProjectNames(),
 		},
@@ -56,6 +58,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		password:    password,
 		activeTasks: make(map[string]bool),
 		fileToolKit: fileToolKit,
+		logToolKit:  logToolKit,
 	}
 
 	// 注册消息处理器
@@ -524,7 +527,7 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 					"ssh_port":      map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22，仅 adhoc 模式）"},
 					"remote_dir":    map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>，仅 adhoc 模式）"},
 					"start_args":    map[string]interface{}{"type": "string", "description": "启动参数（仅 adhoc 模式）"},
-					"verify_url":    map[string]interface{}{"type": "string", "description": "部署后健康检查 URL（仅 adhoc 模式）"},
+					"verify_url":    map[string]interface{}{"type": "string", "description": "部署后健康检查 URL（仅 adhoc 模式）。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<start_args中的端口>/，示例：ssh_host=root@1.2.3.4 start_args=-port=8080 → http://1.2.3.4:8080/"},
 				},
 				"required": []string{"project"},
 			}),
@@ -591,6 +594,14 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolDeployPipeline(args)
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   true,
+				Result:    result,
+			})
+			return
+		}
+		if result, handled := c.logToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 				RequestID: msg.ID,
 				Success:   true,

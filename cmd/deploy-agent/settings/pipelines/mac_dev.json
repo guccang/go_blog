@@ -4,8 +4,13 @@
     "steps": [
         {
             "project": "env-agent",
-            "target": "local",
-            "build_platform": "macos"
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
+            "project": "execute-code-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
         },
         {
             "project": "llm-mcp-agent",
@@ -24,6 +29,11 @@
         },
         {
             "project": "blog-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
+            "project": "mcp-agent",
             "target": "ssh-prod",
             "build_platform": "linux"
         },

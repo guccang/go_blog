@@ -1,0 +1,23 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "gateway_http": "http://127.0.0.1:10086",
+  "auth_token": "your-token",
+  "agent_name": "mcp-agent",
+  "tool_prefix": "mcp",
+  "tool_call_timeout_sec": 30,
+  "mcp_servers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": {},
+      "enabled": true
+    },
+    "github": {
+      "transport": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {"Authorization": "Bearer xxx"},
+      "enabled": true
+    }
+  }
+}

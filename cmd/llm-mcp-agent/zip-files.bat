@@ -29,7 +29,7 @@ if errorlevel 1 (
 )
 
 :: 打包二进制 + 配置
-%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% llm-mcp-agent.json llm-mcp-agent-openrouter.json publish.sh
+%SEVENZIP% a -tzip "%OUTPUT%" %BINNAME% llm-mcp-agent.json  publish.sh workspace/
 
 :: 清理编译产物
 del %BINNAME%

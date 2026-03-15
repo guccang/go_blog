@@ -81,6 +81,11 @@ func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 	return results
 }
 
+// defaultSubtaskPrompt 子任务 system prompt 的默认内容（workspace/SUBTASK.md 不存在时的 fallback）
+var defaultSubtaskPrompt = `你正在执行一个子任务。必须通过调用工具来完成任务。
+如果工具调用失败，请分析原因并尝试修正参数后重试。不要仅用文字回复而不调用工具。
+直接执行，不要反问。`
+
 // Orchestrator 任务编排器
 type Orchestrator struct {
 	bridge *Bridge
@@ -302,9 +307,9 @@ func (o *Orchestrator) executeSubTask(
 
 	// 构建子任务的 system prompt
 	var systemContent strings.Builder
-	systemContent.WriteString("你正在执行一个子任务。必须通过调用工具来完成任务。\n")
-	systemContent.WriteString("如果工具调用失败，请分析原因并尝试修正参数后重试。不要仅用文字回复而不调用工具。\n")
-	systemContent.WriteString("直接执行，不要反问。\n\n")
+	subtaskPrompt := loadWorkspaceFile(o.cfg.WorkspaceDir, "SUBTASK.md", defaultSubtaskPrompt)
+	systemContent.WriteString(subtaskPrompt)
+	systemContent.WriteString("\n\n")
 	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
 	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n\n", time.Now().Format("2006-01-02")))
 	systemContent.WriteString(fmt.Sprintf("## 子任务: %s\n", subtask.Title))

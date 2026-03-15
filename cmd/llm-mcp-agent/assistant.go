@@ -208,24 +208,8 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 	})
 }
 
-// buildAssistantSystemPrompt 构建 assistant 的系统提示（含任务拆解指引）
-func (b *Bridge) buildAssistantSystemPrompt(account string) string {
-	var sb strings.Builder
-	sb.WriteString(b.cfg.SystemPromptPrefix)
-	sb.WriteString("\n\n")
-
-	today := time.Now().Format("2006-01-02")
-	sb.WriteString(fmt.Sprintf("account: %s\n", account))
-	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
-
-	// 注入 agent 能力描述
-	agentBlock := b.getAgentDescriptionBlock()
-	if agentBlock != "" {
-		sb.WriteString(agentBlock)
-	}
-
-	// 任务拆解指引
-	sb.WriteString(`
+// defaultTaskGuide 任务指引的默认内容（workspace/TASK_GUIDE.md 不存在时的 fallback）
+var defaultTaskGuide = `
 使用account:%s账户填充字段，不要向用户询问使用哪个字段了直接使用,account填充。
 ## 任务拆解能力
 当你判断用户的请求包含多个独立步骤，且这些步骤之间有明确的依赖关系时，
@@ -314,7 +298,30 @@ print(f"待办: {todos}")
 - 第一步：调用 CodegenStartSession，prompt = 用户消息中的编码部分原文
 - 第二步：编码完成后，调用 DeployProject 部署
 - 关键：编码和部署是两个独立的工具调用，不要把部署指令混入编码 prompt
-`)
+`
+
+// buildAssistantSystemPrompt 构建 assistant 的系统提示（含任务拆解指引）
+func (b *Bridge) buildAssistantSystemPrompt(account string) string {
+	var sb strings.Builder
+
+	persona := loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
+	sb.WriteString(persona)
+	sb.WriteString("\n\n")
+
+	today := time.Now().Format("2006-01-02")
+	sb.WriteString(fmt.Sprintf("account: %s\n", account))
+	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
+
+	// 注入 agent 能力描述
+	agentBlock := b.getAgentDescriptionBlock()
+	if agentBlock != "" {
+		sb.WriteString(agentBlock)
+	}
+
+	// 任务拆解指引
+	taskGuide := loadWorkspaceFile(b.cfg.WorkspaceDir, "TASK_GUIDE.md", defaultTaskGuide)
+	sb.WriteString("\n")
+	sb.WriteString(taskGuide)
 
 	// 并发获取上下文数据
 	type ctxResult struct {

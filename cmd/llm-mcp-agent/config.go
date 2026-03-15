@@ -35,6 +35,7 @@ type Config struct {
 	SubTaskMaxIterations int    `json:"sub_task_max_iterations"` // 子任务最大 agentic loop 轮次（默认 10）
 	SubTaskTimeoutSec    int    `json:"sub_task_timeout_sec"`    // 子任务超时秒数（默认 120）
 	SessionDir           string `json:"session_dir"`             // 会话持久化目录（默认 agent_sessions）
+	WorkspaceDir         string `json:"workspace_dir"`           // 工作区提示文件目录（默认 workspace）
 
 	// 微信对话上下文配置
 	WechatSessionTimeoutMin int `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
@@ -64,6 +65,7 @@ func DefaultConfig() *Config {
 		SubTaskMaxIterations: 10,
 		SubTaskTimeoutSec:    120,
 		SessionDir:           "agent_sessions",
+		WorkspaceDir:         "workspace",
 
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,

@@ -19,6 +19,7 @@ type Connection struct {
 	executor     *Executor
 	toolCatalog  *agentbase.ToolCatalog
 	fileToolKit  *agentbase.FileToolKit
+	logToolKit   *agentbase.LogToolKit
 	remoteCaller *agentbase.RemoteCaller
 }
 
@@ -26,6 +27,7 @@ type Connection struct {
 func NewConnection(cfg *Config, agentID string) *Connection {
 	// FileToolKit 用于 ExecEnvBash（不需要 project resolver）
 	ftk := agentbase.NewFileToolKit("Exec", nil)
+	ltk := agentbase.NewLogToolKit("Exec", "execute-code-agent.log")
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
@@ -35,7 +37,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		Description: "Python代码执行、MCP工具批量调用",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       buildToolDefs(ftk),
+		Tools:       buildToolDefs(ftk, ltk),
 	}
 
 	c := &Connection{
@@ -43,6 +45,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		cfg:         cfg,
 		toolCatalog: agentbase.NewToolCatalog(cfg.GatewayHTTP),
 		fileToolKit: ftk,
+		logToolKit:  ltk,
 	}
 
 	// 创建 RemoteCaller
@@ -64,7 +67,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 // ========================= 工具注册 =========================
 
 // buildToolDefs 构建 execute-code-agent 注册的 UAP 工具
-func buildToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
+func buildToolDefs(ftk *agentbase.FileToolKit, ltk *agentbase.LogToolKit) []uap.ToolDef {
 	tools := []uap.ToolDef{
 		{
 			Name:        "ExecuteCode",
@@ -96,6 +99,8 @@ func buildToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 			tools = append(tools, td)
 		}
 	}
+	// 追加日志查询工具
+	tools = append(tools, ltk.ToolDefs()...)
 	return tools
 }
 
@@ -162,6 +167,15 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 				RequestID: msg.ID,
 				Success:   res.Success,
+				Result:    result,
+			})
+			return
+		}
+		// 尝试 LogToolKit 处理
+		if result, handled := c.logToolKit.HandleTool(payload.ToolName, ftkArgs); handled {
+			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   true,
 				Result:    result,
 			})
 			return

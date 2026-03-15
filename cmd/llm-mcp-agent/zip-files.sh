@@ -25,7 +25,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" llm-mcp-agent.json
+zip -r "${OUTPUT}" "$BINNAME" llm-mcp-agent.json publish.sh workspace/
 
 # 清理编译产物
 rm -f "$BINNAME"

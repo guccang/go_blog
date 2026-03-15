@@ -3,7 +3,7 @@ set -e  # 遇到错误立即退出
 
 # 获取时间戳
 TIMESTAMP=$(date +"%Y-%m-%d-%H_%M_%S")
-OUTPUT="codegen_agent_${TIMESTAMP}.zip"
+OUTPUT="execute-code-agent_${TIMESTAMP}.zip"
 
 # 交叉编译支持：deploy-agent 会在需要时设置 GOOS/GOARCH
 # 未设置时使用 Go 默认值（当前平台）
@@ -25,7 +25,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" agent.conf.example settings/
+zip -r "${OUTPUT}" "$BINNAME" execute-code-agent.json publish.sh env.json settings/ 
 
 # 清理编译产物
 rm -f "$BINNAME"
