@@ -20,13 +20,11 @@ type Connection struct {
 	cfg         *AgentConfig
 	agent       *Agent
 	fileToolKit *agentbase.FileToolKit
-	logToolKit  *agentbase.LogToolKit
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 	fileToolKit := agentbase.NewFileToolKit("Codegen", agent.findProjectPath)
-	logToolKit := agentbase.NewLogToolKit("Codegen", "codegen-agent.log")
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
@@ -36,7 +34,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Description: "代码编写、项目管理、编码会话",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       append(append(buildCodegenToolDefs(), fileToolKit.ToolDefs()...), logToolKit.ToolDefs()...),
+		Tools:       append(buildCodegenToolDefs(), fileToolKit.ToolDefs()...),
 		Meta: map[string]any{
 			"workspaces": cfg.Workspaces,
 		},
@@ -47,7 +45,6 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		cfg:         cfg,
 		agent:       agent,
 		fileToolKit: fileToolKit,
-		logToolKit:  logToolKit,
 	}
 
 	// 注册消息处理器
@@ -294,14 +291,6 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolStopSession(args)
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
-			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-				RequestID: msg.ID,
-				Success:   true,
-				Result:    result,
-			})
-			return
-		}
-		if result, handled := c.logToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 				RequestID: msg.ID,
 				Success:   true,

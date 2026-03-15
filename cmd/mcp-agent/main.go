@@ -50,7 +50,7 @@ func main() {
 
 	// 创建连接
 	currentConn = NewConnection(cfg, agentID, mcpMgr, cfgPath)
-	currentConn.Client.Tools = append(currentConn.logToolKit.ToolDefs(), tools...)
+	currentConn.Client.Tools = tools
 
 	// 信号处理
 	sigCh := make(chan os.Signal, 1)
@@ -107,7 +107,7 @@ func handleReload() {
 
 	// 重建工具列表并更新 gateway 注册
 	tools := mcpMgr.BuildUAPTools()
-	currentConn.Client.Tools = append(currentConn.logToolKit.ToolDefs(), tools...)
+	currentConn.Client.Tools = tools
 
 	// 更新配置引用
 	currentCfg = newCfg
@@ -119,7 +119,7 @@ func handleReload() {
 	oldConn.Stop()
 
 	newConn := NewConnection(newCfg, oldConn.AgentID, mcpMgr, cfgPath)
-	newConn.Client.Tools = append(newConn.logToolKit.ToolDefs(), tools...)
+	newConn.Client.Tools = tools
 	currentConn = newConn
 
 	// 在新 goroutine 中启动新连接

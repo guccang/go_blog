@@ -14,16 +14,13 @@ import (
 type Connection struct {
 	*agentbase.AgentBase
 
-	cfg        *Config
-	mcpMgr     *MCPManager
-	cfgPath    string // 配置文件路径（热加载用）
-	logToolKit *agentbase.LogToolKit
+	cfg     *Config
+	mcpMgr  *MCPManager
+	cfgPath string // 配置文件路径（热加载用）
 }
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath string) *Connection {
-	logToolKit := agentbase.NewLogToolKit("Mcp", "mcp-agent.log")
-
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
 		AgentID:     agentID,
@@ -32,15 +29,14 @@ func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath stri
 		Description: "外部 MCP Server 桥接代理，将社区 MCP 工具接入 UAP gateway",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    10,
-		Tools:       logToolKit.ToolDefs(), // 启动后由 mcpMgr.BuildUAPTools() 追加
+		Tools:       nil, // 启动后由 mcpMgr.BuildUAPTools() 设置
 	}
 
 	c := &Connection{
-		AgentBase:  agentbase.NewAgentBase(baseCfg),
-		cfg:        cfg,
-		mcpMgr:     mcpMgr,
-		cfgPath:    cfgPath,
-		logToolKit: logToolKit,
+		AgentBase: agentbase.NewAgentBase(baseCfg),
+		cfg:       cfg,
+		mcpMgr:    mcpMgr,
+		cfgPath:   cfgPath,
 	}
 
 	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
@@ -68,13 +64,6 @@ func (c *Connection) handleToolCallMsg(msg *uap.Message) {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, "invalid arguments"))
 			return
 		}
-	}
-
-	// 先尝试 LogToolKit 处理
-	if result, handled := c.logToolKit.HandleTool(payload.ToolName, args); handled {
-		log.Printf("[Connection] tool %s handled by logToolKit", payload.ToolName)
-		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolResult(msg.ID, result, ""))
-		return
 	}
 
 	// 带超时的工具调用

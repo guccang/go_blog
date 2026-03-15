@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"agentbase"
 	"uap"
 )
 
@@ -38,9 +37,6 @@ type Bridge struct {
 	cfg    *Config
 	client *uap.Client
 
-	// 日志查询工具
-	logToolKit *agentbase.LogToolKit
-
 	// 工具目录
 	toolCatalog map[string]string // tool_name → agent_id
 	llmTools    []LLMTool         // LLM function calling 工具列表
@@ -66,9 +62,7 @@ func NewBridge(cfg *Config) *Bridge {
 	client := uap.NewClient(cfg.GatewayURL, cfg.AgentID, "llm_mcp", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
 	client.Capacity = 10
-
-	logToolKit := agentbase.NewLogToolKit("LlmMcp", "llm-mcp-agent.log")
-	client.Tools = logToolKit.ToolDefs() // 注册自身日志查询工具
+	client.Tools = nil // llm-mcp-agent 不对外注册工具
 
 	// 初始化微信对话管理器
 	timeout := time.Duration(cfg.WechatSessionTimeoutMin) * time.Minute
@@ -87,7 +81,6 @@ func NewBridge(cfg *Config) *Bridge {
 	b := &Bridge{
 		cfg:           cfg,
 		client:        client,
-		logToolKit:    logToolKit,
 		toolCatalog:   make(map[string]string),
 		agentInfo:     make(map[string]AgentInfo),
 		agentTools:    make(map[string][]LLMTool),
@@ -702,30 +695,6 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			go b.handleWechatMessage(msg.From, payload.To, payload.Content)
 		} else {
 			log.Printf("[Bridge] unhandled notify channel: %s", payload.Channel)
-		}
-
-	case uap.MsgToolCall:
-		var payload uap.ToolCallPayload
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			log.Printf("[Bridge] invalid tool_call payload: %v", err)
-			return
-		}
-		var args map[string]interface{}
-		if len(payload.Arguments) > 0 {
-			json.Unmarshal(payload.Arguments, &args)
-		}
-		if result, handled := b.logToolKit.HandleTool(payload.ToolName, args); handled {
-			b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-				RequestID: msg.ID,
-				Success:   true,
-				Result:    result,
-			})
-		} else {
-			b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-				RequestID: msg.ID,
-				Success:   false,
-				Error:     fmt.Sprintf("unknown tool: %s", payload.ToolName),
-			})
 		}
 
 	case uap.MsgToolResult:
