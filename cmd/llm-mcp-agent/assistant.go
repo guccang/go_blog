@@ -273,6 +273,7 @@ print(f"待办: {todos}")
 4. 单一工具调用（如只调用 RawCurrentDate）可以直接调用，不需要 ExecuteCode
 5. **工具返回值类型不确定**：call_tool 返回值可能是 str（纯文本/markdown）或 dict/list（结构化数据），**绝对不要假设返回类型**。正确做法：先 print(type(result), result[:200]) 查看格式，或者直接 print(result) 输出原始内容让我来分析
 6. **禁止对字符串调用 .get()/.items() 等 dict 方法**，必须先用 isinstance(result, dict) 判断类型
+7. **ExecuteCode 失败必须修正重试**：当 ExecuteCode 返回 Python syntax error 或运行时错误时，**必须分析错误原因、修正 Python 代码后再次调用 ExecuteCode**。严禁因为代码报错就放弃沙箱执行，转而逐个直接调用工具或用其他方式绕过。沙箱是数据处理的正确路径，代码错误只需要修复代码本身
 
 **何时直接调用工具（不用 ExecuteCode）：**
 - 只需要调用 1 个工具

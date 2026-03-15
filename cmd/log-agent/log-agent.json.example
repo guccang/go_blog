@@ -1,0 +1,19 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "agent_name": "log-agent",
+  "auth_token": "",
+  "log_sources": {
+    "gameserver": {
+      "path": "/home/gameserver/logs",
+      "description": "游戏服务器运行日志"
+    },
+    "go_blog": {
+      "path": "/data/program/go_blog",
+      "description": "Go Blog 应用日志"
+    },
+    "nginx": {
+      "path": "/var/log/nginx",
+      "description": "Nginx 访问和错误日志"
+    }
+  }
+}

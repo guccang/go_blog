@@ -84,6 +84,7 @@ func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 // defaultSubtaskPrompt 子任务 system prompt 的默认内容（workspace/SUBTASK.md 不存在时的 fallback）
 var defaultSubtaskPrompt = `你正在执行一个子任务。必须通过调用工具来完成任务。
 如果工具调用失败，请分析原因并尝试修正参数后重试。不要仅用文字回复而不调用工具。
+特别是 ExecuteCode 失败时（syntax error、运行时错误），必须修正 Python 代码后再次调用 ExecuteCode，禁止放弃沙箱执行而改用其他方式。
 直接执行，不要反问。`
 
 // Orchestrator 任务编排器

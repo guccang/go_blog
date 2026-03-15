@@ -38,6 +38,11 @@
             "build_platform": "linux"
         },
         {
+            "project": "log-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
             "project": "gateway",
             "target": "ssh-prod",
             "build_platform": "linux"

@@ -1,0 +1,35 @@
+{
+  "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+  "agent_name": "log-agent-hw",
+  "auth_token": "guccang@blog.guccang.cn",
+  "log_sources": {
+    "gateway": {
+      "path": "/data/program/go/go_blog/cmd/gateway",
+      "description": "gateway日志"
+    },
+    "blog-agent": {
+      "path": "/data/program/go/go_blog/cmd/blog-agent/logs",
+      "description": "blog-agent博客日志"
+    },
+    "llm-mcp-agent": {
+      "path": "/data/program/go/go_blog/cmd/llm-mcp-agent",
+      "description": "llm-mcp-agent日志,llm日志"
+    },
+    "env-agent": {
+      "path": "/data/program/go/go_blog/cmd/env-agent",
+      "description": "evn-agent日志"
+	},
+    "wechat-agent": {
+      "path": "/data/program/go/go_blog/cmd/wechat-agent",
+      "description": "wechat-agent日志,微信日志"
+	},
+    "execute-code-agent": {
+      "path": "/data/program/go/go_blog/cmd/execute-code-agent",
+      "description": "execute-agent日志,沙箱日志"
+	},
+    "system": {
+      "path": "/var/log/",
+      "description": "系统日志,崩溃日志"
+	}
+  }
+}

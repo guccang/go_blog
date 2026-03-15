@@ -65,7 +65,7 @@ func (lt *LogToolKit) HandleTool(toolName string, args map[string]interface{}) (
 	return lt.toolReadLog(args), true
 }
 
-// toolReadLog 查询日志文件
+// toolReadLog 查询日志文件（委托给公共函数 ReadLogFile）
 func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
 	// 解析参数
 	lines := 200
@@ -82,14 +82,12 @@ func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
 
 	// 解析时间范围
 	var startTime, endTime time.Time
-	var hasTimeFilter bool
 	if startTimeStr != "" {
 		t, err := parseLogTime(startTimeStr)
 		if err != nil {
 			return marshalResult(false, fmt.Sprintf("start_time 格式错误: %v", err), nil)
 		}
 		startTime = t
-		hasTimeFilter = true
 	}
 	if endTimeStr != "" {
 		t, err := parseLogTime(endTimeStr)
@@ -97,11 +95,26 @@ func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
 			return marshalResult(false, fmt.Sprintf("end_time 格式错误: %v", err), nil)
 		}
 		endTime = t
-		hasTimeFilter = true
 	}
 
+	return ReadLogFile(lt.logPath, lines, keyword, startTime, endTime)
+}
+
+// ReadLogFile 通用日志查询（公共函数）
+// 从指定文件读取最后 lines 行，支持关键词和时间范围过滤
+// 返回 JSON 格式结果字符串
+func ReadLogFile(filePath string, lines int, keyword string, startTime, endTime time.Time) string {
+	if lines <= 0 {
+		lines = 200
+	}
+	if lines > 2000 {
+		lines = 2000
+	}
+
+	hasTimeFilter := !startTime.IsZero() || !endTime.IsZero()
+
 	// 打开日志文件
-	f, err := os.Open(lt.logPath)
+	f, err := os.Open(filePath)
 	if err != nil {
 		return marshalResult(false, fmt.Sprintf("打开日志文件失败: %v", err), nil)
 	}
@@ -117,7 +130,7 @@ func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
 			"content":       "",
 			"matched_lines": 0,
 			"truncated":     false,
-			"log_path":      lt.logPath,
+			"log_path":      filePath,
 		})
 	}
 
@@ -170,7 +183,7 @@ func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
 		"content":       content,
 		"matched_lines": len(matched),
 		"truncated":     truncated,
-		"log_path":      lt.logPath,
+		"log_path":      filePath,
 	})
 }
 
