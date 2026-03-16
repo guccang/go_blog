@@ -380,7 +380,34 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		tools = append(tools, planAndExecuteTool)
 	}
 
-	// 4. LLM 循环
+	// ★ Skill 命中 → 强制走任务拆解路径（跳过 LLM 简单循环）
+	if len(selectedSkills) > 0 && !ctx.NoTools {
+		log.Printf("[processTask] ★ skill 命中 %d 个，强制进入任务拆解", len(selectedSkills))
+		var skillNames []string
+		for _, s := range selectedSkills {
+			skillNames = append(skillNames, s.Name)
+		}
+		ctx.Sink.OnEvent("route_info", fmt.Sprintf("Skill 命中: %s → 强制任务拆解", strings.Join(skillNames, ", ")))
+
+		result := b.handleComplexTask(ctx, rootSession, store, tools, "", selectedSkills)
+		ctx.Sink.OnChunk(result)
+
+		// 保存会话已在 handleComplexTask 内完成
+		totalDuration := time.Since(taskStart)
+		log.Printf("[processTask] ◀ Skill 任务拆解完成 taskID=%s duration=%v resultLen=%d",
+			ctx.TaskID, totalDuration, len(result))
+
+		// 触发任务结束 hook
+		rootSession.mu.Lock()
+		allToolCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
+		copy(allToolCalls, rootSession.ToolCalls)
+		rootSession.mu.Unlock()
+		b.hooks.FireTaskEnd(ctx, result, allToolCalls, nil)
+
+		return result, nil
+	}
+
+	// 6. LLM 循环（无 skill 命中时走简单路径）
 	maxIter := b.cfg.MaxToolIterations
 	if maxIter <= 0 {
 		maxIter = 15
