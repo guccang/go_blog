@@ -103,11 +103,15 @@ func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTo
 	log.Printf("[LLM-Context][%s] messages 数量: %d", tag, len(messages))
 
 	for i, m := range messages {
-		// 打印角色和内容
+		// 打印角色和内容（system 消息打印更多以便看到完整 skill 指引）
 		contentPreview := m.Content
 		runes := []rune(contentPreview)
-		if len(runes) > 500 {
-			contentPreview = string(runes[:500]) + fmt.Sprintf("...(%d chars total)", len(runes))
+		maxPreview := 500
+		if m.Role == "system" {
+			maxPreview = 3000
+		}
+		if len(runes) > maxPreview {
+			contentPreview = string(runes[:maxPreview]) + fmt.Sprintf("...(%d chars total)", len(runes))
 		}
 		log.Printf("[LLM-Context][%s] msg[%d] role=%s content_len=%d content:\n%s",
 			tag, i, m.Role, len(m.Content), contentPreview)

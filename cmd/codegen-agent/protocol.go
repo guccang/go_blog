@@ -29,7 +29,7 @@ type RegisterPayload struct {
 	Name             string   `json:"name"`
 	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
 	Workspaces       []string `json:"workspaces"`
-	Projects         []string `json:"projects"`
+	Projects         []ProjectInfo `json:"projects"`
 	Models           []string `json:"models,omitempty"`            // 兼容旧版
 	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
 	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
@@ -50,7 +50,7 @@ type HeartbeatPayload struct {
 	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
 	ActiveSessions   int      `json:"active_sessions"`
 	Load             float64  `json:"load"`
-	Projects         []string `json:"projects,omitempty"`
+	Projects         []ProjectInfo `json:"projects,omitempty"`
 	Models           []string `json:"models,omitempty"`            // 兼容旧版
 	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
 	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置

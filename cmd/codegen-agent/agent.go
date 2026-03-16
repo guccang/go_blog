@@ -86,8 +86,14 @@ func (a *Agent) LoadFactor() float64 {
 }
 
 // ScanProjects 扫描所有 workspace 下的项目目录
-func (a *Agent) ScanProjects() []string {
-	var projects []string
+// ProjectInfo 项目信息（名称+路径）
+type ProjectInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func (a *Agent) ScanProjects() []ProjectInfo {
+	var projects []ProjectInfo
 	seen := make(map[string]bool)
 	for _, ws := range a.cfg.Workspaces {
 		entries, err := os.ReadDir(ws)
@@ -100,7 +106,10 @@ func (a *Agent) ScanProjects() []string {
 			}
 			if !seen[entry.Name()] {
 				seen[entry.Name()] = true
-				projects = append(projects, entry.Name())
+				projects = append(projects, ProjectInfo{
+					Name: entry.Name(),
+					Path: filepath.Join(ws, entry.Name()),
+				})
 			}
 		}
 	}
