@@ -32,12 +32,16 @@ type toolResultWithFrom struct {
 	FromID string // 返回结果的 agent ID
 }
 
-// AgentInfo agent 元数据（用于两级路由）
+// AgentInfo agent 元数据（用于两级路由 + 能力描述注入）
 type AgentInfo struct {
-	ID          string
-	Name        string
-	Description string
-	ToolNames   []string
+	ID               string
+	Name             string
+	Description      string
+	ToolNames        []string
+	Models           []string // 合并后的模型配置名列表（如 default, deepseek）
+	ClaudeCodeModels []string // Claude Code 可用配置
+	OpenCodeModels   []string // OpenCode 可用配置
+	CodingTools      []string // 可用编码工具（claudecode, opencode）
 }
 
 // Bridge UAP 客户端 + 工具路由层
@@ -334,7 +338,7 @@ func (b *Bridge) DiscoverTools() error {
 	return nil
 }
 
-// DiscoverAgents 从 gateway 获取所有在线 agent 的元数据
+// DiscoverAgents 从 gateway 获取所有在线 agent 的元数据（含 meta 扩展字段）
 func (b *Bridge) DiscoverAgents() error {
 	url := fmt.Sprintf("%s/api/gateway/agents", b.cfg.GatewayHTTP)
 
@@ -352,11 +356,12 @@ func (b *Bridge) DiscoverAgents() error {
 	var result struct {
 		Success bool `json:"success"`
 		Agents  []struct {
-			AgentID     string   `json:"agent_id"`
-			AgentType   string   `json:"agent_type"`
-			Name        string   `json:"name"`
-			Description string   `json:"description"`
-			Tools       []string `json:"tools"`
+			AgentID     string         `json:"agent_id"`
+			AgentType   string         `json:"agent_type"`
+			Name        string         `json:"name"`
+			Description string         `json:"description"`
+			Tools       []string       `json:"tools"`
+			Meta        map[string]any `json:"meta"`
 		} `json:"agents"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -371,12 +376,22 @@ func (b *Bridge) DiscoverAgents() error {
 		if a.AgentID == b.cfg.AgentID {
 			continue // 跳过自身
 		}
-		infoMap[a.AgentID] = AgentInfo{
+		info := AgentInfo{
 			ID:          a.AgentID,
 			Name:        a.Name,
 			Description: a.Description,
 			ToolNames:   a.Tools,
 		}
+		// 从 meta 提取动态能力信息
+		if a.Meta != nil {
+			info.Models = parseStringSlice(a.Meta["models"])
+			info.ClaudeCodeModels = parseStringSlice(a.Meta["claudecode_models"])
+			info.OpenCodeModels = parseStringSlice(a.Meta["opencode_models"])
+			info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
+		}
+		infoMap[a.AgentID] = info
+		log.Printf("[Bridge] agent: %s (%s) tools=%v models=%v coding_tools=%v",
+			a.Name, a.AgentID, a.Tools, info.Models, info.CodingTools)
 	}
 
 	b.catalogMu.Lock()
@@ -387,7 +402,28 @@ func (b *Bridge) DiscoverAgents() error {
 	return nil
 }
 
-// getAgentDescriptionBlock 构建 agent 描述文本用于注入系统提示
+// parseStringSlice 从 any (interface{}) 解析 []string，兼容 JSON 反序列化的 []interface{}
+func parseStringSlice(v any) []string {
+	if v == nil {
+		return nil
+	}
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			result = append(result, s)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// getAgentDescriptionBlock 构建 agent 描述文本用于注入系统提示（含可用模型和工具信息）
 func (b *Bridge) getAgentDescriptionBlock() string {
 	b.catalogMu.RLock()
 	defer b.catalogMu.RUnlock()
@@ -403,6 +439,13 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
+		// 注入可用模型和编码工具信息，让 LLM 知道合法参数值
+		if len(info.CodingTools) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 可用编码工具(tool参数): %s\n", strings.Join(info.CodingTools, ", ")))
+		}
+		if len(info.Models) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 可用模型配置(model参数): %s\n", strings.Join(info.Models, ", ")))
+		}
 	}
 	return sb.String()
 }
@@ -586,6 +629,18 @@ func (b *Bridge) getToolAgent(toolName string) (string, bool) {
 	defer b.catalogMu.RUnlock()
 	agentID, ok := b.toolCatalog[toolName]
 	return agentID, ok
+}
+
+// getSiblingTools 获取与指定工具同 agent 的所有兄弟工具
+// 用于工具业务失败时扩展可选工具集，让 LLM 自行决策是修复参数重试还是切换替代工具
+func (b *Bridge) getSiblingTools(toolName string) []LLMTool {
+	agentID, ok := b.getToolAgent(toolName)
+	if !ok {
+		return nil
+	}
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+	return b.agentTools[agentID]
 }
 
 // getLLMTools 获取 LLM 工具列表
@@ -785,11 +840,22 @@ func collectSkillTools(selectedSkills []SkillEntry, allTools []LLMTool) []LLMToo
 	}
 
 	var result []LLMTool
+	var matchedNames []string
 	for _, tool := range allTools {
 		if needSet[tool.Function.Name] || needSet[unsanitizeToolName(tool.Function.Name)] {
 			result = append(result, tool)
+			matchedNames = append(matchedNames, unsanitizeToolName(tool.Function.Name))
 		}
 	}
+
+	// 日志：skill 声明的工具 vs 实际匹配到的工具
+	var skillSummary []string
+	for _, skill := range selectedSkills {
+		skillSummary = append(skillSummary, fmt.Sprintf("%s→[%s]", skill.Name, strings.Join(skill.Tools, ",")))
+	}
+	log.Printf("[collectSkillTools] skills: %s → matched %d tools: %v",
+		strings.Join(skillSummary, ", "), len(result), matchedNames)
+
 	return result
 }
 
@@ -807,22 +873,44 @@ func (b *Bridge) mergeCapabilityTools(selection *CapabilitySelection, allTools [
 
 	// 1. agent 工具
 	agentTools := b.getToolsForAgents(selection.Agents)
+	agentCount := 0
 	for _, t := range agentTools {
+		before := len(merged)
 		addTool(t)
+		if len(merged) > before {
+			agentCount++
+		}
 	}
 
 	// 2. skill 工具
 	skillTools := collectSkillTools(selection.Skills, allTools)
+	skillCount := 0
 	for _, t := range skillTools {
+		before := len(merged)
 		addTool(t)
+		if len(merged) > before {
+			skillCount++
+		}
 	}
 
 	// 3. 基础工具始终保留（ExecuteCode + 文件工具）
+	baseCount := 0
 	for _, t := range allTools {
 		if t.Function.Name == "ExecuteCode" || isFileToolName(t.Function.Name) {
+			before := len(merged)
 			addTool(t)
+			if len(merged) > before {
+				baseCount++
+			}
 		}
 	}
+
+	var mergedNames []string
+	for _, t := range merged {
+		mergedNames = append(mergedNames, unsanitizeToolName(t.Function.Name))
+	}
+	log.Printf("[mergeCapabilityTools] agent=%d skill=%d base=%d → total=%d tools=%v",
+		agentCount, skillCount, baseCount, len(merged), mergedNames)
 
 	return merged
 }
@@ -987,7 +1075,7 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResul
 	select {
 	case result := <-ch:
 		if !result.Success {
-			return &ToolCallResult{AgentID: agentID, FromID: result.FromID},
+			return &ToolCallResult{Result: result.Result, AgentID: agentID, FromID: result.FromID},
 				fmt.Errorf("tool error: %s", result.Error)
 		}
 		log.Printf("[Bridge] tool_result ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)

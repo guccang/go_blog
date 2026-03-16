@@ -211,6 +211,11 @@ var defaultTaskGuide = `
 1. 分析错误原因，修正参数后重试
 2. 如重试仍失败，尝试替代方案
 3. 如无替代方案，向用户说明失败原因和建议
+
+**ExecuteCode 错误的特殊规则：**
+- ExecuteCode 返回 Python syntax error 或运行时错误时，**必须修正代码后再次调用 ExecuteCode**
+- **严禁**因为代码报错就放弃沙箱，转而逐个直接调用工具
+- 代码错误只需要修复代码本身，沙箱执行路径不可绕过
 `
 
 // buildAssistantSystemPrompt 构建 assistant 的系统提示（含任务拆解指引 + skill 注入）
@@ -224,6 +229,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	today := time.Now().Format("2006-01-02")
 	sb.WriteString(fmt.Sprintf("account: %s\n", account))
 	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
+	sb.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens))
 
 	// 注入 agent 能力描述
 	agentBlock := b.getAgentDescriptionBlock()
@@ -250,46 +256,57 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		sb.WriteString(skillBlock)
 	}
 
-	// 并发获取上下文数据
-	type ctxResult struct {
-		label string
-		data  string
+	// 只在命中 data-query skill 或无 skill 命中时才注入上下文数据
+	needContextData := len(selectedSkills) == 0 // 无 skill 命中时保留（兼容简单问答）
+	for _, s := range selectedSkills {
+		if s.Name == "data-query" {
+			needContextData = true
+			break
+		}
 	}
 
-	ch := make(chan ctxResult, 2)
-	done := make(chan struct{}, 2)
-
-	go func() {
-		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-		data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
-		if err == nil && data != "" {
-			ch <- ctxResult{label: "今日待办", data: data}
+	if needContextData {
+		// 并发获取上下文数据
+		type ctxResult struct {
+			label string
+			data  string
 		}
-		done <- struct{}{}
-	}()
 
-	go func() {
-		args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-		data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
-		if err == nil && data != "" {
-			ch <- ctxResult{label: "今日运动", data: data}
+		ch := make(chan ctxResult, 2)
+		done := make(chan struct{}, 2)
+
+		go func() {
+			args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+			data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
+			if err == nil && data != "" {
+				ch <- ctxResult{label: "今日待办", data: data}
+			}
+			done <- struct{}{}
+		}()
+
+		go func() {
+			args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+			data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
+			if err == nil && data != "" {
+				ch <- ctxResult{label: "今日运动", data: data}
+			}
+			done <- struct{}{}
+		}()
+
+		// 等待两个 goroutine 完成
+		<-done
+		<-done
+		close(ch)
+
+		var ctxParts []string
+		for r := range ch {
+			ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
 		}
-		done <- struct{}{}
-	}()
 
-	// 等待两个 goroutine 完成
-	<-done
-	<-done
-	close(ch)
-
-	var ctxParts []string
-	for r := range ch {
-		ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
-	}
-
-	if len(ctxParts) > 0 {
-		sb.WriteString("\n用户当前数据:\n")
-		sb.WriteString(strings.Join(ctxParts, "\n\n"))
+		if len(ctxParts) > 0 {
+			sb.WriteString("\n用户当前数据:\n")
+			sb.WriteString(strings.Join(ctxParts, "\n\n"))
+		}
 	}
 
 	return sb.String()

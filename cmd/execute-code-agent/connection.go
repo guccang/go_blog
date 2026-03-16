@@ -212,6 +212,9 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 
 	log.Printf("[ExecuteCode] done success=%v exit_code=%d duration=%dms tool_calls=%d",
 		execResult.Success, execResult.ExitCode, execResult.DurationMs, len(execResult.ToolCalls))
+	if !execResult.Success {
+		log.Printf("[ExecuteCode] error_type=%s stderr=%s", execResult.ErrorType, truncate(execResult.Stderr, 500))
+	}
 
 	// 构建返回值 — 统一返回结构化 JSON（含 tool_calls 调用链）
 	stdout := execResult.Stdout

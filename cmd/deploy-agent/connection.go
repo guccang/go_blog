@@ -44,7 +44,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		Description: "项目部署、流水线管理、服务器操作",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       append(buildDeployToolDefs(cfg), fileToolKit.ToolDefs()...),
+		Tools:       buildDeployToolDefs(cfg, fileToolKit),
 		Meta: map[string]any{
 			"projects": cfg.ProjectNames(),
 		},
@@ -496,7 +496,7 @@ func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 // ========================= Tool 自注册 =========================
 
 // buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表
-func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
+func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.ToolDef {
 	// 动态生成 ssh_host 参数描述，嵌入真实可用服务器列表
 	sshHostDesc := "SSH 目标，提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件"
 	if len(cfg.SSHHosts) > 0 {
@@ -504,7 +504,7 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 			strings.Join(cfg.SSHHosts, ", "))
 	}
 
-	return []uap.ToolDef{
+	defs := []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
 			Description: "列出所有可部署项目（含 workspace 发现的未配置项目）。configured=true 的项目可直接按名称部署；configured=false 的项目需要通过 adhoc 参数（ssh_host 等）部署",
@@ -546,6 +546,13 @@ func buildDeployToolDefs(cfg *DeployConfig) []uap.ToolDef {
 			}),
 		},
 	}
+	// 追加 DeployExecEnvBash（供 env-agent 远程执行环境检测命令）
+	for _, td := range ftk.ToolDefs() {
+		if strings.HasSuffix(td.Name, "ExecEnvBash") {
+			defs = append(defs, td)
+		}
+	}
+	return defs
 }
 
 // handleToolCall 处理来自 gateway 的工具调用请求

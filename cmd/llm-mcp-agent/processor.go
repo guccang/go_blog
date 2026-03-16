@@ -235,6 +235,42 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		if selection != nil && (len(selection.Agents) > 0 || len(selection.Skills) > 0) {
 			selectedSkills = selection.Skills
 
+			// 检测 skill 声明的工具是否在线，剔除工具完全缺失的 skill
+			if len(selectedSkills) > 0 {
+				onlineToolSet := make(map[string]bool, len(tools)*2)
+				for _, t := range tools {
+					onlineToolSet[t.Function.Name] = true
+					onlineToolSet[unsanitizeToolName(t.Function.Name)] = true
+				}
+
+				var availableSkills []SkillEntry
+				var missingSkills []string
+				for _, skill := range selectedSkills {
+					hasAnyTool := false
+					for _, toolName := range skill.Tools {
+						if onlineToolSet[toolName] || onlineToolSet[sanitizeToolName(toolName)] {
+							hasAnyTool = true
+							break
+						}
+					}
+					if hasAnyTool {
+						availableSkills = append(availableSkills, skill)
+					} else {
+						missingSkills = append(missingSkills, fmt.Sprintf("%s（需要: %s）", skill.Name, strings.Join(skill.Tools, ", ")))
+					}
+				}
+
+				if len(missingSkills) > 0 {
+					ctx.Sink.OnEvent("route_info", fmt.Sprintf("⚠️ 以下技能的工具不在线，已跳过:\n%s", strings.Join(missingSkills, "\n")))
+					log.Printf("[processTask] ⚠ skill 工具在线检测: %d→%d, 剔除: %v",
+						len(selectedSkills), len(availableSkills), missingSkills)
+				} else {
+					log.Printf("[processTask] skill 工具在线检测: %d 个 skill 全部在线", len(selectedSkills))
+				}
+				selectedSkills = availableSkills
+				selection.Skills = availableSkills
+			}
+
 			// 推送 Pass 1 路由结果
 			var routeDetail strings.Builder
 			routeDetail.WriteString(fmt.Sprintf("Agent: %s", strings.Join(selection.Agents, ", ")))
@@ -274,8 +310,12 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			ctx.Sink.OnEvent("route_info", "工具数量较少，跳过路由筛选")
 		}
 
-		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具路由: %d → %d", beforeCount, len(tools)))
-		log.Printf("[processTask] 工具路由: %d → %d", beforeCount, len(tools))
+		var routedToolNames []string
+		for _, t := range tools {
+			routedToolNames = append(routedToolNames, unsanitizeToolName(t.Function.Name))
+		}
+		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具路由: %d → %d\n%s", beforeCount, len(tools), strings.Join(routedToolNames, ", ")))
+		log.Printf("[processTask] 工具路由: %d → %d tools=%v", beforeCount, len(tools), routedToolNames)
 	}
 
 	// 4. 构建消息（使用路由后的 tools 做 skill 匹配）
@@ -471,6 +511,10 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			ToolCalls: toolCalls,
 		})
 
+		// 本轮业务失败记录（用于循环后扩展兄弟工具）
+		var bizFailedTools []string
+		var bizFailedMsgs []string
+
 		for tcIdx, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
@@ -480,7 +524,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				toolCallEvent = formatExecuteCodeEvent(tc.Function.Arguments, tcIdx+1, len(toolCalls))
 			}
 			ctx.Sink.OnEvent("tool_call", toolCallEvent)
-			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 200))
+			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 500))
 
 			start := time.Now()
 			tcResult, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
@@ -507,8 +551,20 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			success := true
 			if err != nil {
 				log.Printf("[processTask] ✗ 工具调用失败: %s →agent=%s duration=%v error=%v", originalName, toAgent, duration, err)
-				result = fmt.Sprintf("工具调用失败: %v", err)
 				success = false
+
+				// ExecuteCode 特殊处理：从结构化结果中提取 stderr 详情，让 LLM 能看到具体错误并修正代码
+				if originalName == "ExecuteCode" && result != "" {
+					stderr := extractExecuteCodeStderr(result)
+					if stderr != "" {
+						result = fmt.Sprintf("ExecuteCode 执行失败: %v\n错误详情:\n%s", err, stderr)
+					} else {
+						result = fmt.Sprintf("ExecuteCode 执行失败: %v\n原始结果: %s", err, truncate(result, 1000))
+					}
+				} else {
+					result = fmt.Sprintf("工具调用失败: %v", err)
+				}
+
 				ctx.Sink.OnEvent("tool_result", fmt.Sprintf("❌ %s 失败 →%s (%.1fs): %v", originalName, toAgent, duration.Seconds(), err))
 			} else if originalName == "ExecuteCode" {
 				log.Printf("[processTask] ← ExecuteCode返回: →agent=%s duration=%v stdoutLen=%d",
@@ -547,6 +603,19 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			rootSession.RecordToolCall(toolRecord)
 
+			// 检测业务失败（transport 成功但 result JSON 中 success:false）
+			if err == nil && tcResult != nil && tcResult.Result != "" {
+				var bizResult struct {
+					Success bool   `json:"success"`
+					Error   string `json:"error"`
+				}
+				if json.Unmarshal([]byte(tcResult.Result), &bizResult) == nil && !bizResult.Success && bizResult.Error != "" {
+					bizFailedTools = append(bizFailedTools, originalName)
+					bizFailedMsgs = append(bizFailedMsgs, bizResult.Error)
+					log.Printf("[processTask] 业务失败检测: %s → %s", originalName, bizResult.Error)
+				}
+			}
+
 			// 触发工具调用 hook
 			b.hooks.FireToolCall(ctx, toolRecord)
 
@@ -557,6 +626,36 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			rootSession.AppendMessage(toolMsg)
 			messages = append(messages, toolMsg)
+		}
+
+		// 工具业务失败 → 扩展同 agent 兄弟工具，让 LLM 自行决策修复参数或切换工具
+		if len(bizFailedTools) > 0 {
+			existingSet := make(map[string]bool, len(tools))
+			for _, t := range tools {
+				existingSet[t.Function.Name] = true
+			}
+			var newToolNames []string
+			for _, failedTool := range bizFailedTools {
+				siblings := b.getSiblingTools(failedTool)
+				for _, s := range siblings {
+					if !existingSet[s.Function.Name] {
+						existingSet[s.Function.Name] = true
+						tools = append(tools, s)
+						newToolNames = append(newToolNames, unsanitizeToolName(s.Function.Name))
+					}
+				}
+			}
+			if len(newToolNames) > 0 {
+				var failInfo strings.Builder
+				for idx, name := range bizFailedTools {
+					failInfo.WriteString(fmt.Sprintf("- %s: %s\n", name, bizFailedMsgs[idx]))
+				}
+				hint := fmt.Sprintf("以下工具返回业务失败:\n%s已补充同 Agent 的替代工具: %s\n你可以选择修复参数重试原工具，或使用替代工具完成任务。",
+					failInfo.String(), strings.Join(newToolNames, ", "))
+				messages = append(messages, Message{Role: "system", Content: hint})
+				log.Printf("[processTask] 业务失败扩展: 新增 %d 个兄弟工具: %v", len(newToolNames), newToolNames)
+				ctx.Sink.OnEvent("tool_expand", fmt.Sprintf("工具业务失败，补充兄弟工具: %s", strings.Join(newToolNames, ", ")))
+			}
 		}
 	}
 
@@ -697,10 +796,11 @@ func (b *Bridge) handleComplexTask(
 	}
 	sendPlanDetails(plan.SubTasks)
 
-	// ② LLM审查计划
+	// ② LLM审查计划（含 agent 能力信息，确保工具参数完整性）
 	sendEvent("plan_review_start", "正在审查计划参数...")
+	agentCapabilities := b.getAgentDescriptionBlock()
 	reviewStart := time.Now()
-	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account)
+	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account, agentCapabilities)
 	reviewDuration := time.Since(reviewStart)
 	if err != nil {
 		log.Printf("[ComplexTask] ⚠ 计划审查失败 error=%v，继续执行原计划", err)
@@ -818,7 +918,7 @@ func (b *Bridge) handleComplexTask(
 	// ⑤ 汇总（仅在无异步子任务时执行）
 	log.Printf("[ComplexTask] ── 开始汇总 ──")
 	synthStart := time.Now()
-	summary := orchestrator.Synthesize(rootSession, results, query, sendEvent)
+	summary := orchestrator.Synthesize(rootSession, childSessions, results, query, sendEvent)
 	synthDuration := time.Since(synthStart)
 	log.Printf("[ComplexTask] ✓ 汇总完成 duration=%v summaryLen=%d", synthDuration, len(summary))
 
@@ -1005,4 +1105,31 @@ func parseExecuteCodeResult(resultJSON string) (string, string) {
 	}
 
 	return execResult.Stdout, summary
+}
+
+// extractExecuteCodeStderr 从 ExecuteCode 的结构化结果中提取 stderr 错误详情
+// 用于 ExecuteCode 失败时将具体错误信息传递给 LLM，使其能修正代码
+func extractExecuteCodeStderr(resultJSON string) string {
+	// 尝试从 BuildToolResult 包装的 JSON 中提取
+	var wrapper struct {
+		Data struct {
+			Stderr    string `json:"stderr"`
+			ErrorType string `json:"error_type"`
+			Stdout    string `json:"stdout"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &wrapper); err == nil && wrapper.Data.Stderr != "" {
+		return wrapper.Data.Stderr
+	}
+
+	// 直接作为 execResult 解析
+	var execResult struct {
+		Stderr    string `json:"stderr"`
+		ErrorType string `json:"error_type"`
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &execResult); err == nil && execResult.Stderr != "" {
+		return execResult.Stderr
+	}
+
+	return ""
 }

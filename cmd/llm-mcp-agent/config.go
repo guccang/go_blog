@@ -58,7 +58,7 @@ func DefaultConfig() *Config {
 		LLM: LLMConfig{
 			BaseURL:     "https://api.deepseek.com/v1",
 			Model:       "deepseek-chat",
-			MaxTokens:   4096,
+			MaxTokens:   8192,
 			Temperature: 0.7,
 		},
 		DefaultAccount:       "ztj",

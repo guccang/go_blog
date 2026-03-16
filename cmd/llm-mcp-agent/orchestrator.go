@@ -28,6 +28,59 @@ type AsyncSessionInfo struct {
 	Message   string `json:"message"`
 }
 
+// extractKeyToolData 从子任务的 ToolCallRecords 中提取关键结构化字段
+// 用于 enriched sibling context，让后续依赖子任务能看到 project_dir、session_id 等数据
+func extractKeyToolData(session *TaskSession) string {
+	session.mu.Lock()
+	records := make([]ToolCallRecord, len(session.ToolCalls))
+	copy(records, session.ToolCalls)
+	session.mu.Unlock()
+
+	var parts []string
+	for _, rec := range records {
+		if !rec.Success || rec.Result == "" {
+			continue
+		}
+		// 尝试 JSON 解析 result
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(rec.Result), &parsed); err != nil {
+			continue
+		}
+
+		// 提取顶层或 data 子对象中的关键字段
+		keyFields := []string{"project_dir", "session_id", "url", "port", "project", "deploy_target"}
+		extracted := make(map[string]string)
+
+		// 顶层字段
+		for _, key := range keyFields {
+			if val, ok := parsed[key]; ok && val != nil {
+				extracted[key] = fmt.Sprintf("%v", val)
+			}
+		}
+		// data 子对象字段
+		if data, ok := parsed["data"].(map[string]interface{}); ok {
+			for _, key := range keyFields {
+				if val, ok := data[key]; ok && val != nil {
+					extracted[key] = fmt.Sprintf("%v", val)
+				}
+			}
+		}
+
+		if len(extracted) > 0 {
+			var kvs []string
+			for k, v := range extracted {
+				kvs = append(kvs, fmt.Sprintf("%s=%s", k, v))
+			}
+			parts = append(parts, fmt.Sprintf("- %s: %s", rec.ToolName, strings.Join(kvs, ", ")))
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return "关键工具返回数据（后续子任务必须引用，禁止编造）:\n" + strings.Join(parts, "\n")
+}
+
 // detectAsyncResults 从子任务的工具调用记录中检测异步会话
 // 通过工具响应中的 status 字段判断：completed/failed 视为同步，in_progress/started 视为异步
 func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
@@ -323,11 +376,18 @@ func (o *Orchestrator) Execute(
 
 		wg.Wait()
 
-		// 本层结果汇入总结果
+		// 本层结果汇入总结果（enriched: 追加工具结构化数据供后续子任务引用）
 		for _, r := range layerResults {
 			allResults = append(allResults, r)
 			if r.Status == "done" {
-				completedResults[r.SubTaskID] = r.Result
+				enrichedResult := r.Result
+				if cs, ok := childSessions[r.SubTaskID]; ok {
+					keyData := extractKeyToolData(cs)
+					if keyData != "" {
+						enrichedResult += "\n\n" + keyData
+					}
+				}
+				completedResults[r.SubTaskID] = enrichedResult
 			}
 		}
 
@@ -363,7 +423,16 @@ func (o *Orchestrator) executeSubTask(
 	systemContent.WriteString(subtaskPrompt)
 	systemContent.WriteString("\n\n")
 	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
-	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n\n", time.Now().Format("2006-01-02")))
+	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n", time.Now().Format("2006-01-02")))
+	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n\n", o.cfg.LLM.MaxTokens))
+
+	// 注入 agent 能力描述（可用模型/编码工具），让子任务 LLM 知道工具参数的合法值
+	agentBlock := o.bridge.getAgentDescriptionBlock()
+	if agentBlock != "" {
+		systemContent.WriteString(agentBlock)
+		systemContent.WriteString("\n")
+	}
+
 	systemContent.WriteString(fmt.Sprintf("## 子任务: %s\n", subtask.Title))
 	systemContent.WriteString(fmt.Sprintf("%s\n", subtask.Description))
 
@@ -414,11 +483,11 @@ func (o *Orchestrator) executeSubTask(
 		timeout = 120 * time.Second
 	}
 	// 子任务涉及长时间工具时，自动扩展超时
+	longTimeout := time.Duration(o.cfg.LongToolTimeoutSec) * time.Second
+	if longTimeout <= 0 {
+		longTimeout = 600 * time.Second
+	}
 	if hasLongRunningToolHint(subtask.ToolsHint) {
-		longTimeout := time.Duration(o.cfg.LongToolTimeoutSec) * time.Second
-		if longTimeout <= 0 {
-			longTimeout = 600 * time.Second
-		}
 		// 子任务超时 = 长工具超时 + 额外裕量（LLM 思考 + 多轮迭代）
 		if longTimeout+60*time.Second > timeout {
 			timeout = longTimeout + 60*time.Second
@@ -442,6 +511,13 @@ func (o *Orchestrator) executeSubTask(
 				Status:    "failed",
 				Error:     "subtask timeout",
 			}
+		}
+
+		// 子任务消息压缩（阈值更低，子任务 context 应更紧凑）
+		if len(messages) > 15 {
+			before := len(messages)
+			messages = compactProcessMessages(messages, 15)
+			log.Printf("[Orchestrator] subtask=%s 消息压缩: %d → %d", subtask.ID, before, len(messages))
 		}
 
 		log.Printf("[Orchestrator] subtask=%s 迭代 %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
@@ -482,17 +558,31 @@ func (o *Orchestrator) executeSubTask(
 
 		messages = append(messages, assistantMsg)
 
+		// 本轮业务失败记录（用于循环后扩展兄弟工具）
+		var bizFailedTools []string
+		var bizFailedMsgs []string
+
 		// 执行工具调用
 		for tcIdx, tc := range toolCalls {
 			originalName := unsanitizeToolName(tc.Function.Name)
 
 			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
-				subtask.ID, originalName, truncate(tc.Function.Arguments, 200))
+				subtask.ID, originalName, truncate(tc.Function.Arguments, 500))
 
 			start := time.Now()
 			tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
 			duration := time.Since(start)
+
+			// 动态扩展截止时间：实际调用了长时间工具时，确保后续迭代不会误判超时
+			if isLongRunningTool(originalName) {
+				newDeadline := time.Now().Add(longTimeout + 60*time.Second)
+				if newDeadline.After(deadline) {
+					log.Printf("[Orchestrator] subtask=%s 长工具 %s 耗时 %v，扩展截止时间 +%v",
+						subtask.ID, originalName, duration, longTimeout+60*time.Second)
+					deadline = newDeadline
+				}
+			}
 
 			var result string
 			var toAgent, fromAgent string
@@ -527,14 +617,65 @@ func (o *Orchestrator) executeSubTask(
 				Iteration:  i,
 			})
 
-			// 追加 tool 消息
+			// 检测业务失败（transport 成功但 result JSON 中 success:false）
+			if err == nil && result != "" {
+				var bizResult struct {
+					Success bool   `json:"success"`
+					Error   string `json:"error"`
+				}
+				if json.Unmarshal([]byte(result), &bizResult) == nil && !bizResult.Success && bizResult.Error != "" {
+					bizFailedTools = append(bizFailedTools, originalName)
+					bizFailedMsgs = append(bizFailedMsgs, bizResult.Error)
+					log.Printf("[Orchestrator] subtask=%s 业务失败检测: %s → %s", subtask.ID, originalName, bizResult.Error)
+				}
+			}
+
+			// ExecuteCode 特殊处理：只取 stdout，避免结构化 JSON 污染 context
+			if originalName == "ExecuteCode" && result != "" {
+				stdout, _ := parseExecuteCodeResult(result)
+				if stdout != "" {
+					result = stdout
+				}
+			}
+
+			// 追加 tool 消息（截断防止 context 膨胀）
 			toolMsg := Message{
 				Role:       "tool",
-				Content:    result,
+				Content:    truncateToolResult(result, i),
 				ToolCallID: tc.ID,
 			}
 			session.AppendMessage(toolMsg)
 			messages = append(messages, toolMsg)
+		}
+
+		// 工具业务失败 → 扩展同 agent 兄弟工具，让 LLM 自行决策修复参数或切换工具
+		if len(bizFailedTools) > 0 {
+			existingSet := make(map[string]bool, len(filteredTools))
+			for _, t := range filteredTools {
+				existingSet[t.Function.Name] = true
+			}
+			var newToolNames []string
+			for _, failedTool := range bizFailedTools {
+				siblings := o.bridge.getSiblingTools(failedTool)
+				for _, s := range siblings {
+					if !existingSet[s.Function.Name] {
+						existingSet[s.Function.Name] = true
+						filteredTools = append(filteredTools, s)
+						newToolNames = append(newToolNames, unsanitizeToolName(s.Function.Name))
+					}
+				}
+			}
+			if len(newToolNames) > 0 {
+				var failInfo strings.Builder
+				for idx, name := range bizFailedTools {
+					failInfo.WriteString(fmt.Sprintf("- %s: %s\n", name, bizFailedMsgs[idx]))
+				}
+				hint := fmt.Sprintf("以下工具返回业务失败:\n%s已补充同 Agent 的替代工具: %s\n你可以选择修复参数重试原工具，或使用替代工具完成任务。",
+					failInfo.String(), strings.Join(newToolNames, ", "))
+				messages = append(messages, Message{Role: "system", Content: hint})
+				log.Printf("[Orchestrator] subtask=%s 业务失败扩展: 新增 %d 个兄弟工具: %v", subtask.ID, len(newToolNames), newToolNames)
+				sendEvent("tool_expand", fmt.Sprintf("[%s] 工具业务失败，补充兄弟工具: %s", subtask.ID, strings.Join(newToolNames, ", ")))
+			}
 		}
 
 		// 最后一次迭代
@@ -571,6 +712,48 @@ func (o *Orchestrator) executeSubTask(
 			Status:    "failed",
 			Result:    finalText,
 			Error:     "子任务未调用任何工具即结束",
+		}
+	}
+
+	// 检测关键工具的业务级失败：tool 调用成功（网络层）但返回 JSON 中 success=false（业务层）
+	// 按时间倒序找到每个工具名的最后一次调用，若最后一次仍 success:false 则判定失败
+	var criticalFailure string
+	if len(toolCallRecords) > 0 {
+		lastCallByTool := make(map[string]ToolCallRecord)
+		for _, rec := range toolCallRecords {
+			if rec.Success {
+				lastCallByTool[rec.ToolName] = rec // 后出现的覆盖先出现的，即保留最后一次
+			}
+		}
+		for _, rec := range lastCallByTool {
+			if rec.Result == "" {
+				continue
+			}
+			var toolResult struct {
+				Success bool   `json:"success"`
+				Error   string `json:"error"`
+			}
+			if json.Unmarshal([]byte(rec.Result), &toolResult) == nil && !toolResult.Success && toolResult.Error != "" {
+				criticalFailure = fmt.Sprintf("%s 业务失败: %s", rec.ToolName, toolResult.Error)
+				break
+			}
+		}
+	}
+
+	if criticalFailure != "" {
+		session.SetStatus("failed")
+		session.SetError(criticalFailure)
+		o.store.Save(session)
+
+		log.Printf("[Orchestrator] ◀ 子任务业务级失败 id=%s reason=%s duration=%v",
+			subtask.ID, criticalFailure, time.Since(subtaskStart))
+
+		return SubTaskResult{
+			SubTaskID: subtask.ID,
+			Title:     subtask.Title,
+			Status:    "failed",
+			Result:    finalText,
+			Error:     criticalFailure,
 		}
 	}
 
@@ -622,6 +805,7 @@ func (o *Orchestrator) handleSubTaskFailure(
 // Synthesize 汇总所有子任务结果
 func (o *Orchestrator) Synthesize(
 	rootSession *TaskSession,
+	childSessions map[string]*TaskSession,
 	results []SubTaskResult,
 	originalQuery string,
 	sendEvent func(event, text string),
@@ -657,6 +841,39 @@ func (o *Orchestrator) Synthesize(
 		}
 	}
 
+	// 注入关键工具调用记录（防止 LLM 编造数据）
+	rootSession.mu.Lock()
+	allToolCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
+	copy(allToolCalls, rootSession.ToolCalls)
+	rootSession.mu.Unlock()
+
+	// 同时从子任务会话中收集工具调用记录
+	for _, r := range results {
+		if cs, ok := childSessions[r.SubTaskID]; ok {
+			cs.mu.Lock()
+			allToolCalls = append(allToolCalls, cs.ToolCalls...)
+			cs.mu.Unlock()
+		}
+	}
+
+	if len(allToolCalls) > 0 {
+		// 去重：每个工具只保留最后一次成功调用，减少 context 噪音
+		lastByTool := make(map[string]ToolCallRecord)
+		for _, tc := range allToolCalls {
+			if tc.Success {
+				lastByTool[tc.ToolName] = tc
+			}
+		}
+
+		context.WriteString("\n## 关键工具调用记录（以此为准，禁止编造）\n")
+		for _, tc := range lastByTool {
+			context.WriteString(fmt.Sprintf("- ✅ %s\n  参数: %s\n  结果: %s\n",
+				tc.ToolName,
+				truncate(tc.Arguments, 150),
+				truncate(tc.Result, 200)))
+		}
+	}
+
 	synthesisPrompt := fmt.Sprintf(`请基于以下子任务执行结果，为用户生成一个完整的回复。
 
 %s
@@ -666,7 +883,9 @@ func (o *Orchestrator) Synthesize(
 2. 如果结果包含数据表格或统计数据，保留完整数据，不要压缩
 3. 如果有失败或跳过的任务，简要说明
 4. 回复直接面向用户，不要暴露内部子任务结构
-5. 使用 markdown 格式，便于阅读`, context.String())
+5. 使用 markdown 格式，便于阅读
+6. 服务器地址、端口、URL 等信息必须严格引用工具调用记录中的实际数据，禁止编造
+7. 如果部署工具返回 success:false，必须如实报告部署失败，不要说"已成功部署"`, context.String())
 
 	messages := []Message{
 		{Role: "user", Content: synthesisPrompt},
@@ -813,7 +1032,7 @@ func (o *Orchestrator) Resume(
 		})
 	}
 
-	summary := o.Synthesize(rootSession, allResults, rootSession.Title, sendEvent)
+	summary := o.Synthesize(rootSession, children, allResults, rootSession.Title, sendEvent)
 
 	rootSession.SetStatus("done")
 	rootSession.SetResult(summary)
@@ -878,9 +1097,17 @@ func (o *Orchestrator) resumeSubTask(
 					result = fmt.Sprintf("工具调用失败: %v", err)
 				}
 
+				// ExecuteCode 特殊处理：只取 stdout
+				if originalName == "ExecuteCode" && result != "" {
+					stdout, _ := parseExecuteCodeResult(result)
+					if stdout != "" {
+						result = stdout
+					}
+				}
+
 				toolMsg := Message{
 					Role:       "tool",
-					Content:    result,
+					Content:    truncateToolResult(result, 0),
 					ToolCallID: tc.ID,
 				}
 				session.AppendMessage(toolMsg)
@@ -948,7 +1175,16 @@ func (o *Orchestrator) resumeSubTask(
 			if err != nil {
 				result = fmt.Sprintf("工具调用失败: %v", err)
 			}
-			toolMsg := Message{Role: "tool", Content: result, ToolCallID: tc.ID}
+
+			// ExecuteCode 特殊处理：只取 stdout
+			if originalName == "ExecuteCode" && result != "" {
+				stdout, _ := parseExecuteCodeResult(result)
+				if stdout != "" {
+					result = stdout
+				}
+			}
+
+			toolMsg := Message{Role: "tool", Content: truncateToolResult(result, i), ToolCallID: tc.ID}
 			session.AppendMessage(toolMsg)
 			messages = append(messages, toolMsg)
 		}

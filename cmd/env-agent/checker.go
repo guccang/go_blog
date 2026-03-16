@@ -148,6 +148,7 @@ var softwareCheckCommands = map[string]string{
 	"java":   "java -version 2>&1",
 	"nginx":  "nginx -v 2>&1",
 	"curl":   "curl --version 2>&1",
+	"claude": "command -v claude >/dev/null 2>&1 && claude --version 2>&1 | head -1 || echo 'command not found'",
 }
 
 // softwareWhichCommands 各软件的路径检测命令
@@ -162,6 +163,7 @@ var softwareWhichCommands = map[string]string{
 	"java":   "which java 2>/dev/null",
 	"nginx":  "which nginx 2>/dev/null",
 	"curl":   "which curl 2>/dev/null",
+	"claude": "which claude 2>/dev/null || command -v claude 2>/dev/null",
 }
 
 // getCheckCommand 获取软件版本检测命令

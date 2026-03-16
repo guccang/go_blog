@@ -498,11 +498,15 @@ func (a *Agent) buildArgs(task *TaskAssignPayload) ([]string, error) {
 		args = append(args, "--max-turns", fmt.Sprintf("%d", maxTurns))
 	}
 
-	// 查找对应的 settings 文件，不存在则报错
-	if task.Model != "" && a.cfg.ClaudeCodeSettingsDir != "" {
-		settingsFile := filepath.Join(a.cfg.ClaudeCodeSettingsDir, task.Model+".json")
+	// 查找对应的 settings 文件：指定 model 用 <model>.json，未指定用 default.json
+	if a.cfg.ClaudeCodeSettingsDir != "" {
+		modelName := task.Model
+		if modelName == "" {
+			modelName = "default"
+		}
+		settingsFile := filepath.Join(a.cfg.ClaudeCodeSettingsDir, modelName+".json")
 		if _, err := os.Stat(settingsFile); err != nil {
-			return nil, fmt.Errorf("settings file not found: %s (请确保 %s.json 存在)", settingsFile, task.Model)
+			return nil, fmt.Errorf("settings file not found: %s (请确保 %s.json 存在)", settingsFile, modelName)
 		}
 		args = append(args, "--settings", settingsFile)
 	}

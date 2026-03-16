@@ -346,7 +346,7 @@ func (s *Server) GetAgentsByType(agentType string) []*AgentConn {
 	return result
 }
 
-// GetAllAgents 获取所有在线 agent 信息
+// GetAllAgents 获取所有在线 agent 信息（含 meta 扩展字段）
 func (s *Server) GetAllAgents() []map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -357,7 +357,7 @@ func (s *Server) GetAllAgents() []map[string]any {
 			for _, t := range a.Tools {
 				tools = append(tools, t.Name)
 			}
-			result = append(result, map[string]any{
+			info := map[string]any{
 				"agent_id":    a.ID,
 				"agent_type":  a.AgentType,
 				"name":        a.Name,
@@ -365,7 +365,12 @@ func (s *Server) GetAllAgents() []map[string]any {
 				"tools":       tools,
 				"capacity":    a.Capacity,
 				"last_hb":     a.LastHB.Format(time.RFC3339),
-			})
+			}
+			// 透传 meta 扩展字段（models、workspaces 等注册时上报的动态信息）
+			if len(a.Meta) > 0 {
+				info["meta"] = a.Meta
+			}
+			result = append(result, info)
 		}
 	}
 	return result

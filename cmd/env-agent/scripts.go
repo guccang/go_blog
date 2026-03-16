@@ -31,6 +31,8 @@ var presetScripts = map[ScriptKey]string{
 	{"linux", "ubuntu", "curl", "install"}:   "apt-get update -qq && apt-get install -y curl",
 	{"linux", "ubuntu", "java", "check"}:     "java -version 2>&1",
 	{"linux", "ubuntu", "java", "install"}:   "apt-get update -qq && apt-get install -y default-jdk",
+	{"linux", "ubuntu", "claude", "check"}:   "command -v claude >/dev/null 2>&1 && claude --version 2>&1 | head -1 || echo 'command not found'",
+	{"linux", "ubuntu", "claude", "install"}: "command -v npm >/dev/null 2>&1 && npm install -g @anthropic-ai/claude-code || (apt-get update -qq && apt-get install -y nodejs npm && npm install -g @anthropic-ai/claude-code)",
 
 	// Debian 复用 Ubuntu 的脚本
 	{"linux", "debian", "python", "install"}: "apt-get update -qq && apt-get install -y python3",
@@ -40,6 +42,7 @@ var presetScripts = map[ScriptKey]string{
 	{"linux", "debian", "docker", "install"}: "apt-get update -qq && apt-get install -y docker.io",
 	{"linux", "debian", "git", "install"}:    "apt-get update -qq && apt-get install -y git",
 	{"linux", "debian", "curl", "install"}:   "apt-get update -qq && apt-get install -y curl",
+	{"linux", "debian", "claude", "install"}: "command -v npm >/dev/null 2>&1 && npm install -g @anthropic-ai/claude-code || (apt-get update -qq && apt-get install -y nodejs npm && npm install -g @anthropic-ai/claude-code)",
 
 	// ========================= CentOS/RHEL =========================
 	{"linux", "centos", "python", "install"}: "yum install -y python3",
@@ -51,6 +54,7 @@ var presetScripts = map[ScriptKey]string{
 	{"linux", "centos", "git", "install"}:    "yum install -y git",
 	{"linux", "centos", "curl", "install"}:   "yum install -y curl",
 	{"linux", "centos", "java", "install"}:   "yum install -y java-11-openjdk",
+	{"linux", "centos", "claude", "install"}: "command -v npm >/dev/null 2>&1 && npm install -g @anthropic-ai/claude-code || (yum install -y nodejs npm && npm install -g @anthropic-ai/claude-code)",
 
 	// Fedora
 	{"linux", "fedora", "python", "install"}: "dnf install -y python3",
@@ -59,6 +63,7 @@ var presetScripts = map[ScriptKey]string{
 	{"linux", "fedora", "redis", "install"}:  "dnf install -y redis",
 	{"linux", "fedora", "docker", "install"}: "dnf install -y docker",
 	{"linux", "fedora", "git", "install"}:    "dnf install -y git",
+	{"linux", "fedora", "claude", "install"}: "command -v npm >/dev/null 2>&1 && npm install -g @anthropic-ai/claude-code || (dnf install -y nodejs npm && npm install -g @anthropic-ai/claude-code)",
 
 	// ========================= 通用 Linux（兜底） =========================
 	{"linux", "", "python", "check"}:   "python3 --version 2>&1 || python --version 2>&1",
@@ -71,6 +76,8 @@ var presetScripts = map[ScriptKey]string{
 	{"linux", "", "java", "check"}:     "java -version 2>&1",
 	{"linux", "", "nginx", "check"}:    "nginx -v 2>&1",
 	{"linux", "", "curl", "check"}:     "curl --version 2>&1",
+	{"linux", "", "claude", "check"}:   "command -v claude >/dev/null 2>&1 && claude --version 2>&1 | head -1 || echo 'command not found'",
+	{"linux", "", "claude", "install"}: "command -v npm >/dev/null 2>&1 && npm install -g @anthropic-ai/claude-code || echo 'npm not found, please install Node.js first'",
 
 	// ========================= macOS =========================
 	{"darwin", "", "python", "check"}:   "python3 --version 2>&1",
@@ -84,6 +91,8 @@ var presetScripts = map[ScriptKey]string{
 	{"darwin", "", "docker", "check"}:   "docker --version 2>&1",
 	{"darwin", "", "git", "check"}:      "git --version 2>&1",
 	{"darwin", "", "git", "install"}:    "brew install git",
+	{"darwin", "", "claude", "check"}:   "command -v claude >/dev/null 2>&1 && claude --version 2>&1 | head -1 || echo 'command not found'",
+	{"darwin", "", "claude", "install"}: "npm install -g @anthropic-ai/claude-code",
 }
 
 // findScript 查找预置脚本

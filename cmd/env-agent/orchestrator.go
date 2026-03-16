@@ -435,10 +435,11 @@ func (o *Orchestrator) execRemote(targetAgent string, command string, timeoutSec
 }
 
 // findExecEnvBashTool 查找目标 agent 的 ExecEnvBash 工具名
+// 仅精确匹配 targetAgent，找不到则返回空（不执行命令）
 func (o *Orchestrator) findExecEnvBashTool(targetAgent string) string {
 	all := o.conn.toolCatalog.GetAll()
-	for toolName := range all {
-		if strings.HasSuffix(toolName, "ExecEnvBash") {
+	for toolName, agentID := range all {
+		if strings.HasSuffix(toolName, "ExecEnvBash") && agentID == targetAgent {
 			return toolName
 		}
 	}

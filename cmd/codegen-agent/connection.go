@@ -34,9 +34,13 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Description: "代码编写、项目管理、编码会话",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       append(buildCodegenToolDefs(), fileToolKit.ToolDefs()...),
+		Tools:       buildCodegenToolDefs(fileToolKit),
 		Meta: map[string]any{
-			"workspaces": cfg.Workspaces,
+			"workspaces":       cfg.Workspaces,
+			"models":           agent.ScanSettings(),
+			"claudecode_models": agent.ScanClaudeCodeSettings(),
+			"opencode_models":  agent.ScanOpenCodeSettings(),
+			"coding_tools":     agent.ScanTools(),
 		},
 	}
 
@@ -177,8 +181,8 @@ func (c *Connection) buildHeartbeatPayload() interface{} {
 // ========================= Tool 自注册 =========================
 
 // buildCodegenToolDefs 构建 codegen-agent 的 UAP 工具定义列表
-func buildCodegenToolDefs() []uap.ToolDef {
-	return []uap.ToolDef{
+func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
+	defs := []uap.ToolDef{
 		{
 			Name:        "CodegenListProjects",
 			Description: "列出本 agent 上的编码项目、可用工具和模型配置",
@@ -242,9 +246,14 @@ func buildCodegenToolDefs() []uap.ToolDef {
 			}),
 		},
 	}
+	// 追加 CodegenExecEnvBash（供 env-agent 远程执行环境检测命令）
+	for _, td := range ftk.ToolDefs() {
+		if strings.HasSuffix(td.Name, "ExecEnvBash") {
+			defs = append(defs, td)
+		}
+	}
+	return defs
 }
-
-// handleToolCall 处理来自 gateway 的工具调用请求
 func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {

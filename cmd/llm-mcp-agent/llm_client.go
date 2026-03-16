@@ -131,13 +131,29 @@ func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTo
 		}
 	}
 
-	// 打印工具列表
+	// 打印工具列表（含参数 schema 摘要）
 	if len(tools) > 0 {
 		var toolNames []string
 		for _, t := range tools {
 			toolNames = append(toolNames, t.Function.Name)
 		}
 		log.Printf("[LLM-Context][%s] tools(%d): %s", tag, len(tools), strings.Join(toolNames, ", "))
+
+		// 打印每个工具的参数 schema 概要（property keys + required）
+		for _, t := range tools {
+			var schema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+				Required   []string                   `json:"required"`
+			}
+			if err := json.Unmarshal(t.Function.Parameters, &schema); err == nil && len(schema.Properties) > 0 {
+				var propKeys []string
+				for k := range schema.Properties {
+					propKeys = append(propKeys, k)
+				}
+				log.Printf("[LLM-Context][%s]   %s: params={%s} required=%v",
+					tag, t.Function.Name, strings.Join(propKeys, ", "), schema.Required)
+			}
+		}
 	} else {
 		log.Printf("[LLM-Context][%s] tools: (none)", tag)
 	}
@@ -224,6 +240,16 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	}
 	log.Printf("[LLM] ← 同步响应 duration=%v finish=%s textLen=%d toolCalls=%d tools=%v",
 		duration, choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls), tcNames)
+
+	// 同步请求也检测 max_tokens 截断
+	if choice.FinishReason == "length" && len(choice.Message.ToolCalls) > 0 {
+		lastTC := &choice.Message.ToolCalls[len(choice.Message.ToolCalls)-1]
+		if !json.Valid([]byte(lastTC.Function.Arguments)) {
+			log.Printf("[LLM] ⚠ 同步响应 tool_call arguments 被 max_tokens 截断: %s", lastTC.Function.Name)
+			choice.Message.ToolCalls = choice.Message.ToolCalls[:len(choice.Message.ToolCalls)-1]
+			choice.Message.Content += "\n\n[系统警告] 你的上一次工具调用因 max_tokens 限制被截断，代码未完整生成。请精简代码后重试，或拆分为多次调用。"
+		}
+	}
 
 	return choice.Message.Content, choice.Message.ToolCalls, nil
 }
@@ -349,6 +375,7 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 	var toolCalls []ToolCall
 	// 用于累积 tool_call 的增量数据
 	toolCallBuilders := make(map[int]*ToolCall)
+	truncatedByMaxTokens := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -378,6 +405,12 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 		}
 		if len(chunk.Choices) == 0 {
 			continue
+		}
+
+		// 检测 finish_reason: "length"（max_tokens 截断）
+		if fr := chunk.Choices[0].FinishReason; fr != nil && *fr == "length" {
+			truncatedByMaxTokens = true
+			log.Printf("[LLM] ⚠ 响应被 max_tokens 截断 (finish_reason=length)")
 		}
 
 		delta := chunk.Choices[0].Delta
@@ -432,5 +465,31 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 		}
 	}
 
+	// max_tokens 截断检测：校验 tool_call arguments JSON 完整性
+	if truncatedByMaxTokens && len(toolCalls) > 0 {
+		lastTC := &toolCalls[len(toolCalls)-1]
+		if !json.Valid([]byte(lastTC.Function.Arguments)) {
+			log.Printf("[LLM] ⚠ 最后一个 tool_call arguments JSON 不完整（被 max_tokens 截断）: %s args_tail=%s",
+				lastTC.Function.Name, tailStr(lastTC.Function.Arguments, 100))
+			// 移除被截断的 tool_call，避免下游解析失败
+			toolCalls = toolCalls[:len(toolCalls)-1]
+			// 在文本中追加截断警告，让 LLM 知道发生了什么
+			warning := "\n\n[系统警告] 你的上一次工具调用因 max_tokens 限制被截断，代码未完整生成。请精简代码后重试，或拆分为多次调用。"
+			fullText.WriteString(warning)
+			if onChunk != nil {
+				onChunk(warning)
+			}
+		}
+	}
+
 	return fullText.String(), toolCalls, nil
+}
+
+// tailStr 返回字符串末尾 n 个字符（用于日志）
+func tailStr(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return "..." + string(runes[len(runes)-n:])
 }

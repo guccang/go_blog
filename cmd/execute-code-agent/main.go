@@ -18,6 +18,13 @@ func main() {
 
 	cfg := LoadConfig(*configPath)
 
+	// 启动前同步检查 Python 版本（硬性门槛，不通过直接退出）
+	pyVersion, err := CheckPythonVersion(cfg.PythonPath)
+	if err != nil {
+		log.Fatalf("[ExecuteCodeAgent] Python 版本检查失败，拒绝启动: %v", err)
+	}
+	log.Printf("[ExecuteCodeAgent] Python 版本检查通过: %s (%s)", pyVersion, cfg.PythonPath)
+
 	// 加载 env.json
 	envCfg, err := agentbase.LoadEnvConfig(filepath.Dir(*configPath))
 	if err != nil {

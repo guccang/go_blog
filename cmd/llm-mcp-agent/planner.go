@@ -126,6 +126,8 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 3. 子任务描述中包含用户账号（account=%s）
 4. "同步等待完成"的工具不需要额外的"检查状态"子任务
 5. 子任务数量不超过 %d 个
+6. 编码任务中 CodegenStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
+7. 编码→部署流程中，部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject"
 
 ## 输出格式
 仅返回 JSON：
@@ -297,14 +299,8 @@ type PlanReview struct {
 }
 
 // ReviewPlan LLM 审查任务计划，检查参数是否正确、子任务是否合理
-// 子任务 ≤2 时跳过审查（简单计划不需要额外 LLM 调用）
-func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string) (*PlanReview, error) {
-	// 简单计划跳过审查
-	if len(plan.SubTasks) <= 2 {
-		log.Printf("[Planner] 跳过审查: 子任务数=%d ≤ 2", len(plan.SubTasks))
-		return &PlanReview{Action: "execute", Reason: "子任务数量较少，直接执行"}, nil
-	}
-
+// agentCapabilities: agent 能力描述（可用模型/编码工具等），帮助审查参数有效性
+func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string, agentCapabilities string) (*PlanReview, error) {
 	log.Printf("[Planner] ▶ 审查计划 subtasks=%d", len(plan.SubTasks))
 
 	// 序列化当前计划
@@ -331,6 +327,12 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 			tool.Function.Name, tool.Function.Description, string(tool.Function.Parameters)))
 	}
 
+	// 构建 agent 能力上下文（可选）
+	var capabilitiesSection string
+	if agentCapabilities != "" {
+		capabilitiesSection = fmt.Sprintf("\n## Agent 能力信息\n%s\n", agentCapabilities)
+	}
+
 	reviewPrompt := fmt.Sprintf(`你是一个任务计划审查专家。请审查以下任务计划，确认是否可以直接执行。
 
 ## 用户原始请求
@@ -341,20 +343,28 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 
 ## 相关工具参数定义
 %s
+%s
+## 审查要点（按优先级排序）
 
-## 审查要点
-1. 子任务是否有遗漏或冗余（能合并为 ExecuteCode 的是否已合并）
-2. 依赖关系是否合理（独立的子任务是否正确设置为并行，即 depends_on 为空）
-3. 子任务描述是否包含足够上下文让 AI 独立执行
-4. "同步等待完成"的工具是否有冗余的状态检查子任务（应删除）
+### 1. 工具参数完整性（最重要）
+- 对照用户原始请求和工具参数schema，检查子任务描述中是否遗漏了用户指定的参数
+- 例如：用户说"使用deepseek模型"，但子任务描述中未提到model参数 → 必须补充
+- 例如：用户说"用opencode"，但子任务描述中未提到tool参数 → 必须补充
+- 工具的可选参数如果用户明确指定了值，则必须在子任务描述中体现
+
+### 2. 子任务结构
+- 子任务是否有遗漏或冗余（能合并为 ExecuteCode 的是否已合并）
+- 依赖关系是否合理（独立的子任务是否正确设置为并行，即 depends_on 为空）
+- 子任务描述是否包含足够上下文让 AI 独立执行
+- "同步等待完成"的工具是否有冗余的状态检查子任务（应删除）
 
 ## 输出格式
 仅返回 JSON：
 - 计划合理：{"action": "execute", "reason": "审查通过的理由"}
 - 需要优化：{"action": "optimize", "reason": "原因", "plan": {优化后的完整计划JSON}}
 
-注意：只有明显问题才需要优化。小问题可以在执行时自行修正。`,
-		query, string(planJSON), toolSchemas.String())
+注意：参数遗漏必须通过 optimize 修复，将缺失的参数补充到子任务 description 中。结构性小问题可以在执行时自行修正。`,
+		query, string(planJSON), toolSchemas.String(), capabilitiesSection)
 
 	messages := []Message{
 		{Role: "user", Content: reviewPrompt},
@@ -401,7 +411,7 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 }
 
 // extractParamInfo 从工具的 Parameters JSON schema 中提取核心参数描述
-// 返回格式如: "project(必填), deploy_target(部署目标), port(可选)"
+// 返回格式如: "project(项目名称)[必填], model(模型配置名称（可选）), tool(编码工具（可选，claudecode/opencode）)"
 func extractParamInfo(params json.RawMessage) string {
 	if len(params) == 0 {
 		return ""
@@ -434,10 +444,10 @@ func extractParamInfo(params json.RawMessage) string {
 		}
 		label := name
 		if prop.Description != "" {
-			// 使用简短描述
+			// 保留足够长度以包含参数的合法值信息（如 claudecode/opencode）
 			desc := prop.Description
-			if len([]rune(desc)) > 15 {
-				desc = string([]rune(desc)[:15])
+			if len([]rune(desc)) > 40 {
+				desc = string([]rune(desc)[:40])
 			}
 			label = fmt.Sprintf("%s(%s)", name, desc)
 		}

@@ -2,10 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 )
 
 // Config execute-code-agent 配置
@@ -92,4 +95,35 @@ func detectPython() string {
 		return "python"
 	}
 	return "python3"
+}
+
+// CheckPythonVersion 检查 Python 版本是否满足最低要求（3.6+，f-string 依赖）
+// 返回版本字符串和错误，错误非 nil 时应拒绝启动
+func CheckPythonVersion(pythonPath string) (string, error) {
+	out, err := exec.Command(pythonPath, "--version").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("无法执行 %s --version: %v", pythonPath, err)
+	}
+
+	// 输出格式: "Python 3.10.12" 或 "Python 2.7.18"
+	version := strings.TrimSpace(string(out))
+	version = strings.TrimPrefix(version, "Python ")
+
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return version, fmt.Errorf("无法解析 Python 版本: %s", version)
+	}
+
+	major, err1 := strconv.Atoi(parts[0])
+	minor, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		return version, fmt.Errorf("无法解析 Python 版本号: %s", version)
+	}
+
+	// 最低要求 Python 3.6（f-string、json.JSONDecodeError 等）
+	if major < 3 || (major == 3 && minor < 6) {
+		return version, fmt.Errorf("Python 版本过低: %s（最低要求 3.6，当前代码使用了 f-string 等 3.6+ 特性）", version)
+	}
+
+	return version, nil
 }

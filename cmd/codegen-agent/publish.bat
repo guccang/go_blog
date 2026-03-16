@@ -16,7 +16,7 @@ if exist codegen-agent.pid (
 taskkill /F /IM codegen-agent.exe 2>nul
 
 echo 启动 codegen-agent...
-start "codegen-agent" cmd /c "codegen-agent.exe -config codegen-agent.conf"
+start "codegen-agent" cmd /c "codegen-agent.exe -config codegen-agent.json"
 
 ping -n 3 127.0.0.1 >nul
 
