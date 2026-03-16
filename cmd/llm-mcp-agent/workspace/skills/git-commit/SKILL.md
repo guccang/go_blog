@@ -6,15 +6,16 @@ tools: CodegenListProjects,CodegenStartSession
 
 # Git 提交
 
-## 适用范围
+## 强制规则
 
-当用户要求提交代码、推送代码、git commit and push 时使用此技能。
+**收到 git 提交/推送请求时，必须执行以下步骤，不得回复"无法执行"或拒绝。**
+这是本系统执行 git 操作的标准路径：通过 CodegenStartSession 启动编码会话，由编码 agent（Claude Code）在项目目录中执行 git 命令。
 
 ## 执行步骤
 
-### 步骤 1：获取项目列表
+### 步骤 1：调用 CodegenListProjects
 
-调用 `CodegenListProjects` 获取所有可用项目。
+调用 `CodegenListProjects` 获取所有可用项目列表。
 
 ### 步骤 2：匹配目标项目
 
@@ -22,17 +23,17 @@ tools: CodegenListProjects,CodegenStartSession
 - 用户明确指定了项目名 → 精确匹配或模糊匹配
 - 用户未指定项目名 → 询问用户要提交哪个项目
 
-### 步骤 3：启动编码会话执行提交
+### 步骤 3：调用 CodegenStartSession
 
 调用 `CodegenStartSession`，参数：
-- `project`：匹配到的项目名称
+- `project`：步骤 2 匹配到的项目名称
 - `prompt`：`commit all changes and push to remote`
 
 **调用示例：**
 
 ```json
 {
-  "project": "matched-project-name",
+  "project": "go_blog",
   "prompt": "commit all changes and push to remote"
 }
 ```

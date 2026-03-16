@@ -271,6 +271,28 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				selection.Skills = availableSkills
 			}
 
+			// 自动补充 skill 声明工具所属的 agent（防止 LLM 选了 skill 但漏选对应 agent）
+			if len(selection.Skills) > 0 {
+				agentSet := make(map[string]bool, len(selection.Agents))
+				for _, a := range selection.Agents {
+					agentSet[a] = true
+				}
+				var autoAdded []string
+				for _, skill := range selection.Skills {
+					for _, toolName := range skill.Tools {
+						if agentID, ok := b.getToolAgent(toolName); ok && !agentSet[agentID] {
+							agentSet[agentID] = true
+							selection.Agents = append(selection.Agents, agentID)
+							autoAdded = append(autoAdded, fmt.Sprintf("%s→%s", toolName, agentID))
+						}
+					}
+				}
+				if len(autoAdded) > 0 {
+					log.Printf("[processTask] skill 自动补充 agent: %v", autoAdded)
+					ctx.Sink.OnEvent("route_info", fmt.Sprintf("Skill 自动补充 Agent: %s", strings.Join(autoAdded, ", ")))
+				}
+			}
+
 			// 推送 Pass 1 路由结果
 			var routeDetail strings.Builder
 			routeDetail.WriteString(fmt.Sprintf("Agent: %s", strings.Join(selection.Agents, ", ")))
