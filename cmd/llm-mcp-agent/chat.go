@@ -437,6 +437,12 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	result, _ := b.processTask(ctx)
 	taskDuration := time.Since(taskStart)
 
+	// 任务被取消时，不发送后续事件和结果
+	if goctx.Err() != nil {
+		log.Printf("[Wechat] task cancelled, skip sending result user=%s taskID=%s", wechatUser, taskID)
+		return
+	}
+
 	// 发送完成耗时事件
 	sink.OnEvent("task_complete", fmt.Sprintf("处理完成，耗时 %s", fmtDuration(taskDuration)))
 

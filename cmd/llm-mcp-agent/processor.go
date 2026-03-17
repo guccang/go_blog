@@ -527,6 +527,15 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		var bizFailedMsgs []string
 
 		for tcIdx, tc := range toolCalls {
+			// 检查是否被用户取消
+			if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+				log.Printf("[processTask] ✗ 工具调用期间任务被取消 taskID=%s", ctx.TaskID)
+				finalText = "任务已停止。"
+				rootSession.SetStatus("cancelled")
+				ctx.Sink.OnEvent("task_cancelled", "任务已被用户停止")
+				break
+			}
+
 			originalName := unsanitizeToolName(tc.Function.Name)
 
 			// ExecuteCode 特殊展示：提取 description + code
@@ -729,6 +738,16 @@ func (b *Bridge) handleComplexTask(
 
 	// ① 规划阶段
 	log.Printf("[ComplexTask] ▶ 开始复杂任务处理 taskID=%s query=%s", ctx.TaskID, truncate(query, 100))
+
+	// 检查是否被用户取消
+	if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+		log.Printf("[ComplexTask] ✗ 规划前任务被取消 taskID=%s", ctx.TaskID)
+		rootSession.SetStatus("cancelled")
+		store.Save(rootSession)
+		store.SaveIndex(rootSession, nil)
+		return "任务已停止。"
+	}
+
 	sendEvent("plan_start", "正在分析任务...")
 
 	maxSubTasks := b.cfg.MaxSubTasks
@@ -807,6 +826,15 @@ func (b *Bridge) handleComplexTask(
 	}
 	sendPlanDetails(plan.SubTasks)
 
+	// 检查是否被用户取消
+	if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+		log.Printf("[ComplexTask] ✗ 审查前任务被取消 taskID=%s", ctx.TaskID)
+		rootSession.SetStatus("cancelled")
+		store.Save(rootSession)
+		store.SaveIndex(rootSession, nil)
+		return "任务已停止。"
+	}
+
 	// ② LLM审查计划（含 agent 能力信息，确保工具参数完整性）
 	sendEvent("plan_review_start", "正在审查计划参数...")
 	agentCapabilities := b.getAgentDescriptionBlock()
@@ -861,6 +889,20 @@ func (b *Bridge) handleComplexTask(
 	orchestrator := NewOrchestrator(b, store)
 	results := orchestrator.Execute(ctx.Ctx, ctx.TaskID, rootSession, childSessions, tools, sendEvent)
 	execDuration := time.Since(execStart)
+
+	// 检查是否被用户取消
+	cancelled := ctx.Ctx != nil && ctx.Ctx.Err() != nil
+	if cancelled {
+		log.Printf("[ComplexTask] ✗ 任务被取消 taskID=%s", ctx.TaskID)
+		rootSession.SetStatus("cancelled")
+		store.Save(rootSession)
+		var childList []*TaskSession
+		for _, c := range childSessions {
+			childList = append(childList, c)
+		}
+		store.SaveIndex(rootSession, childList)
+		return "任务已停止。"
+	}
 
 	// 触发子任务完成 hook + 汇总子任务工具调用到 rootSession
 	for _, r := range results {
