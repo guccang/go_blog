@@ -551,7 +551,34 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			if callCtx == nil {
 				callCtx = context.Background()
 			}
-			tcResult, err := b.CallToolCtx(callCtx, originalName, json.RawMessage(tc.Function.Arguments))
+
+			// 异步执行工具调用，主协程发送心跳进度
+			type toolCallResultPair struct {
+				result *ToolCallResult
+				err    error
+			}
+			resultCh := make(chan toolCallResultPair, 1)
+			go func() {
+				r, e := b.CallToolCtx(callCtx, originalName, json.RawMessage(tc.Function.Arguments))
+				resultCh <- toolCallResultPair{r, e}
+			}()
+
+			// 等待工具返回，每 10 秒推送心跳
+			var tcResult *ToolCallResult
+			var err error
+			heartbeatTicker := time.NewTicker(10 * time.Second)
+		waitLoop:
+			for {
+				select {
+				case pair := <-resultCh:
+					tcResult, err = pair.result, pair.err
+					break waitLoop
+				case <-heartbeatTicker.C:
+					elapsed := time.Since(start)
+					ctx.Sink.OnEvent("tool_progress", fmt.Sprintf("⏳ %s 执行中 (%s)...", originalName, fmtDuration(elapsed)))
+				}
+			}
+			heartbeatTicker.Stop()
 			duration := time.Since(start)
 
 			var result string

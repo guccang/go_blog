@@ -42,7 +42,7 @@ func isImportantEvent(event string) bool {
 	case "plan_done", "plan_detail", "plan_review_start", "plan_review_result",
 		"subtask_start", "subtask_done",
 		"subtask_fail", "subtask_skip", "subtask_async", "subtask_defer",
-		"tool_call", "tool_result", "failure_decision",
+		"tool_call", "tool_result", "tool_progress", "failure_decision",
 		"task_complete", "task_cancelled", "task_forced_summary",
 		"plan_timing", "review_timing",
 		"synthesis_done",
@@ -90,6 +90,8 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "🔧 " + text
 	case "tool_result":
 		msg = text // 已包含格式化内容
+	case "tool_progress":
+		msg = text // 已包含 ⏳ 前缀
 	case "failure_decision":
 		msg = "🔄 " + text
 	case "synthesis":
