@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -147,6 +148,9 @@ type WechatConversation struct {
 	Messages     []Message // 完整对话历史（system + user/assistant 交替）
 	LastActiveAt time.Time
 	TurnCount    int
+
+	cancelMu   sync.Mutex         // 保护 cancelFunc
+	cancelFunc context.CancelFunc // 当前任务的取消函数
 }
 
 // WechatConversationManager 管理所有微信用户的对话上下文
@@ -219,6 +223,37 @@ func isConversationResetCommand(content string) bool {
 	content = strings.TrimSpace(content)
 	resetCommands := []string{"新对话", "重新开始", "清除上下文", "reset", "new chat"}
 	for _, cmd := range resetCommands {
+		if strings.EqualFold(content, cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+// SetCancel 注册当前任务的取消函数
+func (c *WechatConversation) SetCancel(cancel context.CancelFunc) {
+	c.cancelMu.Lock()
+	c.cancelFunc = cancel
+	c.cancelMu.Unlock()
+}
+
+// CancelRunning 取消当前正在执行的任务，返回是否有任务在运行
+func (c *WechatConversation) CancelRunning() bool {
+	c.cancelMu.Lock()
+	defer c.cancelMu.Unlock()
+	if c.cancelFunc != nil {
+		c.cancelFunc()
+		c.cancelFunc = nil
+		return true
+	}
+	return false
+}
+
+// isStopCommand 判断是否为停止任务命令
+func isStopCommand(content string) bool {
+	content = strings.TrimSpace(content)
+	stopCommands := []string{"停止", "取消", "stop", "cancel"}
+	for _, cmd := range stopCommands {
 		if strings.EqualFold(content, cmd) {
 			return true
 		}
@@ -301,7 +336,28 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		return
 	}
 
-	// 2. 获取或创建对话
+	// 2. 停止命令检查（在 processing.Lock 之前！不需要等锁）
+	if isStopCommand(content) {
+		conv, _ := b.wechatConvMgr.GetOrCreate(wechatUser)
+		if conv.CancelRunning() {
+			b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
+				Channel: "wechat",
+				To:      wechatUser,
+				Content: "已停止当前任务。",
+			})
+			log.Printf("[Wechat] task cancelled for user=%s", wechatUser)
+		} else {
+			b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
+				Channel: "wechat",
+				To:      wechatUser,
+				Content: "当前没有正在执行的任务。",
+			})
+			log.Printf("[Wechat] no running task to cancel for user=%s", wechatUser)
+		}
+		return
+	}
+
+	// 3. 获取或创建对话
 	conv, isNew := b.wechatConvMgr.GetOrCreate(wechatUser)
 
 	// 序列化同一用户的消息处理（后到的消息等前一个完成）
@@ -361,7 +417,14 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		wechatUser: wechatUser,
 	}
 
+	// 创建可取消 context
+	goctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conv.SetCancel(cancel)
+	defer conv.SetCancel(nil) // 任务结束后清除
+
 	ctx := &TaskContext{
+		Ctx:      goctx,
 		TaskID:   taskID,
 		Account:  b.cfg.DefaultAccount,
 		Query:    content,

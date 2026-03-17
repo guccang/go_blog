@@ -330,6 +330,7 @@ func (ds *dagScheduler) shouldDefer(st SubTaskPlan) bool {
 
 // Execute 事件驱动 DAG 调度执行所有子任务
 func (o *Orchestrator) Execute(
+	taskCtx context.Context,
 	taskID string,
 	rootSession *TaskSession,
 	childSessions map[string]*TaskSession,
@@ -341,8 +342,11 @@ func (o *Orchestrator) Execute(
 		return nil
 	}
 
-	// 创建父 context，abort 时取消所有子任务
-	parentCtx, parentCancel := context.WithCancel(context.Background())
+	// 创建父 context，从外部 taskCtx 派生，用户停止时级联取消所有子任务
+	if taskCtx == nil {
+		taskCtx = context.Background()
+	}
+	parentCtx, parentCancel := context.WithCancel(taskCtx)
 	defer parentCancel()
 
 	// 初始化 DAG 调度器

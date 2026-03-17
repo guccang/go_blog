@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -54,6 +55,7 @@ func (s *LLMRequestSink) Result() string             { return s.buf.String() }
 
 // TaskContext 统一任务输入
 type TaskContext struct {
+	Ctx           context.Context // 可取消的 context（nil 表示不可取消）
 	TaskID        string
 	Account       string
 	Query         string    // 用户问题（用于 plan_and_execute）
@@ -369,6 +371,15 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	complexTaskHandled := false
 
 	for i := 0; i < maxIter; i++ {
+		// 检查是否被用户取消
+		if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+			log.Printf("[processTask] ✗ 任务被取消 taskID=%s", ctx.TaskID)
+			finalText = "任务已停止。"
+			rootSession.SetStatus("cancelled")
+			ctx.Sink.OnEvent("task_cancelled", "任务已被用户停止")
+			break
+		}
+
 		// 消息历史压缩：防止上下文溢出
 		if len(messages) > 30 {
 			before := len(messages)
@@ -848,7 +859,7 @@ func (b *Bridge) handleComplexTask(
 	log.Printf("[ComplexTask] ── 开始编排执行 ──")
 	execStart := time.Now()
 	orchestrator := NewOrchestrator(b, store)
-	results := orchestrator.Execute(ctx.TaskID, rootSession, childSessions, tools, sendEvent)
+	results := orchestrator.Execute(ctx.Ctx, ctx.TaskID, rootSession, childSessions, tools, sendEvent)
 	execDuration := time.Since(execStart)
 
 	// 触发子任务完成 hook + 汇总子任务工具调用到 rootSession

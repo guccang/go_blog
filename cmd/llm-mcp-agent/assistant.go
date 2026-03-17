@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -46,6 +47,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 	log.Printf("[Assistant] task=%s account=%s query=%s", taskID, payload.Account, payload.Query)
 
 	ctx := &TaskContext{
+		Ctx:           context.Background(),
 		TaskID:        taskID,
 		Account:       payload.Account,
 		Query:         payload.Query,
@@ -125,6 +127,7 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 	log.Printf("[LLMRequest] task=%s account=%s messages=%d noTools=%v", taskID, payload.Account, len(payload.Messages), payload.NoTools)
 
 	ctx := &TaskContext{
+		Ctx:           context.Background(),
 		TaskID:        taskID,
 		Account:       payload.Account,
 		Source:        "llm_request",
