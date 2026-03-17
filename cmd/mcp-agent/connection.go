@@ -26,7 +26,7 @@ func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath stri
 		AgentID:     agentID,
 		AgentType:   "mcp_bridge",
 		AgentName:   cfg.AgentName,
-		Description: "外部 MCP Server 桥接代理，将社区 MCP 工具接入 UAP gateway",
+		Description: "查询天气和导航数据",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    10,
 		Tools:       nil, // 启动后由 mcpMgr.BuildUAPTools() 设置
@@ -91,4 +91,3 @@ func (c *Connection) handleError(msg *uap.Message) {
 	}
 	log.Printf("[Connection] error from=%s code=%s msg=%s", msg.From, payload.Code, payload.Message)
 }
-

@@ -5,6 +5,12 @@ import (
 	"os"
 )
 
+// ToolPolicy 工具权限控制策略
+type ToolPolicy struct {
+	Allow []string `json:"allow,omitempty"` // 白名单（为空=全部允许）
+	Deny  []string `json:"deny,omitempty"`  // 黑名单（优先于白名单）
+}
+
 // LLMConfig LLM API 配置
 type LLMConfig struct {
 	APIKey      string  `json:"api_key"`
@@ -22,7 +28,10 @@ type Config struct {
 	AgentID     string `json:"agent_id"`
 	AgentName   string `json:"agent_name"`
 
-	LLM LLMConfig `json:"llm"`
+	LLM                 LLMConfig   `json:"llm"`
+	Fallbacks           []LLMConfig `json:"fallbacks,omitempty"`
+	FallbackCooldownSec int         `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
+	MaxPlanRevisions    int         `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
 
 	DefaultAccount     string `json:"default_account"`
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
@@ -38,14 +47,17 @@ type Config struct {
 	WorkspaceDir         string `json:"workspace_dir"`           // 工作区提示文件目录（默认 workspace）
 
 	// 并发控制配置
-	MaxConcurrent       int `json:"max_concurrent"`         // 最大并发任务数（默认 3）
-	TaskQueueSize       int `json:"task_queue_size"`         // 任务缓冲队列容量（默认 10）
-	MaxParallelSubtasks int `json:"max_parallel_subtasks"`   // DAG 同层最大并行子任务数（默认 3）
+	MaxConcurrent       int `json:"max_concurrent"`        // 最大并发任务数（默认 3）
+	TaskQueueSize       int `json:"task_queue_size"`       // 任务缓冲队列容量（默认 10）
+	MaxParallelSubtasks int `json:"max_parallel_subtasks"` // DAG 同层最大并行子任务数（默认 3）
 
 	// 微信对话上下文配置
 	WechatSessionTimeoutMin int `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
 	WechatMaxMessages       int `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
 	WechatMaxTurns          int `json:"wechat_max_turns"`           // 单会话最大对话轮次（默认 15）
+
+	// 工具权限控制
+	ToolPolicy *ToolPolicy `json:"tool_policy,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -61,6 +73,9 @@ func DefaultConfig() *Config {
 			MaxTokens:   8192,
 			Temperature: 0.7,
 		},
+		FallbackCooldownSec: 60,
+		MaxPlanRevisions:    3,
+
 		DefaultAccount:       "ztj",
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   600,

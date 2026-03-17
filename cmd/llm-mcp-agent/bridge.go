@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,8 +56,8 @@ type Bridge struct {
 	catalogMu   sync.RWMutex
 
 	// agent 感知存储（两级路由用）
-	agentInfo  map[string]AgentInfo   // agent_id → 元数据
-	agentTools map[string][]LLMTool   // agent_id → 该 agent 的工具列表
+	agentInfo  map[string]AgentInfo // agent_id → 元数据
+	agentTools map[string][]LLMTool // agent_id → 该 agent 的工具列表
 
 	// 请求-响应关联
 	pending map[string]chan *toolResultWithFrom // request_id → result channel
@@ -134,6 +135,31 @@ func NewBridge(cfg *Config) *Bridge {
 // Run 启动连接（阻塞，自动重连）
 func (b *Bridge) Run() {
 	b.client.Run()
+}
+
+// fallbackCooldown 返回配置的降级冷却时长
+func (b *Bridge) fallbackCooldown() time.Duration {
+	sec := b.cfg.FallbackCooldownSec
+	if sec <= 0 {
+		sec = 60
+	}
+	return time.Duration(sec) * time.Second
+}
+
+// sendLLM 带降级链的同步 LLM 请求
+func (b *Bridge) sendLLM(messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	if len(b.cfg.Fallbacks) == 0 {
+		return SendLLMRequest(&b.cfg.LLM, messages, tools)
+	}
+	return SendLLMRequestWithFallback(&b.cfg.LLM, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools)
+}
+
+// sendStreamingLLM 带降级链的流式 LLM 请求
+func (b *Bridge) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	if len(b.cfg.Fallbacks) == 0 {
+		return SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, onChunk)
+	}
+	return SendStreamingLLMRequestWithFallback(&b.cfg.LLM, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
 }
 
 // Stop 停止
@@ -335,7 +361,79 @@ func (b *Bridge) DiscoverTools() error {
 	if len(llmTools) != prevCount {
 		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), prevCount, toolNames)
 	}
+
+	// 应用工具权限策略
+	b.applyToolPolicy()
+
 	return nil
+}
+
+// applyToolPolicy 根据配置的 allow/deny 列表过滤工具
+func (b *Bridge) applyToolPolicy() {
+	if b.cfg.ToolPolicy == nil {
+		return
+	}
+	policy := b.cfg.ToolPolicy
+	if len(policy.Allow) == 0 && len(policy.Deny) == 0 {
+		return
+	}
+
+	denySet := make(map[string]bool, len(policy.Deny))
+	for _, name := range policy.Deny {
+		denySet[name] = true
+		denySet[sanitizeToolName(name)] = true
+	}
+	allowSet := make(map[string]bool, len(policy.Allow))
+	for _, name := range policy.Allow {
+		allowSet[name] = true
+		allowSet[sanitizeToolName(name)] = true
+	}
+
+	b.catalogMu.Lock()
+	defer b.catalogMu.Unlock()
+
+	var filtered []LLMTool
+	var removed []string
+	for _, tool := range b.llmTools {
+		name := tool.Function.Name
+		originalName := unsanitizeToolName(name)
+
+		// deny 优先
+		if denySet[name] || denySet[originalName] {
+			removed = append(removed, originalName)
+			delete(b.toolCatalog, originalName)
+			continue
+		}
+		// allow 非空时，只保留白名单中的
+		if len(allowSet) > 0 && !allowSet[name] && !allowSet[originalName] {
+			removed = append(removed, originalName)
+			delete(b.toolCatalog, originalName)
+			continue
+		}
+		filtered = append(filtered, tool)
+	}
+	b.llmTools = filtered
+
+	// 同步清理 agentTools
+	for agentID, tools := range b.agentTools {
+		var agentFiltered []LLMTool
+		for _, tool := range tools {
+			name := tool.Function.Name
+			originalName := unsanitizeToolName(name)
+			if denySet[name] || denySet[originalName] {
+				continue
+			}
+			if len(allowSet) > 0 && !allowSet[name] && !allowSet[originalName] {
+				continue
+			}
+			agentFiltered = append(agentFiltered, tool)
+		}
+		b.agentTools[agentID] = agentFiltered
+	}
+
+	if len(removed) > 0 {
+		log.Printf("[Bridge] tool policy applied: removed %d tools: %v", len(removed), removed)
+	}
 }
 
 // DiscoverAgents 从 gateway 获取所有在线 agent 的元数据（含 meta 扩展字段）
@@ -514,7 +612,7 @@ Agent 列表:
 		{Role: "user", Content: routePrompt},
 	}
 
-	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
+	resp, _, err := b.sendLLM(messages, nil)
 	if err != nil {
 		log.Printf("[Agent路由] LLM 调用失败: %v, 返回全部 agent", err)
 		return append(alwaysInclude, routeableIDs...) // 降级兜底
@@ -772,7 +870,7 @@ Skill 列表（任务指引和专业知识）:
 		{Role: "user", Content: routePrompt},
 	}
 
-	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
+	resp, _, err := b.sendLLM(messages, nil)
 	if err != nil {
 		log.Printf("[能力路由] LLM 调用失败: %v, 返回全部能力", err)
 		return &CapabilitySelection{
@@ -961,7 +1059,7 @@ func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
 	}
 
 	// 无工具的 LLM 请求用于路由
-	resp, _, err := SendLLMRequest(&b.cfg.LLM, messages, nil)
+	resp, _, err := b.sendLLM(messages, nil)
 	if err != nil {
 		log.Printf("[工具路由] LLM 调用失败: %v, 保留元工具", err)
 		return alwaysKeep // 降级：至少保留 ExecuteCode
@@ -1087,6 +1185,75 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResul
 	case <-time.After(timeout):
 		return &ToolCallResult{AgentID: agentID},
 			fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
+	}
+}
+
+// CallToolCtx context 感知的工具调用，支持级联取消
+func (b *Bridge) CallToolCtx(ctx context.Context, toolName string, args json.RawMessage) (*ToolCallResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("cancelled before tool call %s: %v", toolName, err)
+	}
+
+	agentID, ok := b.getToolAgent(toolName)
+	if !ok {
+		return nil, fmt.Errorf("tool %s not found in catalog", toolName)
+	}
+
+	msgID := uap.NewMsgID()
+	ch := make(chan *toolResultWithFrom, 1)
+
+	b.pendMu.Lock()
+	b.pending[msgID] = ch
+	b.pendMu.Unlock()
+
+	defer func() {
+		b.pendMu.Lock()
+		delete(b.pending, msgID)
+		b.pendMu.Unlock()
+	}()
+
+	log.Printf("[Bridge] tool_call(ctx) → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
+
+	err := b.client.Send(&uap.Message{
+		Type: uap.MsgToolCall,
+		ID:   msgID,
+		From: b.cfg.AgentID,
+		To:   agentID,
+		Payload: mustMarshal(uap.ToolCallPayload{
+			ToolName:  toolName,
+			Arguments: args,
+		}),
+		Ts: time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("send tool_call: %v", err)
+	}
+
+	timeout := time.Duration(b.cfg.ToolCallTimeoutSec) * time.Second
+	if isLongRunningTool(toolName) {
+		longTimeout := time.Duration(b.cfg.LongToolTimeoutSec) * time.Second
+		if longTimeout <= 0 {
+			longTimeout = 600 * time.Second
+		}
+		timeout = longTimeout
+	}
+	select {
+	case result := <-ch:
+		if !result.Success {
+			return &ToolCallResult{Result: result.Result, AgentID: agentID, FromID: result.FromID},
+				fmt.Errorf("tool error: %s", result.Error)
+		}
+		log.Printf("[Bridge] tool_result(ctx) ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)
+		return &ToolCallResult{
+			Result:  result.Result,
+			AgentID: agentID,
+			FromID:  result.FromID,
+		}, nil
+	case <-time.After(timeout):
+		return &ToolCallResult{AgentID: agentID},
+			fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
+	case <-ctx.Done():
+		return nil, fmt.Errorf("tool_call %s cancelled: %v", toolName, ctx.Err())
 	}
 }
 
@@ -1244,6 +1411,41 @@ func (b *Bridge) StartRefreshLoop() {
 			}
 		}
 	}()
+}
+
+// RecoverInProgressTasks 启动时扫描并恢复中断的任务
+func (b *Bridge) RecoverInProgressTasks() {
+	store := NewSessionStore(b.cfg.SessionDir)
+	runningIDs, err := store.ListRunningSessions()
+	if err != nil {
+		log.Printf("[Bridge] recover: scan failed: %v", err)
+		return
+	}
+	if len(runningIDs) == 0 {
+		log.Printf("[Bridge] recover: no interrupted tasks found")
+		return
+	}
+
+	log.Printf("[Bridge] recover: found %d interrupted tasks: %v", len(runningIDs), runningIDs)
+	for _, rootID := range runningIDs {
+		rid := rootID
+		if b.canAccept() {
+			b.registerTask(rid, "resume_task")
+			go func() {
+				defer b.deregisterTask(rid)
+				b.handleResumeTask(rid, &ResumeTaskPayload{RootSessionID: rid})
+			}()
+		} else if b.enqueueOrReject(&queuedTask{
+			taskID:    rid,
+			taskType:  "resume_task",
+			handler:   func() { b.handleResumeTask(rid, &ResumeTaskPayload{RootSessionID: rid}) },
+			createdAt: time.Now(),
+		}) {
+			log.Printf("[Bridge] recover: enqueued %s", rid)
+		} else {
+			log.Printf("[Bridge] recover: skipped %s (queue full)", rid)
+		}
+	}
 }
 
 // ========================= 工具函数 =========================

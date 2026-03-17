@@ -43,6 +43,9 @@ func main() {
 	// 启动微信对话过期清理
 	bridge.StartWechatCleanupLoop()
 
+	// 恢复中断的任务
+	bridge.RecoverInProgressTasks()
+
 	// 优雅退出
 	go func() {
 		sigCh := make(chan os.Signal, 1)

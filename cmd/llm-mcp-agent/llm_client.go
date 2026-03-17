@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,6 +33,84 @@ var llmHTTPClient = &http.Client{
 		DisableKeepAlives:    false,
 		ForceAttemptHTTP2:    true,
 	},
+}
+
+// ========================= 模型降级冷却 =========================
+
+// modelCooldown 全局模型冷却追踪
+type modelCooldown struct {
+	mu        sync.RWMutex
+	cooldowns map[string]time.Time // "baseURL|model" → 冷却到期时间
+}
+
+var globalCooldown = &modelCooldown{cooldowns: make(map[string]time.Time)}
+
+func cooldownKey(cfg *LLMConfig) string {
+	return cfg.BaseURL + "|" + cfg.Model
+}
+
+func (mc *modelCooldown) isCoolingDown(cfg *LLMConfig) bool {
+	mc.mu.RLock()
+	defer mc.mu.RUnlock()
+	expiry, ok := mc.cooldowns[cooldownKey(cfg)]
+	return ok && time.Now().Before(expiry)
+}
+
+func (mc *modelCooldown) setCooldown(cfg *LLMConfig, d time.Duration) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	mc.cooldowns[cooldownKey(cfg)] = time.Now().Add(d)
+	log.Printf("[LLM-Fallback] 模型 %s 进入冷却 %v", cfg.Model, d)
+}
+
+// SendLLMRequestWithFallback 带降级链的同步 LLM 请求
+func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	candidates := make([]*LLMConfig, 0, 1+len(fallbacks))
+	candidates = append(candidates, primary)
+	for i := range fallbacks {
+		candidates = append(candidates, &fallbacks[i])
+	}
+
+	var lastErr error
+	for _, cfg := range candidates {
+		if globalCooldown.isCoolingDown(cfg) {
+			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.Model)
+			continue
+		}
+		text, toolCalls, err := SendLLMRequest(cfg, messages, tools)
+		if err == nil {
+			return text, toolCalls, nil
+		}
+		lastErr = err
+		globalCooldown.setCooldown(cfg, cooldown)
+		log.Printf("[LLM-Fallback] 模型 %s 失败: %v, 尝试下一个", cfg.Model, err)
+	}
+	return "", nil, fmt.Errorf("all models failed, last error: %v", lastErr)
+}
+
+// SendStreamingLLMRequestWithFallback 带降级链的流式 LLM 请求
+func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	candidates := make([]*LLMConfig, 0, 1+len(fallbacks))
+	candidates = append(candidates, primary)
+	for i := range fallbacks {
+		candidates = append(candidates, &fallbacks[i])
+	}
+
+	var lastErr error
+	for _, cfg := range candidates {
+		if globalCooldown.isCoolingDown(cfg) {
+			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.Model)
+			continue
+		}
+		text, toolCalls, err := SendStreamingLLMRequest(cfg, messages, tools, onChunk)
+		if err == nil {
+			return text, toolCalls, nil
+		}
+		lastErr = err
+		globalCooldown.setCooldown(cfg, cooldown)
+		log.Printf("[LLM-Fallback] 流式模型 %s 失败: %v, 尝试下一个", cfg.Model, err)
+	}
+	return "", nil, fmt.Errorf("all models failed (streaming), last error: %v", lastErr)
 }
 
 // ========================= LLM 消息结构 =========================
@@ -250,6 +330,98 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 		lastTC := &choice.Message.ToolCalls[len(choice.Message.ToolCalls)-1]
 		if !json.Valid([]byte(lastTC.Function.Arguments)) {
 			log.Printf("[LLM] ⚠ 同步响应 tool_call arguments 被 max_tokens 截断: %s", lastTC.Function.Name)
+			choice.Message.ToolCalls = choice.Message.ToolCalls[:len(choice.Message.ToolCalls)-1]
+			choice.Message.Content += "\n\n[系统警告] 你的上一次工具调用因 max_tokens 限制被截断，代码未完整生成。请精简代码后重试，或拆分为多次调用。"
+		}
+	}
+
+	return choice.Message.Content, choice.Message.ToolCalls, nil
+}
+
+// SendLLMRequestCtx context 感知的同步 LLM 请求，支持级联取消
+func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	if err := ctx.Err(); err != nil {
+		return "", nil, fmt.Errorf("cancelled before LLM request: %v", err)
+	}
+
+	var msgSummary []string
+	for _, m := range messages {
+		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
+	}
+	log.Printf("[LLM] → 同步请求(ctx) model=%s messages=[%s] tools=%d",
+		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+
+	logLLMContext("sync-ctx", cfg, messages, tools)
+
+	reqStart := time.Now()
+
+	reqBody := llmRequest{
+		Model:       cfg.Model,
+		Messages:    messages,
+		MaxTokens:   cfg.MaxTokens,
+		Temperature: cfg.Temperature,
+	}
+	if len(tools) > 0 {
+		reqBody.Tools = tools
+	}
+
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal request: %v", err)
+	}
+
+	url := fmt.Sprintf("%s/chat/completions", cfg.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return "", nil, fmt.Errorf("create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.APIKey))
+
+	resp, err := llmHTTPClient.Do(req)
+	if err != nil {
+		log.Printf("[LLM] ✗ HTTP 请求失败(ctx) duration=%v error=%v", time.Since(reqStart), err)
+		return "", nil, fmt.Errorf("http request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("read response: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[LLM] ✗ API错误(ctx) status=%d duration=%v body=%s", resp.StatusCode, time.Since(reqStart), string(body))
+		return "", nil, fmt.Errorf("API error status=%d: %s", resp.StatusCode, string(body))
+	}
+
+	var llmResp llmResponse
+	if err := json.Unmarshal(body, &llmResp); err != nil {
+		return "", nil, fmt.Errorf("parse response: %v", err)
+	}
+
+	if llmResp.Error != nil {
+		return "", nil, fmt.Errorf("LLM error: %s (%s)", llmResp.Error.Message, llmResp.Error.Type)
+	}
+
+	if len(llmResp.Choices) == 0 {
+		return "", nil, fmt.Errorf("no choices in response")
+	}
+
+	choice := llmResp.Choices[0]
+	duration := time.Since(reqStart)
+
+	var tcNames []string
+	for _, tc := range choice.Message.ToolCalls {
+		tcNames = append(tcNames, tc.Function.Name)
+	}
+	log.Printf("[LLM] ← 同步响应(ctx) duration=%v finish=%s textLen=%d toolCalls=%d tools=%v",
+		duration, choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls), tcNames)
+
+	if choice.FinishReason == "length" && len(choice.Message.ToolCalls) > 0 {
+		lastTC := &choice.Message.ToolCalls[len(choice.Message.ToolCalls)-1]
+		if !json.Valid([]byte(lastTC.Function.Arguments)) {
+			log.Printf("[LLM] ⚠ 同步响应(ctx) tool_call arguments 被 max_tokens 截断: %s", lastTC.Function.Name)
 			choice.Message.ToolCalls = choice.Message.ToolCalls[:len(choice.Message.ToolCalls)-1]
 			choice.Message.Content += "\n\n[系统警告] 你的上一次工具调用因 max_tokens 限制被截断，代码未完整生成。请精简代码后重试，或拆分为多次调用。"
 		}

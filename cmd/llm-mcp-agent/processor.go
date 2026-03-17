@@ -271,28 +271,6 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				selection.Skills = availableSkills
 			}
 
-			// 自动补充 skill 声明工具所属的 agent（防止 LLM 选了 skill 但漏选对应 agent）
-			if len(selection.Skills) > 0 {
-				agentSet := make(map[string]bool, len(selection.Agents))
-				for _, a := range selection.Agents {
-					agentSet[a] = true
-				}
-				var autoAdded []string
-				for _, skill := range selection.Skills {
-					for _, toolName := range skill.Tools {
-						if agentID, ok := b.getToolAgent(toolName); ok && !agentSet[agentID] {
-							agentSet[agentID] = true
-							selection.Agents = append(selection.Agents, agentID)
-							autoAdded = append(autoAdded, fmt.Sprintf("%s→%s", toolName, agentID))
-						}
-					}
-				}
-				if len(autoAdded) > 0 {
-					log.Printf("[processTask] skill 自动补充 agent: %v", autoAdded)
-					ctx.Sink.OnEvent("route_info", fmt.Sprintf("Skill 自动补充 Agent: %s", strings.Join(autoAdded, ", ")))
-				}
-			}
-
 			// 推送 Pass 1 路由结果
 			var routeDetail strings.Builder
 			routeDetail.WriteString(fmt.Sprintf("Agent: %s", strings.Join(selection.Agents, ", ")))
@@ -380,34 +358,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		tools = append(tools, planAndExecuteTool)
 	}
 
-	// ★ Skill 命中 → 强制走任务拆解路径（跳过 LLM 简单循环）
-	if len(selectedSkills) > 0 && !ctx.NoTools {
-		log.Printf("[processTask] ★ skill 命中 %d 个，强制进入任务拆解", len(selectedSkills))
-		var skillNames []string
-		for _, s := range selectedSkills {
-			skillNames = append(skillNames, s.Name)
-		}
-		ctx.Sink.OnEvent("route_info", fmt.Sprintf("Skill 命中: %s → 强制任务拆解", strings.Join(skillNames, ", ")))
-
-		result := b.handleComplexTask(ctx, rootSession, store, tools, "", selectedSkills)
-		ctx.Sink.OnChunk(result)
-
-		// 保存会话已在 handleComplexTask 内完成
-		totalDuration := time.Since(taskStart)
-		log.Printf("[processTask] ◀ Skill 任务拆解完成 taskID=%s duration=%v resultLen=%d",
-			ctx.TaskID, totalDuration, len(result))
-
-		// 触发任务结束 hook
-		rootSession.mu.Lock()
-		allToolCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
-		copy(allToolCalls, rootSession.ToolCalls)
-		rootSession.mu.Unlock()
-		b.hooks.FireTaskEnd(ctx, result, allToolCalls, nil)
-
-		return result, nil
-	}
-
-	// 6. LLM 循环（无 skill 命中时走简单路径）
+	// 4. LLM 循环
 	maxIter := b.cfg.MaxToolIterations
 	if maxIter <= 0 {
 		maxIter = 15
@@ -453,12 +404,12 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		llmStart := time.Now()
 		if ctx.Sink.Streaming() {
 			log.Printf("[processTask] → 发送流式 LLM 请求...")
-			text, toolCalls, err = SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, func(chunk string) {
+			text, toolCalls, err = b.sendStreamingLLM(messages, tools, func(chunk string) {
 				ctx.Sink.OnChunk(chunk)
 			})
 		} else {
 			log.Printf("[processTask] → 发送同步 LLM 请求...")
-			text, toolCalls, err = SendLLMRequest(&b.cfg.LLM, messages, tools)
+			text, toolCalls, err = b.sendLLM(messages, tools)
 		}
 		llmDuration := time.Since(llmStart)
 
@@ -781,7 +732,7 @@ func (b *Bridge) handleComplexTask(
 	}
 
 	planStart := time.Now()
-	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork, skillBlock)
+	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork, skillBlock, b.cfg.Fallbacks, b.fallbackCooldown())
 	planDuration := time.Since(planStart)
 
 	if err != nil {
@@ -849,7 +800,7 @@ func (b *Bridge) handleComplexTask(
 	sendEvent("plan_review_start", "正在审查计划参数...")
 	agentCapabilities := b.getAgentDescriptionBlock()
 	reviewStart := time.Now()
-	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account, agentCapabilities)
+	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account, agentCapabilities, b.cfg.Fallbacks, b.fallbackCooldown())
 	reviewDuration := time.Since(reviewStart)
 	if err != nil {
 		log.Printf("[ComplexTask] ⚠ 计划审查失败 error=%v，继续执行原计划", err)

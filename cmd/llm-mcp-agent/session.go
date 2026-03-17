@@ -53,7 +53,20 @@ type TaskSession struct {
 	// LLM 失败决策记录
 	FailureDecisions []FailureDecision `json:"failure_decisions,omitempty"`
 
+	// 计划修订记录
+	PlanRevisions []PlanRevision `json:"plan_revisions,omitempty"`
+
 	mu sync.Mutex `json:"-"` // 并发保护
+}
+
+// PlanRevision 计划修订记录
+type PlanRevision struct {
+	Version       int       `json:"version"`
+	Reason        string    `json:"reason"`
+	AddedTasks    []string  `json:"added_tasks,omitempty"`
+	RemovedTasks  []string  `json:"removed_tasks,omitempty"`
+	ModifiedTasks []string  `json:"modified_tasks,omitempty"`
+	Timestamp     time.Time `json:"timestamp"`
 }
 
 // ToolCallRecord 工具调用记录
@@ -195,6 +208,13 @@ func (s *TaskSession) AddChildID(childID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ChildIDs = append(s.ChildIDs, childID)
+}
+
+// AddPlanRevision 添加计划修订记录
+func (s *TaskSession) AddPlanRevision(rev PlanRevision) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.PlanRevisions = append(s.PlanRevisions, rev)
 }
 
 // AddFailureDecision 添加失败决策记录
@@ -380,4 +400,36 @@ func (s *SessionStore) ListSessions() ([]SessionIndex, error) {
 	})
 
 	return indices, nil
+}
+
+// ListRunningSessions 扫描所有 index.json，返回 status=="running" 的 rootID 列表
+func (s *SessionStore) ListRunningSessions() ([]string, error) {
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read session dir: %v", err)
+	}
+
+	var runningIDs []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		indexPath := filepath.Join(s.baseDir, entry.Name(), "index.json")
+		data, err := os.ReadFile(indexPath)
+		if err != nil {
+			continue
+		}
+		var index SessionIndex
+		if err := json.Unmarshal(data, &index); err != nil {
+			continue
+		}
+		if index.Status == "running" {
+			runningIDs = append(runningIDs, index.RootID)
+		}
+	}
+
+	return runningIDs, nil
 }

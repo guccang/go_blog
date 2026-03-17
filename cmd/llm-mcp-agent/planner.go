@@ -51,7 +51,7 @@ var planAndExecuteTool = LLMTool{
 // PlanTask 调用 LLM 生成结构化任务计划
 // completedWork: 之前简单路径中已完成的工具调用摘要（可为空）
 // skillBlock: 匹配到的 skill 领域指引（可为空）
-func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string, skillBlock string) (*TaskPlan, error) {
+func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string, skillBlock string, fallbacks []LLMConfig, cooldown time.Duration) (*TaskPlan, error) {
 	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d completedWork=%v",
 		truncate(query, 100), account, maxSubTasks, len(tools), completedWork != "")
 	// 构建工具目录（name + description + 核心参数，帮助 LLM 精确规划）
@@ -157,7 +157,13 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 	}
 
 	planStart := time.Now()
-	resp, _, err := SendLLMRequest(cfg, messages, nil)
+	var resp string
+	var err error
+	if len(fallbacks) > 0 {
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+	} else {
+		resp, _, err = SendLLMRequest(cfg, messages, nil)
+	}
 	if err != nil {
 		log.Printf("[Planner] ✗ LLM规划失败 duration=%v error=%v", time.Since(planStart), err)
 		return nil, fmt.Errorf("LLM planning failed: %v", err)
@@ -202,7 +208,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 }
 
 // MakeFailureDecision 子任务失败后调用 LLM 决策
-func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, completedResults map[string]string) (*FailureDecision, error) {
+func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, completedResults map[string]string, fallbacks []LLMConfig, cooldown time.Duration) (*FailureDecision, error) {
 	log.Printf("[Planner] ▶ 失败决策 subtask=%s error=%s", subtask.ID, truncate(errorMsg, 100))
 	// 构建上下文
 	var context strings.Builder
@@ -240,7 +246,13 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 		{Role: "user", Content: decisionPrompt},
 	}
 
-	resp, _, err := SendLLMRequest(cfg, messages, nil)
+	var resp string
+	var err error
+	if len(fallbacks) > 0 {
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+	} else {
+		resp, _, err = SendLLMRequest(cfg, messages, nil)
+	}
 	if err != nil {
 		// LLM 调用失败，默认 skip
 		return &FailureDecision{
@@ -289,6 +301,136 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 	}, nil
 }
 
+// ========================= 动态计划修订 =========================
+
+// PlanRevisionResult 计划修订评估结果
+type PlanRevisionResult struct {
+	Action string    `json:"action"` // "continue" | "revise"
+	Reason string    `json:"reason"`
+	Plan   *TaskPlan `json:"plan,omitempty"`
+}
+
+// EvaluateAndRevisePlan 评估已完成结果，决定是否修订剩余计划
+func EvaluateAndRevisePlan(
+	cfg *LLMConfig,
+	originalQuery string,
+	currentPlan *TaskPlan,
+	completedResults map[string]string,
+	remainingSubTasks []SubTaskPlan,
+	tools []LLMTool,
+	account string,
+	fallbacks []LLMConfig,
+	cooldown time.Duration,
+) (*PlanRevisionResult, error) {
+	log.Printf("[Planner] ▶ 评估计划修订 completed=%d remaining=%d", len(completedResults), len(remainingSubTasks))
+
+	// 构建已完成结果摘要
+	var completedSummary strings.Builder
+	for id, result := range completedResults {
+		if len(result) > 500 {
+			result = result[:500] + "..."
+		}
+		completedSummary.WriteString(fmt.Sprintf("- %s: %s\n", id, result))
+	}
+
+	// 构建剩余子任务摘要
+	var remainingSummary strings.Builder
+	for _, st := range remainingSubTasks {
+		remainingSummary.WriteString(fmt.Sprintf("- %s: %s (depends: %v)\n", st.ID, st.Title, st.DependsOn))
+	}
+
+	// 构建工具目录
+	var toolCatalog strings.Builder
+	for i, tool := range tools {
+		if tool.Function.Name == "plan_and_execute" {
+			continue
+		}
+		toolCatalog.WriteString(fmt.Sprintf("- %s: %s\n", tool.Function.Name, tool.Function.Description))
+		if i > 30 {
+			toolCatalog.WriteString("... (更多工具省略)\n")
+			break
+		}
+	}
+
+	revisionPrompt := fmt.Sprintf(`你是一个任务计划评估专家。请根据已完成的子任务结果，评估剩余计划是否需要调整。
+
+## 用户原始请求
+%s
+
+## 已完成子任务结果
+%s
+
+## 剩余待执行子任务
+%s
+
+## 可用工具
+%s
+
+## 评估规则
+1. **偏向 continue**：只有当已完成结果揭示了必须调整的新信息时才选择 revise
+2. revise 的场景：
+   - 已完成结果表明原计划的假设不成立（如数据格式不同、接口不存在等）
+   - 发现需要额外步骤才能完成用户请求
+   - 剩余子任务的参数需要根据已完成结果修正
+3. 不需要 revise 的场景：
+   - 一切按计划进行
+   - 小的参数调整可以在子任务执行时自行处理
+
+## 输出格式
+仅返回 JSON：
+- 继续执行：{"action": "continue", "reason": "理由"}
+- 需要修订：{"action": "revise", "reason": "修订原因", "plan": {"subtasks": [...], "execution_mode": "dag", "reasoning": "..."}}
+
+注意：revise 时返回完整新计划，保留已完成任务 ID（不要重复执行），新增/修改/删除剩余任务。`, originalQuery, completedSummary.String(), remainingSummary.String(), toolCatalog.String())
+
+	messages := []Message{
+		{Role: "user", Content: revisionPrompt},
+	}
+
+	evalStart := time.Now()
+	var resp string
+	var err error
+	if len(fallbacks) > 0 {
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+	} else {
+		resp, _, err = SendLLMRequest(cfg, messages, nil)
+	}
+	if err != nil {
+		log.Printf("[Planner] ✗ 计划修订评估失败 duration=%v error=%v", time.Since(evalStart), err)
+		return &PlanRevisionResult{Action: "continue", Reason: fmt.Sprintf("评估失败: %v, 继续执行", err)}, nil
+	}
+	log.Printf("[Planner] ← 修订评估响应 duration=%v responseLen=%d", time.Since(evalStart), len(resp))
+
+	resp = strings.TrimSpace(resp)
+	resp = strings.TrimPrefix(resp, "```json")
+	resp = strings.TrimPrefix(resp, "```")
+	resp = strings.TrimSuffix(resp, "```")
+	resp = strings.TrimSpace(resp)
+
+	var result PlanRevisionResult
+	if err := json.Unmarshal([]byte(resp), &result); err != nil {
+		log.Printf("[Planner] warn: parse revision result failed: %v, defaulting to continue", err)
+		return &PlanRevisionResult{Action: "continue", Reason: "解析失败，继续执行"}, nil
+	}
+
+	if result.Action != "continue" && result.Action != "revise" {
+		result.Action = "continue"
+		result.Reason = "未知动作，继续执行"
+	}
+
+	if result.Action == "revise" && result.Plan != nil {
+		if len(result.Plan.SubTasks) == 0 {
+			log.Printf("[Planner] warn: revised plan has no subtasks, keeping original")
+			result.Action = "continue"
+			result.Reason = "修订后计划为空，保持原计划"
+			result.Plan = nil
+		}
+	}
+
+	log.Printf("[Planner] ✓ 修订评估: action=%s reason=%s", result.Action, result.Reason)
+	return &result, nil
+}
+
 // ========================= 计划审查 =========================
 
 // PlanReview 计划审查结果
@@ -300,7 +442,7 @@ type PlanReview struct {
 
 // ReviewPlan LLM 审查任务计划，检查参数是否正确、子任务是否合理
 // agentCapabilities: agent 能力描述（可用模型/编码工具等），帮助审查参数有效性
-func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string, agentCapabilities string) (*PlanReview, error) {
+func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, account string, agentCapabilities string, fallbacks []LLMConfig, cooldown time.Duration) (*PlanReview, error) {
 	log.Printf("[Planner] ▶ 审查计划 subtasks=%d", len(plan.SubTasks))
 
 	// 序列化当前计划
@@ -371,7 +513,13 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 	}
 
 	reviewStart := time.Now()
-	resp, _, err := SendLLMRequest(cfg, messages, nil)
+	var resp string
+	var err error
+	if len(fallbacks) > 0 {
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+	} else {
+		resp, _, err = SendLLMRequest(cfg, messages, nil)
+	}
 	if err != nil {
 		log.Printf("[Planner] ✗ 计划审查失败 duration=%v error=%v", time.Since(reviewStart), err)
 		return nil, fmt.Errorf("plan review failed: %v", err)
