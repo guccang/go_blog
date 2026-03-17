@@ -285,14 +285,19 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			ctx.Sink.OnEvent("route_info", routeDetail.String())
 
-			// 收集候选工具：agent 工具 + skill 工具 + 基础工具
-			candidateTools := b.mergeCapabilityTools(selection, tools)
-			if len(candidateTools) > 0 {
-				// Pass 2: 工具精选（从候选工具中精确筛选）
-				if len(candidateTools) > 10 {
-					tools = b.routeTools(query, candidateTools)
-				} else {
-					tools = candidateTools
+			if len(selection.Skills) > 0 {
+				// ★ skill 匹配：只保留 skill 声明的工具，保证执行环境干净
+				tools = collectSkillTools(selection.Skills, tools)
+				log.Printf("[processTask] skill 工具隔离: 仅保留 %d 个 skill 工具", len(tools))
+			} else if len(selection.Agents) > 0 {
+				// 无 skill 匹配，走 agent 工具合并（原逻辑）
+				candidateTools := b.mergeCapabilityTools(selection, tools)
+				if len(candidateTools) > 0 {
+					if len(candidateTools) > 10 {
+						tools = b.routeTools(query, candidateTools)
+					} else {
+						tools = candidateTools
+					}
 				}
 			}
 		} else if len(tools) > 15 {

@@ -56,6 +56,10 @@ type Config struct {
 	WechatMaxMessages       int `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
 	WechatMaxTurns          int `json:"wechat_max_turns"`           // 单会话最大对话轮次（默认 15）
 
+	// 内置 Bash 工具配置
+	BashTimeoutSec     int `json:"bash_timeout_sec"`      // Bash 命令超时秒数（默认 30）
+	BashMaxOutputBytes int `json:"bash_max_output_bytes"` // Bash 输出截断字节数（默认 102400）
+
 	// 工具权限控制
 	ToolPolicy *ToolPolicy `json:"tool_policy,omitempty"`
 }
@@ -94,6 +98,9 @@ func DefaultConfig() *Config {
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,
 		WechatMaxTurns:          15,
+
+		BashTimeoutSec:     30,
+		BashMaxOutputBytes: 102400,
 	}
 }
 

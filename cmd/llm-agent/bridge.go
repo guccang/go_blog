@@ -73,6 +73,9 @@ type Bridge struct {
 	// Skill 管理器
 	skillMgr *SkillManager
 
+	// 内置工具
+	bashManager *BashToolManager
+
 	// 任务生命周期 hook
 	hooks *HookManager
 
@@ -125,6 +128,20 @@ func NewBridge(cfg *Config) *Bridge {
 	// 初始化 hook 管理器
 	b.hooks = NewHookManager()
 	b.hooks.Register(&WechatUsageSummaryHook{bridge: b})
+
+	// 初始化内置 Bash 工具
+	bashTimeout := time.Duration(cfg.BashTimeoutSec) * time.Second
+	if bashTimeout <= 0 {
+		bashTimeout = 30 * time.Second
+	}
+	bashMaxOutput := cfg.BashMaxOutputBytes
+	if bashMaxOutput <= 0 {
+		bashMaxOutput = 102400
+	}
+	b.bashManager = &BashToolManager{
+		Timeout:   bashTimeout,
+		MaxOutput: bashMaxOutput,
+	}
 
 	// 初始化 Skill 管理器
 	if cfg.WorkspaceDir != "" {
@@ -369,6 +386,26 @@ func (b *Bridge) DiscoverTools() error {
 
 	// 应用工具权限策略
 	b.applyToolPolicy()
+
+	// 合并内置工具（Bash）
+	if b.bashManager != nil {
+		b.catalogMu.Lock()
+		for _, tool := range b.bashManager.ToolDefs() {
+			// 检查是否已存在同名工具（避免重复）
+			exists := false
+			for _, t := range b.llmTools {
+				if t.Function.Name == tool.Function.Name {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				b.llmTools = append(b.llmTools, tool)
+				log.Printf("[Bridge] 注册内置工具: %s", tool.Function.Name)
+			}
+		}
+		b.catalogMu.Unlock()
+	}
 
 	return nil
 }
@@ -1128,6 +1165,16 @@ type ToolCallResult struct {
 
 // CallTool 发送 MsgToolCall 到目标 agent 并等待 MsgToolResult
 func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResult, error) {
+	// 内置工具优先处理
+	if b.bashManager != nil {
+		var argsMap map[string]interface{}
+		if err := json.Unmarshal(args, &argsMap); err == nil {
+			if result, handled := b.bashManager.HandleTool(toolName, argsMap); handled {
+				return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+			}
+		}
+	}
+
 	// 查找目标 agent
 	agentID, ok := b.getToolAgent(toolName)
 	if !ok {
@@ -1206,6 +1253,16 @@ func (b *Bridge) CallToolCtxWithProgress(ctx context.Context, toolName string, a
 func (b *Bridge) callToolCtxWithSink(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("cancelled before tool call %s: %v", toolName, err)
+	}
+
+	// 内置工具优先处理
+	if b.bashManager != nil {
+		var argsMap map[string]interface{}
+		if err := json.Unmarshal(args, &argsMap); err == nil {
+			if result, handled := b.bashManager.HandleTool(toolName, argsMap); handled {
+				return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+			}
+		}
 	}
 
 	agentID, ok := b.getToolAgent(toolName)
