@@ -43,7 +43,7 @@ func isImportantEvent(event string) bool {
 		"subtask_start", "subtask_done",
 		"subtask_fail", "subtask_skip", "subtask_async", "subtask_defer",
 		"tool_call", "tool_result", "failure_decision",
-		"task_complete", "task_forced_summary",
+		"task_complete", "task_cancelled", "task_forced_summary",
 		"plan_timing", "review_timing",
 		"synthesis_done",
 		"subtask_timeout", "subtask_llm_error",
@@ -100,6 +100,8 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "⏸ " + text
 	case "task_complete":
 		msg = "✅ " + text
+	case "task_cancelled":
+		msg = "🛑 " + text
 	case "task_forced_summary":
 		msg = "⚠ " + text
 	case "plan_timing":

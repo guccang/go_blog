@@ -547,7 +547,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 500))
 
 			start := time.Now()
-			tcResult, err := b.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			callCtx := ctx.Ctx
+			if callCtx == nil {
+				callCtx = context.Background()
+			}
+			tcResult, err := b.CallToolCtx(callCtx, originalName, json.RawMessage(tc.Function.Arguments))
 			duration := time.Since(start)
 
 			var result string
@@ -556,6 +560,15 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				result = tcResult.Result
 				toAgent = tcResult.AgentID
 				fromAgent = tcResult.FromID
+			}
+
+			// 工具调用期间被取消：立即中断，不记录为失败
+			if err != nil && ctx.Ctx != nil && ctx.Ctx.Err() != nil {
+				log.Printf("[processTask] ✗ 工具调用期间任务被取消 tool=%s taskID=%s", originalName, ctx.TaskID)
+				finalText = "任务已停止。"
+				rootSession.SetStatus("cancelled")
+				ctx.Sink.OnEvent("task_cancelled", "任务已被用户停止")
+				break
 			}
 
 			// ExecuteCode 特殊处理：解析结构化 JSON，提取 stdout 给 LLM，tool_calls 展示给用户
