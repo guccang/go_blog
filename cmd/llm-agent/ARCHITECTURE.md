@@ -1,13 +1,13 @@
-# llm-mcp-agent 核心机制与原理
+# llm-agent 核心机制与原理
 
 ## 架构概览
 
-llm-mcp-agent 是一个 LLM 编排代理，负责接收用户请求、调用 MCP 工具、拆解复杂任务并编排执行。它通过 UAP 协议连接 gateway，与 codegen-agent、deploy-agent 等工具提供方协作。
+llm-agent 是一个 LLM 编排代理，负责接收用户请求、调用 MCP 工具、拆解复杂任务并编排执行。它通过 UAP 协议连接 gateway，与 codegen-agent、deploy-agent 等工具提供方协作。
 
 ```
 用户（Web/微信）
      ↓
-llm-mcp-agent
+llm-agent
   ├── processTask()        简单任务：LLM 循环直接调用工具
   └── handleComplexTask()  复杂任务：规划 → 审查 → 编排 → 汇总
        ├── PlanTask()          ① 任务拆解
@@ -234,7 +234,7 @@ case "in_progress", "started":
 ### 工具发现
 
 ```
-llm-mcp-agent → GET /api/gateway/tools → 获取所有在线 agent 的工具列表
+llm-agent → GET /api/gateway/tools → 获取所有在线 agent 的工具列表
                                           （每 60 秒自动刷新）
 ```
 
@@ -251,9 +251,9 @@ if len(tools) > 15 && query != "" {
 ### 跨 Agent 调用
 
 ```
-llm-mcp-agent → MsgToolCall → gateway → 目标 agent
+llm-agent → MsgToolCall → gateway → 目标 agent
                                            ↓
-llm-mcp-agent ← MsgToolResult ← gateway ← 目标 agent
+llm-agent ← MsgToolResult ← gateway ← 目标 agent
 ```
 
 工具调用通过 UAP 协议的请求-响应模式实现，`CallTool()` 使用 channel 同步等待结果。

@@ -15,7 +15,7 @@ type Config struct {
 	MaxConcurrent  int    `json:"max_concurrent"`    // 默认 3
 	InstallTimeout int    `json:"install_timeout"`   // 预置脚本安装超时秒数，默认 300
 	LLMTaskTimeout int    `json:"llm_task_timeout"`  // 委托 LLM 任务超时秒数，默认 600
-	LLMAgentID     string `json:"llm_agent_id"`      // llm-mcp-agent 的 agent name，默认 "llm-mcp-agent"
+	LLMAgentID     string `json:"llm_agent_id"`      // llm-agent 的 agent name，默认 "llm-agent"
 }
 
 // DefaultConfig 默认配置
@@ -27,7 +27,7 @@ func DefaultConfig() *Config {
 		MaxConcurrent:  3,
 		InstallTimeout: 300,
 		LLMTaskTimeout: 600,
-		LLMAgentID:     "llm-mcp-agent",
+		LLMAgentID:     "llm-agent",
 	}
 }
 
@@ -60,7 +60,7 @@ func LoadConfig(path string) *Config {
 		cfg.LLMTaskTimeout = 600
 	}
 	if cfg.LLMAgentID == "" {
-		cfg.LLMAgentID = "llm-mcp-agent"
+		cfg.LLMAgentID = "llm-agent"
 	}
 
 	return cfg

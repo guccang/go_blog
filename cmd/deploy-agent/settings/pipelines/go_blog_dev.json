@@ -3,7 +3,7 @@
     "description": "生产环境全量部署",
     "steps": [
         {
-            "project": "llm-mcp-agent",
+            "project": "llm-agent",
             "target": "ssh-prod",
             "build_platform": "linux"
         },

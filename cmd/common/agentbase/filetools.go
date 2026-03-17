@@ -20,7 +20,7 @@ import (
 type ProjectResolver func(project string) string
 
 // FileToolKit 文件读写 + Bash 执行工具包
-// 通过 UAP 工具机制暴露给 llm-mcp-agent 调用
+// 通过 UAP 工具机制暴露给 llm-agent 调用
 type FileToolKit struct {
 	prefix      string          // 工具名前缀，如 "Codegen" / "Deploy"
 	resolver    ProjectResolver // 项目路径解析器

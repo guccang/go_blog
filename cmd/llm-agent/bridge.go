@@ -90,7 +90,7 @@ func NewBridge(cfg *Config) *Bridge {
 	client := uap.NewClient(cfg.GatewayURL, cfg.AgentID, "llm_mcp", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
 	client.Capacity = cfg.MaxConcurrent
-	client.Tools = nil // llm-mcp-agent 不对外注册工具
+	client.Tools = nil // llm-agent 不对外注册工具
 
 	// 初始化微信对话管理器
 	timeout := time.Duration(cfg.WechatSessionTimeoutMin) * time.Minute

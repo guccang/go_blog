@@ -171,7 +171,7 @@ func (a *MyAgent) handleTaskStop(msg *uap.Message) {
 
 ## 工具发现 Agent 模板
 
-适用于：需要调用其他 agent 工具的 agent（如 execute-code-agent, llm-mcp-agent）
+适用于：需要调用其他 agent 工具的 agent（如 execute-code-agent, llm-agent）
 
 ```go
 package main

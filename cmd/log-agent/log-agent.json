@@ -11,9 +11,9 @@
       "path": "/data/program/go/go_blog/cmd/blog-agent/logs",
       "description": "blog-agent博客日志"
     },
-    "llm-mcp-agent": {
-      "path": "/data/program/go/go_blog/cmd/llm-mcp-agent",
-      "description": "llm-mcp-agent日志,llm日志"
+    "llm-agent": {
+      "path": "/data/program/go/go_blog/cmd/llm-agent",
+      "description": "llm-agent日志,llm日志"
     },
     "env-agent": {
       "path": "/data/program/go/go_blog/cmd/env-agent",

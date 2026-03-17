@@ -412,7 +412,7 @@ func StopAllSessions() int {
 		stopped++
 	}
 
-	// 停止所有远程 agent 上的活跃任务（包括 llm-mcp-agent 直接派发的）
+	// 停止所有远程 agent 上的活跃任务（包括 llm-agent 直接派发的）
 	if agentPool != nil {
 		stopped += agentPool.StopAllRunningTasks()
 	}

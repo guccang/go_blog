@@ -332,7 +332,7 @@ catalog.StartRefreshLoop(60*time.Second, myAgentID)
 
 - **codegen-agent** - 560 行（预计减少 46%）
 - **deploy-agent** - 774 行（预计减少 42%）
-- **llm-mcp-agent** - 560 行（可选迁移）
+- **llm-agent** - 560 行（可选迁移）
 - **wechat-agent** - 512 行（可选迁移）
 
 ## 依赖

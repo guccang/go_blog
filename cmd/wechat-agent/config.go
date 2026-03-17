@@ -26,7 +26,7 @@ type Config struct {
 	WebhookURL string `json:"webhook_url"`
 
 	// 消息路由目标
-	LLMAgentID     string `json:"llm_agent_id"`     // llm-mcp-agent 的 ID（自然语言）
+	LLMAgentID     string `json:"llm_agent_id"`     // llm-agent 的 ID（自然语言）
 	BackendAgentID string `json:"backend_agent_id"` // go_blog 的 ID（结构化命令）
 }
 
@@ -36,7 +36,7 @@ func DefaultConfig() *Config {
 		HTTPPort:         9001,
 		GatewayURL:       "ws://127.0.0.1:9000/ws/uap",
 		AgentName:        "wechat-agent",
-		LLMAgentID:       "llm-mcp-agent",
+		LLMAgentID:       "llm-agent",
 		BackendAgentID:   "go_blog",
 	}
 }

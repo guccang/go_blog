@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// LLMRequestPayload 发送给 llm-mcp-agent 的任务载荷
+// LLMRequestPayload 发送给 llm-agent 的任务载荷
 type LLMRequestPayload struct {
 	TaskType      string        `json:"task_type"`       // "llm_request"
 	Messages      []LLMMessage  `json:"messages"`
@@ -236,7 +236,7 @@ func (o *Orchestrator) installSoftware(targetAgent string, req Requirement) Setu
 		log.Printf("[EnvAgent] 预置脚本安装失败，降级到 LLM: %v", err)
 	}
 
-	// 4. 路径 B：委托 llm-mcp-agent
+	// 4. 路径 B：委托 llm-agent
 	return o.delegateToLLM(targetAgent, osInfo, req)
 }
 
@@ -306,7 +306,7 @@ func (o *Orchestrator) setup(targetAgent string, requirements []Requirement) []S
 	return results
 }
 
-// delegateToLLM 将安装任务委托给 llm-mcp-agent
+// delegateToLLM 将安装任务委托给 llm-agent
 func (o *Orchestrator) delegateToLLM(targetAgent string, osInfo *OSInfo, req Requirement) SetupResult {
 	result := SetupResult{Software: req.Software, Method: "llm_generated"}
 
@@ -335,7 +335,7 @@ func (o *Orchestrator) delegateToLLM(targetAgent string, osInfo *OSInfo, req Req
 		req.Software, minVersionStr,
 	)
 
-	// 查找 llm-mcp-agent 的 agent ID
+	// 查找 llm-agent 的 agent ID
 	llmAgentID := o.conn.cfg.LLMAgentID
 
 	taskPayload := LLMRequestPayload{

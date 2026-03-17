@@ -2,7 +2,7 @@
 
 ## Phase 4: 可选迁移评估
 
-### llm-mcp-agent 分析 (559 行)
+### llm-agent 分析 (559 行)
 
 **可迁移部分：**
 1. ✅ **工具目录发现** (~60 行)
@@ -86,7 +86,7 @@ rm cmd/execute-code-agent/execute-code-agent
 cmd/*/execute-code-agent
 cmd/*/codegen-agent
 cmd/*/deploy-agent
-cmd/*/llm-mcp-agent
+cmd/*/llm-agent
 cmd/*/wechat-agent
 ```
 
@@ -106,7 +106,7 @@ cmd/*/wechat-agent
 
 ### 可选执行（Phase 4）
 
-1. **llm-mcp-agent 迁移** - 优先级：中
+1. **llm-agent 迁移** - 优先级：中
    - 时机：下次重构或维护时
    - 收益：工具发现逻辑统一
    - 工作量：2-3 小时
@@ -126,7 +126,7 @@ cmd/*/wechat-agent
 - ✅ 所有 agent 编译通过
 
 **Phase 4 评估结果：**
-- llm-mcp-agent: 可选迁移（收益 10.7%）
+- llm-agent: 可选迁移（收益 10.7%）
 - wechat-agent: 不建议迁移（收益 3.9%）
 
 **Phase 5 清理任务：**

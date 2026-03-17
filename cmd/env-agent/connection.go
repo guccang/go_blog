@@ -24,7 +24,7 @@ type Connection struct {
 	pending map[string]chan *uap.ToolResultPayload
 	pendMu  sync.Mutex
 
-	// task_assign 响应 — 用于委托 llm-mcp-agent
+	// task_assign 响应 — 用于委托 llm-agent
 	taskResults map[string]chan *uap.TaskCompletePayload
 	taskMu      sync.Mutex
 }
@@ -212,7 +212,7 @@ func (c *Connection) handleToolResult(msg *uap.Message) {
 	}
 }
 
-// handleTaskComplete 处理 task_complete 消息（llm-mcp-agent 返回）
+// handleTaskComplete 处理 task_complete 消息（llm-agent 返回）
 func (c *Connection) handleTaskComplete(msg *uap.Message) {
 	var payload uap.TaskCompletePayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -314,7 +314,7 @@ func (c *Connection) callRemoteToolDirect(agentID, toolName string, args map[str
 	}
 }
 
-// sendTaskAssign 发送 task_assign 到 llm-mcp-agent，等待 task_complete
+// sendTaskAssign 发送 task_assign 到 llm-agent，等待 task_complete
 func (c *Connection) sendTaskAssign(targetAgentID string, payload interface{}, timeout time.Duration) (*uap.TaskCompletePayload, error) {
 	taskID := uap.NewMsgID()
 	ch := make(chan *uap.TaskCompletePayload, 1)

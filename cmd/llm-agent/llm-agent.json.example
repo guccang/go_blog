@@ -2,7 +2,7 @@
   "gateway_url": "ws://127.0.0.1:10086/ws/uap",
   "gateway_http": "http://127.0.0.1:10086",
   "auth_token": "your-auth-token",
-  "agent_id": "llm-mcp-agent",
+  "agent_id": "llm-agent",
   "agent_name": "LLM MCP Agent",
   "llm": {
     "api_key": "your-api-key",

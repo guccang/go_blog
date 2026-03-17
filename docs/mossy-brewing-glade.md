@@ -1,13 +1,13 @@
 ## 计划
 
-将已完成的 MCP 工具分析文档输出到 `cmd/llm-mcp-agent/docs/MCP-TOOL-OPTIMIZATION.md`
+将已完成的 MCP 工具分析文档输出到 `cmd/llm-agent/docs/MCP-TOOL-OPTIMIZATION.md`
 
 ---
 
-# MCP 工具高效使用指南 — 原理分析与 llm-mcp-agent 优化实践
+# MCP 工具高效使用指南 — 原理分析与 llm-agent 优化实践
 
 > 基于 Anthropic 官方博客《Code Execution with MCP》和《Code Execution Tool》的深度解读，
-> 结合 `cmd/llm-mcp-agent` 实际代码的系统性分析。
+> 结合 `cmd/llm-agent` 实际代码的系统性分析。
 
 ---
 
@@ -16,7 +16,7 @@
 1. [MCP 工具使用的两大效率瓶颈](#一mcp-工具使用的两大效率瓶颈)
 2. [Code Execution 模式：核心原理与数据流](#二code-execution-模式核心原理与数据流)
 3. [Claude API code_execution 工具详解](#三claude-api-code_execution-工具详解)
-4. [llm-mcp-agent 现状分析](#四llm-mcp-agent-现状分析)
+4. [llm-agent 现状分析](#四llm-agent-现状分析)
 5. [差距分析与优化方向](#五差距分析与优化方向)
 6. [可落地的优化方案](#六可落地的优化方案)
 
@@ -522,7 +522,7 @@ else:
 
 ---
 
-## 四、llm-mcp-agent 现状分析
+## 四、llm-agent 现状分析
 
 ### 4.1 架构概览
 
@@ -661,7 +661,7 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 
 ### 5.1 总览对比
 
-| 维度 | 博客推荐做法 | llm-mcp-agent 现状 | 差距评估 |
+| 维度 | 博客推荐做法 | llm-agent 现状 | 差距评估 |
 |------|------------|-------------------|---------|
 | 工具定义加载 | 渐进式按需加载 | 全量加载 + >15时LLM路由 | **中** |
 | 工具结果处理 | 在执行环境中过滤后再返回模型 | 原始结果全量进入 messages | **大** |
@@ -715,7 +715,7 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 
 ### 方案 1：工具端返回值精炼（从源头减少 token）
 
-**原理**：与其在 llm-mcp-agent 层截断工具结果（可能丢失关键信息），不如在各 MCP agent（codegen-agent、deploy-agent 等）的返回值设计上做优化，让工具本身返回精炼的结构化结果。
+**原理**：与其在 llm-agent 层截断工具结果（可能丢失关键信息），不如在各 MCP agent（codegen-agent、deploy-agent 等）的返回值设计上做优化，让工具本身返回精炼的结构化结果。
 
 **优势**：这是最安全的优化方式——工具最清楚哪些信息是关键的，哪些是可以省略的。不存在"信息不完整"的风险。
 
@@ -743,7 +743,7 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 }
 ```
 
-**涉及文件**：各 MCP agent 的工具返回逻辑（非 llm-mcp-agent 本身）
+**涉及文件**：各 MCP agent 的工具返回逻辑（非 llm-agent 本身）
 
 ### 方案 2：历史工具结果摘要替换（消息压缩）
 
@@ -938,7 +938,7 @@ DeepSeek LLM
     │
     │  tool_call: execute_code({code: "...", tools_hint: [...]})
     ▼
-llm-mcp-agent (现有)
+llm-agent (现有)
     │
     │  通过 UAP 调用 execute-code-agent 的工具
     ▼
@@ -962,7 +962,7 @@ Python 子进程（从 stdin 读取结果，赋值给变量，代码继续执行
     │  数据处理: filtered = [x for x in data if x["status"] == "pending"]
     │  print(f"找到 {len(filtered)} 条待处理记录")  ← 只有这行最终返回
     ▼
-execute-code-agent → 返回 stdout 给 llm-mcp-agent → 进入 LLM 上下文
+execute-code-agent → 返回 stdout 给 llm-agent → 进入 LLM 上下文
 ```
 
 #### 6.4 关键组件实现
@@ -1040,7 +1040,7 @@ func (a *Agent) executeCode(code string) (string, error) {
 }
 ```
 
-**组件三：llm-mcp-agent 的改造**
+**组件三：llm-agent 的改造**
 
 在 system prompt 中引导 LLM 优先使用代码执行模式：
 

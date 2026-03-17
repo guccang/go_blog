@@ -168,8 +168,8 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 			}
 			log.MessageF(log.ModuleAgent, "CodeGen: gateway agent %s accepted task %s", msg.From, raw.SessionID)
 		} else if raw.TaskID != "" {
-			// llm-mcp-agent assistant 任务
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: llm-mcp-agent accepted task %s", raw.TaskID)
+			// llm-agent assistant 任务
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: llm-agent accepted task %s", raw.TaskID)
 		}
 
 	case MsgTaskRejected:
@@ -218,7 +218,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 			return
 		}
 		if raw.TaskID != "" {
-			// llm-mcp-agent assistant 任务完成 → 投递到 taskEventChannels
+			// llm-agent assistant 任务完成 → 投递到 taskEventChannels
 			b.taskEventMu.Lock()
 			ch, ok := b.taskEventChannels[raw.TaskID]
 			b.taskEventMu.Unlock()
@@ -281,7 +281,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 		}
 
 	case uap.MsgTaskEvent:
-		// llm-mcp-agent 发来的 assistant 任务进度事件
+		// llm-agent 发来的 assistant 任务进度事件
 		var taskEventPayload uap.TaskEventPayload
 		if err := json.Unmarshal(msg.Payload, &taskEventPayload); err != nil {
 			log.WarnF(log.ModuleAgent, "CodeGen gateway: invalid uap task_event payload: %v", err)
@@ -652,7 +652,7 @@ func buildToolDefs() ([]uap.ToolDef, map[string]string) {
 
 // ========================= Assistant 任务桥接 =========================
 
-// SendTaskToLLMAgent 发送 MsgTaskAssign 给 llm-mcp-agent
+// SendTaskToLLMAgent 发送 MsgTaskAssign 给 llm-agent
 func SendTaskToLLMAgent(taskID string, payload interface{}) error {
 	if gatewayBridge == nil || gatewayBridge.client == nil {
 		return fmt.Errorf("gateway bridge not initialized")
@@ -661,7 +661,7 @@ func SendTaskToLLMAgent(taskID string, payload interface{}) error {
 	// 动态查找 llm_mcp 类型的 agent ID
 	agentID := findLLMAgentID()
 	if agentID == "" {
-		return fmt.Errorf("llm-mcp-agent not found")
+		return fmt.Errorf("llm-agent not found")
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -714,7 +714,7 @@ func IsGatewayConnected() bool {
 	return gatewayBridge != nil && gatewayBridge.client != nil && gatewayBridge.client.IsConnected()
 }
 
-// IsLLMAgentOnline 检查 llm-mcp-agent 是否在线
+// IsLLMAgentOnline 检查 llm-agent 是否在线
 func IsLLMAgentOnline() bool {
 	return findLLMAgentID() != ""
 }
@@ -762,13 +762,13 @@ func findLLMAgentID() string {
 // LLMProgressCallback 同步 LLM 请求的进度回调（nil 表示不需要进度通知）
 type LLMProgressCallback func(event, text string)
 
-// SendSyncLLMTask 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回（不含进度回调）
+// SendSyncLLMTask 发送同步 LLM 请求给 llm-agent，等待结果返回（不含进度回调）
 // messages 可以是任意可 JSON 序列化的消息列表
 func SendSyncLLMTask(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration) (string, error) {
 	return SendSyncLLMTaskWithProgress(messages, account, selectedTools, noTools, timeout, nil)
 }
 
-// SendSyncLLMTaskWithProgress 发送同步 LLM 请求给 llm-mcp-agent，等待结果返回（支持进度回调）
+// SendSyncLLMTaskWithProgress 发送同步 LLM 请求给 llm-agent，等待结果返回（支持进度回调）
 func SendSyncLLMTaskWithProgress(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration, progressCb LLMProgressCallback) (string, error) {
 	if gatewayBridge == nil || gatewayBridge.client == nil {
 		return "", fmt.Errorf("gateway bridge not initialized")

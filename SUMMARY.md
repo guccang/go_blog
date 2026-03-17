@@ -7,7 +7,7 @@
 ✅ **Phase 1**: 创建 agentbase 基础包
 ✅ **Phase 2**: 迁移 execute-code-agent
 ✅ **Phase 3**: 迁移 codegen-agent 和 deploy-agent
-✅ **Phase 4**: 评估可选迁移（llm-mcp-agent, wechat-agent）
+✅ **Phase 4**: 评估可选迁移（llm-agent, wechat-agent）
 ✅ **Phase 5**: 清理和文档完善
 
 ---
@@ -99,7 +99,7 @@
    - 构建验证
 
 4. **PHASE4_5_EVALUATION.md** - 评估报告
-   - llm-mcp-agent 分析
+   - llm-agent 分析
    - wechat-agent 分析
    - 清理任务清单
 
@@ -174,7 +174,7 @@
 
 ### 可选迁移
 
-1. **llm-mcp-agent** (优先级: 中)
+1. **llm-agent** (优先级: 中)
    - 收益: 10.7% 代码减少
    - 时机: 下次重构或维护时
    - 工作量: 2-3 小时

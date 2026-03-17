@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-// ProcessRequestViaAgent 通过 llm-mcp-agent 处理 assistant 请求
+// ProcessRequestViaAgent 通过 llm-agent 处理 assistant 请求
 // 发送 MsgTaskAssign，监听 MsgTaskEvent 流式返回，写入 SSE
 func ProcessRequestViaAgent(account, query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
 	// 检查 gateway 连接
 	if !codegen.IsLLMAgentOnline() {
-		return fmt.Errorf("llm-mcp-agent 不在线，请检查 gateway 和 agent 状态")
+		return fmt.Errorf("llm-agent 不在线，请检查 gateway 和 agent 状态")
 	}
 
 	// 生成 taskID
@@ -39,7 +39,7 @@ func ProcessRequestViaAgent(account, query string, selectedTools []string, w htt
 		return fmt.Errorf("发送任务失败: %v", err)
 	}
 
-	log.InfoF(log.ModuleLLM, "Assistant task sent to llm-mcp-agent: task=%s account=%s", taskID, account)
+	log.InfoF(log.ModuleLLM, "Assistant task sent to llm-agent: task=%s account=%s", taskID, account)
 
 	// 监听事件，流式写入 SSE
 	timeout := time.After(10 * time.Minute)

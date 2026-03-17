@@ -1,0 +1,21 @@
+{
+  "port": 8888,
+  "max_clients": 100,
+  "log_level": "info",
+  "agent_base_config": {
+    "name": "acp-agent",
+    "version": "1.0.0",
+    "description": "ACP Protocol Agent for Cloud Code integration"
+  },
+  "cloud_code": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 8080,
+    "timeout": 30
+  },
+  "client_code_x": {
+    "enabled": false,
+    "protocol": "ws",
+    "endpoint": "ws://localhost:8081/ws"
+  }
+}

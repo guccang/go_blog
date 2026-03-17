@@ -145,7 +145,7 @@ if ctx.Messages != nil {
 ### 3.1 WechatConversation
 
 ```go
-// 位置: cmd/llm-mcp-agent/chat.go:102-111
+// 位置: cmd/llm-agent/chat.go:102-111
 
 type WechatConversation struct {
     mu           sync.Mutex // 保护 Messages 等字段
@@ -170,7 +170,7 @@ type WechatConversation struct {
 ### 3.2 WechatConversationManager
 
 ```go
-// 位置: cmd/llm-mcp-agent/chat.go:113-120
+// 位置: cmd/llm-agent/chat.go:113-120
 
 type WechatConversationManager struct {
     mu            sync.RWMutex
@@ -199,7 +199,7 @@ Messages[4]: {Role: "assistant", Content: "已完成：..."}
 ### 3.4 配置项
 
 ```go
-// 位置: cmd/llm-mcp-agent/config.go
+// 位置: cmd/llm-agent/config.go
 
 WechatSessionTimeoutMin int  `json:"wechat_session_timeout_min"` // 默认 30
 WechatMaxMessages       int  `json:"wechat_max_messages"`        // 默认 40
@@ -390,11 +390,11 @@ bridge.StartWechatCleanupLoop()  // 新增：启动过期会话清理
 
 | 文件 | 改动类型 | 改动内容 |
 |------|---------|---------|
-| `cmd/llm-mcp-agent/chat.go` | **重写** | 新增 `WechatConversation`、`WechatConversationManager` 结构体及方法；新增 `isConversationResetCommand`、`compactWechatMessages`、`StartWechatCleanupLoop`；重写 `handleWechatMessage` |
-| `cmd/llm-mcp-agent/bridge.go` | 修改 | `Bridge` 新增 `wechatConvMgr` 字段；`NewBridge` 中初始化 |
-| `cmd/llm-mcp-agent/config.go` | 修改 | `Config` 新增 3 个微信会话配置字段；`DefaultConfig` 新增默认值 |
-| `cmd/llm-mcp-agent/main.go` | 修改 | 新增 `bridge.StartWechatCleanupLoop()` 调用 |
-| `cmd/llm-mcp-agent/processor.go` | **无改动** | `processTask` 已支持 `ctx.Messages` 预构建消息路径 |
+| `cmd/llm-agent/chat.go` | **重写** | 新增 `WechatConversation`、`WechatConversationManager` 结构体及方法；新增 `isConversationResetCommand`、`compactWechatMessages`、`StartWechatCleanupLoop`；重写 `handleWechatMessage` |
+| `cmd/llm-agent/bridge.go` | 修改 | `Bridge` 新增 `wechatConvMgr` 字段；`NewBridge` 中初始化 |
+| `cmd/llm-agent/config.go` | 修改 | `Config` 新增 3 个微信会话配置字段；`DefaultConfig` 新增默认值 |
+| `cmd/llm-agent/main.go` | 修改 | 新增 `bridge.StartWechatCleanupLoop()` 调用 |
+| `cmd/llm-agent/processor.go` | **无改动** | `processTask` 已支持 `ctx.Messages` 预构建消息路径 |
 
 ---
 

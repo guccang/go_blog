@@ -1,7 +1,7 @@
 # 工具参数路由丢失问题修复记录
 
 > 日期：2026-03-16
-> 涉及模块：gateway / codegen-agent / llm-mcp-agent（planner / processor / orchestrator）
+> 涉及模块：gateway / codegen-agent / llm-agent（planner / processor / orchestrator）
 
 ---
 
@@ -55,7 +55,7 @@ Tools:            c.agent.ScanTools(),          // ["claudecode"]
 但这些信息在两个地方被丢弃：
 
 1. **Gateway**：`GetAllAgents()` 返回的 agent 信息不含 `Meta` 字段 → 模型列表无法被其他 agent 获取
-2. **llm-mcp-agent**：`AgentInfo` 结构体只有 `ID/Name/Description/ToolNames`，没有模型/工具字段
+2. **llm-agent**：`AgentInfo` 结构体只有 `ID/Name/Description/ToolNames`，没有模型/工具字段
 
 结果：LLM 看到的 `model` 参数描述只是 `"模型配置名称（可选）"` — 不知道合法值是什么。
 
@@ -91,7 +91,7 @@ codegen-agent 注册: Models=["default","deepseek"], Tools=["claudecode"]
     ↓
 Gateway GetAllAgents 不返回 Meta → 模型信息丢弃
     ↓
-llm-mcp-agent AgentInfo 没有 Models 字段 → system prompt 无可用模型列表
+llm-agent AgentInfo 没有 Models 字段 → system prompt 无可用模型列表
     ↓
 extractParamInfo 截断 15 字符 → 规划 LLM 看不到 tool 合法值
     ↓
@@ -144,7 +144,7 @@ Meta: map[string]any{
 
 ### 3.3 AgentInfo 扩展 + system prompt 注入
 
-**文件**：`cmd/llm-mcp-agent/bridge.go`
+**文件**：`cmd/llm-agent/bridge.go`
 
 ```go
 // AgentInfo 新增字段
@@ -169,7 +169,7 @@ info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
 
 ### 3.4 ReviewPlan 始终执行 + 参数完整性审查
 
-**文件**：`cmd/llm-mcp-agent/planner.go` — `ReviewPlan()`
+**文件**：`cmd/llm-agent/planner.go` — `ReviewPlan()`
 
 核心改动：
 
@@ -188,7 +188,7 @@ info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
 
 ### 3.5 extractParamInfo 截断长度提升
 
-**文件**：`cmd/llm-mcp-agent/planner.go` — `extractParamInfo()`
+**文件**：`cmd/llm-agent/planner.go` — `extractParamInfo()`
 
 描述截断从 15→40 字符，保留合法值信息：
 
@@ -199,7 +199,7 @@ info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
 
 ### 3.6 子任务 LLM 注入 agent 能力描述
 
-**文件**：`cmd/llm-mcp-agent/orchestrator.go` — `executeSubTask()`
+**文件**：`cmd/llm-agent/orchestrator.go` — `executeSubTask()`
 
 在子任务的 system prompt 中注入 `getAgentDescriptionBlock()`，子任务 LLM 可见：
 
@@ -256,8 +256,8 @@ info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
 |------|---------|
 | `cmd/common/uap/server.go` | `GetAllAgents()` 返回 `meta` 字段 |
 | `cmd/codegen-agent/connection.go` | `NewConnection()` Meta 增加 models/coding_tools |
-| `cmd/llm-mcp-agent/bridge.go` | `AgentInfo` 扩展字段 + `DiscoverAgents` 解析 meta + `getAgentDescriptionBlock` 输出模型信息 + `collectSkillTools`/`mergeCapabilityTools` 增加日志 + 新增 `parseStringSlice` |
-| `cmd/llm-mcp-agent/planner.go` | `ReviewPlan` 移除跳过、增加 agentCapabilities 参数、强化参数完整性审查 + `extractParamInfo` 截断 15→40 |
-| `cmd/llm-mcp-agent/processor.go` | `handleComplexTask` 传 agentCapabilities 给 ReviewPlan + 工具调用参数截断 200→500 + skill 在线检测日志增强 |
-| `cmd/llm-mcp-agent/orchestrator.go` | `executeSubTask` system prompt 注入 agent 能力描述 + 工具调用参数截断 200→500 |
-| `cmd/llm-mcp-agent/llm_client.go` | `logLLMContext` 增加工具参数 schema 摘要 |
+| `cmd/llm-agent/bridge.go` | `AgentInfo` 扩展字段 + `DiscoverAgents` 解析 meta + `getAgentDescriptionBlock` 输出模型信息 + `collectSkillTools`/`mergeCapabilityTools` 增加日志 + 新增 `parseStringSlice` |
+| `cmd/llm-agent/planner.go` | `ReviewPlan` 移除跳过、增加 agentCapabilities 参数、强化参数完整性审查 + `extractParamInfo` 截断 15→40 |
+| `cmd/llm-agent/processor.go` | `handleComplexTask` 传 agentCapabilities 给 ReviewPlan + 工具调用参数截断 200→500 + skill 在线检测日志增强 |
+| `cmd/llm-agent/orchestrator.go` | `executeSubTask` system prompt 注入 agent 能力描述 + 工具调用参数截断 200→500 |
+| `cmd/llm-agent/llm_client.go` | `logLLMContext` 增加工具参数 schema 摘要 |

@@ -26,7 +26,7 @@ go_blog
 cmd/codegen-agent/codegen-agent
 cmd/deploy-agent/nohup.out
 cmd/gateway/gateway
-cmd/llm-mcp-agent/llm-mcp-agent
+cmd/llm-agent/llm-agent
 cmd/wechat-agent/wechat-agent
 plan.txt
 
@@ -36,7 +36,7 @@ cmd/deploy-agent/deploy-agent.json
 cmd/execute-code-agent/execute-code-agent.json
 cmd/env-agent/env-agent.json
 cmd/gateway/gateway.json
-cmd/llm-mcp-agent/llm-mcp-agent.json
+cmd/llm-agent/llm-agent.json
 cmd/wechat-agent/wechat-agent.json
 cmd/blog-agent/blog-agent.json
 cmd/blog-agent/blog-agent
@@ -47,4 +47,4 @@ cmd/execute-code-agent/execute-code-agent
 /cmd/welcome-page
 cmd/logs.txt
 cmd/logs.txt
-cmd/llm-mcp-agent/llm-mcp-agent-openrouter.json
+cmd/llm-agent/llm-agent-openrouter.json

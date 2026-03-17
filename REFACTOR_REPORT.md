@@ -235,7 +235,7 @@ cd cmd/deploy-agent && go build ✅
 
 根据计划，以下 agent 可选迁移：
 
-- **llm-mcp-agent** (560 行) - 可使用 ToolCatalog 简化工具发现
+- **llm-agent** (560 行) - 可使用 ToolCatalog 简化工具发现
 - **wechat-agent** (512 行) - 可使用 AgentBase 简化消息分发
 
 预计收益较小（无协议层），优先级较低。

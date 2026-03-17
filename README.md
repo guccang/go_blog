@@ -121,7 +121,7 @@ go_blog/
 │   │   │   └── ...      # 其他 35+ 模块
 │   │   └── scripts/     # 构建和运行脚本
 │   ├── wechat-agent/      # 微信代理服务
-│   ├── llm-mcp-agent/     # LLM MCP 协议代理
+│   ├── llm-agent/     # LLM MCP 协议代理
 │   ├── codegen-agent/     # 代码生成代理
 │   ├── deploy-agent/      # 部署代理
 │   └── gateway/          # API 网关
@@ -174,7 +174,7 @@ func Init() {
 
 ## 🤖 多 Agent 系统与 LLM 核心技术
 
-Go Blog 采用 **UAP (Unified Agent Protocol) + 多 Agent** 架构，通过 Gateway 实现 Agent 间的工具发现、消息路由和跨 Agent 工具调用。LLM-MCP-Agent 作为系统大脑，集成了多项 LLM 工程化技术。
+Go Blog 采用 **UAP (Unified Agent Protocol) + 多 Agent** 架构，通过 Gateway 实现 Agent 间的工具发现、消息路由和跨 Agent 工具调用。llm-agent 作为系统大脑，集成了多项 LLM 工程化技术。
 
 ### 系统架构
 
@@ -223,7 +223,7 @@ Level 2: Tool 路由 (工具数 > 10 时触发)
 代码执行作为**元工具**始终注入 LLM 上下文，不受路由筛选影响。LLM 可以在任何对话中直接调用代码执行来完成计算、数据处理等任务。
 
 ```
-LLM-MCP-Agent                    Execute-Code-Agent
+llm-agent                    Execute-Code-Agent
      │                                  │
      │── tool_call(ExecuteCode) ───────▶│
      │                                  │── 沙箱执行代码
@@ -284,7 +284,7 @@ LLM-MCP-Agent                    Execute-Code-Agent
 
 ### 🔀 任务拆解与任务循环 (Task Decomposition & Loop)
 
-LLM-MCP-Agent 支持两条执行路径：
+llm-agent 支持两条执行路径：
 
 **简单路径** — 直接 Function Calling 循环：
 ```
@@ -327,7 +327,7 @@ Synthesizer: LLM 聚合所有子任务结果，生成统一回答
 | **Codegen Agent** | `CodegenStartSession` `CodegenSendMessage` `CodegenReadFile` `CodegenWriteFile` `CodegenExecBash` | 集成 Claude Code / OpenCode，管理编码会话，文件读写，命令执行 |
 | **Deploy Agent** | `DeployProject` `DeployPipeline` `DeployGetStatus` `DeployReadFile` `DeployWriteFile` `DeployExecBash` | 多目标部署（本地/SSH）、交叉编译、流水线、SFTP 上传 |
 | **Execute-Code Agent** | `ExecuteCode` | 代码沙箱执行，支持多语言，超时保护 |
-| **WeChat Agent** | 消息接收/转发 | 企业微信接入，消息路由到 LLM-MCP-Agent |
+| **WeChat Agent** | 消息接收/转发 | 企业微信接入，消息路由到 llm-agent |
 
 ### 微信指令（cg 系列）
 
@@ -419,10 +419,10 @@ cd cmd/gateway
 go build -o gateway main.go
 ./gateway &
 
-# 2. 启动LLM-MCP-Agent (AI大脑)
-cd cmd/llm-mcp-agent
-go build -o llm-mcp-agent main.go
-./llm-mcp-agent &
+# 2. 启动llm-agent (AI大脑)
+cd cmd/llm-agent
+go build -o llm-agent main.go
+./llm-agent &
 
 # 3. 启动WeChat-Agent (微信接入)
 cd cmd/wechat-agent

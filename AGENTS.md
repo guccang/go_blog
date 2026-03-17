@@ -20,7 +20,7 @@ Go Blog 是一个基于 Go 1.24.0 的个人数字生活管理平台，采用"一
 | Agent | 目录 | 职责 |
 |-------|------|------|
 | **Gateway** | `cmd/gateway/` | Agent通信中枢，消息路由，工具目录管理 |
-| **LLM-MCP-Agent** | `cmd/llm-mcp-agent/` | AI大脑，多模型LLM集成，MCP协议支持 |
+| **llm-agent** | `cmd/llm-agent/` | AI大脑，多模型LLM集成，MCP协议支持 |
 | **CodeGen-Agent** | `cmd/codegen-agent/` | 代码生成与工程自动化 |
 | **Deploy-Agent** | `cmd/deploy-agent/` | 多平台部署自动化，流水线执行 |
 | **WeChat-Agent** | `cmd/wechat-agent/` | 企业微信集成，消息转发 |
@@ -49,7 +49,7 @@ go test -v ./pkgs/encryption -run TestAesSimpleEncrypt  # 测试单个函数
 ./go_blog ../blogs_txt/sys_conf.md cert.pem key.pem # 运行应用（HTTPS）
 
 # 构建其他Agent (如需要)
-cd ../llm-mcp-agent && go build -o llm-mcp-agent
+cd ../llm-agent && go build -o llm-agent
 cd ../deploy-agent && go build -o deploy-agent
 cd ../wechat-agent && go build -o wechat-agent
 cd ../gateway && go build -o gateway

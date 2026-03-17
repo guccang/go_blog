@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	cfgPath := flag.String("config", "llm-mcp-agent.json", "配置文件路径")
+	cfgPath := flag.String("config", "llm-agent.json", "配置文件路径")
 	flag.Parse()
 
 	// 加载配置

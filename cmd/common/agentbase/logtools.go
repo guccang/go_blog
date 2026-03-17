@@ -12,7 +12,7 @@ import (
 )
 
 // LogToolKit 日志查询工具包
-// 通过 UAP 工具机制暴露给 llm-mcp-agent 远程查询 agent 运行日志
+// 通过 UAP 工具机制暴露给 llm-agent 远程查询 agent 运行日志
 type LogToolKit struct {
 	prefix  string // 工具名前缀，如 "Codegen"
 	logPath string // 日志文件路径，如 "codegen-agent.log"

@@ -20,7 +20,7 @@ type LLMConfig struct {
 	Temperature float64 `json:"temperature"`
 }
 
-// Config llm-mcp-agent 配置
+// Config llm-agent 配置
 type Config struct {
 	GatewayURL  string `json:"gateway_url"`  // ws://127.0.0.1:9000/ws/uap
 	GatewayHTTP string `json:"gateway_http"` // http://127.0.0.1:9000
@@ -65,7 +65,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		GatewayURL:  "ws://127.0.0.1:9000/ws/uap",
 		GatewayHTTP: "http://127.0.0.1:9000",
-		AgentID:     "llm-mcp",
+		AgentID:     "llm-agent",
 		AgentName:   "LLM MCP Agent",
 		LLM: LLMConfig{
 			BaseURL:     "https://api.deepseek.com/v1",

@@ -88,7 +88,7 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 		return http.StatusInternalServerError
 	}
 	account := auth.GetAccountBySession(session.Value)
-	log.InfoF(log.ModuleLLM, "Processing query via llm-mcp-agent: account=%s %s", account, userQuery)
+	log.InfoF(log.ModuleLLM, "Processing query via llm-agent: account=%s %s", account, userQuery)
 	err = ProcessRequestViaAgent(account, userQuery, request.Tools, w, flusher)
 	if err != nil {
 		log.ErrorF(log.ModuleLLM, "Agent ProcessQuery failed: %v", err)

@@ -1,4 +1,4 @@
-module llm-mcp-agent
+module llm-agent
 
 go 1.24.0
 

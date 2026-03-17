@@ -116,7 +116,7 @@ func (b *Bridge) HandleWechatMessage(msg *WechatMessage) {
 		return
 	}
 
-	// 路由：结构化命令 → go_blog，自然语言 → llm-mcp-agent
+	// 路由：结构化命令 → go_blog，自然语言 → llm-agent
 	targetAgent := b.cfg.LLMAgentID
 	if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
 		targetAgent = b.cfg.BackendAgentID
