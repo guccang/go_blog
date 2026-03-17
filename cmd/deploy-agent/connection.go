@@ -586,16 +586,25 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 
 	log.Printf("[INFO] tool_call from=%s tool=%s", msg.From, payload.ToolName)
 
+	// 构建进度推送回调：通过 MsgNotify 将进度发送给调用方
+	sendProgress := func(text string) {
+		c.Client.SendTo(msg.From, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "tool_progress",
+			To:      msg.ID, // 用工具调用的 msgID 做关联
+			Content: text,
+		})
+	}
+
 	var result string
 	switch payload.ToolName {
 	case "DeployListProjects":
 		result = c.toolListProjects()
 	case "DeployProject":
-		result = c.toolDeployProject(args)
+		result = c.toolDeployProject(args, sendProgress)
 	case "DeployListPipelines":
 		result = c.toolListPipelines()
 	case "DeployPipeline":
-		result = c.toolDeployPipeline(args)
+		result = c.toolDeployPipeline(args, sendProgress)
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
@@ -653,7 +662,7 @@ func (c *Connection) toolListProjects() string {
 }
 
 // toolDeployProject 部署指定项目
-func (c *Connection) toolDeployProject(args map[string]interface{}) string {
+func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress func(string)) string {
 	projectName, _ := args["project"].(string)
 	deployTarget, _ := args["deploy_target"].(string)
 	packOnly, _ := args["pack_only"].(bool)
@@ -683,10 +692,19 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 		}
 
 		deployCfg := *c.cfg
-		err := adhocDeploy(&deployCfg, adhoc, c.password, nil)
+		sendProgress(fmt.Sprintf("🚀 开始 adhoc 部署项目 [%s]...", projectName))
+		err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
+			prefix := "📦 "
+			if level == "error" {
+				prefix = "⚠️ "
+			}
+			sendProgress(prefix + message)
+		})
 		if err != nil {
+			sendProgress(fmt.Sprintf("❌ adhoc 部署失败: %s", err.Error()))
 			return fmt.Sprintf(`{"success":false,"error":"adhoc 部署失败: %s"}`, err.Error())
 		}
+		sendProgress(fmt.Sprintf("✅ adhoc 部署项目 %s 完成", projectName))
 		tr := uap.BuildToolResult("", nil, fmt.Sprintf("adhoc 部署项目 %s 完成", projectName))
 		return tr.Result
 	}
@@ -718,15 +736,27 @@ func (c *Connection) toolDeployProject(args map[string]interface{}) string {
 	deployCfg := *c.cfg
 
 	deployer := NewDeployer(&deployCfg, proj, c.password)
-	err = deployer.Run(packOnly, deployTarget)
-	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
+	deployer.OnProgress = func(level, message string) {
+		prefix := "📦 "
+		if level == "error" {
+			prefix = "⚠️ "
+		}
+		sendProgress(prefix + message)
 	}
 
 	action := "部署"
 	if packOnly {
 		action = "打包"
 	}
+	sendProgress(fmt.Sprintf("🚀 开始%s项目 [%s]...", action, proj.Name))
+
+	err = deployer.Run(packOnly, deployTarget)
+	if err != nil {
+		sendProgress(fmt.Sprintf("❌ %s失败: %s", action, err.Error()))
+		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
+	}
+
+	sendProgress(fmt.Sprintf("✅ %s项目 %s 完成", action, proj.Name))
 	tr := uap.BuildToolResult("", nil, fmt.Sprintf("%s项目 %s 完成", action, proj.Name))
 	return tr.Result
 }
@@ -761,7 +791,7 @@ func (c *Connection) toolListPipelines() string {
 }
 
 // toolDeployPipeline 执行部署编排 pipeline
-func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
+func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgress func(string)) string {
 	pipelineName, _ := args["pipeline"].(string)
 	if pipelineName == "" {
 		return `{"success":false,"error":"缺少 pipeline 参数"}`
@@ -785,19 +815,35 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}) string {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
 
+	sendProgress(fmt.Sprintf("🔄 开始执行 Pipeline: %s (%d 步)", pip.Name, len(pip.Steps)))
+
 	// 逐步执行
 	for i, step := range pip.Steps {
 		proj := c.cfg.GetProject(step.Project)
 		deployCfg := *c.cfg
 
+		sendProgress(fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s]...", i+1, len(pip.Steps), proj.Name))
+
 		deployer := NewDeployer(&deployCfg, proj, c.password)
+		deployer.OnProgress = func(level, message string) {
+			prefix := "📦 "
+			if level == "error" {
+				prefix = "⚠️ "
+			}
+			sendProgress(prefix + message)
+		}
 		stepErr := deployer.Run(step.PackOnly, step.Target)
 
 		if stepErr != nil {
+			sendProgress(fmt.Sprintf("❌ [%d/%d] %s 失败: %v", i+1, len(pip.Steps), proj.Name, stepErr))
 			return fmt.Sprintf(`{"success":false,"error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
 				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
 		}
+
+		sendProgress(fmt.Sprintf("✅ [%d/%d] %s 完成", i+1, len(pip.Steps), proj.Name))
 	}
+
+	sendProgress(fmt.Sprintf("✅ Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
 
 	tr := uap.BuildToolResult("", nil, fmt.Sprintf("Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
 	return tr.Result

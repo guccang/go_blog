@@ -559,7 +559,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			resultCh := make(chan toolCallResultPair, 1)
 			go func() {
-				r, e := b.CallToolCtx(callCtx, originalName, json.RawMessage(tc.Function.Arguments))
+				r, e := b.CallToolCtxWithProgress(callCtx, originalName, json.RawMessage(tc.Function.Arguments), ctx.Sink)
 				resultCh <- toolCallResultPair{r, e}
 			}()
 

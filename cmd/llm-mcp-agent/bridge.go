@@ -63,6 +63,10 @@ type Bridge struct {
 	pending map[string]chan *toolResultWithFrom // request_id → result channel
 	pendMu  sync.Mutex
 
+	// 工具调用进度转发（deploy-agent 等发送的 tool_progress 事件）
+	toolProgressSinks map[string]EventSink // msgID → sink
+	toolProgressMu    sync.Mutex
+
 	// 微信对话上下文管理
 	wechatConvMgr *WechatConversationManager
 
@@ -103,16 +107,17 @@ func NewBridge(cfg *Config) *Bridge {
 	}
 
 	b := &Bridge{
-		cfg:           cfg,
-		client:        client,
-		toolCatalog:   make(map[string]string),
-		agentInfo:     make(map[string]AgentInfo),
-		agentTools:    make(map[string][]LLMTool),
-		pending:       make(map[string]chan *toolResultWithFrom),
-		wechatConvMgr: NewWechatConversationManager(timeout, maxMessages, maxTurns),
-		activeTasks:   make(map[string]string),
-		taskQueue:     make(chan *queuedTask, cfg.TaskQueueSize),
-		queueDone:     make(chan struct{}),
+		cfg:               cfg,
+		client:            client,
+		toolCatalog:       make(map[string]string),
+		agentInfo:         make(map[string]AgentInfo),
+		agentTools:        make(map[string][]LLMTool),
+		pending:           make(map[string]chan *toolResultWithFrom),
+		toolProgressSinks: make(map[string]EventSink),
+		wechatConvMgr:     NewWechatConversationManager(timeout, maxMessages, maxTurns),
+		activeTasks:       make(map[string]string),
+		taskQueue:         make(chan *queuedTask, cfg.TaskQueueSize),
+		queueDone:         make(chan struct{}),
 	}
 
 	client.OnMessage = b.handleMessage
@@ -1190,6 +1195,15 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResul
 
 // CallToolCtx context 感知的工具调用，支持级联取消
 func (b *Bridge) CallToolCtx(ctx context.Context, toolName string, args json.RawMessage) (*ToolCallResult, error) {
+	return b.callToolCtxWithSink(ctx, toolName, args, nil)
+}
+
+// CallToolCtxWithProgress context 感知的工具调用，支持进度回调转发
+func (b *Bridge) CallToolCtxWithProgress(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+	return b.callToolCtxWithSink(ctx, toolName, args, sink)
+}
+
+func (b *Bridge) callToolCtxWithSink(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("cancelled before tool call %s: %v", toolName, err)
 	}
@@ -1206,10 +1220,22 @@ func (b *Bridge) CallToolCtx(ctx context.Context, toolName string, args json.Raw
 	b.pending[msgID] = ch
 	b.pendMu.Unlock()
 
+	// 注册进度回调 sink（deploy-agent 的 tool_progress 会通过 msgID 关联）
+	if sink != nil {
+		b.toolProgressMu.Lock()
+		b.toolProgressSinks[msgID] = sink
+		b.toolProgressMu.Unlock()
+	}
+
 	defer func() {
 		b.pendMu.Lock()
 		delete(b.pending, msgID)
 		b.pendMu.Unlock()
+		if sink != nil {
+			b.toolProgressMu.Lock()
+			delete(b.toolProgressSinks, msgID)
+			b.toolProgressMu.Unlock()
+		}
 	}()
 
 	log.Printf("[Bridge] tool_call(ctx) → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
@@ -1270,6 +1296,16 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		}
 		if payload.Channel == "wechat" {
 			go b.handleWechatMessage(msg.From, payload.To, payload.Content)
+		} else if payload.Channel == "tool_progress" {
+			// deploy-agent 等发送的工具执行进度，payload.To 是工具调用 msgID
+			b.toolProgressMu.Lock()
+			sink, ok := b.toolProgressSinks[payload.To]
+			b.toolProgressMu.Unlock()
+			if ok {
+				sink.OnEvent("tool_progress", payload.Content)
+			} else {
+				log.Printf("[Bridge] tool_progress for unknown msgID=%s: %s", payload.To, payload.Content)
+			}
 		} else {
 			log.Printf("[Bridge] unhandled notify channel: %s", payload.Channel)
 		}
