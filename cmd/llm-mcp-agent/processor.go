@@ -441,7 +441,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 		// LLM 响应反馈
 		if len(toolCalls) > 0 {
-			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，需要调用 %d 个工具...", fmtDuration(llmDuration), len(toolCalls)))
+			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，需要调用 %d 个工具: %s", fmtDuration(llmDuration), len(toolCalls), strings.Join(tcNames, ", ")))
 		} else {
 			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，正在整理结果...", fmtDuration(llmDuration)))
 		}
