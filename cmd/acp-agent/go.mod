@@ -1,10 +1,20 @@
 module acp-agent
 
-go 1.21
+go 1.24.0
 
 require (
-	github.com/gorilla/websocket v1.5.0
+	agentbase v0.0.0
+	github.com/coder/acp-go-sdk v0.6.3
+	uap v0.0.0
+)
+
+require (
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 )
 
 replace agentbase => ../common/agentbase
+
 replace uap => ../common/uap

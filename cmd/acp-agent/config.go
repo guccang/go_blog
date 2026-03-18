@@ -4,73 +4,70 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
-type Config struct {
-	Port           int               `json:"port"`
-	AgentBaseConfig map[string]interface{} `json:"agent_base_config"`
-	MaxClients     int               `json:"max_clients"`
-	LogLevel       string            `json:"log_level"`
-	CloudCode      CloudCodeConfig   `json:"cloud_code"`
-	ClientCodeX    ClientCodeXConfig `json:"client_code_x"`
+// AgentConfig agent 配置
+type AgentConfig struct {
+	ServerURL        string   `json:"server_url"`           // gateway WebSocket 地址
+	AgentName        string   `json:"agent_name"`           // agent 名称
+	AgentType        string   `json:"agent_type"`           // agent 类型，默认 "acp"
+	AuthToken        string   `json:"auth_token"`           // 认证令牌
+	GoBackendAgentID string   `json:"go_backend_agent_id"`  // go_blog-agent 在 gateway 中的 ID
+	ACPAgentCmd      string   `json:"acp_agent_cmd"`        // ACP agent 命令，默认 "npx"
+	ACPAgentArgs     []string `json:"acp_agent_args"`       // ACP agent 参数，默认 ["-y", "@zed-industries/claude-agent-acp@latest"]
+	Workspaces       []string `json:"workspaces"`           // 项目工作区目录列表
+	MaxConcurrent    int      `json:"max_concurrent"`       // 最大并发分析数，默认 2
+	AnalysisTimeout  int      `json:"analysis_timeout"`     // 分析超时（秒），默认 300
 }
 
-type CloudCodeConfig struct {
-	Enabled bool   `json:"enabled"`
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
-	APIKey  string `json:"api_key,omitempty"`
-	Timeout int    `json:"timeout"`
-}
-
-type ClientCodeXConfig struct {
-	Enabled   bool   `json:"enabled"`
-	Protocol  string `json:"protocol"`
-	Endpoint  string `json:"endpoint"`
-	AuthToken string `json:"auth_token,omitempty"`
-}
-
-func loadConfig(configPath string) (*Config, error) {
-	if !filepath.IsAbs(configPath) {
-		exeDir, err := os.Executable()
-		if err != nil {
-			return nil, err
-		}
-		configPath = filepath.Join(filepath.Dir(exeDir), configPath)
+// LoadConfig 从 JSON 配置文件加载配置
+func LoadConfig(path string) (*AgentConfig, error) {
+	cfg := &AgentConfig{
+		ACPAgentCmd:  "npx",
+		ACPAgentArgs: []string{"-y", "@zed-industries/claude-agent-acp@latest"},
+		MaxConcurrent:   2,
+		AnalysisTimeout: 300,
 	}
 
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		return nil, fmt.Errorf("open config: %v", err)
 	}
 
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("解析配置文件失败: %v", err)
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %v", err)
 	}
 
-	if config.Port == 0 {
-		config.Port = 8888
+	// 必填字段校验
+	if cfg.ServerURL == "" {
+		return nil, fmt.Errorf("server_url is required")
 	}
-	if config.MaxClients == 0 {
-		config.MaxClients = 100
-	}
-	if config.LogLevel == "" {
-		config.LogLevel = "info"
-	}
-	if config.CloudCode.Timeout == 0 {
-		config.CloudCode.Timeout = 30
-	}
-	if config.CloudCode.Host == "" {
-		config.CloudCode.Host = "localhost"
-	}
-	if config.CloudCode.Port == 0 {
-		config.CloudCode.Port = 8080
-	}
-	if config.ClientCodeX.Protocol == "" {
-		config.ClientCodeX.Protocol = "ws"
+	if len(cfg.Workspaces) == 0 {
+		return nil, fmt.Errorf("workspaces is required")
 	}
 
-	return &config, nil
+	// 默认值填充
+	if cfg.AgentName == "" {
+		cfg.AgentName, _ = os.Hostname()
+	}
+	if cfg.AgentType == "" {
+		cfg.AgentType = "acp"
+	}
+	if cfg.ACPAgentCmd == "" {
+		cfg.ACPAgentCmd = "npx"
+	}
+	if len(cfg.ACPAgentArgs) == 0 {
+		cfg.ACPAgentArgs = []string{"-y", "@zed-industries/claude-agent-acp@latest"}
+	}
+	if cfg.MaxConcurrent <= 0 {
+		cfg.MaxConcurrent = 2
+	}
+	if cfg.AnalysisTimeout <= 0 {
+		cfg.AnalysisTimeout = 300
+	}
+	if cfg.GoBackendAgentID == "" {
+		cfg.GoBackendAgentID = "go_blog"
+	}
+
+	return cfg, nil
 }
