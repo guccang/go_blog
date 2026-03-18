@@ -57,10 +57,22 @@ type Config struct {
 	TaskQueueSize       int `json:"task_queue_size"`       // 任务缓冲队列容量（默认 10）
 	MaxParallelSubtasks int `json:"max_parallel_subtasks"` // DAG 同层最大并行子任务数（默认 3）
 
-	// 微信对话上下文配置
+	// 通用会话上下文配置（替代微信专用配置）
 	WechatSessionTimeoutMin int `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
 	WechatMaxMessages       int `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
 	WechatMaxTurns          int `json:"wechat_max_turns"`           // 单会话最大对话轮次（默认 15）
+	ChatSessionDir          string `json:"chat_session_dir"`        // 会话持久化目录（默认 chat_sessions）
+
+	// 来源渠道 LLM 配置
+	SourceLLMs []SourceLLMConfig `json:"source_llms,omitempty"` // 按来源渠道的 LLM 配置
+
+	// 记忆系统配置
+	MemoryDir               string `json:"memory_dir"`                // 记忆目录（默认 workspace/memory）
+	SkillIterationThreshold int    `json:"skill_iteration_threshold"` // 同类错误触发 skill 迭代的阈值（默认 3）
+	MemoryMaxChars          int    `json:"memory_max_chars"`          // 记忆注入 prompt 的最大字符数（默认 8000）
+	MemoryMaxFileChars      int    `json:"memory_max_file_chars"`     // MEMORY.md 文件最大字符数，超过触发压缩（默认 50000）
+	MemoryMaxEntries        int    `json:"memory_max_entries"`        // 最大记忆条目数（默认 200）
+	MemoryExpiryDays        int    `json:"memory_expiry_days"`        // 记忆过期天数（默认 30）
 
 	// 内置 Bash 工具配置
 	BashTimeoutSec     int `json:"bash_timeout_sec"`      // Bash 命令超时秒数（默认 30）
@@ -105,6 +117,14 @@ func DefaultConfig() *Config {
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,
 		WechatMaxTurns:          15,
+		ChatSessionDir:          "chat_sessions",
+
+		MemoryDir:               "workspace/memory",
+		SkillIterationThreshold: 3,
+		MemoryMaxChars:          8000,
+		MemoryMaxFileChars:      50000,
+		MemoryMaxEntries:        200,
+		MemoryExpiryDays:        30,
 
 		BashTimeoutSec:     30,
 		BashMaxOutputBytes: 102400,

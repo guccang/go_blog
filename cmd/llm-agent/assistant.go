@@ -46,6 +46,22 @@ type AssistantEventPayload struct {
 func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayload) {
 	log.Printf("[Assistant] task=%s account=%s query=%s", taskID, payload.Account, payload.Query)
 
+	// Web 来源使用 ChatSession 管理多轮对话
+	session, isNew := b.sessionMgr.GetOrCreate("web", payload.Account, payload.Account)
+
+	session.mu.Lock()
+	session.LastActiveAt = time.Now()
+	if isNew || len(session.Messages) == 0 {
+		// 新会话：Messages 由 processTask 构建
+		session.Messages = nil
+	} else {
+		// 续接对话：追加 user 消息
+		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
+		session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
+	}
+	session.TurnCount++
+	session.mu.Unlock()
+
 	ctx := &TaskContext{
 		Ctx:           context.Background(),
 		TaskID:        taskID,
@@ -56,7 +72,38 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		Sink:          &StreamingSink{bridge: b, taskID: taskID},
 	}
 
-	_, err := b.processTask(ctx)
+	// 如果有历史消息，传入作为上下文
+	if !isNew {
+		session.mu.Lock()
+		if len(session.Messages) > 0 {
+			messagesCopy := make([]Message, len(session.Messages))
+			copy(messagesCopy, session.Messages)
+			ctx.Messages = messagesCopy
+		}
+		session.mu.Unlock()
+	}
+
+	result, err := b.processTask(ctx)
+
+	// 将 assistant 回复追加到会话历史
+	if result != "" {
+		session.mu.Lock()
+		// 如果是新会话，需要先补上 system + user 消息
+		if isNew || len(session.Messages) == 0 {
+			systemPrompt := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
+			session.Messages = []Message{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: payload.Query},
+			}
+		}
+		session.Messages = append(session.Messages, Message{Role: "assistant", Content: result})
+		session.mu.Unlock()
+
+		// 持久化会话
+		if saveErr := b.sessionMgr.SaveSession(session); saveErr != nil {
+			log.Printf("[Assistant] save session failed: %v", saveErr)
+		}
+	}
 
 	// 发送 task_complete
 	status := "success"
@@ -246,6 +293,14 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		catalog := b.skillMgr.BuildCatalog()
 		if catalog != "" {
 			sb.WriteString(catalog)
+		}
+	}
+
+	// 注入长期记忆
+	if b.memoryMgr != nil {
+		memoryBlock := b.memoryMgr.BuildPromptBlock()
+		if memoryBlock != "" {
+			sb.WriteString(memoryBlock)
 		}
 	}
 

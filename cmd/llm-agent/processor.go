@@ -338,15 +338,18 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		var toolCalls []ToolCall
 		var err error
 
+		// 获取来源渠道的 LLM 配置
+		llmCfg, llmFallbacks := b.GetLLMConfigForSource(ctx.Source)
+
 		llmStart := time.Now()
 		if ctx.Sink.Streaming() {
 			log.Printf("[processTask] → 发送流式 LLM 请求...")
-			text, toolCalls, err = b.sendStreamingLLM(messages, tools, func(chunk string) {
+			text, toolCalls, err = b.sendStreamingLLMWithConfig(llmCfg, llmFallbacks, messages, tools, func(chunk string) {
 				ctx.Sink.OnChunk(chunk)
 			})
 		} else {
 			log.Printf("[processTask] → 发送同步 LLM 请求...")
-			text, toolCalls, err = b.sendLLM(messages, tools)
+			text, toolCalls, err = b.sendLLMWithConfig(llmCfg, llmFallbacks, messages, tools)
 		}
 		llmDuration := time.Since(llmStart)
 
@@ -683,6 +686,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	copy(allToolCalls, rootSession.ToolCalls)
 	rootSession.mu.Unlock()
 	b.hooks.FireTaskEnd(ctx, finalText, allToolCalls, finalErr)
+
+	// 记忆系统：自动收集工具调用错误
+	if b.memoryCollector != nil && len(allToolCalls) > 0 {
+		go b.memoryCollector.CollectAfterTask(allToolCalls)
+	}
 
 	return finalText, finalErr
 }

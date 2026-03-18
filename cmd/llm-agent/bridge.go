@@ -72,8 +72,15 @@ type Bridge struct {
 	toolProgressSinks map[string]EventSink // msgID → sink
 	toolProgressMu    sync.Mutex
 
-	// 微信对话上下文管理
-	wechatConvMgr *WechatConversationManager
+	// 通用会话上下文管理（替代微信专用）
+	sessionMgr *ChatSessionManager
+
+	// 来源渠道 LLM 配置
+	sourceLLMs map[string]*SourceLLMConfig // source → config
+
+	// 记忆系统
+	memoryMgr       *MemoryManager
+	memoryCollector *MemoryCollector
 
 	// Skill 管理器
 	skillMgr *SkillManager
@@ -100,7 +107,7 @@ func NewBridge(cfg *Config) *Bridge {
 	client.Capacity = cfg.MaxConcurrent
 	client.Tools = nil // llm-agent 不对外注册工具
 
-	// 初始化微信对话管理器
+	// 初始化通用会话管理器
 	timeout := time.Duration(cfg.WechatSessionTimeoutMin) * time.Minute
 	if timeout <= 0 {
 		timeout = 30 * time.Minute
@@ -113,6 +120,16 @@ func NewBridge(cfg *Config) *Bridge {
 	if maxTurns <= 0 {
 		maxTurns = 15
 	}
+	chatSessionDir := cfg.ChatSessionDir
+	if chatSessionDir == "" {
+		chatSessionDir = "chat_sessions"
+	}
+
+	// 构建 source → LLM 配置映射
+	sourceLLMs := make(map[string]*SourceLLMConfig, len(cfg.SourceLLMs))
+	for i := range cfg.SourceLLMs {
+		sourceLLMs[cfg.SourceLLMs[i].Source] = &cfg.SourceLLMs[i]
+	}
 
 	b := &Bridge{
 		cfg:               cfg,
@@ -122,7 +139,8 @@ func NewBridge(cfg *Config) *Bridge {
 		agentTools:        make(map[string][]LLMTool),
 		pending:           make(map[string]chan *toolResultWithFrom),
 		toolProgressSinks: make(map[string]EventSink),
-		wechatConvMgr:     NewWechatConversationManager(timeout, maxMessages, maxTurns),
+		sessionMgr:        NewChatSessionManager(timeout, maxMessages, maxTurns, chatSessionDir),
+		sourceLLMs:        sourceLLMs,
 		activeTasks:       make(map[string]string),
 		taskQueue:         make(chan *queuedTask, cfg.TaskQueueSize),
 		queueDone:         make(chan struct{}),
@@ -156,6 +174,24 @@ func NewBridge(cfg *Config) *Bridge {
 		}
 	}
 
+	// 初始化记忆系统
+	memoryDir := cfg.MemoryDir
+	if memoryDir == "" {
+		memoryDir = "workspace/memory"
+	}
+	b.memoryMgr = NewMemoryManager(memoryDir, cfg.MemoryMaxChars)
+	b.memoryMgr.SetLimits(cfg.MemoryMaxFileChars, cfg.MemoryMaxEntries, cfg.MemoryExpiryDays)
+
+	// 注入 LLM 压缩回调：超限时用 LLM 整理记忆，保留摘要和重要内容
+	b.memoryMgr.SetLLMCompactFunc(func(entries []MemoryEntry) ([]MemoryEntry, error) {
+		return b.llmCompactMemory(entries)
+	})
+
+	if err := b.memoryMgr.Load(); err != nil {
+		log.Printf("[Bridge] load memory: %v", err)
+	}
+	b.memoryCollector = NewMemoryCollector(b.memoryMgr, b, cfg.SkillIterationThreshold)
+
 	return b
 }
 
@@ -187,6 +223,129 @@ func (b *Bridge) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk f
 		return SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, onChunk)
 	}
 	return SendStreamingLLMRequestWithFallback(&b.cfg.LLM, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
+}
+
+// GetLLMConfigForSource 返回指定来源渠道的 LLM 配置（primary + fallbacks）
+// 无配置则返回全局默认
+func (b *Bridge) GetLLMConfigForSource(source string) (*LLMConfig, []LLMConfig) {
+	if sc, ok := b.sourceLLMs[source]; ok {
+		return &sc.LLM, sc.Fallbacks
+	}
+	return &b.cfg.LLM, b.cfg.Fallbacks
+}
+
+// sendLLMWithConfig 使用指定配置的同步 LLM 请求
+func (b *Bridge) sendLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfig, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	if len(fallbacks) == 0 {
+		return SendLLMRequest(cfg, messages, tools)
+	}
+	return SendLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools)
+}
+
+// sendStreamingLLMWithConfig 使用指定配置的流式 LLM 请求
+func (b *Bridge) sendStreamingLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	if len(fallbacks) == 0 {
+		return SendStreamingLLMRequest(cfg, messages, tools, onChunk)
+	}
+	return SendStreamingLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
+}
+
+// llmCompactMemory 使用 LLM 整理记忆：合并重复、提取模式、保留重要摘要
+func (b *Bridge) llmCompactMemory(entries []MemoryEntry) ([]MemoryEntry, error) {
+	// 构建当前记忆文本
+	var memoryText strings.Builder
+	for _, entry := range entries {
+		memoryText.WriteString(fmt.Sprintf("[%s][%s] %s: %s\n", entry.Date, entry.Category, entry.Source, entry.Content))
+	}
+
+	prompt := fmt.Sprintf(`你是一个记忆整理助手。以下是 AI Agent 积累的 %d 条工作记忆，需要压缩整理。
+
+规则：
+1. 合并重复的错误记录，只保留一条并注明出现次数
+2. 将多条相关错误提炼为一条 [pattern] 类型的经验总结
+3. [solution] [pattern] [preference] 类型的记忆优先保留完整内容
+4. [error] 类型只保留有代表性的，删除重复的
+5. [auto_skill] 类型全部保留
+6. 目标：压缩到 %d 条以内
+
+输出格式（每条一行，严格遵循）：
+[日期][类别] 来源: 内容
+
+类别只能是: error, solution, pattern, preference, auto_skill
+日期格式: 2006-01-02
+
+当前记忆：
+%s`, len(entries), len(entries)*2/3, memoryText.String())
+
+	messages := []Message{
+		{Role: "system", Content: "你是记忆整理助手，负责压缩和整理 AI Agent 的工作记忆。只输出整理后的记忆条目，不要输出其他内容。"},
+		{Role: "user", Content: prompt},
+	}
+
+	text, _, err := b.sendLLM(messages, nil)
+	if err != nil {
+		return nil, fmt.Errorf("LLM compact: %v", err)
+	}
+
+	// 解析 LLM 输出为 MemoryEntry
+	compacted := parseLLMCompactOutput(text)
+	if len(compacted) == 0 {
+		return nil, fmt.Errorf("LLM compact returned empty result")
+	}
+
+	log.Printf("[Memory] LLM 整理: %d → %d 条", len(entries), len(compacted))
+	return compacted, nil
+}
+
+// parseLLMCompactOutput 解析 LLM 压缩输出
+// 格式: [2026-03-19][pattern] tool_call: 内容
+func parseLLMCompactOutput(text string) []MemoryEntry {
+	var entries []MemoryEntry
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "[") {
+			continue
+		}
+
+		// 解析 [date][category] source: content
+		closeDateBracket := strings.Index(line[1:], "]")
+		if closeDateBracket < 0 {
+			continue
+		}
+		date := line[1 : closeDateBracket+1]
+
+		rest := line[closeDateBracket+2:]
+		if !strings.HasPrefix(rest, "[") {
+			continue
+		}
+
+		closeCatBracket := strings.Index(rest[1:], "]")
+		if closeCatBracket < 0 {
+			continue
+		}
+		category := rest[1 : closeCatBracket+1]
+
+		afterCat := strings.TrimSpace(rest[closeCatBracket+2:])
+		source := "unknown"
+		content := afterCat
+		if colonIdx := strings.Index(afterCat, ":"); colonIdx > 0 {
+			source = strings.TrimSpace(afterCat[:colonIdx])
+			content = strings.TrimSpace(afterCat[colonIdx+1:])
+		}
+
+		if content != "" {
+			entries = append(entries, MemoryEntry{
+				Date:     date,
+				Category: category,
+				Source:   source,
+				Content:  content,
+			})
+		}
+	}
+
+	return entries
 }
 
 // Stop 停止
@@ -786,6 +945,9 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 var longRunningTools = map[string]bool{
 	"CodegenStartSession": true,
 	"CodegenSendMessage":  true,
+	"AcpStartSession":     true,
+	"AcpSendMessage":      true,
+	"AcpAnalyzeProject":   true,
 	"DeployProject":       true,
 	"DeployPipeline":      true,
 	"ExecuteCode":         true,
@@ -1142,6 +1304,17 @@ func (b *Bridge) StartRefreshLoop() {
 			if err := b.DiscoverAgents(); err != nil {
 				log.Printf("[Bridge] refresh agents failed: %v", err)
 			}
+		}
+	}()
+}
+
+// StartSessionCleanupLoop 后台定时清理过期会话（替代 StartWechatCleanupLoop）
+func (b *Bridge) StartSessionCleanupLoop() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			b.sessionMgr.CleanupExpired()
 		}
 	}()
 }

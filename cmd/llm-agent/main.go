@@ -40,8 +40,11 @@ func main() {
 	// 启动任务队列消费
 	bridge.StartQueueConsumer()
 
-	// 启动微信对话过期清理
-	bridge.StartWechatCleanupLoop()
+	// 恢复未过期的聊天会话
+	bridge.sessionMgr.LoadAll()
+
+	// 启动会话过期清理
+	bridge.StartSessionCleanupLoop()
 
 	// 恢复中断的任务
 	bridge.RecoverInProgressTasks()
