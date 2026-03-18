@@ -229,9 +229,10 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	sb.WriteString(persona)
 	sb.WriteString("\n\n")
 
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	today := now.Format("2006-01-02")
 	sb.WriteString(fmt.Sprintf("account: %s\n", account))
-	sb.WriteString(fmt.Sprintf("当前日期: %s\n", today))
+	sb.WriteString(fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
 	sb.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens))
 
 	// 注入 agent 能力描述
@@ -259,10 +260,10 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		sb.WriteString(skillBlock)
 	}
 
-	// 只在命中 data-query skill 或无 skill 命中时才注入上下文数据
+	// 只在命中 blog-data-opt skill 或无 skill 命中时才注入上下文数据
 	needContextData := len(selectedSkills) == 0 // 无 skill 命中时保留（兼容简单问答）
 	for _, s := range selectedSkills {
-		if s.Name == "data-query" {
+		if s.Name == "blog-data-opt" {
 			needContextData = true
 			break
 		}
@@ -313,4 +314,10 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	}
 
 	return sb.String()
+}
+
+// chineseWeekday 返回中文星期名称
+func chineseWeekday(w time.Weekday) string {
+	names := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
+	return names[w]
 }

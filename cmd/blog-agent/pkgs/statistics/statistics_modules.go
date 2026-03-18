@@ -67,6 +67,16 @@ func RawDeleteTodo(account, date, id string) string {
 	return `{"success": true}`
 }
 
+// RawUpdateTodo 修改待办时间
+func RawUpdateTodo(account, date, id string, hours, minutes int) string {
+	mgr := todolist.NewTodoManager()
+	err := mgr.UpdateTodoTime(account, date, id, hours, minutes)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
 // =================================== Exercise Raw 接口 =========================================
 
 // RawGetExerciseByDate 获取指定日期运动记录
@@ -117,6 +127,33 @@ func RawAddExercise(account, date, name, exerciseType string, duration int, inte
 	}
 	data, _ := json.Marshal(item)
 	return string(data)
+}
+
+// RawToggleExercise 切换运动记录完成状态
+func RawToggleExercise(account, date, id string) string {
+	err := exercise.ToggleExercise(account, date, id)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
+// RawDeleteExercise 删除运动记录
+func RawDeleteExercise(account, date, id string) string {
+	err := exercise.DeleteExercise(account, date, id)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
+// RawUpdateExercise 修改运动记录
+func RawUpdateExercise(account, date, id, name, exerciseType string, duration int, intensity string, calories int, notes string) string {
+	err := exercise.UpdateExercise(account, date, id, name, exerciseType, duration, intensity, calories, notes, 0, nil)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
 }
 
 // RawGetExerciseStats 获取运动统计（周期性）

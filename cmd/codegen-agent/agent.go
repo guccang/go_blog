@@ -43,10 +43,12 @@ type sessionRecord struct {
 
 // taskResult 任务完成结果
 type taskResult struct {
-	Status     string // done / error / stopped
-	Error      string
-	Summary    string // 任务总结报告
-	ProjectDir string // 项目目录绝对路径
+	Status       string // done / error / stopped
+	Error        string
+	Summary      string // 任务总结报告
+	ProjectDir   string // 项目目录绝对路径
+	FilesWritten int    // 新建文件数
+	FilesEdited  int    // 编辑文件数
 }
 
 // NewAgent 创建 Agent
@@ -469,7 +471,13 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	a.CompleteSession(sessionID, status, taskSummary)
 
 	// 通知同步等待者（tool_call 流）
-	completionResult := taskResult{Status: status, Error: errMsg, ProjectDir: projectPath}
+	completionResult := taskResult{
+		Status:       status,
+		Error:        errMsg,
+		ProjectDir:   projectPath,
+		FilesWritten: len(uniqueStrings(summary.FilesWritten)),
+		FilesEdited:  len(uniqueStrings(summary.FilesEdited)),
+	}
 	if status == "done" {
 		completionResult.Summary = taskSummary
 	}

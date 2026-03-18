@@ -11,6 +11,12 @@ type ToolPolicy struct {
 	Deny  []string `json:"deny,omitempty"`  // 黑名单（优先于白名单）
 }
 
+// ToolPolicyPipeline 多层工具策略管道
+type ToolPolicyPipeline struct {
+	Global    *ToolPolicy `json:"global,omitempty"`     // Layer 1: 全局 allow/deny
+	BaseTools []string    `json:"base_tools,omitempty"` // 始终保留的基础工具名
+}
+
 // LLMConfig LLM API 配置
 type LLMConfig struct {
 	APIKey      string  `json:"api_key"`
@@ -61,7 +67,8 @@ type Config struct {
 	BashMaxOutputBytes int `json:"bash_max_output_bytes"` // Bash 输出截断字节数（默认 102400）
 
 	// 工具权限控制
-	ToolPolicy *ToolPolicy `json:"tool_policy,omitempty"`
+	ToolPolicy *ToolPolicy         `json:"tool_policy,omitempty"`
+	Pipeline   *ToolPolicyPipeline `json:"tool_pipeline,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -114,5 +121,14 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+
+	// 迁移旧 ToolPolicy 到 Pipeline
+	if cfg.Pipeline == nil && cfg.ToolPolicy != nil {
+		cfg.Pipeline = &ToolPolicyPipeline{Global: cfg.ToolPolicy}
+	}
+	if cfg.Pipeline != nil && len(cfg.Pipeline.BaseTools) == 0 {
+		cfg.Pipeline.BaseTools = []string{"ExecuteCode", "Bash"}
+	}
+
 	return cfg, nil
 }

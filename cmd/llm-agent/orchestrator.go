@@ -740,11 +740,7 @@ func (o *Orchestrator) executeSubTask(
 	// 过滤工具（如果有 tools_hint）
 	filteredTools := tools
 	if len(subtask.ToolsHint) > 0 {
-		filteredTools = filterToolsByHint(tools, subtask.ToolsHint)
-		// 如果过滤后为空，回退到全部工具
-		if len(filteredTools) == 0 {
-			filteredTools = tools
-		}
+		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
 	}
 	// 排除虚拟工具 plan_and_execute
 	filteredTools = excludePlanTool(filteredTools)
@@ -804,11 +800,13 @@ func (o *Orchestrator) executeSubTask(
 			}
 		}
 
-		// 子任务消息压缩（阈值更低，子任务 context 应更紧凑）
-		if len(messages) > 15 {
+		// 子任务消息压缩（复用 sanitizeProcessMessages，子任务共享相同预算策略）
+		if len(messages) > 15 || estimateChars(messages) > processMaxTotalChars*80/100 {
 			before := len(messages)
-			messages = compactProcessMessages(messages, 15)
-			log.Printf("[Orchestrator] subtask=%s 消息压缩: %d → %d", subtask.ID, before, len(messages))
+			messages = sanitizeProcessMessages(messages)
+			if len(messages) != before {
+				log.Printf("[Orchestrator] subtask=%s 消息压缩: %d → %d", subtask.ID, before, len(messages))
+			}
 		}
 
 		log.Printf("[Orchestrator] subtask=%s 迭代 %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
@@ -1145,36 +1143,15 @@ func (o *Orchestrator) Synthesize(
 		}
 	}
 
-	// 注入关键工具调用记录（防止 LLM 编造数据）
-	rootSession.mu.Lock()
-	allToolCalls := make([]ToolCallRecord, len(rootSession.ToolCalls))
-	copy(allToolCalls, rootSession.ToolCalls)
-	rootSession.mu.Unlock()
-
-	// 同时从子任务会话中收集工具调用记录
+	// 注入关键工具数据：仅在子任务结果过短时补充（结果完整时无需重复注入）
 	for _, r := range results {
-		if cs, ok := childSessions[r.SubTaskID]; ok {
-			cs.mu.Lock()
-			allToolCalls = append(allToolCalls, cs.ToolCalls...)
-			cs.mu.Unlock()
-		}
-	}
-
-	if len(allToolCalls) > 0 {
-		// 去重：每个工具只保留最后一次成功调用，减少 context 噪音
-		lastByTool := make(map[string]ToolCallRecord)
-		for _, tc := range allToolCalls {
-			if tc.Success {
-				lastByTool[tc.ToolName] = tc
+		if r.Status == "done" && len(r.Result) < 50 {
+			if cs, ok := childSessions[r.SubTaskID]; ok {
+				keyData := extractKeyToolData(cs)
+				if keyData != "" {
+					context.WriteString(keyData)
+				}
 			}
-		}
-
-		context.WriteString("\n## 关键工具调用记录（以此为准，禁止编造）\n")
-		for _, tc := range lastByTool {
-			context.WriteString(fmt.Sprintf("- ✅ %s\n  参数: %s\n  结果: %s\n",
-				tc.ToolName,
-				truncate(tc.Arguments, 150),
-				truncate(tc.Result, 200)))
 		}
 	}
 
@@ -1188,7 +1165,7 @@ func (o *Orchestrator) Synthesize(
 3. 如果有失败或跳过的任务，简要说明
 4. 回复直接面向用户，不要暴露内部子任务结构
 5. 使用 markdown 格式，便于阅读
-6. 服务器地址、端口、URL 等信息必须严格引用工具调用记录中的实际数据，禁止编造
+6. 严格基于子任务结果中的实际数据回复，禁止编造
 7. 如果部署工具返回 success:false，必须如实报告部署失败，不要说"已成功部署"`, context.String())
 
 	messages := []Message{
@@ -1600,23 +1577,6 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 		sb.WriteString(fmt.Sprintf("### 任务 %s 的结果:\n%s\n\n", depID, result))
 	}
 	return sb.String()
-}
-
-// filterToolsByHint 根据 tools_hint 过滤工具
-func filterToolsByHint(tools []LLMTool, hints []string) []LLMTool {
-	hintSet := make(map[string]bool, len(hints))
-	for _, h := range hints {
-		hintSet[h] = true
-		hintSet[sanitizeToolName(h)] = true
-	}
-
-	var filtered []LLMTool
-	for _, tool := range tools {
-		if hintSet[tool.Function.Name] {
-			filtered = append(filtered, tool)
-		}
-	}
-	return filtered
 }
 
 // excludePlanTool 排除虚拟工具 plan_and_execute

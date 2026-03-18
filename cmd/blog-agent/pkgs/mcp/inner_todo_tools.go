@@ -87,3 +87,27 @@ func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
 	}
 	return statistics.RawDeleteTodo(account, date, id)
 }
+
+func Inner_blog_RawUpdateTodo(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	hours, err := getIntParam(arguments, "hours")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	minutes, err := getIntParam(arguments, "minutes")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawUpdateTodo(account, date, id, hours, minutes)
+}

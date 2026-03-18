@@ -13,6 +13,7 @@ type SkillEntry struct {
 	Name        string   // YAML name
 	Description string   // YAML description（展示在 skill 目录中）
 	Tools       []string // YAML tools（关联的工具名列表）
+	Keywords    []string // YAML keywords（用于静态匹配的关键词列表）
 	Content     string   // Markdown body（frontmatter 之后的正文）
 	FilePath    string   // 文件路径（调试用）
 }
@@ -130,6 +131,14 @@ func parseSkillFile(content, filePath string) (*SkillEntry, error) {
 					skill.Tools = append(skill.Tools, t)
 				}
 			}
+		case "keywords":
+			// 逗号分隔的关键词列表（用于静态匹配）
+			for _, k := range strings.Split(value, ",") {
+				k = strings.TrimSpace(k)
+				if k != "" {
+					skill.Keywords = append(skill.Keywords, k)
+				}
+			}
 		}
 	}
 
@@ -140,7 +149,7 @@ func parseSkillFile(content, filePath string) (*SkillEntry, error) {
 	return skill, nil
 }
 
-// GetAllSkills 返回所有已加载的 skill（用于 routeCapabilities）
+// GetAllSkills 返回所有已加载的 skill
 func (sm *SkillManager) GetAllSkills() []SkillEntry {
 	return sm.skills
 }

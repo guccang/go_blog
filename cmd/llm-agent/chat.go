@@ -269,7 +269,13 @@ func isStopCommand(content string) bool {
 // 保留 system prompt + 最近的消息，将旧消息压缩为摘要
 // 工具调用/结果类消息压缩为单行摘要，只保留 assistant 最终回复完整文本
 func compactWechatMessages(messages []Message, maxMessages int) []Message {
-	if len(messages) <= maxMessages {
+	// 字符预算检查：即使消息数未超限，字符总量超过预算也触发压缩
+	const maxTotalChars = 120000
+	totalChars := 0
+	for _, msg := range messages {
+		totalChars += len(msg.Content)
+	}
+	if len(messages) <= maxMessages && totalChars < maxTotalChars {
 		return messages
 	}
 

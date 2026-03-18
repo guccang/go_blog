@@ -395,10 +395,17 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	if result.Status != "done" {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, result.Error)
 	}
-	data := map[string]string{
-		"session_id":  sessionID,
-		"project_dir": result.ProjectDir,
-		"summary":     result.Summary,
+
+	data := map[string]interface{}{
+		"session_id":    sessionID,
+		"project_dir":   result.ProjectDir,
+		"summary":       result.Summary,
+		"files_written": result.FilesWritten,
+		"files_edited":  result.FilesEdited,
+	}
+	// 编码完成但无任何文件产出，附加警告
+	if result.FilesWritten == 0 && result.FilesEdited == 0 {
+		data["warning"] = "编码会话完成但未产生任何文件变更，项目目录可能为空"
 	}
 	tr := uap.BuildToolResult("", data, fmt.Sprintf("编码会话 %s 完成", sessionID))
 	return tr.Result
@@ -450,10 +457,17 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	if result.Status != "done" {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, newSessionID, result.Error)
 	}
-	data := map[string]string{
-		"session_id":  newSessionID,
-		"project_dir": result.ProjectDir,
-		"summary":     result.Summary,
+
+	data := map[string]interface{}{
+		"session_id":    newSessionID,
+		"project_dir":   result.ProjectDir,
+		"summary":       result.Summary,
+		"files_written": result.FilesWritten,
+		"files_edited":  result.FilesEdited,
+	}
+	// 编码完成但无任何文件产出，附加警告
+	if result.FilesWritten == 0 && result.FilesEdited == 0 {
+		data["warning"] = "编码会话完成但未产生任何文件变更，项目目录可能为空"
 	}
 	tr := uap.BuildToolResult("", data, fmt.Sprintf("编码会话 %s 完成", newSessionID))
 	return tr.Result

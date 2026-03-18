@@ -224,105 +224,24 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
-	// 3. 工具路由：两次 LLM 筛选（Pass 1 能力选择 + Pass 2 工具精选）
+	// 3. 静态工具策略管道（替代 LLM 路由）
 	var selectedSkills []SkillEntry
 
 	if !ctx.NoTools && query != "" {
 		beforeCount := len(tools)
+		ctx.Sink.OnEvent("route_info", "正在匹配工具策略...")
 
-		// Pass 1: 能力选择（agent + skill 联合路由）
-		ctx.Sink.OnEvent("route_info", "正在分析任务，匹配能力...")
-		selection := b.routeCapabilities(query)
-
-		if selection != nil && (len(selection.Agents) > 0 || len(selection.Skills) > 0) {
-			selectedSkills = selection.Skills
-
-			// 检测 skill 声明的工具是否在线，剔除工具完全缺失的 skill
-			if len(selectedSkills) > 0 {
-				onlineToolSet := make(map[string]bool, len(tools)*2)
-				for _, t := range tools {
-					onlineToolSet[t.Function.Name] = true
-					onlineToolSet[unsanitizeToolName(t.Function.Name)] = true
-				}
-
-				var availableSkills []SkillEntry
-				var missingSkills []string
-				for _, skill := range selectedSkills {
-					hasAnyTool := false
-					for _, toolName := range skill.Tools {
-						if onlineToolSet[toolName] || onlineToolSet[sanitizeToolName(toolName)] {
-							hasAnyTool = true
-							break
-						}
-					}
-					if hasAnyTool {
-						availableSkills = append(availableSkills, skill)
-					} else {
-						missingSkills = append(missingSkills, fmt.Sprintf("%s（需要: %s）", skill.Name, strings.Join(skill.Tools, ", ")))
-					}
-				}
-
-				if len(missingSkills) > 0 {
-					ctx.Sink.OnEvent("route_info", fmt.Sprintf("⚠️ 以下技能的工具不在线，已跳过:\n%s", strings.Join(missingSkills, "\n")))
-					log.Printf("[processTask] ⚠ skill 工具在线检测: %d→%d, 剔除: %v",
-						len(selectedSkills), len(availableSkills), missingSkills)
-				} else {
-					log.Printf("[processTask] skill 工具在线检测: %d 个 skill 全部在线", len(selectedSkills))
-				}
-				selectedSkills = availableSkills
-				selection.Skills = availableSkills
-			}
-
-			// 推送 Pass 1 路由结果
-			var routeDetail strings.Builder
-			routeDetail.WriteString(fmt.Sprintf("Agent: %s", strings.Join(selection.Agents, ", ")))
-			if len(selection.Skills) > 0 {
-				var skillNames []string
-				for _, s := range selection.Skills {
-					skillNames = append(skillNames, s.Name)
-				}
-				routeDetail.WriteString(fmt.Sprintf("\nSkill: %s", strings.Join(skillNames, ", ")))
-			}
-			ctx.Sink.OnEvent("route_info", routeDetail.String())
-
-			if len(selection.Skills) > 0 {
-				// ★ skill 匹配：只保留 skill 声明的工具，保证执行环境干净
-				tools = collectSkillTools(selection.Skills, tools)
-				log.Printf("[processTask] skill 工具隔离: 仅保留 %d 个 skill 工具", len(tools))
-			} else if len(selection.Agents) > 0 {
-				// 无 skill 匹配，走 agent 工具合并（原逻辑）
-				candidateTools := b.mergeCapabilityTools(selection, tools)
-				if len(candidateTools) > 0 {
-					if len(candidateTools) > 10 {
-						tools = b.routeTools(query, candidateTools)
-					} else {
-						tools = candidateTools
-					}
-				}
-			}
-		} else if len(tools) > 15 {
-			ctx.Sink.OnEvent("route_info", "回退到 Agent 级路由...")
-			// 无选中 → 回退原有逻辑（routeAgents → routeTools）
-			selectedAgentIDs := b.routeAgents(query)
-			if len(selectedAgentIDs) > 0 {
-				agentFilteredTools := b.getToolsForAgents(selectedAgentIDs)
-				if len(agentFilteredTools) > 0 {
-					tools = agentFilteredTools
-				}
-			}
-			if len(tools) > 10 {
-				tools = b.routeTools(query, tools)
-			}
-		} else {
-			ctx.Sink.OnEvent("route_info", "工具数量较少，跳过路由筛选")
-		}
+		policyResult := b.ApplyPolicyPipeline(query, tools)
+		tools = policyResult.Tools
+		selectedSkills = policyResult.SelectedSkills
 
 		var routedToolNames []string
 		for _, t := range tools {
 			routedToolNames = append(routedToolNames, unsanitizeToolName(t.Function.Name))
 		}
-		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具路由: %d → %d\n%s", beforeCount, len(tools), strings.Join(routedToolNames, ", ")))
-		log.Printf("[processTask] 工具路由: %d → %d tools=%v", beforeCount, len(tools), routedToolNames)
+		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具策略: %d → %d\n%s",
+			beforeCount, len(tools), strings.Join(routedToolNames, ", ")))
+		log.Printf("[processTask] 策略管道: %d → %d", beforeCount, len(tools))
 	}
 
 	// 4. 构建消息（使用路由后的 tools 做 skill 匹配）
@@ -385,11 +304,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			break
 		}
 
-		// 消息历史压缩：防止上下文溢出
-		if len(messages) > 30 {
+		// 消息历史压缩：防止上下文溢出（字符预算 + 消息数双重检查）
+		if len(messages) > 20 || estimateChars(messages) > processMaxTotalChars*80/100 {
 			before := len(messages)
-			messages = compactProcessMessages(messages, 30)
-			log.Printf("[processTask] 消息压缩: %d → %d", before, len(messages))
+			messages = sanitizeProcessMessages(messages)
+			if len(messages) != before {
+				log.Printf("[processTask] 消息压缩: %d → %d", before, len(messages))
+			}
 		}
 
 		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
@@ -520,10 +441,14 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			break
 		}
 
-		// 普通工具调用
+		// 普通工具调用：有工具调用时，思考过程不进入 LLM 上下文（完整记录已保存到 rootSession）
+		msgText := text
+		if len(toolCalls) > 0 {
+			msgText = "" // 思考过程对后续 LLM 调用无价值，清除以节省上下文
+		}
 		messages = append(messages, Message{
 			Role:      "assistant",
-			Content:   text,
+			Content:   msgText,
 			ToolCalls: toolCalls,
 		})
 
@@ -953,14 +878,16 @@ func (b *Bridge) handleComplexTask(
 	for _, r := range results {
 		b.hooks.FireSubTaskDone(ctx, r)
 
-		// 将子任务的 ToolCalls 汇总到 rootSession（供 FireTaskEnd 使用）
+		// 将子任务的成功 ToolCalls 汇总到 rootSession（供 FireTaskEnd 统计使用）
 		if child, ok := childSessions[r.SubTaskID]; ok {
 			child.mu.Lock()
 			childCalls := make([]ToolCallRecord, len(child.ToolCalls))
 			copy(childCalls, child.ToolCalls)
 			child.mu.Unlock()
 			for _, tc := range childCalls {
-				rootSession.RecordToolCall(tc)
+				if tc.Success {
+					rootSession.RecordToolCall(tc)
+				}
 			}
 		}
 	}
@@ -1120,42 +1047,65 @@ func truncateToolResult(result string, iteration int) string {
 	return string(runes[:maxLen]) + "\n...[结果已截断]"
 }
 
-// compactProcessMessages 压缩消息历史，防止上下文溢出
-// 当 messages > maxCount 时：保留 system prompt + 最近 20 条完整 + 中间的工具结果截断为 200 字符摘要
-func compactProcessMessages(messages []Message, maxCount int) []Message {
-	if len(messages) <= maxCount {
+// 上下文字符预算常量
+const (
+	processMaxTotalChars = 150000 // 总字符预算
+	processMaxMessages   = 40     // 最大消息数
+)
+
+// estimateChars 估算消息列表的总字符数
+func estimateChars(messages []Message) int {
+	total := 0
+	for _, msg := range messages {
+		total += len(msg.Content)
+		for _, tc := range msg.ToolCalls {
+			total += len(tc.Function.Arguments)
+		}
+	}
+	return total
+}
+
+// sanitizeProcessMessages 参考 blog-agent SanitizeMessages 模式
+// 从末尾向前保留消息，超出字符预算或消息数上限时停止
+// 始终保留 system prompt（messages[0]）
+func sanitizeProcessMessages(messages []Message) []Message {
+	if len(messages) <= 2 {
 		return messages
 	}
 
-	// 保留第一条（system prompt）
-	result := make([]Message, 0, maxCount+2)
-	result = append(result, messages[0])
+	// 始终保留 system prompt
+	systemMsg := messages[0]
+	rest := messages[1:]
 
-	// 最近 keepRecent 条完整保留
-	keepRecent := 20
-	if keepRecent > len(messages)-1 {
-		keepRecent = len(messages) - 1
-	}
-	recentStart := len(messages) - keepRecent
+	// 从末尾向前遍历，累计字符数
+	systemChars := len(systemMsg.Content)
+	charBudget := processMaxTotalChars - systemChars
+	msgBudget := processMaxMessages - 1 // 减去 system prompt
 
-	// 中间部分压缩
-	for i := 1; i < recentStart; i++ {
-		msg := messages[i]
-		if msg.Role == "tool" {
-			// 工具结果截断为 200 字符摘要
-			compressed := Message{
-				Role:       msg.Role,
-				Content:    truncate(msg.Content, 200),
-				ToolCallID: msg.ToolCallID,
-			}
-			result = append(result, compressed)
-		} else {
-			result = append(result, msg)
+	var kept []Message
+	totalChars := 0
+	for i := len(rest) - 1; i >= 0; i-- {
+		msg := rest[i]
+		msgChars := len(msg.Content)
+		for _, tc := range msg.ToolCalls {
+			msgChars += len(tc.Function.Arguments)
 		}
+
+		if len(kept) >= msgBudget || totalChars+msgChars > charBudget {
+			break
+		}
+		kept = append(kept, msg)
+		totalChars += msgChars
 	}
 
-	// 追加最近的完整消息
-	result = append(result, messages[recentStart:]...)
+	// 反转 kept（因为是从末尾向前收集的）
+	for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
+		kept[i], kept[j] = kept[j], kept[i]
+	}
+
+	result := make([]Message, 0, 1+len(kept))
+	result = append(result, systemMsg)
+	result = append(result, kept...)
 	return result
 }
 

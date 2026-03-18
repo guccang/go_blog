@@ -2,6 +2,7 @@
 name: 代码提交
 description: 代码提交技能。当用户需要提交代码、推送代码时使用此技能。
 tools: CodegenListProjects,CodegenStartSession
+keywords: git,提交,commit,推送,仓库
 ---
 
 # 代码提交

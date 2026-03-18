@@ -2,6 +2,7 @@
 name: debug
 description: 问题诊断技能。当用户需要排查问题、查看日志、分析错误时使用此技能。
 tools: Bash
+keywords: 调试,debug,排查,日志,错误
 ---
 
 # 问题诊断

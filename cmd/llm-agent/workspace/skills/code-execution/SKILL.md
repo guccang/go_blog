@@ -2,6 +2,7 @@
 name: code-execution
 description: 代码执行技能。当需要批量工具调用、数据处理、多源数据聚合时使用 ExecuteCode 沙箱执行 Python 代码。
 tools: ExecuteCode
+keywords: 执行,execute,python,脚本,计算,批量
 ---
 
 # 代码执行（ExecuteCode 沙箱）

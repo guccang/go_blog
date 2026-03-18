@@ -74,3 +74,69 @@ func Inner_blog_RawGetExerciseStats(arguments map[string]interface{}) string {
 	days := getOptionalIntParam(arguments, "days", 7)
 	return statistics.RawGetExerciseStats(account, days)
 }
+
+func Inner_blog_RawToggleExercise(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawToggleExercise(account, date, id)
+}
+
+func Inner_blog_RawDeleteExercise(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	return statistics.RawDeleteExercise(account, date, id)
+}
+
+func Inner_blog_RawUpdateExercise(arguments map[string]interface{}) string {
+	account, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	date, err := getStringParam(arguments, "date")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	id, err := getStringParam(arguments, "id")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	name, err := getStringParam(arguments, "name")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	exerciseType, err := getStringParam(arguments, "exerciseType")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	duration, err := getIntParam(arguments, "duration")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	intensity, _ := getStringParam(arguments, "intensity")
+	if intensity == "" {
+		intensity = "medium"
+	}
+	calories := getOptionalIntParam(arguments, "calories", 0)
+	notes, _ := getStringParam(arguments, "notes")
+	return statistics.RawUpdateExercise(account, date, id, name, exerciseType, duration, intensity, calories, notes)
+}

@@ -43,6 +43,10 @@ type AgentInfo struct {
 	ClaudeCodeModels []string // Claude Code 可用配置
 	OpenCodeModels   []string // OpenCode 可用配置
 	CodingTools      []string // 可用编码工具（claudecode, opencode）
+	HostPlatform     string   // 部署平台
+	SSHHosts         []string // 可用 SSH 主机
+	DeployTargets    []string // 部署目标
+	Pipelines        []string // 可用 pipeline
 }
 
 // Bridge UAP 客户端 + 工具路由层
@@ -528,6 +532,12 @@ func (b *Bridge) DiscoverAgents() error {
 			info.ClaudeCodeModels = parseStringSlice(a.Meta["claudecode_models"])
 			info.OpenCodeModels = parseStringSlice(a.Meta["opencode_models"])
 			info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
+			if hp, ok := a.Meta["host_platform"].(string); ok {
+				info.HostPlatform = hp
+			}
+			info.SSHHosts = parseStringSlice(a.Meta["ssh_hosts"])
+			info.DeployTargets = parseStringSlice(a.Meta["deploy_targets"])
+			info.Pipelines = parseStringSlice(a.Meta["pipelines"])
 		}
 		infoMap[a.AgentID] = info
 		log.Printf("[Bridge] agent: %s (%s) tools=%v models=%v coding_tools=%v",
@@ -586,104 +596,24 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		if len(info.Models) > 0 {
 			sb.WriteString(fmt.Sprintf("  - 可用模型配置(model参数): %s\n", strings.Join(info.Models, ", ")))
 		}
+		if info.HostPlatform != "" {
+			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
+		}
+		if len(info.SSHHosts) > 0 {
+			sb.WriteString(fmt.Sprintf("  - SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
+		}
+		if len(info.DeployTargets) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 部署目标: %s\n", strings.Join(info.DeployTargets, ", ")))
+		}
+		if len(info.Pipelines) > 0 {
+			sb.WriteString(fmt.Sprintf("  - Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))
+		}
 	}
 	return sb.String()
 }
 
 // executeCodeAgentType execute-code-agent 的类型标识（元工具，始终保留不参与路由筛选）
 const executeCodeAgentType = "execute_code"
-
-// routeAgents Level 1 agent 选择：用 LLM 从 agent 列表中筛选与用户问题相关的 agent
-// execute-code-agent 和文件工具 agent 作为基础能力始终保留，不参与 LLM 筛选
-func (b *Bridge) routeAgents(query string) []string {
-	b.catalogMu.RLock()
-	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
-	for k, v := range b.agentInfo {
-		agentInfoCopy[k] = v
-	}
-	agentToolsCopy := make(map[string][]LLMTool, len(b.agentTools))
-	for k, v := range b.agentTools {
-		agentToolsCopy[k] = v
-	}
-	b.catalogMu.RUnlock()
-
-	if len(agentInfoCopy) == 0 {
-		return nil
-	}
-
-	// 分离 execute-code-agent（元工具，始终保留）和待路由 agent
-	var alwaysInclude []string
-	var catalog strings.Builder
-	var routeableIDs []string
-
-	for _, info := range agentInfoCopy {
-		// execute-code-agent 和文件工具 agent 始终保留，不参与路由
-		if isExecuteCodeAgent(info) || isFileToolAgent(info) {
-			alwaysInclude = append(alwaysInclude, info.ID)
-			continue
-		}
-		toolNames := make([]string, 0, len(agentToolsCopy[info.ID]))
-		for _, t := range agentToolsCopy[info.ID] {
-			toolNames = append(toolNames, t.Function.Name)
-		}
-		catalog.WriteString(fmt.Sprintf("- agent_id=%s name=%s description=%s tools=[%s]\n",
-			info.ID, info.Name, info.Description, strings.Join(toolNames, ", ")))
-		routeableIDs = append(routeableIDs, info.ID)
-	}
-
-	// 没有需要路由的 agent → 直接返回始终保留的
-	if len(routeableIDs) == 0 {
-		return alwaysInclude
-	}
-
-	routePrompt := fmt.Sprintf(`你是一个 Agent 路由器。根据用户问题，从以下 Agent 列表中选择与任务直接相关的 Agent。
-
-用户问题: %s
-
-Agent 列表:
-%s
-选择规则：
-1. 根据 Agent 的 description 和 tools 判断相关性，只选直接相关的
-2. 与任务无关的 Agent 不要选
-3. 只返回 agent_id 的 JSON 数组，不要其他文字
-4. 简单问答不需要任何 Agent，返回空数组 []
-
-示例: ["go_blog", "codegen-xxx"]`, query, catalog.String())
-
-	messages := []Message{
-		{Role: "user", Content: routePrompt},
-	}
-
-	resp, _, err := b.sendLLM(messages, nil)
-	if err != nil {
-		log.Printf("[Agent路由] LLM 调用失败: %v, 返回全部 agent", err)
-		return append(alwaysInclude, routeableIDs...) // 降级兜底
-	}
-
-	// 解析 JSON 数组
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
-
-	var selectedIDs []string
-	if err := json.Unmarshal([]byte(resp), &selectedIDs); err != nil {
-		log.Printf("[Agent路由] 解析失败: %v, 返回全部 agent", err)
-		return append(alwaysInclude, routeableIDs...) // 降级兜底
-	}
-
-	if len(selectedIDs) == 0 {
-		log.Printf("[Agent路由] LLM 未选择任何 agent, 仅保留基础 agent")
-		return alwaysInclude
-	}
-
-	// 合并：始终保留 + LLM 选中
-	result := append(alwaysInclude, selectedIDs...)
-	log.Printf("[Agent路由] 从 %d 个 agent 中选择了 %d 个 (always=%d routed=%d): %v",
-		len(agentInfoCopy), len(result), len(alwaysInclude), len(selectedIDs), result)
-	return result
-}
 
 // isExecuteCodeAgent 判断是否为 execute-code-agent（元工具）
 func isExecuteCodeAgent(info AgentInfo) bool {
@@ -819,325 +749,6 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 
 	log.Printf("[Bridge] filtered %d tools from %d by user selection", len(filtered), len(allTools))
 	return filtered
-}
-
-// CapabilitySelection Pass 1 的 LLM 选择结果
-type CapabilitySelection struct {
-	Agents []string     // 选中的 agent_id 列表
-	Skills []SkillEntry // 选中的 skill 列表（完整条目）
-}
-
-// routeCapabilities Pass 1 能力选择：用 LLM 从 agent + skill 列表中选择与用户问题相关的能力
-// execute-code-agent 和文件工具 agent 作为基础能力始终保留，不参与 LLM 筛选
-func (b *Bridge) routeCapabilities(query string) *CapabilitySelection {
-	b.catalogMu.RLock()
-	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
-	for k, v := range b.agentInfo {
-		agentInfoCopy[k] = v
-	}
-	agentToolsCopy := make(map[string][]LLMTool, len(b.agentTools))
-	for k, v := range b.agentTools {
-		agentToolsCopy[k] = v
-	}
-	b.catalogMu.RUnlock()
-
-	// 收集 skill 信息
-	var allSkills []SkillEntry
-	if b.skillMgr != nil {
-		allSkills = b.skillMgr.GetAllSkills()
-	}
-
-	if len(agentInfoCopy) == 0 && len(allSkills) == 0 {
-		return nil
-	}
-
-	// 分离 execute-code-agent 和文件工具 agent（始终保留）
-	var alwaysIncludeAgents []string
-	var catalog strings.Builder
-
-	// Agent 列表
-	var routeableAgentIDs []string
-	for _, info := range agentInfoCopy {
-		if isExecuteCodeAgent(info) || isFileToolAgent(info) {
-			alwaysIncludeAgents = append(alwaysIncludeAgents, info.ID)
-			continue
-		}
-		toolNames := make([]string, 0, len(agentToolsCopy[info.ID]))
-		for _, t := range agentToolsCopy[info.ID] {
-			toolNames = append(toolNames, t.Function.Name)
-		}
-		catalog.WriteString(fmt.Sprintf("- agent_id=%s name=%s description=%s tools=[%s]\n",
-			info.ID, info.Name, info.Description, strings.Join(toolNames, ", ")))
-		routeableAgentIDs = append(routeableAgentIDs, info.ID)
-	}
-
-	// Skill 列表
-	var skillCatalog strings.Builder
-	var skillNames []string
-	for _, skill := range allSkills {
-		skillCatalog.WriteString(fmt.Sprintf("- skill_name=%s description=%s tools=[%s]\n",
-			skill.Name, skill.Description, strings.Join(skill.Tools, ", ")))
-		skillNames = append(skillNames, skill.Name)
-	}
-
-	// 没有需要路由的 agent 和 skill → 直接返回始终保留的 agent
-	if len(routeableAgentIDs) == 0 && len(allSkills) == 0 {
-		return &CapabilitySelection{Agents: alwaysIncludeAgents}
-	}
-
-	routePrompt := fmt.Sprintf(`你是一个能力路由器。根据用户问题，从以下 Agent 和 Skill 列表中精确选择需要的能力。
-注意：execute-code-agent（ExecuteCode）和文件工具 agent 已自动包含，不需要你选择。
-
-用户问题: %s
-
-Agent 列表（数据源和执行工具）:
-%s
-Skill 列表（任务指引和专业知识）:
-%s
-选择规则：
-1. 重点查看每个 Agent 的 tools 列表，选择拥有任务所需工具的 Agent
-   - 数据查询/分析任务：必须选择拥有数据工具（如 Raw 开头的工具）的 Agent
-   - 编码任务：选择拥有 Codegen 工具的 Agent
-   - 部署任务：选择拥有 Deploy 工具的 Agent
-2. 根据 Skill 的 description 判断是否匹配用户意图
-3. 与任务无关的 Agent 坚决不选
-4. 混合任务可同时选多种能力
-5. 简单问答（闲聊、常识问题）返回空
-6. 只返回 JSON，不要其他文字
-
-返回格式: {"agents": ["agent_id1"], "skills": ["skill_name1"]}
-简单问答: {"agents": [], "skills": []}`, query, catalog.String(), skillCatalog.String())
-
-	messages := []Message{
-		{Role: "user", Content: routePrompt},
-	}
-
-	resp, _, err := b.sendLLM(messages, nil)
-	if err != nil {
-		log.Printf("[能力路由] LLM 调用失败: %v, 返回全部能力", err)
-		return &CapabilitySelection{
-			Agents: append(alwaysIncludeAgents, routeableAgentIDs...),
-			Skills: allSkills,
-		}
-	}
-
-	// 解析 JSON
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
-
-	var selection struct {
-		Agents []string `json:"agents"`
-		Skills []string `json:"skills"`
-	}
-	if err := json.Unmarshal([]byte(resp), &selection); err != nil {
-		log.Printf("[能力路由] 解析失败: %v, 返回全部能力", err)
-		return &CapabilitySelection{
-			Agents: append(alwaysIncludeAgents, routeableAgentIDs...),
-			Skills: allSkills,
-		}
-	}
-
-	// 合并 agent：始终保留 + LLM 选中
-	resultAgents := append(alwaysIncludeAgents, selection.Agents...)
-
-	// 匹配 skill：从 LLM 选中的 skill name 查找完整条目
-	skillNameSet := make(map[string]bool, len(selection.Skills))
-	for _, name := range selection.Skills {
-		skillNameSet[name] = true
-	}
-	var resultSkills []SkillEntry
-	for _, skill := range allSkills {
-		if skillNameSet[skill.Name] {
-			resultSkills = append(resultSkills, skill)
-		}
-	}
-
-	log.Printf("[能力路由] 从 %d agent + %d skill 中选择了 %d agent + %d skill: agents=%v skills=%v",
-		len(agentInfoCopy), len(allSkills), len(resultAgents), len(resultSkills), resultAgents, selection.Skills)
-
-	return &CapabilitySelection{
-		Agents: resultAgents,
-		Skills: resultSkills,
-	}
-}
-
-// collectSkillTools 从选中的 skill 收集关联工具
-func collectSkillTools(selectedSkills []SkillEntry, allTools []LLMTool) []LLMTool {
-	if len(selectedSkills) == 0 {
-		return nil
-	}
-
-	// 收集所有选中 skill 的工具名
-	needSet := make(map[string]bool)
-	for _, skill := range selectedSkills {
-		for _, t := range skill.Tools {
-			needSet[t] = true
-			needSet[sanitizeToolName(t)] = true // 同时支持 sanitized 格式
-		}
-	}
-
-	var result []LLMTool
-	var matchedNames []string
-	for _, tool := range allTools {
-		if needSet[tool.Function.Name] || needSet[unsanitizeToolName(tool.Function.Name)] {
-			result = append(result, tool)
-			matchedNames = append(matchedNames, unsanitizeToolName(tool.Function.Name))
-		}
-	}
-
-	// 日志：skill 声明的工具 vs 实际匹配到的工具
-	var skillSummary []string
-	for _, skill := range selectedSkills {
-		skillSummary = append(skillSummary, fmt.Sprintf("%s→[%s]", skill.Name, strings.Join(skill.Tools, ",")))
-	}
-	log.Printf("[collectSkillTools] skills: %s → matched %d tools: %v",
-		strings.Join(skillSummary, ", "), len(result), matchedNames)
-
-	return result
-}
-
-// mergeCapabilityTools 合并 agent 工具 + skill 工具 + 基础工具，去重
-func (b *Bridge) mergeCapabilityTools(selection *CapabilitySelection, allTools []LLMTool) []LLMTool {
-	seen := make(map[string]bool)
-	var merged []LLMTool
-
-	addTool := func(tool LLMTool) {
-		if !seen[tool.Function.Name] {
-			seen[tool.Function.Name] = true
-			merged = append(merged, tool)
-		}
-	}
-
-	// 1. agent 工具
-	agentTools := b.getToolsForAgents(selection.Agents)
-	agentCount := 0
-	for _, t := range agentTools {
-		before := len(merged)
-		addTool(t)
-		if len(merged) > before {
-			agentCount++
-		}
-	}
-
-	// 2. skill 工具
-	skillTools := collectSkillTools(selection.Skills, allTools)
-	skillCount := 0
-	for _, t := range skillTools {
-		before := len(merged)
-		addTool(t)
-		if len(merged) > before {
-			skillCount++
-		}
-	}
-
-	// 3. 基础工具始终保留（ExecuteCode + 文件工具）
-	baseCount := 0
-	for _, t := range allTools {
-		if t.Function.Name == "ExecuteCode" || isFileToolName(t.Function.Name) {
-			before := len(merged)
-			addTool(t)
-			if len(merged) > before {
-				baseCount++
-			}
-		}
-	}
-
-	var mergedNames []string
-	for _, t := range merged {
-		mergedNames = append(mergedNames, unsanitizeToolName(t.Function.Name))
-	}
-	log.Printf("[mergeCapabilityTools] agent=%d skill=%d base=%d → total=%d tools=%v",
-		agentCount, skillCount, baseCount, len(merged), mergedNames)
-
-	return merged
-}
-
-// routeTools 智能工具路由：用 LLM 从工具目录中筛选与用户问题相关的工具
-// ExecuteCode 和文件工具（ReadFile/WriteFile/ExecBash）作为基础能力始终保留，不参与 LLM 筛选
-func (b *Bridge) routeTools(query string, tools []LLMTool) []LLMTool {
-	// 分离 ExecuteCode 和文件工具（元工具，始终保留）和待路由工具
-	var alwaysKeep []LLMTool
-	var routable []LLMTool
-	for _, tool := range tools {
-		if tool.Function.Name == "ExecuteCode" || isFileToolName(tool.Function.Name) {
-			alwaysKeep = append(alwaysKeep, tool)
-		} else {
-			routable = append(routable, tool)
-		}
-	}
-
-	if len(routable) == 0 {
-		return alwaysKeep
-	}
-
-	// 构建工具目录（仅 name + description，不含参数 schema，节省 token）
-	var catalog strings.Builder
-	toolMap := make(map[string]LLMTool, len(routable))
-	for i, tool := range routable {
-		catalog.WriteString(fmt.Sprintf("%d. %s: %s\n", i+1, tool.Function.Name, tool.Function.Description))
-		toolMap[tool.Function.Name] = tool
-	}
-
-	routePrompt := fmt.Sprintf(`你是一个工具路由器。根据用户的问题，从以下工具目录中选择需要用到的工具。
-
-用户问题: %s
-
-工具目录:
-%s
-选择规则：
-1. 只选与任务直接相关的工具
-2. 如果选了 ExecuteCode，数据查询类工具（Raw 开头的）可以不选，因为 ExecuteCode 内部可通过 call_tool 调用所有工具
-3. 根据工具 description 判断相关性
-4. 只返回 JSON 数组，不要其他文字
-
-示例: ["ExecuteCode", "RawCurrentDate"]
-如果不需要任何工具，返回 []`, query, catalog.String())
-
-	messages := []Message{
-		{Role: "user", Content: routePrompt},
-	}
-
-	// 无工具的 LLM 请求用于路由
-	resp, _, err := b.sendLLM(messages, nil)
-	if err != nil {
-		log.Printf("[工具路由] LLM 调用失败: %v, 保留元工具", err)
-		return alwaysKeep // 降级：至少保留 ExecuteCode
-	}
-
-	// 解析 JSON 数组
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
-
-	var toolNames []string
-	if err := json.Unmarshal([]byte(resp), &toolNames); err != nil {
-		log.Printf("[工具路由] 解析失败: %v, 原始响应: %s, 保留元工具", err, resp)
-		return alwaysKeep
-	}
-
-	if len(toolNames) == 0 {
-		log.Printf("[工具路由] LLM 判断无需业务工具，保留元工具")
-		return alwaysKeep // ExecuteCode 始终可用
-	}
-
-	// 筛选出对应的完整工具定义
-	var selected []LLMTool
-	for _, name := range toolNames {
-		if tool, ok := toolMap[name]; ok {
-			selected = append(selected, tool)
-		}
-	}
-
-	// 合并：始终保留 + LLM 选中
-	result := append(alwaysKeep, selected...)
-	log.Printf("[工具路由] 从 %d 个工具中筛选出 %d 个 (always=%d routed=%d): %v",
-		len(tools), len(result), len(alwaysKeep), len(selected), toolNames)
-	return result
 }
 
 // ========================= 跨 Agent 工具调用 =========================
