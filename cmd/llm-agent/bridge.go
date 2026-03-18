@@ -44,9 +44,10 @@ type AgentInfo struct {
 	OpenCodeModels   []string // OpenCode 可用配置
 	CodingTools      []string // 可用编码工具（claudecode, opencode）
 	HostPlatform     string   // 部署平台
-	SSHHosts         []string // 可用 SSH 主机
-	DeployTargets    []string // 部署目标
-	Pipelines        []string // 可用 pipeline
+	SSHHosts         []string          // 可用 SSH 主机
+	DeployTargets    []string          // 部署目标
+	TargetHosts      map[string]string // target 名→SSH host 映射（如 ssh-prod → root@114.115.214.86）
+	Pipelines        []string          // 可用 pipeline
 }
 
 // Bridge UAP 客户端 + 工具路由层
@@ -537,6 +538,7 @@ func (b *Bridge) DiscoverAgents() error {
 			}
 			info.SSHHosts = parseStringSlice(a.Meta["ssh_hosts"])
 			info.DeployTargets = parseStringSlice(a.Meta["deploy_targets"])
+			info.TargetHosts = parseStringMap(a.Meta["target_hosts"])
 			info.Pipelines = parseStringSlice(a.Meta["pipelines"])
 		}
 		infoMap[a.AgentID] = info
@@ -565,6 +567,27 @@ func parseStringSlice(v any) []string {
 	for _, item := range arr {
 		if s, ok := item.(string); ok {
 			result = append(result, s)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// parseStringMap 从 any (interface{}) 解析 map[string]string，兼容 JSON 反序列化的 map[string]interface{}
+func parseStringMap(v any) map[string]string {
+	if v == nil {
+		return nil
+	}
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	result := make(map[string]string, len(m))
+	for k, val := range m {
+		if s, ok := val.(string); ok {
+			result[k] = s
 		}
 	}
 	if len(result) == 0 {
@@ -603,7 +626,13 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 			sb.WriteString(fmt.Sprintf("  - SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
 		}
 		if len(info.DeployTargets) > 0 {
-			sb.WriteString(fmt.Sprintf("  - 部署目标: %s\n", strings.Join(info.DeployTargets, ", ")))
+			sb.WriteString(fmt.Sprintf("  - 部署目标(deploy_target参数): %s\n", strings.Join(info.DeployTargets, ", ")))
+		}
+		if len(info.TargetHosts) > 0 {
+			sb.WriteString("  - 部署目标对应SSH地址(ssh_host参数):\n")
+			for target, host := range info.TargetHosts {
+				sb.WriteString(fmt.Sprintf("    - %s → %s\n", target, host))
+			}
 		}
 		if len(info.Pipelines) > 0 {
 			sb.WriteString(fmt.Sprintf("  - Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))

@@ -46,7 +46,11 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildDeployToolDefs(cfg, fileToolKit),
 		Meta: map[string]any{
-			"projects": cfg.ProjectNames(),
+			"projects":       cfg.ProjectNames(),
+			"ssh_hosts":      cfg.SSHHosts,
+			"deploy_targets": cfg.TargetNames,
+			"host_platform":  cfg.HostPlatform,
+			"target_hosts":   buildTargetHostMap(cfg),
 		},
 	}
 
@@ -494,6 +498,19 @@ func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 }
 
 // ========================= Tool 自注册 =========================
+
+// buildTargetHostMap 构建 target 名→SSH host 的映射（如 ssh-prod → root@114.115.214.86）
+func buildTargetHostMap(cfg *DeployConfig) map[string]string {
+	m := make(map[string]string)
+	for _, proj := range cfg.Projects {
+		for _, t := range proj.Targets {
+			if t.Name != "" && t.Host != "" && t.Host != "local" {
+				m[t.Name] = t.Host
+			}
+		}
+	}
+	return m
+}
 
 // buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表
 func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.ToolDef {

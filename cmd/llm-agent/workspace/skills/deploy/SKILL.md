@@ -14,6 +14,16 @@ keywords: 部署,deploy,发布,上线
 - 端口被占用、权限不足等冲突 → **直接返回部署失败**并说明原因，不得自动更换端口
 - 地址、域名等参数同理，用户怎么说就怎么用
 
+## ssh_host 参数（关键）
+
+`ssh_host` 参数用于指定部署目标服务器。**必须使用系统提示中"部署目标对应SSH地址"提供的真实地址**，不要使用用户口语中的别名。
+
+例如：用户说"部署到ssh_prod"，系统提示中显示 `ssh-prod → root@114.115.214.86`，则 `ssh_host` 应填 `root@114.115.214.86`。
+
+**禁止**：
+- 直接把用户说的别名（如 `ssh_prod`）作为 `ssh_host` 值传入
+- 用 ExecuteCode/Bash 去探索或查找 SSH 地址
+
 ## DeployProject 使用
 
 三种部署模式：
@@ -21,18 +31,30 @@ keywords: 部署,deploy,发布,上线
 - **指定仓库 URL**：从 Git 仓库拉取并部署
 - **自动检测**：根据编码会话的项目自动部署
 
-**调用示例（编码后部署新项目）：**
+**调用示例（编码后部署新项目到远程服务器）：**
 
 ```json
 {
   "project": "helloworld-web",
   "project_dir": "/path/from/coding/task/result",
+  "ssh_host": "root@114.115.214.86",
   "port": 8883
 }
 ```
 
 - `project` 和 `project_dir` **必须**从前置编码任务的结果中提取，禁止猜测
+- `ssh_host` **必须**从系统提示的 agent 能力描述中获取真实地址，禁止使用别名
 - `port` 使用用户指定的值，不可修改
+
+## 部署子任务执行规则
+
+**直接调用 DeployProject，禁止用 ExecuteCode 做以下操作：**
+- 探索项目目录结构
+- 查找或验证 SSH 地址
+- 读取/修改源代码文件
+- 验证部署结果（DeployProject 的 verify_url 参数会自动验证）
+
+部署子任务应该只有 1 次 DeployProject 调用，不需要任何前置探索。
 
 ## DeployPipeline 使用
 
@@ -48,10 +70,6 @@ keywords: 部署,deploy,发布,上线
 2. **不得**自行重试并更换参数（如换端口）
 3. 编译错误 → 通过 CodegenSendMessage 让编码 agent 修复源代码后重新部署
 4. 参数类错误（端口占用等） → 直接报告失败，由用户决定下一步
-
-**示例输出：**
-- 端口冲突：`部署失败：端口 8883 已被占用，请更换端口后重试`
-- 编译失败：`部署失败：编译错误 - main.go:15: undefined: xxx，正在通知编码 agent 修复`
 
 ## verify_url 使用
 
