@@ -162,10 +162,32 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 		}
 	}
 
+	// 收集 query 命中的所有工具名前缀（兜底：直接按工具名匹配，不依赖 agent 元数据）
+	var queryMatchedPrefixes []string
+	for keyword, prefixes := range cnKeywords {
+		if strings.Contains(queryLower, keyword) {
+			queryMatchedPrefixes = append(queryMatchedPrefixes, prefixes...)
+		}
+	}
+	for _, prefix := range []string{"blog", "todo", "exercise", "deploy", "codegen", "web", "raw", "bash"} {
+		if strings.Contains(queryLower, prefix) {
+			queryMatchedPrefixes = append(queryMatchedPrefixes, prefix)
+		}
+	}
+
 	var filtered []LLMTool
 	for _, tool := range tools {
 		if matchedToolSet[tool.Function.Name] {
 			filtered = append(filtered, tool)
+			continue
+		}
+		// 兜底：工具名前缀直接匹配 query 关键词
+		toolNameLower := strings.ToLower(unsanitizeToolName(tool.Function.Name))
+		for _, prefix := range queryMatchedPrefixes {
+			if strings.HasPrefix(toolNameLower, prefix) {
+				filtered = append(filtered, tool)
+				break
+			}
 		}
 	}
 
