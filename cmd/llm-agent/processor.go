@@ -224,12 +224,6 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
-	// 2.5 人设未设置时注入 set_persona 工具（让 LLM 从自然语言中提取人设信息）
-	if b.persona != nil && !b.persona.IsConfigured() && !ctx.NoTools {
-		tools = append(tools, setPersonaTool)
-		log.Printf("[processTask] 人设未设置，注入 set_persona 工具")
-	}
-
 	// 3. 静态工具策略管道（替代 LLM 路由）
 	var selectedSkills []SkillEntry
 
@@ -288,6 +282,12 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 注入 plan_and_execute（除非 NoTools）
 	if !ctx.NoTools {
 		tools = append(tools, planAndExecuteTool)
+	}
+
+	// 注入 set_persona（人设未设置时，策略管道之后注入避免被过滤）
+	if b.persona != nil && !b.persona.IsConfigured() && !ctx.NoTools {
+		tools = append(tools, setPersonaTool)
+		log.Printf("[processTask] 人设未设置，注入 set_persona 工具")
 	}
 
 	// 4. LLM 循环
