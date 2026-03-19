@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,9 @@ type Bridge struct {
 	// 记忆系统
 	memoryMgr       *MemoryManager
 	memoryCollector *MemoryCollector
+
+	// 人设配置
+	persona *PersonaProfile
 
 	// Skill 管理器
 	skillMgr *SkillManager
@@ -176,6 +180,14 @@ func NewBridge(cfg *Config) *Bridge {
 		if err := b.skillMgr.Load(); err != nil {
 			log.Printf("[Bridge] load skills: %v", err)
 		}
+	}
+
+	// 初始化人设配置
+	if cfg.WorkspaceDir != "" {
+		personaContent := loadWorkspaceFile(cfg.WorkspaceDir, "PERSONA.md", cfg.SystemPromptPrefix)
+		b.persona = ParsePersonaFile(personaContent)
+		b.persona.FilePath = filepath.Join(cfg.WorkspaceDir, "PERSONA.md")
+		log.Printf("[Bridge] persona loaded: configured=%v name=%s", b.persona.IsConfigured(), b.persona.Name)
 	}
 
 	// 初始化记忆系统

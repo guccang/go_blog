@@ -224,6 +224,18 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
+	// 2.5 人设设置检测（未设置时拦截用户输入）
+	if b.persona != nil && !b.persona.IsConfigured() && query != "" {
+		if b.persona.UpdateFromUserInput(query) {
+			if err := b.persona.SaveToFile(); err != nil {
+				log.Printf("[processTask] 保存人设失败: %v", err)
+			}
+			reply := fmt.Sprintf("人设设置完成！我是「%s」，以后叫你「%s」~", b.persona.Name, b.persona.OwnerTitle)
+			ctx.Sink.OnChunk(reply)
+			return reply, nil
+		}
+	}
+
 	// 3. 静态工具策略管道（替代 LLM 路由）
 	var selectedSkills []SkillEntry
 

@@ -272,8 +272,13 @@ var defaultTaskGuide = `
 func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, selectedSkills []SkillEntry) string {
 	var sb strings.Builder
 
-	persona := loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
-	sb.WriteString(persona)
+	// 人设系统提示
+	if b.persona != nil {
+		sb.WriteString(b.persona.BuildSystemPrompt())
+	} else {
+		persona := loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
+		sb.WriteString(persona)
+	}
 	sb.WriteString("\n\n")
 
 	now := time.Now()
