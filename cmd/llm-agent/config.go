@@ -17,10 +17,17 @@ type ToolPolicyPipeline struct {
 	BaseTools []string    `json:"base_tools,omitempty"` // 始终保留的基础工具名
 }
 
+// ProviderConfig LLM 服务商配置
+type ProviderConfig struct {
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key"`
+}
+
 // LLMConfig LLM API 配置
 type LLMConfig struct {
-	APIKey      string  `json:"api_key"`
-	BaseURL     string  `json:"base_url"`
+	Provider    string  `json:"provider,omitempty"` // 引用 providers 注册表
+	APIKey      string  `json:"api_key,omitempty"`
+	BaseURL     string  `json:"base_url,omitempty"`
 	Model       string  `json:"model"`
 	MaxTokens   int     `json:"max_tokens"`
 	Temperature float64 `json:"temperature"`
@@ -34,9 +41,10 @@ type Config struct {
 	AgentID     string `json:"agent_id"`
 	AgentName   string `json:"agent_name"`
 
-	LLM                 LLMConfig   `json:"llm"`
-	Fallbacks           []LLMConfig `json:"fallbacks,omitempty"`
-	FallbackCooldownSec int         `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
+	LLM                 LLMConfig                  `json:"llm"`
+	Fallbacks           []LLMConfig                `json:"fallbacks,omitempty"`
+	Providers           map[string]ProviderConfig  `json:"providers,omitempty"` // 服务商注册表
+	FallbackCooldownSec int                        `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
 	MaxPlanRevisions    int         `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
 
 	DefaultAccount     string `json:"default_account"`
@@ -150,5 +158,40 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Pipeline.BaseTools = []string{"ExecuteCode", "Bash"}
 	}
 
+	// 解析 provider 引用，填充 BaseURL/APIKey
+	cfg.ResolveProviders()
+
 	return cfg, nil
+}
+
+// ResolveProviders 遍历所有 LLMConfig，将 provider 引用解析为 BaseURL + APIKey
+func (c *Config) ResolveProviders() {
+	if len(c.Providers) == 0 {
+		return
+	}
+	resolveOne := func(llm *LLMConfig) {
+		if llm.Provider == "" {
+			return
+		}
+		p, ok := c.Providers[llm.Provider]
+		if !ok {
+			return
+		}
+		if llm.BaseURL == "" {
+			llm.BaseURL = p.BaseURL
+		}
+		if llm.APIKey == "" {
+			llm.APIKey = p.APIKey
+		}
+	}
+	resolveOne(&c.LLM)
+	for i := range c.Fallbacks {
+		resolveOne(&c.Fallbacks[i])
+	}
+	for i := range c.SourceLLMs {
+		resolveOne(&c.SourceLLMs[i].LLM)
+		for j := range c.SourceLLMs[i].Fallbacks {
+			resolveOne(&c.SourceLLMs[i].Fallbacks[j])
+		}
+	}
 }

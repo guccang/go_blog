@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -30,8 +31,14 @@ type MemoryManager struct {
 	maxEntries   int            // 最大条目数
 	expiryDays   int            // 记忆过期天数（0=不过期）
 
+	// 用户规则（memory_rule.md 原始文本）
+	ruleContent string
+
 	// LLM 压缩回调（由 bridge 注入，避免循环依赖）
 	llmCompactFunc func(entries []MemoryEntry) ([]MemoryEntry, error)
+
+	// LLM 规则整理回调（由 bridge 注入）
+	llmCompactRulesFunc func(content string) (string, error)
 
 	// toolName → skillName 映射回调（由 bridge 注入）
 	skillNameResolver func(toolName string) string
@@ -72,6 +79,13 @@ func (m *MemoryManager) SetLLMCompactFunc(fn func(entries []MemoryEntry) ([]Memo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.llmCompactFunc = fn
+}
+
+// SetLLMCompactRulesFunc 注入 LLM 规则整理回调
+func (m *MemoryManager) SetLLMCompactRulesFunc(fn func(content string) (string, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.llmCompactRulesFunc = fn
 }
 
 // SetSkillNameResolver 注入 toolName → skillName 映射回调
@@ -659,6 +673,153 @@ func (m *MemoryManager) CleanupExpired() {
 			log.Printf("[Memory] 过期清理重写失败: %v", err)
 		}
 	}
+}
+
+// ========================= 用户规则（memory_rule.md） =========================
+
+// ruleFilePath 返回规则文件路径
+func (m *MemoryManager) ruleFilePath() string {
+	return filepath.Join(m.memoryDir, "memory_rule.md")
+}
+
+// LoadRules 启动时从 memory_rule.md 加载全文
+func (m *MemoryManager) LoadRules() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	data, err := os.ReadFile(m.ruleFilePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read rule file: %v", err)
+	}
+
+	m.ruleContent = strings.TrimSpace(string(data))
+	log.Printf("[Memory] 加载用户规则: %d 字符", len(m.ruleContent))
+	return nil
+}
+
+// AddRule 追加一条规则到文件，并触发 LLM 整理
+func (m *MemoryManager) AddRule(rule string) {
+	rule = strings.TrimSpace(rule)
+	if rule == "" {
+		return
+	}
+
+	if err := os.MkdirAll(m.memoryDir, 0755); err != nil {
+		log.Printf("[Memory] create memory dir: %v", err)
+		return
+	}
+
+	// 追加到文件
+	f, err := os.OpenFile(m.ruleFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("[Memory] 写入规则失败: %v", err)
+		return
+	}
+	f.WriteString(rule + "\n")
+	f.Close()
+
+	// 更新内存
+	m.mu.Lock()
+	if m.ruleContent != "" {
+		m.ruleContent += "\n" + rule
+	} else {
+		m.ruleContent = rule
+	}
+	contentLen := len(m.ruleContent)
+	m.mu.Unlock()
+
+	log.Printf("[Memory] 新增规则: %s (文件 %d 字符)", truncate(rule, 80), contentLen)
+
+	// 超过 2000 字符触发 LLM 整理去重
+	if contentLen > 2000 {
+		go m.CompactRules()
+	}
+}
+
+// CompactRules 使用 LLM 整理规则文件：去重、合并、精简
+func (m *MemoryManager) CompactRules() {
+	m.mu.RLock()
+	content := m.ruleContent
+	compactFunc := m.llmCompactRulesFunc
+	m.mu.RUnlock()
+
+	if content == "" || compactFunc == nil {
+		return
+	}
+
+	log.Printf("[Memory] 触发规则整理: %d 字符", len(content))
+
+	compacted, err := compactFunc(content)
+	if err != nil {
+		log.Printf("[Memory] LLM 规则整理失败: %v", err)
+		return
+	}
+
+	compacted = strings.TrimSpace(compacted)
+	if compacted == "" {
+		return
+	}
+
+	m.mu.Lock()
+	m.ruleContent = compacted
+	m.mu.Unlock()
+
+	// 覆盖写回文件
+	if err := os.WriteFile(m.ruleFilePath(), []byte(compacted+"\n"), 0644); err != nil {
+		log.Printf("[Memory] 规则文件重写失败: %v", err)
+	}
+
+	log.Printf("[Memory] 规则整理完成: %d → %d 字符", len(content), len(compacted))
+}
+
+// BuildRulePromptBlock 构建注入 system prompt 的规则文本
+func (m *MemoryManager) BuildRulePromptBlock() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.ruleContent == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("\n## 用户规则（请严格遵守）\n%s\n\n", m.ruleContent)
+}
+
+// setRuleTool 虚拟工具定义（用于记录用户规则）
+var setRuleTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "set_rule",
+		Description: "记录用户对助手的规则或提醒。当用户说'记住...'、'以后...'、'你要...'、'不要...'、'每次...'等设定行为规则时调用。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"rule": {
+					"type": "string",
+					"description": "用户设定的规则内容"
+				}
+			},
+			"required": ["rule"]
+		}`),
+	},
+}
+
+// HandleSetRule 处理 set_rule 工具调用
+func (m *MemoryManager) HandleSetRule(argsJSON string) (string, bool) {
+	var args struct {
+		Rule string `json:"rule"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return fmt.Sprintf("参数解析失败: %v", err), false
+	}
+	if args.Rule == "" {
+		return "rule 字段不能为空", false
+	}
+
+	m.AddRule(args.Rule)
+	return fmt.Sprintf("已记住: %s", args.Rule), true
 }
 
 // rewriteFiles 按日期分组重写所有普通记忆文件（需持有写锁）

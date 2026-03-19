@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -40,11 +43,13 @@ type AgentInfo struct {
 	Name             string
 	Description      string
 	ToolNames        []string
-	Models           []string // 合并后的模型配置名列表（如 default, deepseek）
-	ClaudeCodeModels []string // Claude Code 可用配置
-	OpenCodeModels   []string // OpenCode 可用配置
-	CodingTools      []string // 可用编码工具（claudecode, opencode）
-	HostPlatform     string   // 部署平台
+	HostPlatform     string            // 运行平台（macOS/Linux/Windows）
+	HostIP           string            // 主机 IP 地址
+	Workspace        string            // 工作目录
+	Models           []string          // 合并后的模型配置名列表（如 default, deepseek）
+	ClaudeCodeModels []string          // Claude Code 可用配置
+	OpenCodeModels   []string          // OpenCode 可用配置
+	CodingTools      []string          // 可用编码工具（claudecode, opencode）
 	SSHHosts         []string          // 可用 SSH 主机
 	DeployTargets    []string          // 部署目标
 	TargetHosts      map[string]string // target 名→SSH host 映射（如 ssh-prod → root@114.115.214.86）
@@ -53,6 +58,7 @@ type AgentInfo struct {
 	MaxExecTime      int               // 最大执行时间秒（execute-code-agent）
 	LogSources       map[string]string // 日志源名→描述（log-agent）
 	SupportedSoftware []string         // 支持检测/安装的软件列表（env-agent）
+	HostStats         map[string]any   // 主机资源信息（cpu_cores, mem_total_gb, disk_total_gb, disk_free_gb）
 }
 
 // Bridge UAP 客户端 + 工具路由层
@@ -99,6 +105,9 @@ type Bridge struct {
 	// 任务生命周期 hook
 	hooks *HookManager
 
+	// Token 用量统计
+	tokenStats *TokenStats
+
 	// 并发控制
 	activeTasks  map[string]string // taskID → task_type
 	activeTaskMu sync.Mutex
@@ -114,6 +123,19 @@ func NewBridge(cfg *Config) *Bridge {
 	client.AuthToken = cfg.AuthToken
 	client.Capacity = cfg.MaxConcurrent
 	client.Tools = nil // llm-agent 不对外注册工具
+	client.HostPlatform = detectPlatform()
+	client.HostIP = getLocalIP()
+	if cfg.WorkspaceDir != "" {
+		client.Workspace = cfg.WorkspaceDir
+	} else if wd, err := os.Getwd(); err == nil {
+		client.Workspace = wd
+	}
+
+	// 采集主机资源信息写入 Meta
+	if client.Meta == nil {
+		client.Meta = make(map[string]any)
+	}
+	client.Meta["host_stats"] = collectHostStats(client.Workspace)
 
 	// 初始化通用会话管理器
 	timeout := time.Duration(cfg.WechatSessionTimeoutMin) * time.Minute
@@ -156,6 +178,12 @@ func NewBridge(cfg *Config) *Bridge {
 
 	client.OnMessage = b.handleMessage
 
+	// 初始化 token 用量统计
+	tokenStatsPath := filepath.Join(cfg.SessionDir, "token_stats.json")
+	b.tokenStats = NewTokenStats(tokenStatsPath)
+	b.tokenStats.Load()
+	SetTokenStats(b.tokenStats)
+
 	// 初始化 hook 管理器
 	b.hooks = NewHookManager()
 	b.hooks.Register(&WechatUsageSummaryHook{bridge: b})
@@ -172,6 +200,8 @@ func NewBridge(cfg *Config) *Bridge {
 	b.bashManager = &BashToolManager{
 		Timeout:   bashTimeout,
 		MaxOutput: bashMaxOutput,
+		AgentID:   cfg.AgentID,
+		Platform:  detectPlatform(),
 	}
 
 	// 初始化 Skill 管理器
@@ -203,6 +233,11 @@ func NewBridge(cfg *Config) *Bridge {
 		return b.llmCompactMemory(entries)
 	})
 
+	// 注入 LLM 规则整理回调：去重合并用户规则
+	b.memoryMgr.SetLLMCompactRulesFunc(func(content string) (string, error) {
+		return b.llmCompactRules(content)
+	})
+
 	// 注入 toolName → skillName 映射回调（用于 auto_skill 分流）
 	if b.skillMgr != nil {
 		b.skillMgr.SetMemoryDir(memoryDir)
@@ -220,6 +255,9 @@ func NewBridge(cfg *Config) *Bridge {
 
 	if err := b.memoryMgr.Load(); err != nil {
 		log.Printf("[Bridge] load memory: %v", err)
+	}
+	if err := b.memoryMgr.LoadRules(); err != nil {
+		log.Printf("[Bridge] load rules: %v", err)
 	}
 	b.memoryCollector = NewMemoryCollector(b.memoryMgr, b, cfg.SkillIterationThreshold)
 
@@ -326,6 +364,40 @@ func (b *Bridge) llmCompactMemory(entries []MemoryEntry) ([]MemoryEntry, error) 
 
 	log.Printf("[Memory] LLM 整理: %d → %d 条", len(entries), len(compacted))
 	return compacted, nil
+}
+
+// llmCompactRules 使用 LLM 整理用户规则：去重、合并、精简
+func (b *Bridge) llmCompactRules(content string) (string, error) {
+	prompt := fmt.Sprintf(`你是一个规则整理助手。以下是用户给 AI 助手设定的规则和提醒，其中可能有重复或相似的内容。
+
+请整理这些规则：
+1. 合并含义相同或相似的规则
+2. 删除完全重复的
+3. 保持原始意图不变
+4. 语言精简清晰
+
+只输出整理后的规则内容，不要输出其他说明。
+
+当前规则：
+%s`, content)
+
+	messages := []Message{
+		{Role: "system", Content: "你是规则整理助手，负责去重合并用户设定的 AI 助手行为规则。只输出整理后的规则。"},
+		{Role: "user", Content: prompt},
+	}
+
+	text, _, err := b.sendLLM(messages, nil)
+	if err != nil {
+		return "", fmt.Errorf("LLM compact rules: %v", err)
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("LLM compact rules returned empty")
+	}
+
+	log.Printf("[Memory] LLM 规则整理: %d → %d 字符", len(content), len(text))
+	return text, nil
 }
 
 // parseLLMCompactOutput 解析 LLM 压缩输出
@@ -691,12 +763,15 @@ func (b *Bridge) DiscoverAgents() error {
 	var result struct {
 		Success bool `json:"success"`
 		Agents  []struct {
-			AgentID     string         `json:"agent_id"`
-			AgentType   string         `json:"agent_type"`
-			Name        string         `json:"name"`
-			Description string         `json:"description"`
-			Tools       []string       `json:"tools"`
-			Meta        map[string]any `json:"meta"`
+			AgentID      string         `json:"agent_id"`
+			AgentType    string         `json:"agent_type"`
+			Name         string         `json:"name"`
+			Description  string         `json:"description"`
+			HostPlatform string         `json:"host_platform"`
+			HostIP       string         `json:"host_ip"`
+			Workspace    string         `json:"workspace"`
+			Tools        []string       `json:"tools"`
+			Meta         map[string]any `json:"meta"`
 		} `json:"agents"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -712,10 +787,13 @@ func (b *Bridge) DiscoverAgents() error {
 			continue // 跳过自身
 		}
 		info := AgentInfo{
-			ID:          a.AgentID,
-			Name:        a.Name,
-			Description: a.Description,
-			ToolNames:   a.Tools,
+			ID:           a.AgentID,
+			Name:         a.Name,
+			Description:  a.Description,
+			ToolNames:    a.Tools,
+			HostPlatform: a.HostPlatform,
+			HostIP:       a.HostIP,
+			Workspace:    a.Workspace,
 		}
 		// 从 meta 提取动态能力信息
 		if a.Meta != nil {
@@ -723,8 +801,11 @@ func (b *Bridge) DiscoverAgents() error {
 			info.ClaudeCodeModels = parseStringSlice(a.Meta["claudecode_models"])
 			info.OpenCodeModels = parseStringSlice(a.Meta["opencode_models"])
 			info.CodingTools = parseStringSlice(a.Meta["coding_tools"])
-			if hp, ok := a.Meta["host_platform"].(string); ok {
-				info.HostPlatform = hp
+			// 兼容旧 agent：base 字段为空时从 meta 回退
+			if info.HostPlatform == "" {
+				if hp, ok := a.Meta["host_platform"].(string); ok {
+					info.HostPlatform = hp
+				}
 			}
 			info.SSHHosts = parseStringSlice(a.Meta["ssh_hosts"])
 			info.DeployTargets = parseStringSlice(a.Meta["deploy_targets"])
@@ -738,6 +819,12 @@ func (b *Bridge) DiscoverAgents() error {
 			}
 			info.LogSources = parseStringMap(a.Meta["log_sources"])
 			info.SupportedSoftware = parseStringSlice(a.Meta["supported_software"])
+			if hs, ok := a.Meta["host_stats"].(map[string]interface{}); ok {
+				info.HostStats = make(map[string]any, len(hs))
+				for k, v := range hs {
+					info.HostStats[k] = v
+				}
+			}
 		}
 		infoMap[a.AgentID] = info
 		log.Printf("[Bridge] agent: %s (%s) tools=%v models=%v coding_tools=%v",
@@ -805,20 +892,42 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 
 	var sb strings.Builder
 	sb.WriteString("\n## 可用 Agent 能力\n")
+
+	// 注入 llm-agent 自身信息
+	sb.WriteString(fmt.Sprintf("- **%s** (%s): LLM 编排中枢\n", b.cfg.AgentName, b.cfg.AgentID))
+	if b.client.HostPlatform != "" {
+		sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", b.client.HostPlatform))
+	}
+	if b.client.HostIP != "" {
+		sb.WriteString(fmt.Sprintf("  - 主机IP: %s\n", b.client.HostIP))
+	}
+	if b.client.Workspace != "" {
+		sb.WriteString(fmt.Sprintf("  - 工作目录: %s\n", b.client.Workspace))
+	}
+
 	for _, info := range b.agentInfo {
-		if info.Description == "" {
-			continue
+		// 标题行：有 description 就显示，没有就只显示名称
+		if info.Description != "" {
+			sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
+		} else {
+			sb.WriteString(fmt.Sprintf("- **%s** (%s)\n", info.Name, info.ID))
 		}
-		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
+		// 注入基础信息
+		if info.HostPlatform != "" {
+			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
+		}
+		if info.HostIP != "" {
+			sb.WriteString(fmt.Sprintf("  - 主机IP: %s\n", info.HostIP))
+		}
+		if info.Workspace != "" {
+			sb.WriteString(fmt.Sprintf("  - 工作目录: %s\n", info.Workspace))
+		}
 		// 注入可用模型和编码工具信息，让 LLM 知道合法参数值
 		if len(info.CodingTools) > 0 {
 			sb.WriteString(fmt.Sprintf("  - 可用编码工具(tool参数): %s\n", strings.Join(info.CodingTools, ", ")))
 		}
 		if len(info.Models) > 0 {
 			sb.WriteString(fmt.Sprintf("  - 可用模型配置(model参数): %s\n", strings.Join(info.Models, ", ")))
-		}
-		if info.HostPlatform != "" {
-			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
 		}
 		if len(info.SSHHosts) > 0 {
 			sb.WriteString(fmt.Sprintf("  - SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
@@ -850,6 +959,25 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		}
 		if len(info.SupportedSoftware) > 0 {
 			sb.WriteString(fmt.Sprintf("  - 支持检测/安装的软件(software参数): %s\n", strings.Join(info.SupportedSoftware, ", ")))
+		}
+		if len(info.HostStats) > 0 {
+			var parts []string
+			if v, ok := info.HostStats["cpu_cores"]; ok {
+				parts = append(parts, fmt.Sprintf("CPU %v核", v))
+			}
+			if v, ok := info.HostStats["mem_total_gb"]; ok {
+				parts = append(parts, fmt.Sprintf("内存 %sGB", v))
+			}
+			if total, ok := info.HostStats["disk_total_gb"]; ok {
+				if free, ok2 := info.HostStats["disk_free_gb"]; ok2 {
+					parts = append(parts, fmt.Sprintf("磁盘 %sGB/可用 %sGB", total, free))
+				} else {
+					parts = append(parts, fmt.Sprintf("磁盘 %sGB", total))
+				}
+			}
+			if len(parts) > 0 {
+				sb.WriteString(fmt.Sprintf("  - 主机资源: %s\n", strings.Join(parts, ", ")))
+			}
 		}
 	}
 	return sb.String()
@@ -1434,4 +1562,29 @@ func WarmupLLM(cfg *LLMConfig) {
 func mustMarshal(v any) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return data
+}
+
+// detectPlatform 检测当前运行平台
+func detectPlatform() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	case "windows":
+		return "Windows"
+	default:
+		return runtime.GOOS
+	}
+}
+
+// getLocalIP 获取本机局域网 IP 地址
+func getLocalIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	addr := conn.LocalAddr().(*net.UDPAddr)
+	return addr.IP.String()
 }

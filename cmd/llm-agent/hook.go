@@ -251,6 +251,15 @@ func (h *WechatUsageSummaryHook) buildSummary(toolCalls []ToolCallRecord) string
 	}
 
 	sb.WriteString(fmt.Sprintf("\n⏱ 总工具耗时: %s", fmtDuration(time.Duration(totalDurationMs)*time.Millisecond)))
+
+	// 附加 token 用量统计
+	if globalTokenStats != nil {
+		if tokenSummary := globalTokenStats.Summary(); tokenSummary != "" {
+			sb.WriteString("\n")
+			sb.WriteString(tokenSummary)
+		}
+	}
+
 	return sb.String()
 }
 

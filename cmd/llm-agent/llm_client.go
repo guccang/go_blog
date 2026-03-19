@@ -162,6 +162,35 @@ type llmRequest struct {
 type llmResponse struct {
 	Choices []llmChoice `json:"choices"`
 	Error   *llmError   `json:"error,omitempty"`
+	Usage   *llmUsage   `json:"usage,omitempty"`
+}
+
+type llmUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// 全局 token 统计器
+var globalTokenStats *TokenStats
+
+// SetTokenStats 注入全局 token 统计器（由 Bridge 初始化时调用）
+func SetTokenStats(ts *TokenStats) {
+	globalTokenStats = ts
+}
+
+// recordTokenUsage 记录 token 用量到全局统计器
+func recordTokenUsage(usage *llmUsage, model string) {
+	if globalTokenStats == nil || usage == nil {
+		return
+	}
+	globalTokenStats.Add(TokenUsage{
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		TotalTokens:      usage.TotalTokens,
+		Model:            model,
+		Timestamp:        time.Now(),
+	})
 }
 
 type llmChoice struct {
@@ -317,6 +346,9 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	choice := llmResp.Choices[0]
 	duration := time.Since(reqStart)
 
+	// 记录 token 用量
+	recordTokenUsage(llmResp.Usage, cfg.Model)
+
 	// 构建工具调用摘要
 	var tcNames []string
 	for _, tc := range choice.Message.ToolCalls {
@@ -410,6 +442,9 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 
 	choice := llmResp.Choices[0]
 	duration := time.Since(reqStart)
+
+	// 记录 token 用量
+	recordTokenUsage(llmResp.Usage, cfg.Model)
 
 	var tcNames []string
 	for _, tc := range choice.Message.ToolCalls {
@@ -523,13 +558,16 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	}
 
 	log.Printf("[LLM] ← 流式响应开始 首字节耗时=%v", time.Since(reqStart))
-	text, toolCalls, err := parseStreamingResponse(resp.Body, onChunk)
+	text, toolCalls, streamUsage, err := parseStreamingResponse(resp.Body, onChunk)
 	duration := time.Since(reqStart)
 
 	if err != nil {
 		log.Printf("[LLM] ✗ 流式解析失败 duration=%v error=%v", duration, err)
 		return "", nil, err
 	}
+
+	// 记录 token 用量
+	recordTokenUsage(streamUsage, cfg.Model)
 
 	var tcNames []string
 	for _, tc := range toolCalls {
@@ -541,14 +579,15 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	return text, toolCalls, nil
 }
 
-// parseStreamingResponse 解析 SSE 流式响应，提取文本和 tool_calls
-func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []ToolCall, error) {
+// parseStreamingResponse 解析 SSE 流式响应，提取文本、tool_calls 和 usage
+func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []ToolCall, *llmUsage, error) {
 	scanner := bufio.NewScanner(body)
 	// 增大 buffer 以处理大 chunk
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
 	var fullText strings.Builder
 	var toolCalls []ToolCall
+	var streamUsage *llmUsage
 	// 用于累积 tool_call 的增量数据
 	toolCallBuilders := make(map[int]*ToolCall)
 	truncatedByMaxTokens := false
@@ -575,10 +614,17 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
+			Usage *llmUsage `json:"usage,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
 		}
+
+		// 捕获流式 usage（部分 API 在最后一个 chunk 或独立 chunk 中返回）
+		if chunk.Usage != nil {
+			streamUsage = chunk.Usage
+		}
+
 		if len(chunk.Choices) == 0 {
 			continue
 		}
@@ -631,7 +677,7 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 
 	if err := scanner.Err(); err != nil {
 		log.Printf("[LLM Debug] Scanner error: %v, text gathered so far: %s", err, fullText.String())
-		return "", nil, fmt.Errorf("read stream: %v", err)
+		return "", nil, nil, fmt.Errorf("read stream: %v", err)
 	}
 
 	// 收集完整的 tool_calls
@@ -658,7 +704,7 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 		}
 	}
 
-	return fullText.String(), toolCalls, nil
+	return fullText.String(), toolCalls, streamUsage, nil
 }
 
 // tailStr 返回字符串末尾 n 个字符（用于日志）

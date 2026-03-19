@@ -309,6 +309,14 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		}
 	}
 
+	// 注入用户规则
+	if b.memoryMgr != nil {
+		ruleBlock := b.memoryMgr.BuildRulePromptBlock()
+		if ruleBlock != "" {
+			sb.WriteString(ruleBlock)
+		}
+	}
+
 	// 任务拆解指引
 	taskGuide := loadWorkspaceFile(b.cfg.WorkspaceDir, "TASK_GUIDE.md", defaultTaskGuide)
 	sb.WriteString("\n")

@@ -290,6 +290,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] 人设未设置，注入 set_persona 工具")
 	}
 
+	// 注入 set_rule（始终注入，用于记录用户规则）
+	if b.memoryMgr != nil && !ctx.NoTools {
+		tools = append(tools, setRuleTool)
+	}
+
 	// 4. LLM 循环
 	maxIter := b.cfg.MaxToolIterations
 	if maxIter <= 0 {
@@ -481,6 +486,20 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			if tc.Function.Name == "set_persona" && b.persona != nil {
 				reply, ok := b.persona.HandleSetPersona(tc.Function.Arguments)
 				log.Printf("[processTask] set_persona: success=%v result=%s", ok, reply)
+				toolMsg := Message{
+					Role:       "tool",
+					Content:    reply,
+					ToolCallID: tc.ID,
+				}
+				rootSession.AppendMessage(toolMsg)
+				messages = append(messages, toolMsg)
+				continue
+			}
+
+			// set_rule 内置处理（不走远程 agent）
+			if tc.Function.Name == "set_rule" && b.memoryMgr != nil {
+				reply, ok := b.memoryMgr.HandleSetRule(tc.Function.Arguments)
+				log.Printf("[processTask] set_rule: success=%v result=%s", ok, reply)
 				toolMsg := Message{
 					Role:       "tool",
 					Content:    reply,

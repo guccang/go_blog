@@ -46,14 +46,17 @@ type Message struct {
 
 // RegisterPayload agent 注册信息
 type RegisterPayload struct {
-	AgentID     string         `json:"agent_id"`
-	AgentType   string         `json:"agent_type"`   // "wechat", "go_blog", "llm_mcp", "codegen", "deploy"
-	Name        string         `json:"name"`         // 人类可读名称
-	Description string         `json:"description"`  // agent 能力简述
-	Tools       []ToolDef      `json:"tools"`        // 注册的工具列表
-	Capacity    int            `json:"capacity"`     // 最大并发
-	Meta        map[string]any `json:"meta"`         // 扩展字段
-	AuthToken   string         `json:"auth_token"`
+	AgentID      string         `json:"agent_id"`
+	AgentType    string         `json:"agent_type"`    // "wechat", "go_blog", "llm_mcp", "codegen", "deploy"
+	Name         string         `json:"name"`          // 人类可读名称
+	Description  string         `json:"description"`   // agent 能力简述
+	HostPlatform string         `json:"host_platform"` // 运行平台（macOS/Linux/Windows）
+	HostIP       string         `json:"host_ip"`       // 主机 IP 地址
+	Workspace    string         `json:"workspace"`     // 工作目录
+	Tools        []ToolDef      `json:"tools"`         // 注册的工具列表
+	Capacity     int            `json:"capacity"`      // 最大并发
+	Meta         map[string]any `json:"meta"`          // 扩展字段
+	AuthToken    string         `json:"auth_token"`
 }
 
 // ToolDef 工具定义

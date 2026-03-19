@@ -332,7 +332,7 @@ func (b *Bridge) ensureBaseTools(filtered []LLMTool, allTools []LLMTool) []LLMTo
 // isBaseTool 判断是否为基础工具（始终保留，不参与过滤）
 func (b *Bridge) isBaseTool(name string) bool {
 	// 默认基础工具
-	if name == "ExecuteCode" || name == "Bash" || isFileToolName(name) {
+	if name == "ExecuteCode" || name == "Bash" || strings.HasSuffix(name, ".Bash") || isFileToolName(name) {
 		return true
 	}
 	// 配置的额外基础工具

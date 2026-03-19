@@ -99,6 +99,14 @@ func (m *ChatSessionManager) GetOrCreate(source, userID, account string) (*ChatS
 	return session, true // 新会话
 }
 
+// Get 只读获取会话（不创建新会话）
+func (m *ChatSessionManager) Get(source, userID string) *ChatSession {
+	key := sessionKey(source, userID)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sessions[key]
+}
+
 // Reset 显式重置某用户的会话
 func (m *ChatSessionManager) Reset(source, userID string) {
 	key := sessionKey(source, userID)

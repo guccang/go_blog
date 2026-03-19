@@ -154,6 +154,18 @@ func isConversationResetCommand(content string) bool {
 	return false
 }
 
+// isContextCommand 判断是否为上下文查看命令
+func isContextCommand(content string) bool {
+	content = strings.TrimSpace(content)
+	cmds := []string{"/context", "上下文", "context"}
+	for _, cmd := range cmds {
+		if strings.EqualFold(content, cmd) {
+			return true
+		}
+	}
+	return false
+}
+
 // isStopCommand 判断是否为停止任务命令
 func isStopCommand(content string) bool {
 	content = strings.TrimSpace(content)
@@ -206,7 +218,18 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		return
 	}
 
-	// 3. 获取或创建会话
+	// 3. 上下文查看命令
+	if isContextCommand(content) {
+		reply := b.buildContextDebugInfo("wechat", wechatUser)
+		b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "wechat",
+			To:      wechatUser,
+			Content: reply,
+		})
+		return
+	}
+
+	// 4. 获取或创建会话
 	session, isNew := b.sessionMgr.GetOrCreate("wechat", wechatUser, b.cfg.DefaultAccount)
 
 	// 序列化同一用户的消息处理（后到的消息等前一个完成）
@@ -320,6 +343,153 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	} else {
 		log.Printf("[Wechat] reply sent to %s via %s (%d chars)", wechatUser, fromAgent, len(result))
 	}
+}
+
+// buildContextDebugInfo 构建当前 session 的上下文结构概览
+func (b *Bridge) buildContextDebugInfo(source, userID string) string {
+	session := b.sessionMgr.Get(source, userID)
+	if session == nil {
+		return "当前无活跃会话。发送任意消息开始新对话。"
+	}
+
+	session.mu.Lock()
+	sessionID := session.SessionID
+	lastActive := session.LastActiveAt
+	turnCount := session.TurnCount
+	maxTurns := b.sessionMgr.maxTurns
+	msgs := make([]Message, len(session.Messages))
+	copy(msgs, session.Messages)
+	session.mu.Unlock()
+
+	var sb strings.Builder
+
+	// 基本信息
+	sb.WriteString("📋 Session Context Debug\n")
+	sb.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
+	sb.WriteString(fmt.Sprintf("🔑 会话: %s_%s (%s)\n", source, userID, sessionID))
+	sb.WriteString(fmt.Sprintf("⏱ 活跃: %s | 轮次: %d/%d\n", lastActive.Format("2006-01-02 15:04"), turnCount, maxTurns))
+	sb.WriteString(fmt.Sprintf("📨 消息数: %d\n", len(msgs)))
+
+	// 解析 system prompt 各层
+	if len(msgs) > 0 && msgs[0].Role == "system" {
+		sysContent := msgs[0].Content
+		sb.WriteString(fmt.Sprintf("\n📝 System Prompt (%s chars):\n", formatTokenCount(int64(len([]rune(sysContent))))))
+
+		type segment struct {
+			marker string
+			name   string
+		}
+		markers := []segment{
+			{"## 可用 Agent 能力", "Agent能力"},
+			{"## 可用技能", "Skill目录"},
+			{"## 长期记忆", "长期记忆"},
+			{"## 用户规则", "用户规则"},
+			{"## 任务拆解", "任务指引"},
+			{"### ", "Skill详情"},
+			{"用户当前数据:", "上下文数据"},
+		}
+
+		// 找到每个标记的位置
+		type found struct {
+			name string
+			pos  int
+		}
+		var positions []found
+		for _, m := range markers {
+			idx := strings.Index(sysContent, m.marker)
+			if idx >= 0 {
+				positions = append(positions, found{m.name, idx})
+			}
+		}
+
+		// 按位置排序
+		for i := 0; i < len(positions); i++ {
+			for j := i + 1; j < len(positions); j++ {
+				if positions[j].pos < positions[i].pos {
+					positions[i], positions[j] = positions[j], positions[i]
+				}
+			}
+		}
+
+		// 计算每段字符数
+		runes := []rune(sysContent)
+		totalRunes := len(runes)
+
+		if len(positions) == 0 {
+			sb.WriteString(fmt.Sprintf("  · 全部: %d chars\n", totalRunes))
+		} else {
+			// 第一段：人设+基础信息（从开头到第一个标记）
+			firstPos := positions[0].pos
+			// 将 byte pos 转为 rune count
+			personaChars := len([]rune(sysContent[:firstPos]))
+			sb.WriteString(fmt.Sprintf("  · 人设/基础: %d chars\n", personaChars))
+
+			for i, p := range positions {
+				var endByte int
+				if i+1 < len(positions) {
+					endByte = positions[i+1].pos
+				} else {
+					endByte = len(sysContent)
+				}
+				segChars := len([]rune(sysContent[p.pos:endByte]))
+				sb.WriteString(fmt.Sprintf("  · %s: %d chars\n", p.name, segChars))
+			}
+		}
+	}
+
+	// 消息历史
+	sb.WriteString("\n💬 消息历史:\n")
+	for i, msg := range msgs {
+		charCount := len([]rune(msg.Content))
+		extra := ""
+		if len(msg.ToolCalls) > 0 {
+			var toolNames []string
+			for _, tc := range msg.ToolCalls {
+				toolNames = append(toolNames, tc.Function.Name)
+			}
+			extra = fmt.Sprintf(" (tools: %s)", strings.Join(toolNames, ","))
+		}
+		if msg.ToolCallID != "" {
+			extra = " (tool_result)"
+		}
+		sb.WriteString(fmt.Sprintf("  [%d] %s: %d chars%s\n", i, msg.Role, charCount, extra))
+	}
+
+	// 工具统计（按 agent 分组）
+	b.catalogMu.RLock()
+	toolCount := len(b.toolCatalog)
+	agentToolCount := make(map[string][]string) // agentID → tool names
+	for toolName, agentID := range b.toolCatalog {
+		agentToolCount[agentID] = append(agentToolCount[agentID], toolName)
+	}
+	b.catalogMu.RUnlock()
+
+	sb.WriteString(fmt.Sprintf("\n🔧 工具: %d 个\n", toolCount))
+	for agentID, tools := range agentToolCount {
+		if len(tools) <= 3 {
+			sb.WriteString(fmt.Sprintf("  %s(%d): %s\n", agentID, len(tools), strings.Join(tools, ", ")))
+		} else {
+			sb.WriteString(fmt.Sprintf("  %s(%d): %s, ...\n", agentID, len(tools), strings.Join(tools[:3], ", ")))
+		}
+	}
+
+	// Token 统计
+	if globalTokenStats != nil {
+		if tokenSummary := globalTokenStats.Summary(); tokenSummary != "" {
+			sb.WriteString("\n")
+			sb.WriteString(tokenSummary)
+			sb.WriteString("\n")
+		}
+	}
+
+	// 总字符数
+	totalChars := 0
+	for _, msg := range msgs {
+		totalChars += len([]rune(msg.Content))
+	}
+	sb.WriteString(fmt.Sprintf("\n💾 总字符数: %s chars (预算: 120,000)", formatTokenCount(int64(totalChars))))
+
+	return sb.String()
 }
 
 // callToolWithTimeout 带超时的工具调用

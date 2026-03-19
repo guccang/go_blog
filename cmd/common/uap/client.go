@@ -14,15 +14,18 @@ import (
 // Client UAP agent 侧客户端 SDK
 type Client struct {
 	// 配置
-	GatewayURL  string
-	AgentID     string
-	AgentType   string
-	Name        string
-	Description string // agent 能力简述
-	Tools       []ToolDef
-	Capacity    int
-	Meta        map[string]any
-	AuthToken   string
+	GatewayURL   string
+	AgentID      string
+	AgentType    string
+	Name         string
+	Description  string // agent 能力简述
+	HostPlatform string // 运行平台（macOS/Linux/Windows）
+	HostIP       string // 主机 IP 地址
+	Workspace    string // 工作目录
+	Tools        []ToolDef
+	Capacity     int
+	Meta         map[string]any
+	AuthToken    string
 
 	// 内部状态
 	conn       *websocket.Conn
@@ -88,14 +91,17 @@ func (c *Client) connect() error {
 // register 发送注册消息
 func (c *Client) register() {
 	payload := RegisterPayload{
-		AgentID:     c.AgentID,
-		AgentType:   c.AgentType,
-		Name:        c.Name,
-		Description: c.Description,
-		Tools:       c.Tools,
-		Capacity:    c.Capacity,
-		Meta:        c.Meta,
-		AuthToken:   c.AuthToken,
+		AgentID:      c.AgentID,
+		AgentType:    c.AgentType,
+		Name:         c.Name,
+		Description:  c.Description,
+		HostPlatform: c.HostPlatform,
+		HostIP:       c.HostIP,
+		Workspace:    c.Workspace,
+		Tools:        c.Tools,
+		Capacity:     c.Capacity,
+		Meta:         c.Meta,
+		AuthToken:    c.AuthToken,
 	}
 	c.Send(&Message{
 		Type:    MsgRegister,

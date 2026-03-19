@@ -28,6 +28,8 @@ var bashBlacklist = []string{
 type BashToolManager struct {
 	Timeout   time.Duration // 命令超时（默认 30s）
 	MaxOutput int           // 输出截断字节数（默认 100KB）
+	AgentID   string        // 所属 agent ID（如 llm-agent）
+	Platform  string        // 运行平台描述（如 macOS、Linux）
 }
 
 // Exec 执行 bash 命令
@@ -106,12 +108,23 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 		"required": ["command"]
 	}`)
 
+	// 工具名带 agent 前缀，与远程 agent 工具命名一致
+	toolName := "Bash"
+	if m.AgentID != "" {
+		toolName = sanitizeToolName(m.AgentID + ".Bash")
+	}
+
+	desc := fmt.Sprintf("在 %s 上执行 bash 命令", m.AgentID)
+	if m.Platform != "" {
+		desc = fmt.Sprintf("在 %s（%s）上执行 bash 命令", m.AgentID, m.Platform)
+	}
+
 	return []LLMTool{
 		{
 			Type: "function",
 			Function: LLMFunction{
-				Name:        "Bash",
-				Description: "执行 bash 命令。本地命令直接执行，远程命令通过 ssh 执行（如 ssh root@1.2.3.4 'ls -la'）",
+				Name:        toolName,
+				Description: desc,
 				Parameters:  params,
 			},
 		},
@@ -120,7 +133,12 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 
 // HandleTool 处理工具调用，返回 (result, handled)
 func (m *BashToolManager) HandleTool(toolName string, args map[string]interface{}) (string, bool) {
-	if toolName != "Bash" {
+	// 匹配带前缀的工具名（如 llm-agent_Bash）或裸名 Bash
+	expectedName := "Bash"
+	if m.AgentID != "" {
+		expectedName = sanitizeToolName(m.AgentID + ".Bash")
+	}
+	if toolName != expectedName && toolName != "Bash" {
 		return "", false
 	}
 
