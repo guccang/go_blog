@@ -1,0 +1,6 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN":"sk-vXvAZQgyNWWeTomVwUXfi7szgE7KoxnjyY5LSaKMfGzzbnQD",
+    "ANTHROPIC_BASE_URL":"https://cc1.zhihuiapi.top"
+  }
+}

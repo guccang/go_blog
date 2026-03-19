@@ -25,7 +25,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		AgentID:     agent.ID,
 		AgentType:   "acp",
 		AgentName:   cfg.AgentName,
-		Description: "项目代码分析、架构评审、优化建议（基于 ACP 协议）",
+		Description: "项目代码分析、编码（基于 ACP 协议）",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildACPToolDefs(),
@@ -125,6 +125,50 @@ func buildACPToolDefs() []uap.ToolDef {
 				"required": []string{"project", "prompt"},
 			}),
 		},
+		{
+			Name:        "AcpStartSession",
+			Description: "启动 ACP 编码会话（同步等待完成，进度通过 stream_event 推送）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{"type": "string", "description": "项目名称"},
+					"prompt":  map[string]interface{}{"type": "string", "description": "用户的原始编码需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
+				},
+				"required": []string{"project", "prompt"},
+			}),
+		},
+		{
+			Name:        "AcpSendMessage",
+			Description: "向 ACP 会话追加消息并等待完成（复用已有 ACP 会话多轮对话）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"prompt":     map[string]interface{}{"type": "string", "description": "用户的原始消息内容，必须完整保留用户输入的原文，不得修改或重新措辞"},
+					"session_id": map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
+				},
+				"required": []string{"prompt"},
+			}),
+		},
+		{
+			Name:        "AcpGetStatus",
+			Description: "查看会话状态。传入 session_id 查询指定会话，不传则返回全局概览",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_id": map[string]interface{}{"type": "string", "description": "要查询的会话ID（可选，不传返回全局状态）"},
+				},
+			}),
+		},
+		{
+			Name:        "AcpStopSession",
+			Description: "停止 ACP 会话",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_id": map[string]interface{}{"type": "string", "description": "要停止的会话ID（可选，默认停止最近的活跃会话）"},
+				},
+			}),
+		},
 	}
 }
 
@@ -164,6 +208,14 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListProjects()
 	case "AcpAnalyzeProject":
 		result = c.toolAnalyzeProject(args)
+	case "AcpStartSession":
+		result = c.toolStartSession(args)
+	case "AcpSendMessage":
+		result = c.toolSendMessage(args)
+	case "AcpGetStatus":
+		result = c.toolGetStatus(args)
+	case "AcpStopSession":
+		result = c.toolStopSession(args)
 	default:
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 			RequestID: msg.ID,
@@ -180,7 +232,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	})
 }
 
-// toolListProjects 列出可分析的项目
+// ========================= Tool 实现 =========================
+
 func (c *Connection) toolListProjects() string {
 	projects := c.agent.ScanProjects()
 	data := map[string]interface{}{
@@ -191,7 +244,6 @@ func (c *Connection) toolListProjects() string {
 	return tr.Result
 }
 
-// toolAnalyzeProject 分析项目（同步等待完成）
 func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
@@ -200,22 +252,165 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 		return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
 	}
 	if !c.agent.CanAccept() {
-		return `{"success":false,"error":"agent 繁忙，无法接受新分析任务"}`
+		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
 	}
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteAnalysis(c, sessionID, project, prompt)
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
 
-	data := map[string]string{
-		"session_id": sessionID,
-		"project":    project,
-		"report":     result,
+	data := map[string]interface{}{
+		"session_id":    sessionID,
+		"project":      project,
+		"report":       result.Summary,
+		"files_written": result.FilesWritten,
+		"files_edited":  result.FilesEdited,
 	}
 	tr := uap.BuildToolResult("", data, fmt.Sprintf("项目 %s 分析完成", project))
+	return tr.Result
+}
+
+func (c *Connection) toolStartSession(args map[string]interface{}) string {
+	project, _ := args["project"].(string)
+	prompt, _ := args["prompt"].(string)
+
+	if project == "" || prompt == "" {
+		return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
+	}
+	if !c.agent.CanAccept() {
+		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
+	}
+
+	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
+
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
+	}
+
+	data := map[string]interface{}{
+		"session_id":    sessionID,
+		"project_dir":   result.ProjectDir,
+		"summary":       result.Summary,
+		"files_written": result.FilesWritten,
+		"files_edited":  result.FilesEdited,
+	}
+	if result.FilesWritten == 0 && result.FilesEdited == 0 {
+		data["warning"] = "会话完成但未产生任何文件变更"
+	}
+	tr := uap.BuildToolResult("", data, fmt.Sprintf("ACP 会话 %s 完成", sessionID))
+	return tr.Result
+}
+
+func (c *Connection) toolSendMessage(args map[string]interface{}) string {
+	prompt, _ := args["prompt"].(string)
+	sessionID, _ := args["session_id"].(string)
+
+	if prompt == "" {
+		return `{"success":false,"error":"缺少 prompt 参数"}`
+	}
+
+	// 查找目标会话
+	if sessionID == "" {
+		sessionID, _ = c.agent.GetLastSession()
+	}
+	if sessionID == "" {
+		return `{"success":false,"error":"未找到可续接的会话"}`
+	}
+
+	rec := c.agent.GetSession(sessionID)
+	if rec == nil {
+		return `{"success":false,"error":"未找到可续接的会话"}`
+	}
+	if rec.Active {
+		return `{"success":false,"error":"会话正在执行中，请等待完成后再发送消息"}`
+	}
+
+	result, err := c.agent.SendMessage(c, sessionID, prompt)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
+	}
+
+	data := map[string]interface{}{
+		"session_id":    sessionID,
+		"project_dir":   result.ProjectDir,
+		"summary":       result.Summary,
+		"files_written": result.FilesWritten,
+		"files_edited":  result.FilesEdited,
+	}
+	if result.FilesWritten == 0 && result.FilesEdited == 0 {
+		data["warning"] = "会话完成但未产生任何文件变更"
+	}
+	tr := uap.BuildToolResult("", data, fmt.Sprintf("ACP 会话 %s 对话完成", sessionID))
+	return tr.Result
+}
+
+func (c *Connection) toolGetStatus(args map[string]interface{}) string {
+	sessionID, _ := args["session_id"].(string)
+
+	if sessionID != "" {
+		rec := c.agent.GetSession(sessionID)
+		if rec == nil {
+			return fmt.Sprintf(`{"success":false,"error":"会话 %s 不存在"}`, sessionID)
+		}
+		data := map[string]interface{}{
+			"session_id": sessionID,
+			"project":    rec.Project,
+			"status":     rec.Status,
+			"active":     rec.Active,
+		}
+		if rec.Summary != "" {
+			data["summary"] = rec.Summary
+		}
+		tr := uap.BuildToolResult("", data, fmt.Sprintf("会话 %s 状态: %s", sessionID, rec.Status))
+		return tr.Result
+	}
+
+	// 全局概览
+	activeCount := c.agent.ActiveCount()
+	c.agent.sessionsMu.Lock()
+	var activeSessions []string
+	for sid, rec := range c.agent.sessions {
+		if rec.Active {
+			activeSessions = append(activeSessions, sid)
+		}
+	}
+	c.agent.sessionsMu.Unlock()
+
+	data := map[string]interface{}{
+		"active":          activeCount > 0,
+		"active_count":    activeCount,
+		"active_sessions": activeSessions,
+		"max_concurrent":  c.agent.cfg.MaxConcurrent,
+		"agent":           c.cfg.AgentName,
+	}
+	tr := uap.BuildToolResult("", data, fmt.Sprintf("活跃会话 %d 个", activeCount))
+	return tr.Result
+}
+
+func (c *Connection) toolStopSession(args map[string]interface{}) string {
+	sessionID, _ := args["session_id"].(string)
+
+	if sessionID == "" {
+		c.agent.sessionsMu.Lock()
+		for sid, rec := range c.agent.sessions {
+			if rec.Active {
+				sessionID = sid
+				break
+			}
+		}
+		c.agent.sessionsMu.Unlock()
+	}
+
+	if sessionID == "" {
+		return `{"success":false,"error":"没有活跃的会话"}`
+	}
+
+	c.agent.StopTask(sessionID)
+	tr := uap.BuildToolResult("", map[string]string{"session_id": sessionID}, "ACP 会话已停止")
 	return tr.Result
 }
 

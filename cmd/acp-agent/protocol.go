@@ -7,6 +7,7 @@ const (
 	MsgHeartbeat    = "heartbeat"
 	MsgHeartbeatAck = "heartbeat_ack"
 	MsgStreamEvent  = "stream_event"
+	MsgTaskComplete = "task_complete"
 )
 
 // RegisterPayload Agent 注册信息
@@ -29,12 +30,20 @@ type HeartbeatPayload struct {
 	Projects       []ProjectInfo `json:"projects,omitempty"`
 }
 
+// TaskCompletePayload 任务完成（tool_call 完成通知）
+type TaskCompletePayload struct {
+	SessionID string `json:"session_id"`
+	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
+}
+
 // StreamEvent 流式事件
 type StreamEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	ToolName string `json:"tool_name,omitempty"`
-	Done     bool   `json:"done,omitempty"`
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	ToolName  string `json:"tool_name,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	Done      bool   `json:"done,omitempty"`
 }
 
 // StreamEventPayload 流式事件转发

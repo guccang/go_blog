@@ -23,7 +23,7 @@
             "build_platform": "linux"
         },
         {
-            "project": "codegen-agent",
+            "project": "acp-agent",
             "target": "local",
             "build_platform": "macos"
         },

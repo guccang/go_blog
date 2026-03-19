@@ -1,0 +1,15 @@
+{
+  "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+  "agent_name": "acp-agent-mac",
+  "agent_type": "acp",
+  "auth_token": "guccang@blog.guccang.cn",
+  "workspaces": [
+    "/Users/guccang/github_repo"
+  ],
+  "acp_agent_cmd": "npx",
+  "acp_agent_args": ["-y", "@zed-industries/claude-agent-acp@latest"],
+  "claude_path": "claude",
+  "max_concurrent": 2,
+  "max_turns": 20,
+  "analysis_timeout": 3600
+}
