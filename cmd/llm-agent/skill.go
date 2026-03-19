@@ -22,6 +22,7 @@ type SkillEntry struct {
 type SkillManager struct {
 	skills       []SkillEntry
 	workspaceDir string
+	memoryDir    string // workspace/memory/，用于加载 auto_skill 汇总
 }
 
 // NewSkillManager 创建 skill 管理器
@@ -192,6 +193,11 @@ func (sm *SkillManager) BuildCatalog() string {
 	return sb.String()
 }
 
+// SetMemoryDir 设置记忆目录路径（用于加载 auto_skill 汇总文件）
+func (sm *SkillManager) SetMemoryDir(dir string) {
+	sm.memoryDir = dir
+}
+
 // BuildSkillBlock 构建匹配到的 skill 正文（Level 2，按需注入）
 func (sm *SkillManager) BuildSkillBlock(matched []SkillEntry) string {
 	if len(matched) == 0 {
@@ -203,7 +209,32 @@ func (sm *SkillManager) BuildSkillBlock(matched []SkillEntry) string {
 	for _, skill := range matched {
 		sb.WriteString(fmt.Sprintf("\n### %s\n", skill.Name))
 		sb.WriteString(skill.Content)
+		// 加载对应的 auto_skill 汇总
+		if summary := sm.loadAutoSkillSummary(skill.Name); summary != "" {
+			sb.WriteString("\n\n#### 历史经验补充\n")
+			sb.WriteString(summary)
+		}
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// loadAutoSkillSummary 读取指定技能的 auto_skill 汇总文件
+func (sm *SkillManager) loadAutoSkillSummary(skillName string) string {
+	if sm.memoryDir == "" {
+		return ""
+	}
+	filePath := filepath.Join(sm.memoryDir, fmt.Sprintf("memory_auto_skill_%s.md", skillName))
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(string(data))
+	// 去掉标题行（如 # coding 技能经验汇总）
+	if strings.HasPrefix(content, "#") {
+		if idx := strings.Index(content, "\n"); idx >= 0 {
+			content = strings.TrimSpace(content[idx+1:])
+		}
+	}
+	return content
 }

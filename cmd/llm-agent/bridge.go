@@ -191,6 +191,21 @@ func NewBridge(cfg *Config) *Bridge {
 		return b.llmCompactMemory(entries)
 	})
 
+	// 注入 toolName → skillName 映射回调（用于 auto_skill 分流）
+	if b.skillMgr != nil {
+		b.skillMgr.SetMemoryDir(memoryDir)
+		b.memoryMgr.SetSkillNameResolver(func(toolName string) string {
+			for _, skill := range b.skillMgr.GetAllSkills() {
+				for _, t := range skill.Tools {
+					if t == toolName || strings.Contains(t, toolName) {
+						return skill.Name
+					}
+				}
+			}
+			return ""
+		})
+	}
+
 	if err := b.memoryMgr.Load(); err != nil {
 		log.Printf("[Bridge] load memory: %v", err)
 	}

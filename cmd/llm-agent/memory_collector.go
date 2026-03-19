@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -63,6 +64,9 @@ func (c *MemoryCollector) CollectAfterTask(toolCalls []ToolCallRecord) {
 			go c.TriggerSkillIteration(errorKey, tc.ToolName)
 		}
 	}
+
+	// 任务结束后：整理 auto_skill 日期文件为汇总文件
+	go c.CompactAutoSkills()
 }
 
 // buildErrorKey 从工具名和错误结果中提取错误模式键
@@ -89,7 +93,7 @@ func buildErrorKey(toolName, result string) string {
 	return toolName + ":" + errorType
 }
 
-// TriggerSkillIteration 自动 skill 迭代：分析累积错误，更新 SKILL.md
+// TriggerSkillIteration 自动 skill 迭代：分析累积错误，写入按技能+日期文件
 func (c *MemoryCollector) TriggerSkillIteration(errorKey, toolName string) {
 	if c.bridge == nil || c.bridge.skillMgr == nil {
 		return
@@ -142,7 +146,7 @@ func (c *MemoryCollector) TriggerSkillIteration(errorKey, toolName string) {
 		return
 	}
 
-	// 记录 skill 迭代结果到记忆
+	// 记录 skill 迭代结果到记忆（appendToFile 内部根据 category 自动分流到 auto_skill 文件）
 	c.memoryMgr.AddEntry(MemoryEntry{
 		Date:     time.Now().Format("2006-01-02"),
 		Category: "auto_skill",
@@ -150,55 +154,136 @@ func (c *MemoryCollector) TriggerSkillIteration(errorKey, toolName string) {
 		Content:  fmt.Sprintf("工具 %s 使用指南（自动生成）:\n%s", toolName, text),
 	})
 
-	// 尝试更新对应的 SKILL.md
-	c.updateSkillFile(toolName, text)
-
 	log.Printf("[MemoryCollector] skill 迭代完成: %s → %d 字符指南", toolName, len(text))
 }
 
-// updateSkillFile 尝试将生成的指南追加到对应 skill 的 SKILL.md
-func (c *MemoryCollector) updateSkillFile(toolName, guide string) {
-	if c.bridge.skillMgr == nil {
-		return
+// findSkillNameForTool 通过 SkillManager 查找工具名对应的技能名
+func (c *MemoryCollector) findSkillNameForTool(toolName string) string {
+	if c.bridge == nil || c.bridge.skillMgr == nil {
+		return ""
 	}
-
-	// 查找包含该工具的 skill
 	skills := c.bridge.skillMgr.GetAllSkills()
-	var targetSkill *SkillEntry
-	for i, skill := range skills {
+	for _, skill := range skills {
 		for _, t := range skill.Tools {
 			if t == toolName || strings.Contains(t, toolName) {
-				targetSkill = &skills[i]
-				break
+				return skill.Name
 			}
 		}
-		if targetSkill != nil {
-			break
+	}
+	return ""
+}
+
+// CompactAutoSkills 整理 auto_skill 日期文件为汇总文件
+func (c *MemoryCollector) CompactAutoSkills() {
+	if c.memoryMgr == nil || c.bridge == nil {
+		return
+	}
+
+	// 扫描所有未整理的 auto_skill 日期文件
+	datedFiles, err := c.memoryMgr.listAutoSkillDatedFiles()
+	if err != nil || len(datedFiles) == 0 {
+		return
+	}
+
+	// 按 skillName 分组
+	grouped := make(map[string][]string) // skillName → []filePath
+	for _, f := range datedFiles {
+		base := filepath.Base(f)
+		skillName, _ := parseAutoSkillFilename(base)
+		if skillName != "" {
+			grouped[skillName] = append(grouped[skillName], f)
 		}
 	}
 
-	if targetSkill == nil || targetSkill.FilePath == "" {
-		log.Printf("[MemoryCollector] 未找到工具 %s 对应的 skill，跳过文件更新", toolName)
-		return
-	}
-
-	// 追加到 SKILL.md
-	appendContent := fmt.Sprintf("\n\n## 自动生成的使用指南 (%s)\n\n%s\n",
-		time.Now().Format("2006-01-02"), guide)
-
-	f, err := openFileAppend(targetSkill.FilePath)
-	if err != nil {
-		log.Printf("[MemoryCollector] 打开 SKILL.md 失败: %v", err)
-		return
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(appendContent); err != nil {
-		log.Printf("[MemoryCollector] 写入 SKILL.md 失败: %v", err)
+	for skillName, files := range grouped {
+		c.compactOneSkill(skillName, files)
 	}
 }
 
-// openFileAppend 以追加模式打开文件
-func openFileAppend(path string) (*os.File, error) {
-	return os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+// compactOneSkill 整理单个技能的日期文件为汇总
+func (c *MemoryCollector) compactOneSkill(skillName string, datedFiles []string) {
+	// 读取所有日期文件内容
+	var newEntries strings.Builder
+	for _, f := range datedFiles {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			log.Printf("[MemoryCollector] 读取 %s 失败: %v", filepath.Base(f), err)
+			continue
+		}
+		newEntries.WriteString(string(data))
+		newEntries.WriteString("\n")
+	}
+
+	if newEntries.Len() == 0 {
+		return
+	}
+
+	// 读取现有汇总文件
+	existingSummary := ""
+	summaryPath := c.memoryMgr.autoSkillSummaryFilePath(skillName)
+	if data, err := os.ReadFile(summaryPath); err == nil {
+		existingSummary = string(data)
+	}
+
+	// 调用 LLM 整理
+	compacted, err := c.llmCompactAutoSkill(existingSummary, newEntries.String(), skillName)
+	if err != nil {
+		log.Printf("[MemoryCollector] LLM 整理 %s 失败: %v", skillName, err)
+		return
+	}
+
+	// 写入汇总文件（覆盖）
+	content := fmt.Sprintf("# %s 技能经验汇总\n\n%s\n", skillName, compacted)
+	if err := os.WriteFile(summaryPath, []byte(content), 0644); err != nil {
+		log.Printf("[MemoryCollector] 写入汇总文件 %s 失败: %v", filepath.Base(summaryPath), err)
+		return
+	}
+
+	// 已整理的日期文件重命名加 .done 后缀
+	for _, f := range datedFiles {
+		donePath := f + ".done"
+		if err := os.Rename(f, donePath); err != nil {
+			log.Printf("[MemoryCollector] 重命名 %s → .done 失败: %v", filepath.Base(f), err)
+		}
+	}
+
+	log.Printf("[MemoryCollector] 整理 %s 完成: %d 个日期文件 → 汇总 %d 字符",
+		skillName, len(datedFiles), len(compacted))
+}
+
+// llmCompactAutoSkill 调用 LLM 将新经验整合到现有汇总中
+func (c *MemoryCollector) llmCompactAutoSkill(existingSummary, newEntries, skillName string) (string, error) {
+	var prompt string
+	if existingSummary != "" {
+		prompt = fmt.Sprintf(`你是技能经验整理助手。请将新的错误经验整合到现有汇总中，去重合并，保持简洁（不超过 500 字）。
+只输出整理后的汇总内容，不要输出标题或其他说明。
+
+技能名: %s
+
+现有汇总:
+%s
+
+新增经验:
+%s`, skillName, existingSummary, newEntries)
+	} else {
+		prompt = fmt.Sprintf(`你是技能经验整理助手。请从以下错误经验中提取关键模式，整理为简洁的经验汇总（不超过 500 字）。
+只输出汇总内容，不要输出标题或其他说明。
+
+技能名: %s
+
+经验记录:
+%s`, skillName, newEntries)
+	}
+
+	messages := []Message{
+		{Role: "system", Content: "你是一个技能经验整理助手，负责将零散的错误经验整合为简洁、实用的使用指南。"},
+		{Role: "user", Content: prompt},
+	}
+
+	text, _, err := c.bridge.sendLLM(messages, nil)
+	if err != nil {
+		return "", fmt.Errorf("LLM compact: %v", err)
+	}
+
+	return strings.TrimSpace(text), nil
 }

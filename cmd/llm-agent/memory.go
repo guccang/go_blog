@@ -32,6 +32,9 @@ type MemoryManager struct {
 
 	// LLM 压缩回调（由 bridge 注入，避免循环依赖）
 	llmCompactFunc func(entries []MemoryEntry) ([]MemoryEntry, error)
+
+	// toolName → skillName 映射回调（由 bridge 注入）
+	skillNameResolver func(toolName string) string
 }
 
 // NewMemoryManager 创建记忆管理器
@@ -71,6 +74,30 @@ func (m *MemoryManager) SetLLMCompactFunc(fn func(entries []MemoryEntry) ([]Memo
 	m.llmCompactFunc = fn
 }
 
+// SetSkillNameResolver 注入 toolName → skillName 映射回调
+func (m *MemoryManager) SetSkillNameResolver(fn func(toolName string) string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.skillNameResolver = fn
+}
+
+// LoadAutoSkillSummary 读取指定技能的汇总文件内容
+func (m *MemoryManager) LoadAutoSkillSummary(skillName string) string {
+	filePath := m.autoSkillSummaryFilePath(skillName)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(string(data))
+	// 去掉标题行（如 # coding 技能经验汇总）
+	if strings.HasPrefix(content, "#") {
+		if idx := strings.Index(content, "\n"); idx >= 0 {
+			content = strings.TrimSpace(content[idx+1:])
+		}
+	}
+	return content
+}
+
 // ========================= 路径工具函数 =========================
 
 // memoryFilePathForDate 返回指定日期的记忆文件路径: memory_2026_03_19.md
@@ -85,20 +112,100 @@ func (m *MemoryManager) todayFilePath() string {
 	return m.memoryFilePathForDate(time.Now().Format("2006-01-02"))
 }
 
-// listMemoryFiles 扫描 memory_*.md 文件，按文件名排序返回
+// autoSkillDatedFilePath 返回按技能+日期的原始经验文件路径
+// → memory_auto_skill_coding_2026_03_19.md
+func (m *MemoryManager) autoSkillDatedFilePath(skillName, date string) string {
+	safe := strings.ReplaceAll(date, "-", "_")
+	return filepath.Join(m.memoryDir, fmt.Sprintf("memory_auto_skill_%s_%s.md", skillName, safe))
+}
+
+// autoSkillSummaryFilePath 返回技能汇总文件路径（无日期后缀）
+// → memory_auto_skill_coding.md
+func (m *MemoryManager) autoSkillSummaryFilePath(skillName string) string {
+	return filepath.Join(m.memoryDir, fmt.Sprintf("memory_auto_skill_%s.md", skillName))
+}
+
+// listAutoSkillDatedFiles 扫描带日期的 auto_skill 原始文件（排除 .done）
+func (m *MemoryManager) listAutoSkillDatedFiles() ([]string, error) {
+	pattern := filepath.Join(m.memoryDir, "memory_auto_skill_*.md")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	// 过滤：只保留带日期后缀的文件，排除汇总文件和 .done 文件
+	var dated []string
+	for _, f := range matches {
+		base := filepath.Base(f)
+		if strings.HasSuffix(base, ".done") {
+			continue
+		}
+		skillName, date := parseAutoSkillFilename(base)
+		if skillName != "" && date != "" {
+			dated = append(dated, f)
+		}
+	}
+	sort.Strings(dated)
+	return dated, nil
+}
+
+// parseAutoSkillFilename 从文件名提取 skillName 和 date
+// memory_auto_skill_coding_2026_03_19.md → ("coding", "2026-03-19")
+// memory_auto_skill_coding.md → ("coding", "")  汇总文件无日期
+func parseAutoSkillFilename(filename string) (skillName string, date string) {
+	base := filepath.Base(filename)
+	base = strings.TrimSuffix(base, ".done")
+	base = strings.TrimSuffix(base, ".md")
+	base = strings.TrimPrefix(base, "memory_auto_skill_")
+	if base == "" {
+		return "", ""
+	}
+
+	// 尝试从末尾匹配日期模式 _YYYY_MM_DD（10 字符 + 2 下划线 = 最后 10 个字符）
+	// 格式: {skillname}_2026_03_19
+	if len(base) > 11 {
+		tail := base[len(base)-10:] // "2026_03_19"
+		// 验证日期格式: 4位_2位_2位
+		if len(tail) == 10 && tail[4] == '_' && tail[7] == '_' {
+			dateCandidate := strings.ReplaceAll(tail, "_", "-")
+			// 简单验证是否像日期
+			if dateCandidate[0] >= '0' && dateCandidate[0] <= '9' {
+				name := base[:len(base)-11] // 去掉 _2026_03_19
+				return name, dateCandidate
+			}
+		}
+	}
+
+	// 无日期后缀 → 汇总文件
+	return base, ""
+}
+
+// listMemoryFiles 扫描普通记忆文件 memory_YYYY_MM_DD.md，排除 auto_skill 文件
 func (m *MemoryManager) listMemoryFiles() ([]string, error) {
 	pattern := filepath.Join(m.memoryDir, "memory_*.md")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(matches)
-	return matches, nil
+	// 排除 auto_skill 文件
+	var normal []string
+	for _, f := range matches {
+		base := filepath.Base(f)
+		if strings.HasPrefix(base, "memory_auto_skill_") {
+			continue
+		}
+		normal = append(normal, f)
+	}
+	sort.Strings(normal)
+	return normal, nil
 }
 
-// dateFromFilename 从文件名提取日期: memory_2026_03_19.md → 2026-03-19
+// dateFromFilename 从普通记忆文件名提取日期: memory_2026_03_19.md → 2026-03-19
 func dateFromFilename(filename string) string {
-	base := filepath.Base(filename)                    // memory_2026_03_19.md
+	base := filepath.Base(filename)
+	// 跳过 auto_skill 文件
+	if strings.HasPrefix(base, "memory_auto_skill_") {
+		return ""
+	}
 	base = strings.TrimPrefix(base, "memory_")        // 2026_03_19.md
 	base = strings.TrimSuffix(base, ".md")            // 2026_03_19
 	return strings.ReplaceAll(base, "_", "-")          // 2026-03-19
@@ -221,6 +328,14 @@ func (m *MemoryManager) AddEntry(entry MemoryEntry) {
 		entry.Date = time.Now().Format("2006-01-02")
 	}
 
+	// auto_skill 条目只写文件，不加入内存 entries（走独立文件体系）
+	if entry.Category == "auto_skill" {
+		if err := m.appendToFile(entry); err != nil {
+			log.Printf("[Memory] 写入 auto_skill 文件失败: %v", err)
+		}
+		return
+	}
+
 	m.entries = append(m.entries, entry)
 
 	// 追加写入对应日期文件
@@ -236,6 +351,16 @@ func (m *MemoryManager) AddEntry(entry MemoryEntry) {
 func (m *MemoryManager) appendToFile(entry MemoryEntry) error {
 	if err := os.MkdirAll(m.memoryDir, 0755); err != nil {
 		return fmt.Errorf("create memory dir: %v", err)
+	}
+
+	// auto_skill 分流：写入 memory_auto_skill_{skillname}_{date}.md
+	if entry.Category == "auto_skill" {
+		skillName := extractSkillNameFromContent(entry.Content, m.skillNameResolver)
+		if skillName != "" {
+			return m.appendAutoSkillEntry(skillName, entry)
+		}
+		// 找不到 skillName 时回退到普通记忆文件
+		log.Printf("[Memory] auto_skill 条目未能提取 skillName，回退到普通文件")
 	}
 
 	filePath := m.memoryFilePathForDate(entry.Date)
@@ -258,6 +383,56 @@ func (m *MemoryManager) appendToFile(entry MemoryEntry) error {
 	line := fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content)
 	_, err = f.WriteString(line)
 	return err
+}
+
+// appendAutoSkillEntry 追加 auto_skill 条目到技能+日期文件
+func (m *MemoryManager) appendAutoSkillEntry(skillName string, entry MemoryEntry) error {
+	filePath := m.autoSkillDatedFilePath(skillName, entry.Date)
+
+	// 检查文件是否存在，不存在则先写标题
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		header := fmt.Sprintf("# %s 技能经验 %s\n\n", skillName, entry.Date)
+		if err := os.WriteFile(filePath, []byte(header), 0644); err != nil {
+			return fmt.Errorf("write auto_skill header: %v", err)
+		}
+	}
+
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	line := fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content)
+	_, err = f.WriteString(line)
+	return err
+}
+
+// extractSkillNameFromContent 从 auto_skill 条目内容中提取工具名，再映射到 skillName
+// Content 格式: "工具 ExecuteCode 使用指南（自动生成）:\n..."
+func extractSkillNameFromContent(content string, resolver func(string) string) string {
+	// 提取 "工具 XXX " 中的工具名
+	const prefix = "工具 "
+	idx := strings.Index(content, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := content[idx+len(prefix):]
+	spaceIdx := strings.IndexAny(rest, " \t\n")
+	if spaceIdx < 0 {
+		return ""
+	}
+	toolName := rest[:spaceIdx]
+
+	// 通过 resolver 映射到 skillName
+	if resolver != nil {
+		if skillName := resolver(toolName); skillName != "" {
+			return skillName
+		}
+	}
+
+	// 兜底：用 toolName 本身（小写）
+	return strings.ToLower(toolName)
 }
 
 // BuildPromptBlock 构建注入 system prompt 的记忆文本
@@ -358,6 +533,32 @@ func (m *MemoryManager) removeExpiredLocked() {
 
 		log.Printf("[Memory] 清理 %d 条过期记忆（超过 %d 天）", removed, m.expiryDays)
 	}
+
+	// 同时清理过期的 auto_skill 日期文件
+	m.removeExpiredAutoSkillFiles(cutoff)
+}
+
+// removeExpiredAutoSkillFiles 清理过期的 auto_skill 日期文件及其 .done 文件
+func (m *MemoryManager) removeExpiredAutoSkillFiles(cutoff string) {
+	// 扫描所有 auto_skill 日期文件（包括 .done）
+	pattern := filepath.Join(m.memoryDir, "memory_auto_skill_*.md*")
+	matches, _ := filepath.Glob(pattern)
+
+	for _, f := range matches {
+		base := filepath.Base(f)
+		cleanBase := strings.TrimSuffix(base, ".done")
+		_, date := parseAutoSkillFilename(cleanBase)
+		if date == "" {
+			continue // 汇总文件，不清理
+		}
+		if date < cutoff {
+			if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+				log.Printf("[Memory] 删除过期 auto_skill 文件 %s 失败: %v", base, err)
+			} else if err == nil {
+				log.Printf("[Memory] 删除过期 auto_skill 文件: %s", base)
+			}
+		}
+	}
 }
 
 // checkAndCompactLocked 检查是否超限，超限则触发压缩（需持有写锁）
@@ -403,11 +604,14 @@ func (m *MemoryManager) checkAndCompactLocked() {
 func (m *MemoryManager) simpleCompactLocked() {
 	targetCount := m.maxEntries * 2 / 3
 
-	// 分类：重要条目（solution/pattern/preference/auto_skill）和普通条目（error）
+	// 分类：重要条目（solution/pattern/preference）和普通条目（error）
+	// auto_skill 不再混在普通记忆中，跳过
 	var important, normal []MemoryEntry
 	for _, entry := range m.entries {
 		switch entry.Category {
-		case "solution", "pattern", "preference", "auto_skill":
+		case "auto_skill":
+			continue // auto_skill 走独立文件体系，不参与普通压缩
+		case "solution", "pattern", "preference":
 			important = append(important, entry)
 		default:
 			normal = append(normal, entry)
@@ -457,15 +661,19 @@ func (m *MemoryManager) CleanupExpired() {
 	}
 }
 
-// rewriteFiles 按日期分组重写所有记忆文件（需持有写锁）
+// rewriteFiles 按日期分组重写所有普通记忆文件（需持有写锁）
+// auto_skill 条目走独立文件体系，不参与重写
 func (m *MemoryManager) rewriteFiles() error {
 	if err := os.MkdirAll(m.memoryDir, 0755); err != nil {
 		return err
 	}
 
-	// 按 date 分组
+	// 按 date 分组（排除 auto_skill）
 	dateEntries := make(map[string][]MemoryEntry)
 	for _, entry := range m.entries {
+		if entry.Category == "auto_skill" {
+			continue
+		}
 		dateEntries[entry.Date] = append(dateEntries[entry.Date], entry)
 	}
 
