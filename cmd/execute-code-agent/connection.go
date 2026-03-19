@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ type Connection struct {
 }
 
 // NewConnection 创建连接管理器
-func NewConnection(cfg *Config, agentID string) *Connection {
+func NewConnection(cfg *Config, agentID string, pyVersion string) *Connection {
 	// FileToolKit 用于 ExecEnvBash（不需要 project resolver）
 	ftk := agentbase.NewFileToolKit("Exec", nil)
 
@@ -36,6 +37,12 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildToolDefs(ftk),
+		Meta: map[string]any{
+			"host_platform":   runtime.GOOS,
+			"python_version":  pyVersion,
+			"max_exec_time":   cfg.MaxExecTimeSec,
+			"max_output_size": cfg.MaxOutputSize,
+		},
 	}
 
 	c := &Connection{

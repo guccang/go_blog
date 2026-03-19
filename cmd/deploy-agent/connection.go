@@ -51,6 +51,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 			"deploy_targets": cfg.TargetNames,
 			"host_platform":  cfg.HostPlatform,
 			"target_hosts":   buildTargetHostMap(cfg),
+			"pipelines":      scanPipelineNames(cfg),
 		},
 	}
 
@@ -510,6 +511,18 @@ func buildTargetHostMap(cfg *DeployConfig) map[string]string {
 		}
 	}
 	return m
+}
+
+// scanPipelineNames 扫描 pipelines 目录，返回可用 pipeline 名称列表
+func scanPipelineNames(cfg *DeployConfig) []string {
+	if cfg.PipelinesDir == "" {
+		return nil
+	}
+	pipCfg, err := LoadPipelines(cfg.PipelinesDir)
+	if err != nil {
+		return nil
+	}
+	return pipCfg.Names()
 }
 
 // buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表

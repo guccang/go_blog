@@ -47,6 +47,9 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		AuthToken:   cfg.AuthToken,
 		Capacity:    10,
 		Tools:       tools,
+		Meta: map[string]any{
+			"log_sources": buildLogSourceSummary(cfg.LogSources),
+		},
 	}
 
 	c := &Connection{
@@ -310,4 +313,13 @@ func findLatestLogFile(dir string) (string, error) {
 		return "", fmt.Errorf("目录 %s 下没有 .log 文件", dir)
 	}
 	return latestPath, nil
+}
+
+// buildLogSourceSummary 将日志源配置转为 源名→描述 映射，暴露给 LLM
+func buildLogSourceSummary(sources map[string]LogSource) map[string]string {
+	summary := make(map[string]string, len(sources))
+	for name, src := range sources {
+		summary[name] = src.Description
+	}
+	return summary
 }

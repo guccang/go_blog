@@ -38,7 +38,7 @@ func main() {
 	log.Printf("[ExecuteCodeAgent] max_concurrent=%d max_exec_time=%ds max_output=%d",
 		cfg.MaxConcurrent, cfg.MaxExecTimeSec, cfg.MaxOutputSize)
 
-	conn := NewConnection(cfg, agentID)
+	conn := NewConnection(cfg, agentID, pyVersion)
 
 	// 首次工具目录发现
 	if err := conn.DiscoverTools(); err != nil {

@@ -48,6 +48,10 @@ type AgentInfo struct {
 	DeployTargets    []string          // 部署目标
 	TargetHosts      map[string]string // target 名→SSH host 映射（如 ssh-prod → root@114.115.214.86）
 	Pipelines        []string          // 可用 pipeline
+	PythonVersion    string            // Python 版本（execute-code-agent）
+	MaxExecTime      int               // 最大执行时间秒（execute-code-agent）
+	LogSources       map[string]string // 日志源名→描述（log-agent）
+	SupportedSoftware []string         // 支持检测/安装的软件列表（env-agent）
 }
 
 // Bridge UAP 客户端 + 工具路由层
@@ -699,6 +703,14 @@ func (b *Bridge) DiscoverAgents() error {
 			info.DeployTargets = parseStringSlice(a.Meta["deploy_targets"])
 			info.TargetHosts = parseStringMap(a.Meta["target_hosts"])
 			info.Pipelines = parseStringSlice(a.Meta["pipelines"])
+			if pv, ok := a.Meta["python_version"].(string); ok {
+				info.PythonVersion = pv
+			}
+			if met, ok := a.Meta["max_exec_time"].(float64); ok {
+				info.MaxExecTime = int(met)
+			}
+			info.LogSources = parseStringMap(a.Meta["log_sources"])
+			info.SupportedSoftware = parseStringSlice(a.Meta["supported_software"])
 		}
 		infoMap[a.AgentID] = info
 		log.Printf("[Bridge] agent: %s (%s) tools=%v models=%v coding_tools=%v",
@@ -795,6 +807,22 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		}
 		if len(info.Pipelines) > 0 {
 			sb.WriteString(fmt.Sprintf("  - Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))
+		}
+		if info.PythonVersion != "" {
+			sb.WriteString(fmt.Sprintf("  - Python版本: %s", info.PythonVersion))
+			if info.MaxExecTime > 0 {
+				sb.WriteString(fmt.Sprintf(", 执行超时: %ds", info.MaxExecTime))
+			}
+			sb.WriteString("\n")
+		}
+		if len(info.LogSources) > 0 {
+			sb.WriteString("  - 可查日志源(source参数):\n")
+			for name, desc := range info.LogSources {
+				sb.WriteString(fmt.Sprintf("    - %s: %s\n", name, desc))
+			}
+		}
+		if len(info.SupportedSoftware) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 支持检测/安装的软件(software参数): %s\n", strings.Join(info.SupportedSoftware, ", ")))
 		}
 	}
 	return sb.String()

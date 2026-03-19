@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,9 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildEnvToolDefs(),
+		Meta: map[string]any{
+			"supported_software": getSupportedSoftware(),
+		},
 	}
 
 	c := &Connection{
@@ -391,4 +395,18 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return json.RawMessage(data)
+}
+
+// getSupportedSoftware 从 presetScripts 提取去重的软件名列表
+func getSupportedSoftware() []string {
+	seen := make(map[string]bool)
+	for key := range presetScripts {
+		seen[key.Software] = true
+	}
+	list := make([]string, 0, len(seen))
+	for name := range seen {
+		list = append(list, name)
+	}
+	sort.Strings(list)
+	return list
 }
