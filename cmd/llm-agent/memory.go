@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,7 @@ type MemoryManager struct {
 	entries      []MemoryEntry
 	errorTracker map[string]int // errorKey → 累计次数（用于 skill 迭代触发）
 	maxChars     int            // 注入 prompt 的最大字符数
-	maxFileChars int            // MEMORY.md 文件最大字符数（超过触发 LLM 压缩）
+	maxFileChars int            // 所有日期文件总字符数（超过触发 LLM 压缩）
 	maxEntries   int            // 最大条目数
 	expiryDays   int            // 记忆过期天数（0=不过期）
 
@@ -42,9 +43,9 @@ func NewMemoryManager(memoryDir string, maxChars int) *MemoryManager {
 		memoryDir:    memoryDir,
 		errorTracker: make(map[string]int),
 		maxChars:     maxChars,
-		maxFileChars: 50000,  // 默认 50K 字符触发压缩
-		maxEntries:   200,    // 默认最多 200 条
-		expiryDays:   30,     // 默认 30 天过期
+		maxFileChars: 50000, // 默认 50K 字符触发压缩
+		maxEntries:   200,   // 默认最多 200 条
+		expiryDays:   30,    // 默认 30 天过期
 	}
 }
 
@@ -70,40 +71,47 @@ func (m *MemoryManager) SetLLMCompactFunc(fn func(entries []MemoryEntry) ([]Memo
 	m.llmCompactFunc = fn
 }
 
-// memoryFilePath 返回 MEMORY.md 的完整路径
-func (m *MemoryManager) memoryFilePath() string {
-	return filepath.Join(m.memoryDir, "MEMORY.md")
+// ========================= 路径工具函数 =========================
+
+// memoryFilePathForDate 返回指定日期的记忆文件路径: memory_2026_03_19.md
+func (m *MemoryManager) memoryFilePathForDate(date string) string {
+	// "2026-03-19" → "memory_2026_03_19.md"
+	safe := strings.ReplaceAll(date, "-", "_")
+	return filepath.Join(m.memoryDir, fmt.Sprintf("memory_%s.md", safe))
 }
 
-// Load 启动时从 MEMORY.md 解析已有记忆
-func (m *MemoryManager) Load() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// todayFilePath 返回今天的记忆文件路径
+func (m *MemoryManager) todayFilePath() string {
+	return m.memoryFilePathForDate(time.Now().Format("2006-01-02"))
+}
 
-	data, err := os.ReadFile(m.memoryFilePath())
+// listMemoryFiles 扫描 memory_*.md 文件，按文件名排序返回
+func (m *MemoryManager) listMemoryFiles() ([]string, error) {
+	pattern := filepath.Join(m.memoryDir, "memory_*.md")
+	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Printf("[Memory] MEMORY.md 不存在，从空记忆开始")
-			return nil
-		}
-		return fmt.Errorf("read MEMORY.md: %v", err)
+		return nil, err
 	}
-
-	m.entries = parseMemoryMD(string(data))
-
-	// 启动时清理过期条目
-	m.removeExpiredLocked()
-
-	log.Printf("[Memory] 加载 %d 条记忆", len(m.entries))
-	return nil
+	sort.Strings(matches)
+	return matches, nil
 }
 
-// parseMemoryMD 解析 MEMORY.md 格式
-func parseMemoryMD(content string) []MemoryEntry {
+// dateFromFilename 从文件名提取日期: memory_2026_03_19.md → 2026-03-19
+func dateFromFilename(filename string) string {
+	base := filepath.Base(filename)                    // memory_2026_03_19.md
+	base = strings.TrimPrefix(base, "memory_")        // 2026_03_19.md
+	base = strings.TrimSuffix(base, ".md")            // 2026_03_19
+	return strings.ReplaceAll(base, "_", "-")          // 2026-03-19
+}
+
+// ========================= 解析 =========================
+
+// parseDateMemoryFile 解析单日记忆文件内容
+// 格式: # 2026-03-19 头 + ### [category] source: content 条目
+func parseDateMemoryFile(content, date string) []MemoryEntry {
 	var entries []MemoryEntry
 	lines := strings.Split(content, "\n")
 
-	var currentDate string
 	var currentEntry *MemoryEntry
 	var contentBuf strings.Builder
 
@@ -121,9 +129,8 @@ func parseMemoryMD(content string) []MemoryEntry {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// 日期标题: ## 2026-03-19
-		if strings.HasPrefix(trimmed, "## ") && !strings.HasPrefix(trimmed, "### ") {
-			currentDate = strings.TrimPrefix(trimmed, "## ")
+		// 跳过文件标题行: # 2026-03-19
+		if strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "## ") {
 			continue
 		}
 
@@ -147,7 +154,7 @@ func parseMemoryMD(content string) []MemoryEntry {
 			}
 
 			currentEntry = &MemoryEntry{
-				Date:     currentDate,
+				Date:     date,
 				Category: category,
 				Source:   source,
 			}
@@ -167,6 +174,44 @@ func parseMemoryMD(content string) []MemoryEntry {
 	return entries
 }
 
+// ========================= 核心操作 =========================
+
+// Load 启动时从所有日期文件解析已有记忆
+func (m *MemoryManager) Load() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	files, err := m.listMemoryFiles()
+	if err != nil {
+		return fmt.Errorf("list memory files: %v", err)
+	}
+
+	if len(files) == 0 {
+		log.Printf("[Memory] 无记忆文件，从空记忆开始")
+		return nil
+	}
+
+	var allEntries []MemoryEntry
+	for _, f := range files {
+		date := dateFromFilename(f)
+		data, err := os.ReadFile(f)
+		if err != nil {
+			log.Printf("[Memory] 读取 %s 失败: %v，跳过", filepath.Base(f), err)
+			continue
+		}
+		entries := parseDateMemoryFile(string(data), date)
+		allEntries = append(allEntries, entries...)
+	}
+
+	m.entries = allEntries
+
+	// 启动时清理过期条目
+	m.removeExpiredLocked()
+
+	log.Printf("[Memory] 加载 %d 条记忆（来自 %d 个日期文件）", len(m.entries), len(files))
+	return nil
+}
+
 // AddEntry 追加记忆并写入文件，超限时自动触发压缩
 func (m *MemoryManager) AddEntry(entry MemoryEntry) {
 	m.mu.Lock()
@@ -178,45 +223,40 @@ func (m *MemoryManager) AddEntry(entry MemoryEntry) {
 
 	m.entries = append(m.entries, entry)
 
-	// 追加写入 MEMORY.md
+	// 追加写入对应日期文件
 	if err := m.appendToFile(entry); err != nil {
-		log.Printf("[Memory] 写入 MEMORY.md 失败: %v", err)
+		log.Printf("[Memory] 写入 %s 失败: %v", filepath.Base(m.memoryFilePathForDate(entry.Date)), err)
 	}
 
 	// 检查是否需要压缩
 	m.checkAndCompactLocked()
 }
 
-// appendToFile 追加单条记忆到文件
+// appendToFile 追加单条记忆到对应日期文件
 func (m *MemoryManager) appendToFile(entry MemoryEntry) error {
 	if err := os.MkdirAll(m.memoryDir, 0755); err != nil {
 		return fmt.Errorf("create memory dir: %v", err)
 	}
 
-	existing, _ := os.ReadFile(m.memoryFilePath())
-	content := string(existing)
+	filePath := m.memoryFilePathForDate(entry.Date)
 
-	dateHeader := fmt.Sprintf("## %s", entry.Date)
-	needDateHeader := !strings.Contains(content, dateHeader)
-
-	var sb strings.Builder
-	if needDateHeader {
-		if len(content) > 0 && !strings.HasSuffix(content, "\n\n") {
-			sb.WriteString("\n")
+	// 检查文件是否存在，不存在则先写日期头
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		header := fmt.Sprintf("# %s\n\n", entry.Date)
+		if err := os.WriteFile(filePath, []byte(header), 0644); err != nil {
+			return fmt.Errorf("write date header: %v", err)
 		}
-		sb.WriteString(dateHeader)
-		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content))
-
-	f, err := os.OpenFile(m.memoryFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// 追加条目
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	_, err = f.WriteString(sb.String())
+	line := fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content)
+	_, err = f.WriteString(line)
 	return err
 }
 
@@ -276,26 +316,46 @@ func (m *MemoryManager) GetErrorCount(errorKey string) int {
 
 // ========================= 大小限制 + 过期 + LLM 压缩 =========================
 
-// removeExpiredLocked 清理过期条目（需持有写锁）
+// removeExpiredLocked 清理过期条目并删除完全过期的日期文件（需持有写锁）
 func (m *MemoryManager) removeExpiredLocked() {
 	if m.expiryDays <= 0 {
 		return
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -m.expiryDays).Format("2006-01-02")
+
+	// 统计每个日期的条目数，用于判断哪些日期文件可以整个删除
+	dateCounts := make(map[string]int)
+	for _, entry := range m.entries {
+		dateCounts[entry.Date]++
+	}
+
 	var kept []MemoryEntry
 	removed := 0
+	expiredDates := make(map[string]bool)
+
 	for _, entry := range m.entries {
-		// 日期格式 "2006-01-02"，字符串比较即可
 		if entry.Date >= cutoff {
 			kept = append(kept, entry)
 		} else {
 			removed++
+			expiredDates[entry.Date] = true
 		}
 	}
 
 	if removed > 0 {
 		m.entries = kept
+
+		// 删除完全过期的日期文件
+		for date := range expiredDates {
+			filePath := m.memoryFilePathForDate(date)
+			if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+				log.Printf("[Memory] 删除过期文件 %s 失败: %v", filepath.Base(filePath), err)
+			} else if err == nil {
+				log.Printf("[Memory] 删除过期文件: %s", filepath.Base(filePath))
+			}
+		}
+
 		log.Printf("[Memory] 清理 %d 条过期记忆（超过 %d 天）", removed, m.expiryDays)
 	}
 }
@@ -334,8 +394,8 @@ func (m *MemoryManager) checkAndCompactLocked() {
 	}
 
 	// 重写文件
-	if err := m.rewriteFile(); err != nil {
-		log.Printf("[Memory] 压缩重写 MEMORY.md 失败: %v", err)
+	if err := m.rewriteFiles(); err != nil {
+		log.Printf("[Memory] 压缩重写失败: %v", err)
 	}
 }
 
@@ -391,29 +451,52 @@ func (m *MemoryManager) CleanupExpired() {
 	before := len(m.entries)
 	m.removeExpiredLocked()
 	if len(m.entries) != before {
-		if err := m.rewriteFile(); err != nil {
+		if err := m.rewriteFiles(); err != nil {
 			log.Printf("[Memory] 过期清理重写失败: %v", err)
 		}
 	}
 }
 
-// rewriteFile 重写整个 MEMORY.md（需持有写锁）
-func (m *MemoryManager) rewriteFile() error {
+// rewriteFiles 按日期分组重写所有记忆文件（需持有写锁）
+func (m *MemoryManager) rewriteFiles() error {
 	if err := os.MkdirAll(m.memoryDir, 0755); err != nil {
 		return err
 	}
 
-	var sb strings.Builder
-	sb.WriteString("# LLM Agent Memory\n\n")
-
-	currentDate := ""
+	// 按 date 分组
+	dateEntries := make(map[string][]MemoryEntry)
 	for _, entry := range m.entries {
-		if entry.Date != currentDate {
-			currentDate = entry.Date
-			sb.WriteString(fmt.Sprintf("## %s\n\n", entry.Date))
-		}
-		sb.WriteString(fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content))
+		dateEntries[entry.Date] = append(dateEntries[entry.Date], entry)
 	}
 
-	return os.WriteFile(m.memoryFilePath(), []byte(sb.String()), 0644)
+	// 写入每个日期文件
+	for date, entries := range dateEntries {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("# %s\n\n", date))
+		for _, entry := range entries {
+			sb.WriteString(fmt.Sprintf("### [%s] %s: %s\n\n", entry.Category, entry.Source, entry.Content))
+		}
+		filePath := m.memoryFilePathForDate(date)
+		if err := os.WriteFile(filePath, []byte(sb.String()), 0644); err != nil {
+			return fmt.Errorf("write %s: %v", filepath.Base(filePath), err)
+		}
+	}
+
+	// 删除不再有条目的旧日期文件
+	existingFiles, err := m.listMemoryFiles()
+	if err != nil {
+		return fmt.Errorf("list memory files for cleanup: %v", err)
+	}
+	for _, f := range existingFiles {
+		date := dateFromFilename(f)
+		if _, exists := dateEntries[date]; !exists {
+			if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+				log.Printf("[Memory] 删除空日期文件 %s 失败: %v", filepath.Base(f), err)
+			} else if err == nil {
+				log.Printf("[Memory] 删除空日期文件: %s", filepath.Base(f))
+			}
+		}
+	}
+
+	return nil
 }
