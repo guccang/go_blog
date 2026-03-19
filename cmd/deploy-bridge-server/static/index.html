@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deploy Bridge Server</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- Token 弹框 -->
+    <div id="token-modal" class="modal">
+        <div class="modal-content">
+            <h3>认证 Token</h3>
+            <input type="password" id="token-input" placeholder="输入 auth_token">
+            <button id="token-save">确认</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>Deploy Bridge Server</h1>
+            <button id="btn-logout" class="btn-small">切换 Token</button>
+        </header>
+
+        <!-- 上传区 -->
+        <section class="card">
+            <h2>上传部署包</h2>
+            <div id="drop-zone" class="drop-zone">
+                <p>拖拽 .zip 文件到此处，或点击选择</p>
+                <input type="file" id="file-input" accept=".zip" hidden>
+            </div>
+            <div class="form-row">
+                <label>目标目录</label>
+                <input type="text" id="target-dir" placeholder="/data/program/your-app">
+            </div>
+            <div class="form-row">
+                <label>部署脚本</label>
+                <input type="text" id="script-name" value="publish.sh" placeholder="publish.sh">
+            </div>
+            <div class="form-row actions">
+                <button id="btn-upload-deploy" class="btn-primary" disabled>上传并部署</button>
+                <button id="btn-upload-only" class="btn-secondary" disabled>仅上传</button>
+                <span id="upload-status"></span>
+            </div>
+        </section>
+
+        <!-- 包列表 -->
+        <section class="card">
+            <h2>已上传包 <button id="btn-refresh-pkgs" class="btn-small">刷新</button></h2>
+            <table id="pkg-table">
+                <thead><tr><th>文件名</th><th>大小</th><th>时间</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- 部署历史 -->
+        <section class="card">
+            <h2>部署历史 <button id="btn-refresh-deploys" class="btn-small">刷新</button></h2>
+            <table id="deploy-table">
+                <thead><tr><th>ID</th><th>文件</th><th>状态</th><th>耗时</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- 日志面板 -->
+        <section class="card" id="log-section" style="display:none">
+            <h2>部署日志 <span id="log-deploy-id"></span> <button id="btn-close-log" class="btn-small">关闭</button></h2>
+            <div id="log-panel" class="log-panel"></div>
+        </section>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>

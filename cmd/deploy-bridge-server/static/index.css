@@ -1,0 +1,221 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+header h1 { font-size: 1.5em; color: #1a1a2e; }
+
+.card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.card h2 {
+    font-size: 1.1em;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 弹框 */
+.modal {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.modal.hidden { display: none; }
+
+.modal-content {
+    background: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    min-width: 320px;
+    text-align: center;
+}
+
+.modal-content h3 { margin-bottom: 16px; }
+
+.modal-content input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.modal-content button {
+    padding: 10px 30px;
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* 拖拽区 */
+.drop-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    margin-bottom: 12px;
+}
+
+.drop-zone.dragover { border-color: #4361ee; background: #f0f4ff; }
+.drop-zone.has-file { border-color: #2ecc71; background: #f0fff4; }
+
+/* 表单 */
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.form-row label {
+    min-width: 80px;
+    font-size: 14px;
+    color: #666;
+}
+
+.form-row input[type="text"] {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.actions { margin-top: 12px; }
+
+/* 按钮 */
+.btn-primary {
+    padding: 8px 20px;
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+    padding: 8px 20px;
+    background: #6c757d;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-small {
+    padding: 4px 12px;
+    background: #e9ecef;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #495057;
+}
+
+.btn-small:hover { background: #dee2e6; }
+
+.btn-deploy {
+    padding: 4px 12px;
+    background: #4361ee;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-log {
+    padding: 4px 12px;
+    background: #17a2b8;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+/* 表格 */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+th, td {
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+th { color: #666; font-weight: 600; }
+
+/* 状态标签 */
+.status-done { color: #2ecc71; font-weight: 600; }
+.status-error { color: #e74c3c; font-weight: 600; }
+.status-running { color: #f39c12; font-weight: 600; }
+.status-pending { color: #95a5a6; font-weight: 600; }
+
+/* 日志面板 */
+.log-panel {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    font-size: 13px;
+    padding: 12px;
+    border-radius: 6px;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-panel .log-time { color: #888; }
+.log-panel .log-error { color: #e74c3c; }
+.log-panel .log-done { color: #2ecc71; font-weight: 600; }
+
+#upload-status {
+    font-size: 13px;
+    color: #666;
+    margin-left: 8px;
+}

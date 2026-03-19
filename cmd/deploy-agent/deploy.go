@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,6 +113,8 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 		var err error
 		if isLocalTarget(t.Host) {
 			err = d.deployLocal(t, totalSteps)
+		} else if t.Type == "bridge" {
+			err = d.deployBridge(t, totalSteps)
 		} else {
 			err = d.deployRemote(t, totalSteps)
 		}
@@ -312,6 +315,207 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 
 	d.logf("info", "[OK] %s 部署成功\n", label)
 	return nil
+}
+
+// deployBridge 通过 Bridge HTTP API 部署
+func (d *Deployer) deployBridge(t *Target, totalSteps int) error {
+	label := t.Name
+	if label == "" {
+		label = t.BridgeURL
+	}
+
+	zipPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+
+	// Step 2: 上传
+	d.logf("info", "[STEP 2/%d] 上传到 Bridge %s...\n", totalSteps, label)
+	filename, err := d.bridgeUpload(t.BridgeURL, t.AuthToken, zipPath)
+	if err != nil {
+		d.logf("error", "[ERROR] 上传到 Bridge 失败: %v\n", err)
+		return fmt.Errorf("上传到 Bridge 失败: %v", err)
+	}
+	d.logf("info", "[STEP 2/%d] 上传完成: %s\n", totalSteps, filename)
+
+	// Step 3: 触发部署
+	script := t.RemoteScript
+	if script == "" {
+		script = "publish.sh"
+	}
+	d.logf("info", "[STEP 3/%d] 触发 Bridge 部署 %s → %s...\n", totalSteps, filename, t.RemoteDir)
+	deployID, err := d.bridgeDeploy(t.BridgeURL, t.AuthToken, filename, t.RemoteDir, script)
+	if err != nil {
+		d.logf("error", "[ERROR] 触发 Bridge 部署失败: %v\n", err)
+		return fmt.Errorf("触发 Bridge 部署失败: %v", err)
+	}
+	d.logf("info", "[STEP 3/%d] 部署任务已创建: %s\n", totalSteps, deployID)
+
+	// Step 4: 等待完成
+	d.logf("info", "[STEP 4/%d] 等待 Bridge 部署完成...\n", totalSteps)
+	if err := d.bridgeWaitDone(t.BridgeURL, t.AuthToken, deployID); err != nil {
+		d.logf("error", "[ERROR] Bridge 部署失败: %v\n", err)
+		return fmt.Errorf("Bridge 部署失败: %v", err)
+	}
+
+	d.logf("info", "[OK] %s Bridge 部署成功\n", label)
+	return nil
+}
+
+// bridgeUpload 上传 zip 到 bridge server (POST /api/upload multipart)
+func (d *Deployer) bridgeUpload(bridgeURL, token, zipPath string) (string, error) {
+	file, err := os.Open(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("打开文件失败: %v", err)
+	}
+	defer file.Close()
+
+	// 构建 multipart body
+	var buf bytes.Buffer
+	boundary := fmt.Sprintf("----deploy-%d", time.Now().UnixNano())
+	writer := fmt.Sprintf("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/zip\r\n\r\n",
+		boundary, filepath.Base(zipPath))
+	buf.WriteString(writer)
+
+	// 读取文件内容
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("读取文件失败: %v", err)
+	}
+	buf.Write(fileData)
+	buf.WriteString(fmt.Sprintf("\r\n--%s--\r\n", boundary))
+
+	req, err := http.NewRequest("POST", strings.TrimRight(bridgeURL, "/")+"/api/upload", &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Filename string `json:"filename"`
+		Error    string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析响应失败: %v", err)
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("上传失败: %s", result.Error)
+	}
+	return result.Filename, nil
+}
+
+// bridgeDeploy 触发 bridge 部署 (POST /api/deploy)
+func (d *Deployer) bridgeDeploy(bridgeURL, token, filename, targetDir, script string) (string, error) {
+	reqBody, _ := json.Marshal(map[string]string{
+		"filename":   filename,
+		"target_dir": targetDir,
+		"script":     script,
+	})
+
+	req, err := http.NewRequest("POST", strings.TrimRight(bridgeURL, "/")+"/api/deploy",
+		bytes.NewReader(reqBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		DeployID string `json:"deploy_id"`
+		Error    string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析响应失败: %v", err)
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("部署失败: %s", result.Error)
+	}
+	return result.DeployID, nil
+}
+
+// bridgeWaitDone 轮询等待 bridge 部署完成 (GET /api/deploy/{id}/logs?mode=full)
+func (d *Deployer) bridgeWaitDone(bridgeURL, token, deployID string) error {
+	client := &http.Client{Timeout: 30 * time.Second}
+	url := fmt.Sprintf("%s/api/deploy/%s/logs?mode=full",
+		strings.TrimRight(bridgeURL, "/"), deployID)
+
+	lastLogCount := 0
+
+	for i := 0; i < 120; i++ { // 最多轮询 120 次（约 4 分钟）
+		time.Sleep(2 * time.Second)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			d.logf("info", "  > 轮询失败，重试: %v\n", err)
+			continue
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		}
+
+		var result struct {
+			DeployID string `json:"deploy_id"`
+			Status   string `json:"status"`
+			Error    string `json:"error"`
+			Logs     []struct {
+				Time  string `json:"time"`
+				Level string `json:"level"`
+				Text  string `json:"text"`
+			} `json:"logs"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			continue
+		}
+
+		// 只输出新增日志
+		for idx := lastLogCount; idx < len(result.Logs); idx++ {
+			log := result.Logs[idx]
+			d.logf("info", "  [%s] %s\n", log.Time, log.Text)
+		}
+		lastLogCount = len(result.Logs)
+
+		switch result.Status {
+		case "done":
+			return nil
+		case "error":
+			return fmt.Errorf("%s", result.Error)
+		}
+		// pending / running → 继续轮询
+	}
+
+	return fmt.Errorf("部署超时（轮询超过 4 分钟）")
 }
 
 // localUnzip 本地解压 zip 文件

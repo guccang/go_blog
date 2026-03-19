@@ -20,6 +20,9 @@ type Target struct {
 	VerifyURL     string // 部署验证 URL（可选，每个 target 独立）
 	VerifyTimeout int    // 验证超时秒数，默认 10
 	Platform      string // 目标平台（linux/win/macos），local 时等于 HostPlatform
+	Type          string // 部署类型: "ssh"(默认) | "bridge"
+	BridgeURL     string // bridge HTTP 地址（type=bridge 时必填）
+	AuthToken     string // bridge 认证 token（type=bridge 时必填）
 }
 
 // ProjectConfig 项目级部署配置
@@ -125,6 +128,9 @@ type targetJSON struct {
 	Platform      string `json:"platform,omitempty"`
 	VerifyURL     string `json:"verify_url,omitempty"`
 	VerifyTimeout int    `json:"verify_timeout,omitempty"`
+	Type          string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
+	BridgeURL     string `json:"bridge_url,omitempty"` // bridge HTTP 地址
+	AuthToken     string `json:"auth_token,omitempty"` // bridge 认证 token
 }
 
 // LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
@@ -333,8 +339,8 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		var filteredTargets []*Target
 		for _, t := range targets {
 			allTargetNames[t.Name] = true
-			// 收集非 local 的 SSH 主机
-			if !isLocalTarget(t.Host) {
+			// 收集非 local、非 bridge 的 SSH 主机
+			if !isLocalTarget(t.Host) && t.Type != "bridge" {
 				allSSHHosts[t.Host] = true
 			}
 			if c.shouldIncludeTarget(t) {
@@ -496,9 +502,10 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string) (*ProjectConf
 }
 
 // parseTargetJSON 解析 target JSON 配置
-// 支持两种格式：
+// 支持三种格式：
 //
 //	"local.<platform>"  — 本机部署（platform 从 key 名提取）
+//	"<name>" + type=bridge — Bridge HTTP 部署
 //	"<name>"            — SSH 远程部署（platform 从 platform 字段读取）
 func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, error) {
 	// 解析 target 名：local.<platform> 或 ssh-prod 等
@@ -517,7 +524,7 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 		targetName = "local"
 		targetPlatform = c.HostPlatform
 	} else {
-		// "ssh-prod" — SSH 远程部署
+		// "ssh-prod" / "bridge-prod" — 远程部署
 		targetName = name
 	}
 
@@ -533,6 +540,12 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 		targetPlatform = normalizePlatform(tj.Platform)
 	}
 
+	// 确定部署类型，默认 ssh
+	deployType := tj.Type
+	if deployType == "" {
+		deployType = "ssh"
+	}
+
 	if isLocal {
 		return &Target{
 			Name:          targetName,
@@ -543,6 +556,32 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			VerifyURL:     tj.VerifyURL,
 			VerifyTimeout: verifyTimeout,
 			Platform:      targetPlatform,
+		}, nil
+	}
+
+	// Bridge target: 需要 bridge_url 和 auth_token
+	if deployType == "bridge" {
+		if tj.BridgeURL == "" {
+			return nil, fmt.Errorf("bridge_url is required for bridge target %q", targetName)
+		}
+		if tj.AuthToken == "" {
+			return nil, fmt.Errorf("auth_token is required for bridge target %q", targetName)
+		}
+		if targetPlatform == "" {
+			targetPlatform = "linux" // bridge 默认 linux
+		}
+		return &Target{
+			Name:          targetName,
+			Host:          tj.BridgeURL, // Host 存 bridge URL，用于显示
+			Port:          port,
+			RemoteDir:     tj.RemoteDir,
+			RemoteScript:  tj.RemoteScript,
+			VerifyURL:     tj.VerifyURL,
+			VerifyTimeout: verifyTimeout,
+			Platform:      targetPlatform,
+			Type:          "bridge",
+			BridgeURL:     tj.BridgeURL,
+			AuthToken:     tj.AuthToken,
 		}, nil
 	}
 
@@ -568,6 +607,7 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 		VerifyURL:     tj.VerifyURL,
 		VerifyTimeout: verifyTimeout,
 		Platform:      targetPlatform,
+		Type:          "ssh",
 	}, nil
 }
 
