@@ -224,16 +224,10 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
-	// 2.5 人设设置检测（未设置时拦截用户输入）
-	if b.persona != nil && !b.persona.IsConfigured() && query != "" {
-		if b.persona.UpdateFromUserInput(query) {
-			if err := b.persona.SaveToFile(); err != nil {
-				log.Printf("[processTask] 保存人设失败: %v", err)
-			}
-			reply := fmt.Sprintf("人设设置完成！我是「%s」，以后叫你「%s」~", b.persona.Name, b.persona.OwnerTitle)
-			ctx.Sink.OnChunk(reply)
-			return reply, nil
-		}
+	// 2.5 人设未设置时注入 set_persona 工具（让 LLM 从自然语言中提取人设信息）
+	if b.persona != nil && !b.persona.IsConfigured() && !ctx.NoTools {
+		tools = append(tools, setPersonaTool)
+		log.Printf("[processTask] 人设未设置，注入 set_persona 工具")
 	}
 
 	// 3. 静态工具策略管道（替代 LLM 路由）
@@ -482,6 +476,20 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 
 			originalName := unsanitizeToolName(tc.Function.Name)
+
+			// set_persona 内置处理（不走远程 agent）
+			if tc.Function.Name == "set_persona" && b.persona != nil {
+				reply, ok := b.persona.HandleSetPersona(tc.Function.Arguments)
+				log.Printf("[processTask] set_persona: success=%v result=%s", ok, reply)
+				toolMsg := Message{
+					Role:       "tool",
+					Content:    reply,
+					ToolCallID: tc.ID,
+				}
+				rootSession.AppendMessage(toolMsg)
+				messages = append(messages, toolMsg)
+				continue
+			}
 
 			// ExecuteCode 特殊展示：提取 description + code
 			toolCallEvent := fmt.Sprintf("调用 %s (%d/%d)\n参数: %s", originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -139,8 +140,30 @@ var personaKeyMap = map[string]string{
 	"称呼": "owner_title", "owner_title": "owner_title",
 }
 
+// normalizeColons 将全角冒号替换为半角，统一格式
+func normalizeColons(s string) string {
+	return strings.ReplaceAll(s, "：", ":")
+}
+
+// findKeywordColon 在 s 中查找 "keyword:" 或 "keyword：" 的位置，返回 (起始位置, 冒号后位置)
+// 未找到返回 (-1, -1)
+func findKeywordColon(s, keyword string) (int, int) {
+	// 半角冒号
+	idx := strings.Index(s, keyword+":")
+	if idx >= 0 {
+		return idx, idx + len(keyword) + 1
+	}
+	// 全角冒号
+	idx = strings.Index(s, keyword+"：")
+	if idx >= 0 {
+		return idx, idx + len(keyword) + len("：")
+	}
+	return -1, -1
+}
+
 // UpdateFromUserInput 从用户输入解析 key:value 对更新字段
 // 支持格式: "名字:小悦 年龄:22 性别:女 性格:活泼开朗 称呼:主人"
+// 兼容全角冒号、换行分隔
 // 返回 true 表示成功解析到至少 name 字段
 func (p *PersonaProfile) UpdateFromUserInput(input string) bool {
 	input = strings.TrimSpace(input)
@@ -148,46 +171,63 @@ func (p *PersonaProfile) UpdateFromUserInput(input string) bool {
 		return false
 	}
 
-	// 解析 key:value 对（空格分隔，但 value 可能包含中文无空格）
+	// 统一换行为空格（支持换行分隔的格式）
+	input = strings.ReplaceAll(input, "\r\n", " ")
+	input = strings.ReplaceAll(input, "\n", " ")
+
+	// 收集所有 keyword:value 的位置
+	type match struct {
+		field    string // 标准字段名
+		keyStart int    // keyword 起始位置
+		valStart int    // value 起始位置（冒号后）
+	}
+	var matches []match
+
+	for keyword, field := range personaKeyMap {
+		keyStart, valStart := findKeywordColon(input, keyword)
+		if keyStart >= 0 {
+			// 检查是否已有同字段更靠前的匹配（去重：同 field 保留最早的）
+			dup := false
+			for _, m := range matches {
+				if m.field == field {
+					if keyStart < m.keyStart {
+						m.keyStart = keyStart
+						m.valStart = valStart
+					}
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				matches = append(matches, match{field: field, keyStart: keyStart, valStart: valStart})
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return false
+	}
+
+	// 按 keyStart 排序
+	for i := 0; i < len(matches)-1; i++ {
+		for j := i + 1; j < len(matches); j++ {
+			if matches[j].keyStart < matches[i].keyStart {
+				matches[i], matches[j] = matches[j], matches[i]
+			}
+		}
+	}
+
+	// 提取每个字段的 value（从 valStart 到下一个 match 的 keyStart）
 	parsed := make(map[string]string)
-	// 先按已知关键词切分
-	remaining := input
-	for {
-		// 找到最早出现的关键词
-		bestIdx := -1
-		bestKey := ""
-		bestField := ""
-		for keyword, field := range personaKeyMap {
-			idx := strings.Index(remaining, keyword+":")
-			if idx >= 0 && (bestIdx < 0 || idx < bestIdx) {
-				bestIdx = idx
-				bestKey = keyword
-				bestField = field
-			}
+	for i, m := range matches {
+		end := len(input)
+		if i+1 < len(matches) {
+			end = matches[i+1].keyStart
 		}
-		if bestIdx < 0 {
-			break
-		}
-
-		// 提取 value：从 key: 之后到下一个关键词之前
-		valueStart := bestIdx + len(bestKey) + 1 // 跳过 "key:"
-		rest := remaining[valueStart:]
-
-		// 找下一个关键词的位置
-		nextIdx := len(rest)
-		for keyword := range personaKeyMap {
-			idx := strings.Index(rest, keyword+":")
-			if idx > 0 && idx < nextIdx {
-				nextIdx = idx
-			}
-		}
-
-		value := strings.TrimSpace(rest[:nextIdx])
+		value := strings.TrimSpace(input[m.valStart:end])
 		if value != "" {
-			parsed[bestField] = value
+			parsed[m.field] = value
 		}
-
-		remaining = rest[nextIdx:]
 	}
 
 	// 必须至少有 name
@@ -238,4 +278,79 @@ func (p *PersonaProfile) SaveToFile() error {
 
 	log.Printf("[Persona] 已保存人设到 %s (name=%s)", p.FilePath, p.Name)
 	return nil
+}
+
+// setPersonaTool 虚拟工具定义（人设未设置时注入到 LLM 工具列表）
+var setPersonaTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "set_persona",
+		Description: "设置助手的人设信息。当用户提供了助手名字、年龄、性别、性格、称呼等人设信息时，调用此工具保存。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "助手名称，如 小悦"
+				},
+				"age": {
+					"type": "string",
+					"description": "年龄，如 22"
+				},
+				"gender": {
+					"type": "string",
+					"description": "性别，如 女"
+				},
+				"personality": {
+					"type": "string",
+					"description": "性格描述，如 活泼开朗、有点傲娇"
+				},
+				"owner_title": {
+					"type": "string",
+					"description": "对用户的称呼，如 主人"
+				}
+			},
+			"required": ["name"]
+		}`),
+	},
+}
+
+// HandleSetPersona 处理 set_persona 工具调用，更新人设并保存
+// 返回 (回复文本, 是否成功)
+func (p *PersonaProfile) HandleSetPersona(argsJSON string) (string, bool) {
+	var args struct {
+		Name        string `json:"name"`
+		Age         string `json:"age"`
+		Gender      string `json:"gender"`
+		Personality string `json:"personality"`
+		OwnerTitle  string `json:"owner_title"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return fmt.Sprintf("参数解析失败: %v", err), false
+	}
+	if args.Name == "" {
+		return "name 字段不能为空", false
+	}
+
+	p.Name = args.Name
+	if args.Age != "" {
+		p.Age = args.Age
+	}
+	if args.Gender != "" {
+		p.Gender = args.Gender
+	}
+	if args.Personality != "" {
+		p.Personality = args.Personality
+	}
+	if args.OwnerTitle != "" {
+		p.OwnerTitle = args.OwnerTitle
+	}
+
+	if err := p.SaveToFile(); err != nil {
+		log.Printf("[Persona] 保存失败: %v", err)
+		return fmt.Sprintf("保存失败: %v", err), false
+	}
+
+	return fmt.Sprintf("人设设置成功: name=%s age=%s gender=%s personality=%s owner_title=%s",
+		p.Name, p.Age, p.Gender, p.Personality, p.OwnerTitle), true
 }
