@@ -1,23 +1,47 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"sort"
 	"strings"
+	"unicode/utf8"
+)
+
+// DisclosureLevel 查询披露级别（控制 system prompt 注入量）
+type DisclosureLevel int
+
+const (
+	LevelZero DisclosureLevel = 0 // 闲聊：不注入任何 skill/agent 信息
+	LevelOne  DisclosureLevel = 1 // 问答：仅注入 skill 目录（含 summary）
+	LevelTwo  DisclosureLevel = 2 // 任务：目录 + 匹配的 skill 详情
 )
 
 // PolicyResult 策略管道执行结果
 type PolicyResult struct {
-	Tools          []LLMTool    // 过滤后的工具列表
-	SelectedSkills []SkillEntry // 匹配到的 skill（仅用于 prompt 注入，不做工具隔离）
+	Tools          []LLMTool       // 过滤后的工具列表
+	SelectedSkills []SkillEntry    // 匹配到的 skill（仅用于 prompt 注入，不做工具隔离）
+	Level          DisclosureLevel // 查询披露级别
 }
 
 // ApplyPolicyPipeline 静态工具策略管道（零 LLM 调用）
+// Layer 0: QueryClassify — 判断查询披露级别（LevelZero/LevelOne/LevelTwo）
 // Layer 1: GlobalPolicy — 已在 DiscoverTools() 中由 applyToolPolicy() 执行，此处无需重复
 // Layer 2: AgentPolicy — 关键词匹配 query vs agent 工具名/描述，工具数 ≤15 时跳过
-// Layer 3: SkillMatch  — 关键词匹配 query vs skill keywords/description，仅返回匹配的 skill
+// Layer 3: SkillMatch  — 评分匹配 query vs skill keywords，Top-N 限制
 // Layer 4: BaseToolGuard — 确保 ExecuteCode/Bash/文件工具始终存在
 func (b *Bridge) ApplyPolicyPipeline(query string, tools []LLMTool) PolicyResult {
 	result := PolicyResult{Tools: tools}
+
+	// Layer 0: 查询分级
+	result.Level = classifyQueryLevel(query, b.skillMgr)
+	log.Printf("[PolicyPipeline] Layer0 QueryClassify: Level=%d query=%s", result.Level, truncate(query, 50))
+
+	// LevelZero: 闲聊，跳过 skill 匹配
+	if result.Level == LevelZero {
+		result.SelectedSkills = nil
+		// 仍然执行 Layer2 和 Layer4（工具过滤仍需要）
+	}
 
 	// Layer 2: AgentPolicy（静态关键词匹配）
 	if len(tools) > 15 {
@@ -32,16 +56,25 @@ func (b *Bridge) ApplyPolicyPipeline(query string, tools []LLMTool) PolicyResult
 		log.Printf("[PolicyPipeline] Layer2 AgentPolicy: 跳过（工具数 %d ≤ 15）", len(tools))
 	}
 
-	// Layer 3: SkillMatch（静态关键词匹配，仅返回 skill，不过滤工具）
-	result.SelectedSkills = b.matchSkillsStatic(query, result.Tools)
-	if len(result.SelectedSkills) > 0 {
-		var names []string
-		for _, s := range result.SelectedSkills {
-			names = append(names, s.Name)
+	// Layer 3: SkillMatch（LevelTwo 时才执行评分匹配）
+	if result.Level == LevelTwo {
+		maxN := b.cfg.MaxMatchedSkills
+		if maxN <= 0 {
+			maxN = 2
 		}
-		log.Printf("[PolicyPipeline] Layer3 SkillMatch: 匹配 %d 个 skill: %v", len(result.SelectedSkills), names)
+		result.SelectedSkills = b.matchSkillsScored(query, result.Tools, maxN)
+		if len(result.SelectedSkills) > 0 {
+			var names []string
+			for _, s := range result.SelectedSkills {
+				names = append(names, s.Name)
+			}
+			log.Printf("[PolicyPipeline] Layer3 SkillMatch: 匹配 %d 个 skill: %v", len(result.SelectedSkills), names)
+		} else {
+			log.Printf("[PolicyPipeline] Layer3 SkillMatch: 无匹配")
+		}
 	} else {
-		log.Printf("[PolicyPipeline] Layer3 SkillMatch: 无匹配")
+		result.SelectedSkills = nil
+		log.Printf("[PolicyPipeline] Layer3 SkillMatch: 跳过（Level=%d）", result.Level)
 	}
 
 	// Layer 4: BaseToolGuard（确保基础工具始终存在）
@@ -203,8 +236,70 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 	return filtered
 }
 
-// matchSkillsStatic Layer 3: 静态关键词匹配 skill
-func (b *Bridge) matchSkillsStatic(query string, tools []LLMTool) []SkillEntry {
+// classifyQueryLevel 纯启发式查询分级（零 LLM 调用）
+// LevelZero: 短问候/闲聊
+// LevelOne: 纯问答无工具意图
+// LevelTwo: 默认（含 skill 关键词或明确任务意图）
+func classifyQueryLevel(query string, skillMgr *SkillManager) DisclosureLevel {
+	q := strings.TrimSpace(query)
+	qLower := strings.ToLower(q)
+	runeCount := utf8.RuneCountInString(q)
+
+	// 收集所有 skill 关键词用于检测
+	var allKeywords []string
+	if skillMgr != nil {
+		for _, skill := range skillMgr.GetAllSkills() {
+			allKeywords = append(allKeywords, skill.Keywords...)
+		}
+	}
+
+	hasSkillKeyword := false
+	for _, kw := range allKeywords {
+		if strings.Contains(qLower, strings.ToLower(kw)) {
+			hasSkillKeyword = true
+			break
+		}
+	}
+
+	// LevelZero: 短问候/闲聊
+	greetings := []string{"你好", "hi", "hello", "hey", "谢谢", "感谢", "好的", "ok", "嗯", "哈哈", "呵呵", "嘿"}
+	if runeCount <= 6 && !hasSkillKeyword {
+		for _, g := range greetings {
+			if strings.Contains(qLower, g) {
+				return LevelZero
+			}
+		}
+		// 极短且不含关键词
+		if runeCount <= 4 {
+			return LevelZero
+		}
+	}
+
+	// 有 skill 关键词 → LevelTwo
+	if hasSkillKeyword {
+		return LevelTwo
+	}
+
+	// LevelOne: 纯问答模式（"什么是"、"解释"、"为什么"、"怎么理解"等提问）
+	questionPatterns := []string{"什么是", "是什么", "解释", "为什么", "怎么理解", "区别是", "概念", "原理", "含义", "意思是"}
+	for _, p := range questionPatterns {
+		if strings.Contains(qLower, p) {
+			return LevelOne
+		}
+	}
+
+	// 默认 LevelTwo（任务意图）
+	return LevelTwo
+}
+
+// skillScore 评分匹配结果
+type skillScore struct {
+	skill SkillEntry
+	score int
+}
+
+// matchSkillsScored Layer 3: 评分匹配 skill，返回 Top-N
+func (b *Bridge) matchSkillsScored(query string, tools []LLMTool, maxN int) []SkillEntry {
 	if b.skillMgr == nil {
 		return nil
 	}
@@ -223,7 +318,9 @@ func (b *Bridge) matchSkillsStatic(query string, tools []LLMTool) []SkillEntry {
 
 	queryLower := strings.ToLower(query)
 
-	var matched []SkillEntry
+	var scored []skillScore
+	var scoreLog []string
+
 	for _, skill := range allSkills {
 		// 检查至少一个声明工具在线
 		hasOnlineTool := false
@@ -237,42 +334,83 @@ func (b *Bridge) matchSkillsStatic(query string, tools []LLMTool) []SkillEntry {
 			continue
 		}
 
-		// 检查关键词匹配
-		if matchSkillKeywords(queryLower, skill) {
-			matched = append(matched, skill)
+		// 评分
+		score := scoreSkill(queryLower, skill)
+		if score > 0 {
+			scored = append(scored, skillScore{skill: skill, score: score})
+			scoreLog = append(scoreLog, fmt.Sprintf("%s=%d", skill.Name, score))
 		}
 	}
 
-	return matched
+	if len(scored) == 0 {
+		return nil
+	}
+
+	// 按分数降序排列
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// Top-N
+	if len(scored) > maxN {
+		var topNames []string
+		for _, s := range scored[:maxN] {
+			topNames = append(topNames, s.skill.Name)
+		}
+		log.Printf("[PolicyPipeline] Layer3 SkillMatch: %s → top %d: %s",
+			strings.Join(scoreLog, ", "), maxN, strings.Join(topNames, ", "))
+		scored = scored[:maxN]
+	}
+
+	result := make([]SkillEntry, len(scored))
+	for i, s := range scored {
+		result[i] = s.skill
+	}
+	return result
 }
 
-// matchSkillKeywords 检查 query 是否匹配 skill 的关键词
-func matchSkillKeywords(queryLower string, skill SkillEntry) bool {
-	// 优先使用 SKILL.md 的 keywords 字段
-	if len(skill.Keywords) > 0 {
-		for _, kw := range skill.Keywords {
-			if strings.Contains(queryLower, strings.ToLower(kw)) {
-				return true
-			}
-		}
-		return false
+// scoreSkill 对单个 skill 进行评分
+func scoreSkill(queryLower string, skill SkillEntry) int {
+	score := 0
+	matchedCount := 0
+
+	// skill name 完全包含在 query 中 +5 分
+	if strings.Contains(queryLower, strings.ToLower(skill.Name)) {
+		score += 5
 	}
 
-	// 无 keywords 字段：用 skill name 和 description 做模糊匹配
-	if strings.Contains(queryLower, strings.ToLower(skill.Name)) {
-		return true
-	}
-	if skill.Description != "" && len(skill.Description) > 2 {
-		descLower := strings.ToLower(skill.Description)
-		// 从 description 中提取中文关键词
-		for _, r := range []rune(descLower) {
-			_ = r // description 匹配作为兜底
+	// 关键词匹配评分
+	if len(skill.Keywords) > 0 {
+		for _, kw := range skill.Keywords {
+			kwLower := strings.ToLower(kw)
+			if strings.Contains(queryLower, kwLower) {
+				score += 2
+				matchedCount++
+				// 长关键词加分（更具体）：中文≥3字符 或 英文≥5字符
+				kwRuneCount := utf8.RuneCountInString(kw)
+				isChinese := kwRuneCount < len(kw) // 含多字节字符即视为中文
+				if (isChinese && kwRuneCount >= 3) || (!isChinese && kwRuneCount >= 5) {
+					score++
+				}
+			}
 		}
-		if strings.Contains(queryLower, descLower) || strings.Contains(descLower, queryLower) {
-			return true
+	} else {
+		// 无 keywords：用 description 做模糊匹配
+		if skill.Description != "" {
+			descLower := strings.ToLower(skill.Description)
+			if strings.Contains(queryLower, descLower) || strings.Contains(descLower, queryLower) {
+				score += 2
+				matchedCount++
+			}
 		}
 	}
-	return false
+
+	// 多重匹配奖励
+	if matchedCount >= 2 {
+		score += 2
+	}
+
+	return score
 }
 
 // ApplySubtaskPolicy 子任务工具过滤（替代 filterToolsByHint）

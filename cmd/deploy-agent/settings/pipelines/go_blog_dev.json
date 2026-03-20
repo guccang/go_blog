@@ -13,7 +13,7 @@
             "build_platform": "linux"
         },
         {
-            "project": "codegen-agent",
+            "project": "acp-agent",
             "target": "local",
             "build_platform": "win"
         },
@@ -26,6 +26,11 @@
             "project": "execute-code-agent",
             "target": "local",
             "build_platform": "win"
+        },
+        {
+            "project": "deploy-bridge-server",
+            "target": "ssh-prod",
+            "build_platform": "linux"
         },
         {
             "project": "gateway",

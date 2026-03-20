@@ -268,11 +268,20 @@ var defaultTaskGuide = `
 - 代码错误只需要修复代码本身，沙箱执行路径不可绕过
 `
 
-// buildAssistantSystemPrompt 构建 assistant 的系统提示（含任务拆解指引 + skill 注入）
-func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, selectedSkills []SkillEntry) string {
+// buildAssistantSystemPrompt 构建 assistant 的系统提示（按 DisclosureLevel 条件注入各区块）
+// policyResult 为 nil 时默认 LevelTwo（兼容旧调用）
+func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, policyResult *PolicyResult) string {
+	// 确定披露级别和 selectedSkills
+	level := LevelTwo
+	var selectedSkills []SkillEntry
+	if policyResult != nil {
+		level = policyResult.Level
+		selectedSkills = policyResult.SelectedSkills
+	}
+
 	var sb strings.Builder
 
-	// 人设系统提示
+	// 人设系统提示（始终保留）
 	if b.persona != nil {
 		sb.WriteString(b.persona.BuildSystemPrompt())
 	} else {
@@ -287,21 +296,23 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	sb.WriteString(fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
 	sb.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens))
 
-	// 注入 agent 能力描述
-	agentBlock := b.getAgentDescriptionBlock()
-	if agentBlock != "" {
-		sb.WriteString(agentBlock)
+	// Agent 描述：LevelZero 跳过，LevelOne/LevelTwo 按工具过滤
+	if level >= LevelOne {
+		agentBlock := b.getFilteredAgentDescriptionBlock(tools)
+		if agentBlock != "" {
+			sb.WriteString(agentBlock)
+		}
 	}
 
-	// Skill Level 1: 注入 skill 目录（始终加载）
-	if b.skillMgr != nil {
+	// Skill 目录（含 summary）：LevelZero 跳过，LevelOne/LevelTwo 注入
+	if level >= LevelOne && b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalog()
 		if catalog != "" {
 			sb.WriteString(catalog)
 		}
 	}
 
-	// 注入长期记忆
+	// 长期记忆（始终保留）
 	if b.memoryMgr != nil {
 		memoryBlock := b.memoryMgr.BuildPromptBlock()
 		if memoryBlock != "" {
@@ -309,75 +320,67 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		}
 	}
 
-	// 注入用户规则
-	if b.memoryMgr != nil {
-		ruleBlock := b.memoryMgr.BuildRulePromptBlock()
-		if ruleBlock != "" {
-			sb.WriteString(ruleBlock)
-		}
-	}
-
-	// 任务拆解指引
+	// 任务拆解指引（始终保留）
 	taskGuide := loadWorkspaceFile(b.cfg.WorkspaceDir, "TASK_GUIDE.md", defaultTaskGuide)
 	sb.WriteString("\n")
 	sb.WriteString(taskGuide)
 
-	// Skill Level 2: 按需注入预选的 skill 正文
-	if b.skillMgr != nil && len(selectedSkills) > 0 {
+	// Skill 详情：仅 LevelTwo 注入
+	if level == LevelTwo && b.skillMgr != nil && len(selectedSkills) > 0 {
 		skillBlock := b.skillMgr.BuildSkillBlock(selectedSkills)
 		sb.WriteString(skillBlock)
 	}
 
-	// 只在命中 blog-data-opt skill 或无 skill 命中时才注入上下文数据
-	needContextData := len(selectedSkills) == 0 // 无 skill 命中时保留（兼容简单问答）
-	for _, s := range selectedSkills {
-		if s.Name == "blog-data-opt" {
-			needContextData = true
-			break
-		}
-	}
-
-	if needContextData {
-		// 并发获取上下文数据
-		type ctxResult struct {
-			label string
-			data  string
-		}
-
-		ch := make(chan ctxResult, 2)
-		done := make(chan struct{}, 2)
-
-		go func() {
-			args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-			data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
-			if err == nil && data != "" {
-				ch <- ctxResult{label: "今日待办", data: data}
+	// 上下文数据：仅 LevelTwo 时按原逻辑注入
+	if level == LevelTwo {
+		needContextData := len(selectedSkills) == 0
+		for _, s := range selectedSkills {
+			if s.Name == "blog-data-opt" {
+				needContextData = true
+				break
 			}
-			done <- struct{}{}
-		}()
-
-		go func() {
-			args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-			data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
-			if err == nil && data != "" {
-				ch <- ctxResult{label: "今日运动", data: data}
-			}
-			done <- struct{}{}
-		}()
-
-		// 等待两个 goroutine 完成
-		<-done
-		<-done
-		close(ch)
-
-		var ctxParts []string
-		for r := range ch {
-			ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
 		}
 
-		if len(ctxParts) > 0 {
-			sb.WriteString("\n用户当前数据:\n")
-			sb.WriteString(strings.Join(ctxParts, "\n\n"))
+		if needContextData {
+			type ctxResult struct {
+				label string
+				data  string
+			}
+
+			ch := make(chan ctxResult, 2)
+			done := make(chan struct{}, 2)
+
+			go func() {
+				args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+				data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
+				if err == nil && data != "" {
+					ch <- ctxResult{label: "今日待办", data: data}
+				}
+				done <- struct{}{}
+			}()
+
+			go func() {
+				args, _ := json.Marshal(map[string]string{"account": account, "date": today})
+				data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
+				if err == nil && data != "" {
+					ch <- ctxResult{label: "今日运动", data: data}
+				}
+				done <- struct{}{}
+			}()
+
+			<-done
+			<-done
+			close(ch)
+
+			var ctxParts []string
+			for r := range ch {
+				ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
+			}
+
+			if len(ctxParts) > 0 {
+				sb.WriteString("\n用户当前数据:\n")
+				sb.WriteString(strings.Join(ctxParts, "\n\n"))
+			}
 		}
 	}
 

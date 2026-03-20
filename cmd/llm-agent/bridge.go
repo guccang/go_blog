@@ -983,6 +983,102 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 	return sb.String()
 }
 
+// getFilteredAgentDescriptionBlock 按当前工具集过滤 agent 描述（仅描述涉及的 agent）
+// 过滤后为空则回退全量
+func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool) string {
+	b.catalogMu.RLock()
+	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
+	for k, v := range b.toolCatalog {
+		toolCatalogCopy[k] = v
+	}
+	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
+	for k, v := range b.agentInfo {
+		agentInfoCopy[k] = v
+	}
+	b.catalogMu.RUnlock()
+
+	if len(agentInfoCopy) == 0 {
+		return ""
+	}
+
+	// 从当前 tools 找出涉及的 agent ID
+	involvedAgents := make(map[string]bool)
+	for _, tool := range tools {
+		originalName := unsanitizeToolName(tool.Function.Name)
+		if agentID, ok := toolCatalogCopy[originalName]; ok {
+			involvedAgents[agentID] = true
+		} else if agentID, ok := toolCatalogCopy[tool.Function.Name]; ok {
+			involvedAgents[agentID] = true
+		}
+	}
+
+	// 过滤后为空则回退全量
+	if len(involvedAgents) == 0 {
+		return b.getAgentDescriptionBlock()
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n## 可用 Agent 能力\n")
+	count := 0
+	for _, info := range agentInfoCopy {
+		if !involvedAgents[info.ID] {
+			continue
+		}
+		if info.Description == "" {
+			continue
+		}
+		count++
+		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
+		if len(info.CodingTools) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 可用编码工具(tool参数): %s\n", strings.Join(info.CodingTools, ", ")))
+		}
+		if len(info.Models) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 可用模型配置(model参数): %s\n", strings.Join(info.Models, ", ")))
+		}
+		if info.HostPlatform != "" {
+			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
+		}
+		if len(info.SSHHosts) > 0 {
+			sb.WriteString(fmt.Sprintf("  - SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
+		}
+		if len(info.DeployTargets) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 部署目标(deploy_target参数): %s\n", strings.Join(info.DeployTargets, ", ")))
+		}
+		if len(info.TargetHosts) > 0 {
+			sb.WriteString("  - 部署目标对应SSH地址(ssh_host参数):\n")
+			for target, host := range info.TargetHosts {
+				sb.WriteString(fmt.Sprintf("    - %s → %s\n", target, host))
+			}
+		}
+		if len(info.Pipelines) > 0 {
+			sb.WriteString(fmt.Sprintf("  - Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))
+		}
+		if info.PythonVersion != "" {
+			sb.WriteString(fmt.Sprintf("  - Python版本: %s", info.PythonVersion))
+			if info.MaxExecTime > 0 {
+				sb.WriteString(fmt.Sprintf(", 执行超时: %ds", info.MaxExecTime))
+			}
+			sb.WriteString("\n")
+		}
+		if len(info.LogSources) > 0 {
+			sb.WriteString("  - 可查日志源(source参数):\n")
+			for name, desc := range info.LogSources {
+				sb.WriteString(fmt.Sprintf("    - %s: %s\n", name, desc))
+			}
+		}
+		if len(info.SupportedSoftware) > 0 {
+			sb.WriteString(fmt.Sprintf("  - 支持检测/安装的软件(software参数): %s\n", strings.Join(info.SupportedSoftware, ", ")))
+		}
+	}
+
+	// 过滤后无有效 agent，回退全量
+	if count == 0 {
+		return b.getAgentDescriptionBlock()
+	}
+
+	return sb.String()
+}
+
 // executeCodeAgentType execute-code-agent 的类型标识（元工具，始终保留不参与路由筛选）
 const executeCodeAgentType = "execute_code"
 

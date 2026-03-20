@@ -12,6 +12,7 @@ import (
 type SkillEntry struct {
 	Name        string   // YAML name
 	Description string   // YAML description（展示在 skill 目录中）
+	Summary     string   // YAML summary（用法要点，展示在目录中）
 	Tools       []string // YAML tools（关联的工具名列表）
 	Keywords    []string // YAML keywords（用于静态匹配的关键词列表）
 	Content     string   // Markdown body（frontmatter 之后的正文）
@@ -124,6 +125,8 @@ func parseSkillFile(content, filePath string) (*SkillEntry, error) {
 			skill.Name = value
 		case "description":
 			skill.Description = value
+		case "summary":
+			skill.Summary = value
 		case "tools":
 			// 逗号分隔的工具名列表
 			for _, t := range strings.Split(value, ",") {
@@ -179,7 +182,7 @@ func (sm *SkillManager) MatchByTools(toolHints []string) []SkillEntry {
 	return matched
 }
 
-// BuildCatalog 构建 skill 目录文本（Level 1，始终注入到系统 prompt）
+// BuildCatalog 构建 skill 目录文本（Level 1，含 summary 用法要点）
 func (sm *SkillManager) BuildCatalog() string {
 	if len(sm.skills) == 0 {
 		return ""
@@ -188,7 +191,11 @@ func (sm *SkillManager) BuildCatalog() string {
 	var sb strings.Builder
 	sb.WriteString("\n## 可用技能\n")
 	for _, skill := range sm.skills {
-		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", skill.Name, skill.Description))
+		if skill.Summary != "" {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s — %s\n", skill.Name, skill.Description, skill.Summary))
+		} else {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", skill.Name, skill.Description))
+		}
 	}
 	return sb.String()
 }

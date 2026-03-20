@@ -15,8 +15,9 @@ rm -rf ../common
 cp -rf ./common ../
 
 # 确保可执行
+echo "pwd=$(pwd)"
 go build
-chmod +x blog-agent
+chmod +x ./blog-agent
 
 # 启动新进程（后台运行，日志写文件）
 # 使用 nohup + disown 确保进程与父进程完全分离（macOS 兼容）

@@ -1,6 +1,7 @@
 ---
 name: deploy
 description: 项目部署技能。当用户需要部署项目、发布上线、执行部署流水线时使用此技能。
+summary: ssh_host 用系统提示中的真实地址，不可编造
 tools: DeployProject,DeployPipeline
 keywords: 部署,deploy,发布,上线
 ---

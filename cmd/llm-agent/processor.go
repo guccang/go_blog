@@ -226,22 +226,24 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// 3. 静态工具策略管道（替代 LLM 路由）
 	var selectedSkills []SkillEntry
+	var policyResult *PolicyResult
 
 	if !ctx.NoTools && query != "" {
 		beforeCount := len(tools)
 		ctx.Sink.OnEvent("route_info", "正在匹配工具策略...")
 
-		policyResult := b.ApplyPolicyPipeline(query, tools)
-		tools = policyResult.Tools
-		selectedSkills = policyResult.SelectedSkills
+		pr := b.ApplyPolicyPipeline(query, tools)
+		policyResult = &pr
+		tools = pr.Tools
+		selectedSkills = pr.SelectedSkills
 
 		var routedToolNames []string
 		for _, t := range tools {
 			routedToolNames = append(routedToolNames, unsanitizeToolName(t.Function.Name))
 		}
-		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具策略: %d → %d\n%s",
-			beforeCount, len(tools), strings.Join(routedToolNames, ", ")))
-		log.Printf("[processTask] 策略管道: %d → %d", beforeCount, len(tools))
+		ctx.Sink.OnEvent("route_info", fmt.Sprintf("工具策略: %d → %d (Level=%d)\n%s",
+			beforeCount, len(tools), pr.Level, strings.Join(routedToolNames, ", ")))
+		log.Printf("[processTask] 策略管道: %d → %d Level=%d", beforeCount, len(tools), pr.Level)
 	}
 
 	// 4. 构建消息（使用路由后的 tools 做 skill 匹配）
@@ -251,8 +253,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		copy(messages, ctx.Messages)
 		log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
 	} else {
-		// web / wechat: 构建 system prompt + user query（传入预选 skill）
-		systemPrompt := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, selectedSkills)
+		// web / wechat: 构建 system prompt + user query（按 Level 条件注入）
+		systemPrompt := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, policyResult)
 		messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: ctx.Query},

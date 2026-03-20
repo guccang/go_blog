@@ -1,6 +1,7 @@
 ---
 name: project-analysis
 description: 项目分析技能。分析项目代码质量、架构设计、性能、安全等，给出优化建议。
+summary: 先 ListProjects 选项目，再 AnalyzeProject 分析
 tools: AcpAnalyzeProject,AcpListProjects
 ---
 

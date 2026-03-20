@@ -1,0 +1,65 @@
+[
+  {
+    "path": "cmd\\blog-agent\\blog-agent_2026-03-19-15_45_48.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\blog-agent\\blog-agent_2026-03-19-15_45_48.zip",
+    "size_bytes": 38488341,
+    "size_mb": 36.71,
+    "directory": "cmd\\blog-agent"
+  },
+  {
+    "path": "cmd\\codegen-agent\\codegen_agent_2026-03-19-15_45_42.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\codegen-agent\\codegen_agent_2026-03-19-15_45_42.zip",
+    "size_bytes": 5400119,
+    "size_mb": 5.15,
+    "directory": "cmd\\codegen-agent"
+  },
+  {
+    "path": "cmd\\deploy-agent\\deploy-agent_2026-03-10-16_45_41.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\deploy-agent\\deploy-agent_2026-03-10-16_45_41.zip",
+    "size_bytes": 6216782,
+    "size_mb": 5.93,
+    "directory": "cmd\\deploy-agent"
+  },
+  {
+    "path": "cmd\\env-agent\\env-agent_2026-03-18-20_12_26.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\env-agent\\env-agent_2026-03-18-20_12_26.zip",
+    "size_bytes": 5341045,
+    "size_mb": 5.09,
+    "directory": "cmd\\env-agent"
+  },
+  {
+    "path": "cmd\\execute-code-agent\\execute-code-agent_2026-03-19-15_46_05.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\execute-code-agent\\execute-code-agent_2026-03-19-15_46_05.zip",
+    "size_bytes": 5301120,
+    "size_mb": 5.06,
+    "directory": "cmd\\execute-code-agent"
+  },
+  {
+    "path": "cmd\\gateway\\gateway_2026-03-19-15_46_13.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\gateway\\gateway_2026-03-19-15_46_13.zip",
+    "size_bytes": 5373293,
+    "size_mb": 5.12,
+    "directory": "cmd\\gateway"
+  },
+  {
+    "path": "cmd\\llm-agent\\llm-agent_2026-03-19-16_31_07.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\llm-agent\\llm-agent_2026-03-19-16_31_07.zip",
+    "size_bytes": 5573441,
+    "size_mb": 5.32,
+    "directory": "cmd\\llm-agent"
+  },
+  {
+    "path": "cmd\\wechat-agent\\wechat-agent_2026-03-19-15_45_31.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\wechat-agent\\wechat-agent_2026-03-19-15_45_31.zip",
+    "size_bytes": 5427879,
+    "size_mb": 5.18,
+    "directory": "cmd\\wechat-agent"
+  },
+  {
+    "path": "cmd\\welcome-page\\welcome-page_2026-03-10-18_31_57.zip",
+    "full_path": "E:\\githubdesktop\\go_blog\\cmd\\welcome-page\\welcome-page_2026-03-10-18_31_57.zip",
+    "size_bytes": 4585174,
+    "size_mb": 4.37,
+    "directory": "cmd\\welcome-page"
+  }
+]

@@ -86,6 +86,9 @@ type Config struct {
 	BashTimeoutSec     int `json:"bash_timeout_sec"`      // Bash 命令超时秒数（默认 30）
 	BashMaxOutputBytes int `json:"bash_max_output_bytes"` // Bash 输出截断字节数（默认 102400）
 
+	// Skill 匹配配置
+	MaxMatchedSkills int `json:"max_matched_skills"` // 评分匹配 Top-N 上限（默认 2）
+
 	// 工具权限控制
 	ToolPolicy *ToolPolicy         `json:"tool_policy,omitempty"`
 	Pipeline   *ToolPolicyPipeline `json:"tool_pipeline,omitempty"`
@@ -136,6 +139,8 @@ func DefaultConfig() *Config {
 
 		BashTimeoutSec:     30,
 		BashMaxOutputBytes: 102400,
+
+		MaxMatchedSkills: 2,
 	}
 }
 

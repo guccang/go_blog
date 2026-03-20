@@ -16,11 +16,11 @@ if exist acp-agent.pid (
 taskkill /F /IM acp-agent.exe 2>nul
 
 echo 启动 acp-agent...
-start "acp-agent" cmd /c "acp-agent.exe -config codegen-agent.json"
+start "acp-agent" cmd /c "codegen-agent.exe -config codegen-agent.json"
 
 ping -n 3 127.0.0.1 >nul
 
-tasklist /FI "IMAGENAME eq acp-agent.exe" 2>nul | find /I "acp-agent.exe" >nul
+tasklist /FI "IMAGENAME eq acp-agent.exe" 2>nul | find /I "codegen-agent.exe" >nul
 if %errorlevel%==0 (
     echo acp-agent 启动成功
 ) else (

@@ -1,6 +1,7 @@
 ---
 name: env-check
 description: 环境检测技能。当用户需要检查服务器环境、软件版本、系统状态时使用此技能。
+summary: 用 Bash 检测软件版本和系统状态
 tools: Bash
 keywords: 环境,检查,env,安装,系统
 ---

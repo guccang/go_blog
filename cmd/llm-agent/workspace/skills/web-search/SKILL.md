@@ -1,6 +1,7 @@
 ---
 name: web-search
 description: 网络搜索技能。当需要搜索互联网获取实时信息、查询资料、获取网页内容时使用此技能。
+summary: WebSearch 搜索 + WebFetch 抓取网页详情
 tools: WebSearch,WebFetch
 keywords: 搜索,search,网页,查找,天气,新闻,web,查询资料
 ---

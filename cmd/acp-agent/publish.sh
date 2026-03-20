@@ -25,12 +25,12 @@ chmod +x acp-agent
 # 启动新进程（后台运行，日志写文件）
 # 使用 nohup + disown 确保进程与父进程完全分离（macOS 兼容）
 echo "启动 acp-agent..."
-nohup ./acp-agent acp-agent.json > codegen-agent.log 2>&1 < /dev/null &
+nohup ./acp-agent codegen-agent.json > codegen-agent.log 2>&1 < /dev/null &
 disown
 
 sleep 1
 if pgrep -f '\./acp-agent' > /dev/null; then
-    echo "acp-agent 启动成功 (PID: $(pgrep -f '\./acp-agent'))"
+    echo "acp-agent 启动成功 (PID: $(pgrep -f '\./codegen-agent'))"
 else
     echo "acp-agent 启动失败，查看日志:"
     tail -20 acp-agent.log
