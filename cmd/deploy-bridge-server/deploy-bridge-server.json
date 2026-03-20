@@ -1,5 +1,5 @@
 {
-  "listen": "8883",
+  "listen": ":8883",
   "auth_token": "guccang@blog.guccang.cn",
   "upload_dir": "./uploads",
   "max_upload_size_mb": 200,

@@ -271,13 +271,16 @@ var defaultTaskGuide = `
 // buildAssistantSystemPrompt 构建 assistant 的系统提示（按 DisclosureLevel 条件注入各区块）
 // policyResult 为 nil 时默认 LevelTwo（兼容旧调用）
 func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, policyResult *PolicyResult) string {
-	// 确定披露级别和 selectedSkills
-	level := LevelTwo
-	var selectedSkills []SkillEntry
-	if policyResult != nil {
-		level = policyResult.Level
-		selectedSkills = policyResult.SelectedSkills
+	// ??????? selectedSkills
+	if policyResult == nil {
+		pr := b.ApplyPolicyPipeline(query, tools)
+		policyResult = &pr
+		tools = pr.Tools
 	}
+
+	level := policyResult.Level
+	var selectedSkills []SkillEntry
+	selectedSkills = policyResult.SelectedSkills
 
 	var sb strings.Builder
 

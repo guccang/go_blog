@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -360,7 +361,24 @@ func (d *Deployer) deployBridge(t *Target, totalSteps int) error {
 }
 
 // bridgeUpload 上传 zip 到 bridge server (POST /api/upload multipart)
+// 会先计算本地 MD5 并查询服务端，相同 MD5 的文件不重复上传
 func (d *Deployer) bridgeUpload(bridgeURL, token, zipPath string) (string, error) {
+	// 计算本地文件 MD5
+	localMD5, err := d.localFileMD5(zipPath)
+	if err != nil {
+		return "", fmt.Errorf("计算文件MD5失败: %v", err)
+	}
+
+	// 查询服务端已有包列表，检查 MD5 是否重复
+	if pkgs, err := d.bridgePackages(bridgeURL, token); err == nil {
+		for _, pkg := range pkgs {
+			if pkg.MD5 == localMD5 {
+				d.logf("info", "文件已存在于服务器（MD5相同）: %s，跳过上传\n", pkg.Name)
+				return pkg.Name, nil
+			}
+		}
+	}
+
 	file, err := os.Open(zipPath)
 	if err != nil {
 		return "", fmt.Errorf("打开文件失败: %v", err)
@@ -412,6 +430,52 @@ func (d *Deployer) bridgeUpload(bridgeURL, token, zipPath string) (string, error
 		return "", fmt.Errorf("上传失败: %s", result.Error)
 	}
 	return result.Filename, nil
+}
+
+// bridgePackages 获取服务端已上传包列表 (GET /api/packages)
+func (d *Deployer) bridgePackages(bridgeURL, token string) ([]bridgePackageInfo, error) {
+	req, err := http.NewRequest("GET", strings.TrimRight(bridgeURL, "/")+"/api/packages", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var pkgs []bridgePackageInfo
+	if err := json.NewDecoder(resp.Body).Decode(&pkgs); err != nil {
+		return nil, err
+	}
+	return pkgs, nil
+}
+
+type bridgePackageInfo struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	MD5  string `json:"md5"`
+}
+
+// localFileMD5 计算本地文件的 MD5 哈希
+func (d *Deployer) localFileMD5(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // bridgeDeploy 触发 bridge 部署 (POST /api/deploy)

@@ -3,7 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -97,14 +100,63 @@ type DeployManager struct {
 	mu        sync.Mutex
 	tasks     map[string]*DeployTask
 	taskOrder []string // 按时间倒序
+	md5Cache  map[string]string // filename → md5
 }
 
 // NewDeployManager 创建部署管理器
 func NewDeployManager(cfg *Config) *DeployManager {
-	return &DeployManager{
-		cfg:   cfg,
-		tasks: make(map[string]*DeployTask),
+	m := &DeployManager{
+		cfg:      cfg,
+		tasks:    make(map[string]*DeployTask),
+		md5Cache: make(map[string]string),
 	}
+	m.initMD5Cache()
+	return m
+}
+
+// initMD5Cache 启动时扫描 upload 目录，缓存已有文件的 MD5
+func (m *DeployManager) initMD5Cache() {
+	entries, err := os.ReadDir(m.cfg.UploadDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".zip") {
+			continue
+		}
+		filePath := filepath.Join(m.cfg.UploadDir, e.Name())
+		hash, err := fileMD5(filePath)
+		if err != nil {
+			continue
+		}
+		m.md5Cache[e.Name()] = hash
+	}
+}
+
+// FindDuplicateByMD5 查找是否已有相同 MD5 的文件
+func (m *DeployManager) FindDuplicateByMD5(md5sum string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for name, hash := range m.md5Cache {
+		if hash == md5sum {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// CacheMD5 缓存文件 MD5
+func (m *DeployManager) CacheMD5(filename, md5sum string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.md5Cache[filename] = md5sum
+}
+
+// GetMD5 获取缓存的文件 MD5
+func (m *DeployManager) GetMD5(filename string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.md5Cache[filename]
 }
 
 // CreateTask 创建部署任务
@@ -281,6 +333,7 @@ func (m *DeployManager) ListPackages() []PackageInfo {
 			Name:    e.Name(),
 			Size:    info.Size(),
 			ModTime: info.ModTime(),
+			MD5:     m.GetMD5(e.Name()),
 		})
 	}
 
@@ -297,4 +350,19 @@ type PackageInfo struct {
 	Name    string    `json:"name"`
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"mod_time"`
+	MD5     string    `json:"md5"`
+}
+
+// fileMD5 计算文件的 MD5 哈希
+func fileMD5(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,7 +24,7 @@ func NewHandlers(cfg *Config, manager *DeployManager) *Handlers {
 	return &Handlers{cfg: cfg, manager: manager}
 }
 
-// HandleUpload POST /api/upload — 上传 zip 包
+// HandleUpload POST /api/upload — 上传 zip 包（MD5 去重）
 func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -58,19 +60,46 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dstPath := filepath.Join(h.cfg.UploadDir, filename)
-	dst, err := os.Create(dstPath)
+	// 写入临时文件，同时计算 MD5
+	tmpPath := filepath.Join(h.cfg.UploadDir, filename+".tmp")
+	tmpFile, err := os.Create(tmpPath)
 	if err != nil {
 		jsonError(w, "创建文件失败", http.StatusInternalServerError)
 		return
 	}
-	defer dst.Close()
 
-	written, err := io.Copy(dst, file)
+	hash := md5.New()
+	written, err := io.Copy(io.MultiWriter(tmpFile, hash), file)
+	tmpFile.Close()
 	if err != nil {
+		os.Remove(tmpPath)
 		jsonError(w, "保存文件失败", http.StatusInternalServerError)
 		return
 	}
+
+	md5sum := hex.EncodeToString(hash.Sum(nil))
+
+	// 检查是否已有相同 MD5 的文件
+	if existing, found := h.manager.FindDuplicateByMD5(md5sum); found {
+		os.Remove(tmpPath)
+		jsonResp(w, map[string]interface{}{
+			"filename": existing,
+			"size":     written,
+			"skipped":  true,
+			"message":  "文件已存在（MD5相同）: " + existing,
+		})
+		return
+	}
+
+	// 重命名为正式文件
+	dstPath := filepath.Join(h.cfg.UploadDir, filename)
+	if err := os.Rename(tmpPath, dstPath); err != nil {
+		os.Remove(tmpPath)
+		jsonError(w, "保存文件失败", http.StatusInternalServerError)
+		return
+	}
+
+	h.manager.CacheMD5(filename, md5sum)
 
 	jsonResp(w, map[string]interface{}{
 		"filename": filename,

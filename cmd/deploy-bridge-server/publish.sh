@@ -23,8 +23,8 @@ fi
 # 赋予执行权限
 chmod +x "$APP"
 
-# 启动新进程
-nohup ./"$APP" "$CONFIG" > /dev/null 2>&1 &
+# 启动新进程（setsid 创建新会话，完全脱离父进程）
+setsid ./"$APP" "$CONFIG" </dev/null >/dev/null 2>&1 &
 NEW_PID=$!
 echo "启动新进程 PID=$NEW_PID"
 
