@@ -158,6 +158,17 @@ func (sm *SkillManager) GetAllSkills() []SkillEntry {
 	return sm.skills
 }
 
+// GetSkillOwnedTools 收集所有 skill 声明的工具名集合
+func (sm *SkillManager) GetSkillOwnedTools() map[string]bool {
+	owned := make(map[string]bool)
+	for _, skill := range sm.skills {
+		for _, t := range skill.Tools {
+			owned[t] = true
+		}
+	}
+	return owned
+}
+
 // MatchByTools 仅通过工具名匹配 skill（用于子任务）
 func (sm *SkillManager) MatchByTools(toolHints []string) []SkillEntry {
 	if len(sm.skills) == 0 || len(toolHints) == 0 {
@@ -198,6 +209,35 @@ func (sm *SkillManager) BuildCatalog() string {
 		}
 	}
 	return sb.String()
+}
+
+// BuildCatalogWithToolHint 构建 skill 目录，提示 LLM 通过 execute_skill 工具使用
+func (sm *SkillManager) BuildCatalogWithToolHint() string {
+	if len(sm.skills) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n## 可用技能\n")
+	sb.WriteString("当你需要执行以下技能时，调用 execute_skill 工具。\n")
+	for _, skill := range sm.skills {
+		if skill.Summary != "" {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s — %s\n", skill.Name, skill.Description, skill.Summary))
+		} else {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", skill.Name, skill.Description))
+		}
+	}
+	return sb.String()
+}
+
+// GetSkill 按名称查找 skill
+func (sm *SkillManager) GetSkill(name string) *SkillEntry {
+	for i := range sm.skills {
+		if sm.skills[i].Name == name {
+			return &sm.skills[i]
+		}
+	}
+	return nil
 }
 
 // SetMemoryDir 设置记忆目录路径（用于加载 auto_skill 汇总文件）

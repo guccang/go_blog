@@ -90,7 +90,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		session.mu.Lock()
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
-			systemPrompt := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
+			systemPrompt, _ := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
 			session.Messages = []Message{
 				{Role: "system", Content: systemPrompt},
 				{Role: "user", Content: payload.Query},
@@ -270,7 +270,8 @@ var defaultTaskGuide = `
 
 // buildAssistantSystemPrompt 构建 assistant 的系统提示（按 DisclosureLevel 条件注入各区块）
 // policyResult 为 nil 时默认 LevelTwo（兼容旧调用）
-func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, policyResult *PolicyResult) string {
+// 返回 prompt 文本和各区块字符统计
+func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, policyResult *PolicyResult) (string, []PromptSection) {
 	// ??????? selectedSkills
 	if policyResult == nil {
 		pr := b.ApplyPolicyPipeline(query, tools)
@@ -283,56 +284,61 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	selectedSkills = policyResult.SelectedSkills
 
 	var sb strings.Builder
+	var sections []PromptSection
+
+	// 辅助函数：写入一个段并记录字符数
+	writeSection := func(name, content string) {
+		if content == "" {
+			return
+		}
+		chars := len([]rune(content))
+		sb.WriteString(content)
+		sections = append(sections, PromptSection{Name: name, Chars: chars})
+	}
 
 	// 人设系统提示（始终保留）
+	var personaContent string
 	if b.persona != nil {
-		sb.WriteString(b.persona.BuildSystemPrompt())
+		personaContent = b.persona.BuildSystemPrompt()
 	} else {
-		persona := loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
-		sb.WriteString(persona)
+		personaContent = loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
 	}
-	sb.WriteString("\n\n")
+	personaContent += "\n\n"
 
 	now := time.Now()
 	today := now.Format("2006-01-02")
-	sb.WriteString(fmt.Sprintf("account: %s\n", account))
-	sb.WriteString(fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
-	sb.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens))
+	personaContent += fmt.Sprintf("account: %s\n", account)
+	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
+	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens)
+	writeSection("人设/基础", personaContent)
 
 	// Agent 描述：LevelZero 跳过，LevelOne/LevelTwo 按工具过滤
 	if level >= LevelOne {
 		agentBlock := b.getFilteredAgentDescriptionBlock(tools)
-		if agentBlock != "" {
-			sb.WriteString(agentBlock)
-		}
+		writeSection("Agent能力", agentBlock)
 	}
 
-	// Skill 目录（含 summary）：LevelZero 跳过，LevelOne/LevelTwo 注入
-	if level >= LevelOne && b.skillMgr != nil {
-		catalog := b.skillMgr.BuildCatalog()
-		if catalog != "" {
-			sb.WriteString(catalog)
-		}
+	// Skill 目录（始终注入，提示通过 execute_skill 工具调用）
+	if b.skillMgr != nil {
+		catalog := b.skillMgr.BuildCatalogWithToolHint()
+		writeSection("Skill目录", catalog)
 	}
 
 	// 长期记忆（始终保留）
 	if b.memoryMgr != nil {
 		memoryBlock := b.memoryMgr.BuildPromptBlock()
-		if memoryBlock != "" {
-			sb.WriteString(memoryBlock)
-		}
+		writeSection("长期记忆", memoryBlock)
+	}
+
+	// 用户规则
+	if b.memoryMgr != nil {
+		rulesBlock := b.memoryMgr.BuildRulePromptBlock()
+		writeSection("用户规则", rulesBlock)
 	}
 
 	// 任务拆解指引（始终保留）
 	taskGuide := loadWorkspaceFile(b.cfg.WorkspaceDir, "TASK_GUIDE.md", defaultTaskGuide)
-	sb.WriteString("\n")
-	sb.WriteString(taskGuide)
-
-	// Skill 详情：仅 LevelTwo 注入
-	if level == LevelTwo && b.skillMgr != nil && len(selectedSkills) > 0 {
-		skillBlock := b.skillMgr.BuildSkillBlock(selectedSkills)
-		sb.WriteString(skillBlock)
-	}
+	writeSection("任务指引", "\n"+taskGuide)
 
 	// 上下文数据：仅 LevelTwo 时按原逻辑注入
 	if level == LevelTwo {
@@ -381,13 +387,13 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 			}
 
 			if len(ctxParts) > 0 {
-				sb.WriteString("\n用户当前数据:\n")
-				sb.WriteString(strings.Join(ctxParts, "\n\n"))
+				ctxContent := "\n用户当前数据:\n" + strings.Join(ctxParts, "\n\n")
+				writeSection("上下文数据", ctxContent)
 			}
 		}
 	}
 
-	return sb.String()
+	return sb.String(), sections
 }
 
 // chineseWeekday 返回中文星期名称

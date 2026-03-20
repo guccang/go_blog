@@ -12,16 +12,23 @@ import (
 	"time"
 )
 
+// PromptSection system prompt 中各区块的字符统计
+type PromptSection struct {
+	Name  string `json:"name"`
+	Chars int    `json:"chars"`
+}
+
 // ChatSession 通用聊天会话
 type ChatSession struct {
-	SessionKey   string    `json:"session_key"`    // "{source}_{userID}"
-	Source       string    `json:"source"`         // "wechat" | "web" | "api"
-	UserID       string    `json:"user_id"`
-	Account      string    `json:"account"`
-	SessionID    string    `json:"session_id"`     // 唯一ID（用于持久化文件名）
-	Messages     []Message `json:"messages"`
-	LastActiveAt time.Time `json:"last_active_at"`
-	TurnCount    int       `json:"turn_count"`
+	SessionKey     string          `json:"session_key"`     // "{source}_{userID}"
+	Source         string          `json:"source"`          // "wechat" | "web" | "api"
+	UserID         string          `json:"user_id"`
+	Account        string          `json:"account"`
+	SessionID      string          `json:"session_id"`      // 唯一ID（用于持久化文件名）
+	Messages       []Message       `json:"messages"`
+	LastActiveAt   time.Time       `json:"last_active_at"`
+	TurnCount      int             `json:"turn_count"`
+	PromptSections []PromptSection `json:"prompt_sections"` // system prompt 各区块字符统计
 
 	mu         sync.Mutex         `json:"-"` // 保护 Messages 等字段
 	processing sync.Mutex         `json:"-"` // 序列化同一用户的消息处理

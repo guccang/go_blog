@@ -171,6 +171,25 @@ func (e *Executor) Execute(code string) *ExecutionResult {
 				continue
 			}
 
+			// 拦截虚拟工具（这些工具仅在 LLM Agent 主循环中处理，不可在 ExecuteCode 中调用）
+			if isVirtualTool(req.Tool) {
+				log.Printf("[Executor] blocked virtual tool call: %s", req.Tool)
+				resp := toolCallResponse{
+					Success: false,
+					Error:   fmt.Sprintf("%s 是虚拟工具，不能在 ExecuteCode 中调用。请直接使用具体工具（如 RawAddTodo, RawGetTodosByDate 等）", req.Tool),
+				}
+				respData, _ := json.Marshal(resp)
+				stdin.Write(append(respData, '\n'))
+
+				// 记录为失败调用
+				result.ToolCalls = append(result.ToolCalls, ToolCallRecord{
+					Tool:    req.Tool,
+					Success: false,
+					Error:   resp.Error,
+				})
+				continue
+			}
+
 			// 通过 UAP 调用真正的 MCP 工具
 			toolStart := time.Now()
 			toolResult, toolAgentID, toolErr := e.callTool(req.Tool, req.Args)
@@ -259,6 +278,15 @@ func (e *Executor) Execute(code string) *ExecutionResult {
 	}
 
 	return result
+}
+
+// isVirtualTool 判断是否为虚拟工具（仅在 LLM Agent 主循环中处理，不可在 ExecuteCode 中调用）
+func isVirtualTool(name string) bool {
+	switch name {
+	case "execute_skill", "plan_and_execute", "set_persona", "set_rule":
+		return true
+	}
+	return false
 }
 
 // tryParseRawJSON 尝试将字符串解析为原始 JSON，失败则包装为字符串

@@ -36,28 +36,18 @@ func (c *MemoryCollector) CollectAfterTask(toolCalls []ToolCallRecord) {
 
 	today := time.Now().Format("2006-01-02")
 
+	// 收集所有失败的工具调用，同时更新错误计数
+	var failedCalls []ToolCallRecord
 	for _, tc := range toolCalls {
 		if tc.Success {
 			continue
 		}
 
-		// 提取错误模式作为 errorKey
 		errorKey := buildErrorKey(tc.ToolName, tc.Result)
-
-		// 记录错误到记忆
-		content := fmt.Sprintf("%s 调用失败。参数: %s\n错误: %s",
-			tc.ToolName, truncate(tc.Arguments, 200), truncate(tc.Result, 300))
-
-		c.memoryMgr.AddEntry(MemoryEntry{
-			Date:     today,
-			Category: "error",
-			Source:   "tool_call",
-			Content:  content,
-		})
-
-		// 累计错误计数
 		count := c.memoryMgr.TrackError(errorKey)
 		log.Printf("[MemoryCollector] 错误记录: %s (累计 %d 次)", errorKey, count)
+
+		failedCalls = append(failedCalls, tc)
 
 		// 达到阈值 → 触发 skill 迭代
 		if count >= c.threshold {
@@ -65,8 +55,67 @@ func (c *MemoryCollector) CollectAfterTask(toolCalls []ToolCallRecord) {
 		}
 	}
 
+	if len(failedCalls) > 0 {
+		go c.summarizeAndStore(failedCalls, today)
+	}
+
 	// 任务结束后：整理 auto_skill 日期文件为汇总文件
 	go c.CompactAutoSkills()
+}
+
+// summarizeAndStore 用 LLM 将原始错误整理为简洁经验后存入记忆
+func (c *MemoryCollector) summarizeAndStore(failedCalls []ToolCallRecord, today string) {
+	// 构建错误摘要
+	var errorDetails strings.Builder
+	for i, tc := range failedCalls {
+		errorDetails.WriteString(fmt.Sprintf("%d. 工具: %s\n   参数: %s\n   错误: %s\n",
+			i+1, tc.ToolName, truncate(tc.Arguments, 150), truncate(tc.Result, 200)))
+	}
+
+	prompt := fmt.Sprintf(`将以下 %d 条工具调用错误整理为简洁的经验教训。
+要求：
+- 每条经验一行，提取错误模式和正确做法
+- 不要复述原始参数和错误堆栈
+- 总字数不超过 200 字
+- 只输出整理后的内容
+
+错误记录:
+%s`, len(failedCalls), errorDetails.String())
+
+	messages := []Message{
+		{Role: "system", Content: "你是一个错误分析助手，负责将工具调用错误整理为简洁实用的经验教训。"},
+		{Role: "user", Content: prompt},
+	}
+
+	text, _, err := c.bridge.sendLLM(messages, nil)
+	if err != nil {
+		log.Printf("[MemoryCollector] LLM 整理失败，存储简短摘要: %v", err)
+		// fallback: 存一条简短摘要，不存原始日志
+		var toolNames []string
+		seen := make(map[string]bool)
+		for _, tc := range failedCalls {
+			if !seen[tc.ToolName] {
+				toolNames = append(toolNames, tc.ToolName)
+				seen[tc.ToolName] = true
+			}
+		}
+		c.memoryMgr.AddEntry(MemoryEntry{
+			Date:     today,
+			Category: "error",
+			Source:   "tool_call",
+			Content:  fmt.Sprintf("%d 个工具调用失败: %s", len(failedCalls), strings.Join(toolNames, ", ")),
+		})
+		return
+	}
+
+	c.memoryMgr.AddEntry(MemoryEntry{
+		Date:     today,
+		Category: "pattern",
+		Source:   "tool_call",
+		Content:  strings.TrimSpace(text),
+	})
+
+	log.Printf("[MemoryCollector] 错误整理完成: %d 条错误 → %d 字符经验", len(failedCalls), len(text))
 }
 
 // buildErrorKey 从工具名和错误结果中提取错误模式键

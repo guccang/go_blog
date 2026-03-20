@@ -47,7 +47,8 @@ func isImportantEvent(event string) bool {
 		"synthesis_done",
 		"subtask_timeout", "subtask_llm_error",
 		"progress", "retry_detail", "modify_detail",
-		"route_info":
+		"route_info",
+		"skill_start", "skill_tool_call", "skill_tool_result", "skill_done":
 		return true
 	}
 	return false
@@ -123,6 +124,14 @@ func (s *WechatSink) OnEvent(event, text string) {
 		msg = "✏ " + text
 	case "route_info":
 		msg = "🧭 " + text
+	case "skill_start":
+		msg = "🎯 " + text
+	case "skill_tool_call":
+		msg = "⚙ " + text
+	case "skill_tool_result":
+		msg = text
+	case "skill_done":
+		msg = "✅ " + text
 	default:
 		return
 	}
@@ -258,11 +267,12 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
-		systemPrompt := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
+		systemPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
 		session.Messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: content},
 		}
+		session.PromptSections = promptSections
 		log.Printf("[Wechat] 新会话 sessionID=%s user=%s", session.SessionID, wechatUser)
 	} else {
 		// 续接对话：追加 user 消息
@@ -359,6 +369,8 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 	maxTurns := b.sessionMgr.maxTurns
 	msgs := make([]Message, len(session.Messages))
 	copy(msgs, session.Messages)
+	promptSections := make([]PromptSection, len(session.PromptSections))
+	copy(promptSections, session.PromptSections)
 	session.mu.Unlock()
 
 	var sb strings.Builder
@@ -370,70 +382,17 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 	sb.WriteString(fmt.Sprintf("⏱ 活跃: %s | 轮次: %d/%d\n", lastActive.Format("2006-01-02 15:04"), turnCount, maxTurns))
 	sb.WriteString(fmt.Sprintf("📨 消息数: %d\n", len(msgs)))
 
-	// 解析 system prompt 各层
+	// System Prompt 各层字符统计（使用构建时记录的数据）
 	if len(msgs) > 0 && msgs[0].Role == "system" {
-		sysContent := msgs[0].Content
-		sb.WriteString(fmt.Sprintf("\n📝 System Prompt (%s chars):\n", formatTokenCount(int64(len([]rune(sysContent))))))
+		sysChars := len([]rune(msgs[0].Content))
+		sb.WriteString(fmt.Sprintf("\n📝 System Prompt (%s chars):\n", formatTokenCount(int64(sysChars))))
 
-		type segment struct {
-			marker string
-			name   string
-		}
-		markers := []segment{
-			{"## 可用 Agent 能力", "Agent能力"},
-			{"## 可用技能", "Skill目录"},
-			{"## 长期记忆", "长期记忆"},
-			{"## 用户规则", "用户规则"},
-			{"## 任务拆解", "任务指引"},
-			{"### ", "Skill详情"},
-			{"用户当前数据:", "上下文数据"},
-		}
-
-		// 找到每个标记的位置
-		type found struct {
-			name string
-			pos  int
-		}
-		var positions []found
-		for _, m := range markers {
-			idx := strings.Index(sysContent, m.marker)
-			if idx >= 0 {
-				positions = append(positions, found{m.name, idx})
+		if len(promptSections) > 0 {
+			for _, sec := range promptSections {
+				sb.WriteString(fmt.Sprintf("  · %s: %d chars\n", sec.Name, sec.Chars))
 			}
-		}
-
-		// 按位置排序
-		for i := 0; i < len(positions); i++ {
-			for j := i + 1; j < len(positions); j++ {
-				if positions[j].pos < positions[i].pos {
-					positions[i], positions[j] = positions[j], positions[i]
-				}
-			}
-		}
-
-		// 计算每段字符数
-		runes := []rune(sysContent)
-		totalRunes := len(runes)
-
-		if len(positions) == 0 {
-			sb.WriteString(fmt.Sprintf("  · 全部: %d chars\n", totalRunes))
 		} else {
-			// 第一段：人设+基础信息（从开头到第一个标记）
-			firstPos := positions[0].pos
-			// 将 byte pos 转为 rune count
-			personaChars := len([]rune(sysContent[:firstPos]))
-			sb.WriteString(fmt.Sprintf("  · 人设/基础: %d chars\n", personaChars))
-
-			for i, p := range positions {
-				var endByte int
-				if i+1 < len(positions) {
-					endByte = positions[i+1].pos
-				} else {
-					endByte = len(sysContent)
-				}
-				segChars := len([]rune(sysContent[p.pos:endByte]))
-				sb.WriteString(fmt.Sprintf("  · %s: %d chars\n", p.name, segChars))
-			}
+			sb.WriteString(fmt.Sprintf("  · 全部: %d chars (无分段数据)\n", sysChars))
 		}
 	}
 
