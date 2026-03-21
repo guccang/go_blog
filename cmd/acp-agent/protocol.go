@@ -12,22 +12,22 @@ const (
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {
-	AgentID       string        `json:"agent_id"`
-	Name          string        `json:"name"`
-	AgentType     string        `json:"agent_type"`
-	Workspaces    []string      `json:"workspaces"`
-	Projects      []ProjectInfo `json:"projects"`
-	MaxConcurrent int           `json:"max_concurrent"`
-	AuthToken     string        `json:"auth_token,omitempty"`
+	AgentID       string   `json:"agent_id"`
+	Name          string   `json:"name"`
+	AgentType     string   `json:"agent_type"`
+	Workspaces    []string `json:"workspaces"`
+	Projects      []string `json:"projects"`
+	MaxConcurrent int      `json:"max_concurrent"`
+	AuthToken     string   `json:"auth_token,omitempty"`
 }
 
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
-	AgentID        string        `json:"agent_id"`
-	AgentType      string        `json:"agent_type"`
-	ActiveSessions int           `json:"active_sessions"`
-	Load           float64       `json:"load"`
-	Projects       []ProjectInfo `json:"projects,omitempty"`
+	AgentID        string   `json:"agent_id"`
+	AgentType      string   `json:"agent_type"`
+	ActiveSessions int      `json:"active_sessions"`
+	Load           float64  `json:"load"`
+	Projects       []string `json:"projects,omitempty"`
 }
 
 // TaskCompletePayload 任务完成（tool_call 完成通知）

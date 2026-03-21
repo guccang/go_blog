@@ -116,7 +116,7 @@ func (c *Connection) buildRegisterPayload() interface{} {
 		Name:          c.cfg.AgentName,
 		AgentType:     c.cfg.AgentType,
 		Workspaces:    c.cfg.Workspaces,
-		Projects:      c.agent.ScanProjects(),
+		Projects:      projectNames(c.agent.ScanProjects()),
 		MaxConcurrent: c.cfg.MaxConcurrent,
 		AuthToken:     c.cfg.AuthToken,
 	}
@@ -128,8 +128,17 @@ func (c *Connection) buildHeartbeatPayload() interface{} {
 		AgentType:      c.cfg.AgentType,
 		ActiveSessions: c.agent.ActiveCount(),
 		Load:           c.agent.LoadFactor(),
-		Projects:       c.agent.ScanProjects(),
+		Projects:       projectNames(c.agent.ScanProjects()),
 	}
+}
+
+// projectNames 从 ProjectInfo 列表提取项目名
+func projectNames(projects []ProjectInfo) []string {
+	names := make([]string, len(projects))
+	for i, p := range projects {
+		names[i] = p.Name
+	}
+	return names
 }
 
 // ========================= Tool 定义 =========================
