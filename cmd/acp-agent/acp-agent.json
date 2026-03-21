@@ -8,7 +8,7 @@
   ],
   "acp_agent_cmd": "npx",
   "acp_agent_args": ["-y", "@zed-industries/claude-agent-acp@latest"],
-  "default_settings": "default.json",
+  "default_settings": "default",
   "claude_path": "claude",
   "max_concurrent": 2,
   "max_turns": 20,

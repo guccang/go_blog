@@ -1,6 +1,10 @@
 {
   "env": {
     "ANTHROPIC_AUTH_TOKEN":"sk-Se3HdrschrYk9XggGtTt3rarGLdzct1dXnQ8aefTPckBXGOF",
-    "ANTHROPIC_BASE_URL":"https://cc.zhihuiapi.top"
-  }
+    "ANTHROPIC_BASE_URL":"https://cc.zhihuiapi.top",
+    "ANTHROPIC_DEFAULT_MODEL":"",
+    "API_TIMEOUT_MS":"3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":1
+  },
+  "model":"claude-opus-4-6"
 }

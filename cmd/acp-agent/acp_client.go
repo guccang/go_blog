@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -365,6 +366,11 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	cmd.Dir = projectPath
 	cmd.Stderr = os.Stderr
 
+	// 读取 settings 文件：打印 model + 自动映射 ANTHROPIC_AUTH_TOKEN → ANTHROPIC_API_KEY
+	if settingsPath := extractSettingsPath(allArgs); settingsPath != "" {
+		applySettingsEnv(cmd, settingsPath)
+	}
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
@@ -502,4 +508,62 @@ func hasSettingsArg(args []string) bool {
 		}
 	}
 	return false
+}
+
+// extractSettingsPath 从参数列表中提取 --settings 文件路径
+func extractSettingsPath(args []string) string {
+	for i, a := range args {
+		if a == "--settings" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// applySettingsEnv 读取 settings 文件，打印 model，并将 env 注入 cmd 环境
+// 自动将 ANTHROPIC_AUTH_TOKEN 映射为 ANTHROPIC_API_KEY（兼容第三方代理）
+func applySettingsEnv(cmd *exec.Cmd, settingsFile string) {
+	data, err := os.ReadFile(settingsFile)
+	if err != nil {
+		log.Printf("[ACP] warning: cannot read settings file %s: %v", settingsFile, err)
+		return
+	}
+
+	var settings struct {
+		Env   map[string]interface{} `json:"env"`
+		Model string                 `json:"model"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("[ACP] warning: cannot parse settings file: %v", err)
+		return
+	}
+
+	if settings.Model != "" {
+		log.Printf("[ACP] settings model: %s", settings.Model)
+	}
+
+	if len(settings.Env) == 0 {
+		return
+	}
+
+	// 将 settings 中的 env 注入 cmd 环境
+	cmd.Env = os.Environ()
+	authToken := ""
+	hasAPIKey := false
+	for k, v := range settings.Env {
+		val := fmt.Sprintf("%v", v)
+		cmd.Env = append(cmd.Env, k+"="+val)
+		if k == "ANTHROPIC_AUTH_TOKEN" {
+			authToken = val
+		}
+		if k == "ANTHROPIC_API_KEY" {
+			hasAPIKey = true
+		}
+	}
+
+	// 自动映射：ANTHROPIC_AUTH_TOKEN → ANTHROPIC_API_KEY
+	if !hasAPIKey && authToken != "" {
+		cmd.Env = append(cmd.Env, "ANTHROPIC_API_KEY="+authToken)
+		log.Printf("[ACP] auto-mapped ANTHROPIC_AUTH_TOKEN → ANTHROPIC_API_KEY")
+	}
 }
