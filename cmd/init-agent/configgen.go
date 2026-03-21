@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -14,6 +15,211 @@ import (
 type AgentConfigValues struct {
 	AgentName string
 	Values    map[string]any
+}
+
+// AgentConfigInfo holds a dynamically discovered agent configuration.
+type AgentConfigInfo struct {
+	Name       string         `json:"name"`        // Agent name (directory name)
+	Dir        string         `json:"dir"`         // Relative directory path (e.g., "cmd/acp-agent")
+	ConfigPath string         `json:"config_path"` // Relative config file path
+	Values     map[string]any `json:"values"`      // Parsed JSON key-value pairs
+}
+
+// DiscoverAgentConfigs scans cmd/*/ directories for JSON config files.
+// It skips cmd/common and cmd/init-agent.
+func DiscoverAgentConfigs(rootDir string) []AgentConfigInfo {
+	cmdDir := filepath.Join(rootDir, "cmd")
+	entries, err := os.ReadDir(cmdDir)
+	if err != nil {
+		return nil
+	}
+
+	var results []AgentConfigInfo
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if name == "common" || name == "init-agent" {
+			continue
+		}
+
+		agentDir := filepath.Join(cmdDir, name)
+		configPath := ""
+
+		// Strategy 1: look for {dir-name}.json
+		candidate := filepath.Join(agentDir, name+".json")
+		if fileExistsAt(candidate) {
+			configPath = candidate
+		}
+
+		// Strategy 2: look for any *.json file in the directory
+		if configPath == "" {
+			jsons, _ := filepath.Glob(filepath.Join(agentDir, "*.json"))
+			if len(jsons) > 0 {
+				configPath = jsons[0]
+			}
+		}
+
+		if configPath == "" {
+			continue
+		}
+
+		// Read and parse the JSON config
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			continue
+		}
+		var values map[string]any
+		if err := json.Unmarshal(data, &values); err != nil {
+			continue
+		}
+
+		relDir := "cmd/" + name
+		relConfig := relDir + "/" + filepath.Base(configPath)
+
+		results = append(results, AgentConfigInfo{
+			Name:       name,
+			Dir:        relDir,
+			ConfigPath: relConfig,
+			Values:     values,
+		})
+	}
+
+	return results
+}
+
+func fileExistsAt(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// InferFieldType returns the inferred form field type from a JSON value.
+// Returns: "string", "number", "bool", "array", "object"
+func InferFieldType(value any) string {
+	if value == nil {
+		return "string"
+	}
+	switch value.(type) {
+	case float64, int:
+		return "number"
+	case bool:
+		return "bool"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	default:
+		return "string"
+	}
+}
+
+// FormatValueForDisplay converts a JSON value to a display string for the form.
+func FormatValueForDisplay(value any) string {
+	if value == nil {
+		return ""
+	}
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		if v == float64(int(v)) {
+			return strconv.Itoa(int(v))
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(v)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			parts = append(parts, fmt.Sprintf("%v", item))
+		}
+		return strings.Join(parts, ",")
+	case map[string]any:
+		data, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(data)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// ParseInputValue parses user input back to the original JSON type based on originalValue's type.
+func ParseInputValue(input string, originalValue any) any {
+	if originalValue == nil {
+		return input
+	}
+	switch originalValue.(type) {
+	case float64:
+		if f, err := strconv.ParseFloat(input, 64); err == nil {
+			return f
+		}
+		return input
+	case int:
+		if i, err := strconv.Atoi(input); err == nil {
+			return i
+		}
+		return input
+	case bool:
+		return ParseBoolValue(input)
+	case []any:
+		parts := ParseStringSlice(input)
+		result := make([]any, len(parts))
+		for i, p := range parts {
+			result[i] = p
+		}
+		return result
+	case map[string]any:
+		var m map[string]any
+		if err := json.Unmarshal([]byte(input), &m); err == nil {
+			return m
+		}
+		return input
+	default:
+		return input
+	}
+}
+
+// SortedKeys returns the keys of a map in sorted order.
+func SortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// WriteDiscoveredConfig writes values directly back to the agent's JSON config file.
+func WriteDiscoveredConfig(rootDir string, info AgentConfigInfo, values map[string]any) (string, error) {
+	path := filepath.Join(rootDir, info.ConfigPath)
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("创建目录失败: %v", err)
+	}
+
+	data, err := json.MarshalIndent(values, "", "    ")
+	if err != nil {
+		return "", fmt.Errorf("序列化 JSON 失败: %v", err)
+	}
+	return path, os.WriteFile(path, append(data, '\n'), 0644)
+}
+
+// PreviewDiscoveredConfig returns a formatted JSON preview string.
+func PreviewDiscoveredConfig(values map[string]any) string {
+	data, err := json.MarshalIndent(values, "  ", "    ")
+	if err != nil {
+		return fmt.Sprintf("  (preview error: %v)", err)
+	}
+	return "  " + string(data)
 }
 
 // LoadExistingConfig reads an existing config file and returns its values as a map.

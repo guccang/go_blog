@@ -246,6 +246,22 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "webhook_url", Label: "Webhook URL", Description: "群机器人 Webhook URL（可选）", Type: FieldURL, Required: false, DefaultValue: "", Group: "custom"},
 			},
 		},
+		{
+			Name: "init-agent", ConfigFileName: "init-agent.json",
+			Dir: "cmd/init-agent", Description: "初始化向导（环境检测、配置生成、可用性面板）",
+			DefaultPort: 9090,
+			Fields: []ConfigField{
+				{Key: "mode", Label: "运行模式", Description: "运行模式: cli 或 web", Type: FieldString, Required: false, DefaultValue: "cli", Group: "custom"},
+				{Key: "web_port", Label: "Web 端口", Description: "Web 模式监听端口", Type: FieldPort, Required: false, DefaultValue: 9090, Group: "custom"},
+				{Key: "root_dir", Label: "Monorepo 根目录", Description: "monorepo 根目录（留空自动检测）", Type: FieldPath, Required: false, DefaultValue: "", Group: "custom"},
+				{Key: "check_only", Label: "仅环境检测", Description: "仅运行环境检测", Type: FieldBool, Required: false, DefaultValue: false, Group: "custom"},
+				{Key: "dashboard_only", Label: "仅可用性面板", Description: "仅显示可用性面板", Type: FieldBool, Required: false, DefaultValue: false, Group: "custom"},
+				{Key: "non_interactive", Label: "非交互模式", Description: "接受所有默认值", Type: FieldBool, Required: false, DefaultValue: false, Group: "custom"},
+				{Key: "server_url", Label: "Gateway WebSocket URL", Description: "向导默认 Gateway WebSocket 地址", Type: FieldURL, Required: false, DefaultValue: "ws://127.0.0.1:10086/ws/uap", Group: "gateway"},
+				{Key: "gateway_http", Label: "Gateway HTTP URL", Description: "向导默认 Gateway HTTP 地址", Type: FieldURL, Required: false, DefaultValue: "http://127.0.0.1:10086", Group: "gateway"},
+				{Key: "auth_token", Label: "Auth Token", Description: "向导默认 Gateway 认证令牌", Type: FieldString, Required: false, DefaultValue: "", Group: "gateway"},
+			},
+		},
 	}
 }
 

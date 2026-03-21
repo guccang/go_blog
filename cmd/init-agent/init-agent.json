@@ -1,0 +1,11 @@
+{
+    "auth_token": "",
+    "check_only": false,
+    "dashboard_only": false,
+    "gateway_http": "http://blog.guccang.cn:10086",
+    "mode": "web",
+    "non_interactive": false,
+    "root_dir": "",
+    "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+    "web_port": 9090
+}

@@ -1,8 +1,8 @@
 {
-  "listen": ":8883",
-  "auth_token": "guccang@blog.guccang.cn",
-  "upload_dir": "./uploads",
-  "max_upload_size_mb": 200,
-  "deploy_timeout_sec": 120,
-  "log_retain_count": 50
+    "auth_token": "guccang@blog.guccang.cn",
+    "deploy_timeout_sec": 120,
+    "listen": ":8883",
+    "log_retain_count": 50,
+    "max_upload_size_mb": 200,
+    "upload_dir": "./uploads"
 }

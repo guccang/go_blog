@@ -1,15 +1,16 @@
 {
-  "server_url": "ws://blog.guccang.cn:10086/ws/uap",
-  "gateway_http": "http://blog.guccang.cn:10086",
-  "auth_token": "guccang@blog.guccang.cn",
-  "agent_name": "mcp-agent",
-  "tool_prefix": "mcp",
-  "tool_call_timeout_sec": 30,
-  "mcp_servers": {
-    "amap": {
-      "transport": "http",
-      "url": "https://mcp.amap.com/mcp?key=63acd41bb8f61db0a2ec25829f2ede2a",
-      "enabled": true
-    }
-  }
+    "agent_name": "mcp-agent",
+    "auth_token": "guccang@blog.guccang.cn",
+    "gateway_http": "http://blog.guccang.cn:10086",
+    "max_concurrent": 3,
+    "mcp_servers": {
+        "amap": {
+            "enabled": true,
+            "transport": "http",
+            "url": "https://mcp.amap.com/mcp?key=63acd41bb8f61db0a2ec25829f2ede2a"
+        }
+    },
+    "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+    "tool_call_timeout_sec": 30,
+    "tool_prefix": "mcp"
 }
