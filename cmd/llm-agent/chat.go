@@ -194,6 +194,44 @@ func isStopCommand(content string) bool {
 func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	log.Printf("[Wechat] from=%s user=%s content=%s", fromAgent, wechatUser, content)
 
+	// 0. Claude Mode 命令: /claude 进入
+	if isClaudeCommand(content) {
+		b.handleClaudeCommand(fromAgent, wechatUser, content)
+		return
+	}
+
+	// 0.1 Claude Mode 内置命令: cc exit / cc stop / cc plan / cc code
+	if cmd, ok := isClaudeModeCommand(content); ok {
+		session := b.sessionMgr.Get("wechat", wechatUser)
+		if session != nil && session.ClaudeMode {
+			switch cmd {
+			case "exit":
+				b.exitClaudeMode(session, fromAgent, wechatUser)
+			case "stop":
+				b.stopClaudeSession(session, fromAgent, wechatUser)
+			case "plan":
+				b.handleModeSwitch(session, fromAgent, wechatUser, "plan")
+			case "code":
+				b.handleModeSwitch(session, fromAgent, wechatUser, "code")
+			}
+			return
+		}
+		// 不在 Claude Mode 中，当做普通消息继续
+	}
+
+	// 0.2 Claude Mode 消息路由: 权限回复或转发 prompt
+	existingSession := b.sessionMgr.Get("wechat", wechatUser)
+	if existingSession != nil && existingSession.ClaudeMode {
+		if existingSession.HasPendingPermission() {
+			// 有待处理的权限请求 → 当做权限回复
+			b.handlePermissionReply(existingSession, fromAgent, wechatUser, content)
+		} else {
+			// 无 pending → 当做新 prompt 发给 Claude
+			go b.handleClaudeModeMessage(existingSession, fromAgent, wechatUser, content)
+		}
+		return
+	}
+
 	// 1. 检查是否为重置命令
 	if isConversationResetCommand(content) {
 		b.sessionMgr.Reset("wechat", wechatUser)

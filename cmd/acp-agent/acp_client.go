@@ -43,6 +43,20 @@ type ACPClientImpl struct {
 	filesWritten []string
 	filesEdited  []string
 	resultText   string
+
+	// 交互式权限模式
+	interactive  bool
+	permissionCh chan permissionResponse
+	onPermission func(acp.RequestPermissionRequest) // 权限请求外发回调
+
+	// 模式信息
+	availableModes []acp.SessionMode
+}
+
+// permissionResponse 权限回复
+type permissionResponse struct {
+	OptionID  string
+	Cancelled bool
 }
 
 // NewACPClientImpl 创建 ACP Client 实现
@@ -127,6 +141,34 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 		}
 	}
 
+	// Plan 事件：格式化执行计划推送
+	if update.Plan != nil {
+		planText := formatPlan(update.Plan.Entries)
+		log.Printf("[ACP] plan update: %d entries", len(update.Plan.Entries))
+
+		c.mu.Lock()
+		cb := c.streamCb
+		c.mu.Unlock()
+
+		if cb != nil {
+			cb(StreamEvent{Type: "plan", Text: planText})
+		}
+	}
+
+	// Mode 切换事件
+	if update.CurrentModeUpdate != nil {
+		modeID := string(update.CurrentModeUpdate.CurrentModeId)
+		log.Printf("[ACP] mode update: %s", modeID)
+
+		c.mu.Lock()
+		cb := c.streamCb
+		c.mu.Unlock()
+
+		if cb != nil {
+			cb(StreamEvent{Type: "mode", Text: fmt.Sprintf("🔄 模式: %s", modeID)})
+		}
+	}
+
 	return nil
 }
 
@@ -198,9 +240,45 @@ func (c *ACPClientImpl) WriteTextFile(ctx context.Context, params acp.WriteTextF
 	return acp.WriteTextFileResponse{}, nil
 }
 
-// RequestPermission 自动允许所有操作
+// RequestPermission 处理权限请求（自动模式：自动批准 / 交互模式：转发等待用户回复）
 func (c *ACPClientImpl) RequestPermission(ctx context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	// 查找 allow_once 选项
+	// 交互模式：通过回调发给 llm-agent，阻塞等待用户回复
+	if c.interactive && c.onPermission != nil {
+		log.Printf("[ACP] permission request (interactive): tool=%v options=%d", params.ToolCall.Title, len(params.Options))
+		c.onPermission(params)
+
+		// 阻塞等待用户回复
+		select {
+		case resp := <-c.permissionCh:
+			if resp.Cancelled {
+				return acp.RequestPermissionResponse{
+					Outcome: acp.RequestPermissionOutcome{
+						Cancelled: &acp.RequestPermissionOutcomeCancelled{
+							Outcome: "cancelled",
+						},
+					},
+				}, nil
+			}
+			return acp.RequestPermissionResponse{
+				Outcome: acp.RequestPermissionOutcome{
+					Selected: &acp.RequestPermissionOutcomeSelected{
+						OptionId: acp.PermissionOptionId(resp.OptionID),
+						Outcome:  "selected",
+					},
+				},
+			}, nil
+		case <-ctx.Done():
+			return acp.RequestPermissionResponse{
+				Outcome: acp.RequestPermissionOutcome{
+					Cancelled: &acp.RequestPermissionOutcomeCancelled{
+						Outcome: "cancelled",
+					},
+				},
+			}, nil
+		}
+	}
+
+	// 自动模式：查找 allow_once 选项
 	for _, opt := range params.Options {
 		if opt.Kind == acp.PermissionOptionKindAllowOnce {
 			return acp.RequestPermissionResponse{
@@ -225,6 +303,13 @@ func (c *ACPClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 		}, nil
 	}
 	return acp.RequestPermissionResponse{}, nil
+}
+
+// RespondPermission 从外部注入权限回复（由 agent.go 调用）
+func (c *ACPClientImpl) RespondPermission(optionID string, cancelled bool) {
+	if c.permissionCh != nil {
+		c.permissionCh <- permissionResponse{OptionID: optionID, Cancelled: cancelled}
+	}
 }
 
 // CreateTerminal 创建终端
@@ -253,11 +338,19 @@ func (c *ACPClientImpl) WaitForTerminalExit(ctx context.Context, params acp.Wait
 }
 
 // StartACPSession 启动 ACP 会话（WriteTextFile 始终启用）
-func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string) (*ACPSession, *ACPClientImpl, error) {
+// extraArgs 追加到 cfg.ACPAgentArgs 后面，用于传递动态 CLI 参数
+func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, extraArgs []string) (*ACPSession, *ACPClientImpl, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
+	// 拼接基础参数 + 动态参数
+	allArgs := append([]string{}, cfg.ACPAgentArgs...)
+
+	// 解析 --settings <name>: 转为绝对路径 settings/claudecode/<name>.json
+	resolvedExtra := resolveSettingsArgs(extraArgs, cfg.ClaudeCodeSettingsDir)
+	allArgs = append(allArgs, resolvedExtra...)
+
 	// 启动 claude-agent-acp 子进程
-	cmd := exec.CommandContext(ctx, cfg.ACPAgentCmd, cfg.ACPAgentArgs...)
+	cmd := exec.CommandContext(ctx, cfg.ACPAgentCmd, allArgs...)
 	cmd.Dir = projectPath
 	cmd.Stderr = os.Stderr
 
@@ -278,7 +371,7 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string) 
 		return nil, nil, fmt.Errorf("start acp agent: %v", err)
 	}
 
-	log.Printf("[ACP] started %s %s (pid=%d, dir=%s)", cfg.ACPAgentCmd, strings.Join(cfg.ACPAgentArgs, " "), cmd.Process.Pid, projectPath)
+	log.Printf("[ACP] started %s %s (pid=%d, dir=%s)", cfg.ACPAgentCmd, strings.Join(allArgs, " "), cmd.Process.Pid, projectPath)
 
 	// 创建 ACP Client 实现
 	client := NewACPClientImpl(projectPath)
@@ -325,6 +418,14 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string) 
 
 	log.Printf("[ACP] session created: id=%s", sessResp.SessionId)
 
+	// 保存可用模式列表
+	if sessResp.Modes != nil {
+		client.mu.Lock()
+		client.availableModes = sessResp.Modes.AvailableModes
+		client.mu.Unlock()
+		log.Printf("[ACP] available modes: %d", len(sessResp.Modes.AvailableModes))
+	}
+
 	session := &ACPSession{
 		cmd:       cmd,
 		conn:      conn,
@@ -333,4 +434,51 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string) 
 	}
 
 	return session, client, nil
+}
+
+// formatPlan 格式化 PlanEntry[] 为可读文本
+func formatPlan(entries []acp.PlanEntry) string {
+	if len(entries) == 0 {
+		return "📋 执行计划: (空)"
+	}
+	var sb strings.Builder
+	sb.WriteString("📋 执行计划:\n")
+	for i, entry := range entries {
+		var icon string
+		switch entry.Status {
+		case acp.PlanEntryStatusCompleted:
+			icon = "✅"
+		case acp.PlanEntryStatusInProgress:
+			icon = "▶"
+		default:
+			icon = "⏳"
+		}
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, icon, entry.Content))
+	}
+	return sb.String()
+}
+
+// resolveSettingsArgs 解析 extraArgs 中的 --settings <name>，转为绝对路径
+func resolveSettingsArgs(args []string, settingsDir string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	result := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--settings" && i+1 < len(args) {
+			name := args[i+1]
+			// 如果已经是文件路径（含 / 或 .json 后缀），直接使用
+			if strings.Contains(name, "/") || strings.HasSuffix(name, ".json") {
+				result = append(result, "--settings", name)
+			} else {
+				// 短名称 → settings/claudecode/<name>.json
+				settingsFile := filepath.Join(settingsDir, name+".json")
+				result = append(result, "--settings", settingsFile)
+			}
+			i++ // 跳过下一个参数
+		} else {
+			result = append(result, args[i])
+		}
+	}
+	return result
 }

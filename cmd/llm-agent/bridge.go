@@ -83,6 +83,10 @@ type Bridge struct {
 	toolProgressSinks map[string]EventSink // msgID → sink
 	toolProgressMu    sync.Mutex
 
+	// Claude Mode: 流式输出 sink（sessionKey → sink）
+	claudeSinks   map[string]*claudeStreamSink
+	claudeSinksMu sync.Mutex
+
 	// 通用会话上下文管理（替代微信专用）
 	sessionMgr *ChatSessionManager
 
@@ -169,6 +173,7 @@ func NewBridge(cfg *Config) *Bridge {
 		agentTools:        make(map[string][]LLMTool),
 		pending:           make(map[string]chan *toolResultWithFrom),
 		toolProgressSinks: make(map[string]EventSink),
+		claudeSinks:       make(map[string]*claudeStreamSink),
 		sessionMgr:        NewChatSessionManager(timeout, maxMessages, maxTurns, chatSessionDir),
 		sourceLLMs:        sourceLLMs,
 		activeTasks:       make(map[string]string),
@@ -1434,6 +1439,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		}
 		if payload.Channel == "wechat" {
 			go b.handleWechatMessage(msg.From, payload.To, payload.Content)
+		} else if payload.Channel == "acp_stream" {
+			// Claude Mode: acp-agent 发来的流式事件
+			b.handleACPStreamEvent(payload)
 		} else if payload.Channel == "tool_progress" {
 			// deploy-agent 等发送的工具执行进度，payload.To 是工具调用 msgID
 			b.toolProgressMu.Lock()
@@ -1462,6 +1470,15 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		} else {
 			log.Printf("[Bridge] no pending request for %s (from=%s)", payload.RequestID, msg.From)
 		}
+
+	case uap.MsgPermissionRequest:
+		// Claude Mode: acp-agent 发来的权限请求
+		var payload uap.PermissionRequestPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			log.Printf("[Bridge] invalid permission_request payload: %v", err)
+			return
+		}
+		b.handlePermissionRequest(msg.From, payload)
 
 	case uap.MsgError:
 		var payload uap.ErrorPayload
@@ -1631,6 +1648,111 @@ func (b *Bridge) RecoverInProgressTasks() {
 			log.Printf("[Bridge] recover: skipped %s (queue full)", rid)
 		}
 	}
+}
+
+// ========================= Claude Mode 事件处理 =========================
+
+// handleACPStreamEvent 处理 acp-agent 发来的流式事件（Claude Mode）
+func (b *Bridge) handleACPStreamEvent(payload uap.NotifyPayload) {
+	// payload.Content 是 JSON 序列化的 StreamEventPayload
+	var evt StreamEventPayload
+	if err := json.Unmarshal([]byte(payload.Content), &evt); err != nil {
+		log.Printf("[Bridge] invalid acp_stream payload: %v", err)
+		return
+	}
+
+	// 通过 ClaudeSessionID 反查对应的 wechat user session key
+	var sinkKey string
+	b.sessionMgr.mu.RLock()
+	for key, session := range b.sessionMgr.sessions {
+		if session.ClaudeMode && session.ClaudeSessionID == evt.SessionID {
+			sinkKey = key
+			break
+		}
+	}
+	b.sessionMgr.mu.RUnlock()
+
+	// 查找对应的 claude stream sink
+	b.claudeSinksMu.Lock()
+	sink, ok := b.claudeSinks[sinkKey]
+	if !ok {
+		// fallback: 尝试任意一个 sink
+		for _, s := range b.claudeSinks {
+			sink = s
+			break
+		}
+	}
+	b.claudeSinksMu.Unlock()
+
+	if sink == nil {
+		log.Printf("[Bridge] no claude sink for acp_stream event session=%s", evt.SessionID)
+		return
+	}
+
+	sink.onStreamEvent(evt)
+}
+
+// handlePermissionRequest 处理 acp-agent 发来的权限请求（Claude Mode 交互模式）
+func (b *Bridge) handlePermissionRequest(acpAgentID string, payload uap.PermissionRequestPayload) {
+	log.Printf("[Bridge] permission_request: session=%s title=%s options=%d", payload.SessionID, payload.Title, len(payload.Options))
+
+	// 通过 sessionID 反查 wechat user
+	var targetSession *ChatSession
+	var fromAgent, wechatUser string
+
+	b.sessionMgr.mu.RLock()
+	for _, session := range b.sessionMgr.sessions {
+		if session.ClaudeMode && session.ClaudeSessionID == payload.SessionID {
+			targetSession = session
+			fromAgent = session.ClaudeFromAgent
+			wechatUser = session.UserID
+			break
+		}
+	}
+	b.sessionMgr.mu.RUnlock()
+
+	if targetSession == nil {
+		log.Printf("[Bridge] no session found for permission request session=%s", payload.SessionID)
+		return
+	}
+
+	// 构建权限选项信息
+	options := make([]PermOptionInfo, len(payload.Options))
+	for i, opt := range payload.Options {
+		options[i] = PermOptionInfo{
+			Index:    opt.Index,
+			OptionID: opt.OptionID,
+			Name:     opt.Name,
+			Kind:     opt.Kind,
+		}
+	}
+
+	// 设置 pending permission
+	targetSession.SetPendingPermission(&PendingPermission{
+		RequestID:  payload.RequestID,
+		SessionID:  payload.SessionID,
+		ACPAgentID: acpAgentID,
+		Options:    options,
+	})
+
+	// 构建可读消息发给微信用户
+	var sb strings.Builder
+	sb.WriteString("🔒 请求授权\n")
+	sb.WriteString(fmt.Sprintf("操作: %s\n", payload.Title))
+	if payload.Content != "" {
+		content := payload.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		sb.WriteString(content + "\n")
+	}
+	sb.WriteString("\n")
+	for _, opt := range payload.Options {
+		sb.WriteString(fmt.Sprintf("%d. %s\n", opt.Index, opt.Name))
+	}
+	sb.WriteString("\n回复数字或 y/n")
+
+	b.sendWechat(fromAgent, wechatUser, sb.String())
 }
 
 // ========================= 工具函数 =========================

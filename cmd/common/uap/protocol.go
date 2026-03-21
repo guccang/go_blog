@@ -28,6 +28,13 @@ const (
 
 	// 错误
 	MsgError = "error"
+
+	// Claude Mode: 权限交互
+	MsgPermissionRequest  = "permission_request"
+	MsgPermissionResponse = "permission_response"
+
+	// Claude Mode: 模式切换
+	MsgSetMode = "set_mode"
 )
 
 // ========================= 消息信封 =========================
@@ -177,4 +184,39 @@ type NotifyPayload struct {
 type ErrorPayload struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// ========================= 权限交互载荷 =========================
+
+// PermissionOptionDTO 权限选项
+type PermissionOptionDTO struct {
+	Index    int    `json:"index"`     // 序号（1-based，供用户输入）
+	OptionID string `json:"option_id"` // ACP SDK 中的 optionId
+	Name     string `json:"name"`      // 人类可读名称
+	Kind     string `json:"kind"`      // allow_once, allow_always, deny 等
+}
+
+// PermissionRequestPayload 权限请求（acp-agent → llm-agent）
+type PermissionRequestPayload struct {
+	SessionID string              `json:"session_id"`
+	RequestID string              `json:"request_id"` // 关联回复
+	Title     string              `json:"title"`      // 工具名/操作名
+	Content   string              `json:"content"`    // 详细描述
+	Options   []PermissionOptionDTO `json:"options"`
+}
+
+// PermissionResponsePayload 权限回复（llm-agent → acp-agent）
+type PermissionResponsePayload struct {
+	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id"`
+	OptionID  string `json:"option_id"`  // 用户选择的选项 ID
+	Cancelled bool   `json:"cancelled"`  // 是否取消
+}
+
+// ========================= 模式切换载荷 =========================
+
+// SetModePayload 模式切换请求（llm-agent → acp-agent）
+type SetModePayload struct {
+	SessionID string `json:"session_id"`
+	ModeID    string `json:"mode_id"`
 }

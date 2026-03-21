@@ -4,20 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // AgentConfig agent 配置
 type AgentConfig struct {
-	ServerURL        string   `json:"server_url"`          // gateway WebSocket 地址
-	AgentName        string   `json:"agent_name"`          // agent 名称
-	AgentType        string   `json:"agent_type"`          // agent 类型，默认 "acp"
-	AuthToken        string   `json:"auth_token"`          // 认证令牌
-	GoBackendAgentID string   `json:"go_backend_agent_id"` // go_blog-agent 在 gateway 中的 ID
-	ACPAgentCmd      string   `json:"acp_agent_cmd"`       // ACP agent 命令，默认 "npx"
-	ACPAgentArgs     []string `json:"acp_agent_args"`      // ACP agent 参数，默认 ["-y", "@zed-industries/claude-agent-acp@latest"]
-	Workspaces       []string `json:"workspaces"`          // 项目工作区目录列表
-	MaxConcurrent    int      `json:"max_concurrent"`      // 最大并发数，默认 2
-	AnalysisTimeout  int      `json:"analysis_timeout"`    // ACP 分析超时（秒），默认 3600
+	ServerURL            string   `json:"server_url"`                // gateway WebSocket 地址
+	AgentName            string   `json:"agent_name"`                // agent 名称
+	AgentType            string   `json:"agent_type"`                // agent 类型，默认 "acp"
+	AuthToken            string   `json:"auth_token"`                // 认证令牌
+	GoBackendAgentID     string   `json:"go_backend_agent_id"`       // go_blog-agent 在 gateway 中的 ID
+	ACPAgentCmd          string   `json:"acp_agent_cmd"`             // ACP agent 命令，默认 "npx"
+	ACPAgentArgs         []string `json:"acp_agent_args"`            // ACP agent 参数，默认 ["-y", "@zed-industries/claude-agent-acp@latest"]
+	Workspaces           []string `json:"workspaces"`                // 项目工作区目录列表
+	MaxConcurrent        int      `json:"max_concurrent"`            // 最大并发数，默认 2
+	AnalysisTimeout      int      `json:"analysis_timeout"`          // ACP 分析超时（秒），默认 3600
+	ClaudeCodeSettingsDir string  `json:"claudecode_settings_dir"`   // Claude Code settings 目录（默认 settings/claudecode/）
 }
 
 // LoadConfig 从 JSON 配置文件加载配置
@@ -67,6 +69,17 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	}
 	if cfg.GoBackendAgentID == "" {
 		cfg.GoBackendAgentID = "go_blog"
+	}
+
+	// 默认 claudecode_settings_dir 为配置文件同目录下的 settings/claudecode/
+	if cfg.ClaudeCodeSettingsDir == "" {
+		configDir := filepath.Dir(path)
+		cfg.ClaudeCodeSettingsDir = filepath.Join(configDir, "settings", "claudecode")
+	}
+	if !filepath.IsAbs(cfg.ClaudeCodeSettingsDir) {
+		if abs, err := filepath.Abs(cfg.ClaudeCodeSettingsDir); err == nil {
+			cfg.ClaudeCodeSettingsDir = abs
+		}
 	}
 
 	return cfg, nil

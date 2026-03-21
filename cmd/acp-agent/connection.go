@@ -46,6 +46,8 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
 	c.RegisterHandler(uap.MsgNotify, c.handleNotify)
 	c.RegisterHandler(uap.MsgError, c.handleError)
+	c.RegisterHandler(uap.MsgPermissionResponse, c.handlePermissionResponse)
+	c.RegisterHandler(uap.MsgSetMode, c.handleSetMode)
 
 	// 启用协议层
 	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
@@ -73,6 +75,32 @@ func (c *Connection) handleError(msg *uap.Message) {
 	var payload uap.ErrorPayload
 	json.Unmarshal(msg.Payload, &payload)
 	log.Printf("[WARN] gateway error: %s - %s", payload.Code, payload.Message)
+}
+
+// handlePermissionResponse 处理 llm-agent 发来的权限回复
+func (c *Connection) handlePermissionResponse(msg *uap.Message) {
+	var payload uap.PermissionResponsePayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[WARN] invalid permission_response payload: %v", err)
+		return
+	}
+	log.Printf("[INFO] permission_response: session=%s option=%s cancelled=%v", payload.SessionID, payload.OptionID, payload.Cancelled)
+	if err := c.agent.deliverPermissionResponse(payload.SessionID, payload.OptionID, payload.Cancelled); err != nil {
+		log.Printf("[WARN] deliver permission response: %v", err)
+	}
+}
+
+// handleSetMode 处理 llm-agent 发来的模式切换请求
+func (c *Connection) handleSetMode(msg *uap.Message) {
+	var payload uap.SetModePayload
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[WARN] invalid set_mode payload: %v", err)
+		return
+	}
+	log.Printf("[INFO] set_mode: session=%s mode=%s", payload.SessionID, payload.ModeID)
+	if err := c.agent.setSessionMode(payload.SessionID, payload.ModeID); err != nil {
+		log.Printf("[WARN] set session mode: %v", err)
+	}
 }
 
 // ========================= 协议层载荷构建 =========================
@@ -131,8 +159,11 @@ func buildACPToolDefs() []uap.ToolDef {
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project": map[string]interface{}{"type": "string", "description": "项目名称"},
-					"prompt":  map[string]interface{}{"type": "string", "description": "用户的原始编码需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
+					"project":         map[string]interface{}{"type": "string", "description": "项目名称"},
+					"prompt":          map[string]interface{}{"type": "string", "description": "用户的原始编码需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
+					"extra_args":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "动态 CLI 参数（如 --dangerously-skip-permissions, --settings path）"},
+					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式（默认 false）"},
+					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID（交互模式下权限请求和流式事件发给该 agent）"},
 				},
 				"required": []string{"project", "prompt"},
 			}),
@@ -143,8 +174,10 @@ func buildACPToolDefs() []uap.ToolDef {
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"prompt":     map[string]interface{}{"type": "string", "description": "用户的原始消息内容，必须完整保留用户输入的原文，不得修改或重新措辞"},
-					"session_id": map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
+					"prompt":          map[string]interface{}{"type": "string", "description": "用户的原始消息内容，必须完整保留用户输入的原文，不得修改或重新措辞"},
+					"session_id":      map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
+					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式"},
+					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID"},
 				},
 				"required": []string{"prompt"},
 			}),
@@ -257,7 +290,7 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt)
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, nil, false, "")
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -284,9 +317,21 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
 	}
 
+	// 解析新参数
+	var extraArgs []string
+	if rawArgs, ok := args["extra_args"].([]interface{}); ok {
+		for _, a := range rawArgs {
+			if s, ok := a.(string); ok {
+				extraArgs = append(extraArgs, s)
+			}
+		}
+	}
+	interactive, _ := args["interactive"].(bool)
+	callerAgentID, _ := args["caller_agent_id"].(string)
+
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt)
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, extraArgs, interactive, callerAgentID)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -308,6 +353,8 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	prompt, _ := args["prompt"].(string)
 	sessionID, _ := args["session_id"].(string)
+	interactive, _ := args["interactive"].(bool)
+	callerAgentID, _ := args["caller_agent_id"].(string)
 
 	if prompt == "" {
 		return `{"success":false,"error":"缺少 prompt 参数"}`
@@ -329,7 +376,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		return `{"success":false,"error":"会话正在执行中，请等待完成后再发送消息"}`
 	}
 
-	result, err := c.agent.SendMessage(c, sessionID, prompt)
+	result, err := c.agent.SendMessage(c, sessionID, prompt, interactive, callerAgentID)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}

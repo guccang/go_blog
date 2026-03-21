@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"uap"
 )
 
 // ProjectInfo 项目信息
@@ -52,16 +54,21 @@ type Agent struct {
 	completionChs map[string]chan taskResult
 	completionMu  sync.Mutex
 
+	// 交互式权限：sessionID → ACPClientImpl（供权限回复和模式切换）
+	permissionWaiters map[string]*ACPClientImpl
+	permWaitersMu     sync.Mutex
+
 	mu sync.Mutex
 }
 
 // NewAgent 创建 Agent
 func NewAgent(id string, cfg *AgentConfig) *Agent {
 	return &Agent{
-		ID:            id,
-		cfg:           cfg,
-		sessions:      make(map[string]*sessionRecord),
-		completionChs: make(map[string]chan taskResult),
+		ID:                id,
+		cfg:               cfg,
+		sessions:          make(map[string]*sessionRecord),
+		completionChs:     make(map[string]chan taskResult),
+		permissionWaiters: make(map[string]*ACPClientImpl),
 	}
 }
 
@@ -142,7 +149,10 @@ func (a *Agent) resolveProject(project string) string {
 // ========================= ACP 执行 =========================
 
 // ExecuteACP 执行 ACP 会话（统一入口：分析 + 编码）
-func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string) (taskResult, error) {
+// extraArgs: 动态 CLI 参数（如 --dangerously-skip-permissions, --settings 等）
+// interactive: 是否交互式权限模式
+// callerAgentID: 调用方 agent ID（交互模式下权限请求发给该 agent）
+func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string) (taskResult, error) {
 	projectPath := a.resolveProject(project)
 	if projectPath == "" {
 		return taskResult{Status: "error"}, fmt.Errorf("project not found in workspaces: %s", project)
@@ -168,19 +178,78 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string) 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.AnalysisTimeout)*time.Second)
 	defer cancel()
 
-	acpSession, acpClient, err := StartACPSession(ctx, a.cfg, projectPath)
+	acpSession, acpClient, err := StartACPSession(ctx, a.cfg, projectPath, extraArgs)
 	if err != nil {
 		a.completeSession(sessionID, "failed", "")
 		return taskResult{Status: "error"}, fmt.Errorf("start acp session: %v", err)
 	}
 
-	// 设置 stream 回调
+	// 交互模式：配置权限回调 + channel
+	if interactive {
+		acpClient.interactive = true
+		acpClient.permissionCh = make(chan permissionResponse, 1)
+		acpClient.onPermission = func(req acp.RequestPermissionRequest) {
+			// 将 ACP SDK 权限请求转为 UAP PermissionRequestPayload
+			var options []uap.PermissionOptionDTO
+			for i, opt := range req.Options {
+				options = append(options, uap.PermissionOptionDTO{
+					Index:    i + 1,
+					OptionID: string(opt.OptionId),
+					Name:     opt.Name,
+					Kind:     string(opt.Kind),
+				})
+			}
+			// 提取标题和内容
+			title := ""
+			if req.ToolCall.Title != nil {
+				title = *req.ToolCall.Title
+			}
+			contentStr := ""
+			for _, c := range req.ToolCall.Content {
+				if c.Content != nil && c.Content.Content.Text != nil {
+					contentStr += c.Content.Content.Text.Text
+				}
+			}
+
+			payload := uap.PermissionRequestPayload{
+				SessionID: sessionID,
+				RequestID: fmt.Sprintf("perm_%d", time.Now().UnixNano()),
+				Title:     title,
+				Content:   contentStr,
+				Options:   options,
+			}
+			// 发给调用方 agent（llm-agent）
+			target := callerAgentID
+			if target == "" {
+				target = a.cfg.GoBackendAgentID
+			}
+			conn.Client.SendTo(target, uap.MsgPermissionRequest, payload)
+		}
+
+		// 注册到 permissionWaiters 供外部回复
+		a.permWaitersMu.Lock()
+		a.permissionWaiters[sessionID] = acpClient
+		a.permWaitersMu.Unlock()
+	}
+
+	// 设置 stream 回调（callerAgentID 非空时发给调用方，否则发给 GoBackendAgentID）
+	streamTarget := callerAgentID
 	acpClient.SetStreamCallback(func(evt StreamEvent) {
 		evt.SessionID = sessionID
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		payload := StreamEventPayload{
 			SessionID: sessionID,
 			Event:     evt,
-		})
+		}
+		if streamTarget != "" {
+			// Claude Mode: 通过 notify(acp_stream) 发给调用方
+			conn.Client.SendTo(streamTarget, uap.MsgNotify, uap.NotifyPayload{
+				Channel: "acp_stream",
+				To:      sessionID,
+				Content: mustMarshalStr(payload),
+			})
+		} else {
+			conn.SendMsg(MsgStreamEvent, payload)
+		}
 	})
 
 	// 保存 ACPSession 到记录（供 SendMessage 复用）
@@ -241,7 +310,8 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string) 
 }
 
 // SendMessage 向已有 ACP 会话追加消息（多轮 Prompt）
-func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string) (taskResult, error) {
+// interactive 和 callerAgentID 用于 Claude Mode 流式路由
+func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interactive bool, callerAgentID string) (taskResult, error) {
 	a.sessionsMu.Lock()
 	rec, ok := a.sessions[sessionID]
 	if !ok {
@@ -260,12 +330,22 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string) (taskRes
 	a.sessionsMu.Unlock()
 
 	// 设置 stream 回调（可能已切换 conn）
+	smStreamTarget := callerAgentID
 	acpClient.SetStreamCallback(func(evt StreamEvent) {
 		evt.SessionID = sessionID
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		payload := StreamEventPayload{
 			SessionID: sessionID,
 			Event:     evt,
-		})
+		}
+		if smStreamTarget != "" {
+			conn.Client.SendTo(smStreamTarget, uap.MsgNotify, uap.NotifyPayload{
+				Channel: "acp_stream",
+				To:      sessionID,
+				Content: mustMarshalStr(payload),
+			})
+		} else {
+			conn.SendMsg(MsgStreamEvent, payload)
+		}
 	})
 
 	projectPath := a.resolveProject(project)
@@ -363,6 +443,9 @@ func (a *Agent) completeSession(sessionID, status, summary string) {
 		}
 	}
 	a.sessionsMu.Unlock()
+
+	// 清理权限等待器
+	a.cleanupPermissionWaiter(sessionID)
 }
 
 // GetSession 获取会话记录
@@ -437,4 +520,59 @@ func uniqueStrings(strs []string) []string {
 		}
 	}
 	return result
+}
+
+// ========================= Claude Mode: 权限/模式管理 =========================
+
+// deliverPermissionResponse 将用户的权限回复发送到对应 ACPClient 的 channel
+func (a *Agent) deliverPermissionResponse(sessionID, optionID string, cancelled bool) error {
+	a.permWaitersMu.Lock()
+	client, ok := a.permissionWaiters[sessionID]
+	a.permWaitersMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no permission waiter for session: %s", sessionID)
+	}
+	client.RespondPermission(optionID, cancelled)
+	return nil
+}
+
+// setSessionMode 切换 ACP 会话模式
+func (a *Agent) setSessionMode(sessionID, modeID string) error {
+	a.sessionsMu.Lock()
+	rec, ok := a.sessions[sessionID]
+	a.sessionsMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+	if rec.ACPSession == nil {
+		return fmt.Errorf("session has no active ACP connection: %s", sessionID)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := rec.ACPSession.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
+		SessionId: rec.ACPSession.sessionID,
+		ModeId:    acp.SessionModeId(modeID),
+	})
+	if err != nil {
+		return fmt.Errorf("set session mode: %v", err)
+	}
+	log.Printf("[ACP] mode switched: session=%s mode=%s", sessionID, modeID)
+	return nil
+}
+
+// cleanupPermissionWaiter 清理权限等待器
+func (a *Agent) cleanupPermissionWaiter(sessionID string) {
+	a.permWaitersMu.Lock()
+	delete(a.permissionWaiters, sessionID)
+	a.permWaitersMu.Unlock()
+}
+
+// mustMarshalStr JSON 序列化为字符串
+func mustMarshalStr(v interface{}) string {
+	data, _ := json.Marshal(v)
+	return string(data)
 }

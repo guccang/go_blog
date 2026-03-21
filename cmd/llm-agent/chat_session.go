@@ -30,10 +30,38 @@ type ChatSession struct {
 	TurnCount      int             `json:"turn_count"`
 	PromptSections []PromptSection `json:"prompt_sections"` // system prompt 各区块字符统计
 
+	// Claude Mode 状态
+	ClaudeMode       bool   `json:"claude_mode,omitempty"`        // 是否在 Claude 直连模式
+	ClaudeProject    string `json:"claude_project,omitempty"`     // 项目名
+	ClaudeSessionID  string `json:"claude_session_id,omitempty"`  // acp-agent 会话 ID
+	ClaudeACPAgentID string `json:"claude_acp_agent_id,omitempty"` // acp-agent ID
+	ClaudeFromAgent  string `json:"claude_from_agent,omitempty"`  // WeChat 消息来源 agent ID
+	ClaudeInteractive bool  `json:"claude_interactive,omitempty"` // 是否交互式权限模式
+
 	mu         sync.Mutex         `json:"-"` // 保护 Messages 等字段
 	processing sync.Mutex         `json:"-"` // 序列化同一用户的消息处理
 	cancelMu   sync.Mutex         `json:"-"` // 保护 cancelFunc
 	cancelFunc context.CancelFunc `json:"-"` // 当前任务的取消函数
+
+	// Claude Mode: 待处理的权限请求
+	pendingPermission *PendingPermission `json:"-"`
+	pendingPermMu     sync.Mutex         `json:"-"`
+}
+
+// PendingPermission 待处理的权限请求
+type PendingPermission struct {
+	RequestID    string
+	SessionID    string
+	ACPAgentID   string
+	Options      []PermOptionInfo
+}
+
+// PermOptionInfo 权限选项信息（供消息展示）
+type PermOptionInfo struct {
+	Index    int
+	OptionID string
+	Name     string
+	Kind     string
 }
 
 // SetCancel 注册当前任务的取消函数
@@ -53,6 +81,42 @@ func (s *ChatSession) CancelRunning() bool {
 		return true
 	}
 	return false
+}
+
+// SetPendingPermission 设置待处理的权限请求
+func (s *ChatSession) SetPendingPermission(perm *PendingPermission) {
+	s.pendingPermMu.Lock()
+	s.pendingPermission = perm
+	s.pendingPermMu.Unlock()
+}
+
+// GetPendingPermission 获取并清除待处理的权限请求
+func (s *ChatSession) GetPendingPermission() *PendingPermission {
+	s.pendingPermMu.Lock()
+	defer s.pendingPermMu.Unlock()
+	perm := s.pendingPermission
+	s.pendingPermission = nil
+	return perm
+}
+
+// HasPendingPermission 检查是否有待处理的权限请求
+func (s *ChatSession) HasPendingPermission() bool {
+	s.pendingPermMu.Lock()
+	defer s.pendingPermMu.Unlock()
+	return s.pendingPermission != nil
+}
+
+// ResetClaudeMode 清除 Claude Mode 状态
+func (s *ChatSession) ResetClaudeMode() {
+	s.mu.Lock()
+	s.ClaudeMode = false
+	s.ClaudeProject = ""
+	s.ClaudeSessionID = ""
+	s.ClaudeACPAgentID = ""
+	s.ClaudeFromAgent = ""
+	s.ClaudeInteractive = false
+	s.mu.Unlock()
+	s.SetPendingPermission(nil)
 }
 
 // ChatSessionManager 通用会话管理器
