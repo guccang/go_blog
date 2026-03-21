@@ -133,12 +133,14 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 
 // HandleTool 处理工具调用，返回 (result, handled)
 func (m *BashToolManager) HandleTool(toolName string, args map[string]interface{}) (string, bool) {
-	// 匹配带前缀的工具名（如 llm-agent_Bash）或裸名 Bash
-	expectedName := "Bash"
+	// 匹配带前缀的工具名（如 llm-agent_Bash 或 llm-agent.Bash）或裸名 Bash
+	expectedSanitized := "Bash"
+	expectedOriginal := "Bash"
 	if m.AgentID != "" {
-		expectedName = sanitizeToolName(m.AgentID + ".Bash")
+		expectedOriginal = m.AgentID + ".Bash"
+		expectedSanitized = sanitizeToolName(expectedOriginal)
 	}
-	if toolName != expectedName && toolName != "Bash" {
+	if toolName != expectedSanitized && toolName != expectedOriginal && toolName != "Bash" {
 		return "", false
 	}
 
