@@ -20,6 +20,15 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// DeployMode 部署模式
+type DeployMode string
+
+const (
+	DeployModeAuto DeployMode = ""          // 自动检测（默认）
+	DeployModeFull DeployMode = "full"      // 完整部署（覆盖所有）
+	DeployModeIncr DeployMode = "increment" // 增量部署（保护配置）
+)
+
 // Deployer 部署编排器
 type Deployer struct {
 	cfg          *DeployConfig  // 全局配置（SSH 等）
@@ -28,6 +37,7 @@ type Deployer struct {
 	packFile     string                      // 打包后的 zip 文件名（不含路径）
 	SSHConnected bool                        // SSH 连接是否成功过（密码有效）
 	OnProgress   func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
+	DeployMode   DeployMode                  // 部署模式: auto/full/increment
 }
 
 // NewDeployer 创建部署器
@@ -232,7 +242,45 @@ func (d *Deployer) deployRemote(t *Target, totalSteps int) error {
 	}
 
 	d.logf("info", "[STEP 3/%d] 解压到 %s:%s...\n", totalSteps, t.Host, t.RemoteDir)
-	cmd := fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
+
+	// 判断部署模式：首次 vs 增量
+	isFirstDeploy := beforeMD5 == ""
+	effectiveMode := d.resolveDeployMode(isFirstDeploy)
+	d.logDeployMode(isFirstDeploy, effectiveMode)
+
+	if isFirstDeploy && len(d.proj.SetupDirs) > 0 {
+		// 首次部署：创建 setup_dirs
+		mkdirCmd := "mkdir -p"
+		for _, dir := range d.proj.SetupDirs {
+			mkdirCmd += " " + t.RemoteDir + "/" + strings.TrimRight(dir, "/")
+		}
+		d.logf("info", "  > 创建数据目录: %s\n", strings.Join(d.proj.SetupDirs, ", "))
+		if err := d.runRemoteCmd(client, mkdirCmd); err != nil {
+			d.logf("info", "  > 创建目录警告: %v\n", err)
+		}
+	}
+
+	// 构建 unzip 命令
+	var cmd string
+	if effectiveMode == DeployModeIncr && len(d.proj.ProtectFiles) > 0 {
+		// 增量部署：检查远程已存在的受保护文件，构建排除列表
+		d.logf("info", "  > 检查受保护文件: %s\n", strings.Join(d.proj.ProtectFiles, ", "))
+		excludes := d.findExistingProtectedFilesRemote(client, t.RemoteDir, d.proj.ProtectFiles)
+		if len(excludes) > 0 {
+			d.logf("info", "  > 跳过已有文件: %s\n", strings.Join(excludes, ", "))
+			cmd = fmt.Sprintf("cd %s && unzip -o %s -x %s", t.RemoteDir, d.packFile, strings.Join(excludes, " "))
+		} else {
+			d.logf("info", "  > 受保护文件均不存在，全量解压\n")
+			cmd = fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
+		}
+	} else if effectiveMode == DeployModeIncr {
+		d.logf("info", "  > 未配置 protect_files，全量解压\n")
+		cmd = fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
+	} else {
+		// full 模式
+		cmd = fmt.Sprintf("cd %s && unzip -o %s", t.RemoteDir, d.packFile)
+	}
+
 	if err := d.runRemoteCmd(client, cmd); err != nil {
 		d.logf("error", "[ERROR] 解压到 %s 失败: %v\n", label, err)
 		return fmt.Errorf("解压到 %s 失败: %v", label, err)
@@ -293,9 +341,52 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 
 	// 解压（Windows 使用 7z，Linux/Mac 使用 unzip）
 	d.logf("info", "[STEP 3/%d] 解压到 %s...\n", totalSteps, targetDir)
-	if err := d.localUnzip(dstPath, targetDir); err != nil {
-		d.logf("error", "[ERROR] 解压失败: %v\n", err)
-		return fmt.Errorf("解压失败: %v", err)
+
+	// 判断部署模式：首次 vs 增量
+	isFirstDeploy := beforeMD5 == ""
+	effectiveMode := d.resolveDeployMode(isFirstDeploy)
+	d.logDeployMode(isFirstDeploy, effectiveMode)
+
+	if isFirstDeploy && len(d.proj.SetupDirs) > 0 {
+		// 首次部署：创建 setup_dirs
+		for _, dir := range d.proj.SetupDirs {
+			setupPath := filepath.Join(targetDir, strings.TrimRight(dir, "/"))
+			if err := os.MkdirAll(setupPath, 0755); err != nil {
+				d.logf("info", "  > 创建目录警告: %v\n", err)
+			}
+		}
+		d.logf("info", "  > 创建数据目录: %s\n", strings.Join(d.proj.SetupDirs, ", "))
+	}
+
+	if effectiveMode == DeployModeIncr && len(d.proj.ProtectFiles) > 0 {
+		// 增量部署：检查本地已存在的受保护文件，构建排除列表
+		d.logf("info", "  > 检查受保护文件: %s\n", strings.Join(d.proj.ProtectFiles, ", "))
+		excludes := d.findExistingProtectedFilesLocal(targetDir, d.proj.ProtectFiles)
+		if len(excludes) > 0 {
+			d.logf("info", "  > 跳过已有文件: %s\n", strings.Join(excludes, ", "))
+			if err := d.localUnzipWithExcludes(dstPath, targetDir, excludes); err != nil {
+				d.logf("error", "[ERROR] 解压失败: %v\n", err)
+				return fmt.Errorf("解压失败: %v", err)
+			}
+		} else {
+			d.logf("info", "  > 受保护文件均不存在，全量解压\n")
+			if err := d.localUnzip(dstPath, targetDir); err != nil {
+				d.logf("error", "[ERROR] 解压失败: %v\n", err)
+				return fmt.Errorf("解压失败: %v", err)
+			}
+		}
+	} else if effectiveMode == DeployModeIncr {
+		d.logf("info", "  > 未配置 protect_files，全量解压\n")
+		if err := d.localUnzip(dstPath, targetDir); err != nil {
+			d.logf("error", "[ERROR] 解压失败: %v\n", err)
+			return fmt.Errorf("解压失败: %v", err)
+		}
+	} else {
+		// full 模式
+		if err := d.localUnzip(dstPath, targetDir); err != nil {
+			d.logf("error", "[ERROR] 解压失败: %v\n", err)
+			return fmt.Errorf("解压失败: %v", err)
+		}
 	}
 
 	// 执行发布脚本
@@ -480,10 +571,13 @@ func (d *Deployer) localFileMD5(path string) (string, error) {
 
 // bridgeDeploy 触发 bridge 部署 (POST /api/deploy)
 func (d *Deployer) bridgeDeploy(bridgeURL, token, filename, targetDir, script string) (string, error) {
-	reqBody, _ := json.Marshal(map[string]string{
-		"filename":   filename,
-		"target_dir": targetDir,
-		"script":     script,
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"filename":      filename,
+		"target_dir":    targetDir,
+		"script":        script,
+		"protect_files": d.proj.ProtectFiles,
+		"setup_dirs":    d.proj.SetupDirs,
+		"deploy_mode":   string(d.DeployMode),
 	})
 
 	req, err := http.NewRequest("POST", strings.TrimRight(bridgeURL, "/")+"/api/deploy",
@@ -1001,6 +1095,151 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%.0fs", d.Seconds())
+}
+
+// ========================= 部署模式与文件保护 =========================
+
+// resolveDeployMode 根据 DeployMode 和首次部署标志确定实际部署模式
+func (d *Deployer) resolveDeployMode(isFirstDeploy bool) DeployMode {
+	switch d.DeployMode {
+	case DeployModeFull:
+		return DeployModeFull
+	case DeployModeIncr:
+		return DeployModeIncr
+	default: // auto
+		if isFirstDeploy {
+			return DeployModeFull
+		}
+		return DeployModeIncr
+	}
+}
+
+// logDeployMode 输出部署模式判定日志
+func (d *Deployer) logDeployMode(isFirstDeploy bool, effectiveMode DeployMode) {
+	modeLabel := map[DeployMode]string{
+		DeployModeFull: "完整部署 (full)",
+		DeployModeIncr: "增量部署 (increment)",
+	}
+	label := modeLabel[effectiveMode]
+
+	if d.DeployMode == DeployModeAuto {
+		if isFirstDeploy {
+			d.logf("info", "  > 部署模式: %s（自动检测: 首次部署，远程无二进制）\n", label)
+		} else {
+			d.logf("info", "  > 部署模式: %s（自动检测: 远程已有二进制）\n", label)
+		}
+	} else {
+		d.logf("info", "  > 部署模式: %s（手动指定）\n", label)
+	}
+}
+
+// findExistingProtectedFilesRemote 通过 SSH 检查哪些受保护文件在远程已存在
+func (d *Deployer) findExistingProtectedFilesRemote(client *ssh.Client, remoteDir string, protectFiles []string) []string {
+	var existing []string
+	for _, f := range protectFiles {
+		remotePath := remoteDir + "/" + f
+		// 目录以 / 结尾，使用 test -d；文件使用 test -f
+		var testCmd string
+		if strings.HasSuffix(f, "/") {
+			testCmd = fmt.Sprintf("test -d %s", strings.TrimRight(remotePath, "/"))
+		} else {
+			testCmd = fmt.Sprintf("test -f %s", remotePath)
+		}
+		session, err := client.NewSession()
+		if err != nil {
+			continue
+		}
+		err = session.Run(testCmd)
+		session.Close()
+		if err == nil {
+			// 文件/目录存在，需要排除
+			if strings.HasSuffix(f, "/") {
+				// 目录：排除目录下所有文件
+				existing = append(existing, strings.TrimRight(f, "/")+"/*")
+			} else {
+				existing = append(existing, f)
+			}
+		}
+	}
+	return existing
+}
+
+// findExistingProtectedFilesLocal 检查哪些受保护文件在本地目标目录已存在
+func (d *Deployer) findExistingProtectedFilesLocal(targetDir string, protectFiles []string) []string {
+	var existing []string
+	for _, f := range protectFiles {
+		localPath := filepath.Join(targetDir, f)
+		if strings.HasSuffix(f, "/") {
+			// 目录：检查是否存在
+			if info, err := os.Stat(strings.TrimRight(localPath, "/")); err == nil && info.IsDir() {
+				existing = append(existing, strings.TrimRight(f, "/")+"/*")
+			}
+		} else {
+			if _, err := os.Stat(localPath); err == nil {
+				existing = append(existing, f)
+			}
+		}
+	}
+	return existing
+}
+
+// localUnzipWithExcludes 本地解压 zip 文件（带排除列表）
+func (d *Deployer) localUnzipWithExcludes(zipPath, targetDir string, excludes []string) error {
+	if runtime.GOOS == "windows" {
+		// Windows: 优先 7z，回退到 backup-restore 方式
+		if sevenZip, err := exec.LookPath("7z"); err == nil {
+			args := []string{"x", "-y", "-o" + targetDir, zipPath}
+			for _, ex := range excludes {
+				args = append(args, "-xr!"+ex)
+			}
+			return d.runLocalCmd(sevenZip, args, "")
+		}
+		// PowerShell 回退：备份受保护文件，全量解压，恢复
+		return d.localUnzipWindowsBackupRestore(zipPath, targetDir, excludes)
+	}
+	// Unix: unzip -o archive.zip -d targetDir -x file1 file2
+	args := []string{"-o", zipPath, "-d", targetDir}
+	args = append(args, "-x")
+	args = append(args, excludes...)
+	return d.runLocalCmd("unzip", args, "")
+}
+
+// localUnzipWindowsBackupRestore Windows PowerShell 回退：备份-解压-恢复
+func (d *Deployer) localUnzipWindowsBackupRestore(zipPath, targetDir string, excludes []string) error {
+	// 1. 备份受保护文件
+	type backup struct {
+		src string
+		tmp string
+	}
+	var backups []backup
+	for _, ex := range excludes {
+		// 跳过通配符模式（目录/*）
+		if strings.Contains(ex, "*") {
+			continue
+		}
+		src := filepath.Join(targetDir, ex)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		tmp := src + ".deploy-backup"
+		if err := os.Rename(src, tmp); err != nil {
+			d.logf("info", "  > 备份文件警告: %v\n", err)
+			continue
+		}
+		backups = append(backups, backup{src: src, tmp: tmp})
+	}
+
+	// 2. 全量解压
+	err := d.localUnzip(zipPath, targetDir)
+
+	// 3. 恢复备份
+	for _, b := range backups {
+		if restoreErr := os.Rename(b.tmp, b.src); restoreErr != nil {
+			d.logf("info", "  > 恢复文件警告: %v\n", restoreErr)
+		}
+	}
+
+	return err
 }
 
 // ========================= Adhoc 一次性部署 =========================

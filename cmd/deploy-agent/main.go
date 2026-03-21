@@ -43,6 +43,7 @@ func main() {
 	adhocRemoteDir := flag.String("remote-dir", "", "远程部署目录（adhoc 模式，默认 /data/program/<项目名>）")
 	adhocStartArgs := flag.String("start-args", "", "启动参数（adhoc 模式）")
 	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
+	forceFull := flag.Bool("force-full", false, "强制完整部署（覆盖所有文件含配置）")
 	flag.Parse()
 
 	// --init early exit (before LoadConfig, since the project may not have a config yet)
@@ -160,7 +161,7 @@ func main() {
 
 	// daemon 模式需要加载所有 target 和所有平台配置，以支持前端动态选择
 	// 检测 daemon 模式（有 server_url 且未显式指定 CLI 参数）
-	isCliMode := *projectName != "" || *targetName != "" || *packOnly || *pipelineName != ""
+	isCliMode := *projectName != "" || *targetName != "" || *packOnly || *pipelineName != "" || *forceFull
 	if cfg.ServerURL != "" && !isCliMode && !*listProjects {
 		cfg, err = LoadConfigForDaemon(*configPath)
 		if err != nil {
@@ -403,6 +404,9 @@ func main() {
 			}
 
 			deployer := NewDeployer(&stepCfg, proj, pwd)
+			if *forceFull {
+				deployer.DeployMode = DeployModeFull
+			}
 			if deployErr := deployer.Run(packOnly, targetFilter); deployErr != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Pipeline %q 在步骤 [%d/%d] %s 失败: %v\n",
 					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
@@ -501,6 +505,9 @@ func main() {
 		}
 
 		deployer := NewDeployer(cfg, proj, pwd)
+		if *forceFull {
+			deployer.DeployMode = DeployModeFull
+		}
 		deployErr := deployer.Run(*packOnly, "")
 
 		// SSH 连接成功即保存密码（证明密码有效），不依赖后续步骤

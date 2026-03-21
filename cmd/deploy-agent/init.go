@@ -574,6 +574,26 @@ fi
 	return content
 }
 
+// scanProtectedFiles 从 extra files 中识别配置文件和目录，作为 protect_files
+func scanProtectedFiles(extras []string) []string {
+	configExts := map[string]bool{
+		".json": true, ".yaml": true, ".yml": true, ".toml": true, ".conf": true,
+	}
+	var protectFiles []string
+	for _, f := range extras {
+		if strings.HasSuffix(f, "/") {
+			// 目录
+			protectFiles = append(protectFiles, f)
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f))
+		if configExts[ext] {
+			protectFiles = append(protectFiles, f)
+		}
+	}
+	return protectFiles
+}
+
 // generateProjectJSON generates deploy-agent project .json content
 func generateProjectJSON(cfg *InitConfig) string {
 	name := cfg.ProjectName
@@ -582,6 +602,11 @@ func generateProjectJSON(cfg *InitConfig) string {
 		PackPattern: name + "_{date}.zip",
 		Build:       make(map[string]buildJSON),
 		Targets:     make(map[string]targetJSON),
+	}
+
+	// 自动识别需要保护的配置文件
+	if protectFiles := scanProtectedFiles(cfg.ExtraFiles); len(protectFiles) > 0 {
+		pj.ProtectFiles = protectFiles
 	}
 
 	// build 配置

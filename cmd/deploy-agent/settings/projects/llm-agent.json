@@ -1,5 +1,6 @@
 {
   "pack_pattern": "llm-agent_{date}.zip",
+  "protect_files": ["llm-agent.json", "workspace/"],
   "build": {
     "win":   { "project_dir": "E:\\githubdesktop\\go_blog\\cmd\\llm-agent", "pack_script": "zip-files.bat" },
     "linux": { "project_dir": "/data/program/go/go_blog/cmd/llm-agent", "pack_script": "zip-files.sh" },

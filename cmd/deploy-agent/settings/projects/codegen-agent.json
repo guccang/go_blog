@@ -1,5 +1,6 @@
 {
   "pack_pattern": "codegen_agent_{date}.zip",
+  "protect_files": ["codegen-agent.json", "settings/"],
   "build": {
     "win":   { "project_dir": "E:\\githubdesktop\\go_blog\\cmd\\codegen-agent", "pack_script": "zip-files.bat" },
     "linux": { "project_dir": "/data/program/go/go_blog/cmd/codegen-agent", "pack_script": "zip-files.sh" },

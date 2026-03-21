@@ -27,14 +27,16 @@ type Target struct {
 
 // ProjectConfig 项目级部署配置
 type ProjectConfig struct {
-	Name        string    // 项目名称（settings 文件名）
-	ProjectDir  string    // 项目根目录
-	PackScript  string    // 打包脚本路径
-	PackPattern string    // 输出文件名模式（{date} → YYYYMMDD_HHMMSS）
-	Targets     []*Target // 部署目标列表
-	VerifyURL   string    // 部署验证 URL（兼容旧模式，新模式用 Target.VerifyURL）
-	ConfigFile  string    // 来源 settings 文件路径
-	Configured  bool      // 是否有持久化 settings（.json 文件）
+	Name         string    // 项目名称（settings 文件名）
+	ProjectDir   string    // 项目根目录
+	PackScript   string    // 打包脚本路径
+	PackPattern  string    // 输出文件名模式（{date} → YYYYMMDD_HHMMSS）
+	Targets      []*Target // 部署目标列表
+	VerifyURL    string    // 部署验证 URL（兼容旧模式，新模式用 Target.VerifyURL）
+	ConfigFile   string    // 来源 settings 文件路径
+	Configured   bool      // 是否有持久化 settings（.json 文件）
+	ProtectFiles []string  // 增量部署时不覆盖的文件/目录
+	SetupDirs    []string  // 首次部署时自动创建的数据目录
 }
 
 // DeployConfig 全局部署配置
@@ -107,9 +109,11 @@ func (c *DeployConfig) ProjectNames() []string {
 
 // projectJSON 项目 JSON 配置（仅用于 unmarshal）
 type projectJSON struct {
-	PackPattern string                `json:"pack_pattern,omitempty"`
-	Build       map[string]buildJSON  `json:"build"`
-	Targets     map[string]targetJSON `json:"targets"`
+	PackPattern  string                `json:"pack_pattern,omitempty"`
+	Build        map[string]buildJSON  `json:"build"`
+	Targets      map[string]targetJSON `json:"targets"`
+	ProtectFiles []string              `json:"protect_files,omitempty"` // 增量部署时保护的文件
+	SetupDirs    []string              `json:"setup_dirs,omitempty"`   // 首次部署时创建的数据目录
 }
 
 // buildJSON 构建配置
@@ -368,6 +372,8 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			if proj.PackPattern != "" {
 				existing.PackPattern = proj.PackPattern
 			}
+			existing.ProtectFiles = proj.ProtectFiles
+			existing.SetupDirs = proj.SetupDirs
 		} else {
 			// 纯 .json 项目（不在 workspace 中），向后兼容
 			proj.Targets = filteredTargets
@@ -424,8 +430,10 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string) (*ProjectConf
 	}
 
 	proj := &ProjectConfig{
-		Name:        projName,
-		PackPattern: projName + "_{date}.zip",
+		Name:         projName,
+		PackPattern:  projName + "_{date}.zip",
+		ProtectFiles: pj.ProtectFiles,
+		SetupDirs:    pj.SetupDirs,
 	}
 
 	// 全局 pack_pattern

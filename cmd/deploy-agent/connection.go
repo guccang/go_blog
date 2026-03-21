@@ -241,6 +241,7 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 	}
 
 	deployer := NewDeployer(&deployCfg, proj, c.password)
+	deployer.DeployMode = DeployMode(task.DeployMode)
 	deployer.OnProgress = func(level, message string) {
 		evtType := "system"
 		prefix := "📦 "
@@ -555,6 +556,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 					"remote_dir":    map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>，仅 adhoc 模式）"},
 					"start_args":    map[string]interface{}{"type": "string", "description": "启动参数（仅 adhoc 模式）"},
 					"verify_url":    map[string]interface{}{"type": "string", "description": "部署后健康检查 URL（仅 adhoc 模式）。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<start_args中的端口>/，示例：ssh_host=root@1.2.3.4 start_args=-port=8080 → http://1.2.3.4:8080/"},
+					"deploy_mode":   map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
 				},
 				"required": []string{"project"},
 			}),
@@ -698,6 +700,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	packOnly, _ := args["pack_only"].(bool)
 	projectDir, _ := args["project_dir"].(string)
 	sshHost, _ := args["ssh_host"].(string)
+	deployModeStr, _ := args["deploy_mode"].(string)
 
 	// adhoc 模式：ssh_host 存在时直接走一次性部署
 	if sshHost != "" {
@@ -766,6 +769,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	deployCfg := *c.cfg
 
 	deployer := NewDeployer(&deployCfg, proj, c.password)
+	deployer.DeployMode = DeployMode(deployModeStr)
 	deployer.OnProgress = func(level, message string) {
 		prefix := "📦 "
 		if level == "error" {
