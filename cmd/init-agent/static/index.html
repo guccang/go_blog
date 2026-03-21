@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Init Agent - 初始化向导</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Go Blog Monorepo 初始化向导</h1>
+            <div class="steps" id="steps"></div>
+        </header>
+
+        <main id="main">
+            <!-- Step 1: Welcome -->
+            <section class="step" id="step-welcome">
+                <h2>欢迎</h2>
+                <p>本向导将帮助您完成项目的初始化配置。</p>
+                <div id="welcome-info"></div>
+                <button class="btn btn-primary" onclick="nextStep()">开始 →</button>
+            </section>
+
+            <!-- Step 2: Environment Check -->
+            <section class="step hidden" id="step-env">
+                <h2>环境检测</h2>
+                <p>检测本地环境依赖是否满足要求。</p>
+                <button class="btn btn-primary" onclick="runEnvCheck()" id="btn-env-check">开始检测</button>
+                <div id="env-results" class="results"></div>
+                <button class="btn btn-primary hidden" id="btn-env-next" onclick="nextStep()">继续 →</button>
+            </section>
+
+            <!-- Step 3: Global Config -->
+            <section class="step hidden" id="step-global">
+                <h2>全局配置</h2>
+                <p>配置共享参数，将自动传播到所有 Agent。</p>
+                <form id="global-form">
+                    <div class="form-group">
+                        <label>Gateway WebSocket URL</label>
+                        <input type="text" name="server_url" value="ws://127.0.0.1:10086/ws/uap">
+                        <small>UAP WebSocket 连接地址</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Gateway HTTP URL</label>
+                        <input type="text" name="gateway_http" value="http://127.0.0.1:10086">
+                        <small>Gateway HTTP API 地址</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Auth Token</label>
+                        <input type="text" name="auth_token" value="">
+                        <small>Gateway 认证令牌（可空）</small>
+                    </div>
+                </form>
+                <button class="btn btn-primary" onclick="saveGlobalAndNext()">继续 →</button>
+            </section>
+
+            <!-- Step 4: Agent Selection -->
+            <section class="step hidden" id="step-select">
+                <h2>Agent 选择</h2>
+                <p>选择要配置的 Agent。</p>
+                <div id="agent-list" class="agent-list"></div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="selectAll()">全选</button>
+                    <button class="btn btn-secondary" onclick="selectNone()">全不选</button>
+                    <button class="btn btn-primary" onclick="confirmSelection()">继续 →</button>
+                </div>
+            </section>
+
+            <!-- Step 5: Agent Config -->
+            <section class="step hidden" id="step-config">
+                <h2>Agent 配置</h2>
+                <div id="agent-forms"></div>
+                <button class="btn btn-primary" onclick="saveConfigs()">生成配置 →</button>
+            </section>
+
+            <!-- Step 6: Config Generation -->
+            <section class="step hidden" id="step-generate">
+                <h2>配置生成</h2>
+                <div id="generate-preview"></div>
+                <button class="btn btn-primary" onclick="writeConfigs()" id="btn-write">确认写入</button>
+                <div id="write-results" class="results"></div>
+                <button class="btn btn-primary hidden" id="btn-gen-next" onclick="nextStep()">继续 →</button>
+            </section>
+
+            <!-- Step 7: Availability -->
+            <section class="step hidden" id="step-avail">
+                <h2>可用性面板</h2>
+                <button class="btn btn-primary" onclick="runAvailCheck()" id="btn-avail-check">开始检测</button>
+                <div id="avail-results" class="results"></div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
