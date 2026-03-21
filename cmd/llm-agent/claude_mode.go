@@ -386,9 +386,17 @@ func (b *Bridge) handleModeSwitch(session *ChatSession, fromAgent, wechatUser, m
 		return
 	}
 
+	// 用户命令 → ACP 模式 ID 映射
+	displayName := modeID
+	acpModeID := modeID
+	switch modeID {
+	case "code":
+		acpModeID = "default"
+	}
+
 	payload := uap.SetModePayload{
 		SessionID: sessionID,
-		ModeID:    modeID,
+		ModeID:    acpModeID,
 	}
 	if err := b.client.SendTo(acpAgentID, uap.MsgSetMode, payload); err != nil {
 		log.Printf("[ClaudeMode] send set_mode failed: %v", err)
@@ -396,7 +404,7 @@ func (b *Bridge) handleModeSwitch(session *ChatSession, fromAgent, wechatUser, m
 		return
 	}
 
-	b.sendWechat(fromAgent, wechatUser, fmt.Sprintf("🔄 已请求切换到 %s 模式", modeID))
+	b.sendWechat(fromAgent, wechatUser, fmt.Sprintf("🔄 已请求切换到 %s 模式", displayName))
 }
 
 // ========================= 退出/中断 =========================
