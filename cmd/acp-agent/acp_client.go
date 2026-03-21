@@ -102,6 +102,15 @@ func (c *ACPClientImpl) GetFilesEdited() []string {
 	return result
 }
 
+// GetAvailableModes 获取可用模式列表
+func (c *ACPClientImpl) GetAvailableModes() []acp.SessionMode {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make([]acp.SessionMode, len(c.availableModes))
+	copy(result, c.availableModes)
+	return result
+}
+
 // SessionUpdate 处理 session/update 通知（核心：收集 agent 输出 + 推送事件）
 func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNotification) error {
 	update := params.Update
@@ -441,6 +450,9 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 		client.availableModes = sessResp.Modes.AvailableModes
 		client.mu.Unlock()
 		log.Printf("[ACP] available modes: %d", len(sessResp.Modes.AvailableModes))
+		for _, m := range sessResp.Modes.AvailableModes {
+			log.Printf("[ACP]   mode: id=%s name=%s", m.Id, m.Name)
+		}
 	}
 
 	session := &ACPSession{

@@ -262,50 +262,77 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 
 	log.Printf("[ACP] sending prompt: session=%s project=%s prompt_len=%d", sessionID, project, len(prompt))
 
+	if prompt != "" {
+		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+			SessionID: sessionID,
+			Event: StreamEvent{
+				Type: "system",
+				Text: "📝 正在处理...",
+			},
+		})
+
+		_, err = acpSession.conn.Prompt(ctx, acp.PromptRequest{
+			SessionId: acpSession.sessionID,
+			Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
+		})
+		if err != nil {
+			a.completeSession(sessionID, "failed", "")
+			acpSession.Close()
+			return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
+		}
+
+		resultText := acpClient.GetResult()
+		filesWritten := acpClient.GetFilesWritten()
+		filesEdited := acpClient.GetFilesEdited()
+
+		summary := resultText
+		if len(summary) > 3000 {
+			summary = summary[:3000] + "\n..."
+		}
+
+		a.completeSession(sessionID, "completed", summary)
+
+		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+			SessionID: sessionID,
+			Event: StreamEvent{
+				Type: "system",
+				Text: "✅ ACP 会话完成",
+				Done: true,
+			},
+		})
+
+		return taskResult{
+			Status:       "done",
+			Summary:      summary,
+			ProjectDir:   projectPath,
+			FilesWritten: len(uniqueStrings(filesWritten)),
+			FilesEdited:  len(uniqueStrings(filesEdited)),
+		}, nil
+	}
+
+	// 空 prompt: 仅初始化会话，不发送 prompt
+	a.completeSession(sessionID, "idle", "")
+
+	// 收集可用模式信息
+	var modeNames []string
+	modes := acpClient.GetAvailableModes()
+	for _, m := range modes {
+		modeNames = append(modeNames, string(m.Id))
+	}
+
 	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
 		SessionID: sessionID,
 		Event: StreamEvent{
 			Type: "system",
-			Text: "📝 正在处理...",
-		},
-	})
-
-	_, err = acpSession.conn.Prompt(ctx, acp.PromptRequest{
-		SessionId: acpSession.sessionID,
-		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
-	})
-	if err != nil {
-		a.completeSession(sessionID, "failed", "")
-		acpSession.Close()
-		return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
-	}
-
-	resultText := acpClient.GetResult()
-	filesWritten := acpClient.GetFilesWritten()
-	filesEdited := acpClient.GetFilesEdited()
-
-	summary := resultText
-	if len(summary) > 3000 {
-		summary = summary[:3000] + "\n..."
-	}
-
-	a.completeSession(sessionID, "completed", summary)
-
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
-		SessionID: sessionID,
-		Event: StreamEvent{
-			Type: "system",
-			Text: "✅ ACP 会话完成",
+			Text: "✅ ACP 会话就绪",
 			Done: true,
 		},
 	})
 
 	return taskResult{
-		Status:       "done",
-		Summary:      summary,
-		ProjectDir:   projectPath,
-		FilesWritten: len(uniqueStrings(filesWritten)),
-		FilesEdited:  len(uniqueStrings(filesEdited)),
+		Status:     "done",
+		Summary:    fmt.Sprintf("会话已创建（idle），可用模式: %v", modeNames),
+		ProjectDir: projectPath,
 	}, nil
 }
 
@@ -548,6 +575,22 @@ func (a *Agent) setSessionMode(sessionID, modeID string) error {
 	}
 	if rec.ACPSession == nil {
 		return fmt.Errorf("session has no active ACP connection: %s", sessionID)
+	}
+
+	// 验证模式是否在可用列表中
+	if rec.ACPClient != nil {
+		modes := rec.ACPClient.GetAvailableModes()
+		valid := false
+		var modeNames []string
+		for _, m := range modes {
+			modeNames = append(modeNames, string(m.Id))
+			if string(m.Id) == modeID {
+				valid = true
+			}
+		}
+		if len(modes) > 0 && !valid {
+			return fmt.Errorf("无效的模式 '%s'，可用模式: %v", modeID, modeNames)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

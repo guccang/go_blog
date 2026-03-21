@@ -165,10 +165,8 @@ func (b *Bridge) handleClaudeCommand(fromAgent, wechatUser, content string) {
 	statusMsg += "\n指令: cc exit(退出) cc stop(中断) cc plan/cc code(切换模式)"
 	b.sendWechat(fromAgent, wechatUser, statusMsg)
 
-	// 如果有初始 prompt，发送第一条消息
-	if opts.Prompt != "" {
-		go b.handleClaudeModeFirstMessage(session, fromAgent, wechatUser, opts)
-	}
+	// 始终创建 ACP 会话（无 prompt 也创建，让 cc plan/code 可用）
+	go b.handleClaudeModeFirstMessage(session, fromAgent, wechatUser, opts)
 }
 
 // handleClaudeModeFirstMessage 发送 Claude Mode 的第一条消息（创建新 ACP 会话）
@@ -178,10 +176,12 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 	// 通过 tool_call 调用 AcpStartSession
 	args := map[string]interface{}{
 		"project":         opts.Project,
-		"prompt":          opts.Prompt,
 		"extra_args":      extraArgs,
 		"interactive":     opts.Ask,
 		"caller_agent_id": b.cfg.AgentID,
+	}
+	if opts.Prompt != "" {
+		args["prompt"] = opts.Prompt
 	}
 	argsJSON, _ := json.Marshal(args)
 
@@ -221,7 +221,11 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 		}
 	}
 
-	b.sendWechat(fromAgent, wechatUser, "✅ Claude 完成，可以继续发消息或 cc exit 退出。")
+	if opts.Prompt != "" {
+		b.sendWechat(fromAgent, wechatUser, "✅ Claude 完成，可以继续发消息或 cc exit 退出。")
+	} else {
+		b.sendWechat(fromAgent, wechatUser, "✅ Claude 会话就绪，发送消息开始对话。\n可用指令: cc plan/cc code(切换模式) cc exit(退出)")
+	}
 }
 
 // handleClaudeModeMessage 处理 Claude Mode 中的后续消息（多轮对话）

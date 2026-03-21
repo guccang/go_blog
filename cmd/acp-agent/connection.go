@@ -165,7 +165,7 @@ func buildACPToolDefs() []uap.ToolDef {
 					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式（默认 false）"},
 					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID（交互模式下权限请求和流式事件发给该 agent）"},
 				},
-				"required": []string{"project", "prompt"},
+				"required": []string{"project"},
 			}),
 		},
 		{
@@ -310,8 +310,8 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
 
-	if project == "" || prompt == "" {
-		return `{"success":false,"error":"缺少 project 或 prompt 参数"}`
+	if project == "" {
+		return `{"success":false,"error":"缺少 project 参数"}`
 	}
 	if !c.agent.CanAccept() {
 		return `{"success":false,"error":"agent 繁忙，无法接受新任务"}`
