@@ -129,9 +129,12 @@ func (h *Handlers) HandleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Filename  string `json:"filename"`
-		TargetDir string `json:"target_dir"`
-		Script    string `json:"script"`
+		Filename     string   `json:"filename"`
+		TargetDir    string   `json:"target_dir"`
+		Script       string   `json:"script"`
+		ProtectFiles []string `json:"protect_files,omitempty"`
+		SetupDirs    []string `json:"setup_dirs,omitempty"`
+		DeployMode   string   `json:"deploy_mode,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "无效的请求体", http.StatusBadRequest)
@@ -166,7 +169,7 @@ func (h *Handlers) HandleDeploy(w http.ResponseWriter, r *http.Request) {
 		req.Script = "publish.sh"
 	}
 
-	task := h.manager.CreateTask(req.Filename, req.TargetDir, req.Script)
+	task := h.manager.CreateTask(req.Filename, req.TargetDir, req.Script, req.ProtectFiles, req.SetupDirs, req.DeployMode)
 	go h.manager.RunDeploy(task)
 
 	jsonResp(w, map[string]interface{}{

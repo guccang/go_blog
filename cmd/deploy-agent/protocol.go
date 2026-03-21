@@ -56,6 +56,7 @@ type TaskAssignPayload struct {
 	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
 	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
 	Pipeline      string `json:"pipeline,omitempty"`       // pipeline 名称（远程触发）
+	DeployMode    string `json:"deploy_mode,omitempty"`    // 部署模式: auto/full/increment
 	// Adhoc 一次性部署参数（ssh_host 存在时进入 adhoc 模式）
 	ProjectDir    string `json:"project_dir,omitempty"`    // Go 项目目录
 	SSHHost       string `json:"ssh_host,omitempty"`       // SSH 目标（如 root@1.2.3.4）

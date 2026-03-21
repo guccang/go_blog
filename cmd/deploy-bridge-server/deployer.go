@@ -25,14 +25,17 @@ type LogEntry struct {
 
 // DeployTask 部署任务
 type DeployTask struct {
-	ID         string    `json:"id"`
-	Filename   string    `json:"filename"`
-	TargetDir  string    `json:"target_dir"`
-	Script     string    `json:"script"`
-	Status     string    `json:"status"` // pending / running / done / error
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-	Error      string    `json:"error,omitempty"`
+	ID           string    `json:"id"`
+	Filename     string    `json:"filename"`
+	TargetDir    string    `json:"target_dir"`
+	Script       string    `json:"script"`
+	Status       string    `json:"status"` // pending / running / done / error
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	ProtectFiles []string  `json:"-"` // 增量部署时保护的文件（不序列化到 JSON 响应）
+	SetupDirs    []string  `json:"-"` // 首次部署时创建的数据目录
+	DeployMode   string    `json:"-"` // 部署模式: auto/full/increment
 
 	mu          sync.Mutex
 	logs        []LogEntry
@@ -160,16 +163,19 @@ func (m *DeployManager) GetMD5(filename string) string {
 }
 
 // CreateTask 创建部署任务
-func (m *DeployManager) CreateTask(filename, targetDir, script string) *DeployTask {
+func (m *DeployManager) CreateTask(filename, targetDir, script string, protectFiles, setupDirs []string, deployMode string) *DeployTask {
 	id := fmt.Sprintf("d_%d_%s", time.Now().Unix(), randStr(6))
 	task := &DeployTask{
-		ID:          id,
-		Filename:    filename,
-		TargetDir:   targetDir,
-		Script:      script,
-		Status:      "pending",
-		StartedAt:   time.Now(),
-		subscribers: make(map[chan LogEntry]bool),
+		ID:           id,
+		Filename:     filename,
+		TargetDir:    targetDir,
+		Script:       script,
+		Status:       "pending",
+		StartedAt:    time.Now(),
+		ProtectFiles: protectFiles,
+		SetupDirs:    setupDirs,
+		DeployMode:   deployMode,
+		subscribers:  make(map[chan LogEntry]bool),
 	}
 
 	m.mu.Lock()
@@ -220,6 +226,36 @@ func (m *DeployManager) RunDeploy(task *DeployTask) {
 		return
 	}
 
+	// 判断首次部署（目标目录中无二进制文件）
+	isFirstDeploy := m.isFirstDeploy(targetDir, task.Filename)
+	deployMode := task.DeployMode
+
+	// 输出部署模式判定日志
+	effectiveMode := deployMode
+	if effectiveMode == "" || effectiveMode == "auto" {
+		if isFirstDeploy {
+			effectiveMode = "full"
+			task.addLog("info", "部署模式: 完整部署 (full)（自动检测: 首次部署，目标目录无二进制）")
+		} else {
+			effectiveMode = "increment"
+			task.addLog("info", "部署模式: 增量部署 (increment)（自动检测: 目标目录已有二进制）")
+		}
+	} else {
+		modeLabel := map[string]string{"full": "完整部署 (full)", "increment": "增量部署 (increment)"}
+		task.addLog("info", fmt.Sprintf("部署模式: %s（手动指定）", modeLabel[effectiveMode]))
+	}
+
+	// 首次部署：创建 setup_dirs
+	if isFirstDeploy && len(task.SetupDirs) > 0 {
+		for _, dir := range task.SetupDirs {
+			setupPath := filepath.Join(targetDir, strings.TrimRight(dir, "/"))
+			if err := os.MkdirAll(setupPath, 0755); err != nil {
+				task.addLog("info", fmt.Sprintf("创建目录警告: %v", err))
+			}
+		}
+		task.addLog("info", fmt.Sprintf("创建数据目录: %s", strings.Join(task.SetupDirs, ", ")))
+	}
+
 	// 2. 复制 zip 到目标目录
 	zipDst := filepath.Join(targetDir, task.Filename)
 	task.addLog("info", fmt.Sprintf("复制 %s → %s", task.Filename, targetDir))
@@ -228,14 +264,55 @@ func (m *DeployManager) RunDeploy(task *DeployTask) {
 		return
 	}
 
-	// 3. 解压
+	// 3. 解压（根据部署模式决定是否排除保护文件）
 	task.addLog("info", fmt.Sprintf("解压 %s...", task.Filename))
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.cfg.DeployTimeout)*time.Second)
 	defer cancel()
 
-	if err := m.runCmd(ctx, task, targetDir, "unzip", "-o", task.Filename); err != nil {
-		m.failTask(task, fmt.Sprintf("解压失败: %v", err))
-		return
+	if effectiveMode == "increment" && len(task.ProtectFiles) > 0 {
+		// 增量部署：检查已存在的受保护文件
+		task.addLog("info", fmt.Sprintf("检查受保护文件: %s", strings.Join(task.ProtectFiles, ", ")))
+		var excludes []string
+		for _, f := range task.ProtectFiles {
+			localPath := filepath.Join(targetDir, f)
+			if strings.HasSuffix(f, "/") {
+				if info, err := os.Stat(strings.TrimRight(localPath, "/")); err == nil && info.IsDir() {
+					excludes = append(excludes, strings.TrimRight(f, "/")+"/*")
+				}
+			} else {
+				if _, err := os.Stat(localPath); err == nil {
+					excludes = append(excludes, f)
+				}
+			}
+		}
+		if len(excludes) > 0 {
+			task.addLog("info", fmt.Sprintf("跳过已有文件: %s", strings.Join(excludes, ", ")))
+			args := []string{"-o", task.Filename}
+			args = append(args, "-x")
+			args = append(args, excludes...)
+			if err := m.runCmd(ctx, task, targetDir, "unzip", args...); err != nil {
+				m.failTask(task, fmt.Sprintf("解压失败: %v", err))
+				return
+			}
+		} else {
+			task.addLog("info", "受保护文件均不存在，全量解压")
+			if err := m.runCmd(ctx, task, targetDir, "unzip", "-o", task.Filename); err != nil {
+				m.failTask(task, fmt.Sprintf("解压失败: %v", err))
+				return
+			}
+		}
+	} else if effectiveMode == "increment" {
+		task.addLog("info", "未配置 protect_files，全量解压")
+		if err := m.runCmd(ctx, task, targetDir, "unzip", "-o", task.Filename); err != nil {
+			m.failTask(task, fmt.Sprintf("解压失败: %v", err))
+			return
+		}
+	} else {
+		// full 模式
+		if err := m.runCmd(ctx, task, targetDir, "unzip", "-o", task.Filename); err != nil {
+			m.failTask(task, fmt.Sprintf("解压失败: %v", err))
+			return
+		}
 	}
 
 	// 4. 执行部署脚本
@@ -261,6 +338,30 @@ func (m *DeployManager) RunDeploy(task *DeployTask) {
 	task.FinishedAt = time.Now()
 	elapsed := task.FinishedAt.Sub(task.StartedAt)
 	task.addLog("done", fmt.Sprintf("部署完成，耗时 %.1fs", elapsed.Seconds()))
+}
+
+// isFirstDeploy 判断是否为首次部署（目标目录中没有任何可执行文件）
+func (m *DeployManager) isFirstDeploy(targetDir, zipFilename string) bool {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		return true // 目录不存在或无法读取，视为首次
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// 跳过 zip 文件本身
+		if name == zipFilename {
+			continue
+		}
+		// 检查是否有可执行文件（无扩展名的二进制或 .sh 脚本）
+		ext := filepath.Ext(name)
+		if ext == "" || ext == ".sh" {
+			return false
+		}
+	}
+	return true
 }
 
 // runCmd 执行命令，实时采集 stdout/stderr 到日志
