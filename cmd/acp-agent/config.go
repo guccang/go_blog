@@ -20,6 +20,7 @@ type AgentConfig struct {
 	MaxConcurrent        int      `json:"max_concurrent"`            // 最大并发数，默认 2
 	AnalysisTimeout      int      `json:"analysis_timeout"`          // ACP 分析超时（秒），默认 3600
 	ClaudeCodeSettingsDir string  `json:"claudecode_settings_dir"`   // Claude Code settings 目录（默认 settings/claudecode/）
+	DefaultSettings      string  `json:"default_settings"`           // 默认 --settings 名称（如 "default"），extraArgs 未指定时自动使用
 }
 
 // LoadConfig 从 JSON 配置文件加载配置

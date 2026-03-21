@@ -48,3 +48,4 @@ cmd/execute-code-agent/execute-code-agent
 cmd/logs.txt
 cmd/logs.txt
 cmd/llm-agent/llm-agent-openrouter.json
+cmd/deploy-bridge-server/deploy-bridge-server

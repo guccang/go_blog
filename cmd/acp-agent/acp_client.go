@@ -347,6 +347,17 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 
 	// 解析 --settings <name>: 转为绝对路径 settings/claudecode/<name>.json
 	resolvedExtra := resolveSettingsArgs(extraArgs, cfg.ClaudeCodeSettingsDir)
+
+	// 如果 extraArgs 中没有 --settings，且配置了 default_settings，自动补充
+	if cfg.DefaultSettings != "" && !hasSettingsArg(resolvedExtra) {
+		name := cfg.DefaultSettings
+		if !strings.HasSuffix(name, ".json") {
+			name = name + ".json"
+		}
+		settingsFile := filepath.Join(cfg.ClaudeCodeSettingsDir, name)
+		resolvedExtra = append(resolvedExtra, "--settings", settingsFile)
+	}
+
 	allArgs = append(allArgs, resolvedExtra...)
 
 	// 启动 claude-agent-acp 子进程
@@ -481,4 +492,14 @@ func resolveSettingsArgs(args []string, settingsDir string) []string {
 		}
 	}
 	return result
+}
+
+// hasSettingsArg 检查参数列表中是否已包含 --settings
+func hasSettingsArg(args []string) bool {
+	for _, a := range args {
+		if a == "--settings" {
+			return true
+		}
+	}
+	return false
 }
