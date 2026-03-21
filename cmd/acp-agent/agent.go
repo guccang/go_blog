@@ -33,12 +33,15 @@ type sessionRecord struct {
 
 // taskResult 任务完成结果
 type taskResult struct {
-	Status       string
-	Error        string
-	Summary      string
-	ProjectDir   string
-	FilesWritten int
-	FilesEdited  int
+	Status         string
+	Error          string
+	Summary        string
+	ProjectDir     string
+	FilesWritten   int
+	FilesEdited    int
+	Model          string
+	CurrentMode    string
+	AvailableModes []string
 }
 
 // Agent 纯 ACP 模式 Agent
@@ -311,11 +314,14 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 		})
 
 		return taskResult{
-			Status:       "done",
-			Summary:      summary,
-			ProjectDir:   projectPath,
-			FilesWritten: len(uniqueStrings(filesWritten)),
-			FilesEdited:  len(uniqueStrings(filesEdited)),
+			Status:         "done",
+			Summary:        summary,
+			ProjectDir:     projectPath,
+			FilesWritten:   len(uniqueStrings(filesWritten)),
+			FilesEdited:    len(uniqueStrings(filesEdited)),
+			Model:          acpClient.GetModelID(),
+			CurrentMode:    acpClient.GetCurrentModeID(),
+			AvailableModes: getModeIDs(acpClient),
 		}, nil
 	}
 
@@ -339,9 +345,12 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 	})
 
 	return taskResult{
-		Status:     "done",
-		Summary:    fmt.Sprintf("会话已创建（idle），可用模式: %v", modeNames),
-		ProjectDir: projectPath,
+		Status:         "done",
+		Summary:        fmt.Sprintf("会话已创建（idle），可用模式: %v", modeNames),
+		ProjectDir:     projectPath,
+		Model:          acpClient.GetModelID(),
+		CurrentMode:    acpClient.GetCurrentModeID(),
+		AvailableModes: modeNames,
 	}, nil
 }
 
@@ -441,6 +450,8 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 		ProjectDir:   projectPath,
 		FilesWritten: len(uniqueStrings(filesWritten)),
 		FilesEdited:  len(uniqueStrings(filesEdited)),
+		Model:        acpClient.GetModelID(),
+		CurrentMode:  acpClient.GetCurrentModeID(),
 	}, nil
 }
 
@@ -556,6 +567,16 @@ func uniqueStrings(strs []string) []string {
 		}
 	}
 	return result
+}
+
+// getModeIDs 从 ACPClientImpl 提取可用模式 ID 列表
+func getModeIDs(client *ACPClientImpl) []string {
+	modes := client.GetAvailableModes()
+	ids := make([]string, 0, len(modes))
+	for _, m := range modes {
+		ids = append(ids, string(m.Id))
+	}
+	return ids
 }
 
 // ========================= Claude Mode: 权限/模式管理 =========================

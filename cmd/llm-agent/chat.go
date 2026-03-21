@@ -213,6 +213,16 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 				b.handleModeSwitch(session, fromAgent, wechatUser, "plan")
 			case "code":
 				b.handleModeSwitch(session, fromAgent, wechatUser, "code")
+			case "status":
+				b.handleClaudeStatus(session, fromAgent, wechatUser)
+			case "model":
+				b.handleClaudeModel(session, fromAgent, wechatUser)
+			case "verbose":
+				b.handleVerbositySwitch(session, fromAgent, wechatUser, 2)
+			case "brief":
+				b.handleVerbositySwitch(session, fromAgent, wechatUser, 0)
+			case "normal":
+				b.handleVerbositySwitch(session, fromAgent, wechatUser, 1)
 			}
 			return
 		}

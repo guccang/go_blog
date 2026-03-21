@@ -337,11 +337,14 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	}
 
 	data := map[string]interface{}{
-		"session_id":    sessionID,
-		"project_dir":   result.ProjectDir,
-		"summary":       result.Summary,
-		"files_written": result.FilesWritten,
-		"files_edited":  result.FilesEdited,
+		"session_id":      sessionID,
+		"project_dir":     result.ProjectDir,
+		"summary":         result.Summary,
+		"files_written":   result.FilesWritten,
+		"files_edited":    result.FilesEdited,
+		"model":           result.Model,
+		"current_mode":    result.CurrentMode,
+		"available_modes": result.AvailableModes,
 	}
 	if result.FilesWritten == 0 && result.FilesEdited == 0 {
 		data["warning"] = "会话完成但未产生任何文件变更"
@@ -387,6 +390,8 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		"summary":       result.Summary,
 		"files_written": result.FilesWritten,
 		"files_edited":  result.FilesEdited,
+		"model":         result.Model,
+		"current_mode":  result.CurrentMode,
 	}
 	if result.FilesWritten == 0 && result.FilesEdited == 0 {
 		data["warning"] = "会话完成但未产生任何文件变更"
@@ -411,6 +416,14 @@ func (c *Connection) toolGetStatus(args map[string]interface{}) string {
 		}
 		if rec.Summary != "" {
 			data["summary"] = rec.Summary
+		}
+		// 从 ACPClient 获取 model/mode 信息
+		c.agent.sessionsMu.Lock()
+		fullRec, ok := c.agent.sessions[sessionID]
+		c.agent.sessionsMu.Unlock()
+		if ok && fullRec.ACPClient != nil {
+			data["model"] = fullRec.ACPClient.GetModelID()
+			data["current_mode"] = fullRec.ACPClient.GetCurrentModeID()
 		}
 		tr := uap.BuildToolResult("", data, fmt.Sprintf("会话 %s 状态: %s", sessionID, rec.Status))
 		return tr.Result

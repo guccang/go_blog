@@ -37,6 +37,9 @@ type ChatSession struct {
 	ClaudeACPAgentID string `json:"claude_acp_agent_id,omitempty"` // acp-agent ID
 	ClaudeFromAgent  string `json:"claude_from_agent,omitempty"`  // WeChat 消息来源 agent ID
 	ClaudeInteractive bool  `json:"claude_interactive,omitempty"` // 是否交互式权限模式
+	ClaudeVerbosity   int    `json:"claude_verbosity,omitempty"`    // 0=brief, 1=normal(默认), 2=verbose
+	ClaudeCurrentMode string `json:"claude_current_mode,omitempty"`
+	ClaudeModel       string `json:"claude_model,omitempty"`
 
 	mu         sync.Mutex         `json:"-"` // 保护 Messages 等字段
 	processing sync.Mutex         `json:"-"` // 序列化同一用户的消息处理
@@ -115,6 +118,9 @@ func (s *ChatSession) ResetClaudeMode() {
 	s.ClaudeACPAgentID = ""
 	s.ClaudeFromAgent = ""
 	s.ClaudeInteractive = false
+	s.ClaudeVerbosity = 0
+	s.ClaudeCurrentMode = ""
+	s.ClaudeModel = ""
 	s.mu.Unlock()
 	s.SetPendingPermission(nil)
 }

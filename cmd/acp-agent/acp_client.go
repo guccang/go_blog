@@ -52,6 +52,8 @@ type ACPClientImpl struct {
 
 	// 模式信息
 	availableModes []acp.SessionMode
+	currentModeID  string
+	modelID        string
 }
 
 // permissionResponse 权限回复
@@ -111,6 +113,20 @@ func (c *ACPClientImpl) GetAvailableModes() []acp.SessionMode {
 	return result
 }
 
+// GetCurrentModeID 获取当前模式 ID
+func (c *ACPClientImpl) GetCurrentModeID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.currentModeID
+}
+
+// GetModelID 获取当前模型 ID
+func (c *ACPClientImpl) GetModelID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.modelID
+}
+
 // SessionUpdate 处理 session/update 通知（核心：收集 agent 输出 + 推送事件）
 func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNotification) error {
 	update := params.Update
@@ -129,6 +145,20 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 		}
 	}
 
+	// AgentThoughtChunk → thought 事件
+	if update.AgentThoughtChunk != nil {
+		if update.AgentThoughtChunk.Content.Text != nil {
+			text := update.AgentThoughtChunk.Content.Text.Text
+			c.mu.Lock()
+			cb := c.streamCb
+			c.mu.Unlock()
+
+			if cb != nil {
+				cb(StreamEvent{Type: "thought", Text: text})
+			}
+		}
+	}
+
 	if update.ToolCall != nil {
 		log.Printf("[ACP] tool_call: %s (status=%s)", update.ToolCall.Title, update.ToolCall.Status)
 
@@ -142,10 +172,27 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 				ToolName: update.ToolCall.Title,
 				Text:     fmt.Sprintf("🔧 %s", update.ToolCall.Title),
 			})
+
+			// 额外发送 tool_detail 事件（包含工具详情）
+			detail := buildToolDetail(update.ToolCall)
+			if detail != "" {
+				cb(StreamEvent{Type: "tool_detail", Text: detail})
+			}
 		}
 	}
 
 	if update.ToolCallUpdate != nil {
+		c.mu.Lock()
+		cb := c.streamCb
+		c.mu.Unlock()
+
+		if cb != nil {
+			text := buildToolUpdateText(update.ToolCallUpdate)
+			if text != "" {
+				cb(StreamEvent{Type: "tool_update", Text: text})
+			}
+		}
+
 		if update.ToolCallUpdate.Status != nil {
 			log.Printf("[ACP] tool_call_update: status=%s", *update.ToolCallUpdate.Status)
 		}
@@ -171,6 +218,7 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 		log.Printf("[ACP] mode update: %s", modeID)
 
 		c.mu.Lock()
+		c.currentModeID = modeID
 		cb := c.streamCb
 		c.mu.Unlock()
 
@@ -444,15 +492,24 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 
 	log.Printf("[ACP] session created: id=%s", sessResp.SessionId)
 
-	// 保存可用模式列表
+	// 保存可用模式列表 + 当前模式/模型
 	if sessResp.Modes != nil {
 		client.mu.Lock()
 		client.availableModes = sessResp.Modes.AvailableModes
+		if sessResp.Modes.CurrentModeId != "" {
+			client.currentModeID = string(sessResp.Modes.CurrentModeId)
+		}
 		client.mu.Unlock()
-		log.Printf("[ACP] available modes: %d", len(sessResp.Modes.AvailableModes))
+		log.Printf("[ACP] available modes: %d, current mode: %s", len(sessResp.Modes.AvailableModes), sessResp.Modes.CurrentModeId)
 		for _, m := range sessResp.Modes.AvailableModes {
 			log.Printf("[ACP]   mode: id=%s name=%s", m.Id, m.Name)
 		}
+	}
+	if sessResp.Models != nil && sessResp.Models.CurrentModelId != "" {
+		client.mu.Lock()
+		client.modelID = string(sessResp.Models.CurrentModelId)
+		client.mu.Unlock()
+		log.Printf("[ACP] current model: %s", sessResp.Models.CurrentModelId)
 	}
 
 	session := &ACPSession{
@@ -463,6 +520,51 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	}
 
 	return session, client, nil
+}
+
+// buildToolDetail 构建 tool_detail 文本（工具调用的详细信息）
+func buildToolDetail(tc *acp.SessionUpdateToolCall) string {
+	var parts []string
+	if tc.Kind != "" {
+		parts = append(parts, fmt.Sprintf("kind=%s", tc.Kind))
+	}
+	// 提取文件路径
+	if len(tc.Locations) > 0 {
+		var files []string
+		for _, loc := range tc.Locations {
+			files = append(files, loc.Path)
+		}
+		parts = append(parts, fmt.Sprintf("files=%s", strings.Join(files, ",")))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "   └─ " + strings.Join(parts, " ")
+}
+
+// buildToolUpdateText 构建 tool_update 文本
+func buildToolUpdateText(tu *acp.SessionToolCallUpdate) string {
+	title := ""
+	if tu.Title != nil {
+		title = *tu.Title
+	}
+	status := ""
+	if tu.Status != nil {
+		status = string(*tu.Status)
+	}
+	if title == "" && status == "" {
+		return ""
+	}
+	// 提取文件路径
+	var files []string
+	for _, loc := range tu.Locations {
+		files = append(files, loc.Path)
+	}
+	result := fmt.Sprintf("🔧 %s [%s]", title, status)
+	if len(files) > 0 {
+		result += fmt.Sprintf(" (%s)", strings.Join(files, ", "))
+	}
+	return result
 }
 
 // formatPlan 格式化 PlanEntry[] 为可读文本

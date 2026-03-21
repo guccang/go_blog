@@ -147,6 +147,7 @@ func (b *Bridge) handleClaudeCommand(fromAgent, wechatUser, content string) {
 	session.ClaudeACPAgentID = acpAgentID
 	session.ClaudeFromAgent = fromAgent
 	session.ClaudeInteractive = opts.Ask
+	session.ClaudeVerbosity = 1 // 默认 normal
 	session.LastActiveAt = time.Now()
 	session.mu.Unlock()
 
@@ -162,7 +163,7 @@ func (b *Bridge) handleClaudeCommand(fromAgent, wechatUser, content string) {
 	if opts.Model != "" {
 		statusMsg += fmt.Sprintf(" | model: %s", opts.Model)
 	}
-	statusMsg += "\n指令: cc exit(退出) cc stop(中断) cc plan/cc code(切换模式)"
+	statusMsg += "\n指令: cc exit(退出) cc stop(中断) cc plan/cc code(切换模式)\n      cc status(状态) cc verbose/brief/normal(输出级别)"
 	b.sendWechat(fromAgent, wechatUser, statusMsg)
 
 	// 始终创建 ACP 会话（无 prompt 也创建，让 cc plan/code 可用）
@@ -185,8 +186,12 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 	}
 	argsJSON, _ := json.Marshal(args)
 
-	// 注册 claude stream sink
-	sink := newClaudeStreamSink(b, fromAgent, wechatUser)
+	// 注册 claude stream sink（传入 verbosity 和 session）
+	session.mu.Lock()
+	verbosity := session.ClaudeVerbosity
+	session.mu.Unlock()
+
+	sink := newClaudeStreamSink(b, fromAgent, wechatUser, verbosity, session)
 	go sink.run()
 
 	// 记录 sink 到 bridge（供 handleMessage 路由）
@@ -207,16 +212,27 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 		return
 	}
 
-	// 提取 session_id
+	// 提取 session_id, model, current_mode
 	if result != nil {
 		var data struct {
 			Data struct {
-				SessionID string `json:"session_id"`
+				SessionID      string   `json:"session_id"`
+				Model          string   `json:"model"`
+				CurrentMode    string   `json:"current_mode"`
+				AvailableModes []string `json:"available_modes"`
 			} `json:"data"`
 		}
-		if json.Unmarshal([]byte(result.Result), &data) == nil && data.Data.SessionID != "" {
+		if json.Unmarshal([]byte(result.Result), &data) == nil {
 			session.mu.Lock()
-			session.ClaudeSessionID = data.Data.SessionID
+			if data.Data.SessionID != "" {
+				session.ClaudeSessionID = data.Data.SessionID
+			}
+			if data.Data.Model != "" {
+				session.ClaudeModel = data.Data.Model
+			}
+			if data.Data.CurrentMode != "" {
+				session.ClaudeCurrentMode = data.Data.CurrentMode
+			}
 			session.mu.Unlock()
 		}
 	}
@@ -233,11 +249,12 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 	session.mu.Lock()
 	sessionID := session.ClaudeSessionID
 	interactive := session.ClaudeInteractive
+	verbosity := session.ClaudeVerbosity
 	session.LastActiveAt = time.Now()
 	session.mu.Unlock()
 
-	// 注册 claude stream sink
-	sink := newClaudeStreamSink(b, fromAgent, wechatUser)
+	// 注册 claude stream sink（传入 verbosity 和 session）
+	sink := newClaudeStreamSink(b, fromAgent, wechatUser, verbosity, session)
 	go sink.run()
 
 	b.claudeSinksMu.Lock()
@@ -277,19 +294,29 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 		}
 		argsJSON, _ := json.Marshal(args)
 		result, err = b.CallTool("AcpStartSession", argsJSON)
+	}
 
-		// 提取 session_id
-		if result != nil && err == nil {
-			var data struct {
-				Data struct {
-					SessionID string `json:"session_id"`
-				} `json:"data"`
-			}
-			if json.Unmarshal([]byte(result.Result), &data) == nil && data.Data.SessionID != "" {
-				session.mu.Lock()
+	// 提取 model/mode 信息
+	if result != nil && err == nil {
+		var data struct {
+			Data struct {
+				SessionID   string `json:"session_id"`
+				Model       string `json:"model"`
+				CurrentMode string `json:"current_mode"`
+			} `json:"data"`
+		}
+		if json.Unmarshal([]byte(result.Result), &data) == nil {
+			session.mu.Lock()
+			if data.Data.SessionID != "" && sessionID == "" {
 				session.ClaudeSessionID = data.Data.SessionID
-				session.mu.Unlock()
 			}
+			if data.Data.Model != "" {
+				session.ClaudeModel = data.Data.Model
+			}
+			if data.Data.CurrentMode != "" {
+				session.ClaudeCurrentMode = data.Data.CurrentMode
+			}
+			session.mu.Unlock()
 		}
 	}
 
@@ -456,42 +483,101 @@ type claudeStreamSink struct {
 	bridge     *Bridge
 	fromAgent  string
 	wechatUser string
+	verbosity  int          // 0=brief, 1=normal, 2=verbose
+	session    *ChatSession // 关联的 ChatSession（用于更新 mode 等）
 
 	mu     sync.Mutex
-	buf    strings.Builder
+	buf    strings.Builder // assistant 文本缓冲
+	tbuf   strings.Builder // thought 文本缓冲（verbose 模式）
 	done   chan struct{}
 	closed bool
 }
 
-func newClaudeStreamSink(b *Bridge, fromAgent, wechatUser string) *claudeStreamSink {
+func newClaudeStreamSink(b *Bridge, fromAgent, wechatUser string, verbosity int, session *ChatSession) *claudeStreamSink {
 	return &claudeStreamSink{
 		bridge:     b,
 		fromAgent:  fromAgent,
 		wechatUser: wechatUser,
+		verbosity:  verbosity,
+		session:    session,
 		done:       make(chan struct{}),
 	}
 }
 
-// onStreamEvent 处理从 acp-agent 收到的流式事件
+// setVerbosity 运行时切换 verbosity 级别
+func (s *claudeStreamSink) setVerbosity(level int) {
+	s.mu.Lock()
+	s.verbosity = level
+	s.mu.Unlock()
+}
+
+// onStreamEvent 处理从 acp-agent 收到的流式事件（按 verbosity 过滤）
 func (s *claudeStreamSink) onStreamEvent(evt StreamEventPayload) {
+	s.mu.Lock()
+	v := s.verbosity
+	s.mu.Unlock()
+
 	switch evt.Event.Type {
-	case "assistant":
-		// 文本输出，缓冲
-		s.mu.Lock()
-		s.buf.WriteString(evt.Event.Text)
-		s.mu.Unlock()
-	case "tool":
-		// 工具调用，立即转发
-		s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
-	case "plan":
-		// 计划更新，立即转发
-		s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
-	case "mode":
-		// 模式切换，立即转发
-		s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
 	case "system":
-		// 系统消息，立即转发
+		// 所有级别都显示
 		s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+
+	case "assistant":
+		// normal(1) 和 verbose(2) 缓冲输出
+		if v >= 1 {
+			s.mu.Lock()
+			s.buf.WriteString(evt.Event.Text)
+			s.mu.Unlock()
+		}
+
+	case "tool":
+		// normal(1) 和 verbose(2) 立即转发
+		if v >= 1 {
+			s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+		}
+
+	case "plan":
+		// normal(1) 和 verbose(2) 立即转发
+		if v >= 1 {
+			s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+		}
+
+	case "mode":
+		// normal(1) 和 verbose(2) 立即转发
+		if v >= 1 {
+			s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+		}
+		// 同时更新 session 的 ClaudeCurrentMode
+		if s.session != nil {
+			// 从文本中提取模式名（格式: "🔄 模式: xxx"）
+			modeText := evt.Event.Text
+			if idx := strings.Index(modeText, "模式: "); idx >= 0 {
+				modeName := strings.TrimSpace(modeText[idx+len("模式: "):])
+				s.session.mu.Lock()
+				s.session.ClaudeCurrentMode = modeName
+				s.session.mu.Unlock()
+			}
+		}
+
+	case "thought":
+		// 仅 verbose(2) 缓冲输出（💭前缀）
+		if v >= 2 {
+			s.mu.Lock()
+			s.tbuf.WriteString(evt.Event.Text)
+			s.mu.Unlock()
+		}
+
+	case "tool_detail":
+		// 仅 verbose(2) 立即转发
+		if v >= 2 {
+			s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+		}
+
+	case "tool_update":
+		// 仅 verbose(2) 立即转发
+		if v >= 2 {
+			s.bridge.sendWechat(s.fromAgent, s.wechatUser, evt.Event.Text)
+		}
 	}
 }
 
@@ -514,6 +600,21 @@ func (s *claudeStreamSink) run() {
 // flush 将缓冲区内容发送到微信
 func (s *claudeStreamSink) flush() {
 	s.mu.Lock()
+	// flush thought buffer
+	if s.tbuf.Len() > 0 {
+		thought := s.tbuf.String()
+		s.tbuf.Reset()
+		s.mu.Unlock()
+
+		if len(thought) > 2000 {
+			thought = thought[:2000] + "\n...(截断)"
+		}
+		s.bridge.sendWechat(s.fromAgent, s.wechatUser, "💭 "+thought)
+
+		s.mu.Lock()
+	}
+
+	// flush assistant buffer
 	if s.buf.Len() == 0 {
 		s.mu.Unlock()
 		return
@@ -540,6 +641,96 @@ func (s *claudeStreamSink) stop() {
 	s.closed = true
 	s.mu.Unlock()
 	close(s.done)
+}
+
+// ========================= 状态/模型/输出级别 =========================
+
+// handleClaudeStatus 显示 Claude 会话状态
+func (b *Bridge) handleClaudeStatus(session *ChatSession, fromAgent, wechatUser string) {
+	session.mu.Lock()
+	project := session.ClaudeProject
+	sessionID := session.ClaudeSessionID
+	model := session.ClaudeModel
+	mode := session.ClaudeCurrentMode
+	verbosity := session.ClaudeVerbosity
+	interactive := session.ClaudeInteractive
+	session.mu.Unlock()
+
+	// 检查是否有活跃的 sink（判断运行状态）
+	b.claudeSinksMu.Lock()
+	_, running := b.claudeSinks[sessionKey("wechat", wechatUser)]
+	b.claudeSinksMu.Unlock()
+
+	permDesc := "自动"
+	if interactive {
+		permDesc = "交互"
+	}
+
+	verbDesc := "普通(normal)"
+	switch verbosity {
+	case 0:
+		verbDesc = "简要(brief)"
+	case 2:
+		verbDesc = "详细(verbose)"
+	}
+
+	statusDesc := "空闲"
+	if running {
+		statusDesc = "运行中"
+	}
+
+	if model == "" {
+		model = "(未知)"
+	}
+	if mode == "" {
+		mode = "(未知)"
+	}
+	if sessionID == "" {
+		sessionID = "(未创建)"
+	}
+
+	msg := fmt.Sprintf("📊 Claude 会话状态\n━━━━━━━━━━━━━━━━━━━━━━\n📁 项目: %s\n🔑 会话: %s\n🤖 模型: %s\n📋 模式: %s\n🔒 权限: %s\n📢 输出: %s\n⏱ 状态: %s",
+		project, sessionID, model, mode, permDesc, verbDesc, statusDesc)
+
+	b.sendWechat(fromAgent, wechatUser, msg)
+}
+
+// handleClaudeModel 显示当前模型
+func (b *Bridge) handleClaudeModel(session *ChatSession, fromAgent, wechatUser string) {
+	session.mu.Lock()
+	model := session.ClaudeModel
+	session.mu.Unlock()
+
+	if model == "" {
+		model = "(未知)"
+	}
+	b.sendWechat(fromAgent, wechatUser, fmt.Sprintf("🤖 当前模型: %s", model))
+}
+
+// handleVerbositySwitch 切换输出详细级别
+func (b *Bridge) handleVerbositySwitch(session *ChatSession, fromAgent, wechatUser string, level int) {
+	session.mu.Lock()
+	session.ClaudeVerbosity = level
+	session.mu.Unlock()
+
+	// 如果有活跃的 sink，立即生效
+	b.claudeSinksMu.Lock()
+	sink, ok := b.claudeSinks[sessionKey("wechat", wechatUser)]
+	b.claudeSinksMu.Unlock()
+	if ok {
+		sink.setVerbosity(level)
+	}
+
+	var desc string
+	switch level {
+	case 0:
+		desc = "简要(brief) - 仅显示系统消息"
+	case 1:
+		desc = "普通(normal) - 显示文本、工具、计划"
+	case 2:
+		desc = "详细(verbose) - 显示全部（含思考过程和工具详情）"
+	}
+	b.sendWechat(fromAgent, wechatUser, fmt.Sprintf("📢 输出级别已切换: %s", desc))
 }
 
 // ========================= 工具函数 =========================
@@ -570,6 +761,16 @@ func isClaudeModeCommand(content string) (cmd string, ok bool) {
 		return "plan", true
 	case "cc code":
 		return "code", true
+	case "cc status", "cc 状态":
+		return "status", true
+	case "cc model", "cc 模型":
+		return "model", true
+	case "cc verbose", "cc 详细":
+		return "verbose", true
+	case "cc brief", "cc 简要":
+		return "brief", true
+	case "cc normal", "cc 普通":
+		return "normal", true
 	}
 	return "", false
 }
