@@ -124,6 +124,7 @@ func (a *Agent) ScanProjects() []ProjectInfo {
 }
 
 // resolveProject 在 workspaces 中查找项目，不存在则在第一个 workspace 创建
+// 始终返回绝对路径（ACP agent 的 session/new 要求绝对 cwd）
 func (a *Agent) resolveProject(project string) string {
 	if strings.Contains(project, "..") || strings.Contains(project, "/") || strings.Contains(project, "\\") {
 		return ""
@@ -131,7 +132,11 @@ func (a *Agent) resolveProject(project string) string {
 	for _, ws := range a.cfg.Workspaces {
 		p := filepath.Join(ws, project)
 		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			return p
+			abs, err := filepath.Abs(p)
+			if err != nil {
+				return p
+			}
+			return abs
 		}
 	}
 
@@ -143,7 +148,11 @@ func (a *Agent) resolveProject(project string) string {
 	if err := os.MkdirAll(p, 0755); err != nil {
 		return ""
 	}
-	return p
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	return abs
 }
 
 // ========================= ACP 执行 =========================
