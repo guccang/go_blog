@@ -55,7 +55,78 @@
                 <button class="btn btn-primary" onclick="saveGlobalAndNext()">继续 →</button>
             </section>
 
-            <!-- Step 4: Agent Selection -->
+            <!-- Step 4: Deploy Targets (conditional) -->
+            <section class="step hidden" id="step-deploy-targets">
+                <h2>Deploy Targets</h2>
+                <p>管理部署目标（SSH/Bridge 服务器）。</p>
+                <div id="targets-list" class="results"></div>
+                <div class="btn-group" style="margin-bottom:12px">
+                    <button class="btn btn-secondary" onclick="addTarget()">添加 Target</button>
+                </div>
+                <div id="target-edit-form" class="hidden" style="margin-bottom:16px">
+                    <h4 id="target-edit-title">添加 Target</h4>
+                    <div class="form-group"><label>名称</label><input type="text" id="target-name"></div>
+                    <div class="form-group"><label>Host (user@ip)</label><input type="text" id="target-host"></div>
+                    <div class="form-group"><label>SSH 端口</label><input type="number" id="target-port" value="22"></div>
+                    <div class="form-group"><label>平台 (linux/win/macos)</label><input type="text" id="target-platform" value="linux"></div>
+                    <div class="form-group"><label>类型 (ssh/bridge)</label><input type="text" id="target-type" value="ssh"></div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="saveTargetForm()">保存</button>
+                        <button class="btn btn-secondary" onclick="cancelTargetForm()">取消</button>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top:12px">
+                    <label>SSH 密码 (全局)</label>
+                    <input type="password" id="deploy-ssh-password" value="">
+                    <small>存入 deploy-agent.json 的 ssh_password 字段</small>
+                </div>
+                <button class="btn btn-primary" onclick="saveTargetsAndNext()">继续 →</button>
+            </section>
+
+            <!-- Step 5: Deploy Projects (conditional) -->
+            <section class="step hidden" id="step-deploy-projects">
+                <h2>Deploy Projects</h2>
+                <p>管理项目的打包部署配置。</p>
+                <div id="projects-list" class="results"></div>
+                <div id="project-edit-panel" class="hidden" style="margin:16px 0">
+                    <h4 id="project-edit-title">编辑项目</h4>
+                    <div class="form-group"><label>Pack Pattern</label><input type="text" id="proj-pack-pattern"></div>
+                    <div class="form-group"><label>Protect Files (逗号分隔)</label><input type="text" id="proj-protect-files"></div>
+                    <div class="form-group"><label>Setup Dirs (逗号分隔)</label><input type="text" id="proj-setup-dirs"></div>
+                    <div id="proj-target-fields"></div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="saveProjectEdit()">保存</button>
+                        <button class="btn btn-secondary" onclick="cancelProjectEdit()">取消</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="saveProjectsAndNext()">继续 →</button>
+            </section>
+
+            <!-- Step 6: Deploy Pipelines (conditional) -->
+            <section class="step hidden" id="step-deploy-pipelines">
+                <h2>Deploy Pipelines</h2>
+                <p>管理部署流水线编排。</p>
+                <div id="pipelines-list" class="results"></div>
+                <div class="btn-group" style="margin-bottom:12px">
+                    <button class="btn btn-secondary" onclick="addPipeline()">新建 Pipeline</button>
+                </div>
+                <div id="pipeline-edit-panel" class="hidden" style="margin:16px 0">
+                    <h4 id="pipeline-edit-title">新建 Pipeline</h4>
+                    <div class="form-group"><label>名称</label><input type="text" id="pipe-name"></div>
+                    <div class="form-group"><label>描述</label><input type="text" id="pipe-desc"></div>
+                    <div id="pipe-steps-list"></div>
+                    <div class="btn-group" style="margin:8px 0">
+                        <button class="btn btn-secondary" onclick="addPipelineStep()">添加步骤</button>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="savePipelineEdit()">保存</button>
+                        <button class="btn btn-secondary" onclick="cancelPipelineEdit()">取消</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="savePipelinesAndNext()">继续 →</button>
+            </section>
+
+            <!-- Step: Agent Selection -->
             <section class="step hidden" id="step-select">
                 <h2>Agent 选择</h2>
                 <p>选择要配置的 Agent。</p>
@@ -67,11 +138,15 @@
                 </div>
             </section>
 
-            <!-- Step 5: Agent Config -->
+            <!-- Step 5: Agent Config (per-agent pagination) -->
             <section class="step hidden" id="step-config">
                 <h2>Agent 配置</h2>
+                <h3 id="agent-progress"></h3>
                 <div id="agent-forms"></div>
-                <button class="btn btn-primary" onclick="saveConfigs()">生成配置 →</button>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="skipAgent()" id="btn-skip-agent">跳过此 Agent</button>
+                    <button class="btn btn-primary" onclick="saveCurrentAgent()" id="btn-save-agent">保存并继续 →</button>
+                </div>
             </section>
 
             <!-- Step 6: Config Generation -->

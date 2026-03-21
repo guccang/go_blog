@@ -300,12 +300,74 @@ func (c *DeployConfig) scanWorkspaces() {
 	}
 }
 
+// loadGlobalTargets 读取 settings/targets.json，返回全局 target 定义
+// 文件不存在时返回 nil, nil（向后兼容）
+func loadGlobalTargets(settingsDir string) (map[string]targetJSON, error) {
+	path := filepath.Join(settingsDir, "targets.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read targets.json: %v", err)
+	}
+
+	var targets map[string]targetJSON
+	if err := json.Unmarshal(data, &targets); err != nil {
+		return nil, fmt.Errorf("parse targets.json: %v", err)
+	}
+	return targets, nil
+}
+
+// mergeTargetJSON 合并全局 target 和项目级 target 定义
+// global 为底，project 中的非零值覆盖
+func mergeTargetJSON(global, project targetJSON) targetJSON {
+	result := global
+	if project.Host != "" {
+		result.Host = project.Host
+	}
+	if project.Port > 0 {
+		result.Port = project.Port
+	}
+	if project.RemoteDir != "" {
+		result.RemoteDir = project.RemoteDir
+	}
+	if project.RemoteScript != "" {
+		result.RemoteScript = project.RemoteScript
+	}
+	if project.Platform != "" {
+		result.Platform = project.Platform
+	}
+	if project.VerifyURL != "" {
+		result.VerifyURL = project.VerifyURL
+	}
+	if project.VerifyTimeout > 0 {
+		result.VerifyTimeout = project.VerifyTimeout
+	}
+	if project.Type != "" {
+		result.Type = project.Type
+	}
+	if project.BridgeURL != "" {
+		result.BridgeURL = project.BridgeURL
+	}
+	if project.AuthToken != "" {
+		result.AuthToken = project.AuthToken
+	}
+	return result
+}
+
 // loadProjectsDir 扫描 settings/projects/ 目录加载项目配置
 // 每个 <project>.json 文件包含完整的构建和部署目标配置
 func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 	projectsDir := filepath.Join(settingsDir, "projects")
 	if !dirExists(projectsDir) {
 		return fmt.Errorf("projects directory not found: %s", projectsDir)
+	}
+
+	// 加载全局 targets（settings/targets.json）
+	globalTargets, err := loadGlobalTargets(settingsDir)
+	if err != nil {
+		return fmt.Errorf("load global targets: %v", err)
 	}
 
 	entries, err := os.ReadDir(projectsDir)
@@ -334,7 +396,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		filePath := filepath.Join(projectsDir, entry.Name())
 		projName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 
-		proj, targets, err := c.parseProjectJSON(projName, filePath)
+		proj, targets, err := c.parseProjectJSON(projName, filePath, globalTargets)
 		if err != nil {
 			return fmt.Errorf("project [%s]: %v", projName, err)
 		}
@@ -418,7 +480,8 @@ func (c *DeployConfig) shouldIncludeTarget(t *Target) bool {
 
 // parseProjectJSON 解析单个项目的 .json 文件
 // 返回 ProjectConfig（构建配置）和 Target 列表（部署目标）
-func (c *DeployConfig) parseProjectJSON(projName, filePath string) (*ProjectConfig, []*Target, error) {
+// globalTargets 为 settings/targets.json 中定义的全局 target，可为 nil
+func (c *DeployConfig) parseProjectJSON(projName, filePath string, globalTargets map[string]targetJSON) (*ProjectConfig, []*Target, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %v", filePath, err)
@@ -497,6 +560,11 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string) (*ProjectConf
 
 	for _, name := range targetNames {
 		tj := pj.Targets[name]
+		if globalTargets != nil {
+			if gt, ok := globalTargets[name]; ok {
+				tj = mergeTargetJSON(gt, tj)
+			}
+		}
 		t, err := c.parseTargetJSON(name, &tj)
 		if err != nil {
 			return nil, nil, fmt.Errorf("target %q: %v", name, err)

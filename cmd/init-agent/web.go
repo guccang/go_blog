@@ -110,19 +110,26 @@ func RunWebServer(cfg *InitConfig) error {
 		writeJSON(w, map[string]any{"success": true, "results": state.EnvResults})
 	})
 
-	// API: Get all agent schemas
+	// API: Get all agent schemas (kept for availability)
 	mux.HandleFunc("/api/agents/schemas", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"success": true, "schemas": AllAgentSchemas()})
 	})
 
-	// API: Get existing configs
+	// API: Get discovered agent configs (dynamic JSON-based)
+	mux.HandleFunc("/api/agents/discovered", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"success": true,
+			"agents":  state.DiscoveredConfigs,
+		})
+	})
+
+	// API: Get existing configs (now uses discovered configs)
 	mux.HandleFunc("/api/agents/configs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			configs := make(map[string]map[string]any)
-			for _, schema := range AllAgentSchemas() {
-				existing, _ := LoadExistingConfig(cfg.RootDir, &schema)
-				if existing != nil {
-					configs[schema.Name] = existing
+			for _, dc := range state.DiscoveredConfigs {
+				if dc.Values != nil {
+					configs[dc.Name] = dc.Values
 				}
 			}
 			writeJSON(w, map[string]any{"success": true, "configs": configs})
@@ -131,8 +138,8 @@ func RunWebServer(cfg *InitConfig) error {
 
 		if r.Method == http.MethodPost {
 			var req struct {
-				Agents map[string]map[string]string `json:"agents"`
-				Shared map[string]string            `json:"shared"`
+				Agents map[string]map[string]any `json:"agents"`
+				Shared map[string]string         `json:"shared"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, map[string]any{"success": false, "error": err.Error()})
@@ -143,14 +150,15 @@ func RunWebServer(cfg *InitConfig) error {
 			var written []string
 
 			for agentName, vals := range req.Agents {
-				schema := GetAgentSchema(agentName)
-				if schema == nil {
+				// Find discovered config for this agent
+				info := state.GetDiscoveredConfig(agentName)
+				if info == nil {
 					continue
 				}
-				state.AgentValues[agentName] = vals
-				state.MergeAndStoreConfig(schema)
 
-				path, err := WriteAgentConfig(cfg.RootDir, schema, state.GeneratedConfigs[agentName])
+				state.GeneratedConfigs[agentName] = vals
+
+				path, err := WriteDiscoveredConfig(cfg.RootDir, *info, vals)
 				if err != nil {
 					writeJSON(w, map[string]any{"success": false, "error": err.Error()})
 					return
@@ -198,6 +206,123 @@ func RunWebServer(cfg *InitConfig) error {
 			"selected":     state.SelectedAgents,
 			"availability": state.AvailabilityLayers,
 		})
+	})
+
+	// API: Deploy status — check if deploy settings are available
+	mux.HandleFunc("/api/deploy/status", func(w http.ResponseWriter, r *http.Request) {
+		ds := state.DeployState
+		writeJSON(w, map[string]any{
+			"success":   true,
+			"available": ds != nil && ds.Available,
+		})
+	})
+
+	// API: Deploy targets — GET reads, POST saves
+	mux.HandleFunc("/api/deploy/targets", func(w http.ResponseWriter, r *http.Request) {
+		ds := state.DeployState
+		if ds == nil || !ds.Available {
+			writeJSON(w, map[string]any{"success": false, "error": "deploy settings not available"})
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			writeJSON(w, map[string]any{
+				"success":      true,
+				"targets":      ds.Targets,
+				"ssh_password": ds.SSHPassword,
+			})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var req struct {
+				Targets     map[string]DeployTarget `json:"targets"`
+				SSHPassword string                  `json:"ssh_password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+				return
+			}
+			ds.Targets = req.Targets
+			ds.SSHPassword = req.SSHPassword
+			writeJSON(w, map[string]any{"success": true})
+			return
+		}
+
+		http.Error(w, "Method not allowed", 405)
+	})
+
+	// API: Deploy projects — GET reads, POST saves
+	mux.HandleFunc("/api/deploy/projects", func(w http.ResponseWriter, r *http.Request) {
+		ds := state.DeployState
+		if ds == nil || !ds.Available {
+			writeJSON(w, map[string]any{"success": false, "error": "deploy settings not available"})
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			writeJSON(w, map[string]any{
+				"success":  true,
+				"projects": ds.Projects,
+				"order":    ds.ProjectOrder,
+			})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var req struct {
+				Projects map[string]*DeployProject `json:"projects"`
+				Order    []string                  `json:"order"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+				return
+			}
+			// Restore Name field from key
+			for name, proj := range req.Projects {
+				proj.Name = name
+			}
+			ds.Projects = req.Projects
+			if len(req.Order) > 0 {
+				ds.ProjectOrder = req.Order
+			}
+			writeJSON(w, map[string]any{"success": true})
+			return
+		}
+
+		http.Error(w, "Method not allowed", 405)
+	})
+
+	// API: Deploy pipelines — GET reads, POST saves
+	mux.HandleFunc("/api/deploy/pipelines", func(w http.ResponseWriter, r *http.Request) {
+		ds := state.DeployState
+		if ds == nil || !ds.Available {
+			writeJSON(w, map[string]any{"success": false, "error": "deploy settings not available"})
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			writeJSON(w, map[string]any{
+				"success":   true,
+				"pipelines": ds.Pipelines,
+			})
+			return
+		}
+
+		if r.Method == http.MethodPost {
+			var req struct {
+				Pipelines []DeployPipeline `json:"pipelines"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+				return
+			}
+			ds.Pipelines = req.Pipelines
+			writeJSON(w, map[string]any{"success": true})
+			return
+		}
+
+		http.Error(w, "Method not allowed", 405)
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.WebPort)

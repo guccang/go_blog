@@ -22,24 +22,109 @@ func RunCLIWizard(cfg *InitConfig) error {
 	reader := bufio.NewReader(os.Stdin)
 	state := NewWizardState(cfg.RootDir)
 
-	steps := []func(*InitConfig, *WizardState, *bufio.Reader) error{
-		cliStepWelcome,
-		cliStepEnvCheck,
-		cliStepGlobalConfig,
-		cliStepAgentSelect,
-		cliStepAgentConfig,
-		cliStepConfigGenerate,
-		cliStepAvailability,
+	// Fixed steps 1-3
+	fixedSteps := []struct {
+		step WizardStep
+		fn   func(*InitConfig, *WizardState, *bufio.Reader) error
+	}{
+		{StepWelcome, cliStepWelcome},
+		{StepEnvCheck, cliStepEnvCheck},
+		{StepGlobalConfig, cliStepGlobalConfig},
 	}
 
-	for i, step := range steps {
-		state.CurrentStep = WizardStep(i)
-		printStepHeader(i+1, len(steps), state.CurrentStep.String())
-		if err := step(cfg, state, reader); err != nil {
+	// Determine deploy steps (conditional)
+	deployAvailable := state.DeployState != nil && state.DeployState.Available
+	var deploySteps []struct {
+		step WizardStep
+		fn   func(*InitConfig, *WizardState, *bufio.Reader) error
+	}
+	if deployAvailable {
+		deploySteps = []struct {
+			step WizardStep
+			fn   func(*InitConfig, *WizardState, *bufio.Reader) error
+		}{
+			{StepDeployTargets, cliStepDeployTargets},
+			{StepDeployProjects, cliStepDeployProjects},
+			{StepDeployPipelines, cliStepDeployPipelines},
+		}
+	}
+
+	// Steps: fixed(3) + deploy(0-3) + agentSelect(1) + agents(N) + configGen(1) + avail(1)
+	numDeploySteps := len(deploySteps)
+	preAgentSteps := 3 + numDeploySteps + 1 // fixed + deploy + agentSelect
+
+	// We don't know numAgents yet, calculate after agentSelect
+	stepNum := 0
+
+	// Run fixed steps 1-3
+	for _, s := range fixedSteps {
+		stepNum++
+		state.CurrentStep = s.step
+		printStepHeader(stepNum, stepNum+3, s.step.String()) // placeholder total
+		if err := s.fn(cfg, state, reader); err != nil {
 			return err
 		}
 		fmt.Println()
 	}
+
+	// Run deploy steps 4-6 (if available)
+	for _, s := range deploySteps {
+		stepNum++
+		state.CurrentStep = s.step
+		printStepHeader(stepNum, stepNum+3, s.step.String())
+		if err := s.fn(cfg, state, reader); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+
+	// Agent select step
+	stepNum++
+	state.CurrentStep = StepAgentSelect
+	printStepHeader(stepNum, stepNum+3, StepAgentSelect.String())
+	if err := cliStepAgentSelect(cfg, state, reader); err != nil {
+		return err
+	}
+	fmt.Println()
+
+	// Now we know how many agents are selected — recalculate
+	numAgents := len(state.SelectedAgents)
+	totalSteps := preAgentSteps + numAgents + 2 // +configGen +avail
+
+	// Per-agent configuration
+	state.CurrentStep = StepAgentConfig
+	for i, agentName := range state.SelectedAgents {
+		info := state.GetDiscoveredConfig(agentName)
+		if info == nil {
+			continue
+		}
+		agentStepNum := preAgentSteps + 1 + i
+		stepLabel := fmt.Sprintf("Agent 配置 (%d/%d) — %s", i+1, numAgents, agentName)
+		printStepHeader(agentStepNum, totalSteps, stepLabel)
+
+		if err := cliStepSingleAgent(cfg, state, reader, agentName, *info, i+1, numAgents); err != nil {
+			return err
+		}
+		fmt.Println()
+	}
+
+	// Config generation
+	configGenStepNum := preAgentSteps + numAgents + 1
+	state.CurrentStep = StepConfigGenerate
+	printStepHeader(configGenStepNum, totalSteps, state.CurrentStep.String())
+	if err := cliStepConfigGenerate(cfg, state, reader); err != nil {
+		return err
+	}
+	fmt.Println()
+
+	// Availability
+	availStepNum := preAgentSteps + numAgents + 2
+	state.CurrentStep = StepAvailability
+	printStepHeader(availStepNum, totalSteps, state.CurrentStep.String())
+	if err := cliStepAvailability(cfg, state, reader); err != nil {
+		return err
+	}
+	fmt.Println()
 
 	fmt.Println(colorGreen("  ✓ 初始化向导完成！"))
 	fmt.Println()
@@ -75,7 +160,15 @@ func cliStepWelcome(_ *InitConfig, state *WizardState, _ *bufio.Reader) error {
 	if err != nil {
 		fmt.Printf("  %s 无法列出 agent 目录: %v\n", colorYellow("!"), err)
 	} else {
-		fmt.Printf("  发现 %d 个 agent: %s\n", len(agents), strings.Join(agents, ", "))
+		fmt.Printf("  发现 %d 个 agent 目录: %s\n", len(agents), strings.Join(agents, ", "))
+	}
+
+	if len(state.DiscoveredConfigs) > 0 {
+		names := make([]string, len(state.DiscoveredConfigs))
+		for i, dc := range state.DiscoveredConfigs {
+			names[i] = dc.Name
+		}
+		fmt.Printf("  发现 %d 个已有配置: %s\n", len(state.DiscoveredConfigs), strings.Join(names, ", "))
 	}
 
 	return nil
@@ -120,15 +213,26 @@ func cliStepGlobalConfig(cfg *InitConfig, state *WizardState, reader *bufio.Read
 	fmt.Println("  配置全局参数（将自动传播到所有 agent）")
 	fmt.Println()
 
+	// Use values from init-agent.json as defaults, fallback to hardcoded
+	serverURL := cfg.ServerURL
+	if serverURL == "" {
+		serverURL = "ws://127.0.0.1:10086/ws/uap"
+	}
+	gatewayHTTP := cfg.GatewayHTTP
+	if gatewayHTTP == "" {
+		gatewayHTTP = "http://127.0.0.1:10086"
+	}
+	authToken := cfg.AuthToken
+
 	fields := []struct {
 		key      string
 		label    string
 		defVal   string
 		desc     string
 	}{
-		{"server_url", "Gateway WebSocket URL", "ws://127.0.0.1:10086/ws/uap", "UAP WebSocket 连接地址"},
-		{"gateway_http", "Gateway HTTP URL", "http://127.0.0.1:10086", "Gateway HTTP API 地址"},
-		{"auth_token", "Auth Token", "", "Gateway 认证令牌（可空）"},
+		{"server_url", "Gateway WebSocket URL", serverURL, "UAP WebSocket 连接地址"},
+		{"gateway_http", "Gateway HTTP URL", gatewayHTTP, "Gateway HTTP API 地址"},
+		{"auth_token", "Auth Token", authToken, "Gateway 认证令牌（可空）"},
 	}
 
 	for _, f := range fields {
@@ -153,50 +257,52 @@ func cliStepGlobalConfig(cfg *InitConfig, state *WizardState, reader *bufio.Read
 	return nil
 }
 
-// Step 4: Agent selection
+// Step 4: Agent selection (based on discovered configs)
 func cliStepAgentSelect(cfg *InitConfig, state *WizardState, reader *bufio.Reader) error {
 	fmt.Println()
+
+	discovered := state.DiscoveredConfigs
+	if len(discovered) == 0 {
+		fmt.Printf("  %s 没有发现任何 agent 配置文件，请先在 cmd/*/  目录下创建 JSON 配置\n", colorYellow("!"))
+		return nil
+	}
+
 	fmt.Println("  选择要配置的 agent（输入编号，逗号分隔，或 'all' 选择全部）")
+	fmt.Println("  " + colorDim("仅显示已有 JSON 配置文件的 agent"))
 	fmt.Println()
 
-	schemas := state.AllSchemas
-	for i, s := range schemas {
-		status := ""
-		if state.AgentHasExistingConfig(&s) {
-			status = colorGreen(" [已有配置]")
-		}
-		fmt.Printf("    %s %-25s %s%s\n",
+	for i, dc := range discovered {
+		fieldCount := len(dc.Values)
+		fmt.Printf("    %s %-25s %s\n",
 			colorCyan(fmt.Sprintf("[%2d]", i+1)),
-			s.Name,
-			colorDim(s.Description),
-			status,
+			dc.Name,
+			colorDim(fmt.Sprintf("(%d 个字段, %s)", fieldCount, dc.ConfigPath)),
 		)
 	}
 
 	fmt.Println()
 
 	if cfg.NonInteractive {
-		// Select all agents
-		for _, s := range schemas {
-			state.SelectedAgents = append(state.SelectedAgents, s.Name)
+		for _, dc := range discovered {
+			state.SelectedAgents = append(state.SelectedAgents, dc.Name)
 		}
 		fmt.Println("  非交互模式: 已选择全部 agent")
 	} else {
 		input := promptLine(reader, "选择 (如 1,2,3 或 all)", "all")
 		if strings.ToLower(input) == "all" {
-			for _, s := range schemas {
-				state.SelectedAgents = append(state.SelectedAgents, s.Name)
+			for _, dc := range discovered {
+				state.SelectedAgents = append(state.SelectedAgents, dc.Name)
 			}
 		} else {
 			parts := strings.Split(input, ",")
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
 				idx, err := strconv.Atoi(p)
-				if err != nil || idx < 1 || idx > len(schemas) {
+				if err != nil || idx < 1 || idx > len(discovered) {
 					fmt.Printf("  %s 忽略无效编号: %s\n", colorYellow("!"), p)
 					continue
 				}
-				state.SelectedAgents = append(state.SelectedAgents, schemas[idx-1].Name)
+				state.SelectedAgents = append(state.SelectedAgents, discovered[idx-1].Name)
 			}
 		}
 	}
@@ -208,76 +314,133 @@ func cliStepAgentSelect(cfg *InitConfig, state *WizardState, reader *bufio.Reade
 	return nil
 }
 
-// Step 5: Per-agent config
-func cliStepAgentConfig(cfg *InitConfig, state *WizardState, reader *bufio.Reader) error {
+// Step 5 (per-agent): Single agent configuration from discovered JSON
+func cliStepSingleAgent(cfg *InitConfig, state *WizardState, reader *bufio.Reader, agentName string, info AgentConfigInfo, idx, total int) error {
+	fmt.Println()
+	fmt.Printf("  %s %s\n", colorCyan("▸"), colorBold(agentName))
+	fmt.Printf("    %s\n", colorDim(info.ConfigPath))
 	fmt.Println()
 
-	for _, agentName := range state.SelectedAgents {
-		schema := GetAgentSchema(agentName)
-		if schema == nil {
+	// Shared key mappings: global shared values → agent JSON keys
+	sharedKeyMap := map[string]string{
+		"server_url":   "server_url",
+		"gateway_url":  "server_url",
+		"gateway_http": "gateway_http",
+		"auth_token":   "auth_token",
+	}
+
+	// Work on a copy of the values
+	values := make(map[string]any)
+	for k, v := range info.Values {
+		values[k] = v
+	}
+
+	keys := SortedKeys(values)
+	firstField := true
+
+	for _, key := range keys {
+		origVal := values[key]
+		fieldType := InferFieldType(origVal)
+		displayVal := FormatValueForDisplay(origVal)
+
+		// Apply global shared value as recommended default if applicable
+		if sharedKey, mapped := sharedKeyMap[key]; mapped {
+			if sv, ok := state.SharedValues[sharedKey]; ok && sv != "" {
+				displayVal = sv
+			}
+		}
+		// Also check direct match with shared values
+		if sv, ok := state.SharedValues[key]; ok && sv != "" {
+			displayVal = sv
+		}
+
+		typeHint := colorDim(fmt.Sprintf("(%s)", fieldType))
+		if fieldType == "object" {
+			// For complex objects, show as JSON and allow editing
+			fmt.Printf("    %s %s %s\n", colorDim("·"), key, typeHint)
+			fmt.Printf("      当前值: %s\n", colorDim(displayVal))
+			if !cfg.NonInteractive {
+				fmt.Printf("      %s\n", colorDim("(输入新 JSON 或回车保留现有值)"))
+			}
+		}
+
+		if cfg.NonInteractive {
+			values[key] = ParseInputValue(displayVal, origVal)
 			continue
 		}
 
-		fmt.Printf("\n  %s %s\n", colorCyan("▸"), colorBold(schema.Name))
-		fmt.Printf("    %s\n", colorDim(schema.Description))
+		label := fmt.Sprintf("    %s %s", key, typeHint)
+		input := promptLine(reader, label, displayVal)
 
-		// Load existing config for defaults
-		existing, _ := LoadExistingConfig(state.RootDir, schema)
-
-		agentVals := make(map[string]string)
-		nonSharedFields := GetNonSharedFields(schema)
-
-		for _, field := range nonSharedFields {
-			// Skip complex types in CLI for simplicity
-			if field.Type == FieldMap {
-				fmt.Printf("    %s %s: %s\n", colorDim("·"), field.Label, colorDim("(跳过，请手动编辑配置文件)"))
-				continue
-			}
-
-			// Determine default: existing > schema default
-			defVal := GetDefaultValueString(field)
-			if existing != nil {
-				if v, ok := existing[field.Key]; ok {
-					defVal = fmt.Sprintf("%v", v)
+		// First field: check for "skip" to skip the entire agent
+		if firstField && strings.ToLower(strings.TrimSpace(input)) == "skip" {
+			fmt.Printf("\n  %s 跳过 %s\n", colorYellow("→"), agentName)
+			state.SkippedAgents = append(state.SkippedAgents, agentName)
+			// Remove from selected
+			newSelected := make([]string, 0, len(state.SelectedAgents))
+			for _, s := range state.SelectedAgents {
+				if s != agentName {
+					newSelected = append(newSelected, s)
 				}
 			}
-
-			if cfg.NonInteractive {
-				agentVals[field.Key] = defVal
-			} else {
-				label := fmt.Sprintf("    %s", field.Label)
-				if field.Required {
-					label += colorRed("*")
-				}
-				val := promptLine(reader, label, defVal)
-				if val != "" {
-					if err := ValidateField(field, val); err != nil {
-						fmt.Printf("    %s %v (使用输入值)\n", colorYellow("!"), err)
-					}
-				}
-				agentVals[field.Key] = val
-			}
+			state.SelectedAgents = newSelected
+			return nil
 		}
+		firstField = false
 
-		state.AgentValues[agentName] = agentVals
-		state.MergeAndStoreConfig(schema)
+		values[key] = ParseInputValue(input, origVal)
 	}
+
+	state.GeneratedConfigs[agentName] = values
+	fmt.Printf("\n  %s %s 配置已暂存\n", colorGreen("✓"), agentName)
 
 	return nil
 }
 
-// Step 6: Config generation
+// Step: Config generation
 func cliStepConfigGenerate(cfg *InitConfig, state *WizardState, reader *bufio.Reader) error {
 	fmt.Println()
 	fmt.Println("  即将生成以下配置文件:")
 	fmt.Println()
 
+	// Preview deploy config files
+	if state.DeployState != nil && state.DeployState.Available {
+		ds := state.DeployState
+		if len(ds.Targets) > 0 {
+			path := filepath.Join(ds.SettingsDir, "targets.json")
+			fmt.Printf("    %s %s %s\n", colorCyan("·"), path, colorYellow("(deploy targets)"))
+		}
+		for _, name := range ds.ProjectOrder {
+			path := filepath.Join(ds.SettingsDir, "projects", name+".json")
+			fmt.Printf("    %s %s\n", colorCyan("·"), path)
+		}
+		for _, p := range ds.Pipelines {
+			path := filepath.Join(ds.SettingsDir, "pipelines", p.Name+".json")
+			fmt.Printf("    %s %s\n", colorCyan("·"), path)
+		}
+		if ds.SSHPassword != "" {
+			path := filepath.Join(state.RootDir, "cmd", "deploy-agent", "deploy-agent.json")
+			fmt.Printf("    %s %s %s\n", colorCyan("·"), path, colorYellow("(ssh_password)"))
+		}
+		fmt.Println()
+	}
+
 	for _, agentName := range state.SelectedAgents {
-		schema := GetAgentSchema(agentName)
-		if schema == nil {
+		values := state.GeneratedConfigs[agentName]
+		if values == nil {
 			continue
 		}
-		path := filepath.Join(state.RootDir, schema.Dir, schema.ConfigFileName)
+
+		// Determine path from discovered config or schema
+		var path string
+		if info := state.GetDiscoveredConfig(agentName); info != nil {
+			path = filepath.Join(state.RootDir, info.ConfigPath)
+		} else if schema := GetAgentSchema(agentName); schema != nil {
+			path = filepath.Join(state.RootDir, schema.Dir, schema.ConfigFileName)
+		} else {
+			continue
+		}
+
 		exists := ""
 		if FileExists(path) {
 			exists = colorYellow(" (将覆盖)")
@@ -285,11 +448,8 @@ func cliStepConfigGenerate(cfg *InitConfig, state *WizardState, reader *bufio.Re
 		fmt.Printf("    %s %s%s\n", colorCyan("·"), path, exists)
 
 		// Show preview
-		values := state.GeneratedConfigs[agentName]
-		if values != nil {
-			preview := PreviewConfig(schema, values)
-			fmt.Println(colorDim(preview))
-		}
+		preview := PreviewDiscoveredConfig(values)
+		fmt.Println(colorDim(preview))
 		fmt.Println()
 	}
 
@@ -313,7 +473,7 @@ func cliStepConfigGenerate(cfg *InitConfig, state *WizardState, reader *bufio.Re
 	return nil
 }
 
-// Step 7: Availability check
+// Step: Availability check
 func cliStepAvailability(_ *InitConfig, state *WizardState, _ *bufio.Reader) error {
 	fmt.Println()
 	fmt.Println("  正在运行可用性检测...")
