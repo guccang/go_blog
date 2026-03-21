@@ -66,6 +66,10 @@ type Bridge struct {
 	cfg    *Config
 	client *uap.Client
 
+	// 统一工具注册表（Phase 4 替代 toolCatalog）
+	toolHandlers map[string]ToolHandler // canonicalName → handler
+	toolNameMap  map[string]string      // 任意名称变体 → canonicalName
+
 	// 工具目录
 	toolCatalog map[string]string // tool_name → agent_id
 	llmTools    []LLMTool         // LLM function calling 工具列表
@@ -168,6 +172,8 @@ func NewBridge(cfg *Config) *Bridge {
 	b := &Bridge{
 		cfg:               cfg,
 		client:            client,
+		toolHandlers:      make(map[string]ToolHandler),
+		toolNameMap:       make(map[string]string),
 		toolCatalog:       make(map[string]string),
 		agentInfo:         make(map[string]AgentInfo),
 		agentTools:        make(map[string][]LLMTool),
@@ -265,6 +271,9 @@ func NewBridge(cfg *Config) *Bridge {
 		log.Printf("[Bridge] load rules: %v", err)
 	}
 	b.memoryCollector = NewMemoryCollector(b.memoryMgr, b, cfg.SkillIterationThreshold)
+
+	// 注册内置工具到统一注册表
+	b.registerBuiltinTools()
 
 	return b
 }
@@ -650,6 +659,12 @@ func (b *Bridge) DiscoverTools() error {
 	b.toolCatalog = catalog
 	b.llmTools = llmTools
 	b.agentTools = agentToolsMap
+
+	// 注册远程工具到统一注册表
+	for toolName, agentID := range catalog {
+		b.registerRemoteToolLocked(toolName, agentID)
+	}
+
 	b.catalogMu.Unlock()
 
 	if len(llmTools) != prevCount {
@@ -659,11 +674,11 @@ func (b *Bridge) DiscoverTools() error {
 	// 应用工具权限策略
 	b.applyToolPolicy()
 
-	// 合并内置工具（Bash）
+	// 合并内置工具（Bash）到 llmTools（用于 LLM function calling）
+	// 注意：handler 已在 registerBuiltinTools 中注册到统一注册表
 	if b.bashManager != nil {
 		b.catalogMu.Lock()
 		for _, tool := range b.bashManager.ToolDefs() {
-			// 检查是否已存在同名工具（避免重复）
 			exists := false
 			for _, t := range b.llmTools {
 				if t.Function.Name == tool.Function.Name {
@@ -673,7 +688,6 @@ func (b *Bridge) DiscoverTools() error {
 			}
 			if !exists {
 				b.llmTools = append(b.llmTools, tool)
-				log.Printf("[Bridge] 注册内置工具: %s", tool.Function.Name)
 			}
 		}
 		b.catalogMu.Unlock()
@@ -710,7 +724,10 @@ func (b *Bridge) applyToolPolicy() {
 	var removed []string
 	for _, tool := range b.llmTools {
 		name := tool.Function.Name
-		originalName := unsanitizeToolName(name)
+		originalName := name
+		if cn, ok := b.toolNameMap[name]; ok {
+			originalName = cn
+		}
 
 		// deny 优先
 		if denySet[name] || denySet[originalName] {
@@ -733,7 +750,10 @@ func (b *Bridge) applyToolPolicy() {
 		var agentFiltered []LLMTool
 		for _, tool := range tools {
 			name := tool.Function.Name
-			originalName := unsanitizeToolName(name)
+			originalName := name
+			if cn, ok := b.toolNameMap[name]; ok {
+				originalName = cn
+			}
 			if denySet[name] || denySet[originalName] {
 				continue
 			}
@@ -1009,7 +1029,7 @@ func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool) string {
 	// 从当前 tools 找出涉及的 agent ID
 	involvedAgents := make(map[string]bool)
 	for _, tool := range tools {
-		originalName := unsanitizeToolName(tool.Function.Name)
+		originalName := b.resolveToolName(tool.Function.Name)
 		if agentID, ok := toolCatalogCopy[originalName]; ok {
 			involvedAgents[agentID] = true
 		} else if agentID, ok := toolCatalogCopy[tool.Function.Name]; ok {
@@ -1249,25 +1269,32 @@ type ToolCallResult struct {
 	FromID  string // 结果来源 agent ID（响应方）
 }
 
-// CallTool 发送 MsgToolCall 到目标 agent 并等待 MsgToolResult
+// CallTool 统一工具调用入口（无 context）
 func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResult, error) {
-	// 内置工具优先处理
-	if b.bashManager != nil {
-		var argsMap map[string]interface{}
-		if err := json.Unmarshal(args, &argsMap); err == nil {
-			if result, handled := b.bashManager.HandleTool(toolName, argsMap); handled {
-				return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
-			}
+	return b.DispatchTool(context.Background(), toolName, args, nil)
+}
+
+// CallToolCtx context 感知的工具调用，支持级联取消
+func (b *Bridge) CallToolCtx(ctx context.Context, toolName string, args json.RawMessage) (*ToolCallResult, error) {
+	return b.DispatchTool(ctx, toolName, args, nil)
+}
+
+// CallToolCtxWithProgress context 感知的工具调用，支持进度回调转发
+func (b *Bridge) CallToolCtxWithProgress(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+	return b.DispatchTool(ctx, toolName, args, sink)
+}
+
+// callRemoteAgent 发送 tool_call 到远程 agent 并等待 MsgToolResult
+// 从原 callToolCtxWithSink 提取，纯 UAP 消息收发
+func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("cancelled before tool call %s: %v", toolName, err)
 		}
+	} else {
+		ctx = context.Background()
 	}
 
-	// 查找目标 agent
-	agentID, ok := b.getToolAgent(toolName)
-	if !ok {
-		return nil, fmt.Errorf("tool %s not found in catalog", toolName)
-	}
-
-	// 创建 pending channel
 	msgID := uap.NewMsgID()
 	ch := make(chan *toolResultWithFrom, 1)
 
@@ -1275,15 +1302,26 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResul
 	b.pending[msgID] = ch
 	b.pendMu.Unlock()
 
+	// 注册进度回调 sink（deploy-agent 的 tool_progress 会通过 msgID 关联）
+	if sink != nil {
+		b.toolProgressMu.Lock()
+		b.toolProgressSinks[msgID] = sink
+		b.toolProgressMu.Unlock()
+	}
+
 	defer func() {
 		b.pendMu.Lock()
 		delete(b.pending, msgID)
 		b.pendMu.Unlock()
+		if sink != nil {
+			b.toolProgressMu.Lock()
+			delete(b.toolProgressSinks, msgID)
+			b.toolProgressMu.Unlock()
+		}
 	}()
 
 	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
 
-	// 发送 tool_call
 	err := b.client.Send(&uap.Message{
 		Type: uap.MsgToolCall,
 		ID:   msgID,
@@ -1315,104 +1353,6 @@ func (b *Bridge) CallTool(toolName string, args json.RawMessage) (*ToolCallResul
 				fmt.Errorf("tool error: %s", result.Error)
 		}
 		log.Printf("[Bridge] tool_result ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)
-		return &ToolCallResult{
-			Result:  result.Result,
-			AgentID: agentID,
-			FromID:  result.FromID,
-		}, nil
-	case <-time.After(timeout):
-		return &ToolCallResult{AgentID: agentID},
-			fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
-	}
-}
-
-// CallToolCtx context 感知的工具调用，支持级联取消
-func (b *Bridge) CallToolCtx(ctx context.Context, toolName string, args json.RawMessage) (*ToolCallResult, error) {
-	return b.callToolCtxWithSink(ctx, toolName, args, nil)
-}
-
-// CallToolCtxWithProgress context 感知的工具调用，支持进度回调转发
-func (b *Bridge) CallToolCtxWithProgress(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
-	return b.callToolCtxWithSink(ctx, toolName, args, sink)
-}
-
-func (b *Bridge) callToolCtxWithSink(ctx context.Context, toolName string, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("cancelled before tool call %s: %v", toolName, err)
-	}
-
-	// 内置工具优先处理
-	if b.bashManager != nil {
-		var argsMap map[string]interface{}
-		if err := json.Unmarshal(args, &argsMap); err == nil {
-			if result, handled := b.bashManager.HandleTool(toolName, argsMap); handled {
-				return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
-			}
-		}
-	}
-
-	agentID, ok := b.getToolAgent(toolName)
-	if !ok {
-		return nil, fmt.Errorf("tool %s not found in catalog", toolName)
-	}
-
-	msgID := uap.NewMsgID()
-	ch := make(chan *toolResultWithFrom, 1)
-
-	b.pendMu.Lock()
-	b.pending[msgID] = ch
-	b.pendMu.Unlock()
-
-	// 注册进度回调 sink（deploy-agent 的 tool_progress 会通过 msgID 关联）
-	if sink != nil {
-		b.toolProgressMu.Lock()
-		b.toolProgressSinks[msgID] = sink
-		b.toolProgressMu.Unlock()
-	}
-
-	defer func() {
-		b.pendMu.Lock()
-		delete(b.pending, msgID)
-		b.pendMu.Unlock()
-		if sink != nil {
-			b.toolProgressMu.Lock()
-			delete(b.toolProgressSinks, msgID)
-			b.toolProgressMu.Unlock()
-		}
-	}()
-
-	log.Printf("[Bridge] tool_call(ctx) → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
-
-	err := b.client.Send(&uap.Message{
-		Type: uap.MsgToolCall,
-		ID:   msgID,
-		From: b.cfg.AgentID,
-		To:   agentID,
-		Payload: mustMarshal(uap.ToolCallPayload{
-			ToolName:  toolName,
-			Arguments: args,
-		}),
-		Ts: time.Now().UnixMilli(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("send tool_call: %v", err)
-	}
-
-	timeout := time.Duration(b.cfg.ToolCallTimeoutSec) * time.Second
-	if isLongRunningTool(toolName) {
-		longTimeout := time.Duration(b.cfg.LongToolTimeoutSec) * time.Second
-		if longTimeout <= 0 {
-			longTimeout = 600 * time.Second
-		}
-		timeout = longTimeout
-	}
-	select {
-	case result := <-ch:
-		if !result.Success {
-			return &ToolCallResult{Result: result.Result, AgentID: agentID, FromID: result.FromID},
-				fmt.Errorf("tool error: %s", result.Error)
-		}
-		log.Printf("[Bridge] tool_result(ctx) ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)
 		return &ToolCallResult{
 			Result:  result.Result,
 			AgentID: agentID,

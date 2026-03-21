@@ -224,7 +224,7 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 			continue
 		}
 		// 兜底：工具名前缀直接匹配 query 关键词
-		toolNameLower := strings.ToLower(unsanitizeToolName(tool.Function.Name))
+		toolNameLower := strings.ToLower(b.resolveToolName(tool.Function.Name))
 		for _, prefix := range queryMatchedPrefixes {
 			if strings.HasPrefix(toolNameLower, prefix) {
 				filtered = append(filtered, tool)
@@ -313,7 +313,7 @@ func (b *Bridge) matchSkillsScored(query string, tools []LLMTool, maxN int) []Sk
 	onlineToolSet := make(map[string]bool, len(tools)*2)
 	for _, t := range tools {
 		onlineToolSet[t.Function.Name] = true
-		onlineToolSet[unsanitizeToolName(t.Function.Name)] = true
+		onlineToolSet[b.resolveToolName(t.Function.Name)] = true
 	}
 
 	queryLower := strings.ToLower(query)
@@ -428,7 +428,7 @@ func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 
 	var filtered []LLMTool
 	for _, tool := range tools {
-		if hintSet[tool.Function.Name] || b.isBaseTool(unsanitizeToolName(tool.Function.Name)) {
+		if hintSet[tool.Function.Name] || b.isBaseTool(b.resolveToolName(tool.Function.Name)) {
 			filtered = append(filtered, tool)
 		}
 	}
@@ -453,7 +453,7 @@ func (b *Bridge) ensureBaseTools(filtered []LLMTool, allTools []LLMTool) []LLMTo
 
 	var added int
 	for _, t := range allTools {
-		originalName := unsanitizeToolName(t.Function.Name)
+		originalName := b.resolveToolName(t.Function.Name)
 		if b.isBaseTool(originalName) && !existingSet[t.Function.Name] {
 			filtered = append(filtered, t)
 			existingSet[t.Function.Name] = true

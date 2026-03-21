@@ -866,7 +866,7 @@ func (o *Orchestrator) executeSubTask(
 
 		// 执行工具调用
 		for tcIdx, tc := range toolCalls {
-			originalName := unsanitizeToolName(tc.Function.Name)
+			originalName := o.bridge.resolveToolName(tc.Function.Name)
 
 			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
@@ -963,7 +963,7 @@ func (o *Orchestrator) executeSubTask(
 					if !existingSet[s.Function.Name] {
 						existingSet[s.Function.Name] = true
 						filteredTools = append(filteredTools, s)
-						newToolNames = append(newToolNames, unsanitizeToolName(s.Function.Name))
+						newToolNames = append(newToolNames, o.bridge.resolveToolName(s.Function.Name))
 					}
 				}
 			}
@@ -1365,7 +1365,7 @@ func (o *Orchestrator) resumeSubTask(
 		if len(lastMsg.ToolCalls) > 0 {
 			// 工具调用中断：重新执行工具
 			for _, tc := range lastMsg.ToolCalls {
-				originalName := unsanitizeToolName(tc.Function.Name)
+				originalName := o.bridge.resolveToolName(tc.Function.Name)
 				sendEvent("tool_info", fmt.Sprintf("[%s] 恢复工具调用: %s", subtask.ID, originalName))
 
 				tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
@@ -1446,7 +1446,7 @@ func (o *Orchestrator) resumeSubTask(
 		messages = append(messages, assistantMsg)
 
 		for _, tc := range toolCalls {
-			originalName := unsanitizeToolName(tc.Function.Name)
+			originalName := o.bridge.resolveToolName(tc.Function.Name)
 			tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
 			var result string
 			if tcResult != nil {

@@ -128,7 +128,7 @@ func (b *Bridge) buildMCPToolListReply(query string, tools []LLMTool) (string, b
 	})
 
 	for _, tool := range sorted {
-		originalName := unsanitizeToolName(tool.Function.Name)
+		originalName := b.resolveToolName(tool.Function.Name)
 		desc := strings.TrimSpace(tool.Function.Description)
 		if desc == "" {
 			desc = "???"
@@ -272,7 +272,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			var visible []LLMTool
 			var hiddenNames []string
 			for _, t := range tools {
-				originalName := unsanitizeToolName(t.Function.Name)
+				originalName := b.resolveToolName(t.Function.Name)
 				if hiddenAgents[originalName] && !b.isBaseTool(originalName) {
 					hiddenNames = append(hiddenNames, originalName)
 					continue
@@ -340,16 +340,16 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// 发送最终工具数量信息（所有工具变更完成后，排除虚拟工具展示）
 	if !ctx.NoTools && len(tools) > 0 {
-		virtualTools := map[string]bool{
+		hiddenToolNames := map[string]bool{
 			"plan_and_execute": true, "execute_skill": true,
 			"set_persona": true, "set_rule": true,
 		}
 		var realToolNames []string
 		for _, t := range tools {
-			if virtualTools[t.Function.Name] {
+			if hiddenToolNames[t.Function.Name] {
 				continue
 			}
-			realToolNames = append(realToolNames, unsanitizeToolName(t.Function.Name))
+			realToolNames = append(realToolNames, b.resolveToolName(t.Function.Name))
 		}
 		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 本次加载 %d 个工具]\n%s", len(realToolNames), strings.Join(realToolNames, ", ")))
 	}
@@ -358,6 +358,26 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	maxIter := b.cfg.MaxToolIterations
 	if maxIter <= 0 {
 		maxIter = 15
+	}
+
+	// 构建本次 processTask 专用的 localHandlers（捕获当前 TaskContext）
+	localHandlers := make(map[string]ToolHandler)
+	if !ctx.NoTools && b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
+		capturedCtx := ctx
+		capturedTools := tools
+		localHandlers["execute_skill"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+			var skillArgs struct {
+				SkillName string `json:"skill_name"`
+				Query     string `json:"query"`
+			}
+			if err := json.Unmarshal(args, &skillArgs); err != nil {
+				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+			}
+			sink.OnEvent("skill_start", fmt.Sprintf("正在执行技能: %s\n任务: %s", skillArgs.SkillName, skillArgs.Query))
+			log.Printf("[processTask] execute_skill: skill=%s query=%s", skillArgs.SkillName, truncate(skillArgs.Query, 200))
+			result := b.executeSkillSubTask(capturedCtx, skillArgs.SkillName, skillArgs.Query, capturedTools)
+			return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+		}
 	}
 
 	var finalText string
@@ -433,7 +453,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		// 构建工具调用名称列表用于日志
 		var tcNames []string
 		for _, tc := range toolCalls {
-			tcNames = append(tcNames, unsanitizeToolName(tc.Function.Name))
+			tcNames = append(tcNames, b.resolveToolName(tc.Function.Name))
 		}
 		log.Printf("[processTask] ← LLM 响应 duration=%v textLen=%d toolCalls=%d tools=%v",
 			llmDuration, len(text), len(toolCalls), tcNames)
@@ -539,52 +559,27 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				break
 			}
 
-			originalName := unsanitizeToolName(tc.Function.Name)
+			originalName := b.resolveToolName(tc.Function.Name)
 
-			// set_persona 内置处理（不走远程 agent）
-			if tc.Function.Name == "set_persona" && b.persona != nil {
-				reply, ok := b.persona.HandleSetPersona(tc.Function.Arguments)
-				log.Printf("[processTask] set_persona: success=%v result=%s", ok, reply)
-				toolMsg := Message{
-					Role:       "tool",
-					Content:    reply,
-					ToolCallID: tc.ID,
-				}
-				rootSession.AppendMessage(toolMsg)
-				messages = append(messages, toolMsg)
-				continue
+			// 统一 handler 查找：localHandlers → 全局 toolHandlers
+			handler, hasHandler := localHandlers[originalName]
+			if !hasHandler {
+				b.catalogMu.RLock()
+				handler, hasHandler = b.toolHandlers[originalName]
+				b.catalogMu.RUnlock()
 			}
 
-			// set_rule 内置处理（不走远程 agent）
-			if tc.Function.Name == "set_rule" && b.memoryMgr != nil {
-				reply, ok := b.memoryMgr.HandleSetRule(tc.Function.Arguments)
-				log.Printf("[processTask] set_rule: success=%v result=%s", ok, reply)
-				toolMsg := Message{
-					Role:       "tool",
-					Content:    reply,
-					ToolCallID: tc.ID,
+			// 内置虚拟工具（set_persona, set_rule, execute_skill）直接调用 handler，无需心跳
+			if hasHandler && isVirtualTool(originalName) {
+				callCtx := ctx.Ctx
+				if callCtx == nil {
+					callCtx = context.Background()
 				}
-				rootSession.AppendMessage(toolMsg)
-				messages = append(messages, toolMsg)
-				continue
-			}
-
-			// execute_skill 内置处理：在独立子任务中执行技能
-			if tc.Function.Name == "execute_skill" && b.skillMgr != nil {
-				var skillArgs struct {
-					SkillName string `json:"skill_name"`
-					Query     string `json:"query"`
+				tcResult, _ := handler(callCtx, json.RawMessage(tc.Function.Arguments), ctx.Sink)
+				result := ""
+				if tcResult != nil {
+					result = tcResult.Result
 				}
-				if err := json.Unmarshal([]byte(tc.Function.Arguments), &skillArgs); err != nil {
-					log.Printf("[processTask] execute_skill 参数解析失败: %v", err)
-					toolMsg := Message{Role: "tool", Content: fmt.Sprintf("参数解析失败: %v", err), ToolCallID: tc.ID}
-					rootSession.AppendMessage(toolMsg)
-					messages = append(messages, toolMsg)
-					continue
-				}
-				ctx.Sink.OnEvent("skill_start", fmt.Sprintf("正在执行技能: %s\n任务: %s", skillArgs.SkillName, skillArgs.Query))
-				log.Printf("[processTask] execute_skill: skill=%s query=%s", skillArgs.SkillName, truncate(skillArgs.Query, 200))
-				result := b.executeSkillSubTask(ctx, skillArgs.SkillName, skillArgs.Query, tools)
 				toolMsg := Message{
 					Role:       "tool",
 					Content:    result,
@@ -609,14 +604,24 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				callCtx = context.Background()
 			}
 
+			// 统一调度：通过 handler 执行（包括 Bash 和远程工具）
+			if !hasHandler {
+				log.Printf("[processTask] ✗ 工具未找到: %s", originalName)
+				toolMsg := Message{Role: "tool", Content: fmt.Sprintf("工具 %s 未找到", originalName), ToolCallID: tc.ID}
+				rootSession.AppendMessage(toolMsg)
+				messages = append(messages, toolMsg)
+				continue
+			}
+
 			// 异步执行工具调用，主协程发送心跳进度
 			type toolCallResultPair struct {
 				result *ToolCallResult
 				err    error
 			}
 			resultCh := make(chan toolCallResultPair, 1)
+			capturedHandler := handler
 			go func() {
-				r, e := b.CallToolCtxWithProgress(callCtx, originalName, json.RawMessage(tc.Function.Arguments), ctx.Sink)
+				r, e := capturedHandler(callCtx, json.RawMessage(tc.Function.Arguments), ctx.Sink)
 				resultCh <- toolCallResultPair{r, e}
 			}()
 
@@ -758,7 +763,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 					if !existingSet[s.Function.Name] {
 						existingSet[s.Function.Name] = true
 						tools = append(tools, s)
-						newToolNames = append(newToolNames, unsanitizeToolName(s.Function.Name))
+						newToolNames = append(newToolNames, b.resolveToolName(s.Function.Name))
 					}
 				}
 			}
@@ -1427,7 +1432,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 
 		// 执行工具调用
 		for _, tc := range toolCalls {
-			originalName := unsanitizeToolName(tc.Function.Name)
+			originalName := b.resolveToolName(tc.Function.Name)
 			log.Printf("[SkillSubTask] skill=%s → 调用工具: %s args=%s",
 				skillName, originalName, truncate(tc.Function.Arguments, 500))
 
@@ -1539,7 +1544,7 @@ func (b *Bridge) filterToolsForSkill(skill *SkillEntry, parentTools []LLMTool) [
 	var filtered []LLMTool
 	for _, t := range parentTools {
 		name := t.Function.Name
-		originalName := unsanitizeToolName(name)
+		originalName := b.resolveToolName(name)
 		if name == "plan_and_execute" || name == "execute_skill" || name == "set_persona" || name == "set_rule" {
 			continue
 		}
@@ -1567,7 +1572,7 @@ func (b *Bridge) buildRouteInfoByAgent(tools []LLMTool, beforeCount int, level D
 	agentGroups := make(map[string][]string)
 	var ungrouped []string
 	for _, t := range tools {
-		originalName := unsanitizeToolName(t.Function.Name)
+		originalName := b.resolveToolName(t.Function.Name)
 		agentID, ok := toolCatalogCopy[originalName]
 		if !ok {
 			agentID, ok = toolCatalogCopy[t.Function.Name]
@@ -1695,7 +1700,7 @@ func (b *Bridge) expandSkillOwnedAgents(skillOwned map[string]bool) map[string]b
 	allHidden := make(map[string]bool)
 	for agentID := range affectedAgents {
 		for _, t := range agentToolsCopy[agentID] {
-			originalName := unsanitizeToolName(t.Function.Name)
+			originalName := b.resolveToolName(t.Function.Name)
 			allHidden[originalName] = true
 			allHidden[t.Function.Name] = true
 		}

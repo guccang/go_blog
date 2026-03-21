@@ -132,18 +132,8 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 }
 
 // HandleTool 处理工具调用，返回 (result, handled)
-func (m *BashToolManager) HandleTool(toolName string, args map[string]interface{}) (string, bool) {
-	// 匹配带前缀的工具名（如 llm-agent_Bash 或 llm-agent.Bash）或裸名 Bash
-	expectedSanitized := "Bash"
-	expectedOriginal := "Bash"
-	if m.AgentID != "" {
-		expectedOriginal = m.AgentID + ".Bash"
-		expectedSanitized = sanitizeToolName(expectedOriginal)
-	}
-	if toolName != expectedSanitized && toolName != expectedOriginal && toolName != "Bash" {
-		return "", false
-	}
-
+// 已被统一 ToolHandler 替代，保留仅供兼容
+func (m *BashToolManager) HandleTool(args map[string]interface{}) (string, bool) {
 	command, _ := args["command"].(string)
 	if command == "" {
 		return "错误: command 参数不能为空", true
