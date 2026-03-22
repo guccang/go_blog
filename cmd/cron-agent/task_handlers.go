@@ -17,6 +17,7 @@ func (c *Connection) handleToolCreateTask(args map[string]interface{}) (string, 
 	scheduleTypeStr, _ := args["schedule_type"].(string)
 	cronExpr, _ := args["cron_expr"].(string)
 	intervalSec, _ := args["interval_sec"].(float64)
+	delaySec, _ := args["delay_sec"].(float64)
 	targetAgent, _ := args["target_agent"].(string)
 	taskType, _ := args["task_type"].(string)
 	enabled := true
@@ -57,6 +58,7 @@ func (c *Connection) handleToolCreateTask(args map[string]interface{}) (string, 
 		ScheduleType: scheduleType,
 		CronExpr:     cronExpr,
 		IntervalSec:  int64(intervalSec),
+		DelaySec:     int64(delaySec),
 		TargetAgent:  targetAgent,
 		TaskType:     taskType,
 		Payload:      json.RawMessage(payloadJSON),

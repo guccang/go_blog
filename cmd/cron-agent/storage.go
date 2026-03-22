@@ -131,9 +131,13 @@ func (s *Storage) CreateTask(req *TaskCreateRequest) (*CronTask, error) {
 		Payload:      req.Payload,
 		Enabled:      req.Enabled,
 		Status:       TaskStatusPending,
-		NextRunAt:    time.Time{}, // 由调度器计算
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+
+	// 一次性任务：根据 delay_sec 计算 NextRunAt
+	if req.ScheduleType == ScheduleTypeOnce && req.DelaySec > 0 {
+		task.NextRunAt = now.Add(time.Duration(req.DelaySec) * time.Second)
 	}
 
 	// 设置默认值

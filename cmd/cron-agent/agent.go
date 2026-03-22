@@ -119,6 +119,7 @@ func buildToolDefs() []uap.ToolDef {
 					"schedule_type": map[string]interface{}{"type": "string", "description": "调度类型: cron/once/interval", "enum": []string{"cron", "once", "interval"}},
 					"cron_expr":     map[string]interface{}{"type": "string", "description": "cron表达式（schedule_type=cron时必填）"},
 					"interval_sec":  map[string]interface{}{"type": "integer", "description": "间隔秒数（schedule_type=interval时必填）"},
+					"delay_sec":     map[string]interface{}{"type": "integer", "description": "延迟秒数（schedule_type=once时使用，指定多少秒后执行，如10表示10秒后执行）"},
 					"target_agent":  map[string]interface{}{"type": "string", "description": "目标agent ID，默认llm-agent"},
 					"task_type":     map[string]interface{}{"type": "string", "description": "任务类型，发送到 llm-agent 时必须使用 cron_reminder", "enum": []string{"cron_reminder"}},
 					"payload":       map[string]interface{}{"type": "object", "description": "任务负载。cron_reminder 类型必须包含: message(提醒内容), account(用户账号), wechat_user(微信用户ID，与account相同即可)"},

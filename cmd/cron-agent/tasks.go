@@ -69,6 +69,7 @@ type TaskCreateRequest struct {
 	ScheduleType ScheduleType    `json:"schedule_type"`
 	CronExpr     string          `json:"cron_expr,omitempty"`
 	IntervalSec  int64           `json:"interval_sec,omitempty"`
+	DelaySec     int64           `json:"delay_sec,omitempty"` // 一次性任务延迟秒数
 	TargetAgent  string          `json:"target_agent,omitempty"`
 	TaskType     string          `json:"task_type"`
 	Payload      json.RawMessage `json:"payload"`
