@@ -3,8 +3,11 @@
     'use strict';
 
     // Base steps (always present, before deploy)
-    var BASE_STEP_IDS = ['step-welcome','step-global'];
-    var BASE_STEP_NAMES = ['欢迎','全局配置'];
+    var BASE_STEP_IDS = ['step-mode-select','step-global'];
+    var BASE_STEP_NAMES = ['模式选择','全局配置'];
+
+    // Progressive view IDs (not part of step navigation)
+    var PROGRESSIVE_VIEW_IDS = ['step-quickstart','step-add-agent','step-agent-overview'];
 
     // Deploy steps (conditional)
     var DEPLOY_STEP_IDS = ['step-deploy-targets','step-deploy-projects','step-deploy-pipelines'];
@@ -42,6 +45,13 @@
     var editingProjectName = null;
     var editingPipelineIdx = -1;  // -1 = add, >=0 = edit
     var pipelineSteps = [];       // temp steps for pipeline editor
+
+    // Progressive deployment state
+    var tierData = [];            // cached tier data from /api/agents/tiers
+    var onlineAgents = {};        // cached online agent set
+    var addAgentSelected = {};    // { agentName: true } for add-agent checkboxes
+    var recommendTimer = null;    // debounce timer for recommend input
+    var recommendedSet = {};      // { agentName: true } for highlighted agents
 
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
@@ -134,7 +144,7 @@
     }
 
     function showStep(idx) {
-        // Hide all step sections
+        // Hide all step sections (including progressive views)
         var allSections = document.querySelectorAll('main > .step');
         allSections.forEach(function(el) { el.classList.add('hidden'); });
 
@@ -982,6 +992,338 @@
         container.innerHTML += '<div class="avail-layer">'
             +'<div class="avail-layer-header"><div class="dot '+layer.status+'"></div><strong>'+layer.label+'</strong></div>'
             +'<div class="avail-layer-body">'+itemsHTML+'</div></div>';
+    }
+
+    // ── Progressive Deployment: Mode Select ──
+
+    function showProgressiveView(viewId) {
+        // Hide all sections
+        var allSections = document.querySelectorAll('main > .step');
+        allSections.forEach(function(el) { el.classList.add('hidden'); });
+        // Hide step dots (not part of step navigation)
+        document.getElementById('steps').style.display = 'none';
+        // Show the target view
+        var el = document.getElementById(viewId);
+        if (el) el.classList.remove('hidden');
+    }
+
+    window.showModeSelect = function() {
+        document.getElementById('steps').style.display = 'flex';
+        showStep(0);
+    };
+
+    window.enterQuickStart = function() {
+        showProgressiveView('step-quickstart');
+        // Reset results
+        document.getElementById('quickstart-results').innerHTML = '';
+        document.getElementById('btn-quickstart').disabled = false;
+    };
+
+    window.submitQuickStart = function() {
+        var port = parseInt(document.getElementById('qs-gateway-port').value) || 10086;
+        var redisIP = document.getElementById('qs-redis-ip').value.trim() || '127.0.0.1';
+        var redisPort = document.getElementById('qs-redis-port').value.trim() || '6379';
+        var admin = document.getElementById('qs-admin').value.trim() || 'admin';
+
+        document.getElementById('btn-quickstart').disabled = true;
+        var results = document.getElementById('quickstart-results');
+        results.innerHTML = '<span class="spinner"></span> 正在生成配置...';
+
+        fetch('/api/quickstart', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                gateway_port: port,
+                redis_ip: redisIP,
+                redis_port: redisPort,
+                admin: admin
+            })
+        }).then(function(r){return r.json()}).then(function(data) {
+            if (data.success) {
+                var html = '<div class="result-item"><span class="icon status-green">&#10003;</span>'
+                    +'<span class="detail">' + escapeAttr(data.message || '配置生成成功') + '</span></div>';
+                (data.written || []).forEach(function(p) {
+                    html += '<div class="result-item"><span class="icon status-green">&#183;</span>'
+                        +'<span class="detail">' + escapeAttr(p) + '</span></div>';
+                });
+                html += '<div style="margin-top:16px;color:#8b949e">';
+                html += '<p>启动核心 agent:</p>';
+                html += '<pre style="background:#0d1117;padding:8px;border-radius:4px;margin:4px 0">cd cmd/gateway && go run .\ncd cmd/blog-agent && go run .</pre>';
+                html += '<p style="margin-top:8px">想要更多功能？返回首页选择"增量安装"。</p>';
+                html += '</div>';
+                results.innerHTML = html;
+            } else {
+                results.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                    +'<span class="detail">' + escapeAttr(data.error) + '</span></div>';
+                document.getElementById('btn-quickstart').disabled = false;
+            }
+        }).catch(function(err) {
+            results.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                +'<span class="detail">请求失败: ' + escapeAttr(String(err)) + '</span></div>';
+            document.getElementById('btn-quickstart').disabled = false;
+        });
+    };
+
+    // ── Progressive Deployment: Add Agent ──
+
+    window.enterAddAgent = function() {
+        showProgressiveView('step-add-agent');
+        addAgentSelected = {};
+        recommendedSet = {};
+        document.getElementById('recommend-input').value = '';
+        document.getElementById('add-agent-results').innerHTML = '';
+
+        var container = document.getElementById('add-agent-tiers');
+        container.innerHTML = '<span class="spinner"></span> 加载 Agent 列表...';
+
+        fetch('/api/agents/tiers').then(function(r){return r.json()}).then(function(data) {
+            if (data.success) {
+                tierData = data.tiers || [];
+                renderAddAgentTiers(container);
+            } else {
+                container.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                    +'<span class="detail">' + escapeAttr(data.error) + '</span></div>';
+            }
+        }).catch(function(err) {
+            container.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                +'<span class="detail">加载失败: ' + escapeAttr(String(err)) + '</span></div>';
+        });
+    };
+
+    function renderAddAgentTiers(container) {
+        var html = '';
+        tierData.forEach(function(tierGroup) {
+            html += '<div class="tier-group">';
+            html += '<div class="tier-header">' + escapeAttr(tierGroup.label) + '</div>';
+            (tierGroup.agents || []).forEach(function(agent) {
+                var isRecommended = recommendedSet[agent.name];
+                var tileClass = 'agent-tile' + (isRecommended ? ' agent-tile-recommended' : '');
+                var checked = addAgentSelected[agent.name] ? 'checked' : '';
+                var installedTag = agent.installed ? '<span class="tag-installed">已配置</span>' : '';
+                var depsStr = (agent.deps && agent.deps.length > 0) ? '<span class="agent-tile-deps">依赖: ' + agent.deps.map(escapeAttr).join(', ') + '</span>' : '';
+
+                html += '<div class="' + tileClass + '">';
+                html += '<label class="agent-tile-label">';
+                html += '<input type="checkbox" data-agent="' + escapeAttr(agent.name) + '" ' + checked
+                    + (agent.installed ? ' disabled' : '')
+                    + ' onchange="toggleAddAgent(\'' + escapeAttr(agent.name) + '\', this.checked)">';
+                html += '<div class="agent-tile-info">';
+                html += '<div class="agent-tile-name">' + escapeAttr(agent.name) + ' ' + installedTag + '</div>';
+                html += '<div class="agent-tile-pitch">' + escapeAttr(agent.short_pitch || '') + '</div>';
+                html += depsStr;
+                html += '</div>';
+                html += '</label>';
+                html += '</div>';
+            });
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    window.toggleAddAgent = function(name, checked) {
+        if (checked) {
+            addAgentSelected[name] = true;
+        } else {
+            delete addAgentSelected[name];
+        }
+    };
+
+    window.submitAddAgent = function() {
+        var selected = Object.keys(addAgentSelected);
+        if (selected.length === 0) {
+            alert('请至少选择一个 Agent');
+            return;
+        }
+
+        document.getElementById('btn-add-agent').disabled = true;
+        var results = document.getElementById('add-agent-results');
+        results.innerHTML = '<span class="spinner"></span> 正在安装...';
+
+        fetch('/api/agents/add', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({agents: selected, values: {}})
+        }).then(function(r){return r.json()}).then(function(data) {
+            document.getElementById('btn-add-agent').disabled = false;
+            if (data.success) {
+                var html = '';
+                if (data.resolved && data.resolved.length > 0) {
+                    html += '<div class="result-item"><span class="icon status-green">&#10003;</span>'
+                        +'<span class="detail">依赖解析: ' + data.resolved.join(', ') + '</span></div>';
+                }
+                if (data.already_configured && data.already_configured.length > 0) {
+                    html += '<div class="result-item"><span class="icon status-green">&#10003;</span>'
+                        +'<span class="detail">已配置: ' + data.already_configured.join(', ') + '</span></div>';
+                }
+                if (data.need_config && data.need_config.length > 0) {
+                    html += '<div class="result-item"><span class="icon status-yellow">!</span>'
+                        +'<span class="detail">需配置（无默认值提供）: ' + data.need_config.join(', ') + '</span></div>';
+                    html += '<div style="margin-top:8px;color:#8b949e">';
+                    html += '<p>部分 Agent 需要手动配置。你可以:</p>';
+                    html += '<ul style="margin:4px 0 0 20px">';
+                    html += '<li>返回首页选择"完整向导"逐个配置</li>';
+                    html += '<li>使用 CLI: <code>init-agent --add ' + data.need_config.join(' ') + '</code></li>';
+                    html += '</ul></div>';
+                }
+                if (data.written && data.written.length > 0) {
+                    (data.written || []).forEach(function(p) {
+                        html += '<div class="result-item"><span class="icon status-green">&#183;</span>'
+                            +'<span class="detail">' + escapeAttr(p) + '</span></div>';
+                    });
+                }
+                if (!html) {
+                    html = '<div class="result-item"><span class="icon status-green">&#10003;</span>'
+                        +'<span class="detail">操作完成</span></div>';
+                }
+                results.innerHTML = html;
+                // Refresh tier data to update installed status
+                fetch('/api/agents/tiers').then(function(r){return r.json()}).then(function(d) {
+                    if (d.success) {
+                        tierData = d.tiers || [];
+                        renderAddAgentTiers(document.getElementById('add-agent-tiers'));
+                    }
+                });
+            } else {
+                results.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                    +'<span class="detail">' + escapeAttr(data.error) + '</span></div>';
+            }
+        }).catch(function(err) {
+            document.getElementById('btn-add-agent').disabled = false;
+            results.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                +'<span class="detail">请求失败: ' + escapeAttr(String(err)) + '</span></div>';
+        });
+    };
+
+    // ── Progressive Deployment: Recommend ──
+
+    window.onRecommendInput = function(value) {
+        if (recommendTimer) clearTimeout(recommendTimer);
+        if (!value.trim()) {
+            recommendedSet = {};
+            renderAddAgentTiers(document.getElementById('add-agent-tiers'));
+            return;
+        }
+        recommendTimer = setTimeout(function() {
+            fetch('/api/agents/recommend?intent=' + encodeURIComponent(value.trim()))
+                .then(function(r){return r.json()})
+                .then(function(data) {
+                    recommendedSet = {};
+                    if (data.success && data.results) {
+                        data.results.forEach(function(r) {
+                            if (r.agent && r.agent.name) {
+                                recommendedSet[r.agent.name] = true;
+                            }
+                        });
+                    }
+                    renderAddAgentTiers(document.getElementById('add-agent-tiers'));
+                });
+        }, 300);
+    };
+
+    window.clearRecommend = function() {
+        document.getElementById('recommend-input').value = '';
+        recommendedSet = {};
+        renderAddAgentTiers(document.getElementById('add-agent-tiers'));
+    };
+
+    // ── Progressive Deployment: Full Wizard ──
+
+    window.enterFullWizard = function() {
+        // Show steps nav and jump to step-global (step index 1)
+        document.getElementById('steps').style.display = 'flex';
+        showStep(1);
+    };
+
+    // ── Progressive Deployment: Overview ──
+
+    window.enterOverview = function() {
+        showProgressiveView('step-agent-overview');
+        var container = document.getElementById('overview-tiers');
+        container.innerHTML = '<span class="spinner"></span> 加载 Agent 信息...';
+
+        // Fetch tiers and online status in parallel
+        Promise.all([
+            fetch('/api/agents/tiers').then(function(r){return r.json()}),
+            fetch('/api/agents/online').then(function(r){return r.json()}).catch(function() {
+                return {success: false, online: []};
+            })
+        ]).then(function(results) {
+            var tierResult = results[0];
+            var onlineResult = results[1];
+
+            if (!tierResult.success) {
+                container.innerHTML = '<div class="result-item"><span class="icon status-red">&#10007;</span>'
+                    +'<span class="detail">' + escapeAttr(tierResult.error || '加载失败') + '</span></div>';
+                return;
+            }
+
+            // Parse online agents from gateway response
+            onlineAgents = {};
+            if (onlineResult.success && onlineResult.gateway_response) {
+                var gr = onlineResult.gateway_response;
+                // Gateway may return agents as array or map — handle both
+                var agentList = gr.agents || gr.data || [];
+                if (Array.isArray(agentList)) {
+                    agentList.forEach(function(a) {
+                        var name = a.agent_id || a.name || a.id || '';
+                        if (name) onlineAgents[name] = true;
+                    });
+                } else if (typeof agentList === 'object') {
+                    Object.keys(agentList).forEach(function(k) {
+                        onlineAgents[k] = true;
+                    });
+                }
+            }
+
+            tierData = tierResult.tiers || [];
+            renderOverviewTiers(container);
+        });
+    };
+
+    window.refreshOverview = function() {
+        enterOverview();
+    };
+
+    function renderOverviewTiers(container) {
+        var html = '';
+        var gatewayError = '';
+
+        // Show gateway connection status
+        if (Object.keys(onlineAgents).length > 0) {
+            html += '<div class="result-item" style="margin-bottom:12px"><span class="icon status-green">&#10003;</span>'
+                +'<span class="detail">Gateway 已连接，' + Object.keys(onlineAgents).length + ' 个 Agent 在线</span></div>';
+        } else {
+            html += '<div class="result-item" style="margin-bottom:12px"><span class="icon status-yellow">!</span>'
+                +'<span class="detail">未连接到 Gateway 或无在线 Agent</span></div>';
+        }
+
+        tierData.forEach(function(tierGroup) {
+            html += '<div class="tier-group">';
+            html += '<div class="tier-header">' + escapeAttr(tierGroup.label) + '</div>';
+            (tierGroup.agents || []).forEach(function(agent) {
+                var isOnline = onlineAgents[agent.name];
+                var statusTag = '';
+                if (agent.installed && isOnline) {
+                    statusTag = '<span class="tag-online">在线</span>';
+                } else if (agent.installed) {
+                    statusTag = '<span class="tag-installed">已配置</span><span class="tag-offline">离线</span>';
+                } else {
+                    statusTag = '<span class="tag-unconfigured">未配置</span>';
+                }
+
+                var depsStr = (agent.deps && agent.deps.length > 0) ? '<span class="agent-tile-deps">依赖: ' + agent.deps.map(escapeAttr).join(', ') + '</span>' : '';
+
+                html += '<div class="agent-tile agent-tile-readonly">';
+                html += '<div class="agent-tile-info">';
+                html += '<div class="agent-tile-name">' + escapeAttr(agent.name) + ' ' + statusTag + '</div>';
+                html += '<div class="agent-tile-pitch">' + escapeAttr(agent.short_pitch || '') + '</div>';
+                html += depsStr;
+                html += '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        });
+        container.innerHTML = html;
     }
 
     // Utilities

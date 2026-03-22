@@ -1,15 +1,40 @@
 {
-  "pack_pattern": "mcp-agent_{date}.zip",
-  "protect_files": ["mcp-agent.json"],
-  "build": {
-    "win":   { "project_dir": "E:\\githubdesktop\\go_blog\\cmd\\mcp-agent", "pack_script": "zip-files.bat" },
-    "linux": { "project_dir": "/data/program/go/go_blog/cmd/mcp-agent", "pack_script": "zip-files.sh" },
-    "macos": { "project_dir": "/Users/guccang/github_repo/go_blog/cmd/mcp-agent", "pack_script": "zip-files.sh" }
-  },
-  "targets": {
-    "local.win":   { "remote_dir": "E:\\githubdesktop\\go_blog\\cmd\\mcp-agent", "remote_script": "publish.bat" },
-    "local.linux": { "remote_dir": "/data/program/go/go_blog/cmd/mcp-agent", "remote_script": "publish.sh" },
-    "local.macos": { "remote_dir": "/Users/guccang/github_repo/go_blog/cmd/mcp-agent", "remote_script": "publish.sh" },
-    "ssh-prod":    { "platform": "linux", "host": "root@114.115.214.86", "remote_dir": "/data/program/go/go_blog/cmd/mcp-agent", "remote_script": "publish.sh" }
-  }
+    "pack_pattern": "mcp-agent_{date}.zip",
+    "build": {
+        "linux": {
+            "project_dir": "/data/program/go/go_blog/cmd/mcp-agent",
+            "pack_script": "zip-files.sh"
+        },
+        "macos": {
+            "project_dir": "/Users/guccang/github_repo/go_blog/cmd/mcp-agent",
+            "pack_script": "zip-files.sh"
+        },
+        "win": {
+            "project_dir": "E:\\githubdesktop\\go_blog\\cmd\\mcp-agent",
+            "pack_script": "zip-files.bat"
+        }
+    },
+    "targets": {
+        "local.linux": {
+            "remote_dir": "/data/program/go/go_blog/cmd/mcp-agent",
+            "remote_script": "publish.sh"
+        },
+        "local.macos": {
+            "remote_dir": "/Users/guccang/github_repo/go_blog/cmd/mcp-agent",
+            "remote_script": "publish.sh"
+        },
+        "local.win": {
+            "remote_dir": "E:\\githubdesktop\\go_blog\\cmd\\mcp-agent",
+            "remote_script": "publish.bat"
+        },
+        "ssh-prod": {
+            "host": "root@114.115.214.86",
+            "platform": "linux",
+            "remote_dir": "/data/program/go/go_blog/cmd/mcp-agent",
+            "remote_script": "publish.sh"
+        }
+    },
+    "protect_files": [
+        "mcp-agent.json"
+    ]
 }

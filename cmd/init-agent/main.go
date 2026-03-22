@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -15,6 +16,13 @@ func main() {
 	check := flag.Bool("check", false, "仅运行环境检测")
 	dashboard := flag.Bool("dashboard", false, "仅显示可用性面板")
 	yes := flag.Bool("yes", false, "非交互模式，接受所有默认值")
+
+	// Progressive deployment flags
+	quickstart := flag.Bool("quickstart", false, "快速启动模式（仅配置 gateway + blog-agent）")
+	addAgents := flag.String("add", "", "增量安装 agent（逗号分隔，如 llm-agent,corn-agent）")
+	recommend := flag.String("recommend", "", "根据意图推荐 agent（如 \"定时发博客\"）")
+	listAgents := flag.Bool("list", false, "列出所有可用 agent 及其状态")
+
 	flag.Parse()
 
 	// Track which flags were explicitly set on the command line
@@ -74,6 +82,42 @@ func main() {
 
 	fmt.Printf("[init-agent] monorepo 根目录: %s\n", cfg.RootDir)
 
+	// --- Progressive deployment modes (take priority) ---
+
+	if *quickstart {
+		if err := RunQuickStartWizard(cfg); err != nil {
+			log.Fatalf("[init-agent] 快速启动失败: %v", err)
+		}
+		return
+	}
+
+	if *addAgents != "" {
+		names := parseAgentList(*addAgents)
+		if len(names) == 0 {
+			log.Fatalf("[init-agent] --add 参数不能为空")
+		}
+		if err := RunAddAgentWizard(cfg, names); err != nil {
+			log.Fatalf("[init-agent] 增量安装失败: %v", err)
+		}
+		return
+	}
+
+	if explicitFlags["recommend"] {
+		if err := RunRecommendation(cfg, *recommend); err != nil {
+			log.Fatalf("[init-agent] 推荐失败: %v", err)
+		}
+		return
+	}
+
+	if *listAgents {
+		if err := RunRecommendation(cfg, ""); err != nil {
+			log.Fatalf("[init-agent] 列出 agent 失败: %v", err)
+		}
+		return
+	}
+
+	// --- Original modes ---
+
 	if cfg.CheckOnly {
 		results := RunEnvironmentChecks()
 		PrintCheckResults(results)
@@ -100,6 +144,19 @@ func main() {
 	default:
 		log.Fatalf("[init-agent] 未知模式: %s (可选: cli, web)", cfg.Mode)
 	}
+}
+
+// parseAgentList splits a comma-separated agent list, trimming whitespace.
+func parseAgentList(s string) []string {
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func exitCodeFromChecks(results []SoftwareCheckResult) int {

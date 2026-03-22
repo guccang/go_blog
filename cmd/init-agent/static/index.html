@@ -14,12 +14,92 @@
         </header>
 
         <main id="main">
-            <!-- Step 1: Welcome -->
-            <section class="step" id="step-welcome">
-                <h2>欢迎</h2>
-                <p>本向导将帮助您完成项目的初始化配置。</p>
-                <div id="welcome-info"></div>
-                <button class="btn btn-primary" onclick="nextStep()">开始 →</button>
+            <!-- Step: Mode Select (replaces Welcome) -->
+            <section class="step" id="step-mode-select">
+                <h2>选择模式</h2>
+                <p>选择一种方式来配置你的 Go Blog 项目。</p>
+                <div class="mode-cards">
+                    <div class="mode-card" onclick="enterQuickStart()">
+                        <div class="mode-card-icon">&#9889;</div>
+                        <div class="mode-card-title">快速启动</div>
+                        <div class="mode-card-desc">3 步配置 Gateway + Blog-Agent，最快上手</div>
+                    </div>
+                    <div class="mode-card" onclick="enterAddAgent()">
+                        <div class="mode-card-icon">&#10010;</div>
+                        <div class="mode-card-title">增量安装</div>
+                        <div class="mode-card-desc">按层级浏览 Agent，勾选需要的进行安装</div>
+                    </div>
+                    <div class="mode-card" onclick="enterFullWizard()">
+                        <div class="mode-card-icon">&#9881;</div>
+                        <div class="mode-card-title">完整向导</div>
+                        <div class="mode-card-desc">逐步配置所有 Agent，适合首次部署</div>
+                    </div>
+                    <div class="mode-card" onclick="enterOverview()">
+                        <div class="mode-card-icon">&#128200;</div>
+                        <div class="mode-card-title">Agent 总览</div>
+                        <div class="mode-card-desc">只读查看所有 Agent 层级与在线状态</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step: QuickStart -->
+            <section class="step hidden" id="step-quickstart">
+                <h2>快速启动</h2>
+                <p>仅需 4 项配置即可启动核心 Agent（Gateway + Blog-Agent）。</p>
+                <form class="quickstart-form" id="quickstart-form" onsubmit="return false">
+                    <div class="form-group">
+                        <label>Gateway 端口</label>
+                        <input type="number" id="qs-gateway-port" value="10086">
+                        <small>Gateway 监听端口</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Redis 地址</label>
+                        <input type="text" id="qs-redis-ip" value="127.0.0.1">
+                        <small>Redis 服务器 IP</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Redis 端口</label>
+                        <input type="text" id="qs-redis-port" value="6379">
+                        <small>Redis 端口号</small>
+                    </div>
+                    <div class="form-group">
+                        <label>管理员账号</label>
+                        <input type="text" id="qs-admin" value="admin">
+                        <small>博客管理员用户名</small>
+                    </div>
+                </form>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="showModeSelect()">&#8592; 返回</button>
+                    <button class="btn btn-primary" onclick="submitQuickStart()" id="btn-quickstart">确认生成</button>
+                </div>
+                <div id="quickstart-results" class="results"></div>
+            </section>
+
+            <!-- Step: Add Agent (incremental install) -->
+            <section class="step hidden" id="step-add-agent">
+                <h2>增量安装</h2>
+                <p>按层级浏览所有 Agent，勾选需要安装的 Agent。</p>
+                <div class="recommend-bar">
+                    <input type="text" id="recommend-input" placeholder="输入意图搜索，如：定时、部署、AI..." oninput="onRecommendInput(this.value)">
+                    <button class="btn btn-secondary" onclick="clearRecommend()">清除</button>
+                </div>
+                <div id="add-agent-tiers"></div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="showModeSelect()">&#8592; 返回</button>
+                    <button class="btn btn-primary" onclick="submitAddAgent()" id="btn-add-agent">安装选中的 Agent</button>
+                </div>
+                <div id="add-agent-results" class="results"></div>
+            </section>
+
+            <!-- Step: Agent Overview (read-only) -->
+            <section class="step hidden" id="step-agent-overview">
+                <h2>Agent 总览</h2>
+                <p>只读查看所有 Agent 的层级分组、配置状态和在线状态。</p>
+                <div id="overview-tiers"></div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="showModeSelect()">&#8592; 返回</button>
+                    <button class="btn btn-secondary" onclick="refreshOverview()">刷新状态</button>
+                </div>
             </section>
 
             <!-- Step: Environment Check (after deploy config) -->
