@@ -219,12 +219,16 @@ func (sm *SkillManager) BuildCatalogWithToolHint() string {
 
 	var sb strings.Builder
 	sb.WriteString("\n## 可用技能\n")
-	sb.WriteString("当你需要执行以下技能时，调用 execute_skill 工具。\n")
+	sb.WriteString("当用户请求匹配以下技能的适用场景时，必须调用 execute_skill 工具。\n")
+	sb.WriteString("技能内部会获取完整的专业工具集，不要绕过技能直接 call_tool。\n\n")
 	for _, skill := range sm.skills {
 		if skill.Summary != "" {
 			sb.WriteString(fmt.Sprintf("- **%s**: %s — %s\n", skill.Name, skill.Description, skill.Summary))
 		} else {
 			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", skill.Name, skill.Description))
+		}
+		if len(skill.Keywords) > 0 {
+			sb.WriteString(fmt.Sprintf("  适用: %s\n", strings.Join(skill.Keywords, ", ")))
 		}
 	}
 	return sb.String()

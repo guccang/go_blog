@@ -34,7 +34,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		}
 		return proj.ProjectDir
 	}
-	fileToolKit := agentbase.NewFileToolKit("Deploy", resolver)
+	fileToolKit := agentbase.NewFileToolKit("Deploy", "deploy-agent", resolver)
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,

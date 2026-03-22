@@ -1009,8 +1009,9 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 }
 
 // getFilteredAgentDescriptionBlock 按当前工具集过滤 agent 描述（仅描述涉及的 agent）
+// skillAgents: agent_id → skill_name，被 skill 接管的 agent 仍然显示，但标注通过哪个 skill 访问
 // 过滤后为空则回退全量
-func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool) string {
+func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool, skillAgents map[string]string) string {
 	b.catalogMu.RLock()
 	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
 	for k, v := range b.toolCatalog {
@@ -1037,14 +1038,16 @@ func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool) string {
 		}
 	}
 
-	// 过滤后为空则回退全量
-	if len(involvedAgents) == 0 {
+	// 过滤后为空且无 skillAgents 则回退全量
+	if len(involvedAgents) == 0 && len(skillAgents) == 0 {
 		return b.getAgentDescriptionBlock()
 	}
 
 	var sb strings.Builder
 	sb.WriteString("\n## 可用 Agent 能力\n")
 	count := 0
+
+	// 先显示工具直接可见的 agent（involvedAgents）
 	for _, info := range agentInfoCopy {
 		if !involvedAgents[info.ID] {
 			continue
@@ -1093,6 +1096,22 @@ func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool) string {
 		}
 		if len(info.SupportedSoftware) > 0 {
 			sb.WriteString(fmt.Sprintf("  - 支持检测/安装的软件(software参数): %s\n", strings.Join(info.SupportedSoftware, ", ")))
+		}
+	}
+
+	// 再显示被 skill 接管、但不在 involvedAgents 里的 agent（简要信息 + skill 指针）
+	for agentID, skillName := range skillAgents {
+		if involvedAgents[agentID] {
+			continue // 已经在上面显示过了
+		}
+		info, ok := agentInfoCopy[agentID]
+		if !ok || info.Description == "" {
+			continue
+		}
+		count++
+		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s → 通过 execute_skill(\"%s\") 使用\n", info.Name, info.ID, info.Description, skillName))
+		if info.HostPlatform != "" {
+			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
 		}
 	}
 

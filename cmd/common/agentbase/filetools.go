@@ -23,14 +23,16 @@ type ProjectResolver func(project string) string
 // 通过 UAP 工具机制暴露给 llm-agent 调用
 type FileToolKit struct {
 	prefix      string          // 工具名前缀，如 "Codegen" / "Deploy"
+	agentLabel  string          // agent 标识，如 "codegen-agent"，用于工具描述
 	resolver    ProjectResolver // 项目路径解析器
 	bashTimeout time.Duration   // bash 默认超时（默认 60s）
 }
 
 // NewFileToolKit 创建 FileToolKit 实例
-func NewFileToolKit(prefix string, resolver ProjectResolver) *FileToolKit {
+func NewFileToolKit(prefix string, agentLabel string, resolver ProjectResolver) *FileToolKit {
 	return &FileToolKit{
 		prefix:      prefix,
+		agentLabel:  agentLabel,
 		resolver:    resolver,
 		bashTimeout: 60 * time.Second,
 	}
@@ -43,10 +45,22 @@ func (ft *FileToolKit) SetBashTimeout(d time.Duration) {
 
 // ToolDefs 返回 4 个 UAP 工具定义
 func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
+	// 根据 agentLabel 生成带 agent 上下文的描述
+	readFileDesc := "读取项目中的文件内容"
+	writeFileDesc := "写入文件到项目中（自动创建父目录）"
+	execBashDesc := "在项目目录中执行 bash/cmd 命令"
+	execEnvBashDesc := "执行环境检测/安装命令（不限项目目录，用于 env-agent 远程调用）"
+	if ft.agentLabel != "" {
+		readFileDesc = fmt.Sprintf("在 %s 上读取项目中的文件内容", ft.agentLabel)
+		writeFileDesc = fmt.Sprintf("在 %s 上写入文件到项目中（自动创建父目录）", ft.agentLabel)
+		execBashDesc = fmt.Sprintf("在 %s 上的项目目录中执行 bash/cmd 命令", ft.agentLabel)
+		execEnvBashDesc = fmt.Sprintf("在 %s 上执行环境检测/安装命令（不限项目目录，用于 env-agent 远程调用）", ft.agentLabel)
+	}
+
 	return []uap.ToolDef{
 		{
 			Name:        ft.prefix + "ReadFile",
-			Description: "读取项目中的文件内容",
+			Description: readFileDesc,
 			Parameters: MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -58,7 +72,7 @@ func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        ft.prefix + "WriteFile",
-			Description: "写入文件到项目中（自动创建父目录）",
+			Description: writeFileDesc,
 			Parameters: MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -71,7 +85,7 @@ func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        ft.prefix + "ExecBash",
-			Description: "在项目目录中执行 bash/cmd 命令",
+			Description: execBashDesc,
 			Parameters: MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -84,7 +98,7 @@ func (ft *FileToolKit) ToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        ft.prefix + "ExecEnvBash",
-			Description: "执行环境检测/安装命令（不限项目目录，用于 env-agent 远程调用）",
+			Description: execEnvBashDesc,
 			Parameters: MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

@@ -26,7 +26,7 @@ type Connection struct {
 // NewConnection 创建连接管理器
 func NewConnection(cfg *Config, agentID string, pyVersion string) *Connection {
 	// FileToolKit 用于 ExecEnvBash（不需要 project resolver）
-	ftk := agentbase.NewFileToolKit("Exec", nil)
+	ftk := agentbase.NewFileToolKit("Exec", "execute-code-agent", nil)
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,

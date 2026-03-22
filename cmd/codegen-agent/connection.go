@@ -24,7 +24,7 @@ type Connection struct {
 
 // NewConnection 创建连接管理器
 func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
-	fileToolKit := agentbase.NewFileToolKit("Codegen", agent.findProjectPath)
+	fileToolKit := agentbase.NewFileToolKit("Codegen", "codegen-agent", agent.findProjectPath)
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,

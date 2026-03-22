@@ -180,7 +180,7 @@ var executeSkillTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "execute_skill",
-		Description: "执行一个技能。技能在独立子任务中运行，完成后返回结果。",
+		Description: "执行一个技能。这是处理用户任务的首选方式——技能封装了完整的工具集和执行策略，在独立子任务中运行并返回结果。匹配到可用技能时必须优先使用。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -1362,7 +1362,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 	log.Printf("[SkillSubTask] skill=%s tools=%d query=%s", skillName, len(filteredTools), truncate(query, 200))
 
 	// 注入工具参数参考（让 LLM 在 ExecuteCode 中写 call_tool 时有直接参考）
-	toolRef := buildToolParamReference(filteredTools)
+	toolRef := b.buildToolParamReference(filteredTools)
 	if toolRef != "" {
 		sb.WriteString(toolRef)
 	}
@@ -1612,7 +1612,8 @@ func isToolInList(toolName string, tools []LLMTool) bool {
 }
 
 // buildToolParamReference 从工具列表生成参数参考摘要，供 ExecuteCode 中 call_tool 使用
-func buildToolParamReference(tools []LLMTool) string {
+// 利用 toolCatalog 标注工具所属 agent
+func (b *Bridge) buildToolParamReference(tools []LLMTool) string {
 	if len(tools) == 0 {
 		return ""
 	}
@@ -1625,12 +1626,28 @@ func buildToolParamReference(tools []LLMTool) string {
 		name := unsanitizeToolName(t.Function.Name)
 		desc := t.Function.Description
 
+		// 查找工具所属 agent
+		agentID := ""
+		b.catalogMu.RLock()
+		if id, ok := b.toolCatalog[name]; ok {
+			agentID = id
+		}
+		b.catalogMu.RUnlock()
+
 		// 解析 parameters JSON Schema 提取字段摘要
 		paramSummary := extractParamSummary(t.Function.Parameters)
-		if paramSummary != "" {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n  参数: %s\n", name, desc, paramSummary))
+
+		// 格式化：有 agentID 时标注
+		var toolLine string
+		if agentID != "" {
+			toolLine = fmt.Sprintf("- **%s** [%s]: %s\n", name, agentID, desc)
 		} else {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", name, desc))
+			toolLine = fmt.Sprintf("- **%s**: %s\n", name, desc)
+		}
+
+		sb.WriteString(toolLine)
+		if paramSummary != "" {
+			sb.WriteString(fmt.Sprintf("  参数: %s\n", paramSummary))
 		}
 	}
 	return sb.String()

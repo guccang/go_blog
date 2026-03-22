@@ -314,7 +314,22 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 
 	// Agent 描述：LevelZero 跳过，LevelOne/LevelTwo 按工具过滤
 	if level >= LevelOne {
-		agentBlock := b.getFilteredAgentDescriptionBlock(tools)
+		// 计算被 skill 接管的 agent 映射（agent_id → skill_name）
+		skillAgents := make(map[string]string)
+		if len(selectedSkills) > 0 {
+			b.catalogMu.RLock()
+			for _, skill := range selectedSkills {
+				for _, toolName := range skill.Tools {
+					if agentID, ok := b.toolCatalog[toolName]; ok {
+						if _, already := skillAgents[agentID]; !already {
+							skillAgents[agentID] = skill.Name
+						}
+					}
+				}
+			}
+			b.catalogMu.RUnlock()
+		}
+		agentBlock := b.getFilteredAgentDescriptionBlock(tools, skillAgents)
 		writeSection("Agent能力", agentBlock)
 	}
 
