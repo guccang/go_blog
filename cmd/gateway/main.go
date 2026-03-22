@@ -15,7 +15,16 @@ import (
 
 func main() {
 	configFile := flag.String("config", "gateway.json", "配置文件路径")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	flag.Parse()
+
+	if *genConf {
+		if err := writeDefaultConfig(*configFile, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// 加载配置
 	cfg, err := LoadConfig(*configFile)

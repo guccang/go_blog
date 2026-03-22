@@ -8,12 +8,22 @@ import (
 	"os/signal"
 	"syscall"
 
+	"agentbase"
 	"uap"
 )
 
 func main() {
 	configPath := flag.String("config", "acp-agent.json", "path to agent config file")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	flag.Parse()
+
+	if *genConf {
+		if err := agentbase.WriteDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := LoadConfig(*configPath)
 	if err != nil {

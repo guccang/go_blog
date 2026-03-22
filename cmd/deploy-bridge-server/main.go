@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -13,12 +14,19 @@ import (
 var staticFS embed.FS
 
 func main() {
-	configPath := "bridge-server.json"
-	if len(os.Args) > 1 {
-		configPath = os.Args[1]
+	configPath := flag.String("config", "bridge-server.json", "配置文件路径")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	flag.Parse()
+
+	if *genConf {
+		if err := writeDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}

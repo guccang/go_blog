@@ -23,14 +23,21 @@ type AgentConfig struct {
 	DefaultSettings      string  `json:"default_settings"`           // 默认 --settings 名称（如 "default"），extraArgs 未指定时自动使用
 }
 
+// DefaultConfig 默认配置
+func DefaultConfig() *AgentConfig {
+	return &AgentConfig{
+		AgentType:        "acp",
+		ACPAgentCmd:      "npx",
+		ACPAgentArgs:     []string{"-y", "@zed-industries/claude-agent-acp@latest"},
+		MaxConcurrent:    2,
+		AnalysisTimeout:  3600,
+		GoBackendAgentID: "go_blog",
+	}
+}
+
 // LoadConfig 从 JSON 配置文件加载配置
 func LoadConfig(path string) (*AgentConfig, error) {
-	cfg := &AgentConfig{
-		ACPAgentCmd:     "npx",
-		ACPAgentArgs:    []string{"-y", "@zed-industries/claude-agent-acp@latest"},
-		MaxConcurrent:   2,
-		AnalysisTimeout: 3600,
-	}
+	cfg := DefaultConfig()
 
 	data, err := os.ReadFile(path)
 	if err != nil {

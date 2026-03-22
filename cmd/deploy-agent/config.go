@@ -708,3 +708,93 @@ func (c *DeployConfig) detectPipelinesDir(configPath string) {
 	}
 }
 
+// generateDefaultConfig 生成 deploy-agent 默认配置文件和目录结构
+func generateDefaultConfig(configPath string) error {
+	configDir := filepath.Dir(configPath)
+
+	// 1. 生成主配置文件 deploy-agent.json
+	if _, err := os.Stat(configPath); err == nil {
+		return fmt.Errorf("配置文件已存在: %s（不会覆盖）", configPath)
+	}
+
+	defaultCfg := &deployConfigJSON{
+		SettingsDir:   "settings",
+		MaxConcurrent: 1,
+	}
+	data, err := json.MarshalIndent(defaultCfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+	if err := os.WriteFile(configPath, append(data, '\n'), 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+	fmt.Printf("已生成默认配置文件: %s\n", configPath)
+
+	// 2. 创建 settings/ 目录结构
+	settingsDir := filepath.Join(configDir, "settings")
+	projectsDir := filepath.Join(settingsDir, "projects")
+	pipelinesDir := filepath.Join(settingsDir, "pipelines")
+
+	for _, dir := range []string{projectsDir, pipelinesDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("创建目录失败 %s: %v", dir, err)
+		}
+	}
+
+	// 3. 生成 settings/targets.json 示例
+	targetsPath := filepath.Join(settingsDir, "targets.json")
+	if _, err := os.Stat(targetsPath); os.IsNotExist(err) {
+		targetsExample := map[string]targetJSON{
+			"ssh-prod": {
+				Host:      "root@your-server-ip",
+				Port:      22,
+				RemoteDir: "/data/program/your-project",
+				Platform:  "linux",
+			},
+		}
+		tData, _ := json.MarshalIndent(targetsExample, "", "  ")
+		if err := os.WriteFile(targetsPath, append(tData, '\n'), 0644); err != nil {
+			return fmt.Errorf("写入 targets.json 失败: %v", err)
+		}
+		fmt.Printf("已生成示例文件: %s\n", targetsPath)
+	}
+
+	// 4. 生成 settings/projects/example.json 示例
+	examplePath := filepath.Join(projectsDir, "example.json")
+	if _, err := os.Stat(examplePath); os.IsNotExist(err) {
+		exampleProject := projectJSON{
+			PackPattern: "example_{date}.zip",
+			Build: map[string]buildJSON{
+				"win": {
+					ProjectDir: "E:/projects/example",
+				},
+				"linux": {
+					ProjectDir: "/home/user/projects/example",
+				},
+			},
+			Targets: map[string]targetJSON{
+				"local.win": {
+					RemoteDir: "E:/deploy/example",
+				},
+				"ssh-prod": {},
+			},
+		}
+		eData, _ := json.MarshalIndent(exampleProject, "", "  ")
+		if err := os.WriteFile(examplePath, append(eData, '\n'), 0644); err != nil {
+			return fmt.Errorf("写入 example.json 失败: %v", err)
+		}
+		fmt.Printf("已生成示例文件: %s\n", examplePath)
+	}
+
+	fmt.Printf("已创建目录: %s\n", pipelinesDir)
+	fmt.Println("\n配置目录结构:")
+	fmt.Printf("  %s\n", configPath)
+	fmt.Printf("  %s/\n", settingsDir)
+	fmt.Printf("    targets.json\n")
+	fmt.Printf("    projects/\n")
+	fmt.Printf("      example.json\n")
+	fmt.Printf("    pipelines/\n")
+
+	return nil
+}
+
