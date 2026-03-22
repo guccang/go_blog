@@ -1,7 +1,7 @@
 {
     "agent_name": "mcp-agent",
     "auth_token": "guccang@blog.guccang.cn",
-    "gateway_http": "http://blog.guccang.cn:10086",
+    "gateway_http": "http://127.0.0.1:10086",
     "max_concurrent": 3,
     "mcp_servers": {
         "amap": {
@@ -10,7 +10,7 @@
             "url": "https://mcp.amap.com/mcp?key=63acd41bb8f61db0a2ec25829f2ede2a"
         }
     },
-    "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+    "server_url": "ws://127.0.0.1:10086/ws/uap",
     "tool_call_timeout_sec": 30,
     "tool_prefix": "mcp"
 }

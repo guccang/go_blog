@@ -52,13 +52,14 @@ type ConfigField struct {
 
 // AgentSchema defines the configuration schema for one agent.
 type AgentSchema struct {
-	Name           string        `json:"name"`
-	ConfigFileName string        `json:"config_file_name"`
-	Dir            string        `json:"dir"`
-	Description    string        `json:"description"`
-	Fields         []ConfigField `json:"fields"`
-	DefaultPort    int           `json:"default_port"`
-	ConfigFormat   string        `json:"config_format"` // "json" or "keyvalue"
+	Name           string                `json:"name"`
+	ConfigFileName string                `json:"config_file_name"`
+	Dir            string                `json:"dir"`
+	Description    string                `json:"description"`
+	Fields         []ConfigField         `json:"fields"`
+	DefaultPort    int                   `json:"default_port"`
+	ConfigFormat   string                `json:"config_format"` // "json" or "keyvalue"
+	Dependencies   []SoftwareRequirement `json:"dependencies"`  // agent 运行所需软件
 }
 
 // SharedFields returns fields common to most agents.
@@ -100,6 +101,10 @@ func AllAgentSchemas() []AgentSchema {
 			Name: "gateway", ConfigFileName: "gateway.json",
 			Dir: "cmd/gateway", Description: "中央网关，WebSocket 路由和 HTTP 反向代理",
 			DefaultPort: 10086,
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+				{Software: "node", MinVersion: "18.0.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "port", Label: "监听端口", Description: "Gateway 监听端口", Type: FieldPort, Required: true, DefaultValue: 10086, Group: "gateway"},
 				{Key: "go_backend_url", Label: "后端 URL", Description: "Go 后端上游地址", Type: FieldURL, Required: true, DefaultValue: "http://127.0.0.1:8080", Group: "gateway"},
@@ -114,6 +119,10 @@ func AllAgentSchemas() []AgentSchema {
 			Name: "blog-agent", ConfigFileName: "sys_conf.md",
 			Dir: "cmd/blog-agent", Description: "博客系统后端（key=value 格式配置）",
 			DefaultPort: 8080, ConfigFormat: "keyvalue",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+				{Software: "redis", MinVersion: "6.0.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "admin", Label: "管理员账号", Description: "管理员用户名", Type: FieldString, Required: true, DefaultValue: "admin", Group: "custom"},
 				{Key: "port", Label: "HTTP 端口", Description: "博客服务监听端口", Type: FieldPort, Required: true, DefaultValue: "8080", Group: "custom"},
@@ -128,6 +137,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "env-agent", ConfigFileName: "env-agent.json",
 			Dir: "cmd/env-agent", Description: "远程环境检测与软件安装 Agent",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
 			}...),
@@ -135,6 +147,10 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "acp-agent", ConfigFileName: "acp-agent.json",
 			Dir: "cmd/acp-agent", Description: "ACP (Anthropic Claude Protocol) 代码分析 Agent",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+				{Software: "claude"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "agent_type", Label: "Agent 类型", Description: "Agent 类型标识", Type: FieldString, Required: false, DefaultValue: "acp", Group: "agent"},
 				{Key: "workspaces", Label: "工作区目录", Description: "监控的工作区目录列表（逗号分隔）", Type: FieldStringSlice, Required: true, DefaultValue: nil, Group: "custom"},
@@ -148,6 +164,10 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "codegen-agent", ConfigFileName: "codegen-agent.json",
 			Dir: "cmd/codegen-agent", Description: "代码生成与部署 Agent",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+				{Software: "claude"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "agent_type", Label: "Agent 类型", Description: "Agent 类型", Type: FieldString, Required: false, DefaultValue: "codegen", Group: "agent"},
 				{Key: "workspaces", Label: "工作区目录", Description: "工作区目录列表（逗号分隔）", Type: FieldStringSlice, Required: true, DefaultValue: nil, Group: "custom"},
@@ -160,6 +180,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "deploy-agent", ConfigFileName: "deploy-agent.json",
 			Dir: "cmd/deploy-agent", Description: "自动化部署 Agent（SSH/Bridge）",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "ssh_key", Label: "SSH 密钥路径", Description: "SSH 私钥文件路径", Type: FieldPath, Required: false, DefaultValue: "", Group: "custom"},
 				{Key: "ssh_password", Label: "SSH 密码", Description: "SSH 密码（不推荐）", Type: FieldString, Required: false, DefaultValue: "", Group: "custom"},
@@ -172,6 +195,9 @@ func AllAgentSchemas() []AgentSchema {
 			Name: "deploy-bridge-server", ConfigFileName: "deploy-bridge-server.json",
 			Dir: "cmd/deploy-bridge-server", Description: "部署桥接服务器（接收远程部署指令）",
 			DefaultPort: 9090,
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "listen", Label: "监听地址", Description: "监听地址 (格式: :port)", Type: FieldString, Required: true, DefaultValue: ":9090", Group: "gateway"},
 				{Key: "auth_token", Label: "Auth Token", Description: "认证令牌（不可为空）", Type: FieldString, Required: true, DefaultValue: "", Group: "gateway"},
@@ -184,6 +210,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "execute-code-agent", ConfigFileName: "execute-code-agent.json",
 			Dir: "cmd/execute-code-agent", Description: "代码执行 Agent（Python/Shell）",
+			Dependencies: []SoftwareRequirement{
+				{Software: "python", MinVersion: "3.6.0"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "gateway_http", Label: "Gateway HTTP URL", Description: "Gateway HTTP 地址", Type: FieldURL, Required: false, DefaultValue: "http://127.0.0.1:10086", Group: "gateway"},
 				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
@@ -195,6 +224,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "llm-agent", ConfigFileName: "llm-agent.json",
 			Dir: "cmd/llm-agent", Description: "LLM 智能 Agent（多模型、工具调用、任务分解）",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "gateway_url", Label: "Gateway WS URL", Description: "Gateway WebSocket 地址", Type: FieldURL, Required: true, DefaultValue: "ws://127.0.0.1:10086/ws/uap", Shared: true, Group: "gateway"},
 				{Key: "gateway_http", Label: "Gateway HTTP URL", Description: "Gateway HTTP 地址", Type: FieldURL, Required: true, DefaultValue: "http://127.0.0.1:10086", Shared: true, Group: "gateway"},
@@ -214,6 +246,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "log-agent", ConfigFileName: "log-agent.json",
 			Dir: "cmd/log-agent", Description: "日志收集与分析 Agent",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "log_sources", Label: "日志源", Description: "日志源配置（JSON map，键为名称，值含 path 和 description）", Type: FieldMap, Required: false, DefaultValue: nil, Group: "custom"},
 			}...),
@@ -221,6 +256,10 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "mcp-agent", ConfigFileName: "mcp-agent.json",
 			Dir: "cmd/mcp-agent", Description: "MCP (Model Context Protocol) 工具桥接 Agent",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+				{Software: "node", MinVersion: "18.0.0"},
+			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "gateway_http", Label: "Gateway HTTP URL", Description: "Gateway HTTP 地址", Type: FieldURL, Required: false, DefaultValue: "http://127.0.0.1:10086", Group: "gateway"},
 				{Key: "tool_prefix", Label: "工具前缀", Description: "MCP 工具名前缀", Type: FieldString, Required: false, DefaultValue: "mcp", Group: "custom"},
@@ -231,6 +270,9 @@ func AllAgentSchemas() []AgentSchema {
 		{
 			Name: "wechat-agent", ConfigFileName: "wechat-agent.json",
 			Dir: "cmd/wechat-agent", Description: "微信集成 Agent（企业微信消息收发）",
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "http_port", Label: "HTTP 端口", Description: "微信回调监听端口", Type: FieldPort, Required: true, DefaultValue: 8884, Group: "custom"},
 				{Key: "gateway_url", Label: "Gateway WS URL", Description: "Gateway WebSocket 地址", Type: FieldURL, Required: true, DefaultValue: "ws://127.0.0.1:10086/ws/uap", Shared: true, Group: "gateway"},
@@ -250,6 +292,9 @@ func AllAgentSchemas() []AgentSchema {
 			Name: "init-agent", ConfigFileName: "init-agent.json",
 			Dir: "cmd/init-agent", Description: "初始化向导（环境检测、配置生成、可用性面板）",
 			DefaultPort: 9090,
+			Dependencies: []SoftwareRequirement{
+				{Software: "go", MinVersion: "1.23.0"},
+			},
 			Fields: []ConfigField{
 				{Key: "mode", Label: "运行模式", Description: "运行模式: cli 或 web", Type: FieldString, Required: false, DefaultValue: "cli", Group: "custom"},
 				{Key: "web_port", Label: "Web 端口", Description: "Web 模式监听端口", Type: FieldPort, Required: false, DefaultValue: 9090, Group: "custom"},

@@ -12,11 +12,11 @@ type WizardStep int
 
 const (
 	StepWelcome WizardStep = iota
-	StepEnvCheck
 	StepGlobalConfig
 	StepDeployTargets
 	StepDeployProjects
 	StepDeployPipelines
+	StepEnvCheck
 	StepAgentSelect
 	StepAgentConfig
 	StepConfigGenerate
@@ -58,16 +58,17 @@ type WizardState struct {
 	CurrentStep WizardStep
 	RootDir     string
 
-	// Step 2: Environment check results
-	EnvResults []SoftwareCheckResult
+	// Environment check results
+	EnvResults       []SoftwareCheckResult
+	TargetEnvResults []TargetEnvResult // 按 target 分组的远程检测结果
 
-	// Step 3: Global/shared config values
+	// Global/shared config values
 	SharedValues map[string]string // server_url, auth_token, etc.
 
-	// Deploy configuration state (steps 4-6, conditional)
+	// Deploy configuration state (conditional)
 	DeployState *DeployConfigState
 
-	// Step 7: Selected agents to configure
+	// Selected agents to configure
 	SelectedAgents []string
 	AllSchemas     []AgentSchema
 
@@ -75,15 +76,16 @@ type WizardState struct {
 	DiscoveredConfigs []AgentConfigInfo
 	SkippedAgents     []string
 
-	// Step 8: Per-agent user-provided values
+	// Per-agent user-provided values
 	AgentValues map[string]map[string]string // agentName -> key -> value
 
-	// Step 9: Generated configs
+	// Generated configs
 	GeneratedConfigs map[string]map[string]any // agentName -> merged values
 	WrittenFiles     []string
 
-	// Step 10: Availability results
-	AvailabilityLayers []LayerStatus
+	// Availability results
+	AvailabilityLayers   []LayerStatus
+	PipelineAvailResults []PipelineAvailResult
 }
 
 // NewWizardState creates a new wizard state.

@@ -82,8 +82,8 @@ func main() {
 	}
 
 	if cfg.DashboardOnly {
-		layers := RunAvailabilityChecks(cfg.RootDir, nil)
-		PrintAvailabilityDashboard(layers)
+		layers := RunAvailabilityChecks(cfg.RootDir, nil, nil)
+		PrintAvailabilityDashboard(layers, nil)
 		os.Exit(exitCodeFromLayers(layers))
 		return
 	}

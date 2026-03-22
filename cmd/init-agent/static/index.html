@@ -22,10 +22,10 @@
                 <button class="btn btn-primary" onclick="nextStep()">开始 →</button>
             </section>
 
-            <!-- Step 2: Environment Check -->
+            <!-- Step: Environment Check (after deploy config) -->
             <section class="step hidden" id="step-env">
                 <h2>环境检测</h2>
-                <p>检测本地环境依赖是否满足要求。</p>
+                <p>检测各目标机器的环境依赖。有部署配置时按 pipeline 编排检测远程机器，否则检测本机环境。</p>
                 <button class="btn btn-primary" onclick="runEnvCheck()" id="btn-env-check">开始检测</button>
                 <div id="env-results" class="results"></div>
                 <button class="btn btn-primary hidden" id="btn-env-next" onclick="nextStep()">继续 →</button>

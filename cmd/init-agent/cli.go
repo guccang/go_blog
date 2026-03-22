@@ -22,13 +22,12 @@ func RunCLIWizard(cfg *InitConfig) error {
 	reader := bufio.NewReader(os.Stdin)
 	state := NewWizardState(cfg.RootDir)
 
-	// Fixed steps 1-3
+	// Fixed steps 1-2 (Welcome + GlobalConfig)
 	fixedSteps := []struct {
 		step WizardStep
 		fn   func(*InitConfig, *WizardState, *bufio.Reader) error
 	}{
 		{StepWelcome, cliStepWelcome},
-		{StepEnvCheck, cliStepEnvCheck},
 		{StepGlobalConfig, cliStepGlobalConfig},
 	}
 
@@ -49,14 +48,14 @@ func RunCLIWizard(cfg *InitConfig) error {
 		}
 	}
 
-	// Steps: fixed(3) + deploy(0-3) + agentSelect(1) + agents(N) + configGen(1) + avail(1)
+	// Steps: fixed(2) + deploy(0-3) + envCheck(1) + agentSelect(1) + agents(N) + configGen(1) + avail(1)
 	numDeploySteps := len(deploySteps)
-	preAgentSteps := 3 + numDeploySteps + 1 // fixed + deploy + agentSelect
+	preAgentSteps := 2 + numDeploySteps + 1 + 1 // fixed + deploy + envCheck + agentSelect
 
 	// We don't know numAgents yet, calculate after agentSelect
 	stepNum := 0
 
-	// Run fixed steps 1-3
+	// Run fixed steps 1-2
 	for _, s := range fixedSteps {
 		stepNum++
 		state.CurrentStep = s.step
@@ -67,7 +66,7 @@ func RunCLIWizard(cfg *InitConfig) error {
 		fmt.Println()
 	}
 
-	// Run deploy steps 4-6 (if available)
+	// Run deploy steps (if available)
 	for _, s := range deploySteps {
 		stepNum++
 		state.CurrentStep = s.step
@@ -77,6 +76,15 @@ func RunCLIWizard(cfg *InitConfig) error {
 		}
 		fmt.Println()
 	}
+
+	// EnvCheck step (after deploy steps, before agent select)
+	stepNum++
+	state.CurrentStep = StepEnvCheck
+	printStepHeader(stepNum, stepNum+3, StepEnvCheck.String())
+	if err := cliStepEnvCheck(cfg, state, reader); err != nil {
+		return err
+	}
+	fmt.Println()
 
 	// Agent select step
 	stepNum++
@@ -174,12 +182,48 @@ func cliStepWelcome(_ *InitConfig, state *WizardState, _ *bufio.Reader) error {
 	return nil
 }
 
-// Step 2: Environment check
+// Step: Environment check (runs after deploy pipelines to leverage target info)
 func cliStepEnvCheck(_ *InitConfig, state *WizardState, _ *bufio.Reader) error {
 	fmt.Println()
-	fmt.Println("  正在检测环境依赖...")
-	fmt.Println()
 
+	// 有 deploy 配置且有 pipeline 数据时，按 target 分组做远程检测
+	ds := state.DeployState
+	hasPipelines := ds != nil && ds.Available && len(ds.Pipelines) > 0
+
+	if hasPipelines {
+		fmt.Println("  正在根据部署编排检测各目标机器环境...")
+		fmt.Println()
+
+		// 从 pipeline 推导每台机器的检测需求
+		plans := DeriveTargetRequirements(ds.Pipelines, ds.Targets, ds.Projects)
+
+		if len(plans) == 0 {
+			fmt.Printf("  %s 无法从 pipeline 数据推导检测计划，回退本机检测\n", colorYellow("!"))
+			fmt.Println()
+			return cliStepEnvCheckLocal(state)
+		}
+
+		// 获取 SSH 凭证
+		sshPassword := ds.SSHPassword
+		sshKeyPath := GetSSHKeyPath(state.RootDir)
+
+		// 执行检测
+		state.TargetEnvResults = RunTargetChecks(plans, sshPassword, sshKeyPath)
+
+		// 打印结果
+		PrintTargetCheckResults(state.TargetEnvResults)
+	} else {
+		// 无 deploy 配置时，保持现有逻辑：本机通用检测
+		fmt.Println("  正在检测环境依赖...")
+		fmt.Println()
+		return cliStepEnvCheckLocal(state)
+	}
+
+	return nil
+}
+
+// cliStepEnvCheckLocal 本机通用环境检测（向下兼容）
+func cliStepEnvCheckLocal(state *WizardState) error {
 	state.EnvResults = RunEnvironmentChecks()
 	PrintCheckResults(state.EnvResults)
 
@@ -479,8 +523,18 @@ func cliStepAvailability(_ *InitConfig, state *WizardState, _ *bufio.Reader) err
 	fmt.Println("  正在运行可用性检测...")
 	fmt.Println()
 
-	state.AvailabilityLayers = RunAvailabilityChecks(state.RootDir, state.GeneratedConfigs)
-	PrintAvailabilityDashboard(state.AvailabilityLayers)
+	// 有 deploy 配置且有 pipeline 数据时，执行 pipeline 分组检测
+	ds := state.DeployState
+	hasPipelines := ds != nil && ds.Available && len(ds.Pipelines) > 0
+
+	if hasPipelines {
+		sshPassword := ds.SSHPassword
+		sshKeyPath := GetSSHKeyPath(state.RootDir)
+		state.PipelineAvailResults = RunPipelineAvailChecks(ds, state.TargetEnvResults, sshPassword, sshKeyPath)
+	}
+
+	state.AvailabilityLayers = RunAvailabilityChecks(state.RootDir, state.GeneratedConfigs, state.PipelineAvailResults)
+	PrintAvailabilityDashboard(state.AvailabilityLayers, state.PipelineAvailResults)
 
 	return nil
 }

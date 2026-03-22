@@ -2,13 +2,17 @@
 (function() {
     'use strict';
 
-    // Base steps (always present)
-    var BASE_STEP_IDS = ['step-welcome','step-env','step-global'];
-    var BASE_STEP_NAMES = ['欢迎','环境检测','全局配置'];
+    // Base steps (always present, before deploy)
+    var BASE_STEP_IDS = ['step-welcome','step-global'];
+    var BASE_STEP_NAMES = ['欢迎','全局配置'];
 
     // Deploy steps (conditional)
     var DEPLOY_STEP_IDS = ['step-deploy-targets','step-deploy-projects','step-deploy-pipelines'];
     var DEPLOY_STEP_NAMES = ['Deploy Targets','Deploy Projects','Deploy Pipelines'];
+
+    // EnvCheck step (after deploy, before agent select)
+    var ENVCHECK_STEP_IDS = ['step-env'];
+    var ENVCHECK_STEP_NAMES = ['环境检测'];
 
     // Tail steps (always present)
     var TAIL_STEP_IDS = ['step-select','step-config','step-generate','step-avail'];
@@ -73,6 +77,9 @@
             STEP_IDS = STEP_IDS.concat(DEPLOY_STEP_IDS);
             STEP_NAMES = STEP_NAMES.concat(DEPLOY_STEP_NAMES);
         }
+        // EnvCheck always comes after deploy (or after base if no deploy)
+        STEP_IDS = STEP_IDS.concat(ENVCHECK_STEP_IDS);
+        STEP_NAMES = STEP_NAMES.concat(ENVCHECK_STEP_NAMES);
         STEP_IDS = STEP_IDS.concat(TAIL_STEP_IDS);
         STEP_NAMES = STEP_NAMES.concat(TAIL_STEP_NAMES);
     }
@@ -97,6 +104,15 @@
                 break;
             case 'env_check_complete':
                 document.getElementById('btn-env-next').classList.remove('hidden');
+                break;
+            case 'target_env_result':
+                appendTargetEnvResult(msg.data);
+                break;
+            case 'target_env_complete':
+                document.getElementById('btn-env-next').classList.remove('hidden');
+                break;
+            case 'pipeline_avail_result':
+                renderPipelineAvailResults(msg.data);
                 break;
             case 'avail_layer_result':
                 appendAvailLayer(msg.data);
@@ -190,11 +206,18 @@
         });
     }
 
-    // Step 2: Environment check
+    // Step: Environment check (now runs after deploy config)
     window.runEnvCheck = function() {
-        document.getElementById('env-results').innerHTML = '<span class="spinner"></span> 正在检测...';
+        var container = document.getElementById('env-results');
+        container.innerHTML = '<span class="spinner"></span> 正在检测...';
         document.getElementById('btn-env-check').disabled = true;
-        fetch('/api/env/check', {method:'POST'});
+        document.getElementById('btn-env-next').classList.add('hidden');
+        fetch('/api/env/check', {method:'POST'}).then(function(r){return r.json()}).then(function(data) {
+            if (data.mode === 'target') {
+                // 清空旧内容，等待 target_env_result websocket 消息
+                container.innerHTML = '<span class="spinner"></span> 正在根据部署编排检测各目标机器环境...';
+            }
+        });
     };
 
     function appendEnvResult(r) {
@@ -215,6 +238,52 @@
         container.innerHTML += '<div class="result-item"><span class="icon '+cls+'">'+icon+'</span>'
             +'<span class="name">'+r.software+'</span>'
             +'<span class="detail">'+detail+'</span></div>';
+    }
+
+    // 按 target 分组展示远程检测结果
+    function appendTargetEnvResult(r) {
+        var container = document.getElementById('env-results');
+        if (container.querySelector('.spinner')) container.innerHTML = '';
+
+        var hostInfo = r.Host || '本机';
+        var platformInfo = r.Platform || 'unknown';
+        var title = escapeAttr(r.TargetName) + ' (' + escapeAttr(hostInfo) + ', ' + escapeAttr(platformInfo) + ')';
+        var projectList = (r.Projects || []).map(escapeAttr).join(', ');
+
+        var html = '<div class="target-env-block" style="margin:12px 0;border:1px solid #30363d;border-radius:6px;overflow:hidden">';
+        html += '<div style="background:#161b22;padding:8px 12px;border-bottom:1px solid #30363d">';
+        html += '<strong>' + title + '</strong>';
+        html += '<div style="color:#8b949e;font-size:0.9em">部署项目: ' + projectList + '</div>';
+        html += '</div>';
+        html += '<div style="padding:8px 12px">';
+
+        if (r.SSHError) {
+            html += '<div class="result-item"><span class="icon status-red">✗</span>'
+                +'<span class="detail">SSH 错误: ' + escapeAttr(r.SSHError) + '</span></div>';
+        } else if (!r.Results || r.Results.length === 0) {
+            html += '<div style="color:#8b949e">(无检测项)</div>';
+        } else {
+            r.Results.forEach(function(cr) {
+                var cls = cr.installed ? (cr.meets_requirement ? 'status-green' : 'status-yellow') : 'status-red';
+                var icon = cr.installed ? (cr.meets_requirement ? '✓' : '!') : '✗';
+                var detail = '';
+                if (!cr.installed) {
+                    detail = '未安装';
+                    if (cr.install_hint) detail += ' — ' + cr.install_hint;
+                } else if (!cr.meets_requirement) {
+                    detail = 'v' + cr.version + ' < 要求 ' + cr.min_version;
+                } else {
+                    detail = cr.version ? 'v'+cr.version : '已安装';
+                    if (cr.path) detail += '  (' + cr.path + ')';
+                }
+                html += '<div class="result-item"><span class="icon '+cls+'">'+icon+'</span>'
+                    +'<span class="name">'+cr.software+'</span>'
+                    +'<span class="detail">'+detail+'</span></div>';
+            });
+        }
+
+        html += '</div></div>';
+        container.innerHTML += html;
     }
 
     // Step 3: Global config
@@ -824,22 +893,90 @@
 
     // ── Availability check ──
 
+    var pipelineAvailRendered = false;
+
     window.runAvailCheck = function() {
+        pipelineAvailRendered = false;
         document.getElementById('avail-results').innerHTML = '<span class="spinner"></span> 正在检测...';
         document.getElementById('btn-avail-check').disabled = true;
         fetch('/api/availability/check', {method:'POST'});
     };
 
+    // 渲染 pipeline 分组的可用性结果
+    function renderPipelineAvailResults(pipelineResults) {
+        var container = document.getElementById('avail-results');
+        if (container.querySelector('.spinner')) container.innerHTML = '';
+        pipelineAvailRendered = true;
+
+        if (!pipelineResults || pipelineResults.length === 0) return;
+
+        pipelineResults.forEach(function(pr) {
+            var desc = pr.description ? ' — ' + escapeAttr(pr.description) : '';
+            var html = '<div class="avail-pipeline" style="margin:16px 0">';
+            html += '<div style="font-size:1.1em;margin-bottom:8px"><strong>Pipeline: '
+                + escapeAttr(pr.pipeline_name) + '</strong>'
+                + '<span style="color:#8b949e">' + desc + '</span></div>';
+
+            (pr.targets || []).forEach(function(tr) {
+                var hostInfo = tr.host || '本机';
+                var platformInfo = tr.platform || 'unknown';
+                var title = escapeAttr(tr.target_name) + ' (' + escapeAttr(hostInfo) + ', ' + escapeAttr(platformInfo) + ')';
+                var projectList = (tr.projects || []).map(escapeAttr).join(', ');
+
+                html += '<div style="margin:8px 0 8px 16px;border:1px solid #30363d;border-radius:6px;overflow:hidden">';
+                html += '<div style="background:#161b22;padding:8px 12px;border-bottom:1px solid #30363d">';
+                html += '<strong>' + title + '</strong>';
+                html += '<div style="color:#8b949e;font-size:0.9em">部署项目: ' + projectList + '</div>';
+                html += '</div>';
+                html += '<div style="padding:8px 12px">';
+
+                if (tr.ssh_error) {
+                    html += '<div class="result-item"><span class="icon status-red">✗</span>'
+                        + '<span class="detail">SSH 错误: ' + escapeAttr(tr.ssh_error) + '</span></div>';
+                } else {
+                    // 环境依赖
+                    if (tr.env_items && tr.env_items.length > 0) {
+                        html += '<div style="color:#8b949e;font-size:0.85em;margin:4px 0">环境依赖:</div>';
+                        tr.env_items.forEach(function(item) {
+                            html += renderAvailItem(item);
+                        });
+                    }
+                    // 服务状态
+                    if (tr.svc_items && tr.svc_items.length > 0) {
+                        html += '<div style="color:#8b949e;font-size:0.85em;margin:4px 0">服务状态:</div>';
+                        tr.svc_items.forEach(function(item) {
+                            html += renderAvailItem(item);
+                        });
+                    }
+                }
+
+                html += '</div></div>';
+            });
+
+            html += '</div>';
+            container.innerHTML += html;
+        });
+    }
+
+    function renderAvailItem(item) {
+        var cls = 'status-' + item.status;
+        var icon = item.status === 'green' ? '✓' : (item.status === 'yellow' ? '!' : '✗');
+        return '<div class="result-item"><span class="icon '+cls+'">'+icon+'</span>'
+            +'<span class="name">'+escapeAttr(item.name)+'</span>'
+            +'<span class="detail">'+escapeAttr(item.detail)+'</span></div>';
+    }
+
     function appendAvailLayer(layer) {
         var container = document.getElementById('avail-results');
         if (container.querySelector('.spinner')) container.innerHTML = '';
 
+        // 有 pipeline 分组数据时，跳过 environment 和 service layer（已在 pipeline 中显示）
+        if (pipelineAvailRendered && (layer.name === 'environment' || layer.name === 'service')) {
+            return;
+        }
+
         var itemsHTML = (layer.items||[]).map(function(item) {
-            var cls = 'status-'+item.status;
-            var icon = item.status==='green'?'✓':(item.status==='yellow'?'!':'✗');
-            return '<div class="result-item"><span class="icon '+cls+'">'+icon+'</span>'
-                +'<span class="name">'+item.name+'</span>'
-                +'<span class="detail">'+item.detail+'</span></div>';
+            return renderAvailItem(item);
         }).join('');
 
         container.innerHTML += '<div class="avail-layer">'

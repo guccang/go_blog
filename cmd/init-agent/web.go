@@ -92,22 +92,49 @@ func RunWebServer(cfg *InitConfig) error {
 			return
 		}
 
-		go func() {
-			reqs := DefaultRequirements()
-			for _, req := range reqs {
-				result := checkOne(req)
-				state.EnvResults = append(state.EnvResults, result)
-				hub.broadcast("env_check_result", result)
-			}
-			hub.broadcast("env_check_complete", state.EnvResults)
-		}()
+		ds := state.DeployState
+		hasPipelines := ds != nil && ds.Available && len(ds.Pipelines) > 0
 
-		writeJSON(w, map[string]any{"success": true, "message": "环境检测已开始"})
+		if hasPipelines {
+			// 基于 pipeline 的按 target 远程检测
+			go func() {
+				plans := DeriveTargetRequirements(ds.Pipelines, ds.Targets, ds.Projects)
+				sshPassword := ds.SSHPassword
+				sshKeyPath := GetSSHKeyPath(cfg.RootDir)
+
+				results := RunTargetChecks(plans, sshPassword, sshKeyPath)
+				state.TargetEnvResults = results
+
+				// 逐个 target 广播
+				for _, r := range results {
+					hub.broadcast("target_env_result", r)
+				}
+				hub.broadcast("target_env_complete", results)
+			}()
+			writeJSON(w, map[string]any{"success": true, "message": "目标机器环境检测已开始", "mode": "target"})
+		} else {
+			// 无 deploy 配置，本机通用检测
+			go func() {
+				state.EnvResults = nil
+				reqs := DefaultRequirements()
+				for _, req := range reqs {
+					result := checkOne(req)
+					state.EnvResults = append(state.EnvResults, result)
+					hub.broadcast("env_check_result", result)
+				}
+				hub.broadcast("env_check_complete", state.EnvResults)
+			}()
+			writeJSON(w, map[string]any{"success": true, "message": "环境检测已开始", "mode": "local"})
+		}
 	})
 
 	// API: Get cached environment results
 	mux.HandleFunc("/api/env/results", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"success": true, "results": state.EnvResults})
+		writeJSON(w, map[string]any{
+			"success":        true,
+			"results":        state.EnvResults,
+			"target_results": state.TargetEnvResults,
+		})
 	})
 
 	// API: Get all agent schemas (kept for availability)
@@ -184,8 +211,19 @@ func RunWebServer(cfg *InitConfig) error {
 			return
 		}
 
+		ds := state.DeployState
+		hasPipelines := ds != nil && ds.Available && len(ds.Pipelines) > 0
+
 		go func() {
-			layers := RunAvailabilityChecks(cfg.RootDir, state.GeneratedConfigs)
+			// 有 pipeline 数据时先做 pipeline 分组检测
+			if hasPipelines {
+				sshPassword := ds.SSHPassword
+				sshKeyPath := GetSSHKeyPath(cfg.RootDir)
+				state.PipelineAvailResults = RunPipelineAvailChecks(ds, state.TargetEnvResults, sshPassword, sshKeyPath)
+				hub.broadcast("pipeline_avail_result", state.PipelineAvailResults)
+			}
+
+			layers := RunAvailabilityChecks(cfg.RootDir, state.GeneratedConfigs, state.PipelineAvailResults)
 			for _, layer := range layers {
 				hub.broadcast("avail_layer_result", layer)
 			}
@@ -199,12 +237,14 @@ func RunWebServer(cfg *InitConfig) error {
 	// API: Get wizard state
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"success":      true,
-			"current_step": state.CurrentStep,
-			"root_dir":     state.RootDir,
-			"env_results":  state.EnvResults,
-			"selected":     state.SelectedAgents,
-			"availability": state.AvailabilityLayers,
+			"success":                true,
+			"current_step":           state.CurrentStep,
+			"root_dir":               state.RootDir,
+			"env_results":            state.EnvResults,
+			"target_env_results":     state.TargetEnvResults,
+			"selected":               state.SelectedAgents,
+			"availability":           state.AvailabilityLayers,
+			"pipeline_avail_results": state.PipelineAvailResults,
 		})
 	})
 
