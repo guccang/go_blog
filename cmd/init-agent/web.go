@@ -365,6 +365,254 @@ func RunWebServer(cfg *InitConfig) error {
 		http.Error(w, "Method not allowed", 405)
 	})
 
+	// --- Progressive Deployment APIs ---
+
+	// API: Get agent tier metadata
+	mux.HandleFunc("/api/agents/tiers", func(w http.ResponseWriter, r *http.Request) {
+		registry := AgentMetaRegistry()
+		byTier := GetAgentsByTier()
+
+		tierList := make([]map[string]any, 0)
+		tierNames := map[AgentTier]string{
+			TierCore:         "基础设施（必须）",
+			TierIntelligence: "智能层（推荐）",
+			TierProductivity: "生产力（按需）",
+			TierSpecialized:  "专业化（可选）",
+		}
+
+		for tier := TierCore; tier <= TierSpecialized; tier++ {
+			agents := byTier[tier]
+			agentList := make([]map[string]any, 0, len(agents))
+			for _, a := range agents {
+				installed := agentHasConfig(cfg.RootDir, a.Name)
+				agentList = append(agentList, map[string]any{
+					"name":        a.Name,
+					"tier":        a.Tier,
+					"deps":        a.AgentDeps,
+					"keywords":    a.FeatureKeywords,
+					"short_pitch": a.ShortPitch,
+					"installed":   installed,
+				})
+			}
+			tierList = append(tierList, map[string]any{
+				"tier":   tier,
+				"label":  tierNames[tier],
+				"agents": agentList,
+			})
+		}
+
+		_ = registry
+		writeJSON(w, map[string]any{"success": true, "tiers": tierList})
+	})
+
+	// API: Recommend agents based on intent
+	mux.HandleFunc("/api/agents/recommend", func(w http.ResponseWriter, r *http.Request) {
+		intent := r.URL.Query().Get("intent")
+		if intent == "" {
+			writeJSON(w, map[string]any{
+				"success": false,
+				"error":   "missing 'intent' query parameter",
+			})
+			return
+		}
+
+		results := RecommendAgents(intent)
+		// Enrich with installed status
+		for i := range results {
+			results[i].Installed = agentHasConfig(cfg.RootDir, results[i].Agent.Name)
+		}
+
+		writeJSON(w, map[string]any{"success": true, "results": results})
+	})
+
+	// API: Add agents (incremental install)
+	mux.HandleFunc("/api/agents/add", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			Agents []string               `json:"agents"`
+			Values map[string]map[string]any `json:"values"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+
+		if len(req.Agents) == 0 {
+			writeJSON(w, map[string]any{"success": false, "error": "no agents specified"})
+			return
+		}
+
+		// Resolve dependencies
+		allNeeded, err := resolveAllDeps(req.Agents)
+		if err != nil {
+			writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+
+		// Filter already configured
+		var needConfig []string
+		var alreadyConfigured []string
+		for _, name := range allNeeded {
+			if agentHasConfig(cfg.RootDir, name) {
+				alreadyConfigured = append(alreadyConfigured, name)
+			} else {
+				needConfig = append(needConfig, name)
+			}
+		}
+
+		// Write configs for agents that have values provided
+		var written []string
+		for _, agentName := range needConfig {
+			vals, ok := req.Values[agentName]
+			if !ok {
+				continue
+			}
+
+			info := state.GetDiscoveredConfig(agentName)
+			if info != nil {
+				state.GeneratedConfigs[agentName] = vals
+				path, err := WriteDiscoveredConfig(cfg.RootDir, *info, vals)
+				if err != nil {
+					writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+					return
+				}
+				written = append(written, path)
+				hub.broadcast("config_written", map[string]any{"agent": agentName, "path": path})
+			} else if schema := GetAgentSchema(agentName); schema != nil {
+				state.GeneratedConfigs[agentName] = vals
+				path, err := WriteAgentConfig(cfg.RootDir, schema, vals)
+				if err != nil {
+					writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+					return
+				}
+				written = append(written, path)
+				hub.broadcast("config_written", map[string]any{"agent": agentName, "path": path})
+			}
+		}
+
+		writeJSON(w, map[string]any{
+			"success":            true,
+			"resolved":           allNeeded,
+			"already_configured": alreadyConfigured,
+			"need_config":        needConfig,
+			"written":            written,
+		})
+	})
+
+	// API: Quick start (configure core agents)
+	mux.HandleFunc("/api/quickstart", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		var req struct {
+			GatewayPort int    `json:"gateway_port"`
+			RedisIP     string `json:"redis_ip"`
+			RedisPort   string `json:"redis_port"`
+			Admin       string `json:"admin"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+
+		if req.GatewayPort == 0 {
+			req.GatewayPort = 10086
+		}
+		if req.RedisIP == "" {
+			req.RedisIP = "127.0.0.1"
+		}
+		if req.RedisPort == "" {
+			req.RedisPort = "6379"
+		}
+		if req.Admin == "" {
+			req.Admin = "admin"
+		}
+
+		serverURL := fmt.Sprintf("ws://127.0.0.1:%d/ws/uap", req.GatewayPort)
+
+		gatewayValues := map[string]any{
+			"port":              req.GatewayPort,
+			"go_backend_url":    "http://127.0.0.1:8080",
+			"auth_token":        "",
+			"event_tracking":    true,
+			"event_buffer_size": 10000,
+			"event_log_dir":     "logs",
+			"event_log_stdout":  true,
+		}
+
+		blogValues := map[string]any{
+			"admin":         req.Admin,
+			"port":          "8080",
+			"redis_ip":      req.RedisIP,
+			"redis_port":    req.RedisPort,
+			"redis_pwd":     "",
+			"gateway_url":   serverURL,
+			"gateway_token": "",
+			"logs_dir":      "",
+		}
+
+		state.GeneratedConfigs["gateway"] = gatewayValues
+		state.GeneratedConfigs["blog-agent"] = blogValues
+		state.SelectedAgents = []string{"gateway", "blog-agent"}
+
+		if err := state.WriteAllConfigs(); err != nil {
+			writeJSON(w, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+
+		hub.broadcast("quickstart_complete", map[string]any{
+			"agents":  []string{"gateway", "blog-agent"},
+			"written": state.WrittenFiles,
+		})
+
+		writeJSON(w, map[string]any{
+			"success": true,
+			"written": state.WrittenFiles,
+			"message": "核心 agent 配置完成",
+		})
+	})
+
+	// API: Check online agents via gateway
+	mux.HandleFunc("/api/agents/online", func(w http.ResponseWriter, r *http.Request) {
+		gatewayHTTP := cfg.GatewayHTTP
+		if gatewayHTTP == "" {
+			gatewayHTTP = "http://127.0.0.1:10086"
+		}
+
+		agentsURL := gatewayHTTP + "/api/gateway/agents"
+		resp, err := http.Get(agentsURL)
+		if err != nil {
+			writeJSON(w, map[string]any{
+				"success": false,
+				"error":   fmt.Sprintf("无法连接 Gateway: %v", err),
+				"online":  []string{},
+			})
+			return
+		}
+		defer resp.Body.Close()
+
+		var result map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			writeJSON(w, map[string]any{
+				"success": false,
+				"error":   fmt.Sprintf("解析 Gateway 响应失败: %v", err),
+				"online":  []string{},
+			})
+			return
+		}
+
+		writeJSON(w, map[string]any{
+			"success":         true,
+			"gateway_response": result,
+		})
+	})
+
 	addr := fmt.Sprintf(":%d", cfg.WebPort)
 	fmt.Printf("[init-agent] Web 向导已启动: http://localhost:%d\n", cfg.WebPort)
 	return http.ListenAndServe(addr, mux)

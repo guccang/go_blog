@@ -341,3 +341,141 @@ func cloneFields(fields []ConfigField) []ConfigField {
 	copy(out, fields)
 	return out
 }
+
+// --- Progressive Deployment: Agent Tier & Meta ---
+
+// AgentTier represents the deployment tier of an agent.
+type AgentTier int
+
+const (
+	TierCore         AgentTier = 0 // 基础设施（必须）
+	TierIntelligence AgentTier = 1 // 智能层（推荐）
+	TierProductivity AgentTier = 2 // 生产力（按需）
+	TierSpecialized  AgentTier = 3 // 专业化（可选）
+)
+
+func (t AgentTier) String() string {
+	switch t {
+	case TierCore:
+		return "核心"
+	case TierIntelligence:
+		return "智能"
+	case TierProductivity:
+		return "生产力"
+	case TierSpecialized:
+		return "专业"
+	default:
+		return "未知"
+	}
+}
+
+// AgentMeta holds progressive-deployment metadata for an agent.
+type AgentMeta struct {
+	Name            string    `json:"name"`
+	Tier            AgentTier `json:"tier"`
+	AgentDeps       []string  `json:"agent_deps"`       // 依赖的其他 agent
+	FeatureKeywords []string  `json:"feature_keywords"` // 功能关键词（用于推荐匹配）
+	ShortPitch      string    `json:"short_pitch"`      // 一句话描述
+}
+
+// AgentMetaRegistry returns the progressive-deployment metadata for all agents.
+func AgentMetaRegistry() map[string]AgentMeta {
+	return map[string]AgentMeta{
+		"gateway": {
+			Name: "gateway", Tier: TierCore,
+			AgentDeps:       nil,
+			FeatureKeywords: []string{"网关", "路由", "gateway", "proxy", "websocket"},
+			ShortPitch:      "中央路由，所有 agent 通过它通信",
+		},
+		"blog-agent": {
+			Name: "blog-agent", Tier: TierCore,
+			AgentDeps:       []string{"gateway"},
+			FeatureKeywords: []string{"博客", "blog", "后端", "backend", "web", "数据", "存储", "redis"},
+			ShortPitch:      "核心后端，数据存储与 Web UI",
+		},
+		"llm-agent": {
+			Name: "llm-agent", Tier: TierIntelligence,
+			AgentDeps:       []string{"gateway", "blog-agent"},
+			FeatureKeywords: []string{"AI", "llm", "智能", "对话", "chat", "模型", "工具调用", "tool", "任务分解"},
+			ShortPitch:      "AI 大脑，多模型对话、工具调用、任务分解",
+		},
+		"execute-code-agent": {
+			Name: "execute-code-agent", Tier: TierProductivity,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"代码执行", "execute", "python", "shell", "沙箱", "sandbox", "运行代码"},
+			ShortPitch:      "Python/Shell 代码执行沙箱",
+		},
+		"mcp-agent": {
+			Name: "mcp-agent", Tier: TierProductivity,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"MCP", "外部工具", "桥接", "tool", "bridge", "扩展"},
+			ShortPitch:      "MCP 外部工具桥接，连接第三方服务",
+		},
+		"corn-agent": {
+			Name: "corn-agent", Tier: TierProductivity,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"定时", "cron", "schedule", "计划任务", "自动", "定时发布", "定时任务"},
+			ShortPitch:      "定时任务调度，自动化周期性工作",
+		},
+		"deploy-agent": {
+			Name: "deploy-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway", "blog-agent"},
+			FeatureKeywords: []string{"部署", "deploy", "发布", "上线", "SSH", "远程"},
+			ShortPitch:      "SSH 自动化部署，一键发布上线",
+		},
+		"codegen-agent": {
+			Name: "codegen-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"代码生成", "codegen", "claude", "编码", "coding", "自动编程"},
+			ShortPitch:      "Claude 代码生成，AI 辅助编程",
+		},
+		"wechat-agent": {
+			Name: "wechat-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"微信", "wechat", "企业微信", "消息", "通知", "webhook"},
+			ShortPitch:      "企业微信集成，消息收发与通知",
+		},
+		"acp-agent": {
+			Name: "acp-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway", "llm-agent"},
+			FeatureKeywords: []string{"ACP", "代码分析", "analysis", "claude", "审查", "review"},
+			ShortPitch:      "Claude 代码分析，智能代码审查",
+		},
+		"log-agent": {
+			Name: "log-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway"},
+			FeatureKeywords: []string{"日志", "log", "监控", "分析", "聚合"},
+			ShortPitch:      "日志聚合分析，集中管理运行日志",
+		},
+		"env-agent": {
+			Name: "env-agent", Tier: TierSpecialized,
+			AgentDeps:       []string{"gateway", "blog-agent"},
+			FeatureKeywords: []string{"环境", "env", "检测", "远程", "软件安装"},
+			ShortPitch:      "远程环境检测与软件安装",
+		},
+		"deploy-bridge-server": {
+			Name: "deploy-bridge-server", Tier: TierSpecialized,
+			AgentDeps:       []string{"deploy-agent"},
+			FeatureKeywords: []string{"桥接", "bridge", "远程部署", "接收端"},
+			ShortPitch:      "远程部署接收端，配合 deploy-agent 使用",
+		},
+	}
+}
+
+// GetAgentMeta returns the meta for a specific agent, or nil if not found.
+func GetAgentMeta(name string) *AgentMeta {
+	registry := AgentMetaRegistry()
+	if m, ok := registry[name]; ok {
+		return &m
+	}
+	return nil
+}
+
+// GetAgentsByTier returns agents grouped by their tier.
+func GetAgentsByTier() map[AgentTier][]AgentMeta {
+	result := make(map[AgentTier][]AgentMeta)
+	for _, m := range AgentMetaRegistry() {
+		result[m.Tier] = append(result[m.Tier], m)
+	}
+	return result
+}
