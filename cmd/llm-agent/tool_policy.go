@@ -103,7 +103,7 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 		"博客":   {"blog", "raw"},
 		"文章":   {"blog", "raw"},
 		"待办":   {"todo", "raw"},
-		"任务":   {"todo", "raw", "corn"},
+		"任务":   {"todo", "raw", "cron"},
 		"运动":   {"exercise", "raw"},
 		"锻炼":   {"exercise", "raw"},
 		"健身":   {"exercise", "raw"},
@@ -122,15 +122,18 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 		"周报":   {"raw"},
 		"统计":   {"raw"},
 		"记录":   {"raw"},
-		"定时":   {"corn"},
-		"提醒":   {"corn"},
-		"闹钟":   {"corn"},
-		"每隔":   {"corn"},
-		"周期":   {"corn"},
-		"定期":   {"corn"},
-		"分钟后":  {"corn"},
-		"小时后":  {"corn"},
-		"cron":  {"corn"},
+		"定时":   {"cron"},
+		"提醒":   {"cron"},
+		"闹钟":   {"cron"},
+		"每隔":   {"cron"},
+		"周期":   {"cron"},
+		"定期":   {"cron"},
+		"分钟后":  {"cron"},
+		"小时后":  {"cron"},
+		"秒后":   {"cron"},
+		"秒钟后":  {"cron"},
+		"s后":   {"cron"},
+		"cron":  {"cron"},
 	}
 
 	// 收集匹配的 agent ID
@@ -150,7 +153,7 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 			if strings.Contains(queryLower, keyword) {
 				for _, prefix := range prefixes {
 					for _, toolName := range info.ToolNames {
-						if strings.HasPrefix(strings.ToLower(toolName), prefix) {
+						if toolNameMatchesPrefix(toolName, prefix) {
 							matched = true
 							break
 						}
@@ -167,11 +170,11 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 
 		// 检查英文关键词（从工具名提取前缀）
 		if !matched {
-			enPrefixes := []string{"blog", "todo", "exercise", "deploy", "codegen", "web", "raw", "bash", "corn"}
+			enPrefixes := []string{"blog", "todo", "exercise", "deploy", "codegen", "web", "raw", "bash", "cron"}
 			for _, prefix := range enPrefixes {
 				if strings.Contains(queryLower, prefix) {
 					for _, toolName := range info.ToolNames {
-						if strings.HasPrefix(strings.ToLower(toolName), prefix) {
+						if toolNameMatchesPrefix(toolName, prefix) {
 							matched = true
 							break
 						}
@@ -220,7 +223,7 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 			queryMatchedPrefixes = append(queryMatchedPrefixes, prefixes...)
 		}
 	}
-	for _, prefix := range []string{"blog", "todo", "exercise", "deploy", "codegen", "web", "raw", "bash", "corn"} {
+	for _, prefix := range []string{"blog", "todo", "exercise", "deploy", "codegen", "web", "raw", "bash", "cron"} {
 		if strings.Contains(queryLower, prefix) {
 			queryMatchedPrefixes = append(queryMatchedPrefixes, prefix)
 		}
@@ -235,7 +238,7 @@ func (b *Bridge) applyAgentPolicyStatic(query string, tools []LLMTool) []LLMTool
 		// 兜底：工具名前缀直接匹配 query 关键词
 		toolNameLower := strings.ToLower(b.resolveToolName(tool.Function.Name))
 		for _, prefix := range queryMatchedPrefixes {
-			if strings.HasPrefix(toolNameLower, prefix) {
+			if toolNameMatchesPrefix(toolNameLower, prefix) {
 				filtered = append(filtered, tool)
 				break
 			}
@@ -474,6 +477,20 @@ func (b *Bridge) ensureBaseTools(filtered []LLMTool, allTools []LLMTool) []LLMTo
 		log.Printf("[PolicyPipeline] Layer4 BaseToolGuard: 补充 %d 个基础工具", added)
 	}
 	return filtered
+}
+
+// toolNameMatchesPrefix 判断工具名是否匹配给定前缀
+// 同时检查完整名和裸名（去除 "Inner_blog." 等命名空间前缀后的部分）
+func toolNameMatchesPrefix(toolName string, prefix string) bool {
+	nameLower := strings.ToLower(toolName)
+	if strings.HasPrefix(nameLower, prefix) {
+		return true
+	}
+	// 检查裸名（去除最后一个 . 之前的命名空间前缀）
+	if dot := strings.LastIndex(nameLower, "."); dot >= 0 {
+		return strings.HasPrefix(nameLower[dot+1:], prefix)
+	}
+	return false
 }
 
 // isBaseTool 判断是否为基础工具（始终保留，不参与过滤）
