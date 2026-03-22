@@ -1,0 +1,24 @@
+{
+  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
+  "auth_token": "your-auth-token",
+  "agent_id": "corn-agent",
+  "storage": {
+    "type": "json",
+    "path": "./data/tasks.json",
+    "backup_dir": "./data/backups"
+  },
+  "scheduler": {
+    "max_concurrent": 5,
+    "timezone": "Asia/Shanghai"
+  },
+  "llm_agent": {
+    "agent_id": "llm-agent",
+    "timeout_sec": 300
+  },
+  "notifications": {
+    "enabled": true,
+    "channel": "wechat",
+    "success_template": "任务执行成功",
+    "failure_template": "任务执行失败"
+  }
+}
