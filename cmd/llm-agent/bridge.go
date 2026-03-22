@@ -1471,6 +1471,8 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		}
 		json.Unmarshal(taskPayload.Payload, &taskType)
 
+		log.Printf("[Bridge] task_assign received: taskID=%s task_type=%s from=%s", taskPayload.TaskID, taskType.TaskType, msg.From)
+
 		// 构建 handler（根据 task_type 解析 payload）
 		var handler func()
 		switch taskType.TaskType {
@@ -1511,7 +1513,15 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			sourceAgent := msg.From
 			handler = func() { b.handleCronReminder(taskPayload.TaskID, sourceAgent, &reminderPayload) }
 		default:
-			log.Printf("[Bridge] unknown task_type: %s", taskType.TaskType)
+			log.Printf("[Bridge] unknown task_type: %s, sending task_complete failure to %s", taskType.TaskType, msg.From)
+			b.client.Send(&uap.Message{
+				Type:    uap.MsgTaskComplete,
+				ID:      uap.NewMsgID(),
+				From:    b.cfg.AgentID,
+				To:      msg.From,
+				Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskPayload.TaskID, Status: "failed", Error: fmt.Sprintf("unknown task_type: %s", taskType.TaskType)}),
+				Ts:      time.Now().UnixMilli(),
+			})
 			return
 		}
 
