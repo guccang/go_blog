@@ -1512,6 +1512,21 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			}
 			sourceAgent := msg.From
 			handler = func() { b.handleCronReminder(taskPayload.TaskID, sourceAgent, &reminderPayload) }
+		case "cron_query":
+			var wrapper struct {
+				Payload json.RawMessage `json:"payload"`
+			}
+			if err := json.Unmarshal(taskPayload.Payload, &wrapper); err != nil {
+				log.Printf("[Bridge] invalid cron_query payload: %v", err)
+				return
+			}
+			var queryPayload CronQueryPayload
+			if err := json.Unmarshal(wrapper.Payload, &queryPayload); err != nil {
+				log.Printf("[Bridge] invalid cron_query inner payload: %v", err)
+				return
+			}
+			sourceAgent := msg.From
+			handler = func() { b.handleCronQuery(taskPayload.TaskID, sourceAgent, &queryPayload) }
 		default:
 			log.Printf("[Bridge] unknown task_type: %s, sending task_complete failure to %s", taskType.TaskType, msg.From)
 			b.client.Send(&uap.Message{

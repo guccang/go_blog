@@ -164,10 +164,11 @@ func normalizeLLMTaskType(taskType string) string {
 	switch taskType {
 	case "cron_reminder":
 		return "cron_reminder"
+	case "cron_query", "query", "check":
+		return "cron_query"
 	case "reminder", "notify", "notification", "alert":
 		return "cron_reminder"
 	default:
-		// 未知类型默认作为 cron_reminder 发送
 		return "cron_reminder"
 	}
 }

@@ -43,6 +43,13 @@ type CronReminderPayload struct {
 	WechatUser string `json:"wechat_user"` // 微信用户标识
 }
 
+// CronQueryPayload cron_query 任务的 payload（定时查询）
+type CronQueryPayload struct {
+	Query      string `json:"query"`       // 查询问题
+	Account    string `json:"account"`     // 用户账号
+	WechatUser string `json:"wechat_user"` // 微信用户（有值则发送结果到微信）
+}
+
 // AssistantEventPayload MsgTaskEvent 的事件数据
 type AssistantEventPayload struct {
 	Event string `json:"event"` // "chunk" | "tool_info" | "plan_start" | "plan_done" | "plan_review_start" | "plan_review_result" | "subtask_start" | "subtask_done" | "subtask_fail" | "subtask_skip" | "failure_decision" | "synthesis" | "resume" | "resume_info"
@@ -262,6 +269,56 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 	})
 
 	log.Printf("[CronReminder] task=%s completed status=%s", taskID, status)
+}
+
+// handleCronQuery 处理 cron_query 定时查询任务：驱动 LLM + 工具调用循环执行查询，再发微信 + 回 task_complete
+func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryPayload) {
+	log.Printf("[CronQuery] task=%s account=%s wechat_user=%s query=%s",
+		taskID, payload.Account, payload.WechatUser, payload.Query)
+
+	ctx := &TaskContext{
+		Ctx:     context.Background(),
+		TaskID:  taskID,
+		Account: payload.Account,
+		Query:   payload.Query,
+		Source:  "cron_query",
+		Sink:    &LLMRequestSink{bridge: b, taskID: taskID},
+	}
+
+	result, err := b.processTask(ctx)
+
+	status := "success"
+	errMsg := ""
+	if err != nil {
+		status = "failed"
+		errMsg = err.Error()
+		log.Printf("[CronQuery] task=%s processTask failed: %v", taskID, err)
+	} else {
+		log.Printf("[CronQuery] task=%s processTask done, resultLen=%d", taskID, len(result))
+	}
+
+	// 如果指定了微信用户，发送查询结果到微信
+	if payload.WechatUser != "" && result != "" {
+		wechatAgentID := b.findWechatAgent()
+		if wechatAgentID == "" {
+			log.Printf("[CronQuery] task=%s no wechat-agent online, skip sending", taskID)
+		} else {
+			b.sendWechat(wechatAgentID, payload.WechatUser, result)
+			log.Printf("[CronQuery] task=%s sent result to wechat user=%s", taskID, payload.WechatUser)
+		}
+	}
+
+	// 发送 task_complete 到 sourceAgent（cron-agent）
+	b.client.Send(&uap.Message{
+		Type:    uap.MsgTaskComplete,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      sourceAgent,
+		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg, Result: result}),
+		Ts:      time.Now().UnixMilli(),
+	})
+
+	log.Printf("[CronQuery] task=%s completed status=%s", taskID, status)
 }
 
 // findWechatAgent 查找在线的 wechat-agent ID
