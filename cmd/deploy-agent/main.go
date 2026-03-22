@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"agentbase"
 	"golang.org/x/term"
@@ -44,6 +47,10 @@ func main() {
 	adhocStartArgs := flag.String("start-args", "", "启动参数（adhoc 模式）")
 	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
 	forceFull := flag.Bool("force-full", false, "强制完整部署（覆盖所有文件含配置）")
+	// 控制协议 flags
+	shutdownTarget := flag.String("shutdown", "", "向指定 agent 发送 graceful shutdown")
+	agentStatusTarget := flag.String("agent-status", "", "查询指定 agent 状态")
+	forceShutdown := flag.Bool("force", false, "配合 --shutdown 使用，强制立即退出")
 	flag.Parse()
 
 	// --init early exit (before LoadConfig, since the project may not have a config yet)
@@ -134,6 +141,26 @@ func main() {
 			} else {
 				fmt.Printf("密码已保存到凭据存储 (%s)\n", accountKey)
 			}
+		}
+		return
+	}
+
+	// --shutdown / --agent-status 控制协议（临时 UAP 连接模式）
+	if *shutdownTarget != "" || *agentStatusTarget != "" {
+		// 需要 config 来获取 server_url
+		ctrlCfg, err := LoadConfig(*configPath, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+			os.Exit(1)
+		}
+		if ctrlCfg.ServerURL == "" {
+			fmt.Fprintf(os.Stderr, "配置文件中未设置 server_url，无法连接 gateway\n")
+			os.Exit(1)
+		}
+
+		if err := runControlCommand(ctrlCfg, *shutdownTarget, *agentStatusTarget, *forceShutdown); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
 		}
 		return
 	}
@@ -324,6 +351,19 @@ func main() {
 			})
 			go agentbase.NewEnvChecker(conn.AgentBase, catalog, rc, envCfg, nil).Run()
 		}
+
+		// 设置生命周期回调
+		conn.ActiveTaskCounter = func() int { return conn.activeCount() }
+
+		// 优雅退出（信号处理走 InitiateShutdown）
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			log.Printf("[INFO] received signal, initiating shutdown...")
+			conn.InitiateShutdown("signal")
+			os.Exit(0)
+		}()
 
 		// 启动协议层（注册 + 心跳）
 		go conn.StartProtocolLayer()
@@ -536,4 +576,99 @@ func main() {
 	if hasError {
 		os.Exit(1)
 	}
+}
+
+// runControlCommand 执行控制协议命令（临时 UAP 连接）
+func runControlCommand(cfg *DeployConfig, shutdownTarget, statusTarget string, force bool) error {
+	agentID := fmt.Sprintf("deploy_ctrl_%d", os.Getpid())
+	baseCfg := &agentbase.Config{
+		ServerURL:   cfg.ServerURL,
+		AgentID:     agentID,
+		AgentType:   "deploy",
+		AgentName:   "deploy-ctrl",
+		Description: "deploy-agent control client",
+		AuthToken:   cfg.AuthToken,
+		Capacity:    0,
+	}
+	ab := agentbase.NewAgentBase(baseCfg)
+
+	// 等待注册完成
+	registered := make(chan bool, 1)
+	ab.Client.OnRegistered = func(success bool) {
+		registered <- success
+	}
+
+	// 等待响应
+	responseCh := make(chan *uap.Message, 1)
+	ab.RegisterHandler(uap.MsgCtrlShutdownAck, func(msg *uap.Message) {
+		responseCh <- msg
+	})
+	ab.RegisterHandler(uap.MsgCtrlStatusReport, func(msg *uap.Message) {
+		responseCh <- msg
+	})
+
+	// 启动连接（后台）
+	go ab.Run()
+
+	// 设置超时
+	timeout := time.After(15 * time.Second)
+
+	// 等待注册
+	select {
+	case success := <-registered:
+		if !success {
+			ab.Stop()
+			return fmt.Errorf("gateway 注册失败")
+		}
+	case <-timeout:
+		ab.Stop()
+		return fmt.Errorf("连接 gateway 超时（15s）")
+	}
+
+	// 发送控制消息
+	if shutdownTarget != "" {
+		log.Printf("[CTRL] sending ctrl_shutdown to %s (force=%v)", shutdownTarget, force)
+		ab.Client.SendTo(shutdownTarget, uap.MsgCtrlShutdown, uap.CtrlShutdownPayload{
+			Reason: "cli-shutdown",
+			Force:  force,
+		})
+	} else {
+		log.Printf("[CTRL] sending ctrl_status to %s", statusTarget)
+		ab.Client.SendTo(statusTarget, uap.MsgCtrlStatus, uap.CtrlStatusPayload{})
+	}
+
+	// 等待响应
+	select {
+	case msg := <-responseCh:
+		if msg.Type == uap.MsgCtrlShutdownAck {
+			var ack uap.CtrlShutdownAckPayload
+			json.Unmarshal(msg.Payload, &ack)
+			fmt.Printf("Shutdown ACK from %s:\n", ack.AgentID)
+			fmt.Printf("  Accepted:      %v\n", ack.Accepted)
+			fmt.Printf("  Current State: %s\n", ack.CurrentState)
+			fmt.Printf("  Active Tasks:  %d\n", ack.ActiveTasks)
+			if ack.Error != "" {
+				fmt.Printf("  Error:         %s\n", ack.Error)
+			}
+		} else if msg.Type == uap.MsgCtrlStatusReport {
+			var report uap.CtrlStatusReportPayload
+			json.Unmarshal(msg.Payload, &report)
+			fmt.Printf("Status Report from %s:\n", report.AgentID)
+			fmt.Printf("  Agent Type:    %s\n", report.AgentType)
+			fmt.Printf("  Agent Name:    %s\n", report.AgentName)
+			fmt.Printf("  State:         %s\n", report.State)
+			fmt.Printf("  Active Tasks:  %d\n", report.ActiveTasks)
+			fmt.Printf("  Capacity:      %d\n", report.Capacity)
+			fmt.Printf("  Uptime:        %ds\n", report.Uptime)
+			if len(report.Meta) > 0 {
+				fmt.Printf("  Meta:          %v\n", report.Meta)
+			}
+		}
+	case <-time.After(10 * time.Second):
+		ab.Stop()
+		return fmt.Errorf("等待响应超时（10s），目标 agent 可能不在线")
+	}
+
+	ab.Stop()
+	return nil
 }

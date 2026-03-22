@@ -542,6 +542,30 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
+			Name:        "AgentShutdown",
+			Description: "向指定 Agent 发送关闭命令（graceful 或 force）",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"agent_id": map[string]interface{}{"type": "string", "description": "目标 Agent ID"},
+					"reason":   map[string]interface{}{"type": "string", "description": "关闭原因"},
+					"force":    map[string]interface{}{"type": "boolean", "description": "是否强制立即退出（跳过 drain）"},
+				},
+				"required": []string{"agent_id"},
+			}),
+		},
+		{
+			Name:        "AgentStatus",
+			Description: "查询指定 Agent 的运行状态",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"agent_id": map[string]interface{}{"type": "string", "description": "目标 Agent ID"},
+				},
+				"required": []string{"agent_id"},
+			}),
+		},
+		{
 			Name:        "DeployProject",
 			Description: "部署指定项目到目标服务器。支持两种模式：1) 已配置项目：直接按项目名部署；2) 未配置项目：提供 project_dir 参数，自动生成部署配置后部署；3) Adhoc 一次性部署：提供 ssh_host 参数，无需预配置，直接构建并部署到指定服务器",
 			Parameters: mustMarshalJSON(map[string]interface{}{
@@ -637,6 +661,12 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListPipelines()
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args, sendProgress)
+	case "AgentShutdown":
+		c.toolAgentShutdown(msg, args)
+		return
+	case "AgentStatus":
+		c.toolAgentStatus(msg, args)
+		return
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
@@ -890,6 +920,88 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return json.RawMessage(data)
+}
+
+// ========================= 控制协议 Tool =========================
+
+// toolAgentShutdown 通过 ctrl_shutdown 远程关闭指定 Agent
+func (c *Connection) toolAgentShutdown(msg *uap.Message, args map[string]interface{}) {
+	agentID, _ := args["agent_id"].(string)
+	if agentID == "" {
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, "缺少 agent_id 参数"))
+		return
+	}
+	reason, _ := args["reason"].(string)
+	if reason == "" {
+		reason = "tool_call"
+	}
+	force, _ := args["force"].(bool)
+
+	// 注册临时响应处理器
+	responseCh := make(chan *uap.Message, 1)
+	c.RegisterHandler(uap.MsgCtrlShutdownAck, func(resp *uap.Message) {
+		responseCh <- resp
+	})
+	defer c.RegisterHandler(uap.MsgCtrlShutdownAck, nil)
+
+	log.Printf("[INFO] sending ctrl_shutdown to %s (force=%v reason=%s)", agentID, force, reason)
+	c.Client.SendTo(agentID, uap.MsgCtrlShutdown, uap.CtrlShutdownPayload{
+		Reason: reason,
+		Force:  force,
+	})
+
+	// 等待 ack
+	select {
+	case resp := <-responseCh:
+		var ack uap.CtrlShutdownAckPayload
+		json.Unmarshal(resp.Payload, &ack)
+		result := uap.BuildToolResult(msg.ID, ack, fmt.Sprintf("shutdown %s: accepted=%v state=%s tasks=%d",
+			ack.AgentID, ack.Accepted, ack.CurrentState, ack.ActiveTasks))
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   true,
+			Result:    result.Result,
+		})
+	case <-time.After(10 * time.Second):
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID,
+			fmt.Sprintf("等待 %s 的 shutdown ack 超时（10s），目标 agent 可能不在线", agentID)))
+	}
+}
+
+// toolAgentStatus 通过 ctrl_status 查询指定 Agent 状态
+func (c *Connection) toolAgentStatus(msg *uap.Message, args map[string]interface{}) {
+	agentID, _ := args["agent_id"].(string)
+	if agentID == "" {
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, "缺少 agent_id 参数"))
+		return
+	}
+
+	// 注册临时响应处理器
+	responseCh := make(chan *uap.Message, 1)
+	c.RegisterHandler(uap.MsgCtrlStatusReport, func(resp *uap.Message) {
+		responseCh <- resp
+	})
+	defer c.RegisterHandler(uap.MsgCtrlStatusReport, nil)
+
+	log.Printf("[INFO] sending ctrl_status to %s", agentID)
+	c.Client.SendTo(agentID, uap.MsgCtrlStatus, uap.CtrlStatusPayload{})
+
+	// 等待 report
+	select {
+	case resp := <-responseCh:
+		var report uap.CtrlStatusReportPayload
+		json.Unmarshal(resp.Payload, &report)
+		result := uap.BuildToolResult(msg.ID, report, fmt.Sprintf("agent %s: state=%s tasks=%d/%d uptime=%ds",
+			report.AgentName, report.State, report.ActiveTasks, report.Capacity, report.Uptime))
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   true,
+			Result:    result.Result,
+		})
+	case <-time.After(10 * time.Second):
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID,
+			fmt.Sprintf("等待 %s 的 status report 超时（10s），目标 agent 可能不在线", agentID)))
+	}
 }
 
 // ========================= 协议层载荷构建 =========================

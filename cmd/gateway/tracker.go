@@ -509,6 +509,20 @@ func (t *Tracker) resolveTraceID(msg *uap.Message) string {
 	case uap.MsgNotify:
 		return msg.ID
 
+	case uap.MsgCtrlShutdown, uap.MsgCtrlStatus:
+		// 控制消息新调用链起点
+		traceID := msg.ID
+		if traceID != "" {
+			t.mu.Lock()
+			t.traceStart[traceID] = time.Now().UnixMilli()
+			t.mu.Unlock()
+		}
+		return traceID
+
+	case uap.MsgCtrlShutdownAck, uap.MsgCtrlStatusReport:
+		// 控制消息响应：关联到原始请求（通过 msg.ID 回溯不到，用 From 做 fallback）
+		return msg.ID
+
 	default:
 		return msg.ID
 	}
@@ -658,6 +672,44 @@ func extractNotifySummary(payload json.RawMessage) string {
 	return ""
 }
 
+func extractCtrlShutdownSummary(payload json.RawMessage) string {
+	var p uap.CtrlShutdownPayload
+	if json.Unmarshal(payload, &p) != nil {
+		return "shutdown"
+	}
+	s := "shutdown"
+	if p.Force {
+		s = "shutdown (force)"
+	}
+	if p.Reason != "" {
+		s += " reason=" + p.Reason
+	}
+	return s
+}
+
+func extractCtrlShutdownAckSummary(payload json.RawMessage) string {
+	var p uap.CtrlShutdownAckPayload
+	if json.Unmarshal(payload, &p) != nil {
+		return ""
+	}
+	if p.Accepted {
+		return fmt.Sprintf("accepted (state=%s tasks=%d)", p.CurrentState, p.ActiveTasks)
+	}
+	errMsg := p.Error
+	if errMsg == "" {
+		errMsg = "unknown"
+	}
+	return "rejected: " + errMsg
+}
+
+func extractCtrlStatusReportSummary(payload json.RawMessage) string {
+	var p uap.CtrlStatusReportPayload
+	if json.Unmarshal(payload, &p) != nil {
+		return ""
+	}
+	return fmt.Sprintf("state=%s tasks=%d/%d uptime=%ds", p.State, p.ActiveTasks, p.Capacity, p.Uptime)
+}
+
 // extractSummary 根据消息类型提取摘要
 func (t *Tracker) extractSummary(msg *uap.Message) string {
 	switch msg.Type {
@@ -686,6 +738,14 @@ func (t *Tracker) extractSummary(msg *uap.Message) string {
 			return fmt.Sprintf("complete task=%s status=%s", p.TaskID, p.Status)
 		}
 		return "complete"
+	case uap.MsgCtrlShutdown:
+		return extractCtrlShutdownSummary(msg.Payload)
+	case uap.MsgCtrlShutdownAck:
+		return extractCtrlShutdownAckSummary(msg.Payload)
+	case uap.MsgCtrlStatus:
+		return "status query"
+	case uap.MsgCtrlStatusReport:
+		return extractCtrlStatusReportSummary(msg.Payload)
 	default:
 		return ""
 	}
