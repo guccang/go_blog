@@ -36,6 +36,13 @@ type ResumeTaskPayload struct {
 	Account       string `json:"account"`
 }
 
+// CronReminderPayload cron_reminder 任务的 payload（定时提醒）
+type CronReminderPayload struct {
+	Message    string `json:"message"`     // 提醒内容
+	Account    string `json:"account"`     // 用户账号
+	WechatUser string `json:"wechat_user"` // 微信用户标识
+}
+
 // AssistantEventPayload MsgTaskEvent 的事件数据
 type AssistantEventPayload struct {
 	Event string `json:"event"` // "chunk" | "tool_info" | "plan_start" | "plan_done" | "plan_review_start" | "plan_review_result" | "subtask_start" | "subtask_done" | "subtask_fail" | "subtask_skip" | "failure_decision" | "synthesis" | "resume" | "resume_info"
@@ -224,6 +231,52 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 		}),
 		Ts: time.Now().UnixMilli(),
 	})
+}
+
+// handleCronReminder 处理 cron_reminder 定时提醒任务：发微信通知 + 回发 task_complete 到 corn-agent
+func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronReminderPayload) {
+	log.Printf("[CronReminder] task=%s account=%s wechat_user=%s message=%s",
+		taskID, payload.Account, payload.WechatUser, payload.Message)
+
+	status := "success"
+	errMsg := ""
+
+	wechatAgentID := b.findWechatAgent()
+	if wechatAgentID == "" {
+		status = "failed"
+		errMsg = "no wechat-agent online"
+		log.Printf("[CronReminder] task=%s failed: %s", taskID, errMsg)
+	} else {
+		b.sendWechat(wechatAgentID, payload.WechatUser, "⏰ "+payload.Message)
+		log.Printf("[CronReminder] task=%s sent to wechat-agent=%s", taskID, wechatAgentID)
+	}
+
+	// 发送 task_complete 到 sourceAgent（corn-agent），而非 "go_blog"
+	b.client.Send(&uap.Message{
+		Type:    uap.MsgTaskComplete,
+		ID:      uap.NewMsgID(),
+		From:    b.cfg.AgentID,
+		To:      sourceAgent,
+		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
+		Ts:      time.Now().UnixMilli(),
+	})
+
+	log.Printf("[CronReminder] task=%s completed status=%s", taskID, status)
+}
+
+// findWechatAgent 查找在线的 wechat-agent ID
+func (b *Bridge) findWechatAgent() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	for id, info := range b.agentInfo {
+		name := strings.ToLower(info.Name)
+		idLower := strings.ToLower(id)
+		if strings.Contains(name, "wechat") || strings.Contains(idLower, "wechat") {
+			return id
+		}
+	}
+	return ""
 }
 
 // defaultTaskGuide 任务指引的默认内容（workspace/TASK_GUIDE.md 不存在时的 fallback）

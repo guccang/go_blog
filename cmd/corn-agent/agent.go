@@ -111,7 +111,7 @@ func buildToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "CornCreateTask",
-			Description: "创建定时任务。支持三种调度类型：cron（cron表达式周期任务）、once（一次性延迟任务，用delay_sec指定延迟秒数或run_at指定绝对时间）、interval（固定间隔重复任务）。例如：'5分钟后提醒我喝水'应使用 schedule_type=once, delay_sec=300。",
+			Description: "创建定时任务。支持三种调度类型：cron（cron表达式周期任务）、once（一次性延迟任务，用delay_sec指定延迟秒数或run_at指定绝对时间）、interval（固定间隔重复任务）。例如：'5分钟后提醒我喝水'应使用 schedule_type=once, delay_sec=300。\n\n提醒类任务规则：当用户请求定时提醒时，task_type 必须填 \"cron_reminder\"，payload 必须包含 message（提醒内容）、account（用户账号，取系统prompt中的account值）、wechat_user（微信用户标识）。示例：task_type=\"cron_reminder\", payload={\"message\":\"喝水\",\"account\":\"xxx\",\"wechat_user\":\"wxid_xxx\"}。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
