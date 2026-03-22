@@ -35,6 +35,12 @@ const (
 
 	// Claude Mode: 模式切换
 	MsgSetMode = "set_mode"
+
+	// 控制协议（ctrl_* 前缀，AgentBase 内置处理）
+	MsgCtrlShutdown     = "ctrl_shutdown"
+	MsgCtrlShutdownAck  = "ctrl_shutdown_ack"
+	MsgCtrlStatus       = "ctrl_status"
+	MsgCtrlStatusReport = "ctrl_status_report"
 )
 
 // ========================= 消息信封 =========================
@@ -219,4 +225,37 @@ type PermissionResponsePayload struct {
 type SetModePayload struct {
 	SessionID string `json:"session_id"`
 	ModeID    string `json:"mode_id"`
+}
+
+// ========================= 控制协议载荷 =========================
+
+// CtrlShutdownPayload 控制协议：关闭请求
+type CtrlShutdownPayload struct {
+	Reason     string `json:"reason,omitempty"`
+	TimeoutSec int    `json:"timeout_sec,omitempty"` // drain 超时（0=默认 30s）
+	Force      bool   `json:"force,omitempty"`       // true=立即退出，跳过 drain
+}
+
+// CtrlShutdownAckPayload 控制协议：关闭确认
+type CtrlShutdownAckPayload struct {
+	AgentID      string `json:"agent_id"`
+	Accepted     bool   `json:"accepted"`
+	CurrentState string `json:"current_state"`
+	ActiveTasks  int    `json:"active_tasks"`
+	Error        string `json:"error,omitempty"`
+}
+
+// CtrlStatusPayload 控制协议：状态查询
+type CtrlStatusPayload struct{}
+
+// CtrlStatusReportPayload 控制协议：状态报告
+type CtrlStatusReportPayload struct {
+	AgentID     string         `json:"agent_id"`
+	AgentType   string         `json:"agent_type"`
+	AgentName   string         `json:"agent_name"`
+	State       string         `json:"state"`
+	ActiveTasks int            `json:"active_tasks"`
+	Capacity    int            `json:"capacity"`
+	Uptime      int64          `json:"uptime_sec"`
+	Meta        map[string]any `json:"meta,omitempty"`
 }

@@ -61,8 +61,8 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		log.Printf("[INFO] shutting down...")
-		conn.Stop()
+		log.Printf("[INFO] received signal, initiating shutdown...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 

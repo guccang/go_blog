@@ -36,6 +36,9 @@ type Client struct {
 
 	// 消息处理回调
 	OnMessage func(msg *Message)
+
+	// 注册成功回调（gateway register_ack 成功时触发）
+	OnRegistered func(success bool)
 }
 
 // NewClient 创建 UAP 客户端
@@ -154,6 +157,9 @@ func (c *Client) runLoop() {
 					log.Printf("[UAP-Client] registered as %s (%s)", c.Name, c.AgentID)
 				} else {
 					log.Printf("[UAP-Client] register rejected: %s", ack.Error)
+				}
+				if c.OnRegistered != nil {
+					c.OnRegistered(ack.Success)
 				}
 			}
 
