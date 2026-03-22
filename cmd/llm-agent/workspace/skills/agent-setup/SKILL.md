@@ -3,7 +3,7 @@ name: agent-setup
 description: Agent 发现与渐进式安装引导。当用户需要的功能对应的 agent 未上线时，自然引导安装。
 summary: 查询 gateway /api/gateway/agents 获取在线 agent，推荐缺失 agent，引导 init-agent --add 安装
 tools: ExecuteCode
-keywords: 安装,setup,install,agent,配置,configure,添加,enable,部署,deploy,微信,wechat,定时,schedule,cron,代码执行,MCP,corn,mcp,execute
+keywords: 安装agent,setup agent,install agent,配置agent,configure agent,添加agent,enable agent,init-agent,quickstart
 ---
 
 # Agent 安装引导
