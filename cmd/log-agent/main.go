@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -24,14 +25,15 @@ func main() {
 		agentID, cfg.ServerURL, len(cfg.LogSources))
 
 	conn := NewConnection(cfg, agentID)
+	conn.ActiveTaskCounter = func() int { return int(atomic.LoadInt32(&conn.activeCount)) }
 
 	// 信号处理
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		<-sigCh
-		log.Println("[LogAgent] shutting down...")
-		conn.Stop()
+		log.Println("[LogAgent] received signal, initiating shutdown...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 

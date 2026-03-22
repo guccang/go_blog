@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 )
 
@@ -22,6 +23,7 @@ func main() {
 		cfg.MaxConcurrent, cfg.InstallTimeout, cfg.LLMTaskTimeout, cfg.LLMAgentID)
 
 	conn := NewConnection(cfg, agentID)
+	conn.ActiveTaskCounter = func() int { return int(atomic.LoadInt32(&conn.activeCount)) }
 
 	// 首次工具目录发现
 	if err := conn.DiscoverTools(); err != nil {
@@ -36,8 +38,8 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		<-sigCh
-		log.Println("[EnvAgent] shutting down...")
-		conn.Stop()
+		log.Println("[EnvAgent] received signal, initiating shutdown...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 

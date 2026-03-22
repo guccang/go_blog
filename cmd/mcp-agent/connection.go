@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"agentbase"
@@ -14,9 +15,10 @@ import (
 type Connection struct {
 	*agentbase.AgentBase
 
-	cfg     *Config
-	mcpMgr  *MCPManager
-	cfgPath string // 配置文件路径（热加载用）
+	cfg         *Config
+	mcpMgr      *MCPManager
+	cfgPath     string // 配置文件路径（热加载用）
+	activeCount int32  // 活跃任务原子计数
 }
 
 // NewConnection 创建连接管理器
@@ -47,6 +49,9 @@ func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath stri
 
 // handleToolCallMsg 处理工具调用请求
 func (c *Connection) handleToolCallMsg(msg *uap.Message) {
+	atomic.AddInt32(&c.activeCount, 1)
+	defer atomic.AddInt32(&c.activeCount, -1)
+
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[Connection] parse tool_call payload failed: %v", err)

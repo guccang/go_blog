@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 )
@@ -51,6 +52,7 @@ func main() {
 	// 创建连接
 	currentConn = NewConnection(cfg, agentID, mcpMgr, cfgPath)
 	currentConn.Client.Tools = tools
+	currentConn.ActiveTaskCounter = func() int { return int(atomic.LoadInt32(&currentConn.activeCount)) }
 
 	// 信号处理
 	sigCh := make(chan os.Signal, 1)
@@ -63,9 +65,9 @@ func main() {
 				log.Println("[MCPAgent] received SIGHUP, reloading config...")
 				handleReload()
 			case os.Interrupt, syscall.SIGTERM:
-				log.Println("[MCPAgent] shutting down...")
+				log.Println("[MCPAgent] received signal, initiating shutdown...")
 				mcpMgr.StopAll()
-				currentConn.Stop()
+				currentConn.InitiateShutdown("signal")
 				os.Exit(0)
 			}
 		}

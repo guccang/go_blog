@@ -30,14 +30,15 @@ func main() {
 
 	agent := NewAgent(agentID, cfg)
 	conn := NewConnection(cfg, agent)
+	conn.ActiveTaskCounter = func() int { return agent.ActiveCount() }
 
 	// 优雅退出
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		log.Printf("[INFO] shutting down...")
-		conn.Stop()
+		log.Printf("[INFO] received signal, initiating shutdown...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 

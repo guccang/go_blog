@@ -6,6 +6,7 @@ import (
 	"log"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"agentbase"
@@ -21,6 +22,7 @@ type Connection struct {
 	toolCatalog  *agentbase.ToolCatalog
 	fileToolKit  *agentbase.FileToolKit
 	remoteCaller *agentbase.RemoteCaller
+	activeCount  int32 // 活跃任务原子计数
 }
 
 // NewConnection 创建连接管理器
@@ -145,6 +147,9 @@ func (c *Connection) handleError(msg *uap.Message) {
 
 // handleToolCall 处理 ExecuteCode / ExecEnvBash 工具调用
 func (c *Connection) handleToolCall(msg *uap.Message) {
+	atomic.AddInt32(&c.activeCount, 1)
+	defer atomic.AddInt32(&c.activeCount, -1)
+
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[WARN] invalid tool_call payload: %v", err)

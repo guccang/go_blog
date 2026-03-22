@@ -27,14 +27,19 @@ func main() {
 	log.Printf("[CornAgent] 通知: enabled=%v channel=%s", cfg.Notifications.Enabled, cfg.Notifications.Channel)
 
 	conn := NewConnection(cfg, agentID)
+	conn.ActiveTaskCounter = func() int { return conn.scheduler.RunningCount() }
+	conn.OnShutdown = func() {
+		log.Printf("[CornAgent] OnShutdown: 停止调度器，不再触发新任务")
+		conn.scheduler.Stop()
+	}
 
 	// 优雅退出
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		<-sigCh
-		log.Println("[CornAgent] 正在关闭...")
-		conn.Stop()
+		log.Println("[CornAgent] 收到信号，开始优雅关闭...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 

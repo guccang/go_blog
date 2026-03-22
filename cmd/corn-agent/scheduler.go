@@ -346,3 +346,10 @@ func (s *Scheduler) UpdateTaskNextRun(taskID string, nextRunAt time.Time) {
 func (s *Scheduler) SetConnection(conn *Connection) {
 	s.executor.conn = conn
 }
+
+// RunningCount 返回当前正在执行的任务数
+func (s *Scheduler) RunningCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.running)
+}

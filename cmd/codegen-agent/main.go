@@ -39,6 +39,7 @@ func main() {
 	agent := NewAgent(agentID, cfg)
 
 	conn := NewConnection(cfg, agent)
+	conn.ActiveTaskCounter = func() int { return agent.ActiveCount() }
 
 	// 启动环境检测（异步，不阻塞 agent 启动）
 	if envCfg != nil && len(envCfg.Requirements) > 0 {

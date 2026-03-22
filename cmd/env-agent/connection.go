@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"agentbase"
@@ -20,6 +21,7 @@ type Connection struct {
 	cfg         *Config
 	toolCatalog *agentbase.ToolCatalog
 	orch        *Orchestrator
+	activeCount int32 // 活跃任务原子计数
 
 	// 请求-响应关联（pending channel 模式）— 用于 tool_call
 	pending map[string]chan *uap.ToolResultPayload
@@ -139,6 +141,9 @@ func (c *Connection) handleToolCallMsg(msg *uap.Message) {
 }
 
 func (c *Connection) handleToolCall(msg *uap.Message) {
+	atomic.AddInt32(&c.activeCount, 1)
+	defer atomic.AddInt32(&c.activeCount, -1)
+
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		log.Printf("[EnvAgent] invalid tool_call payload: %v", err)

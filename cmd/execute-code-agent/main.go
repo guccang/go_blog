@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 
 	"agentbase"
@@ -39,6 +40,7 @@ func main() {
 		cfg.MaxConcurrent, cfg.MaxExecTimeSec, cfg.MaxOutputSize)
 
 	conn := NewConnection(cfg, agentID, pyVersion)
+	conn.ActiveTaskCounter = func() int { return int(atomic.LoadInt32(&conn.activeCount)) }
 
 	// 首次工具目录发现
 	if err := conn.DiscoverTools(); err != nil {
@@ -58,8 +60,8 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		<-sigCh
-		log.Println("[ExecuteCodeAgent] shutting down...")
-		conn.Stop()
+		log.Println("[ExecuteCodeAgent] received signal, initiating shutdown...")
+		conn.InitiateShutdown("signal")
 		os.Exit(0)
 	}()
 
