@@ -17,7 +17,7 @@ func Inner_blog_RawGetTodosByDate(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetTodosByDate(account, date)
+	return wrapResult(statistics.RawGetTodosByDate(account, date))
 }
 
 func Inner_blog_RawGetTodosRange(arguments map[string]interface{}) string {
@@ -33,7 +33,7 @@ func Inner_blog_RawGetTodosRange(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetTodosRange(account, startDate, endDate)
+	return wrapResult(statistics.RawGetTodosRange(account, startDate, endDate))
 }
 
 func Inner_blog_RawAddTodo(arguments map[string]interface{}) string {
@@ -53,7 +53,7 @@ func Inner_blog_RawAddTodo(arguments map[string]interface{}) string {
 	minutes := getOptionalIntParam(arguments, "minutes", 0)
 	urgency := getOptionalIntParam(arguments, "urgency", 2)
 	importance := getOptionalIntParam(arguments, "importance", 2)
-	return statistics.RawAddTodo(account, date, content, hours, minutes, urgency, importance)
+	return wrapResult(statistics.RawAddTodo(account, date, content, hours, minutes, urgency, importance))
 }
 
 func Inner_blog_RawToggleTodo(arguments map[string]interface{}) string {
@@ -69,7 +69,7 @@ func Inner_blog_RawToggleTodo(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawToggleTodo(account, date, id)
+	return wrapResult(statistics.RawToggleTodo(account, date, id))
 }
 
 func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
@@ -85,7 +85,7 @@ func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawDeleteTodo(account, date, id)
+	return wrapResult(statistics.RawDeleteTodo(account, date, id))
 }
 
 func Inner_blog_RawUpdateTodo(arguments map[string]interface{}) string {
@@ -109,5 +109,5 @@ func Inner_blog_RawUpdateTodo(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawUpdateTodo(account, date, id, hours, minutes)
+	return wrapResult(statistics.RawUpdateTodo(account, date, id, hours, minutes))
 }

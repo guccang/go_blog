@@ -17,7 +17,7 @@ func Inner_blog_RawGetExerciseByDate(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetExerciseByDate(account, date)
+	return wrapResult(statistics.RawGetExerciseByDate(account, date))
 }
 
 func Inner_blog_RawGetExerciseRange(arguments map[string]interface{}) string {
@@ -33,7 +33,7 @@ func Inner_blog_RawGetExerciseRange(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetExerciseRange(account, startDate, endDate)
+	return wrapResult(statistics.RawGetExerciseRange(account, startDate, endDate))
 }
 
 func Inner_blog_RawAddExercise(arguments map[string]interface{}) string {
@@ -63,7 +63,7 @@ func Inner_blog_RawAddExercise(arguments map[string]interface{}) string {
 	}
 	calories := getOptionalIntParam(arguments, "calories", 0)
 	notes, _ := getStringParam(arguments, "notes")
-	return statistics.RawAddExercise(account, date, name, exerciseType, duration, intensity, calories, notes)
+	return wrapResult(statistics.RawAddExercise(account, date, name, exerciseType, duration, intensity, calories, notes))
 }
 
 func Inner_blog_RawGetExerciseStats(arguments map[string]interface{}) string {
@@ -72,7 +72,7 @@ func Inner_blog_RawGetExerciseStats(arguments map[string]interface{}) string {
 		return errorJSON(err.Error())
 	}
 	days := getOptionalIntParam(arguments, "days", 7)
-	return statistics.RawGetExerciseStats(account, days)
+	return wrapResult(statistics.RawGetExerciseStats(account, days))
 }
 
 func Inner_blog_RawToggleExercise(arguments map[string]interface{}) string {
@@ -88,7 +88,7 @@ func Inner_blog_RawToggleExercise(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawToggleExercise(account, date, id)
+	return wrapResult(statistics.RawToggleExercise(account, date, id))
 }
 
 func Inner_blog_RawDeleteExercise(arguments map[string]interface{}) string {
@@ -104,7 +104,7 @@ func Inner_blog_RawDeleteExercise(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawDeleteExercise(account, date, id)
+	return wrapResult(statistics.RawDeleteExercise(account, date, id))
 }
 
 func Inner_blog_RawUpdateExercise(arguments map[string]interface{}) string {
@@ -138,5 +138,5 @@ func Inner_blog_RawUpdateExercise(arguments map[string]interface{}) string {
 	}
 	calories := getOptionalIntParam(arguments, "calories", 0)
 	notes, _ := getStringParam(arguments, "notes")
-	return statistics.RawUpdateExercise(account, date, id, name, exerciseType, duration, intensity, calories, notes)
+	return wrapResult(statistics.RawUpdateExercise(account, date, id, name, exerciseType, duration, intensity, calories, notes))
 }

@@ -13,7 +13,7 @@ func Inner_blog_RawGetAllBooks(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetAllBooks(account)
+	return wrapResult(statistics.RawGetAllBooks(account))
 }
 
 func Inner_blog_RawGetBooksByStatus(arguments map[string]interface{}) string {
@@ -25,7 +25,7 @@ func Inner_blog_RawGetBooksByStatus(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetBooksByStatus(account, status)
+	return wrapResult(statistics.RawGetBooksByStatus(account, status))
 }
 
 func Inner_blog_RawGetReadingStats(arguments map[string]interface{}) string {
@@ -33,7 +33,7 @@ func Inner_blog_RawGetReadingStats(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetReadingStats(account)
+	return wrapResult(statistics.RawGetReadingStats(account))
 }
 
 func Inner_blog_RawUpdateReadingProgress(arguments map[string]interface{}) string {
@@ -50,7 +50,7 @@ func Inner_blog_RawUpdateReadingProgress(arguments map[string]interface{}) strin
 		return errorJSON(err.Error())
 	}
 	notes, _ := getStringParam(arguments, "notes")
-	return statistics.RawUpdateReadingProgress(account, bookID, currentPage, notes)
+	return wrapResult(statistics.RawUpdateReadingProgress(account, bookID, currentPage, notes))
 }
 
 func Inner_blog_RawGetBookNotes(arguments map[string]interface{}) string {
@@ -62,7 +62,7 @@ func Inner_blog_RawGetBookNotes(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetBookNotes(account, bookID)
+	return wrapResult(statistics.RawGetBookNotes(account, bookID))
 }
 
 func Inner_blog_RawAddBook(arguments map[string]interface{}) string {
@@ -84,5 +84,5 @@ func Inner_blog_RawAddBook(arguments map[string]interface{}) string {
 	totalPages := getOptionalIntParam(arguments, "totalPages", 0)
 	category, _ := getStringParam(arguments, "category")
 	tags, _ := getStringParam(arguments, "tags")
-	return statistics.RawAddBook(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl, totalPages, category, tags)
+	return wrapResult(statistics.RawAddBook(account, title, author, isbn, publisher, publishDate, coverUrl, description, sourceUrl, totalPages, category, tags))
 }

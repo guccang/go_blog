@@ -596,11 +596,34 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_result to=%s tool=%s msgID=%s resultLen=%d",
 		msg.From, payload.ToolName, msg.ID, len(result))
 
-	// 发送结果
+	// 解析统一信封格式
+	var envelope struct {
+		OK    bool            `json:"ok"`
+		Data  json.RawMessage `json:"data,omitempty"`
+		Error string          `json:"error,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(result), &envelope); err != nil {
+		// 信封解析失败 → 标记为错误，返回原始内容作为错误信息
+		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     fmt.Sprintf("invalid tool response format: %s", result),
+		})
+		return
+	}
+	if !envelope.OK {
+		b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Error:     envelope.Error,
+		})
+		return
+	}
+	// 成功：提取 data 字段作为 Result
 	if err := b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   true,
-		Result:    result,
+		Result:    string(envelope.Data),
 	}); err != nil {
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: send tool_result failed to=%s msgID=%s: %v", msg.From, msg.ID, err)
 	}

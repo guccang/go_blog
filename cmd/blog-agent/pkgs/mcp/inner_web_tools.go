@@ -51,7 +51,7 @@ func Inner_blog_WebSearch(arguments map[string]interface{}) string {
 		"count":   len(results),
 	}
 	data, _ := json.Marshal(result)
-	return string(data)
+	return wrapResult(string(data))
 }
 
 // Inner_blog_WebFetch 抓取网页内容
@@ -93,7 +93,7 @@ func Inner_blog_WebFetch(arguments map[string]interface{}) string {
 		"truncated": truncated,
 	}
 	data, _ := json.Marshal(result)
-	return string(data)
+	return wrapResult(string(data))
 }
 
 // ============================================================================
