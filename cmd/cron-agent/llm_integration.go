@@ -130,9 +130,15 @@ func (e *TaskExecutor) sendNotification(task *CronTask, success bool, result, er
 
 // SendTaskAssignViaUAP 通过UAP发送任务分配消息（需要在Connection中实现）
 func (c *Connection) SendTaskAssignViaUAP(task *CronTask) (string, error) {
+	// 对发往 llm-agent 的任务，规范化 task_type
+	taskType := task.TaskType
+	if task.TargetAgent == "llm-agent" || task.TargetAgent == "" {
+		taskType = normalizeLLMTaskType(taskType)
+	}
+
 	// 构建任务负载
 	taskPayload := map[string]interface{}{
-		"task_type": task.TaskType,
+		"task_type": taskType,
 		"payload":   json.RawMessage(task.Payload),
 	}
 
@@ -151,4 +157,17 @@ func (c *Connection) SendTaskAssignViaUAP(task *CronTask) (string, error) {
 	}
 
 	return result.Result, nil
+}
+
+// normalizeLLMTaskType 将常见 task_type 变体映射为 llm-agent 识别的标准类型
+func normalizeLLMTaskType(taskType string) string {
+	switch taskType {
+	case "cron_reminder":
+		return "cron_reminder"
+	case "reminder", "notify", "notification", "alert":
+		return "cron_reminder"
+	default:
+		// 未知类型默认作为 cron_reminder 发送
+		return "cron_reminder"
+	}
 }
