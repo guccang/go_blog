@@ -101,8 +101,14 @@ func DefaultConfig() *Config {
 		GatewayHTTP: "http://127.0.0.1:9000",
 		AgentID:     "llm-agent",
 		AgentName:   "LLM MCP Agent",
+		Providers: map[string]ProviderConfig{
+			"deepseek": {
+				BaseURL: "https://api.deepseek.com/v1",
+				APIKey:  "",
+			},
+		},
 		LLM: LLMConfig{
-			BaseURL:     "https://api.deepseek.com/v1",
+			Provider:    "deepseek",
 			Model:       "deepseek-chat",
 			MaxTokens:   8192,
 			Temperature: 0.7,
