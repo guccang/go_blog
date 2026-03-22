@@ -1495,6 +1495,21 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				return
 			}
 			handler = func() { b.handleResumeTask(taskPayload.TaskID, &resumePayload) }
+		case "cron_reminder":
+			var wrapper struct {
+				Payload json.RawMessage `json:"payload"`
+			}
+			if err := json.Unmarshal(taskPayload.Payload, &wrapper); err != nil {
+				log.Printf("[Bridge] invalid cron_reminder payload: %v", err)
+				return
+			}
+			var reminderPayload CronReminderPayload
+			if err := json.Unmarshal(wrapper.Payload, &reminderPayload); err != nil {
+				log.Printf("[Bridge] invalid cron_reminder inner payload: %v", err)
+				return
+			}
+			sourceAgent := msg.From
+			handler = func() { b.handleCronReminder(taskPayload.TaskID, sourceAgent, &reminderPayload) }
 		default:
 			log.Printf("[Bridge] unknown task_type: %s", taskType.TaskType)
 			return
