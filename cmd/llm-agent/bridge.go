@@ -1013,121 +1013,6 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 	return sb.String()
 }
 
-// getFilteredAgentDescriptionBlock 按当前工具集过滤 agent 描述（仅描述涉及的 agent）
-// skillAgents: agent_id → skill_name，被 skill 接管的 agent 仍然显示，但标注通过哪个 skill 访问
-// 过滤后为空则回退全量
-func (b *Bridge) getFilteredAgentDescriptionBlock(tools []LLMTool, skillAgents map[string]string) string {
-	b.catalogMu.RLock()
-	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
-	for k, v := range b.toolCatalog {
-		toolCatalogCopy[k] = v
-	}
-	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
-	for k, v := range b.agentInfo {
-		agentInfoCopy[k] = v
-	}
-	b.catalogMu.RUnlock()
-
-	if len(agentInfoCopy) == 0 {
-		return ""
-	}
-
-	// 从当前 tools 找出涉及的 agent ID
-	involvedAgents := make(map[string]bool)
-	for _, tool := range tools {
-		originalName := b.resolveToolName(tool.Function.Name)
-		if agentID, ok := toolCatalogCopy[originalName]; ok {
-			involvedAgents[agentID] = true
-		} else if agentID, ok := toolCatalogCopy[tool.Function.Name]; ok {
-			involvedAgents[agentID] = true
-		}
-	}
-
-	// 过滤后为空且无 skillAgents 则回退全量
-	if len(involvedAgents) == 0 && len(skillAgents) == 0 {
-		return b.getAgentDescriptionBlock()
-	}
-
-	var sb strings.Builder
-	sb.WriteString("\n## 可用 Agent 能力\n")
-	count := 0
-
-	// 先显示工具直接可见的 agent（involvedAgents）
-	for _, info := range agentInfoCopy {
-		if !involvedAgents[info.ID] {
-			continue
-		}
-		if info.Description == "" {
-			continue
-		}
-		count++
-		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
-		if len(info.CodingTools) > 0 {
-			sb.WriteString(fmt.Sprintf("  - 可用编码工具(tool参数): %s\n", strings.Join(info.CodingTools, ", ")))
-		}
-		if len(info.Models) > 0 {
-			sb.WriteString(fmt.Sprintf("  - 可用模型配置(model参数): %s\n", strings.Join(info.Models, ", ")))
-		}
-		if info.HostPlatform != "" {
-			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
-		}
-		if len(info.SSHHosts) > 0 {
-			sb.WriteString(fmt.Sprintf("  - SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
-		}
-		if len(info.DeployTargets) > 0 {
-			sb.WriteString(fmt.Sprintf("  - 部署目标(deploy_target参数): %s\n", strings.Join(info.DeployTargets, ", ")))
-		}
-		if len(info.TargetHosts) > 0 {
-			sb.WriteString("  - 部署目标对应SSH地址(ssh_host参数):\n")
-			for target, host := range info.TargetHosts {
-				sb.WriteString(fmt.Sprintf("    - %s → %s\n", target, host))
-			}
-		}
-		if len(info.Pipelines) > 0 {
-			sb.WriteString(fmt.Sprintf("  - Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))
-		}
-		if info.PythonVersion != "" {
-			sb.WriteString(fmt.Sprintf("  - Python版本: %s", info.PythonVersion))
-			if info.MaxExecTime > 0 {
-				sb.WriteString(fmt.Sprintf(", 执行超时: %ds", info.MaxExecTime))
-			}
-			sb.WriteString("\n")
-		}
-		if len(info.LogSources) > 0 {
-			sb.WriteString("  - 可查日志源(source参数):\n")
-			for name, desc := range info.LogSources {
-				sb.WriteString(fmt.Sprintf("    - %s: %s\n", name, desc))
-			}
-		}
-		if len(info.SupportedSoftware) > 0 {
-			sb.WriteString(fmt.Sprintf("  - 支持检测/安装的软件(software参数): %s\n", strings.Join(info.SupportedSoftware, ", ")))
-		}
-	}
-
-	// 再显示被 skill 接管、但不在 involvedAgents 里的 agent（简要信息 + skill 指针）
-	for agentID, skillName := range skillAgents {
-		if involvedAgents[agentID] {
-			continue // 已经在上面显示过了
-		}
-		info, ok := agentInfoCopy[agentID]
-		if !ok || info.Description == "" {
-			continue
-		}
-		count++
-		sb.WriteString(fmt.Sprintf("- **%s** (%s): %s → 通过 execute_skill(\"%s\") 使用\n", info.Name, info.ID, info.Description, skillName))
-		if info.HostPlatform != "" {
-			sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", info.HostPlatform))
-		}
-	}
-
-	// 过滤后无有效 agent，回退全量
-	if count == 0 {
-		return b.getAgentDescriptionBlock()
-	}
-
-	return sb.String()
-}
-
 // executeCodeAgentType execute-code-agent 的类型标识（元工具，始终保留不参与路由筛选）
 const executeCodeAgentType = "execute_code"
 
@@ -1265,6 +1150,211 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 
 	log.Printf("[Bridge] filtered %d tools from %d by user selection", len(filtered), len(allTools))
 	return filtered
+}
+
+// ========================= 渐进式工具发现 =========================
+
+// buildAgentDirectory 构建简要 Agent 目录（固定注入系统提示词）
+func (b *Bridge) buildAgentDirectory() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	if len(b.agentInfo) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n## 可用 Agent\n")
+	sb.WriteString("需要使用某 agent 的工具时，先调用 get_agent_tools(agent_id) 获取该 agent 的完整工具列表和参数说明。\n\n")
+
+	// llm-agent 自身信息
+	sb.WriteString(fmt.Sprintf("- **%s** [%s]: LLM 编排中枢", b.cfg.AgentName, b.cfg.AgentID))
+	if b.client.HostPlatform != "" {
+		sb.WriteString(fmt.Sprintf(" (平台: %s)", b.client.HostPlatform))
+	}
+	sb.WriteString("\n")
+
+	for id, info := range b.agentInfo {
+		toolCount := len(b.agentTools[id])
+		desc := info.Description
+		if desc == "" {
+			desc = info.Name
+		}
+
+		// 简要一行：名称 [ID]: 描述 (N个工具) + 关键能力标签
+		line := fmt.Sprintf("- **%s** [%s]: %s (%d个工具)", info.Name, id, desc, toolCount)
+
+		// 附加关键能力标签（让 LLM 能快速匹配）
+		var tags []string
+		if len(info.DeployTargets) > 0 {
+			tags = append(tags, "部署: "+strings.Join(info.DeployTargets, ","))
+		}
+		if len(info.SSHHosts) > 0 {
+			tags = append(tags, "SSH: "+strings.Join(info.SSHHosts, ","))
+		}
+		if len(info.Models) > 0 {
+			tags = append(tags, "模型: "+strings.Join(info.Models, ","))
+		}
+		if len(info.CodingTools) > 0 {
+			tags = append(tags, "编码: "+strings.Join(info.CodingTools, ","))
+		}
+		if info.PythonVersion != "" {
+			tags = append(tags, "Python: "+info.PythonVersion)
+		}
+		if len(info.LogSources) > 0 {
+			var sources []string
+			for k := range info.LogSources {
+				sources = append(sources, k)
+			}
+			tags = append(tags, "日志: "+strings.Join(sources, ","))
+		}
+		if len(info.Pipelines) > 0 {
+			tags = append(tags, "流水线: "+strings.Join(info.Pipelines, ","))
+		}
+		if len(tags) > 0 {
+			line += " | " + strings.Join(tags, " | ")
+		}
+		sb.WriteString(line + "\n")
+	}
+	return sb.String()
+}
+
+// getAgentToolDescriptions 获取指定 agent 的格式化工具列表（供 get_agent_tools 返回）
+func (b *Bridge) getAgentToolDescriptions(agentID string) string {
+	b.catalogMu.RLock()
+	agentToolList := b.agentTools[agentID]
+	info := b.agentInfo[agentID]
+	b.catalogMu.RUnlock()
+
+	if len(agentToolList) == 0 {
+		return fmt.Sprintf("Agent %s 没有可用工具。", agentID)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## %s (%s) 的工具列表\n\n", info.Name, agentID))
+
+	// 详细 agent 信息
+	if info.HostPlatform != "" {
+		sb.WriteString(fmt.Sprintf("运行平台: %s", info.HostPlatform))
+		if info.HostIP != "" {
+			sb.WriteString(fmt.Sprintf(" | IP: %s", info.HostIP))
+		}
+		if info.Workspace != "" {
+			sb.WriteString(fmt.Sprintf(" | 目录: %s", info.Workspace))
+		}
+		sb.WriteString("\n")
+	}
+	if len(info.DeployTargets) > 0 && len(info.TargetHosts) > 0 {
+		sb.WriteString("部署目标:\n")
+		for _, target := range info.DeployTargets {
+			host := info.TargetHosts[target]
+			sb.WriteString(fmt.Sprintf("  - %s → %s\n", target, host))
+		}
+	}
+	if len(info.Models) > 0 {
+		sb.WriteString(fmt.Sprintf("可用模型: %s\n", strings.Join(info.Models, ", ")))
+	}
+	if len(info.CodingTools) > 0 {
+		sb.WriteString(fmt.Sprintf("编码工具: %s\n", strings.Join(info.CodingTools, ", ")))
+	}
+	sb.WriteString("\n")
+
+	for _, t := range agentToolList {
+		name := b.resolveToolName(t.Function.Name)
+		sb.WriteString(fmt.Sprintf("### %s\n", name))
+		sb.WriteString(fmt.Sprintf("%s\n", t.Function.Description))
+		paramSummary := extractParamSummary(t.Function.Parameters)
+		if paramSummary != "" {
+			sb.WriteString(fmt.Sprintf("参数: %s\n", paramSummary))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// getBaseToolSet 返回基础工具集（ExecuteCode、Bash、文件操作等）
+func (b *Bridge) getBaseToolSet() []LLMTool {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+	var base []LLMTool
+	for _, t := range b.llmTools {
+		originalName := b.resolveToolNameLocked(t.Function.Name)
+		if b.isBaseTool(originalName) {
+			base = append(base, t)
+		}
+	}
+	return base
+}
+
+// resolveToolNameLocked 在已持有 catalogMu 读锁时解析工具名
+func (b *Bridge) resolveToolNameLocked(name string) string {
+	if canonical, ok := b.toolNameMap[name]; ok {
+		return canonical
+	}
+	return name
+}
+
+// getAgentToolsMap 获取 agentTools 快照
+func (b *Bridge) getAgentToolsMap() map[string][]LLMTool {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+	m := make(map[string][]LLMTool, len(b.agentTools))
+	for k, v := range b.agentTools {
+		cp := make([]LLMTool, len(v))
+		copy(cp, v)
+		m[k] = cp
+	}
+	return m
+}
+
+// resolveAgentByName 模糊匹配 agent（支持 ID、名称、部分匹配）
+func (b *Bridge) resolveAgentByName(nameOrID string) string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+	nameOrID = strings.ToLower(strings.TrimSpace(nameOrID))
+
+	// 精确 ID 匹配
+	if _, ok := b.agentInfo[nameOrID]; ok {
+		return nameOrID
+	}
+
+	// 部分匹配 ID 或名称
+	for id, info := range b.agentInfo {
+		if strings.Contains(strings.ToLower(id), nameOrID) ||
+			strings.Contains(strings.ToLower(info.Name), nameOrID) {
+			return id
+		}
+	}
+	return ""
+}
+
+// listAgentNames 列出所有 agent（用于错误提示）
+func (b *Bridge) listAgentNames() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+	var lines []string
+	for id, info := range b.agentInfo {
+		lines = append(lines, fmt.Sprintf("- %s [%s]", info.Name, id))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// injectVirtualTools 集中注入虚拟工具
+func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
+	if noTools {
+		return tools
+	}
+	tools = append(tools, getAgentToolsTool, getSkillDetailTool, planAndExecuteTool)
+	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
+		tools = append(tools, executeSkillTool)
+	}
+	if b.persona != nil && !b.persona.IsConfigured() {
+		tools = append(tools, setPersonaTool)
+	}
+	if b.memoryMgr != nil {
+		tools = append(tools, setRuleTool)
+	}
+	return tools
 }
 
 // ========================= 跨 Agent 工具调用 =========================

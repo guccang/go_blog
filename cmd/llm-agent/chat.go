@@ -315,7 +315,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
-		systemPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
+		systemPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount)
 		session.Messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: content},
@@ -325,7 +325,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	} else {
 		// 续接对话：刷新 system prompt（反映最新工具和 agent 状态）+ 追加 user 消息
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
+			freshPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount)
 			session.Messages[0].Content = freshPrompt
 			session.PromptSections = promptSections
 		}

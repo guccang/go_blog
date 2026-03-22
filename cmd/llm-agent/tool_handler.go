@@ -125,9 +125,11 @@ func (b *Bridge) registerRemoteToolLocked(canonicalName, agentID string) {
 
 // virtualTools 虚拟工具集合（同步执行，无需心跳包装）
 var virtualTools = map[string]bool{
-	"set_persona":   true,
-	"set_rule":      true,
-	"execute_skill": true,
+	"set_persona":      true,
+	"set_rule":         true,
+	"execute_skill":    true,
+	"get_agent_tools":  true,
+	"get_skill_detail": true,
 }
 
 // isVirtualTool 判断是否为虚拟工具（同步执行，无需心跳）

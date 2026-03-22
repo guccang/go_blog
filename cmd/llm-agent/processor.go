@@ -263,6 +263,44 @@ var executeSkillTool = LLMTool{
 	},
 }
 
+// getAgentToolsTool 虚拟工具定义：获取指定 agent 的工具列表（渐进式发现）
+var getAgentToolsTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "get_agent_tools",
+		Description: "获取指定 agent 的完整工具列表和参数说明。调用后该 agent 的工具将在后续轮次可用。在需要使用某个 agent 的能力时，先调用此工具加载其工具。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"agent_id": {
+					"type": "string",
+					"description": "Agent ID（来自系统提示词中的可用 Agent 列表）"
+				}
+			},
+			"required": ["agent_id"]
+		}`),
+	},
+}
+
+// getSkillDetailTool 虚拟工具定义：获取技能详细文档
+var getSkillDetailTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "get_skill_detail",
+		Description: "获取指定技能的详细文档，包括工具列表、执行策略和历史经验。在决定是否使用某个技能前，可以先查看其详细说明。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"skill_name": {
+					"type": "string",
+					"description": "技能名称（来自系统提示词中的 Skill 目录）"
+				}
+			},
+			"required": ["skill_name"]
+		}`),
+	},
+}
+
 // ========================= 统一处理函数 =========================
 
 // processTask 统一消息处理核心：构建消息 → 创建会话 → 获取工具 → LLM 循环 → 保存会话
@@ -272,21 +310,31 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	log.Printf("[processTask] ▶ 开始处理 taskID=%s source=%s account=%s streaming=%v query=%s",
 		ctx.TaskID, ctx.Source, ctx.Account, streaming, truncate(ctx.Query, 100))
 
-	// 1. 获取工具
+	// 1. 获取工具 + 渐进式发现初始化
 	var messages []Message
 	var tools []LLMTool
+
+	// 渐进式发现状态：追踪已加载的 agent
+	loadedAgents := make(map[string]bool)
+	allAgentToolsSnapshot := b.getAgentToolsMap()
+
 	if ctx.NoTools {
 		tools = nil
 		log.Printf("[processTask] 工具模式: 禁用")
 	} else if len(ctx.SelectedTools) > 0 {
 		tools = b.filterToolsBySelection(ctx.SelectedTools)
 		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(tools))
-	} else {
+	} else if ctx.Source == "cron_query" || ctx.Source == "llm_request" {
+		// 后向兼容：自动加载全部工具（无需渐进式发现）
 		tools = b.getLLMTools()
-		log.Printf("[processTask] 工具模式: 默认加载全部 count=%d", len(tools))
+		log.Printf("[processTask] 工具模式: 全量加载（%s） count=%d", ctx.Source, len(tools))
+	} else {
+		// 渐进式发现：只加载基础工具，LLM 通过 get_agent_tools 按需加载
+		tools = b.getBaseToolSet()
+		log.Printf("[processTask] 工具模式: 基础工具（渐进式发现） count=%d", len(tools))
 	}
 
-	// 提取 query（构建消息前就需要，用于工具路由和 skill 匹配）
+	// 提取 query（构建消息前就需要）
 	query := ctx.Query
 	if query == "" && ctx.Messages != nil {
 		for i := len(ctx.Messages) - 1; i >= 0; i-- {
@@ -297,9 +345,16 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
-	// 2. MCP 工具列表查询拦截（在路由之前，使用全量工具展示）
+	// 闲聊检测：短问候不需要工具
+	if !ctx.NoTools && query != "" && isGreeting(query) {
+		tools = nil
+		log.Printf("[processTask] 闲聊检测命中，禁用工具 query=%s", truncate(query, 50))
+	}
+
+	// 2. MCP 工具列表查询拦截（使用全量工具展示）
 	if !ctx.NoTools {
-		if directReply, ok := b.buildMCPToolListReply(query, tools); ok {
+		allTools := b.getLLMTools()
+		if directReply, ok := b.buildMCPToolListReply(query, allTools); ok {
 			store := NewSessionStore(b.cfg.SessionDir)
 			rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
 			rootSession.AppendMessage(Message{Role: "assistant", Content: directReply})
@@ -307,65 +362,21 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			rootSession.SetStatus("done")
 			store.Save(rootSession)
 			store.SaveIndex(rootSession, nil)
-			log.Printf("[processTask] direct MCP tool list reply, toolCount=%d", len(tools))
+			log.Printf("[processTask] direct MCP tool list reply, toolCount=%d", len(allTools))
 			return directReply, nil
 		}
 	}
 
-	// 3. 静态工具策略管道（替代 LLM 路由）
-	var selectedSkills []SkillEntry
-	var policyResult *PolicyResult
-
-	if !ctx.NoTools && query != "" {
-		beforeCount := len(tools)
-		ctx.Sink.OnEvent("route_info", "正在匹配工具策略...")
-
-		pr := b.ApplyPolicyPipeline(query, tools)
-		policyResult = &pr
-		tools = pr.Tools
-		selectedSkills = pr.SelectedSkills
-
-		// 隐藏 skill 关联 agent 的全部工具（在策略管道之后、构建 system prompt 之前）
-		// 逻辑：skill 声明了某 agent 的部分工具 → 隐藏该 agent 的全部非 base 工具
-		if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
-			skillOwned := b.skillMgr.GetSkillOwnedTools()
-
-			// 找出 skill 工具所属的 agent，收集这些 agent 的全部工具
-			hiddenAgents := b.expandSkillOwnedAgents(skillOwned)
-
-			beforeHide := len(tools)
-			var visible []LLMTool
-			var hiddenNames []string
-			for _, t := range tools {
-				originalName := b.resolveToolName(t.Function.Name)
-				if hiddenAgents[originalName] && !b.isBaseTool(originalName) {
-					hiddenNames = append(hiddenNames, originalName)
-					continue
-				}
-				visible = append(visible, t)
-			}
-			tools = visible
-			if len(hiddenNames) > 0 {
-				log.Printf("[processTask] 隐藏 skill 关联工具: %d → %d hidden=%d", beforeHide, len(tools), len(hiddenNames))
-			}
-		}
-
-		// 按 agent 分组展示（隐藏后的最终工具列表）
-		routeInfo := b.buildRouteInfoByAgent(tools, beforeCount, pr.Level)
-		ctx.Sink.OnEvent("route_info", routeInfo)
-		log.Printf("[processTask] 策略管道: %d → %d Level=%d", beforeCount, len(tools), pr.Level)
-	}
-
-	// 4. 构建消息（使用最终 tools 列表）
+	// 3. 构建消息（固定系统提示词）
 	if ctx.Messages != nil {
 		// 有预构建消息（多轮续接或 llm_request）
 		messages = make([]Message, len(ctx.Messages))
 		copy(messages, ctx.Messages)
 
-		// web/wechat 多轮续接时，刷新 system prompt 以反映最新工具和 agent 状态
+		// web/wechat 多轮续接时，刷新 system prompt
 		if ctx.Source == "web" || ctx.Source == "wechat" {
 			if len(messages) > 0 && messages[0].Role == "system" {
-				freshPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, policyResult)
+				freshPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account)
 				messages[0].Content = freshPrompt
 				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d", len(freshPrompt))
 			}
@@ -373,8 +384,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
 		}
 	} else {
-		// web / wechat: 构建 system prompt + user query（按 Level 条件注入）
-		systemPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, policyResult)
+		// 新对话：构建固定 system prompt + user query
+		systemPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account)
 		messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: ctx.Query},
@@ -401,41 +412,18 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 触发任务开始 hook
 	b.hooks.FireTaskStart(ctx)
 
-	// 注入 plan_and_execute（除非 NoTools）
-	if !ctx.NoTools {
-		tools = append(tools, planAndExecuteTool)
-	}
+	// 注入虚拟工具（集中管理）
+	tools = b.injectVirtualTools(tools, ctx.NoTools)
 
-	// 注入 execute_skill（有可用技能时）
-	if !ctx.NoTools && b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
-		tools = append(tools, executeSkillTool)
-	}
-
-	// 注入 set_persona（人设未设置时，策略管道之后注入避免被过滤）
-	if b.persona != nil && !b.persona.IsConfigured() && !ctx.NoTools {
-		tools = append(tools, setPersonaTool)
-		log.Printf("[processTask] 人设未设置，注入 set_persona 工具")
-	}
-
-	// 注入 set_rule（始终注入，用于记录用户规则）
-	if b.memoryMgr != nil && !ctx.NoTools {
-		tools = append(tools, setRuleTool)
-	}
-
-	// 发送最终工具数量信息（所有工具变更完成后，排除虚拟工具展示）
+	// 发送初始工具数量信息
 	if !ctx.NoTools && len(tools) > 0 {
-		hiddenToolNames := map[string]bool{
-			"plan_and_execute": true, "execute_skill": true,
-			"set_persona": true, "set_rule": true,
-		}
 		var realToolNames []string
 		for _, t := range tools {
-			if hiddenToolNames[t.Function.Name] {
-				continue
+			if !isVirtualTool(t.Function.Name) && t.Function.Name != "plan_and_execute" {
+				realToolNames = append(realToolNames, b.resolveToolName(t.Function.Name))
 			}
-			realToolNames = append(realToolNames, b.resolveToolName(t.Function.Name))
 		}
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 本次加载 %d 个工具]\n%s", len(realToolNames), strings.Join(realToolNames, ", ")))
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具（基础+虚拟），更多工具通过 get_agent_tools 按需加载]\n%s", len(realToolNames), strings.Join(realToolNames, ", ")))
 	}
 
 	// 4. LLM 循环
@@ -444,8 +432,49 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		maxIter = 15
 	}
 
-	// 构建本次 processTask 专用的 localHandlers（捕获当前 TaskContext）
+	// 构建本次 processTask 专用的 localHandlers
 	localHandlers := make(map[string]ToolHandler)
+
+	// get_agent_tools handler：加载指定 agent 的工具到后续轮次
+	if !ctx.NoTools {
+		localHandlers["get_agent_tools"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+			var a struct {
+				AgentID string `json:"agent_id"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+			}
+			resolved := b.resolveAgentByName(a.AgentID)
+			if resolved == "" {
+				return &ToolCallResult{Result: fmt.Sprintf("agent '%s' 不存在。可用 agent:\n%s", a.AgentID, b.listAgentNames()), AgentID: "builtin"}, nil
+			}
+			loadedAgents[resolved] = true
+			desc := b.getAgentToolDescriptions(resolved)
+			log.Printf("[processTask] get_agent_tools: loaded agent=%s", resolved)
+			return &ToolCallResult{Result: desc, AgentID: "builtin"}, nil
+		}
+
+		// get_skill_detail handler：返回技能详细文档
+		localHandlers["get_skill_detail"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+			var a struct {
+				SkillName string `json:"skill_name"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+			}
+			if b.skillMgr == nil {
+				return &ToolCallResult{Result: "技能系统未启用", AgentID: "builtin"}, nil
+			}
+			skill := b.skillMgr.GetSkill(a.SkillName)
+			if skill == nil {
+				return &ToolCallResult{Result: fmt.Sprintf("技能 '%s' 不存在", a.SkillName), AgentID: "builtin"}, nil
+			}
+			detail := b.skillMgr.BuildSkillBlock([]SkillEntry{*skill})
+			return &ToolCallResult{Result: detail, AgentID: "builtin"}, nil
+		}
+	}
+
+	// execute_skill handler
 	if !ctx.NoTools && b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		capturedCtx := ctx
 		capturedTools := tools
@@ -487,7 +516,22 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 		}
 
-		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
+		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d loadedAgents=%d", i+1, maxIter, len(messages), len(tools), len(loadedAgents))
+
+		// 渐进式工具重建：如果有新 agent 被加载，重建工具列表
+		if len(loadedAgents) > 0 && !ctx.NoTools {
+			rebuiltTools := b.getBaseToolSet()
+			for agentID := range loadedAgents {
+				if agentTools, ok := allAgentToolsSnapshot[agentID]; ok {
+					rebuiltTools = append(rebuiltTools, agentTools...)
+				}
+			}
+			rebuiltTools = b.injectVirtualTools(rebuiltTools, false)
+			if len(rebuiltTools) != len(tools) {
+				log.Printf("[processTask] 工具重建: %d → %d (已加载 %d 个 agent)", len(tools), len(rebuiltTools), len(loadedAgents))
+			}
+			tools = rebuiltTools
+		}
 
 		// 接近迭代上限：强制 LLM 收敛
 		if i == maxIter-1 {
@@ -619,7 +663,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 
 			// 进入复杂任务处理流程（内部处理会话保存）
-			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork, selectedSkills)
+			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork)
 			ctx.Sink.OnChunk(result)
 			finalText = result
 			complexTaskHandled = true
@@ -941,7 +985,6 @@ func (b *Bridge) handleComplexTask(
 	store *SessionStore,
 	tools []LLMTool,
 	completedWork string, // 简单路径中已完成的工具调用摘要（可为空）
-	selectedSkills []SkillEntry, // Pass 1 预选的 skill（可为空）
 ) string {
 	complexStart := time.Now()
 	sendEvent := func(event, text string) {
@@ -972,10 +1015,13 @@ func (b *Bridge) handleComplexTask(
 		maxSubTasks = 10
 	}
 
-	// 使用 Pass 1 预选的 skill 构建规划指引
+	// 使用全部可用 skill 构建规划指引
 	var skillBlock string
-	if b.skillMgr != nil && len(selectedSkills) > 0 {
-		skillBlock = b.skillMgr.BuildSkillBlock(selectedSkills)
+	if b.skillMgr != nil {
+		allSkills := b.skillMgr.GetAllSkills()
+		if len(allSkills) > 0 {
+			skillBlock = b.skillMgr.BuildSkillBlock(allSkills)
+		}
 	}
 
 	planStart := time.Now()
@@ -1665,52 +1711,6 @@ func (b *Bridge) filterToolsForSkill(skill *SkillEntry, parentTools []LLMTool) [
 	return filtered
 }
 
-// buildRouteInfoByAgent 按 agent 分组构建工具策略信息
-func (b *Bridge) buildRouteInfoByAgent(tools []LLMTool, beforeCount int, level DisclosureLevel) string {
-	b.catalogMu.RLock()
-	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
-	for k, v := range b.toolCatalog {
-		toolCatalogCopy[k] = v
-	}
-	agentInfoCopy := make(map[string]AgentInfo, len(b.agentInfo))
-	for k, v := range b.agentInfo {
-		agentInfoCopy[k] = v
-	}
-	b.catalogMu.RUnlock()
-
-	// 按 agent 分组
-	agentGroups := make(map[string][]string)
-	var ungrouped []string
-	for _, t := range tools {
-		originalName := b.resolveToolName(t.Function.Name)
-		agentID, ok := toolCatalogCopy[originalName]
-		if !ok {
-			agentID, ok = toolCatalogCopy[t.Function.Name]
-		}
-		if ok {
-			agentGroups[agentID] = append(agentGroups[agentID], originalName)
-		} else {
-			ungrouped = append(ungrouped, originalName)
-		}
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("工具策略: %d → %d (Level=%d)\n", beforeCount, len(tools), level))
-
-	for agentID, toolNames := range agentGroups {
-		displayName := agentID
-		if info, ok := agentInfoCopy[agentID]; ok && info.Name != "" {
-			displayName = info.Name
-		}
-		sb.WriteString(fmt.Sprintf("[%s] %s\n", displayName, strings.Join(toolNames, ", ")))
-	}
-	if len(ungrouped) > 0 {
-		sb.WriteString(fmt.Sprintf("[其他] %s\n", strings.Join(ungrouped, ", ")))
-	}
-
-	return strings.TrimSpace(sb.String())
-}
-
 // isToolInList 检查工具名是否在工具列表中（考虑 sanitize）
 func isToolInList(toolName string, tools []LLMTool) bool {
 	for _, t := range tools {
@@ -1801,42 +1801,3 @@ func extractParamSummary(params json.RawMessage) string {
 	return strings.Join(parts, ", ")
 }
 
-// expandSkillOwnedAgents 将 skill 声明的工具扩展为其所属 agent 的全部工具
-// 逻辑：skill 声明了 agent A 的任意工具 → 返回 agent A 的所有工具名
-func (b *Bridge) expandSkillOwnedAgents(skillOwned map[string]bool) map[string]bool {
-	b.catalogMu.RLock()
-	toolCatalogCopy := make(map[string]string, len(b.toolCatalog))
-	for k, v := range b.toolCatalog {
-		toolCatalogCopy[k] = v
-	}
-	agentToolsCopy := make(map[string][]LLMTool, len(b.agentTools))
-	for k, v := range b.agentTools {
-		agentToolsCopy[k] = v
-	}
-	b.catalogMu.RUnlock()
-
-	// 找出 skill 工具所属的 agent ID
-	affectedAgents := make(map[string]bool)
-	for toolName := range skillOwned {
-		if agentID, ok := toolCatalogCopy[toolName]; ok {
-			affectedAgents[agentID] = true
-		}
-	}
-
-	// 收集这些 agent 的全部工具名
-	allHidden := make(map[string]bool)
-	for agentID := range affectedAgents {
-		for _, t := range agentToolsCopy[agentID] {
-			originalName := b.resolveToolName(t.Function.Name)
-			allHidden[originalName] = true
-			allHidden[t.Function.Name] = true
-		}
-	}
-
-	if len(affectedAgents) > 0 {
-		log.Printf("[expandSkillOwnedAgents] skill 工具覆盖 %d 个 agent，共隐藏 %d 个工具",
-			len(affectedAgents), len(allHidden)/2)
-	}
-
-	return allHidden
-}

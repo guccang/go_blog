@@ -71,7 +71,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 	} else {
 		// 续接对话：刷新 system prompt + 追加 user 消息
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, _ := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
+			freshPrompt, _ := b.buildAssistantSystemPrompt(payload.Account)
 			session.Messages[0].Content = freshPrompt
 		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
@@ -108,7 +108,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		session.mu.Lock()
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
-			systemPrompt, _ := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
+			systemPrompt, _ := b.buildAssistantSystemPrompt(payload.Account)
 			session.Messages = []Message{
 				{Role: "system", Content: systemPrompt},
 				{Role: "user", Content: payload.Query},
@@ -340,63 +340,9 @@ func (b *Bridge) findWechatAgent() string {
 	return ""
 }
 
-// defaultTaskGuide 任务指引的默认内容（workspace/TASK_GUIDE.md 不存在时的 fallback）
-var defaultTaskGuide = `
-使用account:%s账户填充字段，不要向用户询问使用哪个字段了直接使用,account填充。
-## 任务拆解能力
-当你判断用户的请求确实需要多种不同类型的工具协作，且无法用一次 ExecuteCode 完成时，
-你应该调用 plan_and_execute 工具来拆解和编排执行。
-
-**任务处理流程：**
-
-1. **优先尝试直接完成**
-   - 单一工具调用：直接执行
-   - 多个数据查询+分析：使用 ExecuteCode 编写 Python 代码，在代码内通过 call_tool() 批量调用工具并处理数据，一步完成
-   - 只有 ExecuteCode 无法覆盖时，才考虑拆解
-
-2. **确需拆解时调用 plan_and_execute**
-   - 不同类型工具协作（如先编码再部署、先查数据再生成报告文件）
-   - 多个完全独立的目标需要并行处理
-
-**原则：** 能用一次 ExecuteCode 搞定的任务不要拆解。
-
-不需要拆解的场景：
-- 简单问答
-- 单一工具调用
-- 数据查询和分析（即使涉及多个数据源，ExecuteCode 内部可以批量调用）
-
-适合拆解的场景：
-- 先编码开发，再部署上线
-- 同时处理多个完全不同类型的任务
-
-## 错误处理
-
-当工具调用失败时：
-1. 分析错误原因，修正参数后重试
-2. 如重试仍失败，尝试替代方案
-3. 如无替代方案，向用户说明失败原因和建议
-
-**ExecuteCode 错误的特殊规则：**
-- ExecuteCode 返回 Python syntax error 或运行时错误时，**必须修正代码后再次调用 ExecuteCode**
-- **严禁**因为代码报错就放弃沙箱，转而逐个直接调用工具
-- 代码错误只需要修复代码本身，沙箱执行路径不可绕过
-`
-
-// buildAssistantSystemPrompt 构建 assistant 的系统提示（按 DisclosureLevel 条件注入各区块）
-// policyResult 为 nil 时默认 LevelTwo（兼容旧调用）
-// 返回 prompt 文本和各区块字符统计
-func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTool, policyResult *PolicyResult) (string, []PromptSection) {
-	// ??????? selectedSkills
-	if policyResult == nil {
-		pr := b.ApplyPolicyPipeline(query, tools)
-		policyResult = &pr
-		tools = pr.Tools
-	}
-
-	level := policyResult.Level
-	var selectedSkills []SkillEntry
-	selectedSkills = policyResult.SelectedSkills
-
+// buildAssistantSystemPrompt 构建固定的系统提示词（不随请求内容变化）
+// 结构：人设 → 用户规则 → Agent 目录 → Skill 目录 → 长期记忆 → 时间/账号信息
+func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSection) {
 	var sb strings.Builder
 	var sections []PromptSection
 
@@ -410,7 +356,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 		sections = append(sections, PromptSection{Name: name, Chars: chars})
 	}
 
-	// 人设系统提示（始终保留）
+	// 1. 人设
 	var personaContent string
 	if b.persona != nil {
 		personaContent = b.persona.BuildSystemPrompt()
@@ -420,106 +366,31 @@ func (b *Bridge) buildAssistantSystemPrompt(account, query string, tools []LLMTo
 	personaContent += "\n\n"
 
 	now := time.Now()
-	today := now.Format("2006-01-02")
 	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
 	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.cfg.LLM.MaxTokens)
 	writeSection("人设/基础", personaContent)
 
-	// Agent 描述：LevelZero 跳过，LevelOne/LevelTwo 按工具过滤
-	if level >= LevelOne {
-		// 计算被 skill 接管的 agent 映射（agent_id → skill_name）
-		skillAgents := make(map[string]string)
-		if len(selectedSkills) > 0 {
-			b.catalogMu.RLock()
-			for _, skill := range selectedSkills {
-				for _, toolName := range skill.Tools {
-					if agentID, ok := b.toolCatalog[toolName]; ok {
-						if _, already := skillAgents[agentID]; !already {
-							skillAgents[agentID] = skill.Name
-						}
-					}
-				}
-			}
-			b.catalogMu.RUnlock()
-		}
-		agentBlock := b.getFilteredAgentDescriptionBlock(tools, skillAgents)
-		writeSection("Agent能力", agentBlock)
-	}
-
-	// Skill 目录（始终注入，提示通过 execute_skill 工具调用）
-	if b.skillMgr != nil {
-		catalog := b.skillMgr.BuildCatalogWithToolHint()
-		writeSection("Skill目录", catalog)
-	}
-
-	// 长期记忆（始终保留）
-	if b.memoryMgr != nil {
-		memoryBlock := b.memoryMgr.BuildPromptBlock()
-		writeSection("长期记忆", memoryBlock)
-	}
-
-	// 用户规则
+	// 2. 用户规则
 	if b.memoryMgr != nil {
 		rulesBlock := b.memoryMgr.BuildRulePromptBlock()
 		writeSection("用户规则", rulesBlock)
 	}
 
-	// 任务拆解指引（始终保留）
-	taskGuide := loadWorkspaceFile(b.cfg.WorkspaceDir, "TASK_GUIDE.md", defaultTaskGuide)
-	writeSection("任务指引", "\n"+taskGuide)
+	// 3. Agent 目录（简要列表 + get_agent_tools 获取详情的说明）
+	agentBlock := b.buildAgentDirectory()
+	writeSection("Agent目录", agentBlock)
 
-	// 上下文数据：仅 LevelTwo 时按原逻辑注入
-	if level == LevelTwo {
-		needContextData := len(selectedSkills) == 0
-		for _, s := range selectedSkills {
-			if s.Name == "blog-data-opt" {
-				needContextData = true
-				break
-			}
-		}
+	// 4. Skill 目录（简要列表 + get_skill_detail 获取详情的说明）
+	if b.skillMgr != nil {
+		catalog := b.skillMgr.BuildCatalogWithToolHint()
+		writeSection("Skill目录", catalog)
+	}
 
-		if needContextData {
-			type ctxResult struct {
-				label string
-				data  string
-			}
-
-			ch := make(chan ctxResult, 2)
-			done := make(chan struct{}, 2)
-
-			go func() {
-				args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-				data, err := b.callToolWithTimeout("RawGetTodosByDate", args, 3*time.Second)
-				if err == nil && data != "" {
-					ch <- ctxResult{label: "今日待办", data: data}
-				}
-				done <- struct{}{}
-			}()
-
-			go func() {
-				args, _ := json.Marshal(map[string]string{"account": account, "date": today})
-				data, err := b.callToolWithTimeout("RawGetExerciseByDate", args, 3*time.Second)
-				if err == nil && data != "" {
-					ch <- ctxResult{label: "今日运动", data: data}
-				}
-				done <- struct{}{}
-			}()
-
-			<-done
-			<-done
-			close(ch)
-
-			var ctxParts []string
-			for r := range ch {
-				ctxParts = append(ctxParts, fmt.Sprintf("[%s]\n%s", r.label, r.data))
-			}
-
-			if len(ctxParts) > 0 {
-				ctxContent := "\n用户当前数据:\n" + strings.Join(ctxParts, "\n\n")
-				writeSection("上下文数据", ctxContent)
-			}
-		}
+	// 5. 长期记忆
+	if b.memoryMgr != nil {
+		memoryBlock := b.memoryMgr.BuildPromptBlock()
+		writeSection("长期记忆", memoryBlock)
 	}
 
 	return sb.String(), sections
