@@ -51,3 +51,4 @@ cmd/llm-agent/llm-agent-openrouter.json
 cmd/deploy-bridge-server/deploy-bridge-server
 cmd/acp-agent/acp-agent
 cmd/init-agent/init-agent
+cmd/corn-agent/corn-agent
