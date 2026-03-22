@@ -18,6 +18,9 @@ type Config struct {
 	AuthToken  string               `json:"auth_token"`
 	AgentName  string               `json:"agent_name"`
 	LogSources map[string]LogSource `json:"log_sources"` // 源名 → 配置
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -26,6 +29,8 @@ func DefaultConfig() *Config {
 		ServerURL:  "ws://127.0.0.1:10086/ws/uap",
 		AgentName:  "log-agent",
 		LogSources: make(map[string]LogSource),
+
+		ProtectedFiles: []string{"log-agent.json"},
 	}
 }
 

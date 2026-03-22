@@ -137,7 +137,7 @@ func (c *Connection) SendTaskAssignViaUAP(task *CronTask) (string, error) {
 	}
 
 	// 生成任务ID
-	taskID := fmt.Sprintf("corn_%s_%d", task.ID, time.Now().UnixNano())
+	taskID := fmt.Sprintf("cron_%s_%d", task.ID, time.Now().UnixNano())
 
 	// 发送任务分配消息
 	timeout := time.Duration(c.cfg.LLMAgent.Timeout) * time.Second

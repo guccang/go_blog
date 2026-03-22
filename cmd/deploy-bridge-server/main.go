@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"deploygen"
 )
 
 //go:embed static
@@ -16,10 +18,24 @@ var staticFS embed.FS
 func main() {
 	configPath := flag.String("config", "bridge-server.json", "配置文件路径")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	flag.Parse()
 
 	if *genConf {
 		if err := writeDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "deploy-bridge-server",
+			ConfigFile: "bridge-server.json",
+			ZipExtras:  []string{"publish.sh"},
+			StartArgs:  "bridge-server.json",
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

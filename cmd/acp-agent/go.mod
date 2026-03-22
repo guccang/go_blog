@@ -3,6 +3,7 @@ module acp-agent
 go 1.24.0
 
 require (
+	deploygen v0.0.0
 	agentbase v0.0.0
 	github.com/coder/acp-go-sdk v0.6.3
 	uap v0.0.0
@@ -18,3 +19,5 @@ require (
 replace agentbase => ../common/agentbase
 
 replace uap => ../common/uap
+
+replace deploygen => ../common/deploygen

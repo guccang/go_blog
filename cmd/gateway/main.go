@@ -11,15 +11,30 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"deploygen"
 )
 
 func main() {
 	configFile := flag.String("config", "gateway.json", "配置文件路径")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	flag.Parse()
 
 	if *genConf {
 		if err := writeDefaultConfig(*configFile, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "gateway",
+			ConfigFile: "gateway.json",
+			ZipExtras:  []string{"publish.sh"},
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

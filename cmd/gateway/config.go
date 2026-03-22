@@ -18,6 +18,9 @@ type Config struct {
 	EventLogDir     string `json:"event_log_dir"`        // JSONL 目录（默认 "logs"）
 	EventLogStdout  bool   `json:"event_log_stdout"`     // 终端输出（默认 true）
 	EventSkipHB     bool   `json:"event_skip_heartbeat"` // 跳过心跳事件（默认 false）
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 返回默认配置
@@ -31,6 +34,8 @@ func DefaultConfig() *Config {
 		EventLogDir:     "logs",
 		EventLogStdout:  true,
 		EventSkipHB:     false,
+
+		ProtectedFiles: []string{"gateway.json", "logs/"},
 	}
 }
 

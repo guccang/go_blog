@@ -28,7 +28,7 @@
             "build_platform": "win"
         },
         {
-            "project": "deploy-bridge-server",
+            "project": "cron-agent",
             "target": "ssh-prod",
             "build_platform": "linux"
         },

@@ -21,6 +21,9 @@ type AgentConfig struct {
 	AnalysisTimeout      int      `json:"analysis_timeout"`          // ACP 分析超时（秒），默认 3600
 	ClaudeCodeSettingsDir string  `json:"claudecode_settings_dir"`   // Claude Code settings 目录（默认 settings/claudecode/）
 	DefaultSettings      string  `json:"default_settings"`           // 默认 --settings 名称（如 "default"），extraArgs 未指定时自动使用
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -32,6 +35,8 @@ func DefaultConfig() *AgentConfig {
 		MaxConcurrent:    2,
 		AnalysisTimeout:  3600,
 		GoBackendAgentID: "go_blog",
+
+		ProtectedFiles: []string{"acp-agent.json", "settings/"},
 	}
 }
 

@@ -22,6 +22,9 @@ type Config struct {
 	PythonPath       string           `json:"python_path"`         // 默认 "python3"
 	MaxExecTimeSec   int              `json:"max_exec_time_sec"`   // 默认 120
 	MaxOutputSize    int              `json:"max_output_size"`     // 默认 50000 字符
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -35,6 +38,8 @@ func DefaultConfig() *Config {
 		PythonPath:     detectPython(),
 		MaxExecTimeSec: 120,
 		MaxOutputSize:  50000,
+
+		ProtectedFiles: []string{"execute-code-agent.json"},
 	}
 }
 

@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.10
 
 require (
+	deploygen v0.0.0
 	agentbase v0.0.0
 	github.com/pkg/sftp v1.13.10
 	github.com/zalando/go-keyring v0.2.6
@@ -26,6 +27,7 @@ require (
 )
 
 replace (
+	deploygen => ../common/deploygen
 	agentbase => ../common/agentbase
 	uap => ../common/uap
 )

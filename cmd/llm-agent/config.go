@@ -92,6 +92,13 @@ type Config struct {
 	// 工具权限控制
 	ToolPolicy *ToolPolicy         `json:"tool_policy,omitempty"`
 	Pipeline   *ToolPolicyPipeline `json:"tool_pipeline,omitempty"`
+
+	// 工具评估系统
+	ToolEvalOnStartup  bool   `json:"tool_eval_on_startup"`   // 启动时自动评估工具（默认 true）
+	ToolEvalReportPath string `json:"tool_eval_report_path"`  // 评估报告输出路径（默认 workspace/tool_eval_report.json）
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -147,6 +154,11 @@ func DefaultConfig() *Config {
 		BashMaxOutputBytes: 102400,
 
 		MaxMatchedSkills: 2,
+
+		ToolEvalOnStartup:  true,
+		ToolEvalReportPath: "workspace/tool_eval_report.json",
+
+		ProtectedFiles: []string{"llm-agent.json", "workspace/", "agent_sessions/", "chat_sessions/"},
 	}
 }
 

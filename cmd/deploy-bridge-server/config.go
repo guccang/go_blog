@@ -14,6 +14,9 @@ type Config struct {
 	MaxUploadSizeMB int   `json:"max_upload_size_mb"`
 	DeployTimeout  int    `json:"deploy_timeout_sec"`
 	LogRetainCount int    `json:"log_retain_count"`
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -24,6 +27,8 @@ func DefaultConfig() *Config {
 		MaxUploadSizeMB: 200,
 		DeployTimeout:   120,
 		LogRetainCount:  50,
+
+		ProtectedFiles: []string{"bridge-server.json", "uploads/"},
 	}
 }
 

@@ -3,6 +3,7 @@ module log-agent
 go 1.24.0
 
 require (
+	deploygen v0.0.0
 	agentbase v0.0.0
 	uap v0.0.0
 )
@@ -15,6 +16,7 @@ require (
 )
 
 replace (
+	deploygen => ../common/deploygen
 	agentbase => ../common/agentbase
 	uap => ../common/uap
 )

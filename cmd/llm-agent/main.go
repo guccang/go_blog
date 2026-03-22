@@ -9,15 +9,30 @@ import (
 	"syscall"
 
 	"agentbase"
+	"deploygen"
 )
 
 func main() {
 	cfgPath := flag.String("config", "llm-agent.json", "配置文件路径")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	flag.Parse()
 
 	if *genConf {
 		if err := agentbase.WriteDefaultConfig(*cfgPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "llm-agent",
+			ConfigFile: "llm-agent.json",
+			ZipExtras:  []string{"publish.sh", "workspace/"},
+			StartArgs:  "--config llm-agent.json",
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
@@ -44,6 +59,11 @@ func main() {
 	// 首次工具发现
 	if err := bridge.DiscoverTools(); err != nil {
 		log.Printf("[LLM-MCP] initial tool discovery failed (will retry): %v", err)
+	}
+
+	// 启动时工具评估（异步，不阻塞启动）
+	if cfg.ToolEvalOnStartup {
+		go bridge.EvaluateTools()
 	}
 
 	// 启动后台工具目录刷新

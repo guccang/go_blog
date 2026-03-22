@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"agentbase"
+	"deploygen"
 	"golang.org/x/term"
 	"uap"
 )
@@ -48,6 +49,7 @@ func main() {
 	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
 	forceFull := flag.Bool("force-full", false, "强制完整部署（覆盖所有文件含配置）")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件和目录结构")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	// 控制协议 flags
 	shutdownTarget := flag.String("shutdown", "", "向指定 agent 发送 graceful shutdown")
 	agentStatusTarget := flag.String("agent-status", "", "查询指定 agent 状态")
@@ -58,6 +60,18 @@ func main() {
 	if *genConf {
 		if err := generateDefaultConfig(*configPath); err != nil {
 			fmt.Fprintf(os.Stderr, "生成配置文件失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "deploy-agent",
+			ConfigFile: "deploy-agent.json",
+			ZipExtras:  []string{"publish.sh", "publish.bat", "deploy.conf", "settings/"},
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 		return

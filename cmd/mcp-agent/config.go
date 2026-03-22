@@ -28,6 +28,9 @@ type Config struct {
 	ToolPrefix         string                     `json:"tool_prefix"`
 	ToolCallTimeoutSec int                        `json:"tool_call_timeout_sec"`
 	MCPServers         map[string]MCPServerConfig `json:"mcp_servers"`
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -39,6 +42,8 @@ func DefaultConfig() *Config {
 		ToolPrefix:         "mcp",
 		ToolCallTimeoutSec: 30,
 		MCPServers:         make(map[string]MCPServerConfig),
+
+		ProtectedFiles: []string{"mcp-agent.json"},
 	}
 }
 

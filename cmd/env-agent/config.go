@@ -16,6 +16,9 @@ type Config struct {
 	InstallTimeout int    `json:"install_timeout"`   // 预置脚本安装超时秒数，默认 300
 	LLMTaskTimeout int    `json:"llm_task_timeout"`  // 委托 LLM 任务超时秒数，默认 600
 	LLMAgentID     string `json:"llm_agent_id"`      // llm-agent 的 agent name，默认 "llm-agent"
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -28,6 +31,8 @@ func DefaultConfig() *Config {
 		InstallTimeout: 300,
 		LLMTaskTimeout: 600,
 		LLMAgentID:     "llm-agent",
+
+		ProtectedFiles: []string{"env-agent.json"},
 	}
 }
 

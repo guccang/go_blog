@@ -21,6 +21,9 @@ type InitConfig struct {
 	ServerURL   string `json:"server_url"`   // Gateway WebSocket URL
 	GatewayHTTP string `json:"gateway_http"` // Gateway HTTP URL
 	AuthToken   string `json:"auth_token"`   // Gateway 认证令牌
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -28,6 +31,8 @@ func DefaultConfig() *InitConfig {
 	return &InitConfig{
 		Mode:    "cli",
 		WebPort: 9090,
+
+		ProtectedFiles: []string{"init-agent.json"},
 	}
 }
 

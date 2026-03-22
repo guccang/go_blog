@@ -1,8 +1,9 @@
-module corn-agent
+module cron-agent
 
 go 1.24.0
 
 require (
+	deploygen v0.0.0
 	agentbase v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -16,6 +17,7 @@ require (
 )
 
 replace (
+	deploygen => ../common/deploygen
 	agentbase => ../common/agentbase
 	uap => ../common/uap
 )

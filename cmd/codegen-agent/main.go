@@ -11,16 +11,31 @@ import (
 	"syscall"
 
 	"agentbase"
+	"deploygen"
 	"uap"
 )
 
 func main() {
 	configPath := flag.String("config", "codegen-agent.json", "path to agent config file")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	flag.Parse()
 
 	if *genConf {
 		if err := agentbase.WriteDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "codegen-agent",
+			ConfigFile: "codegen-agent.json",
+			ZipExtras:  []string{"settings/"},
+			UsePIDFile: true,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

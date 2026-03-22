@@ -29,6 +29,9 @@ type Config struct {
 	// 消息路由目标
 	LLMAgentID     string `json:"llm_agent_id"`     // llm-agent 的 ID（自然语言）
 	BackendAgentID string `json:"backend_agent_id"` // go_blog 的 ID（结构化命令）
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -39,6 +42,8 @@ func DefaultConfig() *Config {
 		AgentName:        "wechat-agent",
 		LLMAgentID:       "llm-agent",
 		BackendAgentID:   "go_blog",
+
+		ProtectedFiles: []string{"wechat-agent.json"},
 	}
 }
 

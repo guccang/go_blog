@@ -69,6 +69,9 @@ func isLocalTarget(host string) bool {
 func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	start := time.Now()
 
+	// 自动合并目标 agent 配置文件中的 protected_files
+	d.mergeAgentProtectedFiles()
+
 	targets := d.proj.Targets
 	if targetFilter != "" {
 		targets = nil
@@ -1356,4 +1359,76 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 	}
 
 	return nil
+}
+
+// agentConfigProtectedFiles 用于从目标 agent 配置文件提取 protected_files
+type agentConfigProtectedFiles struct {
+	ProtectedFiles []string `json:"protected_files"`
+}
+
+// mergeAgentProtectedFiles 从目标 agent 的配置文件中读取 protected_files 并合并
+// 扫描项目目录中的 JSON 配置文件（{project-name}.json 或其他 JSON 文件），
+// 提取 protected_files 字段，合并到 d.proj.ProtectFiles（去重）
+func (d *Deployer) mergeAgentProtectedFiles() {
+	if d.proj.ProjectDir == "" {
+		return
+	}
+
+	// 收集所有 JSON 文件中的 protected_files
+	var agentProtected []string
+
+	// 优先查找 {project-name}.json
+	candidates := []string{d.proj.Name + ".json"}
+
+	// 也扫描项目目录下所有顶层 JSON 文件（去重）
+	entries, err := os.ReadDir(d.proj.ProjectDir)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+				continue
+			}
+			name := e.Name()
+			if name == candidates[0] {
+				continue // 已在候选列表中
+			}
+			candidates = append(candidates, name)
+		}
+	}
+
+	for _, name := range candidates {
+		configPath := filepath.Join(d.proj.ProjectDir, name)
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			continue
+		}
+		var acpf agentConfigProtectedFiles
+		if err := json.Unmarshal(data, &acpf); err != nil {
+			continue
+		}
+		if len(acpf.ProtectedFiles) > 0 {
+			agentProtected = append(agentProtected, acpf.ProtectedFiles...)
+			break // 找到第一个含 protected_files 的配置即可
+		}
+	}
+
+	if len(agentProtected) == 0 {
+		return
+	}
+
+	// 合并去重
+	existing := make(map[string]bool)
+	for _, f := range d.proj.ProtectFiles {
+		existing[f] = true
+	}
+	var added []string
+	for _, f := range agentProtected {
+		if !existing[f] {
+			d.proj.ProtectFiles = append(d.proj.ProtectFiles, f)
+			existing[f] = true
+			added = append(added, f)
+		}
+	}
+	if len(added) > 0 {
+		d.logf("info", "  > 从 agent 配置合并 protected_files: %s\n", strings.Join(added, ", "))
+	}
 }

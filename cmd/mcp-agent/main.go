@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"agentbase"
+	"deploygen"
 )
 
 var (
@@ -23,10 +24,23 @@ var (
 func main() {
 	configPathFlag := flag.String("config", "mcp-agent.json", "配置文件路径")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	flag.Parse()
 
 	if *genConf {
 		if err := agentbase.WriteDefaultConfig(*configPathFlag, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "mcp-agent",
+			ConfigFile: "mcp-agent.json",
+			ZipExtras:  []string{"publish.sh"},
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

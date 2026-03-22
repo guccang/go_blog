@@ -6,11 +6,14 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"deploygen"
 )
 
 func main() {
 	configPath := flag.String("config", "init-agent.json", "配置文件路径")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
+	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
 	mode := flag.String("mode", "", "运行模式: cli 或 web")
 	port := flag.Int("port", 0, "Web 模式监听端口")
 	root := flag.String("root", "", "monorepo 根目录（自动检测）")
@@ -28,6 +31,18 @@ func main() {
 
 	if *genConf {
 		if err := writeDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *genDeploy {
+		if err := deploygen.GenerateDeployFiles(deploygen.DeployOptions{
+			AgentName:  "init-agent",
+			ConfigFile: "init-agent.json",
+			ZipExtras:  []string{"publish.sh"},
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

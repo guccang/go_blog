@@ -1,7 +1,7 @@
 {
   "gateway_url": "ws://127.0.0.1:9000/ws/uap",
   "auth_token": "your-auth-token",
-  "agent_id": "corn-agent",
+  "agent_id": "cron-agent",
   "storage": {
     "type": "json",
     "path": "./data/tasks.json",

@@ -1545,6 +1545,54 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 	}
 }
 
+// ========================= 工具评估 =========================
+
+// EvaluateTools 执行工具评估并输出报告
+func (b *Bridge) EvaluateTools() {
+	evaluator := NewToolEvaluator(b)
+	report := evaluator.Evaluate()
+
+	// 日志输出每条 issue
+	for _, issue := range report.Issues {
+		var prefix string
+		switch issue.Severity {
+		case SeverityCritical:
+			prefix = "✗"
+		case SeverityWarning:
+			prefix = "⚠"
+		case SeverityInfo:
+			prefix = "ℹ"
+		}
+		if issue.RelatedTo != "" {
+			log.Printf("[ToolEvaluator] %s [%s] %s: %s → %s",
+				prefix, issue.Category, issue.Subject, issue.Description, issue.Suggestion)
+		} else {
+			log.Printf("[ToolEvaluator] %s [%s] %s: %s → %s",
+				prefix, issue.Category, issue.Subject, issue.Description, issue.Suggestion)
+		}
+	}
+
+	// 写入 JSON 报告文件
+	if b.cfg.ToolEvalReportPath != "" {
+		reportDir := filepath.Dir(b.cfg.ToolEvalReportPath)
+		if err := os.MkdirAll(reportDir, 0755); err != nil {
+			log.Printf("[ToolEvaluator] 创建报告目录失败: %v", err)
+			return
+		}
+
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			log.Printf("[ToolEvaluator] 序列化报告失败: %v", err)
+			return
+		}
+		if err := os.WriteFile(b.cfg.ToolEvalReportPath, data, 0644); err != nil {
+			log.Printf("[ToolEvaluator] 写入报告失败: %v", err)
+			return
+		}
+		log.Printf("[ToolEvaluator] 报告已写入: %s", b.cfg.ToolEvalReportPath)
+	}
+}
+
 // ========================= 后台刷新 =========================
 
 // StartRefreshLoop 后台定时刷新工具目录和 agent 信息

@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.10
 
 require (
+	deploygen v0.0.0
 	agentbase v0.0.0
 	uap v0.0.0
 )
@@ -17,6 +18,7 @@ require (
 )
 
 replace (
+	deploygen => ../common/deploygen
 	agentbase => ../common/agentbase
 	uap => ../common/uap
 )

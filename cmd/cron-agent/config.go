@@ -34,22 +34,25 @@ type NotificationsConfig struct {
 	FailureTemplate string `json:"failure_template"` // 失败通知模板
 }
 
-// Config corn-agent 配置
+// Config cron-agent 配置
 type Config struct {
 	GatewayURL    string              `json:"gateway_url"`    // ws://127.0.0.1:9000/ws/uap
 	AuthToken     string              `json:"auth_token"`
-	AgentID       string              `json:"agent_id"`       // corn-agent
+	AgentID       string              `json:"agent_id"`       // cron-agent
 	Storage       StorageConfig       `json:"storage"`
 	Scheduler     SchedulerConfig     `json:"scheduler"`
 	LLMAgent      LLMAgentConfig      `json:"llm_agent"`
 	Notifications NotificationsConfig `json:"notifications"`
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
 func DefaultConfig() *Config {
 	return &Config{
 		GatewayURL: "ws://127.0.0.1:9000/ws/uap",
-		AgentID:    "corn-agent",
+		AgentID:    "cron-agent",
 		Storage: StorageConfig{
 			Type:      "json",
 			Path:      "./data/tasks.json",
@@ -69,6 +72,8 @@ func DefaultConfig() *Config {
 			SuccessTemplate: "任务执行成功",
 			FailureTemplate: "任务执行失败",
 		},
+
+		ProtectedFiles: []string{"cron-agent.json", "data/"},
 	}
 }
 
@@ -92,7 +97,7 @@ func LoadConfig(path string) *Config {
 		cfg.GatewayURL = "ws://127.0.0.1:9000/ws/uap"
 	}
 	if cfg.AgentID == "" {
-		cfg.AgentID = "corn-agent"
+		cfg.AgentID = "cron-agent"
 	}
 	if cfg.Storage.Type == "" {
 		cfg.Storage.Type = "json"

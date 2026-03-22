@@ -22,6 +22,9 @@ type AgentConfig struct {
 	OpenCodeSettingsDir   string   `json:"opencode_settings_dir"`    // OpenCode 模型映射配置目录
 	ResumeModels          []string `json:"resume_models,omitempty"`  // 支持 --resume 的模型名列表（空字符串代表默认模型）
 	GoBackendAgentID      string   `json:"go_backend_agent_id"`      // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
+
+	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
+	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
 
 // DefaultConfig 默认配置
@@ -33,6 +36,8 @@ func DefaultConfig() *AgentConfig {
 		MaxConcurrent:    3,
 		MaxTurns:         20,
 		GoBackendAgentID: "go_blog",
+
+		ProtectedFiles: []string{"codegen-agent.json", "settings/"},
 	}
 }
 
