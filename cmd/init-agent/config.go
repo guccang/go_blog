@@ -23,6 +23,14 @@ type InitConfig struct {
 	AuthToken   string `json:"auth_token"`   // Gateway 认证令牌
 }
 
+// DefaultConfig 默认配置
+func DefaultConfig() *InitConfig {
+	return &InitConfig{
+		Mode:    "cli",
+		WebPort: 9090,
+	}
+}
+
 // LoadInitConfig reads an init-agent.json config file and returns an InitConfig.
 func LoadInitConfig(path string) (*InitConfig, error) {
 	data, err := os.ReadFile(path)
@@ -95,4 +103,20 @@ func hasGoFiles(dir string) bool {
 		}
 	}
 	return false
+}
+
+// writeDefaultConfig 将默认配置序列化为 JSON 并写入指定路径
+func writeDefaultConfig(path string, cfg interface{}) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("配置文件已存在: %s（不会覆盖）", path)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+	fmt.Printf("已生成默认配置文件: %s\n", path)
+	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
@@ -44,4 +45,20 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// writeDefaultConfig 将默认配置序列化为 JSON 并写入指定路径
+func writeDefaultConfig(path string, cfg interface{}) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("配置文件已存在: %s（不会覆盖）", path)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+	fmt.Printf("已生成默认配置文件: %s\n", path)
+	return nil
 }

@@ -7,11 +7,22 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"agentbase"
 )
 
 func main() {
 	configPath := flag.String("config", "env-agent.json", "配置文件路径")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	flag.Parse()
+
+	if *genConf {
+		if err := agentbase.WriteDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg := LoadConfig(*configPath)
 

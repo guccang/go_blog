@@ -47,11 +47,21 @@ func main() {
 	adhocStartArgs := flag.String("start-args", "", "启动参数（adhoc 模式）")
 	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
 	forceFull := flag.Bool("force-full", false, "强制完整部署（覆盖所有文件含配置）")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件和目录结构")
 	// 控制协议 flags
 	shutdownTarget := flag.String("shutdown", "", "向指定 agent 发送 graceful shutdown")
 	agentStatusTarget := flag.String("agent-status", "", "查询指定 agent 状态")
 	forceShutdown := flag.Bool("force", false, "配合 --shutdown 使用，强制立即退出")
 	flag.Parse()
+
+	// --genconf early exit (before LoadConfig)
+	if *genConf {
+		if err := generateDefaultConfig(*configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "生成配置文件失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// --init early exit (before LoadConfig, since the project may not have a config yet)
 	if *initDir != "" {

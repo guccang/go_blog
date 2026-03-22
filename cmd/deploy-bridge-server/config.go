@@ -16,15 +16,20 @@ type Config struct {
 	LogRetainCount int    `json:"log_retain_count"`
 }
 
+// DefaultConfig 默认配置
+func DefaultConfig() *Config {
+	return &Config{
+		Listen:          ":9090",
+		UploadDir:       "./uploads",
+		MaxUploadSizeMB: 200,
+		DeployTimeout:   120,
+		LogRetainCount:  50,
+	}
+}
+
 // LoadConfig 从 JSON 文件加载配置，未设置的字段使用默认值
 func LoadConfig(path string) (*Config, error) {
-	cfg := &Config{
-		Listen:         ":9090",
-		UploadDir:      "./uploads",
-		MaxUploadSizeMB: 200,
-		DeployTimeout:  120,
-		LogRetainCount: 50,
-	}
+	cfg := DefaultConfig()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -45,4 +50,20 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// writeDefaultConfig 将默认配置序列化为 JSON 并写入指定路径
+func writeDefaultConfig(path string, cfg interface{}) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("配置文件已存在: %s（不会覆盖）", path)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+	fmt.Printf("已生成默认配置文件: %s\n", path)
+	return nil
 }

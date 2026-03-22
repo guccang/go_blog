@@ -10,6 +10,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "init-agent.json", "配置文件路径")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	mode := flag.String("mode", "", "运行模式: cli 或 web")
 	port := flag.Int("port", 0, "Web 模式监听端口")
 	root := flag.String("root", "", "monorepo 根目录（自动检测）")
@@ -24,6 +25,14 @@ func main() {
 	listAgents := flag.Bool("list", false, "列出所有可用 agent 及其状态")
 
 	flag.Parse()
+
+	if *genConf {
+		if err := writeDefaultConfig(*configPath, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Track which flags were explicitly set on the command line
 	explicitFlags := make(map[string]bool)

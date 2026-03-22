@@ -24,14 +24,21 @@ type AgentConfig struct {
 	GoBackendAgentID      string   `json:"go_backend_agent_id"`      // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
 }
 
+// DefaultConfig 默认配置
+func DefaultConfig() *AgentConfig {
+	return &AgentConfig{
+		AgentType:        "codegen",
+		ClaudePath:       "claude",
+		OpenCodePath:     "opencode",
+		MaxConcurrent:    3,
+		MaxTurns:         20,
+		GoBackendAgentID: "go_blog",
+	}
+}
+
 // LoadConfig 从 JSON 配置文件加载配置
 func LoadConfig(path string) (*AgentConfig, error) {
-	cfg := &AgentConfig{
-		ClaudePath:    "claude",
-		OpenCodePath:  "opencode",
-		MaxConcurrent: 3,
-		MaxTurns:      20,
-	}
+	cfg := DefaultConfig()
 
 	data, err := os.ReadFile(path)
 	if err != nil {

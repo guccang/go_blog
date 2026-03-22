@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"agentbase"
 )
 
 var (
@@ -20,7 +21,17 @@ var (
 
 func main() {
 	configPathFlag := flag.String("config", "mcp-agent.json", "配置文件路径")
+	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	flag.Parse()
+
+	if *genConf {
+		if err := agentbase.WriteDefaultConfig(*configPathFlag, DefaultConfig()); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	cfgPath = *configPathFlag
 
 	cfg, err := LoadConfig(cfgPath)
