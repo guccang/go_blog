@@ -21,7 +21,7 @@ func Inner_blog_RawGetMonthGoal(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetMonthGoal(account, year, month)
+	return wrapResult(statistics.RawGetMonthGoal(account, year, month))
 }
 
 func Inner_blog_RawGetYearGoals(arguments map[string]interface{}) string {
@@ -33,7 +33,7 @@ func Inner_blog_RawGetYearGoals(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetYearGoals(account, year)
+	return wrapResult(statistics.RawGetYearGoals(account, year))
 }
 
 func Inner_blog_RawAddYearTask(arguments map[string]interface{}) string {
@@ -59,7 +59,7 @@ func Inner_blog_RawAddYearTask(arguments map[string]interface{}) string {
 		priority = "medium"
 	}
 	dueDate, _ := getStringParam(arguments, "dueDate")
-	return statistics.RawAddYearTask(account, year, month, title, description, priority, dueDate)
+	return wrapResult(statistics.RawAddYearTask(account, year, month, title, description, priority, dueDate))
 }
 
 func Inner_blog_RawUpdateYearTask(arguments map[string]interface{}) string {
@@ -83,7 +83,7 @@ func Inner_blog_RawUpdateYearTask(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawUpdateYearTask(account, year, month, taskID, status)
+	return wrapResult(statistics.RawUpdateYearTask(account, year, month, taskID, status))
 }
 
 // ============================================================================
@@ -95,7 +95,7 @@ func Inner_blog_RawGetAllComplexTasks(arguments map[string]interface{}) string {
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetAllComplexTasks(account)
+	return wrapResult(statistics.RawGetAllComplexTasks(account))
 }
 
 func Inner_blog_RawGetComplexTasksByStatus(arguments map[string]interface{}) string {
@@ -107,7 +107,7 @@ func Inner_blog_RawGetComplexTasksByStatus(arguments map[string]interface{}) str
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetComplexTasksByStatus(account, status)
+	return wrapResult(statistics.RawGetComplexTasksByStatus(account, status))
 }
 
 func Inner_blog_RawGetComplexTaskStats(arguments map[string]interface{}) string {
@@ -115,7 +115,7 @@ func Inner_blog_RawGetComplexTaskStats(arguments map[string]interface{}) string 
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return statistics.RawGetComplexTaskStats(account)
+	return wrapResult(statistics.RawGetComplexTaskStats(account))
 }
 
 func Inner_blog_RawCreateComplexTask(arguments map[string]interface{}) string {
@@ -134,5 +134,5 @@ func Inner_blog_RawCreateComplexTask(arguments map[string]interface{}) string {
 	}
 	startDate, _ := getStringParam(arguments, "startDate")
 	endDate, _ := getStringParam(arguments, "endDate")
-	return statistics.RawCreateComplexTask(account, title, description, priority, startDate, endDate)
+	return wrapResult(statistics.RawCreateComplexTask(account, title, description, priority, startDate, endDate))
 }

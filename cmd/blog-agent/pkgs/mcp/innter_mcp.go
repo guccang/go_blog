@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // 提供内部mcp接口,接口名称为Inner_blog.xxx
@@ -61,9 +63,38 @@ func getOptionalIntParam(arguments map[string]interface{}, key string, defaultVa
 	}
 }
 
-// errorJSON 返回JSON格式的错误消息
+// errorJSON 返回统一信封格式的错误消息
 func errorJSON(msg string) string {
-	return fmt.Sprintf(`{"error": "%s"}`, msg)
+	escaped, _ := json.Marshal(msg)
+	return `{"ok":false,"error":` + string(escaped) + `}`
+}
+
+// wrapResult 将工具原始返回值包装为统一信封格式
+// 自动检测 statistics 层返回的 {"error":"..."} 并转为错误信封
+func wrapResult(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return `{"ok":true,"data":""}`
+	}
+	// 检测 statistics 层返回的 {"error":"..."}
+	if strings.HasPrefix(trimmed, `{"error"`) {
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal([]byte(trimmed), &e) == nil && e.Error != "" {
+			return errorJSON(e.Error)
+		}
+	}
+	// 检测 "Error " 前缀的旧式错误
+	if strings.HasPrefix(trimmed, "Error ") {
+		return errorJSON(trimmed)
+	}
+	// 成功：如果是合法 JSON 则内嵌，否则包装为字符串
+	if json.Valid([]byte(trimmed)) {
+		return `{"ok":true,"data":` + trimmed + `}`
+	}
+	escaped, _ := json.Marshal(trimmed)
+	return `{"ok":true,"data":` + string(escaped) + `}`
 }
 
 // ============================================================================
@@ -82,16 +113,27 @@ func RegisterCallBack(name string, callback func(arguments map[string]interface{
 func CallInnerTools(name string, arguments map[string]interface{}) string {
 	callback, ok := callBacks[name]
 	if !ok {
-		return "Error NOT find callback: " + name
+		return errorJSON("NOT find callback: " + name)
 	}
 
-	tool_result := callback(arguments)
-	prompt, ok := getInnerToolsPrompt(name)
-	if ok {
-		return fmt.Sprintf("%s /n/n %s", tool_result, prompt)
-	} else {
-		return tool_result
+	result := callback(arguments)
+	// 注入 prompt 到信封内（不再用 /n/n 拼接破坏 JSON）
+	prompt, hasPrompt := getInnerToolsPrompt(name)
+	if hasPrompt {
+		return injectHint(result, prompt)
 	}
+	return result
+}
+
+// injectHint 将提示信息注入到信封 JSON 中的 hint 字段
+func injectHint(envelopeJSON, hint string) string {
+	var m map[string]interface{}
+	if json.Unmarshal([]byte(envelopeJSON), &m) == nil {
+		m["hint"] = hint
+		data, _ := json.Marshal(m)
+		return string(data)
+	}
+	return envelopeJSON
 }
 
 func getInnerToolsPrompt(name string) (string, bool) {

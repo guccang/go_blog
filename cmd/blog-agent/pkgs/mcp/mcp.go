@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	log "mylog"
 	"strings"
@@ -130,16 +131,24 @@ func CallMCPTool(toolName string, arguments map[string]interface{}) MCPToolRespo
 	}
 
 	data := CallInnerTools(callName, arguments)
-	if data == "" {
-		return MCPToolResponse{
-			Success: false,
-			Error:   "Error NOT find tool: " + toolName,
-		}
+	// 解析统一信封
+	var envelope struct {
+		OK    bool            `json:"ok"`
+		Data  json.RawMessage `json:"data,omitempty"`
+		Error string          `json:"error,omitempty"`
+		Hint  string          `json:"hint,omitempty"`
 	}
-	return MCPToolResponse{
-		Success: true,
-		Result:  data,
+	if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+		return MCPToolResponse{Success: false, Error: fmt.Sprintf("invalid tool response format: %s", data)}
 	}
+	if !envelope.OK {
+		return MCPToolResponse{Success: false, Error: envelope.Error}
+	}
+	result := string(envelope.Data)
+	if envelope.Hint != "" {
+		result = result + "\n\n" + envelope.Hint
+	}
+	return MCPToolResponse{Success: true, Result: result}
 }
 
 // CallToolForAPI 供 HTTP API 调用的工具执行入口
@@ -147,34 +156,32 @@ func CallToolForAPI(toolCall MCPToolCall) MCPToolResponse {
 	log.DebugF(log.ModuleMCP, "=== Calling MCP Tool: %s ===", toolCall.Name)
 	log.DebugF(log.ModuleMCP, "Tool arguments: %v", toolCall.Arguments)
 
+	// 解析工具名
+	callName := toolCall.Name
 	parts := splitToolName(toolCall.Name)
 	if len(parts) == 2 && parts[0] == "Inner_blog" {
-		data := CallInnerTools(parts[1], toolCall.Arguments)
-		if data == "" {
-			return MCPToolResponse{
-				Success: false,
-				Error:   "Error NOT find tool: " + toolCall.Name,
-			}
-		}
-		return MCPToolResponse{
-			Success: true,
-			Result:  data,
-		}
+		callName = parts[1]
 	}
 
-	// 尝试直接调用
-	data := CallInnerTools(toolCall.Name, toolCall.Arguments)
-	if data != "" && !strings.HasPrefix(data, "Error NOT find callback:") {
-		return MCPToolResponse{
-			Success: true,
-			Result:  data,
-		}
+	data := CallInnerTools(callName, toolCall.Arguments)
+	// 解析统一信封
+	var envelope struct {
+		OK    bool            `json:"ok"`
+		Data  json.RawMessage `json:"data,omitempty"`
+		Error string          `json:"error,omitempty"`
+		Hint  string          `json:"hint,omitempty"`
 	}
-
-	return MCPToolResponse{
-		Success: false,
-		Error:   fmt.Sprintf("Tool '%s' not found", toolCall.Name),
+	if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+		return MCPToolResponse{Success: false, Error: fmt.Sprintf("invalid tool response format: %s", data)}
 	}
+	if !envelope.OK {
+		return MCPToolResponse{Success: false, Error: envelope.Error}
+	}
+	result := string(envelope.Data)
+	if envelope.Hint != "" {
+		result = result + "\n\n" + envelope.Hint
+	}
+	return MCPToolResponse{Success: true, Result: result}
 }
 
 // GetAvailableTools 返回所有可用的内部工具列表（MCPTool 格式）
