@@ -51,6 +51,70 @@ func (s *LLMRequestSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.
 func (s *LLMRequestSink) Streaming() bool            { return false }
 func (s *LLMRequestSink) Result() string             { return s.buf.String() }
 
+// ========================= RequestTrace 请求级追踪 =========================
+
+// RequestTrace 请求级追踪：记录 LLM 轮次、工具调用路径，方便定位问题
+type RequestTrace struct {
+	TaskID    string
+	Source    string
+	Query     string
+	StartTime time.Time
+	Rounds    []TraceRound // 每轮 LLM 调用
+}
+
+// TraceRound 单轮 LLM 调用记录
+type TraceRound struct {
+	Index         int             // 第几轮（从1开始）
+	LLMDurationMs int64          // LLM 响应耗时（毫秒）
+	TextLen       int             // LLM 返回文本长度
+	ToolCalls     []TraceToolCall // 本轮工具调用
+}
+
+// TraceToolCall 单次工具调用记录
+type TraceToolCall struct {
+	ToolName   string
+	Arguments  string // 截断后的参数摘要
+	Success    bool
+	DurationMs int64
+	ResultLen  int
+}
+
+// Summary 输出结构化追踪摘要
+func (t *RequestTrace) Summary() string {
+	if t == nil || len(t.Rounds) == 0 {
+		return ""
+	}
+	totalDuration := time.Since(t.StartTime)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("[Trace] taskID=%s source=%s 共%d轮 总耗时%s query=%s\n",
+		t.TaskID, t.Source, len(t.Rounds), fmtDuration(totalDuration), truncate(t.Query, 80)))
+
+	for _, r := range t.Rounds {
+		llmDur := fmtDuration(time.Duration(r.LLMDurationMs) * time.Millisecond)
+		if len(r.ToolCalls) == 0 {
+			sb.WriteString(fmt.Sprintf("  Round[%d] LLM=%s textLen=%d → 无工具调用（最终回复）\n", r.Index, llmDur, r.TextLen))
+		} else {
+			var tcParts []string
+			for _, tc := range r.ToolCalls {
+				status := "✅"
+				if !tc.Success {
+					status = "❌"
+				}
+				tcDur := fmtDuration(time.Duration(tc.DurationMs) * time.Millisecond)
+				part := fmt.Sprintf("%s(%s %s", tc.ToolName, status, tcDur)
+				if tc.Arguments != "" {
+					part += " " + tc.Arguments
+				}
+				part += ")"
+				tcParts = append(tcParts, part)
+			}
+			sb.WriteString(fmt.Sprintf("  Round[%d] LLM=%s → %d个工具: %s\n",
+				r.Index, llmDur, len(r.ToolCalls), strings.Join(tcParts, ", ")))
+		}
+	}
+	return sb.String()
+}
+
 // ========================= TaskContext =========================
 
 // TaskContext 统一任务输入
@@ -64,6 +128,7 @@ type TaskContext struct {
 	SelectedTools []string
 	NoTools       bool
 	Sink          EventSink
+	Trace         *RequestTrace // 请求追踪（可选）
 }
 
 func isMCPToolListQuery(query string) bool {
@@ -293,10 +358,20 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// 4. 构建消息（使用最终 tools 列表）
 	if ctx.Messages != nil {
-		// llm_request: 直接使用预构建消息
+		// 有预构建消息（多轮续接或 llm_request）
 		messages = make([]Message, len(ctx.Messages))
 		copy(messages, ctx.Messages)
-		log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
+
+		// web/wechat 多轮续接时，刷新 system prompt 以反映最新工具和 agent 状态
+		if ctx.Source == "web" || ctx.Source == "wechat" {
+			if len(messages) > 0 && messages[0].Role == "system" {
+				freshPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, policyResult)
+				messages[0].Content = freshPrompt
+				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d", len(freshPrompt))
+			}
+		} else {
+			log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
+		}
 	} else {
 		// web / wechat: 构建 system prompt + user query（按 Level 条件注入）
 		systemPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account, ctx.Query, tools, policyResult)
@@ -313,6 +388,15 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	for _, msg := range messages {
 		rootSession.AppendMessage(msg)
 	}
+
+	// 创建请求追踪
+	trace := &RequestTrace{
+		TaskID:    ctx.TaskID,
+		Source:    ctx.Source,
+		Query:     query,
+		StartTime: taskStart,
+	}
+	ctx.Trace = trace
 
 	// 触发任务开始 hook
 	b.hooks.FireTaskStart(ctx)
@@ -458,6 +542,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		log.Printf("[processTask] ← LLM 响应 duration=%v textLen=%d toolCalls=%d tools=%v",
 			llmDuration, len(text), len(toolCalls), tcNames)
 
+		// 记录 Trace 轮次
+		currentRound := TraceRound{
+			Index:         i + 1,
+			LLMDurationMs: llmDuration.Milliseconds(),
+			TextLen:       len(text),
+		}
+
 		// LLM 响应反馈
 		if len(toolCalls) > 0 {
 			ctx.Sink.OnEvent("thinking", fmt.Sprintf("LLM 响应完成 (%s)，需要调用 %d 个工具: %s", fmtDuration(llmDuration), len(toolCalls), strings.Join(tcNames, ", ")))
@@ -472,6 +563,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		// 无工具调用 → 对话结束
 		if len(toolCalls) == 0 {
 			log.Printf("[processTask] ✓ 对话结束（无工具调用） resultLen=%d", len(text))
+			trace.Rounds = append(trace.Rounds, currentRound)
 			finalText = text
 			rootSession.SetResult(text)
 			ctx.Sink.OnEvent("task_complete", fmt.Sprintf("处理完成，耗时 %s", fmtDuration(time.Since(taskStart))))
@@ -531,6 +623,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			ctx.Sink.OnChunk(result)
 			finalText = result
 			complexTaskHandled = true
+			trace.Rounds = append(trace.Rounds, currentRound)
 			break
 		}
 
@@ -725,6 +818,15 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 			rootSession.RecordToolCall(toolRecord)
 
+			// 记录到 Trace
+			currentRound.ToolCalls = append(currentRound.ToolCalls, TraceToolCall{
+				ToolName:   originalName,
+				Arguments:  truncate(tc.Function.Arguments, 100),
+				Success:    success,
+				DurationMs: duration.Milliseconds(),
+				ResultLen:  len(result),
+			})
+
 			// 检测业务失败（transport 成功但 result JSON 中 success:false）
 			if err == nil && tcResult != nil && tcResult.Result != "" {
 				var bizResult struct {
@@ -779,6 +881,9 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				ctx.Sink.OnEvent("tool_expand", fmt.Sprintf("工具业务失败，补充兄弟工具: %s", strings.Join(newToolNames, ", ")))
 			}
 		}
+
+		// 本轮结束，记录到 Trace
+		trace.Rounds = append(trace.Rounds, currentRound)
 	}
 
 	// 5. 保存会话（handleComplexTask 内部已处理时跳过）
@@ -808,6 +913,11 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	}
 	log.Printf("[processTask] ◀ 处理完成 taskID=%s source=%s status=%s duration=%v resultLen=%d",
 		ctx.TaskID, ctx.Source, status, totalDuration, len(finalText))
+
+	// 输出 Trace 摘要日志
+	if traceSummary := trace.Summary(); traceSummary != "" {
+		log.Print(traceSummary)
+	}
 
 	// 触发任务结束 hook（收集所有工具调用记录）
 	rootSession.mu.Lock()

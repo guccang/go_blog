@@ -852,15 +852,20 @@ func (b *Bridge) DiscoverAgents() error {
 			}
 		}
 		infoMap[a.AgentID] = info
-		log.Printf("[Bridge] agent: %s (%s) tools=%v models=%v coding_tools=%v",
-			a.Name, a.AgentID, a.Tools, info.Models, info.CodingTools)
 	}
 
 	b.catalogMu.Lock()
+	prevAgentCount := len(b.agentInfo)
 	b.agentInfo = infoMap
 	b.catalogMu.Unlock()
 
-	log.Printf("[Bridge] discovered %d agents", len(infoMap))
+	if len(infoMap) != prevAgentCount {
+		log.Printf("[Bridge] discovered %d agents (was %d)", len(infoMap), prevAgentCount)
+		for id, info := range infoMap {
+			log.Printf("[Bridge]   agent: %s (%s) tools=%v models=%v coding_tools=%v",
+				info.Name, id, info.ToolNames, info.Models, info.CodingTools)
+		}
+	}
 	return nil
 }
 

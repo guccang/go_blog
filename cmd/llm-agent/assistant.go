@@ -69,7 +69,11 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		// 新会话：Messages 由 processTask 构建
 		session.Messages = nil
 	} else {
-		// 续接对话：追加 user 消息
+		// 续接对话：刷新 system prompt + 追加 user 消息
+		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
+			freshPrompt, _ := b.buildAssistantSystemPrompt(payload.Account, payload.Query, b.getLLMTools(), nil)
+			session.Messages[0].Content = freshPrompt
+		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
 		session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
 	}

@@ -1,0 +1,8 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "your-auth-token",
+  "agent_name": "cron-agent",
+  "llm_agent_id": "llm-agent",
+  "task_file": "./cron-tasks.json",
+  "protected_files": ["cron-agent.json", "cron-tasks.json"]
+}

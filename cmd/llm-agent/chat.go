@@ -323,9 +323,14 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		session.PromptSections = promptSections
 		log.Printf("[Wechat] 新会话 sessionID=%s user=%s", session.SessionID, wechatUser)
 	} else {
-		// 续接对话：追加 user 消息
+		// 续接对话：刷新 system prompt（反映最新工具和 agent 状态）+ 追加 user 消息
+		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
+			freshPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount, content, b.getLLMTools(), nil)
+			session.Messages[0].Content = freshPrompt
+			session.PromptSections = promptSections
+		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
-		log.Printf("[Wechat] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d",
+		log.Printf("[Wechat] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d (system prompt已刷新)",
 			session.SessionID, wechatUser, session.TurnCount, len(session.Messages))
 	}
 

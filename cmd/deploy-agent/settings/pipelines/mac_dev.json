@@ -8,6 +8,11 @@
             "build_platform": "linux"
         },
         {
+            "project": "cron-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
             "project": "execute-code-agent",
             "target": "local",
             "build_platform": "macos"

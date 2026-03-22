@@ -35,6 +35,7 @@
         }
     },
     "protect_files": [
-        "cron-agent.json"
+        "cron-agent.json",
+        "settings/"
     ]
 }
