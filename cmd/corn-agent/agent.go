@@ -111,14 +111,16 @@ func buildToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "CornCreateTask",
-			Description: "创建定时任务",
+			Description: "创建定时任务。支持三种调度类型：cron（cron表达式周期任务）、once（一次性延迟任务，用delay_sec指定延迟秒数或run_at指定绝对时间）、interval（固定间隔重复任务）。例如：'5分钟后提醒我喝水'应使用 schedule_type=once, delay_sec=300。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name":          map[string]interface{}{"type": "string", "description": "任务名称"},
-					"schedule_type": map[string]interface{}{"type": "string", "description": "调度类型: cron/once/interval", "enum": []string{"cron", "once", "interval"}},
-					"cron_expr":     map[string]interface{}{"type": "string", "description": "cron表达式（schedule_type=cron时必填）"},
+					"schedule_type": map[string]interface{}{"type": "string", "description": "调度类型: cron（周期cron表达式）/ once（一次性延迟）/ interval（固定间隔重复）", "enum": []string{"cron", "once", "interval"}},
+					"cron_expr":     map[string]interface{}{"type": "string", "description": "cron表达式（schedule_type=cron时必填，如 '0 30 9 * * *' 表示每天9:30）"},
 					"interval_sec":  map[string]interface{}{"type": "integer", "description": "间隔秒数（schedule_type=interval时必填）"},
+					"delay_sec":     map[string]interface{}{"type": "integer", "description": "延迟秒数（schedule_type=once时使用，如300表示5分钟后执行）"},
+					"run_at":        map[string]interface{}{"type": "string", "description": "执行时间，ISO8601格式（schedule_type=once时使用，如 '2025-01-01T09:00:00+08:00'）"},
 					"target_agent":  map[string]interface{}{"type": "string", "description": "目标agent ID，默认llm-agent"},
 					"task_type":     map[string]interface{}{"type": "string", "description": "任务类型（llm-agent任务类型）"},
 					"payload":       map[string]interface{}{"type": "object", "description": "任务负载数据"},
@@ -157,6 +159,8 @@ func buildToolDefs() []uap.ToolDef {
 					"schedule_type": map[string]interface{}{"type": "string", "description": "调度类型: cron/once/interval", "enum": []string{"cron", "once", "interval"}},
 					"cron_expr":     map[string]interface{}{"type": "string", "description": "cron表达式"},
 					"interval_sec":  map[string]interface{}{"type": "integer", "description": "间隔秒数"},
+					"delay_sec":     map[string]interface{}{"type": "integer", "description": "延迟秒数（schedule_type=once时）"},
+					"run_at":        map[string]interface{}{"type": "string", "description": "执行时间ISO8601（schedule_type=once时）"},
 					"target_agent":  map[string]interface{}{"type": "string", "description": "目标agent ID"},
 					"task_type":     map[string]interface{}{"type": "string", "description": "任务类型"},
 					"payload":       map[string]interface{}{"type": "object", "description": "任务负载数据"},

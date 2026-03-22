@@ -131,9 +131,25 @@ func (s *Storage) CreateTask(req *TaskCreateRequest) (*CronTask, error) {
 		Payload:      req.Payload,
 		Enabled:      req.Enabled,
 		Status:       TaskStatusPending,
-		NextRunAt:    time.Time{}, // 由调度器计算
+		NextRunAt:    time.Time{},
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+
+	// 一次性任务：根据 delay_sec 或 run_at 计算 NextRunAt
+	if req.ScheduleType == ScheduleTypeOnce {
+		if req.DelaySec > 0 {
+			task.NextRunAt = now.Add(time.Duration(req.DelaySec) * time.Second)
+		} else if req.RunAt != "" {
+			if t, err := time.Parse(time.RFC3339, req.RunAt); err == nil {
+				task.NextRunAt = t
+			} else {
+				// 尝试常见格式
+				if t, err := time.ParseInLocation("2006-01-02 15:04:05", req.RunAt, now.Location()); err == nil {
+					task.NextRunAt = t
+				}
+			}
+		}
 	}
 
 	// 设置默认值
@@ -190,6 +206,16 @@ func (s *Storage) UpdateTask(taskID string, req *TaskUpdateRequest) (*CronTask, 
 			}
 			if req.IntervalSec != nil {
 				task.IntervalSec = *req.IntervalSec
+			}
+			// 一次性任务：根据 delay_sec 或 run_at 重新计算 NextRunAt
+			if req.DelaySec != nil && *req.DelaySec > 0 {
+				task.NextRunAt = time.Now().Add(time.Duration(*req.DelaySec) * time.Second)
+			} else if req.RunAt != nil && *req.RunAt != "" {
+				if t, err := time.Parse(time.RFC3339, *req.RunAt); err == nil {
+					task.NextRunAt = t
+				} else if t, err := time.ParseInLocation("2006-01-02 15:04:05", *req.RunAt, time.Now().Location()); err == nil {
+					task.NextRunAt = t
+				}
 			}
 			if req.TargetAgent != nil {
 				task.TargetAgent = *req.TargetAgent

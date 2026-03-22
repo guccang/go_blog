@@ -69,6 +69,8 @@ type TaskCreateRequest struct {
 	ScheduleType ScheduleType    `json:"schedule_type"`
 	CronExpr     string          `json:"cron_expr,omitempty"`
 	IntervalSec  int64           `json:"interval_sec,omitempty"`
+	DelaySec     int64           `json:"delay_sec,omitempty"`  // 延迟秒数（schedule_type=once时，多少秒后执行）
+	RunAt        string          `json:"run_at,omitempty"`     // 执行时间ISO8601（schedule_type=once时，指定具体时间）
 	TargetAgent  string          `json:"target_agent,omitempty"`
 	TaskType     string          `json:"task_type"`
 	Payload      json.RawMessage `json:"payload"`
@@ -81,6 +83,8 @@ type TaskUpdateRequest struct {
 	ScheduleType *ScheduleType    `json:"schedule_type,omitempty"`
 	CronExpr     *string          `json:"cron_expr,omitempty"`
 	IntervalSec  *int64           `json:"interval_sec,omitempty"`
+	DelaySec     *int64           `json:"delay_sec,omitempty"`  // 延迟秒数（schedule_type=once时）
+	RunAt        *string          `json:"run_at,omitempty"`     // 执行时间ISO8601（schedule_type=once时）
 	TargetAgent  *string          `json:"target_agent,omitempty"`
 	TaskType     *string          `json:"task_type,omitempty"`
 	Payload      *json.RawMessage `json:"payload,omitempty"`
