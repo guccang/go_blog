@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -358,8 +359,9 @@ func (b *Bridge) sendNotification(toUser, content string) {
 	if toUser != "" {
 		if err := b.sendAppMessage(toUser, content); err == nil {
 			return
+		} else {
+			log.Printf("[Bridge] app push failed for user=%s: %v, fallback to webhook", toUser, err)
 		}
-		log.Printf("[Bridge] app push failed, fallback to webhook")
 	}
 	b.sendWebhookMarkdown(content)
 }
@@ -377,10 +379,13 @@ func (b *Bridge) sendAppMessage(toUser, content string) error {
 		return fmt.Errorf("get token: %v", err)
 	}
 
+	// agentid 需要是整数类型（企业微信 API 要求）
+	agentIDInt, _ := strconv.Atoi(b.cfg.AgentID)
+
 	msg := map[string]any{
 		"touser":   toUser,
 		"msgtype":  "markdown",
-		"agentid":  b.cfg.AgentID,
+		"agentid":  agentIDInt,
 		"markdown": map[string]string{"content": content},
 	}
 
