@@ -66,7 +66,6 @@ type Config struct {
 	FallbackCooldownSec int                        `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
 	MaxPlanRevisions    int         `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
 
-	DefaultAccount     string `json:"default_account"`
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
 	LongToolTimeoutSec int    `json:"long_tool_timeout_sec"` // 长时间工具超时秒数（默认 600）
 	MaxToolIterations  int    `json:"max_tool_iterations"`
@@ -143,7 +142,6 @@ func DefaultConfig() *Config {
 		FallbackCooldownSec: 60,
 		MaxPlanRevisions:    3,
 
-		DefaultAccount:       "ztj",
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   600,
 		MaxToolIterations:    32,

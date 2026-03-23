@@ -256,7 +256,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	// 2. 停止命令检查（在 processing.Lock 之前！不需要等锁）
 	if isStopCommand(content) {
-		session, _ := b.sessionMgr.GetOrCreate("wechat", wechatUser, b.cfg.DefaultAccount)
+		session, _ := b.sessionMgr.GetOrCreate("wechat", wechatUser, wechatUser)
 		if session.CancelRunning() {
 			b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 				Channel: "wechat",
@@ -287,7 +287,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	}
 
 	// 4. 获取或创建会话
-	session, isNew := b.sessionMgr.GetOrCreate("wechat", wechatUser, b.cfg.DefaultAccount)
+	session, isNew := b.sessionMgr.GetOrCreate("wechat", wechatUser, wechatUser)
 
 	// 序列化同一用户的消息处理（后到的消息等前一个完成）
 	session.processing.Lock()
@@ -315,7 +315,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
-		systemPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount)
+		systemPrompt, promptSections := b.buildAssistantSystemPrompt(wechatUser)
 		// 注入微信用户 ID（用于 LLM 创建定时任务时传入正确的 wechat_user）
 		systemPrompt += fmt.Sprintf("\n当前微信用户ID(wechat_user): %s\n", wechatUser)
 		session.Messages = []Message{
@@ -327,7 +327,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	} else {
 		// 续接对话：刷新 system prompt（反映最新工具和 agent 状态）+ 追加 user 消息
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPrompt(b.cfg.DefaultAccount)
+			freshPrompt, promptSections := b.buildAssistantSystemPrompt(wechatUser)
 			freshPrompt += fmt.Sprintf("\n当前微信用户ID(wechat_user): %s\n", wechatUser)
 			session.Messages[0].Content = freshPrompt
 			session.PromptSections = promptSections
@@ -364,7 +364,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	ctx := &TaskContext{
 		Ctx:      goctx,
 		TaskID:   taskID,
-		Account:  b.cfg.DefaultAccount,
+		Account:  wechatUser,
 		Query:    content,
 		Source:   "wechat",
 		Messages: messagesCopy,

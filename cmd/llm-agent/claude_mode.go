@@ -138,7 +138,7 @@ func (b *Bridge) handleClaudeCommand(fromAgent, wechatUser, content string) {
 	}
 
 	// 获取或创建会话
-	session, _ := b.sessionMgr.GetOrCreate("wechat", wechatUser, b.cfg.DefaultAccount)
+	session, _ := b.sessionMgr.GetOrCreate("wechat", wechatUser, wechatUser)
 
 	// 设置 Claude Mode 状态
 	session.mu.Lock()
