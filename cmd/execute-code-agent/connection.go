@@ -63,7 +63,7 @@ func NewConnection(cfg *Config, agentID string, pyVersion string) *Connection {
 	c.executor.callTool = c.remoteCallToolBridge
 
 	// 注册消息处理器
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgToolResult, c.handleToolResult)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
@@ -109,11 +109,6 @@ func buildToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 }
 
 // ========================= 消息处理 =========================
-
-// handleToolCallMsg 处理 tool_call 消息（包装器）
-func (c *Connection) handleToolCallMsg(msg *uap.Message) {
-	go c.handleToolCall(msg)
-}
 
 // handleToolResult 处理 tool_result 消息
 func (c *Connection) handleToolResult(msg *uap.Message) {

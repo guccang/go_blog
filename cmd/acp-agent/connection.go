@@ -43,7 +43,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 	}
 
 	// 注册消息处理器
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgNotify, c.handleNotify)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 	c.RegisterHandler(uap.MsgPermissionResponse, c.handlePermissionResponse)
@@ -60,10 +60,6 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 }
 
 // ========================= 消息处理器 =========================
-
-func (c *Connection) handleToolCallMsg(msg *uap.Message) {
-	go c.handleToolCall(msg)
-}
 
 func (c *Connection) handleNotify(msg *uap.Message) {
 	var payload uap.NotifyPayload

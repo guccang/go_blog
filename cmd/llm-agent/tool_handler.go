@@ -159,21 +159,3 @@ func (b *Bridge) registerRemoteToolLocked(canonicalName, agentID string) {
 		return b.callRemoteAgent(ctx, capturedName, capturedAgent, args, sink)
 	})
 }
-
-// virtualTools 虚拟工具集合（同步执行，无需心跳包装）
-var virtualTools = map[string]bool{
-	"set_persona":       true,
-	"set_rule":          true,
-	"execute_skill":     true,
-	"get_agent_tools":   true,
-	"get_skill_detail":  true,
-	"list_providers":    true,
-	"get_current_model": true,
-	"switch_provider":   true,
-	"switch_model":      true,
-}
-
-// isVirtualTool 判断是否为虚拟工具（同步执行，无需心跳）
-func isVirtualTool(name string) bool {
-	return virtualTools[name]
-}

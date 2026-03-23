@@ -41,7 +41,7 @@ func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath stri
 		cfgPath:   cfgPath,
 	}
 
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCallMsg)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
 	return c

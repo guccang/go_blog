@@ -27,7 +27,6 @@ func main() {
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
 	password := flag.String("password", "", "SSH 密码")
-	savePwd := flag.Bool("save-password", false, "保存密码到凭据存储")
 	listProjects := flag.Bool("list", false, "列出所有配置的项目和可用目标")
 	pipelineName := flag.String("pipeline", "", "执行指定的部署编排")
 	// --init flags
@@ -155,8 +154,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		// 保存密码（如果指定 --save-password）
-		if *savePwd && pwd != "" {
+		// 部署成功后自动保存密码
+		if pwd != "" {
 			cred := newCredentialStore()
 			user, host := parseHost(*adhocSSHHost)
 			accountKey := fmt.Sprintf("%s@%s:%d", user, host, *adhocSSHPort)
@@ -476,6 +475,23 @@ func main() {
 					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
 				os.Exit(1)
 			}
+
+			// SSH 连接成功后自动保存密码
+			if pwd != "" && deployer.SSHConnected {
+				for _, t := range proj.Targets {
+					if isLocalTarget(t.Host) {
+						continue
+					}
+					user, host := parseHost(t.Host)
+					accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
+					if err := cred.Set(accountKey, pwd); err != nil {
+						fmt.Fprintf(os.Stderr, "保存密码失败 (%s): %v\n", accountKey, err)
+					} else {
+						fmt.Printf("密码已保存到凭据存储 (%s)\n", accountKey)
+					}
+				}
+			}
+
 			fmt.Printf("\n✅ 步骤 [%d/%d] %s 完成\n\n", i+1, len(pip.Steps), step.Project)
 		}
 
@@ -574,9 +590,12 @@ func main() {
 		}
 		deployErr := deployer.Run(*packOnly, "")
 
-		// SSH 连接成功即保存密码（证明密码有效），不依赖后续步骤
-		if *savePwd && pwd != "" && deployer.SSHConnected {
+		// SSH 连接成功即自动保存密码（证明密码有效），不依赖后续步骤
+		if pwd != "" && deployer.SSHConnected {
 			for _, t := range proj.Targets {
+				if isLocalTarget(t.Host) {
+					continue
+				}
 				user, host := parseHost(t.Host)
 				accountKey := fmt.Sprintf("%s@%s:%d", user, host, t.Port)
 				if err := cred.Set(accountKey, pwd); err != nil {

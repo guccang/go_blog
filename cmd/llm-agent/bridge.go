@@ -1401,7 +1401,7 @@ func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		tools = append(tools, executeSkillTool)
 	}
-	if b.persona != nil && !b.persona.IsConfigured() {
+	if b.persona != nil {
 		tools = append(tools, setPersonaTool)
 	}
 	if b.memoryMgr != nil {

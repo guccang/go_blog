@@ -398,7 +398,8 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 
 		proj, targets, err := c.parseProjectJSON(projName, filePath, globalTargets)
 		if err != nil {
-			return fmt.Errorf("project [%s]: %v", projName, err)
+			fmt.Fprintf(os.Stderr, "warning: project [%s]: %v, skipped\n", projName, err)
+			continue
 		}
 
 		// 过滤 targets

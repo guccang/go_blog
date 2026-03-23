@@ -52,7 +52,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	c.engine = NewCronEngine(cfg, c.AgentBase)
 
 	// 注册消息处理器
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCall)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgTaskComplete, c.handleTaskComplete)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 

@@ -60,7 +60,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		logToolKit: logToolKit,
 	}
 
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCallMsg)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
 	return c

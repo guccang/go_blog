@@ -66,7 +66,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 	// 注册消息处理器
 	c.RegisterHandler(MsgTaskAssign, c.handleTaskAssign)
 	c.RegisterHandler(MsgTaskStop, c.handleTaskStop)
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
 	// 启用协议层
@@ -108,11 +108,6 @@ func (c *Connection) handleTaskStop(msg *uap.Message) {
 	var payload TaskStopPayload
 	json.Unmarshal(msg.Payload, &payload)
 	log.Printf("[INFO] stop deploy task: session=%s (deploy not interruptible)", payload.SessionID)
-}
-
-// handleToolCallMsg 处理工具调用（包装器）
-func (c *Connection) handleToolCallMsg(msg *uap.Message) {
-	go c.handleToolCall(msg)
 }
 
 // handleError 处理错误消息

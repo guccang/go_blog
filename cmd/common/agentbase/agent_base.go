@@ -50,6 +50,11 @@ type AgentBase struct {
 	handlers  map[string]MessageHandler
 	handlerMu sync.RWMutex
 
+	// tool_call 并发控制
+	toolCallHandler MessageHandler   // agent 注册的 tool_call 处理函数
+	toolSem         chan struct{}     // 信号量，控制最大并发
+	toolWg          sync.WaitGroup   // 等待全部完成（drain 用）
+
 	// 协议层（可选）
 	protocolLayer *ProtocolLayer
 
@@ -131,6 +136,18 @@ func (ab *AgentBase) RegisterHandler(msgType string, handler MessageHandler) {
 	ab.handlers[msgType] = handler
 }
 
+// RegisterToolCallHandler 注册 tool_call 处理函数（AgentBase 管理并发）
+// handler 无需自行 go，AgentBase 会自动 goroutine + 信号量控制并发
+func (ab *AgentBase) RegisterToolCallHandler(handler MessageHandler) {
+	ab.toolCallHandler = handler
+	capacity := ab.Capacity
+	if capacity <= 0 {
+		capacity = 5
+	}
+	ab.toolSem = make(chan struct{}, capacity)
+	log.Printf("[AgentBase] tool_call 并发控制: max_concurrent=%d", capacity)
+}
+
 // dispatch 消息分发（内部使用）
 func (ab *AgentBase) dispatch(msg *uap.Message) {
 	// ctrl_* 前缀消息始终处理（不受状态限制）
@@ -172,6 +189,18 @@ func (ab *AgentBase) dispatch(msg *uap.Message) {
 			Success:   false,
 			Error:     "agent is shutting down",
 		})
+		return
+	}
+
+	// tool_call 走并发控制（信号量限流）
+	if msg.Type == uap.MsgToolCall && ab.toolCallHandler != nil {
+		ab.toolWg.Add(1)
+		go func() {
+			defer ab.toolWg.Done()
+			ab.toolSem <- struct{}{}
+			defer func() { <-ab.toolSem }()
+			ab.toolCallHandler(msg)
+		}()
 		return
 	}
 
@@ -338,6 +367,13 @@ func (ab *AgentBase) executeShutdown(reason string, timeoutSec int, force bool) 
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
+		// toolWg 异步等待通道
+		toolDone := make(chan struct{})
+		go func() {
+			ab.toolWg.Wait()
+			close(toolDone)
+		}()
+
 		for {
 			select {
 			case <-deadline:
@@ -353,6 +389,12 @@ func (ab *AgentBase) executeShutdown(reason string, timeoutSec int, force bool) 
 				activeTasks := 0
 				if ab.ActiveTaskCounter != nil {
 					activeTasks = ab.ActiveTaskCounter()
+				}
+				select {
+				case <-toolDone:
+					// tool_call 全部完成
+				default:
+					activeTasks++ // 还有 tool_call 未完成
 				}
 				if activeTasks == 0 {
 					log.Printf("[AgentBase] all tasks drained, stopping gracefully")

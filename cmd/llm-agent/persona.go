@@ -125,7 +125,7 @@ func (p *PersonaProfile) BuildSystemPrompt() string {
 
 	// 未设置时追加提醒
 	if !p.IsConfigured() {
-		sb.WriteString("\n【系统提示】你的人设尚未个性化。请在首次回复时友好地提醒用户，可以发送人设信息来定制你的形象。格式示例：\n名字:小悦 年龄:22 性别:女 性格:活泼开朗 称呼:主人\n")
+		sb.WriteString("\n【系统提示】你的人设尚未个性化。请在首次回复时友好地提醒用户，可以发送人设信息来定制你的形象。格式示例：\n名字:小悦 年龄:22 性别:女 性格:活泼开朗 称呼:主人\n当用户提供了人设信息后，你必须立即调用 set_persona 工具保存，不要只是口头确认。\n")
 	}
 
 	return sb.String()
@@ -280,12 +280,12 @@ func (p *PersonaProfile) SaveToFile() error {
 	return nil
 }
 
-// setPersonaTool 虚拟工具定义（人设未设置时注入到 LLM 工具列表）
+// setPersonaTool 虚拟工具定义（始终注入，由 LLM 判断是否调用）
 var setPersonaTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "set_persona",
-		Description: "设置助手的人设信息。当用户提供了助手名字、年龄、性别、性格、称呼等人设信息时，调用此工具保存。",
+		Description: "设置或修改助手的人设信息。当用户要求设定、修改人设（名字、年龄、性别、性格、称呼等）时，调用此工具保存。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

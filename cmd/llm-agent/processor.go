@@ -417,41 +417,31 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// 发送初始工具数量信息（分类展示）
 	if !ctx.NoTools && len(tools) > 0 {
-		var virtualNames []string  // 虚拟工具：同步本地执行，无超时（set_persona, list_providers 等）
-		var builtinNames []string  // 内置工具：本地执行，有超时（Bash）
-		var remoteNames  []string  // 远程工具：通过 UAP 发送到远程 agent 执行
+		var localNames  []string // 本地工具：本进程内执行
+		var remoteNames []string // 远程工具：通过 UAP 发送到远程 agent 执行
 
 		for _, t := range tools {
 			name := t.Function.Name
-			if isVirtualTool(name) || name == "plan_and_execute" {
-				virtualNames = append(virtualNames, name)
+			canonical := b.resolveToolName(name)
+			// 远程工具：canonical 包含 "." 且不以本 agent 前缀开头
+			if strings.Contains(canonical, ".") && !strings.HasPrefix(canonical, b.cfg.AgentID+".") {
+				remoteNames = append(remoteNames, canonical)
 			} else {
-				canonical := b.resolveToolName(name)
-				// 判断是否为内置工具（本 agent 前缀）
-				if strings.HasPrefix(canonical, b.cfg.AgentID+".") {
-					builtinNames = append(builtinNames, name)
-				} else {
-					remoteNames = append(remoteNames, canonical)
-				}
+				localNames = append(localNames, name)
 			}
 		}
 
 		var parts []string
-		parts = append(parts, fmt.Sprintf("虚拟工具: %d", len(virtualNames)))
-		if len(builtinNames) > 0 {
-			parts = append(parts, fmt.Sprintf("内置工具: %d [%s]", len(builtinNames), strings.Join(builtinNames, ", ")))
-		} else {
-			parts = append(parts, "内置工具: 0")
-		}
+		parts = append(parts, fmt.Sprintf("本地工具: %d", len(localNames)))
 		if len(remoteNames) > 0 {
 			parts = append(parts, fmt.Sprintf("远程工具: %d [%s]", len(remoteNames), strings.Join(remoteNames, ", ")))
 		} else {
 			parts = append(parts, "远程工具: 0")
 		}
 
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具] %s\n虚拟: %s",
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具] %s\n本地: %s",
 			len(tools), strings.Join(parts, " | "),
-			strings.Join(virtualNames, ", ")))
+			strings.Join(localNames, ", ")))
 	}
 
 	// 4. LLM 循环
@@ -732,27 +722,6 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				b.catalogMu.RLock()
 				handler, hasHandler = b.toolHandlers[originalName]
 				b.catalogMu.RUnlock()
-			}
-
-			// 内置虚拟工具（set_persona, set_rule, execute_skill）直接调用 handler，无需心跳
-			if hasHandler && isVirtualTool(originalName) {
-				callCtx := ctx.Ctx
-				if callCtx == nil {
-					callCtx = context.Background()
-				}
-				tcResult, _ := handler(callCtx, json.RawMessage(tc.Function.Arguments), ctx.Sink)
-				result := ""
-				if tcResult != nil {
-					result = tcResult.Result
-				}
-				toolMsg := Message{
-					Role:       "tool",
-					Content:    result,
-					ToolCallID: tc.ID,
-				}
-				rootSession.AppendMessage(toolMsg)
-				messages = append(messages, toolMsg)
-				continue
 			}
 
 			// ExecuteCode 特殊展示：提取 description + code

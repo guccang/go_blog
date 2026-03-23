@@ -57,7 +57,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 	c.RegisterHandler(MsgFileRead, c.handleFileRead)
 	c.RegisterHandler(MsgTreeRead, c.handleTreeRead)
 	c.RegisterHandler(MsgProjectCreate, c.handleProjectCreate)
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgNotify, c.handleNotify)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
@@ -117,11 +117,6 @@ func (c *Connection) handleProjectCreate(msg *uap.Message) {
 	var payload ProjectCreatePayload
 	json.Unmarshal(msg.Payload, &payload)
 	go c.agent.HandleProjectCreate(c, &payload)
-}
-
-// handleToolCallMsg 处理工具调用（包装器）
-func (c *Connection) handleToolCallMsg(msg *uap.Message) {
-	go c.handleToolCall(msg)
 }
 
 // handleNotify 处理通知消息

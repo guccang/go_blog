@@ -59,7 +59,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	c.orch = NewOrchestrator(c)
 
 	// 注册消息处理器
-	c.RegisterHandler(uap.MsgToolCall, c.handleToolCallMsg)
+	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgToolResult, c.handleToolResult)
 	c.RegisterHandler(uap.MsgTaskComplete, c.handleTaskComplete)
 	c.RegisterHandler(uap.MsgError, c.handleError)
@@ -135,10 +135,6 @@ func buildEnvToolDefs() []uap.ToolDef {
 }
 
 // ========================= 消息处理 =========================
-
-func (c *Connection) handleToolCallMsg(msg *uap.Message) {
-	go c.handleToolCall(msg)
-}
 
 func (c *Connection) handleToolCall(msg *uap.Message) {
 	atomic.AddInt32(&c.activeCount, 1)

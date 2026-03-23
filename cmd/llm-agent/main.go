@@ -42,8 +42,12 @@ func main() {
 	// 加载配置
 	cfg, err := LoadConfig(*cfgPath)
 	if err != nil {
-		log.Printf("[LLM-MCP] config file not found (%s), using defaults", *cfgPath)
-		cfg = DefaultConfig()
+		if os.IsNotExist(err) {
+			log.Printf("[LLM-MCP] config file not found (%s), using defaults", *cfgPath)
+			cfg = DefaultConfig()
+		} else {
+			log.Fatalf("[LLM-MCP] config load failed (%s): %v", *cfgPath, err)
+		}
 	}
 
 	log.Printf("[LLM-MCP] starting agent_id=%s, gateway=%s", cfg.AgentID, cfg.GatewayURL)

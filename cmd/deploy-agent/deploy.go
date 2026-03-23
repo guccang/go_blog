@@ -76,7 +76,7 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	if targetFilter != "" {
 		targets = nil
 		for _, t := range d.proj.Targets {
-			if t.Name == targetFilter || t.Host == targetFilter {
+			if t.Name == targetFilter || t.Host == targetFilter || strings.HasPrefix(t.Name, targetFilter+".") {
 				targets = append(targets, t)
 			}
 		}
