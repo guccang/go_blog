@@ -180,20 +180,22 @@ func (o *Orchestrator) fallbackCooldown() time.Duration {
 
 // sendLLM 带降级链的同步 LLM 请求
 func (o *Orchestrator) sendLLM(messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	cfg := o.bridge.activeLLM.Get()
 	if len(o.cfg.Fallbacks) == 0 {
-		return SendLLMRequest(&o.cfg.LLM, messages, tools)
+		return SendLLMRequest(&cfg, messages, tools)
 	}
-	return SendLLMRequestWithFallback(&o.cfg.LLM, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools)
+	return SendLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools)
 }
 
 // sendLLMCtx 带降级链 + context 的同步 LLM 请求
 func (o *Orchestrator) sendLLMCtx(ctx context.Context, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	cfg := o.bridge.activeLLM.Get()
 	if len(o.cfg.Fallbacks) == 0 {
-		return SendLLMRequestCtx(ctx, &o.cfg.LLM, messages, tools)
+		return SendLLMRequestCtx(ctx, &cfg, messages, tools)
 	}
 	// 降级链中逐个尝试，每个都带 context
 	candidates := make([]*LLMConfig, 0, 1+len(o.cfg.Fallbacks))
-	candidates = append(candidates, &o.cfg.LLM)
+	candidates = append(candidates, &cfg)
 	for i := range o.cfg.Fallbacks {
 		candidates = append(candidates, &o.cfg.Fallbacks[i])
 	}
@@ -218,10 +220,11 @@ func (o *Orchestrator) sendLLMCtx(ctx context.Context, messages []Message, tools
 
 // sendStreamingLLM 带降级链的流式 LLM 请求
 func (o *Orchestrator) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	cfg := o.bridge.activeLLM.Get()
 	if len(o.cfg.Fallbacks) == 0 {
-		return SendStreamingLLMRequest(&o.cfg.LLM, messages, tools, onChunk)
+		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk)
 	}
-	return SendStreamingLLMRequestWithFallback(&o.cfg.LLM, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk)
+	return SendStreamingLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk)
 }
 
 // ========================= 事件驱动 DAG 调度器 =========================
@@ -583,8 +586,9 @@ func (o *Orchestrator) Execute(
 				}
 				completedResultsMu.Unlock()
 
+			revCfg := o.bridge.activeLLM.Get()
 				revResult, err := EvaluateAndRevisePlan(
-					&o.cfg.LLM, rootSession.Title, plan, crCopy, remaining, tools,
+					&revCfg, rootSession.Title, plan, crCopy, remaining, tools,
 					rootSession.Account, o.cfg.Fallbacks, o.fallbackCooldown(),
 				)
 				lastRevisionCheck = completedCount
@@ -701,7 +705,7 @@ func (o *Orchestrator) executeSubTask(
 	systemContent.WriteString("\n\n")
 	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
 	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n", time.Now().Format("2006-01-02")))
-	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n\n", o.cfg.LLM.MaxTokens))
+	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n\n", o.bridge.activeLLM.Get().MaxTokens))
 
 	// 注入 agent 能力描述（可用模型/编码工具），让子任务 LLM 知道工具参数的合法值
 	agentBlock := o.bridge.getAgentDescriptionBlock()
@@ -1085,7 +1089,8 @@ func (o *Orchestrator) handleSubTaskFailure(
 ) *FailureDecision {
 	sendEvent("failure_decision", fmt.Sprintf("子任务 [%s] 失败，正在决策...", subtask.ID))
 
-	decision, err := MakeFailureDecision(&o.cfg.LLM, *subtask, errorMsg, completedResults, o.cfg.Fallbacks, o.fallbackCooldown())
+	failCfg := o.bridge.activeLLM.Get()
+	decision, err := MakeFailureDecision(&failCfg, *subtask, errorMsg, completedResults, o.cfg.Fallbacks, o.fallbackCooldown())
 	if err != nil {
 		decision = &FailureDecision{
 			SubTaskID: subtask.ID,

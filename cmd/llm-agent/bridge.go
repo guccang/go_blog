@@ -42,6 +42,7 @@ type AgentInfo struct {
 	ID               string
 	Name             string
 	Description      string
+	DetailDescription string            // AGENT.md 全文（来自 meta.agent_description）
 	ToolNames        []string
 	HostPlatform     string            // 运行平台（macOS/Linux/Windows）
 	HostIP           string            // 主机 IP 地址
@@ -96,6 +97,9 @@ type Bridge struct {
 
 	// 来源渠道 LLM 配置
 	sourceLLMs map[string]*SourceLLMConfig // source → config
+
+	// 活跃 LLM 配置（运行时可切换）
+	activeLLM *ActiveLLMState
 
 	// 记忆系统
 	memoryMgr       *MemoryManager
@@ -182,6 +186,7 @@ func NewBridge(cfg *Config) *Bridge {
 		claudeSinks:       make(map[string]*claudeStreamSink),
 		sessionMgr:        NewChatSessionManager(timeout, maxMessages, maxTurns, chatSessionDir),
 		sourceLLMs:        sourceLLMs,
+		activeLLM:         NewActiveLLMState(cfg.LLM),
 		activeTasks:       make(map[string]string),
 		taskQueue:         make(chan *queuedTask, cfg.TaskQueueSize),
 		queueDone:         make(chan struct{}),
@@ -294,18 +299,20 @@ func (b *Bridge) fallbackCooldown() time.Duration {
 
 // sendLLM 带降级链的同步 LLM 请求
 func (b *Bridge) sendLLM(messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+	cfg := b.activeLLM.Get()
 	if len(b.cfg.Fallbacks) == 0 {
-		return SendLLMRequest(&b.cfg.LLM, messages, tools)
+		return SendLLMRequest(&cfg, messages, tools)
 	}
-	return SendLLMRequestWithFallback(&b.cfg.LLM, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools)
+	return SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools)
 }
 
 // sendStreamingLLM 带降级链的流式 LLM 请求
 func (b *Bridge) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+	cfg := b.activeLLM.Get()
 	if len(b.cfg.Fallbacks) == 0 {
-		return SendStreamingLLMRequest(&b.cfg.LLM, messages, tools, onChunk)
+		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk)
 	}
-	return SendStreamingLLMRequestWithFallback(&b.cfg.LLM, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
+	return SendStreamingLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
 }
 
 // GetLLMConfigForSource 返回指定来源渠道的 LLM 配置（primary + fallbacks）
@@ -314,7 +321,8 @@ func (b *Bridge) GetLLMConfigForSource(source string) (*LLMConfig, []LLMConfig) 
 	if sc, ok := b.sourceLLMs[source]; ok {
 		return &sc.LLM, sc.Fallbacks
 	}
-	return &b.cfg.LLM, b.cfg.Fallbacks
+	cfg := b.activeLLM.Get()
+	return &cfg, b.cfg.Fallbacks
 }
 
 // sendLLMWithConfig 使用指定配置的同步 LLM 请求
@@ -655,7 +663,11 @@ func (b *Bridge) DiscoverTools() error {
 	}
 
 	b.catalogMu.Lock()
-	prevCount := len(b.llmTools)
+	// 比较工具集合是否真正变化（而非仅数量波动）
+	prevNames := make(map[string]struct{}, len(b.llmTools))
+	for _, t := range b.llmTools {
+		prevNames[t.Function.Name] = struct{}{}
+	}
 	b.toolCatalog = catalog
 	b.llmTools = llmTools
 	b.agentTools = agentToolsMap
@@ -667,8 +679,18 @@ func (b *Bridge) DiscoverTools() error {
 
 	b.catalogMu.Unlock()
 
-	if len(llmTools) != prevCount {
-		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), prevCount, toolNames)
+	// 仅当工具集合真正变动时才打印日志
+	toolsChanged := len(toolNames) != len(prevNames)
+	if !toolsChanged {
+		for _, name := range toolNames {
+			if _, ok := prevNames[name]; !ok {
+				toolsChanged = true
+				break
+			}
+		}
+	}
+	if toolsChanged {
+		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), len(prevNames), toolNames)
 	}
 
 	// 应用工具权限策略
@@ -822,6 +844,9 @@ func (b *Bridge) DiscoverAgents() error {
 		}
 		// 从 meta 提取动态能力信息
 		if a.Meta != nil {
+			if desc, ok := a.Meta["agent_description"].(string); ok {
+				info.DetailDescription = desc
+			}
 			info.Models = parseStringSlice(a.Meta["models"])
 			info.ClaudeCodeModels = parseStringSlice(a.Meta["claudecode_models"])
 			info.OpenCodeModels = parseStringSlice(a.Meta["opencode_models"])
@@ -886,6 +911,31 @@ func parseStringSlice(v any) []string {
 	}
 	if len(result) == 0 {
 		return nil
+	}
+	return result
+}
+
+// truncateToFirstParagraph 截取首段文本（到第一个空行或 maxLen 为止）
+func truncateToFirstParagraph(text string, maxLen int) string {
+	// 按空行分段
+	lines := strings.Split(text, "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" && sb.Len() > 0 {
+			break // 遇到空行，首段结束
+		}
+		if sb.Len() > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(trimmed)
+		if sb.Len() >= maxLen {
+			break
+		}
+	}
+	result := sb.String()
+	if len(result) > maxLen {
+		result = result[:maxLen] + "..."
 	}
 	return result
 }
@@ -1177,6 +1227,9 @@ func (b *Bridge) buildAgentDirectory() string {
 	for id, info := range b.agentInfo {
 		toolCount := len(b.agentTools[id])
 		desc := info.Description
+		if info.DetailDescription != "" {
+			desc = truncateToFirstParagraph(info.DetailDescription, 200)
+		}
 		if desc == "" {
 			desc = info.Name
 		}
@@ -1354,6 +1407,10 @@ func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if b.memoryMgr != nil {
 		tools = append(tools, setRuleTool)
 	}
+	// 条件注入模型切换工具
+	if b.hasMultipleModels() {
+		tools = append(tools, listProvidersTool, getCurrentModelTool, switchProviderTool, switchModelTool)
+	}
 	return tools
 }
 
@@ -1367,6 +1424,7 @@ var longRunningTools = map[string]bool{
 	"AcpSendMessage":      true,
 	"AcpAnalyzeProject":   true,
 	"DeployProject":       true,
+	"DeployAdhoc":         true,
 	"DeployPipeline":      true,
 	"ExecuteCode":         true,
 }

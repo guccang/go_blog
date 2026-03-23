@@ -46,7 +46,7 @@ type modelCooldown struct {
 var globalCooldown = &modelCooldown{cooldowns: make(map[string]time.Time)}
 
 func cooldownKey(cfg *LLMConfig) string {
-	return cfg.BaseURL + "|" + cfg.Model
+	return cfg.BaseURL + "|" + cfg.EffectiveModel()
 }
 
 func (mc *modelCooldown) isCoolingDown(cfg *LLMConfig) bool {
@@ -60,7 +60,7 @@ func (mc *modelCooldown) setCooldown(cfg *LLMConfig, d time.Duration) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 	mc.cooldowns[cooldownKey(cfg)] = time.Now().Add(d)
-	log.Printf("[LLM-Fallback] 模型 %s 进入冷却 %v", cfg.Model, d)
+	log.Printf("[LLM-Fallback] 模型 %s 进入冷却 %v", cfg.EffectiveModel(), d)
 }
 
 // SendLLMRequestWithFallback 带降级链的同步 LLM 请求
@@ -74,7 +74,7 @@ func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, coold
 	var lastErr error
 	for _, cfg := range candidates {
 		if globalCooldown.isCoolingDown(cfg) {
-			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.Model)
+			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.EffectiveModel())
 			continue
 		}
 		text, toolCalls, err := SendLLMRequest(cfg, messages, tools)
@@ -83,7 +83,7 @@ func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, coold
 		}
 		lastErr = err
 		globalCooldown.setCooldown(cfg, cooldown)
-		log.Printf("[LLM-Fallback] 模型 %s 失败: %v, 尝试下一个", cfg.Model, err)
+		log.Printf("[LLM-Fallback] 模型 %s 失败: %v, 尝试下一个", cfg.EffectiveModel(), err)
 	}
 	return "", nil, fmt.Errorf("all models failed, last error: %v", lastErr)
 }
@@ -99,7 +99,7 @@ func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConf
 	var lastErr error
 	for _, cfg := range candidates {
 		if globalCooldown.isCoolingDown(cfg) {
-			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.Model)
+			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.EffectiveModel())
 			continue
 		}
 		text, toolCalls, err := SendStreamingLLMRequest(cfg, messages, tools, onChunk)
@@ -108,7 +108,7 @@ func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConf
 		}
 		lastErr = err
 		globalCooldown.setCooldown(cfg, cooldown)
-		log.Printf("[LLM-Fallback] 流式模型 %s 失败: %v, 尝试下一个", cfg.Model, err)
+		log.Printf("[LLM-Fallback] 流式模型 %s 失败: %v, 尝试下一个", cfg.EffectiveModel(), err)
 	}
 	return "", nil, fmt.Errorf("all models failed (streaming), last error: %v", lastErr)
 }
@@ -208,7 +208,7 @@ type llmError struct {
 // logLLMContext 打印 LLM 调用时的完整上下文（消息 + 工具列表）
 func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTool) {
 	log.Printf("[LLM-Context][%s] ========== LLM 调用上下文 ==========", tag)
-	log.Printf("[LLM-Context][%s] model=%s max_tokens=%d temperature=%.2f", tag, cfg.Model, cfg.MaxTokens, cfg.Temperature)
+	log.Printf("[LLM-Context][%s] model=%s max_tokens=%d temperature=%.2f", tag, cfg.EffectiveModel(), cfg.MaxTokens, cfg.Temperature)
 	log.Printf("[LLM-Context][%s] messages 数量: %d", tag, len(messages))
 
 	for i, m := range messages {
@@ -283,7 +283,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
 	}
 	log.Printf("[LLM] → 同步请求 model=%s messages=[%s] tools=%d",
-		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+		cfg.EffectiveModel(), strings.Join(msgSummary, ","), len(tools))
 
 	// 打印完整上下文
 	logLLMContext("sync", cfg, messages, tools)
@@ -291,7 +291,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	reqStart := time.Now()
 
 	reqBody := llmRequest{
-		Model:       cfg.Model,
+		Model:       cfg.EffectiveModel(),
 		Messages:    messages,
 		MaxTokens:   cfg.MaxTokens,
 		Temperature: cfg.Temperature,
@@ -347,7 +347,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	duration := time.Since(reqStart)
 
 	// 记录 token 用量
-	recordTokenUsage(llmResp.Usage, cfg.Model)
+	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel())
 
 	// 构建工具调用摘要
 	var tcNames []string
@@ -381,14 +381,14 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
 	}
 	log.Printf("[LLM] → 同步请求(ctx) model=%s messages=[%s] tools=%d",
-		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+		cfg.EffectiveModel(), strings.Join(msgSummary, ","), len(tools))
 
 	logLLMContext("sync-ctx", cfg, messages, tools)
 
 	reqStart := time.Now()
 
 	reqBody := llmRequest{
-		Model:       cfg.Model,
+		Model:       cfg.EffectiveModel(),
 		Messages:    messages,
 		MaxTokens:   cfg.MaxTokens,
 		Temperature: cfg.Temperature,
@@ -444,7 +444,7 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 	duration := time.Since(reqStart)
 
 	// 记录 token 用量
-	recordTokenUsage(llmResp.Usage, cfg.Model)
+	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel())
 
 	var tcNames []string
 	for _, tc := range choice.Message.ToolCalls {
@@ -506,7 +506,7 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 		msgSummary = append(msgSummary, fmt.Sprintf("%s(%d)", m.Role, len(m.Content)))
 	}
 	log.Printf("[LLM] → 流式请求 model=%s messages=[%s] tools=%d",
-		cfg.Model, strings.Join(msgSummary, ","), len(tools))
+		cfg.EffectiveModel(), strings.Join(msgSummary, ","), len(tools))
 
 	// 打印完整上下文
 	logLLMContext("stream", cfg, messages, tools)
@@ -521,7 +521,7 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 		Temperature float64   `json:"temperature,omitempty"`
 		Stream      bool      `json:"stream"`
 	}{
-		Model:       cfg.Model,
+		Model:       cfg.EffectiveModel(),
 		Messages:    messages,
 		MaxTokens:   cfg.MaxTokens,
 		Temperature: cfg.Temperature,
@@ -567,7 +567,7 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	}
 
 	// 记录 token 用量
-	recordTokenUsage(streamUsage, cfg.Model)
+	recordTokenUsage(streamUsage, cfg.EffectiveModel())
 
 	var tcNames []string
 	for _, tc := range toolCalls {

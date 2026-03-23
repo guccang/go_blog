@@ -41,6 +41,10 @@ const (
 	MsgCtrlShutdownAck  = "ctrl_shutdown_ack"
 	MsgCtrlStatus       = "ctrl_status"
 	MsgCtrlStatusReport = "ctrl_status_report"
+
+	// Describe 协议（查询 agent 能力）
+	MsgDescribe       = "describe"        // 查询 agent 能力
+	MsgDescribeResult = "describe_result"  // 能力描述回复
 )
 
 // ========================= 消息信封 =========================
@@ -258,4 +262,16 @@ type CtrlStatusReportPayload struct {
 	Capacity    int            `json:"capacity"`
 	Uptime      int64          `json:"uptime_sec"`
 	Meta        map[string]any `json:"meta,omitempty"`
+}
+
+// ========================= Describe 协议载荷 =========================
+
+// DescribeResultPayload agent 能力描述
+type DescribeResultPayload struct {
+	AgentID     string         `json:"agent_id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`      // 简述（AGENT.md 首行）
+	Detail      string         `json:"detail,omitempty"` // AGENT.md 全文
+	Tools       []ToolDef      `json:"tools"`            // 工具列表（复用 ToolDef）
+	Meta        map[string]any `json:"meta,omitempty"`   // 扩展字段
 }

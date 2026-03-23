@@ -526,19 +526,20 @@ func scanPipelineNames(cfg *DeployConfig) []string {
 	return pipCfg.Names()
 }
 
+// buildSSHHostDesc 动态生成 ssh_host 参数描述
+func buildSSHHostDesc(cfg *DeployConfig) string {
+	if len(cfg.SSHHosts) > 0 {
+		return fmt.Sprintf("SSH 目标 user@host（可用服务器: %s）", strings.Join(cfg.SSHHosts, ", "))
+	}
+	return "SSH 目标 user@host"
+}
+
 // buildDeployToolDefs 构建 deploy-agent 的 UAP 工具定义列表
 func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.ToolDef {
-	// 动态生成 ssh_host 参数描述，嵌入真实可用服务器列表
-	sshHostDesc := "SSH 目标，提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件"
-	if len(cfg.SSHHosts) > 0 {
-		sshHostDesc = fmt.Sprintf("SSH 目标（可用服务器: %s），提供此参数时进入 adhoc 一次性部署模式，无需预配置 .conf 文件",
-			strings.Join(cfg.SSHHosts, ", "))
-	}
-
 	defs := []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
-			Description: "列出所有可部署项目（含 workspace 发现的未配置项目）。configured=true 的项目可直接按名称部署；configured=false 的项目需要通过 adhoc 参数（ssh_host 等）部署",
+			Description: "列出所有可部署项目。configured=true 的项目使用 DeployProject 部署；configured=false 的项目使用 DeployAdhoc 部署",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
@@ -567,22 +568,34 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployProject",
-			Description: "部署指定项目到目标服务器。支持两种模式：1) 已配置项目：直接按项目名部署；2) 未配置项目：提供 project_dir 参数，自动生成部署配置后部署；3) Adhoc 一次性部署：提供 ssh_host 参数，无需预配置，直接构建并部署到指定服务器",
+			Description: "部署已配置的项目。使用 settings 中预配置的构建脚本、部署路径和发布脚本。部署前先用 DeployListProjects 确认项目存在且 configured=true。未配置的项目请使用 DeployAdhoc",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project":       map[string]interface{}{"type": "string", "description": "项目名称（Go 项目的二进制名，即 go.mod module 路径最后一段）"},
-					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标（如 local, ssh-prod），不填则使用默认"},
-					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
-					"project_dir":   map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（项目未配置时必填，会自动检测 go.mod 并生成部署配置文件）"},
-					"ssh_host":      map[string]interface{}{"type": "string", "description": sshHostDesc},
-					"ssh_port":      map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22，仅 adhoc 模式）"},
-					"remote_dir":    map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>，仅 adhoc 模式）"},
-					"start_args":    map[string]interface{}{"type": "string", "description": "启动参数（仅 adhoc 模式）"},
-					"verify_url":    map[string]interface{}{"type": "string", "description": "部署后健康检查 URL（仅 adhoc 模式）。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<start_args中的端口>/，示例：ssh_host=root@1.2.3.4 start_args=-port=8080 → http://1.2.3.4:8080/"},
+					"project":       map[string]interface{}{"type": "string", "description": "项目名称（必须是 DeployListProjects 中 configured=true 的项目）"},
+					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标名称（如 local, ssh-prod），来自 DeployListProjects 返回的 targets 列表，不填则使用默认目标"},
 					"deploy_mode":   map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
+					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
 				},
 				"required": []string{"project"},
+			}),
+		},
+		{
+			Name:        "DeployAdhoc",
+			Description: "一次性部署未配置的项目到指定服务器。需要提供项目源码目录和 SSH 目标，无需预配置 settings 文件。如果项目已在 settings 中配置（configured=true），应使用 DeployProject 而非此接口",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project":     map[string]interface{}{"type": "string", "description": "项目名称（Go 项目的二进制名，即 go.mod module 路径最后一段）"},
+					"project_dir": map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（包含 go.mod 的目录）"},
+					"ssh_host":    map[string]interface{}{"type": "string", "description": buildSSHHostDesc(cfg)},
+					"ssh_port":    map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22）"},
+					"remote_dir":  map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>）"},
+					"start_args":  map[string]interface{}{"type": "string", "description": "启动参数"},
+					"verify_url":  map[string]interface{}{"type": "string", "description": "部署后健康检查 URL。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<start_args中的端口>/，示例：ssh_host=root@1.2.3.4 start_args=-port=8080 → http://1.2.3.4:8080/"},
+					"deploy_mode": map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
+				},
+				"required": []string{"project", "project_dir", "ssh_host"},
 			}),
 		},
 		{
@@ -657,6 +670,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListProjects()
 	case "DeployProject":
 		result = c.toolDeployProject(args, sendProgress)
+	case "DeployAdhoc":
+		result = c.toolDeployAdhoc(args, sendProgress)
 	case "DeployListPipelines":
 		result = c.toolListPipelines()
 	case "DeployPipeline":
@@ -723,54 +738,13 @@ func (c *Connection) toolListProjects() string {
 	return tr.Result
 }
 
-// toolDeployProject 部署指定项目
+// toolDeployProject 部署已配置的项目（使用 settings 中的预配置）
 func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress func(string)) string {
 	projectName, _ := args["project"].(string)
 	deployTarget, _ := args["deploy_target"].(string)
 	packOnly, _ := args["pack_only"].(bool)
 	projectDir, _ := args["project_dir"].(string)
-	sshHost, _ := args["ssh_host"].(string)
 	deployModeStr, _ := args["deploy_mode"].(string)
-
-	// adhoc 模式：ssh_host 存在时直接走一次性部署
-	if sshHost != "" {
-		if projectDir == "" {
-			return `{"success":false,"error":"adhoc 模式需要 project_dir 参数"}`
-		}
-		sshPort := 22
-		if p, ok := args["ssh_port"].(float64); ok && p > 0 {
-			sshPort = int(p)
-		}
-		remoteDir, _ := args["remote_dir"].(string)
-		startArgs, _ := args["start_args"].(string)
-		verifyURL, _ := args["verify_url"].(string)
-
-		adhoc := &AdhocConfig{
-			ProjectDir: projectDir,
-			SSHHost:    sshHost,
-			SSHPort:    sshPort,
-			RemoteDir:  remoteDir,
-			StartArgs:  startArgs,
-			VerifyURL:  verifyURL,
-		}
-
-		deployCfg := *c.cfg
-		sendProgress(fmt.Sprintf("🚀 开始 adhoc 部署项目 [%s]...", projectName))
-		err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
-			prefix := "📦 "
-			if level == "error" {
-				prefix = "⚠️ "
-			}
-			sendProgress(prefix + message)
-		})
-		if err != nil {
-			sendProgress(fmt.Sprintf("❌ adhoc 部署失败: %s", err.Error()))
-			return fmt.Sprintf(`{"success":false,"error":"adhoc 部署失败: %s"}`, err.Error())
-		}
-		sendProgress(fmt.Sprintf("✅ adhoc 部署项目 %s 完成", projectName))
-		tr := uap.BuildToolResult("", nil, fmt.Sprintf("adhoc 部署项目 %s 完成", projectName))
-		return tr.Result
-	}
 
 	proj, err := c.resolveProject(projectName)
 	if err != nil && projectDir != "" {
@@ -792,7 +766,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 		}
 		log.Printf("[INFO] project %q auto-initialized successfully", projectName)
 	} else if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		return fmt.Sprintf(`{"success":false,"error":"%s。如果是未配置项目，请使用 DeployAdhoc 接口"}`, err.Error())
 	}
 
 	// 浅拷贝 cfg
@@ -822,6 +796,54 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 
 	sendProgress(fmt.Sprintf("✅ %s项目 %s 完成", action, proj.Name))
 	tr := uap.BuildToolResult("", nil, fmt.Sprintf("%s项目 %s 完成", action, proj.Name))
+	return tr.Result
+}
+
+// toolDeployAdhoc 一次性部署未配置的项目到指定服务器
+func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress func(string)) string {
+	projectName, _ := args["project"].(string)
+	projectDir, _ := args["project_dir"].(string)
+	sshHost, _ := args["ssh_host"].(string)
+
+	if projectDir == "" {
+		return `{"success":false,"error":"project_dir 参数不能为空"}`
+	}
+	if sshHost == "" {
+		return `{"success":false,"error":"ssh_host 参数不能为空"}`
+	}
+
+	sshPort := 22
+	if p, ok := args["ssh_port"].(float64); ok && p > 0 {
+		sshPort = int(p)
+	}
+	remoteDir, _ := args["remote_dir"].(string)
+	startArgs, _ := args["start_args"].(string)
+	verifyURL, _ := args["verify_url"].(string)
+
+	adhoc := &AdhocConfig{
+		ProjectDir: projectDir,
+		SSHHost:    sshHost,
+		SSHPort:    sshPort,
+		RemoteDir:  remoteDir,
+		StartArgs:  startArgs,
+		VerifyURL:  verifyURL,
+	}
+
+	deployCfg := *c.cfg
+	sendProgress(fmt.Sprintf("🚀 开始 adhoc 部署项目 [%s]...", projectName))
+	err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
+		prefix := "📦 "
+		if level == "error" {
+			prefix = "⚠️ "
+		}
+		sendProgress(prefix + message)
+	})
+	if err != nil {
+		sendProgress(fmt.Sprintf("❌ adhoc 部署失败: %s", err.Error()))
+		return fmt.Sprintf(`{"success":false,"error":"adhoc 部署失败: %s"}`, err.Error())
+	}
+	sendProgress(fmt.Sprintf("✅ adhoc 部署项目 %s 完成", projectName))
+	tr := uap.BuildToolResult("", nil, fmt.Sprintf("adhoc 部署项目 %s 完成", projectName))
 	return tr.Result
 }
 

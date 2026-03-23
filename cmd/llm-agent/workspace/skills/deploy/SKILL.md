@@ -1,12 +1,19 @@
 ---
 name: deploy
 description: 项目部署技能。当用户需要部署项目、发布上线、执行部署流水线时使用此技能。
-summary: ssh_host 用系统提示中的真实地址，不可编造
-tools: DeployProject,DeployPipeline
+summary: 已配置项目用 DeployProject + deploy_target，未配置项目用 DeployAdhoc
+tools: DeployListProjects,DeployProject,DeployAdhoc,DeployPipeline
 keywords: 部署,deploy,发布,上线
 ---
 
 # 项目部署
+
+## 部署流程（必须遵守）
+
+1. **先调用 DeployListProjects** 查看项目列表和配置状态
+2. 根据 `configured` 字段选择接口：
+   - `configured=true` → 使用 **DeployProject**（只需 project + deploy_target）
+   - `configured=false` → 使用 **DeployAdhoc**（需要 project_dir + ssh_host）
 
 ## 用户参数不可修改（强制规则）
 
@@ -15,22 +22,26 @@ keywords: 部署,deploy,发布,上线
 - 端口被占用、权限不足等冲突 → **直接返回部署失败**并说明原因，不得自动更换端口
 - 地址、域名等参数同理，用户怎么说就怎么用
 
-## ssh_host 参数（关键）
+## DeployProject（已配置项目）
 
-`ssh_host` 参数用于指定部署目标服务器。**必须使用系统提示中"部署目标对应SSH地址"提供的真实地址**，不要使用用户口语中的别名。
+用于部署 settings 中已有配置的项目。配置文件已定义了构建脚本、部署路径、发布脚本等。
 
-例如：用户说"部署到ssh_prod"，系统提示中显示 `ssh-prod → root@114.115.214.86`，则 `ssh_host` 应填 `root@114.115.214.86`。
+**调用示例：**
 
-**禁止**：
-- 直接把用户说的别名（如 `ssh_prod`）作为 `ssh_host` 值传入
-- 用 ExecuteCode/Bash 去探索或查找 SSH 地址
+```json
+{
+  "project": "llm-agent",
+  "deploy_target": "ssh-prod"
+}
+```
 
-## DeployProject 使用
+- `project`：项目名称（来自 DeployListProjects）
+- `deploy_target`：部署目标（来自 DeployListProjects 返回的 targets 列表，如 local, ssh-prod）
+- **不要传** `ssh_host`、`project_dir` 等参数，已配置项目的路径由 settings 管理
 
-三种部署模式：
-- **指定项目名**：直接部署已有项目
-- **指定仓库 URL**：从 Git 仓库拉取并部署
-- **自动检测**：根据编码会话的项目自动部署
+## DeployAdhoc（未配置项目/一次性部署）
+
+用于部署未在 settings 中配置的项目，需要手动指定源码目录和目标服务器。
 
 **调用示例（编码后部署新项目到远程服务器）：**
 
@@ -38,24 +49,12 @@ keywords: 部署,deploy,发布,上线
 {
   "project": "helloworld-web",
   "project_dir": "/path/from/coding/task/result",
-  "ssh_host": "root@114.115.214.86",
-  "port": 8883
+  "ssh_host": "root@114.115.214.86"
 }
 ```
 
 - `project` 和 `project_dir` **必须**从前置编码任务的结果中提取，禁止猜测
 - `ssh_host` **必须**从系统提示的 agent 能力描述中获取真实地址，禁止使用别名
-- `port` 使用用户指定的值，不可修改
-
-## 部署子任务执行规则
-
-**直接调用 DeployProject，禁止用 ExecuteCode 做以下操作：**
-- 探索项目目录结构
-- 查找或验证 SSH 地址
-- 读取/修改源代码文件
-- 验证部署结果（DeployProject 的 verify_url 参数会自动验证）
-
-部署子任务应该只有 1 次 DeployProject 调用，不需要任何前置探索。
 
 ## DeployPipeline 使用
 
@@ -72,11 +71,9 @@ keywords: 部署,deploy,发布,上线
 3. 编译错误 → 通过 CodegenSendMessage 让编码 agent 修复源代码后重新部署
 4. 参数类错误（端口占用等） → 直接报告失败，由用户决定下一步
 
-## verify_url 使用
-
-部署完成后可用 verify_url 参数指定健康检查地址，部署工具会自动请求该 URL 确认服务正常。
-
 ## 注意事项
 
-- DeployProject 是同步工具，调用后阻塞直到完成，不需要额外的"等待部署""检查状态"子任务
+- DeployProject/DeployAdhoc 是同步工具，调用后阻塞直到完成，不需要额外的"等待部署""检查状态"子任务
 - 编码和部署是两个独立步骤，拆解任务时分别作为子任务处理
+- **禁止**用 ExecuteCode 探索项目目录、查找 SSH 地址、读取源代码
+- 部署子任务应简洁：DeployListProjects → DeployProject/DeployAdhoc，通常只需 2 次调用

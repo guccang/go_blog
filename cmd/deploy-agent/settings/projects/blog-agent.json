@@ -39,5 +39,6 @@
     },
     "setup_dirs": [
         "blogs_txt/"
-    ]
+    ],
+    "protect_files": ["workspace/"]
 }

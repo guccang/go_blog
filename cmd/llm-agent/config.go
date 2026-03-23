@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
@@ -17,20 +18,38 @@ type ToolPolicyPipeline struct {
 	BaseTools []string    `json:"base_tools,omitempty"` // 始终保留的基础工具名
 }
 
-// ProviderConfig LLM 服务商配置
-type ProviderConfig struct {
-	BaseURL string `json:"base_url"`
-	APIKey  string `json:"api_key"`
-}
-
-// LLMConfig LLM API 配置
-type LLMConfig struct {
-	Provider    string  `json:"provider,omitempty"` // 引用 providers 注册表
-	APIKey      string  `json:"api_key,omitempty"`
-	BaseURL     string  `json:"base_url,omitempty"`
-	Model       string  `json:"model"`
+// ModelConfig 模型配置（注册在 provider 下）
+type ModelConfig struct {
+	Model       string  `json:"model"`       // 实际模型 ID（如 deepseek-chat）
 	MaxTokens   int     `json:"max_tokens"`
 	Temperature float64 `json:"temperature"`
+}
+
+// ProviderConfig LLM 服务商配置
+type ProviderConfig struct {
+	BaseURL string                 `json:"base_url"`
+	APIKey  string                 `json:"api_key"`
+	Models  map[string]ModelConfig `json:"models"` // key → 模型配置
+}
+
+// LLMConfig LLM API 配置（引用式：provider + model key）
+type LLMConfig struct {
+	Provider    string  `json:"provider"`          // 引用 providers 注册表
+	Model       string  `json:"model"`             // providers[provider].models 中的 key
+	// 以下为解析后填充的运行时字段
+	APIKey      string  `json:"-"`
+	BaseURL     string  `json:"-"`
+	ModelID     string  `json:"-"`                 // 实际模型 ID（如 z-ai/glm-5-turbo）
+	MaxTokens   int     `json:"-"`
+	Temperature float64 `json:"-"`
+}
+
+// EffectiveModel 返回用于 API 请求的实际模型 ID
+func (c *LLMConfig) EffectiveModel() string {
+	if c.ModelID != "" {
+		return c.ModelID
+	}
+	return c.Model
 }
 
 // Config llm-agent 配置
@@ -112,13 +131,14 @@ func DefaultConfig() *Config {
 			"deepseek": {
 				BaseURL: "https://api.deepseek.com/v1",
 				APIKey:  "",
+				Models: map[string]ModelConfig{
+					"chat": {Model: "deepseek-chat", MaxTokens: 8192, Temperature: 0.7},
+				},
 			},
 		},
 		LLM: LLMConfig{
-			Provider:    "deepseek",
-			Model:       "deepseek-chat",
-			MaxTokens:   8192,
-			Temperature: 0.7,
+			Provider: "deepseek",
+			Model:    "chat",
 		},
 		FallbackCooldownSec: 60,
 		MaxPlanRevisions:    3,
@@ -181,40 +201,57 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Pipeline.BaseTools = []string{"ExecuteCode", "Bash"}
 	}
 
-	// 解析 provider 引用，填充 BaseURL/APIKey
-	cfg.ResolveProviders()
+	// 解析 provider 引用，填充运行时字段
+	if err := cfg.ResolveProviders(); err != nil {
+		return nil, fmt.Errorf("resolve providers: %w", err)
+	}
 
 	return cfg, nil
 }
 
-// ResolveProviders 遍历所有 LLMConfig，将 provider 引用解析为 BaseURL + APIKey
-func (c *Config) ResolveProviders() {
+// ResolveProviders 遍历所有 LLMConfig，从 providers[provider].models[model] 解析完整配置
+func (c *Config) ResolveProviders() error {
 	if len(c.Providers) == 0 {
-		return
+		return nil
 	}
-	resolveOne := func(llm *LLMConfig) {
+	resolveOne := func(llm *LLMConfig) error {
 		if llm.Provider == "" {
-			return
+			return nil
 		}
 		p, ok := c.Providers[llm.Provider]
 		if !ok {
-			return
+			return fmt.Errorf("provider %q not found in providers registry", llm.Provider)
 		}
-		if llm.BaseURL == "" {
-			llm.BaseURL = p.BaseURL
+		llm.BaseURL = p.BaseURL
+		llm.APIKey = p.APIKey
+		if llm.Model != "" && p.Models != nil {
+			if mc, ok := p.Models[llm.Model]; ok {
+				llm.ModelID = mc.Model
+				llm.MaxTokens = mc.MaxTokens
+				llm.Temperature = mc.Temperature
+			} else {
+				return fmt.Errorf("model %q not found in provider %q", llm.Model, llm.Provider)
+			}
 		}
-		if llm.APIKey == "" {
-			llm.APIKey = p.APIKey
-		}
+		return nil
 	}
-	resolveOne(&c.LLM)
+	if err := resolveOne(&c.LLM); err != nil {
+		return err
+	}
 	for i := range c.Fallbacks {
-		resolveOne(&c.Fallbacks[i])
+		if err := resolveOne(&c.Fallbacks[i]); err != nil {
+			return err
+		}
 	}
 	for i := range c.SourceLLMs {
-		resolveOne(&c.SourceLLMs[i].LLM)
+		if err := resolveOne(&c.SourceLLMs[i].LLM); err != nil {
+			return err
+		}
 		for j := range c.SourceLLMs[i].Fallbacks {
-			resolveOne(&c.SourceLLMs[i].Fallbacks[j])
+			if err := resolveOne(&c.SourceLLMs[i].Fallbacks[j]); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }

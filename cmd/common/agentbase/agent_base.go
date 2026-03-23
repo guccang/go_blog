@@ -15,15 +15,16 @@ type MessageHandler func(msg *uap.Message)
 
 // Config AgentBase 配置
 type Config struct {
-	ServerURL   string         // Gateway WebSocket URL
-	AgentID     string         // Agent 唯一标识
-	AgentType   string         // Agent 类型
-	AgentName   string         // 人类可读名称
-	Description string         // Agent 能力简述
-	AuthToken   string         // 认证令牌
-	Capacity    int            // 最大并发数
-	Tools       []uap.ToolDef  // 注册的工具列表
-	Meta        map[string]any // 扩展字段
+	ServerURL    string         // Gateway WebSocket URL
+	AgentID      string         // Agent 唯一标识
+	AgentType    string         // Agent 类型
+	AgentName    string         // 人类可读名称
+	Description  string         // Agent 能力简述
+	AuthToken    string         // 认证令牌
+	Capacity     int            // 最大并发数
+	Tools        []uap.ToolDef  // 注册的工具列表
+	Meta         map[string]any // 扩展字段
+	WorkspaceDir string         // workspace 目录路径（为空则不加载）
 }
 
 // AgentBase Agent 基础连接管理
@@ -52,6 +53,9 @@ type AgentBase struct {
 	// 协议层（可选）
 	protocolLayer *ProtocolLayer
 
+	// workspace 自描述信息（可为 nil）
+	workspace *WorkspaceInfo
+
 	// shutdown 内部通道
 	shutdownOnce sync.Once
 	shutdownCh   chan struct{}
@@ -78,6 +82,26 @@ func NewAgentBase(cfg *Config) *AgentBase {
 		shutdownCh: make(chan struct{}),
 	}
 
+	// 加载 workspace 自描述
+	if cfg.WorkspaceDir != "" {
+		ws := LoadWorkspace(cfg.WorkspaceDir)
+		ab.workspace = ws
+
+		// workspace 描述覆盖 Config 硬编码
+		if ws.Summary != "" {
+			client.Description = ws.Summary
+			log.Printf("[AgentBase] 从 AGENT.md 加载描述: %s", ws.Summary)
+		}
+
+		// 注入 Meta 扩展字段
+		if client.Meta == nil {
+			client.Meta = make(map[string]any)
+		}
+		if ws.Detail != "" {
+			client.Meta["agent_description"] = ws.Detail
+		}
+	}
+
 	// 设置 UAP 消息回调
 	client.OnMessage = ab.dispatch
 
@@ -93,6 +117,9 @@ func NewAgentBase(cfg *Config) *AgentBase {
 
 	// 内置注册 ctrl_status 处理器
 	ab.handlers[uap.MsgCtrlStatus] = ab.handleCtrlStatus
+
+	// 内置注册 describe 处理器
+	ab.handlers[uap.MsgDescribe] = ab.handleDescribe
 
 	return ab
 }
@@ -114,6 +141,12 @@ func (ab *AgentBase) dispatch(msg *uap.Message) {
 		if exists {
 			handler(msg)
 		}
+		return
+	}
+
+	// describe 消息始终处理（只读查询，不受 draining 限制）
+	if msg.Type == uap.MsgDescribe {
+		ab.handleDescribe(msg)
 		return
 	}
 
@@ -181,6 +214,26 @@ func (ab *AgentBase) InitiateShutdown(reason string) {
 	ab.executeShutdown(reason, 30, false)
 }
 
+// ========================= 工具管理 API =========================
+
+// GetDescription 获取 agent 简述（优先 workspace，回退注册时的 Description）
+func (ab *AgentBase) GetDescription() string {
+	return ab.Client.Description
+}
+
+// GetDetailDescription 获取 agent 详细描述（AGENT.md 全文，无则返回空）
+func (ab *AgentBase) GetDetailDescription() string {
+	if ab.workspace != nil {
+		return ab.workspace.Detail
+	}
+	return ""
+}
+
+// GetTools 获取注册的工具定义列表（直接返回 Client.Tools）
+func (ab *AgentBase) GetTools() []uap.ToolDef {
+	return ab.Client.Tools
+}
+
 // ========================= 控制协议处理器 =========================
 
 // handleCtrlShutdown 处理 ctrl_shutdown 消息
@@ -232,6 +285,23 @@ func (ab *AgentBase) handleCtrlStatus(msg *uap.Message) {
 		ActiveTasks: activeTasks,
 		Capacity:    ab.Capacity,
 		Uptime:      uptime,
+	})
+}
+
+// handleDescribe 处理 describe 消息（只读查询，始终响应）
+func (ab *AgentBase) handleDescribe(msg *uap.Message) {
+	detail := ""
+	if ab.workspace != nil {
+		detail = ab.workspace.Detail
+	}
+
+	ab.Client.SendTo(msg.From, uap.MsgDescribeResult, uap.DescribeResultPayload{
+		AgentID:     ab.AgentID,
+		Name:        ab.AgentName,
+		Description: ab.Client.Description,
+		Detail:      detail,
+		Tools:       ab.Client.Tools,
+		Meta:        ab.Client.Meta,
 	})
 }
 

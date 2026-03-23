@@ -415,15 +415,43 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 注入虚拟工具（集中管理）
 	tools = b.injectVirtualTools(tools, ctx.NoTools)
 
-	// 发送初始工具数量信息
+	// 发送初始工具数量信息（分类展示）
 	if !ctx.NoTools && len(tools) > 0 {
-		var realToolNames []string
+		var virtualNames []string  // 虚拟工具：同步本地执行，无超时（set_persona, list_providers 等）
+		var builtinNames []string  // 内置工具：本地执行，有超时（Bash）
+		var remoteNames  []string  // 远程工具：通过 UAP 发送到远程 agent 执行
+
 		for _, t := range tools {
-			if !isVirtualTool(t.Function.Name) && t.Function.Name != "plan_and_execute" {
-				realToolNames = append(realToolNames, b.resolveToolName(t.Function.Name))
+			name := t.Function.Name
+			if isVirtualTool(name) || name == "plan_and_execute" {
+				virtualNames = append(virtualNames, name)
+			} else {
+				canonical := b.resolveToolName(name)
+				// 判断是否为内置工具（本 agent 前缀）
+				if strings.HasPrefix(canonical, b.cfg.AgentID+".") {
+					builtinNames = append(builtinNames, name)
+				} else {
+					remoteNames = append(remoteNames, canonical)
+				}
 			}
 		}
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具（基础+虚拟），更多工具通过 get_agent_tools 按需加载]\n%s", len(realToolNames), strings.Join(realToolNames, ", ")))
+
+		var parts []string
+		parts = append(parts, fmt.Sprintf("虚拟工具: %d", len(virtualNames)))
+		if len(builtinNames) > 0 {
+			parts = append(parts, fmt.Sprintf("内置工具: %d [%s]", len(builtinNames), strings.Join(builtinNames, ", ")))
+		} else {
+			parts = append(parts, "内置工具: 0")
+		}
+		if len(remoteNames) > 0 {
+			parts = append(parts, fmt.Sprintf("远程工具: %d [%s]", len(remoteNames), strings.Join(remoteNames, ", ")))
+		} else {
+			parts = append(parts, "远程工具: 0")
+		}
+
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具] %s\n虚拟: %s",
+			len(tools), strings.Join(parts, " | "),
+			strings.Join(virtualNames, ", ")))
 	}
 
 	// 4. LLM 循环
@@ -1025,7 +1053,8 @@ func (b *Bridge) handleComplexTask(
 	}
 
 	planStart := time.Now()
-	plan, err := PlanTask(&b.cfg.LLM, query, tools, ctx.Account, maxSubTasks, completedWork, skillBlock, b.cfg.Fallbacks, b.fallbackCooldown())
+	activeCfg := b.activeLLM.Get()
+	plan, err := PlanTask(&activeCfg, query, tools, ctx.Account, maxSubTasks, completedWork, skillBlock, b.cfg.Fallbacks, b.fallbackCooldown())
 	planDuration := time.Since(planStart)
 
 	if err != nil {
@@ -1102,7 +1131,8 @@ func (b *Bridge) handleComplexTask(
 	sendEvent("plan_review_start", "正在审查计划参数...")
 	agentCapabilities := b.getAgentDescriptionBlock()
 	reviewStart := time.Now()
-	review, err := ReviewPlan(&b.cfg.LLM, query, plan, tools, ctx.Account, agentCapabilities, b.cfg.Fallbacks, b.fallbackCooldown())
+	reviewCfg := b.activeLLM.Get()
+	review, err := ReviewPlan(&reviewCfg, query, plan, tools, ctx.Account, agentCapabilities, b.cfg.Fallbacks, b.fallbackCooldown())
 	reviewDuration := time.Since(reviewStart)
 	if err != nil {
 		log.Printf("[ComplexTask] ⚠ 计划审查失败 error=%v，继续执行原计划", err)

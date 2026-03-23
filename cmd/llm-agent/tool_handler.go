@@ -112,6 +112,43 @@ func (b *Bridge) registerBuiltinTools() {
 			return &ToolCallResult{Result: reply, AgentID: "builtin"}, nil
 		})
 	}
+
+	// 模型切换工具（4 个）
+	b.registerTool("list_providers", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		result := b.handleListProviders()
+		return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+	})
+	b.registerTool("get_current_model", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		result := b.handleGetCurrentModel()
+		return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+	})
+	b.registerTool("switch_provider", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		var params struct {
+			Provider string `json:"provider"`
+		}
+		if err := json.Unmarshal(args, &params); err != nil {
+			return &ToolCallResult{Result: "参数解析失败: " + err.Error(), AgentID: "builtin"}, nil
+		}
+		result, err := b.handleSwitchProvider(params.Provider)
+		if err != nil {
+			return &ToolCallResult{Result: "切换失败: " + err.Error(), AgentID: "builtin"}, nil
+		}
+		return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+	})
+	b.registerTool("switch_model", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		var params struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+		}
+		if err := json.Unmarshal(args, &params); err != nil {
+			return &ToolCallResult{Result: "参数解析失败: " + err.Error(), AgentID: "builtin"}, nil
+		}
+		result, err := b.handleSwitchModel(params.Model, params.Provider)
+		if err != nil {
+			return &ToolCallResult{Result: "切换失败: " + err.Error(), AgentID: "builtin"}, nil
+		}
+		return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
+	})
 }
 
 // registerRemoteTool 注册远程 agent 工具的 handler
@@ -125,11 +162,15 @@ func (b *Bridge) registerRemoteToolLocked(canonicalName, agentID string) {
 
 // virtualTools 虚拟工具集合（同步执行，无需心跳包装）
 var virtualTools = map[string]bool{
-	"set_persona":      true,
-	"set_rule":         true,
-	"execute_skill":    true,
-	"get_agent_tools":  true,
-	"get_skill_detail": true,
+	"set_persona":       true,
+	"set_rule":          true,
+	"execute_skill":     true,
+	"get_agent_tools":   true,
+	"get_skill_detail":  true,
+	"list_providers":    true,
+	"get_current_model": true,
+	"switch_provider":   true,
+	"switch_model":      true,
 }
 
 // isVirtualTool 判断是否为虚拟工具（同步执行，无需心跳）

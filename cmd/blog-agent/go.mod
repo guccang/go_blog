@@ -84,9 +84,12 @@ replace codegen => ./pkgs/codegen
 
 replace uap => ../common/uap
 
+replace agentbase => ../common/agentbase
+
 require (
 	auth v0.0.0
 	blog v0.0.0
+	codegen v0.0.0
 	comment v0.0.0
 	config v0.0.0
 	control v0.0.0
@@ -110,7 +113,7 @@ require (
 
 require (
 	account v0.0.0 // indirect
-	codegen v0.0.0 // indirect
+	agentbase v0.0.0 // indirect
 	constellation v0.0.0 // indirect
 	finance v0.0.0 // indirect
 	fruitcrush v0.0.0 // indirect
@@ -120,7 +123,8 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	gomoku v0.0.0 // indirect
 	lifecountdown v0.0.0 // indirect
 	linkup v0.0.0 // indirect

@@ -127,7 +127,7 @@ func main() {
 	gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
 	if gatewayURL != "" {
 		gatewayToken := config.GetConfigWithAccount(account, "gateway_token")
-		codegen.InitGatewayBridge(gatewayURL, gatewayToken)
+		codegen.InitGatewayBridge(gatewayURL, gatewayToken, "workspace")
 		log.MessageF(log.ModuleAgent, "Gateway bridge initialized: %s", gatewayURL)
 	}
 

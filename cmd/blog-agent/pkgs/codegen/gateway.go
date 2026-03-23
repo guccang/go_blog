@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"agentbase"
 	"uap"
 )
 
@@ -70,7 +71,7 @@ type GatewayBridge struct {
 var gatewayBridge *GatewayBridge
 
 // InitGatewayBridge 初始化 go_blog 到 gateway 的连接
-func InitGatewayBridge(gatewayURL, authToken string) {
+func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 	// 统一 token：gateway_token 同时作为 agent 认证 token
 	if authToken != "" {
 		agentToken = authToken
@@ -86,6 +87,20 @@ func InitGatewayBridge(gatewayURL, authToken string) {
 	client.Tools = toolDefs
 	client.Meta = map[string]any{
 		"role": "backend",
+	}
+
+	// 加载 workspace 描述
+	if workspaceDir != "" {
+		ws := agentbase.LoadWorkspace(workspaceDir)
+		if ws.Summary != "" {
+			client.Description = ws.Summary
+		}
+		if client.Meta == nil {
+			client.Meta = make(map[string]any)
+		}
+		if ws.Detail != "" {
+			client.Meta["agent_description"] = ws.Detail
+		}
 	}
 
 	// 从 WebSocket URL 推导 HTTP URL（ws://host:port/ws/uap → http://host:port）

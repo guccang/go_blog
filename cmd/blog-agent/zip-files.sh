@@ -25,7 +25,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" publish.sh publish.bat templates/ statics/ 
+zip -r "${OUTPUT}" "$BINNAME" publish.sh publish.bat templates/ statics/ workspace/
 cd ..
 zip -r "./blog-agent/${OUTPUT}" common/
 
