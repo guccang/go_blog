@@ -111,6 +111,11 @@ func buildToolDefs() []uap.ToolDef {
 				"required": []string{"task_id"},
 			}),
 		},
+		{
+			Name:        "cronListPending",
+			Description: "[debug] 列出正在执行中的任务（已发送到 llm-agent 尚未返回 task_complete 的执行）",
+			Parameters:  agentbase.MustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+		},
 	}
 }
 
@@ -155,6 +160,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result, success = c.toolDeleteTask(args)
 	case "cronTriggerTask":
 		result, success = c.toolTriggerTask(args)
+	case "cronListPending":
+		result, success = c.toolListPending()
 	default:
 		log.Printf("[CronAgent] ✗ 未知工具: %s", payload.ToolName)
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName)))
@@ -308,4 +315,17 @@ func (c *Connection) toolTriggerTask(args map[string]interface{}) (string, bool)
 
 	log.Printf("[CronAgent] ✓ toolTriggerTask 已触发 ID=%s", taskID)
 	return "任务已触发", true
+}
+
+func (c *Connection) toolListPending() (string, bool) {
+	pending := c.engine.ListPending()
+	log.Printf("[CronAgent] toolListPending 返回 %d 个执行中任务", len(pending))
+	for _, p := range pending {
+		log.Printf("[CronAgent]   ├─ executionID=%s cronTaskID=%s", p["execution_id"], p["task_id"])
+	}
+	resp, _ := json.Marshal(map[string]interface{}{
+		"pending": pending,
+		"total":   len(pending),
+	})
+	return string(resp), true
 }

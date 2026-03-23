@@ -192,6 +192,29 @@ func (e *CronEngine) PendingCount() int {
 	return count
 }
 
+// ListPending 返回所有正在执行中的任务信息（debug 用）
+func (e *CronEngine) ListPending() []map[string]string {
+	var result []map[string]string
+	e.pending.Range(func(key, value interface{}) bool {
+		execID, _ := key.(string)
+		taskID, _ := value.(string)
+		entry := map[string]string{
+			"execution_id": execID,
+			"task_id":      taskID,
+		}
+		// 补充任务名称
+		e.mu.RLock()
+		if task, ok := e.tasks[taskID]; ok {
+			entry["task_name"] = task.Name
+			entry["task_type"] = task.TaskType
+		}
+		e.mu.RUnlock()
+		result = append(result, entry)
+		return true
+	})
+	return result
+}
+
 // HandleTaskComplete 处理 llm-agent 返回的任务完成消息
 func (e *CronEngine) HandleTaskComplete(executionID, status, errMsg, result string) {
 	cronTaskID, ok := e.pending.LoadAndDelete(executionID)

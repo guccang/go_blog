@@ -15,7 +15,7 @@ chmod +x cron-agent
 
 # 启动新进程
 echo "启动 cron-agent..."
-nohup "$svr" -config cron-agent.json > cron-agent.log 2>&1 < /dev/null &
+nohup "$svr" -config cron-agent.json >> cron-agent.log 2>&1 < /dev/null &
 disown
 
 sleep 1
