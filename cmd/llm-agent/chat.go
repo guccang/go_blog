@@ -438,6 +438,15 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 	sb.WriteString(fmt.Sprintf("⏱ 活跃: %s | 轮次: %d/%d\n", lastActive.Format("2006-01-02 15:04"), turnCount, maxTurns))
 	sb.WriteString(fmt.Sprintf("📨 消息数: %d\n", len(msgs)))
 
+	// 当前 LLM 提供商和模型
+	provider, modelKey, modelID := b.activeLLM.GetInfo()
+	cfg := b.activeLLM.Get()
+	sb.WriteString(fmt.Sprintf("\n🤖 LLM: %s/%s (%s)\n", provider, modelKey, modelID))
+	sb.WriteString(fmt.Sprintf("  max_tokens=%d temperature=%.2f\n", cfg.MaxTokens, cfg.Temperature))
+	if sc, ok := b.sourceLLMs[source]; ok {
+		sb.WriteString(fmt.Sprintf("  渠道覆盖: %s/%s\n", sc.LLM.Provider, sc.LLM.Model))
+	}
+
 	// System Prompt 各层字符统计（使用构建时记录的数据）
 	if len(msgs) > 0 && msgs[0].Role == "system" {
 		sysChars := len([]rune(msgs[0].Content))

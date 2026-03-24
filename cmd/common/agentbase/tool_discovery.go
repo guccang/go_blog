@@ -69,6 +69,8 @@ func (tc *ToolCatalog) Discover(excludeAgentID string) error {
 			continue
 		}
 		catalog[tool.Name] = tool.AgentID
+		// 预注册 agentID_toolName 变体（LLM 在 ExecuteCode 中可能拼接 agentID 前缀）
+		catalog[tool.AgentID+"_"+tool.Name] = tool.AgentID
 	}
 
 	tc.mu.Lock()

@@ -15,6 +15,12 @@ result = call_tool("RawGetTodosRange", {...})
 todos = result["data"]  # {"2026-03-09": [...], ...}
 ```
 
+## 工具名称
+
+**使用裸名称**，不要拼接 agentID 前缀：
+- ✅ `call_tool("RawGetExerciseRange", {...})`
+- ❌ `call_tool("go_blog_RawGetExerciseRange", {...})`
+
 ## 错误处理
 
 - `call_tool` 失败会抛异常，不会返回错误对象
