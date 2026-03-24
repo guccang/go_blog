@@ -34,11 +34,11 @@ WebSearch({"query": "Python asyncio 教程"})
 先搜索获取 URL 列表，再抓取感兴趣的页面内容：
 ```python
 # 搜索
-results = call_tool("WebSearch", {"query": "Go 1.22 新特性", "count": 3})
+results = call_tool("WebSearch", {"query": "Go 1.22 新特性", "count": 3})["data"]
 print(results)
 
 # 抓取第一个结果的详细内容
-page = call_tool("WebFetch", {"url": "https://example.com/article", "maxLength": 8000})
+page = call_tool("WebFetch", {"url": "https://example.com/article", "maxLength": 8000})["data"]
 print(page)
 ```
 
@@ -46,7 +46,7 @@ print(page)
 ```python
 queries = ["Python 3.12 新特性", "Python 3.12 性能改进"]
 for q in queries:
-    result = call_tool("WebSearch", {"query": q, "count": 3})
+    result = call_tool("WebSearch", {"query": q, "count": 3})["data"]
     print(f"=== {q} ===")
     print(result)
 ```

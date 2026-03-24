@@ -29,7 +29,13 @@ def _auto_parse(data):
     return data
 
 def call_tool(tool_name, arguments=None):
-    """调用 MCP 工具 - 通过 stdin/stdout 协议与 agent 通信"""
+    """调用 MCP 工具 - 通过 stdin/stdout 协议与 agent 通信
+    返回值统一为 dict: {"data": <实际值>}
+    - 工具返回 str   → {"data": "2026-03-24"}
+    - 工具返回 dict  → {"data": {"id": "xxx", ...}}
+    - 工具返回 list  → {"data": [...]}
+    使用 result["data"] 获取实际值。
+    """
     request = json.dumps({"type": "tool_call", "tool": tool_name, "args": arguments or {}})
     print(f"__TOOL_CALL__{request}__END__", flush=True)
     line = sys.stdin.readline().strip()
@@ -41,7 +47,7 @@ def call_tool(tool_name, arguments=None):
         raise Exception(f"Tool {tool_name}: invalid JSON response: {e} raw={line[:200]}")
     if not result.get("success"):
         raise Exception(f"Tool {tool_name} failed: {result.get('error', 'unknown')}")
-    return _auto_parse(result.get("data"))
+    return {"data": _auto_parse(result.get("data"))}
 
 def safe_call_tool(tool_name, arguments=None, default=None):
     """调用 MCP 工具（失败时返回 default 而不是抛异常）"""
