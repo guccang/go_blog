@@ -1485,6 +1485,26 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		return fmt.Sprintf("技能 '%s' 不存在，可用技能请参考 Skill 目录。", skillName)
 	}
 
+	// 1.5 检查所需 agent 是否在线
+	if len(skill.Agents) > 0 {
+		b.catalogMu.RLock()
+		for _, requiredPrefix := range skill.Agents {
+			found := false
+			for agentID := range b.agentInfo {
+				if strings.HasPrefix(agentID, requiredPrefix) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				b.catalogMu.RUnlock()
+				log.Printf("[SkillSubTask] ✗ 技能 %s 所需 agent %s 不在线", skillName, requiredPrefix)
+				return fmt.Sprintf("技能 %s 无法执行：所需 agent %s offline", skillName, requiredPrefix)
+			}
+		}
+		b.catalogMu.RUnlock()
+	}
+
 	// 2. 构建子任务 system prompt
 	var sb strings.Builder
 	now := time.Now()

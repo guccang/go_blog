@@ -3,6 +3,7 @@ name: deploy
 description: 项目部署技能。当用户需要部署项目、发布上线、执行部署流水线时使用此技能。
 summary: 已配置项目用 DeployProject + deploy_target，未配置项目用 DeployAdhoc
 tools: DeployListProjects,DeployProject,DeployAdhoc,DeployPipeline
+agents: deploy
 keywords: 部署,deploy,发布,上线
 ---
 
