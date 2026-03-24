@@ -226,6 +226,17 @@ func NewBridge(cfg *Config) *Bridge {
 		if err := b.skillMgr.Load(); err != nil {
 			log.Printf("[Bridge] load skills: %v", err)
 		}
+		// 注入 agent 在线检查：技能目录展示时过滤不可用技能
+		b.skillMgr.SetAgentOnlineChecker(func(prefix string) bool {
+			b.catalogMu.RLock()
+			defer b.catalogMu.RUnlock()
+			for agentID := range b.agentInfo {
+				if strings.HasPrefix(agentID, prefix) {
+					return true
+				}
+			}
+			return false
+		})
 	}
 
 	// 初始化人设配置

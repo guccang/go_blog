@@ -487,6 +487,13 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			if skill == nil {
 				return &ToolCallResult{Result: fmt.Sprintf("技能 '%s' 不存在", a.SkillName), AgentID: "builtin"}, nil
 			}
+			// 检查所需 agent 是否在线
+			if offline := b.skillMgr.offlineAgents(skill); len(offline) > 0 {
+				return &ToolCallResult{
+					Result:  fmt.Sprintf("技能 '%s' 当前不可用：所需 agent %s offline。请告知用户该功能暂时无法使用。", a.SkillName, strings.Join(offline, ", ")),
+					AgentID: "builtin",
+				}, nil
+			}
 			detail := b.skillMgr.BuildSkillBlock([]SkillEntry{*skill})
 			return &ToolCallResult{Result: detail, AgentID: "builtin"}, nil
 		}

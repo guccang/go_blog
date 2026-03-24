@@ -20,11 +20,16 @@ type SkillEntry struct {
 	FilePath    string   // 文件路径（调试用）
 }
 
+// AgentOnlineChecker agent 在线检查函数类型
+// 传入 agent 前缀，返回是否有匹配的在线 agent
+type AgentOnlineChecker func(prefix string) bool
+
 // SkillManager skill 加载与匹配管理器
 type SkillManager struct {
-	skills       []SkillEntry
-	workspaceDir string
-	memoryDir    string // workspace/memory/，用于加载 auto_skill 汇总
+	skills             []SkillEntry
+	workspaceDir       string
+	memoryDir          string             // workspace/memory/，用于加载 auto_skill 汇总
+	agentOnlineChecker AgentOnlineChecker // 检查 agent 是否在线
 }
 
 // NewSkillManager 创建 skill 管理器
@@ -221,6 +226,7 @@ func (sm *SkillManager) BuildCatalog() string {
 }
 
 // BuildCatalogWithToolHint 构建 skill 目录，提示 LLM 通过 execute_skill 工具使用
+// agent 不在线的技能标注为不可用
 func (sm *SkillManager) BuildCatalogWithToolHint() string {
 	if len(sm.skills) == 0 {
 		return ""
@@ -232,6 +238,13 @@ func (sm *SkillManager) BuildCatalogWithToolHint() string {
 	sb.WriteString("使用前可调用 get_skill_detail(skill_name) 查看详细文档和参数说明。\n")
 	sb.WriteString("技能内部会获取完整的专业工具集，不要绕过技能直接 call_tool。\n\n")
 	for _, skill := range sm.skills {
+		offline := sm.offlineAgents(&skill)
+		if len(offline) > 0 {
+			// 标注不可用
+			sb.WriteString(fmt.Sprintf("- ~~**%s**~~: %s [不可用: agent %s offline]\n",
+				skill.Name, skill.Description, strings.Join(offline, ", ")))
+			continue
+		}
 		if skill.Summary != "" {
 			sb.WriteString(fmt.Sprintf("- **%s**: %s — %s\n", skill.Name, skill.Description, skill.Summary))
 		} else {
@@ -257,6 +270,39 @@ func (sm *SkillManager) GetSkill(name string) *SkillEntry {
 // SetMemoryDir 设置记忆目录路径（用于加载 auto_skill 汇总文件）
 func (sm *SkillManager) SetMemoryDir(dir string) {
 	sm.memoryDir = dir
+}
+
+// SetAgentOnlineChecker 注入 agent 在线检查函数
+func (sm *SkillManager) SetAgentOnlineChecker(checker AgentOnlineChecker) {
+	sm.agentOnlineChecker = checker
+}
+
+// isSkillAvailable 检查技能所需的所有 agent 是否在线
+// 无 agents 声明的技能始终可用
+func (sm *SkillManager) isSkillAvailable(skill *SkillEntry) bool {
+	if len(skill.Agents) == 0 || sm.agentOnlineChecker == nil {
+		return true
+	}
+	for _, prefix := range skill.Agents {
+		if !sm.agentOnlineChecker(prefix) {
+			return false
+		}
+	}
+	return true
+}
+
+// offlineAgents 返回技能所需但不在线的 agent 列表
+func (sm *SkillManager) offlineAgents(skill *SkillEntry) []string {
+	if len(skill.Agents) == 0 || sm.agentOnlineChecker == nil {
+		return nil
+	}
+	var offline []string
+	for _, prefix := range skill.Agents {
+		if !sm.agentOnlineChecker(prefix) {
+			offline = append(offline, prefix)
+		}
+	}
+	return offline
 }
 
 // BuildSkillBlock 构建匹配到的 skill 正文（Level 2，按需注入）
