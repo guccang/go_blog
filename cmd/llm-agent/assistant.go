@@ -280,10 +280,16 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 	log.Printf("[CronQuery] task=%s account=%s wechat_user=%s query=%s",
 		taskID, payload.Account, payload.WechatUser, payload.Query)
 
+	// 优先使用 wechat_user 作为 account（数据存储以微信用户ID为键）
+	account := payload.Account
+	if payload.WechatUser != "" {
+		account = payload.WechatUser
+	}
+
 	ctx := &TaskContext{
 		Ctx:     context.Background(),
 		TaskID:  taskID,
-		Account: payload.Account,
+		Account: account,
 		Query:   payload.Query,
 		Source:  "cron_query",
 		Sink:    &LLMRequestSink{bridge: b, taskID: taskID},
