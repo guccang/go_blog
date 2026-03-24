@@ -32,8 +32,8 @@ type BashToolManager struct {
 	Platform  string        // 运行平台描述（如 macOS、Linux）
 }
 
-// Exec 执行 bash 命令
-func (m *BashToolManager) Exec(command, workDir string) (string, error) {
+// Exec 执行 bash 命令（支持通过 parentCtx 取消）
+func (m *BashToolManager) Exec(parentCtx context.Context, command, workDir string) (string, error) {
 	// 安全检查
 	cmdLower := strings.ToLower(strings.TrimSpace(command))
 	for _, blocked := range bashBlacklist {
@@ -51,7 +51,8 @@ func (m *BashToolManager) Exec(command, workDir string) (string, error) {
 		maxOutput = 102400
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// 合并父 context 取消 + 超时
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
@@ -79,6 +80,10 @@ func (m *BashToolManager) Exec(command, workDir string) (string, error) {
 	if ctx.Err() == context.DeadlineExceeded {
 		log.Printf("[BashTool] 超时: %s (%.1fs)", command, duration.Seconds())
 		return output, fmt.Errorf("命令执行超时（%v）", timeout)
+	}
+	if ctx.Err() == context.Canceled {
+		log.Printf("[BashTool] 已取消: %s (%.1fs)", command, duration.Seconds())
+		return output, fmt.Errorf("命令已被取消")
 	}
 
 	if err != nil {
@@ -141,7 +146,7 @@ func (m *BashToolManager) HandleTool(args map[string]interface{}) (string, bool)
 
 	workDir, _ := args["work_dir"].(string)
 
-	output, err := m.Exec(command, workDir)
+	output, err := m.Exec(context.Background(), command, workDir)
 	if err != nil {
 		if output != "" {
 			return fmt.Sprintf("%s\n[错误] %v", output, err), true

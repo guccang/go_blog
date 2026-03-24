@@ -80,7 +80,7 @@ func (b *Bridge) registerBuiltinTools() {
 				return &ToolCallResult{Result: "错误: command 参数不能为空", AgentID: "builtin"}, nil
 			}
 			workDir, _ := argsMap["work_dir"].(string)
-			output, err := mgr.Exec(command, workDir)
+			output, err := mgr.Exec(ctx, command, workDir)
 			if err != nil {
 				if output != "" {
 					return &ToolCallResult{Result: fmt.Sprintf("%s\n[错误] %v", output, err), AgentID: "builtin"}, nil
