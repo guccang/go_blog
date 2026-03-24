@@ -8,6 +8,8 @@ keywords: 搜索,search,网页,查找,天气,新闻,web,查询资料
 
 # 网络搜索与网页抓取
 
+**call_tool 使用规范见 workspace/CALL_TOOL.md**
+
 ## 使用场景
 
 - 用户询问实时信息（天气、新闻、股价等）
@@ -17,10 +19,10 @@ keywords: 搜索,search,网页,查找,天气,新闻,web,查询资料
 
 ## 可用接口
 
-| 接口 | 参数 | 返回值 |
-|------|------|--------|
-| `WebSearch` | query, count(可选,默认5) | JSON({query, results:[{title,url,snippet}], count}) |
-| `WebFetch` | url, maxLength(可选,默认5000) | JSON({url, content, length, truncated}) |
+| 接口 | 参数 | data 类型 |
+|------|------|-----------|
+| `WebSearch` | query, count(可选,默认5) | dict({query, results:[{title,url,snippet}], count}) |
+| `WebFetch` | url, maxLength(可选,默认5000) | dict({url, content, length, truncated}) |
 
 ## 使用模式
 
@@ -31,25 +33,10 @@ WebSearch({"query": "Python asyncio 教程"})
 ```
 
 ### 搜索 + 抓取详情
-先搜索获取 URL 列表，再抓取感兴趣的页面内容：
-```python
-# 搜索
-results = call_tool("WebSearch", {"query": "Go 1.22 新特性", "count": 3})["data"]
-print(results)
-
-# 抓取第一个结果的详细内容
-page = call_tool("WebFetch", {"url": "https://example.com/article", "maxLength": 8000})["data"]
-print(page)
-```
+先搜索获取 URL 列表，再抓取感兴趣的页面内容。
 
 ### 多关键词搜索聚合
-```python
-queries = ["Python 3.12 新特性", "Python 3.12 性能改进"]
-for q in queries:
-    result = call_tool("WebSearch", {"query": q, "count": 3})["data"]
-    print(f"=== {q} ===")
-    print(result)
-```
+在 ExecuteCode 中循环多个关键词批量搜索。
 
 ## 注意事项
 
