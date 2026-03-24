@@ -217,10 +217,20 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	// 执行代码
 	execResult := c.executor.Execute(args.Code)
 
-	log.Printf("[ExecuteCode] done success=%v exit_code=%d duration=%dms tool_calls=%d",
-		execResult.Success, execResult.ExitCode, execResult.DurationMs, len(execResult.ToolCalls))
+	log.Printf("[ExecuteCode] done success=%v exit_code=%d duration=%dms tool_calls=%d truncated=%v",
+		execResult.Success, execResult.ExitCode, execResult.DurationMs, len(execResult.ToolCalls), execResult.Truncated)
+	if execResult.Stdout != "" {
+		log.Printf("[ExecuteCode] stdout:\n%s", truncate(execResult.Stdout, 3000))
+	}
 	if !execResult.Success {
-		log.Printf("[ExecuteCode] error_type=%s stderr=%s", execResult.ErrorType, truncate(execResult.Stderr, 500))
+		log.Printf("[ExecuteCode] error_type=%s", execResult.ErrorType)
+		if execResult.Stderr != "" {
+			log.Printf("[ExecuteCode] stderr:\n%s", truncate(execResult.Stderr, 3000))
+		}
+	}
+	for i, tc := range execResult.ToolCalls {
+		log.Printf("[ExecuteCode] tool_call[%d] tool=%s agent=%s success=%v duration=%dms err=%s",
+			i, tc.Tool, tc.AgentID, tc.Success, tc.Duration, tc.Error)
 	}
 
 	// 构建返回值 — 统一返回结构化 JSON（含 tool_calls 调用链）

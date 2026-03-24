@@ -8,12 +8,14 @@ import (
 
 // Config cron-agent 配置
 type Config struct {
-	ServerURL      string   `json:"server_url"`       // Gateway WebSocket URL
-	AuthToken      string   `json:"auth_token"`       // 认证令牌
-	AgentName      string   `json:"agent_name"`       // Agent 显示名称
-	LLMAgentID     string   `json:"llm_agent_id"`     // 目标 llm-agent ID
-	TaskFile       string   `json:"task_file"`        // 任务持久化文件路径
-	ProtectedFiles []string `json:"protected_files,omitempty"` // 部署保护文件
+	ServerURL       string   `json:"server_url"`        // Gateway WebSocket URL
+	AuthToken       string   `json:"auth_token"`        // 认证令牌
+	AgentName       string   `json:"agent_name"`        // Agent 显示名称
+	LLMAgentID      string   `json:"llm_agent_id"`      // 目标 llm-agent ID
+	TaskFile        string   `json:"task_file"`         // 任务持久化文件路径
+	ProtectedFiles  []string `json:"protected_files,omitempty"` // 部署保护文件
+	QuietHoursStart string   `json:"quiet_hours_start"` // 免打扰开始时间，如 "23:00"（空=不启用）
+	QuietHoursEnd   string   `json:"quiet_hours_end"`   // 免打扰结束时间，如 "07:00"
 }
 
 // DefaultConfig 默认配置

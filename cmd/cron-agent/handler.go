@@ -80,6 +80,7 @@ func buildToolDefs() []uap.ToolDef {
 					"message":     map[string]interface{}{"type": "string", "description": "提醒内容（task_type=cron_reminder 时必填）"},
 					"query":       map[string]interface{}{"type": "string", "description": "查询问题（task_type=cron_query 时必填）"},
 					"one_shot":    map[string]interface{}{"type": "boolean", "description": "是否一次性任务（配合 schedule 使用，执行一次后自动删除）"},
+					"ignore_quiet": map[string]interface{}{"type": "boolean", "description": "是否忽略免打扰时段（默认 false 受免打扰控制；服务器监控等重要任务设为 true）"},
 				},
 				"required": []string{"name", "task_type", "account", "wechat_user"},
 			}),
@@ -215,9 +216,10 @@ func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) 
 	message, _ := args["message"].(string)
 	query, _ := args["query"].(string)
 	oneShot, _ := args["one_shot"].(bool)
+	ignoreQuiet, _ := args["ignore_quiet"].(bool)
 
-	log.Printf("[CronAgent] toolCreateTask name=%q type=%s schedule=%q delay=%.0f account=%s wechat=%s oneShot=%v",
-		name, taskType, schedule, delaySec, account, wechatUser, oneShot)
+	log.Printf("[CronAgent] toolCreateTask name=%q type=%s schedule=%q delay=%.0f account=%s wechat=%s oneShot=%v ignoreQuiet=%v",
+		name, taskType, schedule, delaySec, account, wechatUser, oneShot, ignoreQuiet)
 
 	// 参数校验
 	if name == "" {
@@ -242,17 +244,18 @@ func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) 
 	}
 
 	task := &CronTask{
-		ID:         newTaskID(),
-		Name:       name,
-		TaskType:   taskType,
-		Schedule:   schedule,
-		DelaySec:   int(delaySec),
-		Account:    account,
-		WechatUser: wechatUser,
-		Message:    message,
-		Query:      query,
-		OneShot:    oneShot || (schedule == "" && delaySec > 0), // 纯延迟任务默认 one_shot
-		CreatedAt:  time.Now().Format(time.RFC3339),
+		ID:          newTaskID(),
+		Name:        name,
+		TaskType:    taskType,
+		Schedule:    schedule,
+		DelaySec:    int(delaySec),
+		Account:     account,
+		WechatUser:  wechatUser,
+		Message:     message,
+		Query:       query,
+		OneShot:     oneShot || (schedule == "" && delaySec > 0), // 纯延迟任务默认 one_shot
+		IgnoreQuiet: ignoreQuiet,
+		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 
 	if err := c.engine.AddTask(task); err != nil {

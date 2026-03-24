@@ -282,10 +282,7 @@ func summarizeArgs(argsJSON string) string {
 		if !ok {
 			continue
 		}
-		s := fmt.Sprintf("%v", val)
-		if len(s) > 60 {
-			s = string([]rune(s)[:60]) + "..."
-		}
+		s := truncateRunes(fmt.Sprintf("%v", val), 60)
 		parts = append(parts, fmt.Sprintf("%s=%s", key, s))
 		if len(parts) >= 3 {
 			break
@@ -295,10 +292,7 @@ func summarizeArgs(argsJSON string) string {
 	// 如果没命中关键字段，取前 2 个任意字段
 	if len(parts) == 0 {
 		for k, v := range args {
-			s := fmt.Sprintf("%v", v)
-			if len(s) > 60 {
-				s = string([]rune(s)[:60]) + "..."
-			}
+			s := truncateRunes(fmt.Sprintf("%v", v), 60)
 			parts = append(parts, fmt.Sprintf("%s=%s", k, s))
 			if len(parts) >= 2 {
 				break

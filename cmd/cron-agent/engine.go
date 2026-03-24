@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,29 +19,32 @@ import (
 
 // CronTask 定时任务
 type CronTask struct {
-	ID         string `json:"id"`          // 短 UUID
-	Name       string `json:"name"`        // 任务名称
-	TaskType   string `json:"task_type"`   // "cron_reminder" | "cron_query"
-	Schedule   string `json:"schedule"`    // cron 表达式或 "@every 20m"，空=延迟任务
-	DelaySec   int    `json:"delay_sec"`   // 延迟秒数（Schedule 为空时生效）
-	Account    string `json:"account"`     // 用户账号
-	WechatUser string `json:"wechat_user"` // 微信用户标识
-	Message    string `json:"message"`     // cron_reminder 提醒内容
-	Query      string `json:"query"`       // cron_query 查询问题
-	OneShot    bool   `json:"one_shot"`    // 执行后自动删除
-	CreatedAt  string `json:"created_at"`  // RFC3339 创建时间
+	ID          string `json:"id"`           // 短 UUID
+	Name        string `json:"name"`         // 任务名称
+	TaskType    string `json:"task_type"`    // "cron_reminder" | "cron_query"
+	Schedule    string `json:"schedule"`     // cron 表达式或 "@every 20m"，空=延迟任务
+	DelaySec    int    `json:"delay_sec"`    // 延迟秒数（Schedule 为空时生效）
+	Account     string `json:"account"`      // 用户账号
+	WechatUser  string `json:"wechat_user"`  // 微信用户标识
+	Message     string `json:"message"`      // cron_reminder 提醒内容
+	Query       string `json:"query"`        // cron_query 查询问题
+	OneShot     bool   `json:"one_shot"`     // 执行后自动删除
+	IgnoreQuiet bool   `json:"ignore_quiet"` // true=忽略免打扰（如服务器监控），默认 false
+	CreatedAt   string `json:"created_at"`   // RFC3339 创建时间
 }
 
 // CronEngine 定时任务引擎：调度 + 存储 + 执行
 type CronEngine struct {
-	mu      sync.RWMutex
-	tasks   map[string]*CronTask            // taskID → task
-	entries map[string]cron.EntryID          // taskID → cron entryID
-	timers  map[string]context.CancelFunc    // taskID → 延迟任务取消函数
-	cron    *cron.Cron
-	ab      *agentbase.AgentBase
-	cfg     *Config
-	pending sync.Map // executionID → cronTaskID
+	mu         sync.RWMutex
+	tasks      map[string]*CronTask            // taskID → task
+	entries    map[string]cron.EntryID          // taskID → cron entryID
+	timers     map[string]context.CancelFunc    // taskID → 延迟任务取消函数
+	cron       *cron.Cron
+	ab         *agentbase.AgentBase
+	cfg        *Config
+	pending    sync.Map // executionID → cronTaskID
+	quietStart int      // 免打扰开始（分钟，如 23:00=1380）；-1 表示未启用
+	quietEnd   int      // 免打扰结束（分钟，如 07:00=420）
 }
 
 // NewCronEngine 创建引擎，加载持久化任务，启动调度器
@@ -54,6 +58,11 @@ func NewCronEngine(cfg *Config, ab *agentbase.AgentBase) *CronEngine {
 		cron:    cron.New(),
 		ab:      ab,
 		cfg:     cfg,
+	}
+
+	e.quietStart, e.quietEnd = parseQuietHours(cfg.QuietHoursStart, cfg.QuietHoursEnd)
+	if e.quietStart >= 0 {
+		log.Printf("[CronEngine] 免打扰时段: %s-%s", cfg.QuietHoursStart, cfg.QuietHoursEnd)
 	}
 
 	// 加载持久化任务
@@ -304,6 +313,11 @@ func (e *CronEngine) scheduleTask(task *CronTask) error {
 
 // executeTask 发送 task_assign 到 llm-agent
 func (e *CronEngine) executeTask(task *CronTask) {
+	if !task.IgnoreQuiet && e.isInQuietHours() {
+		log.Printf("[CronEngine] ⏭ 免打扰时段，跳过 ID=%s name=%s", task.ID, task.Name)
+		return
+	}
+
 	executionID := fmt.Sprintf("cron_%s_%d", task.ID, time.Now().UnixMilli())
 
 	log.Printf("[CronEngine] ── executeTask 开始 ──")
@@ -360,6 +374,54 @@ func (e *CronEngine) executeTask(task *CronTask) {
 	log.Printf("[CronEngine] ✓ task_assign 已发送 executionID=%s → %s, 等待 task_complete...",
 		executionID, e.cfg.LLMAgentID)
 	log.Printf("[CronEngine] ── executeTask 结束 ──")
+}
+
+// parseQuietHours 解析 "HH:MM" 格式为分钟数，解析失败或为空返回 -1, -1
+func parseQuietHours(startStr, endStr string) (int, int) {
+	if startStr == "" || endStr == "" {
+		return -1, -1
+	}
+	s, ok1 := parseHHMM(startStr)
+	e, ok2 := parseHHMM(endStr)
+	if !ok1 || !ok2 {
+		log.Printf("[CronEngine] ⚠ 免打扰时段格式无效 start=%q end=%q，已忽略", startStr, endStr)
+		return -1, -1
+	}
+	return s, e
+}
+
+// parseHHMM 解析 "HH:MM" 为 hour*60+minute
+func parseHHMM(s string) (int, bool) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 {
+		return 0, false
+	}
+	var h, m int
+	if _, err := fmt.Sscanf(parts[0], "%d", &h); err != nil {
+		return 0, false
+	}
+	if _, err := fmt.Sscanf(parts[1], "%d", &m); err != nil {
+		return 0, false
+	}
+	if h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, false
+	}
+	return h*60 + m, true
+}
+
+// isInQuietHours 判断当前时间是否在免打扰时段内
+func (e *CronEngine) isInQuietHours() bool {
+	if e.quietStart < 0 {
+		return false
+	}
+	now := time.Now()
+	cur := now.Hour()*60 + now.Minute()
+	if e.quietStart <= e.quietEnd {
+		// 不跨午夜，如 01:00→06:00
+		return cur >= e.quietStart && cur < e.quietEnd
+	}
+	// 跨午夜，如 23:00→07:00
+	return cur >= e.quietStart || cur < e.quietEnd
 }
 
 // loadFromFile 从 JSON 文件加载任务

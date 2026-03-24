@@ -792,10 +792,7 @@ func (t *Tracker) logToStdout(e *Event) {
 	}
 
 	if e.PayloadSummary != "" {
-		summary := e.PayloadSummary
-		if len(summary) > 60 {
-			summary = summary[:60] + "..."
-		}
+		summary := truncateRunes(e.PayloadSummary, 60)
 		parts = append(parts, "\""+summary+"\"")
 	}
 
@@ -804,12 +801,18 @@ func (t *Tracker) logToStdout(e *Event) {
 	}
 
 	if e.Error != "" {
-		errStr := e.Error
-		if len(errStr) > 60 {
-			errStr = errStr[:60] + "..."
-		}
+		errStr := truncateRunes(e.Error, 60)
 		parts = append(parts, "ERR="+errStr)
 	}
 
 	log.Printf("[Event] %s", strings.Join(parts, " "))
+}
+
+// truncateRunes UTF-8 安全截断
+func truncateRunes(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
 }

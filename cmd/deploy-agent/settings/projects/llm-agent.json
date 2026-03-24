@@ -36,6 +36,6 @@
     },
     "protect_files": [
         "llm-agent.json",
-        "workspace/PERSION.md"
+        "workspace/PERSONA.md"
     ]
 }

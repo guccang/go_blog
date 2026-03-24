@@ -35,7 +35,12 @@ def call_tool(tool_name, arguments=None):
     line = sys.stdin.readline().strip()
     if not line:
         raise Exception(f"Tool {tool_name}: no response (agent disconnected?)")
-    result = json.loads(line)
+    try:
+        result = json.loads(line)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise Exception(f"Tool {tool_name}: invalid JSON response: {e} raw={line[:200]}")
+    if not isinstance(result, dict):
+        raise Exception(f"Tool {tool_name}: expected dict response, got {type(result).__name__}: {str(result)[:200]}")
     if not result.get("success"):
         raise Exception(f"Tool {tool_name} failed: {result.get('error', 'unknown')}")
     return _auto_parse(result.get("data"))
@@ -227,6 +232,8 @@ func (e *Executor) Execute(code string) *ExecutionResult {
 			}
 
 			respData, _ := json.Marshal(resp)
+			log.Printf("[Executor] tool_response → stdin tool=%s success=%v len=%d",
+				req.Tool, resp.Success, len(respData))
 			if _, writeErr := stdin.Write(append(respData, '\n')); writeErr != nil {
 				log.Printf("[Executor] write to stdin failed: %v", writeErr)
 				break
