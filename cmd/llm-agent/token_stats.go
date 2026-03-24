@@ -35,15 +35,22 @@ type TokenStats struct {
 	TotalTokens     int64                      `json:"total_tokens"`
 	CallCount       int64                      `json:"call_count"`
 	ByModel         map[string]*ModelTokenStats `json:"by_model"`
-	UpdatedAt       time.Time                  `json:"updated_at"`
-	persistPath     string
+	// 当日统计
+	TodayDate      string                     `json:"today_date"`
+	TodayTokens    int64                      `json:"today_tokens"`
+	TodayCallCount int64                      `json:"today_call_count"`
+	TodayByModel   map[string]*ModelTokenStats `json:"today_by_model"`
+
+	UpdatedAt   time.Time `json:"updated_at"`
+	persistPath string
 }
 
 // NewTokenStats 创建 token 统计器
 func NewTokenStats(persistPath string) *TokenStats {
 	return &TokenStats{
-		ByModel:     make(map[string]*ModelTokenStats),
-		persistPath: persistPath,
+		ByModel:      make(map[string]*ModelTokenStats),
+		TodayByModel: make(map[string]*ModelTokenStats),
+		persistPath:  persistPath,
 	}
 }
 
@@ -56,11 +63,23 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
+	// 总量累计
 	ts.TotalPrompt += int64(usage.PromptTokens)
 	ts.TotalCompletion += int64(usage.CompletionTokens)
 	ts.TotalTokens += int64(usage.TotalTokens)
 	ts.CallCount++
 	ts.UpdatedAt = time.Now()
+
+	// 当日累计（日期变化时重置）
+	today := time.Now().Format("2006-01-02")
+	if ts.TodayDate != today {
+		ts.TodayDate = today
+		ts.TodayTokens = 0
+		ts.TodayCallCount = 0
+		ts.TodayByModel = make(map[string]*ModelTokenStats)
+	}
+	ts.TodayTokens += int64(usage.TotalTokens)
+	ts.TodayCallCount++
 
 	// 分模型统计
 	if usage.Model != "" {
@@ -73,6 +92,15 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 		ms.Completion += int64(usage.CompletionTokens)
 		ms.Total += int64(usage.TotalTokens)
 		ms.Calls++
+
+		// 当日分模型
+		dms, ok := ts.TodayByModel[usage.Model]
+		if !ok {
+			dms = &ModelTokenStats{}
+			ts.TodayByModel[usage.Model] = dms
+		}
+		dms.Total += int64(usage.TotalTokens)
+		dms.Calls++
 	}
 
 	log.Printf("[TokenStats] model=%s prompt=%d completion=%d total=%d | 累计: prompt=%d completion=%d total=%d calls=%d",
@@ -92,18 +120,36 @@ func (ts *TokenStats) Summary() string {
 		return ""
 	}
 
+	// 检查当日数据是否过期
+	today := time.Now().Format("2006-01-02")
+	todayTokens := ts.TodayTokens
+	todayCallCount := ts.TodayCallCount
+	if ts.TodayDate != today {
+		todayTokens = 0
+		todayCallCount = 0
+	}
+
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("📊 Token 用量: 输入 %s / 输出 %s / 共 %s (%d次调用)",
-		formatTokenCount(ts.TotalPrompt),
-		formatTokenCount(ts.TotalCompletion),
+	sb.WriteString(fmt.Sprintf("📊 Token: %s/%s (%d/%d次)",
+		formatTokenCount(todayTokens),
 		formatTokenCount(ts.TotalTokens),
+		todayCallCount,
 		ts.CallCount))
 
 	// 分模型明细
 	if len(ts.ByModel) > 1 {
 		sb.WriteString("\n")
 		for model, ms := range ts.ByModel {
-			sb.WriteString(fmt.Sprintf("  · %s: %s (%d次)", model, formatTokenCount(ms.Total), ms.Calls))
+			var dayTotal int64
+			var dayCalls int64
+			if ts.TodayDate == today {
+				if dms, ok := ts.TodayByModel[model]; ok {
+					dayTotal = dms.Total
+					dayCalls = dms.Calls
+				}
+			}
+			sb.WriteString(fmt.Sprintf("  · %s: %s/%s (%d/%d次)",
+				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls))
 		}
 	}
 
@@ -120,6 +166,10 @@ func (ts *TokenStats) Reset() {
 	ts.TotalTokens = 0
 	ts.CallCount = 0
 	ts.ByModel = make(map[string]*ModelTokenStats)
+	ts.TodayDate = ""
+	ts.TodayTokens = 0
+	ts.TodayCallCount = 0
+	ts.TodayByModel = make(map[string]*ModelTokenStats)
 	ts.UpdatedAt = time.Now()
 	ts.saveLocked()
 }
@@ -175,6 +225,12 @@ func (ts *TokenStats) Load() {
 	ts.UpdatedAt = loaded.UpdatedAt
 	if loaded.ByModel != nil {
 		ts.ByModel = loaded.ByModel
+	}
+	ts.TodayDate = loaded.TodayDate
+	ts.TodayTokens = loaded.TodayTokens
+	ts.TodayCallCount = loaded.TodayCallCount
+	if loaded.TodayByModel != nil {
+		ts.TodayByModel = loaded.TodayByModel
 	}
 
 	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d",
