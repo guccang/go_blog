@@ -3,7 +3,7 @@ name: coding
 description: 编码开发技能。当用户需要编写代码、创建项目、修复bug、重构、开发新功能时使用此技能。
 summary: CodegenStartSession 传入用户原文，严禁修改
 tools: CodegenStartSession,CodegenSendMessage,CodegenGetStatus,CodegenStopSession,CodegenCreateProject
-agents: codegen
+agents: acp
 keywords: 编码,代码,开发,编写,code,coding,项目,写一个,实现,功能
 ---
 

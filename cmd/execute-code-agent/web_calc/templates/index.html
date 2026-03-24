@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Simple Calculator</title>
+    <style>
+        body {font-family: Arial, sans-serif; margin: 40px;}
+        .container {max-width: 400px; margin: auto;}
+        input[type=text] {width: 100%; padding: 10px; font-size: 18px;}
+        input[type=submit] {padding: 10px 20px; font-size: 18px; margin-top: 10px;}
+        .result {font-size: 24px; margin-top: 20px; color: #2c3e50;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Web Calculator</h1>
+        <form method="post" action="/calculate">
+            <input type="text" name="expression" placeholder="Enter expression (e.g., 2+3*4)" value="{{ expression if expression else '' }}" required>
+            <input type="submit" value="Calculate">
+        </form>
+        {% if result is not none %}
+        <div class="result">
+            Result: {{ result }}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

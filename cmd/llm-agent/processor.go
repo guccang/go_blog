@@ -1019,12 +1019,12 @@ func (b *Bridge) handleComplexTask(
 		maxSubTasks = 10
 	}
 
-	// 使用全部可用 skill 构建规划指引
+	// 使用可用 skill（过滤掉 agent 离线的）构建规划指引
 	var skillBlock string
 	if b.skillMgr != nil {
-		allSkills := b.skillMgr.GetAllSkills()
-		if len(allSkills) > 0 {
-			skillBlock = b.skillMgr.BuildSkillBlock(allSkills)
+		availableSkills := b.skillMgr.GetAvailableSkills()
+		if len(availableSkills) > 0 {
+			skillBlock = b.skillMgr.BuildSkillBlock(availableSkills)
 		}
 	}
 

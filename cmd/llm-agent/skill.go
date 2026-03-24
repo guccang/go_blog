@@ -172,6 +172,17 @@ func (sm *SkillManager) GetAllSkills() []SkillEntry {
 	return sm.skills
 }
 
+// GetAvailableSkills 返回所需 agent 均在线的 skill（过滤掉不可用的）
+func (sm *SkillManager) GetAvailableSkills() []SkillEntry {
+	var available []SkillEntry
+	for _, skill := range sm.skills {
+		if sm.isSkillAvailable(&skill) {
+			available = append(available, skill)
+		}
+	}
+	return available
+}
+
 // GetSkillOwnedTools 收集所有 skill 声明的工具名集合
 func (sm *SkillManager) GetSkillOwnedTools() map[string]bool {
 	owned := make(map[string]bool)
