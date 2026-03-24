@@ -39,8 +39,6 @@ def call_tool(tool_name, arguments=None):
         result = json.loads(line)
     except (json.JSONDecodeError, ValueError) as e:
         raise Exception(f"Tool {tool_name}: invalid JSON response: {e} raw={line[:200]}")
-    if not isinstance(result, dict):
-        raise Exception(f"Tool {tool_name}: expected dict response, got {type(result).__name__}: {str(result)[:200]}")
     if not result.get("success"):
         raise Exception(f"Tool {tool_name} failed: {result.get('error', 'unknown')}")
     return _auto_parse(result.get("data"))
