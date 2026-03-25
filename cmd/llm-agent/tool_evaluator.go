@@ -388,12 +388,8 @@ func (te *ToolEvaluator) llmEvaluateAmbiguity(candidates []ambiguityCandidate) [
 		return issues
 	}
 
-	// 清洗 JSON（复用 planner.go 模式）
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
+	// 清洗 JSON
+	resp = cleanLLMJSON(resp)
 
 	// 解析 LLM 响应
 	type llmVerdict struct {

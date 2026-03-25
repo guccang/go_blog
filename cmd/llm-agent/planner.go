@@ -107,49 +107,56 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 ## 核心规划原则
 
-### 1. 优先使用 ExecuteCode 合并操作
-- 数据获取+分析类任务：用一个 ExecuteCode 子任务编写 Python 代码，在代码内通过 call_tool() 批量调用数据工具并完成分析
-- 不要拆分为"获取数据A""获取数据B""分析数据"等多个子任务，应合并为 1 个 ExecuteCode
-- ExecuteCode 内部可调用任意 MCP 工具（call_tool），比分开的子任务更高效
+### 1. 优先使用 skill 技能（最重要）
+- 查看"领域指引"中的可用 skill，任务匹配时必须使用对应 skill 的工具
+- 编码开发任务（编写代码、创建项目、修复bug、开发功能）→ 使用 coding skill 的工具（AcpStartSession 等）
+- 部署上线任务（部署项目、配置服务）→ 使用 deploy skill 的工具（DeployProject/DeployAdhoc 等）
+- Skill 有独立会话管理和专业执行策略，比 ExecuteCode/Bash 直接操作更可靠
+- 禁止用 ExecuteCode 或 Bash 替代已有 skill 的功能
 
-### 2. 最大化并行执行
+### 2. ExecuteCode 用于数据处理和脚本操作
+- 适用场景：数据获取+分析、批量查询+统计、文件处理等无对应 skill 的任务
+- 用一个 ExecuteCode 子任务编写 Python 代码，在代码内通过 call_tool() 批量调用数据工具并完成分析
+- 不要拆分为"获取数据A""获取数据B""分析数据"等多个子任务，应合并为 1 个 ExecuteCode
+
+### 3. 最大化并行执行
 - 没有数据依赖的子任务必须设置为并行（depends_on 为空）
 - 只有真正需要前一步结果的子任务才设置 depends_on
 
-### 3. 精简子任务数量
+### 4. 精简子任务数量
 - 目标：用最少的子任务完成任务（通常 2-3 个）
-- 能用 1 个 ExecuteCode 完成的不要拆成多个
+- 能用 1 个 ExecuteCode 完成的数据处理任务不要拆成多个
 
 ## 其他要求
 1. 每个子任务描述要包含足够上下文让 AI 独立执行
-2. tools_hint 列出该子任务需要的工具名
+2. tools_hint 列出该子任务需要的工具名（必须使用可用工具中的实际工具名）
 3. 子任务描述中包含用户账号（account=%s）
 4. "同步等待完成"的工具不需要额外的"检查状态"子任务
 5. 子任务数量不超过 %d 个
-6. 编码任务中 CodegenStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
+6. 编码任务中 AcpStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
 7. 编码→部署流程中，部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject"
 
 ## 输出格式
-仅返回 JSON：
+仅返回 JSON（不要包含 markdown 代码块标记）：
 {
   "subtasks": [
     {
       "id": "t1",
-      "title": "获取并分析所有数据",
-      "description": "使用 ExecuteCode 编写 Python 代码，通过 call_tool 批量获取锻炼数据和待办数据，在代码中完成统计分析，account=xxx",
+      "title": "编写网页应用",
+      "description": "使用 AcpStartSession 创建项目并编写网页应用代码，project=helloworld-web，account=xxx",
       "depends_on": [],
-      "tools_hint": ["ExecuteCode"]
+      "tools_hint": ["AcpStartSession"]
     },
     {
       "id": "t2",
-      "title": "生成综合报告",
-      "description": "基于 t1 的数据分析结果，生成用户可读的综合报告",
+      "title": "部署到服务器",
+      "description": "使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject 部署到目标服务器，account=xxx",
       "depends_on": ["t1"],
-      "tools_hint": []
+      "tools_hint": ["DeployProject"]
     }
   ],
   "execution_mode": "dag",
-  "reasoning": "用 ExecuteCode 一步完成所有数据获取和分析，再汇总报告"
+  "reasoning": "编码用 coding skill，部署用 deploy skill，有依赖关系顺序执行"
 }`, account, time.Now().Format("2006-01-02"), query, completedSection, skillSection, toolCatalog.String(), account, maxSubTasks)
 
 	messages := []Message{
@@ -171,19 +178,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 	log.Printf("[Planner] ← LLM规划响应 duration=%v responseLen=%d", time.Since(planStart), len(resp))
 
 	// 解析 JSON 响应
-	resp = strings.TrimSpace(resp)
-
-	// 移除 <think> 标签
-	if idx := strings.Index(resp, "<think>"); idx >= 0 {
-		if endIdx := strings.Index(resp[idx:], "</think>"); endIdx >= 0 {
-			resp = resp[:idx] + resp[idx+endIdx+8:]
-		}
-	}
-
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
+	resp = cleanLLMJSON(resp)
 
 	var plan TaskPlan
 	if err := json.Unmarshal([]byte(resp), &plan); err != nil {
@@ -271,11 +266,7 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 		}, nil
 	}
 
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
+	resp = cleanLLMJSON(resp)
 
 	var decision struct {
 		Action        string `json:"action"`
@@ -409,11 +400,7 @@ func EvaluateAndRevisePlan(
 	}
 	log.Printf("[Planner] ← 修订评估响应 duration=%v responseLen=%d", time.Since(evalStart), len(resp))
 
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
+	resp = cleanLLMJSON(resp)
 
 	var result PlanRevisionResult
 	if err := json.Unmarshal([]byte(resp), &result); err != nil {
@@ -534,11 +521,7 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 	}
 	log.Printf("[Planner] ← 审查响应 duration=%v responseLen=%d", time.Since(reviewStart), len(resp))
 
-	resp = strings.TrimSpace(resp)
-	resp = strings.TrimPrefix(resp, "```json")
-	resp = strings.TrimPrefix(resp, "```")
-	resp = strings.TrimSuffix(resp, "```")
-	resp = strings.TrimSpace(resp)
+	resp = cleanLLMJSON(resp)
 
 	var review PlanReview
 	if err := json.Unmarshal([]byte(resp), &review); err != nil {
@@ -564,6 +547,38 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 
 	log.Printf("[Planner] ✓ 审查结果: action=%s reason=%s", review.Action, review.Reason)
 	return &review, nil
+}
+
+// cleanLLMJSON 清理 LLM 返回的 JSON 响应，移除 think 标签和 markdown 代码块标记
+func cleanLLMJSON(s string) string {
+	s = strings.TrimSpace(s)
+
+	// 移除 <think>...</think> 标签
+	if idx := strings.Index(s, "<think>"); idx >= 0 {
+		if endIdx := strings.Index(s[idx:], "</think>"); endIdx >= 0 {
+			s = s[:idx] + s[idx+endIdx+8:]
+		}
+	}
+	s = strings.TrimSpace(s)
+
+	// 移除开头的 ```json / ``` 等代码块标记（整行移除，兼容 ```json、```JSON 等变体）
+	if strings.HasPrefix(s, "```") {
+		if idx := strings.Index(s, "\n"); idx >= 0 {
+			s = s[idx+1:]
+		} else {
+			// 没有换行，直接去前缀
+			s = strings.TrimPrefix(s, "```json")
+			s = strings.TrimPrefix(s, "```")
+		}
+	}
+
+	// 移除结尾的 ```
+	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, "```") {
+		s = s[:len(s)-3]
+	}
+
+	return strings.TrimSpace(s)
 }
 
 // extractParamInfo 从工具的 Parameters JSON schema 中提取核心参数描述
