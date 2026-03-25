@@ -66,14 +66,32 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 	skillBlock := b.skillMgr.BuildSkillBlock([]SkillEntry{*skill})
 	sb.WriteString(skillBlock)
 
-	// 注入执行策略：优先 ExecuteCode 批量调用
-	sb.WriteString("\n## 执行策略\n")
-	sb.WriteString("**必须优先使用 ExecuteCode 工具**批量调用多个工具并整合数据。\n")
-	sb.WriteString("- 将多个工具调用组合到一段代码中一次性执行，避免逐个调用工具进行多轮交互\n")
-	sb.WriteString("- 在 ExecuteCode 代码中，直接使用 call_tool 调用具体工具（如 RawAddTodo, RawGetTodosByDate），不要调用 execute_skill\n")
-	sb.WriteString("- call_tool 返回值已自动解析为 dict/list，无需再 json.loads\n")
-	sb.WriteString("- 只在 ExecuteCode 无法覆盖的场景才单独调用工具\n")
-	sb.WriteString("- 最终回复要简洁，直接给出用户需要的数据结果\n")
+	// 注入执行策略（根据 skill 类型调整）
+	hasSessionTools := false // 是否包含会话类工具（AcpStartSession、DeployProject 等）
+	for _, t := range skill.Tools {
+		if strings.HasPrefix(t, "Acp") || strings.HasPrefix(t, "Deploy") || strings.HasPrefix(t, "Codegen") {
+			hasSessionTools = true
+			break
+		}
+	}
+
+	if hasSessionTools {
+		// 会话类 skill（如 coding、deploy）：工具返回结果即完成，不要额外验证
+		sb.WriteString("\n## 执行策略\n")
+		sb.WriteString("- 调用子任务描述中指定的工具完成任务\n")
+		sb.WriteString("- AcpStartSession/DeployProject/DeployAdhoc 返回后，任务即完成，**立即停止工具调用**，回复执行结果\n")
+		sb.WriteString("- **禁止**在上述工具成功后继续调用 ExecuteCode、AcpSendMessage、AcpAnalyzeProject 等补充工具\n")
+		sb.WriteString("- 最终回复要简洁，包含执行结果和关键数据\n")
+	} else {
+		// 通用 skill：优先用 ExecuteCode 批量调用
+		sb.WriteString("\n## 执行策略\n")
+		sb.WriteString("**必须优先使用 ExecuteCode 工具**批量调用多个工具并整合数据。\n")
+		sb.WriteString("- 将多个工具调用组合到一段代码中一次性执行，避免逐个调用工具进行多轮交互\n")
+		sb.WriteString("- 在 ExecuteCode 代码中，直接使用 call_tool 调用具体工具（如 RawAddTodo, RawGetTodosByDate），不要调用 execute_skill\n")
+		sb.WriteString("- call_tool 返回值已自动解析为 dict/list，无需再 json.loads\n")
+		sb.WriteString("- 只在 ExecuteCode 无法覆盖的场景才单独调用工具\n")
+		sb.WriteString("- 最终回复要简洁，直接给出用户需要的数据结果\n")
+	}
 
 	// 3. 过滤工具（从全量工具列表中筛选，因为主列表已隐藏 skill 工具）
 	allTools := b.getLLMTools()
@@ -130,7 +148,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		if i == maxIter-1 {
 			iterTools = nil
 			messages = append(messages, Message{
-				Role:    "system",
+				Role:    "user",
 				Content: "请立即给出最终回复，总结已完成的工作和结果。不要再调用任何工具。",
 			})
 		}
@@ -251,14 +269,12 @@ func (b *Bridge) filterToolsForSkill(skill *SkillEntry, parentTools []LLMTool) [
 		return filtered
 	}
 
-	// skill.Tools 非空 → 只保留声明的工具 + ExecuteCode 基础工具
+	// skill.Tools 非空 → 只保留声明的工具
 	hintSet := make(map[string]bool, len(skill.Tools))
 	for _, t := range skill.Tools {
 		hintSet[t] = true
 		hintSet[sanitizeToolName(t)] = true
 	}
-	// 始终保留基础工具
-	hintSet["ExecuteCode"] = true
 
 	var filtered []LLMTool
 	for _, t := range parentTools {
