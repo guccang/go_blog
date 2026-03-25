@@ -136,6 +136,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 5. 子任务数量不超过 %d 个
 6. 编码任务中 AcpStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
 7. 编码→部署流程中，部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject"
+8. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作，严禁带入其他子任务的指令。例如用户请求"编码xx然后部署到yy"，编码子任务描述只写编码需求，不要提及"部署到yy"；部署子任务只写部署需求。AcpStartSession 的 prompt 参数同理，只传编码相关内容
 
 ## 输出格式
 仅返回 JSON（不要包含 markdown 代码块标记）：
