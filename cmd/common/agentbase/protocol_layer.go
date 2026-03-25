@@ -11,20 +11,20 @@ import (
 
 // ProtocolLayerConfig 协议层配置
 type ProtocolLayerConfig struct {
-	TargetAgentID  string                 // 目标 agent ID（如 go_blog backend）
-	BuildRegister  func() interface{}     // 自定义注册消息构建器
-	BuildHeartbeat func() interface{}     // 自定义心跳消息构建器（可选）
+	TargetAgentID  string                           // 目标 agent ID（如 blog-agent backend）
+	BuildRegister  func() interface{}               // 自定义注册消息构建器
+	BuildHeartbeat func() interface{}               // 自定义心跳消息构建器（可选）
 	OnRegisterAck  func(success bool, error string) // 注册确认回调（可选）
 }
 
 // ProtocolLayer 协议层管理
 // 负责向目标 agent 注册和发送心跳
 type ProtocolLayer struct {
-	agent         *AgentBase
-	cfg           *ProtocolLayerConfig
-	registered    bool
-	regMu         sync.Mutex
-	stopCh        chan struct{}
+	agent      *AgentBase
+	cfg        *ProtocolLayerConfig
+	registered bool
+	regMu      sync.Mutex
+	stopCh     chan struct{}
 }
 
 // EnableProtocolLayer 启用协议层

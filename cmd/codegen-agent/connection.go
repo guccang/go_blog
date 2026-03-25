@@ -36,11 +36,11 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildCodegenToolDefs(fileToolKit),
 		Meta: map[string]any{
-			"workspaces":       cfg.Workspaces,
-			"models":           agent.ScanSettings(),
+			"workspaces":        cfg.Workspaces,
+			"models":            agent.ScanSettings(),
 			"claudecode_models": agent.ScanClaudeCodeSettings(),
-			"opencode_models":  agent.ScanOpenCodeSettings(),
-			"coding_tools":     agent.ScanTools(),
+			"opencode_models":   agent.ScanOpenCodeSettings(),
+			"coding_tools":      agent.ScanTools(),
 		},
 	}
 
@@ -63,8 +63,8 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 
 	// 启用协议层
 	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
-		TargetAgentID: cfg.GoBackendAgentID,
-		BuildRegister: c.buildRegisterPayload,
+		TargetAgentID:  cfg.GoBackendAgentID,
+		BuildRegister:  c.buildRegisterPayload,
 		BuildHeartbeat: c.buildHeartbeatPayload,
 	})
 
@@ -135,7 +135,7 @@ func (c *Connection) handleError(msg *uap.Message) {
 
 // ========================= 协议层载荷构建 =========================
 
-// SendMsg 发送消息给 go_blog-agent（通过 gateway 路由）
+// SendMsg 发送消息给 blog-agent-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
 	return c.Client.SendTo(targetAgent, msgType, payload)
@@ -551,4 +551,3 @@ func escapeJSON(s string) string {
 	// json.Marshal 返回带引号的字符串，去掉首尾引号
 	return string(b[1 : len(b)-1])
 }
-

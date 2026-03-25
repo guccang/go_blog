@@ -12,6 +12,15 @@ import (
 
 // ========================= 编排器 =========================
 
+// subtaskEventSink 子任务中 execute_skill 使用的 EventSink 适配器
+type subtaskEventSink struct {
+	sendEvent func(event, text string)
+}
+
+func (s *subtaskEventSink) OnChunk(text string)        {}
+func (s *subtaskEventSink) OnEvent(event, text string) { s.sendEvent(event, text) }
+func (s *subtaskEventSink) Streaming() bool            { return false }
+
 // SubTaskResult 子任务执行结果
 type SubTaskResult struct {
 	SubTaskID     string             `json:"sub_task_id"`
@@ -698,6 +707,15 @@ func (o *Orchestrator) executeSubTask(
 	log.Printf("[Orchestrator] ▶ 子任务开始 id=%s title=%s desc=%s",
 		subtask.ID, subtask.Title, subtask.Description)
 
+	// 先过滤工具，后续构建 system prompt 时需要引用过滤后的工具列表
+	filteredTools := tools
+	if len(subtask.ToolsHint) > 0 {
+		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
+	}
+	// 排除虚拟工具 plan_and_execute
+	filteredTools = excludeVirtualTools(filteredTools)
+	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
+
 	// 构建子任务的 system prompt
 	var systemContent strings.Builder
 	subtaskPrompt := loadWorkspaceFile(o.cfg.WorkspaceDir, "SUBTASK.md", defaultSubtaskPrompt)
@@ -731,6 +749,12 @@ func (o *Orchestrator) executeSubTask(
 		}
 	}
 
+	// 注入工具参数参考（让子任务 LLM 在 ExecuteCode 中写 call_tool 时有正确的工具名和参数参考）
+	toolRef := o.bridge.buildToolParamReference(filteredTools)
+	if toolRef != "" {
+		systemContent.WriteString(toolRef)
+	}
+
 	// 初始化消息
 	messages := []Message{
 		{Role: "system", Content: systemContent.String()},
@@ -740,15 +764,6 @@ func (o *Orchestrator) executeSubTask(
 	// 记录到 session
 	session.AppendMessage(messages[0])
 	session.AppendMessage(messages[1])
-
-	// 过滤工具（如果有 tools_hint）
-	filteredTools := tools
-	if len(subtask.ToolsHint) > 0 {
-		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
-	}
-	// 排除虚拟工具 plan_and_execute
-	filteredTools = excludeVirtualTools(filteredTools)
-	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
 
 	maxIter := o.cfg.SubTaskMaxIterations
 	if maxIter <= 0 {
@@ -877,7 +892,35 @@ func (o *Orchestrator) executeSubTask(
 				subtask.ID, originalName, tc.Function.Arguments)
 
 			start := time.Now()
-			tcResult, err := o.bridge.CallToolCtx(ctx, originalName, json.RawMessage(tc.Function.Arguments))
+
+			// execute_skill 特殊处理：在子任务中执行技能（需要 TaskContext）
+			var tcResult *ToolCallResult
+			var err error
+			if originalName == "execute_skill" {
+				var skillArgs struct {
+					SkillName string `json:"skill_name"`
+					Query     string `json:"query"`
+				}
+				if jsonErr := json.Unmarshal([]byte(tc.Function.Arguments), &skillArgs); jsonErr != nil {
+					tcResult = &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", jsonErr), AgentID: "builtin"}
+				} else {
+					skillSink := &subtaskEventSink{sendEvent: sendEvent}
+					skillCtx := &TaskContext{
+						Ctx:     ctx,
+						TaskID:  taskID,
+						Account: session.Account,
+						Source:  "subtask",
+						Sink:    skillSink,
+					}
+					sendEvent("skill_start", fmt.Sprintf("[%s] 执行技能: %s\n任务: %s", subtask.ID, skillArgs.SkillName, skillArgs.Query))
+					log.Printf("[Orchestrator] subtask=%s → execute_skill: skill=%s query=%s", subtask.ID, skillArgs.SkillName, truncate(skillArgs.Query, 200))
+					result := o.bridge.executeSkillSubTask(skillCtx, skillArgs.SkillName, skillArgs.Query, tools)
+					tcResult = &ToolCallResult{Result: result, AgentID: "builtin"}
+				}
+			} else {
+				tcResult, err = o.bridge.CallToolCtx(ctx, originalName, json.RawMessage(tc.Function.Arguments))
+			}
+
 			duration := time.Since(start)
 
 			// 动态扩展截止时间：实际调用了长时间工具时，确保后续迭代不会误判超时
@@ -1452,7 +1495,32 @@ func (o *Orchestrator) resumeSubTask(
 
 		for _, tc := range toolCalls {
 			originalName := o.bridge.resolveToolName(tc.Function.Name)
-			tcResult, err := o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+
+			// execute_skill 特殊处理
+			var tcResult *ToolCallResult
+			var err error
+			if originalName == "execute_skill" {
+				var skillArgs struct {
+					SkillName string `json:"skill_name"`
+					Query     string `json:"query"`
+				}
+				if jsonErr := json.Unmarshal([]byte(tc.Function.Arguments), &skillArgs); jsonErr != nil {
+					tcResult = &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", jsonErr), AgentID: "builtin"}
+				} else {
+					skillSink := &subtaskEventSink{sendEvent: sendEvent}
+					skillCtx := &TaskContext{
+						Account: session.Account,
+						Source:  "subtask",
+						Sink:    skillSink,
+					}
+					log.Printf("[Resume] subtask=%s → execute_skill: skill=%s", subtask.ID, skillArgs.SkillName)
+					result := o.bridge.executeSkillSubTask(skillCtx, skillArgs.SkillName, skillArgs.Query, tools)
+					tcResult = &ToolCallResult{Result: result, AgentID: "builtin"}
+				}
+			} else {
+				tcResult, err = o.bridge.CallTool(originalName, json.RawMessage(tc.Function.Arguments))
+			}
+
 			var result string
 			if tcResult != nil {
 				result = tcResult.Result
@@ -1584,14 +1652,18 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 	return sb.String()
 }
 
-// excludeVirtualTools 排除虚拟工具（plan_and_execute, execute_skill 等）
-// 子任务不应调用这些虚拟工具，应直接使用实际工具
+// excludeVirtualTools 排除子任务不应使用的工具
+// - plan_and_execute: 子任务不应再嵌套拆解计划
+// - ExecuteCode: 子任务应直接调用专业工具，不要通过 ExecuteCode 间接 call_tool
 func excludeVirtualTools(tools []LLMTool) []LLMTool {
 	var filtered []LLMTool
 	for _, tool := range tools {
-		switch tool.Function.Name {
-		case "plan_and_execute", "execute_skill", "get_skill_detail":
-			// 跳过虚拟工具
+		name := tool.Function.Name
+		switch {
+		case name == "plan_and_execute":
+			// 跳过
+		case name == "ExecuteCode" || strings.HasSuffix(name, "_ExecuteCode"):
+			// 跳过：子任务直接调用工具，不走 ExecuteCode 间接路径
 		default:
 			filtered = append(filtered, tool)
 		}

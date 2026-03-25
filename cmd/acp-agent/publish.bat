@@ -16,7 +16,7 @@ if exist acp-agent.pid (
 taskkill /F /IM acp-agent.exe 2>nul
 
 echo 启动 acp-agent...
-start "acp-agent" cmd /c "codegen-agent.exe -config codegen-agent.json"
+start "acp-agent" cmd /c "acp-agent.exe"
 
 ping -n 3 127.0.0.1 >nul
 

@@ -101,7 +101,7 @@ func (c *Connection) handleSetMode(msg *uap.Message) {
 
 // ========================= 协议层载荷构建 =========================
 
-// SendMsg 发送消息给 go_blog-agent
+// SendMsg 发送消息给 blog-agent-agent
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	return c.Client.SendTo(c.cfg.GoBackendAgentID, msgType, payload)
 }
@@ -302,8 +302,8 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 
 	data := map[string]interface{}{
 		"session_id":    sessionID,
-		"project":      project,
-		"report":       result.Summary,
+		"project":       project,
+		"report":        result.Summary,
 		"files_written": result.FilesWritten,
 		"files_edited":  result.FilesEdited,
 	}

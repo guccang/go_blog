@@ -141,7 +141,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Software: "go", MinVersion: "1.23.0"},
 			},
 			Fields: append(cloneFields(shared), []ConfigField{
-				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 			}...),
 		},
 		{
@@ -158,7 +158,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "claude_path", Label: "Claude 路径", Description: "Claude 可执行文件路径", Type: FieldPath, Required: false, DefaultValue: "claude", Group: "custom"},
 				{Key: "max_turns", Label: "最大对话轮数", Description: "单次任务最大对话轮数", Type: FieldInt, Required: false, DefaultValue: 20, Group: "custom"},
 				{Key: "analysis_timeout", Label: "分析超时(秒)", Description: "分析任务超时时间", Type: FieldInt, Required: false, DefaultValue: 3600, Group: "custom"},
-				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 			}...),
 		},
 		{
@@ -174,7 +174,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "claude_path", Label: "Claude 路径", Description: "Claude 可执行文件路径", Type: FieldPath, Required: false, DefaultValue: "claude", Group: "custom"},
 				{Key: "opencode_path", Label: "OpenCode 路径", Description: "OpenCode 可执行文件路径", Type: FieldPath, Required: false, DefaultValue: "opencode", Group: "custom"},
 				{Key: "max_turns", Label: "最大对话轮数", Description: "最大对话轮数", Type: FieldInt, Required: false, DefaultValue: 20, Group: "custom"},
-				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 			}...),
 		},
 		{
@@ -188,7 +188,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "ssh_password", Label: "SSH 密码", Description: "SSH 密码（不推荐）", Type: FieldString, Required: false, DefaultValue: "", Group: "custom"},
 				{Key: "settings_dir", Label: "配置目录", Description: "部署配置目录", Type: FieldPath, Required: false, DefaultValue: "./settings", Group: "custom"},
 				{Key: "workspaces", Label: "工作区目录", Description: "工作区目录列表（逗号分隔）", Type: FieldStringSlice, Required: false, DefaultValue: nil, Group: "custom"},
-				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 			}...),
 		},
 		{
@@ -215,7 +215,7 @@ func AllAgentSchemas() []AgentSchema {
 			},
 			Fields: append(cloneFields(shared), []ConfigField{
 				{Key: "gateway_http", Label: "Gateway HTTP URL", Description: "Gateway HTTP 地址", Type: FieldURL, Required: false, DefaultValue: "http://127.0.0.1:10086", Group: "gateway"},
-				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "go_backend_agent_id", Label: "后端 Agent ID", Description: "Go 后端 agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 				{Key: "python_path", Label: "Python 路径", Description: "Python 可执行文件路径（留空自动检测）", Type: FieldPath, Required: false, DefaultValue: "", Group: "custom"},
 				{Key: "max_exec_time_sec", Label: "执行超时(秒)", Description: "代码执行超时时间", Type: FieldInt, Required: false, DefaultValue: 120, Group: "custom"},
 				{Key: "max_output_size", Label: "最大输出字符数", Description: "最大输出大小", Type: FieldInt, Required: false, DefaultValue: 50000, Group: "custom"},
@@ -279,7 +279,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "auth_token", Label: "Auth Token", Description: "Gateway 认证令牌", Type: FieldString, Required: false, DefaultValue: "", Shared: true, Group: "gateway"},
 				{Key: "agent_name", Label: "Agent 名称", Description: "Agent 显示名称", Type: FieldString, Required: false, DefaultValue: "wechat-agent", Group: "agent"},
 				{Key: "llm_agent_id", Label: "LLM Agent ID", Description: "LLM Agent 路由 ID", Type: FieldString, Required: false, DefaultValue: "", Group: "agent"},
-				{Key: "backend_agent_id", Label: "后端 Agent ID", Description: "后端 Agent ID", Type: FieldString, Required: false, DefaultValue: "go_blog", Group: "agent"},
+				{Key: "backend_agent_id", Label: "后端 Agent ID", Description: "后端 Agent ID", Type: FieldString, Required: false, DefaultValue: "blog-agent", Group: "agent"},
 				{Key: "corp_id", Label: "企业ID", Description: "企业微信 Corp ID", Type: FieldString, Required: false, DefaultValue: "", Group: "custom"},
 				{Key: "agent_id", Label: "应用 Agent ID", Description: "企业微信应用 Agent ID", Type: FieldString, Required: false, DefaultValue: "", Group: "custom"},
 				{Key: "secret", Label: "应用 Secret", Description: "企业微信应用密钥", Type: FieldString, Required: false, DefaultValue: "", Group: "custom"},

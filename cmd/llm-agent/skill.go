@@ -14,7 +14,7 @@ type SkillEntry struct {
 	Description string   // YAML description（展示在 skill 目录中）
 	Summary     string   // YAML summary（用法要点，展示在目录中）
 	Tools       []string // YAML tools（关联的工具名列表）
-	Agents      []string // YAML agents（所需 agent 前缀列表，如 go_blog, exec_code）
+	Agents      []string // YAML agents（所需 agent 前缀列表，如 blog-agent, exec_code）
 	Keywords    []string // YAML keywords（用于静态匹配的关键词列表）
 	Content     string   // Markdown body（frontmatter 之后的正文）
 	FilePath    string   // 文件路径（调试用）

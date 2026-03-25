@@ -1,0 +1,453 @@
+/* 基础样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Montserrat', sans-serif;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #fff;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+#particles-js {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: -1;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* 头部样式 */
+.header {
+    text-align: center;
+    padding: 3rem 0;
+    animation: fadeInDown 1s ease-out;
+}
+
+.title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 4rem;
+    font-weight: 900;
+    margin-bottom: 1rem;
+    background: linear-gradient(90deg, #ff0080, #ff8c00, #40e0d0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 30px rgba(255, 0, 128, 0.3);
+    position: relative;
+    display: inline-block;
+}
+
+.title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 4px;
+    background: linear-gradient(90deg, #ff0080, #ff8c00, #40e0d0);
+    border-radius: 2px;
+}
+
+.welcome {
+    animation: glow 2s infinite alternate;
+}
+
+.name {
+    animation: glow 2s infinite alternate-reverse;
+}
+
+.subtitle {
+    font-size: 1.5rem;
+    color: #a0a0ff;
+    margin-top: 1rem;
+    animation: fadeIn 2s ease-out;
+}
+
+/* 主要内容 */
+.main-content {
+    display: grid;
+    gap: 3rem;
+    margin: 3rem 0;
+}
+
+/* 卡片样式 */
+.card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    animation: slideInUp 1s ease-out;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.card-header i {
+    font-size: 2rem;
+    color: #ff8c00;
+    animation: spin 4s linear infinite;
+}
+
+.card-header h2 {
+    font-size: 2.5rem;
+    background: linear-gradient(90deg, #40e0d0, #ff8c00);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.card-body {
+    text-align: center;
+}
+
+.blessing {
+    font-size: 2.8rem;
+    font-weight: 600;
+    margin-bottom: 2rem;
+    background: linear-gradient(90deg, #ff0080, #ff8c00, #ffff00);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: textGlow 3s infinite alternate;
+    position: relative;
+    display: inline-block;
+}
+
+.blessing-animation {
+    position: relative;
+    height: 100px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.pulse-circle {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 140, 0, 0.8), transparent);
+    animation: pulse 2s infinite;
+}
+
+.pulse-circle.delay-1 {
+    animation-delay: 0.5s;
+    background: radial-gradient(circle, rgba(255, 0, 128, 0.8), transparent);
+}
+
+.pulse-circle.delay-2 {
+    animation-delay: 1s;
+    background: radial-gradient(circle, rgba(64, 224, 208, 0.8), transparent);
+}
+
+/* 特性样式 */
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.feature {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 15px;
+    padding: 2rem;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.feature:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 140, 0, 0.5);
+}
+
+.feature-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.5rem;
+    background: linear-gradient(135deg, #ff0080, #ff8c00);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    animation: float 3s ease-in-out infinite;
+}
+
+.feature:nth-child(2) .feature-icon {
+    background: linear-gradient(135deg, #40e0d0, #ff8c00);
+    animation-delay: 0.5s;
+}
+
+.feature:nth-child(3) .feature-icon {
+    background: linear-gradient(135deg, #ff8c00, #ffff00);
+    animation-delay: 1s;
+}
+
+.feature h3 {
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+    color: #ff8c00;
+}
+
+.feature p {
+    color: #a0a0ff;
+    line-height: 1.6;
+}
+
+/* 倒计时样式 */
+.countdown {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 15px;
+    padding: 2rem;
+    text-align: center;
+    animation: fadeIn 2s ease-out;
+}
+
+.countdown h3 {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    color: #40e0d0;
+}
+
+.countdown h3 i {
+    margin-right: 10px;
+    animation: spin 4s linear infinite;
+}
+
+.countdown-timer {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.countdown-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 1.5rem;
+    min-width: 120px;
+    animation: bounceIn 1s ease-out;
+}
+
+.countdown-number {
+    display: block;
+    font-size: 3.5rem;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    background: linear-gradient(90deg, #ff0080, #ff8c00);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 20px rgba(255, 0, 128, 0.5);
+}
+
+.countdown-label {
+    display: block;
+    font-size: 1.2rem;
+    color: #a0a0ff;
+    margin-top: 0.5rem;
+}
+
+/* 页脚样式 */
+.footer {
+    text-align: center;
+    padding: 2rem;
+    margin-top: 3rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    animation: fadeIn 3s ease-out;
+}
+
+.footer p {
+    margin: 0.5rem 0;
+    color: #a0a0ff;
+}
+
+.footer .fa-heart {
+    color: #ff0080;
+    animation: heartbeat 1.5s infinite;
+}
+
+.year {
+    font-size: 1.2rem;
+    color: #ff8c00;
+    font-weight: 600;
+}
+
+/* 动画定义 */
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes glow {
+    0%, 100% {
+        text-shadow: 0 0 20px #ff0080, 0 0 30px #ff0080, 0 0 40px #ff0080;
+    }
+    50% {
+        text-shadow: 0 0 20px #40e0d0, 0 0 30px #40e0d0, 0 0 40px #40e0d0;
+    }
+}
+
+@keyframes textGlow {
+    0% {
+        text-shadow: 0 0 10px #ff0080, 0 0 20px #ff0080;
+    }
+    100% {
+        text-shadow: 0 0 20px #ff8c00, 0 0 40px #ff8c00;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-15px);
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.3);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.9);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes heartbeat {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .title {
+        font-size: 2.5rem;
+    }
+    
+    .blessing {
+        font-size: 2rem;
+    }
+    
+    .card-header h2 {
+        font-size: 2rem;
+    }
+    
+    .countdown-number {
+        font-size: 2.5rem;
+    }
+    
+    .countdown-item {
+        min-width: 80px;
+        padding: 1rem;
+    }
+    
+    .features {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    .title {
+        font-size: 2rem;
+    }
+    
+    .blessing {
+        font-size: 1.5rem;
+    }
+    
+    .countdown-timer {
+        gap: 1rem;
+    }
+    
+    .countdown-item {
+        min-width: 70px;
+    }
+}

@@ -82,7 +82,7 @@ func buildLogToolDefs(readLogDesc string) []uap.ToolDef {
 				"properties": map[string]interface{}{
 					"source": map[string]interface{}{
 						"type":        "string",
-						"description": "日志源名称，如 gameserver、go_blog、nginx",
+						"description": "日志源名称，如 gameserver、blog-agent、nginx",
 					},
 					"file": map[string]interface{}{
 						"type":        "string",

@@ -20,7 +20,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		return fmt.Sprintf("技能 '%s' 不存在，可用技能请参考 Skill 目录。", skillName)
 	}
 
-	// 1.5 检查所需 agent 是否在线
+	// 1.5 检查所需 agent 是否在线（同时检查 agentInfo 和 agentTools）
 	if len(skill.Agents) > 0 {
 		b.catalogMu.RLock()
 		for _, requiredPrefix := range skill.Agents {
@@ -29,6 +29,15 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 				if strings.HasPrefix(agentID, requiredPrefix) {
 					found = true
 					break
+				}
+			}
+			if !found {
+				// 回退：检查 agentTools（DiscoverTools 填充，可能先于 DiscoverAgents）
+				for agentID := range b.agentTools {
+					if strings.HasPrefix(agentID, requiredPrefix) {
+						found = true
+						break
+					}
 				}
 			}
 			if !found {

@@ -178,7 +178,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			Type:    uap.MsgTaskAccepted,
 			ID:      uap.NewMsgID(),
 			From:    b.cfg.AgentID,
-			To:      "go_blog",
+			To:      "blog-agent",
 			Payload: mustMarshal(uap.TaskAcceptedPayload{TaskID: taskPayload.TaskID}),
 			Ts:      time.Now().UnixMilli(),
 		})
@@ -203,7 +203,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				Type: uap.MsgTaskRejected,
 				ID:   uap.NewMsgID(),
 				From: b.cfg.AgentID,
-				To:   "go_blog",
+				To:   "blog-agent",
 				Payload: mustMarshal(uap.TaskRejectedPayload{
 					TaskID: taskPayload.TaskID,
 					Reason: fmt.Sprintf("agent at max capacity (active=%d/%d, queue=%d/%d)",

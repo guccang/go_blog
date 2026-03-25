@@ -160,25 +160,6 @@ var executeSkillTool = LLMTool{
 	},
 }
 
-// getAgentToolsTool 虚拟工具定义：获取指定 agent 的工具列表（渐进式发现）
-var getAgentToolsTool = LLMTool{
-	Type: "function",
-	Function: LLMFunction{
-		Name:        "get_agent_tools",
-		Description: "获取指定 agent 的完整工具列表和参数说明。调用后该 agent 的工具将在后续轮次可用。在需要使用某个 agent 的能力时，先调用此工具加载其工具。",
-		Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"agent_id": {
-					"type": "string",
-					"description": "Agent ID（来自系统提示词中的可用 Agent 列表）"
-				}
-			},
-			"required": ["agent_id"]
-		}`),
-	},
-}
-
 // getSkillDetailTool 虚拟工具定义：获取技能详细文档
 var getSkillDetailTool = LLMTool{
 	Type: "function",
@@ -222,13 +203,9 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	log.Printf("[processTask] ▶ 开始处理 taskID=%s source=%s account=%s streaming=%v query=%s",
 		ctx.TaskID, ctx.Source, ctx.Account, streaming, truncate(ctx.Query, 100))
 
-	// 1. 获取工具 + 渐进式发现初始化
+	// 1. 获取工具（全量加载）
 	var messages []Message
 	var tools []LLMTool
-
-	// 渐进式发现状态：追踪已加载的 agent
-	loadedAgents := make(map[string]bool)
-	allAgentToolsSnapshot := b.getAgentToolsMap()
 
 	if ctx.NoTools {
 		tools = nil
@@ -236,14 +213,9 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	} else if len(ctx.SelectedTools) > 0 {
 		tools = b.filterToolsBySelection(ctx.SelectedTools)
 		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(tools))
-	} else if ctx.Source == "cron_query" || ctx.Source == "llm_request" {
-		// 后向兼容：自动加载全部工具（无需渐进式发现）
-		tools = b.getLLMTools()
-		log.Printf("[processTask] 工具模式: 全量加载（%s） count=%d", ctx.Source, len(tools))
 	} else {
-		// 渐进式发现：只加载基础工具，LLM 通过 get_agent_tools 按需加载
-		tools = b.getBaseToolSet()
-		log.Printf("[processTask] 工具模式: 基础工具（渐进式发现） count=%d", len(tools))
+		tools = b.getLLMTools()
+		log.Printf("[processTask] 工具模式: 全量加载 count=%d", len(tools))
 	}
 
 	// 提取 query（构建消息前就需要）
@@ -327,33 +299,37 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 注入虚拟工具（集中管理）
 	tools = b.injectVirtualTools(tools, ctx.NoTools)
 
-	// 发送初始工具数量信息（分类展示）
+	// 发送初始工具数量信息（按 agent 分组展示）
 	if !ctx.NoTools && len(tools) > 0 {
-		var localNames []string  // 本地工具：本进程内执行
-		var remoteNames []string // 远程工具：通过 UAP 发送到远程 agent 执行
+		agentGroups := make(map[string][]string) // agentID → tool names
+		var virtualNames []string
 
 		for _, t := range tools {
-			name := t.Function.Name
-			canonical := b.resolveToolName(name)
-			// 远程工具：canonical 包含 "." 且不以本 agent 前缀开头
-			if strings.Contains(canonical, ".") && !strings.HasPrefix(canonical, b.cfg.AgentID+".") {
-				remoteNames = append(remoteNames, canonical)
+			canonical := b.resolveToolName(t.Function.Name)
+			if agentID, ok := b.getToolAgent(canonical); ok {
+				agentGroups[agentID] = append(agentGroups[agentID], canonical)
 			} else {
-				localNames = append(localNames, name)
+				virtualNames = append(virtualNames, canonical)
 			}
 		}
 
-		var parts []string
-		parts = append(parts, fmt.Sprintf("本地工具: %d", len(localNames)))
-		if len(remoteNames) > 0 {
-			parts = append(parts, fmt.Sprintf("远程工具: %d [%s]", len(remoteNames), strings.Join(remoteNames, ", ")))
-		} else {
-			parts = append(parts, "远程工具: 0")
+		var lines []string
+		b.catalogMu.RLock()
+		for agentID, toolNames := range agentGroups {
+			info := b.agentInfo[agentID]
+			name := agentID
+			if info.Name != "" {
+				name = info.Name
+			}
+			lines = append(lines, fmt.Sprintf("  %s (%d): %s", name, len(toolNames), strings.Join(toolNames, ", ")))
+		}
+		b.catalogMu.RUnlock()
+		if len(virtualNames) > 0 {
+			lines = append(lines, fmt.Sprintf("  虚拟工具 (%d): %s", len(virtualNames), strings.Join(virtualNames, ", ")))
 		}
 
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 初始加载 %d 个工具] %s\n本地: %s",
-			len(tools), strings.Join(parts, " | "),
-			strings.Join(localNames, ", ")))
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 加载 %d 个工具]\n%s",
+			len(tools), strings.Join(lines, "\n")))
 	}
 
 	// 4. LLM 循环
@@ -365,26 +341,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 构建本次 processTask 专用的 localHandlers
 	localHandlers := make(map[string]ToolHandler)
 
-	// get_agent_tools handler：加载指定 agent 的工具到后续轮次
+	// get_skill_detail handler：返回技能详细文档
 	if !ctx.NoTools {
-		localHandlers["get_agent_tools"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
-			var a struct {
-				AgentID string `json:"agent_id"`
-			}
-			if err := json.Unmarshal(args, &a); err != nil {
-				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
-			}
-			resolved := b.resolveAgentByName(a.AgentID)
-			if resolved == "" {
-				return &ToolCallResult{Result: fmt.Sprintf("agent '%s' 不存在。可用 agent:\n%s", a.AgentID, b.listAgentNames()), AgentID: "builtin"}, nil
-			}
-			loadedAgents[resolved] = true
-			desc := b.getAgentToolDescriptions(resolved)
-			log.Printf("[processTask] get_agent_tools: loaded agent=%s", resolved)
-			return &ToolCallResult{Result: desc, AgentID: "builtin"}, nil
-		}
-
-		// get_skill_detail handler：返回技能详细文档
 		localHandlers["get_skill_detail"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 			var a struct {
 				SkillName string `json:"skill_name"`
@@ -453,22 +411,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			}
 		}
 
-		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d loadedAgents=%d", i+1, maxIter, len(messages), len(tools), len(loadedAgents))
-
-		// 渐进式工具重建：如果有新 agent 被加载，重建工具列表
-		if len(loadedAgents) > 0 && !ctx.NoTools {
-			rebuiltTools := b.getBaseToolSet()
-			for agentID := range loadedAgents {
-				if agentTools, ok := allAgentToolsSnapshot[agentID]; ok {
-					rebuiltTools = append(rebuiltTools, agentTools...)
-				}
-			}
-			rebuiltTools = b.injectVirtualTools(rebuiltTools, false)
-			if len(rebuiltTools) != len(tools) {
-				log.Printf("[processTask] 工具重建: %d → %d (已加载 %d 个 agent)", len(tools), len(rebuiltTools), len(loadedAgents))
-			}
-			tools = rebuiltTools
-		}
+		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, maxIter, len(messages), len(tools))
 
 		// 接近迭代上限：强制 LLM 收敛
 		if i == maxIter-1 {

@@ -60,9 +60,12 @@ func main() {
 	// 预热 LLM 连接（建立 TCP+TLS，避免首次请求 EOF）
 	WarmupLLM(&cfg.LLM)
 
-	// 首次工具发现
+	// 首次工具和 agent 发现
 	if err := bridge.DiscoverTools(); err != nil {
 		log.Printf("[LLM-MCP] initial tool discovery failed (will retry): %v", err)
+	}
+	if err := bridge.DiscoverAgents(); err != nil {
+		log.Printf("[LLM-MCP] initial agent discovery failed (will retry): %v", err)
 	}
 
 	// 启动时工具评估（异步，不阻塞启动）

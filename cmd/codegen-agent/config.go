@@ -11,17 +11,17 @@ import (
 type AgentConfig struct {
 	ServerURL             string   `json:"server_url"`
 	AgentName             string   `json:"agent_name"`
-	AgentType             string   `json:"agent_type"`               // agent 类型: codegen(编码) / deploy(发布)，默认 codegen
+	AgentType             string   `json:"agent_type"` // agent 类型: codegen(编码) / deploy(发布)，默认 codegen
 	AuthToken             string   `json:"auth_token"`
 	Workspaces            []string `json:"workspaces"`
 	ClaudePath            string   `json:"claude_path"`
 	OpenCodePath          string   `json:"opencode_path"`
 	MaxConcurrent         int      `json:"max_concurrent"`
 	MaxTurns              int      `json:"max_turns"`
-	ClaudeCodeSettingsDir string   `json:"claudecode_settings_dir"`  // Claude Code --settings 配置目录
-	OpenCodeSettingsDir   string   `json:"opencode_settings_dir"`    // OpenCode 模型映射配置目录
-	ResumeModels          []string `json:"resume_models,omitempty"`  // 支持 --resume 的模型名列表（空字符串代表默认模型）
-	GoBackendAgentID      string   `json:"go_backend_agent_id"`      // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
+	ClaudeCodeSettingsDir string   `json:"claudecode_settings_dir"` // Claude Code --settings 配置目录
+	OpenCodeSettingsDir   string   `json:"opencode_settings_dir"`   // OpenCode 模型映射配置目录
+	ResumeModels          []string `json:"resume_models,omitempty"` // 支持 --resume 的模型名列表（空字符串代表默认模型）
+	GoBackendAgentID      string   `json:"go_backend_agent_id"`     // blog-agent-agent 在 gateway 中的 ID，默认 "blog-agent"
 
 	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
 	ProtectedFiles []string `json:"protected_files,omitempty"`
@@ -35,7 +35,7 @@ func DefaultConfig() *AgentConfig {
 		OpenCodePath:     "opencode",
 		MaxConcurrent:    3,
 		MaxTurns:         20,
-		GoBackendAgentID: "go_blog",
+		GoBackendAgentID: "blog-agent",
 
 		ProtectedFiles: []string{"codegen-agent.json", "settings/"},
 	}
@@ -82,7 +82,7 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		cfg.MaxTurns = 20
 	}
 	if cfg.GoBackendAgentID == "" {
-		cfg.GoBackendAgentID = "go_blog"
+		cfg.GoBackendAgentID = "blog-agent"
 	}
 
 	configDir := filepath.Dir(path)

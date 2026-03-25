@@ -48,7 +48,7 @@ func main() {
 
 	agentID := "acp_" + uap.NewMsgID()
 	log.Printf("[INFO] ACP Agent starting: id=%s name=%s type=%s", agentID, cfg.AgentName, cfg.AgentType)
-	log.Printf("[INFO] Gateway: %s → go_blog-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
+	log.Printf("[INFO] Gateway: %s → blog-agent-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
 	log.Printf("[INFO] Workspaces: %v", cfg.Workspaces)
 	log.Printf("[INFO] MaxConcurrent: %d, AnalysisTimeout: %ds", cfg.MaxConcurrent, cfg.AnalysisTimeout)
 	log.Printf("[INFO] ACP Command: %s %v", cfg.ACPAgentCmd, cfg.ACPAgentArgs)

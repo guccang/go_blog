@@ -30,7 +30,7 @@ import (
 )
 
 func clearup() {
-	log.Debug(log.ModuleCommon, "go_blog clearup")
+	log.Debug(log.ModuleCommon, "blog-agent clearup")
 	agent.Shutdown()
 	mcp.GetPool().Shutdown()
 }
@@ -57,7 +57,7 @@ func main() {
 	log.Info()
 
 	// versions
-	log.Debug(log.ModuleCommon, "go_blog starting")
+	log.Debug(log.ModuleCommon, "blog-agent starting")
 	module.Info()
 	view.Info()
 	control.Info()
@@ -102,7 +102,7 @@ func main() {
 	exercise.Init()
 	share.Init()
 	agent.Init(account)
-	log.Debug(log.ModuleCommon, "go_blog started")
+	log.Debug(log.ModuleCommon, "blog-agent started")
 
 	certFile := ""
 	keyFile := ""
@@ -112,7 +112,7 @@ func main() {
 	}
 	err := http.Run(certFile, keyFile)
 
-	log.Debug(log.ModuleCommon, fmt.Sprintf("go_blog exit %s", err.Error()))
+	log.Debug(log.ModuleCommon, fmt.Sprintf("blog-agent exit %s", err.Error()))
 	log.FlushLogs()
 	log.Cleanup()
 }

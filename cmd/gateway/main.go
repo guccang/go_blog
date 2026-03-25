@@ -50,7 +50,7 @@ func main() {
 	}
 
 	log.Printf("[Gateway] starting on port %d", cfg.Port)
-	log.Printf("[Gateway] go_blog upstream: %s", cfg.GoBackendURL)
+	log.Printf("[Gateway] blog-agent upstream: %s", cfg.GoBackendURL)
 
 	// 初始化注册表
 	registry := NewRegistry()
@@ -104,8 +104,8 @@ func main() {
 	mux.HandleFunc("/api/gateway/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"status":  "ok",
-			"agents":  registry.OnlineCount(),
+			"status": "ok",
+			"agents": registry.OnlineCount(),
 		})
 	})
 
@@ -209,7 +209,7 @@ func main() {
 		})
 	}
 
-	// HTTP 反向代理 — 将其余请求转发到 go_blog
+	// HTTP 反向代理 — 将其余请求转发到 blog-agent
 	proxy := NewProxy(cfg.GoBackendURL)
 	mux.Handle("/", proxy)
 

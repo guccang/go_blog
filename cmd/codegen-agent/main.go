@@ -56,7 +56,7 @@ func main() {
 
 	agentID := "codegen_" + uap.NewMsgID()
 	log.Printf("[INFO] CodeGen Agent starting: id=%s name=%s type=%s", agentID, cfg.AgentName, cfg.AgentType)
-	log.Printf("[INFO] Gateway: %s → go_blog-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
+	log.Printf("[INFO] Gateway: %s → blog-agent-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
 	log.Printf("[INFO] Workspaces: %v", cfg.Workspaces)
 	log.Printf("[INFO] MaxConcurrent: %d, MaxTurns: %d", cfg.MaxConcurrent, cfg.MaxTurns)
 

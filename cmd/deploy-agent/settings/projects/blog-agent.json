@@ -1,5 +1,5 @@
 {
-    "agent_id": "go_blog",
+    "agent_id": "blog-agent",
     "pack_pattern": "blog-agent_{date}.zip",
     "build": {
         "linux": {

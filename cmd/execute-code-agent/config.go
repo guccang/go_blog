@@ -13,15 +13,15 @@ import (
 
 // Config execute-code-agent 配置
 type Config struct {
-	ServerURL        string           `json:"server_url"`          // ws://127.0.0.1:10086/ws/uap
-	GatewayHTTP      string           `json:"gateway_http"`        // http://127.0.0.1:10086
-	AuthToken        string           `json:"auth_token"`
-	AgentName        string           `json:"agent_name"`          // "execute-code"
-	GoBackendAgentID string           `json:"go_backend_agent_id"` // "go_blog"
-	MaxConcurrent    int              `json:"max_concurrent"`      // 默认 3
-	PythonPath       string           `json:"python_path"`         // 默认 "python3"
-	MaxExecTimeSec   int              `json:"max_exec_time_sec"`   // 默认 120
-	MaxOutputSize    int              `json:"max_output_size"`     // 默认 50000 字符
+	ServerURL        string `json:"server_url"`   // ws://127.0.0.1:10086/ws/uap
+	GatewayHTTP      string `json:"gateway_http"` // http://127.0.0.1:10086
+	AuthToken        string `json:"auth_token"`
+	AgentName        string `json:"agent_name"`          // "execute-code"
+	GoBackendAgentID string `json:"go_backend_agent_id"` // "blog-agent"
+	MaxConcurrent    int    `json:"max_concurrent"`      // 默认 3
+	PythonPath       string `json:"python_path"`         // 默认 "python3"
+	MaxExecTimeSec   int    `json:"max_exec_time_sec"`   // 默认 120
+	MaxOutputSize    int    `json:"max_output_size"`     // 默认 50000 字符
 
 	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
 	ProtectedFiles []string `json:"protected_files,omitempty"`
@@ -30,14 +30,14 @@ type Config struct {
 // DefaultConfig 默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		ServerURL:      "ws://127.0.0.1:10086/ws/uap",
-		GatewayHTTP:    "http://127.0.0.1:10086",
-		AgentName:      "execute-code",
-		GoBackendAgentID: "go_blog",
-		MaxConcurrent:  3,
-		PythonPath:     detectPython(),
-		MaxExecTimeSec: 120,
-		MaxOutputSize:  50000,
+		ServerURL:        "ws://127.0.0.1:10086/ws/uap",
+		GatewayHTTP:      "http://127.0.0.1:10086",
+		AgentName:        "execute-code",
+		GoBackendAgentID: "blog-agent",
+		MaxConcurrent:    3,
+		PythonPath:       detectPython(),
+		MaxExecTimeSec:   120,
+		MaxOutputSize:    50000,
 
 		ProtectedFiles: []string{"execute-code-agent.json"},
 	}
@@ -63,7 +63,7 @@ func LoadConfig(path string) *Config {
 		cfg.AgentName = "execute-code"
 	}
 	if cfg.GoBackendAgentID == "" {
-		cfg.GoBackendAgentID = "go_blog"
+		cfg.GoBackendAgentID = "blog-agent"
 	}
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = 3

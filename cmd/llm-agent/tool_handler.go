@@ -113,6 +113,32 @@ func (b *Bridge) registerBuiltinTools() {
 		})
 	}
 
+	// get_skill_detail 虚拟工具（全局注册，子任务也可调用）
+	b.registerTool("get_skill_detail", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		var a struct {
+			SkillName string `json:"skill_name"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+		}
+		if b.skillMgr == nil {
+			return &ToolCallResult{Result: "技能系统未启用", AgentID: "builtin"}, nil
+		}
+		skill := b.skillMgr.GetSkill(a.SkillName)
+		if skill == nil {
+			return &ToolCallResult{Result: fmt.Sprintf("技能 '%s' 不存在", a.SkillName), AgentID: "builtin"}, nil
+		}
+		if offline := b.skillMgr.offlineAgents(skill); len(offline) > 0 {
+			return &ToolCallResult{
+				Result:  fmt.Sprintf("技能 '%s' 当前不可用：所需 agent %s offline", a.SkillName, strings.Join(offline, ", ")),
+				AgentID: "builtin",
+			}, nil
+		}
+		detail := b.skillMgr.BuildSkillBlock([]SkillEntry{*skill})
+		log.Printf("[ToolHandler] get_skill_detail: skill=%s", a.SkillName)
+		return &ToolCallResult{Result: detail, AgentID: "builtin"}, nil
+	})
+
 	// 模型切换工具（4 个）
 	b.registerTool("list_providers", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 		result := b.handleListProviders()

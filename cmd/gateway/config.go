@@ -9,7 +9,7 @@ import (
 // Config Gateway 配置
 type Config struct {
 	Port         int    `json:"port"`           // 网关监听端口
-	GoBackendURL string `json:"go_backend_url"` // go_blog 后端地址（反向代理）
+	GoBackendURL string `json:"go_backend_url"` // blog-agent 后端地址（反向代理）
 	AuthToken    string `json:"auth_token"`     // agent 认证 token
 
 	// 事件追踪配置

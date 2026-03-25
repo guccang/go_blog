@@ -145,7 +145,7 @@ func (c *Client) runLoop() {
 		switch msg.Type {
 		case MsgRegisterAck:
 			if msg.From != "" {
-				// 来自其他 agent（如 go_blog 的 codegen 协议 ack），转给 OnMessage
+				// 来自其他 agent（如 blog-agent 的 codegen 协议 ack），转给 OnMessage
 				if c.OnMessage != nil {
 					c.OnMessage(&msg)
 				}

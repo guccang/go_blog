@@ -30,8 +30,8 @@ var (
 
 // GatewaySender 通过 gateway 路由发送消息
 type GatewaySender struct {
-	client      *uap.Client
-	toAgentID   string // 目标 agent ID（codegen-agent / deploy-agent 的 UAP ID）
+	client    *uap.Client
+	toAgentID string // 目标 agent ID（codegen-agent / deploy-agent 的 UAP ID）
 }
 
 // SendAgentMsg 通过 gateway 路由发送 AgentMessage
@@ -48,10 +48,10 @@ type TaskEvent struct {
 	Error    string // 仅 complete 时有效
 }
 
-// GatewayBridge go_blog 的 gateway 适配层
+// GatewayBridge blog-agent 的 gateway 适配层
 type GatewayBridge struct {
-	client     *uap.Client
-	pool       *AgentPool
+	client      *uap.Client
+	pool        *AgentPool
 	gatewayHTTP string // gateway HTTP 地址（如 http://127.0.0.1:9000）
 
 	// wechat notify 处理器
@@ -70,7 +70,7 @@ type GatewayBridge struct {
 // 全局 gateway bridge 实例
 var gatewayBridge *GatewayBridge
 
-// InitGatewayBridge 初始化 go_blog 到 gateway 的连接
+// InitGatewayBridge 初始化 blog-agent 到 gateway 的连接
 func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 	// 统一 token：gateway_token 同时作为 agent 认证 token
 	if authToken != "" {
@@ -80,7 +80,7 @@ func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 	// 构建工具定义和映射表
 	toolDefs, toolMapping := buildToolDefs()
 
-	client := uap.NewClient(gatewayURL, "go_blog", "go_blog", "Go Blog Server")
+	client := uap.NewClient(gatewayURL, "blog-agent", "blog-agent", "Go Blog Server")
 	client.AuthToken = authToken
 	client.Description = "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏"
 	client.Capacity = 100
@@ -400,7 +400,7 @@ func (b *GatewayBridge) handleHeartbeat(msg *uap.Message) {
 
 	agent := b.getAgent(msg.From)
 	if agent == nil {
-		// agent 不在 pool 中（可能 go_blog 重启过），通知它重新注册
+		// agent 不在 pool 中（可能 blog-agent 重启过），通知它重新注册
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: heartbeat from unknown agent %s, asking to re-register", msg.From)
 		b.client.SendTo(msg.From, MsgRegisterAck, RegisterAckPayload{
 			Success: false,
@@ -496,7 +496,7 @@ func (b *GatewayBridge) forwardToWechatAgents(msg *uap.Message) {
 	b.client.Send(&uap.Message{
 		Type:    msg.Type,
 		ID:      uap.NewMsgID(),
-		From:    "go_blog",
+		From:    "blog-agent",
 		To:      wechatAgentID,
 		Payload: payload,
 		Ts:      time.Now().UnixMilli(),
@@ -775,7 +775,7 @@ func findLLMAgentID() string {
 
 	var result struct {
 		Success bool `json:"success"`
-		Agents []struct {
+		Agents  []struct {
 			AgentID   string `json:"agent_id"`
 			AgentType string `json:"agent_type"`
 		} `json:"agents"`

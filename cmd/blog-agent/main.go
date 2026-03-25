@@ -31,7 +31,7 @@ import (
 )
 
 func clearup() {
-	log.Debug(log.ModuleCommon, "go_blog clearup")
+	log.Debug(log.ModuleCommon, "blog-agent clearup")
 }
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 	log.Info()
 
 	// versions
-	log.Debug(log.ModuleCommon, "go_blog starting")
+	log.Debug(log.ModuleCommon, "blog-agent starting")
 	module.Info()
 	view.Info()
 	control.Info()
@@ -123,7 +123,7 @@ func main() {
 		return infos
 	}
 
-	// 如果配置了 gateway_url，连接 gateway 注册为 go_blog agent
+	// 如果配置了 gateway_url，连接 gateway 注册为 blog-agent agent
 	gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
 	if gatewayURL != "" {
 		gatewayToken := config.GetConfigWithAccount(account, "gateway_token")
@@ -165,7 +165,7 @@ func main() {
 	// 设置微信命令处理器
 	codegen.SetWechatHandler(codegen.HandleWechatCommand)
 
-	log.Debug(log.ModuleCommon, "go_blog started")
+	log.Debug(log.ModuleCommon, "blog-agent started")
 
 	certFile := ""
 	keyFile := ""
@@ -175,7 +175,7 @@ func main() {
 	}
 	err := http.Run(certFile, keyFile)
 
-	log.Debug(log.ModuleCommon, fmt.Sprintf("go_blog exit %s", err.Error()))
+	log.Debug(log.ModuleCommon, fmt.Sprintf("blog-agent exit %s", err.Error()))
 	log.FlushLogs()
 	log.Cleanup()
 }

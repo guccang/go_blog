@@ -6,9 +6,9 @@ import "encoding/json"
 
 const (
 	// 生命周期
-	MsgRegister    = "register"
-	MsgRegisterAck = "register_ack"
-	MsgHeartbeat   = "heartbeat"
+	MsgRegister     = "register"
+	MsgRegisterAck  = "register_ack"
+	MsgHeartbeat    = "heartbeat"
 	MsgHeartbeatAck = "heartbeat_ack"
 
 	// 工具调用（跨 agent）
@@ -44,7 +44,7 @@ const (
 
 	// Describe 协议（查询 agent 能力）
 	MsgDescribe       = "describe"        // 查询 agent 能力
-	MsgDescribeResult = "describe_result"  // 能力描述回复
+	MsgDescribeResult = "describe_result" // 能力描述回复
 )
 
 // ========================= 消息信封 =========================
@@ -52,9 +52,9 @@ const (
 // Message UAP 统一消息信封
 type Message struct {
 	Type    string          `json:"type"`
-	ID      string          `json:"id"`      // 唯一消息 ID（请求-响应关联）
-	From    string          `json:"from"`    // 源 agent ID
-	To      string          `json:"to"`      // 目标 agent ID
+	ID      string          `json:"id"`   // 唯一消息 ID（请求-响应关联）
+	From    string          `json:"from"` // 源 agent ID
+	To      string          `json:"to"`   // 目标 agent ID
 	Payload json.RawMessage `json:"payload"`
 	Ts      int64           `json:"ts"`
 }
@@ -64,7 +64,7 @@ type Message struct {
 // RegisterPayload agent 注册信息
 type RegisterPayload struct {
 	AgentID      string         `json:"agent_id"`
-	AgentType    string         `json:"agent_type"`    // "wechat", "go_blog", "llm_mcp", "codegen", "deploy"
+	AgentType    string         `json:"agent_type"`    // "wechat", "blog-agent", "llm_mcp", "codegen", "deploy"
 	Name         string         `json:"name"`          // 人类可读名称
 	Description  string         `json:"description"`   // agent 能力简述
 	HostPlatform string         `json:"host_platform"` // 运行平台（macOS/Linux/Windows）
@@ -78,9 +78,9 @@ type RegisterPayload struct {
 
 // ToolDef 工具定义
 type ToolDef struct {
-	Name        string          `json:"name"`        // 命名空间: "blog.GetTodos"
+	Name        string          `json:"name"` // 命名空间: "blog.GetTodos"
 	Description string          `json:"description"`
-	Parameters  json.RawMessage `json:"parameters"`  // JSON Schema
+	Parameters  json.RawMessage `json:"parameters"` // JSON Schema
 }
 
 // RegisterAckPayload 注册确认
@@ -93,7 +93,7 @@ type RegisterAckPayload struct {
 
 // HeartbeatPayload 心跳数据
 type HeartbeatPayload struct {
-	AgentID string `json:"agent_id"`
+	AgentID string  `json:"agent_id"`
 	Load    float64 `json:"load"`
 }
 
@@ -208,10 +208,10 @@ type PermissionOptionDTO struct {
 
 // PermissionRequestPayload 权限请求（acp-agent → llm-agent）
 type PermissionRequestPayload struct {
-	SessionID string              `json:"session_id"`
-	RequestID string              `json:"request_id"` // 关联回复
-	Title     string              `json:"title"`      // 工具名/操作名
-	Content   string              `json:"content"`    // 详细描述
+	SessionID string                `json:"session_id"`
+	RequestID string                `json:"request_id"` // 关联回复
+	Title     string                `json:"title"`      // 工具名/操作名
+	Content   string                `json:"content"`    // 详细描述
 	Options   []PermissionOptionDTO `json:"options"`
 }
 
@@ -219,8 +219,8 @@ type PermissionRequestPayload struct {
 type PermissionResponsePayload struct {
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id"`
-	OptionID  string `json:"option_id"`  // 用户选择的选项 ID
-	Cancelled bool   `json:"cancelled"`  // 是否取消
+	OptionID  string `json:"option_id"` // 用户选择的选项 ID
+	Cancelled bool   `json:"cancelled"` // 是否取消
 }
 
 // ========================= 模式切换载荷 =========================

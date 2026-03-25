@@ -228,10 +228,17 @@ func NewBridge(cfg *Config) *Bridge {
 			log.Printf("[Bridge] load skills: %v", err)
 		}
 		// 注入 agent 在线检查：技能目录展示时过滤不可用技能
+		// 同时检查 agentInfo（DiscoverAgents 填充）和 agentTools（DiscoverTools 填充）
 		b.skillMgr.SetAgentOnlineChecker(func(prefix string) bool {
 			b.catalogMu.RLock()
 			defer b.catalogMu.RUnlock()
 			for agentID := range b.agentInfo {
+				if strings.HasPrefix(agentID, prefix) {
+					return true
+				}
+			}
+			// 回退：DiscoverTools 比 DiscoverAgents 先执行，agentTools 可能已有数据
+			for agentID := range b.agentTools {
 				if strings.HasPrefix(agentID, prefix) {
 					return true
 				}

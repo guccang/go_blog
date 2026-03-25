@@ -45,9 +45,9 @@ type CronReminderPayload struct {
 
 // CronQueryPayload cron_query 任务的 payload（定时查询）
 type CronQueryPayload struct {
-	Query      string `json:"query"`       // 查询问题
-	Account    string `json:"account"`     // 用户账号
-	WechatUser string `json:"wechat_user"` // 微信用户（有值则发送结果到微信）
+	Query      string `json:"query"`              // 查询问题
+	Account    string `json:"account"`            // 用户账号
+	WechatUser string `json:"wechat_user"`        // 微信用户（有值则发送结果到微信）
 	Provider   string `json:"provider,omitempty"` // LLM provider
 	Model      string `json:"model,omitempty"`    // LLM model
 }
@@ -137,7 +137,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),
 		From:    b.cfg.AgentID,
-		To:      "go_blog",
+		To:      "blog-agent",
 		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
 		Ts:      time.Now().UnixMilli(),
 	})
@@ -177,7 +177,7 @@ func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
 		Type: uap.MsgTaskComplete,
 		ID:   uap.NewMsgID(),
 		From: b.cfg.AgentID,
-		To:   "go_blog",
+		To:   "blog-agent",
 		Payload: mustMarshal(uap.TaskCompletePayload{
 			TaskID: taskID,
 			Status: status,
@@ -218,7 +218,7 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),
 		From:    b.cfg.AgentID,
-		To:      "go_blog",
+		To:      "blog-agent",
 		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg, Result: result}),
 		Ts:      time.Now().UnixMilli(),
 	})
@@ -237,7 +237,7 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 		Type: uap.MsgTaskEvent,
 		ID:   uap.NewMsgID(),
 		From: b.cfg.AgentID,
-		To:   "go_blog",
+		To:   "blog-agent",
 		Payload: mustMarshal(uap.TaskEventPayload{
 			TaskID: taskID,
 			Event:  json.RawMessage(eventData),
@@ -264,7 +264,7 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 		log.Printf("[CronReminder] task=%s sent to wechat-agent=%s", taskID, wechatAgentID)
 	}
 
-	// 发送 task_complete 到 sourceAgent（corn-agent），而非 "go_blog"
+	// 发送 task_complete 到 sourceAgent（corn-agent），而非 "blog-agent"
 	b.client.Send(&uap.Message{
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),
@@ -396,7 +396,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	now := time.Now()
 	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
-	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n", b.activeLLM.Get().MaxTokens)
+	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 工具时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。所有可用工具已列在下方工具目录中，直接调用即可。\n", b.activeLLM.Get().MaxTokens)
 	writeSection("人设/基础", personaContent)
 
 	// 2. 用户规则
@@ -405,9 +405,9 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		writeSection("用户规则", rulesBlock)
 	}
 
-	// 3. Agent 目录（简要列表 + get_agent_tools 获取详情的说明）
-	agentBlock := b.buildAgentDirectory()
-	writeSection("Agent目录", agentBlock)
+	// 3. Agent 与工具全量目录（直接展示所有工具，无需 get_agent_tools）
+	toolCatalog := b.buildFullToolCatalog()
+	writeSection("Agent与工具目录", toolCatalog)
 
 	// 4. Skill 目录（简要列表 + get_skill_detail 获取详情的说明）
 	if b.skillMgr != nil {

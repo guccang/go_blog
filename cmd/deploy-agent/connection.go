@@ -488,7 +488,7 @@ func (c *Connection) activeCount() int {
 	return len(c.activeTasks)
 }
 
-// SendMsg 发送消息给 go_blog-agent（通过 gateway 路由）
+// SendMsg 发送消息给 blog-agent-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
 	return c.Client.SendTo(targetAgent, msgType, payload)

@@ -117,7 +117,7 @@ func (b *Bridge) HandleWechatMessage(msg *WechatMessage) {
 		return
 	}
 
-	// 路由：结构化命令 → go_blog，自然语言 → llm-agent
+	// 路由：结构化命令 → blog-agent，自然语言 → llm-agent
 	targetAgent := b.cfg.LLMAgentID
 	if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
 		targetAgent = b.cfg.BackendAgentID
@@ -164,11 +164,11 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 		b.handleToolCall(msg, &payload)
 
 	case "stream_event":
-		// [Phase 2] 收到 codegen 流式事件（从 go_blog-agent 转发）
+		// [Phase 2] 收到 codegen 流式事件（从 blog-agent-agent 转发）
 		b.handleCodegenStreamEvent(msg)
 
 	case "task_complete":
-		// [Phase 2] 收到 codegen 任务完成（从 go_blog-agent 转发）
+		// [Phase 2] 收到 codegen 任务完成（从 blog-agent-agent 转发）
 		b.handleCodegenTaskComplete(msg)
 
 	case uap.MsgError:
@@ -225,11 +225,11 @@ type codegenStreamEvent struct {
 	SessionID string `json:"session_id"`
 	Account   string `json:"account,omitempty"`
 	Event     struct {
-		Type      string  `json:"type"`
-		Text      string  `json:"text,omitempty"`
-		ToolName  string  `json:"tool_name,omitempty"`
-		CostUSD   float64 `json:"cost_usd,omitempty"`
-		Done      bool    `json:"done,omitempty"`
+		Type     string  `json:"type"`
+		Text     string  `json:"text,omitempty"`
+		ToolName string  `json:"tool_name,omitempty"`
+		CostUSD  float64 `json:"cost_usd,omitempty"`
+		Done     bool    `json:"done,omitempty"`
 	} `json:"event"`
 }
 
@@ -494,7 +494,7 @@ func (b *Bridge) sendWebhookMarkdown(content string) error {
 
 // ========================= 帮助文本 =========================
 
-// isBackendCommand 判断消息是否为结构化命令（直接路由到 go_blog，不经过 LLM）
+// isBackendCommand 判断消息是否为结构化命令（直接路由到 blog-agent，不经过 LLM）
 func isBackendCommand(content string) bool {
 	return strings.HasPrefix(content, "cg ") || content == "cg" ||
 		content == "刷新提示词" || strings.EqualFold(content, "reload prompts")

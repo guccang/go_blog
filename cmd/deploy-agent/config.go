@@ -68,7 +68,7 @@ type DeployConfig struct {
 	ProjectOrder []string                  // 保持声明顺序
 
 	// UAP gateway 配置
-	GoBackendAgentID string // go_blog-agent 在 gateway 中的 ID，默认 "go_blog"
+	GoBackendAgentID string // blog-agent-agent 在 gateway 中的 ID，默认 "blog-agent"
 
 	// Pipeline 编排
 	PipelinesDir string // pipelines/ 目录路径（自动推断）
@@ -118,12 +118,12 @@ func (c *DeployConfig) ResolveAgentID(nameOrID string) string {
 
 // projectJSON 项目 JSON 配置（仅用于 unmarshal）
 type projectJSON struct {
-	AgentID      string                `json:"agent_id,omitempty"`      // 对应的 UAP agent_id
+	AgentID      string                `json:"agent_id,omitempty"` // 对应的 UAP agent_id
 	PackPattern  string                `json:"pack_pattern,omitempty"`
 	Build        map[string]buildJSON  `json:"build"`
 	Targets      map[string]targetJSON `json:"targets"`
 	ProtectFiles []string              `json:"protect_files,omitempty"` // 增量部署时保护的文件
-	SetupDirs    []string              `json:"setup_dirs,omitempty"`   // 首次部署时创建的数据目录
+	SetupDirs    []string              `json:"setup_dirs,omitempty"`    // 首次部署时创建的数据目录
 }
 
 // buildJSON 构建配置
@@ -225,7 +225,7 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 		return nil, fmt.Errorf("no projects found (check workspaces, settings_dir and projects/ directory)")
 	}
 	if cfg.GoBackendAgentID == "" {
-		cfg.GoBackendAgentID = "go_blog"
+		cfg.GoBackendAgentID = "blog-agent"
 	}
 
 	// 自动探测 pipelines 目录
@@ -809,4 +809,3 @@ func generateDefaultConfig(configPath string) error {
 
 	return nil
 }
-
