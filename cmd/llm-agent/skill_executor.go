@@ -317,7 +317,8 @@ func (b *Bridge) buildToolParamReference(tools []LLMTool) string {
 	return sb.String()
 }
 
-// extractParamSummary 从 JSON Schema 提取参数摘要（如 "account*(str), date*(str,2025-01-01), id*(str)"）
+// extractParamSummary 从 JSON Schema 提取参数摘要（如 "account*(string,账号), date*(string,日期,格式2025-01-01)"）
+// 始终包含类型信息，让 LLM 在 ExecuteCode 中写 call_tool 时知道参数类型
 func extractParamSummary(params json.RawMessage) string {
 	if len(params) == 0 {
 		return ""
@@ -345,11 +346,16 @@ func extractParamSummary(params json.RawMessage) string {
 		if requiredSet[name] {
 			entry += "*"
 		}
-		detail := prop.Type
-		if prop.Description != "" {
-			detail = prop.Description
+		// 始终包含类型 + 描述，让 LLM 知道参数类型和格式
+		typeName := prop.Type
+		if typeName == "" {
+			typeName = "string"
 		}
-		entry += "(" + detail + ")"
+		if prop.Description != "" {
+			entry += "(" + typeName + "," + prop.Description + ")"
+		} else {
+			entry += "(" + typeName + ")"
+		}
 		parts = append(parts, entry)
 	}
 	return strings.Join(parts, ", ")
