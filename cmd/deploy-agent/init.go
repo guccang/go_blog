@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 )
@@ -37,6 +38,26 @@ type InitConfig struct {
 	MacProjectDir   string   // macOS project path
 	SettingsDir     string   // deploy-agent settings dir (absolute)
 	NonInteractive  bool     // non-interactive mode
+}
+
+// extractPortFromArgs 从启动参数中提取端口号
+// 支持格式：:8883、-port 8883、--port=8883、-addr :8883、-p 8883、0.0.0.0:8883
+func extractPortFromArgs(args string) string {
+	if args == "" {
+		return ""
+	}
+	// 匹配常见端口参数模式
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?:^|[\s=])(?::)?(\d{2,5})(?:\s|$)`),             // :8883 或纯数字
+		regexp.MustCompile(`-(?:port|p|addr)[=\s]+:?(\d{2,5})(?:\s|$)`),      // -port 8883 / --port=8883 / -addr :8883
+		regexp.MustCompile(`(?:\d{1,3}\.){3}\d{1,3}:(\d{2,5})(?:\s|$)`),      // 0.0.0.0:8883
+	}
+	for _, re := range patterns {
+		if m := re.FindStringSubmatch(args); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // runInit entry point: detect -> merge CLI flags -> interactive/generate
@@ -526,6 +547,22 @@ if %errorlevel%==0 (
 func generatePublishSh(cfg *InitConfig) string {
 	name := cfg.ProjectName
 
+	// 从 StartArgs 中提取端口号（支持 :8883、-port 8883、--port=8883、-addr :8883 等格式）
+	port := extractPortFromArgs(cfg.StartArgs)
+
+	// 端口 kill 命令：如果提取到端口，先杀占用该端口的进程
+	var portKillBlock string
+	if port != "" {
+		portKillBlock = fmt.Sprintf(`
+# Kill process occupying port %s
+PORT_PID=$(lsof -ti:%s 2>/dev/null || ss -tlnp 2>/dev/null | grep ':%s ' | grep -oP 'pid=\K\d+')
+if [ -n "$PORT_PID" ]; then
+    echo "Killing process on port %s (PID: $PORT_PID)..."
+    echo "$PORT_PID" | xargs kill -9 2>/dev/null
+    sleep 1
+fi`, port, port, port, port)
+	}
+
 	// nohup command with or without args
 	var nohupCmd string
 	if cfg.StartArgs != "" {
@@ -541,11 +578,11 @@ cd "$(dirname "$0")"
 svr="$(pwd)/{{NAME}}"
 echo $svr
 
-# Stop old process
+# Stop old process by name
 echo "Stopping {{NAME}}..."
-ps aux | grep "$svr" | grep -v "grep" | awk '{print $2}' | xargs kill -9
+ps aux | grep "$svr" | grep -v "grep" | awk '{print $2}' | xargs kill -9 2>/dev/null
 sleep 1
-
+{{PORT_KILL_BLOCK}}
 # Ensure executable
 chmod +x {{NAME}}
 
@@ -567,6 +604,7 @@ fi
 
 	content = strings.ReplaceAll(content, "{{NAME}}", name)
 	content = strings.ReplaceAll(content, "{{NOHUP_CMD}}", nohupCmd)
+	content = strings.ReplaceAll(content, "{{PORT_KILL_BLOCK}}", portKillBlock)
 
 	// Ensure LF line endings for .sh
 	content = strings.ReplaceAll(content, "\r\n", "\n")
