@@ -696,7 +696,7 @@ func (o *Orchestrator) executeSubTask(
 	subtaskStart := time.Now()
 	session.SetStatus("running")
 	log.Printf("[Orchestrator] ▶ 子任务开始 id=%s title=%s desc=%s",
-		subtask.ID, subtask.Title, truncate(subtask.Description, 150))
+		subtask.ID, subtask.Title, subtask.Description)
 
 	// 构建子任务的 system prompt
 	var systemContent strings.Builder
@@ -874,7 +874,7 @@ func (o *Orchestrator) executeSubTask(
 
 			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
-				subtask.ID, originalName, truncate(tc.Function.Arguments, 500))
+				subtask.ID, originalName, tc.Function.Arguments)
 
 			start := time.Now()
 			tcResult, err := o.bridge.CallToolCtx(ctx, originalName, json.RawMessage(tc.Function.Arguments))
@@ -907,7 +907,7 @@ func (o *Orchestrator) executeSubTask(
 				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 →%s (%.1fs): %v", subtask.ID, originalName, toAgent, duration.Seconds(), err))
 			} else {
 				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
-					subtask.ID, originalName, toAgent, fromAgent, duration, len(result), truncate(result, 200))
+					subtask.ID, originalName, toAgent, fromAgent, duration, len(result), result)
 				sendEvent("tool_result", fmt.Sprintf("✅ [%s] %s [%s→%s] (%.1fs)\n结果: %s", subtask.ID, originalName, toAgent, fromAgent, duration.Seconds(), truncate(result, 300)))
 			}
 
@@ -1117,7 +1117,7 @@ func (o *Orchestrator) Synthesize(
 	originalQuery string,
 	sendEvent func(event, text string),
 ) string {
-	log.Printf("[Orchestrator] ── 汇总开始 results=%d query=%s", len(results), truncate(originalQuery, 100))
+	log.Printf("[Orchestrator] ── 汇总开始 results=%d query=%s", len(results), originalQuery)
 	synthStart := time.Now()
 	sendEvent("synthesis", "正在整理最终结果...")
 
@@ -1501,7 +1501,7 @@ func (o *Orchestrator) SteerSubTask(subtaskID, guidance string) error {
 	}
 	select {
 	case handle.SteerCh <- guidance:
-		log.Printf("[Orchestrator] steer sent to subtask %s: %s", subtaskID, truncate(guidance, 100))
+		log.Printf("[Orchestrator] steer sent to subtask %s: %s", subtaskID, guidance)
 		return nil
 	default:
 		return fmt.Errorf("subtask %s steer channel full", subtaskID)

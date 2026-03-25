@@ -290,7 +290,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			if len(messages) > 0 && messages[0].Role == "system" {
 				freshPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account)
 				messages[0].Content = freshPrompt
-				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d", len(freshPrompt))
+				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d prompt:\n%s", len(freshPrompt), freshPrompt)
 			}
 		} else {
 			log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
@@ -302,7 +302,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: ctx.Query},
 		}
-		log.Printf("[processTask] 构建系统提示 promptLen=%d", len(systemPrompt))
+		log.Printf("[processTask] 构建系统提示 promptLen=%d prompt:\n%s", len(systemPrompt), systemPrompt)
 	}
 
 	// 5. 创建会话（所有来源都持久化）
@@ -329,7 +329,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 
 	// 发送初始工具数量信息（分类展示）
 	if !ctx.NoTools && len(tools) > 0 {
-		var localNames  []string // 本地工具：本进程内执行
+		var localNames []string  // 本地工具：本进程内执行
 		var remoteNames []string // 远程工具：通过 UAP 发送到远程 agent 执行
 
 		for _, t := range tools {
@@ -649,7 +649,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				toolCallEvent = formatExecuteCodeEvent(tc.Function.Arguments, tcIdx+1, len(toolCalls))
 			}
 			ctx.Sink.OnEvent("tool_call", toolCallEvent)
-			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, truncate(tc.Function.Arguments, 500))
+			log.Printf("[processTask] → 调用工具: %s args=%s", originalName, tc.Function.Arguments)
 
 			start := time.Now()
 			callCtx := ctx.Ctx
@@ -751,7 +751,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				ctx.Sink.OnEvent("tool_result", eventText)
 			} else {
 				log.Printf("[processTask] ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
-					originalName, toAgent, fromAgent, duration, len(result), truncate(result, 200))
+					originalName, toAgent, fromAgent, duration, len(result), result)
 				// 尝试提取标准格式的 message
 				var stdResult struct {
 					Data    any    `json:"data"`

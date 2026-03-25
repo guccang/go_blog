@@ -69,7 +69,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 	// 3. 过滤工具（从全量工具列表中筛选，因为主列表已隐藏 skill 工具）
 	allTools := b.getLLMTools()
 	filteredTools := b.filterToolsForSkill(skill, allTools)
-	log.Printf("[SkillSubTask] skill=%s tools=%d query=%s", skillName, len(filteredTools), truncate(query, 200))
+	log.Printf("[SkillSubTask] skill=%s tools=%d query=%s", skillName, len(filteredTools), query)
 
 	// 注入工具参数参考（让 LLM 在 ExecuteCode 中写 call_tool 时有直接参考）
 	toolRef := b.buildToolParamReference(filteredTools)
@@ -144,7 +144,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		for _, tc := range toolCalls {
 			originalName := b.resolveToolName(tc.Function.Name)
 			log.Printf("[SkillSubTask] skill=%s → 调用工具: %s args=%s",
-				skillName, originalName, truncate(tc.Function.Arguments, 500))
+				skillName, originalName, tc.Function.Arguments)
 
 			ctx.Sink.OnEvent("skill_tool_call", fmt.Sprintf("[%s] 调用 %s\n参数: %s",
 				skillName, originalName, truncate(tc.Function.Arguments, 300)))
@@ -181,16 +181,16 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 			}
 			if err != nil {
 				result = fmt.Sprintf("工具调用失败: %v", err)
-				log.Printf("[SkillSubTask] skill=%s 工具失败: %s error=%v", skillName, originalName, err)
+				log.Printf("[SkillSubTask] skill=%s 工具失败: %s error=%v result=%s", skillName, originalName, err, result)
 				ctx.Sink.OnEvent("skill_tool_result", fmt.Sprintf("[%s] ❌ %s 失败 (%s)\n%s",
 					skillName, originalName, fmtDuration(time.Since(toolStart)), truncate(result, 500)))
-				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: truncate(tc.Function.Arguments, 150), Success: false, Result: truncate(result, 200)})
+				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: tc.Function.Arguments, Success: false, Result: result})
 			} else {
-				log.Printf("[SkillSubTask] skill=%s ← 工具返回: %s resultLen=%d",
-					skillName, originalName, len(result))
+				log.Printf("[SkillSubTask] skill=%s ← 工具返回: %s resultLen=%d result=%s",
+					skillName, originalName, len(result), result)
 				ctx.Sink.OnEvent("skill_tool_result", fmt.Sprintf("[%s] ✅ %s 成功 (%s, %d字符)\n%s",
 					skillName, originalName, fmtDuration(time.Since(toolStart)), len(result), truncate(result, 500)))
-				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: truncate(tc.Function.Arguments, 150), Success: true, Result: truncate(result, 300)})
+				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: tc.Function.Arguments, Success: true, Result: result})
 			}
 
 			messages = append(messages, Message{

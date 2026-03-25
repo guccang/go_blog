@@ -208,36 +208,21 @@ type llmError struct {
 
 // ========================= LLM 上下文日志 =========================
 
-// logLLMContext 打印 LLM 调用时的完整上下文（消息 + 工具列表）
+// logLLMContext 打印 LLM 调用时的完整上下文（消息 + 工具列表），不截断
 func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTool) {
 	log.Printf("[LLM-Context][%s] ========== LLM 调用上下文 ==========", tag)
 	log.Printf("[LLM-Context][%s] model=%s max_tokens=%d temperature=%.2f", tag, cfg.EffectiveModel(), cfg.MaxTokens, cfg.Temperature)
 	log.Printf("[LLM-Context][%s] messages 数量: %d", tag, len(messages))
 
 	for i, m := range messages {
-		// 打印角色和内容（system 消息打印更多以便看到完整 skill 指引）
-		contentPreview := m.Content
-		runes := []rune(contentPreview)
-		maxPreview := 500
-		if m.Role == "system" {
-			maxPreview = 3000
-		}
-		if len(runes) > maxPreview {
-			contentPreview = string(runes[:maxPreview]) + fmt.Sprintf("...(%d chars total)", len(runes))
-		}
 		log.Printf("[LLM-Context][%s] msg[%d] role=%s content_len=%d content:\n%s",
-			tag, i, m.Role, len(m.Content), contentPreview)
+			tag, i, m.Role, len(m.Content), m.Content)
 
 		// 打印 assistant 消息中的 tool_calls
 		if len(m.ToolCalls) > 0 {
 			for j, tc := range m.ToolCalls {
-				argsPreview := tc.Function.Arguments
-				argsRunes := []rune(argsPreview)
-				if len(argsRunes) > 300 {
-					argsPreview = string(argsRunes[:300]) + "..."
-				}
 				log.Printf("[LLM-Context][%s] msg[%d].tool_calls[%d] id=%s name=%s args=%s",
-					tag, i, j, tc.ID, tc.Function.Name, argsPreview)
+					tag, i, j, tc.ID, tc.Function.Name, tc.Function.Arguments)
 			}
 		}
 
@@ -377,6 +362,12 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	}
 	log.Printf("[LLM] ← 同步响应 duration=%v finish=%s textLen=%d toolCalls=%d tools=%v",
 		duration, choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls), tcNames)
+	if choice.Message.Content != "" {
+		log.Printf("[LLM] ← 响应文本:\n%s", choice.Message.Content)
+	}
+	for _, tc := range choice.Message.ToolCalls {
+		log.Printf("[LLM] ← tool_call: name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
+	}
 
 	// 同步请求也检测 max_tokens 截断
 	if choice.FinishReason == "length" && len(choice.Message.ToolCalls) > 0 {
@@ -473,6 +464,12 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 	}
 	log.Printf("[LLM] ← 同步响应(ctx) duration=%v finish=%s textLen=%d toolCalls=%d tools=%v",
 		duration, choice.FinishReason, len(choice.Message.Content), len(choice.Message.ToolCalls), tcNames)
+	if choice.Message.Content != "" {
+		log.Printf("[LLM] ← 响应文本(ctx):\n%s", choice.Message.Content)
+	}
+	for _, tc := range choice.Message.ToolCalls {
+		log.Printf("[LLM] ← tool_call(ctx): name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
+	}
 
 	if choice.FinishReason == "length" && len(choice.Message.ToolCalls) > 0 {
 		lastTC := &choice.Message.ToolCalls[len(choice.Message.ToolCalls)-1]
@@ -614,6 +611,12 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	}
 	log.Printf("[LLM] ← 流式响应完成 duration=%v textLen=%d toolCalls=%d tools=%v",
 		duration, len(text), len(toolCalls), tcNames)
+	if text != "" {
+		log.Printf("[LLM] ← 响应文本(stream):\n%s", text)
+	}
+	for _, tc := range toolCalls {
+		log.Printf("[LLM] ← tool_call(stream): name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
+	}
 
 	return stripThinkTags(text), toolCalls, nil
 }
