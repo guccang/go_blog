@@ -11,10 +11,16 @@ keywords: 部署,deploy,发布,上线
 
 ## 部署流程（必须遵守）
 
+### 独立部署任务（用户直接说"部署xxx"）
 1. **先调用 DeployListProjects** 查看项目列表和配置状态
 2. 根据 `configured` 字段选择接口：
    - `configured=true` → 使用 **DeployProject**（只需 project + deploy_target）
    - `configured=false` → 使用 **DeployAdhoc**（需要 project_dir + ssh_host）
+
+### 编码→部署流程中的部署子任务
+- 新编码的项目没有预配置 settings，**直接使用 DeployAdhoc**
+- **不要调用 DeployListProjects**（新项目肯定不在列表中，调了也没用）
+- project 和 project_dir 从前置编码任务结果中获取
 
 ## 用户参数不可修改（强制规则）
 

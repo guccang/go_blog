@@ -135,7 +135,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 4. "同步等待完成"的工具不需要额外的"检查状态"子任务
 5. 子任务数量不超过 %d 个
 6. 编码任务中 AcpStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
-7. 编码→部署流程中，部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject"
+7. 编码→部署流程中，编码创建的新项目没有预配置 settings，**必须使用 DeployAdhoc**（不是 DeployProject）。部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployAdhoc"，并传 ssh_host、port 参数。DeployProject 仅用于已配置的项目（如列表中 configured=true 的项目）
 8. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作，严禁带入其他子任务的指令。例如用户请求"编码xx然后部署到yy"，编码子任务描述只写编码需求，不要提及"部署到yy"；部署子任务只写部署需求。AcpStartSession 的 prompt 参数同理，只传编码相关内容
 
 ## 输出格式
@@ -152,9 +152,9 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
     {
       "id": "t2",
       "title": "部署到服务器",
-      "description": "使用前置编码任务返回的 project_dir 和 project 名称调用 DeployProject 部署到目标服务器，account=xxx",
+      "description": "使用前置编码任务返回的 project_dir 和 project 名称调用 DeployAdhoc 部署到目标服务器，ssh_host=root@114.115.214.86，port=8080，account=xxx",
       "depends_on": ["t1"],
-      "tools_hint": ["DeployProject"]
+      "tools_hint": ["DeployAdhoc"]
     }
   ],
   "execution_mode": "dag",
@@ -497,6 +497,8 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 - 依赖关系是否合理（独立的子任务是否正确设置为并行，即 depends_on 为空）
 - 子任务描述是否包含足够上下文让 AI 独立执行
 - "同步等待完成"的工具是否有冗余的状态检查子任务（应删除）
+- **禁止新增子任务**：审查只能修正参数或描述，不得添加 DeployListProjects 等额外确认步骤
+- 编码→部署流程中，新项目必须用 DeployAdhoc（不是 DeployProject），因为新项目没有预配置 settings
 
 ## 输出格式
 仅返回 JSON：
