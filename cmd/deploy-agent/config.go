@@ -23,6 +23,7 @@ type Target struct {
 	Type          string // 部署类型: "ssh"(默认) | "bridge"
 	BridgeURL     string // bridge HTTP 地址（type=bridge 时必填）
 	AuthToken     string // bridge 认证 token（type=bridge 时必填）
+	ServicePort   int    // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
 }
 
 // ProjectConfig 项目级部署配置

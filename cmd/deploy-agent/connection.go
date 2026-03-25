@@ -587,7 +587,8 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 					"ssh_port":    map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22）"},
 					"remote_dir":  map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>）"},
 					"start_args":  map[string]interface{}{"type": "string", "description": "启动参数"},
-					"verify_url":  map[string]interface{}{"type": "string", "description": "部署后健康检查 URL。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<start_args中的端口>/，示例：ssh_host=root@1.2.3.4 start_args=-port=8080 → http://1.2.3.4:8080/"},
+					"port":        map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程，防止 address already in use。如果端口已在 start_args 中指定（如 -port 8080），可不填"},
+					"verify_url":  map[string]interface{}{"type": "string", "description": "部署后健康检查 URL。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<port>/，示例：ssh_host=root@1.2.3.4 port=8080 → http://1.2.3.4:8080/"},
 					"deploy_mode": map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
 				},
 				"required": []string{"project", "project_dir", "ssh_host"},
@@ -814,14 +815,19 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	remoteDir, _ := args["remote_dir"].(string)
 	startArgs, _ := args["start_args"].(string)
 	verifyURL, _ := args["verify_url"].(string)
+	servicePort := 0
+	if p, ok := args["port"].(float64); ok && p > 0 {
+		servicePort = int(p)
+	}
 
 	adhoc := &AdhocConfig{
-		ProjectDir: projectDir,
-		SSHHost:    sshHost,
-		SSHPort:    sshPort,
-		RemoteDir:  remoteDir,
-		StartArgs:  startArgs,
-		VerifyURL:  verifyURL,
+		ProjectDir:  projectDir,
+		SSHHost:     sshHost,
+		SSHPort:     sshPort,
+		RemoteDir:   remoteDir,
+		StartArgs:   startArgs,
+		VerifyURL:   verifyURL,
+		ServicePort: servicePort,
 	}
 
 	deployCfg := *c.cfg

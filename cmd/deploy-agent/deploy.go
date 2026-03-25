@@ -960,6 +960,28 @@ func (d *Deployer) runRemoteCmd(client *ssh.Client, cmd string) error {
 // 发布脚本可能启动后台服务，其 stdout/stderr 会导致 SSH 会话一直不关闭
 // 因此将脚本输出重定向到临时文件，执行后读取输出，确保 SSH 会话能正常结束
 func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
+	// 部署前 kill 端口占用进程（ServicePort > 0 时执行）
+	if t.ServicePort > 0 {
+		d.logf("info", "  > 清理端口 %d 占用进程...\n", t.ServicePort)
+		killSession, err := client.NewSession()
+		if err == nil {
+			killCmd := fmt.Sprintf(
+				"PORT_PID=$(lsof -ti:%d 2>/dev/null || ss -tlnp 2>/dev/null | grep ':%d ' | grep -oP 'pid=\\K\\d+'); "+
+					"if [ -n \"$PORT_PID\" ]; then echo \"Killing PID: $PORT_PID on port %d\"; echo \"$PORT_PID\" | xargs kill -9 2>/dev/null; sleep 1; else echo \"Port %d is free\"; fi",
+				t.ServicePort, t.ServicePort, t.ServicePort, t.ServicePort,
+			)
+			var killOut bytes.Buffer
+			killSession.Stdout = &killOut
+			killSession.Stderr = &killOut
+			if runErr := killSession.Run(killCmd); runErr != nil {
+				d.logf("info", "  > 端口清理警告: %v\n", runErr)
+			} else {
+				d.logf("info", "  > %s\n", strings.TrimSpace(killOut.String()))
+			}
+			killSession.Close()
+		}
+	}
+
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("创建 SSH 会话失败: %v", err)
@@ -1256,6 +1278,7 @@ type AdhocConfig struct {
 	RemoteDir  string // 远程部署目录（默认 /data/program/<项目名>）
 	StartArgs  string // 启动参数（如 config.json）
 	VerifyURL  string // 部署后健康检查 URL（可选）
+	ServicePort int   // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
 }
 
 // adhocDeploy 一次性部署：在内存中构建临时配置，复用 Deployer.Run() 完成部署
@@ -1310,6 +1333,14 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 		remoteDir = "/data/program/" + binName
 	}
 
+	// 确定服务端口：优先使用显式指定的 ServicePort，其次从 StartArgs 中提取
+	servicePort := adhoc.ServicePort
+	if servicePort == 0 && adhoc.StartArgs != "" {
+		if extracted := extractPortFromArgs(adhoc.StartArgs); extracted != "" {
+			fmt.Sscanf(extracted, "%d", &servicePort)
+		}
+	}
+
 	var packScript string
 	if runtime.GOOS == "windows" {
 		packScript = filepath.Join(absDir, "zip-files.bat")
@@ -1332,6 +1363,7 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 				Platform:      "linux",
 				VerifyURL:     adhoc.VerifyURL,
 				VerifyTimeout: 10,
+				ServicePort:   servicePort,
 			},
 		},
 	}
