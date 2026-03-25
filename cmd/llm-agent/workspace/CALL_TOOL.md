@@ -1,18 +1,15 @@
 # call_tool 使用规范
 
-## 返回值结构
+## 返回值
 
-**所有 `call_tool()` 返回统一结构 `{"data": <实际值>}`**，始终通过 `result["data"]` 获取实际值：
+**`call_tool()` 直接返回工具结果值**，无需额外解包：
 
 ```python
-result = call_tool("RawCurrentDate", {})
-date = result["data"]  # "2026-03-24"
+date = call_tool("RawCurrentDate", {})  # "2026-03-24"
 
-result = call_tool("RawAddExercise", {...})
-exercise = result["data"]  # {"id": "xxx", "name": "慢跑", ...}
+exercise = call_tool("RawAddExercise", {...})  # {"id": "xxx", "name": "慢跑", ...}
 
-result = call_tool("RawGetTodosRange", {...})
-todos = result["data"]  # {"2026-03-09": [...], ...}
+todos = call_tool("RawGetTodosRange", {...})  # {"2026-03-09": [...], ...}
 ```
 
 ## 工具名称
@@ -32,9 +29,9 @@ todos = result["data"]  # {"2026-03-09": [...], ...}
 ```python
 import json
 
-date = call_tool("RawCurrentDate", {})["data"]
-todos = call_tool("RawGetTodosRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})["data"]
-exercise = call_tool("RawGetExerciseRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})["data"]
+date = call_tool("RawCurrentDate", {})
+todos = call_tool("RawGetTodosRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})
+exercise = call_tool("RawGetExerciseRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})
 
 print(f"日期: {date}")
 print(f"待办: {json.dumps(todos, ensure_ascii=False)}")
@@ -50,7 +47,7 @@ result = call_tool("RawAddExercise", {
     "exerciseType": "跑步",
     "duration": 30,
     "intensity": "medium"
-})["data"]
+})
 print(result)
 ```
 
@@ -58,5 +55,5 @@ print(result)
 ```python
 result = safe_call_tool("WebSearch", {"query": "test"}, default=None)
 if result:
-    print(result["data"])
+    print(result)
 ```
