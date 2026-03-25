@@ -1065,9 +1065,15 @@ func (o *Orchestrator) executeSubTask(
 	}
 
 	// 检测关键工具的业务级失败：tool 调用成功（网络层）但返回 JSON 中 success=false（业务层）
-	// 按时间倒序找到每个工具名的最后一次调用，若最后一次仍 success:false 则判定失败
+	// 只检查 ToolsHint 中指定的核心工具，非核心工具的业务失败不影响子任务判定
 	var criticalFailure string
 	if len(toolCallRecords) > 0 {
+		// 构建 ToolsHint 查找表（支持裸名匹配 canonical name 的后缀）
+		hintSet := make(map[string]bool, len(subtask.ToolsHint))
+		for _, hint := range subtask.ToolsHint {
+			hintSet[hint] = true
+		}
+
 		lastCallByTool := make(map[string]ToolCallRecord)
 		for _, rec := range toolCallRecords {
 			if rec.Success {
@@ -1077,6 +1083,19 @@ func (o *Orchestrator) executeSubTask(
 		for _, rec := range lastCallByTool {
 			if rec.Result == "" {
 				continue
+			}
+			// 如果有 ToolsHint，只检查 hint 中的工具
+			if len(hintSet) > 0 {
+				isHinted := hintSet[rec.ToolName]
+				if !isHinted {
+					// 尝试裸名匹配（rec.ToolName 可能是 "agentID.ToolName" 格式）
+					if dot := strings.LastIndex(rec.ToolName, "."); dot >= 0 {
+						isHinted = hintSet[rec.ToolName[dot+1:]]
+					}
+				}
+				if !isHinted {
+					continue // 非核心工具，跳过
+				}
 			}
 			var toolResult struct {
 				Success bool   `json:"success"`

@@ -6,3 +6,8 @@
 - 工具调用失败时，分析原因并修正参数重试。ExecuteCode 代码报错时修正代码重试，不要放弃沙箱转而逐个调工具
 - 直接执行，不要反问
 - 回复包含执行结果和关键数据，供后续任务引用
+
+## 会话类工具使用规则
+- AcpStartSession 返回后（无论 status 是 completed 还是 in_progress），编码任务即视为完成，**立即停止工具调用**，回复执行结果
+- **禁止**在 AcpStartSession 之后调用 AcpSendMessage、AcpGetStatus、AcpAnalyzeProject 等补充工具
+- 同理，DeployProject 返回后部署任务即完成，不要继续调用其他工具
