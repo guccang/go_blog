@@ -200,9 +200,16 @@ func (sm *SkillManager) MatchByTools(toolHints []string) []SkillEntry {
 		return nil
 	}
 
-	hintSet := make(map[string]bool, len(toolHints))
+	hintSet := make(map[string]bool, len(toolHints)*2)
 	for _, t := range toolHints {
 		hintSet[t] = true
+		// 兼容命名空间格式：deploy_DeployProject → DeployProject
+		if dot := strings.LastIndex(t, "."); dot >= 0 {
+			hintSet[t[dot+1:]] = true
+		}
+		if us := strings.Index(t, "_"); us >= 0 {
+			hintSet[t[us+1:]] = true
+		}
 	}
 
 	var matched []SkillEntry

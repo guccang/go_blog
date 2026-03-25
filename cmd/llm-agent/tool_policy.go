@@ -34,10 +34,15 @@ func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 		return tools
 	}
 
-	hintSet := make(map[string]bool, len(hints)*2)
+	hintSet := make(map[string]bool, len(hints)*3)
 	for _, h := range hints {
 		hintSet[h] = true
 		hintSet[sanitizeToolName(h)] = true
+		// 裸名→canonical→sanitized 映射，确保命名空间工具也能匹配
+		// 例如 hint="DeployProject" → resolve 得到 "deploy.DeployProject" → sanitize 得到 "deploy_DeployProject"
+		if canonical := b.resolveToolName(h); canonical != h {
+			hintSet[sanitizeToolName(canonical)] = true
+		}
 	}
 
 	var filtered []LLMTool
