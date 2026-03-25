@@ -290,6 +290,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 		if err != nil {
 			a.completeSession(sessionID, "failed", "")
 			acpSession.Close()
+			a.cleanupSessionRecord(sessionID)
 			return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
 		}
 
@@ -303,6 +304,12 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 		}
 
 		a.completeSession(sessionID, "completed", summary)
+
+		// 非交互模式（一次性执行）：关闭进程释放资源
+		if !interactive {
+			acpSession.Close()
+			a.cleanupSessionRecord(sessionID)
+		}
 
 		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
@@ -414,6 +421,8 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 	})
 	if err != nil {
 		a.completeSession(sessionID, "failed", "")
+		acpSession.Close()
+		a.cleanupSessionRecord(sessionID)
 		return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
 	}
 
@@ -475,9 +484,20 @@ func (a *Agent) StopTask(sessionID string) {
 	}
 
 	a.completeSession(sessionID, "stopped", "")
+	a.cleanupSessionRecord(sessionID)
 }
 
 // ========================= 会话管理 =========================
+
+// cleanupSessionRecord 清理会话记录（进程已关闭后调用）
+func (a *Agent) cleanupSessionRecord(sessionID string) {
+	a.sessionsMu.Lock()
+	if rec, ok := a.sessions[sessionID]; ok {
+		rec.ACPSession = nil
+		rec.ACPClient = nil
+	}
+	a.sessionsMu.Unlock()
+}
 
 // completeSession 标记会话完成
 func (a *Agent) completeSession(sessionID, status, summary string) {
