@@ -19,20 +19,29 @@ import (
 // 共享 HTTP 客户端，避免每次请求都重新建立 TCP/TLS 连接
 var llmHTTPClient = &http.Client{
 	Timeout: 180 * time.Second,
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSClientConfig:     &tls.Config{},
-		MaxIdleConns:         10,
-		MaxIdleConnsPerHost:  5,
-		IdleConnTimeout:      90 * time.Second,
-		TLSHandshakeTimeout:  15 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
-		DisableKeepAlives:    false,
-		ForceAttemptHTTP2:    true,
-	},
+	Transport: llmTransport,
+}
+
+// llmTransport 共享 Transport，供多个 HTTP 客户端复用连接池
+var llmTransport = &http.Transport{
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	TLSClientConfig:     &tls.Config{},
+	MaxIdleConns:         10,
+	MaxIdleConnsPerHost:  5,
+	IdleConnTimeout:      90 * time.Second,
+	TLSHandshakeTimeout:  15 * time.Second,
+	ResponseHeaderTimeout: 0, // 由 context 控制
+	DisableKeepAlives:    false,
+	ForceAttemptHTTP2:    true,
+}
+
+// llmHTTPClientCtx 不设全局 Timeout，超时完全由 context 控制
+// 用于 SendLLMRequestCtx 等需要长时间等待的场景（如编码子任务）
+var llmHTTPClientCtx = &http.Client{
+	Transport: llmTransport,
 }
 
 // 全局 LLM 调用时间记录
@@ -422,7 +431,7 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.APIKey))
 
-	resp, err := llmHTTPClient.Do(req)
+	resp, err := llmHTTPClientCtx.Do(req)
 	if err != nil {
 		log.Printf("[LLM] ✗ HTTP 请求失败(ctx) duration=%v error=%v", time.Since(reqStart), err)
 		return "", nil, fmt.Errorf("http request: %v", err)
