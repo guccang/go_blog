@@ -16,6 +16,18 @@ import (
 	"time"
 )
 
+// byteCountReader 包装 io.Reader，统计读取的总字节数
+type byteCountReader struct {
+	r io.Reader
+	n int64
+}
+
+func (b *byteCountReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.n += int64(n)
+	return n, err
+}
+
 // 共享 HTTP 客户端，避免每次请求都重新建立 TCP/TLS 连接
 var llmHTTPClient = &http.Client{
 	Timeout: 180 * time.Second,
@@ -192,7 +204,7 @@ func SetTokenStats(ts *TokenStats) {
 }
 
 // recordTokenUsage 记录 token 用量到全局统计器
-func recordTokenUsage(usage *llmUsage, model string) {
+func recordTokenUsage(usage *llmUsage, model string, reqBytes, respBytes int64) {
 	if globalTokenStats == nil || usage == nil {
 		return
 	}
@@ -202,6 +214,8 @@ func recordTokenUsage(usage *llmUsage, model string) {
 		TotalTokens:      usage.TotalTokens,
 		Model:            model,
 		Timestamp:        time.Now(),
+		RequestBytes:     reqBytes,
+		ResponseBytes:    respBytes,
 	})
 }
 
@@ -361,8 +375,8 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 	choice := llmResp.Choices[0]
 	duration := time.Since(reqStart)
 
-	// 记录 token 用量
-	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel())
+	// 记录 token 用量和字节数
+	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel(), int64(len(data)), int64(len(body)))
 
 	// 构建工具调用摘要
 	var tcNames []string
@@ -464,8 +478,8 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 	choice := llmResp.Choices[0]
 	duration := time.Since(reqStart)
 
-	// 记录 token 用量
-	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel())
+	// 记录 token 用量和字节数
+	recordTokenUsage(llmResp.Usage, cfg.EffectiveModel(), int64(len(data)), int64(len(body)))
 
 	var tcNames []string
 	for _, tc := range choice.Message.ToolCalls {
@@ -603,7 +617,8 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	}
 
 	log.Printf("[LLM] ← 流式响应开始 首字节耗时=%v", time.Since(reqStart))
-	text, toolCalls, streamUsage, err := parseStreamingResponse(resp.Body, onChunk)
+	countReader := &byteCountReader{r: resp.Body}
+	text, toolCalls, streamUsage, err := parseStreamingResponse(countReader, onChunk)
 	duration := time.Since(reqStart)
 
 	if err != nil {
@@ -611,8 +626,8 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 		return "", nil, err
 	}
 
-	// 记录 token 用量
-	recordTokenUsage(streamUsage, cfg.EffectiveModel())
+	// 记录 token 用量和字节数
+	recordTokenUsage(streamUsage, cfg.EffectiveModel(), int64(len(data)), countReader.n)
 
 	var tcNames []string
 	for _, tc := range toolCalls {

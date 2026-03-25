@@ -17,6 +17,8 @@ type TokenUsage struct {
 	TotalTokens      int
 	Model            string
 	Timestamp        time.Time
+	RequestBytes     int64 // HTTP 请求体字节数
+	ResponseBytes    int64 // HTTP 响应体字节数
 }
 
 // ModelTokenStats 单模型统计
@@ -25,6 +27,8 @@ type ModelTokenStats struct {
 	Completion int64 `json:"completion"`
 	Total      int64 `json:"total"`
 	Calls      int64 `json:"calls"`
+	ReqBytes   int64 `json:"req_bytes"`
+	RespBytes  int64 `json:"resp_bytes"`
 }
 
 // TokenStats 全局 token 统计（线程安全）
@@ -34,11 +38,15 @@ type TokenStats struct {
 	TotalCompletion int64                      `json:"total_completion"`
 	TotalTokens     int64                      `json:"total_tokens"`
 	CallCount       int64                      `json:"call_count"`
+	TotalReqBytes   int64                      `json:"total_req_bytes"`
+	TotalRespBytes  int64                      `json:"total_resp_bytes"`
 	ByModel         map[string]*ModelTokenStats `json:"by_model"`
 	// 当日统计
 	TodayDate      string                     `json:"today_date"`
 	TodayTokens    int64                      `json:"today_tokens"`
 	TodayCallCount int64                      `json:"today_call_count"`
+	TodayReqBytes  int64                      `json:"today_req_bytes"`
+	TodayRespBytes int64                      `json:"today_resp_bytes"`
 	TodayByModel   map[string]*ModelTokenStats `json:"today_by_model"`
 
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -56,7 +64,7 @@ func NewTokenStats(persistPath string) *TokenStats {
 
 // Add 累加一次 LLM 调用的 token 用量
 func (ts *TokenStats) Add(usage TokenUsage) {
-	if usage.TotalTokens == 0 && usage.PromptTokens == 0 && usage.CompletionTokens == 0 {
+	if usage.TotalTokens == 0 && usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.RequestBytes == 0 && usage.ResponseBytes == 0 {
 		return
 	}
 
@@ -67,6 +75,8 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 	ts.TotalPrompt += int64(usage.PromptTokens)
 	ts.TotalCompletion += int64(usage.CompletionTokens)
 	ts.TotalTokens += int64(usage.TotalTokens)
+	ts.TotalReqBytes += usage.RequestBytes
+	ts.TotalRespBytes += usage.ResponseBytes
 	ts.CallCount++
 	ts.UpdatedAt = time.Now()
 
@@ -76,9 +86,13 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 		ts.TodayDate = today
 		ts.TodayTokens = 0
 		ts.TodayCallCount = 0
+		ts.TodayReqBytes = 0
+		ts.TodayRespBytes = 0
 		ts.TodayByModel = make(map[string]*ModelTokenStats)
 	}
 	ts.TodayTokens += int64(usage.TotalTokens)
+	ts.TodayReqBytes += usage.RequestBytes
+	ts.TodayRespBytes += usage.ResponseBytes
 	ts.TodayCallCount++
 
 	// 分模型统计
@@ -92,6 +106,8 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 		ms.Completion += int64(usage.CompletionTokens)
 		ms.Total += int64(usage.TotalTokens)
 		ms.Calls++
+		ms.ReqBytes += usage.RequestBytes
+		ms.RespBytes += usage.ResponseBytes
 
 		// 当日分模型
 		dms, ok := ts.TodayByModel[usage.Model]
@@ -101,11 +117,15 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 		}
 		dms.Total += int64(usage.TotalTokens)
 		dms.Calls++
+		dms.ReqBytes += usage.RequestBytes
+		dms.RespBytes += usage.ResponseBytes
 	}
 
-	log.Printf("[TokenStats] model=%s prompt=%d completion=%d total=%d | 累计: prompt=%d completion=%d total=%d calls=%d",
+	log.Printf("[TokenStats] model=%s prompt=%d completion=%d total=%d req=%s resp=%s | 累计: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s",
 		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
-		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount)
+		formatBytes(usage.RequestBytes), formatBytes(usage.ResponseBytes),
+		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
+		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes))
 
 	// 自动持久化
 	ts.saveLocked()
@@ -124,17 +144,25 @@ func (ts *TokenStats) Summary() string {
 	today := time.Now().Format("2006-01-02")
 	todayTokens := ts.TodayTokens
 	todayCallCount := ts.TodayCallCount
+	todayReqBytes := ts.TodayReqBytes
+	todayRespBytes := ts.TodayRespBytes
 	if ts.TodayDate != today {
 		todayTokens = 0
 		todayCallCount = 0
+		todayReqBytes = 0
+		todayRespBytes = 0
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("📊 Token: %s/%s (%d/%d次)",
+	sb.WriteString(fmt.Sprintf("📊 Token: %s/%s (%d/%d次) | 流量: ↑%s ↓%s / ↑%s ↓%s",
 		formatTokenCount(todayTokens),
 		formatTokenCount(ts.TotalTokens),
 		todayCallCount,
-		ts.CallCount))
+		ts.CallCount,
+		formatBytes(todayReqBytes),
+		formatBytes(todayRespBytes),
+		formatBytes(ts.TotalReqBytes),
+		formatBytes(ts.TotalRespBytes)))
 
 	// 分模型明细
 	if len(ts.ByModel) > 1 {
@@ -165,10 +193,14 @@ func (ts *TokenStats) Reset() {
 	ts.TotalCompletion = 0
 	ts.TotalTokens = 0
 	ts.CallCount = 0
+	ts.TotalReqBytes = 0
+	ts.TotalRespBytes = 0
 	ts.ByModel = make(map[string]*ModelTokenStats)
 	ts.TodayDate = ""
 	ts.TodayTokens = 0
 	ts.TodayCallCount = 0
+	ts.TodayReqBytes = 0
+	ts.TodayRespBytes = 0
 	ts.TodayByModel = make(map[string]*ModelTokenStats)
 	ts.UpdatedAt = time.Now()
 	ts.saveLocked()
@@ -222,6 +254,8 @@ func (ts *TokenStats) Load() {
 	ts.TotalCompletion = loaded.TotalCompletion
 	ts.TotalTokens = loaded.TotalTokens
 	ts.CallCount = loaded.CallCount
+	ts.TotalReqBytes = loaded.TotalReqBytes
+	ts.TotalRespBytes = loaded.TotalRespBytes
 	ts.UpdatedAt = loaded.UpdatedAt
 	if loaded.ByModel != nil {
 		ts.ByModel = loaded.ByModel
@@ -229,12 +263,15 @@ func (ts *TokenStats) Load() {
 	ts.TodayDate = loaded.TodayDate
 	ts.TodayTokens = loaded.TodayTokens
 	ts.TodayCallCount = loaded.TodayCallCount
+	ts.TodayReqBytes = loaded.TodayReqBytes
+	ts.TodayRespBytes = loaded.TodayRespBytes
 	if loaded.TodayByModel != nil {
 		ts.TodayByModel = loaded.TodayByModel
 	}
 
-	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d",
-		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount)
+	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s",
+		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
+		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes))
 }
 
 // formatTokenCount 格式化 token 数量（带千分位逗号）
@@ -252,4 +289,18 @@ func formatTokenCount(n int64) string {
 		result = append(result, byte(c))
 	}
 	return string(result)
+}
+
+// formatBytes 格式化字节数为人类可读格式（KB/MB/GB）
+func formatBytes(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1fGB", float64(b)/float64(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1fMB", float64(b)/float64(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1fKB", float64(b)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
 }
