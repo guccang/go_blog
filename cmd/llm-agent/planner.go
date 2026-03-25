@@ -34,7 +34,7 @@ var planAndExecuteTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "plan_and_execute",
-		Description: "当任务需要多个步骤、有前后依赖关系时，调用此工具进行任务拆解和编排执行。适用于：需要先获取数据再分析、需要处理多个独立子目标、步骤超过3步且有依赖等复杂场景。",
+		Description: "任务拆解与编排执行。收到用户任务后必须先评估是否需要调用此工具。必须使用的场景：需要 2 个以上工具获取数据后综合处理、多步骤依赖流程（编码→部署、查数据→分析→报告）、多个可并行的独立子目标。优势：子任务独立会话上下文干净、无依赖子任务自动并行、失败可独立重试。单一工具调用或简单查询不要使用。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
