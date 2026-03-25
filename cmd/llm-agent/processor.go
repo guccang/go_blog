@@ -418,7 +418,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			// 最后一轮：移除所有工具，强制 LLM 用文本总结
 			tools = nil
 			messages = append(messages, Message{
-				Role:    "system",
+				Role:    "user",
 				Content: "你已经进行了多轮工具调用。请立即给出最终回复，总结目前已完成的工作和结果。不要再调用任何工具。",
 			})
 			ctx.Sink.OnEvent("task_forced_summary", fmt.Sprintf("已执行 %d 轮工具调用，正在强制总结结果...", i))
@@ -778,7 +778,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				}
 				hint := fmt.Sprintf("以下工具返回业务失败:\n%s已补充同 Agent 的替代工具: %s\n你可以选择修复参数重试原工具，或使用替代工具完成任务。",
 					failInfo.String(), strings.Join(newToolNames, ", "))
-				messages = append(messages, Message{Role: "system", Content: hint})
+				messages = append(messages, Message{Role: "user", Content: hint})
 				log.Printf("[processTask] 业务失败扩展: 新增 %d 个兄弟工具: %v", len(newToolNames), newToolNames)
 				ctx.Sink.OnEvent("tool_expand", fmt.Sprintf("工具业务失败，补充兄弟工具: %s", strings.Join(newToolNames, ", ")))
 			}

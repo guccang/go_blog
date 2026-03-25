@@ -835,8 +835,8 @@ func (o *Orchestrator) executeSubTask(
 			select {
 			case steerMsg := <-steerCh:
 				steerContent := fmt.Sprintf("[编排器指令] %s", steerMsg)
-				messages = append(messages, Message{Role: "system", Content: steerContent})
-				session.AppendMessage(Message{Role: "system", Content: steerContent})
+				messages = append(messages, Message{Role: "user", Content: steerContent})
+				session.AppendMessage(Message{Role: "user", Content: steerContent})
 				sendEvent("subtask_steer", fmt.Sprintf("[%s] 收到编排器指令: %s", subtask.ID, steerMsg))
 				log.Printf("[Orchestrator] subtask=%s steer injected: %s", subtask.ID, steerMsg)
 			default:
@@ -1021,7 +1021,7 @@ func (o *Orchestrator) executeSubTask(
 				}
 				hint := fmt.Sprintf("以下工具返回业务失败:\n%s已补充同 Agent 的替代工具: %s\n你可以选择修复参数重试原工具，或使用替代工具完成任务。",
 					failInfo.String(), strings.Join(newToolNames, ", "))
-				messages = append(messages, Message{Role: "system", Content: hint})
+				messages = append(messages, Message{Role: "user", Content: hint})
 				log.Printf("[Orchestrator] subtask=%s 业务失败扩展: 新增 %d 个兄弟工具: %v", subtask.ID, len(newToolNames), newToolNames)
 				sendEvent("tool_expand", fmt.Sprintf("[%s] 工具业务失败，补充兄弟工具: %s", subtask.ID, strings.Join(newToolNames, ", ")))
 			}
