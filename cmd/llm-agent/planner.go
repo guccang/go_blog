@@ -94,6 +94,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 	}
 
 	planPrompt := fmt.Sprintf(`你是一个任务规划专家。请分析用户的请求，将其拆解为最少数量的可执行子任务。
+重要：只返回 JSON，不要输出任何解释文字。
 
 ## 用户信息
 当前用户账号: %s
@@ -566,7 +567,6 @@ func cleanLLMJSON(s string) string {
 		if idx := strings.Index(s, "\n"); idx >= 0 {
 			s = s[idx+1:]
 		} else {
-			// 没有换行，直接去前缀
 			s = strings.TrimPrefix(s, "```json")
 			s = strings.TrimPrefix(s, "```")
 		}
@@ -576,6 +576,16 @@ func cleanLLMJSON(s string) string {
 	s = strings.TrimSpace(s)
 	if strings.HasSuffix(s, "```") {
 		s = s[:len(s)-3]
+	}
+	s = strings.TrimSpace(s)
+
+	// 兜底：如果清理后仍不是以 { 开头，尝试提取第一个 JSON 对象
+	if len(s) > 0 && s[0] != '{' {
+		start := strings.Index(s, "{")
+		end := strings.LastIndex(s, "}")
+		if start >= 0 && end > start {
+			s = s[start : end+1]
+		}
 	}
 
 	return strings.TrimSpace(s)
