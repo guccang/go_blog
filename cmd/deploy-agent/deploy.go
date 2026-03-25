@@ -1331,6 +1331,7 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 		ProjectName: binName,
 		ExtraFiles:  extras,
 		StartArgs:   adhoc.StartArgs,
+		ServicePort: adhoc.ServicePort,
 	}
 	if err := ensurePackScripts(initCfg); err != nil {
 		return fmt.Errorf("ensure pack scripts: %v", err)

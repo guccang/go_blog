@@ -29,6 +29,7 @@ type InitConfig struct {
 	ModulePath      string   // go.mod module path
 	ExtraFiles      []string // extra files/dirs to package
 	StartArgs       string   // startup arguments
+	ServicePort     int      // 服务监听端口（显式指定，优先于 StartArgs 中提取）
 	SSHHost         string   // SSH target (e.g. root@1.2.3.4)
 	SSHPort         int      // SSH port, default 22
 	RemoteDir       string   // remote deploy directory
@@ -353,25 +354,29 @@ func promptYesNo(reader *bufio.Reader, prompt string, defaultYes bool) bool {
 	return line == "y" || line == "yes"
 }
 
-// ensurePackScripts 确保打包+发布脚本存在（不覆盖已有文件）
-// 用于 adhoc 部署模式，在执行部署前确保必要的脚本文件存在
+// ensurePackScripts 确保打包+发布脚本存在
+// publish.sh/publish.bat 始终覆盖（端口 kill 逻辑可能因参数不同而变化）
+// zip-files 脚本不覆盖已有文件
 func ensurePackScripts(cfg *InitConfig) error {
 	type scriptFile struct {
-		path    string
-		content string
-		mode    os.FileMode
+		path      string
+		content   string
+		mode      os.FileMode
+		overwrite bool // true: 始终覆盖
 	}
 
 	scripts := []scriptFile{
-		{filepath.Join(cfg.ProjectDir, "zip-files.bat"), generateZipFilesBat(cfg), 0644},
-		{filepath.Join(cfg.ProjectDir, "zip-files.sh"), generateZipFilesSh(cfg), 0755},
-		{filepath.Join(cfg.ProjectDir, "publish.bat"), generatePublishBat(cfg), 0644},
-		{filepath.Join(cfg.ProjectDir, "publish.sh"), generatePublishSh(cfg), 0755},
+		{filepath.Join(cfg.ProjectDir, "zip-files.bat"), generateZipFilesBat(cfg), 0644, false},
+		{filepath.Join(cfg.ProjectDir, "zip-files.sh"), generateZipFilesSh(cfg), 0755, false},
+		{filepath.Join(cfg.ProjectDir, "publish.bat"), generatePublishBat(cfg), 0644, true},
+		{filepath.Join(cfg.ProjectDir, "publish.sh"), generatePublishSh(cfg), 0755, true},
 	}
 
 	for _, s := range scripts {
-		if _, err := os.Stat(s.path); err == nil {
-			continue // 文件已存在，不覆盖
+		if !s.overwrite {
+			if _, err := os.Stat(s.path); err == nil {
+				continue // 文件已存在，不覆盖
+			}
 		}
 		if err := os.WriteFile(s.path, []byte(s.content), s.mode); err != nil {
 			return fmt.Errorf("write %s: %v", s.path, err)
@@ -547,8 +552,13 @@ if %errorlevel%==0 (
 func generatePublishSh(cfg *InitConfig) string {
 	name := cfg.ProjectName
 
-	// 从 StartArgs 中提取端口号（支持 :8883、-port 8883、--port=8883、-addr :8883 等格式）
-	port := extractPortFromArgs(cfg.StartArgs)
+	// 确定端口：优先使用显式 ServicePort，其次从 StartArgs 提取
+	port := ""
+	if cfg.ServicePort > 0 {
+		port = fmt.Sprintf("%d", cfg.ServicePort)
+	} else {
+		port = extractPortFromArgs(cfg.StartArgs)
+	}
 
 	// 端口 kill 命令：如果提取到端口，先杀占用该端口的进程
 	var portKillBlock string
