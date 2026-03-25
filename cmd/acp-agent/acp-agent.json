@@ -11,6 +11,6 @@
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",
     "workspaces": [
-        "/Users/guccang/github_repo"
+        "E:\\githubdesktop"
     ]
 }
