@@ -303,6 +303,21 @@ var getSkillDetailTool = LLMTool{
 
 // ========================= 统一处理函数 =========================
 
+// executeToolCall 执行单个工具调用（供内部使用）
+func (b *Bridge) executeToolCall(ctx context.Context, toolName, arguments string, sink EventSink) (*ToolCallResult, error) {
+	originalName := b.resolveToolName(toolName)
+
+	b.catalogMu.RLock()
+	handler, hasHandler := b.toolHandlers[originalName]
+	b.catalogMu.RUnlock()
+
+	if !hasHandler {
+		return nil, fmt.Errorf("工具 %s 未找到", originalName)
+	}
+
+	return handler(ctx, json.RawMessage(arguments), sink)
+}
+
 // processTask 统一消息处理核心：构建消息 → 创建会话 → 获取工具 → LLM 循环 → 保存会话
 func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	taskStart := time.Now()

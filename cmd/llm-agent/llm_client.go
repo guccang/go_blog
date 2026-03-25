@@ -35,6 +35,9 @@ var llmHTTPClient = &http.Client{
 	},
 }
 
+// 全局 LLM 调用时间记录
+var globalLastLLMCall time.Time
+
 // ========================= 模型降级冷却 =========================
 
 // modelCooldown 全局模型冷却追踪
@@ -89,7 +92,7 @@ func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, coold
 }
 
 // SendStreamingLLMRequestWithFallback 带降级链的流式 LLM 请求
-func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, onChunk func(string), intervalSec int) (string, []ToolCall, error) {
 	candidates := make([]*LLMConfig, 0, 1+len(fallbacks))
 	candidates = append(candidates, primary)
 	for i := range fallbacks {
@@ -102,7 +105,7 @@ func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConf
 			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.EffectiveModel())
 			continue
 		}
-		text, toolCalls, err := SendStreamingLLMRequest(cfg, messages, tools, onChunk)
+		text, toolCalls, err := SendStreamingLLMRequest(cfg, messages, tools, onChunk, intervalSec)
 		if err == nil {
 			return text, toolCalls, nil
 		}
@@ -467,8 +470,25 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 
 // SendStreamingLLMRequest 发送流式 LLM 请求，逐 chunk 回调 onChunk，同时检测 tool_call
 // 内置重试逻辑，遇到 unexpected EOF 等瞬态错误会自动重试
-func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
+func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool, onChunk func(string), intervalSec int) (string, []ToolCall, error) {
 	const maxRetries = 2
+
+	// 调用间隔控制
+	if intervalSec > 0 {
+		elapsed := time.Since(globalLastLLMCall)
+		if wait := time.Duration(intervalSec)*time.Second - elapsed; wait > 0 {
+			waitSec := int(wait.Seconds())
+			if waitSec >= 10 {
+				onChunk(fmt.Sprintf("⏳ 等待 %d 秒后继续...\n", waitSec))
+			} else if waitSec >= 5 {
+				onChunk(fmt.Sprintf("⏳ 等待 %d 秒...\n", waitSec))
+			} else if waitSec >= 1 {
+				onChunk(fmt.Sprintf("⏳ %d 秒...\n", waitSec))
+			}
+			log.Printf("[LLM] 调用间隔控制，等待 %.1fs", wait.Seconds())
+			time.Sleep(wait)
+		}
+	}
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -479,6 +499,7 @@ func SendStreamingLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool
 
 		text, toolCalls, err := sendStreamingLLMRequestOnce(cfg, messages, tools, onChunk)
 		if err == nil {
+			globalLastLLMCall = time.Now()
 			return text, toolCalls, nil
 		}
 

@@ -16,6 +16,8 @@ type Config struct {
 	ProtectedFiles  []string `json:"protected_files,omitempty"` // 部署保护文件
 	QuietHoursStart string   `json:"quiet_hours_start"` // 免打扰开始时间，如 "23:00"（空=不启用）
 	QuietHoursEnd   string   `json:"quiet_hours_end"`   // 免打扰结束时间，如 "07:00"
+	Provider        string   `json:"provider,omitempty"` // LLM provider（如 openai, deepseek）
+	Model           string   `json:"model,omitempty"`    // LLM model（如 gpt-4, deepseek-chat）
 }
 
 // DefaultConfig 默认配置

@@ -127,6 +127,10 @@ type Bridge struct {
 	// 任务缓冲队列
 	taskQueue chan *queuedTask
 	queueDone chan struct{}
+
+	// LLM 调用间隔控制
+	lastLLMCall time.Time
+	llmCallMu   sync.Mutex
 }
 
 // NewBridge 创建 Bridge
@@ -321,9 +325,9 @@ func (b *Bridge) sendLLM(messages []Message, tools []LLMTool) (string, []ToolCal
 func (b *Bridge) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
 	cfg := b.activeLLM.Get()
 	if len(b.cfg.Fallbacks) == 0 {
-		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk)
+		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
+	return SendStreamingLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 }
 
 // GetLLMConfigForSource 返回指定来源渠道的 LLM 配置（primary + fallbacks）
@@ -347,10 +351,11 @@ func (b *Bridge) sendLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfig, messag
 // sendStreamingLLMWithConfig 使用指定配置的流式 LLM 请求
 func (b *Bridge) sendStreamingLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfig, messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
 	if len(fallbacks) == 0 {
-		return SendStreamingLLMRequest(cfg, messages, tools, onChunk)
+		return SendStreamingLLMRequest(cfg, messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, onChunk)
+	return SendStreamingLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 }
+
 
 // llmCompactMemory 使用 LLM 整理记忆：合并重复、提取模式、保留重要摘要
 func (b *Bridge) llmCompactMemory(entries []MemoryEntry) ([]MemoryEntry, error) {
@@ -1663,7 +1668,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			handler = func() { b.handleResumeTask(taskPayload.TaskID, &resumePayload) }
 		case "cron_reminder":
 			var wrapper struct {
-				Payload json.RawMessage `json:"payload"`
+				Payload  json.RawMessage `json:"payload"`
+				Provider string          `json:"provider,omitempty"`
+				Model    string          `json:"model,omitempty"`
 			}
 			if err := json.Unmarshal(taskPayload.Payload, &wrapper); err != nil {
 				log.Printf("[Bridge] invalid cron_reminder payload: %v", err)
@@ -1678,7 +1685,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			handler = func() { b.handleCronReminder(taskPayload.TaskID, sourceAgent, &reminderPayload) }
 		case "cron_query":
 			var wrapper struct {
-				Payload json.RawMessage `json:"payload"`
+				Payload  json.RawMessage `json:"payload"`
+				Provider string          `json:"provider,omitempty"`
+				Model    string          `json:"model,omitempty"`
 			}
 			if err := json.Unmarshal(taskPayload.Payload, &wrapper); err != nil {
 				log.Printf("[Bridge] invalid cron_query payload: %v", err)
@@ -1689,6 +1698,8 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				log.Printf("[Bridge] invalid cron_query inner payload: %v", err)
 				return
 			}
+			queryPayload.Provider = wrapper.Provider
+			queryPayload.Model = wrapper.Model
 			sourceAgent := msg.From
 			handler = func() { b.handleCronQuery(taskPayload.TaskID, sourceAgent, &queryPayload) }
 		default:

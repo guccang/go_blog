@@ -48,6 +48,8 @@ type CronQueryPayload struct {
 	Query      string `json:"query"`       // 查询问题
 	Account    string `json:"account"`     // 用户账号
 	WechatUser string `json:"wechat_user"` // 微信用户（有值则发送结果到微信）
+	Provider   string `json:"provider,omitempty"` // LLM provider
+	Model      string `json:"model,omitempty"`    // LLM model
 }
 
 // AssistantEventPayload MsgTaskEvent 的事件数据
@@ -293,6 +295,26 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 		Query:   payload.Query,
 		Source:  "cron_query",
 		Sink:    &LLMRequestSink{bridge: b, taskID: taskID},
+	}
+
+	// 如果指定了 provider/model，使用临时配置
+	if payload.Provider != "" || payload.Model != "" {
+		baseCfg, _ := b.GetLLMConfigForSource("cron_query")
+		tempCfg := &SourceLLMConfig{
+			LLM: LLMConfig{
+				Provider: baseCfg.Provider,
+				Model:    baseCfg.Model,
+			},
+		}
+		if payload.Provider != "" {
+			tempCfg.LLM.Provider = payload.Provider
+		}
+		if payload.Model != "" {
+			tempCfg.LLM.Model = payload.Model
+		}
+		b.sourceLLMs["cron_query_temp"] = tempCfg
+		ctx.Source = "cron_query_temp"
+		defer delete(b.sourceLLMs, "cron_query_temp")
 	}
 
 	result, err := b.processTask(ctx)

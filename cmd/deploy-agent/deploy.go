@@ -966,12 +966,21 @@ func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
 	}
 	defer session.Close()
 
+	// 检查端口占用并 kill 进程（如果指定了 start_args 中的端口）
+	portKillCmd := ""
+	if t.RemoteScript != "" && strings.Contains(t.RemoteScript, "publish.sh") {
+		// 从 RemoteDir 下的 publish.sh 中提取端口参数
+		// 假设 publish.sh 中有类似 ./binary -port=8080 的启动命令
+		// 这里简化处理：如果 StartArgs 包含端口，则检查并 kill
+		portKillCmd = "port=$(grep -oP '(?<=-port=|--port=|:)\\d{4,5}' publish.sh 2>/dev/null | head -1); if [ -n \"$port\" ]; then pid=$(lsof -ti:$port 2>/dev/null); [ -n \"$pid\" ] && kill -9 $pid && echo \"Killed process on port $port\"; fi; "
+	}
+
 	// 脚本输出写入临时文件；成功时不显示，失败时 cat 输出帮助排查
 	// sed 去除 Windows CRLF 行尾（\r），防止 Windows 打包的 .sh 在 Linux 上乱码无法执行
 	tmpLog := "/tmp/deploy_publish_$$.log"
 	cmd := fmt.Sprintf(
-		"cd %s && sed -i 's/\\r$//' %s && setsid bash %s > %s 2>&1 < /dev/null; ec=$?; if [ $ec -ne 0 ]; then cat %s; fi; rm -f %s; exit $ec",
-		t.RemoteDir, t.RemoteScript, t.RemoteScript, tmpLog, tmpLog, tmpLog,
+		"cd %s && sed -i 's/\\r$//' %s && %ssetsid bash %s > %s 2>&1 < /dev/null; ec=$?; if [ $ec -ne 0 ]; then cat %s; fi; rm -f %s; exit $ec",
+		t.RemoteDir, t.RemoteScript, portKillCmd, t.RemoteScript, tmpLog, tmpLog, tmpLog,
 	)
 
 	// 捕获输出（失败时 cat 的内容会出现在 stdout）

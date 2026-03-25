@@ -28,6 +28,7 @@ type Target struct {
 // ProjectConfig 项目级部署配置
 type ProjectConfig struct {
 	Name         string    // 项目名称（settings 文件名）
+	AgentID      string    // 对应的 UAP agent_id（用于 ctrl_shutdown 等控制协议路由）
 	ProjectDir   string    // 项目根目录
 	PackScript   string    // 打包脚本路径
 	PackPattern  string    // 输出文件名模式（{date} → YYYYMMDD_HHMMSS）
@@ -107,8 +108,17 @@ func (c *DeployConfig) ProjectNames() []string {
 	return c.ProjectOrder
 }
 
+// ResolveAgentID 将项目名或 agent_id 解析为实际的 agent_id
+func (c *DeployConfig) ResolveAgentID(nameOrID string) string {
+	if proj := c.GetProject(nameOrID); proj != nil && proj.AgentID != "" {
+		return proj.AgentID
+	}
+	return nameOrID
+}
+
 // projectJSON 项目 JSON 配置（仅用于 unmarshal）
 type projectJSON struct {
+	AgentID      string                `json:"agent_id,omitempty"`      // 对应的 UAP agent_id
 	PackPattern  string                `json:"pack_pattern,omitempty"`
 	Build        map[string]buildJSON  `json:"build"`
 	Targets      map[string]targetJSON `json:"targets"`
@@ -495,6 +505,7 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string, globalTargets
 
 	proj := &ProjectConfig{
 		Name:         projName,
+		AgentID:      pj.AgentID,
 		PackPattern:  projName + "_{date}.zip",
 		ProtectFiles: pj.ProtectFiles,
 		SetupDirs:    pj.SetupDirs,

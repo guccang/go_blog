@@ -53,6 +53,32 @@ func main() {
 	shutdownTarget := flag.String("shutdown", "", "向指定 agent 发送 graceful shutdown")
 	agentStatusTarget := flag.String("agent-status", "", "查询指定 agent 状态")
 	forceShutdown := flag.Bool("force", false, "配合 --shutdown 使用，强制立即退出")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "deploy-agent - 多项目部署工具\n\n")
+		fmt.Fprintf(os.Stderr, "用法:\n")
+		fmt.Fprintf(os.Stderr, "  deploy-agent [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "部署模式:\n")
+		fmt.Fprintf(os.Stderr, "  -project <name>       指定项目（all=全部）\n")
+		fmt.Fprintf(os.Stderr, "  -target <name>        发布目标（local/ssh-prod/all）\n")
+		fmt.Fprintf(os.Stderr, "  -pipeline <name>      执行部署编排\n")
+		fmt.Fprintf(os.Stderr, "  -pack-only            只打包不部署\n")
+		fmt.Fprintf(os.Stderr, "  -force-full           强制完整部署\n")
+		fmt.Fprintf(os.Stderr, "  -password <pwd>       SSH 密码\n")
+		fmt.Fprintf(os.Stderr, "  -list                 列出所有项目和目标\n\n")
+		fmt.Fprintf(os.Stderr, "控制协议:\n")
+		fmt.Fprintf(os.Stderr, "  -shutdown <agent-id>  关闭指定 agent（all=关闭所有）\n")
+		fmt.Fprintf(os.Stderr, "  -shutdown all         关闭所有已注册的 agent\n")
+		fmt.Fprintf(os.Stderr, "  -force                配合 -shutdown，强制立即退出\n")
+		fmt.Fprintf(os.Stderr, "  -agent-status <id>    查询 agent 状态\n\n")
+		fmt.Fprintf(os.Stderr, "其他:\n")
+		fmt.Fprintf(os.Stderr, "  -config <path>        配置文件路径（默认 deploy-agent.json）\n")
+		fmt.Fprintf(os.Stderr, "  -genconf              生成默认配置文件\n")
+		fmt.Fprintf(os.Stderr, "  -gendeploy            生成部署脚本\n")
+		fmt.Fprintf(os.Stderr, "  -adhoc                一次性部署模式\n")
+		fmt.Fprintf(os.Stderr, "  -init <dir>           初始化项目部署脚本\n")
+	}
+
 	flag.Parse()
 
 	// --genconf early exit (before LoadConfig)
@@ -181,7 +207,29 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := runControlCommand(ctrlCfg, *shutdownTarget, *agentStatusTarget, *forceShutdown); err != nil {
+		// --shutdown all: 关闭所有已配置的 agent
+		if *shutdownTarget == "all" {
+			agents := ctrlCfg.ProjectNames()
+			if len(agents) == 0 {
+				fmt.Fprintf(os.Stderr, "没有配置任何项目/agent\n")
+				os.Exit(1)
+			}
+			fmt.Printf("关闭所有 agent (%d 个): %v\n", len(agents), agents)
+			for _, projName := range agents {
+				targetID := ctrlCfg.ResolveAgentID(projName)
+				fmt.Printf("\n--- %s ---\n", projName)
+				if err := runControlCommand(ctrlCfg, targetID, "", *forceShutdown); err != nil {
+					fmt.Fprintf(os.Stderr, "  %s: %v\n", projName, err)
+				}
+			}
+			return
+		}
+
+		// 单个 shutdown：尝试按项目名查找 agent_id
+		shutdownID := ctrlCfg.ResolveAgentID(*shutdownTarget)
+		// agent-status：同样按项目名查找 agent_id
+		statusID := ctrlCfg.ResolveAgentID(*agentStatusTarget)
+		if err := runControlCommand(ctrlCfg, shutdownID, statusID, *forceShutdown); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}

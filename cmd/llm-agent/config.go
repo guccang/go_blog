@@ -92,6 +92,9 @@ type Config struct {
 	// 来源渠道 LLM 配置
 	SourceLLMs []SourceLLMConfig `json:"source_llms,omitempty"` // 按来源渠道的 LLM 配置
 
+	// LLM 调用间隔控制
+	LLMCallIntervalSec int `json:"llm_call_interval_sec"` // LLM 调用最小间隔秒数（默认 10）
+
 	// 记忆系统配置
 	MemoryDir               string `json:"memory_dir"`                // 记忆目录（默认 workspace/memory）
 	SkillIterationThreshold int    `json:"skill_iteration_threshold"` // 同类错误触发 skill 迭代的阈值（默认 3）
@@ -141,6 +144,7 @@ func DefaultConfig() *Config {
 		},
 		FallbackCooldownSec: 60,
 		MaxPlanRevisions:    3,
+		LLMCallIntervalSec:  10,
 
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   3600,

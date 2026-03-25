@@ -222,9 +222,9 @@ func (o *Orchestrator) sendLLMCtx(ctx context.Context, messages []Message, tools
 func (o *Orchestrator) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk func(string)) (string, []ToolCall, error) {
 	cfg := o.bridge.activeLLM.Get()
 	if len(o.cfg.Fallbacks) == 0 {
-		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk)
+		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk, o.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk)
+	return SendStreamingLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk, o.cfg.LLMCallIntervalSec)
 }
 
 // ========================= 事件驱动 DAG 调度器 =========================
@@ -805,7 +805,7 @@ func (o *Orchestrator) executeSubTask(
 		}
 
 		// 子任务消息压缩（复用 sanitizeProcessMessages，子任务共享相同预算策略）
-		if len(messages) > 15 || estimateChars(messages) > processMaxTotalChars*80/100 {
+		if len(messages) > 15 || estimateChars(messages) > 120000 {
 			before := len(messages)
 			messages = sanitizeProcessMessages(messages)
 			if len(messages) != before {

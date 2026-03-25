@@ -948,6 +948,7 @@ func (c *Connection) toolAgentShutdown(msg *uap.Message, args map[string]interfa
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, "缺少 agent_id 参数"))
 		return
 	}
+	agentID = c.cfg.ResolveAgentID(agentID)
 	reason, _ := args["reason"].(string)
 	if reason == "" {
 		reason = "tool_call"
@@ -992,6 +993,7 @@ func (c *Connection) toolAgentStatus(msg *uap.Message, args map[string]interface
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, "缺少 agent_id 参数"))
 		return
 	}
+	agentID = c.cfg.ResolveAgentID(agentID)
 
 	// 注册临时响应处理器
 	responseCh := make(chan *uap.Message, 1)

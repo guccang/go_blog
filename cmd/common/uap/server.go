@@ -257,6 +257,23 @@ func (s *Server) handleRegister(conn *websocket.Conn, msg *Message) *AgentConn {
 	return agent
 }
 
+// GetAgentByIDOrName 按 ID 或 Name 查找在线 agent（ID 优先）
+func (s *Server) GetAgentByIDOrName(idOrName string) *AgentConn {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if agent, ok := s.agents[idOrName]; ok && agent.Online {
+		return agent
+	}
+
+	for _, a := range s.agents {
+		if a.Online && a.Name == idOrName {
+			return a
+		}
+	}
+	return nil
+}
+
 // routeMessage 路由消息：按 To 字段转发
 func (s *Server) routeMessage(from *AgentConn, msg *Message) {
 	if msg.To == "" {
@@ -269,11 +286,9 @@ func (s *Server) routeMessage(from *AgentConn, msg *Message) {
 		return
 	}
 
-	s.mu.RLock()
-	target, ok := s.agents[msg.To]
-	s.mu.RUnlock()
+	target := s.GetAgentByIDOrName(msg.To)
 
-	if !ok || !target.Online {
+	if target == nil {
 		// 目标 agent 不在线，返回错误给发送方
 		log.Printf("[UAP] target agent %s not online, returning error to %s", msg.To, from.ID)
 		// 事件追踪：路由失败

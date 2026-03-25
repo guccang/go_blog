@@ -1,0 +1,17 @@
+{
+  "pack_pattern": "example_{date}.zip",
+  "build": {
+    "linux": {
+      "project_dir": "/home/user/projects/example"
+    },
+    "win": {
+      "project_dir": "E:/projects/example"
+    }
+  },
+  "targets": {
+    "local.win": {
+      "remote_dir": "E:/deploy/example"
+    },
+    "ssh-prod": {}
+  }
+}

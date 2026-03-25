@@ -172,6 +172,14 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 	// 解析 JSON 响应
 	resp = strings.TrimSpace(resp)
+
+	// 移除 <think> 标签
+	if idx := strings.Index(resp, "<think>"); idx >= 0 {
+		if endIdx := strings.Index(resp[idx:], "</think>"); endIdx >= 0 {
+			resp = resp[:idx] + resp[idx+endIdx+8:]
+		}
+	}
+
 	resp = strings.TrimPrefix(resp, "```json")
 	resp = strings.TrimPrefix(resp, "```")
 	resp = strings.TrimSuffix(resp, "```")

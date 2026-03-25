@@ -5,11 +5,12 @@
     "analysis_timeout": 3600,
     "auth_token": "guccang@blog.guccang.cn",
     "claude_path": "claude",
+    "default_settings": "default",
     "go_backend_agent_id": "go_blog",
     "max_concurrent": 2,
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",
     "workspaces": [
-        "E:\\githubdesktop\\go_blog\\cmd\\acp-agent\\workspaces"
+        "/Users/guccang/github_repo"
     ]
 }

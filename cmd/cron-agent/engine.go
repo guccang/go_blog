@@ -352,6 +352,12 @@ func (e *CronEngine) executeTask(task *CronTask) {
 		"task_type": task.TaskType,
 		"payload":   innerPayload,
 	}
+	if e.cfg.Provider != "" {
+		taskPayload["provider"] = e.cfg.Provider
+	}
+	if e.cfg.Model != "" {
+		taskPayload["model"] = e.cfg.Model
+	}
 
 	// 记录 pending
 	e.pending.Store(executionID, task.ID)
