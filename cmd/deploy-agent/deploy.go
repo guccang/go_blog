@@ -960,26 +960,39 @@ func (d *Deployer) runRemoteCmd(client *ssh.Client, cmd string) error {
 // 发布脚本可能启动后台服务，其 stdout/stderr 会导致 SSH 会话一直不关闭
 // 因此将脚本输出重定向到临时文件，执行后读取输出，确保 SSH 会话能正常结束
 func (d *Deployer) runPublishCmd(client *ssh.Client, t *Target) error {
-	// 部署前 kill 端口占用进程（ServicePort > 0 时执行）
-	if t.ServicePort > 0 {
-		d.logf("info", "  > 清理端口 %d 占用进程...\n", t.ServicePort)
-		killSession, err := client.NewSession()
-		if err == nil {
-			killCmd := fmt.Sprintf(
-				"PORT_PID=$(lsof -ti:%d 2>/dev/null || ss -tlnp 2>/dev/null | grep ':%d ' | grep -oP 'pid=\\K\\d+'); "+
-					"if [ -n \"$PORT_PID\" ]; then echo \"Killing PID: $PORT_PID on port %d\"; echo \"$PORT_PID\" | xargs kill -9 2>/dev/null; sleep 1; else echo \"Port %d is free\"; fi",
-				t.ServicePort, t.ServicePort, t.ServicePort, t.ServicePort,
+	// 部署前清理旧进程：先按进程名找到 PID 及其监听端口，全部 kill
+	// 确保不会出现 "address already in use"
+	binaryName := d.proj.Name
+	d.logf("info", "  > 清理旧进程 %s...\n", binaryName)
+	killSession, err := client.NewSession()
+	if err == nil {
+		// 1. 按进程名查找 PID 及其监听端口并 kill
+		// 2. 如果有显式 ServicePort，额外确保该端口释放
+		var portKillExtra string
+		if t.ServicePort > 0 {
+			portKillExtra = fmt.Sprintf(
+				"EXTRA_PID=$(lsof -ti:%d 2>/dev/null || ss -tlnp 2>/dev/null | grep ':%d ' | grep -oP 'pid=\\K\\d+'); "+
+					"if [ -n \"$EXTRA_PID\" ]; then echo \"Kill port %d PID: $EXTRA_PID\"; echo \"$EXTRA_PID\" | xargs kill -9 2>/dev/null; fi; ",
+				t.ServicePort, t.ServicePort, t.ServicePort,
 			)
-			var killOut bytes.Buffer
-			killSession.Stdout = &killOut
-			killSession.Stderr = &killOut
-			if runErr := killSession.Run(killCmd); runErr != nil {
-				d.logf("info", "  > 端口清理警告: %v\n", runErr)
-			} else {
-				d.logf("info", "  > %s\n", strings.TrimSpace(killOut.String()))
-			}
-			killSession.Close()
 		}
+		killCmd := fmt.Sprintf(
+			"OLD_PID=$(pgrep -f '%s' 2>/dev/null | head -5); "+
+				"if [ -n \"$OLD_PID\" ]; then "+
+				"echo \"Kill old process: $OLD_PID\"; echo \"$OLD_PID\" | xargs kill -9 2>/dev/null; sleep 1; "+
+				"else echo \"No old process found\"; fi; %s"+
+				"echo \"Cleanup done\"",
+			binaryName, portKillExtra,
+		)
+		var killOut bytes.Buffer
+		killSession.Stdout = &killOut
+		killSession.Stderr = &killOut
+		if runErr := killSession.Run(killCmd); runErr != nil {
+			d.logf("info", "  > 清理警告: %v\n", runErr)
+		} else {
+			d.logf("info", "  > %s\n", strings.TrimSpace(killOut.String()))
+		}
+		killSession.Close()
 	}
 
 	session, err := client.NewSession()
