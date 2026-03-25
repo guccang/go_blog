@@ -278,6 +278,24 @@ func logLLMContext(tag string, cfg *LLMConfig, messages []Message, tools []LLMTo
 
 // ========================= LLM API 客户端 =========================
 
+// stripThinkTags 移除 LLM 响应中的 <think>...</think> 标签（某些模型的思考过程）
+func stripThinkTags(s string) string {
+	for {
+		start := strings.Index(s, "<think>")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start:], "</think>")
+		if end < 0 {
+			// 没有闭合标签，移除 <think> 到末尾
+			s = strings.TrimSpace(s[:start])
+			break
+		}
+		s = s[:start] + s[start+end+8:]
+	}
+	return strings.TrimSpace(s)
+}
+
 // SendLLMRequest 发送 LLM 请求（同步），返回响应文本和工具调用
 func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
 	// 构建消息摘要用于日志
@@ -370,7 +388,7 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 		}
 	}
 
-	return choice.Message.Content, choice.Message.ToolCalls, nil
+	return stripThinkTags(choice.Message.Content), choice.Message.ToolCalls, nil
 }
 
 // SendLLMRequestCtx context 感知的同步 LLM 请求，支持级联取消
@@ -465,7 +483,7 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 		}
 	}
 
-	return choice.Message.Content, choice.Message.ToolCalls, nil
+	return stripThinkTags(choice.Message.Content), choice.Message.ToolCalls, nil
 }
 
 // SendStreamingLLMRequest 发送流式 LLM 请求，逐 chunk 回调 onChunk，同时检测 tool_call
@@ -597,7 +615,7 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 	log.Printf("[LLM] ← 流式响应完成 duration=%v textLen=%d toolCalls=%d tools=%v",
 		duration, len(text), len(toolCalls), tcNames)
 
-	return text, toolCalls, nil
+	return stripThinkTags(text), toolCalls, nil
 }
 
 // parseStreamingResponse 解析 SSE 流式响应，提取文本、tool_calls 和 usage
@@ -612,6 +630,66 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 	// 用于累积 tool_call 的增量数据
 	toolCallBuilders := make(map[int]*ToolCall)
 	truncatedByMaxTokens := false
+
+	// think 标签过滤状态机
+	inThink := false        // 当前是否在 <think> 块内
+	var thinkBuf string     // 缓冲可能的标签片段
+
+	// emitChunk 将非 think 内容发送给回调
+	emitChunk := func(s string) {
+		if s != "" && onChunk != nil {
+			onChunk(s)
+		}
+	}
+
+	// processContent 过滤 <think> 标签，只输出非 think 内容
+	processContent := func(content string) {
+		fullText.WriteString(content)
+		remaining := thinkBuf + content
+		thinkBuf = ""
+
+		for len(remaining) > 0 {
+			if inThink {
+				// 在 think 块内，查找 </think>
+				if idx := strings.Index(remaining, "</think>"); idx >= 0 {
+					inThink = false
+					remaining = remaining[idx+8:]
+				} else {
+					// 可能 </think> 被切分，保留尾部
+					if len(remaining) >= 8 {
+						// 检查尾部是否可能是 </think> 的前缀
+						for i := 1; i < 8 && i <= len(remaining); i++ {
+							if strings.HasPrefix("</think>", remaining[len(remaining)-i:]) {
+								thinkBuf = remaining[len(remaining)-i:]
+								remaining = remaining[:len(remaining)-i]
+								break
+							}
+						}
+					}
+					remaining = ""
+				}
+			} else {
+				// 不在 think 块内，查找 <think>
+				if idx := strings.Index(remaining, "<think>"); idx >= 0 {
+					emitChunk(remaining[:idx])
+					inThink = true
+					remaining = remaining[idx+7:]
+				} else {
+					// 可能 <think> 被切分，保留尾部
+					safe := remaining
+					for i := 1; i < 7 && i <= len(remaining); i++ {
+						if strings.HasPrefix("<think>", remaining[len(remaining)-i:]) {
+							safe = remaining[:len(remaining)-i]
+							thinkBuf = remaining[len(remaining)-i:]
+							break
+						}
+					}
+					emitChunk(safe)
+					remaining = ""
+				}
+			}
+		}
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -658,12 +736,9 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 
 		delta := chunk.Choices[0].Delta
 
-		// 文本 chunk
+		// 文本 chunk（通过 processContent 过滤 think 标签）
 		if delta.Content != "" {
-			fullText.WriteString(delta.Content)
-			if onChunk != nil {
-				onChunk(delta.Content)
-			}
+			processContent(delta.Content)
 		}
 
 		// tool_call 增量
@@ -699,6 +774,11 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 	if err := scanner.Err(); err != nil {
 		log.Printf("[LLM Debug] Scanner error: %v, text gathered so far: %s", err, fullText.String())
 		return "", nil, nil, fmt.Errorf("read stream: %v", err)
+	}
+
+	// 刷新 thinkBuf 中残留的非 think 内容
+	if thinkBuf != "" && !inThink {
+		emitChunk(thinkBuf)
 	}
 
 	// 收集完整的 tool_calls
