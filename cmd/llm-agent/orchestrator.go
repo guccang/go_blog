@@ -747,7 +747,7 @@ func (o *Orchestrator) executeSubTask(
 		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
 	}
 	// 排除虚拟工具 plan_and_execute
-	filteredTools = excludePlanTool(filteredTools)
+	filteredTools = excludeVirtualTools(filteredTools)
 	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
 
 	maxIter := o.cfg.SubTaskMaxIterations
@@ -1416,7 +1416,7 @@ func (o *Orchestrator) resumeSubTask(
 	}
 
 	// 排除虚拟工具
-	filteredTools := excludePlanTool(tools)
+	filteredTools := excludeVirtualTools(tools)
 
 	// 继续 agentic loop
 	maxIter := o.cfg.SubTaskMaxIterations
@@ -1584,11 +1584,15 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 	return sb.String()
 }
 
-// excludePlanTool 排除虚拟工具 plan_and_execute
-func excludePlanTool(tools []LLMTool) []LLMTool {
+// excludeVirtualTools 排除虚拟工具（plan_and_execute, execute_skill 等）
+// 子任务不应调用这些虚拟工具，应直接使用实际工具
+func excludeVirtualTools(tools []LLMTool) []LLMTool {
 	var filtered []LLMTool
 	for _, tool := range tools {
-		if tool.Function.Name != "plan_and_execute" {
+		switch tool.Function.Name {
+		case "plan_and_execute", "execute_skill", "get_skill_detail":
+			// 跳过虚拟工具
+		default:
 			filtered = append(filtered, tool)
 		}
 	}
