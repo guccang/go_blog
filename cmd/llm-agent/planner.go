@@ -490,6 +490,7 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 - 例如：用户说"使用deepseek模型"，但子任务描述中未提到model参数 → 必须补充
 - 例如：用户说"用opencode"，但子任务描述中未提到tool参数 → 必须补充
 - 工具的可选参数如果用户明确指定了值，则必须在子任务描述中体现
+- **子任务描述隔离**：AcpStartSession 的 prompt 参数只包含该子任务相关的需求，禁止传入用户原始请求全文。例如用户说"编码xx然后部署到yy"，prompt 只传"编码xx"部分，不要带入"部署到yy"
 
 ### 2. 子任务结构
 - 子任务是否有遗漏或冗余（能合并为 ExecuteCode 的是否已合并）
