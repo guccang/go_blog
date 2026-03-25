@@ -27,8 +27,9 @@ func isGreeting(query string) bool {
 	return false
 }
 
-// ApplySubtaskPolicy 子任务工具过滤（替代 filterToolsByHint）
-// 按 ToolsHint 过滤 + 始终保留 base tools
+// ApplySubtaskPolicy 子任务工具过滤
+// 当 hints 匹配到 skill 时：只保留 skill 声明的工具（不保留 ExecuteCode 等基础工具）
+// 当 hints 未匹配 skill 时：保留 hint 工具 + 基础工具
 func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 	if len(hints) == 0 {
 		return tools
@@ -39,15 +40,37 @@ func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 		hintSet[h] = true
 		hintSet[sanitizeToolName(h)] = true
 		// 裸名→canonical→sanitized 映射，确保命名空间工具也能匹配
-		// 例如 hint="DeployProject" → resolve 得到 "deploy.DeployProject" → sanitize 得到 "deploy_DeployProject"
 		if canonical := b.resolveToolName(h); canonical != h {
 			hintSet[sanitizeToolName(canonical)] = true
 		}
 	}
 
+	// 检测 hints 是否匹配到 skill —— 匹配到则不保留基础工具
+	hasSkillMatch := false
+	if b.skillMgr != nil {
+		matched := b.skillMgr.MatchByTools(hints)
+		if len(matched) > 0 {
+			hasSkillMatch = true
+			// 将 skill 声明的所有工具也加入 hintSet（如 coding skill 的 AcpSendMessage 等）
+			for _, skill := range matched {
+				for _, t := range skill.Tools {
+					hintSet[t] = true
+					hintSet[sanitizeToolName(t)] = true
+					if canonical := b.resolveToolName(t); canonical != t {
+						hintSet[sanitizeToolName(canonical)] = true
+					}
+				}
+			}
+			log.Printf("[ApplySubtaskPolicy] skill 匹配，扩展工具集: hints=%v", hints)
+		}
+	}
+
 	var filtered []LLMTool
 	for _, tool := range tools {
-		if hintSet[tool.Function.Name] || b.isBaseTool(b.resolveToolName(tool.Function.Name)) {
+		if hintSet[tool.Function.Name] {
+			filtered = append(filtered, tool)
+		} else if !hasSkillMatch && b.isBaseTool(b.resolveToolName(tool.Function.Name)) {
+			// 未匹配 skill 时才保留基础工具
 			filtered = append(filtered, tool)
 		}
 	}
@@ -58,7 +81,7 @@ func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 		return tools
 	}
 
-	log.Printf("[ApplySubtaskPolicy] %d → %d (hints=%v)", len(tools), len(filtered), hints)
+	log.Printf("[ApplySubtaskPolicy] %d → %d (hints=%v hasSkill=%v)", len(tools), len(filtered), hints, hasSkillMatch)
 	return filtered
 }
 

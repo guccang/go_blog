@@ -705,7 +705,7 @@ func (o *Orchestrator) executeSubTask(
 	systemContent.WriteString("\n\n")
 	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
 	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n", time.Now().Format("2006-01-02")))
-	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。\n\n", o.bridge.activeLLM.Get().MaxTokens))
+	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。\n\n", o.bridge.activeLLM.Get().MaxTokens))
 
 	// 注入 agent 能力描述（可用模型/编码工具），让子任务 LLM 知道工具参数的合法值
 	agentBlock := o.bridge.getAgentDescriptionBlock()
