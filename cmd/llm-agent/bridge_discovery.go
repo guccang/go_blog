@@ -121,16 +121,37 @@ func (b *Bridge) DiscoverTools() error {
 
 	// 仅当工具集合真正变动时才打印日志
 	toolsChanged := len(toolNames) != len(prevNames)
+	var added, removed []string
 	if !toolsChanged {
 		for _, name := range toolNames {
 			if _, ok := prevNames[name]; !ok {
 				toolsChanged = true
-				break
+				added = append(added, name)
+			}
+		}
+	} else {
+		// 计算新增和移除的工具
+		newNames := make(map[string]struct{}, len(toolNames))
+		for _, name := range toolNames {
+			newNames[name] = struct{}{}
+			if _, ok := prevNames[name]; !ok {
+				added = append(added, name)
+			}
+		}
+		for name := range prevNames {
+			if _, ok := newNames[name]; !ok {
+				removed = append(removed, name)
 			}
 		}
 	}
 	if toolsChanged {
-		log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d). Tools: %v", len(llmTools), len(result.Tools), len(prevNames), toolNames)
+		if len(added) > 0 || len(removed) > 0 {
+			log.Printf("[Bridge] tools changed: %d→%d (+%d -%d) added=%v removed=%v",
+				len(prevNames), len(llmTools), len(added), len(removed), added, removed)
+		} else {
+			log.Printf("[Bridge] discovered %d unique tools from %d entries (was %d)",
+				len(llmTools), len(result.Tools), len(prevNames))
+		}
 	}
 
 	// 应用工具权限策略
