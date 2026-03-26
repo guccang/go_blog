@@ -396,7 +396,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	now := time.Now()
 	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
-	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。使用 ExecuteCode 工具时注意控制 Python 代码长度，复杂逻辑拆分为多次调用，避免单次代码过长被截断导致语法错误。所有可用工具已列在下方工具目录中，直接调用即可。\n", b.activeLLM.Get().MaxTokens)
+	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。简单查询直接调用对应工具（如 cronListTasks、RawGetTodosByDate），复杂多步骤任务使用 execute_skill 或 plan_and_execute。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用。\n", b.activeLLM.Get().MaxTokens)
 	writeSection("人设/基础", personaContent)
 
 	// 2. 用户规则
@@ -409,7 +409,11 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	agentBlock := b.getAgentDescriptionBlock()
 	writeSection("Agent能力", agentBlock)
 
-	// 4. Skill 目录（LLM 只通过 skill 与工具交互，不直接看到底层工具）
+	// 4. Agent 工具目录（LLM 可直接调用这些工具）
+	toolCatalog := b.buildBriefToolCatalog()
+	writeSection("工具目录", toolCatalog)
+
+	// 5. Skill 目录（复杂任务可通过 execute_skill 调用技能）
 	if b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)

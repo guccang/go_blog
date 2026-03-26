@@ -221,7 +221,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	} else {
 		allTools = b.getLLMTools()
 		tools = nil // 虚拟工具后续注入
-		log.Printf("[processTask] 工具模式: skill-only（底层工具 %d 个，仅供 skill/subtask 内部使用）", len(allTools))
+		log.Printf("[processTask] 工具模式: skill+agent（%d 个 agent 工具 + 虚拟工具）", len(allTools))
 	}
 
 	// 提取 query（构建消息前就需要）
@@ -302,8 +302,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 触发任务开始 hook
 	b.hooks.FireTaskStart(ctx)
 
-	// 注入虚拟工具（LLM 只看到虚拟工具，不看到底层 remote tools）
-	tools = b.injectVirtualTools(nil, ctx.NoTools)
+	// 注入虚拟工具 + agent 工具（LLM 可以直接调用 agent 工具，也可以通过 skill 调用）
+	tools = b.injectVirtualTools(allTools, ctx.NoTools)
 
 	// 发送初始工具数量信息
 	if !ctx.NoTools && len(tools) > 0 {
@@ -317,8 +317,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 			skillCount = len(b.skillMgr.GetAvailableSkills())
 		}
 
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 skill-only 模式: %d 个技能, %d 个底层工具, %d 个虚拟工具]\n  虚拟工具: %s",
-			skillCount, len(allTools), len(virtualNames), strings.Join(virtualNames, ", ")))
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 加载 %d 个工具]\n  %d 个技能, %d 个 agent 工具, %d 个虚拟工具",
+			len(tools), skillCount, len(allTools), len(tools)-len(allTools)))
 	}
 
 	// 4. LLM 循环
