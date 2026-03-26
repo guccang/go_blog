@@ -372,6 +372,19 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
+	// get_agent_detail handler：返回 Agent 详细信息
+	if !ctx.NoTools {
+		localHandlers["get_agent_detail"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+			var a struct {
+				AgentID string `json:"agent_id"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+			}
+			return b.handleGetAgentDetail(a.AgentID), nil
+		}
+	}
+
 	// execute_skill handler
 	if !ctx.NoTools && b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		capturedCtx := ctx

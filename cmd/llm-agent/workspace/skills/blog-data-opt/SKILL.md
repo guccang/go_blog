@@ -3,7 +3,7 @@ name: blog-data-opt
 description: 博客数据查询与操作技能。查询待办、运动、博客等数据并做汇总分析，以及新增/完成/删除运动记录、新增/完成/删除待办、创建博客等数据操作。
 summary: 用 Range 接口批量查询，操作前先查 id
 tools: RawGetTodosByDate,RawGetTodosRange,RawAddTodo,RawToggleTodo,RawDeleteTodo,RawUpdateTodo,RawGetExerciseByDate,RawGetExerciseRange,RawGetExerciseStats,RawAddExercise,RawToggleExercise,RawDeleteExercise,RawUpdateExercise,RawRecentExerciseRecords,RawAllBlogNameByDate,RawAllBlogNameByDateRange,RawAllBlogNameByDateRangeCount,RawGetCurrentTaskByRageDate,RawGetBlogData,RawSearchBlogContent,RawCurrentDate,RawCreateBlog
-agents: go_blog,exec_code
+agents: blog,exec_code
 keywords: 博客,待办,运动,todo,exercise,blog,数据,查询,记录,周报,统计,日记,锻炼
 ---
 

@@ -286,6 +286,22 @@ func (b *Bridge) resolveToolNameLocked(name string) string {
 	return name
 }
 
+// getAgentDetailTool 虚拟工具定义（按需获取 Agent 详细信息）
+var getAgentDetailTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "get_agent_detail",
+		Description: "获取指定 Agent 的详细信息，包括完整描述、工具列表、平台信息等。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"agent_id": {"type": "string", "description": "Agent ID（如 deploy-agent、cron-agent）"}
+			},
+			"required": ["agent_id"]
+		}`),
+	},
+}
+
 // getToolDetailTool 虚拟工具定义（按需获取工具参数详情）
 var getToolDetailTool = LLMTool{
 	Type: "function",
@@ -342,12 +358,102 @@ func (b *Bridge) handleGetToolDetail(toolName, agentID string) *ToolCallResult {
 	return &ToolCallResult{Result: sb.String(), AgentID: "builtin"}
 }
 
+// handleGetAgentDetail 处理 get_agent_detail 请求
+func (b *Bridge) handleGetAgentDetail(agentID string) *ToolCallResult {
+	if agentID == "" {
+		return &ToolCallResult{Result: "请提供 agent_id 参数", AgentID: "builtin"}
+	}
+
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	info, ok := b.agentInfo[agentID]
+	if !ok {
+		// 列出可用 agent
+		var ids []string
+		for id := range b.agentInfo {
+			ids = append(ids, id)
+		}
+		return &ToolCallResult{
+			Result:  fmt.Sprintf("Agent '%s' 不存在。可用 Agent: %s", agentID, strings.Join(ids, ", ")),
+			AgentID: "builtin",
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## Agent: %s (%s)\n", info.Name, info.ID))
+	if info.Description != "" {
+		sb.WriteString(fmt.Sprintf("简介: %s\n", info.Description))
+	}
+	if info.DetailDescription != "" {
+		sb.WriteString(fmt.Sprintf("\n### 详细说明\n%s\n", info.DetailDescription))
+	}
+	if info.HostPlatform != "" {
+		sb.WriteString(fmt.Sprintf("运行平台: %s\n", info.HostPlatform))
+	}
+	if info.HostIP != "" {
+		sb.WriteString(fmt.Sprintf("主机IP: %s\n", info.HostIP))
+	}
+	if info.Workspace != "" {
+		sb.WriteString(fmt.Sprintf("工作目录: %s\n", info.Workspace))
+	}
+	if len(info.CodingTools) > 0 {
+		sb.WriteString(fmt.Sprintf("编码工具: %s\n", strings.Join(info.CodingTools, ", ")))
+	}
+	if len(info.Models) > 0 {
+		sb.WriteString(fmt.Sprintf("模型配置: %s\n", strings.Join(info.Models, ", ")))
+	}
+	if len(info.SSHHosts) > 0 {
+		sb.WriteString(fmt.Sprintf("SSH主机: %s\n", strings.Join(info.SSHHosts, ", ")))
+	}
+	if len(info.DeployTargets) > 0 {
+		sb.WriteString(fmt.Sprintf("部署目标: %s\n", strings.Join(info.DeployTargets, ", ")))
+	}
+	if len(info.TargetHosts) > 0 {
+		sb.WriteString("部署目标→SSH地址:\n")
+		for target, host := range info.TargetHosts {
+			sb.WriteString(fmt.Sprintf("  - %s → %s\n", target, host))
+		}
+	}
+	if len(info.Pipelines) > 0 {
+		sb.WriteString(fmt.Sprintf("Pipeline: %s\n", strings.Join(info.Pipelines, ", ")))
+	}
+	if info.PythonVersion != "" {
+		sb.WriteString(fmt.Sprintf("Python: %s\n", info.PythonVersion))
+	}
+	if len(info.LogSources) > 0 {
+		sb.WriteString("日志源:\n")
+		for name, desc := range info.LogSources {
+			sb.WriteString(fmt.Sprintf("  - %s: %s\n", name, desc))
+		}
+	}
+	if len(info.SupportedSoftware) > 0 {
+		sb.WriteString(fmt.Sprintf("支持软件: %s\n", strings.Join(info.SupportedSoftware, ", ")))
+	}
+
+	// 工具列表
+	if tools, ok := b.agentTools[agentID]; ok && len(tools) > 0 {
+		sb.WriteString(fmt.Sprintf("\n### 工具列表 (%d 个)\n", len(tools)))
+		for _, t := range tools {
+			name := b.resolveToolNameLocked(t.Function.Name)
+			desc := t.Function.Description
+			if len([]rune(desc)) > 80 {
+				desc = string([]rune(desc)[:80]) + "..."
+			}
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", name, desc))
+		}
+	}
+
+	log.Printf("[Bridge] get_agent_detail: agent=%s", agentID)
+	return &ToolCallResult{Result: sb.String(), AgentID: "builtin"}
+}
+
 // injectVirtualTools 集中注入虚拟工具
 func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if noTools {
 		return tools
 	}
-	tools = append(tools, getSkillDetailTool, getToolDetailTool, planAndExecuteTool)
+	tools = append(tools, getSkillDetailTool, getToolDetailTool, getAgentDetailTool, planAndExecuteTool)
 	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		tools = append(tools, executeSkillTool)
 	}
