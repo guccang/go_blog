@@ -405,13 +405,17 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		writeSection("用户规则", rulesBlock)
 	}
 
-	// 3. Skill 目录（LLM 只通过 skill 与工具交互，不直接看到底层工具）
+	// 3. Agent 能力概览（平台、SSH、部署目标、模型等，不含具体工具列表）
+	agentBlock := b.getAgentDescriptionBlock()
+	writeSection("Agent能力", agentBlock)
+
+	// 4. Skill 目录（LLM 只通过 skill 与工具交互，不直接看到底层工具）
 	if b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)
 	}
 
-	// 4. 长期记忆
+	// 5. 长期记忆
 	if b.memoryMgr != nil {
 		memoryBlock := b.memoryMgr.BuildPromptBlock()
 		writeSection("长期记忆", memoryBlock)
