@@ -17,8 +17,6 @@ type Target struct {
 	Port          int    // SSH 端口，默认 22
 	RemoteDir     string // 部署目录
 	RemoteScript  string // 发布脚本名（可选）
-	VerifyURL     string // 部署验证 URL（可选，每个 target 独立）
-	VerifyTimeout int    // 验证超时秒数，默认 10
 	Platform      string // 目标平台（linux/win/macos），local 时等于 HostPlatform
 	Type          string // 部署类型: "ssh"(默认) | "bridge"
 	BridgeURL     string // bridge HTTP 地址（type=bridge 时必填）
@@ -34,7 +32,6 @@ type ProjectConfig struct {
 	PackScript   string    // 打包脚本路径
 	PackPattern  string    // 输出文件名模式（{date} → YYYYMMDD_HHMMSS）
 	Targets      []*Target // 部署目标列表
-	VerifyURL    string    // 部署验证 URL（兼容旧模式，新模式用 Target.VerifyURL）
 	ConfigFile   string    // 来源 settings 文件路径
 	Configured   bool      // 是否有持久化 settings（.json 文件）
 	ProtectFiles []string  // 增量部署时不覆盖的文件/目录
@@ -141,8 +138,6 @@ type targetJSON struct {
 	RemoteDir     string `json:"remote_dir,omitempty"`
 	RemoteScript  string `json:"remote_script,omitempty"`
 	Platform      string `json:"platform,omitempty"`
-	VerifyURL     string `json:"verify_url,omitempty"`
-	VerifyTimeout int    `json:"verify_timeout,omitempty"`
 	Type          string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
 	BridgeURL     string `json:"bridge_url,omitempty"` // bridge HTTP 地址
 	AuthToken     string `json:"auth_token,omitempty"` // bridge 认证 token
@@ -348,12 +343,6 @@ func mergeTargetJSON(global, project targetJSON) targetJSON {
 	}
 	if project.Platform != "" {
 		result.Platform = project.Platform
-	}
-	if project.VerifyURL != "" {
-		result.VerifyURL = project.VerifyURL
-	}
-	if project.VerifyTimeout > 0 {
-		result.VerifyTimeout = project.VerifyTimeout
 	}
 	if project.Type != "" {
 		result.Type = project.Type
@@ -621,10 +610,6 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 	if tj.Port > 0 {
 		port = tj.Port
 	}
-	verifyTimeout := 10
-	if tj.VerifyTimeout > 0 {
-		verifyTimeout = tj.VerifyTimeout
-	}
 	if tj.Platform != "" {
 		targetPlatform = normalizePlatform(tj.Platform)
 	}
@@ -642,8 +627,6 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			Port:          port,
 			RemoteDir:     tj.RemoteDir,
 			RemoteScript:  tj.RemoteScript,
-			VerifyURL:     tj.VerifyURL,
-			VerifyTimeout: verifyTimeout,
 			Platform:      targetPlatform,
 		}, nil
 	}
@@ -665,8 +648,6 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			Port:          port,
 			RemoteDir:     tj.RemoteDir,
 			RemoteScript:  tj.RemoteScript,
-			VerifyURL:     tj.VerifyURL,
-			VerifyTimeout: verifyTimeout,
 			Platform:      targetPlatform,
 			Type:          "bridge",
 			BridgeURL:     tj.BridgeURL,
@@ -693,8 +674,6 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 		Port:          port,
 		RemoteDir:     tj.RemoteDir,
 		RemoteScript:  tj.RemoteScript,
-		VerifyURL:     tj.VerifyURL,
-		VerifyTimeout: verifyTimeout,
 		Platform:      targetPlatform,
 		Type:          "ssh",
 	}, nil

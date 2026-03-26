@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -173,7 +172,6 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 			SSHPort:    task.SSHPort,
 			RemoteDir:  task.RemoteDir,
 			StartArgs:  task.StartArgs,
-			VerifyURL:  task.VerifyURL,
 		}
 
 		sendEvent("system", fmt.Sprintf("🚀 开始 adhoc 部署到 %s...", task.SSHHost))
@@ -248,35 +246,6 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 	}
 
 	err = deployer.Run(packOnly, targetFilter)
-
-	// 验证：从实际部署的 target 中获取 VerifyURL
-	if err == nil && !packOnly {
-		verifyURL := ""
-		verifyTimeout := 10
-		// 只检查本次实际部署的 target（按 targetFilter 过滤）
-		for _, t := range proj.Targets {
-			if targetFilter != "" && t.Name != targetFilter && t.Host != targetFilter {
-				continue
-			}
-			if t.VerifyURL != "" {
-				verifyURL = t.VerifyURL
-				verifyTimeout = t.VerifyTimeout
-				break
-			}
-		}
-		if verifyURL == "" && proj.VerifyURL != "" {
-			verifyURL = proj.VerifyURL
-		}
-		if verifyURL != "" {
-			sendEvent("system", "⏳ 等待服务启动 (5s)...")
-			time.Sleep(5 * time.Second)
-			if verifyErr := c.verifyURL(verifyURL, verifyTimeout); verifyErr != nil {
-				err = fmt.Errorf("部署验证失败: %v", verifyErr)
-			} else {
-				sendEvent("system", "✅ 部署验证通过（HTTP 200）")
-			}
-		}
-	}
 
 	status := SessionStatus("done")
 	errMsg := ""
@@ -402,34 +371,6 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 
 		stepErr := deployer.Run(packOnly, targetFilter)
 
-		// 验证
-		if stepErr == nil && !packOnly {
-			verifyURL := ""
-			verifyTimeout := 10
-			for _, t := range proj.Targets {
-				if targetFilter != "" && t.Name != targetFilter && t.Host != targetFilter {
-					continue
-				}
-				if t.VerifyURL != "" {
-					verifyURL = t.VerifyURL
-					verifyTimeout = t.VerifyTimeout
-					break
-				}
-			}
-			if verifyURL == "" && proj.VerifyURL != "" {
-				verifyURL = proj.VerifyURL
-			}
-			if verifyURL != "" {
-				sendEvent("system", "⏳ 等待服务启动 (5s)...")
-				time.Sleep(5 * time.Second)
-				if verifyErr := c.verifyURL(verifyURL, verifyTimeout); verifyErr != nil {
-					stepErr = fmt.Errorf("部署验证失败: %v", verifyErr)
-				} else {
-					sendEvent("system", "✅ 部署验证通过（HTTP 200）")
-				}
-			}
-		}
-
 		if stepErr != nil {
 			errMsg := fmt.Sprintf("Pipeline %q 在步骤 [%d/%d] %s 失败: %v",
 				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
@@ -452,26 +393,6 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 		Status:    "done",
 	})
 	log.Printf("[INFO] pipeline task %s completed, all %d steps done", sessionID, len(pip.Steps))
-}
-
-// verifyURL HTTP GET 验证部署结果
-func (c *Connection) verifyURL(url string, timeout int) error {
-	if timeout <= 0 {
-		timeout = 10
-	}
-
-	httpClient := &http.Client{Timeout: time.Duration(timeout) * time.Second}
-	resp, err := httpClient.Get(url)
-	if err != nil {
-		return fmt.Errorf("连接失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	return nil
 }
 
 // canAccept 是否可以接受新任务
@@ -588,7 +509,6 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 					"remote_dir":  map[string]interface{}{"type": "string", "description": "远程部署目录（默认 /data/program/<项目名>）"},
 					"start_args":  map[string]interface{}{"type": "string", "description": "启动参数"},
 					"port":        map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程，防止 address already in use。如果端口已在 start_args 中指定（如 -port 8080），可不填"},
-					"verify_url":  map[string]interface{}{"type": "string", "description": "部署后健康检查 URL。必须使用 ssh_host 中的远程服务器 IP，禁止使用 localhost/127.0.0.1。拼接规则：http://<ssh_host中的IP>:<port>/，示例：ssh_host=root@1.2.3.4 port=8080 → http://1.2.3.4:8080/"},
 					"deploy_mode": map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
 				},
 				"required": []string{"project", "project_dir", "ssh_host"},
@@ -814,7 +734,6 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	}
 	remoteDir, _ := args["remote_dir"].(string)
 	startArgs, _ := args["start_args"].(string)
-	verifyURL, _ := args["verify_url"].(string)
 	servicePort := 0
 	if p, ok := args["port"].(float64); ok && p > 0 {
 		servicePort = int(p)
@@ -826,7 +745,6 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 		SSHPort:     sshPort,
 		RemoteDir:   remoteDir,
 		StartArgs:   startArgs,
-		VerifyURL:   verifyURL,
 		ServicePort: servicePort,
 	}
 

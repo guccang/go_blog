@@ -18,8 +18,7 @@
     "targets": {
         "local.linux": {
             "remote_dir": "/data/program/go/go_blog/cmd/blog-agent",
-            "remote_script": "publish.sh",
-            "verify_url": "http://blog.guccang.cn:8881"
+            "remote_script": "publish.sh"
         },
         "local.macos": {
             "remote_dir": "/Users/guccang/github_repo/go_blog/cmd/blog-agent",
@@ -27,15 +26,13 @@
         },
         "local.win": {
             "remote_dir": "E:\\githubdesktop\\go_blog\\cmd\\blog-agent",
-            "remote_script": "publish.bat",
-            "verify_url": "http://localhost:8881"
+            "remote_script": "publish.bat"
         },
         "ssh-prod": {
             "host": "root@114.115.214.86",
             "platform": "linux",
             "remote_dir": "/data/program/go/go_blog/cmd/blog-agent",
-            "remote_script": "publish.sh",
-            "verify_url": "http://blog.guccang.cn:8881"
+            "remote_script": "publish.sh"
         }
     },
     "setup_dirs": [

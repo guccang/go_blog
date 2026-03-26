@@ -254,7 +254,7 @@ func (sm *SkillManager) BuildCatalogWithToolHint() string {
 	sb.WriteString("\n## 可用技能\n")
 	sb.WriteString("当用户请求匹配以下技能的适用场景时，调用 execute_skill 工具执行。\n")
 	sb.WriteString("使用前可调用 get_skill_detail(skill_name) 查看详细文档和参数说明。\n")
-	sb.WriteString("技能内部会获取完整的专业工具集，不要绕过技能直接 call_tool。\n\n")
+	sb.WriteString("**重要**: execute_skill 只适用于单一技能域的任务。如果任务跨越多个技能（如「编码+部署」「查数据+生成报告」），必须使用 plan_and_execute 拆分为多个子任务。\n\n")
 	for _, skill := range sm.skills {
 		offline := sm.offlineAgents(&skill)
 		if len(offline) > 0 {

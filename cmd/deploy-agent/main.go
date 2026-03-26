@@ -34,7 +34,6 @@ func main() {
 	initArgs := flag.String("init-args", "", "Startup arguments for --init (e.g. 'config.json')")
 	initSSH := flag.String("init-ssh", "", "SSH target for --init (e.g. root@1.2.3.4)")
 	initRemote := flag.String("init-remote-dir", "", "Remote deploy directory for --init SSH target")
-	initVerify := flag.String("init-verify-url", "", "Health check URL for --init")
 	initLinux := flag.String("init-linux-dir", "", "Linux project directory for --init")
 	initMac := flag.String("init-mac-dir", "", "macOS project directory for --init")
 	initYes := flag.Bool("yes", false, "Non-interactive mode, accept all defaults")
@@ -45,7 +44,6 @@ func main() {
 	adhocSSHPort := flag.Int("ssh-port", 22, "SSH 端口（adhoc 模式，默认 22）")
 	adhocRemoteDir := flag.String("remote-dir", "", "远程部署目录（adhoc 模式，默认 /data/program/<项目名>）")
 	adhocStartArgs := flag.String("start-args", "", "启动参数（adhoc 模式）")
-	adhocVerifyURL := flag.String("verify-url", "", "部署后健康检查 URL（adhoc 模式）")
 	forceFull := flag.Bool("force-full", false, "强制完整部署（覆盖所有文件含配置）")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件和目录结构")
 	genDeploy := flag.Bool("gendeploy", false, "生成部署脚本")
@@ -108,7 +106,6 @@ func main() {
 			StartArgs:      *initArgs,
 			SSHHost:        *initSSH,
 			RemoteDir:      *initRemote,
-			VerifyURL:      *initVerify,
 			LinuxDir:       *initLinux,
 			MacDir:         *initMac,
 			NonInteractive: *initYes,
@@ -137,7 +134,6 @@ func main() {
 			SSHPort:    *adhocSSHPort,
 			RemoteDir:  *adhocRemoteDir,
 			StartArgs:  *adhocStartArgs,
-			VerifyURL:  *adhocVerifyURL,
 		}
 
 		cfg := &DeployConfig{
@@ -306,9 +302,6 @@ func main() {
 				fmt.Printf("  部署目标: %d 个\n", len(proj.Targets))
 				for _, t := range proj.Targets {
 					fmt.Printf("    - %s (%s) -> %s\n", t.Name, t.Host, t.RemoteDir)
-					if t.VerifyURL != "" {
-						fmt.Printf("      验证URL: %s\n", t.VerifyURL)
-					}
 				}
 			}
 			fmt.Println()

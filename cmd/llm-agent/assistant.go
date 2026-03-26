@@ -396,7 +396,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	now := time.Now()
 	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
-	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。简单查询直接调用对应工具（如 cronListTasks、RawGetTodosByDate），复杂多步骤任务使用 execute_skill 或 plan_and_execute。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用。\n", b.activeLLM.Get().MaxTokens)
+	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。简单查询直接调用对应工具（如 cronListTasks、RawGetTodosByDate），复杂多步骤任务使用 plan_and_execute。**编码+部署组合任务必须用 plan_and_execute**，不要把部署指令塞进 coding skill。使用 ExecuteCode 时注意控制 Python 代码长度，复杂逻辑拆分为多次调用。\n", b.activeLLM.Get().MaxTokens)
 	writeSection("人设/基础", personaContent)
 
 	// 2. 用户规则

@@ -16,7 +16,6 @@ type InitOptions struct {
 	StartArgs      string // --init-args
 	SSHHost        string // --init-ssh
 	RemoteDir      string // --init-remote-dir
-	VerifyURL      string // --init-verify-url
 	LinuxDir       string // --init-linux-dir
 	MacDir         string // --init-mac-dir
 	NonInteractive bool   // --yes
@@ -33,7 +32,6 @@ type InitConfig struct {
 	SSHHost         string   // SSH target (e.g. root@1.2.3.4)
 	SSHPort         int      // SSH port, default 22
 	RemoteDir       string   // remote deploy directory
-	VerifyURL       string   // health check URL
 	WinProjectDir   string   // Windows project path
 	LinuxProjectDir string   // Linux project path
 	MacProjectDir   string   // macOS project path
@@ -231,9 +229,6 @@ func applyInitOptions(cfg *InitConfig, opts *InitOptions) {
 	if opts.RemoteDir != "" {
 		cfg.RemoteDir = opts.RemoteDir
 	}
-	if opts.VerifyURL != "" {
-		cfg.VerifyURL = opts.VerifyURL
-	}
 	if opts.LinuxDir != "" {
 		cfg.LinuxProjectDir = opts.LinuxDir
 	}
@@ -308,7 +303,6 @@ func promptInitConfig(cfg *InitConfig) error {
 			defaultRemote = "/data/program/" + cfg.ProjectName
 		}
 		cfg.RemoteDir = promptLine(reader, "  Remote dir", defaultRemote)
-		cfg.VerifyURL = promptLine(reader, "  Verify URL (optional)", cfg.VerifyURL)
 	} else {
 		cfg.SSHHost = ""
 	}
@@ -688,10 +682,6 @@ func generateProjectJSON(cfg *InitConfig) string {
 		}
 		if cfg.RemoteDir != "" {
 			t.RemoteDir = cfg.RemoteDir
-		}
-		if cfg.VerifyURL != "" {
-			t.VerifyURL = cfg.VerifyURL
-			t.VerifyTimeout = 10
 		}
 		pj.Targets["ssh-prod"] = t
 	}

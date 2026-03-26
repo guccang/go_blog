@@ -1285,13 +1285,12 @@ func (d *Deployer) localUnzipWindowsBackupRestore(zipPath, targetDir string, exc
 
 // AdhocConfig 一次性部署参数（无需预配置 .conf 文件）
 type AdhocConfig struct {
-	ProjectDir string // Go 项目目录（必填）
-	SSHHost    string // SSH 目标（如 root@114.115.214.86）（必填）
-	SSHPort    int    // SSH 端口（默认 22）
-	RemoteDir  string // 远程部署目录（默认 /data/program/<项目名>）
-	StartArgs  string // 启动参数（如 config.json）
-	VerifyURL  string // 部署后健康检查 URL（可选）
-	ServicePort int   // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
+	ProjectDir  string // Go 项目目录（必填）
+	SSHHost     string // SSH 目标（如 root@114.115.214.86）（必填）
+	SSHPort     int    // SSH 端口（默认 22）
+	RemoteDir   string // 远程部署目录（默认 /data/program/<项目名>）
+	StartArgs   string // 启动参数（如 config.json）
+	ServicePort int    // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
 }
 
 // adhocDeploy 一次性部署：在内存中构建临时配置，复用 Deployer.Run() 完成部署
@@ -1375,8 +1374,6 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 				RemoteDir:     remoteDir,
 				RemoteScript:  "publish.sh",
 				Platform:      "linux",
-				VerifyURL:     adhoc.VerifyURL,
-				VerifyTimeout: 10,
 				ServicePort:   servicePort,
 			},
 		},
@@ -1387,22 +1384,6 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 	deployer.OnProgress = onProgress
 	if err := deployer.Run(false, ""); err != nil {
 		return err
-	}
-
-	// 6. 部署验证（可选）
-	if adhoc.VerifyURL != "" {
-		logf("info", "⏳ 等待服务启动 (5s)...\n")
-		time.Sleep(5 * time.Second)
-		httpClient := &http.Client{Timeout: 10 * time.Second}
-		resp, err := httpClient.Get(adhoc.VerifyURL)
-		if err != nil {
-			return fmt.Errorf("部署验证失败: %v", err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("部署验证失败: HTTP %d", resp.StatusCode)
-		}
-		logf("info", "✅ 部署验证通过（HTTP 200）\n")
 	}
 
 	return nil

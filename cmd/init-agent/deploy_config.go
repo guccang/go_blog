@@ -18,8 +18,6 @@ type DeployTarget struct {
 	Type          string `json:"type,omitempty"`
 	RemoteDir     string `json:"remote_dir,omitempty"`
 	RemoteScript  string `json:"remote_script,omitempty"`
-	VerifyURL     string `json:"verify_url,omitempty"`
-	VerifyTimeout int    `json:"verify_timeout,omitempty"`
 	BridgeURL     string `json:"bridge_url,omitempty"`
 	AuthToken     string `json:"auth_token,omitempty"`
 }
@@ -48,7 +46,6 @@ type DeployProjectTarget struct {
 	Type         string `json:"type,omitempty"`
 	RemoteDir    string `json:"remote_dir,omitempty"`
 	RemoteScript string `json:"remote_script,omitempty"`
-	VerifyURL    string `json:"verify_url,omitempty"`
 	BridgeURL    string `json:"bridge_url,omitempty"`
 	AuthToken    string `json:"auth_token,omitempty"`
 }

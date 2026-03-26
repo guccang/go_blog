@@ -63,7 +63,6 @@ type TaskAssignPayload struct {
 	SSHPort       int    `json:"ssh_port,omitempty"`       // SSH 端口（默认 22）
 	RemoteDir     string `json:"remote_dir,omitempty"`     // 远程部署目录
 	StartArgs     string `json:"start_args,omitempty"`     // 启动参数
-	VerifyURL     string `json:"verify_url,omitempty"`     // 部署后健康检查 URL
 }
 
 // TaskAcceptedPayload 任务接受确认

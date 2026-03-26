@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -23,14 +24,24 @@ type ACPSession struct {
 	cancel    context.CancelFunc
 }
 
-// Close 关闭 ACP 会话
+// Close 关闭 ACP 会话（带超时保护，防止 Wait 挂起）
 func (s *ACPSession) Close() {
 	if s.cancel != nil {
 		s.cancel()
 	}
 	if s.cmd != nil && s.cmd.Process != nil {
 		s.cmd.Process.Kill()
-		s.cmd.Wait()
+		// Wait with timeout: Windows 上 Kill 后 Wait 可能因管道未关闭而挂起
+		done := make(chan error, 1)
+		go func() {
+			done <- s.cmd.Wait()
+		}()
+		select {
+		case <-done:
+			// 进程已正常退出
+		case <-time.After(5 * time.Second):
+			log.Printf("[ACP] warning: process pid=%d didn't exit within 5s after kill", s.cmd.Process.Pid)
+		}
 	}
 }
 
