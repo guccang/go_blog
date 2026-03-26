@@ -68,6 +68,9 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgError, c.handleError)
 
+	// 注册 tool_cancel 回调（使用 agentbase 统一处理）
+	c.OnToolCancel = c.handleToolCancelCallback
+
 	// 启用协议层
 	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
 		TargetAgentID:  cfg.GoBackendAgentID,
@@ -107,6 +110,12 @@ func (c *Connection) handleTaskStop(msg *uap.Message) {
 	var payload TaskStopPayload
 	json.Unmarshal(msg.Payload, &payload)
 	log.Printf("[INFO] stop deploy task: session=%s (deploy not interruptible)", payload.SessionID)
+}
+
+// handleToolCancelCallback 处理工具取消回调
+func (c *Connection) handleToolCancelCallback(toolName, msgID string) {
+	log.Printf("[INFO] tool_cancel: tool=%s msgID=%s (deploy operations not interruptible)", toolName, msgID)
+	// deploy 操作通常不可中断（SSH 命令已发送），仅记录日志
 }
 
 // handleError 处理错误消息

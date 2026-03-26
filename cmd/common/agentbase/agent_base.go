@@ -45,6 +45,7 @@ type AgentBase struct {
 	// 可选回调（Agent 自行设置）
 	ActiveTaskCounter func() int // 返回活跃任务数（drain 轮询用）
 	OnShutdown        func()     // shutdown 时的自定义回调（如通知业务层停止接收）
+	OnToolCancel      func(toolName string, msgID string) // tool_cancel 回调（agent 自行实现取消逻辑）
 
 	// 消息处理器注册表
 	handlers  map[string]MessageHandler
@@ -125,6 +126,9 @@ func NewAgentBase(cfg *Config) *AgentBase {
 
 	// 内置注册 describe 处理器
 	ab.handlers[uap.MsgDescribe] = ab.handleDescribe
+
+	// 内置注册 tool_cancel 处理器
+	ab.handlers["tool_cancel"] = ab.handleToolCancel
 
 	return ab
 }
@@ -332,6 +336,24 @@ func (ab *AgentBase) handleDescribe(msg *uap.Message) {
 		Tools:       ab.Client.Tools,
 		Meta:        ab.Client.Meta,
 	})
+}
+
+// handleToolCancel 处理工具取消请求
+func (ab *AgentBase) handleToolCancel(msg *uap.Message) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[AgentBase] invalid tool_cancel payload: %v", err)
+		return
+	}
+
+	toolName, _ := payload["tool_name"].(string)
+	msgID, _ := payload["original_msg_id"].(string)
+	log.Printf("[AgentBase] tool_cancel from=%s tool=%s msgID=%s", msg.From, toolName, msgID)
+
+	// 调用 agent 自定义的取消回调
+	if ab.OnToolCancel != nil {
+		ab.OnToolCancel(toolName, msgID)
+	}
 }
 
 // executeShutdown 执行关闭流程
