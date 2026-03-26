@@ -630,7 +630,7 @@ func (o *Orchestrator) Execute(
 				}
 				completedResultsMu.Unlock()
 
-			revCfg := o.bridge.activeLLM.Get()
+				revCfg := o.bridge.activeLLM.Get()
 				revResult, err := EvaluateAndRevisePlan(
 					&revCfg, rootSession.Title, plan, crCopy, remaining, tools,
 					rootSession.Account, o.cfg.Fallbacks, o.fallbackCooldown(),
@@ -1136,11 +1136,17 @@ func (o *Orchestrator) executeSubTask(
 			if hintedSuccess {
 				if text != "" {
 					finalText = text
+					log.Printf("[Orchestrator] subtask=%s 核心工具已成功，强制结束（防止多余调用）", subtask.ID)
+					break
 				} else {
-					finalText = fmt.Sprintf("子任务核心工具 %s 已成功执行。", strings.Join(subtask.ToolsHint, ", "))
+					// 核心工具成功但 LLM 未生成总结，提示 LLM 总结结果
+					log.Printf("[Orchestrator] subtask=%s 核心工具已成功，但无总结文本，提示 LLM 总结", subtask.ID)
+					messages = append(messages, Message{
+						Role:    "user",
+						Content: "核心工具已成功执行，请基于工具返回结果生成简洁的总结（包含关键数据），不要再调用其他工具。",
+					})
+					// 继续下一轮让 LLM 生成总结
 				}
-				log.Printf("[Orchestrator] subtask=%s 核心工具已成功，强制结束（防止多余调用）", subtask.ID)
-				break
 			}
 		}
 
