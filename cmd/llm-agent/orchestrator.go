@@ -398,6 +398,41 @@ func (o *Orchestrator) Execute(
 			return
 		}
 
+		// 校验 tools_hint 中的工具是否已注册
+		if len(st.ToolsHint) > 0 {
+			var invalidTools []string
+			for _, hint := range st.ToolsHint {
+				// 检查工具是否存在
+				found := false
+				for _, tool := range tools {
+					if tool.Function.Name == hint || tool.Function.Name == sanitizeToolName(hint) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					invalidTools = append(invalidTools, hint)
+				}
+			}
+			if len(invalidTools) > 0 {
+				errMsg := fmt.Sprintf("tools_hint 包含未注册的工具: %s", strings.Join(invalidTools, ", "))
+				session.SetStatus("failed")
+				session.SetError(errMsg)
+				o.store.Save(session)
+				safeSendEvent("subtask_fail", fmt.Sprintf("[%s] %s — %s", st.ID, st.Title, errMsg))
+				resultCh <- resultMsg{
+					result: SubTaskResult{
+						SubTaskID: st.ID,
+						Title:     st.Title,
+						Status:    "failed",
+						Error:     errMsg,
+					},
+					session: session,
+				}
+				return
+			}
+		}
+
 		// 检查是否应跳过
 		if skip, reason := scheduler.shouldSkip(st); skip {
 			session.SetStatus("skipped")
