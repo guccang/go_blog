@@ -48,6 +48,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 	c.RegisterHandler(uap.MsgError, c.handleError)
 	c.RegisterHandler(uap.MsgPermissionResponse, c.handlePermissionResponse)
 	c.RegisterHandler(uap.MsgSetMode, c.handleSetMode)
+	c.RegisterHandler("tool_cancel", c.handleToolCancel)
 
 	// 启用协议层
 	c.EnableProtocolLayer(&agentbase.ProtocolLayerConfig{
@@ -96,6 +97,24 @@ func (c *Connection) handleSetMode(msg *uap.Message) {
 	log.Printf("[INFO] set_mode: session=%s mode=%s", payload.SessionID, payload.ModeID)
 	if err := c.agent.setSessionMode(payload.SessionID, payload.ModeID); err != nil {
 		log.Printf("[WARN] set session mode: %v", err)
+	}
+}
+
+// handleToolCancel 处理工具取消请求（停止正在执行的 ACP 会话）
+func (c *Connection) handleToolCancel(msg *uap.Message) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		log.Printf("[WARN] invalid tool_cancel payload: %v", err)
+		return
+	}
+	toolName, _ := payload["tool_name"].(string)
+	log.Printf("[INFO] tool_cancel from=%s tool=%s", msg.From, toolName)
+
+	// 停止最近的活跃会话（ACP 工具通常只有一个活跃会话）
+	sessionID, rec := c.agent.GetLastSession()
+	if rec != nil && rec.Active {
+		log.Printf("[INFO] stopping active session: %s", sessionID)
+		c.agent.StopTask(sessionID)
 	}
 }
 

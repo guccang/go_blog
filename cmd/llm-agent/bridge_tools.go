@@ -590,6 +590,24 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		return &ToolCallResult{AgentID: agentID},
 			fmt.Errorf("tool_call %s timeout after %v", toolName, timeout)
 	case <-ctx.Done():
+		// 尝试通知远程 agent 取消任务（best effort，不等待结果）
+		if strings.HasPrefix(toolName, "Acp") && agentID != "" {
+			go func() {
+				cancelMsg := &uap.Message{
+					Type: "tool_cancel",
+					ID:   uap.NewMsgID(),
+					From: b.cfg.AgentID,
+					To:   agentID,
+					Payload: mustMarshal(map[string]interface{}{
+						"original_msg_id": msgID,
+						"tool_name":       toolName,
+					}),
+					Ts: time.Now().UnixMilli(),
+				}
+				b.client.Send(cancelMsg)
+				log.Printf("[Bridge] sent tool_cancel to %s for %s", agentID, toolName)
+			}()
+		}
 		return nil, fmt.Errorf("tool_call %s cancelled: %v", toolName, ctx.Err())
 	}
 }
