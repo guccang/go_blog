@@ -398,41 +398,6 @@ func (o *Orchestrator) Execute(
 			return
 		}
 
-		// 校验 tools_hint 中的工具是否已注册
-		if len(st.ToolsHint) > 0 {
-			var invalidTools []string
-			for _, hint := range st.ToolsHint {
-				// 检查工具是否存在
-				found := false
-				for _, tool := range tools {
-					if tool.Function.Name == hint || tool.Function.Name == sanitizeToolName(hint) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					invalidTools = append(invalidTools, hint)
-				}
-			}
-			if len(invalidTools) > 0 {
-				errMsg := fmt.Sprintf("tools_hint 包含未注册的工具: %s", strings.Join(invalidTools, ", "))
-				session.SetStatus("failed")
-				session.SetError(errMsg)
-				o.store.Save(session)
-				safeSendEvent("subtask_fail", fmt.Sprintf("[%s] %s — %s", st.ID, st.Title, errMsg))
-				resultCh <- resultMsg{
-					result: SubTaskResult{
-						SubTaskID: st.ID,
-						Title:     st.Title,
-						Status:    "failed",
-						Error:     errMsg,
-					},
-					session: session,
-				}
-				return
-			}
-		}
-
 		// 检查是否应跳过
 		if skip, reason := scheduler.shouldSkip(st); skip {
 			session.SetStatus("skipped")
@@ -742,32 +707,16 @@ func (o *Orchestrator) executeSubTask(
 	log.Printf("[Orchestrator] ▶ 子任务开始 id=%s title=%s desc=%s",
 		subtask.ID, subtask.Title, subtask.Description)
 
-	// 先过滤工具，后续构建 system prompt 时需要引用过滤后的工具列表
+	// 子任务使用和主任务完全相同的工具集（无任何过滤）
 	filteredTools := tools
-	if len(subtask.ToolsHint) > 0 {
-		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
-	}
-	// 排除虚拟工具（plan_and_execute 总是排除；ExecuteCode 只在有其他专业工具时排除）
-	filteredTools = excludeVirtualTools(filteredTools, subtask.ToolsHint)
-	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
+	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个（与主任务相同）", subtask.ID, len(filteredTools))
 
-	// 构建子任务的 system prompt
+	// 构建子任务的 system prompt（使用与主任务相同的函数）
+	basePrompt, _ := o.bridge.buildAssistantSystemPrompt(session.Account)
 	var systemContent strings.Builder
-	subtaskPrompt := loadWorkspaceFile(o.cfg.WorkspaceDir, "SUBTASK.md", defaultSubtaskPrompt)
-	systemContent.WriteString(subtaskPrompt)
+	systemContent.WriteString(basePrompt)
 	systemContent.WriteString("\n\n")
-	systemContent.WriteString(fmt.Sprintf("当前用户账号: %s\n", session.Account))
-	systemContent.WriteString(fmt.Sprintf("当前日期: %s\n", time.Now().Format("2006-01-02")))
-	systemContent.WriteString(fmt.Sprintf("当前输出token预算: %d tokens。\n\n", o.bridge.activeLLM.Get().MaxTokens))
-
-	// 注入 agent 能力描述（可用模型/编码工具），让子任务 LLM 知道工具参数的合法值
-	agentBlock := o.bridge.getAgentDescriptionBlock()
-	if agentBlock != "" {
-		systemContent.WriteString(agentBlock)
-		systemContent.WriteString("\n")
-	}
-
-	systemContent.WriteString(fmt.Sprintf("## 子任务: %s\n", subtask.Title))
+	systemContent.WriteString(fmt.Sprintf("## 当前子任务: %s\n", subtask.Title))
 	systemContent.WriteString(fmt.Sprintf("%s\n", subtask.Description))
 
 	if siblingContext != "" {
