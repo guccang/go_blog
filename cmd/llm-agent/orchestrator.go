@@ -755,6 +755,12 @@ func (o *Orchestrator) executeSubTask(
 		systemContent.WriteString(toolRef)
 	}
 
+	// 工具使用指引：必须通过 function calling 调用工具，不要尝试 HTTP/API 直连
+	systemContent.WriteString("\n## 工具使用规范\n")
+	systemContent.WriteString("- 只使用上方列出的工具，通过 function calling 直接调用\n")
+	systemContent.WriteString("- 禁止通过 HTTP 请求、API 直连、或其他间接方式访问 agent 服务\n")
+	systemContent.WriteString("- 调用工具前，参考上方「工具参数参考」中的参数定义\n")
+
 	// 初始化消息
 	messages := []Message{
 		{Role: "system", Content: systemContent.String()},
@@ -830,6 +836,13 @@ func (o *Orchestrator) executeSubTask(
 
 		log.Printf("[Orchestrator] subtask=%s 迭代 %d/%d messages=%d", subtask.ID, i+1, maxIter, len(messages))
 
+		// 发送迭代进度
+		if i == 0 {
+			sendEvent("subtask_thinking", fmt.Sprintf("[%s] 正在思考...", subtask.ID))
+		} else {
+			sendEvent("subtask_thinking", fmt.Sprintf("[%s] 第%d轮分析...", subtask.ID, i+1))
+		}
+
 		// 非阻塞检查 steer 消息
 		if steerCh != nil {
 			select {
@@ -873,8 +886,16 @@ func (o *Orchestrator) executeSubTask(
 		// 无工具调用 → 子任务完成
 		if len(toolCalls) == 0 {
 			log.Printf("[Orchestrator] ✓ 子任务 %s 对话结束（无工具调用） textLen=%d", subtask.ID, len(text))
+			if text != "" {
+				sendEvent("subtask_response", fmt.Sprintf("[%s] %s", subtask.ID, truncate(text, 500)))
+			}
 			finalText = text
 			break
+		}
+
+		// 发送 LLM 中间回复（工具调用前的思考过程）
+		if text != "" {
+			sendEvent("subtask_response", fmt.Sprintf("[%s] %s", subtask.ID, truncate(text, 300)))
 		}
 
 		messages = append(messages, assistantMsg)
@@ -887,7 +908,12 @@ func (o *Orchestrator) executeSubTask(
 		for tcIdx, tc := range toolCalls {
 			originalName := o.bridge.resolveToolName(tc.Function.Name)
 
-			sendEvent("tool_call", fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments))
+			// ExecuteCode 特殊展示：提取 description + code
+			toolCallEvent := fmt.Sprintf("[%s] 调用 %s (%d/%d)\n参数: %s", subtask.ID, originalName, tcIdx+1, len(toolCalls), tc.Function.Arguments)
+			if originalName == "ExecuteCode" {
+				toolCallEvent = fmt.Sprintf("[%s] %s", subtask.ID, formatExecuteCodeEvent(tc.Function.Arguments, tcIdx+1, len(toolCalls)))
+			}
+			sendEvent("tool_call", toolCallEvent)
 			log.Printf("[Orchestrator] subtask=%s → 调用工具: %s args=%s",
 				subtask.ID, originalName, tc.Function.Arguments)
 
@@ -918,7 +944,8 @@ func (o *Orchestrator) executeSubTask(
 					tcResult = &ToolCallResult{Result: result, AgentID: "builtin"}
 				}
 			} else {
-				tcResult, err = o.bridge.CallToolCtx(ctx, originalName, json.RawMessage(tc.Function.Arguments))
+				progressSink := &subtaskEventSink{sendEvent: sendEvent}
+				tcResult, err = o.bridge.CallToolCtxWithProgress(ctx, originalName, json.RawMessage(tc.Function.Arguments), progressSink)
 			}
 
 			duration := time.Since(start)
@@ -944,10 +971,33 @@ func (o *Orchestrator) executeSubTask(
 			success := true
 			if err != nil {
 				success = false
-				result = fmt.Sprintf("工具调用失败: %v", err)
+				if originalName == "ExecuteCode" && result != "" {
+					stderr := extractExecuteCodeStderr(result)
+					if stderr != "" {
+						result = fmt.Sprintf("ExecuteCode 执行失败: %v\n错误详情:\n%s", err, stderr)
+					} else {
+						result = fmt.Sprintf("ExecuteCode 执行失败: %v\n原始结果: %s", err, truncate(result, 1000))
+					}
+				} else {
+					result = fmt.Sprintf("工具调用失败: %v", err)
+				}
 				log.Printf("[Orchestrator] subtask=%s ✗ 工具失败: %s →agent=%s duration=%v error=%v",
 					subtask.ID, originalName, toAgent, duration, err)
-				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 →%s (%.1fs): %v", subtask.ID, originalName, toAgent, duration.Seconds(), err))
+				sendEvent("tool_result", fmt.Sprintf("❌ [%s] %s 失败 →%s (%.1fs): %s", subtask.ID, originalName, toAgent, duration.Seconds(), truncate(result, 300)))
+			} else if originalName == "ExecuteCode" {
+				// ExecuteCode 特殊处理：解析结构化结果
+				stdout, execSummary := parseExecuteCodeResult(result)
+				if stdout != "" {
+					result = stdout
+				}
+				log.Printf("[Orchestrator] subtask=%s ← ExecuteCode返回: →agent=%s duration=%v stdoutLen=%d",
+					subtask.ID, toAgent, duration, len(result))
+				eventText := fmt.Sprintf("✅ [%s] ExecuteCode (%.1fs)", subtask.ID, duration.Seconds())
+				if execSummary != "" {
+					eventText += "\n" + execSummary
+				}
+				eventText += fmt.Sprintf("\n输出: %s", truncate(result, 300))
+				sendEvent("tool_result", eventText)
 			} else {
 				log.Printf("[Orchestrator] subtask=%s ← 工具返回: %s →agent=%s ←from=%s duration=%v resultLen=%d result=%s",
 					subtask.ID, originalName, toAgent, fromAgent, duration, len(result), result)
