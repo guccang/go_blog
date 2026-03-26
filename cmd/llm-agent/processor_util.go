@@ -172,19 +172,6 @@ func parseExecuteCodeResult(resultJSON string) (string, string) {
 // extractExecuteCodeStderr 从 ExecuteCode 的结构化结果中提取 stderr 错误详情
 // 用于 ExecuteCode 失败时将具体错误信息传递给 LLM，使其能修正代码
 func extractExecuteCodeStderr(resultJSON string) string {
-	// 尝试从 BuildToolResult 包装的 JSON 中提取
-	var wrapper struct {
-		Data struct {
-			Stderr    string `json:"stderr"`
-			ErrorType string `json:"error_type"`
-			Stdout    string `json:"stdout"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal([]byte(resultJSON), &wrapper); err == nil && wrapper.Data.Stderr != "" {
-		return wrapper.Data.Stderr
-	}
-
-	// 直接作为 execResult 解析
 	var execResult struct {
 		Stderr    string `json:"stderr"`
 		ErrorType string `json:"error_type"`

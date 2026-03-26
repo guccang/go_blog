@@ -108,10 +108,8 @@ type ToolCallPayload struct {
 // ToolResultPayload 跨 agent 工具调用结果
 // 约定:
 // - Success: 操作是否成功（唯一判断标准）
-// - Result: 成功时为业务数据（JSON 字符串），标准格式:
-//   {"data": <具体数据>, "message": "可选的人类可读摘要"}
+// - Result: 成功时为业务数据的 JSON 字符串（无额外包装，直接是工具返回的原始数据）
 // - Error: 失败时的错误描述
-// - Result 中不再重复放 success/status 字段
 type ToolResultPayload struct {
 	RequestID string `json:"request_id"` // 对应 Message.ID
 	Success   bool   `json:"success"`
@@ -119,16 +117,20 @@ type ToolResultPayload struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// BuildToolResult 构建标准化工具返回结果
+// BuildToolResult 构建工具返回结果（直接透传原始数据，不添加包装层）
 func BuildToolResult(requestID string, data any, message string) ToolResultPayload {
-	result, _ := json.Marshal(map[string]any{
-		"data":    data,
-		"message": message,
-	})
+	var result string
+	switch v := data.(type) {
+	case string:
+		result = v
+	default:
+		b, _ := json.Marshal(data)
+		result = string(b)
+	}
 	return ToolResultPayload{
 		RequestID: requestID,
 		Success:   true,
-		Result:    string(result),
+		Result:    result,
 	}
 }
 
