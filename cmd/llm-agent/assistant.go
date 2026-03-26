@@ -405,17 +405,13 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		writeSection("用户规则", rulesBlock)
 	}
 
-	// 3. Agent 与工具全量目录（直接展示所有工具，无需 get_agent_tools）
-	toolCatalog := b.buildFullToolCatalog()
-	writeSection("Agent与工具目录", toolCatalog)
-
-	// 4. Skill 目录（简要列表 + get_skill_detail 获取详情的说明）
+	// 3. Skill 目录（LLM 只通过 skill 与工具交互，不直接看到底层工具）
 	if b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)
 	}
 
-	// 5. 长期记忆
+	// 4. 长期记忆
 	if b.memoryMgr != nil {
 		memoryBlock := b.memoryMgr.BuildPromptBlock()
 		writeSection("长期记忆", memoryBlock)

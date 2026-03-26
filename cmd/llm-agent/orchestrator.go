@@ -1159,17 +1159,24 @@ func (o *Orchestrator) executeSubTask(
 
 	// 标记完成
 	session.SetStatus("done")
-	session.SetResult(finalText)
+
+	// 构建完整结果：LLM 回复 + 关键工具数据
+	fullResult := finalText
+	if keyData := extractKeyToolData(session); keyData != "" {
+		fullResult = finalText + "\n\n" + keyData
+	}
+
+	session.SetResult(fullResult)
 	o.store.Save(session)
 
 	log.Printf("[Orchestrator] ◀ 子任务完成 id=%s duration=%v resultLen=%d",
-		subtask.ID, time.Since(subtaskStart), len(finalText))
+		subtask.ID, time.Since(subtaskStart), len(fullResult))
 
 	return SubTaskResult{
 		SubTaskID: subtask.ID,
 		Title:     subtask.Title,
 		Status:    "done",
-		Result:    finalText,
+		Result:    fullResult,
 	}
 }
 

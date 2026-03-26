@@ -99,8 +99,94 @@ func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
 
 // ========================= 全量工具目录 =========================
 
-// buildFullToolCatalog 构建完整的 Agent + 工具目录（注入系统提示词，替代渐进式发现）
-// LLM 直接看到所有可用工具，无需调用 get_agent_tools
+// buildBriefToolCatalog 构建简要的 Agent + 工具目录（仅工具名+短描述，不含参数）
+// LLM 需要参数详情时通过 get_tool_detail 按需获取
+func (b *Bridge) buildBriefToolCatalog() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	if len(b.agentInfo) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n## 可用 Agent 与工具\n")
+	sb.WriteString("以下是所有在线 Agent 及其工具。需要了解工具参数时，调用 get_tool_detail(tool_name) 获取完整参数定义。\n\n")
+
+	// llm-agent 自身信息
+	sb.WriteString(fmt.Sprintf("### %s [%s]: LLM 编排中枢", b.cfg.AgentName, b.cfg.AgentID))
+	if b.client.HostPlatform != "" {
+		sb.WriteString(fmt.Sprintf(" | 平台: %s", b.client.HostPlatform))
+	}
+	sb.WriteString("\n\n")
+
+	for id, info := range b.agentInfo {
+		agentToolList := b.agentTools[id]
+
+		// Agent 标题行：名称 [ID]: 描述
+		desc := info.Description
+		if info.DetailDescription != "" {
+			desc = truncateToFirstParagraph(info.DetailDescription, 200)
+		}
+		if desc == "" {
+			desc = info.Name
+		}
+
+		line := fmt.Sprintf("### %s [%s]: %s", info.Name, id, desc)
+
+		// 附加关键能力标签
+		var tags []string
+		if info.HostPlatform != "" {
+			tags = append(tags, "平台: "+info.HostPlatform)
+		}
+		if len(info.DeployTargets) > 0 {
+			tags = append(tags, "部署: "+strings.Join(info.DeployTargets, ","))
+		}
+		if len(info.SSHHosts) > 0 {
+			tags = append(tags, "SSH: "+strings.Join(info.SSHHosts, ","))
+		}
+		if len(info.Models) > 0 {
+			tags = append(tags, "模型: "+strings.Join(info.Models, ","))
+		}
+		if len(info.CodingTools) > 0 {
+			tags = append(tags, "编码: "+strings.Join(info.CodingTools, ","))
+		}
+		if info.PythonVersion != "" {
+			tags = append(tags, "Python: "+info.PythonVersion)
+		}
+		if len(info.LogSources) > 0 {
+			var sources []string
+			for k := range info.LogSources {
+				sources = append(sources, k)
+			}
+			tags = append(tags, "日志: "+strings.Join(sources, ","))
+		}
+		if len(info.Pipelines) > 0 {
+			tags = append(tags, "流水线: "+strings.Join(info.Pipelines, ","))
+		}
+		if len(tags) > 0 {
+			line += " | " + strings.Join(tags, " | ")
+		}
+		sb.WriteString(line + "\n")
+
+		// 每个工具一行：仅名称+短描述（不含参数摘要）
+		for _, t := range agentToolList {
+			name := b.resolveToolNameLocked(t.Function.Name)
+			toolDesc := strings.TrimSpace(t.Function.Description)
+			if toolDesc == "" {
+				toolDesc = "无描述"
+			}
+			if len([]rune(toolDesc)) > 50 {
+				toolDesc = string([]rune(toolDesc)[:50]) + "..."
+			}
+			sb.WriteString(fmt.Sprintf("  - %s: %s\n", name, toolDesc))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// buildFullToolCatalog 构建完整的 Agent + 工具目录（含参数摘要，用于需要详细信息的场景）
 func (b *Bridge) buildFullToolCatalog() string {
 	b.catalogMu.RLock()
 	defer b.catalogMu.RUnlock()
@@ -200,12 +286,68 @@ func (b *Bridge) resolveToolNameLocked(name string) string {
 	return name
 }
 
+// getToolDetailTool 虚拟工具定义（按需获取工具参数详情）
+var getToolDetailTool = LLMTool{
+	Type: "function",
+	Function: LLMFunction{
+		Name:        "get_tool_detail",
+		Description: "获取工具的完整参数定义（JSON Schema）。在调用不熟悉的工具前使用。",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"tool_name": {"type": "string", "description": "工具名称（如 DeployProject、ExecuteCode）"},
+				"agent_id":  {"type": "string", "description": "Agent ID，查看该 Agent 所有工具参数（与 tool_name 二选一）"}
+			}
+		}`),
+	},
+}
+
+// handleGetToolDetail 处理 get_tool_detail 请求（共享逻辑，tool_handler 和 processor 都调用）
+func (b *Bridge) handleGetToolDetail(toolName, agentID string) *ToolCallResult {
+	if toolName == "" && agentID == "" {
+		return &ToolCallResult{Result: "请提供 tool_name 或 agent_id 参数", AgentID: "builtin"}
+	}
+
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	if toolName != "" {
+		// 单个工具查询
+		sanitized := sanitizeToolName(toolName)
+		for _, tool := range b.llmTools {
+			if tool.Function.Name == sanitized || tool.Function.Name == toolName {
+				var sb strings.Builder
+				sb.WriteString(fmt.Sprintf("## %s\n%s\n\n", toolName, tool.Function.Description))
+				sb.WriteString("参数 Schema:\n")
+				sb.WriteString(string(tool.Function.Parameters))
+				log.Printf("[Bridge] get_tool_detail: tool=%s", toolName)
+				return &ToolCallResult{Result: sb.String(), AgentID: "builtin"}
+			}
+		}
+		return &ToolCallResult{Result: fmt.Sprintf("工具 '%s' 不存在", toolName), AgentID: "builtin"}
+	}
+
+	// Agent 级查询
+	agentToolList, ok := b.agentTools[agentID]
+	if !ok {
+		return &ToolCallResult{Result: fmt.Sprintf("Agent '%s' 不存在或无工具", agentID), AgentID: "builtin"}
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## Agent %s 的工具参数\n\n", agentID))
+	for _, t := range agentToolList {
+		name := b.resolveToolNameLocked(t.Function.Name)
+		sb.WriteString(fmt.Sprintf("### %s\n%s\n参数: %s\n\n", name, t.Function.Description, string(t.Function.Parameters)))
+	}
+	log.Printf("[Bridge] get_tool_detail: agent=%s tools=%d", agentID, len(agentToolList))
+	return &ToolCallResult{Result: sb.String(), AgentID: "builtin"}
+}
+
 // injectVirtualTools 集中注入虚拟工具
 func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if noTools {
 		return tools
 	}
-	tools = append(tools, getSkillDetailTool, planAndExecuteTool)
+	tools = append(tools, getSkillDetailTool, getToolDetailTool, planAndExecuteTool)
 	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		tools = append(tools, executeSkillTool)
 	}

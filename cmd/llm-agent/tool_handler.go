@@ -139,6 +139,18 @@ func (b *Bridge) registerBuiltinTools() {
 		return &ToolCallResult{Result: detail, AgentID: "builtin"}, nil
 	})
 
+	// get_tool_detail 虚拟工具（全局注册，子任务也可调用）
+	b.registerTool("get_tool_detail", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+		var a struct {
+			ToolName string `json:"tool_name"`
+			AgentID  string `json:"agent_id"`
+		}
+		if err := json.Unmarshal(args, &a); err != nil {
+			return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+		}
+		return b.handleGetToolDetail(a.ToolName, a.AgentID), nil
+	})
+
 	// 模型切换工具（4 个）
 	b.registerTool("list_providers", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 		result := b.handleListProviders()

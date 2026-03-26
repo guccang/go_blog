@@ -203,19 +203,25 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	log.Printf("[processTask] ▶ 开始处理 taskID=%s source=%s account=%s streaming=%v query=%s",
 		ctx.TaskID, ctx.Source, ctx.Account, streaming, truncate(ctx.Query, 100))
 
-	// 1. 获取工具（全量加载）
+	// 1. 获取工具
+	// allTools: 全量工具（供 skill/subtask 内部使用）
+	// tools: 传给主 LLM 的工具（仅虚拟工具，不暴露底层 tool）
 	var messages []Message
 	var tools []LLMTool
+	var allTools []LLMTool
 
 	if ctx.NoTools {
 		tools = nil
+		allTools = nil
 		log.Printf("[processTask] 工具模式: 禁用")
 	} else if len(ctx.SelectedTools) > 0 {
-		tools = b.filterToolsBySelection(ctx.SelectedTools)
-		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(tools))
+		allTools = b.filterToolsBySelection(ctx.SelectedTools)
+		tools = nil // 虚拟工具后续注入
+		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(allTools))
 	} else {
-		tools = b.getLLMTools()
-		log.Printf("[processTask] 工具模式: 全量加载 count=%d", len(tools))
+		allTools = b.getLLMTools()
+		tools = nil // 虚拟工具后续注入
+		log.Printf("[processTask] 工具模式: skill-only（底层工具 %d 个，仅供 skill/subtask 内部使用）", len(allTools))
 	}
 
 	// 提取 query（构建消息前就需要）
@@ -296,40 +302,23 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	// 触发任务开始 hook
 	b.hooks.FireTaskStart(ctx)
 
-	// 注入虚拟工具（集中管理）
-	tools = b.injectVirtualTools(tools, ctx.NoTools)
+	// 注入虚拟工具（LLM 只看到虚拟工具，不看到底层 remote tools）
+	tools = b.injectVirtualTools(nil, ctx.NoTools)
 
-	// 发送初始工具数量信息（按 agent 分组展示）
+	// 发送初始工具数量信息
 	if !ctx.NoTools && len(tools) > 0 {
-		agentGroups := make(map[string][]string) // agentID → tool names
 		var virtualNames []string
-
 		for _, t := range tools {
-			canonical := b.resolveToolName(t.Function.Name)
-			if agentID, ok := b.getToolAgent(canonical); ok {
-				agentGroups[agentID] = append(agentGroups[agentID], canonical)
-			} else {
-				virtualNames = append(virtualNames, canonical)
-			}
+			virtualNames = append(virtualNames, t.Function.Name)
 		}
 
-		var lines []string
-		b.catalogMu.RLock()
-		for agentID, toolNames := range agentGroups {
-			info := b.agentInfo[agentID]
-			name := agentID
-			if info.Name != "" {
-				name = info.Name
-			}
-			lines = append(lines, fmt.Sprintf("  %s (%d): %s", name, len(toolNames), strings.Join(toolNames, ", ")))
-		}
-		b.catalogMu.RUnlock()
-		if len(virtualNames) > 0 {
-			lines = append(lines, fmt.Sprintf("  虚拟工具 (%d): %s", len(virtualNames), strings.Join(virtualNames, ", ")))
+		skillCount := 0
+		if b.skillMgr != nil {
+			skillCount = len(b.skillMgr.GetAvailableSkills())
 		}
 
-		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 加载 %d 个工具]\n%s",
-			len(tools), strings.Join(lines, "\n")))
+		ctx.Sink.OnEvent("tool_info", fmt.Sprintf("[🔧 skill-only 模式: %d 个技能, %d 个底层工具, %d 个虚拟工具]\n  虚拟工具: %s",
+			skillCount, len(allTools), len(virtualNames), strings.Join(virtualNames, ", ")))
 	}
 
 	// 4. LLM 循环
@@ -369,10 +358,24 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 		}
 	}
 
+	// get_tool_detail handler：返回工具参数详情
+	if !ctx.NoTools {
+		localHandlers["get_tool_detail"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
+			var a struct {
+				ToolName string `json:"tool_name"`
+				AgentID  string `json:"agent_id"`
+			}
+			if err := json.Unmarshal(args, &a); err != nil {
+				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
+			}
+			return b.handleGetToolDetail(a.ToolName, a.AgentID), nil
+		}
+	}
+
 	// execute_skill handler
 	if !ctx.NoTools && b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		capturedCtx := ctx
-		capturedTools := tools
+		capturedTools := allTools // skill 内部需要全量工具
 		localHandlers["execute_skill"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
 			var skillArgs struct {
 				SkillName string `json:"skill_name"`
@@ -542,8 +545,8 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 				log.Printf("[processTask] passing %d completed tool calls to planner", len(existingCalls))
 			}
 
-			// 进入复杂任务处理流程（内部处理会话保存）
-			result := b.handleComplexTask(ctx, rootSession, store, tools, completedWork)
+			// 进入复杂任务处理流程（传入全量工具供子任务使用）
+			result := b.handleComplexTask(ctx, rootSession, store, allTools, completedWork)
 			ctx.Sink.OnChunk(result)
 			finalText = result
 			complexTaskHandled = true

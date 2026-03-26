@@ -50,29 +50,10 @@ var planAndExecuteTool = LLMTool{
 
 // PlanTask 调用 LLM 生成结构化任务计划
 // completedWork: 之前简单路径中已完成的工具调用摘要（可为空）
-// skillBlock: 匹配到的 skill 领域指引（可为空）
+// skillBlock: 可用 skill 的详细信息（含工具列表和执行策略）
 func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, maxSubTasks int, completedWork string, skillBlock string, fallbacks []LLMConfig, cooldown time.Duration) (*TaskPlan, error) {
 	log.Printf("[Planner] ▶ 开始规划 query=%s account=%s maxSubTasks=%d availableTools=%d completedWork=%v",
 		truncate(query, 100), account, maxSubTasks, len(tools), completedWork != "")
-	// 构建工具目录（name + description + 核心参数，帮助 LLM 精确规划）
-	var toolCatalog strings.Builder
-	for i, tool := range tools {
-		// 跳过虚拟工具
-		if tool.Function.Name == "plan_and_execute" {
-			continue
-		}
-		// 提取核心参数信息
-		paramInfo := extractParamInfo(tool.Function.Parameters)
-		if paramInfo != "" {
-			toolCatalog.WriteString(fmt.Sprintf("- %s: %s [参数: %s]\n", tool.Function.Name, tool.Function.Description, paramInfo))
-		} else {
-			toolCatalog.WriteString(fmt.Sprintf("- %s: %s\n", tool.Function.Name, tool.Function.Description))
-		}
-		if i > 50 {
-			toolCatalog.WriteString("... (更多工具省略)\n")
-			break
-		}
-	}
 
 	// 构建已完成工作上下文（如果有）
 	var completedSection string
@@ -84,11 +65,12 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 `, completedWork)
 	}
 
-	// 构建领域指引（来自 skill 匹配）
+	// 构建 skill 目录（Planner 只看 skill，不直接看底层工具）
 	var skillSection string
 	if skillBlock != "" {
 		skillSection = fmt.Sprintf(`
-## 领域指引
+## 可用技能（Skill）
+以下是可用的技能及其关联工具。每个子任务必须通过 skill 的工具来执行，不要直接调用底层工具。
 %s
 `, skillBlock)
 	}
@@ -103,22 +85,21 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 ## 用户请求
 %s
 %s%s
-## 可用工具
-%s
-
 ## 核心规划原则
 
-### 1. 优先使用 skill 技能（最重要）
-- 查看"领域指引"中的可用 skill，任务匹配时必须使用对应 skill 的工具
-- 编码开发任务（编写代码、创建项目、修复bug、开发功能）→ 使用 coding skill 的工具（AcpStartSession 等）
-- 部署上线任务（部署项目、配置服务）→ 使用 deploy skill 的工具（DeployProject/DeployAdhoc 等）
-- Skill 有独立会话管理和专业执行策略，比 ExecuteCode/Bash 直接操作更可靠
-- 禁止用 ExecuteCode 或 Bash 替代已有 skill 的功能
+### 1. 通过 skill 技能来执行任务（最重要）
+- 查看上方"可用技能"列表，每个任务必须匹配对应的 skill
+- 每个 skill 包含关联的工具，子任务的 tools_hint 应使用 skill 中列出的工具名
+- **编码开发任务**（编写代码、创建项目、修复bug、开发功能）→ 使用 coding skill
+- **部署上线任务**（部署项目、配置服务）→ 使用 deploy skill
+- **写博客/日志任务**（记录工作、写文章、创建博客）→ 使用博客相关 skill，不要使用编码 skill
+- 语义区分：用户说"写一篇日志记录编码工作"是指创建博客文章记录已完成的工作，不是启动编码会话
+- Skill 有独立会话管理和专业执行策略，比直接操作更可靠
 
-### 2. ExecuteCode 用于数据处理和脚本操作
-- 适用场景：数据获取+分析、批量查询+统计、文件处理等无对应 skill 的任务
-- 用一个 ExecuteCode 子任务编写 Python 代码，在代码内通过 call_tool() 批量调用数据工具并完成分析
-- 不要拆分为"获取数据A""获取数据B""分析数据"等多个子任务，应合并为 1 个 ExecuteCode
+### 2. 没有对应 skill 的数据处理任务
+- 适用场景：数据获取+分析、批量查询+统计、文件处理等
+- 用一个 ExecuteCode 子任务编写 Python 代码，通过 call_tool() 调用数据工具
+- 不要拆分为多个子任务，应合并为 1 个 ExecuteCode
 
 ### 3. 最大化并行执行
 - 没有数据依赖的子任务必须设置为并行（depends_on 为空）
@@ -126,17 +107,13 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 ### 4. 精简子任务数量
 - 目标：用最少的子任务完成任务（通常 2-3 个）
-- 能用 1 个 ExecuteCode 完成的数据处理任务不要拆成多个
 
 ## 其他要求
 1. 每个子任务描述要包含足够上下文让 AI 独立执行
-2. tools_hint 列出该子任务需要的工具名（必须使用可用工具中的实际工具名）
+2. tools_hint 列出该子任务需要的工具名（来自 skill 中声明的工具）
 3. 子任务描述中包含用户账号（account=%s）
-4. "同步等待完成"的工具不需要额外的"检查状态"子任务
-5. 子任务数量不超过 %d 个
-6. 编码任务中 AcpStartSession 的 project 参数必须使用描述性项目名（如 helloworld-web），禁止使用 account 作为项目名
-7. 编码→部署流程中，编码创建的新项目没有预配置 settings，**必须使用 DeployAdhoc**（不是 DeployProject）。部署子任务描述需明确说明："使用前置编码任务返回的 project_dir 和 project 名称调用 DeployAdhoc"，并传 ssh_host、port 参数。DeployProject 仅用于已配置的项目（如列表中 configured=true 的项目）
-8. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作，严禁带入其他子任务的指令。例如用户请求"编码xx然后部署到yy"，编码子任务描述只写编码需求，不要提及"部署到yy"；部署子任务只写部署需求。AcpStartSession 的 prompt 参数同理，只传编码相关内容
+4. 子任务数量不超过 %d 个
+5. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作
 
 ## 输出格式
 仅返回 JSON（不要包含 markdown 代码块标记）：
@@ -145,21 +122,21 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
     {
       "id": "t1",
       "title": "编写网页应用",
-      "description": "使用 AcpStartSession 创建项目并编写网页应用代码，project=helloworld-web，account=xxx",
+      "description": "使用 coding skill 创建项目并编写网页应用代码，project=helloworld-web，account=xxx",
       "depends_on": [],
       "tools_hint": ["AcpStartSession"]
     },
     {
       "id": "t2",
       "title": "部署到服务器",
-      "description": "使用前置编码任务返回的 project_dir 和 project 名称调用 DeployAdhoc 部署到目标服务器，ssh_host=root@114.115.214.86，port=8080，account=xxx",
+      "description": "使用 deploy skill 将前置编码任务的结果部署到目标服务器，account=xxx",
       "depends_on": ["t1"],
       "tools_hint": ["DeployAdhoc"]
     }
   ],
   "execution_mode": "dag",
   "reasoning": "编码用 coding skill，部署用 deploy skill，有依赖关系顺序执行"
-}`, account, time.Now().Format("2006-01-02"), query, completedSection, skillSection, toolCatalog.String(), account, maxSubTasks)
+}`, account, time.Now().Format("2006-01-02"), query, completedSection, skillSection, account, maxSubTasks)
 
 	messages := []Message{
 		{Role: "user", Content: planPrompt},
