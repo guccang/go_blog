@@ -110,10 +110,11 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 
 ## 其他要求
 1. 每个子任务描述要包含足够上下文让 AI 独立执行
-2. tools_hint 列出该子任务需要的工具名（来自 skill 中声明的工具）
-3. 子任务描述中包含用户账号（account=%s）
-4. 子任务数量不超过 %d 个
-5. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作
+2. tools_hint 列出该子任务需要的工具名（来自 skill 中声明的工具，如 RawAddTodo、ExecuteCode、DeployProject）
+3. **禁止使用 agent ID 作为工具名**（如 llm-agent、blog-agent、deploy-agent 等是 agent 标识，不是工具）
+4. 子任务描述中包含用户账号（account=%s）
+5. 子任务数量不超过 %d 个
+6. **子任务描述隔离**：每个子任务描述只包含该子任务自身需要完成的工作
 
 ## 输出格式
 仅返回 JSON（不要包含 markdown 代码块标记）：
