@@ -97,12 +97,12 @@ func (b *Bridge) HandleWechatMessage(msg *WechatMessage) {
 		return
 	}
 
-	// 本地处理 help/status 等简单命令
+	// 本地处理命令（支持 / 开头和旧格式）
 	switch {
-	case content == "帮助" || content == "help":
+	case content == "/help" || content == "帮助" || content == "help":
 		b.sendAppMessage(msg.FromUserName, getHelpText())
 		return
-	case content == "状态" || content == "status":
+	case content == "/status" || content == "状态" || content == "status":
 		connStatus := "❌ 未连接"
 		if b.IsConnected() {
 			connStatus = "✅ 已连接"
@@ -496,15 +496,16 @@ func (b *Bridge) sendWebhookMarkdown(content string) error {
 
 // isBackendCommand 判断消息是否为结构化命令（直接路由到 blog-agent，不经过 LLM）
 func isBackendCommand(content string) bool {
-	return strings.HasPrefix(content, "cg ") || content == "cg" ||
+	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg" ||
 		content == "刷新提示词" || strings.EqualFold(content, "reload prompts")
 }
 
 func getHelpText() string {
 	return "📖 Go Blog 企业微信指令\n\n" +
+		"💬 对话管理\n• /help — 显示此帮助\n• /reset — 开始新对话（清空上下文）\n• /status — 查看服务器状态\n\n" +
 		"📋 数据查询\n• 待办 / todo — 今日待办\n• 运动 / exercise — 运动统计\n• 阅读 / reading — 阅读进度\n\n" +
 		"📊 报告\n• 日报 — 生成今日报告\n• 周报 — 生成本周报告\n\n" +
-		"⏰ 提醒\n• 提醒列表 — 查看定时提醒\n• 状态 / status — 服务器状态\n\n" +
-		"💻 编码\n• cg list — 项目列表\n• cg start <项目> <需求> — 启动编码\n• cg status — 查看进度\n• cg stop — 停止编码\n\n" +
+		"⏰ 提醒\n• 提醒列表 — 查看定时提醒\n\n" +
+		"💻 编码\n• /cg list — 项目列表\n• /cg start <项目> <需求> — 启动编码\n• /cg status — 查看进度\n• /cg stop — 停止编码\n\n" +
 		"🧠 AI — 其他任意问题直接发送"
 }

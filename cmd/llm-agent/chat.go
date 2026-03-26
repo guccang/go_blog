@@ -159,7 +159,7 @@ func (s *WechatSink) Result() string  { return s.buf.String() }
 // isConversationResetCommand 判断是否为对话重置命令
 func isConversationResetCommand(content string) bool {
 	content = strings.TrimSpace(content)
-	resetCommands := []string{"新对话", "重新开始", "清除上下文", "reset", "new chat"}
+	resetCommands := []string{"/reset", "新对话", "重新开始", "清除上下文", "reset", "new chat"}
 	for _, cmd := range resetCommands {
 		if strings.EqualFold(content, cmd) {
 			return true
