@@ -712,8 +712,8 @@ func (o *Orchestrator) executeSubTask(
 	if len(subtask.ToolsHint) > 0 {
 		filteredTools = o.bridge.ApplySubtaskPolicy(tools, subtask.ToolsHint)
 	}
-	// 排除虚拟工具 plan_and_execute
-	filteredTools = excludeVirtualTools(filteredTools)
+	// 排除虚拟工具（plan_and_execute 总是排除；ExecuteCode 只在有其他专业工具时排除）
+	filteredTools = excludeVirtualTools(filteredTools, subtask.ToolsHint)
 	log.Printf("[Orchestrator] 子任务 %s 工具: %d 个 (hint=%v)", subtask.ID, len(filteredTools), subtask.ToolsHint)
 
 	// 构建子任务的 system prompt
@@ -1566,8 +1566,8 @@ func (o *Orchestrator) resumeSubTask(
 		// 工具结果已有，继续下一轮 LLM
 	}
 
-	// 排除虚拟工具
-	filteredTools := excludeVirtualTools(tools)
+	// 排除虚拟工具（Resume 场景无 subtask，传 nil）
+	filteredTools := excludeVirtualTools(tools, nil)
 
 	// 继续 agentic loop
 	maxIter := o.cfg.SubTaskMaxIterations
@@ -1761,17 +1761,36 @@ func buildSiblingContext(dependsOn []string, completedResults map[string]string)
 }
 
 // excludeVirtualTools 排除子任务不应使用的工具
-// - plan_and_execute: 子任务不应再嵌套拆解计划
-// - ExecuteCode: 子任务应直接调用专业工具，不要通过 ExecuteCode 间接 call_tool
-func excludeVirtualTools(tools []LLMTool) []LLMTool {
+// - plan_and_execute: 子任务不应再嵌套拆解计划（总是排除）
+// - ExecuteCode: 只在有其他专业工具时排除；如果 tools_hint 只有 ExecuteCode，则保留
+func excludeVirtualTools(tools []LLMTool, toolsHint []string) []LLMTool {
+	// 检查 tools_hint 中是否只有 ExecuteCode
+	onlyExecuteCode := false
+	if len(toolsHint) > 0 {
+		hasExecuteCode := false
+		hasOthers := false
+		for _, hint := range toolsHint {
+			if hint == "ExecuteCode" || strings.HasSuffix(hint, "_ExecuteCode") {
+				hasExecuteCode = true
+			} else {
+				hasOthers = true
+			}
+		}
+		onlyExecuteCode = hasExecuteCode && !hasOthers
+	}
+
 	var filtered []LLMTool
 	for _, tool := range tools {
 		name := tool.Function.Name
 		switch {
 		case name == "plan_and_execute":
-			// 跳过
+			// 总是跳过
 		case name == "ExecuteCode" || strings.HasSuffix(name, "_ExecuteCode"):
-			// 跳过：子任务直接调用工具，不走 ExecuteCode 间接路径
+			if onlyExecuteCode {
+				// tools_hint 只有 ExecuteCode，保留
+				filtered = append(filtered, tool)
+			}
+			// 否则跳过：子任务有专业工具时，直接调用，不走 ExecuteCode 间接路径
 		default:
 			filtered = append(filtered, tool)
 		}
