@@ -154,11 +154,12 @@ func (ts *TokenStats) Summary() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("📊 Token: %s/%s (%d/%d次) | 流量: ↑%s ↓%s / ↑%s ↓%s",
+	sb.WriteString(fmt.Sprintf("📊 Token: %s/%s (%d/%d次)\n",
 		formatTokenCount(todayTokens),
 		formatTokenCount(ts.TotalTokens),
 		todayCallCount,
-		ts.CallCount,
+		ts.CallCount))
+	sb.WriteString(fmt.Sprintf("📡 流量: ↑%s ↓%s / ↑%s ↓%s",
 		formatBytes(todayReqBytes),
 		formatBytes(todayRespBytes),
 		formatBytes(ts.TotalReqBytes),
@@ -176,7 +177,7 @@ func (ts *TokenStats) Summary() string {
 					dayCalls = dms.Calls
 				}
 			}
-			sb.WriteString(fmt.Sprintf("  · %s: %s/%s (%d/%d次)",
+			sb.WriteString(fmt.Sprintf("\n· %s\n  %s/%s (%d/%d次)",
 				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls))
 		}
 	}
