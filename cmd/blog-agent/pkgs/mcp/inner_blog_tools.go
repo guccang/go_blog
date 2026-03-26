@@ -90,7 +90,7 @@ func Inner_blog_RawAllBlogNameByDateRangeCount(arguments map[string]interface{})
 	if err != nil {
 		return errorJSON(err.Error())
 	}
-	return wrapResult(string(statistics.RawAllBlogNameByDateRangeCount(account, startDate, endDate)))
+	return wrapResult(strconv.Itoa(statistics.RawAllBlogNameByDateRangeCount(account, startDate, endDate)))
 }
 
 func Inner_blog_RawGetBlogDataByDate(arguments map[string]interface{}) string {
