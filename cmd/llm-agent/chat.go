@@ -228,6 +228,8 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 				b.handleVerbositySwitch(session, fromAgent, wechatUser, 0)
 			case "normal":
 				b.handleVerbositySwitch(session, fromAgent, wechatUser, 1)
+			case "help":
+				b.handleClaudeHelp(session, fromAgent, wechatUser)
 			}
 			return
 		}

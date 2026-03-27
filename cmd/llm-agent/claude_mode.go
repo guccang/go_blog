@@ -733,6 +733,36 @@ func (b *Bridge) handleVerbositySwitch(session *ChatSession, fromAgent, wechatUs
 	b.sendWechat(fromAgent, wechatUser, fmt.Sprintf("📢 输出级别已切换: %s", desc))
 }
 
+// handleClaudeHelp 显示 Claude Mode 帮助信息
+func (b *Bridge) handleClaudeHelp(session *ChatSession, fromAgent, wechatUser string) {
+	help := `📖 Claude Mode 帮助
+
+【进入 Claude Mode】
+/claude <项目名> [提示词]
+  --ask          交互式权限模式
+  --model <名称>  指定模型
+  --settings <名称> 使用配置
+  --max-turns <n> 最大轮次
+
+示例:
+/claude go_blog 帮我实现用户登录功能
+/claude --ask myproject 重构代码
+
+【Claude Mode 命令】
+cc exit / cc 退出    - 退出 Claude Mode
+cc stop / cc 停止    - 停止当前任务
+cc plan             - 切换到 plan 模式
+cc code             - 切换到 code 模式
+cc status / cc 状态  - 查看状态
+cc model / cc 模型   - 查看当前模型
+cc verbose / cc 详细 - 详细输出
+cc brief / cc 简要   - 简要输出
+cc normal / cc 普通  - 普通输出
+cc help / cc 帮助    - 显示此帮助`
+
+	b.sendWechat(fromAgent, wechatUser, help)
+}
+
 // ========================= 工具函数 =========================
 
 // sendWechat 发送微信消息
@@ -777,6 +807,8 @@ func isClaudeModeCommand(content string) (cmd string, ok bool) {
 		return "brief", true
 	case "cc normal", "cc 普通":
 		return "normal", true
+	case "cc help", "cc 帮助":
+		return "help", true
 	}
 	return "", false
 }
