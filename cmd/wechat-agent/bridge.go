@@ -503,6 +503,8 @@ func isBackendCommand(content string) bool {
 func getHelpText() string {
 	return "📖 Go Blog 企业微信指令\n\n" +
 		"💬 对话管理\n• /help — 显示此帮助\n• /reset — 开始新对话（清空上下文）\n• /status — 查看服务器状态\n\n" +
+		"🤖 Claude Mode\n• /claude <项目> [提示词] — 进入 Claude 直连模式\n• /claude --ask <项目> — 交互式权限模式\n• /claude --model <名称> <项目> — 指定模型\n\n" +
+		"Claude Mode 命令（进入后使用）:\n• cc exit / cc 退出 — 退出 Claude Mode\n• cc stop / cc 停止 — 停止当前任务\n• cc plan — 切换到 plan 模式\n• cc code — 切换到 code 模式\n• cc help / cc 帮助 — 查看详细帮助\n\n" +
 		"📋 数据查询\n• 待办 / todo — 今日待办\n• 运动 / exercise — 运动统计\n• 阅读 / reading — 阅读进度\n\n" +
 		"📊 报告\n• 日报 — 生成今日报告\n• 周报 — 生成本周报告\n\n" +
 		"⏰ 提醒\n• 提醒列表 — 查看定时提醒\n\n" +
