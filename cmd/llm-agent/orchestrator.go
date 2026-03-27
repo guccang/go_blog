@@ -1061,34 +1061,6 @@ func (o *Orchestrator) executeSubTask(
 			}
 		}
 
-		// 核心工具成功检测：ToolsHint 中的工具已成功调用，强制结束子任务
-		// 防止 LLM 在 AcpStartSession/DeployProject 成功后继续调多余工具
-		if len(subtask.ToolsHint) > 0 {
-			hintedSuccess := false
-			session.mu.Lock()
-			for _, rec := range session.ToolCalls {
-				if !rec.Success {
-					continue
-				}
-				for _, hint := range subtask.ToolsHint {
-					if rec.ToolName == hint || strings.HasSuffix(rec.ToolName, "."+hint) {
-						hintedSuccess = true
-						break
-					}
-				}
-				if hintedSuccess {
-					break
-				}
-			}
-			session.mu.Unlock()
-
-			if hintedSuccess {
-				finalText = text
-				log.Printf("[Orchestrator] subtask=%s 核心工具已成功，强制结束（text_len=%d）", subtask.ID, len(text))
-				break
-			}
-		}
-
 		// 最后一次迭代
 		if i == maxIter-1 {
 			finalText = text
