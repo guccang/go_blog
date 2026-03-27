@@ -3,6 +3,10 @@
   "auth_token": "your-auth-token",
   "agent_name": "cron-agent",
   "llm_agent_id": "llm-agent",
+  "llm": {
+    "provider": "openrouter",
+    "model": "stepfun"
+  },
   "task_file": "./cron-tasks.json",
   "protected_files": ["cron-agent.json", "cron-tasks.json"]
 }

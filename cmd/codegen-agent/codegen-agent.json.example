@@ -3,6 +3,10 @@
   "agent_name": "codegen-agent-mac",
   "agent_type": "codegen",
   "auth_token": "your-auth-token",
+  "llm": {
+    "provider": "openrouter",
+    "model": "stepfun"
+  },
   "workspaces": ["your-workspace"],
   "claude_path": "claude",
   "opencode_path": "opencode",

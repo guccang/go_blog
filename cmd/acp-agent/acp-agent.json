@@ -7,6 +7,10 @@
     "claude_path": "claude",
     "default_settings": "default",
     "go_backend_agent_id": "blog-agent",
+    "llm": {
+        "provider": "openrouter",
+        "model": "stepfun"
+    },
     "max_concurrent": 2,
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",

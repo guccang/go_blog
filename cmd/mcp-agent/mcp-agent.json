@@ -2,6 +2,10 @@
     "agent_name": "mcp-agent",
     "auth_token": "guccang@blog.guccang.cn",
     "gateway_http": "http://127.0.0.1:10086",
+    "llm": {
+        "provider": "openrouter",
+        "model": "stepfun"
+    },
     "max_concurrent": 3,
     "mcp_servers": {
         "amap": {

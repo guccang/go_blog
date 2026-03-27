@@ -4,6 +4,10 @@
   "auth_token": "your-auth-token",
   "agent_name": "wechat-agent",
   "llm_agent_id": "llm-agent",
+  "llm": {
+    "provider": "openrouter",
+    "model": "stepfun"
+  },
   "backend_agent_id": "go_blog",
 
   "corp_id": "your-corp-id",

@@ -2,6 +2,10 @@
   "server_url": "ws://127.0.0.1:10086/ws/uap",
   "agent_name": "log-agent",
   "auth_token": "",
+  "llm": {
+    "provider": "openrouter",
+    "model": "stepfun"
+  },
   "log_sources": {
     "gameserver": {
       "path": "/home/gameserver/logs",

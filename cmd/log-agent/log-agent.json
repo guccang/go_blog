@@ -1,6 +1,10 @@
 {
     "agent_name": "log-agent-hw",
     "auth_token": "guccang@blog.guccang.cn",
+    "llm": {
+        "provider": "openrouter",
+        "model": "stepfun"
+    },
     "log_sources": {
         "blog-agent": {
             "description": "blog-agent博客日志",
