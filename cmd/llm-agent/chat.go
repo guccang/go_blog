@@ -403,11 +403,19 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		log.Printf("[Wechat] save session failed: %v", err)
 	}
 
-	// 9. 发送结果
+	// 9. 截断过长内容（企业微信应用消息限制 256KB）
+	const maxWechatSize = 200 * 1024 // 200KB 安全边界
+	wechatResult := result
+	if len(result) > maxWechatSize {
+		wechatResult = result[:maxWechatSize] + "\n\n...(回复内容过长已截断，完整内容已保存在对话历史中)"
+		log.Printf("[Wechat] result truncated: %d -> %d chars", len(result), len(wechatResult))
+	}
+
+	// 10. 发送结果
 	err := b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 		Channel: "wechat",
 		To:      wechatUser,
-		Content: result,
+		Content: wechatResult,
 	})
 	if err != nil {
 		log.Printf("[Wechat] send reply failed: %v", err)

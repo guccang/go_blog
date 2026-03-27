@@ -737,6 +737,12 @@ func (b *Bridge) handleVerbositySwitch(session *ChatSession, fromAgent, wechatUs
 
 // sendWechat 发送微信消息
 func (b *Bridge) sendWechat(fromAgent, wechatUser, content string) {
+	// 截断过长内容（企业微信应用消息限制 256KB）
+	const maxWechatSize = 200 * 1024 // 200KB 安全边界
+	if len(content) > maxWechatSize {
+		content = content[:maxWechatSize] + "\n\n...(内容过长已截断)"
+		log.Printf("[Wechat] content truncated for user=%s", wechatUser)
+	}
 	b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 		Channel: "wechat",
 		To:      wechatUser,
