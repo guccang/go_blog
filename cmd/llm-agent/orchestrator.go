@@ -354,6 +354,16 @@ func (o *Orchestrator) Execute(
 		return nil
 	}
 
+	// 创建日志记录器
+	startTime := time.Now()
+	planLogger, err := CreatePlanLogger(taskID)
+	if err != nil {
+		log.Printf("[Orchestrator] failed to create plan logger: %v", err)
+	} else {
+		defer planLogger.Close()
+		planLogger.LogStart(rootSession.Title, rootSession.Account, plan)
+	}
+
 	// 创建父 context，从外部 taskCtx 派生，用户停止时级联取消所有子任务
 	if taskCtx == nil {
 		taskCtx = context.Background()
@@ -458,7 +468,18 @@ func (o *Orchestrator) Execute(
 
 			safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] %s\n描述: %s", tIdx+1, len(plan.SubTasks), st.Title, st.Description))
 
+			// 记录子任务开始
+			subTaskStart := time.Now()
+			if planLogger != nil {
+				planLogger.LogSubTaskStart(st.ID, st.Title)
+			}
+
 			result := o.executeSubTask(parentCtx, taskID, st, sess, sibCtx, tools, safeSendEvent, steerCh)
+
+			// 记录子任务结束
+			if planLogger != nil {
+				planLogger.LogSubTaskEnd(st.ID, result.Status, result.Result, time.Since(subTaskStart))
+			}
 
 			// 检测异步工具调用
 			if result.Status == "done" {
@@ -686,6 +707,11 @@ func (o *Orchestrator) Execute(
 	close(resultCh)
 	for msg := range resultCh {
 		allResults = append(allResults, msg.result)
+	}
+
+	// 记录任务结束
+	if planLogger != nil {
+		planLogger.LogEnd(allResults, time.Since(startTime))
 	}
 
 	return allResults
