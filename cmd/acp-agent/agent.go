@@ -305,8 +305,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 
 		a.completeSession(sessionID, "completed", summary)
 
-		// 非交互模式（一次性执行）：后台关闭进程释放资源，不阻塞工具返回
-		if !interactive {
+		// Claude Mode（有 callerAgentID）或交互模式：保留会话供后续多轮对话
+		// 非交互且非 Claude Mode（一次性执行）：后台关闭进程释放资源
+		if !interactive && callerAgentID == "" {
 			a.cleanupSessionRecord(sessionID)
 			go acpSession.Close()
 		}
