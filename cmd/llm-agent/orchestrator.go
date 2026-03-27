@@ -1202,8 +1202,13 @@ func (o *Orchestrator) executeSubTask(
 
 	// 构建完整结果：LLM 回复 + 关键工具数据
 	fullResult := finalText
-	if keyData := extractKeyToolData(session); keyData != "" {
-		fullResult = finalText + "\n\n" + keyData
+	keyData := extractKeyToolData(session)
+	if keyData != "" {
+		if finalText != "" {
+			fullResult = finalText + "\n\n" + keyData
+		} else {
+			fullResult = keyData
+		}
 	}
 
 	session.SetResult(fullResult)
