@@ -144,12 +144,16 @@ func (b *Bridge) handleClaudeCommand(fromAgent, wechatUser, content string) {
 	session.mu.Lock()
 	session.ClaudeMode = true
 	session.ClaudeProject = opts.Project
+	session.ClaudeSettings = opts.Settings
 	session.ClaudeACPAgentID = acpAgentID
 	session.ClaudeFromAgent = fromAgent
 	session.ClaudeInteractive = opts.Ask
 	session.ClaudeVerbosity = 1 // 默认 normal
 	session.LastActiveAt = time.Now()
 	session.mu.Unlock()
+
+	// 保存会话状态
+	b.sessionMgr.SaveSession(session)
 
 	// 构建状态提示
 	modeDesc := "自动"
@@ -253,6 +257,8 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 	verbosity := session.ClaudeVerbosity
 	session.LastActiveAt = time.Now()
 	session.mu.Unlock()
+
+	log.Printf("[Claude] handleClaudeModeMessage: sessionID=%s interactive=%v", sessionID, interactive)
 
 	// 注册 claude stream sink（传入 verbosity 和 session）
 	sink := newClaudeStreamSink(b, fromAgent, wechatUser, verbosity, session)

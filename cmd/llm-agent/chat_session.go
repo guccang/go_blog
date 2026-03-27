@@ -31,12 +31,13 @@ type ChatSession struct {
 	PromptSections []PromptSection `json:"prompt_sections"` // system prompt 各区块字符统计
 
 	// Claude Mode 状态
-	ClaudeMode       bool   `json:"claude_mode,omitempty"`        // 是否在 Claude 直连模式
-	ClaudeProject    string `json:"claude_project,omitempty"`     // 项目名
-	ClaudeSessionID  string `json:"claude_session_id,omitempty"`  // acp-agent 会话 ID
-	ClaudeACPAgentID string `json:"claude_acp_agent_id,omitempty"` // acp-agent ID
-	ClaudeFromAgent  string `json:"claude_from_agent,omitempty"`  // WeChat 消息来源 agent ID
-	ClaudeInteractive bool  `json:"claude_interactive,omitempty"` // 是否交互式权限模式
+	ClaudeMode        bool   `json:"claude_mode,omitempty"`         // 是否在 Claude 直连模式
+	ClaudeProject     string `json:"claude_project,omitempty"`      // 项目名
+	ClaudeSettings    string `json:"claude_settings,omitempty"`     // settings 配置名
+	ClaudeSessionID   string `json:"claude_session_id,omitempty"`   // acp-agent 会话 ID
+	ClaudeACPAgentID  string `json:"claude_acp_agent_id,omitempty"` // acp-agent ID
+	ClaudeFromAgent   string `json:"claude_from_agent,omitempty"`   // WeChat 消息来源 agent ID
+	ClaudeInteractive bool   `json:"claude_interactive,omitempty"`  // 是否交互式权限模式
 	ClaudeVerbosity   int    `json:"claude_verbosity,omitempty"`    // 0=brief, 1=normal(默认), 2=verbose
 	ClaudeCurrentMode string `json:"claude_current_mode,omitempty"`
 	ClaudeModel       string `json:"claude_model,omitempty"`
