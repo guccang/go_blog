@@ -234,6 +234,7 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 				session.ClaudeCurrentMode = data.Data.CurrentMode
 			}
 			session.mu.Unlock()
+			b.sessionMgr.SaveSession(session)
 		}
 	}
 
@@ -317,6 +318,7 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 				session.ClaudeCurrentMode = data.Data.CurrentMode
 			}
 			session.mu.Unlock()
+			b.sessionMgr.SaveSession(session)
 		}
 	}
 
