@@ -1083,19 +1083,9 @@ func (o *Orchestrator) executeSubTask(
 			session.mu.Unlock()
 
 			if hintedSuccess {
-				if text != "" {
-					finalText = text
-					log.Printf("[Orchestrator] subtask=%s 核心工具已成功，强制结束（防止多余调用）", subtask.ID)
-					break
-				} else {
-					// 核心工具成功但 LLM 未生成总结，提示 LLM 总结结果
-					log.Printf("[Orchestrator] subtask=%s 核心工具已成功，但无总结文本，提示 LLM 总结", subtask.ID)
-					messages = append(messages, Message{
-						Role:    "user",
-						Content: "核心工具已成功执行，请基于工具返回结果生成简洁的总结（包含关键数据），不要再调用其他工具。",
-					})
-					// 继续下一轮让 LLM 生成总结
-				}
+				finalText = text
+				log.Printf("[Orchestrator] subtask=%s 核心工具已成功，强制结束（text_len=%d）", subtask.ID, len(text))
+				break
 			}
 		}
 
