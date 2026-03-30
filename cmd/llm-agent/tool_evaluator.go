@@ -371,7 +371,7 @@ func (te *ToolEvaluator) llmEvaluateAmbiguity(candidates []ambiguityCandidate) [
 	fallbacks := te.bridge.cfg.Fallbacks
 	cooldown := time.Duration(te.bridge.cfg.FallbackCooldownSec) * time.Second
 
-	resp, _, err := SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+	resp, _, err := SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil, te.bridge.cfg.Providers)
 	if err != nil {
 		log.Printf("[ToolEvaluator] LLM 语义评估失败: %v，跳过 LLM 阶段", err)
 		// 降级：直接将候选对标记为 warning

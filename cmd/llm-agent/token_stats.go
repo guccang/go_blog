@@ -29,6 +29,8 @@ type ModelTokenStats struct {
 	Calls      int64 `json:"calls"`
 	ReqBytes   int64 `json:"req_bytes"`
 	RespBytes  int64 `json:"resp_bytes"`
+	Errors5xx  int64 `json:"errors_5xx"`   // 5xx 错误次数
+	Today5xx   int64 `json:"today_5xx"`    // 当日 5xx 错误次数
 }
 
 // TokenStats 全局 token 统计（线程安全）
@@ -40,6 +42,7 @@ type TokenStats struct {
 	CallCount       int64                      `json:"call_count"`
 	TotalReqBytes   int64                      `json:"total_req_bytes"`
 	TotalRespBytes  int64                      `json:"total_resp_bytes"`
+	Total5xxErrors  int64                      `json:"total_5xx_errors"`  // 5xx 错误总次数
 	ByModel         map[string]*ModelTokenStats `json:"by_model"`
 	// 当日统计
 	TodayDate      string                     `json:"today_date"`
@@ -47,6 +50,7 @@ type TokenStats struct {
 	TodayCallCount int64                      `json:"today_call_count"`
 	TodayReqBytes  int64                      `json:"today_req_bytes"`
 	TodayRespBytes int64                      `json:"today_resp_bytes"`
+	Today5xxErrors int64                       `json:"today_5xx_errors"`   // 当日 5xx 错误次数
 	TodayByModel   map[string]*ModelTokenStats `json:"today_by_model"`
 
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -88,6 +92,7 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 		ts.TodayCallCount = 0
 		ts.TodayReqBytes = 0
 		ts.TodayRespBytes = 0
+		ts.Today5xxErrors = 0
 		ts.TodayByModel = make(map[string]*ModelTokenStats)
 	}
 	ts.TodayTokens += int64(usage.TotalTokens)
@@ -131,6 +136,42 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 	ts.saveLocked()
 }
 
+// Add5xxError 累加一次 5xx 错误计数
+func (ts *TokenStats) Add5xxError(model string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	ts.Total5xxErrors++
+	ts.UpdatedAt = time.Now()
+
+	// 当日累计（日期变化时重置）
+	today := time.Now().Format("2006-01-02")
+	if ts.TodayDate != today {
+		ts.TodayDate = today
+		ts.Today5xxErrors = 0
+		// 同时重置所有模型的当日 5xx 计数
+		for _, ms := range ts.ByModel {
+			ms.Today5xx = 0
+		}
+	}
+	ts.Today5xxErrors++
+
+	// 更新对应模型的 5xx 错误计数
+	ms, ok := ts.ByModel[model]
+	if !ok {
+		ms = &ModelTokenStats{}
+		ts.ByModel[model] = ms
+	}
+	ms.Errors5xx++
+	ms.Today5xx++
+
+	log.Printf("[TokenStats] 5xx error for model=%s | model_total=%d model_today=%d global_total=%d global_today=%d",
+		model, ms.Errors5xx, ms.Today5xx, ts.Total5xxErrors, ts.Today5xxErrors)
+
+	// 自动持久化
+	ts.saveLocked()
+}
+
 // Summary 返回人类可读的 token 用量摘要
 func (ts *TokenStats) Summary() string {
 	ts.mu.Lock()
@@ -146,11 +187,13 @@ func (ts *TokenStats) Summary() string {
 	todayCallCount := ts.TodayCallCount
 	todayReqBytes := ts.TodayReqBytes
 	todayRespBytes := ts.TodayRespBytes
+	today5xxErrors := ts.Today5xxErrors
 	if ts.TodayDate != today {
 		todayTokens = 0
 		todayCallCount = 0
 		todayReqBytes = 0
 		todayRespBytes = 0
+		today5xxErrors = 0
 	}
 
 	var sb strings.Builder
@@ -165,6 +208,11 @@ func (ts *TokenStats) Summary() string {
 		formatBytes(ts.TotalReqBytes),
 		formatBytes(ts.TotalRespBytes)))
 
+	// 5xx 错误统计（总计）
+	if ts.Total5xxErrors > 0 {
+		sb.WriteString(fmt.Sprintf("\n⚠️ 5xx错误: 今日 %d / 总计 %d", today5xxErrors, ts.Total5xxErrors))
+	}
+
 	// 分模型明细
 	if len(ts.ByModel) > 1 {
 		sb.WriteString("\n")
@@ -177,8 +225,12 @@ func (ts *TokenStats) Summary() string {
 					dayCalls = dms.Calls
 				}
 			}
-			sb.WriteString(fmt.Sprintf("\n· %s\n  %s/%s (%d/%d次)",
-				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls))
+			err5xxStr := ""
+			if ms.Errors5xx > 0 {
+				err5xxStr = fmt.Sprintf(" ⚠️5xx:%d/%d", ms.Today5xx, ms.Errors5xx)
+			}
+			sb.WriteString(fmt.Sprintf("\n· %s\n  %s/%s (%d/%d次)%s",
+				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls, err5xxStr))
 		}
 	}
 
@@ -196,12 +248,14 @@ func (ts *TokenStats) Reset() {
 	ts.CallCount = 0
 	ts.TotalReqBytes = 0
 	ts.TotalRespBytes = 0
+	ts.Total5xxErrors = 0
 	ts.ByModel = make(map[string]*ModelTokenStats)
 	ts.TodayDate = ""
 	ts.TodayTokens = 0
 	ts.TodayCallCount = 0
 	ts.TodayReqBytes = 0
 	ts.TodayRespBytes = 0
+	ts.Today5xxErrors = 0
 	ts.TodayByModel = make(map[string]*ModelTokenStats)
 	ts.UpdatedAt = time.Now()
 	ts.saveLocked()
@@ -257,6 +311,7 @@ func (ts *TokenStats) Load() {
 	ts.CallCount = loaded.CallCount
 	ts.TotalReqBytes = loaded.TotalReqBytes
 	ts.TotalRespBytes = loaded.TotalRespBytes
+	ts.Total5xxErrors = loaded.Total5xxErrors
 	ts.UpdatedAt = loaded.UpdatedAt
 	if loaded.ByModel != nil {
 		ts.ByModel = loaded.ByModel
@@ -266,17 +321,22 @@ func (ts *TokenStats) Load() {
 	ts.TodayCallCount = loaded.TodayCallCount
 	ts.TodayReqBytes = loaded.TodayReqBytes
 	ts.TodayRespBytes = loaded.TodayRespBytes
+	ts.Today5xxErrors = loaded.Today5xxErrors
 	if loaded.TodayByModel != nil {
 		ts.TodayByModel = loaded.TodayByModel
 	}
 
-	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s",
+	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s 5xx=%d",
 		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
-		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes))
+		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes), ts.Total5xxErrors)
 }
 
-// formatTokenCount 格式化 token 数量（带千分位逗号）
+// formatTokenCount 格式化 token 数量（大数字用 M 显示，更易读）
+// 超过 100 万（1,000,000）用 "X.XXM" 格式，100 万以下用千分位逗号
 func formatTokenCount(n int64) string {
+	if n >= 1_000_000 {
+		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)
+	}
 	s := fmt.Sprintf("%d", n)
 	if len(s) <= 3 {
 		return s

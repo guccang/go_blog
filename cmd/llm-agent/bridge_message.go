@@ -25,6 +25,8 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 		}
 		if payload.Channel == "wechat" {
 			go b.handleWechatMessage(msg.From, payload.To, payload.Content)
+		} else if payload.Channel == "app" {
+			go b.handleAppMessage(msg.From, payload.To, payload.Content)
 		} else if payload.Channel == "acp_stream" {
 			// Claude Mode: acp-agent 发来的流式事件
 			b.handleACPStreamEvent(payload)

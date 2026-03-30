@@ -147,7 +147,7 @@ func PlanTask(cfg *LLMConfig, query string, tools []LLMTool, account string, max
 	var resp string
 	var err error
 	if len(fallbacks) > 0 {
-		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil, nil)
 	} else {
 		resp, _, err = SendLLMRequest(cfg, messages, nil)
 	}
@@ -232,7 +232,7 @@ func MakeFailureDecision(cfg *LLMConfig, subtask SubTaskPlan, errorMsg string, c
 	var resp string
 	var err error
 	if len(fallbacks) > 0 {
-		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil, nil)
 	} else {
 		resp, _, err = SendLLMRequest(cfg, messages, nil)
 	}
@@ -370,7 +370,7 @@ func EvaluateAndRevisePlan(
 	var resp string
 	var err error
 	if len(fallbacks) > 0 {
-		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil, nil)
 	} else {
 		resp, _, err = SendLLMRequest(cfg, messages, nil)
 	}
@@ -494,7 +494,7 @@ func ReviewPlan(cfg *LLMConfig, query string, plan *TaskPlan, tools []LLMTool, a
 	var resp string
 	var err error
 	if len(fallbacks) > 0 {
-		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil)
+		resp, _, err = SendLLMRequestWithFallback(cfg, fallbacks, cooldown, messages, nil, nil)
 	} else {
 		resp, _, err = SendLLMRequest(cfg, messages, nil)
 	}

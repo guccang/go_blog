@@ -70,6 +70,24 @@ func Login(account string, password string) (string, int) {
 	return s, 0
 }
 
+// VerifyCredentials 校验账号密码，不创建 blog 会话
+func VerifyCredentials(account string, password string) int {
+	loginMu.RLock()
+	defer loginMu.RUnlock()
+
+	user, exists := users[account]
+	if !exists {
+		return 1
+	}
+	if user.Account != account {
+		return 2
+	}
+	if user.Password != password {
+		return 3
+	}
+	return 0
+}
+
 // LoginSMS 短信验证登录
 func LoginSMS(account string, verfycode string) (string, int) {
 	loginMu.Lock()

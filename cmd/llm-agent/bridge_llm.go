@@ -14,7 +14,7 @@ func (b *Bridge) sendLLM(messages []Message, tools []LLMTool) (string, []ToolCal
 	if len(b.cfg.Fallbacks) == 0 {
 		return SendLLMRequest(&cfg, messages, tools)
 	}
-	return SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools)
+	return SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, b.cfg.Providers)
 }
 
 // sendStreamingLLM 带降级链的流式 LLM 请求
@@ -23,7 +23,7 @@ func (b *Bridge) sendStreamingLLM(messages []Message, tools []LLMTool, onChunk f
 	if len(b.cfg.Fallbacks) == 0 {
 		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
+	return SendStreamingLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec, b.cfg.Providers)
 }
 
 // GetLLMConfigForSource 返回指定来源渠道的 LLM 配置（primary + fallbacks）
@@ -41,7 +41,7 @@ func (b *Bridge) sendLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfig, messag
 	if len(fallbacks) == 0 {
 		return SendLLMRequest(cfg, messages, tools)
 	}
-	return SendLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools)
+	return SendLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, b.cfg.Providers)
 }
 
 // sendStreamingLLMWithConfig 使用指定配置的流式 LLM 请求
@@ -49,7 +49,7 @@ func (b *Bridge) sendStreamingLLMWithConfig(cfg *LLMConfig, fallbacks []LLMConfi
 	if len(fallbacks) == 0 {
 		return SendStreamingLLMRequest(cfg, messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec)
+	return SendStreamingLLMRequestWithFallback(cfg, fallbacks, b.fallbackCooldown(), messages, tools, onChunk, b.cfg.LLMCallIntervalSec, b.cfg.Providers)
 }
 
 // llmCompactMemory 使用 LLM 整理记忆：合并重复、提取模式、保留重要摘要

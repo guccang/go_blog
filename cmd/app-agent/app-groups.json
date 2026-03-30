@@ -1,0 +1,13 @@
+{
+  "groups": [
+    {
+      "id": "group-jump",
+      "owner": "ztt",
+      "human_members": [
+        "ztt"
+      ],
+      "robot_account": "group_group_jump_robot",
+      "created_at": 1774864260471
+    }
+  ]
+}

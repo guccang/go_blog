@@ -1,0 +1,13 @@
+{
+  "http_port": 9002,
+  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
+  "auth_token": "your-auth-token",
+  "agent_name": "app-agent",
+  "receive_token": "your-incoming-token",
+  "blog_agent_base_url": "http://127.0.0.1:8888",
+  "app_session_ttl_minutes": 2880,
+  "app_push_url": "http://127.0.0.1:8080/api/app/push",
+  "push_token": "your-push-token",
+  "llm_agent_id": "llm-agent",
+  "backend_agent_id": "blog-agent"
+}

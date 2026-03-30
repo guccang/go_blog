@@ -59,6 +59,23 @@ var llmHTTPClientCtx = &http.Client{
 // 全局 LLM 调用时间记录
 var globalLastLLMCall time.Time
 
+// globalProviders 全局 LLM providers 配置，供 SendLLMRequestWithFallback 等函数在调用处无法传递 providers 时使用
+// 在 Bridge 初始化时通过 SetProviders 设置
+var globalProviders map[string]ProviderConfig
+
+// SetProviders 设置全局 providers 配置（由 Bridge 在初始化时调用）
+func SetProviders(providers map[string]ProviderConfig) {
+	globalProviders = providers
+}
+
+// getProviders 返回 providers，如果参数提供了则使用参数，否则使用全局配置
+func getProviders(providers map[string]ProviderConfig) map[string]ProviderConfig {
+	if providers != nil {
+		return providers
+	}
+	return globalProviders
+}
+
 // ========================= 模型降级冷却 =========================
 
 // modelCooldown 全局模型冷却追踪
@@ -87,15 +104,78 @@ func (mc *modelCooldown) setCooldown(cfg *LLMConfig, d time.Duration) {
 	log.Printf("[LLM-Fallback] 模型 %s 进入冷却 %v", cfg.EffectiveModel(), d)
 }
 
+// isServerError 判断错误是否为服务器端错误（5xx），这类错误可能只是临时故障，值得尝试其他模型
+func isServerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	// 匹配 "API error status=5XX: ..." 或 "status=500" 等模式
+	if strings.Contains(errMsg, "status=5") && len(errMsg) > 7 {
+		// 检查是否是 50x 状态码（500, 502, 503, 504 等）
+		statusIdx := strings.Index(errMsg, "status=")
+		if statusIdx >= 0 {
+			statusPart := errMsg[statusIdx+7 : statusIdx+10]
+			if len(statusPart) >= 3 && statusPart[0] == '5' && statusPart[1] >= '0' && statusPart[1] <= '9' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetOtherModelsInProvider 获取同一 provider 下的其他模型（排除当前模型）
+// 返回的模型已填充完整的运行时字段（APIKey, BaseURL, ModelID, MaxTokens, Temperature）
+func GetOtherModelsInProvider(provider, currentModel string, providers map[string]ProviderConfig) []LLMConfig {
+	if provider == "" || providers == nil {
+		return nil
+	}
+
+	providerCfg, ok := providers[provider]
+	if !ok {
+		return nil
+	}
+
+	var others []LLMConfig
+	for modelKey, modelCfg := range providerCfg.Models {
+		if modelKey == currentModel {
+			continue // 跳过当前模型
+		}
+		others = append(others, LLMConfig{
+			Provider:    provider,
+			Model:       modelKey,
+			APIKey:      providerCfg.APIKey,
+			BaseURL:     providerCfg.BaseURL,
+			ModelID:     modelCfg.Model,
+			MaxTokens:   modelCfg.MaxTokens,
+			Temperature: modelCfg.Temperature,
+		})
+	}
+	return others
+}
+
 // SendLLMRequestWithFallback 带降级链的同步 LLM 请求
-func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool) (string, []ToolCall, error) {
+// 当遇到 5xx 服务器错误时，会自动尝试同一 provider 下的其他模型
+// providers 参数用于查找同 provider 下的其他可用模型（可传 nil，使用全局配置）
+func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, providers map[string]ProviderConfig) (string, []ToolCall, error) {
+	// 获取有效的 providers 配置
+	providers = getProviders(providers)
+
 	candidates := make([]*LLMConfig, 0, 1+len(fallbacks))
 	candidates = append(candidates, primary)
 	for i := range fallbacks {
 		candidates = append(candidates, &fallbacks[i])
 	}
 
+	// 用于记录已经尝试过的模型，避免重复尝试（包括从 provider 自动发现的模型）
+	attempted := make(map[string]bool)
+	for _, cfg := range candidates {
+		attempted[cooldownKey(cfg)] = true
+	}
+
 	var lastErr error
+	var serverError modelErrorWithDetail // 记录服务器错误详情
+
 	for _, cfg := range candidates {
 		if globalCooldown.isCoolingDown(cfg) {
 			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.EffectiveModel())
@@ -106,21 +186,97 @@ func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, coold
 			return text, toolCalls, nil
 		}
 		lastErr = err
-		globalCooldown.setCooldown(cfg, cooldown)
-		log.Printf("[LLM-Fallback] 模型 %s 失败: %v, 尝试下一个", cfg.EffectiveModel(), err)
+
+		// 5xx 服务器错误：尝试同一 provider 下的其他模型
+		if isServerError(err) {
+			log.Printf("[LLM-Fallback] 模型 %s 返回服务器错误 %v，查找同 provider 下的其他模型", cfg.EffectiveModel(), err)
+			serverError = modelErrorWithDetail{cfg: cfg, err: err}
+			// 记录 5xx 错误
+			if globalTokenStats != nil {
+				globalTokenStats.Add5xxError(cfg.EffectiveModel())
+			}
+
+			// 查找同 provider 下的其他模型
+			otherModels := GetOtherModelsInProvider(cfg.Provider, cfg.Model, providers)
+			for _, otherCfg := range otherModels {
+				key := cooldownKey(&otherCfg)
+				if attempted[key] || globalCooldown.isCoolingDown(&otherCfg) {
+					continue
+				}
+				attempted[key] = true
+				log.Printf("[LLM-Fallback] 尝试同 provider 模型 %s", otherCfg.EffectiveModel())
+				text, toolCalls, err := SendLLMRequest(&otherCfg, messages, tools)
+				if err == nil {
+					return text, toolCalls, nil
+				}
+				lastErr = err
+				globalCooldown.setCooldown(&otherCfg, cooldown)
+				log.Printf("[LLM-Fallback] 同 provider 模型 %s 失败: %v", otherCfg.EffectiveModel(), err)
+				// 如果还是 5xx，继续尝试其他模型
+				if !isServerError(err) {
+					// 非服务器错误，不再继续尝试其他同 provider 模型
+					break
+				}
+			}
+		} else {
+			// 非服务器错误，直接设置冷却并尝试下一个候选
+			globalCooldown.setCooldown(cfg, cooldown)
+			log.Printf("[LLM-Fallback] 模型 %s 失败（非服务器错误）: %v, 尝试下一个", cfg.EffectiveModel(), err)
+		}
 	}
-	return "", nil, fmt.Errorf("all models failed, last error: %v", lastErr)
+
+	// 生成失败总结
+	summary := buildFailureSummary(primary, fallbacks, serverError, lastErr)
+	return "", nil, summary
+}
+
+// modelErrorWithDetail 记录服务器错误详情
+type modelErrorWithDetail struct {
+	cfg  *LLMConfig
+	err  error
+}
+
+// buildFailureSummary 生成失败总结
+func buildFailureSummary(primary *LLMConfig, fallbacks []LLMConfig, serverErr modelErrorWithDetail, lastErr error) error {
+	var tried []string
+	if primary != nil {
+		tried = append(tried, primary.EffectiveModel())
+	}
+	for _, fb := range fallbacks {
+		tried = append(tried, fb.EffectiveModel())
+	}
+
+	msg := fmt.Sprintf("所有模型调用均失败。已尝试的模型: %v", tried)
+	if serverErr.err != nil {
+		msg += fmt.Sprintf("\n最后失败原因（5xx服务器错误）: %v", serverErr.err)
+	} else if lastErr != nil {
+		msg += fmt.Sprintf("\n最后失败原因: %v", lastErr)
+	}
+	return fmt.Errorf(msg)
 }
 
 // SendStreamingLLMRequestWithFallback 带降级链的流式 LLM 请求
-func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, onChunk func(string), intervalSec int) (string, []ToolCall, error) {
+// 当遇到 5xx 服务器错误时，会自动尝试同一 provider 下的其他模型
+// providers 参数用于查找同 provider 下的其他可用模型（可传 nil，使用全局配置）
+func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, cooldown time.Duration, messages []Message, tools []LLMTool, onChunk func(string), intervalSec int, providers map[string]ProviderConfig) (string, []ToolCall, error) {
+	// 获取有效的 providers 配置
+	providers = getProviders(providers)
+
 	candidates := make([]*LLMConfig, 0, 1+len(fallbacks))
 	candidates = append(candidates, primary)
 	for i := range fallbacks {
 		candidates = append(candidates, &fallbacks[i])
 	}
 
+	// 用于记录已经尝试过的模型，避免重复尝试
+	attempted := make(map[string]bool)
+	for _, cfg := range candidates {
+		attempted[cooldownKey(cfg)] = true
+	}
+
 	var lastErr error
+	var serverError modelErrorWithDetail // 记录服务器错误详情
+
 	for _, cfg := range candidates {
 		if globalCooldown.isCoolingDown(cfg) {
 			log.Printf("[LLM-Fallback] 跳过冷却中的模型 %s", cfg.EffectiveModel())
@@ -131,10 +287,47 @@ func SendStreamingLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConf
 			return text, toolCalls, nil
 		}
 		lastErr = err
-		globalCooldown.setCooldown(cfg, cooldown)
-		log.Printf("[LLM-Fallback] 流式模型 %s 失败: %v, 尝试下一个", cfg.EffectiveModel(), err)
+
+		// 5xx 服务器错误：尝试同一 provider 下的其他模型
+		if isServerError(err) {
+			log.Printf("[LLM-Fallback] 流式模型 %s 返回服务器错误 %v，查找同 provider 下的其他模型", cfg.EffectiveModel(), err)
+			serverError = modelErrorWithDetail{cfg: cfg, err: err}
+			// 记录 5xx 错误
+			if globalTokenStats != nil {
+				globalTokenStats.Add5xxError(cfg.EffectiveModel())
+			}
+
+			// 查找同 provider 下的其他模型
+			otherModels := GetOtherModelsInProvider(cfg.Provider, cfg.Model, providers)
+			for _, otherCfg := range otherModels {
+				key := cooldownKey(&otherCfg)
+				if attempted[key] || globalCooldown.isCoolingDown(&otherCfg) {
+					continue
+				}
+				attempted[key] = true
+				log.Printf("[LLM-Fallback] 流式尝试同 provider 模型 %s", otherCfg.EffectiveModel())
+				text, toolCalls, err := SendStreamingLLMRequest(&otherCfg, messages, tools, onChunk, intervalSec)
+				if err == nil {
+					return text, toolCalls, nil
+				}
+				lastErr = err
+				globalCooldown.setCooldown(&otherCfg, cooldown)
+				log.Printf("[LLM-Fallback] 流式同 provider 模型 %s 失败: %v", otherCfg.EffectiveModel(), err)
+				// 如果还是 5xx，继续尝试其他模型
+				if !isServerError(err) {
+					break
+				}
+			}
+		} else {
+			// 非服务器错误，直接设置冷却并尝试下一个候选
+			globalCooldown.setCooldown(cfg, cooldown)
+			log.Printf("[LLM-Fallback] 流式模型 %s 失败（非服务器错误）: %v, 尝试下一个", cfg.EffectiveModel(), err)
+		}
 	}
-	return "", nil, fmt.Errorf("all models failed (streaming), last error: %v", lastErr)
+
+	// 生成失败总结
+	summary := buildFailureSummary(primary, fallbacks, serverError, lastErr)
+	return "", nil, summary
 }
 
 // ========================= LLM 消息结构 =========================

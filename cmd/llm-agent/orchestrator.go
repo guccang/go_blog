@@ -193,7 +193,7 @@ func (o *Orchestrator) sendLLM(messages []Message, tools []LLMTool) (string, []T
 	if len(o.cfg.Fallbacks) == 0 {
 		return SendLLMRequest(&cfg, messages, tools)
 	}
-	return SendLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools)
+	return SendLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, o.bridge.cfg.Providers)
 }
 
 // sendLLMCtx 带降级链 + context 的同步 LLM 请求
@@ -233,7 +233,7 @@ func (o *Orchestrator) sendStreamingLLM(messages []Message, tools []LLMTool, onC
 	if len(o.cfg.Fallbacks) == 0 {
 		return SendStreamingLLMRequest(&cfg, messages, tools, onChunk, o.cfg.LLMCallIntervalSec)
 	}
-	return SendStreamingLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk, o.cfg.LLMCallIntervalSec)
+	return SendStreamingLLMRequestWithFallback(&cfg, o.cfg.Fallbacks, o.fallbackCooldown(), messages, tools, onChunk, o.cfg.LLMCallIntervalSec, o.bridge.cfg.Providers)
 }
 
 // ========================= 事件驱动 DAG 调度器 =========================

@@ -33,6 +33,11 @@
             "build_platform": "linux"
         },
         {
+            "project": "app-agent",
+            "target": "local",
+            "build_platform": "win"
+        },
+        {
             "project": "gateway",
             "target": "ssh-prod",
             "build_platform": "linux"

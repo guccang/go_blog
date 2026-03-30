@@ -212,6 +212,8 @@ func Init() int {
 	h.HandleFunc("/login", HandleLogin)
 	h.HandleFunc("/loginsms", HandleLoginSMS)
 	h.HandleFunc("/api/logingensms", HandleLoginSMSAPI)
+	h.HandleFunc("/api/app-auth/login", HandleAppAuthLogin)
+	h.HandleFunc("/api/app-auth/register", HandleAppAuthRegister)
 	h.HandleFunc("/register", HandleRegister)
 
 	// Blog routes

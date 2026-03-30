@@ -28,6 +28,7 @@ cmd/deploy-agent/nohup.out
 cmd/gateway/gateway
 cmd/llm-agent/llm-agent
 cmd/wechat-agent/wechat-agent
+cmd/app-agent/app-agent
 plan.txt
 
 # 含 auth_token/密码等敏感信息的运行配置（保留 .example 作为模板）
@@ -38,6 +39,7 @@ cmd/env-agent/env-agent.json
 cmd/gateway/gateway.json
 cmd/llm-agent/llm-agent.json
 cmd/wechat-agent/wechat-agent.json
+cmd/app-agent/app-agent.json
 cmd/blog-agent/blog-agent.json
 cmd/blog-agent/blog-agent
 cmd/deploy-agent/deploy-agent
