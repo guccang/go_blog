@@ -142,7 +142,7 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		}
 		log.Printf("[Bridge] received audio message user=%s base64_len=%d meta_keys=%d",
 			msg.UserID, audioBytes, len(msg.Meta))
-		if err := b.sendAppPush(msg.UserID, "收到语音消息，已发送到 app-agent。右上滑可转文字直接发送。", map[string]any{
+		if err := b.sendAppPush(msg.UserID, "Voice message received and sent to app-agent. Swipe up-right to convert speech to text.", map[string]any{
 			"kind":         "audio_ack",
 			"message_type": "audio",
 		}); err != nil {
@@ -160,12 +160,12 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	}
 
 	switch {
-	case content == "/help" || content == "help" || content == "帮助":
+	case content == "/help" || content == "help" || content == "甯姪":
 		if err := b.sendAppPush(msg.UserID, getHelpText(), nil); err != nil {
 			log.Printf("[Bridge] send help failed: %v", err)
 		}
 		return
-	case content == "/status" || content == "status" || content == "状态":
+	case content == "/status" || content == "status":
 		connStatus := "not connected"
 		if b.IsConnected() {
 			connStatus = "connected"
@@ -266,13 +266,7 @@ func (b *Bridge) forwardGroupMessageToLLM(groupID, fromUser, robotAccount, conte
 		return fmt.Errorf("llm routing is not configured")
 	}
 
-	llmContent := fmt.Sprintf(
-		"群聊[%s]中，用户%s说：%s\n如果你要创建定时任务或提醒，必须使用 account=%s，并且不要填写 wechat_user。",
-		groupID,
-		fromUser,
-		content,
-		robotAccount,
-	)
+	llmContent := strings.TrimSpace(content)
 	payload := uap.NotifyPayload{
 		Channel: "app",
 		To:      robotAccount,
@@ -582,7 +576,7 @@ func (b *Bridge) sendAppPushWithType(toUser, content, messageType string, meta m
 
 func isBackendCommand(content string) bool {
 	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg" ||
-		content == "刷新提示词" || strings.EqualFold(content, "reload prompts")
+		strings.EqualFold(content, "reload prompts")
 }
 
 func getHelpText() string {

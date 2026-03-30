@@ -16,7 +16,7 @@ chmod +x llm-agent
 # 启动新进程（后台运行，日志写文件）
 # 使用 nohup + disown 确保进程与父进程完全分离（macOS 兼容）
 echo "启动 llm-agent..."
-nohup "$svr" >> llm-agent.log 2>&1 < /dev/null &
+nohup "$svr" > llm-agent.log 2>&1 < /dev/null &
 disown
 
 sleep 1
