@@ -99,7 +99,8 @@ type Bridge struct {
 	activeLLM *ActiveLLMState
 
 	// 记忆系统
-	memoryMgr       *MemoryManager
+	memoryMgr       *MemoryManager          // 共享记忆管理器（用于 set_rule 等无账户上下文操作）
+	memoryMgrs      map[string]*MemoryManager // 多账户支持：account → MemoryManager（按需创建）
 	memoryCollector *MemoryCollector
 
 	// 人设配置
@@ -132,6 +133,9 @@ type Bridge struct {
 
 // NewBridge 创建 Bridge
 func NewBridge(cfg *Config) *Bridge {
+	// 设置全局 providers 配置，供 LLM 调用时的自动模型切换使用
+	SetProviders(cfg.Providers)
+
 	client := uap.NewClient(cfg.GatewayURL, cfg.AgentID, "llm_mcp", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
 	client.Capacity = cfg.MaxConcurrent
@@ -191,6 +195,7 @@ func NewBridge(cfg *Config) *Bridge {
 		activeTasks:       make(map[string]string),
 		taskQueue:         make(chan *queuedTask, cfg.TaskQueueSize),
 		queueDone:         make(chan struct{}),
+		memoryMgrs:        make(map[string]*MemoryManager),
 	}
 
 	client.OnMessage = b.handleMessage
@@ -221,9 +226,9 @@ func NewBridge(cfg *Config) *Bridge {
 		Platform:  detectPlatform(),
 	}
 
-	// 初始化 Skill 管理器
+	// 初始化 Skill 管理器（使用共享的 skills 目录）
 	if cfg.WorkspaceDir != "" {
-		b.skillMgr = NewSkillManager(cfg.WorkspaceDir)
+		b.skillMgr = NewSkillManager(GetSharedSkillsDir(cfg.WorkspaceDir))
 		if err := b.skillMgr.Load(); err != nil {
 			log.Printf("[Bridge] load skills: %v", err)
 		}
@@ -260,40 +265,9 @@ func NewBridge(cfg *Config) *Bridge {
 	if memoryDir == "" {
 		memoryDir = "workspace/memory"
 	}
-	b.memoryMgr = NewMemoryManager(memoryDir, cfg.MemoryMaxChars)
-	b.memoryMgr.SetLimits(cfg.MemoryMaxFileChars, cfg.MemoryMaxEntries, cfg.MemoryExpiryDays)
-
-	// 注入 LLM 压缩回调：超限时用 LLM 整理记忆，保留摘要和重要内容
-	b.memoryMgr.SetLLMCompactFunc(func(entries []MemoryEntry) ([]MemoryEntry, error) {
-		return b.llmCompactMemory(entries)
-	})
-
-	// 注入 LLM 规则整理回调：去重合并用户规则
-	b.memoryMgr.SetLLMCompactRulesFunc(func(content string) (string, error) {
-		return b.llmCompactRules(content)
-	})
-
-	// 注入 toolName → skillName 映射回调（用于 auto_skill 分流）
-	if b.skillMgr != nil {
-		b.skillMgr.SetMemoryDir(memoryDir)
-		b.memoryMgr.SetSkillNameResolver(func(toolName string) string {
-			for _, skill := range b.skillMgr.GetAllSkills() {
-				for _, t := range skill.Tools {
-					if t == toolName || strings.Contains(t, toolName) {
-						return skill.Name
-					}
-				}
-			}
-			return ""
-		})
-	}
-
-	if err := b.memoryMgr.Load(); err != nil {
-		log.Printf("[Bridge] load memory: %v", err)
-	}
-	if err := b.memoryMgr.LoadRules(); err != nil {
-		log.Printf("[Bridge] load rules: %v", err)
-	}
+	b.memoryMgrs = make(map[string]*MemoryManager)
+	// 创建共享记忆管理器（用于 set_rule 等无账户上下文操作）
+	b.memoryMgr = b.createMemoryManager(memoryDir, cfg, "")
 	b.memoryCollector = NewMemoryCollector(b.memoryMgr, b, cfg.SkillIterationThreshold)
 
 	// 注册内置工具到统一注册表
@@ -320,6 +294,78 @@ func (b *Bridge) fallbackCooldown() time.Duration {
 		sec = 60
 	}
 	return time.Duration(sec) * time.Second
+}
+
+// ========================= 多账户 MemoryManager 支持 =========================
+
+// createMemoryManager 为指定账户创建 MemoryManager
+// account 为空时创建共享的记忆管理器
+func (b *Bridge) createMemoryManager(baseMemoryDir string, cfg *Config, account string) *MemoryManager {
+	var memoryDir string
+	if account != "" {
+		// 账户特定的 memory 目录: baseDir/users/{account}/memory
+		memoryDir = filepath.Join(baseMemoryDir, "..", "users", account, "memory")
+	} else {
+		memoryDir = baseMemoryDir
+	}
+
+	mgr := NewMemoryManager(memoryDir, cfg.MemoryMaxChars)
+	mgr.SetLimits(cfg.MemoryMaxFileChars, cfg.MemoryMaxEntries, cfg.MemoryExpiryDays)
+
+	// 注入 LLM 压缩回调
+	mgr.SetLLMCompactFunc(func(entries []MemoryEntry) ([]MemoryEntry, error) {
+		return b.llmCompactMemory(entries)
+	})
+
+	// 注入 LLM 规则整理回调
+	mgr.SetLLMCompactRulesFunc(func(content string) (string, error) {
+		return b.llmCompactRules(content)
+	})
+
+	// 注入 toolName → skillName 映射回调
+	if b.skillMgr != nil {
+		mgr.SetSkillNameResolver(func(toolName string) string {
+			for _, skill := range b.skillMgr.GetAllSkills() {
+				for _, t := range skill.Tools {
+					if t == toolName || strings.Contains(t, toolName) {
+						return skill.Name
+					}
+				}
+			}
+			return ""
+		})
+	}
+
+	if err := mgr.Load(); err != nil {
+		log.Printf("[Bridge] load memory for account=%s: %v", account, err)
+	}
+	if err := mgr.LoadRules(); err != nil {
+		log.Printf("[Bridge] load rules for account=%s: %v", account, err)
+	}
+
+	log.Printf("[Bridge] memory manager ready for account=%s dir=%s", account, memoryDir)
+	return mgr
+}
+
+// GetMemoryManager 获取指定账户的 MemoryManager（按需创建）
+func (b *Bridge) GetMemoryManager(account string) *MemoryManager {
+	if account == "" {
+		return b.memoryMgr
+	}
+
+	// 尝试从缓存获取
+	if mgr, ok := b.memoryMgrs[account]; ok {
+		return mgr
+	}
+
+	// 按需创建
+	baseMemoryDir := b.cfg.MemoryDir
+	if baseMemoryDir == "" {
+		baseMemoryDir = "workspace/memory"
+	}
+	mgr := b.createMemoryManager(baseMemoryDir, b.cfg, account)
+	b.memoryMgrs[account] = mgr
+	return mgr
 }
 
 // ========================= 工具函数 =========================

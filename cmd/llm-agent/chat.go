@@ -199,6 +199,11 @@ func isStopCommand(content string) bool {
 func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	log.Printf("[Wechat] from=%s user=%s content=%s", fromAgent, wechatUser, content)
 
+	// 确保账户 workspace 目录存在（多账户支持）
+	if b.cfg.WorkspaceDir != "" {
+		EnsureAccountWorkspace(b.cfg.WorkspaceDir, wechatUser)
+	}
+
 	// 0. Claude Mode 命令: /claude 进入
 	if isClaudeCommand(content) {
 		b.handleClaudeCommand(fromAgent, wechatUser, content)

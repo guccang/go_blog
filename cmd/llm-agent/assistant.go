@@ -254,6 +254,37 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 	status := "success"
 	errMsg := ""
 
+	if payload.WechatUser == "" && strings.TrimSpace(payload.Account) != "" {
+		appAgentID := b.findAppAgent()
+		if appAgentID == "" {
+			status = "failed"
+			errMsg = "no app-agent online"
+			log.Printf("[CronReminder] task=%s failed: %s", taskID, errMsg)
+		} else if err := b.client.SendTo(appAgentID, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "app",
+			To:      strings.TrimSpace(payload.Account),
+			Content: "Reminder: " + payload.Message,
+		}); err != nil {
+			status = "failed"
+			errMsg = err.Error()
+			log.Printf("[CronReminder] task=%s send app notify failed: %v", taskID, err)
+		} else {
+			log.Printf("[CronReminder] task=%s sent to app-agent=%s account=%s", taskID, appAgentID, payload.Account)
+		}
+
+		b.client.Send(&uap.Message{
+			Type:    uap.MsgTaskComplete,
+			ID:      uap.NewMsgID(),
+			From:    b.cfg.AgentID,
+			To:      sourceAgent,
+			Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
+			Ts:      time.Now().UnixMilli(),
+		})
+
+		log.Printf("[CronReminder] task=%s completed status=%s", taskID, status)
+		return
+	}
+
 	wechatAgentID := b.findWechatAgent()
 	if wechatAgentID == "" {
 		status = "failed"
@@ -338,6 +369,19 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 			b.sendWechat(wechatAgentID, payload.WechatUser, result)
 			log.Printf("[CronQuery] task=%s sent result to wechat user=%s", taskID, payload.WechatUser)
 		}
+	} else if result != "" && strings.TrimSpace(payload.Account) != "" {
+		appAgentID := b.findAppAgent()
+		if appAgentID == "" {
+			log.Printf("[CronQuery] task=%s no app-agent online, skip sending", taskID)
+		} else if err := b.client.SendTo(appAgentID, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "app",
+			To:      strings.TrimSpace(payload.Account),
+			Content: result,
+		}); err != nil {
+			log.Printf("[CronQuery] task=%s send app notify failed: %v", taskID, err)
+		} else {
+			log.Printf("[CronQuery] task=%s sent result to app-agent=%s account=%s", taskID, appAgentID, payload.Account)
+		}
 	}
 
 	// 发送 task_complete 到 sourceAgent（cron-agent）
@@ -368,6 +412,22 @@ func (b *Bridge) findWechatAgent() string {
 	return ""
 }
 
+func (b *Bridge) findAppAgent() string {
+	b.catalogMu.RLock()
+	defer b.catalogMu.RUnlock()
+
+	for id, info := range b.agentInfo {
+		name := strings.ToLower(info.Name)
+		idLower := strings.ToLower(id)
+		if strings.Contains(name, "app-agent") ||
+			strings.Contains(idLower, "app-agent") ||
+			strings.HasPrefix(idLower, "app-") {
+			return id
+		}
+	}
+	return ""
+}
+
 // buildAssistantSystemPrompt 构建固定的系统提示词（不随请求内容变化）
 // 结构：人设 → 用户规则 → Agent 目录 → Skill 目录 → 长期记忆 → 时间/账号信息
 func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSection) {
@@ -384,12 +444,20 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		sections = append(sections, PromptSection{Name: name, Chars: chars})
 	}
 
-	// 1. 人设
+	// 1. 人设（优先加载账户私有的 PERSONA.md，fallback 到全局）
 	var personaContent string
-	if b.persona != nil {
+	if b.persona != nil && b.persona.IsConfigured() {
+		// 全局人设配置优先（由 Bridge 初始化时加载）
 		personaContent = b.persona.BuildSystemPrompt()
-	} else {
-		personaContent = loadWorkspaceFile(b.cfg.WorkspaceDir, "PERSONA.md", b.cfg.SystemPromptPrefix)
+	}
+	// 尝试加载账户私有的人设
+	accountPersona := loadAccountWorkspaceFile(b.cfg.WorkspaceDir, account, "PERSONA.md", "")
+	if accountPersona != "" {
+		personaContent = accountPersona
+		log.Printf("[Assistant] 使用账户 %s 的 PERSONA.md", account)
+	}
+	if personaContent == "" {
+		personaContent = b.cfg.SystemPromptPrefix
 	}
 	personaContent += "\n\n"
 
@@ -404,9 +472,9 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	personaContent += "- 编码+部署必须拆分为独立子任务\n\n"
 	writeSection("人设/基础", personaContent)
 
-	// 2. 用户规则
-	if b.memoryMgr != nil {
-		rulesBlock := b.memoryMgr.BuildRulePromptBlock()
+	// 2. 用户规则（使用账户特定的 memory manager）
+	if memMgr := b.GetMemoryManager(account); memMgr != nil {
+		rulesBlock := memMgr.BuildRulePromptBlock()
 		writeSection("用户规则", rulesBlock)
 	}
 
@@ -424,9 +492,9 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		writeSection("Skill目录", catalog)
 	}
 
-	// 5. 长期记忆
-	if b.memoryMgr != nil {
-		memoryBlock := b.memoryMgr.BuildPromptBlock()
+	// 5. 长期记忆（使用账户特定的 memory manager）
+	if memMgr := b.GetMemoryManager(account); memMgr != nil {
+		memoryBlock := memMgr.BuildPromptBlock()
 		writeSection("长期记忆", memoryBlock)
 	}
 

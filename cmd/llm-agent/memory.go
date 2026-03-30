@@ -59,6 +59,20 @@ func NewMemoryManager(memoryDir string, maxChars int) *MemoryManager {
 	}
 }
 
+// SetMemoryDir 动态设置记忆目录（用于多账户支持）
+func (m *MemoryManager) SetMemoryDir(dir string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.memoryDir = dir
+}
+
+// GetMemoryDir 获取当前记忆目录
+func (m *MemoryManager) GetMemoryDir() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.memoryDir
+}
+
 // SetLimits 设置大小限制和过期时间
 func (m *MemoryManager) SetLimits(maxFileChars, maxEntries, expiryDays int) {
 	m.mu.Lock()

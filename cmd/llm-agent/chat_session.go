@@ -218,7 +218,17 @@ func (m *ChatSessionManager) SaveSession(session *ChatSession) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(m.persistDir, 0755); err != nil {
+	// 确定实际持久化目录：优先使用账户特有的 users/{account}/chat_sessions
+	persistDir := m.persistDir
+	if session.Account != "" {
+		// 尝试账户特定目录
+		accountPersistDir := filepath.Join(m.persistDir, "..", "users", session.Account, "chat_sessions")
+		if _, err := os.Stat(accountPersistDir); err == nil {
+			persistDir = accountPersistDir
+		}
+	}
+
+	if err := os.MkdirAll(persistDir, 0755); err != nil {
 		return fmt.Errorf("create persist dir: %v", err)
 	}
 
@@ -229,7 +239,7 @@ func (m *ChatSessionManager) SaveSession(session *ChatSession) error {
 		return fmt.Errorf("marshal session: %v", err)
 	}
 
-	path := filepath.Join(m.persistDir, session.SessionKey+".json")
+	path := filepath.Join(persistDir, session.SessionKey+".json")
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("write session file: %v", err)
 	}
@@ -243,15 +253,43 @@ func (m *ChatSessionManager) LoadSession(sessionKey string) (*ChatSession, error
 		return nil, fmt.Errorf("persist dir not configured")
 	}
 
+	// 先尝试加载会话获取 account（用于确定实际路径）
+	// 先在 base persistDir 查找
 	path := filepath.Join(m.persistDir, sessionKey+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		// 如果在 base 目录找不到，尝试从 account-specific 目录加载
+		// 从 sessionKey 解析可能的 account：格式为 source_account
+		parts := strings.SplitN(sessionKey, "_", 2)
+		if len(parts) == 2 {
+			account := parts[1]
+			accountPath := filepath.Join(m.persistDir, "..", "users", account, "chat_sessions", sessionKey+".json")
+			data, err = os.ReadFile(accountPath)
+			if err == nil {
+				path = accountPath
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var session ChatSession
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("unmarshal session: %v", err)
+	}
+
+	// 如果 session 有 account 且当前路径不是 account-specific，尝试从 account-specific 重新加载
+	if session.Account != "" && !strings.Contains(path, "users") {
+		accountPath := filepath.Join(m.persistDir, "..", "users", session.Account, "chat_sessions", sessionKey+".json")
+		if _, err := os.Stat(accountPath); err == nil {
+			accountData, err := os.ReadFile(accountPath)
+			if err == nil {
+				if err := json.Unmarshal(accountData, &session); err == nil {
+					return &session, nil
+				}
+			}
+		}
 	}
 
 	return &session, nil
@@ -263,12 +301,39 @@ func (m *ChatSessionManager) LoadAll() int {
 		return 0
 	}
 
-	entries, err := os.ReadDir(m.persistDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0
+	loaded := 0
+
+	// 扫描 base persistDir
+	loaded += m.loadSessionsFromDir(m.persistDir)
+
+	// 扫描 account-specific 目录（users/{account}/chat_sessions）
+	usersDir := filepath.Join(m.persistDir, "..", "users")
+	entries, err := os.ReadDir(usersDir)
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			accountDir := filepath.Join(usersDir, entry.Name(), "chat_sessions")
+			if _, err := os.Stat(accountDir); err == nil {
+				loaded += m.loadSessionsFromDir(accountDir)
+			}
 		}
-		log.Printf("[ChatSession] 读取持久化目录失败: %v", err)
+	}
+
+	if loaded > 0 {
+		log.Printf("[ChatSession] 恢复 %d 个未过期会话", loaded)
+	}
+	return loaded
+}
+
+// loadSessionsFromDir 扫描并加载单个目录中的会话
+func (m *ChatSessionManager) loadSessionsFromDir(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[ChatSession] 读取目录失败 %s: %v", dir, err)
+		}
 		return 0
 	}
 
@@ -291,14 +356,14 @@ func (m *ChatSessionManager) LoadAll() int {
 		}
 
 		m.mu.Lock()
-		m.sessions[key] = session
+		// 避免重复加载
+		if _, exists := m.sessions[key]; !exists {
+			m.sessions[key] = session
+			loaded++
+		}
 		m.mu.Unlock()
-		loaded++
 	}
 
-	if loaded > 0 {
-		log.Printf("[ChatSession] 恢复 %d 个未过期会话", loaded)
-	}
 	return loaded
 }
 
