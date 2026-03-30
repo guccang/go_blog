@@ -20,12 +20,24 @@ func GetSharedSkillsDir(baseDir string) string {
 	return filepath.Join(baseDir, "skills")
 }
 
-// EnsureAccountWorkspace 确保账户 workspace 目录存在，返回路径
+// EnsureAccountWorkspace 确保账户 workspace 目录及子目录存在，返回路径
 func EnsureAccountWorkspace(baseDir, account string) string {
 	wsPath := GetAccountWorkspace(baseDir, account)
+
+	// 创建账户 workspace 根目录
 	if err := os.MkdirAll(wsPath, 0755); err != nil {
 		log.Printf("[Workspace] 创建账户目录失败: %s - %v", wsPath, err)
 	}
+
+	// 创建必要的子目录
+	subDirs := []string{"memory", "chat_sessions"}
+	for _, subDir := range subDirs {
+		subPath := filepath.Join(wsPath, subDir)
+		if err := os.MkdirAll(subPath, 0755); err != nil {
+			log.Printf("[Workspace] 创建子目录失败: %s - %v", subPath, err)
+		}
+	}
+
 	return wsPath
 }
 
