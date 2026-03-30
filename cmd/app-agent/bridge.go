@@ -13,12 +13,13 @@ import (
 
 // AppMessage is the message pushed from the app side to app-agent.
 type AppMessage struct {
-	UserID      string         `json:"user_id"`
-	Content     string         `json:"content"`
-	MessageType string         `json:"message_type,omitempty"`
-	SessionID   string         `json:"session_id,omitempty"`
-	TraceID     string         `json:"trace_id,omitempty"`
-	Meta        map[string]any `json:"meta,omitempty"`
+	UserID            string         `json:"user_id"`
+	Content           string         `json:"content"`
+	MessageType       string         `json:"message_type,omitempty"`
+	SessionID         string         `json:"session_id,omitempty"`
+	TraceID           string         `json:"trace_id,omitempty"`
+	Meta              map[string]any `json:"meta,omitempty"`
+	DelegationToken   string         `json:"delegation_token,omitempty"` // delegation token for blog-agent API
 }
 
 // AppPushPayload is the payload pushed from app-agent back to the app side.
@@ -48,6 +49,10 @@ type Bridge struct {
 	nextSequence int64
 	pending      map[string][]AppPushPayload
 	clients      map[string]*appClientConn
+
+	// delegation tokens by user
+	delegationTokens map[string]string
+	delegationMu    sync.Mutex
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -83,6 +88,7 @@ func NewBridge(cfg *Config) *Bridge {
 		sessionUsers:  make(map[string]string),
 		pending:       make(map[string][]AppPushPayload),
 		clients:       make(map[string]*appClientConn),
+		delegationTokens: make(map[string]string),
 	}
 	client.OnMessage = b.handleUAPMessage
 	return b
@@ -116,6 +122,20 @@ func (b *Bridge) PendingMessageCount() int {
 		total += len(queue)
 	}
 	return total
+}
+
+// SetDelegationToken 设置用户的 delegation token
+func (b *Bridge) SetDelegationToken(userID, token string) {
+	b.delegationMu.Lock()
+	defer b.delegationMu.Unlock()
+	b.delegationTokens[userID] = token
+}
+
+// GetDelegationToken 获取用户的 delegation token
+func (b *Bridge) GetDelegationToken(userID string) string {
+	b.delegationMu.Lock()
+	defer b.delegationMu.Unlock()
+	return b.delegationTokens[userID]
 }
 
 func (b *Bridge) HandleAppMessage(msg *AppMessage) {
@@ -198,13 +218,19 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		return
 	}
 
+	// 如果有 delegation token，添加到内容前面
+	messageContent := content
+	if msg.DelegationToken != "" {
+		messageContent = fmt.Sprintf("[delegation:%s]%s", msg.DelegationToken, content)
+	}
+
 	payload := uap.NotifyPayload{
 		Channel: "app",
 		To:      msg.UserID,
-		Content: content,
+		Content: messageContent,
 	}
 	log.Printf("[Bridge] route app notify user=%s target=%s channel=%s len=%d content=%q",
-		msg.UserID, targetAgent, payload.Channel, len(payload.Content), shortText(payload.Content))
+		msg.UserID, targetAgent, payload.Channel, len(messageContent), shortText(messageContent))
 	if err := b.client.SendTo(targetAgent, uap.MsgNotify, payload); err != nil {
 		log.Printf("[Bridge] send to %s failed: %v", targetAgent, err)
 		_ = b.sendAppPush(msg.UserID, "Message forwarding failed, please retry later.", nil)

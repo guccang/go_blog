@@ -24,6 +24,9 @@ type Config struct {
 	BackendAgentID string `json:"backend_agent_id"`
 
 	ProtectedFiles []string `json:"protected_files,omitempty"`
+
+	// DelegationSecretKey 用于签发委托令牌的密钥（需与 blog-agent 配置一致）
+	DelegationSecretKey string `json:"delegation_secret_key,omitempty"`
 }
 
 func DefaultConfig() *Config {

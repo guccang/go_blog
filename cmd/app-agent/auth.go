@@ -1,6 +1,7 @@
 package main
 
 import (
+	"app-agent/delegation"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
@@ -39,25 +40,29 @@ func (e *authError) Error() string {
 }
 
 type appSession struct {
-	Account   string
-	Token     string
-	ExpiresAt time.Time
+	Account          string
+	Token            string
+	ExpiresAt        time.Time
+	DelegationToken  string // delegation token for blog-agent API calls
 }
 
 type authManager struct {
-	cfg      *Config
-	client   *http.Client
-	mu       sync.RWMutex
-	sessions map[string]*appSession
+	cfg              *Config
+	client           *http.Client
+	mu               sync.RWMutex
+	sessions         map[string]*appSession
+	delegationSigner *delegation.Signer // for issuing delegation tokens
 }
 
 func newAuthManager(cfg *Config) *authManager {
+	signer := delegation.NewSigner("app-agent", cfg.DelegationSecretKey)
 	return &authManager{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		sessions: make(map[string]*appSession),
+		sessions:         make(map[string]*appSession),
+		delegationSigner: signer,
 	}
 }
 
@@ -82,6 +87,15 @@ func (m *authManager) Login(userID, password string) (*appSession, error) {
 		ExpiresAt: time.Now().Add(time.Duration(m.cfg.AppSessionTTLMinutes) * time.Minute),
 	}
 
+	// Issue delegation token for blog-agent API calls
+	delegationToken, err := m.issueDelegationToken(userID, userID, delegation.AllScopes)
+	if err != nil {
+		// Log error but don't fail login
+		fmt.Printf("Warning: failed to issue delegation token: %v\n", err)
+	} else {
+		session.DelegationToken = delegationToken
+	}
+
 	m.mu.Lock()
 	for existingToken, existing := range m.sessions {
 		if existing.Account == userID {
@@ -91,6 +105,38 @@ func (m *authManager) Login(userID, password string) (*appSession, error) {
 	m.sessions[token] = session
 	m.mu.Unlock()
 	return session, nil
+}
+
+// issueDelegationToken 签发委托令牌
+func (m *authManager) issueDelegationToken(authorizedUser, targetAccount string, scopes []string) (string, error) {
+	if m.delegationSigner == nil {
+		return "", fmt.Errorf("delegation signer not initialized")
+	}
+
+	// 默认令牌有效期为 session 有效期
+	validityDuration := time.Duration(m.cfg.AppSessionTTLMinutes) * time.Minute
+
+	token, err := m.delegationSigner.IssueToken(authorizedUser, targetAccount, scopes, validityDuration)
+	if err != nil {
+		return "", err
+	}
+
+	return token.Encode()
+}
+
+// GetDelegationToken 获取用户的 delegation token
+func (m *authManager) GetDelegationToken(sessionToken string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	session := m.sessions[sessionToken]
+	if session == nil {
+		return "", fmt.Errorf("session not found")
+	}
+	if time.Now().After(session.ExpiresAt) {
+		return "", fmt.Errorf("session expired")
+	}
+	return session.DelegationToken, nil
 }
 
 func (m *authManager) Validate(token, userID string) bool {

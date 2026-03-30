@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mcp"
 	h "net/http"
+	"time"
 	"view"
 )
 
@@ -23,9 +24,33 @@ func HandleAssistant(w h.ResponseWriter, r *h.Request) {
 // MCP工具API处理函数
 func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleMCPToolsAPI", r)
-	if checkLogin(r) != 0 {
-		h.Error(w, "Unauthorized", h.StatusUnauthorized)
-		return
+
+	// 生成请求 ID 用于 delegation token 上下文
+	requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// 检查是否有 delegation token
+	delegationTokenHeader := r.Header.Get("X-Delegation-Token")
+	if delegationTokenHeader != "" {
+		// 解析并验证 delegation token
+		token, err := mcp.ParseDelegationTokenFromHeader(delegationTokenHeader)
+		if err != nil {
+			response := map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Invalid delegation token: %v", err),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+		// 设置到上下文
+		mcp.SetDelegationToken(requestID, token)
+		defer mcp.ClearDelegationToken(requestID)
+	} else {
+		// 没有 delegation token，检查 session cookie
+		if checkLogin(r) != 0 {
+			h.Error(w, "Unauthorized", h.StatusUnauthorized)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -53,7 +78,7 @@ func HandleMCPToolsAPI(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 
-		result := mcp.CallToolForAPI(toolCall)
+		result := mcp.CallToolForAPI(toolCall, requestID)
 		json.NewEncoder(w).Encode(result)
 
 	default:

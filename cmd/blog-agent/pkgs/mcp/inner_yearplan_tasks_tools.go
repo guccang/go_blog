@@ -9,7 +9,11 @@ import (
 // ============================================================================
 
 func Inner_blog_RawGetMonthGoal(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -25,7 +29,11 @@ func Inner_blog_RawGetMonthGoal(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawGetYearGoals(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -37,7 +45,11 @@ func Inner_blog_RawGetYearGoals(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawAddYearTask(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -63,7 +75,11 @@ func Inner_blog_RawAddYearTask(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawUpdateYearTask(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -91,7 +107,11 @@ func Inner_blog_RawUpdateYearTask(arguments map[string]interface{}) string {
 // ============================================================================
 
 func Inner_blog_RawGetAllComplexTasks(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -99,7 +119,11 @@ func Inner_blog_RawGetAllComplexTasks(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawGetComplexTasksByStatus(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -111,7 +135,11 @@ func Inner_blog_RawGetComplexTasksByStatus(arguments map[string]interface{}) str
 }
 
 func Inner_blog_RawGetComplexTaskStats(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -119,7 +147,11 @@ func Inner_blog_RawGetComplexTaskStats(arguments map[string]interface{}) string 
 }
 
 func Inner_blog_RawCreateComplexTask(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}

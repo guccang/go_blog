@@ -9,7 +9,11 @@ import (
 // ============================================================================
 
 func Inner_blog_RawGetTodosByDate(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -21,7 +25,11 @@ func Inner_blog_RawGetTodosByDate(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawGetTodosRange(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -37,7 +45,11 @@ func Inner_blog_RawGetTodosRange(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawAddTodo(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -57,7 +69,11 @@ func Inner_blog_RawAddTodo(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawToggleTodo(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -73,7 +89,11 @@ func Inner_blog_RawToggleTodo(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -89,7 +109,11 @@ func Inner_blog_RawDeleteTodo(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawUpdateTodo(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}

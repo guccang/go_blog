@@ -7,6 +7,7 @@ import (
 	"comment"
 	"config"
 	"control"
+	"delegation"
 	"exercise"
 	"fmt"
 	"http"
@@ -26,6 +27,7 @@ import (
 	"statistics"
 	"strings"
 	"syscall"
+	"time"
 	"tools"
 	"view"
 )
@@ -76,6 +78,17 @@ func main() {
 
 	// Init
 	config.Init(args[1])
+
+	// 初始化 delegation manager 并注册可信代理
+	mcp.InitDelegationManager()
+	trustedAgents := config.GetTrustedAgents()
+	for i := range trustedAgents {
+		mcp.GetDelegationManager().RegisterAgent(&delegation.TrustedAgent{
+			AgentID:   trustedAgents[i].AgentID,
+			SecretKey: trustedAgents[i].SecretKey,
+		})
+	}
+	mcp.GetDelegationManager().StartCleanupRoutine(1 * time.Minute)
 
 	account := config.GetAdminAccount()
 	// Initialize logging system with logs directory

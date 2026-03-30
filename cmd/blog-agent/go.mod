@@ -82,6 +82,8 @@ replace wechat => ./pkgs/wechat
 
 replace codegen => ./pkgs/codegen
 
+replace delegation => ./pkgs/delegation
+
 replace uap => ../common/uap
 
 replace agentbase => ../common/agentbase
@@ -93,6 +95,7 @@ require (
 	comment v0.0.0
 	config v0.0.0
 	control v0.0.0
+	delegation v0.0.0
 	exercise v0.0.0
 	http v0.0.0
 	ioutils v0.0.0

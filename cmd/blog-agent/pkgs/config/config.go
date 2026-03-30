@@ -527,3 +527,35 @@ func GetSysConfigTitleMCP() string {
 func GetSysConfigs() string {
 	return fmt.Sprintf("%s | %s | %s | %s", GetSysConfigTitle(), GetSysConfigTitleMCP(), "sys_accounts", GetSysPromptsConfigTitle())
 }
+
+// TrustedAgentConfig 可信代理配置
+type TrustedAgentConfig struct {
+	AgentID   string `json:"agent_id"`
+	SecretKey string `json:"secret_key"`
+}
+
+// GetTrustedAgents 获取可信代理配置列表
+// 格式: agent_id1:secret_key1,agent_id2:secret_key2
+func GetTrustedAgents() []TrustedAgentConfig {
+	trustedAgentsStr := GetConfigWithAccount(adminAccount, "trusted_agents")
+	if trustedAgentsStr == "" {
+		return nil
+	}
+
+	var agents []TrustedAgentConfig
+	pairs := strings.Split(trustedAgentsStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) == 2 {
+			agents = append(agents, TrustedAgentConfig{
+				AgentID:   strings.TrimSpace(parts[0]),
+				SecretKey: strings.TrimSpace(parts[1]),
+			})
+		}
+	}
+	return agents
+}

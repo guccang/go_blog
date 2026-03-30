@@ -3,14 +3,116 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
+
+	"delegation"
 	log "mylog"
 	"strings"
-	"sync"
 )
 
 var mcp_version = "Version3.0"
 var toolNameMapping = make(map[string]string)
 var toolNameMutex sync.RWMutex // 保护 toolNameMapping 的并发访问
+
+// Delegation token 上下文
+var delegationTokenContext = &delegationTokenCtx{
+	tokens: make(map[string]*delegation.DelegationToken),
+}
+
+type delegationTokenCtx struct {
+	mu     sync.RWMutex
+	tokens map[string]*delegation.DelegationToken
+}
+
+// SetDelegationToken 设置当前请求的 delegation token
+func SetDelegationToken(requestID string, token *delegation.DelegationToken) {
+	delegationTokenContext.mu.Lock()
+	defer delegationTokenContext.mu.Unlock()
+	delegationTokenContext.tokens[requestID] = token
+}
+
+// GetDelegationToken 获取当前请求的 delegation token
+func GetDelegationToken(requestID string) *delegation.DelegationToken {
+	delegationTokenContext.mu.RLock()
+	defer delegationTokenContext.mu.RUnlock()
+	return delegationTokenContext.tokens[requestID]
+}
+
+// ClearDelegationToken 清除当前请求的 delegation token
+func ClearDelegationToken(requestID string) {
+	delegationTokenContext.mu.Lock()
+	defer delegationTokenContext.mu.Unlock()
+	delete(delegationTokenContext.tokens, requestID)
+}
+
+// GetDelegationManager 获取 delegation 管理器
+func GetDelegationManager() *delegation.Manager {
+	return delegation.GetManager()
+}
+
+// InitDelegationManager 初始化 delegation 管理器
+func InitDelegationManager() {
+	delegation.InitManager()
+	log.InfoF(log.ModuleMCP, "Delegation manager initialized")
+}
+
+// VerifyDelegationToken 验证 delegation token 并返回授权的账户
+// 如果验证成功，返回授权的账户；如果验证失败，返回错误
+func VerifyDelegationToken(token *delegation.DelegationToken) (string, error) {
+	if token == nil {
+		return "", delegation.ErrInvalidToken
+	}
+
+	mgr := delegation.GetManager()
+	if err := mgr.Verify(token); err != nil {
+		return "", err
+	}
+
+	return token.TargetAccount, nil
+}
+
+// ParseDelegationTokenFromHeader 从 header 中解析 delegation token
+func ParseDelegationTokenFromHeader(header string) (*delegation.DelegationToken, error) {
+	if header == "" {
+		return nil, delegation.ErrInvalidToken
+	}
+
+	token, err := delegation.Decode(header)
+	if err != nil {
+		return nil, err
+	}
+
+	return token, nil
+}
+
+// ValidateAccountAccess 验证账户访问权限
+// 如果存在有效的 delegation token，检查请求的 account 是否与 token 中的 target account 匹配
+// requestID 用于获取当前请求的 delegation token
+func ValidateAccountAccess(requestID string, requestedAccount string) (string, error) {
+	token := GetDelegationToken(requestID)
+	if token == nil {
+		// 没有 delegation token，使用原始 account（session cookie 验证已在 HTTP 层完成）
+		return requestedAccount, nil
+	}
+
+	// 验证 token
+	authorizedAccount, err := VerifyDelegationToken(token)
+	if err != nil {
+		return "", err
+	}
+
+	// 如果请求的 account 与授权账户不符，检查是否有通配符权限
+	if requestedAccount != "" && requestedAccount != authorizedAccount {
+		// 检查 token 是否有访问其他账户的权限（通配符）
+		if !token.HasScope("*") {
+			return "", delegation.NewDelegationError("ACCOUNT_MISMATCH",
+				fmt.Sprintf("token authorizes account %s but requested %s", authorizedAccount, requestedAccount))
+		}
+	}
+
+	// 返回授权的账户
+	return authorizedAccount, nil
+}
 
 // ToolCall represents a function call
 type ToolCall struct {
@@ -152,9 +254,13 @@ func CallMCPTool(toolName string, arguments map[string]interface{}) MCPToolRespo
 }
 
 // CallToolForAPI 供 HTTP API 调用的工具执行入口
-func CallToolForAPI(toolCall MCPToolCall) MCPToolResponse {
+// requestID 用于 delegation token 上下文
+func CallToolForAPI(toolCall MCPToolCall, requestID string) MCPToolResponse {
 	log.DebugF(log.ModuleMCP, "=== Calling MCP Tool: %s ===", toolCall.Name)
 	log.DebugF(log.ModuleMCP, "Tool arguments: %v", toolCall.Arguments)
+
+	// 设置当前请求 ID
+	SetCurrentRequestID(requestID)
 
 	// 解析工具名
 	callName := toolCall.Name
@@ -163,7 +269,7 @@ func CallToolForAPI(toolCall MCPToolCall) MCPToolResponse {
 		callName = parts[1]
 	}
 
-	data := CallInnerTools(callName, toolCall.Arguments)
+	data := CallInnerToolsWithRequestID(callName, toolCall.Arguments, requestID)
 	// 解析统一信封
 	var envelope struct {
 		OK    bool            `json:"ok"`

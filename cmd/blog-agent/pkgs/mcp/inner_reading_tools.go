@@ -9,7 +9,11 @@ import (
 // ============================================================================
 
 func Inner_blog_RawGetAllBooks(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -17,7 +21,11 @@ func Inner_blog_RawGetAllBooks(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawGetBooksByStatus(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -29,7 +37,11 @@ func Inner_blog_RawGetBooksByStatus(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawGetReadingStats(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -37,7 +49,11 @@ func Inner_blog_RawGetReadingStats(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawUpdateReadingProgress(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -54,7 +70,11 @@ func Inner_blog_RawUpdateReadingProgress(arguments map[string]interface{}) strin
 }
 
 func Inner_blog_RawGetBookNotes(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}
@@ -66,7 +86,11 @@ func Inner_blog_RawGetBookNotes(arguments map[string]interface{}) string {
 }
 
 func Inner_blog_RawAddBook(arguments map[string]interface{}) string {
-	account, err := getStringParam(arguments, "account")
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
 	if err != nil {
 		return errorJSON(err.Error())
 	}

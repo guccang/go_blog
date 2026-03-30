@@ -10,6 +10,27 @@ import (
 var callBacks = make(map[string]func(arguments map[string]interface{}) string)
 var callBacksPrompt = make(map[string]string)
 
+// 当前请求 ID（用于 delegation token 上下文）
+// 在 HTTP API 调用时设置为实际请求 ID，LLM 调用时为 "llm-request"
+var currentRequestID = "llm-request"
+
+// SetCurrentRequestID 设置当前请求 ID
+func SetCurrentRequestID(requestID string) {
+	currentRequestID = requestID
+}
+
+// GetCurrentRequestID 获取当前请求 ID
+func GetCurrentRequestID() string {
+	return currentRequestID
+}
+
+// ValidateAccountParam 验证 account 参数
+// 如果存在有效的 delegation token，返回授权的账户；否则返回请求的账户
+// 工具函数应该使用此函数来验证 account 参数
+func ValidateAccountParam(requestedAccount string) (string, error) {
+	return ValidateAccountAccess(currentRequestID, requestedAccount)
+}
+
 // ============================================================================
 // 安全参数提取辅助函数
 // ============================================================================
@@ -111,6 +132,10 @@ func RegisterCallBack(name string, callback func(arguments map[string]interface{
 }
 
 func CallInnerTools(name string, arguments map[string]interface{}) string {
+	return CallInnerToolsWithRequestID(name, arguments, currentRequestID)
+}
+
+func CallInnerToolsWithRequestID(name string, arguments map[string]interface{}, requestID string) string {
 	callback, ok := callBacks[name]
 	if !ok {
 		return errorJSON("NOT find callback: " + name)

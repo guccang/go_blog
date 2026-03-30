@@ -66,6 +66,12 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[Handler] login success user=%s remote=%s", session.Account, r.RemoteAddr)
+
+	// 存储 delegation token 到 bridge
+	if session.DelegationToken != "" {
+		h.bridge.SetDelegationToken(session.Account, session.DelegationToken)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(loginResponse{
 		Success:      true,
@@ -112,6 +118,9 @@ func (h *Handler) HandleMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Login required", http.StatusUnauthorized)
 		return
 	}
+
+	// 从 bridge 获取用户的 delegation token
+	msg.DelegationToken = h.bridge.GetDelegationToken(msg.UserID)
 
 	log.Printf("[Handler] App message accepted user=%s type=%s len=%d remote=%s content=%q",
 		msg.UserID, msg.MessageType, len(msg.Content), r.RemoteAddr, shortText(msg.Content))
