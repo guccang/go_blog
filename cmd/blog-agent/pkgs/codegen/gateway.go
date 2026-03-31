@@ -36,6 +36,10 @@ var (
 	GetDelegationToken func(key string) DelegationTokenHolder
 	// VerifyDelegationToken 验证 delegation token
 	VerifyDelegationToken func(token DelegationTokenHolder) (string, error)
+
+	// PrepareMCPContext 准备 MCP 调用上下文（由 agent 包注入）
+	// 在调用 tool 前调用，设置 currentRequestID 和 delegation token 到 mcp 包
+	PrepareMCPContext func(requestID string, account string)
 )
 
 // DelegationTokenHolder delegation token 接口（用于避免直接依赖 mcp 包）
@@ -645,51 +649,52 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s) msgID=%s", msg.From, payload.ToolName, mcpName, msg.ID)
 
 	// ====== Delegation Token 验证 ======
-	// 对于来自 gateway 的 tool call（来自 llm-agent），需要验证 delegation token
-	// delegation token 缓存在 MCP 包上下文中，key 是 account
+	// 对于来自 gateway 的 tool call（来自 llm-agent），验证 delegation token
+	// delegation token 缓存在 codegen 本地存储中，key 是 account
+	// 验证逻辑：只有当 token 存在时才验证（允许微信等无 token 的场景正常通过）
 	var token DelegationTokenHolder
+	var accountStr string
 
 	// 检查 args 中是否有 account 参数
 	if accountArg, hasAccount := args["account"]; hasAccount {
-		accountStr, isString := accountArg.(string)
-		if isString && accountStr != "" {
+		accountStr, _ = accountArg.(string)
+		if accountStr != "" {
 			// 使用 account 作为 key 获取缓存的 delegation token
 			token = GetDelegationToken(accountStr)
 
-			// 有 account 参数，必须有有效的 delegation token
-			if token == nil {
-				log.WarnF(log.ModuleAgent, "CodeGen gateway: tool_call requires delegation token for account=%s", accountStr)
-				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-					RequestID: msg.ID,
-					Success:   false,
-					Error:     "delegation token required for accessing account data",
-				})
-				return
-			}
+			// 只有当 token 存在时才验证（微信等场景没有 token，直接放行）
+			if token != nil {
+				// 验证 delegation token
+				authorizedAccount, err := VerifyDelegationToken(token)
+				if err != nil {
+					log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token verification failed: %v", err)
+					b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+						RequestID: msg.ID,
+						Success:   false,
+						Error:     fmt.Sprintf("delegation token invalid: %v", err),
+					})
+					return
+				}
 
-			// 验证 delegation token
-			authorizedAccount, err := VerifyDelegationToken(token)
-			if err != nil {
-				log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token verification failed: %v", err)
-				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-					RequestID: msg.ID,
-					Success:   false,
-					Error:     fmt.Sprintf("delegation token invalid: %v", err),
-				})
-				return
-			}
-
-			// 验证 account 是否匹配
-			if accountStr != authorizedAccount {
-				log.WarnF(log.ModuleAgent, "CodeGen gateway: account mismatch: requested=%s authorized=%s", accountStr, authorizedAccount)
-				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-					RequestID: msg.ID,
-					Success:   false,
-					Error:     "account mismatch: not authorized to access this account",
-				})
-				return
+				// 验证 account 是否匹配
+				if accountStr != authorizedAccount {
+					log.WarnF(log.ModuleAgent, "CodeGen gateway: account mismatch: requested=%s authorized=%s", accountStr, authorizedAccount)
+					b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+						RequestID: msg.ID,
+						Success:   false,
+						Error:     "account mismatch: not authorized to access this account",
+					})
+					return
+				}
+			} else {
+				log.MessageF(log.ModuleAgent, "CodeGen gateway: no delegation token for account=%s, proceeding without token verification", accountStr)
 			}
 		}
+	}
+
+	// 准备 MCP 调用上下文（设置 requestID 和 delegation token 到 mcp 包）
+	if PrepareMCPContext != nil && accountStr != "" {
+		PrepareMCPContext(msg.ID, accountStr)
 	}
 
 	// 调用 MCP 内部工具（通过注入的函数，带超时保护）

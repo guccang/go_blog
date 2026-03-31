@@ -149,6 +149,18 @@ func main() {
 		}
 		return "", delegation.ErrInvalidToken
 	}
+	// PrepareMCPContext 在调用 tool 前设置 mcp 包的上下文
+	codegen.PrepareMCPContext = func(requestID string, account string) {
+		// 设置当前请求 ID
+		mcp.SetCurrentRequestID(requestID)
+		// 设置 delegation token 到 mcp 包（如果有）
+		token := codegen.GetDelegationToken(account)
+		if token != nil {
+			if delegateToken, ok := token.(*delegation.DelegationToken); ok {
+				mcp.SetDelegationToken(requestID, delegateToken)
+			}
+		}
+	}
 
 	// 如果配置了 gateway_url，连接 gateway 注册为 blog-agent agent
 	gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
