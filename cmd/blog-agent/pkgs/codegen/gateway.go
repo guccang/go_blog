@@ -666,72 +666,26 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s) msgID=%s", msg.From, payload.ToolName, mcpName, msg.ID)
 
-	// 从 tool_call payload 中提取 delegation token
-	if payload.DelegationToken != "" {
-		tokenLen := len(payload.DelegationToken)
-		prefixLen := 50
-		if tokenLen < prefixLen {
-			prefixLen = tokenLen
-		}
-		log.MessageF(log.ModuleAgent, "CodeGen gateway: delegation token received: len=%d prefix=%s",
-			tokenLen, payload.DelegationToken[:prefixLen])
-		if tokenObj, err := ParseDelegationTokenFromHeader(payload.DelegationToken); err == nil {
-			targetAccount := tokenObj.GetTargetAccount()
-			SetDelegationToken(targetAccount, tokenObj)
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call extracted delegation token: targetAccount=%s", targetAccount)
-		} else {
-			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token from tool_call: %v", err)
-		}
-	}
-
-	// ====== Delegation Token 验证 ======
-	// 关键：delegation token 的 TargetAccount 必须与请求的 account 完全匹配
-	// 验证逻辑：
-	// 1. 如果请求有 account 参数，检查是否有有效的 delegation token
-	// 2. 如果有 token，验证签名、过期、nonce
-	// 3. 检查 token.TargetAccount 是否等于请求的 account，不匹配则拒绝
-	// 4. 没有 token 则放行（wechat 等无 token 场景）
+	// ====== 权限验证：AuthenticatedUser 方案 ======
+	// 核心逻辑：如果 tool_call 携带 AuthenticatedUser，则必须与 args["account"] 匹配
+	// 这确保了 app-agent 用户只能访问自己的账户数据
 	var accountStr string
-
-	// 检查 args 中是否有 account 参数
 	if accountArg, hasAccount := args["account"]; hasAccount {
 		accountStr, _ = accountArg.(string)
-		if accountStr != "" {
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call account=%s", accountStr)
+	}
 
-			// 获取缓存的 delegation token（GetDelegationToken 会优先返回 currentDelegationToken）
-			token := GetDelegationToken(accountStr)
-
-			// 有 token 则必须验证
-			if token != nil {
-				// 验证 delegation token
-				authorizedAccount, err := VerifyDelegationToken(token)
-				if err != nil {
-					log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token verification failed: %v", err)
-					b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-						RequestID: msg.ID,
-						Success:   false,
-						Error:     fmt.Sprintf("delegation token invalid: %v", err),
-					})
-					return
-				}
-
-				// 验证 account 是否匹配（token 只能访问其声明的目标账户）
-				if accountStr != authorizedAccount {
-					log.WarnF(log.ModuleAgent, "CodeGen gateway: account mismatch: requested=%s authorized=%s", accountStr, authorizedAccount)
-					b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
-						RequestID: msg.ID,
-						Success:   false,
-						Error:     "account mismatch: not authorized to access this account",
-					})
-					return
-				}
-				log.MessageF(log.ModuleAgent, "CodeGen gateway: token verified OK for account=%s", accountStr)
-			} else {
-				// 没有 token（wechat 等场景），不验证
-				log.MessageF(log.ModuleAgent, "CodeGen gateway: no token for account=%s, proceeding without token", accountStr)
-			}
+	if payload.AuthenticatedUser != "" && accountStr != "" {
+		if payload.AuthenticatedUser != accountStr {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: account mismatch: authenticated_user=%s requested_account=%s",
+				payload.AuthenticatedUser, accountStr)
+			b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+				RequestID: msg.ID,
+				Success:   false,
+				Error:     fmt.Sprintf("权限拒绝：用户 %s 无权访问账户 %s 的数据", payload.AuthenticatedUser, accountStr),
+			})
+			return
 		}
+		log.MessageF(log.ModuleAgent, "CodeGen gateway: access granted for authenticated_user=%s account=%s", payload.AuthenticatedUser, accountStr)
 	}
 
 	// 准备 MCP 调用上下文（设置 requestID 和 delegation token 到 mcp 包）

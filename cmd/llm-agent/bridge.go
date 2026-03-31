@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net"
@@ -14,6 +15,24 @@ import (
 
 	"uap"
 )
+
+// context key for authenticated user
+type contextKey string
+
+const authenticatedUserKey contextKey = "authenticated_user"
+
+// WithAuthenticatedUser 将认证用户注入 context
+func WithAuthenticatedUser(ctx context.Context, user string) context.Context {
+	return context.WithValue(ctx, authenticatedUserKey, user)
+}
+
+// GetAuthenticatedUser 从 context 提取认证用户
+func GetAuthenticatedUser(ctx context.Context) string {
+	if user, ok := ctx.Value(authenticatedUserKey).(string); ok {
+		return user
+	}
+	return ""
+}
 
 // queuedTask 缓冲队列中的待执行任务
 type queuedTask struct {
@@ -80,9 +99,6 @@ type Bridge struct {
 	// 请求-响应关联
 	pending map[string]chan *toolResultWithFrom // request_id → result channel
 	pendMu  sync.Mutex
-
-	// 当前会话的 delegation token（从 app-agent 消息中提取）
-	delegationToken string
 
 	// 工具调用进度转发（deploy-agent 等发送的 tool_progress 事件）
 	toolProgressSinks map[string]EventSink // msgID → sink

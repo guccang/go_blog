@@ -548,7 +548,10 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		}
 	}()
 
-	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s delegation_token_len=%d", agentID, toolName, msgID, len(b.delegationToken))
+	// 从 context 提取认证用户（并发安全）
+	authenticatedUser := GetAuthenticatedUser(ctx)
+
+	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s authenticated_user=%s", agentID, toolName, msgID, authenticatedUser)
 
 	err := b.client.Send(&uap.Message{
 		Type: uap.MsgToolCall,
@@ -556,9 +559,9 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		From: b.cfg.AgentID,
 		To:   agentID,
 		Payload: mustMarshal(uap.ToolCallPayload{
-			ToolName:        toolName,
-			Arguments:       args,
-			DelegationToken: b.delegationToken, // 附加 delegation token
+			ToolName:          toolName,
+			Arguments:         args,
+			AuthenticatedUser: authenticatedUser, // 传递认证用户
 		}),
 		Ts: time.Now().UnixMilli(),
 	})

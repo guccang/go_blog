@@ -112,17 +112,15 @@ func (s *AppSink) Result() string  { return s.buf.String() }
 func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	log.Printf("[App] from=%s user=%s content=%s", fromAgent, appUser, content)
 
-	// 提取 delegation token（格式：[delegation:xxx]actual content）
-	b.delegationToken = ""
+	// 去除 delegation token 前缀（格式：[delegation:xxx]actual content）
+	// 注意：不再依赖 delegation token 做权限验证，改用 AuthenticatedUser 方案
+	// 但仍需要从 content 中去除前缀，避免 token 被发送给 LLM
 	if strings.HasPrefix(content, "[delegation:") {
 		endIdx := strings.Index(content, "]")
-		if endIdx > 13 { // "[delegation:" 长度为 13
-			b.delegationToken = content[13:endIdx]
+		if endIdx > 12 { // "[delegation:" 长度为 12
 			content = content[endIdx+1:]
-			log.Printf("[App] extracted delegation token for user=%s, token_len=%d", appUser, len(b.delegationToken))
+			log.Printf("[App] stripped delegation token prefix from content for user=%s", appUser)
 		}
-	} else {
-		log.Printf("[App] no delegation token prefix in content")
 	}
 
 	// 确保账户 workspace 目录存在（多账户支持）
@@ -208,6 +206,8 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	}
 
 	goctx, cancel := context.WithCancel(context.Background())
+	// 将认证用户注入 context，供 callRemoteAgent 在 tool_call 中传递给 blog-agent
+	goctx = WithAuthenticatedUser(goctx, appUser)
 	defer cancel()
 	session.SetCancel(cancel)
 	defer session.SetCancel(nil)

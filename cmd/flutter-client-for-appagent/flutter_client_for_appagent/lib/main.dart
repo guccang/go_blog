@@ -25,15 +25,44 @@ class AppAgentClientApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF0E3B2E),
-          secondary: Color(0xFFC47B2A),
-          surface: Color(0xFFF7F2E8),
+          primary: Color(0xFF154A3F),
+          secondary: Color(0xFFCA8752),
+          surface: Color(0xFFFFFBF5),
         ),
-        scaffoldBackgroundColor: const Color(0xFFF7F2E8),
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
+        scaffoldBackgroundColor: const Color(0xFFF4EFE6),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Color(0xFF1D2B24),
+          elevation: 0,
+          centerTitle: false,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD7CCBC)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFFD7CCBC)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: Color(0xFF154A3F), width: 1.4),
+          ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0xFFFFFCF8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF21352D),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
       ),
       home: const ChatPage(),
@@ -511,18 +540,6 @@ class _ChatPageState extends State<ChatPage> {
         scopeKey: _currentScopeKey,
       ),
       updateStatus: text,
-    );
-  }
-
-  void _appendIncoming(String text, DateTime when) {
-    _appendMessage(
-      ChatMessage(
-        content: text,
-        direction: MessageDirection.incoming,
-        timestamp: when,
-        scopeKey: _currentScopeKey,
-      ),
-      updateStatus: 'Received message',
     );
   }
 
@@ -1234,344 +1251,527 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('App Agent Client'),
-        backgroundColor: const Color(0xFFF0E8D8),
+  Color get _connectionColor {
+    if (_connected) {
+      return const Color(0xFF187A57);
+    }
+    if (_connecting || _loggingIn) {
+      return const Color(0xFFB9772E);
+    }
+    return const Color(0xFF8A5A42);
+  }
+
+  String get _connectionLabel {
+    if (_connected) {
+      return 'Connected';
+    }
+    if (_connecting) {
+      return 'Connecting';
+    }
+    if (_sessionToken.isEmpty) {
+      return 'Login required';
+    }
+    return 'Offline';
+  }
+
+  Widget _buildStatusChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
-      body: Column(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            color: const Color(0xFFF0E8D8),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _configLoading
-                            ? 'Loading client config...'
-                            : (_clientConfig == null
-                                  ? (_configError.isEmpty
-                                        ? 'Client config unavailable'
-                                        : _configError)
-                                  : 'Client config loaded'),
-                        style: TextStyle(
-                          color: _clientConfig == null
-                              ? Colors.brown[500]
-                              : Colors.green[700],
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _userIdController,
-                        decoration: const InputDecoration(
-                          labelText: 'User ID',
-                          hintText: 'demo-user',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'blog-agent password',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    FilledButton.icon(
-                      onPressed:
-                          _loggingIn || _configLoading || _clientConfig == null
-                          ? null
-                          : _login,
-                      icon: const Icon(Icons.login),
-                      label: Text(_sessionToken.isEmpty ? 'Login' : 'Re-login'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _connected || _connecting
-                          ? _disconnectWs
-                          : null,
-                      icon: const Icon(Icons.link_off),
-                      label: const Text('Disconnect'),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _connected
-                            ? 'WebSocket online'
-                            : (_connecting
-                                  ? 'Connecting...'
-                                  : (_sessionToken.isEmpty
-                                        ? 'Login required'
-                                        : 'WebSocket offline')),
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: _connected
-                              ? Colors.green[700]
-                              : Colors.brown[400],
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _clientConfig == null
-                        ? 'WS endpoint unavailable until client config loads.'
-                        : 'WS endpoint ready.',
-                    style: TextStyle(color: Colors.brown[700], fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _sessionToken.isEmpty
-                        ? 'Login uses blog-agent account verification. User ID maps to account.'
-                        : 'Login ok. Offline messages are cached in app-agent and flushed after reconnect.',
-                    style: TextStyle(color: Colors.brown[500], fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _groupIdController,
-                        decoration: const InputDecoration(
-                          labelText: 'Group ID',
-                          hintText: 'party-01',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('create'),
-                      child: const Text('Create'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('join'),
-                      child: const Text('Join'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('leave'),
-                      child: const Text('Leave'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        selected: _currentGroupId.isEmpty,
-                        label: const Text('Direct'),
-                        onSelected: (_) => unawaited(_switchToDirectScope()),
-                      ),
-                      ..._groups.map(
-                        (group) => ChoiceChip(
-                          selected: _currentGroupId == group.id,
-                          label: Text('${group.id} (${group.members.length})'),
-                          onSelected: (_) =>
-                              unawaited(_switchToGroupScope(group.id)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _currentGroupId.isEmpty
-                        ? 'Current scope: direct chat'
-                        : 'Current scope: group ${_currentGroupId.toLowerCase()}',
-                    style: TextStyle(
-                      color: Colors.brown[700],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (_recording) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _VoiceActionBadge(
-                          icon: Icons.close,
-                          label: '左上滑取消',
-                          active: _cancelVoiceAction,
-                          color: const Color(0xFF9B2C2C),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _VoiceActionBadge(
-                          icon: Icons.subtitles,
-                          label: '右上滑转文字',
-                          active: _speechVoiceAction,
-                          color: const Color(0xFF0E5A44),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _speechDraft.isEmpty
-                          ? '正在录音，松手发送语音'
-                          : '识别中: $_speechDraft',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.brown[700],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                return _MessageBubble(
-                  message: msg,
-                  onCopy: () async {
-                    await Clipboard.setData(ClipboardData(text: msg.content));
-                    if (!context.mounted) {
-                      return;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Message copied'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 18,
-                  color: Color(0x12000000),
-                  offset: Offset(0, -6),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _status,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.brown[700]),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    GestureDetector(
-                      onLongPressStart: _handleVoiceStart,
-                      onLongPressMoveUpdate: _handleVoiceMove,
-                      onLongPressEnd: _handleVoiceEnd,
-                      child: Container(
-                        height: 52,
-                        width: 52,
-                        decoration: BoxDecoration(
-                          color: _recording
-                              ? const Color(0xFF9B2C2C)
-                              : const Color(0xFFE8DCC7),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFD9C9AF)),
-                        ),
-                        child: Icon(
-                          _recording ? Icons.mic : Icons.mic_none,
-                          color: _recording
-                              ? Colors.white
-                              : const Color(0xFF5F4B37),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        minLines: 1,
-                        maxLines: 5,
-                        enabled: !_recording,
-                        onSubmitted: (_) => _sendMessage(),
-                        decoration: const InputDecoration(
-                          labelText: 'Message',
-                          hintText: 'Ask something... or hold mic',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: (_sending || _recording) ? null : _sendMessage,
-                      icon: const Icon(Icons.send),
-                      label: const Text('Send'),
-                    ),
-                  ],
-                ),
-              ],
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTopPanel() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFFCF7), Color(0xFFF2E7D6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFFE4D8C4)),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 24,
+            color: Color(0x14000000),
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF154A3F),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.forum_rounded, color: Colors.white),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'App Agent',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1D2B24),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _clientConfig == null
+                          ? (_configLoading
+                                ? 'Loading local client config...'
+                                : (_configError.isEmpty
+                                      ? 'Client config unavailable'
+                                      : _configError))
+                          : 'Local config loaded. Sign in and continue the conversation.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: Color(0xFF6E6253),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildStatusChip(
+                icon: Icons.wifi_tethering_rounded,
+                label: _connectionLabel,
+                color: _connectionColor,
+              ),
+              _buildStatusChip(
+                icon: Icons.layers_outlined,
+                label: _currentGroupId.isEmpty
+                    ? 'Direct chat'
+                    : 'Group ${_currentGroupId.toLowerCase()}',
+                color: const Color(0xFF8B633D),
+              ),
+              if (_sessionToken.isNotEmpty)
+                _buildStatusChip(
+                  icon: Icons.verified_user_outlined,
+                  label: _userIdController.text.trim().isEmpty
+                      ? 'Logged in'
+                      : _userIdController.text.trim(),
+                  color: const Color(0xFF154A3F),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _userIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'User ID',
+                    hintText: 'demo-user',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    hintText: 'blog-agent password',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _loggingIn || _configLoading || _clientConfig == null
+                    ? null
+                    : _login,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF154A3F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 15,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                icon: Icon(
+                  _sessionToken.isEmpty ? Icons.login : Icons.refresh_rounded,
+                ),
+                label: Text(_sessionToken.isEmpty ? 'Login' : 'Re-login'),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _connected || _connecting ? _disconnectWs : null,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 15,
+                  ),
+                  side: const BorderSide(color: Color(0xFFD4C7B1)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                icon: const Icon(Icons.link_off_rounded),
+                label: const Text('Disconnect'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _sessionToken.isEmpty
+                ? 'Login uses your blog-agent account. URL and token come from the local JSON config.'
+                : 'Messages are cached locally and app-agent will flush queued pushes after reconnect.',
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: Color(0xFF7B6D5C),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _groupIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'Group ID',
+                    hintText: 'party-01',
+                    prefixIcon: Icon(Icons.groups_2_outlined),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: _sessionToken.isEmpty
+                    ? null
+                    : () => _mutateGroup('create'),
+                child: const Text('Create'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: _sessionToken.isEmpty
+                    ? null
+                    : () => _mutateGroup('join'),
+                child: const Text('Join'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _sessionToken.isEmpty
+                    ? null
+                    : () => _mutateGroup('leave'),
+                child: const Text('Leave'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  selected: _currentGroupId.isEmpty,
+                  label: const Text('Direct'),
+                  onSelected: (_) => unawaited(_switchToDirectScope()),
+                ),
+                const SizedBox(width: 8),
+                ..._groups.expand(
+                  (group) => [
+                    ChoiceChip(
+                      selected: _currentGroupId == group.id,
+                      label: Text('${group.id} (${group.members.length})'),
+                      onSelected: (_) =>
+                          unawaited(_switchToGroupScope(group.id)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (_recording) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _VoiceActionBadge(
+                    icon: Icons.close,
+                    label: 'Slide up-left to cancel',
+                    active: _cancelVoiceAction,
+                    color: const Color(0xFF9B2C2C),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _VoiceActionBadge(
+                    icon: Icons.subtitles,
+                    label: 'Slide up-right to transcribe',
+                    active: _speechVoiceAction,
+                    color: const Color(0xFF0E5A44),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _speechDraft.isEmpty
+                  ? 'Recording in progress. Release to send audio.'
+                  : 'Transcribing: $_speechDraft',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF6A5A49),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComposer() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF8),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE2D6C3)),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 24,
+            color: Color(0x12000000),
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF655848),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              GestureDetector(
+                onLongPressStart: _handleVoiceStart,
+                onLongPressMoveUpdate: _handleVoiceMove,
+                onLongPressEnd: _handleVoiceEnd,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  height: 56,
+                  width: 56,
+                  decoration: BoxDecoration(
+                    color: _recording
+                        ? const Color(0xFF9B2C2C)
+                        : const Color(0xFFE6D8C2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(
+                    _recording ? Icons.mic : Icons.mic_none_rounded,
+                    color: _recording ? Colors.white : const Color(0xFF5A4A39),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  minLines: 1,
+                  maxLines: 5,
+                  enabled: !_recording,
+                  onSubmitted: (_) => _sendMessage(),
+                  decoration: InputDecoration(
+                    labelText: 'Message',
+                    hintText: _currentGroupId.isEmpty
+                        ? 'Ask something... or hold mic'
+                        : 'Message @robot or the group...',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                onPressed: (_sending || _recording) ? null : _sendMessage,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF154A3F),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(64, 56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: _sending
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_rounded),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('App Agent'),
+            Text(
+              _currentGroupId.isEmpty
+                  ? 'Direct conversation'
+                  : 'Group ${_currentGroupId.toLowerCase()}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: _buildStatusChip(
+                icon: Icons.wifi_tethering_rounded,
+                label: _connectionLabel,
+                color: _connectionColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFF7F0E6), Color(0xFFEDE2D0), Color(0xFFDCCDB8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildTopPanel(),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFDF9F3).withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: const Color(0xFFE2D6C3)),
+                      boxShadow: const [
+                        BoxShadow(
+                          blurRadius: 28,
+                          color: Color(0x14000000),
+                          offset: Offset(0, 14),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = _messages[index];
+                          return _MessageBubble(
+                            message: msg,
+                            onCopy: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: msg.content),
+                              );
+                              if (!context.mounted) {
+                                return;
+                              }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Message copied'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              _buildComposer(),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1592,7 +1792,7 @@ class _MessageBubble extends StatelessWidget {
         : (isOutgoing ? Alignment.centerRight : Alignment.centerLeft);
     final bgColor = isSystem
         ? const Color(0xFFE8DCC7)
-        : (isOutgoing ? const Color(0xFF0E3B2E) : const Color(0xFFFFFFFF));
+        : (isOutgoing ? const Color(0xFF154A3F) : const Color(0xFFFFFCF8));
     final fgColor = isOutgoing ? Colors.white : const Color(0xFF2D241F);
 
     return Align(
@@ -1608,7 +1808,18 @@ class _MessageBubble extends StatelessWidget {
             decoration: BoxDecoration(
               color: bgColor,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFD9C9AF)),
+              border: Border.all(
+                color: isOutgoing
+                    ? const Color(0xFF154A3F)
+                    : const Color(0xFFE2D6C3),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 18,
+                  color: Color(0x12000000),
+                  offset: Offset(0, 8),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: isSystem

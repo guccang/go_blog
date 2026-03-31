@@ -101,9 +101,10 @@ type HeartbeatPayload struct {
 
 // ToolCallPayload 跨 agent 工具调用请求
 type ToolCallPayload struct {
-	ToolName        string          `json:"tool_name"`
-	Arguments       json.RawMessage `json:"arguments"`
-	DelegationToken string          `json:"delegation_token,omitempty"` // 委托令牌（用于权限验证）
+	ToolName          string          `json:"tool_name"`
+	Arguments         json.RawMessage `json:"arguments"`
+	AuthenticatedUser string          `json:"authenticated_user,omitempty"` // 已认证用户（由 llm-agent 从 app-agent 会话中提取，用于权限验证）
+	DelegationToken   string          `json:"delegation_token,omitempty"`   // 委托令牌（已废弃，保留兼容）
 }
 
 // ToolResultPayload 跨 agent 工具调用结果
