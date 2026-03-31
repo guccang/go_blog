@@ -548,7 +548,7 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		}
 	}()
 
-	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s", agentID, toolName, msgID)
+	log.Printf("[Bridge] tool_call → agent=%s tool=%s msgID=%s delegation_token_len=%d", agentID, toolName, msgID, len(b.delegationToken))
 
 	err := b.client.Send(&uap.Message{
 		Type: uap.MsgToolCall,

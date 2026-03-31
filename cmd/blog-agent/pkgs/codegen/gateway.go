@@ -668,6 +668,13 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 
 	// 从 tool_call payload 中提取 delegation token
 	if payload.DelegationToken != "" {
+		tokenLen := len(payload.DelegationToken)
+		prefixLen := 50
+		if tokenLen < prefixLen {
+			prefixLen = tokenLen
+		}
+		log.MessageF(log.ModuleAgent, "CodeGen gateway: delegation token received: len=%d prefix=%s",
+			tokenLen, payload.DelegationToken[:prefixLen])
 		if tokenObj, err := ParseDelegationTokenFromHeader(payload.DelegationToken); err == nil {
 			targetAccount := tokenObj.GetTargetAccount()
 			SetDelegationToken(targetAccount, tokenObj)

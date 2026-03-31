@@ -119,8 +119,10 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		if endIdx > 13 { // "[delegation:" 长度为 13
 			b.delegationToken = content[13:endIdx]
 			content = content[endIdx+1:]
-			log.Printf("[App] extracted delegation token for user=%s", appUser)
+			log.Printf("[App] extracted delegation token for user=%s, token_len=%d", appUser, len(b.delegationToken))
 		}
+	} else {
+		log.Printf("[App] no delegation token prefix in content")
 	}
 
 	// 确保账户 workspace 目录存在（多账户支持）
