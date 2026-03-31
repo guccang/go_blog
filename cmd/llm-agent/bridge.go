@@ -81,6 +81,9 @@ type Bridge struct {
 	pending map[string]chan *toolResultWithFrom // request_id → result channel
 	pendMu  sync.Mutex
 
+	// 当前会话的 delegation token（从 app-agent 消息中提取）
+	delegationToken string
+
 	// 工具调用进度转发（deploy-agent 等发送的 tool_progress 事件）
 	toolProgressSinks map[string]EventSink // msgID → sink
 	toolProgressMu    sync.Mutex

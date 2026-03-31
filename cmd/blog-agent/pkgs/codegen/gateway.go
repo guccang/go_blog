@@ -666,6 +666,17 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s) msgID=%s", msg.From, payload.ToolName, mcpName, msg.ID)
 
+	// 从 tool_call payload 中提取 delegation token
+	if payload.DelegationToken != "" {
+		if tokenObj, err := ParseDelegationTokenFromHeader(payload.DelegationToken); err == nil {
+			targetAccount := tokenObj.GetTargetAccount()
+			SetDelegationToken(targetAccount, tokenObj)
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call extracted delegation token: targetAccount=%s", targetAccount)
+		} else {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token from tool_call: %v", err)
+		}
+	}
+
 	// ====== Delegation Token 验证 ======
 	// 关键：delegation token 的 TargetAccount 必须与请求的 account 完全匹配
 	// 验证逻辑：

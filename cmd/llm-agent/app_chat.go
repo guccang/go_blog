@@ -112,6 +112,17 @@ func (s *AppSink) Result() string  { return s.buf.String() }
 func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	log.Printf("[App] from=%s user=%s content=%s", fromAgent, appUser, content)
 
+	// 提取 delegation token（格式：[delegation:xxx]actual content）
+	b.delegationToken = ""
+	if strings.HasPrefix(content, "[delegation:") {
+		endIdx := strings.Index(content, "]")
+		if endIdx > 13 { // "[delegation:" 长度为 13
+			b.delegationToken = content[13:endIdx]
+			content = content[endIdx+1:]
+			log.Printf("[App] extracted delegation token for user=%s", appUser)
+		}
+	}
+
 	// 确保账户 workspace 目录存在（多账户支持）
 	if b.cfg.WorkspaceDir != "" {
 		EnsureAccountWorkspace(b.cfg.WorkspaceDir, appUser)

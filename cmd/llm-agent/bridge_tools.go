@@ -556,8 +556,9 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		From: b.cfg.AgentID,
 		To:   agentID,
 		Payload: mustMarshal(uap.ToolCallPayload{
-			ToolName:  toolName,
-			Arguments: args,
+			ToolName:        toolName,
+			Arguments:       args,
+			DelegationToken: b.delegationToken, // 附加 delegation token
 		}),
 		Ts: time.Now().UnixMilli(),
 	})
