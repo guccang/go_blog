@@ -139,12 +139,12 @@ func Decode(data string) (*DelegationToken, error) {
 
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		return nil, ErrInvalidToken
+		return nil, fmt.Errorf("%w: base64 decode error: %v", ErrInvalidToken, err)
 	}
 
 	var token DelegationToken
 	if err := json.Unmarshal(decoded, &token); err != nil {
-		return nil, ErrInvalidToken
+		return nil, fmt.Errorf("%w: json unmarshal error: %v", ErrInvalidToken, err)
 	}
 
 	return &token, nil
