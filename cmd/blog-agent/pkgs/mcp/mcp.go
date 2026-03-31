@@ -101,13 +101,11 @@ func ValidateAccountAccess(requestID string, requestedAccount string) (string, e
 		return "", err
 	}
 
-	// 如果请求的 account 与授权账户不符，检查是否有通配符权限
+	// 如果请求的 account 与授权账户不符，拒绝访问
+	// 委托令牌只能访问其声明的目标账户，不允许通配符权限
 	if requestedAccount != "" && requestedAccount != authorizedAccount {
-		// 检查 token 是否有访问其他账户的权限（通配符）
-		if !token.HasScope("*") {
-			return "", delegation.NewDelegationError("ACCOUNT_MISMATCH",
-				fmt.Sprintf("token authorizes account %s but requested %s", authorizedAccount, requestedAccount))
-		}
+		return "", delegation.NewDelegationError("ACCOUNT_MISMATCH",
+			fmt.Sprintf("token authorizes account %s but requested %s", authorizedAccount, requestedAccount))
 	}
 
 	// 返回授权的账户
