@@ -527,6 +527,9 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 	delegationToken := ""
 	content := payload.Content
 
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: handleAppNotify from=%s to=%s channel=%s",
+		msg.From, payload.To, payload.Channel)
+
 	if strings.HasPrefix(content, "[delegation:") {
 		// 查找匹配的 ]
 		endIdx := strings.Index(content, "]")
@@ -534,7 +537,6 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 			delegationToken = content[13:endIdx]
 			// 实际的聊天内容
 			content = content[endIdx+1:]
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: extracted delegation token for user=%s", payload.To)
 		}
 	}
 
@@ -542,14 +544,18 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 	// requestID 使用 account（To 字段），这样后续的 tool call 可以通过 account 获取 token
 	if delegationToken != "" {
 		if tokenObj, err := ParseDelegationTokenFromHeader(delegationToken); err == nil {
-			// 使用 target account 作为 key
-			SetDelegationToken(tokenObj.GetTargetAccount(), tokenObj)
+			// 使用 token 中的 target account 作为 key（不是 payload.To）
+			targetAccount := tokenObj.GetTargetAccount()
+			SetDelegationToken(targetAccount, tokenObj)
 			// 标记该账户已通过 app-agent 验证，后续 tool call 必须提供有效的 token
-			appChannelVerified[tokenObj.GetTargetAccount()] = true
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: cached delegation token for targetAccount=%s", tokenObj.GetTargetAccount())
+			appChannelVerified[targetAccount] = true
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: cached token: payload.To=%s token.TargetAccount=%s verified=%v",
+				payload.To, targetAccount, appChannelVerified[targetAccount])
 		} else {
 			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token: %v", err)
 		}
+	} else {
+		log.MessageF(log.ModuleAgent, "CodeGen gateway: no delegation token in message from %s", payload.To)
 	}
 
 	// 注意：这里只是缓存 token，实际的 tool call 验证在 handleToolCall 中进行
@@ -669,12 +675,15 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 	if accountArg, hasAccount := args["account"]; hasAccount {
 		accountStr, _ = accountArg.(string)
 		if accountStr != "" {
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call account=%s appVerified=%v",
+				accountStr, appChannelVerified[accountStr])
+
 			// 检查该账户是否通过 app-agent 验证过
 			if appChannelVerified[accountStr] {
 				// 已验证账户必须有有效的 delegation token
 				token = GetDelegationToken(accountStr)
 				if token == nil {
-					log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token required for verified account=%s", accountStr)
+					log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token required for verified account=%s but not found in store", accountStr)
 					b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 						RequestID: msg.ID,
 						Success:   false,
@@ -705,6 +714,7 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 					})
 					return
 				}
+				log.MessageF(log.ModuleAgent, "CodeGen gateway: token verified OK for account=%s", accountStr)
 			} else {
 				// 未验证账户（wechat 等），不要求 delegation token
 				log.MessageF(log.ModuleAgent, "CodeGen gateway: account=%s not app-verified, proceeding without token", accountStr)
