@@ -26,7 +26,36 @@ var (
 	MCPCallInnerTools func(name string, args map[string]interface{}) string
 	// MCPGetToolInfos 获取 MCP 工具定义列表
 	MCPGetToolInfos func() []MCPToolInfo
+
+	// Delegation Token 相关的函数（由 agent 包注入）
+	// ParseDelegationTokenFromHeader 解析 delegation token
+	ParseDelegationTokenFromHeader func(header string) (DelegationTokenHolder, error)
+	// SetDelegationToken 设置 delegation token 到上下文（本地存储）
+	SetDelegationToken func(key string, token DelegationTokenHolder)
+	// GetDelegationToken 从上下文获取 delegation token（本地存储）
+	GetDelegationToken func(key string) DelegationTokenHolder
+	// VerifyDelegationToken 验证 delegation token
+	VerifyDelegationToken func(token DelegationTokenHolder) (string, error)
 )
+
+// DelegationTokenHolder delegation token 接口（用于避免直接依赖 mcp 包）
+type DelegationTokenHolder interface {
+	GetTargetAccount() string
+}
+
+// delegationTokenStore 本地 token 存储（key: account, value: token）
+var delegationTokenStore = make(map[string]DelegationTokenHolder)
+
+// initDelegationTokenStore 初始化 delegation token 存储
+func initDelegationTokenStore() {
+	// 设置本地存储函数
+	SetDelegationToken = func(key string, token DelegationTokenHolder) {
+		delegationTokenStore[key] = token
+	}
+	GetDelegationToken = func(key string) DelegationTokenHolder {
+		return delegationTokenStore[key]
+	}
+}
 
 // GatewaySender 通过 gateway 路由发送消息
 type GatewaySender struct {
@@ -452,6 +481,12 @@ func (b *GatewayBridge) handleNotify(msg *uap.Message) {
 		return
 	}
 
+	// ====== 处理 app channel 的消息（来自 app-agent）======
+	if payload.Channel == "app" {
+		b.handleAppNotify(msg, &payload)
+		return
+	}
+
 	if payload.Channel != "wechat" {
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: unsupported notify channel: %s", payload.Channel)
 		return
@@ -475,6 +510,42 @@ func (b *GatewayBridge) handleNotify(msg *uap.Message) {
 		To:      payload.To,
 		Content: result,
 	})
+}
+
+// handleAppNotify 处理来自 app-agent 的通知消息
+// 提取并缓存 delegation token，以便后续 tool call 使用
+func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPayload) {
+	// 从消息内容中提取 delegation token（格式：[delegation:xxx]actual content）
+	delegationToken := ""
+	content := payload.Content
+
+	if strings.HasPrefix(content, "[delegation:") {
+		// 查找匹配的 ]
+		endIdx := strings.Index(content, "]")
+		if endIdx > 13 { // "[delegation:" 长度为 13
+			delegationToken = content[13:endIdx]
+			// 实际的聊天内容
+			content = content[endIdx+1:]
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: extracted delegation token for user=%s", payload.To)
+		}
+	}
+
+	// 设置 delegation token 到 MCP 包的上下文中
+	// requestID 使用 account（To 字段），这样后续的 tool call 可以通过 account 获取 token
+	if delegationToken != "" {
+		if tokenObj, err := ParseDelegationTokenFromHeader(delegationToken); err == nil {
+			// 使用 target account 作为 key
+			SetDelegationToken(tokenObj.GetTargetAccount(), tokenObj)
+			log.MessageF(log.ModuleAgent, "CodeGen gateway: cached delegation token for targetAccount=%s", tokenObj.GetTargetAccount())
+		} else {
+			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token: %v", err)
+		}
+	}
+
+	// 注意：这里只是缓存 token，实际的 tool call 验证在 handleToolCall 中进行
+	// app-agent 发送的 app channel 消息会被转发给 llm-agent 处理
+	// llm-agent 会调用 blog-agent 的 tool call，此时会使用缓存的 token 进行验证
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: app notify from=%s content_len=%d", msg.From, len(content))
 }
 
 // sendWechatViaGateway 通过 gateway 路由发送微信消息给用户
@@ -572,6 +643,54 @@ func (b *GatewayBridge) handleToolCall(msg *uap.Message) {
 	}
 
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: tool_call from=%s tool=%s (mcp=%s) msgID=%s", msg.From, payload.ToolName, mcpName, msg.ID)
+
+	// ====== Delegation Token 验证 ======
+	// 对于来自 gateway 的 tool call（来自 llm-agent），需要验证 delegation token
+	// delegation token 缓存在 MCP 包上下文中，key 是 account
+	var token DelegationTokenHolder
+
+	// 检查 args 中是否有 account 参数
+	if accountArg, hasAccount := args["account"]; hasAccount {
+		accountStr, isString := accountArg.(string)
+		if isString && accountStr != "" {
+			// 使用 account 作为 key 获取缓存的 delegation token
+			token = GetDelegationToken(accountStr)
+
+			// 有 account 参数，必须有有效的 delegation token
+			if token == nil {
+				log.WarnF(log.ModuleAgent, "CodeGen gateway: tool_call requires delegation token for account=%s", accountStr)
+				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+					RequestID: msg.ID,
+					Success:   false,
+					Error:     "delegation token required for accessing account data",
+				})
+				return
+			}
+
+			// 验证 delegation token
+			authorizedAccount, err := VerifyDelegationToken(token)
+			if err != nil {
+				log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token verification failed: %v", err)
+				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+					RequestID: msg.ID,
+					Success:   false,
+					Error:     fmt.Sprintf("delegation token invalid: %v", err),
+				})
+				return
+			}
+
+			// 验证 account 是否匹配
+			if accountStr != authorizedAccount {
+				log.WarnF(log.ModuleAgent, "CodeGen gateway: account mismatch: requested=%s authorized=%s", accountStr, authorizedAccount)
+				b.client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+					RequestID: msg.ID,
+					Success:   false,
+					Error:     "account mismatch: not authorized to access this account",
+				})
+				return
+			}
+		}
+	}
 
 	// 调用 MCP 内部工具（通过注入的函数，带超时保护）
 	if MCPCallInnerTools == nil {

@@ -108,6 +108,11 @@ func (t *DelegationToken) HasScope(scope string) bool {
 	return false
 }
 
+// GetTargetAccount 获取目标账户
+func (t *DelegationToken) GetTargetAccount() string {
+	return t.TargetAccount
+}
+
 // HasAnyScope 检查是否包含任一指定权限
 func (t *DelegationToken) HasAnyScope(scopes ...string) bool {
 	for _, scope := range scopes {

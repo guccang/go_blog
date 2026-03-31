@@ -146,6 +146,9 @@ var (
 
 // Init 初始化 CodeGen 模块
 func Init() {
+	// 初始化 delegation token 本地存储
+	initDelegationTokenStore()
+
 	adminAccount := config.GetAdminAccount()
 
 	// agent 认证 token：由 InitGatewayBridge 从 gateway_token 统一设置

@@ -136,6 +136,20 @@ func main() {
 		return infos
 	}
 
+	// 注入 delegation 函数到 codegen（用于 gateway 路由时的 token 验证）
+	// 注意：SetDelegationToken 和 GetDelegationToken 由 codegen 本地存储（initDelegationTokenStore）
+	// 这里只注入需要调用 mcp 包的函数
+	codegen.ParseDelegationTokenFromHeader = func(header string) (codegen.DelegationTokenHolder, error) {
+		return mcp.ParseDelegationTokenFromHeader(header)
+	}
+	codegen.VerifyDelegationToken = func(token codegen.DelegationTokenHolder) (string, error) {
+		// 通过类型断言将接口转换为具体类型
+		if delegateToken, ok := token.(*delegation.DelegationToken); ok {
+			return mcp.VerifyDelegationToken(delegateToken)
+		}
+		return "", delegation.ErrInvalidToken
+	}
+
 	// 如果配置了 gateway_url，连接 gateway 注册为 blog-agent agent
 	gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
 	if gatewayURL != "" {
