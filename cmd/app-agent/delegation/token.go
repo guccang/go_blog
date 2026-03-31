@@ -48,13 +48,13 @@ type TokenClaims struct {
 	Nonce          string   `json:"jti"`
 }
 
-// Encode 将令牌编码为 Base64 字符串
+// Encode 将令牌编码为 URL-safe Base64 字符串
 func (t *DelegationToken) Encode() (string, error) {
 	data, err := json.Marshal(t)
 	if err != nil {
 		return "", fmt.Errorf("marshal token: %w", err)
 	}
-	return base64.StdEncoding.EncodeToString(data), nil
+	return base64.URLEncoding.EncodeToString(data), nil
 }
 
 // Decode 从 Base64 字符串解码令牌

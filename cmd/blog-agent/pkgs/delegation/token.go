@@ -132,12 +132,12 @@ func (t *DelegationToken) Encode() (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-// Decode 从 Base64 字符串解码令牌
+// Decode 从 URL-safe Base64 字符串解码令牌
 func Decode(data string) (*DelegationToken, error) {
 	// 清理可能的空白字符
 	data = strings.TrimSpace(data)
 
-	decoded, err := base64.StdEncoding.DecodeString(data)
+	decoded, err := base64.URLEncoding.DecodeString(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: base64 decode error: %v", ErrInvalidToken, err)
 	}
