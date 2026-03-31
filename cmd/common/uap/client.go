@@ -218,6 +218,14 @@ func (c *Client) Send(msg *Message) error {
 		return err
 	}
 
+	// Debug: 如果是 tool_call 消息，记录 delegation_token 长度
+	if msg.Type == MsgToolCall {
+		var payload ToolCallPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+			log.Printf("[UAP Client] Send tool_call delegation_token_len=%d", len(payload.DelegationToken))
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
