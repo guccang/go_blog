@@ -145,6 +145,7 @@ enum MessageDirection { outgoing, incoming, system }
 
 class PushEnvelope {
   PushEnvelope({
+    required this.messageId,
     required this.sequence,
     required this.userId,
     required this.content,
@@ -156,6 +157,7 @@ class PushEnvelope {
 
   factory PushEnvelope.fromJson(Map<String, dynamic> json) {
     return PushEnvelope(
+      messageId: (json['message_id'] ?? '').toString(),
       sequence: json['sequence'] is int
           ? json['sequence'] as int
           : int.tryParse('${json['sequence']}') ?? 0,
@@ -173,6 +175,7 @@ class PushEnvelope {
     );
   }
 
+  final String messageId;
   final int sequence;
   final String userId;
   final String content;
@@ -370,6 +373,42 @@ class AppAgentClient {
     ).timeout(_wsConnectTimeout);
   }
 
+  Future<List<int>> downloadAttachment(String fileId) async {
+    final base = Uri.parse(baseUrl);
+    final pathSegments = <String>[
+      ...base.pathSegments.where((segment) => segment.isNotEmpty),
+      'api',
+      'app',
+      'attachments',
+      fileId,
+    ];
+    final uri = base.replace(
+      pathSegments: pathSegments,
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
+    );
+    final resp = await http
+        .get(
+          uri,
+          headers: {
+            if (receiveToken.trim().isNotEmpty)
+              'X-App-Agent-Token': receiveToken.trim(),
+            if (sessionToken.trim().isNotEmpty)
+              'X-App-Agent-Session': sessionToken.trim(),
+          },
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw HttpException(
+        'download attachment failed: ${resp.statusCode} ${resp.body}',
+      );
+    }
+    return resp.bodyBytes;
+  }
+
   static Uri _buildWsUri(String baseUrl, String userId, String sessionToken) {
     final base = Uri.parse(baseUrl);
     final scheme = base.scheme == 'https' ? 'wss' : 'ws';
@@ -414,6 +453,7 @@ class _ChatPageState extends State<ChatPage> {
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
   final List<GroupInfo> _groups = <GroupInfo>[];
+  final Set<String> _seenMessageIds = <String>{};
 
   WebSocket? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -572,19 +612,6 @@ class _ChatPageState extends State<ChatPage> {
   List<ChatMessage> get _messages =>
       _historyByScope[_currentScopeKey] ?? const <ChatMessage>[];
 
-  String get _wsUrl {
-    final baseUrl = _clientConfig?.baseUrl ?? '';
-    final userId = _userIdController.text.trim();
-    if (baseUrl.isEmpty || userId.isEmpty) {
-      return 'ws://<app-agent>/ws/app?user_id=<user>';
-    }
-    return AppAgentClient._buildWsUri(
-      baseUrl,
-      userId,
-      _sessionToken,
-    ).toString();
-  }
-
   Future<void> _copyText(String label, String value) async {
     if (value.trim().isEmpty) {
       return;
@@ -656,20 +683,25 @@ class _ChatPageState extends State<ChatPage> {
       unawaited(_persistHistory(message.scopeKey));
     }
     if (message.scopeKey == _currentScopeKey) {
-      _jumpToBottom();
+      _scrollToBottom();
     }
   }
 
-  void _jumpToBottom() {
+  void _scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) {
         return;
       }
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
+      final target = _scrollController.position.maxScrollExtent + 80;
+      if (animated) {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+        return;
+      }
+      _scrollController.jumpTo(target);
     });
   }
 
@@ -764,6 +796,9 @@ class _ChatPageState extends State<ChatPage> {
       _historyByScope[scopeKey] = <ChatMessage>[];
       if (mounted) {
         setState(() {});
+        if (scopeKey == _currentScopeKey) {
+          _scrollToBottom(animated: false);
+        }
       }
       return;
     }
@@ -774,6 +809,9 @@ class _ChatPageState extends State<ChatPage> {
       _historyByScope[scopeKey] = list;
       if (mounted) {
         setState(() {});
+        if (scopeKey == _currentScopeKey) {
+          _scrollToBottom(animated: false);
+        }
       }
     } catch (_) {
       _historyByScope[scopeKey] = <ChatMessage>[];
@@ -901,13 +939,13 @@ class _ChatPageState extends State<ChatPage> {
           _lastSequence = 0;
           _currentGroupId = '';
           _historyByScope.clear();
+          _seenMessageIds.clear();
           _groups.clear();
           _status = 'Login success, connecting WebSocket...';
         });
       }
       await _loadHistory('direct');
       await _refreshGroups();
-      _appendSystem('Login success for $userId');
       unawaited(_connectWs());
     } catch (err) {
       if (mounted) {
@@ -977,16 +1015,18 @@ class _ChatPageState extends State<ChatPage> {
           _status = 'WebSocket connected';
         });
       }
-      _appendSystem('Connected: $_wsUrl');
     } catch (err) {
+      final errorText = _describeRequestError(
+        err,
+        operation: 'WebSocket connect',
+      );
       if (mounted) {
         setState(() {
           _connecting = false;
           _connected = false;
-          _status = 'Connect failed';
+          _status = errorText;
         });
       }
-      _appendSystem(_describeRequestError(err, operation: 'WebSocket connect'));
       _scheduleReconnect();
     }
   }
@@ -1007,14 +1047,23 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _onWsData(dynamic data) {
+  Future<void> _onWsData(dynamic data) async {
     try {
       final text = data is String ? data : utf8.decode(data as List<int>);
       final decoded = jsonDecode(text) as Map<String, dynamic>;
       final envelope = PushEnvelope.fromJson(decoded);
-      if (envelope.userId.isNotEmpty &&
+      if (envelope.messageId.isNotEmpty) {
+        _sendSocketAck(envelope.messageId);
+        if (_seenMessageIds.contains(envelope.messageId)) {
+          return;
+        }
+      }
+      final meta = envelope.meta ?? <String, dynamic>{};
+      final groupId = (meta['group_id'] ?? '').toString().trim();
+      final isGroupMessage = groupId.isNotEmpty;
+      if (!isGroupMessage &&
+          envelope.userId.isNotEmpty &&
           envelope.userId != _userIdController.text.trim()) {
-        _appendSystem('Ignored message for user ${envelope.userId}');
         return;
       }
       if (envelope.sequence > 0 && envelope.sequence <= _lastSequence) {
@@ -1024,11 +1073,21 @@ class _ChatPageState extends State<ChatPage> {
         _lastSequence = envelope.sequence;
       }
 
+      if (_shouldFilterIncomingEnvelope(
+        envelope: envelope,
+        meta: meta,
+        isGroupMessage: isGroupMessage,
+      )) {
+        return;
+      }
+
       final when = DateTime.fromMillisecondsSinceEpoch(envelope.timestamp);
-      final meta = envelope.meta ?? <String, dynamic>{};
-      final groupId = (meta['group_id'] ?? '').toString();
+      final resolvedMeta = await _hydrateIncomingMediaMeta(
+        messageType: envelope.messageType,
+        meta: meta,
+      );
       final scopeKey = groupId.isEmpty ? 'direct' : _groupScopeKey(groupId);
-      final fromUser = (meta['from_user'] ?? '').toString();
+      final fromUser = (resolvedMeta['from_user'] ?? '').toString().trim();
       final isSystemMessage = envelope.messageType == 'system';
       final direction = isSystemMessage
           ? MessageDirection.system
@@ -1054,13 +1113,32 @@ class _ChatPageState extends State<ChatPage> {
           authorId: fromUser,
           groupId: groupId,
           messageType: envelope.messageType,
-          meta: meta,
+          meta: resolvedMeta,
         ),
         updateStatus: isSystemMessage ? envelope.content : 'Received message',
       );
+      if (envelope.messageId.isNotEmpty) {
+        _seenMessageIds.add(envelope.messageId);
+      }
     } catch (err) {
-      _appendSystem('Invalid WebSocket payload: $err');
+      if (mounted) {
+        setState(() {
+          _status = 'Invalid WebSocket payload';
+        });
+      }
     }
+  }
+
+  void _sendSocketAck(String messageId) {
+    final socket = _socket;
+    if (socket == null || messageId.trim().isEmpty) {
+      return;
+    }
+    try {
+      socket.add(
+        jsonEncode(<String, dynamic>{'type': 'ack', 'message_id': messageId}),
+      );
+    } catch (_) {}
   }
 
   void _handleSocketClosed(String text) {
@@ -1073,7 +1151,6 @@ class _ChatPageState extends State<ChatPage> {
         _status = text;
       });
     }
-    _appendSystem(text);
     _scheduleReconnect();
   }
 
@@ -1097,6 +1174,102 @@ class _ChatPageState extends State<ChatPage> {
         last.content == content &&
         last.messageType == messageType &&
         DateTime.now().difference(last.timestamp).inSeconds <= 5;
+  }
+
+  bool _shouldFilterIncomingEnvelope({
+    required PushEnvelope envelope,
+    required Map<String, dynamic> meta,
+    required bool isGroupMessage,
+  }) {
+    final messageType = envelope.messageType.trim().toLowerCase();
+    final origin = (meta['origin'] ?? '').toString().trim().toLowerCase();
+    final content = envelope.content.trim();
+
+    if (isGroupMessage) {
+      return messageType == 'system';
+    }
+
+    if (messageType == 'system') {
+      return true;
+    }
+
+    if (origin == 'llm-agent' && _looksLikeStatusMessage(content)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _looksLikeStatusMessage(String content) {
+    if (content.isEmpty) {
+      return false;
+    }
+    const prefixes = <String>[
+      '[system]',
+      '[tool]',
+      '[result]',
+      '[error]',
+      'Codegen task completed',
+      'Codegen task failed',
+      'App Agent status',
+      'Gateway disconnected',
+      'WebSocket connected.',
+    ];
+    for (final prefix in prefixes) {
+      if (content.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> _hydrateIncomingMediaMeta({
+    required String messageType,
+    required Map<String, dynamic> meta,
+  }) async {
+    if (meta.isEmpty) {
+      return meta;
+    }
+    final fileId = (meta['file_id'] ?? '').toString().trim();
+    if (fileId.isEmpty) {
+      return meta;
+    }
+    final resolved = Map<String, dynamic>.from(meta);
+    try {
+      switch (messageType.trim().toLowerCase()) {
+        case 'audio':
+          final currentPath = (resolved['audio_path'] ?? '').toString().trim();
+          if (currentPath.isNotEmpty && await File(currentPath).exists()) {
+            return resolved;
+          }
+          final bytes = await _client.downloadAttachment(fileId);
+          final extension =
+              (resolved['audio_format'] ?? resolved['file_format'] ?? 'bin')
+                  .toString()
+                  .trim();
+          resolved['audio_path'] = await _persistAttachmentBytes(
+            bytes: bytes,
+            subdir: 'voice_messages',
+            prefix: 'voice',
+            extension: extension.isEmpty ? 'bin' : extension,
+          );
+          return resolved;
+        case 'image':
+          if ((resolved['image_base64'] ?? '').toString().trim().isNotEmpty) {
+            return resolved;
+          }
+          final bytes = await _client.downloadAttachment(fileId);
+          resolved['image_base64'] = base64Encode(bytes);
+          return resolved;
+        default:
+          return resolved;
+      }
+    } catch (err) {
+      _appendSystem(
+        _describeRequestError(err, operation: 'Download attachment'),
+      );
+      return resolved;
+    }
   }
 
   void _scheduleReconnect() {
@@ -1431,15 +1604,29 @@ class _ChatPageState extends State<ChatPage> {
     required List<int> bytes,
     required String extension,
   }) async {
+    return _persistAttachmentBytes(
+      bytes: bytes,
+      subdir: 'voice_messages',
+      prefix: 'voice',
+      extension: extension,
+    );
+  }
+
+  Future<String> _persistAttachmentBytes({
+    required List<int> bytes,
+    required String subdir,
+    required String prefix,
+    required String extension,
+  }) async {
     final supportDir = await getApplicationSupportDirectory();
     final voiceDir = Directory(
-      '${supportDir.path}${Platform.pathSeparator}voice_messages',
+      '${supportDir.path}${Platform.pathSeparator}$subdir',
     );
     if (!await voiceDir.exists()) {
       await voiceDir.create(recursive: true);
     }
     final file = File(
-      '${voiceDir.path}${Platform.pathSeparator}voice_${DateTime.now().millisecondsSinceEpoch}.$extension',
+      '${voiceDir.path}${Platform.pathSeparator}${prefix}_${DateTime.now().millisecondsSinceEpoch}.$extension',
     );
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
@@ -2243,6 +2430,8 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOutgoing = message.direction == MessageDirection.outgoing;
     final isSystem = message.direction == MessageDirection.system;
+    final authorLabel = message.authorId.trim();
+    final showAuthor = !isSystem && message.groupId.trim().isNotEmpty;
     final alignment = isSystem
         ? Alignment.center
         : (isOutgoing ? Alignment.centerRight : Alignment.centerLeft);
@@ -2298,6 +2487,19 @@ class _MessageBubble extends StatelessWidget {
                   ? CrossAxisAlignment.center
                   : CrossAxisAlignment.start,
               children: [
+                if (showAuthor) ...[
+                  Text(
+                    authorLabel,
+                    style: TextStyle(
+                      color: isOutgoing
+                          ? Colors.white.withValues(alpha: 0.78)
+                          : const Color(0xFF7A634F),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 if (isImage)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

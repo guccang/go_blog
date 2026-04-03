@@ -27,6 +27,7 @@ type AppMessage struct {
 
 // AppPushPayload is the payload pushed from app-agent back to the app side.
 type AppPushPayload struct {
+	MessageID   string         `json:"message_id,omitempty"`
 	Sequence    int64          `json:"sequence"`
 	UserID      string         `json:"user_id"`
 	Content     string         `json:"content"`
@@ -38,10 +39,12 @@ type AppPushPayload struct {
 
 type AppAttachment struct {
 	MessageType string         `json:"message_type"`
+	FileID      string         `json:"file_id,omitempty"`
 	FileName    string         `json:"file_name,omitempty"`
 	FilePath    string         `json:"file_path,omitempty"`
 	FileSize    int            `json:"file_size,omitempty"`
 	Format      string         `json:"format,omitempty"`
+	MIMEType    string         `json:"mime_type,omitempty"`
 	DurationMS  int            `json:"duration_ms,omitempty"`
 	SpeechText  string         `json:"speech_text,omitempty"`
 	InputMode   string         `json:"input_mode,omitempty"`
@@ -60,10 +63,11 @@ type Bridge struct {
 	sessionUsers map[string]string
 	sessionMu    sync.Mutex
 
-	deliveryMu   sync.Mutex
-	nextSequence int64
-	pending      map[string][]AppPushPayload
-	clients      map[string]*appClientConn
+	deliveryMu      sync.Mutex
+	nextSequence    int64
+	pendingMessages map[string]*pendingMessage
+	pendingByUser   map[string][]string
+	clients         map[string]map[*appClientConn]struct{}
 
 	// delegation tokens by user
 	delegationTokens map[string]string
@@ -89,6 +93,20 @@ func NewBridge(cfg *Config) *Bridge {
 				"required":["to_user","content"]
 			}`),
 		},
+		{
+			Name:        "app.SendRichMessage",
+			Description: "Send a rich app message with text, image, audio, or file payload",
+			Parameters: json.RawMessage(`{
+				"type":"object",
+				"properties":{
+					"to_user":{"type":"string"},
+					"content":{"type":"string"},
+					"message_type":{"type":"string"},
+					"meta":{"type":"object"}
+				},
+				"required":["to_user","message_type"]
+			}`),
+		},
 	}
 	client.Capacity = 20
 	client.Meta = map[string]any{
@@ -101,8 +119,9 @@ func NewBridge(cfg *Config) *Bridge {
 		groups:           newGroupManager(cfg.GroupStoreFile),
 		lastEventTime:    make(map[string]time.Time),
 		sessionUsers:     make(map[string]string),
-		pending:          make(map[string][]AppPushPayload),
-		clients:          make(map[string]*appClientConn),
+		pendingMessages:  make(map[string]*pendingMessage),
+		pendingByUser:    make(map[string][]string),
+		clients:          make(map[string]map[*appClientConn]struct{}),
 		delegationTokens: make(map[string]string),
 	}
 	client.OnMessage = b.handleUAPMessage
@@ -125,7 +144,11 @@ func (b *Bridge) IsConnected() bool {
 func (b *Bridge) OnlineClientCount() int {
 	b.deliveryMu.Lock()
 	defer b.deliveryMu.Unlock()
-	return len(b.clients)
+	total := 0
+	for _, clients := range b.clients {
+		total += len(clients)
+	}
+	return total
 }
 
 func (b *Bridge) PendingMessageCount() int {
@@ -133,8 +156,12 @@ func (b *Bridge) PendingMessageCount() int {
 	defer b.deliveryMu.Unlock()
 
 	total := 0
-	for _, queue := range b.pending {
-		total += len(queue)
+	for _, msg := range b.pendingMessages {
+		for _, delivery := range msg.Deliveries {
+			if delivery.AckedAt.IsZero() {
+				total++
+			}
+		}
 	}
 	return total
 }
@@ -256,7 +283,8 @@ func (b *Bridge) handleGroupMessage(groupID string, msg *AppMessage, attachment 
 	if msg == nil {
 		return fmt.Errorf("empty message")
 	}
-	if err := b.broadcastGroupMessage(groupID, msg.UserID, msg.Content, msg.MessageType, sanitizeAppMetaForPush(msg.Meta)); err != nil {
+	pushMeta := buildPushMeta(sanitizeAppMetaForPush(msg.Meta), attachment)
+	if err := b.broadcastGroupMessage(groupID, msg.UserID, msg.Content, msg.MessageType, pushMeta); err != nil {
 		return err
 	}
 	robotAccount, ok := b.groups.RobotAccount(groupID)
@@ -322,10 +350,12 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	}
 	base64Text, fileName, format := attachmentPayload(msg.MessageType, msg.Meta)
 	if base64Text == "" {
+		mimeType := attachmentMimeType(msg.MessageType, fileName, format)
 		return &AppAttachment{
 			MessageType: msg.MessageType,
 			FileName:    fileName,
 			Format:      format,
+			MIMEType:    mimeType,
 			DurationMS:  intMeta(msg.Meta, "duration_ms"),
 			SpeechText:  stringMeta(msg.Meta, "speech_text"),
 			InputMode:   stringMeta(msg.Meta, "input_mode"),
@@ -349,13 +379,20 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return nil, fmt.Errorf("write attachment failed: %w", err)
 	}
+	fileID, err := buildAttachmentFileID(b.cfg.AttachmentStoreDir, filePath)
+	if err != nil {
+		return nil, err
+	}
+	mimeType := attachmentMimeType(msg.MessageType, fileName, format)
 
 	return &AppAttachment{
 		MessageType: msg.MessageType,
+		FileID:      fileID,
 		FileName:    fileName,
 		FilePath:    filePath,
 		FileSize:    len(data),
 		Format:      format,
+		MIMEType:    mimeType,
 		DurationMS:  intMeta(msg.Meta, "duration_ms"),
 		SpeechText:  stringMeta(msg.Meta, "speech_text"),
 		InputMode:   stringMeta(msg.Meta, "input_mode"),
@@ -364,10 +401,7 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 }
 
 func (b *Bridge) ensureAttachmentDir(userID string) (string, error) {
-	root := strings.TrimSpace(b.cfg.AttachmentStoreDir)
-	if root == "" {
-		root = "app-attachments"
-	}
+	root := attachmentRootDir(b.cfg.AttachmentStoreDir)
 	dir := filepath.Join(root, sanitizeFileName(userID), time.Now().Format("20060102"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir attachment dir failed: %w", err)
@@ -452,7 +486,7 @@ func sanitizeAppMetaForPush(meta map[string]any) map[string]any {
 	out := make(map[string]any, len(meta))
 	for k, v := range meta {
 		switch k {
-		case "audio_base64", "file_base64", "zip_base64":
+		case "audio_base64", "image_base64", "file_base64", "zip_base64":
 			continue
 		default:
 			out[k] = v
@@ -581,10 +615,31 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 			result = uap.BuildToolError(msg.ID, fmt.Sprintf("invalid arguments: %v", err))
 			break
 		}
-		if err := b.sendAppPush(strings.TrimSpace(args.ToUser), strings.TrimSpace(args.Content), nil); err != nil {
+		if err := b.sendNotificationMessage(strings.TrimSpace(args.ToUser), strings.TrimSpace(args.Content), "text", nil); err != nil {
 			result = uap.BuildToolError(msg.ID, fmt.Sprintf("send failed: %v", err))
 		} else {
 			result = uap.BuildToolResult(msg.ID, nil, "message queued")
+		}
+	case "app.SendRichMessage":
+		var args struct {
+			ToUser      string         `json:"to_user"`
+			Content     string         `json:"content"`
+			MessageType string         `json:"message_type"`
+			Meta        map[string]any `json:"meta"`
+		}
+		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("invalid arguments: %v", err))
+			break
+		}
+		if err := b.sendNotificationMessage(
+			strings.TrimSpace(args.ToUser),
+			strings.TrimSpace(args.Content),
+			normalizeAppMessageType(args.MessageType, args.Meta),
+			args.Meta,
+		); err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("send failed: %v", err))
+		} else {
+			result = uap.BuildToolResult(msg.ID, nil, "rich message queued")
 		}
 
 	default:
@@ -720,29 +775,58 @@ func truncateForApp(content string) string {
 }
 
 func (b *Bridge) sendNotification(toUser, content string) {
+	if err := b.sendNotificationMessage(toUser, content, "text", nil); err != nil {
+		log.Printf("[Bridge] app push failed for user=%s: %v", toUser, err)
+	}
+}
+
+func (b *Bridge) sendNotificationMessage(toUser, content, messageType string, meta map[string]any) error {
 	if toUser == "" {
 		log.Printf("[Bridge] skip notification: empty user")
-		return
+		return nil
+	}
+	messageType = normalizeAppMessageType(messageType, meta)
+	pushMeta := cloneMeta(meta)
+	var attachment *AppAttachment
+	var err error
+	if pushMeta != nil {
+		attachment, err = b.persistAttachment(&AppMessage{
+			UserID:      toUser,
+			Content:     content,
+			MessageType: messageType,
+			Meta:        pushMeta,
+		})
+		if err != nil {
+			return err
+		}
+		pushMeta = sanitizeAppMetaForPush(pushMeta)
+	}
+	pushMeta = buildPushMeta(pushMeta, attachment)
+	if attachment != nil && strings.TrimSpace(content) == "" {
+		content = defaultAttachmentLabel(attachment)
 	}
 	if groupID, ok := b.groups.GroupIDByRobotAccount(toUser); ok {
 		log.Printf("[Bridge] robot notification routed account=%s -> group=%s len=%d content=%q",
 			toUser, groupID, len(content), shortText(content))
-		meta := map[string]any{
+		groupMeta := map[string]any{
 			"scope":     "group",
 			"group_id":  groupID,
 			"from_user": groupRobotDisplayName,
 			"origin":    "llm-agent",
 			"account":   toUser,
 		}
-		if err := b.broadcastGroupMessage(groupID, toUser, content, "text", meta); err != nil {
+		for k, v := range pushMeta {
+			if _, exists := groupMeta[k]; !exists {
+				groupMeta[k] = v
+			}
+		}
+		if err := b.broadcastGroupMessage(groupID, toUser, content, messageType, groupMeta); err != nil {
 			log.Printf("[Bridge] robot group broadcast failed group=%s account=%s: %v", groupID, toUser, err)
 		}
-		return
+		return nil
 	}
 	log.Printf("[Bridge] deliver notification user=%s len=%d content=%q", toUser, len(content), shortText(content))
-	if err := b.sendAppPush(toUser, content, nil); err != nil {
-		log.Printf("[Bridge] app push failed for user=%s: %v", toUser, err)
-	}
+	return b.sendAppPushWithType(toUser, content, messageType, pushMeta)
 }
 
 func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType string, meta map[string]any) error {
@@ -784,12 +868,20 @@ func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType s
 		}
 	}
 
+	messageID := buildPushMessageID(groupID)
 	for _, member := range humanMembers {
-		log.Printf("[Bridge] push group message group=%s to_member=%s from=%s type=%s",
-			groupID, member, displayFrom, messageType)
-		if err := b.sendAppPushWithType(member, content, messageType, pushMeta); err != nil {
-			log.Printf("[Bridge] group push failed group=%s member=%s: %v", groupID, member, err)
-		}
+		log.Printf("[Bridge] queue group message group=%s to_member=%s from=%s type=%s message_id=%s",
+			groupID, member, displayFrom, messageType, messageID)
+	}
+	if err := b.enqueueAndDeliverMany(humanMembers, AppPushPayload{
+		MessageID:   messageID,
+		Content:     truncateForApp(content),
+		MessageType: strings.TrimSpace(messageType),
+		Channel:     "app",
+		Timestamp:   time.Now().UnixMilli(),
+		Meta:        pushMeta,
+	}); err != nil {
+		return err
 	}
 	log.Printf("[Bridge] group message broadcast group=%s from=%s members=%d type=%s len=%d",
 		groupID, displayFrom, len(humanMembers), messageType, len(content))
@@ -808,6 +900,7 @@ func (b *Bridge) sendAppPushWithType(toUser, content, messageType string, meta m
 		toUser, len(content), len(meta), shortText(content))
 
 	payload := AppPushPayload{
+		MessageID:   buildPushMessageID(toUser),
 		UserID:      toUser,
 		Content:     truncateForApp(content),
 		MessageType: strings.TrimSpace(messageType),
@@ -819,6 +912,76 @@ func (b *Bridge) sendAppPushWithType(toUser, content, messageType string, meta m
 		payload.MessageType = "text"
 	}
 	return b.enqueueAndDeliver(payload)
+}
+
+func buildPushMeta(baseMeta map[string]any, attachment *AppAttachment) map[string]any {
+	out := cloneMeta(baseMeta)
+	if attachment == nil {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]any)
+	}
+	if attachment.FileID != "" {
+		out["file_id"] = attachment.FileID
+	}
+	if attachment.FileName != "" {
+		out["file_name"] = attachment.FileName
+	}
+	if attachment.FileSize > 0 {
+		out["file_size"] = attachment.FileSize
+	}
+	if attachment.Format != "" {
+		switch attachment.MessageType {
+		case "audio":
+			out["audio_format"] = attachment.Format
+		case "image":
+			out["image_format"] = attachment.Format
+		default:
+			out["file_format"] = attachment.Format
+		}
+	}
+	if attachment.MIMEType != "" {
+		out["mime_type"] = attachment.MIMEType
+	}
+	if attachment.DurationMS > 0 {
+		out["duration_ms"] = attachment.DurationMS
+	}
+	if attachment.SpeechText != "" {
+		out["speech_text"] = attachment.SpeechText
+	}
+	if attachment.InputMode != "" {
+		out["input_mode"] = attachment.InputMode
+	}
+	return out
+}
+
+func defaultAttachmentLabel(attachment *AppAttachment) string {
+	if attachment == nil {
+		return ""
+	}
+	switch attachment.MessageType {
+	case "image":
+		return "[Image]"
+	case "audio":
+		if attachment.DurationMS > 0 {
+			return fmt.Sprintf("[Voice %.1fs]", float64(attachment.DurationMS)/1000)
+		}
+		return "[Voice]"
+	case "zip", "archive":
+		return "[Archive]"
+	case "file":
+		return "[File]"
+	default:
+		if attachment.FileName != "" {
+			return attachment.FileName
+		}
+		return "[Attachment]"
+	}
+}
+
+func buildPushMessageID(userID string) string {
+	return fmt.Sprintf("%s-%d", sanitizeFileName(userID), time.Now().UnixNano())
 }
 
 func isBackendCommand(content string) bool {
