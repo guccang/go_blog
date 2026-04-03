@@ -25,6 +25,7 @@ type Config struct {
 	Tools        []uap.ToolDef  // 注册的工具列表
 	Meta         map[string]any // 扩展字段
 	WorkspaceDir string         // workspace 目录路径（为空则不加载）
+	Authorizer   Authorizer     // tool_call 统一授权器（为空则不启用）
 }
 
 // AgentBase Agent 基础连接管理
@@ -43,8 +44,8 @@ type AgentBase struct {
 	startTime time.Time
 
 	// 可选回调（Agent 自行设置）
-	ActiveTaskCounter func() int // 返回活跃任务数（drain 轮询用）
-	OnShutdown        func()     // shutdown 时的自定义回调（如通知业务层停止接收）
+	ActiveTaskCounter func() int                          // 返回活跃任务数（drain 轮询用）
+	OnShutdown        func()                              // shutdown 时的自定义回调（如通知业务层停止接收）
 	OnToolCancel      func(toolName string, msgID string) // tool_cancel 回调（agent 自行实现取消逻辑）
 
 	// 消息处理器注册表
@@ -52,9 +53,10 @@ type AgentBase struct {
 	handlerMu sync.RWMutex
 
 	// tool_call 并发控制
-	toolCallHandler MessageHandler   // agent 注册的 tool_call 处理函数
-	toolSem         chan struct{}     // 信号量，控制最大并发
-	toolWg          sync.WaitGroup   // 等待全部完成（drain 用）
+	toolCallHandler MessageHandler // agent 注册的 tool_call 处理函数
+	toolSem         chan struct{}  // 信号量，控制最大并发
+	toolWg          sync.WaitGroup // 等待全部完成（drain 用）
+	authorizer      Authorizer     // tool_call 统一授权
 
 	// 协议层（可选）
 	protocolLayer *ProtocolLayer
@@ -85,6 +87,7 @@ func NewAgentBase(cfg *Config) *AgentBase {
 		lifecycle:  NewLifecycle(),
 		startTime:  time.Now(),
 		handlers:   make(map[string]MessageHandler),
+		authorizer: cfg.Authorizer,
 		shutdownCh: make(chan struct{}),
 	}
 
@@ -152,6 +155,11 @@ func (ab *AgentBase) RegisterToolCallHandler(handler MessageHandler) {
 	log.Printf("[AgentBase] tool_call 并发控制: max_concurrent=%d", capacity)
 }
 
+// SetAuthorizer 设置 tool_call 统一授权器。
+func (ab *AgentBase) SetAuthorizer(authorizer Authorizer) {
+	ab.authorizer = authorizer
+}
+
 // dispatch 消息分发（内部使用）
 func (ab *AgentBase) dispatch(msg *uap.Message) {
 	// ctrl_* 前缀消息始终处理（不受状态限制）
@@ -203,6 +211,23 @@ func (ab *AgentBase) dispatch(msg *uap.Message) {
 			defer ab.toolWg.Done()
 			ab.toolSem <- struct{}{}
 			defer func() { <-ab.toolSem }()
+
+			if ab.authorizer != nil {
+				authCtx, err := buildAuthorizationContext(msg)
+				if err != nil {
+					log.Printf("[AgentBase] tool_call 解析失败 from=%s msgID=%s err=%v", msg.From, msg.ID, err)
+					ab.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, err.Error()))
+					return
+				}
+				decision := normalizeDecision(ab.authorizer.AuthorizeToolCall(authCtx))
+				if !decision.Allow {
+					log.Printf("[AgentBase] tool_call 授权拒绝 from=%s tool=%s user=%s reason=%s",
+						msg.From, authCtx.ToolName, authCtx.AuthenticatedUser, decision.Reason)
+					ab.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, decision.Error))
+					return
+				}
+			}
+
 			ab.toolCallHandler(msg)
 		}()
 		return

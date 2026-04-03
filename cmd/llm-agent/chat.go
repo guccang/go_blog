@@ -255,6 +255,15 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	}
 
 	// 1. 检查是否为重置命令
+	if isProjectManagementHelpCommand(content) {
+		b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "wechat",
+			To:      wechatUser,
+			Content: buildProjectManagementHelp(),
+		})
+		return
+	}
+
 	if isConversationResetCommand(content) {
 		b.sessionMgr.Reset("wechat", wechatUser)
 		b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{

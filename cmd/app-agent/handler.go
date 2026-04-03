@@ -109,7 +109,7 @@ func (h *Handler) HandleMessage(w http.ResponseWriter, r *http.Request) {
 	if msg.MessageType == "" {
 		msg.MessageType = "text"
 	}
-	if msg.UserID == "" || msg.Content == "" {
+	if msg.UserID == "" || (!allowEmptyAppContent(&msg) && msg.Content == "") {
 		http.Error(w, "user_id and content are required", http.StatusBadRequest)
 		return
 	}
@@ -273,4 +273,16 @@ func (h *Handler) validateAppSession(r *http.Request, userID string) bool {
 		return false
 	}
 	return h.auth.Validate(readAppSessionToken(r), userID)
+}
+
+func allowEmptyAppContent(msg *AppMessage) bool {
+	if msg == nil {
+		return false
+	}
+	switch strings.TrimSpace(strings.ToLower(msg.MessageType)) {
+	case "", "text":
+		return false
+	default:
+		return true
+	}
 }

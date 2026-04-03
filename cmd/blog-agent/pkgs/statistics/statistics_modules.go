@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"exercise"
 	"fmt"
+	"projectmgmt"
 	"reading"
 	"strings"
 	"taskbreakdown"
@@ -414,6 +415,213 @@ func RawUpdateYearTask(account string, year, month int, taskID, status string) s
 		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
 	}
 	return `{"success": true}`
+}
+
+// =================================== ProjectMgmt Raw 接口 =========================================
+
+func RawCreateProject(account, name, description, status, priority, owner, startDate, endDate, tags string) string {
+	project := &projectmgmt.Project{
+		Name:        name,
+		Description: description,
+		Status:      status,
+		Priority:    priority,
+		Owner:       owner,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Tags:        splitAndTrim(tags),
+	}
+	created, err := projectmgmt.CreateProjectWithAccount(account, project)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(created)
+	return string(data)
+}
+
+func RawGetProject(account, projectID string) string {
+	project, err := projectmgmt.GetProjectWithAccount(account, projectID)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(project)
+	return string(data)
+}
+
+func RawListProjects(account, status string) string {
+	projects, err := projectmgmt.ListProjectsWithAccount(account, status)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(projects)
+	return string(data)
+}
+
+func RawUpdateProject(account, projectID, name, description, status, priority, owner, startDate, endDate, tags string) string {
+	project, err := projectmgmt.GetProjectWithAccount(account, projectID)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	if name != "" {
+		project.Name = name
+	}
+	project.Description = description
+	if status != "" {
+		project.Status = status
+	}
+	if priority != "" {
+		project.Priority = priority
+	}
+	if owner != "" {
+		project.Owner = owner
+	}
+	project.StartDate = startDate
+	project.EndDate = endDate
+	project.Tags = splitAndTrim(tags)
+	if err := projectmgmt.UpdateProjectWithAccount(account, project); err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	updated, _ := projectmgmt.GetProjectWithAccount(account, projectID)
+	data, _ := json.Marshal(updated)
+	return string(data)
+}
+
+func RawDeleteProject(account, projectID string) string {
+	if err := projectmgmt.DeleteProjectWithAccount(account, projectID); err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
+func RawAddProjectGoal(account, projectID, title, description, status, priority, startDate, endDate string, progress int) string {
+	goal := projectmgmt.Goal{
+		Title:       title,
+		Description: description,
+		Status:      status,
+		Progress:    progress,
+		Priority:    priority,
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}
+	created, err := projectmgmt.AddGoalWithAccount(account, projectID, goal)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(created)
+	return string(data)
+}
+
+func RawUpdateProjectGoal(account, projectID, goalID, title, description, status, priority, startDate, endDate string, progress int) string {
+	project, err := projectmgmt.GetProjectWithAccount(account, projectID)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	for _, goal := range project.Goals {
+		if goal.ID == goalID {
+			goal.Title = title
+			goal.Description = description
+			goal.Status = status
+			goal.Priority = priority
+			goal.Progress = progress
+			goal.StartDate = startDate
+			goal.EndDate = endDate
+			if err := projectmgmt.UpdateGoalWithAccount(account, projectID, goal); err != nil {
+				return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+			}
+			data, _ := json.Marshal(goal)
+			return string(data)
+		}
+	}
+	return fmt.Sprintf(`{"error": "goal not found: %s"}`, goalID)
+}
+
+func RawDeleteProjectGoal(account, projectID, goalID string) string {
+	if err := projectmgmt.DeleteGoalWithAccount(account, projectID, goalID); err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
+func RawAddProjectOKR(account, projectID, objective, status, period string, progress int) string {
+	okr := projectmgmt.OKR{
+		Objective: objective,
+		Status:    status,
+		Period:    period,
+		Progress:  progress,
+	}
+	created, err := projectmgmt.AddOKRWithAccount(account, projectID, okr)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(created)
+	return string(data)
+}
+
+func RawUpdateProjectOKR(account, projectID, okrID, objective, status, period string, progress int) string {
+	project, err := projectmgmt.GetProjectWithAccount(account, projectID)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	for _, okr := range project.OKRs {
+		if okr.ID == okrID {
+			okr.Objective = objective
+			okr.Status = status
+			okr.Period = period
+			okr.Progress = progress
+			if err := projectmgmt.UpdateOKRWithAccount(account, projectID, okr); err != nil {
+				return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+			}
+			data, _ := json.Marshal(okr)
+			return string(data)
+		}
+	}
+	return fmt.Sprintf(`{"error": "okr not found: %s"}`, okrID)
+}
+
+func RawDeleteProjectOKR(account, projectID, okrID string) string {
+	if err := projectmgmt.DeleteOKRWithAccount(account, projectID, okrID); err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	return `{"success": true}`
+}
+
+func RawUpdateProjectKeyResult(account, projectID, okrID, keyResultID, title, metricType string, targetValue, currentValue float64, unit, status string) string {
+	kr := projectmgmt.KeyResult{
+		ID:           keyResultID,
+		Title:        title,
+		MetricType:   metricType,
+		TargetValue:  targetValue,
+		CurrentValue: currentValue,
+		Unit:         unit,
+		Status:       status,
+	}
+	if err := projectmgmt.UpdateKeyResultWithAccount(account, projectID, okrID, kr); err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	project, err := projectmgmt.GetProjectWithAccount(account, projectID)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	for _, okr := range project.OKRs {
+		if okr.ID != okrID {
+			continue
+		}
+		for _, item := range okr.KeyResults {
+			if item.ID == kr.ID {
+				data, _ := json.Marshal(item)
+				return string(data)
+			}
+		}
+	}
+	return `{"success": true}`
+}
+
+func RawGetProjectSummary(account string) string {
+	summary, err := projectmgmt.GetProjectSummaryWithAccount(account)
+	if err != nil {
+		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
+	}
+	data, _ := json.Marshal(summary)
+	return string(data)
 }
 
 // =================================== TaskBreakdown Raw 接口 =========================================

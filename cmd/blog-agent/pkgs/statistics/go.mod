@@ -10,6 +10,7 @@ require (
 	exercise v0.0.0
 	module v0.0.0
 	mylog v0.0.0
+	projectmgmt v0.0.0
 	reading v0.0.0
 	taskbreakdown v0.0.0
 	todolist v0.0.0
@@ -33,6 +34,8 @@ replace blog => ../blog
 replace comment => ../comment
 
 replace exercise => ../exercise
+
+replace projectmgmt => ../projectmgmt
 
 replace module => ../module
 

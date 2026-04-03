@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,13 +16,13 @@ import (
 
 // AppMessage is the message pushed from the app side to app-agent.
 type AppMessage struct {
-	UserID            string         `json:"user_id"`
-	Content           string         `json:"content"`
-	MessageType       string         `json:"message_type,omitempty"`
-	SessionID         string         `json:"session_id,omitempty"`
-	TraceID           string         `json:"trace_id,omitempty"`
-	Meta              map[string]any `json:"meta,omitempty"`
-	DelegationToken   string         `json:"delegation_token,omitempty"` // delegation token for blog-agent API
+	UserID          string         `json:"user_id"`
+	Content         string         `json:"content"`
+	MessageType     string         `json:"message_type,omitempty"`
+	SessionID       string         `json:"session_id,omitempty"`
+	TraceID         string         `json:"trace_id,omitempty"`
+	Meta            map[string]any `json:"meta,omitempty"`
+	DelegationToken string         `json:"delegation_token,omitempty"` // delegation token for blog-agent API
 }
 
 // AppPushPayload is the payload pushed from app-agent back to the app side.
@@ -30,6 +33,18 @@ type AppPushPayload struct {
 	MessageType string         `json:"message_type"`
 	Channel     string         `json:"channel"`
 	Timestamp   int64          `json:"timestamp"`
+	Meta        map[string]any `json:"meta,omitempty"`
+}
+
+type AppAttachment struct {
+	MessageType string         `json:"message_type"`
+	FileName    string         `json:"file_name,omitempty"`
+	FilePath    string         `json:"file_path,omitempty"`
+	FileSize    int            `json:"file_size,omitempty"`
+	Format      string         `json:"format,omitempty"`
+	DurationMS  int            `json:"duration_ms,omitempty"`
+	SpeechText  string         `json:"speech_text,omitempty"`
+	InputMode   string         `json:"input_mode,omitempty"`
 	Meta        map[string]any `json:"meta,omitempty"`
 }
 
@@ -52,7 +67,7 @@ type Bridge struct {
 
 	// delegation tokens by user
 	delegationTokens map[string]string
-	delegationMu    sync.Mutex
+	delegationMu     sync.Mutex
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -81,13 +96,13 @@ func NewBridge(cfg *Config) *Bridge {
 	}
 
 	b := &Bridge{
-		cfg:           cfg,
-		client:        client,
-		groups:        newGroupManager(cfg.GroupStoreFile),
-		lastEventTime: make(map[string]time.Time),
-		sessionUsers:  make(map[string]string),
-		pending:       make(map[string][]AppPushPayload),
-		clients:       make(map[string]*appClientConn),
+		cfg:              cfg,
+		client:           client,
+		groups:           newGroupManager(cfg.GroupStoreFile),
+		lastEventTime:    make(map[string]time.Time),
+		sessionUsers:     make(map[string]string),
+		pending:          make(map[string][]AppPushPayload),
+		clients:          make(map[string]*appClientConn),
 		delegationTokens: make(map[string]string),
 	}
 	client.OnMessage = b.handleUAPMessage
@@ -139,40 +154,23 @@ func (b *Bridge) GetDelegationToken(userID string) string {
 }
 
 func (b *Bridge) HandleAppMessage(msg *AppMessage) {
+	msg.MessageType = normalizeAppMessageType(msg.MessageType, msg.Meta)
 	content := strings.TrimSpace(msg.Content)
-	if content == "" && msg.MessageType != "audio" {
+	if content == "" && msg.MessageType == "text" {
 		return
 	}
 	log.Printf("[Bridge] inbound app message user=%s type=%s len=%d content=%q",
 		msg.UserID, msg.MessageType, len(content), shortText(content))
 
-	if msg.MessageType == "audio" {
-		if groupID := b.groupIDFromMeta(msg.Meta); groupID != "" {
-			if err := b.handleGroupMessage(groupID, msg.UserID, content, msg.MessageType, msg.Meta); err != nil {
-				log.Printf("[Bridge] group audio broadcast failed user=%s group=%s: %v", msg.UserID, groupID, err)
-				_ = b.sendAppPush(msg.UserID, fmt.Sprintf("Group message failed: %v", err), nil)
-			}
-			return
-		}
-		audioBytes := 0
-		if msg.Meta != nil {
-			if base64Text, ok := msg.Meta["audio_base64"].(string); ok {
-				audioBytes = len(base64Text)
-			}
-		}
-		log.Printf("[Bridge] received audio message user=%s base64_len=%d meta_keys=%d",
-			msg.UserID, audioBytes, len(msg.Meta))
-		if err := b.sendAppPush(msg.UserID, "Voice message received and sent to app-agent. Swipe up-right to convert speech to text.", map[string]any{
-			"kind":         "audio_ack",
-			"message_type": "audio",
-		}); err != nil {
-			log.Printf("[Bridge] send audio ack failed: %v", err)
-		}
+	attachment, err := b.persistAttachment(msg)
+	if err != nil {
+		log.Printf("[Bridge] persist attachment failed user=%s type=%s err=%v", msg.UserID, msg.MessageType, err)
+		_ = b.sendAppPush(msg.UserID, fmt.Sprintf("附件处理失败: %v", err), nil)
 		return
 	}
 
 	if groupID := b.groupIDFromMeta(msg.Meta); groupID != "" {
-		if err := b.handleGroupMessage(groupID, msg.UserID, content, msg.MessageType, msg.Meta); err != nil {
+		if err := b.handleGroupMessage(groupID, msg, attachment); err != nil {
 			log.Printf("[Bridge] group broadcast failed user=%s group=%s: %v", msg.UserID, groupID, err)
 			_ = b.sendAppPush(msg.UserID, fmt.Sprintf("Group message failed: %v", err), nil)
 		}
@@ -181,11 +179,17 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 
 	switch {
 	case content == "/help" || content == "help" || content == "甯姪":
+		if msg.MessageType != "text" {
+			break
+		}
 		if err := b.sendAppPush(msg.UserID, getHelpText(), nil); err != nil {
 			log.Printf("[Bridge] send help failed: %v", err)
 		}
 		return
 	case content == "/status" || content == "status":
+		if msg.MessageType != "text" {
+			break
+		}
 		connStatus := "not connected"
 		if b.IsConnected() {
 			connStatus = "connected"
@@ -218,10 +222,9 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		return
 	}
 
-	// 如果有 delegation token，添加到内容前面
-	messageContent := content
+	messageContent := b.buildAppContentForAgent(msg, attachment, "")
 	if msg.DelegationToken != "" {
-		messageContent = fmt.Sprintf("[delegation:%s]%s", msg.DelegationToken, content)
+		messageContent = fmt.Sprintf("[delegation:%s]%s", msg.DelegationToken, messageContent)
 	}
 
 	payload := uap.NotifyPayload{
@@ -249,39 +252,18 @@ func (b *Bridge) groupIDFromMeta(meta map[string]any) string {
 	return ""
 }
 
-func (b *Bridge) handleGroupMessage(groupID, fromUser, content, messageType string, meta map[string]any) error {
-	if err := b.broadcastGroupMessage(groupID, fromUser, content, messageType, meta); err != nil {
+func (b *Bridge) handleGroupMessage(groupID string, msg *AppMessage, attachment *AppAttachment) error {
+	if msg == nil {
+		return fmt.Errorf("empty message")
+	}
+	if err := b.broadcastGroupMessage(groupID, msg.UserID, msg.Content, msg.MessageType, sanitizeAppMetaForPush(msg.Meta)); err != nil {
 		return err
-	}
-	if messageType != "text" {
-		return nil
-	}
-
-	robotContent, ok := extractRobotMentionContent(content)
-	if !ok {
-		return nil
 	}
 	robotAccount, ok := b.groups.RobotAccount(groupID)
 	if !ok {
 		return fmt.Errorf("group robot account not found")
 	}
-	return b.forwardGroupMessageToLLM(groupID, fromUser, robotAccount, robotContent)
-}
-
-func extractRobotMentionContent(content string) (string, bool) {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return "", false
-	}
-	if !strings.Contains(strings.ToLower(trimmed), "@robot") {
-		return "", false
-	}
-	replacer := strings.NewReplacer("@robot", "", "@Robot", "", "@ROBOT", "")
-	cleaned := strings.TrimSpace(replacer.Replace(trimmed))
-	if cleaned == "" {
-		return "", false
-	}
-	return cleaned, true
+	return b.forwardGroupMessageToLLM(groupID, msg.UserID, robotAccount, b.buildAppContentForAgent(msg, attachment, groupID))
 }
 
 func (b *Bridge) forwardGroupMessageToLLM(groupID, fromUser, robotAccount, content string) error {
@@ -298,12 +280,251 @@ func (b *Bridge) forwardGroupMessageToLLM(groupID, fromUser, robotAccount, conte
 		To:      robotAccount,
 		Content: llmContent,
 	}
-	log.Printf("[Bridge] route group robot message group=%s from=%s robot_account=%s len=%d content=%q",
+	log.Printf("[Bridge] route group message to llm group=%s from=%s robot_account=%s len=%d content=%q",
 		groupID, fromUser, robotAccount, len(llmContent), shortText(llmContent))
 	if err := b.client.SendTo(b.cfg.LLMAgentID, uap.MsgNotify, payload); err != nil {
 		return fmt.Errorf("send to %s failed: %w", b.cfg.LLMAgentID, err)
 	}
 	return nil
+}
+
+func normalizeAppMessageType(messageType string, meta map[string]any) string {
+	mt := strings.TrimSpace(strings.ToLower(messageType))
+	if mt != "" {
+		switch mt {
+		case "audio", "image", "text", "file", "zip", "archive", "video":
+			return mt
+		}
+	}
+	if meta == nil {
+		return "text"
+	}
+	switch {
+	case stringMeta(meta, "audio_base64") != "":
+		return "audio"
+	case stringMeta(meta, "image_base64") != "":
+		return "image"
+	case stringMeta(meta, "zip_base64") != "":
+		return "zip"
+	case stringMeta(meta, "file_base64") != "":
+		if isZipFileName(stringMeta(meta, "file_name")) {
+			return "zip"
+		}
+		return "file"
+	default:
+		return "text"
+	}
+}
+
+func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
+	if msg == nil || msg.Meta == nil {
+		return nil, nil
+	}
+	base64Text, fileName, format := attachmentPayload(msg.MessageType, msg.Meta)
+	if base64Text == "" {
+		return &AppAttachment{
+			MessageType: msg.MessageType,
+			FileName:    fileName,
+			Format:      format,
+			DurationMS:  intMeta(msg.Meta, "duration_ms"),
+			SpeechText:  stringMeta(msg.Meta, "speech_text"),
+			InputMode:   stringMeta(msg.Meta, "input_mode"),
+			Meta:        sanitizeAppMetaForForward(msg.Meta),
+		}, nil
+	}
+
+	data, err := base64.StdEncoding.DecodeString(base64Text)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode failed: %w", err)
+	}
+
+	dir, err := b.ensureAttachmentDir(msg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(fileName) == "" {
+		fileName = buildAttachmentFileName(msg.MessageType, format)
+	}
+	filePath := filepath.Join(dir, fileName)
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return nil, fmt.Errorf("write attachment failed: %w", err)
+	}
+
+	return &AppAttachment{
+		MessageType: msg.MessageType,
+		FileName:    fileName,
+		FilePath:    filePath,
+		FileSize:    len(data),
+		Format:      format,
+		DurationMS:  intMeta(msg.Meta, "duration_ms"),
+		SpeechText:  stringMeta(msg.Meta, "speech_text"),
+		InputMode:   stringMeta(msg.Meta, "input_mode"),
+		Meta:        sanitizeAppMetaForForward(msg.Meta),
+	}, nil
+}
+
+func (b *Bridge) ensureAttachmentDir(userID string) (string, error) {
+	root := strings.TrimSpace(b.cfg.AttachmentStoreDir)
+	if root == "" {
+		root = "app-attachments"
+	}
+	dir := filepath.Join(root, sanitizeFileName(userID), time.Now().Format("20060102"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir attachment dir failed: %w", err)
+	}
+	return dir, nil
+}
+
+func (b *Bridge) buildAppContentForAgent(msg *AppMessage, attachment *AppAttachment, groupID string) string {
+	if msg == nil {
+		return ""
+	}
+	payload := map[string]any{
+		"kind":         "app_message",
+		"user_id":      msg.UserID,
+		"message_type": msg.MessageType,
+		"content":      strings.TrimSpace(msg.Content),
+	}
+	if groupID != "" {
+		payload["scope"] = "group"
+		payload["group_id"] = groupID
+	} else {
+		payload["scope"] = "direct"
+	}
+	if attachment != nil {
+		payload["attachment"] = attachment
+	}
+	if msg.Meta != nil {
+		payload["meta"] = sanitizeAppMetaForForward(msg.Meta)
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return strings.TrimSpace(msg.Content)
+	}
+	return "APP_MESSAGE_JSON:\n" + string(data)
+}
+
+func attachmentPayload(messageType string, meta map[string]any) (base64Text string, fileName string, format string) {
+	if meta == nil {
+		return "", "", ""
+	}
+	fileName = stringMeta(meta, "file_name")
+	format = stringMeta(meta, "audio_format")
+	switch messageType {
+	case "audio":
+		return stringMeta(meta, "audio_base64"), fileName, format
+	case "image":
+		return stringMeta(meta, "image_base64"), fileName, stringMeta(meta, "image_format")
+	case "zip":
+		return firstNonEmpty(stringMeta(meta, "zip_base64"), stringMeta(meta, "file_base64")), fileName, "zip"
+	case "archive", "file", "video":
+		return stringMeta(meta, "file_base64"), fileName, firstNonEmpty(stringMeta(meta, "file_format"), format)
+	default:
+		return firstNonEmpty(
+			stringMeta(meta, "file_base64"),
+			stringMeta(meta, "image_base64"),
+			stringMeta(meta, "audio_base64"),
+			stringMeta(meta, "zip_base64"),
+		), fileName, firstNonEmpty(stringMeta(meta, "file_format"), format)
+	}
+}
+
+func sanitizeAppMetaForForward(meta map[string]any) map[string]any {
+	if meta == nil {
+		return nil
+	}
+	out := make(map[string]any, len(meta))
+	for k, v := range meta {
+		switch k {
+		case "audio_base64", "image_base64", "file_base64", "zip_base64":
+			out[k+"_present"] = true
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func sanitizeAppMetaForPush(meta map[string]any) map[string]any {
+	if meta == nil {
+		return nil
+	}
+	out := make(map[string]any, len(meta))
+	for k, v := range meta {
+		switch k {
+		case "audio_base64", "file_base64", "zip_base64":
+			continue
+		default:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func buildAttachmentFileName(messageType, format string) string {
+	ext := strings.TrimPrefix(strings.TrimSpace(strings.ToLower(format)), ".")
+	if ext == "" {
+		switch strings.TrimSpace(strings.ToLower(messageType)) {
+		case "audio":
+			ext = "bin"
+		case "image":
+			ext = "png"
+		case "zip", "archive":
+			ext = "zip"
+		default:
+			ext = "bin"
+		}
+	}
+	return fmt.Sprintf("%s_%d.%s", sanitizeFileName(messageType), time.Now().UnixMilli(), ext)
+}
+
+func sanitizeFileName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "file"
+	}
+	replacer := strings.NewReplacer("\\", "_", "/", "_", ":", "_", "*", "_", "?", "_", "\"", "_", "<", "_", ">", "_", "|", "_", " ", "_")
+	return replacer.Replace(name)
+}
+
+func stringMeta(meta map[string]any, key string) string {
+	if meta == nil {
+		return ""
+	}
+	v, _ := meta[key].(string)
+	return strings.TrimSpace(v)
+}
+
+func intMeta(meta map[string]any, key string) int {
+	if meta == nil {
+		return 0
+	}
+	switch v := meta[key].(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func isZipFileName(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".7z") || strings.HasSuffix(lower, ".rar") || strings.HasSuffix(lower, ".tar") || strings.HasSuffix(lower, ".gz")
 }
 
 func (b *Bridge) handleUAPMessage(msg *uap.Message) {

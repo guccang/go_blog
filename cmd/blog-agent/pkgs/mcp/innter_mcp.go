@@ -39,20 +39,20 @@ func ValidateAccountParam(requestedAccount string) (string, error) {
 func getStringParam(arguments map[string]interface{}, key string) (string, error) {
 	val, ok := arguments[key]
 	if !ok {
-		return "", fmt.Errorf("缺少参数: %s", key)
+		return "", fmt.Errorf("missing param: %s", key)
 	}
 	str, ok := val.(string)
 	if !ok {
-		return "", fmt.Errorf("参数类型错误: %s 应为字符串", key)
+		return "", fmt.Errorf("param %s should be string", key)
 	}
 	return str, nil
 }
 
-// getIntParam 安全提取整数参数 (JSON数字默认为float64)
+// getIntParam ???????????? (JSON????????loat64)
 func getIntParam(arguments map[string]interface{}, key string) (int, error) {
 	val, ok := arguments[key]
 	if !ok {
-		return 0, fmt.Errorf("缺少参数: %s", key)
+		return 0, fmt.Errorf("missing param: %s", key)
 	}
 	switch v := val.(type) {
 	case float64:
@@ -62,11 +62,11 @@ func getIntParam(arguments map[string]interface{}, key string) (int, error) {
 	case int64:
 		return int(v), nil
 	default:
-		return 0, fmt.Errorf("参数类型错误: %s 应为数字", key)
+		return 0, fmt.Errorf("param %s should be number", key)
 	}
 }
 
-// getOptionalIntParam 安全提取可选整数参数
+// getOptionalIntParam ????????????????
 func getOptionalIntParam(arguments map[string]interface{}, key string, defaultVal int) int {
 	val, ok := arguments[key]
 	if !ok {
@@ -79,6 +79,44 @@ func getOptionalIntParam(arguments map[string]interface{}, key string, defaultVa
 		return v
 	case int64:
 		return int(v)
+	default:
+		return defaultVal
+	}
+}
+
+func getFloatParam(arguments map[string]interface{}, key string) (float64, error) {
+	val, ok := arguments[key]
+	if !ok {
+		return 0, fmt.Errorf("缂哄皯鍙傛暟: %s", key)
+	}
+	switch v := val.(type) {
+	case float64:
+		return v, nil
+	case float32:
+		return float64(v), nil
+	case int:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	default:
+		return 0, fmt.Errorf("鍙傛暟绫诲瀷閿欒: %s 搴斾负鏁板瓧", key)
+	}
+}
+
+func getOptionalFloatParam(arguments map[string]interface{}, key string, defaultVal float64) float64 {
+	val, ok := arguments[key]
+	if !ok {
+		return defaultVal
+	}
+	switch v := val.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
 	default:
 		return defaultVal
 	}
@@ -224,7 +262,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawCreateBlog", Inner_blog_RawCreateBlog)
 	RegisterCallBackPrompt("RawCreateBlog", "完成创建后返回博客链接格式为[title](/get?blogname=title)")
 
-
 	// 新增模块工具 - Web 搜索与抓取
 	RegisterCallBack("WebSearch", Inner_blog_WebSearch)
 	RegisterCallBack("WebFetch", Inner_blog_WebFetch)
@@ -253,6 +290,21 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawUpdateReadingProgress", Inner_blog_RawUpdateReadingProgress)
 	RegisterCallBack("RawGetBookNotes", Inner_blog_RawGetBookNotes)
 	RegisterCallBack("RawAddBook", Inner_blog_RawAddBook)
+
+	// 新增模块工具 - Project Management
+	RegisterCallBack("RawCreateProject", Inner_blog_RawCreateProject)
+	RegisterCallBack("RawGetProject", Inner_blog_RawGetProject)
+	RegisterCallBack("RawListProjects", Inner_blog_RawListProjects)
+	RegisterCallBack("RawUpdateProject", Inner_blog_RawUpdateProject)
+	RegisterCallBack("RawDeleteProject", Inner_blog_RawDeleteProject)
+	RegisterCallBack("RawAddProjectGoal", Inner_blog_RawAddProjectGoal)
+	RegisterCallBack("RawUpdateProjectGoal", Inner_blog_RawUpdateProjectGoal)
+	RegisterCallBack("RawDeleteProjectGoal", Inner_blog_RawDeleteProjectGoal)
+	RegisterCallBack("RawAddProjectOKR", Inner_blog_RawAddProjectOKR)
+	RegisterCallBack("RawUpdateProjectOKR", Inner_blog_RawUpdateProjectOKR)
+	RegisterCallBack("RawDeleteProjectOKR", Inner_blog_RawDeleteProjectOKR)
+	RegisterCallBack("RawUpdateProjectKeyResult", Inner_blog_RawUpdateProjectKeyResult)
+	RegisterCallBack("RawGetProjectSummary", Inner_blog_RawGetProjectSummary)
 
 }
 
@@ -832,7 +884,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 			},
 		},
 
-
 		// =================================== Exercise 模块工具 =========================================
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseByDate", Description: "获取指定日期的运动记录。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "date": map[string]string{"type": "string", "description": "日期,格式2025-01-01"}}, "required": []string{"account", "date"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetExerciseRange", Description: "获取日期范围内的运动记录。返回JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "startDate": map[string]string{"type": "string", "description": "起始日期,格式2025-01-01"}, "endDate": map[string]string{"type": "string", "description": "结束日期,格式2025-01-01"}}, "required": []string{"account", "startDate", "endDate"}}}},
@@ -861,7 +912,19 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateReadingProgress", Description: "更新阅读进度(当前页数和笔记)。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}, "currentPage": map[string]interface{}{"type": "number", "description": "当前页数"}, "notes": map[string]string{"type": "string", "description": "阅读笔记"}}, "required": []string{"account", "bookID", "currentPage"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetBookNotes", Description: "获取指定书籍的读书笔记。返回str(纯文本)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "bookID": map[string]string{"type": "string", "description": "书籍ID"}}, "required": []string{"account", "bookID"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddBook", Description: "添加新书籍到阅读列表。返回str(操作结果)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "书名"}, "author": map[string]string{"type": "string", "description": "作者"}, "isbn": map[string]string{"type": "string", "description": "ISBN号"}, "publisher": map[string]string{"type": "string", "description": "出版社"}, "publishDate": map[string]string{"type": "string", "description": "出版日期,格式2025-01-01"}, "coverUrl": map[string]string{"type": "string", "description": "封面URL"}, "description": map[string]string{"type": "string", "description": "书籍简介"}, "sourceUrl": map[string]string{"type": "string", "description": "来源URL"}, "totalPages": map[string]interface{}{"type": "number", "description": "总页数"}, "category": map[string]string{"type": "string", "description": "分类,多个用逗号分隔"}, "tags": map[string]string{"type": "string", "description": "标签,多个用逗号分隔"}}, "required": []string{"account", "title"}}}},
-
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawCreateProject", Description: "???????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "name": map[string]string{"type": "string", "description": "????"}, "description": map[string]string{"type": "string", "description": "????"}, "status": map[string]string{"type": "string", "description": "?? planning/active/on_hold/completed/cancelled"}, "priority": map[string]string{"type": "string", "description": "??? low/medium/high/urgent"}, "owner": map[string]string{"type": "string", "description": "???"}, "startDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "endDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "tags": map[string]string{"type": "string", "description": "???????"}}, "required": []string{"account", "name"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetProject", Description: "?????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}}, "required": []string{"account", "projectID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawListProjects", Description: "??????????????JSON(list)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "status": map[string]string{"type": "string", "description": "??????"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateProject", Description: "???????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "name": map[string]string{"type": "string", "description": "????"}, "description": map[string]string{"type": "string", "description": "????"}, "status": map[string]string{"type": "string", "description": "??"}, "priority": map[string]string{"type": "string", "description": "???"}, "owner": map[string]string{"type": "string", "description": "???"}, "startDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "endDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "tags": map[string]string{"type": "string", "description": "???????"}}, "required": []string{"account", "projectID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteProject", Description: "???????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}}, "required": []string{"account", "projectID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddProjectGoal", Description: "?????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "title": map[string]string{"type": "string", "description": "????"}, "description": map[string]string{"type": "string", "description": "????"}, "status": map[string]string{"type": "string", "description": "?? pending/in_progress/completed/cancelled"}, "priority": map[string]string{"type": "string", "description": "???"}, "progress": map[string]interface{}{"type": "number", "description": "?? 0-100"}, "startDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "endDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}}, "required": []string{"account", "projectID", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateProjectGoal", Description: "?????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "goalID": map[string]string{"type": "string", "description": "??ID"}, "title": map[string]string{"type": "string", "description": "????"}, "description": map[string]string{"type": "string", "description": "????"}, "status": map[string]string{"type": "string", "description": "??"}, "priority": map[string]string{"type": "string", "description": "???"}, "progress": map[string]interface{}{"type": "number", "description": "?? 0-100"}, "startDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}, "endDate": map[string]string{"type": "string", "description": "???? YYYY-MM-DD"}}, "required": []string{"account", "projectID", "goalID", "title", "status", "priority"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteProjectGoal", Description: "?????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "goalID": map[string]string{"type": "string", "description": "??ID"}}, "required": []string{"account", "projectID", "goalID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddProjectOKR", Description: "????OKR???JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "objective": map[string]string{"type": "string", "description": "Objective"}, "status": map[string]string{"type": "string", "description": "?? draft/active/at_risk/completed/cancelled"}, "period": map[string]string{"type": "string", "description": "??"}, "progress": map[string]interface{}{"type": "number", "description": "?? 0-100"}}, "required": []string{"account", "projectID", "objective"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateProjectOKR", Description: "????OKR???JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "okrID": map[string]string{"type": "string", "description": "OKR ID"}, "objective": map[string]string{"type": "string", "description": "Objective"}, "status": map[string]string{"type": "string", "description": "??"}, "period": map[string]string{"type": "string", "description": "??"}, "progress": map[string]interface{}{"type": "number", "description": "?? 0-100"}}, "required": []string{"account", "projectID", "okrID", "objective", "status"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteProjectOKR", Description: "????OKR???JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "okrID": map[string]string{"type": "string", "description": "OKR ID"}}, "required": []string{"account", "projectID", "okrID"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateProjectKeyResult", Description: "????????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}, "projectID": map[string]string{"type": "string", "description": "??ID"}, "okrID": map[string]string{"type": "string", "description": "OKR ID"}, "keyResultID": map[string]string{"type": "string", "description": "????ID???????"}, "title": map[string]string{"type": "string", "description": "??????"}, "metricType": map[string]string{"type": "string", "description": "????"}, "targetValue": map[string]interface{}{"type": "number", "description": "???"}, "currentValue": map[string]interface{}{"type": "number", "description": "???"}, "unit": map[string]string{"type": "string", "description": "??"}, "status": map[string]string{"type": "string", "description": "?? pending/in_progress/completed/cancelled"}}, "required": []string{"account", "projectID", "okrID", "title", "metricType", "targetValue"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetProjectSummary", Description: "?????????????JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "??"}}, "required": []string{"account"}}}},
 	}
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
 	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射

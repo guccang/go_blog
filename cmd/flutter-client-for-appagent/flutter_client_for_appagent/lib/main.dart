@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:convert' show base64Encode, jsonDecode, jsonEncode, utf8;
+import 'dart:convert'
+    show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -395,12 +398,17 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
+  static const String _baseUrlOverrideKey = 'client_config::base_url_override';
+
   final _userIdController = TextEditingController(text: 'demo-user');
   final _passwordController = TextEditingController();
+  final _baseUrlController = TextEditingController();
   final _groupIdController = TextEditingController();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final ImagePicker _imagePicker = ImagePicker();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
 
   final Map<String, List<ChatMessage>> _historyByScope =
@@ -417,8 +425,11 @@ class _ChatPageState extends State<ChatPage> {
   bool _recording = false;
   bool _speechReady = false;
   bool _sending = false;
+  String? _playingAudioKey;
   bool _autoReconnect = false;
   bool _configLoading = true;
+  bool _controlsExpanded = false;
+  bool _passwordVisible = false;
   int _lastSequence = 0;
   String _status = 'Idle';
   String _sessionToken = '';
@@ -444,9 +455,11 @@ class _ChatPageState extends State<ChatPage> {
     unawaited(_socket?.close());
     _userIdController.dispose();
     _passwordController.dispose();
+    _baseUrlController.dispose();
     _groupIdController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
+    unawaited(_audioPlayer.dispose());
     unawaited(_audioRecorder.dispose());
     super.dispose();
   }
@@ -472,9 +485,15 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadClientConfig() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
       final raw = await rootBundle.loadString('assets/app_config.json');
-      final config = ClientConfig.fromJson(
+      final assetConfig = ClientConfig.fromJson(
         jsonDecode(raw) as Map<String, dynamic>,
+      );
+      final savedBaseUrl = prefs.getString(_baseUrlOverrideKey)?.trim() ?? '';
+      final config = ClientConfig(
+        baseUrl: savedBaseUrl.isEmpty ? assetConfig.baseUrl : savedBaseUrl,
+        receiveToken: assetConfig.receiveToken,
       );
       if (config.baseUrl.isEmpty) {
         throw const FormatException('base_url is required');
@@ -484,6 +503,7 @@ class _ChatPageState extends State<ChatPage> {
       }
       setState(() {
         _clientConfig = config;
+        _baseUrlController.text = config.baseUrl;
         _configLoading = false;
         _configError = '';
         _status = 'Config loaded';
@@ -501,6 +521,41 @@ class _ChatPageState extends State<ChatPage> {
       });
       _appendSystem(_configError);
     }
+  }
+
+  Future<void> _saveBaseUrl() async {
+    final baseUrl = _baseUrlController.text.trim();
+    if (baseUrl.isEmpty) {
+      _appendSystem('Base URL cannot be empty.');
+      return;
+    }
+    Uri? parsed;
+    try {
+      parsed = Uri.parse(baseUrl);
+    } catch (_) {
+      parsed = null;
+    }
+    if (parsed == null ||
+        !parsed.hasScheme ||
+        (parsed.scheme != 'http' && parsed.scheme != 'https') ||
+        parsed.host.isEmpty) {
+      _appendSystem('Base URL must be a valid http or https address.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_baseUrlOverrideKey, baseUrl);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _clientConfig = ClientConfig(
+        baseUrl: baseUrl,
+        receiveToken: _clientConfig?.receiveToken ?? '',
+      );
+      _status = 'URL updated';
+    });
+    _appendSystem('Server URL updated: $baseUrl');
   }
 
   AppAgentClient get _client => AppAgentClient(
@@ -530,6 +585,22 @@ class _ChatPageState extends State<ChatPage> {
     ).toString();
   }
 
+  Future<void> _copyText(String label, String value) async {
+    if (value.trim().isEmpty) {
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
   void _appendSystem(String text) {
     _appendMessage(
       ChatMessage(
@@ -543,7 +614,11 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  void _appendOutgoing(String text) {
+  void _appendOutgoing(
+    String text, {
+    String messageType = 'text',
+    Map<String, dynamic>? meta,
+  }) {
     _appendMessage(
       ChatMessage(
         content: text,
@@ -552,6 +627,8 @@ class _ChatPageState extends State<ChatPage> {
         scopeKey: _currentScopeKey,
         authorId: _userIdController.text.trim(),
         groupId: _currentGroupId,
+        messageType: messageType,
+        meta: meta,
       ),
       updateStatus: 'Sending...',
     );
@@ -611,6 +688,64 @@ class _ChatPageState extends State<ChatPage> {
       return '$operation failed: ${raw.substring('WebSocketException: '.length)}';
     }
     return '$operation failed: $raw';
+  }
+
+  String _messagePlaybackKey(ChatMessage message) {
+    return '${message.scopeKey}|${message.timestamp.microsecondsSinceEpoch}|${message.content}';
+  }
+
+  Future<void> _handleMessageTap(ChatMessage message) async {
+    if (message.messageType != 'audio') {
+      return;
+    }
+    final meta = message.meta;
+    final audioPath = (meta?['audio_path'] ?? '').toString().trim();
+    if (audioPath.isEmpty) {
+      _appendSystem('Audio file unavailable for playback.');
+      return;
+    }
+    final file = File(audioPath);
+    if (!await file.exists()) {
+      _appendSystem('Audio file not found: $audioPath');
+      return;
+    }
+
+    final key = _messagePlaybackKey(message);
+    try {
+      if (_playingAudioKey == key) {
+        await _audioPlayer.pause();
+        if (mounted) {
+          setState(() {
+            _playingAudioKey = null;
+          });
+        }
+        return;
+      }
+
+      await _audioPlayer.stop();
+      await _audioPlayer.play(DeviceFileSource(audioPath));
+      if (mounted) {
+        setState(() {
+          _playingAudioKey = key;
+          _status = 'Playing voice message';
+        });
+      }
+      unawaited(
+        _audioPlayer.onPlayerComplete.first.then((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            if (_playingAudioKey == key) {
+              _playingAudioKey = null;
+              _status = 'Voice playback finished';
+            }
+          });
+        }),
+      );
+    } catch (err) {
+      _appendSystem('Play audio failed: $err');
+    }
   }
 
   String _groupScopeKey(String groupId) => 'group:${groupId.toLowerCase()}';
@@ -1172,7 +1307,25 @@ class _ChatPageState extends State<ChatPage> {
 
       final seconds = recorded.duration.inMilliseconds / 1000;
       final label = '[Voice ${seconds.toStringAsFixed(1)}s]';
-      _appendOutgoing(label);
+      final audioFormat = Platform.isWindows ? 'wav' : 'm4a';
+      final savedAudioPath = await _persistVoiceMessage(
+        bytes: bytes,
+        extension: audioFormat,
+      );
+      _appendOutgoing(
+        label,
+        messageType: 'audio',
+        meta: <String, dynamic>{
+          'audio_path': savedAudioPath,
+          'audio_format': audioFormat,
+          'duration_ms': recorded.duration.inMilliseconds,
+          if (_speechDraft.trim().isNotEmpty)
+            'speech_text': _speechDraft.trim(),
+          'input_mode': 'voice_audio',
+          if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
+          if (_currentGroupId.isNotEmpty) 'scope': 'group',
+        },
+      );
       setState(() {
         _sending = true;
       });
@@ -1182,7 +1335,7 @@ class _ChatPageState extends State<ChatPage> {
           messageType: 'audio',
           meta: <String, dynamic>{
             'audio_base64': base64Encode(bytes),
-            'audio_format': Platform.isWindows ? 'wav' : 'm4a',
+            'audio_format': audioFormat,
             'duration_ms': recorded.duration.inMilliseconds,
             if (_speechDraft.trim().isNotEmpty)
               'speech_text': _speechDraft.trim(),
@@ -1206,6 +1359,114 @@ class _ChatPageState extends State<ChatPage> {
     } catch (err) {
       _appendSystem(_describeRequestError(err, operation: 'Send voice audio'));
     }
+  }
+
+  Future<void> _pickAndSendImage() async {
+    if (_sessionToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    if (_sending || _recording) {
+      return;
+    }
+
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 92,
+      );
+      if (picked == null) {
+        return;
+      }
+
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
+        _appendSystem('Selected image is empty.');
+        return;
+      }
+      if (bytes.length > 4 * 1024 * 1024) {
+        _appendSystem('Image too large. Please choose one under 4 MB.');
+        return;
+      }
+
+      final fileName = picked.name.trim().isEmpty
+          ? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg'
+          : picked.name.trim();
+      final imageFormat = _detectImageFormat(fileName, bytes);
+      final imageBase64 = base64Encode(bytes);
+      final localMeta = <String, dynamic>{
+        'image_base64': imageBase64,
+        'image_format': imageFormat,
+        'file_name': fileName,
+        'input_mode': 'gallery_image',
+        if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
+        if (_currentGroupId.isNotEmpty) 'scope': 'group',
+      };
+
+      _appendOutgoing('', messageType: 'image', meta: localMeta);
+      setState(() {
+        _sending = true;
+      });
+
+      try {
+        await _client.sendAppMessage('', messageType: 'image', meta: localMeta);
+        if (mounted) {
+          setState(() {
+            _status = 'Image sent';
+          });
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _sending = false;
+          });
+        }
+      }
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Send image'));
+    }
+  }
+
+  Future<String> _persistVoiceMessage({
+    required List<int> bytes,
+    required String extension,
+  }) async {
+    final supportDir = await getApplicationSupportDirectory();
+    final voiceDir = Directory(
+      '${supportDir.path}${Platform.pathSeparator}voice_messages',
+    );
+    if (!await voiceDir.exists()) {
+      await voiceDir.create(recursive: true);
+    }
+    final file = File(
+      '${voiceDir.path}${Platform.pathSeparator}voice_${DateTime.now().millisecondsSinceEpoch}.$extension',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  String _detectImageFormat(String fileName, List<int> bytes) {
+    final lowerName = fileName.toLowerCase();
+    if (lowerName.endsWith('.png')) {
+      return 'png';
+    }
+    if (lowerName.endsWith('.webp')) {
+      return 'webp';
+    }
+    if (lowerName.endsWith('.gif')) {
+      return 'gif';
+    }
+    if (lowerName.endsWith('.bmp')) {
+      return 'bmp';
+    }
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+    return 'jpg';
   }
 
   Future<void> _sendMessage() async {
@@ -1304,10 +1565,71 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Widget _buildConfigItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback? onCopy,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF8),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2D6C3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF6E6253)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF8B7A67),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectionArea(
+                  child: Text(
+                    value.isEmpty ? '-' : value,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: Color(0xFF2D241F),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: onCopy,
+            tooltip: 'Copy $label',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.copy_rounded, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTopPanel() {
+    final canLogin = !_loggingIn && !_configLoading && _clientConfig != null;
+    final baseUrl = _clientConfig?.baseUrl ?? '';
+    final receiveToken = _clientConfig?.receiveToken ?? '';
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFFFFFCF7), Color(0xFFF2E7D6)],
@@ -1328,81 +1650,108 @@ class _ChatPageState extends State<ChatPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF154A3F),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(Icons.forum_rounded, color: Colors.white),
-              ),
-              const SizedBox(width: 14),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    const Text(
-                      'App Agent',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1D2B24),
-                      ),
+                    _buildStatusChip(
+                      icon: Icons.wifi_tethering_rounded,
+                      label: _connectionLabel,
+                      color: _connectionColor,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _clientConfig == null
-                          ? (_configLoading
-                                ? 'Loading local client config...'
-                                : (_configError.isEmpty
-                                      ? 'Client config unavailable'
-                                      : _configError))
-                          : 'Local config loaded. Sign in and continue the conversation.',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        color: Color(0xFF6E6253),
-                      ),
+                    _buildStatusChip(
+                      icon: Icons.layers_outlined,
+                      label: _currentGroupId.isEmpty
+                          ? 'Direct'
+                          : 'Group ${_currentGroupId.toLowerCase()}',
+                      color: const Color(0xFF8B633D),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildStatusChip(
-                icon: Icons.wifi_tethering_rounded,
-                label: _connectionLabel,
-                color: _connectionColor,
-              ),
-              _buildStatusChip(
-                icon: Icons.layers_outlined,
-                label: _currentGroupId.isEmpty
-                    ? 'Direct chat'
-                    : 'Group ${_currentGroupId.toLowerCase()}',
-                color: const Color(0xFF8B633D),
-              ),
-              if (_sessionToken.isNotEmpty)
-                _buildStatusChip(
-                  icon: Icons.verified_user_outlined,
-                  label: _userIdController.text.trim().isEmpty
-                      ? 'Logged in'
-                      : _userIdController.text.trim(),
-                  color: const Color(0xFF154A3F),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _controlsExpanded = !_controlsExpanded;
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF5F4B37),
+                  side: const BorderSide(color: Color(0xFFD4C7B1)),
+                  minimumSize: const Size(0, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
+                icon: Icon(
+                  _controlsExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.tune_rounded,
+                ),
+                label: Text(_controlsExpanded ? 'Hide' : 'Controls'),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 14),
+                _buildConfigItem(
+                  icon: Icons.link_rounded,
+                  label: 'Server URL',
+                  value: baseUrl,
+                  onCopy: baseUrl.isEmpty
+                      ? null
+                      : () => unawaited(_copyText('URL', baseUrl)),
+                ),
+                const SizedBox(height: 8),
+                _buildConfigItem(
+                  icon: Icons.key_rounded,
+                  label: 'Receive Token',
+                  value: receiveToken,
+                  onCopy: receiveToken.isEmpty
+                      ? null
+                      : () => unawaited(_copyText('Token', receiveToken)),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _baseUrlController,
+                        keyboardType: TextInputType.url,
+                        decoration: const InputDecoration(
+                          labelText: 'Server URL',
+                          hintText: 'http://127.0.0.1:9002',
+                          prefixIcon: Icon(Icons.link_rounded),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed: _configLoading ? null : _saveBaseUrl,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF8B633D),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 56),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Save URL'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
                   controller: _userIdController,
                   decoration: const InputDecoration(
                     labelText: 'User ID',
@@ -1410,78 +1759,69 @@ class _ChatPageState extends State<ChatPage> {
                     prefixIcon: Icon(Icons.badge_outlined),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
+                const SizedBox(height: 12),
+                TextField(
                   controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !_passwordVisible,
+                  decoration: InputDecoration(
                     labelText: 'Password',
                     hintText: 'blog-agent password',
-                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _passwordVisible = !_passwordVisible;
+                        });
+                      },
+                      icon: Icon(
+                        _passwordVisible
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: _loggingIn || _configLoading || _clientConfig == null
-                    ? null
-                    : _login,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF154A3F),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 15,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: canLogin ? _login : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF154A3F),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(132, 56),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      icon: Icon(
+                        _sessionToken.isEmpty
+                            ? Icons.login
+                            : Icons.refresh_rounded,
+                      ),
+                      label: Text(_sessionToken.isEmpty ? 'Login' : 'Re-login'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _connected || _connecting
+                          ? _disconnectWs
+                          : null,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(132, 56),
+                        side: const BorderSide(color: Color(0xFFD4C7B1)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      icon: const Icon(Icons.link_off_rounded),
+                      label: const Text('Disconnect'),
+                    ),
+                  ],
                 ),
-                icon: Icon(
-                  _sessionToken.isEmpty ? Icons.login : Icons.refresh_rounded,
-                ),
-                label: Text(_sessionToken.isEmpty ? 'Login' : 'Re-login'),
-              ),
-              const SizedBox(width: 10),
-              OutlinedButton.icon(
-                onPressed: _connected || _connecting ? _disconnectWs : null,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 15,
-                  ),
-                  side: const BorderSide(color: Color(0xFFD4C7B1)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                icon: const Icon(Icons.link_off_rounded),
-                label: const Text('Disconnect'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _sessionToken.isEmpty
-                ? 'Login uses your blog-agent account. URL and token come from the local JSON config.'
-                : 'Messages are cached locally and app-agent will flush queued pushes after reconnect.',
-            style: const TextStyle(
-              fontSize: 12,
-              height: 1.45,
-              color: Color(0xFF7B6D5C),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
+                const SizedBox(height: 12),
+                TextField(
                   controller: _groupIdController,
                   decoration: const InputDecoration(
                     labelText: 'Group ID',
@@ -1489,31 +1829,50 @@ class _ChatPageState extends State<ChatPage> {
                     prefixIcon: Icon(Icons.groups_2_outlined),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _sessionToken.isEmpty
-                    ? null
-                    : () => _mutateGroup('create'),
-                child: const Text('Create'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _sessionToken.isEmpty
-                    ? null
-                    : () => _mutateGroup('join'),
-                child: const Text('Join'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: _sessionToken.isEmpty
-                    ? null
-                    : () => _mutateGroup('leave'),
-                child: const Text('Leave'),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.tonal(
+                      onPressed: _sessionToken.isEmpty
+                          ? null
+                          : () => _mutateGroup('create'),
+                      child: const Text('Create'),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _sessionToken.isEmpty
+                          ? null
+                          : () => _mutateGroup('join'),
+                      child: const Text('Join'),
+                    ),
+                    OutlinedButton(
+                      onPressed: _sessionToken.isEmpty
+                          ? null
+                          : () => _mutateGroup('leave'),
+                      child: const Text('Leave'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _sessionToken.isEmpty
+                      ? 'Login uses your blog-agent account. URL and token come from local JSON config.'
+                      : 'Controls are collapsed by default so the chat stays primary.',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: Color(0xFF7B6D5C),
+                  ),
+                ),
+              ],
+            ),
+            crossFadeState: _controlsExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -1538,43 +1897,6 @@ class _ChatPageState extends State<ChatPage> {
               ],
             ),
           ),
-          if (_recording) ...[
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _VoiceActionBadge(
-                    icon: Icons.close,
-                    label: 'Slide up-left to cancel',
-                    active: _cancelVoiceAction,
-                    color: const Color(0xFF9B2C2C),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _VoiceActionBadge(
-                    icon: Icons.subtitles,
-                    label: 'Slide up-right to transcribe',
-                    active: _speechVoiceAction,
-                    color: const Color(0xFF0E5A44),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _speechDraft.isEmpty
-                  ? 'Recording in progress. Release to send audio.'
-                  : 'Transcribing: $_speechDraft',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF6A5A49),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -1614,6 +1936,10 @@ class _ChatPageState extends State<ChatPage> {
             ],
           ),
           const SizedBox(height: 12),
+          if (_recording) ...[
+            _buildVoiceGestureOverlay(),
+            const SizedBox(height: 12),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -1649,9 +1975,22 @@ class _ChatPageState extends State<ChatPage> {
                     labelText: 'Message',
                     hintText: _currentGroupId.isEmpty
                         ? 'Ask something... or hold mic'
-                        : 'Message @robot or the group...',
+                        : 'Message the group directly...',
                   ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              IconButton.filledTonal(
+                onPressed: (_sending || _recording) ? null : _pickAndSendImage,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(56, 56),
+                  backgroundColor: const Color(0xFFE6D8C2),
+                  foregroundColor: const Color(0xFF5A4A39),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                icon: const Icon(Icons.photo_library_rounded),
               ),
               const SizedBox(width: 12),
               FilledButton(
@@ -1676,6 +2015,113 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildVoiceGestureOverlay() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final anchor = width.clamp(220.0, 420.0);
+        final centerX = 40.0;
+        final bubbleSize = 70.0;
+        final leftWidth = (anchor * 0.34).clamp(92.0, 132.0);
+        final rightWidth = (anchor * 0.40).clamp(116.0, 168.0);
+        final leftX = 0.0;
+        final centerBubbleX = leftX + leftWidth + 12;
+        final rightX = centerBubbleX + bubbleSize + 14;
+
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: anchor,
+            height: 138,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: leftX,
+                  bottom: 20,
+                  child: _VoiceActionBubble(
+                    width: leftWidth,
+                    icon: Icons.close_rounded,
+                    label: '左上滑取消',
+                    helper: '松手即取消',
+                    active: _cancelVoiceAction,
+                    color: const Color(0xFFB9382F),
+                    direction: _VoiceBubbleDirection.left,
+                  ),
+                ),
+                Positioned(
+                  left: rightX,
+                  bottom: 20,
+                  child: _VoiceActionBubble(
+                    width: rightWidth,
+                    icon: Icons.subtitles_rounded,
+                    label: '右上滑转文字',
+                    helper: '松手即发送文字',
+                    active: _speechVoiceAction,
+                    color: const Color(0xFF13634C),
+                    direction: _VoiceBubbleDirection.right,
+                  ),
+                ),
+                Positioned(
+                  left: centerBubbleX,
+                  bottom: 4,
+                  child: Container(
+                    width: bubbleSize,
+                    height: bubbleSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF9B2C2C),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: _cancelVoiceAction || _speechVoiceAction
+                              ? 28
+                              : 18,
+                          color: const Color(0x559B2C2C),
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.mic, color: Colors.white, size: 30),
+                  ),
+                ),
+                Positioned(
+                  left: centerBubbleX - centerX,
+                  top: 0,
+                  child: Container(
+                    width: 150,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7E9D6),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE5C8A5)),
+                    ),
+                    child: Text(
+                      _speechDraft.isEmpty
+                          ? '按住说话，松手发送语音'
+                          : '识别中：$_speechDraft',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF6A4A2E),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1747,6 +2193,9 @@ class _ChatPageState extends State<ChatPage> {
                           final msg = _messages[index];
                           return _MessageBubble(
                             message: msg,
+                            isPlaying:
+                                _playingAudioKey == _messagePlaybackKey(msg),
+                            onTap: () => _handleMessageTap(msg),
                             onCopy: () async {
                               await Clipboard.setData(
                                 ClipboardData(text: msg.content),
@@ -1778,10 +2227,17 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.onCopy});
+  const _MessageBubble({
+    required this.message,
+    required this.onTap,
+    required this.onCopy,
+    this.isPlaying = false,
+  });
 
   final ChatMessage message;
+  final Future<void> Function() onTap;
   final Future<void> Function() onCopy;
+  final bool isPlaying;
 
   @override
   Widget build(BuildContext context) {
@@ -1794,12 +2250,28 @@ class _MessageBubble extends StatelessWidget {
         ? const Color(0xFFE8DCC7)
         : (isOutgoing ? const Color(0xFF154A3F) : const Color(0xFFFFFCF8));
     final fgColor = isOutgoing ? Colors.white : const Color(0xFF2D241F);
+    final isAudio = message.messageType == 'audio';
+    final isImage = message.messageType == 'image';
+    final durationMs = message.meta?['duration_ms'];
+    final durationText = durationMs is num
+        ? '${(durationMs / 1000).toStringAsFixed(1)}s'
+        : '';
+    final imageBase64 = (message.meta?['image_base64'] ?? '').toString().trim();
+    Uint8List? imageBytes;
+    if (isImage && imageBase64.isNotEmpty) {
+      try {
+        imageBytes = base64Decode(imageBase64);
+      } catch (_) {
+        imageBytes = null;
+      }
+    }
 
     return Align(
       alignment: alignment,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: InkWell(
+          onTap: isAudio ? () => onTap() : null,
           onLongPress: () => onCopy(),
           borderRadius: BorderRadius.circular(18),
           child: Container(
@@ -1826,16 +2298,92 @@ class _MessageBubble extends StatelessWidget {
                   ? CrossAxisAlignment.center
                   : CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.content,
-                  style: TextStyle(
-                    color: isSystem ? const Color(0xFF5F4B37) : fgColor,
-                    height: 1.35,
+                if (isImage)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (imageBytes != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Image.memory(
+                            imageBytes,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                          ),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isOutgoing
+                                ? Colors.white.withValues(alpha: 0.12)
+                                : const Color(0xFFF0E6D8),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Image unavailable',
+                            style: TextStyle(
+                              color: isSystem
+                                  ? const Color(0xFF5F4B37)
+                                  : fgColor,
+                            ),
+                          ),
+                        ),
+                      if (message.content.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          message.content,
+                          style: TextStyle(
+                            color: isSystem ? const Color(0xFF5F4B37) : fgColor,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
+                if (isAudio)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_fill,
+                        color: isSystem ? const Color(0xFF5F4B37) : fgColor,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          durationText.isEmpty
+                              ? '${message.content}  Tap to play'
+                              : '${message.content}  $durationText  Tap to play',
+                          style: TextStyle(
+                            color: isSystem ? const Color(0xFF5F4B37) : fgColor,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                if (!isAudio && !isImage)
+                  Text(
+                    message.content,
+                    style: TextStyle(
+                      color: isSystem ? const Color(0xFF5F4B37) : fgColor,
+                      height: 1.35,
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 Text(
-                  '${_formatTime(message.timestamp)}  Long press to copy',
+                  isImage
+                      ? '${_formatTime(message.timestamp)}  Long press to copy'
+                      : isAudio
+                      ? '${_formatTime(message.timestamp)}  Tap to play · Long press to copy'
+                      : '${_formatTime(message.timestamp)}  Long press to copy',
                   style: TextStyle(
                     fontSize: 11,
                     color: isOutgoing
@@ -1859,41 +2407,87 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-class _VoiceActionBadge extends StatelessWidget {
-  const _VoiceActionBadge({
+enum _VoiceBubbleDirection { left, right }
+
+class _VoiceActionBubble extends StatelessWidget {
+  const _VoiceActionBubble({
+    required this.width,
     required this.icon,
     required this.label,
+    required this.helper,
     required this.active,
     required this.color,
+    required this.direction,
   });
 
+  final double width;
   final IconData icon;
   final String label;
+  final String helper;
   final bool active;
   final Color color;
+  final _VoiceBubbleDirection direction;
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = active ? color : Colors.white.withValues(alpha: 0.96);
+    final fgColor = active ? Colors.white : color;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      duration: const Duration(milliseconds: 140),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: active ? color : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: active ? color : const Color(0xFFD9C9AF)),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: active ? color : const Color(0xFFD9C9AF),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: active ? 18 : 10,
+            color: active
+                ? color.withValues(alpha: 0.34)
+                : const Color(0x16000000),
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 18, color: active ? Colors.white : color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 20, color: fgColor),
+          const SizedBox(height: 6),
           Text(
             label,
             style: TextStyle(
               color: active ? Colors.white : const Color(0xFF5F4B37),
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              height: 1.15,
             ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            helper,
+            style: TextStyle(
+              color: active
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : const Color(0xFF8A725B),
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+              height: 1.1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Icon(
+            direction == _VoiceBubbleDirection.left
+                ? Icons.north_west_rounded
+                : Icons.north_east_rounded,
+            size: 18,
+            color: fgColor.withValues(alpha: active ? 1 : 0.82),
           ),
         ],
       ),

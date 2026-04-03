@@ -25,6 +25,7 @@ type CronTask struct {
 	Schedule    string `json:"schedule"`     // cron 表达式或 "@every 20m"，空=延迟任务
 	DelaySec    int    `json:"delay_sec"`    // 延迟秒数（Schedule 为空时生效）
 	Account     string `json:"account"`      // 用户账号
+	CreatedBy   string `json:"created_by"`   // 创建者账号，用于权限隔离
 	WechatUser  string `json:"wechat_user"`  // 微信用户标识
 	Message     string `json:"message"`      // cron_reminder 提醒内容
 	Query       string `json:"query"`        // cron_query 查询问题
@@ -36,9 +37,9 @@ type CronTask struct {
 // CronEngine 定时任务引擎：调度 + 存储 + 执行
 type CronEngine struct {
 	mu         sync.RWMutex
-	tasks      map[string]*CronTask            // taskID → task
-	entries    map[string]cron.EntryID          // taskID → cron entryID
-	timers     map[string]context.CancelFunc    // taskID → 延迟任务取消函数
+	tasks      map[string]*CronTask          // taskID → task
+	entries    map[string]cron.EntryID       // taskID → cron entryID
+	timers     map[string]context.CancelFunc // taskID → 延迟任务取消函数
 	cron       *cron.Cron
 	ab         *agentbase.AgentBase
 	cfg        *Config
@@ -146,6 +147,18 @@ func (e *CronEngine) RemoveTask(id string) error {
 	return nil
 }
 
+func (e *CronEngine) GetTask(id string) (*CronTask, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	task, ok := e.tasks[id]
+	if !ok {
+		return nil, false
+	}
+	e.normalizeTaskOwnership(task)
+	return task, true
+}
+
 // ListTasks 返回所有任务
 func (e *CronEngine) ListTasks() []*CronTask {
 	e.mu.RLock()
@@ -153,7 +166,22 @@ func (e *CronEngine) ListTasks() []*CronTask {
 
 	tasks := make([]*CronTask, 0, len(e.tasks))
 	for _, t := range e.tasks {
+		e.normalizeTaskOwnership(t)
 		tasks = append(tasks, t)
+	}
+	return tasks
+}
+
+func (e *CronEngine) ListTasksByOwner(owner string) []*CronTask {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	tasks := make([]*CronTask, 0, len(e.tasks))
+	for _, t := range e.tasks {
+		e.normalizeTaskOwnership(t)
+		if t.CreatedBy == owner {
+			tasks = append(tasks, t)
+		}
 	}
 	return tasks
 }
@@ -218,6 +246,40 @@ func (e *CronEngine) ListPending() []map[string]string {
 			entry["task_type"] = task.TaskType
 		}
 		e.mu.RUnlock()
+		result = append(result, entry)
+		return true
+	})
+	return result
+}
+
+func (e *CronEngine) ListPendingByOwner(owner string) []map[string]string {
+	if strings.TrimSpace(owner) == "" {
+		return e.ListPending()
+	}
+
+	var result []map[string]string
+	e.pending.Range(func(key, value interface{}) bool {
+		execID, _ := key.(string)
+		taskID, _ := value.(string)
+
+		e.mu.RLock()
+		task, ok := e.tasks[taskID]
+		if ok {
+			e.normalizeTaskOwnership(task)
+		}
+		e.mu.RUnlock()
+
+		if !ok || task.CreatedBy != owner {
+			return true
+		}
+
+		entry := map[string]string{
+			"execution_id": execID,
+			"task_id":      taskID,
+			"task_name":    task.Name,
+			"task_type":    task.TaskType,
+			"created_by":   task.CreatedBy,
+		}
 		result = append(result, entry)
 		return true
 	})
@@ -449,6 +511,7 @@ func (e *CronEngine) loadFromFile() error {
 	}
 
 	for _, t := range tasks {
+		e.normalizeTaskOwnership(t)
 		e.tasks[t.ID] = t
 	}
 	return nil
@@ -459,6 +522,7 @@ func (e *CronEngine) saveToFile() {
 	// 只持久化周期性任务，纯延迟一次性任务不持久化
 	tasks := make([]*CronTask, 0)
 	for _, t := range e.tasks {
+		e.normalizeTaskOwnership(t)
 		if t.Schedule != "" {
 			tasks = append(tasks, t)
 		}
@@ -481,4 +545,13 @@ func (e *CronEngine) saveToFile() {
 // newTaskID 生成短 UUID
 func newTaskID() string {
 	return uuid.New().String()[:8]
+}
+
+func (e *CronEngine) normalizeTaskOwnership(task *CronTask) {
+	if task == nil {
+		return
+	}
+	if strings.TrimSpace(task.CreatedBy) == "" {
+		task.CreatedBy = strings.TrimSpace(task.Account)
+	}
 }

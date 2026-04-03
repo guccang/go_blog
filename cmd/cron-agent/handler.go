@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 
 	// 创建引擎（加载任务 + 启动调度器）
 	c.engine = NewCronEngine(cfg, c.AgentBase)
+	c.SetAuthorizer(c.buildAuthorizer())
 
 	// 注册消息处理器
 	c.RegisterToolCallHandler(c.handleToolCall)
@@ -59,6 +61,54 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	log.Printf("[CronAgent] ✓ 连接管理器创建完成，已注册 3 个消息处理器 (tool_call, task_complete, error)")
 
 	return c
+}
+
+func (c *Connection) buildAuthorizer() agentbase.Authorizer {
+	return agentbase.NewToolAuthorizer(map[string]agentbase.ToolPolicy{
+		"cronCreateTask": {
+			Mode:                     agentbase.ToolPolicyModeMatchAccount,
+			AccountArg:               "account",
+			RequireAuthenticatedUser: true,
+		},
+		"cronListTasks": {
+			Mode:                     agentbase.ToolPolicyModeMatchAccount,
+			AccountArg:               "account",
+			RequireAuthenticatedUser: false,
+		},
+		"cronDeleteTask": {
+			Mode:                     agentbase.ToolPolicyModeMatchOwner,
+			ResourceIDArg:            "task_id",
+			RequireAuthenticatedUser: true,
+			OwnershipResolver: agentbase.OwnershipResolverFunc(func(ctx *agentbase.AuthorizationContext) (string, bool, error) {
+				return c.resolveTaskOwnerByID(ctx.ResourceID)
+			}),
+		},
+		"cronTriggerTask": {
+			Mode:                     agentbase.ToolPolicyModeMatchOwner,
+			ResourceIDArg:            "task_id",
+			RequireAuthenticatedUser: true,
+			OwnershipResolver: agentbase.OwnershipResolverFunc(func(ctx *agentbase.AuthorizationContext) (string, bool, error) {
+				return c.resolveTaskOwnerByID(ctx.ResourceID)
+			}),
+		},
+		"cronListPending": {
+			Mode:                     agentbase.ToolPolicyModeMatchAccount,
+			AccountArg:               "account",
+			RequireAuthenticatedUser: false,
+		},
+	})
+}
+
+func (c *Connection) resolveTaskOwnerByID(taskID string) (string, bool, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return "", false, fmt.Errorf("task_id 不能为空")
+	}
+	task, ok := c.engine.GetTask(taskID)
+	if !ok {
+		return "", false, nil
+	}
+	return strings.TrimSpace(task.CreatedBy), true, nil
 }
 
 // ========================= 工具定义 =========================
@@ -154,15 +204,15 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 
 	switch payload.ToolName {
 	case "cronCreateTask":
-		result, success = c.toolCreateTask(args)
+		result, success = c.toolCreateTask(payload.AuthenticatedUser, args)
 	case "cronListTasks":
-		result, success = c.toolListTasks()
+		result, success = c.toolListTasks(payload.AuthenticatedUser, args)
 	case "cronDeleteTask":
-		result, success = c.toolDeleteTask(args)
+		result, success = c.toolDeleteTask(payload.AuthenticatedUser, args)
 	case "cronTriggerTask":
-		result, success = c.toolTriggerTask(args)
+		result, success = c.toolTriggerTask(payload.AuthenticatedUser, args)
 	case "cronListPending":
-		result, success = c.toolListPending()
+		result, success = c.toolListPending(payload.AuthenticatedUser, args)
 	default:
 		log.Printf("[CronAgent] ✗ 未知工具: %s", payload.ToolName)
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName)))
@@ -206,7 +256,7 @@ func (c *Connection) handleError(msg *uap.Message) {
 
 // ========================= 工具实现 =========================
 
-func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) {
+func (c *Connection) toolCreateTask(authenticatedUser string, args map[string]interface{}) (string, bool) {
 	name, _ := args["name"].(string)
 	taskType, _ := args["task_type"].(string)
 	schedule, _ := args["schedule"].(string)
@@ -242,6 +292,11 @@ func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) 
 		log.Printf("[CronAgent] ✗ toolCreateTask 校验失败: cron_query 缺少 query")
 		return "cron_query 类型必须指定 query", false
 	}
+	owner := resolveTaskOwner(authenticatedUser, account)
+	if owner == "" {
+		log.Printf("[CronAgent] ✗ toolCreateTask 校验失败: 无法确定创建者")
+		return "无法确定任务创建者", false
+	}
 
 	task := &CronTask{
 		ID:          newTaskID(),
@@ -250,6 +305,7 @@ func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) 
 		Schedule:    schedule,
 		DelaySec:    int(delaySec),
 		Account:     account,
+		CreatedBy:   owner,
 		WechatUser:  wechatUser,
 		Message:     message,
 		Query:       query,
@@ -266,27 +322,39 @@ func (c *Connection) toolCreateTask(args map[string]interface{}) (string, bool) 
 	log.Printf("[CronAgent] ✓ toolCreateTask 成功 ID=%s", task.ID)
 
 	resp, _ := json.Marshal(map[string]interface{}{
-		"task_id": task.ID,
-		"name":    task.Name,
-		"message": "任务创建成功",
+		"task_id":    task.ID,
+		"name":       task.Name,
+		"created_by": task.CreatedBy,
+		"message":    "任务创建成功",
 	})
 	return string(resp), true
 }
 
-func (c *Connection) toolListTasks() (string, bool) {
-	tasks := c.engine.ListTasks()
-	log.Printf("[CronAgent] toolListTasks 返回 %d 个任务", len(tasks))
+func (c *Connection) toolListTasks(authenticatedUser string, args map[string]interface{}) (string, bool) {
+	owner := resolveTaskOwner(authenticatedUser, stringArg(args, "account"))
+
+	var tasks []*CronTask
+	if owner != "" {
+		tasks = c.engine.ListTasksByOwner(owner)
+		log.Printf("[CronAgent] toolListTasks 按 owner=%s 返回 %d 个任务", owner, len(tasks))
+	} else {
+		tasks = c.engine.ListTasks()
+		log.Printf("[CronAgent] toolListTasks 返回全部 %d 个任务（未提供认证用户）", len(tasks))
+	}
 	for _, t := range tasks {
-		log.Printf("[CronAgent]   ├─ ID=%s name=%s type=%s schedule=%q", t.ID, t.Name, t.TaskType, t.Schedule)
+		log.Printf("[CronAgent]   ├─ ID=%s name=%s type=%s schedule=%q created_by=%s",
+			t.ID, t.Name, t.TaskType, t.Schedule, t.CreatedBy)
 	}
 	resp, _ := json.Marshal(map[string]interface{}{
-		"tasks": tasks,
-		"total": len(tasks),
+		"tasks":  tasks,
+		"total":  len(tasks),
+		"owner":  owner,
+		"scoped": owner != "",
 	})
 	return string(resp), true
 }
 
-func (c *Connection) toolDeleteTask(args map[string]interface{}) (string, bool) {
+func (c *Connection) toolDeleteTask(authenticatedUser string, args map[string]interface{}) (string, bool) {
 	taskID, _ := args["task_id"].(string)
 	if taskID == "" {
 		log.Printf("[CronAgent] ✗ toolDeleteTask: task_id 为空")
@@ -303,7 +371,7 @@ func (c *Connection) toolDeleteTask(args map[string]interface{}) (string, bool) 
 	return "任务删除成功", true
 }
 
-func (c *Connection) toolTriggerTask(args map[string]interface{}) (string, bool) {
+func (c *Connection) toolTriggerTask(authenticatedUser string, args map[string]interface{}) (string, bool) {
 	taskID, _ := args["task_id"].(string)
 	if taskID == "" {
 		log.Printf("[CronAgent] ✗ toolTriggerTask: task_id 为空")
@@ -320,15 +388,37 @@ func (c *Connection) toolTriggerTask(args map[string]interface{}) (string, bool)
 	return "任务已触发", true
 }
 
-func (c *Connection) toolListPending() (string, bool) {
-	pending := c.engine.ListPending()
-	log.Printf("[CronAgent] toolListPending 返回 %d 个执行中任务", len(pending))
+func (c *Connection) toolListPending(authenticatedUser string, args map[string]interface{}) (string, bool) {
+	owner := resolveTaskOwner(authenticatedUser, stringArg(args, "account"))
+
+	var pending []map[string]string
+	if owner != "" {
+		pending = c.engine.ListPendingByOwner(owner)
+		log.Printf("[CronAgent] toolListPending 按 owner=%s 返回 %d 个执行中任务", owner, len(pending))
+	} else {
+		pending = c.engine.ListPending()
+		log.Printf("[CronAgent] toolListPending 返回全部 %d 个执行中任务（未提供认证用户）", len(pending))
+	}
 	for _, p := range pending {
 		log.Printf("[CronAgent]   ├─ executionID=%s cronTaskID=%s", p["execution_id"], p["task_id"])
 	}
 	resp, _ := json.Marshal(map[string]interface{}{
 		"pending": pending,
 		"total":   len(pending),
+		"owner":   owner,
+		"scoped":  owner != "",
 	})
 	return string(resp), true
+}
+
+func stringArg(args map[string]interface{}, key string) string {
+	value, _ := args[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func resolveTaskOwner(authenticatedUser, account string) string {
+	if user := strings.TrimSpace(authenticatedUser); user != "" {
+		return user
+	}
+	return strings.TrimSpace(account)
 }

@@ -84,6 +84,8 @@ replace codegen => ./pkgs/codegen
 
 replace delegation => ./pkgs/delegation
 
+replace projectmgmt => ./pkgs/projectmgmt
+
 replace uap => ../common/uap
 
 replace agentbase => ../common/agentbase
@@ -105,6 +107,7 @@ require (
 	module v0.0.0
 	mylog v0.0.0
 	persistence v0.0.0
+	projectmgmt v0.0.0
 	reading v0.0.0
 	search v0.0.0
 	share v0.0.0

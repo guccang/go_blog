@@ -16,6 +16,7 @@ import (
 	h "net/http"
 	"os"
 	"path/filepath"
+	"projectmgmt"
 	"strings"
 	"taskbreakdown"
 	"tetris"
@@ -277,6 +278,13 @@ func Init() int {
 	// Statistics routes
 	h.HandleFunc("/statistics", HandleStatistics)
 	h.HandleFunc("/api/statistics", HandleStatisticsAPI)
+
+	// Project management routes
+	h.HandleFunc("/api/projects", projectmgmt.HandleProjects)
+	h.HandleFunc("/api/projects/summary", projectmgmt.HandleProjectSummary)
+	h.HandleFunc("/api/projects/goals", projectmgmt.HandleProjectGoals)
+	h.HandleFunc("/api/projects/okrs", projectmgmt.HandleProjectOKRs)
+	h.HandleFunc("/api/projects/key-results", projectmgmt.HandleProjectKeyResults)
 
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)

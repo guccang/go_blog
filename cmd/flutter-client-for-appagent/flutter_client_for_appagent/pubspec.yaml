@@ -30,7 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  audioplayers: ^6.5.1
   http: ^1.5.0
+  image_picker: ^1.2.0
   path_provider: ^2.1.5
   record: ^6.1.1
   shared_preferences: ^2.5.3

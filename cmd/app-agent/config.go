@@ -19,6 +19,7 @@ type Config struct {
 	BlogAgentBaseURL     string `json:"blog_agent_base_url,omitempty"`
 	AppSessionTTLMinutes int    `json:"app_session_ttl_minutes,omitempty"`
 	GroupStoreFile       string `json:"group_store_file,omitempty"`
+	AttachmentStoreDir   string `json:"attachment_store_dir,omitempty"`
 
 	LLMAgentID     string `json:"llm_agent_id"`
 	BackendAgentID string `json:"backend_agent_id"`
@@ -38,6 +39,7 @@ func DefaultConfig() *Config {
 		BlogAgentBaseURL:     "http://127.0.0.1:8888",
 		AppSessionTTLMinutes: 2880,
 		GroupStoreFile:       "app-groups.json",
+		AttachmentStoreDir:   "app-attachments",
 		LLMAgentID:           "llm-agent",
 		BackendAgentID:       "blog-agent",
 		ProtectedFiles:       []string{"app-agent.json"},
