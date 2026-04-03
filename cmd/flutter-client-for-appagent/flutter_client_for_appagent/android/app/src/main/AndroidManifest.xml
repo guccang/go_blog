@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
-        android:label="flutter_client_for_appagent"
+        android:label="Cortana"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

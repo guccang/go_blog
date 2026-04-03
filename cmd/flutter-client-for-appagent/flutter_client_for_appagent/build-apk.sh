@@ -12,18 +12,39 @@ echo "=== Flutter APK 打包开始 ==="
 echo "项目目录: $FLUTTER_DIR"
 echo ""
 
+# 停止 Gradle 守护进程
+echo "停止 Gradle 守护进程..."
+cd "$ANDROID_DIR" && ./gradlew --stop 2>/dev/null || true
+
+# 清理 Gradle 全局缓存（解决缓存损坏问题）
+echo "清理 Gradle 缓存..."
+rm -rf "$HOME/.gradle/caches/8.14/transforms" 2>/dev/null || true
+rm -rf "$HOME/.gradle/caches/8.14/kotlin-script" 2>/dev/null || true
+rm -rf "$HOME/.gradle/caches/8.14/fileHashes" 2>/dev/null || true
+rm -rf "$HOME/.gradle/caches/8.14/jars-9" 2>/dev/null || true
+
+# 清理项目 build 目录
+echo "清理项目 build 目录..."
+rm -rf "$FLUTTER_DIR/build" 2>/dev/null || true
+
 # 配置国内镜像（阿里云）
 configure_mirrors() {
     echo "配置国内镜像（阿里云）..."
+
+    # 确保 gradle.properties 存在且包含必要配置
+    GRADLE_PROPS="$ANDROID_DIR/gradle.properties"
+    if [ -f "$GRADLE_PROPS" ]; then
+        if ! grep -q "kotlin.incremental=false" "$GRADLE_PROPS"; then
+            echo "kotlin.incremental=false" >> "$GRADLE_PROPS"
+            echo "  已添加 kotlin.incremental=false"
+        fi
+    fi
 
     # 配置 settings.gradle.kts
     SETTINGS_FILE="$ANDROID_DIR/settings.gradle.kts"
     if [ -f "$SETTINGS_FILE" ]; then
         if ! grep -q "maven.aliyun.com" "$SETTINGS_FILE"; then
-            # 备份原文件
             cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
-
-            # 在 repositories 块中添加阿里云镜像
             sed -i 's/repositories {/repositories {\n        maven { url = uri("https:\/\/maven.aliyun.com\/repository\/public") }\n        maven { url = uri("https:\/\/maven.aliyun.com\/repository\/google") }\n        maven { url = uri("https:\/\/maven.aliyun.com\/repository\/gradle-plugin") }/' "$SETTINGS_FILE"
             echo "  已更新 settings.gradle.kts"
         else
@@ -35,10 +56,7 @@ configure_mirrors() {
     BUILD_FILE="$ANDROID_DIR/build.gradle.kts"
     if [ -f "$BUILD_FILE" ]; then
         if ! grep -q "maven.aliyun.com" "$BUILD_FILE"; then
-            # 备份原文件
             cp "$BUILD_FILE" "$BUILD_FILE.bak"
-
-            # 在 allprojects repositories 块中添加阿里云镜像
             sed -i 's/repositories {/repositories {\n        maven { url = uri("https:\/\/maven.aliyun.com\/repository\/public") }\n        maven { url = uri("https:\/\/maven.aliyun.com\/repository\/google") }/' "$BUILD_FILE"
             echo "  已更新 build.gradle.kts"
         else
@@ -48,17 +66,6 @@ configure_mirrors() {
 
     echo "  国内镜像配置完成"
 }
-
-# 停止 Gradle 守护进程
-echo "停止 Gradle 守护进程..."
-cd "$ANDROID_DIR" && ./gradlew --stop 2>/dev/null || true
-
-# 清理 Gradle transforms 缓存（解决缓存损坏问题）
-echo "清理 Gradle 缓存..."
-rm -rf "$HOME/.gradle/caches/8.14/transforms" 2>/dev/null || true
-rm -rf "$HOME/.gradle/caches/8.14/kotlin-script" 2>/dev/null || true
-rm -rf "$HOME/.gradle/caches/8.14/fileHashes" 2>/dev/null || true
-rm -rf "$HOME/.gradle/caches/8.14/jars-9" 2>/dev/null || true
 
 # 配置国内镜像
 configure_mirrors

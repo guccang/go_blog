@@ -14,12 +14,13 @@ type Config struct {
 	AuthToken  string `json:"auth_token"`
 	AgentName  string `json:"agent_name"`
 
-	ReceiveToken         string `json:"receive_token,omitempty"`
-	MaxPendingPerUser    int    `json:"max_pending_per_user,omitempty"`
-	BlogAgentBaseURL     string `json:"blog_agent_base_url,omitempty"`
-	AppSessionTTLMinutes int    `json:"app_session_ttl_minutes,omitempty"`
-	GroupStoreFile       string `json:"group_store_file,omitempty"`
-	AttachmentStoreDir   string `json:"attachment_store_dir,omitempty"`
+	ReceiveToken           string `json:"receive_token,omitempty"`
+	MaxPendingPerUser      int    `json:"max_pending_per_user,omitempty"`
+	PendingMessageTTLHours int    `json:"pending_message_ttl_hours,omitempty"`
+	BlogAgentBaseURL       string `json:"blog_agent_base_url,omitempty"`
+	AppSessionTTLMinutes   int    `json:"app_session_ttl_minutes,omitempty"`
+	GroupStoreFile         string `json:"group_store_file,omitempty"`
+	AttachmentStoreDir     string `json:"attachment_store_dir,omitempty"`
 
 	LLMAgentID     string `json:"llm_agent_id"`
 	BackendAgentID string `json:"backend_agent_id"`
@@ -32,17 +33,18 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		HTTPPort:             9002,
-		GatewayURL:           "ws://127.0.0.1:9000/ws/uap",
-		AgentName:            "app-agent",
-		MaxPendingPerUser:    200,
-		BlogAgentBaseURL:     "http://127.0.0.1:8888",
-		AppSessionTTLMinutes: 2880,
-		GroupStoreFile:       "app-groups.json",
-		AttachmentStoreDir:   "app-attachments",
-		LLMAgentID:           "llm-agent",
-		BackendAgentID:       "blog-agent",
-		ProtectedFiles:       []string{"app-agent.json"},
+		HTTPPort:               9002,
+		GatewayURL:             "ws://127.0.0.1:9000/ws/uap",
+		AgentName:              "app-agent",
+		MaxPendingPerUser:      200,
+		PendingMessageTTLHours: 24,
+		BlogAgentBaseURL:       "http://127.0.0.1:8888",
+		AppSessionTTLMinutes:   2880,
+		GroupStoreFile:         "app-groups.json",
+		AttachmentStoreDir:     "app-attachments",
+		LLMAgentID:             "llm-agent",
+		BackendAgentID:         "blog-agent",
+		ProtectedFiles:         []string{"app-agent.json"},
 	}
 }
 

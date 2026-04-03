@@ -56,6 +56,7 @@ func main() {
 	mux.HandleFunc("/api/app/login", handler.HandleLogin)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/message", handler.HandleMessage)
+	mux.HandleFunc("/api/app/attachments/", handler.HandleAttachment)
 	mux.HandleFunc("/ws/app", handler.HandleWebSocket)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -78,6 +79,7 @@ func main() {
 		defer ticker.Stop()
 		for range ticker.C {
 			auth.CleanupExpired()
+			bridge.cleanupExpiredMessages()
 		}
 	}()
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -239,6 +240,43 @@ func (h *Handler) HandleGroups(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+	fileID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/app/attachments/"))
+	if fileID == "" {
+		http.Error(w, "file_id is required", http.StatusBadRequest)
+		return
+	}
+	filePath, err := resolveAttachmentPath(h.cfg.AttachmentStoreDir, fileID)
+	if err != nil {
+		http.Error(w, "Invalid file_id", http.StatusBadRequest)
+		return
+	}
+	stat, err := os.Stat(filePath)
+	if err != nil || stat.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Disposition", "inline; filename="+stat.Name())
+	http.ServeFile(w, r, filePath)
 }
 
 func (h *Handler) authorize(r *http.Request) bool {
