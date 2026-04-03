@@ -851,6 +851,16 @@ func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType s
 	if robotAccount, ok := b.groups.RobotAccount(groupID); ok && robotAccount == fromUser {
 		displayFrom = groupRobotDisplayName
 	}
+	recipients := make([]string, 0, len(humanMembers))
+	for _, member := range humanMembers {
+		if member == fromUser {
+			continue
+		}
+		recipients = append(recipients, member)
+	}
+	if displayFrom == groupRobotDisplayName {
+		recipients = humanMembers
+	}
 	log.Printf("[Bridge] prepare group broadcast group=%s from=%s display_from=%s type=%s human_members=%v visible_members=%v",
 		groupID, fromUser, displayFrom, messageType, humanMembers, visibleMembers)
 
@@ -869,11 +879,16 @@ func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType s
 	}
 
 	messageID := buildPushMessageID(groupID)
-	for _, member := range humanMembers {
+	for _, member := range recipients {
 		log.Printf("[Bridge] queue group message group=%s to_member=%s from=%s type=%s message_id=%s",
 			groupID, member, displayFrom, messageType, messageID)
 	}
-	if err := b.enqueueAndDeliverMany(humanMembers, AppPushPayload{
+	if len(recipients) == 0 {
+		log.Printf("[Bridge] skip group delivery group=%s from=%s: no recipient after sender exclusion",
+			groupID, displayFrom)
+		return nil
+	}
+	if err := b.enqueueAndDeliverMany(recipients, AppPushPayload{
 		MessageID:   messageID,
 		Content:     truncateForApp(content),
 		MessageType: strings.TrimSpace(messageType),
@@ -884,7 +899,7 @@ func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType s
 		return err
 	}
 	log.Printf("[Bridge] group message broadcast group=%s from=%s members=%d type=%s len=%d",
-		groupID, displayFrom, len(humanMembers), messageType, len(content))
+		groupID, displayFrom, len(recipients), messageType, len(content))
 	return nil
 }
 

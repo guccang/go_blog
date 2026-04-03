@@ -30,3 +30,47 @@ func TestRegisterClientAllowsMultipleConnectionsPerUser(t *testing.T) {
 		t.Fatalf("expected 0 online clients after removing all connections, got %d", got)
 	}
 }
+
+func TestBroadcastGroupMessageExcludesHumanSender(t *testing.T) {
+	bridge := NewBridge(DefaultConfig())
+	bridge.groups.groups["g1"] = &appGroup{
+		ID:           "g1",
+		Owner:        "ztt",
+		HumanMembers: map[string]bool{"ztt": true, "alice": true},
+		RobotAccount: "robot-g1",
+	}
+
+	err := bridge.broadcastGroupMessage("g1", "ztt", "hello", "text", map[string]any{})
+	if err != nil {
+		t.Fatalf("broadcastGroupMessage returned error: %v", err)
+	}
+
+	if got := len(bridge.pendingByUser["ztt"]); got != 0 {
+		t.Fatalf("expected sender ztt to receive no queued messages, got %d", got)
+	}
+	if got := len(bridge.pendingByUser["alice"]); got != 1 {
+		t.Fatalf("expected alice to receive 1 queued message, got %d", got)
+	}
+}
+
+func TestBroadcastGroupMessageFromRobotStillReachesAllHumans(t *testing.T) {
+	bridge := NewBridge(DefaultConfig())
+	bridge.groups.groups["g1"] = &appGroup{
+		ID:           "g1",
+		Owner:        "ztt",
+		HumanMembers: map[string]bool{"ztt": true, "alice": true},
+		RobotAccount: "robot-g1",
+	}
+
+	err := bridge.broadcastGroupMessage("g1", "robot-g1", "robot reply", "text", map[string]any{})
+	if err != nil {
+		t.Fatalf("broadcastGroupMessage returned error: %v", err)
+	}
+
+	if got := len(bridge.pendingByUser["ztt"]); got != 1 {
+		t.Fatalf("expected ztt to receive 1 robot message, got %d", got)
+	}
+	if got := len(bridge.pendingByUser["alice"]); got != 1 {
+		t.Fatalf("expected alice to receive 1 robot message, got %d", got)
+	}
+}
