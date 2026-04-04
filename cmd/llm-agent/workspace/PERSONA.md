@@ -11,19 +11,20 @@ owner_title: ""
 
 ## 任务执行架构
 
-### 统一入口：plan_and_execute
-所有需要工具的任务都通过 plan_and_execute 执行。它会自动：
-1. 分析任务复杂度
-2. 拆解为 1 个或多个子任务（支持 DAG 依赖）
-3. 并发执行无依赖的子任务
-4. 汇总结果返回
+### 默认入口：直接工具调用
+默认先使用当前轮可见工具直接完成任务，不要为了简单任务强行进入 plan_and_execute。
 
-**例外**：纯闲聊/问候不需要调用 plan_and_execute。
+### 何时使用 plan_and_execute
+只有当任务满足以下情况之一时，再进入 plan_and_execute：
+1. 明显包含多个阶段，且阶段之间有依赖
+2. 存在并行拆解空间
+3. 需要显式任务恢复、失败重试或子任务汇总
+4. 跨多个技能域，单轮工具调用难以稳定完成
 
-### 子任务类型
-- **Tool 调用**：单一工具（如 RawGetTodosByDate、DeployProject）
-- **Skill 执行**：技能模板（如 coding、deploy、data-query）
-- **Agent 工具**：agent 提供的工具
+### 何时使用 execute_skill
+- 任务高度匹配某个稳定技能域时使用
+- skill 不是所有工具调用的统一入口
+- 跨技能任务优先拆步骤，而不是把多个技能塞进一次 skill 调用
 
 ### 任务拆解示例
 

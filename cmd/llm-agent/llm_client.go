@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -30,7 +31,7 @@ func (b *byteCountReader) Read(p []byte) (int, error) {
 
 // 共享 HTTP 客户端，避免每次请求都重新建立 TCP/TLS 连接
 var llmHTTPClient = &http.Client{
-	Timeout: 180 * time.Second,
+	Timeout:   180 * time.Second,
 	Transport: llmTransport,
 }
 
@@ -40,14 +41,14 @@ var llmTransport = &http.Transport{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext,
-	TLSClientConfig:     &tls.Config{},
-	MaxIdleConns:         10,
-	MaxIdleConnsPerHost:  5,
-	IdleConnTimeout:      90 * time.Second,
-	TLSHandshakeTimeout:  15 * time.Second,
+	TLSClientConfig:       &tls.Config{},
+	MaxIdleConns:          10,
+	MaxIdleConnsPerHost:   5,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   15 * time.Second,
 	ResponseHeaderTimeout: 0, // 由 context 控制
-	DisableKeepAlives:    false,
-	ForceAttemptHTTP2:    true,
+	DisableKeepAlives:     false,
+	ForceAttemptHTTP2:     true,
 }
 
 // llmHTTPClientCtx 不设全局 Timeout，超时完全由 context 控制
@@ -232,8 +233,8 @@ func SendLLMRequestWithFallback(primary *LLMConfig, fallbacks []LLMConfig, coold
 
 // modelErrorWithDetail 记录服务器错误详情
 type modelErrorWithDetail struct {
-	cfg  *LLMConfig
-	err  error
+	cfg *LLMConfig
+	err error
 }
 
 // buildFailureSummary 生成失败总结
@@ -252,7 +253,7 @@ func buildFailureSummary(primary *LLMConfig, fallbacks []LLMConfig, serverErr mo
 	} else if lastErr != nil {
 		msg += fmt.Sprintf("\n最后失败原因: %v", lastErr)
 	}
-	return fmt.Errorf(msg)
+	return errors.New(msg)
 }
 
 // SendStreamingLLMRequestWithFallback 带降级链的流式 LLM 请求
@@ -852,8 +853,8 @@ func parseStreamingResponse(body io.Reader, onChunk func(string)) (string, []Too
 	truncatedByMaxTokens := false
 
 	// think 标签过滤状态机
-	inThink := false        // 当前是否在 <think> 块内
-	var thinkBuf string     // 缓冲可能的标签片段
+	inThink := false    // 当前是否在 <think> 块内
+	var thinkBuf string // 缓冲可能的标签片段
 
 	// emitChunk 将非 think 内容发送给回调
 	emitChunk := func(s string) {

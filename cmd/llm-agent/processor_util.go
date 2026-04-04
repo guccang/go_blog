@@ -28,11 +28,7 @@ func truncateToolResult(result string, iteration int) string {
 	if iteration >= 3 {
 		maxLen = 1500
 	}
-	runes := []rune(result)
-	if len(runes) <= maxLen {
-		return result
-	}
-	return string(runes[:maxLen]) + "\n...[结果已截断]"
+	return truncateToolResultWithLimit(result, maxLen, iteration)
 }
 
 // estimateChars 估算消息列表的总字符数
@@ -51,44 +47,7 @@ func estimateChars(messages []Message) int {
 // 从末尾向前保留消息，超出字符预算或消息数上限时停止
 // 始终保留 system prompt（messages[0]）
 func sanitizeProcessMessages(messages []Message) []Message {
-	if len(messages) <= 2 {
-		return messages
-	}
-
-	// 始终保留 system prompt
-	systemMsg := messages[0]
-	rest := messages[1:]
-
-	// 从末尾向前遍历，累计字符数
-	systemChars := len(systemMsg.Content)
-	charBudget := processMaxTotalChars - systemChars
-	msgBudget := processMaxMessages - 1 // 减去 system prompt
-
-	var kept []Message
-	totalChars := 0
-	for i := len(rest) - 1; i >= 0; i-- {
-		msg := rest[i]
-		msgChars := len(msg.Content)
-		for _, tc := range msg.ToolCalls {
-			msgChars += len(tc.Function.Arguments)
-		}
-
-		if len(kept) >= msgBudget || totalChars+msgChars > charBudget {
-			break
-		}
-		kept = append(kept, msg)
-		totalChars += msgChars
-	}
-
-	// 反转 kept（因为是从末尾向前收集的）
-	for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
-		kept[i], kept[j] = kept[j], kept[i]
-	}
-
-	result := make([]Message, 0, 1+len(kept))
-	result = append(result, systemMsg)
-	result = append(result, kept...)
-	return result
+	return sanitizeMessagesWithBudget(messages, processMaxMessages, processMaxTotalChars)
 }
 
 // formatExecuteCodeEvent 格式化 ExecuteCode 工具调用的展示

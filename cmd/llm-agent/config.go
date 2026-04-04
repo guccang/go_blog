@@ -20,7 +20,7 @@ type ToolPolicyPipeline struct {
 
 // ModelConfig 模型配置（注册在 provider 下）
 type ModelConfig struct {
-	Model       string  `json:"model"`       // 实际模型 ID（如 deepseek-chat）
+	Model       string  `json:"model"` // 实际模型 ID（如 deepseek-chat）
 	MaxTokens   int     `json:"max_tokens"`
 	Temperature float64 `json:"temperature"`
 }
@@ -34,12 +34,12 @@ type ProviderConfig struct {
 
 // LLMConfig LLM API 配置（引用式：provider + model key）
 type LLMConfig struct {
-	Provider    string  `json:"provider"`          // 引用 providers 注册表
-	Model       string  `json:"model"`             // providers[provider].models 中的 key
+	Provider string `json:"provider"` // 引用 providers 注册表
+	Model    string `json:"model"`    // providers[provider].models 中的 key
 	// 以下为解析后填充的运行时字段
 	APIKey      string  `json:"-"`
 	BaseURL     string  `json:"-"`
-	ModelID     string  `json:"-"`                 // 实际模型 ID（如 z-ai/glm-5-turbo）
+	ModelID     string  `json:"-"` // 实际模型 ID（如 z-ai/glm-5-turbo）
 	MaxTokens   int     `json:"-"`
 	Temperature float64 `json:"-"`
 }
@@ -60,11 +60,11 @@ type Config struct {
 	AgentID     string `json:"agent_id"`
 	AgentName   string `json:"agent_name"`
 
-	LLM                 LLMConfig                  `json:"llm"`
-	Fallbacks           []LLMConfig                `json:"fallbacks,omitempty"`
-	Providers           map[string]ProviderConfig  `json:"providers,omitempty"` // 服务商注册表
-	FallbackCooldownSec int                        `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
-	MaxPlanRevisions    int         `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
+	LLM                 LLMConfig                 `json:"llm"`
+	Fallbacks           []LLMConfig               `json:"fallbacks,omitempty"`
+	Providers           map[string]ProviderConfig `json:"providers,omitempty"`   // 服务商注册表
+	FallbackCooldownSec int                       `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
+	MaxPlanRevisions    int                       `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
 
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
 	LongToolTimeoutSec int    `json:"long_tool_timeout_sec"` // 长时间工具超时秒数（默认 600）
@@ -84,10 +84,10 @@ type Config struct {
 	MaxParallelSubtasks int `json:"max_parallel_subtasks"` // DAG 同层最大并行子任务数（默认 3）
 
 	// 通用会话上下文配置（替代微信专用配置）
-	WechatSessionTimeoutMin int `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
-	WechatMaxMessages       int `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
-	WechatMaxTurns          int `json:"wechat_max_turns"`           // 单会话最大对话轮次（默认 15）
-	ChatSessionDir          string `json:"chat_session_dir"`        // 会话持久化目录（默认 chat_sessions）
+	WechatSessionTimeoutMin int    `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
+	WechatMaxMessages       int    `json:"wechat_max_messages"`        // 单会话最大消息数（默认 40）
+	WechatMaxTurns          int    `json:"wechat_max_turns"`           // 单会话最大对话轮次（默认 15）
+	ChatSessionDir          string `json:"chat_session_dir"`           // 会话持久化目录（默认 chat_sessions）
 
 	// 来源渠道 LLM 配置
 	SourceLLMs []SourceLLMConfig `json:"source_llms,omitempty"` // 按来源渠道的 LLM 配置
@@ -115,8 +115,8 @@ type Config struct {
 	Pipeline   *ToolPolicyPipeline `json:"tool_pipeline,omitempty"`
 
 	// 工具评估系统
-	ToolEvalOnStartup  bool   `json:"tool_eval_on_startup"`   // 启动时自动评估工具（默认 true）
-	ToolEvalReportPath string `json:"tool_eval_report_path"`  // 评估报告输出路径（默认 workspace/tool_eval_report.json）
+	ToolEvalOnStartup  bool   `json:"tool_eval_on_startup"`  // 启动时自动评估工具（默认 true）
+	ToolEvalReportPath string `json:"tool_eval_report_path"` // 评估报告输出路径（默认 workspace/tool_eval_report.json）
 
 	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
 	ProtectedFiles []string `json:"protected_files,omitempty"`
@@ -149,7 +149,7 @@ func DefaultConfig() *Config {
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   3600,
 		MaxToolIterations:    32,
-		SystemPromptPrefix:   "你是 Go Blog 智能助手，通过企业微信与用户对话。重要规则：1. 收到指令后直接执行，不要反问确认、不要列出方案让用户选择，自行决定最合理的参数并立即调用工具。2. 回复必须精简，控制在500字以内，只输出执行结果和关键数据。适合手机屏幕阅读。",
+		SystemPromptPrefix:   "你是 Go Blog 智能体，负责阅读代码、调用工具、执行任务并向用户汇报真实结果。收到明确任务后优先直接执行；不要空谈方案，不要编造已执行结果，不要擅自扩展需求。",
 		MaxSubTasks:          10,
 		SubTaskMaxIterations: 10,
 		SubTaskTimeoutSec:    120,

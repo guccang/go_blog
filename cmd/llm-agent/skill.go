@@ -252,11 +252,11 @@ func (sm *SkillManager) BuildCatalogWithToolHint() string {
 
 	var sb strings.Builder
 	sb.WriteString("\n## 可用技能（Skill）\n")
-	sb.WriteString("技能是封装了完整工具集的任务模板，在 plan_and_execute 的子任务中使用。\n\n")
+	sb.WriteString("技能是封装了常见工作流的任务模板。默认先直接使用工具；只有任务明显落在某个稳定技能域时，再调用 execute_skill。\n\n")
 	sb.WriteString("**使用规则**：\n")
-	sb.WriteString("1. 子任务匹配某个 skill 时使用（如 coding、deploy、data-query）\n")
-	sb.WriteString("2. 每个 skill 子任务只能处理单一技能域\n")
-	sb.WriteString("3. 跨技能任务必须拆分为多个子任务\n\n")
+	sb.WriteString("1. 当前任务明显匹配某个 skill 时再使用（如 coding、deploy、data-query）\n")
+	sb.WriteString("2. 每个 skill 调用只处理单一技能域\n")
+	sb.WriteString("3. 跨技能任务优先直接拆成多个步骤或多个子任务\n\n")
 	for _, skill := range sm.skills {
 		offline := sm.offlineAgents(&skill)
 		if len(offline) > 0 {

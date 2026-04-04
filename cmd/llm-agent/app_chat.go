@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -123,6 +123,12 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		}
 	}
 
+	goctx, cancel := context.WithCancel(context.Background())
+	goctx = WithAuthenticatedUser(goctx, appUser)
+	defer cancel()
+
+	content = b.preprocessAppMessage(goctx, fromAgent, appUser, content)
+
 	// 确保账户 workspace 目录存在（多账户支持）
 	if b.cfg.WorkspaceDir != "" {
 		EnsureAccountWorkspace(b.cfg.WorkspaceDir, appUser)
@@ -205,10 +211,6 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		appUser:   appUser,
 	}
 
-	goctx, cancel := context.WithCancel(context.Background())
-	// 将认证用户注入 context，供 callRemoteAgent 在 tool_call 中传递给 blog-agent
-	goctx = WithAuthenticatedUser(goctx, appUser)
-	defer cancel()
 	session.SetCancel(cancel)
 	defer session.SetCancel(nil)
 

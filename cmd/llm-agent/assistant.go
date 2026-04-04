@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -444,7 +445,7 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 		sections = append(sections, PromptSection{Name: name, Chars: chars})
 	}
 
-	// 1. 人设（优先加载账户私有的 PERSONA.md，fallback 到全局）
+	// 1. 人设/基础身份（优先加载账户私有的 PERSONA.md，fallback 到全局）
 	var personaContent string
 	if b.persona != nil && b.persona.IsConfigured() {
 		// 全局人设配置优先（由 Bridge 初始化时加载）
@@ -465,34 +466,47 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
 	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。\n\n", b.activeLLM.Get().MaxTokens)
+	personaContent += "## Agent 工作方式\n"
+	personaContent += "- 你是一个可执行任务的工程型智能体，不是陪聊助手。\n"
+	personaContent += "- 先理解代码和上下文，再修改；不要对没读过的文件下结论。\n"
+	personaContent += "- 不要擅自加功能、重构无关代码、引入假设中的兼容层。\n"
+	personaContent += "- 涉及删除数据、覆盖用户工作、推送/发布、批量外部副作用时，先明确告知风险再执行。\n"
+	personaContent += "- 完成后要做最小必要验证；没验证就明确说明没验证。\n"
+	personaContent += "- 如果项目指令文件、用户规则、长期记忆与默认行为冲突，以这些持久指令为准。\n\n"
 	personaContent += "## 执行路径\n"
-	personaContent += "所有需要工具的任务都通过 plan_and_execute 统一入口执行。\n"
-	personaContent += "- 简单任务拆解为 1 个子任务\n"
-	personaContent += "- 复杂任务拆解为多个子任务（支持 DAG 依赖）\n"
-	personaContent += "- 编码+部署必须拆分为独立子任务\n\n"
+	personaContent += "- 默认先直接使用当前轮可见工具完成任务，不要为了简单任务强行进入 plan_and_execute。\n"
+	personaContent += "- 只有当任务明显包含多个阶段、跨技能域、存在并行空间或需要显式恢复/编排时，再调用 plan_and_execute。\n"
+	personaContent += "- execute_skill 用于稳定、重复、边界清晰的专业任务模板；不要把它当成所有工具调用的统一入口。\n"
+	personaContent += "- 编码、验证、部署尽量拆成独立阶段，结果中引用真实工具输出，禁止编造。\n\n"
 	writeSection("人设/基础", personaContent)
 
-	// 2. 用户规则（使用账户特定的 memory manager）
+	// 2. 项目指令（对齐 Claude Code 的 AGENTS.md/CLAUDE.md 注入）
+	if cwd, err := os.Getwd(); err == nil {
+		writeSection("项目指令", buildInstructionBlock(cwd))
+		writeSection("Git快照", buildGitStatusBlock(cwd))
+	}
+
+	// 3. 用户规则（使用账户特定的 memory manager）
 	if memMgr := b.GetMemoryManager(account); memMgr != nil {
 		rulesBlock := memMgr.BuildRulePromptBlock()
 		writeSection("用户规则", rulesBlock)
 	}
 
-	// 3. Agent 能力概览（平台、SSH、部署目标、模型等，不含具体工具列表）
+	// 4. Agent 能力概览（平台、SSH、部署目标、模型等，不含具体工具列表）
 	agentBlock := b.getAgentDescriptionBlock()
 	writeSection("Agent能力", agentBlock)
 
-	// 4. Agent 工具目录（LLM 可直接调用这些工具）
+	// 5. Agent 工具目录（LLM 可直接调用这些工具）
 	toolCatalog := b.buildBriefToolCatalog()
 	writeSection("工具目录", toolCatalog)
 
-	// 5. Skill 目录（复杂任务可通过 execute_skill 调用技能）
+	// 6. Skill 目录（复杂任务可通过 execute_skill 调用技能）
 	if b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)
 	}
 
-	// 5. 长期记忆（使用账户特定的 memory manager）
+	// 7. 长期记忆（使用账户特定的 memory manager）
 	if memMgr := b.GetMemoryManager(account); memMgr != nil {
 		memoryBlock := memMgr.BuildPromptBlock()
 		writeSection("长期记忆", memoryBlock)

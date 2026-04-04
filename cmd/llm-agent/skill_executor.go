@@ -1,13 +1,39 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 )
+
+type skillLoopSink struct {
+	base      EventSink
+	skillName string
+}
+
+func (s *skillLoopSink) OnChunk(text string) {}
+
+func (s *skillLoopSink) OnEvent(event, text string) {
+	if s.base == nil {
+		return
+	}
+	switch event {
+	case "tool_call":
+		s.base.OnEvent("skill_tool_call", text)
+	case "tool_result":
+		s.base.OnEvent("skill_tool_result", text)
+	case "subtask_response":
+		s.base.OnEvent("skill_tool_result", text)
+	case "tool_expand":
+		s.base.OnEvent("skill_tool_result", text)
+	default:
+		s.base.OnEvent(event, text)
+	}
+}
+
+func (s *skillLoopSink) Streaming() bool { return false }
 
 // executeSkillSubTask 在独立子任务中执行技能
 func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, parentTools []LLMTool) string {
@@ -93,10 +119,9 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		sb.WriteString("- 最终回复要简洁，直接给出用户需要的数据结果\n")
 	}
 
-	// 3. 过滤工具（从全量工具列表中筛选，因为主列表已隐藏 skill 工具）
-	allTools := b.getLLMTools()
-	filteredTools := b.filterToolsForSkill(skill, allTools)
-	log.Printf("[SkillSubTask] skill=%s tools=%d query=%s", skillName, len(filteredTools), query)
+	toolView := b.buildSkillToolRuntimeView(skill, parentTools)
+	filteredTools := toolView.Visible()
+	log.Printf("[SkillSubTask] skill=%s tools=%d all=%d query=%s", skillName, len(filteredTools), len(toolView.AllTools), query)
 
 	// 注入工具参数参考（让 LLM 在 ExecuteCode 中写 call_tool 时有直接参考）
 	toolRef := b.buildToolParamReference(filteredTools)
@@ -106,143 +131,60 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 
 	systemPrompt := sb.String()
 
-	// 4. Mini agentic loop（使用 ExecuteCode 批量调用时通常 2-3 轮即可完成）
-	maxIter := 5
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: query},
 	}
+	session := NewRootSession("skill-"+newSessionID(), skillName, ctx.Account)
+	session.Messages = nil
+	session.ToolCalls = nil
+	session.AppendMessage(messages[0])
+	session.AppendMessage(messages[1])
 
-	llmCfg, llmFallbacks := b.GetLLMConfigForSource(ctx.Source)
-	var finalText string
-
-	// 记录子任务中的工具调用摘要（用于返回给主 LLM 提供充分上下文）
-	type skillToolCall struct {
-		Name    string
-		Args    string
-		Success bool
-		Result  string
+	orchCfg := *b.cfg
+	orchCfg.SubTaskMaxIterations = 5
+	orch := &Orchestrator{
+		bridge:        b,
+		cfg:           &orchCfg,
+		activeHandles: make(map[string]*SubTaskHandle),
 	}
-	var skillCalls []skillToolCall
+	sink := &skillLoopSink{base: ctx.Sink, skillName: skillName}
+	sendEvent := func(event, text string) {
+		sink.OnEvent(event, text)
+	}
 
-	for i := 0; i < maxIter; i++ {
-		// 检查取消
-		if ctx.Ctx != nil && ctx.Ctx.Err() != nil {
-			log.Printf("[SkillSubTask] 取消 skill=%s", skillName)
-			return "技能执行已取消。"
-		}
+	subtask := SubTaskPlan{
+		ID:          "skill_" + newSessionID(),
+		Title:       "skill:" + skillName,
+		Description: query,
+		ToolsHint:   skill.Tools,
+	}
 
-		// 消息压缩
-		if len(messages) > 15 || estimateChars(messages) > processMaxTotalChars*80/100 {
-			before := len(messages)
-			messages = sanitizeProcessMessages(messages)
-			if len(messages) != before {
-				log.Printf("[SkillSubTask] skill=%s 消息压缩: %d → %d", skillName, before, len(messages))
-			}
-		}
-
-		log.Printf("[SkillSubTask] skill=%s 迭代 %d/%d messages=%d", skillName, i+1, maxIter, len(messages))
-
-		// 最后一轮强制收敛
-		iterTools := filteredTools
-		if i == maxIter-1 {
-			iterTools = nil
-			messages = append(messages, Message{
-				Role:    "user",
-				Content: "请立即给出最终回复，总结已完成的工作和结果。不要再调用任何工具。",
-			})
-		}
-
-		text, toolCalls, err := b.sendLLMWithConfig(llmCfg, llmFallbacks, messages, iterTools)
-		if err != nil {
-			log.Printf("[SkillSubTask] LLM 失败 skill=%s error=%v", skillName, err)
-			return fmt.Sprintf("技能 %s 执行失败: %v", skillName, err)
-		}
-
-		// 无工具调用 → 完成
-		if len(toolCalls) == 0 {
-			finalText = text
-			break
-		}
-
-		messages = append(messages, Message{Role: "assistant", Content: "", ToolCalls: toolCalls})
-
-		// 执行工具调用
-		for _, tc := range toolCalls {
-			originalName := b.resolveToolName(tc.Function.Name)
-			log.Printf("[SkillSubTask] skill=%s → 调用工具: %s args=%s",
-				skillName, originalName, tc.Function.Arguments)
-
-			ctx.Sink.OnEvent("skill_tool_call", fmt.Sprintf("[%s] 调用 %s\n参数: %s",
-				skillName, originalName, truncate(tc.Function.Arguments, 300)))
-
-			// 检查工具是否在可用列表中（防止 LLM 编造工具名）
-			if !isToolInList(originalName, filteredTools) {
-				var availNames []string
-				for _, ft := range filteredTools {
-					availNames = append(availNames, ft.Function.Name)
-				}
-				result := fmt.Sprintf("工具 %s 不存在。可用工具: %s\n请使用正确的工具名重试。",
-					originalName, strings.Join(availNames, ", "))
-				log.Printf("[SkillSubTask] skill=%s 工具不存在: %s", skillName, originalName)
-				ctx.Sink.OnEvent("skill_tool_result", fmt.Sprintf("[%s] ❌ %s 不存在，已提示可用工具列表",
-					skillName, originalName))
-				messages = append(messages, Message{
-					Role:       "tool",
-					Content:    result,
-					ToolCallID: tc.ID,
-				})
-				continue
-			}
-
-			callCtx := ctx.Ctx
-			if callCtx == nil {
-				callCtx = context.Background()
-			}
-			toolStart := time.Now()
-			tcResult, err := b.CallToolCtx(callCtx, originalName, json.RawMessage(tc.Function.Arguments))
-
-			var result string
-			if tcResult != nil {
-				result = tcResult.Result
-			}
-			if err != nil {
-				result = fmt.Sprintf("工具调用失败: %v", err)
-				log.Printf("[SkillSubTask] skill=%s 工具失败: %s error=%v result=%s", skillName, originalName, err, result)
-				ctx.Sink.OnEvent("skill_tool_result", fmt.Sprintf("[%s] ❌ %s 失败 (%s)\n%s",
-					skillName, originalName, fmtDuration(time.Since(toolStart)), truncate(result, 500)))
-				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: tc.Function.Arguments, Success: false, Result: result})
-			} else {
-				log.Printf("[SkillSubTask] skill=%s ← 工具返回: %s resultLen=%d result=%s",
-					skillName, originalName, len(result), result)
-				ctx.Sink.OnEvent("skill_tool_result", fmt.Sprintf("[%s] ✅ %s 成功 (%s, %d字符)\n%s",
-					skillName, originalName, fmtDuration(time.Since(toolStart)), len(result), truncate(result, 500)))
-				skillCalls = append(skillCalls, skillToolCall{Name: originalName, Args: tc.Function.Arguments, Success: true, Result: result})
-			}
-
-			messages = append(messages, Message{
-				Role:       "tool",
-				Content:    truncateToolResult(result, i),
-				ToolCallID: tc.ID,
-			})
-		}
+	finalText, loopErr := orch.runSubTaskLoop(ctx.Ctx, ctx.TaskID, subtask, session, messages, toolView, sendEvent, nil, time.Time{})
+	if loopErr != nil {
+		log.Printf("[SkillSubTask] LLM/loop 失败 skill=%s error=%v", skillName, loopErr)
+		return fmt.Sprintf("技能 %s 执行失败: %v", skillName, loopErr)
 	}
 
 	duration := time.Since(start)
 	ctx.Sink.OnEvent("skill_done", fmt.Sprintf("技能 %s 执行完成 (%s)", skillName, fmtDuration(duration)))
-	log.Printf("[SkillSubTask] ✓ skill=%s 完成 duration=%v resultLen=%d calls=%d", skillName, duration, len(finalText), len(skillCalls))
+	session.mu.Lock()
+	toolCalls := make([]ToolCallRecord, len(session.ToolCalls))
+	copy(toolCalls, session.ToolCalls)
+	session.mu.Unlock()
+	log.Printf("[SkillSubTask] ✓ skill=%s 完成 duration=%v resultLen=%d calls=%d", skillName, duration, len(finalText), len(toolCalls))
 
 	// 构建结构化返回：执行日志 + LLM 总结
 	// 让主 LLM 清楚知道子任务做了什么、调了哪些工具、结果如何
 	var result strings.Builder
-	if len(skillCalls) > 0 {
-		result.WriteString(fmt.Sprintf("技能 %s 执行日志（%s，%d次工具调用）:\n", skillName, fmtDuration(duration), len(skillCalls)))
-		for _, sc := range skillCalls {
+	if len(toolCalls) > 0 {
+		result.WriteString(fmt.Sprintf("技能 %s 执行日志（%s，%d次工具调用）:\n", skillName, fmtDuration(duration), len(toolCalls)))
+		for _, sc := range toolCalls {
 			status := "✅"
 			if !sc.Success {
 				status = "❌"
 			}
-			result.WriteString(fmt.Sprintf("  %s %s(%s) → %s\n", status, sc.Name, sc.Args, sc.Result))
+			result.WriteString(fmt.Sprintf("  %s %s(%s) → %s\n", status, sc.ToolName, sc.Arguments, sc.Result))
 		}
 		result.WriteString("\n")
 	}
