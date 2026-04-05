@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -37,6 +38,34 @@ func buildAttachmentFileID(rootDir, filePath string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString([]byte(rel)), nil
 }
 
+// buildAttachmentFileIDWithTimestamp generates a unique file_id based on file path and timestamp.
+func buildAttachmentFileIDWithTimestamp(rootDir, filePath string, ts int64) (string, error) {
+	rootDir = attachmentRootDir(rootDir)
+	absRoot, err := filepath.Abs(rootDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment root: %w", err)
+	}
+	absFile, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment file: %w", err)
+	}
+	rel, err := filepath.Rel(absRoot, absFile)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment relative path: %w", err)
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
+		return "", fmt.Errorf("attachment path escaped root")
+	}
+	// Append timestamp before base extension for uniqueness
+	ext := filepath.Ext(rel)
+	base := rel[:len(rel)-len(ext)]
+	rel = fmt.Sprintf("%s_%d%s", base, ts, ext)
+	return base64.RawURLEncoding.EncodeToString([]byte(rel)), nil
+}
+
+// resolveAttachmentPath extracts the actual file path from a file_id.
+// Handles both legacy file_ids (without timestamp) and new file_ids (with timestamp suffix).
 func resolveAttachmentPath(rootDir, fileID string) (string, error) {
 	rootDir = attachmentRootDir(rootDir)
 	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(fileID))
@@ -47,6 +76,12 @@ func resolveAttachmentPath(rootDir, fileID string) (string, error) {
 	if rel == "." || rel == "" || strings.HasPrefix(rel, "..") {
 		return "", fmt.Errorf("invalid attachment path")
 	}
+
+	// Strip timestamp suffix (format: base_<timestamp>.ext) if present
+	// Timestamp pattern: underscore followed by 10-13 digits (seconds or milliseconds), before file extension
+	tsPattern := regexp.MustCompile(`_\d{10,13}\.`)
+	rel = tsPattern.ReplaceAllString(rel, ".")
+
 	absRoot, err := filepath.Abs(rootDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve attachment root: %w", err)

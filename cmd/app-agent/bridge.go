@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -38,17 +39,18 @@ type AppPushPayload struct {
 }
 
 type AppAttachment struct {
-	MessageType string         `json:"message_type"`
-	FileID      string         `json:"file_id,omitempty"`
-	FileName    string         `json:"file_name,omitempty"`
-	FilePath    string         `json:"file_path,omitempty"`
-	FileSize    int            `json:"file_size,omitempty"`
-	Format      string         `json:"format,omitempty"`
-	MIMEType    string         `json:"mime_type,omitempty"`
-	DurationMS  int            `json:"duration_ms,omitempty"`
-	SpeechText  string         `json:"speech_text,omitempty"`
-	InputMode   string         `json:"input_mode,omitempty"`
-	Meta        map[string]any `json:"meta,omitempty"`
+	MessageType  string         `json:"message_type"`
+	FileID       string         `json:"file_id,omitempty"`
+	FileName     string         `json:"file_name,omitempty"`
+	FilePath     string         `json:"file_path,omitempty"`
+	InlineBase64 string         `json:"inline_base64,omitempty"`
+	FileSize     int            `json:"file_size,omitempty"`
+	Format       string         `json:"format,omitempty"`
+	MIMEType     string         `json:"mime_type,omitempty"`
+	DurationMS   int            `json:"duration_ms,omitempty"`
+	SpeechText   string         `json:"speech_text,omitempty"`
+	InputMode    string         `json:"input_mode,omitempty"`
+	Meta         map[string]any `json:"meta,omitempty"`
 }
 
 // Bridge bridges app messages and UAP messages.
@@ -269,6 +271,103 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	}
 }
 
+func (b *Bridge) PushUploadedAPK(toUser, content, fileName string, src io.Reader) (*AppAttachment, error) {
+	if strings.TrimSpace(toUser) == "" {
+		return nil, fmt.Errorf("empty user")
+	}
+	attachment, err := b.storeUploadedAPK(toUser, fileName, src)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.sendExistingAttachmentMessage(toUser, content, "file", nil, attachment); err != nil {
+		return nil, err
+	}
+	return attachment, nil
+}
+
+func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src io.Reader) (*AppAttachment, []string, error) {
+	groupID = normalizeGroupID(groupID)
+	if groupID == "" {
+		return nil, nil, fmt.Errorf("empty group")
+	}
+	robotAccount, ok := b.groups.RobotAccount(groupID)
+	if !ok {
+		return nil, nil, fmt.Errorf("group robot account not found")
+	}
+	humanMembers, err := b.groups.HumanMembers(groupID)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachment, err := b.storeUploadedAPK(robotAccount, fileName, src)
+	if err != nil {
+		return nil, nil, err
+	}
+	pushMeta := buildPushMeta(nil, attachment)
+	if attachment != nil && strings.TrimSpace(content) == "" {
+		if attachment.FileName != "" {
+			content = attachment.FileName
+		} else {
+			content = defaultAttachmentLabel(attachment)
+		}
+	}
+	if err := b.broadcastGroupMessage(groupID, robotAccount, content, "file", pushMeta); err != nil {
+		return nil, nil, err
+	}
+	return attachment, humanMembers, nil
+}
+
+func (b *Bridge) storeUploadedAPK(owner, fileName string, src io.Reader) (*AppAttachment, error) {
+	if strings.TrimSpace(owner) == "" {
+		return nil, fmt.Errorf("empty owner")
+	}
+	if strings.TrimSpace(fileName) == "" {
+		return nil, fmt.Errorf("empty file name")
+	}
+	if src == nil {
+		return nil, fmt.Errorf("empty file stream")
+	}
+
+	dir, err := b.ensureAttachmentDir(owner)
+	if err != nil {
+		return nil, err
+	}
+	safeName := sanitizeFileName(fileName)
+	if !strings.HasSuffix(strings.ToLower(safeName), ".apk") {
+		safeName += ".apk"
+	}
+	filePath := filepath.Join(dir, safeName)
+	out, err := os.Create(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("create attachment failed: %w", err)
+	}
+	written, copyErr := io.Copy(out, src)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return nil, fmt.Errorf("write attachment failed: %w", copyErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close attachment failed: %w", closeErr)
+	}
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve attachment abs path failed: %w", err)
+	}
+	fileID, err := buildAttachmentFileIDWithTimestamp(b.cfg.AttachmentStoreDir, filePath, time.Now().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	attachment := &AppAttachment{
+		MessageType: "file",
+		FileID:      fileID,
+		FileName:    safeName,
+		FilePath:    absPath,
+		FileSize:    int(written),
+		Format:      "apk",
+		MIMEType:    "application/vnd.android.package-archive",
+	}
+	return attachment, nil
+}
+
 func (b *Bridge) groupIDFromMeta(meta map[string]any) string {
 	if meta == nil {
 		return ""
@@ -379,7 +478,11 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return nil, fmt.Errorf("write attachment failed: %w", err)
 	}
-	fileID, err := buildAttachmentFileID(b.cfg.AttachmentStoreDir, filePath)
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve attachment abs path failed: %w", err)
+	}
+	fileID, err := buildAttachmentFileIDWithTimestamp(b.cfg.AttachmentStoreDir, filePath, time.Now().UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -389,14 +492,16 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 		MessageType: msg.MessageType,
 		FileID:      fileID,
 		FileName:    fileName,
-		FilePath:    filePath,
-		FileSize:    len(data),
-		Format:      format,
-		MIMEType:    mimeType,
-		DurationMS:  intMeta(msg.Meta, "duration_ms"),
-		SpeechText:  stringMeta(msg.Meta, "speech_text"),
-		InputMode:   stringMeta(msg.Meta, "input_mode"),
-		Meta:        sanitizeAppMetaForForward(msg.Meta),
+		// 这里必须传绝对路径，避免 llm-agent 与 app-agent 工作目录不一致时读不到附件。
+		FilePath:     absPath,
+		InlineBase64: base64Text,
+		FileSize:     len(data),
+		Format:       format,
+		MIMEType:     mimeType,
+		DurationMS:   intMeta(msg.Meta, "duration_ms"),
+		SpeechText:   stringMeta(msg.Meta, "speech_text"),
+		InputMode:    stringMeta(msg.Meta, "input_mode"),
+		Meta:         sanitizeAppMetaForForward(msg.Meta),
 	}, nil
 }
 
@@ -801,9 +906,17 @@ func (b *Bridge) sendNotificationMessage(toUser, content, messageType string, me
 		}
 		pushMeta = sanitizeAppMetaForPush(pushMeta)
 	}
-	pushMeta = buildPushMeta(pushMeta, attachment)
+	return b.sendExistingAttachmentMessage(toUser, content, messageType, pushMeta, attachment)
+}
+
+func (b *Bridge) sendExistingAttachmentMessage(toUser, content, messageType string, meta map[string]any, attachment *AppAttachment) error {
+	pushMeta := buildPushMeta(meta, attachment)
 	if attachment != nil && strings.TrimSpace(content) == "" {
-		content = defaultAttachmentLabel(attachment)
+		if attachment.FileName != "" {
+			content = attachment.FileName
+		} else {
+			content = defaultAttachmentLabel(attachment)
+		}
 	}
 	if groupID, ok := b.groups.GroupIDByRobotAccount(toUser); ok {
 		log.Printf("[Bridge] robot notification routed account=%s -> group=%s len=%d content=%q",

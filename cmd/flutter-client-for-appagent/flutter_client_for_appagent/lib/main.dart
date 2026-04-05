@@ -13,6 +13,8 @@ import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import 'version.g.dart';
+
 void main() {
   runApp(const AppAgentClientApp());
 }
@@ -141,7 +143,33 @@ class ChatMessage {
   }
 }
 
+bool isApkChatMessage(ChatMessage message) {
+  if (message.messageType != 'file') {
+    return false;
+  }
+  final fileName = (message.meta?['file_name'] ?? '')
+      .toString()
+      .trim()
+      .toLowerCase();
+  final fileFormat = (message.meta?['file_format'] ?? '')
+      .toString()
+      .trim()
+      .toLowerCase();
+  return fileName.endsWith('.apk') || fileFormat == 'apk';
+}
+
+/// Extract version string from APK filename.
+/// Examples: "app-release-1.0.0.apk" -> "1.0.0", "myapp-2.3.4+5.apk" -> "2.3.4+5"
+String? extractApkVersion(ChatMessage message) {
+  final fileName = (message.meta?['file_name'] ?? '').toString().trim();
+  final match = RegExp(r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$', caseSensitive: false)
+      .firstMatch(fileName);
+  return match?.group(1);
+}
+
 enum MessageDirection { outgoing, incoming, system }
+
+enum _AttachmentMenuAction { galleryImage, cameraImage }
 
 class PushEnvelope {
   PushEnvelope({
@@ -221,22 +249,81 @@ class GroupInfo {
 }
 
 class ClientConfig {
-  const ClientConfig({required this.baseUrl, required this.receiveToken});
+  const ClientConfig({
+    required this.baseUrl,
+    required this.receiveToken,
+    required this.enableLocalVosk,
+    required this.voskModelPath,
+  });
 
   final String baseUrl;
   final String receiveToken;
+  final bool enableLocalVosk;
+  final String voskModelPath;
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) {
     return ClientConfig(
       baseUrl: (json['base_url'] ?? '').toString().trim(),
       receiveToken: (json['receive_token'] ?? '').toString().trim(),
+      enableLocalVosk: json['enable_local_vosk'] == true,
+      voskModelPath: (json['vosk_model_path'] ?? '').toString().trim(),
     );
   }
 }
 
+class VoskTranscriber {
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.flutter_client_for_appagent/vosk',
+  );
+
+  Future<String?> initialize(String modelPath) async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>('initialize', {
+      'modelPath': modelPath,
+    });
+    if (resp == null) {
+      return 'Vosk initialize returned empty response';
+    }
+    final ready = resp['ready'] == true;
+    final message = (resp['message'] ?? '').toString().trim();
+    if (ready) {
+      return null;
+    }
+    return message.isEmpty ? 'Vosk initialize failed' : message;
+  }
+
+  Future<String> transcribeFile(String audioPath) async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>(
+      'transcribeFile',
+      {'audioPath': audioPath},
+    );
+    return (resp?['text'] ?? '').toString().trim();
+  }
+}
+
+class ApkInstaller {
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.flutter_client_for_appagent/installer',
+  );
+
+  Future<Map<String, dynamic>> installApk(String apkPath) async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>('installApk', {
+      'apkPath': apkPath,
+    });
+    return resp == null ? <String, dynamic>{} : Map<String, dynamic>.from(resp);
+  }
+}
+
+typedef DownloadProgressCallback =
+    void Function(int receivedBytes, int? totalBytes, bool resumed);
+
 class AppAgentClient {
   static const Duration _httpTimeout = Duration(seconds: 8);
   static const Duration _wsConnectTimeout = Duration(seconds: 8);
+  static const List<Duration> _downloadRetryDelays = <Duration>[
+    Duration(milliseconds: 300),
+    Duration(milliseconds: 800),
+    Duration(milliseconds: 1500),
+  ];
 
   AppAgentClient({
     required this.baseUrl,
@@ -251,6 +338,48 @@ class AppAgentClient {
   final String password;
   final String receiveToken;
   final String sessionToken;
+
+  Uri _buildAttachmentUri(String fileId) {
+    final base = Uri.parse(baseUrl);
+    final pathSegments = <String>[
+      ...base.pathSegments.where((segment) => segment.isNotEmpty),
+      'api',
+      'app',
+      'attachments',
+      fileId,
+    ];
+    return base.replace(
+      pathSegments: pathSegments,
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
+    );
+  }
+
+  Map<String, String> _attachmentHeaders({int? rangeStart}) {
+    return <String, String>{
+      if (receiveToken.trim().isNotEmpty)
+        'X-App-Agent-Token': receiveToken.trim(),
+      if (sessionToken.trim().isNotEmpty)
+        'X-App-Agent-Session': sessionToken.trim(),
+      if (rangeStart != null && rangeStart > 0)
+        HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
+    };
+  }
+
+  bool _isRecoverableDownloadError(Object err) {
+    return err is SocketException ||
+        err is TimeoutException ||
+        err is http.ClientException;
+  }
+
+  Future<void> _deleteIfExists(File file) async {
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
 
   Future<Map<String, dynamic>> login() async {
     final uri = Uri.parse('$baseUrl/api/app/login');
@@ -374,39 +503,101 @@ class AppAgentClient {
   }
 
   Future<List<int>> downloadAttachment(String fileId) async {
-    final base = Uri.parse(baseUrl);
-    final pathSegments = <String>[
-      ...base.pathSegments.where((segment) => segment.isNotEmpty),
-      'api',
-      'app',
-      'attachments',
-      fileId,
-    ];
-    final uri = base.replace(
-      pathSegments: pathSegments,
-      queryParameters: <String, String>{
-        'user_id': userId,
-        if (sessionToken.trim().isNotEmpty)
-          'session_token': sessionToken.trim(),
-      },
-    );
-    final resp = await http
-        .get(
-          uri,
-          headers: {
-            if (receiveToken.trim().isNotEmpty)
-              'X-App-Agent-Token': receiveToken.trim(),
-            if (sessionToken.trim().isNotEmpty)
-              'X-App-Agent-Session': sessionToken.trim(),
-          },
-        )
-        .timeout(_httpTimeout);
+    final uri = _buildAttachmentUri(fileId);
+    final resp = await http.get(uri, headers: _attachmentHeaders());
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw HttpException(
         'download attachment failed: ${resp.statusCode} ${resp.body}',
       );
     }
     return resp.bodyBytes;
+  }
+
+  Future<void> downloadAttachmentToFile(
+    String fileId, {
+    required String destinationPath,
+    DownloadProgressCallback? onProgress,
+  }) async {
+    final uri = _buildAttachmentUri(fileId);
+    final targetFile = File(destinationPath);
+    await targetFile.parent.create(recursive: true);
+    final partFile = File('$destinationPath.part');
+    var retryCount = 0;
+
+    while (true) {
+      final existingBytes = await partFile.exists()
+          ? await partFile.length()
+          : 0;
+      final resumed = existingBytes > 0;
+      final client = http.Client();
+      IOSink? sink;
+      try {
+        final request = http.Request('GET', uri);
+        request.headers.addAll(_attachmentHeaders(rangeStart: existingBytes));
+
+        final response = await client.send(request);
+        if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable &&
+            resumed) {
+          await _deleteIfExists(partFile);
+          continue;
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          final body = await response.stream.bytesToString();
+          throw HttpException(
+            'download attachment failed: ${response.statusCode} $body',
+          );
+        }
+
+        if (resumed && response.statusCode != HttpStatus.partialContent) {
+          await _deleteIfExists(partFile);
+          continue;
+        }
+
+        sink = partFile.openWrite(
+          mode: resumed ? FileMode.append : FileMode.writeOnly,
+        );
+        final totalBytes = response.contentLength == null
+            ? null
+            : resumed
+            ? existingBytes + response.contentLength!
+            : response.contentLength!;
+        var receivedBytes = existingBytes;
+        onProgress?.call(receivedBytes, totalBytes, resumed);
+
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          onProgress?.call(receivedBytes, totalBytes, resumed);
+        }
+        await sink.flush();
+        await sink.close();
+        sink = null;
+
+        final actualBytes = await partFile.length();
+        if (totalBytes != null && actualBytes != totalBytes) {
+          throw http.ClientException(
+            'download stream ended before completion '
+            '(expected $totalBytes bytes, got $actualBytes)',
+            uri,
+          );
+        }
+
+        await _deleteIfExists(targetFile);
+        await partFile.rename(targetFile.path);
+        return;
+      } catch (err) {
+        if (!_isRecoverableDownloadError(err) ||
+            retryCount >= _downloadRetryDelays.length) {
+          rethrow;
+        }
+        final delay = _downloadRetryDelays[retryCount];
+        retryCount++;
+        await Future.delayed(delay);
+      } finally {
+        await sink?.close();
+        client.close();
+      }
+    }
   }
 
   static Uri _buildWsUri(String baseUrl, String userId, String sessionToken) {
@@ -449,11 +640,14 @@ class _ChatPageState extends State<ChatPage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final ImagePicker _imagePicker = ImagePicker();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
+  final VoskTranscriber _voskTranscriber = VoskTranscriber();
+  final ApkInstaller _apkInstaller = ApkInstaller();
 
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
   final List<GroupInfo> _groups = <GroupInfo>[];
   final Set<String> _seenMessageIds = <String>{};
+  final Set<String> _autoInstallTriggered = <String>{};
 
   WebSocket? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -464,7 +658,9 @@ class _ChatPageState extends State<ChatPage> {
   bool _loggingIn = false;
   bool _recording = false;
   bool _speechReady = false;
+  bool _useLocalVosk = false;
   bool _sending = false;
+  bool _transcribingVoice = false;
   String? _playingAudioKey;
   bool _autoReconnect = false;
   bool _configLoading = true;
@@ -479,13 +675,14 @@ class _ChatPageState extends State<ChatPage> {
   String _speechDraft = '';
   DateTime? _recordStartedAt;
   ClientConfig? _clientConfig;
+  String? _downloadStatusLabel;
+  int _downloadStatusPercent = -1;
 
   @override
   void initState() {
     super.initState();
     _appendSystem('Loading client config...');
     unawaited(_loadClientConfig());
-    unawaited(_initVoice());
   }
 
   @override
@@ -505,6 +702,41 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _initVoice() async {
+    final config = _clientConfig;
+    if (Platform.isAndroid &&
+        config != null &&
+        config.enableLocalVosk &&
+        config.voskModelPath.isNotEmpty) {
+      try {
+        final error = await _voskTranscriber.initialize(config.voskModelPath);
+        if (!mounted) {
+          return;
+        }
+        if (error == null) {
+          setState(() {
+            _speechReady = true;
+            _useLocalVosk = true;
+          });
+          _appendSystem('Vosk local speech recognition is ready.');
+          return;
+        }
+        setState(() {
+          _speechReady = false;
+          _useLocalVosk = false;
+        });
+        _appendSystem(error);
+      } catch (err) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _speechReady = false;
+          _useLocalVosk = false;
+        });
+        _appendSystem('Initialize Vosk failed: $err');
+      }
+    }
+
     try {
       final available = await _speechToText.initialize();
       if (!mounted) {
@@ -512,6 +744,7 @@ class _ChatPageState extends State<ChatPage> {
       }
       setState(() {
         _speechReady = available;
+        _useLocalVosk = false;
       });
     } catch (_) {
       if (!mounted) {
@@ -519,6 +752,7 @@ class _ChatPageState extends State<ChatPage> {
       }
       setState(() {
         _speechReady = false;
+        _useLocalVosk = false;
       });
     }
   }
@@ -534,6 +768,8 @@ class _ChatPageState extends State<ChatPage> {
       final config = ClientConfig(
         baseUrl: savedBaseUrl.isEmpty ? assetConfig.baseUrl : savedBaseUrl,
         receiveToken: assetConfig.receiveToken,
+        enableLocalVosk: assetConfig.enableLocalVosk,
+        voskModelPath: assetConfig.voskModelPath,
       );
       if (config.baseUrl.isEmpty) {
         throw const FormatException('base_url is required');
@@ -549,6 +785,7 @@ class _ChatPageState extends State<ChatPage> {
         _status = 'Config loaded';
       });
       _appendSystem('Client config loaded.');
+      unawaited(_initVoice());
     } catch (err) {
       if (!mounted) {
         return;
@@ -592,6 +829,8 @@ class _ChatPageState extends State<ChatPage> {
       _clientConfig = ClientConfig(
         baseUrl: baseUrl,
         receiveToken: _clientConfig?.receiveToken ?? '',
+        enableLocalVosk: _clientConfig?.enableLocalVosk ?? false,
+        voskModelPath: _clientConfig?.voskModelPath ?? '',
       );
       _status = 'URL updated';
     });
@@ -707,12 +946,18 @@ class _ChatPageState extends State<ChatPage> {
 
   String _describeRequestError(Object err, {required String operation}) {
     if (err is TimeoutException) {
+      if (operation == 'Download attachment') {
+        return '$operation timed out. app-agent did not finish within 30 seconds.';
+      }
       return '$operation timed out. app-agent did not respond within 8 seconds.';
     }
     if (err is SocketException) {
       return '$operation failed: unable to reach app-agent.';
     }
     final raw = err.toString();
+    if (raw.startsWith('ClientException: ')) {
+      return '$operation failed: ${raw.substring('ClientException: '.length)}';
+    }
     if (raw.startsWith('HttpException: ')) {
       return '$operation failed: ${raw.substring('HttpException: '.length)}';
     }
@@ -727,56 +972,78 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _handleMessageTap(ChatMessage message) async {
-    if (message.messageType != 'audio') {
-      return;
-    }
-    final meta = message.meta;
-    final audioPath = (meta?['audio_path'] ?? '').toString().trim();
-    if (audioPath.isEmpty) {
-      _appendSystem('Audio file unavailable for playback.');
-      return;
-    }
-    final file = File(audioPath);
-    if (!await file.exists()) {
-      _appendSystem('Audio file not found: $audioPath');
-      return;
-    }
-
-    final key = _messagePlaybackKey(message);
-    try {
-      if (_playingAudioKey == key) {
-        await _audioPlayer.pause();
-        if (mounted) {
-          setState(() {
-            _playingAudioKey = null;
-          });
-        }
+    if (message.messageType == 'audio') {
+      final meta = message.meta;
+      final audioPath = (meta?['audio_path'] ?? '').toString().trim();
+      if (audioPath.isEmpty) {
+        _appendSystem('Audio file unavailable for playback.');
+        return;
+      }
+      final file = File(audioPath);
+      if (!await file.exists()) {
+        _appendSystem('Audio file not found: $audioPath');
         return;
       }
 
-      await _audioPlayer.stop();
-      await _audioPlayer.play(DeviceFileSource(audioPath));
-      if (mounted) {
-        setState(() {
-          _playingAudioKey = key;
-          _status = 'Playing voice message';
-        });
-      }
-      unawaited(
-        _audioPlayer.onPlayerComplete.first.then((_) {
-          if (!mounted) {
-            return;
-          }
-          setState(() {
-            if (_playingAudioKey == key) {
+      final key = _messagePlaybackKey(message);
+      try {
+        if (_playingAudioKey == key) {
+          await _audioPlayer.pause();
+          if (mounted) {
+            setState(() {
               _playingAudioKey = null;
-              _status = 'Voice playback finished';
-            }
+            });
+          }
+          return;
+        }
+
+        await _audioPlayer.stop();
+        await _audioPlayer.play(DeviceFileSource(audioPath));
+        if (mounted) {
+          setState(() {
+            _playingAudioKey = key;
+            _status = 'Playing voice message';
           });
-        }),
-      );
+        }
+        unawaited(
+          _audioPlayer.onPlayerComplete.first.then((_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              if (_playingAudioKey == key) {
+                _playingAudioKey = null;
+                _status = 'Voice playback finished';
+              }
+            });
+          }),
+        );
+      } catch (err) {
+        _appendSystem('Play audio failed: $err');
+      }
+      return;
+    }
+
+    if (!isApkChatMessage(message)) {
+      return;
+    }
+    late final String apkPath;
+    try {
+      apkPath = await _resolveOrDownloadApkPath(message);
     } catch (err) {
-      _appendSystem('Play audio failed: $err');
+      if (err is StateError) {
+        _appendSystem(err.message.toString());
+        return;
+      }
+      _appendSystem(
+        _describeRequestError(err, operation: 'Download attachment'),
+      );
+      return;
+    }
+    try {
+      await _installDownloadedApk(apkPath);
+    } catch (err) {
+      _appendSystem('安装 APK 失败：$err');
     }
   }
 
@@ -1117,6 +1384,29 @@ class _ChatPageState extends State<ChatPage> {
         ),
         updateStatus: isSystemMessage ? envelope.content : 'Received message',
       );
+      if (!isSystemMessage &&
+          direction == MessageDirection.incoming &&
+          envelope.messageType == 'file') {
+        final autoInstallMessage = ChatMessage(
+          content: envelope.content,
+          direction: direction,
+          timestamp: when,
+          scopeKey: scopeKey,
+          authorId: fromUser,
+          groupId: groupId,
+          messageType: envelope.messageType,
+          meta: resolvedMeta,
+        );
+        if (isApkChatMessage(autoInstallMessage) &&
+            envelope.messageId.isNotEmpty &&
+            !_autoInstallTriggered.contains(envelope.messageId)) {
+          final apkPath = (resolvedMeta['file_path'] ?? '').toString().trim();
+          if (apkPath.isNotEmpty) {
+            _autoInstallTriggered.add(envelope.messageId);
+            unawaited(_installDownloadedApk(apkPath));
+          }
+        }
+      }
       if (envelope.messageId.isNotEmpty) {
         _seenMessageIds.add(envelope.messageId);
       }
@@ -1242,34 +1532,262 @@ class _ChatPageState extends State<ChatPage> {
           if (currentPath.isNotEmpty && await File(currentPath).exists()) {
             return resolved;
           }
-          final bytes = await _client.downloadAttachment(fileId);
           final extension =
               (resolved['audio_format'] ?? resolved['file_format'] ?? 'bin')
                   .toString()
                   .trim();
-          resolved['audio_path'] = await _persistAttachmentBytes(
-            bytes: bytes,
+          final audioPath = await _attachmentPathForFileID(
+            fileId: fileId,
             subdir: 'voice_messages',
             prefix: 'voice',
             extension: extension.isEmpty ? 'bin' : extension,
           );
+          final existingFile = File(audioPath);
+          if (!await existingFile.exists()) {
+            await _client.downloadAttachmentToFile(
+              fileId,
+              destinationPath: audioPath,
+              onProgress: (receivedBytes, totalBytes, resumed) {
+                _updateDownloadStatus(
+                  label: '语音',
+                  receivedBytes: receivedBytes,
+                  totalBytes: totalBytes,
+                  resumed: resumed,
+                );
+              },
+            );
+          }
+          _clearDownloadStatus(successText: '语音下载完成');
+          resolved['audio_path'] = audioPath;
           return resolved;
         case 'image':
           if ((resolved['image_base64'] ?? '').toString().trim().isNotEmpty) {
             return resolved;
           }
-          final bytes = await _client.downloadAttachment(fileId);
+          final fileName = (resolved['file_name'] ?? '').toString().trim();
+          final imageExtension = _resolveFileExtension(
+            fileName: fileName,
+            fileFormat: (resolved['image_format'] ?? '').toString(),
+          );
+          final imagePath = await _attachmentPathForFileID(
+            fileId: fileId,
+            subdir: 'downloads',
+            prefix: 'image',
+            extension: imageExtension,
+          );
+          final imageFile = File(imagePath);
+          if (!await imageFile.exists()) {
+            await _client.downloadAttachmentToFile(
+              fileId,
+              destinationPath: imagePath,
+              onProgress: (receivedBytes, totalBytes, resumed) {
+                _updateDownloadStatus(
+                  label: fileName.isEmpty ? '图片' : fileName,
+                  receivedBytes: receivedBytes,
+                  totalBytes: totalBytes,
+                  resumed: resumed,
+                );
+              },
+            );
+          }
+          _clearDownloadStatus(successText: '图片下载完成');
+          final bytes = await imageFile.readAsBytes();
           resolved['image_base64'] = base64Encode(bytes);
+          return resolved;
+        case 'file':
+        case 'archive':
+        case 'video':
+          final currentPath = (resolved['file_path'] ?? '').toString().trim();
+          if (currentPath.isNotEmpty && await File(currentPath).exists()) {
+            return resolved;
+          }
+          final fileName = (resolved['file_name'] ?? '').toString().trim();
+          final extension = _resolveFileExtension(
+            fileName: fileName,
+            fileFormat: (resolved['file_format'] ?? '').toString(),
+          );
+          final filePath = await _attachmentPathForFileID(
+            fileId: fileId,
+            subdir: 'downloads',
+            prefix: 'file',
+            extension: extension,
+          );
+          final file = File(filePath);
+          if (!await file.exists()) {
+            await _client.downloadAttachmentToFile(
+              fileId,
+              destinationPath: filePath,
+              onProgress: (receivedBytes, totalBytes, resumed) {
+                _updateDownloadStatus(
+                  label: fileName.isEmpty ? '附件' : fileName,
+                  receivedBytes: receivedBytes,
+                  totalBytes: totalBytes,
+                  resumed: resumed,
+                );
+              },
+            );
+          }
+          _clearDownloadStatus(successText: '附件下载完成');
+          resolved['file_path'] = filePath;
           return resolved;
         default:
           return resolved;
       }
     } catch (err) {
+      _clearDownloadStatus();
       _appendSystem(
         _describeRequestError(err, operation: 'Download attachment'),
       );
       return resolved;
     }
+  }
+
+  String _resolveFileExtension({
+    required String fileName,
+    required String fileFormat,
+  }) {
+    final trimmedName = fileName.trim();
+    final dot = trimmedName.lastIndexOf('.');
+    if (dot >= 0 && dot < trimmedName.length - 1) {
+      return trimmedName.substring(dot + 1).trim().toLowerCase();
+    }
+    final format = fileFormat.trim().toLowerCase();
+    return format.isEmpty ? 'bin' : format;
+  }
+
+  Future<String> _resolveOrDownloadApkPath(ChatMessage message) async {
+    final meta = message.meta ?? const <String, dynamic>{};
+    final currentPath = (meta['file_path'] ?? '').toString().trim();
+    if (currentPath.isNotEmpty && await File(currentPath).exists()) {
+      return currentPath;
+    }
+
+    final fileId = (meta['file_id'] ?? '').toString().trim();
+    if (fileId.isEmpty) {
+      throw StateError('APK 下载信息缺失，无法安装。');
+    }
+
+    final fileName = (meta['file_name'] ?? '').toString().trim();
+    final extension = _resolveFileExtension(
+      fileName: fileName,
+      fileFormat: (meta['file_format'] ?? '').toString(),
+    );
+    final apkPath = await _attachmentPathForFileID(
+      fileId: fileId,
+      subdir: 'downloads',
+      prefix: 'file',
+      extension: extension,
+    );
+    final apkFile = File(apkPath);
+    if (!await apkFile.exists()) {
+      try {
+        await _client.downloadAttachmentToFile(
+          fileId,
+          destinationPath: apkPath,
+          onProgress: (receivedBytes, totalBytes, resumed) {
+            _updateDownloadStatus(
+              label: fileName.isEmpty ? 'APK' : fileName,
+              receivedBytes: receivedBytes,
+              totalBytes: totalBytes,
+              resumed: resumed,
+            );
+          },
+        );
+        // Try to extract version from filename (e.g., app-release-1.0.0.apk -> 1.0.0)
+        String versionLabel = '';
+        final versionMatch = RegExp(r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$', caseSensitive: false)
+            .firstMatch(fileName);
+        if (versionMatch != null) {
+          versionLabel = ' v${versionMatch.group(1)}';
+        }
+        _clearDownloadStatus(successText: 'APK 下载完成$versionLabel');
+      } catch (_) {
+        _clearDownloadStatus();
+        rethrow;
+      }
+    }
+
+    await _updateMessageMeta(message, <String, dynamic>{'file_path': apkPath});
+    return apkPath;
+  }
+
+  Future<void> _updateMessageMeta(
+    ChatMessage target,
+    Map<String, dynamic> patch,
+  ) async {
+    if (patch.isEmpty) {
+      return;
+    }
+    final history = _historyByScope[target.scopeKey];
+    if (history == null || history.isEmpty) {
+      return;
+    }
+
+    var matchedIndex = -1;
+    for (var i = history.length - 1; i >= 0; i--) {
+      final candidate = history[i];
+      if (_isSameStoredMessage(candidate, target)) {
+        matchedIndex = i;
+        break;
+      }
+    }
+    if (matchedIndex < 0) {
+      return;
+    }
+
+    final existing = history[matchedIndex];
+    final mergedMeta = <String, dynamic>{
+      if (existing.meta != null) ...existing.meta!,
+      ...patch,
+    };
+    final updated = ChatMessage(
+      content: existing.content,
+      direction: existing.direction,
+      timestamp: existing.timestamp,
+      status: existing.status,
+      scopeKey: existing.scopeKey,
+      authorId: existing.authorId,
+      groupId: existing.groupId,
+      messageType: existing.messageType,
+      meta: mergedMeta,
+    );
+    final updatedHistory = List<ChatMessage>.from(history);
+    updatedHistory[matchedIndex] = updated;
+    _historyByScope[target.scopeKey] = updatedHistory;
+
+    if (mounted && target.scopeKey == _currentScopeKey) {
+      setState(() {});
+    }
+    await _persistHistory(target.scopeKey);
+  }
+
+  bool _isSameStoredMessage(ChatMessage a, ChatMessage b) {
+    return a.timestamp.millisecondsSinceEpoch ==
+            b.timestamp.millisecondsSinceEpoch &&
+        a.content == b.content &&
+        a.direction == b.direction &&
+        a.messageType == b.messageType &&
+        a.authorId == b.authorId &&
+        a.groupId == b.groupId;
+  }
+
+  Future<void> _installDownloadedApk(String apkPath) async {
+    if (!Platform.isAndroid) {
+      _appendSystem('APK 安装仅支持 Android 客户端。');
+      return;
+    }
+    final resp = await _apkInstaller.installApk(apkPath);
+    final status = (resp['status'] ?? '').toString().trim();
+    if (status == 'permission_required') {
+      _appendSystem('请先允许安装未知来源应用，然后再次点击 APK 安装。');
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _status = '已发起 APK 安装';
+      });
+    }
+    _appendSystem('APK 已下载，正在调用系统安装器。');
   }
 
   void _scheduleReconnect() {
@@ -1307,20 +1825,20 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final useWindowsWave = Platform.isWindows;
-      final fileExt = useWindowsWave ? 'wav' : 'm4a';
+      final useWaveFile = Platform.isWindows || _useLocalVosk;
+      final fileExt = useWaveFile ? 'wav' : 'm4a';
       final path =
           '${tempDir.path}${Platform.pathSeparator}app_voice_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
       await _audioRecorder.start(
         RecordConfig(
-          encoder: useWindowsWave ? AudioEncoder.wav : AudioEncoder.aacLc,
-          bitRate: useWindowsWave ? 1411200 : 64000,
-          sampleRate: useWindowsWave ? 44100 : 16000,
+          encoder: useWaveFile ? AudioEncoder.wav : AudioEncoder.aacLc,
+          bitRate: useWaveFile ? 256000 : 64000,
+          sampleRate: useWaveFile ? 16000 : 16000,
           numChannels: 1,
         ),
         path: path,
       );
-      if (_speechReady) {
+      if (_speechReady && !_useLocalVosk) {
         await _speechToText.listen(
           onResult: (result) {
             if (!mounted) {
@@ -1372,7 +1890,7 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     if (_speechVoiceAction) {
-      await _sendVoiceAsText();
+      await _transcribeVoiceToDraft();
       return;
     }
     await _sendVoiceAsAudio();
@@ -1426,37 +1944,52 @@ class _ChatPageState extends State<ChatPage> {
     _appendSystem('Voice input cancelled.');
   }
 
-  Future<void> _sendVoiceAsText() async {
-    final transcript = _speechDraft.trim();
-    await _stopRecording(discard: true);
-    if (transcript.isEmpty) {
-      _appendSystem('No speech recognized. Please try again.');
+  Future<void> _transcribeVoiceToDraft() async {
+    final recorded = await _stopRecording(discard: false);
+    if (recorded == null) {
+      _appendSystem('语音录制不可用。');
       return;
     }
-    _appendOutgoing('🎤 $transcript');
-    setState(() {
-      _sending = true;
-    });
     try {
-      await _client.sendAppMessage(
-        transcript,
-        meta: <String, dynamic>{
-          'input_mode': 'voice_to_text',
-          if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
-          if (_currentGroupId.isNotEmpty) 'scope': 'group',
-        },
-      );
       if (mounted) {
         setState(() {
-          _status = 'Voice text sent';
+          _transcribingVoice = true;
+          _status = '语音转文字中...';
+        });
+      }
+
+      var transcript = _speechDraft.trim();
+      if (_useLocalVosk) {
+        transcript = await _voskTranscriber.transcribeFile(recorded.path);
+      }
+      transcript = transcript.trim();
+
+      if (transcript.isEmpty) {
+        _appendSystem('未识别到有效语音内容，请重试。');
+        return;
+      }
+
+      final existing = _messageController.text.trim();
+      final merged = existing.isEmpty ? transcript : '$existing\n$transcript';
+      _messageController.value = TextEditingValue(
+        text: merged,
+        selection: TextSelection.collapsed(offset: merged.length),
+      );
+      _speechDraft = transcript;
+      if (mounted) {
+        setState(() {
+          _status = '语音已转成文字，可修改后发送';
         });
       }
     } catch (err) {
-      _appendSystem(_describeRequestError(err, operation: 'Send voice text'));
+      _appendSystem('本地语音识别失败：$err');
     } finally {
+      try {
+        await File(recorded.path).delete();
+      } catch (_) {}
       if (mounted) {
         setState(() {
-          _sending = false;
+          _transcribingVoice = false;
         });
       }
     }
@@ -1480,7 +2013,7 @@ class _ChatPageState extends State<ChatPage> {
 
       final seconds = recorded.duration.inMilliseconds / 1000;
       final label = '[Voice ${seconds.toStringAsFixed(1)}s]';
-      final audioFormat = Platform.isWindows ? 'wav' : 'm4a';
+      final audioFormat = (Platform.isWindows || _useLocalVosk) ? 'wav' : 'm4a';
       final savedAudioPath = await _persistVoiceMessage(
         bytes: bytes,
         extension: audioFormat,
@@ -1534,7 +2067,16 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  Future<void> _pickAndSendImage() async {
+  Future<void> _handleAttachmentMenuAction(_AttachmentMenuAction action) async {
+    switch (action) {
+      case _AttachmentMenuAction.galleryImage:
+        return _pickAndSendImage(ImageSource.gallery);
+      case _AttachmentMenuAction.cameraImage:
+        return _pickAndSendImage(ImageSource.camera);
+    }
+  }
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
     if (_sessionToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
@@ -1545,7 +2087,7 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final picked = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         imageQuality: 92,
       );
       if (picked == null) {
@@ -1571,7 +2113,9 @@ class _ChatPageState extends State<ChatPage> {
         'image_base64': imageBase64,
         'image_format': imageFormat,
         'file_name': fileName,
-        'input_mode': 'gallery_image',
+        'input_mode': source == ImageSource.camera
+            ? 'camera_image'
+            : 'gallery_image',
         if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
         if (_currentGroupId.isNotEmpty) 'scope': 'group',
       };
@@ -1630,6 +2174,85 @@ class _ChatPageState extends State<ChatPage> {
     );
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
+  }
+
+  Future<String> _attachmentPathForFileID({
+    required String fileId,
+    required String subdir,
+    required String prefix,
+    required String extension,
+  }) async {
+    final supportDir = await getApplicationSupportDirectory();
+    final targetDir = Directory(
+      '${supportDir.path}${Platform.pathSeparator}$subdir',
+    );
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+    final safeFileID = fileId
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')
+        .replaceAll('__', '_');
+    final ext = extension.trim().isEmpty
+        ? 'bin'
+        : extension.trim().toLowerCase();
+    return '${targetDir.path}${Platform.pathSeparator}${prefix}_$safeFileID.$ext';
+  }
+
+  void _updateDownloadStatus({
+    required String label,
+    required int receivedBytes,
+    required int? totalBytes,
+    required bool resumed,
+  }) {
+    final percent = totalBytes == null || totalBytes <= 0
+        ? -1
+        : ((receivedBytes * 100) / totalBytes).floor().clamp(0, 100);
+    if (!mounted) {
+      return;
+    }
+    if (_downloadStatusLabel == label && _downloadStatusPercent == percent) {
+      return;
+    }
+    final progressText = totalBytes == null || totalBytes <= 0
+        ? _formatBytes(receivedBytes)
+        : '${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}';
+    final resumeText = resumed ? '继续下载' : '下载中';
+    setState(() {
+      _downloadStatusLabel = label;
+      _downloadStatusPercent = percent;
+      _status = percent >= 0
+          ? '$resumeText $label $percent% ($progressText)'
+          : '$resumeText $label ($progressText)';
+    });
+  }
+
+  void _clearDownloadStatus({String? successText}) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _downloadStatusLabel = null;
+      _downloadStatusPercent = -1;
+      if (successText != null && successText.trim().isNotEmpty) {
+        _status = successText;
+      }
+    });
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    final kb = bytes / 1024;
+    if (kb < 1024) {
+      return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
+    }
+    final mb = kb / 1024;
+    if (mb < 1024) {
+      return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
+    }
+    final gb = mb / 1024;
+    return '${gb.toStringAsFixed(gb >= 100 ? 0 : 1)} GB';
   }
 
   String _detectImageFormat(String fileName, List<int> bytes) {
@@ -1760,10 +2383,10 @@ class _ChatPageState extends State<ChatPage> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFCF8),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2D6C3)),
       ),
       child: Row(
@@ -1809,27 +2432,72 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Widget _buildAttachmentMenuButton({required bool enabled}) {
+    return PopupMenuButton<_AttachmentMenuAction>(
+      enabled: enabled,
+      tooltip: 'Attachments',
+      onSelected: (action) => unawaited(_handleAttachmentMenuAction(action)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      color: const Color(0xFFFFFCF8),
+      itemBuilder: (context) => const [
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.galleryImage,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.photo_library_rounded),
+            title: Text('Send Image'),
+            subtitle: Text('Choose from gallery'),
+          ),
+        ),
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.cameraImage,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.photo_camera_back_rounded),
+            title: Text('Take Photo'),
+            subtitle: Text('Capture and send'),
+          ),
+        ),
+      ],
+      child: Container(
+        height: 48,
+        width: 48,
+        decoration: BoxDecoration(
+          color: enabled ? const Color(0xFFE6D8C2) : const Color(0xFFEDE4D7),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Icon(
+          Icons.add_rounded,
+          color: enabled ? const Color(0xFF5A4A39) : const Color(0xFFA99883),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopPanel() {
     final canLogin = !_loggingIn && !_configLoading && _clientConfig != null;
     final baseUrl = _clientConfig?.baseUrl ?? '';
     final receiveToken = _clientConfig?.receiveToken ?? '';
+    final compactButtonLabel = _controlsExpanded
+        ? 'Hide'
+        : (_sessionToken.isEmpty ? 'Login' : 'Controls');
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFFFFFCF7), Color(0xFFF2E7D6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFE4D8C4)),
         boxShadow: const [
           BoxShadow(
-            blurRadius: 24,
+            blurRadius: 18,
             color: Color(0x14000000),
-            offset: Offset(0, 14),
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -1840,23 +2508,32 @@ class _ChatPageState extends State<ChatPage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildStatusChip(
-                      icon: Icons.wifi_tethering_rounded,
-                      label: _connectionLabel,
-                      color: _connectionColor,
-                    ),
-                    _buildStatusChip(
-                      icon: Icons.layers_outlined,
-                      label: _currentGroupId.isEmpty
-                          ? 'Direct'
-                          : 'Group ${_currentGroupId.toLowerCase()}',
-                      color: const Color(0xFF8B633D),
-                    ),
-                  ],
+                child: SizedBox(
+                  height: 36,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      ChoiceChip(
+                        selected: _currentGroupId.isEmpty,
+                        label: const Text('Direct'),
+                        onSelected: (_) => unawaited(_switchToDirectScope()),
+                      ),
+                      const SizedBox(width: 8),
+                      ..._groups.expand(
+                        (group) => [
+                          ChoiceChip(
+                            selected: _currentGroupId == group.id,
+                            label: Text(
+                              '${group.id} (${group.members.length})',
+                            ),
+                            onSelected: (_) =>
+                                unawaited(_switchToGroupScope(group.id)),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1869,7 +2546,8 @@ class _ChatPageState extends State<ChatPage> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF5F4B37),
                   side: const BorderSide(color: Color(0xFFD4C7B1)),
-                  minimumSize: const Size(0, 44),
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1879,7 +2557,7 @@ class _ChatPageState extends State<ChatPage> {
                       ? Icons.expand_less_rounded
                       : Icons.tune_rounded,
                 ),
-                label: Text(_controlsExpanded ? 'Hide' : 'Controls'),
+                label: Text(compactButtonLabel),
               ),
             ],
           ),
@@ -1888,7 +2566,7 @@ class _ChatPageState extends State<ChatPage> {
             secondChild: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 _buildConfigItem(
                   icon: Icons.link_rounded,
                   label: 'Server URL',
@@ -1906,7 +2584,7 @@ class _ChatPageState extends State<ChatPage> {
                       ? null
                       : () => unawaited(_copyText('Token', receiveToken)),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
@@ -1917,6 +2595,7 @@ class _ChatPageState extends State<ChatPage> {
                           labelText: 'Server URL',
                           hintText: 'http://127.0.0.1:9002',
                           prefixIcon: Icon(Icons.link_rounded),
+                          isDense: true,
                         ),
                       ),
                     ),
@@ -1926,8 +2605,8 @@ class _ChatPageState extends State<ChatPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF8B633D),
                         foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 56),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        minimumSize: const Size(0, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -1937,16 +2616,17 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _userIdController,
                   decoration: const InputDecoration(
                     labelText: 'User ID',
                     hintText: 'demo-user',
                     prefixIcon: Icon(Icons.badge_outlined),
+                    isDense: true,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _passwordController,
                   obscureText: !_passwordVisible,
@@ -1954,6 +2634,7 @@ class _ChatPageState extends State<ChatPage> {
                     labelText: 'Password',
                     hintText: 'blog-agent password',
                     prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    isDense: true,
                     suffixIcon: IconButton(
                       onPressed: () {
                         setState(() {
@@ -1978,8 +2659,8 @@ class _ChatPageState extends State<ChatPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF154A3F),
                         foregroundColor: Colors.white,
-                        minimumSize: const Size(132, 56),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        minimumSize: const Size(120, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -1996,7 +2677,7 @@ class _ChatPageState extends State<ChatPage> {
                           ? _disconnectWs
                           : null,
                       style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(132, 56),
+                        minimumSize: const Size(120, 48),
                         side: const BorderSide(color: Color(0xFFD4C7B1)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
@@ -2007,16 +2688,17 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _groupIdController,
                   decoration: const InputDecoration(
                     labelText: 'Group ID',
                     hintText: 'party-01',
                     prefixIcon: Icon(Icons.groups_2_outlined),
+                    isDense: true,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -2041,48 +2723,12 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  _sessionToken.isEmpty
-                      ? 'Login uses your blog-agent account. URL and token come from local JSON config.'
-                      : 'Controls are collapsed by default so the chat stays primary.',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: Color(0xFF7B6D5C),
-                  ),
-                ),
               ],
             ),
             crossFadeState: _controlsExpanded
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ChoiceChip(
-                  selected: _currentGroupId.isEmpty,
-                  label: const Text('Direct'),
-                  onSelected: (_) => unawaited(_switchToDirectScope()),
-                ),
-                const SizedBox(width: 8),
-                ..._groups.expand(
-                  (group) => [
-                    ChoiceChip(
-                      selected: _currentGroupId == group.id,
-                      label: Text('${group.id} (${group.members.length})'),
-                      onSelected: (_) =>
-                          unawaited(_switchToGroupScope(group.id)),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -2091,17 +2737,17 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _buildComposer() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFCF8),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFE2D6C3)),
         boxShadow: const [
           BoxShadow(
-            blurRadius: 24,
+            blurRadius: 16,
             color: Color(0x12000000),
-            offset: Offset(0, 10),
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -2117,15 +2763,16 @@ class _ChatPageState extends State<ChatPage> {
                   style: const TextStyle(
                     color: Color(0xFF655848),
                     fontWeight: FontWeight.w600,
+                    fontSize: 12,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (_recording) ...[
             _buildVoiceGestureOverlay(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
           ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -2136,8 +2783,8 @@ class _ChatPageState extends State<ChatPage> {
                 onLongPressEnd: _handleVoiceEnd,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 140),
-                  height: 56,
-                  width: 56,
+                  height: 48,
+                  width: 48,
                   decoration: BoxDecoration(
                     color: _recording
                         ? const Color(0xFF9B2C2C)
@@ -2150,47 +2797,46 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _messageController,
                   minLines: 1,
-                  maxLines: 5,
-                  enabled: !_recording,
+                  maxLines: 3,
+                  enabled: !_recording && !_transcribingVoice,
                   onSubmitted: (_) => _sendMessage(),
                   decoration: InputDecoration(
                     labelText: 'Message',
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     hintText: _currentGroupId.isEmpty
                         ? 'Ask something... or hold mic'
                         : 'Message the group directly...',
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              IconButton.filledTonal(
-                onPressed: (_sending || _recording) ? null : _pickAndSendImage,
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(56, 56),
-                  backgroundColor: const Color(0xFFE6D8C2),
-                  foregroundColor: const Color(0xFF5A4A39),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                icon: const Icon(Icons.photo_library_rounded),
+              const SizedBox(width: 10),
+              _buildAttachmentMenuButton(
+                enabled: !(_sending || _recording || _transcribingVoice),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               FilledButton(
-                onPressed: (_sending || _recording) ? null : _sendMessage,
+                onPressed: (_sending || _recording || _transcribingVoice)
+                    ? null
+                    : _sendMessage,
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF154A3F),
                   foregroundColor: Colors.white,
-                  minimumSize: const Size(64, 56),
+                  minimumSize: const Size(56, 48),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
-                child: _sending
+                child: (_sending || _transcribingVoice)
                     ? const SizedBox(
                         height: 18,
                         width: 18,
@@ -2246,7 +2892,7 @@ class _ChatPageState extends State<ChatPage> {
                     width: rightWidth,
                     icon: Icons.subtitles_rounded,
                     label: '右上滑转文字',
-                    helper: '松手即发送文字',
+                    helper: '松手后转成草稿',
                     active: _speechVoiceAction,
                     color: const Color(0xFF13634C),
                     direction: _VoiceBubbleDirection.right,
@@ -2320,7 +2966,23 @@ class _ChatPageState extends State<ChatPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('App Agent'),
+            Row(
+              children: [
+                const Text('App Agent'),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    appVersion,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.normal),
+                  ),
+                ),
+              ],
+            ),
             Text(
               _currentGroupId.isEmpty
                   ? 'Direct conversation'
@@ -2356,25 +3018,25 @@ class _ChatPageState extends State<ChatPage> {
               _buildTopPanel(),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFFDF9F3).withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: const Color(0xFFE2D6C3)),
                       boxShadow: const [
                         BoxShadow(
-                          blurRadius: 28,
+                          blurRadius: 18,
                           color: Color(0x14000000),
-                          offset: Offset(0, 14),
+                          offset: Offset(0, 10),
                         ),
                       ],
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(24),
                       child: ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final msg = _messages[index];
@@ -2428,6 +3090,10 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bubbleMaxWidth = (MediaQuery.sizeOf(context).width * 0.9).clamp(
+      280.0,
+      980.0,
+    );
     final isOutgoing = message.direction == MessageDirection.outgoing;
     final isSystem = message.direction == MessageDirection.system;
     final authorLabel = message.authorId.trim();
@@ -2441,6 +3107,7 @@ class _MessageBubble extends StatelessWidget {
     final fgColor = isOutgoing ? Colors.white : const Color(0xFF2D241F);
     final isAudio = message.messageType == 'audio';
     final isImage = message.messageType == 'image';
+    final isApk = isApkChatMessage(message);
     final durationMs = message.meta?['duration_ms'];
     final durationText = durationMs is num
         ? '${(durationMs / 1000).toStringAsFixed(1)}s'
@@ -2458,9 +3125,9 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: alignment,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         child: InkWell(
-          onTap: isAudio ? () => onTap() : null,
+          onTap: (isAudio || isApk) ? () => onTap() : null,
           onLongPress: () => onCopy(),
           borderRadius: BorderRadius.circular(18),
           child: Container(
@@ -2573,7 +3240,9 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 if (!isAudio && !isImage)
                   Text(
-                    message.content,
+                    isApk
+                        ? '${message.content}${extractApkVersion(message) != null ? '\n版本: ${extractApkVersion(message)}' : ''}\n点击安装 APK'
+                        : message.content,
                     style: TextStyle(
                       color: isSystem ? const Color(0xFF5F4B37) : fgColor,
                       height: 1.35,
@@ -2585,6 +3254,8 @@ class _MessageBubble extends StatelessWidget {
                       ? '${_formatTime(message.timestamp)}  Long press to copy'
                       : isAudio
                       ? '${_formatTime(message.timestamp)}  Tap to play · Long press to copy'
+                      : isApk
+                      ? '${_formatTime(message.timestamp)}  ${extractApkVersion(message) != null ? 'v${extractApkVersion(message)} · ' : ''}点击安装 · 长按复制'
                       : '${_formatTime(message.timestamp)}  Long press to copy',
                   style: TextStyle(
                     fontSize: 11,
