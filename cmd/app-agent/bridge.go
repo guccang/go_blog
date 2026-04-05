@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -74,6 +76,10 @@ type Bridge struct {
 	// delegation tokens by user
 	delegationTokens map[string]string
 	delegationMu     sync.Mutex
+
+	// last sent APK version by user/group
+	lastApkVersions map[string]string
+	apkVersionMu    sync.RWMutex
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -125,6 +131,7 @@ func NewBridge(cfg *Config) *Bridge {
 		pendingByUser:    make(map[string][]string),
 		clients:          make(map[string]map[*appClientConn]struct{}),
 		delegationTokens: make(map[string]string),
+		lastApkVersions:  make(map[string]string),
 	}
 	client.OnMessage = b.handleUAPMessage
 	return b
@@ -271,14 +278,131 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	}
 }
 
+// extractApkVersion extracts version from APK filename.
+// Examples: "app-release-1.0.0.apk" -> "1.0.0", "myapp-2.3.4+5.apk" -> "2.3.4+5"
+func extractApkVersion(fileName string) string {
+	// Pattern: match version numbers like 1.0.0 or 2.3.4+5 before .apk extension
+	// (?i) makes the regex case-insensitive
+	re := regexp.MustCompile(`(?i)[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$`)
+	matches := re.FindStringSubmatch(fileName)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+// compareVersion returns:
+//   1 if versionA > versionB
+//   0 if versionA == versionB
+//  -1 if versionA < versionB
+func compareVersion(versionA, versionB string) int {
+	if versionA == "" && versionB == "" {
+		return 0
+	}
+	if versionA == "" {
+		return -1
+	}
+	if versionB == "" {
+		return 1
+	}
+
+	// Parse version parts (e.g., "1.2.3+5" -> [1, 2, 3, 5])
+	parseParts := func(v string) []int {
+		// Remove build metadata part after +
+		baseV := v
+		if idx := strings.Index(v, "+"); idx != -1 {
+			baseV = v[:idx]
+		}
+		parts := strings.Split(baseV, ".")
+		result := make([]int, 0, len(parts))
+		for _, part := range parts {
+			if num, err := strconv.Atoi(part); err == nil {
+				result = append(result, num)
+			} else {
+				// Invalid version part, treat as 0
+				result = append(result, 0)
+			}
+		}
+		return result
+	}
+
+	partsA := parseParts(versionA)
+	partsB := parseParts(versionB)
+
+	// Compare each part
+	maxLen := len(partsA)
+	if len(partsB) > maxLen {
+		maxLen = len(partsB)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		valA := 0
+		if i < len(partsA) {
+			valA = partsA[i]
+		}
+		valB := 0
+		if i < len(partsB) {
+			valB = partsB[i]
+		}
+
+		if valA > valB {
+			return 1
+		}
+		if valA < valB {
+			return -1
+		}
+	}
+
+	return 0
+}
+
+// shouldPushApk checks if the APK should be pushed based on version comparison
+func (b *Bridge) shouldPushApk(target, version string) bool {
+	if version == "" {
+		// No version info, always push
+		return true
+	}
+
+	b.apkVersionMu.RLock()
+	lastVersion, exists := b.lastApkVersions[target]
+	b.apkVersionMu.RUnlock()
+
+	if !exists {
+		return true
+	}
+
+	// Only push if new version is newer than last sent version
+	return compareVersion(version, lastVersion) > 0
+}
+
+// recordApkVersion records the APK version for a target
+func (b *Bridge) recordApkVersion(target, version string) {
+	if version == "" {
+		return
+	}
+	b.apkVersionMu.Lock()
+	b.lastApkVersions[target] = version
+	b.apkVersionMu.Unlock()
+}
+
 func (b *Bridge) PushUploadedAPK(toUser, content, fileName string, src io.Reader) (*AppAttachment, error) {
 	if strings.TrimSpace(toUser) == "" {
 		return nil, fmt.Errorf("empty user")
 	}
+
+	version := extractApkVersion(fileName)
+	if !b.shouldPushApk(toUser, version) {
+		return nil, fmt.Errorf("apk version %s is not newer than last sent version for user %s", version, toUser)
+	}
+
 	attachment, err := b.storeUploadedAPK(toUser, fileName, src)
 	if err != nil {
 		return nil, err
 	}
+
+	// Record the version after successful storage
+	b.recordApkVersion(toUser, version)
+
 	if err := b.sendExistingAttachmentMessage(toUser, content, "file", nil, attachment); err != nil {
 		return nil, err
 	}
@@ -290,6 +414,13 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 	if groupID == "" {
 		return nil, nil, fmt.Errorf("empty group")
 	}
+
+	version := extractApkVersion(fileName)
+	targetKey := "group:" + groupID
+	if !b.shouldPushApk(targetKey, version) {
+		return nil, nil, fmt.Errorf("apk version %s is not newer than last sent version for group %s", version, groupID)
+	}
+
 	robotAccount, ok := b.groups.RobotAccount(groupID)
 	if !ok {
 		return nil, nil, fmt.Errorf("group robot account not found")
@@ -302,6 +433,10 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Record the version after successful storage
+	b.recordApkVersion(targetKey, version)
+
 	pushMeta := buildPushMeta(nil, attachment)
 	if attachment != nil && strings.TrimSpace(content) == "" {
 		if attachment.FileName != "" {

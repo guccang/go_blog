@@ -3,6 +3,7 @@ import 'dart:convert'
     show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -165,6 +166,50 @@ String? extractApkVersion(ChatMessage message) {
   final match = RegExp(r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$', caseSensitive: false)
       .firstMatch(fileName);
   return match?.group(1);
+}
+
+/// Extract version string from APK filename.
+/// Examples: "app-release-1.0.0.apk" -> "1.0.0", "myapp-2.3.4+5.apk" -> "2.3.4+5"
+String? extractApkVersionFromString(String fileName) {
+  final match = RegExp(r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$', caseSensitive: false)
+      .firstMatch(fileName);
+  return match?.group(1);
+}
+
+/// Compare two version strings.
+/// Returns 1 if versionA > versionB, 0 if equal, -1 if versionA < versionB.
+int compareApkVersions(String? versionA, String? versionB) {
+  if (versionA == null && versionB == null) return 0;
+  if (versionA == null) return -1;
+  if (versionB == null) return 1;
+
+  // Parse version parts (e.g., "1.2.3" -> [1, 2, 3])
+  List<int> parseParts(String v) {
+    // Remove build metadata part after +
+    final baseV = v.split('+')[0];
+    final parts = baseV.split('.');
+    final result = <int>[];
+    for (final part in parts) {
+      final num = int.tryParse(part);
+      result.add(num ?? 0);
+    }
+    return result;
+  }
+
+  final partsA = parseParts(versionA);
+  final partsB = parseParts(versionB);
+
+  // Compare each part
+  final maxLen = partsA.length > partsB.length ? partsA.length : partsB.length;
+  for (int i = 0; i < maxLen; i++) {
+    final valA = i < partsA.length ? partsA[i] : 0;
+    final valB = i < partsB.length ? partsB[i] : 0;
+
+    if (valA > valB) return 1;
+    if (valA < valB) return -1;
+  }
+
+  return 0;
 }
 
 enum MessageDirection { outgoing, incoming, system }
@@ -677,6 +722,10 @@ class _ChatPageState extends State<ChatPage> {
   ClientConfig? _clientConfig;
   String? _downloadStatusLabel;
   int _downloadStatusPercent = -1;
+  bool _voskModelDownloading = false;
+  double _voskModelDownloadProgress = 0.0;
+  String? _voskModelDownloadError;
+  String? _lastDownloadedApkVersion;
 
   @override
   void initState() {
@@ -703,57 +752,231 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _initVoice() async {
     final config = _clientConfig;
+    // Use local downloaded model if available, otherwise use config path
+    var modelPath = config?.voskModelPath ?? '';
     if (Platform.isAndroid &&
         config != null &&
-        config.enableLocalVosk &&
-        config.voskModelPath.isNotEmpty) {
-      try {
-        final error = await _voskTranscriber.initialize(config.voskModelPath);
-        if (!mounted) {
-          return;
-        }
-        if (error == null) {
+        config.enableLocalVosk) {
+      // Check if local model is downloaded
+      if (await _isVoskModelDownloaded()) {
+        modelPath = await _getLocalVoskModelPath();
+      }
+      if (modelPath.isNotEmpty) {
+        try {
+          final error = await _voskTranscriber.initialize(modelPath);
+          if (!mounted) {
+            return;
+          }
+          if (error == null) {
+            setState(() {
+              _speechReady = true;
+              _useLocalVosk = true;
+            });
+            _appendSystem('Vosk local speech recognition is ready.');
+            return;
+          }
           setState(() {
-            _speechReady = true;
-            _useLocalVosk = true;
+            _speechReady = false;
+            _useLocalVosk = false;
           });
-          _appendSystem('Vosk local speech recognition is ready.');
-          return;
+          _appendSystem(error);
+        } catch (err) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _speechReady = false;
+            _useLocalVosk = false;
+          });
+          _appendSystem('Initialize Vosk failed: $err');
         }
-        setState(() {
-          _speechReady = false;
-          _useLocalVosk = false;
-        });
-        _appendSystem(error);
-      } catch (err) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _speechReady = false;
-          _useLocalVosk = false;
-        });
-        _appendSystem('Initialize Vosk failed: $err');
       }
     }
 
     try {
-      final available = await _speechToText.initialize();
+      final available = await _speechToText.initialize(
+        onError: (error) {
+          _appendSystem('Speech recognition error: $error');
+        },
+        onStatus: (status) {
+          _appendSystem('Speech recognition status: $status');
+        },
+      );
       if (!mounted) {
         return;
+      }
+      if (!available) {
+        _appendSystem('Speech recognition not available on this device.');
       }
       setState(() {
         _speechReady = available;
         _useLocalVosk = false;
       });
-    } catch (_) {
+    } catch (err, stack) {
       if (!mounted) {
         return;
       }
+      _appendSystem('Speech recognition init failed: $err');
+      debugPrint('Speech init error: $err\n$stack');
       setState(() {
         _speechReady = false;
         _useLocalVosk = false;
       });
+    }
+  }
+
+  static const String _voskModelUrl =
+      'https://alphacephei.com/vosk/models/vosk-model-cn-0.22.zip';
+
+  Future<String> _getLocalVoskModelPath() async {
+    final supportDir = await getApplicationSupportDirectory();
+    return '${supportDir.path}${Platform.pathSeparator}vosk-model-cn';
+  }
+
+  Future<bool> _isVoskModelDownloaded() async {
+    try {
+      final modelPath = await _getLocalVoskModelPath();
+      final modelDir = Directory(modelPath);
+      if (!await modelDir.exists()) {
+        return false;
+      }
+      // Check for essential model files
+      final amDir = Directory('${modelPath}${Platform.pathSeparator}am');
+      final graphDir = Directory('${modelPath}${Platform.pathSeparator}graph');
+      return await amDir.exists() && await graphDir.exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _downloadAndExtractVoskModel() async {
+    if (_voskModelDownloading) {
+      return;
+    }
+
+    setState(() {
+      _voskModelDownloading = true;
+      _voskModelDownloadProgress = 0.0;
+      _voskModelDownloadError = null;
+      _status = '正在下载 Vosk 语音模型...';
+    });
+
+    try {
+      final modelPath = await _getLocalVoskModelPath();
+      final tempDir = await getTemporaryDirectory();
+      final zipFile = File(
+        '${tempDir.path}${Platform.pathSeparator}vosk-model-cn.zip',
+      );
+
+      // Download with progress
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(_voskModelUrl));
+      final response = await client.send(request);
+
+      final contentLength = response.contentLength;
+      final downloadedFile = zipFile.openWrite();
+
+      int downloadedBytes = 0;
+      final progressController = StreamController<double>();
+
+      await response.stream.listen(
+        (chunk) {
+          downloadedBytes += chunk.length;
+          downloadedFile.add(chunk);
+
+          if (contentLength != null && contentLength > 0) {
+            final progress = downloadedBytes / contentLength;
+            if (!mounted) return;
+            setState(() {
+              _voskModelDownloadProgress = progress;
+              _status =
+                  '正在下载 Vosk 语音模型... ${(progress * 100).toStringAsFixed(1)}%';
+            });
+          }
+        },
+        onDone: () {
+          downloadedFile.close();
+          client.close();
+          progressController.close();
+        },
+        onError: (error) {
+          downloadedFile.close();
+          client.close();
+          progressController.addError(error);
+        },
+        cancelOnError: true,
+      ).asFuture();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _status = '正在解压 Vosk 语音模型...';
+      });
+
+      // Extract ZIP
+      final bytes = await zipFile.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // Remove existing model directory
+      final existingDir = Directory(modelPath);
+      if (await existingDir.exists()) {
+        await existingDir.delete(recursive: true);
+      }
+      await existingDir.create(recursive: true);
+
+      // Extract files
+      for (final file in archive) {
+        final filePath =
+            '${modelPath}${Platform.pathSeparator}${file.name}';
+        if (file.isFile) {
+          final outputFile = File(filePath);
+          await outputFile.create(recursive: true);
+          await outputFile.writeAsBytes(file.content as List<int>);
+        } else {
+          await Directory(filePath).create(recursive: true);
+        }
+      }
+
+      // Clean up zip file
+      try {
+        await zipFile.delete();
+      } catch (_) {}
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _voskModelDownloadProgress = 1.0;
+        _status = 'Vosk 语音模型下载完成';
+      });
+
+      // Update config and reinitialize voice
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('vosk_model_path', modelPath);
+
+      _appendSystem('Vosk 语音模型已下载完成，正在初始化...');
+
+      // Reload config and reinitialize
+      await _loadClientConfig();
+    } catch (err, stack) {
+      if (!mounted) {
+        return;
+      }
+      debugPrint('Download Vosk model error: $err\n$stack');
+      setState(() {
+        _voskModelDownloadError = err.toString();
+        _status = 'Vosk 模型下载失败: $err';
+      });
+      _appendSystem('Vosk 模型下载失败: $err');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _voskModelDownloading = false;
+        });
+      }
     }
   }
 
@@ -1668,6 +1891,18 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     final fileName = (meta['file_name'] ?? '').toString().trim();
+    final newVersion = extractApkVersionFromString(fileName);
+
+    // Check if we should skip downloading this APK based on version
+    if (newVersion != null && _lastDownloadedApkVersion != null) {
+      final comparison = compareApkVersions(newVersion, _lastDownloadedApkVersion);
+      if (comparison <= 0) {
+        // New version is same or older than last downloaded, skip download
+        _appendSystem('已跳过下载 APK $fileName (版本 $newVersion 不高于已下载的版本 $_lastDownloadedApkVersion)');
+        throw StateError('APK 版本 $newVersion 不高于已下载的版本 $_lastDownloadedApkVersion，已跳过下载。');
+      }
+    }
+
     final extension = _resolveFileExtension(
       fileName: fileName,
       fileFormat: (meta['file_format'] ?? '').toString(),
@@ -1693,6 +1928,10 @@ class _ChatPageState extends State<ChatPage> {
             );
           },
         );
+        // Update last downloaded version after successful download
+        if (newVersion != null) {
+          _lastDownloadedApkVersion = newVersion;
+        }
         // Try to extract version from filename (e.g., app-release-1.0.0.apk -> 1.0.0)
         String versionLabel = '';
         final versionMatch = RegExp(r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$', caseSensitive: false)
@@ -1839,23 +2078,51 @@ class _ChatPageState extends State<ChatPage> {
         path: path,
       );
       if (_speechReady && !_useLocalVosk) {
-        await _speechToText.listen(
-          onResult: (result) {
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _speechDraft = result.recognizedWords.trim();
-            });
-          },
-          pauseFor: const Duration(seconds: 2),
-          listenFor: const Duration(minutes: 1),
-          localeId: 'zh_CN',
-          listenOptions: stt.SpeechListenOptions(
-            listenMode: stt.ListenMode.dictation,
-            partialResults: true,
-          ),
-        );
+        try {
+          // Check if locale is available
+          final locales = await _speechToText.locales();
+          final zhLocale = locales.firstWhere(
+            (l) => l.localeId == 'zh_CN' || l.localeId.startsWith('zh'),
+            orElse: () => locales.first,
+          );
+          _appendSystem('Using speech locale: ${zhLocale.name} (${zhLocale.localeId})');
+        } catch (e) {
+          _appendSystem('Get locales failed: $e');
+        }
+
+        try {
+          final listenResult = await _speechToText.listen(
+            onResult: (result) {
+              if (!mounted) {
+                return;
+              }
+              final words = result.recognizedWords.trim();
+              if (words.isNotEmpty) {
+                _appendSystem('Recognized: $words');
+              }
+              setState(() {
+                _speechDraft = words;
+              });
+            },
+            onSoundLevelChange: (level) {
+              // Sound level changes - useful for debugging
+              if (!mounted) return;
+              debugPrint('Sound level: $level');
+            },
+            pauseFor: const Duration(seconds: 2),
+            listenFor: const Duration(minutes: 1),
+            localeId: 'zh_CN',
+            listenOptions: stt.SpeechListenOptions(
+              listenMode: stt.ListenMode.dictation,
+              partialResults: true,
+              cancelOnError: false,
+            ),
+          );
+          _appendSystem('Speech listen started: $listenResult');
+        } catch (e, stack) {
+          _appendSystem('Speech listen failed: $e');
+          debugPrint('Speech listen error: $e\n$stack');
+        }
       }
       if (!mounted) {
         return;
@@ -2432,6 +2699,177 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  Widget _buildVoskModelCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCF8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2D6C3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.model_training_rounded,
+                  size: 18, color: Color(0xFF6E6253)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Vosk 语音模型',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF8B7A67),
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '中文语音识别模型（约 1.2GB）',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF655848),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FutureBuilder<bool>(
+                key: const ValueKey('vosk_model_check'),
+                future: _isVoskModelDownloaded(),
+                builder: (context, snapshot) {
+                  final isDownloaded = snapshot.data ?? false;
+                  if (_voskModelDownloading) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2D6C3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              value: _voskModelDownloadProgress,
+                              backgroundColor: Colors.white54,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${(_voskModelDownloadProgress * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF5A4A39),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  if (isDownloaded) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF187A57).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF187A57).withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_rounded,
+                              size: 14, color: Color(0xFF187A57)),
+                          SizedBox(width: 6),
+                          Text(
+                            '已安装',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF187A57),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return FilledButton.tonal(
+                    onPressed:
+                        _voskModelDownloading ? null : _downloadAndExtractVoskModel,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF154A3F),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('下载', style: TextStyle(fontSize: 12)),
+                  );
+                },
+              ),
+            ],
+          ),
+          if (_voskModelDownloadError != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFB9382F).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFFB9382F).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded,
+                      size: 14, color: Color(0xFFB9382F)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _voskModelDownloadError!,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFB9382F),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _voskModelDownloadError = null;
+                      });
+                    },
+                    tooltip: '关闭',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 16,
+                    icon: const Icon(Icons.close_rounded,
+                        size: 14, color: Color(0xFFB9382F)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildAttachmentMenuButton({required bool enabled}) {
     return PopupMenuButton<_AttachmentMenuAction>(
       enabled: enabled,
@@ -2584,6 +3022,8 @@ class _ChatPageState extends State<ChatPage> {
                       ? null
                       : () => unawaited(_copyText('Token', receiveToken)),
                 ),
+                const SizedBox(height: 8),
+                _buildVoskModelCard(),
                 const SizedBox(height: 10),
                 Row(
                   children: [
