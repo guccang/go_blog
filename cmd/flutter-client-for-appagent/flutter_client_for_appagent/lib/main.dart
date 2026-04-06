@@ -28,22 +28,62 @@ class UiThemePreset {
     required this.id,
     required this.label,
     required this.accent,
+    required this.brightness,
   });
 
   final String id;
   final String label;
   final Color accent;
+  final Brightness brightness;
 }
 
 const List<UiThemePreset> kUiThemePresets = <UiThemePreset>[
-  UiThemePreset(id: 'forest', label: '森林绿', accent: Color(0xFF2A8C6A)),
-  UiThemePreset(id: 'ocean', label: '海蓝', accent: Color(0xFF2F6FEB)),
-  UiThemePreset(id: 'sunset', label: '落日橙', accent: Color(0xFFCF7A37)),
-  UiThemePreset(id: 'ruby', label: '酒红', accent: Color(0xFFB44C6B)),
+  UiThemePreset(
+    id: 'forest',
+    label: '森林绿',
+    accent: Color(0xFF2A8C6A),
+    brightness: Brightness.dark,
+  ),
+  UiThemePreset(
+    id: 'ocean',
+    label: '海蓝',
+    accent: Color(0xFF2F6FEB),
+    brightness: Brightness.dark,
+  ),
+  UiThemePreset(
+    id: 'sunset',
+    label: '落日橙',
+    accent: Color(0xFFCF7A37),
+    brightness: Brightness.dark,
+  ),
+  UiThemePreset(
+    id: 'ruby',
+    label: '酒红',
+    accent: Color(0xFFB44C6B),
+    brightness: Brightness.dark,
+  ),
+  UiThemePreset(
+    id: 'midnight',
+    label: '午夜黑',
+    accent: Color(0xFFF2F2F2),
+    brightness: Brightness.dark,
+  ),
+  UiThemePreset(
+    id: 'daylight',
+    label: '日光白',
+    accent: Color(0xFF181818),
+    brightness: Brightness.light,
+  ),
 ];
 
 Color _blendWithAccent(Color base, Color accent, double alpha) {
   return Color.alphaBlend(accent.withValues(alpha: alpha), base);
+}
+
+Color _foregroundForColor(Color background) {
+  return background.computeLuminance() > 0.44
+      ? const Color(0xFF111111)
+      : Colors.white;
 }
 
 Color _toneFromAccent(
@@ -51,9 +91,9 @@ Color _toneFromAccent(
   required double lightness,
   double saturationFactor = 0.35,
 }) {
-  final saturation = (accentHsl.saturation * saturationFactor)
-      .clamp(0.08, 0.42)
-      .toDouble();
+  final saturation = accentHsl.saturation < 0.06
+      ? 0.0
+      : (accentHsl.saturation * saturationFactor).clamp(0.08, 0.42).toDouble();
   return accentHsl
       .withSaturation(saturation)
       .withLightness(lightness.clamp(0.0, 1.0))
@@ -97,63 +137,147 @@ class AppPalette extends ThemeExtension<AppPalette> {
   factory AppPalette.fromPreset(UiThemePreset preset) {
     final accent = preset.accent;
     final accentHsl = HSLColor.fromColor(accent);
-    final backgroundTop = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.12, saturationFactor: 0.34),
-      accent,
-      0.08,
-    );
-    final backgroundBottom = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.055, saturationFactor: 0.28),
-      accent,
-      0.04,
-    );
-    final surface = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.15, saturationFactor: 0.34),
-      accent,
-      0.10,
-    );
-    final surfaceRaised = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.19, saturationFactor: 0.38),
-      accent,
-      0.14,
-    );
-    final surfaceMuted = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.10, saturationFactor: 0.30),
-      accent,
-      0.08,
-    );
-    final surfaceSoft = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.24, saturationFactor: 0.42),
-      accent,
-      0.18,
-    );
-    final border = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.31, saturationFactor: 0.34),
-      accent,
-      0.14,
-    );
-    final borderStrong = _blendWithAccent(
-      _toneFromAccent(accentHsl, lightness: 0.40, saturationFactor: 0.38),
-      accent,
-      0.18,
-    );
-    final textPrimary = _toneFromAccent(
-      accentHsl,
-      lightness: 0.965,
-      saturationFactor: 0.06,
-    );
-    final textSecondary = _toneFromAccent(
-      accentHsl,
-      lightness: 0.78,
-      saturationFactor: 0.12,
-    );
-    final textMuted = _toneFromAccent(
-      accentHsl,
-      lightness: 0.62,
-      saturationFactor: 0.16,
-    );
-    final accentSoft = _blendWithAccent(surfaceRaised, accent, 0.22);
-    final accentStrong = _blendWithAccent(surfaceSoft, accent, 0.68);
+    final isDark = preset.brightness == Brightness.dark;
+    final backgroundTop = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.12, saturationFactor: 0.34),
+            accent,
+            0.08,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.975, saturationFactor: 0.14),
+            accent,
+            0.03,
+          );
+    final backgroundBottom = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.055, saturationFactor: 0.28),
+            accent,
+            0.04,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.93, saturationFactor: 0.12),
+            accent,
+            0.05,
+          );
+    final surface = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.15, saturationFactor: 0.34),
+            accent,
+            0.10,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.99, saturationFactor: 0.06),
+            accent,
+            0.015,
+          );
+    final surfaceRaised = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.19, saturationFactor: 0.38),
+            accent,
+            0.14,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.97, saturationFactor: 0.08),
+            accent,
+            0.03,
+          );
+    final surfaceMuted = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.10, saturationFactor: 0.30),
+            accent,
+            0.08,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.945, saturationFactor: 0.10),
+            accent,
+            0.04,
+          );
+    final surfaceSoft = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.24, saturationFactor: 0.42),
+            accent,
+            0.18,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.90, saturationFactor: 0.14),
+            accent,
+            0.08,
+          );
+    final border = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.31, saturationFactor: 0.34),
+            accent,
+            0.14,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.82, saturationFactor: 0.12),
+            accent,
+            0.08,
+          );
+    final borderStrong = isDark
+        ? _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.40, saturationFactor: 0.38),
+            accent,
+            0.18,
+          )
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.68, saturationFactor: 0.14),
+            accent,
+            0.12,
+          );
+    final textPrimary = isDark
+        ? _toneFromAccent(
+            accentHsl,
+            lightness: 0.965,
+            saturationFactor: 0.06,
+          )
+        : _toneFromAccent(
+            accentHsl,
+            lightness: 0.10,
+            saturationFactor: 0.10,
+          );
+    final textSecondary = isDark
+        ? _toneFromAccent(
+            accentHsl,
+            lightness: 0.78,
+            saturationFactor: 0.12,
+          )
+        : _toneFromAccent(
+            accentHsl,
+            lightness: 0.30,
+            saturationFactor: 0.10,
+          );
+    final textMuted = isDark
+        ? _toneFromAccent(
+            accentHsl,
+            lightness: 0.62,
+            saturationFactor: 0.16,
+          )
+        : _toneFromAccent(
+            accentHsl,
+            lightness: 0.48,
+            saturationFactor: 0.10,
+          );
+    final accentSoft = isDark
+        ? _blendWithAccent(surfaceRaised, accent, 0.22)
+        : _blendWithAccent(surfaceSoft, accent, 0.12);
+    final accentStrong = isDark
+        ? _blendWithAccent(surfaceSoft, accent, 0.68)
+        : _blendWithAccent(
+            _toneFromAccent(accentHsl, lightness: 0.18, saturationFactor: 0.18),
+            accent,
+            0.44,
+          );
+    final messageIncoming = isDark
+        ? _blendWithAccent(surfaceRaised, accent, 0.08)
+        : surfaceRaised;
+    final messageSystem = isDark
+        ? _blendWithAccent(surfaceSoft, accent, 0.12)
+        : _blendWithAccent(surfaceSoft, accent, 0.08);
+    final messageOutgoing = isDark
+        ? _blendWithAccent(surfaceMuted, accent, 0.74)
+        : accentStrong;
     return AppPalette(
       backgroundTop: backgroundTop,
       backgroundBottom: backgroundBottom,
@@ -172,9 +296,9 @@ class AppPalette extends ThemeExtension<AppPalette> {
       success: const Color(0xFF3EB489),
       warning: const Color(0xFFF0A04B),
       error: const Color(0xFFFF6B6B),
-      messageIncoming: _blendWithAccent(surfaceRaised, accent, 0.08),
-      messageSystem: _blendWithAccent(surfaceSoft, accent, 0.12),
-      messageOutgoing: _blendWithAccent(surfaceMuted, accent, 0.74),
+      messageIncoming: messageIncoming,
+      messageSystem: messageSystem,
+      messageOutgoing: messageOutgoing,
     );
   }
 
@@ -282,23 +406,28 @@ extension AppPaletteContext on BuildContext {
 
 ThemeData _buildAppTheme(UiThemePreset preset) {
   final palette = AppPalette.fromPreset(preset);
+  final colorScheme = (preset.brightness == Brightness.dark
+          ? const ColorScheme.dark()
+          : const ColorScheme.light())
+      .copyWith(
+        brightness: preset.brightness,
+        primary: palette.accent,
+        secondary: palette.accent,
+        primaryContainer: palette.accentStrong,
+        secondaryContainer: palette.accentSoft,
+        surface: palette.surface,
+        error: palette.error,
+        onPrimary: _foregroundForColor(palette.accent),
+        onSecondary: _foregroundForColor(palette.accent),
+        onPrimaryContainer: _foregroundForColor(palette.accentStrong),
+        onSecondaryContainer: _foregroundForColor(palette.accentSoft),
+        onSurface: palette.textPrimary,
+        onError: Colors.white,
+      );
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
-    colorScheme: ColorScheme.dark(
-      primary: palette.accent,
-      secondary: palette.accent,
-      primaryContainer: palette.accentStrong,
-      secondaryContainer: palette.accentSoft,
-      surface: palette.surface,
-      error: palette.error,
-      onPrimary: Colors.white,
-      onSecondary: Colors.white,
-      onPrimaryContainer: Colors.white,
-      onSecondaryContainer: palette.textPrimary,
-      onSurface: palette.textPrimary,
-      onError: Colors.white,
-    ),
+    brightness: preset.brightness,
+    colorScheme: colorScheme,
     scaffoldBackgroundColor: palette.backgroundBottom,
     canvasColor: palette.surface,
     splashColor: palette.accent.withValues(alpha: 0.14),
@@ -308,6 +437,9 @@ ThemeData _buildAppTheme(UiThemePreset preset) {
       foregroundColor: palette.textPrimary,
       elevation: 0,
       centerTitle: false,
+      systemOverlayStyle: preset.brightness == Brightness.dark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       titleTextStyle: TextStyle(
         color: palette.textPrimary,
         fontSize: 20,
@@ -359,18 +491,18 @@ ThemeData _buildAppTheme(UiThemePreset preset) {
         color: palette.textSecondary,
         fontWeight: FontWeight.w600,
       ),
-      secondaryLabelStyle: const TextStyle(
-        color: Colors.white,
+      secondaryLabelStyle: TextStyle(
+        color: _foregroundForColor(palette.accentSoft),
         fontWeight: FontWeight.w700,
       ),
       side: BorderSide(color: palette.borderStrong),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      brightness: Brightness.dark,
+      brightness: preset.brightness,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: palette.accent,
-        foregroundColor: Colors.white,
+        foregroundColor: _foregroundForColor(palette.accent),
         disabledBackgroundColor: palette.surfaceSoft,
         disabledForegroundColor: palette.textMuted,
         textStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -1307,6 +1439,7 @@ class _ChatPageState extends State<ChatPage> {
   final _messageController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
+  final _controlsScrollController = ScrollController();
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   final ImagePicker _imagePicker = ImagePicker();
@@ -1341,6 +1474,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _autoReconnect = false;
   bool _configLoading = true;
   bool _controlsExpanded = false;
+  bool _groupTabsExpanded = false;
   bool _passwordVisible = false;
   int _lastSequence = 0;
   String _status = 'Idle';
@@ -1411,6 +1545,7 @@ class _ChatPageState extends State<ChatPage> {
     _messageController.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
+    _controlsScrollController.dispose();
     unawaited(_audioPlayer.dispose());
     unawaited(_audioRecorder.dispose());
     super.dispose();
@@ -1914,6 +2049,23 @@ class _ChatPageState extends State<ChatPage> {
   List<ChatMessage> get _messages =>
       _historyByScope[_currentScopeKey] ?? const <ChatMessage>[];
 
+  String _resolvePreferredGroupId(
+    List<GroupInfo> groups, {
+    String? preferredGroupId,
+  }) {
+    if (groups.isEmpty) {
+      return '';
+    }
+    final preferred = preferredGroupId?.trim() ?? '';
+    if (preferred.isNotEmpty && groups.any((group) => group.id == preferred)) {
+      return preferred;
+    }
+    if (groups.length == 1) {
+      return groups.first.id;
+    }
+    return '';
+  }
+
   Future<void> _copyText(String label, String value) async {
     if (value.trim().isEmpty) {
       return;
@@ -2161,18 +2313,51 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _switchToDirectScope() async {
     _currentGroupId = '';
+    _groupTabsExpanded = false;
     await _loadHistory(_currentScopeKey);
     if (mounted) {
       setState(() {});
     }
   }
 
-  Future<void> _switchToGroupScope(String groupId) async {
+  Future<void> _switchToGroupScope(
+    String groupId, {
+    bool keepTabsExpanded = false,
+  }) async {
     _currentGroupId = groupId;
+    _groupTabsExpanded = _groups.length > 1 && keepTabsExpanded;
     await _loadHistory(_currentScopeKey);
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> _switchToGroupsTab() async {
+    if (_groups.isEmpty) {
+      return;
+    }
+    final targetGroupId = _resolvePreferredGroupId(
+      _groups,
+      preferredGroupId: _currentGroupId,
+    );
+    if (_currentGroupId.isEmpty) {
+      await _switchToGroupScope(
+        targetGroupId.isEmpty ? _groups.first.id : targetGroupId,
+        keepTabsExpanded: _groups.length > 1,
+      );
+      return;
+    }
+    if (_groups.length <= 1) {
+      await _switchToGroupScope(targetGroupId);
+      return;
+    }
+    if (!mounted) {
+      _groupTabsExpanded = !_groupTabsExpanded;
+      return;
+    }
+    setState(() {
+      _groupTabsExpanded = !_groupTabsExpanded;
+    });
   }
 
   Future<void> _refreshGroups() async {
@@ -2181,18 +2366,25 @@ class _ChatPageState extends State<ChatPage> {
     }
     try {
       final groups = await _client.listGroups();
+      final previousGroupId = _currentGroupId;
+      final previousTabsExpanded = _groupTabsExpanded;
+      final nextGroupId = _resolvePreferredGroupId(
+        groups,
+        preferredGroupId: _currentGroupId,
+      );
       if (mounted) {
         setState(() {
           _groups
             ..clear()
             ..addAll(groups);
-          if (_currentGroupId.isNotEmpty &&
-              !_groups.any((group) => group.id == _currentGroupId)) {
-            _currentGroupId = '';
-          }
+          _currentGroupId = nextGroupId;
+          _groupTabsExpanded =
+              groups.length > 1 &&
+              nextGroupId.isNotEmpty &&
+              previousTabsExpanded;
         });
       }
-      if (_currentGroupId.isNotEmpty) {
+      if (nextGroupId != previousGroupId || nextGroupId.isNotEmpty) {
         await _loadHistory(_currentScopeKey);
       }
     } catch (err) {
@@ -2212,19 +2404,32 @@ class _ChatPageState extends State<ChatPage> {
     }
     try {
       final groups = await _client.mutateGroup(action, groupId);
+      final previousGroupId = _currentGroupId;
+      final previousTabsExpanded = _groupTabsExpanded;
+      final nextGroupId = action == 'leave'
+          ? _resolvePreferredGroupId(
+              groups,
+              preferredGroupId: _currentGroupId == groupId
+                  ? null
+                  : _currentGroupId,
+            )
+          : _resolvePreferredGroupId(groups, preferredGroupId: groupId);
       if (mounted) {
         setState(() {
           _groups
             ..clear()
             ..addAll(groups);
-          if (action == 'leave' && _currentGroupId == groupId) {
-            _currentGroupId = '';
-          } else if (action != 'leave') {
-            _currentGroupId = groupId;
-          }
+          _currentGroupId = nextGroupId;
+          _groupTabsExpanded =
+              groups.length > 1 &&
+              nextGroupId.isNotEmpty &&
+              previousTabsExpanded &&
+              action == 'leave';
         });
       }
-      await _loadHistory(_currentScopeKey);
+      if (nextGroupId != previousGroupId || nextGroupId.isNotEmpty) {
+        await _loadHistory(_currentScopeKey);
+      }
       _appendSystem('Group $action success: $groupId');
     } catch (err) {
       _appendSystem(_describeRequestError(err, operation: 'Group $action'));
@@ -3767,10 +3972,11 @@ class _ChatPageState extends State<ChatPage> {
                             ? null
                             : _downloadAndExtractVoskModel,
                         style: FilledButton.styleFrom(
-                          backgroundColor: hasPartial
-                              ? palette.warning
-                              : palette.accent,
-                          foregroundColor: Colors.white,
+                          backgroundColor:
+                              hasPartial ? palette.warning : palette.accent,
+                          foregroundColor: _foregroundForColor(
+                            hasPartial ? palette.warning : palette.accent,
+                          ),
                           minimumSize: const Size(0, 32),
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           shape: RoundedRectangleBorder(
@@ -4076,7 +4282,7 @@ class _ChatPageState extends State<ChatPage> {
           child: Icon(
             icon,
             color: active
-                ? Colors.white
+                ? _foregroundForColor(effectiveActiveColor)
                 : enabled
                 ? palette.textPrimary
                 : palette.textMuted,
@@ -4092,6 +4298,13 @@ class _ChatPageState extends State<ChatPage> {
     final canLogin = !_loggingIn && !_configLoading && _clientConfig != null;
     final baseUrl = _clientConfig?.baseUrl ?? '';
     final receiveToken = _clientConfig?.receiveToken ?? '';
+    final hasGroups = _groups.isNotEmpty;
+    final groupsTabSelected = _currentGroupId.isNotEmpty;
+    final showGroupTabs = hasGroups && _groups.length > 1 && _groupTabsExpanded;
+    final controlsMaxHeight = math.min(
+      MediaQuery.sizeOf(context).height * 0.52,
+      440.0,
+    );
     final compactButtonLabel = _controlsExpanded
         ? 'Hide'
         : (_sessionToken.isEmpty ? 'Login' : 'Controls');
@@ -4122,32 +4335,71 @@ class _ChatPageState extends State<ChatPage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: SizedBox(
-                  height: 36,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      ChoiceChip(
-                        selected: _currentGroupId.isEmpty,
-                        label: const Text('Direct'),
-                        onSelected: (_) => unawaited(_switchToDirectScope()),
-                      ),
-                      const SizedBox(width: 8),
-                      ..._groups.expand(
-                        (group) => [
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 44,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        children: [
                           ChoiceChip(
-                            selected: _currentGroupId == group.id,
-                            label: Text(
-                              '${group.id} (${group.members.length})',
-                            ),
-                            onSelected: (_) =>
-                                unawaited(_switchToGroupScope(group.id)),
+                            selected: !groupsTabSelected,
+                            label: const Text('Direct'),
+                            onSelected: (_) => unawaited(_switchToDirectScope()),
                           ),
-                          const SizedBox(width: 8),
+                          if (hasGroups) ...[
+                            const SizedBox(width: 8),
+                            ChoiceChip(
+                              selected: groupsTabSelected,
+                              label: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _groups.length == 1
+                                        ? 'Group'
+                                        : 'Groups (${_groups.length})',
+                                  ),
+                                  if (_groups.length > 1) ...[
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      showGroupTabs
+                                          ? Icons.expand_less_rounded
+                                          : Icons.expand_more_rounded,
+                                      size: 16,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              onSelected: (_) => unawaited(_switchToGroupsTab()),
+                            ),
+                          ],
                         ],
                       ),
+                    ),
+                    if (showGroupTabs) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 46,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          itemCount: _groups.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final group = _groups[index];
+                            return ChoiceChip(
+                              selected: _currentGroupId == group.id,
+                              label: Text('${group.id} (${group.members.length})'),
+                              onSelected: (_) =>
+                                  unawaited(_switchToGroupScope(group.id)),
+                            );
+                          },
+                        ),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
@@ -4177,172 +4429,196 @@ class _ChatPageState extends State<ChatPage> {
           ),
           AnimatedCrossFade(
             firstChild: const SizedBox.shrink(),
-            secondChild: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 10),
-                _buildConfigItem(
-                  icon: Icons.link_rounded,
-                  label: 'Server URL',
-                  value: baseUrl,
-                  onCopy: baseUrl.isEmpty
-                      ? null
-                      : () => unawaited(_copyText('URL', baseUrl)),
-                ),
-                const SizedBox(height: 8),
-                _buildConfigItem(
-                  icon: Icons.key_rounded,
-                  label: 'Receive Token',
-                  value: receiveToken,
-                  onCopy: receiveToken.isEmpty
-                      ? null
-                      : () => unawaited(_copyText('Token', receiveToken)),
-                ),
-                const SizedBox(height: 8),
-                _buildVoskModelCard(),
-                const SizedBox(height: 8),
-                _buildThemePresetCard(),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _baseUrlController,
-                        keyboardType: TextInputType.url,
-                        decoration: const InputDecoration(
-                          labelText: 'Server URL',
-                          hintText: 'http://127.0.0.1:9002',
-                          prefixIcon: Icon(Icons.link_rounded),
-                          isDense: true,
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: controlsMaxHeight),
+                child: Scrollbar(
+                  controller: _controlsScrollController,
+                  thumbVisibility: true,
+                  radius: const Radius.circular(999),
+                  child: SingleChildScrollView(
+                    controller: _controlsScrollController,
+                    padding: const EdgeInsets.only(right: 6, bottom: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _userIdController,
+                          decoration: const InputDecoration(
+                            labelText: 'User ID',
+                            hintText: 'demo-user',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                            isDense: true,
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: _configLoading ? null : _saveBaseUrl,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: palette.accent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 48),
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: !_passwordVisible,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            hintText: 'blog-agent password',
+                            prefixIcon: const Icon(Icons.lock_outline_rounded),
+                            isDense: true,
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _passwordVisible = !_passwordVisible;
+                                });
+                              },
+                              icon: Icon(
+                                _passwordVisible
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Save URL'),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _groupIdController,
+                          decoration: const InputDecoration(
+                            labelText: 'Group ID',
+                            hintText: 'party-01',
+                            prefixIcon: Icon(Icons.groups_2_outlined),
+                            isDense: true,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: canLogin ? _login : null,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: palette.accent,
+                                foregroundColor: _foregroundForColor(
+                                  palette.accent,
+                                ),
+                                minimumSize: const Size(120, 48),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              icon: Icon(
+                                _sessionToken.isEmpty
+                                    ? Icons.login
+                                    : Icons.refresh_rounded,
+                              ),
+                              label: Text(
+                                _sessionToken.isEmpty ? 'Login' : 'Re-login',
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _connected || _connecting
+                                  ? _disconnectWs
+                                  : null,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: palette.textPrimary,
+                                minimumSize: const Size(120, 48),
+                                side: BorderSide(color: palette.borderStrong),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              icon: const Icon(Icons.link_off_rounded),
+                              label: const Text('Disconnect'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.tonal(
+                              onPressed: _sessionToken.isEmpty
+                                  ? null
+                                  : () => _mutateGroup('create'),
+                              child: const Text('Create'),
+                            ),
+                            FilledButton.tonal(
+                              onPressed: _sessionToken.isEmpty
+                                  ? null
+                                  : () => _mutateGroup('join'),
+                              child: const Text('Join'),
+                            ),
+                            OutlinedButton(
+                              onPressed: _sessionToken.isEmpty
+                                  ? null
+                                  : () => _mutateGroup('leave'),
+                              child: const Text('Leave'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildConfigItem(
+                          icon: Icons.link_rounded,
+                          label: 'Server URL',
+                          value: baseUrl,
+                          onCopy: baseUrl.isEmpty
+                              ? null
+                              : () => unawaited(_copyText('URL', baseUrl)),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildConfigItem(
+                          icon: Icons.key_rounded,
+                          label: 'Receive Token',
+                          value: receiveToken,
+                          onCopy: receiveToken.isEmpty
+                              ? null
+                              : () => unawaited(_copyText('Token', receiveToken)),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _baseUrlController,
+                                keyboardType: TextInputType.url,
+                                decoration: const InputDecoration(
+                                  labelText: 'Server URL',
+                                  hintText: 'http://127.0.0.1:9002',
+                                  prefixIcon: Icon(Icons.link_rounded),
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton.icon(
+                              onPressed: _configLoading ? null : _saveBaseUrl,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: palette.accent,
+                                foregroundColor: _foregroundForColor(
+                                  palette.accent,
+                                ),
+                                minimumSize: const Size(0, 48),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text('Save URL'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildVoskModelCard(),
+                        const SizedBox(height: 8),
+                        _buildThemePresetCard(),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _userIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'User ID',
-                    hintText: 'demo-user',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                    isDense: true,
                   ),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: !_passwordVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    hintText: 'blog-agent password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded),
-                    isDense: true,
-                    suffixIcon: IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _passwordVisible = !_passwordVisible;
-                        });
-                      },
-                      icon: Icon(
-                        _passwordVisible
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: canLogin ? _login : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: palette.accent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(120, 48),
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      icon: Icon(
-                        _sessionToken.isEmpty
-                            ? Icons.login
-                            : Icons.refresh_rounded,
-                      ),
-                      label: Text(_sessionToken.isEmpty ? 'Login' : 'Re-login'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _connected || _connecting
-                          ? _disconnectWs
-                          : null,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: palette.textPrimary,
-                        minimumSize: const Size(120, 48),
-                        side: BorderSide(color: palette.borderStrong),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      icon: const Icon(Icons.link_off_rounded),
-                      label: const Text('Disconnect'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _groupIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Group ID',
-                    hintText: 'party-01',
-                    prefixIcon: Icon(Icons.groups_2_outlined),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.tonal(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('create'),
-                      child: const Text('Create'),
-                    ),
-                    FilledButton.tonal(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('join'),
-                      child: const Text('Join'),
-                    ),
-                    OutlinedButton(
-                      onPressed: _sessionToken.isEmpty
-                          ? null
-                          : () => _mutateGroup('leave'),
-                      child: const Text('Leave'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
             crossFadeState: _controlsExpanded
                 ? CrossFadeState.showSecond
@@ -4435,9 +4711,10 @@ class _ChatPageState extends State<ChatPage> {
                               child: Text(
                                 _recording ? '松手 发送' : '按住 说话',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(
-                                    alpha: _recording ? 1 : 0.9,
-                                  ),
+                                  color: (_recording
+                                          ? _foregroundForColor(palette.accent)
+                                          : palette.textPrimary)
+                                      .withValues(alpha: _recording ? 1 : 0.9),
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.2,
@@ -4872,6 +5149,7 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.appPalette;
+    final accentForeground = _foregroundForColor(palette.accent);
     final bubbleMaxWidth = (MediaQuery.sizeOf(context).width * 0.9).clamp(
       280.0,
       980.0,
@@ -4886,7 +5164,7 @@ class _MessageBubble extends StatelessWidget {
     final bgColor = isSystem
         ? palette.messageSystem
         : (isOutgoing ? palette.messageOutgoing : palette.messageIncoming);
-    final fgColor = isOutgoing ? Colors.white : palette.textPrimary;
+    final fgColor = isOutgoing ? _foregroundForColor(bgColor) : palette.textPrimary;
     final isAudio = message.messageType == 'audio';
     final isImage = message.messageType == 'image';
     final isApk = isApkChatMessage(message);
@@ -4939,7 +5217,7 @@ class _MessageBubble extends StatelessWidget {
                     authorLabel,
                     style: TextStyle(
                       color: isOutgoing
-                          ? Colors.white.withValues(alpha: 0.78)
+                          ? fgColor.withValues(alpha: 0.78)
                           : palette.textMuted,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -4968,7 +5246,7 @@ class _MessageBubble extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: isOutgoing
-                                ? Colors.white.withValues(alpha: 0.12)
+                                ? accentForeground.withValues(alpha: 0.12)
                                 : palette.surfaceSoft,
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -5038,7 +5316,7 @@ class _MessageBubble extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     color: isOutgoing
-                        ? Colors.white.withValues(alpha: 0.74)
+                        ? fgColor.withValues(alpha: 0.74)
                         : palette.textMuted,
                   ),
                 ),
@@ -5083,6 +5361,8 @@ class _VoiceWaveformBadgeState extends State<_VoiceWaveformBadge>
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+    final waveformColor = _foregroundForColor(palette.accent);
     return SizedBox(
       height: 54,
       child: AnimatedBuilder(
@@ -5102,7 +5382,7 @@ class _VoiceWaveformBadgeState extends State<_VoiceWaveformBadge>
                   height: 56,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: waveformColor.withValues(alpha: 0.08),
                   ),
                 ),
               ),
@@ -5113,7 +5393,7 @@ class _VoiceWaveformBadgeState extends State<_VoiceWaveformBadge>
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: waveformColor.withValues(alpha: 0.12),
                   ),
                 ),
               ),
@@ -5133,12 +5413,12 @@ class _VoiceWaveformBadgeState extends State<_VoiceWaveformBadge>
                           width: 4,
                           height: height,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: alpha),
+                            color: waveformColor.withValues(alpha: alpha),
                             borderRadius: BorderRadius.circular(999),
                             boxShadow: [
                               BoxShadow(
                                 blurRadius: 10,
-                                color: Colors.white.withValues(
+                                color: waveformColor.withValues(
                                   alpha: alpha * 0.22,
                                 ),
                               ),
@@ -5185,7 +5465,7 @@ class _VoiceActionPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color: active
-              ? Colors.white.withValues(alpha: 0.8)
+              ? _foregroundForColor(palette.accent).withValues(alpha: 0.72)
               : palette.borderStrong.withValues(alpha: 0.78),
         ),
       ),
@@ -5194,7 +5474,9 @@ class _VoiceActionPill extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.white : palette.textSecondary,
+            color: active
+                ? _foregroundForColor(palette.accent)
+                : palette.textSecondary,
             fontSize: 18,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.2,
