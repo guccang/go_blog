@@ -585,6 +585,14 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 			return &ToolCallResult{Result: result.Result, AgentID: agentID, FromID: result.FromID},
 				fmt.Errorf("tool error: %s", result.Error)
 		}
+		if sink != nil {
+			if sessionID := extractAsyncToolSessionID(result.Result); sessionID != "" {
+				b.toolProgressMu.Lock()
+				b.toolProgressSinks[sessionID] = sink
+				b.toolProgressMu.Unlock()
+				log.Printf("[Bridge] async tool progress sink registered tool=%s session_id=%s", toolName, sessionID)
+			}
+		}
 		log.Printf("[Bridge] tool_result ← from=%s tool=%s msgID=%s", result.FromID, toolName, msgID)
 		return &ToolCallResult{
 			Result:  result.Result,
@@ -615,4 +623,34 @@ func (b *Bridge) callRemoteAgent(ctx context.Context, toolName, agentID string, 
 		}
 		return nil, fmt.Errorf("tool_call %s cancelled: %v", toolName, ctx.Err())
 	}
+}
+
+func extractAsyncToolSessionID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	var payload struct {
+		Accepted bool   `json:"accepted"`
+		Session  string `json:"session_id"`
+		Status   string `json:"status"`
+	}
+	if json.Unmarshal([]byte(raw), &payload) != nil {
+		return ""
+	}
+	if !payload.Accepted {
+		return ""
+	}
+	switch payload.Status {
+	case "queued", "in_progress":
+		return strings.TrimSpace(payload.Session)
+	default:
+		return ""
+	}
+}
+
+func isTerminalAsyncToolProgress(content string) bool {
+	content = strings.TrimSpace(content)
+	return strings.HasPrefix(content, "✅") || strings.HasPrefix(content, "❌")
 }

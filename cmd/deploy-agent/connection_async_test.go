@@ -64,7 +64,7 @@ func TestDeployProjectBuildOnlyRunsAsyncAndRecordsArtifact(t *testing.T) {
 	resultJSON := conn.toolDeployProject(map[string]interface{}{
 		"project":   "flutter-apk-test",
 		"pack_only": true,
-	}, func(string) {})
+	}, func(string, string) {})
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
 		t.Fatalf("expected async return, took %s", elapsed)
 	}
@@ -107,7 +107,7 @@ func TestDeployProjectBuildOnlyRequiresPackOnly(t *testing.T) {
 
 	result := parseToolJSON(t, conn.toolDeployProject(map[string]interface{}{
 		"project": "flutter-apk-test",
-	}, func(string) {}))
+	}, func(string, string) {}))
 	if success, _ := result["success"].(bool); success {
 		t.Fatalf("expected failure result, got %#v", result)
 	}
@@ -123,7 +123,7 @@ func TestDeployProjectAsyncRejectsWhenBusy(t *testing.T) {
 	first := parseToolJSON(t, conn.toolDeployProject(map[string]interface{}{
 		"project":   "flutter-apk-test",
 		"pack_only": true,
-	}, func(string) {}))
+	}, func(string, string) {}))
 	if success, _ := first["success"].(bool); !success {
 		t.Fatalf("expected first task accepted, got %#v", first)
 	}
@@ -132,7 +132,7 @@ func TestDeployProjectAsyncRejectsWhenBusy(t *testing.T) {
 	second := parseToolJSON(t, conn.toolDeployProject(map[string]interface{}{
 		"project":   "flutter-apk-test",
 		"pack_only": true,
-	}, func(string) {}))
+	}, func(string, string) {}))
 	if success, _ := second["success"].(bool); success {
 		t.Fatalf("expected second task to be rejected while busy, got %#v", second)
 	}

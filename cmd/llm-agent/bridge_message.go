@@ -34,6 +34,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			// deploy-agent 等发送的工具执行进度，payload.To 是工具调用 msgID
 			b.toolProgressMu.Lock()
 			sink, ok := b.toolProgressSinks[payload.To]
+			if ok && isTerminalAsyncToolProgress(payload.Content) {
+				delete(b.toolProgressSinks, payload.To)
+			}
 			b.toolProgressMu.Unlock()
 			if ok {
 				sink.OnEvent("tool_progress", payload.Content)

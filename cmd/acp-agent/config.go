@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
 )
 
 // AgentConfig agent 配置
@@ -57,9 +60,6 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	if cfg.ServerURL == "" {
 		return nil, fmt.Errorf("server_url is required")
 	}
-	if len(cfg.Workspaces) == 0 {
-		return nil, fmt.Errorf("workspaces is required")
-	}
 
 	// 默认值填充
 	if cfg.AgentName == "" {
@@ -84,9 +84,15 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		cfg.GoBackendAgentID = "blog-agent"
 	}
 
+	configDir := filepath.Dir(path)
+	defaultWorkspace, err := ensureDefaultWorkspaceDir(configDir)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Workspaces = normalizeWorkspaceList(cfg.Workspaces, configDir, defaultWorkspace)
+
 	// 默认 claudecode_settings_dir 为配置文件同目录下的 settings/claudecode/
 	if cfg.ClaudeCodeSettingsDir == "" {
-		configDir := filepath.Dir(path)
 		cfg.ClaudeCodeSettingsDir = filepath.Join(configDir, "settings", "claudecode")
 	}
 	if !filepath.IsAbs(cfg.ClaudeCodeSettingsDir) {
@@ -96,4 +102,95 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+var windowsDrivePathPattern = regexp.MustCompile(`^[A-Za-z]:[\\/].*`)
+
+func ensureDefaultWorkspaceDir(configDir string) (string, error) {
+	if strings.TrimSpace(configDir) == "" {
+		configDir = "."
+	}
+	defaultWorkspace := filepath.Join(configDir, "workspace")
+	defaultWorkspace = filepath.Clean(defaultWorkspace)
+	if !filepath.IsAbs(defaultWorkspace) {
+		abs, err := filepath.Abs(defaultWorkspace)
+		if err != nil {
+			return "", fmt.Errorf("resolve default workspace: %v", err)
+		}
+		defaultWorkspace = abs
+	}
+	if err := os.MkdirAll(defaultWorkspace, 0755); err != nil {
+		return "", fmt.Errorf("create default workspace %s: %v", defaultWorkspace, err)
+	}
+	return defaultWorkspace, nil
+}
+
+func normalizeWorkspaceList(workspaces []string, configDir, defaultWorkspace string) []string {
+	if len(workspaces) == 0 {
+		return []string{defaultWorkspace}
+	}
+
+	normalized := make([]string, 0, len(workspaces))
+	seen := make(map[string]bool, len(workspaces))
+	for _, raw := range workspaces {
+		ws, usedDefault := normalizeWorkspacePath(raw, configDir, defaultWorkspace)
+		if usedDefault {
+			fmt.Fprintf(os.Stderr, "[WARN] invalid workspace path %q, fallback to %s\n", raw, defaultWorkspace)
+		}
+		if seen[ws] {
+			continue
+		}
+		seen[ws] = true
+		normalized = append(normalized, ws)
+	}
+	if len(normalized) == 0 {
+		return []string{defaultWorkspace}
+	}
+	return normalized
+}
+
+func normalizeWorkspacePath(raw, configDir, defaultWorkspace string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || containsNullByte(raw) || isIllegalWorkspacePath(raw) {
+		return defaultWorkspace, true
+	}
+
+	path := raw
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(configDir, path)
+	}
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return defaultWorkspace, true
+		}
+		path = abs
+	}
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return defaultWorkspace, true
+	}
+	return path, false
+}
+
+func containsNullByte(s string) bool {
+	return strings.ContainsRune(s, '\x00')
+}
+
+func isIllegalWorkspacePath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return true
+	}
+
+	if runtime.GOOS != "windows" {
+		if windowsDrivePathPattern.MatchString(path) {
+			return true
+		}
+		if strings.HasPrefix(path, `\\`) {
+			return true
+		}
+	}
+
+	return false
 }

@@ -16,6 +16,7 @@ func HandleWechatCommand(wechatUser, message string) string {
 	if account == "" {
 		account = "admin"
 	}
+	message = normalizeCodegenCommand(message)
 
 	log.MessageF(log.ModuleAgent, "WeChat command from %s (account: %s): %s", wechatUser, account, message)
 
@@ -30,6 +31,17 @@ func HandleWechatCommand(wechatUser, message string) string {
 	}
 
 	return "⚠️ AI 路由未初始化"
+}
+
+func normalizeCodegenCommand(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "/cg" {
+		return "cg"
+	}
+	if strings.HasPrefix(message, "/cg ") {
+		return "cg " + strings.TrimSpace(strings.TrimPrefix(message, "/cg "))
+	}
+	return message
 }
 
 // parseProjectAgent 从 "myapp@win" 解析出 (project, agentName)

@@ -565,9 +565,42 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 	}
 
 	// 注意：这里只是缓存 token，实际的 tool call 验证在 handleToolCall 中进行
-	// app-agent 发送的 app channel 消息会被转发给 llm-agent 处理
-	// llm-agent 会调用 blog-agent 的 tool call，此时会使用缓存的 token 进行验证
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: app notify from=%s content_len=%d", msg.From, len(content))
+
+	reply, ok := b.buildAppNotifyReply(payload.To, content)
+	if !ok {
+		return
+	}
+
+	if err := b.client.SendTo(msg.From, uap.MsgNotify, uap.NotifyPayload{
+		Channel: "app",
+		To:      payload.To,
+		Content: reply,
+	}); err != nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: send app notify reply failed: %v", err)
+	}
+}
+
+func (b *GatewayBridge) buildAppNotifyReply(appUser, content string) (string, bool) {
+	content = normalizeCodegenCommand(content)
+	if strings.TrimSpace(content) == "" {
+		return "", false
+	}
+
+	b.mu.Lock()
+	handler := b.wechatHandler
+	b.mu.Unlock()
+
+	if handler == nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: wechat handler not set, dropping app message for %s", appUser)
+		return "", false
+	}
+
+	result := strings.TrimSpace(handler(appUser, content))
+	if result == "" {
+		result = "⚠️ 后端未返回结果"
+	}
+	return result, true
 }
 
 // sendWechatViaGateway 通过 gateway 路由发送微信消息给用户

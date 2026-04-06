@@ -848,13 +848,28 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 
 	log.Printf("[INFO] tool_call from=%s tool=%s", msg.From, payload.ToolName)
 
-	// 构建进度推送回调：通过 MsgNotify 将进度发送给调用方
-	sendProgress := func(text string) {
+	// 构建进度推送回调：通过 MsgNotify 将进度发送给调用方。
+	// 异步工具既推送到原始 msgID，也推送到 session_id，方便 llm-agent 在 accepted 后继续追踪。
+	sendProgressTo := func(trackID, text string) {
+		trackID = strings.TrimSpace(trackID)
+		if trackID == "" {
+			return
+		}
 		c.Client.SendTo(msg.From, uap.MsgNotify, uap.NotifyPayload{
 			Channel: "tool_progress",
-			To:      msg.ID, // 用工具调用的 msgID 做关联
+			To:      trackID,
 			Content: text,
 		})
+	}
+	sendProgress := func(text string) {
+		sendProgressTo(msg.ID, text)
+	}
+	sendAsyncProgress := func(sessionID, text string) {
+		sendProgress(text)
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID != "" && sessionID != msg.ID {
+			sendProgressTo(sessionID, text)
+		}
 	}
 
 	var result string
@@ -862,13 +877,13 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "DeployListProjects":
 		result = c.toolListProjects()
 	case "DeployProject":
-		result = c.toolDeployProject(args, sendProgress)
+		result = c.toolDeployProject(args, sendAsyncProgress)
 	case "DeployAdhoc":
-		result = c.toolDeployAdhoc(args, sendProgress)
+		result = c.toolDeployAdhoc(args, sendAsyncProgress)
 	case "DeployListPipelines":
 		result = c.toolListPipelines()
 	case "DeployPipeline":
-		result = c.toolDeployPipeline(args, sendProgress)
+		result = c.toolDeployPipeline(args, sendAsyncProgress)
 	case "DeployGetStatus":
 		result = c.toolDeployGetStatus(args)
 	case "AgentShutdown":
@@ -936,7 +951,7 @@ func (c *Connection) toolListProjects() string {
 }
 
 // toolDeployProject 部署已配置的项目（使用 settings 中的预配置）
-func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress func(string)) string {
+func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress func(string, string)) string {
 	projectName, _ := args["project"].(string)
 	deployTarget, _ := args["deploy_target"].(string)
 	packOnly, _ := args["pack_only"].(bool)
@@ -980,18 +995,18 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	rec := newDeployTaskRecord(task.SessionID, "DeployProject", task)
 	run := func() (map[string]any, error) {
 		return c.runDeployTask(task, func(_ string, text string) {
-			sendProgress(text)
+			sendProgress(task.SessionID, text)
 		})
 	}
 	if err := c.submitTask(rec, "", nil, run); err != nil {
 		return buildToolErrorJSON(err)
 	}
-	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	sendProgress(task.SessionID, fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
 	return buildAcceptedTaskResult(rec)
 }
 
 // toolDeployAdhoc 一次性部署未配置的项目到指定服务器
-func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress func(string)) string {
+func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress func(string, string)) string {
 	projectName, _ := args["project"].(string)
 	projectDir, _ := args["project_dir"].(string)
 	sshHost, _ := args["ssh_host"].(string)
@@ -1035,13 +1050,13 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	rec := newDeployTaskRecord(task.SessionID, "DeployAdhoc", task)
 	run := func() (map[string]any, error) {
 		return c.runDeployTask(task, func(_ string, text string) {
-			sendProgress(text)
+			sendProgress(task.SessionID, text)
 		})
 	}
 	if err := c.submitTask(rec, "", nil, run); err != nil {
 		return buildToolErrorJSON(err)
 	}
-	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	sendProgress(task.SessionID, fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
 	return buildAcceptedTaskResult(rec)
 }
 
@@ -1075,7 +1090,7 @@ func (c *Connection) toolListPipelines() string {
 }
 
 // toolDeployPipeline 执行部署编排 pipeline
-func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgress func(string)) string {
+func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgress func(string, string)) string {
 	pipelineName, _ := args["pipeline"].(string)
 	if pipelineName == "" {
 		return buildToolErrorJSON(fmt.Errorf("缺少 pipeline 参数"))
@@ -1106,13 +1121,13 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgres
 	rec := newDeployTaskRecord(task.SessionID, "DeployPipeline", task)
 	run := func() (map[string]any, error) {
 		return c.runPipelineTask(task, func(_ string, text string) {
-			sendProgress(text)
+			sendProgress(task.SessionID, text)
 		})
 	}
 	if err := c.submitTask(rec, "", nil, run); err != nil {
 		return buildToolErrorJSON(err)
 	}
-	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	sendProgress(task.SessionID, fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
 	return buildAcceptedTaskResult(rec)
 }
 
