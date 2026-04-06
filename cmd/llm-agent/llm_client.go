@@ -1053,10 +1053,12 @@ func normalizeResponseToolCalls(content string, toolCalls []ToolCall) (string, [
 		return strings.TrimSpace(content), toolCalls
 	}
 	cleaned, extracted := extractMiniMaxXMLToolCalls(content)
-	if len(extracted) == 0 {
+	legacyCleaned, legacyCalls := extractLegacyToolCallBlocks(cleaned)
+	if len(extracted) == 0 && len(legacyCalls) == 0 {
 		return strings.TrimSpace(content), nil
 	}
-	return strings.TrimSpace(cleaned), extracted
+	extracted = append(extracted, legacyCalls...)
+	return strings.TrimSpace(legacyCleaned), extracted
 }
 
 func extractMiniMaxXMLToolCalls(content string) (string, []ToolCall) {

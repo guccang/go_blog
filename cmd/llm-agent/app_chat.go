@@ -179,6 +179,67 @@ func (s *AppSink) trySendAudioReply(raw string) bool {
 	return s.sendAudioRichMessage(result.AudioBase64, audioFormat)
 }
 
+func (s *AppSink) trySendAudioReplyFromToolCalls(toolCalls []ToolCall) bool {
+	for _, tc := range toolCalls {
+		if !s.trySendAudioReplyFromToolCall(tc) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (s *AppSink) trySendAudioReplyFromToolCall(tc ToolCall) bool {
+	if s.bridge.resolveToolName(tc.Function.Name) != "TextToAudio" {
+		return false
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+		log.Printf("[AppSink] parse legacy TextToAudio args failed: %v", err)
+		return false
+	}
+
+	text := firstNonEmptyMapString(args, "text", "content", "input")
+	if text == "" {
+		log.Printf("[AppSink] legacy TextToAudio args missing text")
+		return false
+	}
+
+	payload := map[string]any{
+		"text": text,
+	}
+	if voice := firstNonEmptyMapString(args, "voice", "voice_id"); voice != "" {
+		payload["voice"] = voice
+	}
+	if audioFormat := firstNonEmptyMapString(args, "audio_format", "format"); audioFormat != "" {
+		payload["audio_format"] = audioFormat
+	}
+
+	agentID, ok := s.bridge.getToolAgent("TextToAudio")
+	if !ok {
+		log.Printf("[AppSink] TextToAudio tool not found for leaked legacy tool call")
+		return false
+	}
+
+	rawArgs, _ := json.Marshal(payload)
+	result, err := s.bridge.callRemoteAgent(context.Background(), "TextToAudio", agentID, rawArgs, nil)
+	if err != nil {
+		log.Printf("[AppSink] execute leaked TextToAudio tool call failed: %v", err)
+		return false
+	}
+	if result == nil || strings.TrimSpace(result.Result) == "" {
+		return false
+	}
+	if !s.trySendAudioReply(result.Result) {
+		return false
+	}
+
+	s.audioSent = true
+	log.Printf("[AppSink] leaked textual TextToAudio tool call recovered for to=%s", s.appUser)
+	return true
+}
+
 func (s *AppSink) trySendInlineAudioFromText(text string) bool {
 	matches := inlineAudioTagPattern.FindStringSubmatch(strings.TrimSpace(text))
 	if len(matches) != 3 {
@@ -205,6 +266,17 @@ func normalizeAudioFormat(v string) string {
 		}
 		return v
 	}
+}
+
+func firstNonEmptyMapString(data map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat string) bool {
@@ -365,6 +437,27 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 
 	if result == "" {
 		result = "抱歉，未能生成回复。"
+	}
+
+	cleanResult, leakedToolCalls := extractLegacyToolCallBlocks(result)
+	if len(leakedToolCalls) > 0 {
+		var toolNames []string
+		for _, tc := range leakedToolCalls {
+			toolNames = append(toolNames, b.resolveToolName(tc.Function.Name))
+		}
+		log.Printf("[App] stripped leaked textual tool calls user=%s tools=%v", appUser, toolNames)
+		result = cleanResult
+		if !sink.AudioSent() {
+			sink.trySendAudioReplyFromToolCalls(leakedToolCalls)
+		}
+	}
+
+	if strings.TrimSpace(result) == "" {
+		if sink.AudioSent() {
+			result = "[已发送语音回复]"
+		} else {
+			result = "抱歉，未能生成回复。"
+		}
 	}
 
 	session.mu.Lock()
