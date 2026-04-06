@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,8 @@ type Connection struct {
 	cfg         *DeployConfig
 	password    string
 	activeTasks map[string]bool
+	taskRecords map[string]*deployTaskRecord
+	taskOrder   []string
 	taskMu      sync.Mutex
 	fileToolKit *agentbase.FileToolKit
 }
@@ -59,6 +62,7 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		cfg:         cfg,
 		password:    password,
 		activeTasks: make(map[string]bool),
+		taskRecords: make(map[string]*deployTaskRecord),
 		fileToolKit: fileToolKit,
 	}
 
@@ -90,19 +94,25 @@ func (c *Connection) handleTaskAssign(msg *uap.Message) {
 	log.Printf("[INFO] received deploy task: session=%s project=%s pipeline=%s target=%s pack_only=%v",
 		payload.SessionID, payload.Project, payload.Pipeline, payload.DeployTarget, payload.PackOnly)
 
-	if c.canAccept() {
-		c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-		if payload.Pipeline != "" {
-			go c.executePipeline(payload)
-		} else {
-			go c.executeDeploy(payload)
-		}
-	} else {
-		c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
-			SessionID: payload.SessionID,
-			Reason:    "deploy agent busy",
-		})
+	rec := newDeployTaskRecord(payload.SessionID, "task_assign", payload)
+	sendEvent := func(level, text string) {
+		c.sendTaskStreamEvent(msg.From, payload.SessionID, level, text)
 	}
+	run := func() (map[string]any, error) {
+		if payload.Pipeline != "" {
+			return c.runPipelineTask(payload, sendEvent)
+		}
+		return c.runDeployTask(payload, sendEvent)
+	}
+
+	if err := c.submitTask(rec, msg.From, sendEvent, run); err != nil {
+		c.Client.SendTo(msg.From, MsgTaskRejected, TaskRejectedPayload{
+			SessionID: payload.SessionID,
+			Reason:    err.Error(),
+		})
+		return
+	}
+	c.Client.SendTo(msg.From, MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
 }
 
 // handleTaskStop 处理停止任务
@@ -140,6 +150,253 @@ func (c *Connection) resolveProject(projectName string) (*ProjectConfig, error) 
 		return proj, nil
 	}
 	return nil, fmt.Errorf("project name required, available: %v", c.cfg.ProjectNames())
+}
+
+func newDeploySessionID(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
+
+func buildAcceptedTaskResult(rec *deployTaskRecord) string {
+	data := rec.snapshot()
+	data["accepted"] = true
+	return uap.BuildToolResult("", data, "").Result
+}
+
+func buildArtifactResult(deployer *Deployer) map[string]any {
+	if deployer == nil || deployer.packFile == "" {
+		return nil
+	}
+	result := map[string]any{
+		"artifact_file": deployer.packFile,
+	}
+	if path := deployer.packLocalPath(); path != "" {
+		result["artifact_path"] = path
+		if info, err := os.Stat(path); err == nil {
+			result["artifact_size"] = info.Size()
+		}
+	}
+	return result
+}
+
+func (c *Connection) validateProjectTask(proj *ProjectConfig, packOnly bool, deployTarget string) error {
+	if proj == nil {
+		return fmt.Errorf("project not found")
+	}
+	if proj.BuildOnly && !packOnly {
+		return fmt.Errorf("project %q only supports pack_only", proj.Name)
+	}
+	if deployTarget != "" && len(proj.Targets) == 0 {
+		return fmt.Errorf("project %q has no deploy targets", proj.Name)
+	}
+	if !packOnly && len(proj.Targets) == 0 {
+		return fmt.Errorf("project %q has no deploy targets", proj.Name)
+	}
+	return nil
+}
+
+func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level, text string)) (map[string]any, error) {
+	emit := func(level, text string) {
+		if sendEvent != nil {
+			sendEvent(level, text)
+		}
+	}
+
+	// adhoc 模式：ssh_host 存在时走一次性部署
+	if task.SSHHost != "" {
+		if task.ProjectDir == "" {
+			emit("error", "❌ adhoc 模式需要 project_dir 参数")
+			return nil, fmt.Errorf("adhoc mode requires project_dir")
+		}
+
+		adhoc := &AdhocConfig{
+			ProjectDir:  task.ProjectDir,
+			SSHHost:     task.SSHHost,
+			SSHPort:     task.SSHPort,
+			RemoteDir:   task.RemoteDir,
+			StartArgs:   task.StartArgs,
+			ServicePort: 0,
+		}
+
+		emit("system", fmt.Sprintf("🚀 开始 adhoc 部署到 %s...", task.SSHHost))
+
+		deployCfg := *c.cfg
+		err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
+			evtType := "system"
+			prefix := "📦 "
+			if level == "error" {
+				evtType = "error"
+				prefix = "⚠️ "
+			}
+			emit(evtType, prefix+message)
+		})
+		if err != nil {
+			emit("error", fmt.Sprintf("❌ adhoc 部署失败: %v", err))
+			return nil, err
+		}
+
+		emit("system", "✅ adhoc 部署完成")
+		return map[string]any{
+			"project":     task.Project,
+			"project_dir": task.ProjectDir,
+			"ssh_host":    task.SSHHost,
+			"remote_dir":  task.RemoteDir,
+		}, nil
+	}
+
+	proj, err := c.resolveProject(task.Project)
+	if err != nil {
+		emit("error", fmt.Sprintf("❌ %v", err))
+		return nil, err
+	}
+	if err := c.validateProjectTask(proj, task.PackOnly, task.DeployTarget); err != nil {
+		emit("error", fmt.Sprintf("❌ %v", err))
+		return nil, err
+	}
+
+	packOnly := task.PackOnly
+	targetFilter := task.DeployTarget
+	deployCfg := *c.cfg
+
+	if packOnly {
+		emit("system", fmt.Sprintf("📦 开始打包项目 [%s]...", proj.Name))
+	} else {
+		targetLabel := targetFilter
+		if targetLabel == "" {
+			targetLabel = "默认"
+		}
+		emit("system", fmt.Sprintf("🚀 开始部署项目 [%s] (目标: %s)...", proj.Name, targetLabel))
+	}
+
+	deployer := NewDeployer(&deployCfg, proj, c.password)
+	deployer.DeployMode = DeployMode(task.DeployMode)
+	deployer.OnProgress = func(level, message string) {
+		evtType := "system"
+		prefix := "📦 "
+		if level == "error" {
+			evtType = "error"
+			prefix = "⚠️ "
+		}
+		emit(evtType, prefix+message)
+	}
+
+	if err := deployer.Run(packOnly, targetFilter); err != nil {
+		action := "部署"
+		if packOnly {
+			action = "打包"
+		}
+		emit("error", fmt.Sprintf("❌ %s失败: %v", action, err))
+		return nil, err
+	}
+
+	action := "部署"
+	if packOnly {
+		action = "打包"
+	}
+	emit("system", fmt.Sprintf("✅ %s项目 %s 完成", action, proj.Name))
+
+	result := map[string]any{
+		"project":       proj.Name,
+		"project_dir":   proj.ProjectDir,
+		"deploy_target": targetFilter,
+		"pack_only":     packOnly,
+	}
+	for k, v := range buildArtifactResult(deployer) {
+		result[k] = v
+	}
+	return result, nil
+}
+
+func (c *Connection) runPipelineTask(task TaskAssignPayload, sendEvent func(level, text string)) (map[string]any, error) {
+	emit := func(level, text string) {
+		if sendEvent != nil {
+			sendEvent(level, text)
+		}
+	}
+
+	if c.cfg.PipelinesDir == "" {
+		emit("error", "❌ 未配置 pipelines/ 目录")
+		return nil, fmt.Errorf("pipelines directory not found")
+	}
+
+	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
+	if err != nil {
+		emit("error", fmt.Sprintf("❌ 加载 pipelines 失败: %v", err))
+		return nil, err
+	}
+
+	pip := pipCfg.Get(task.Pipeline)
+	if pip == nil {
+		err := fmt.Errorf("pipeline %q 不存在，可用: %v", task.Pipeline, pipCfg.Names())
+		emit("error", "❌ "+err.Error())
+		return nil, err
+	}
+
+	if err := ValidatePipeline(pip, c.cfg); err != nil {
+		emit("error", fmt.Sprintf("❌ %v", err))
+		return nil, err
+	}
+
+	desc := ""
+	if pip.Description != "" {
+		desc = " — " + pip.Description
+	}
+	emit("system", fmt.Sprintf("🔄 开始执行 Pipeline: %s%s (%d 步)", pip.Name, desc, len(pip.Steps)))
+
+	stepResults := make([]map[string]any, 0, len(pip.Steps))
+	for i, step := range pip.Steps {
+		proj := c.cfg.GetProject(step.Project)
+		if err := c.validateProjectTask(proj, step.PackOnly, step.Target); err != nil {
+			err = fmt.Errorf("pipeline %q step[%d] %s: %w", pip.Name, i, step.Project, err)
+			emit("error", "❌ "+err.Error())
+			return nil, err
+		}
+
+		deployCfg := *c.cfg
+		if step.PackOnly {
+			emit("system", fmt.Sprintf("📦 [%d/%d] 打包项目 [%s]...", i+1, len(pip.Steps), proj.Name))
+		} else {
+			targetLabel := step.Target
+			if targetLabel == "" {
+				targetLabel = "默认"
+			}
+			emit("system", fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s] (目标: %s)...", i+1, len(pip.Steps), proj.Name, targetLabel))
+		}
+
+		deployer := NewDeployer(&deployCfg, proj, c.password)
+		deployer.OnProgress = func(level, message string) {
+			evtType := "system"
+			prefix := "📦 "
+			if level == "error" {
+				evtType = "error"
+				prefix = "⚠️ "
+			}
+			emit(evtType, prefix+message)
+		}
+
+		if err := deployer.Run(step.PackOnly, step.Target); err != nil {
+			err = fmt.Errorf("Pipeline %q 在步骤 [%d/%d] %s 失败: %v", pip.Name, i+1, len(pip.Steps), proj.Name, err)
+			emit("error", "❌ "+err.Error())
+			return nil, err
+		}
+
+		stepResult := map[string]any{
+			"project":       proj.Name,
+			"deploy_target": step.Target,
+			"pack_only":     step.PackOnly,
+		}
+		for k, v := range buildArtifactResult(deployer) {
+			stepResult[k] = v
+		}
+		stepResults = append(stepResults, stepResult)
+		emit("system", fmt.Sprintf("✅ [%d/%d] %s 完成", i+1, len(pip.Steps), proj.Name))
+	}
+
+	emit("system", fmt.Sprintf("✅ Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
+	return map[string]any{
+		"pipeline":   pip.Name,
+		"step_count": len(stepResults),
+		"steps":      stepResults,
+	}, nil
 }
 
 // executeDeploy 执行部署任务
@@ -493,7 +750,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployProject",
-			Description: "部署 settings 中已配置的项目。调用前先用 DeployListProjects 确认 project 存在且 configured=true；不要传 project_dir 或 ssh_host。未配置项目改用 DeployAdhoc",
+			Description: "异步提交 settings 中已配置项目的部署或打包任务。调用后立即返回 session_id；后续用 DeployGetStatus 查询结果。调用前先用 DeployListProjects 确认 project 存在且 configured=true",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -507,7 +764,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployAdhoc",
-			Description: "一次性部署未在 settings 中配置的项目。必须提供 project_dir 和 ssh_host；如果项目已 configured=true，应改用 DeployProject 而不是此接口",
+			Description: "异步提交一次性部署任务。必须提供 project_dir 和 ssh_host；调用后立即返回 session_id，后续用 DeployGetStatus 查询结果",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -530,13 +787,24 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployPipeline",
-			Description: "执行预配置部署 pipeline，按定义顺序运行多个步骤；调用前可先用 DeployListPipelines 确认名称",
+			Description: "异步提交预配置部署 pipeline。调用后立即返回 session_id；后续用 DeployGetStatus 查询结果",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"pipeline": map[string]interface{}{"type": "string", "description": "pipeline 名称"},
 				},
 				"required": []string{"pipeline"},
+			}),
+		},
+		{
+			Name:        "DeployGetStatus",
+			Description: "查询异步部署或打包任务状态。传入 DeployProject、DeployAdhoc 或 DeployPipeline 返回的 session_id",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_id": map[string]interface{}{"type": "string", "description": "异步任务 session_id"},
+				},
+				"required": []string{"session_id"},
 			}),
 		},
 	}
@@ -601,6 +869,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListPipelines()
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args, sendProgress)
+	case "DeployGetStatus":
+		result = c.toolDeployGetStatus(args)
 	case "AgentShutdown":
 		c.toolAgentShutdown(msg, args)
 		return
@@ -636,6 +906,7 @@ func (c *Connection) toolListProjects() string {
 	type projectInfo struct {
 		Name       string   `json:"name"`
 		Configured bool     `json:"configured"`
+		BuildOnly  bool     `json:"build_only,omitempty"`
 		ProjectDir string   `json:"project_dir"`
 		Targets    []string `json:"targets"`
 		Platform   string   `json:"platform"`
@@ -650,6 +921,7 @@ func (c *Connection) toolListProjects() string {
 		projects = append(projects, projectInfo{
 			Name:       proj.Name,
 			Configured: proj.Configured,
+			BuildOnly:  proj.BuildOnly,
 			ProjectDir: proj.ProjectDir,
 			Targets:    targets,
 			Platform:   c.cfg.HostPlatform,
@@ -691,37 +963,31 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 		}
 		log.Printf("[INFO] project %q auto-initialized successfully", projectName)
 	} else if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"%s。如果是未配置项目，请使用 DeployAdhoc 接口"}`, err.Error())
+		return buildToolErrorJSON(fmt.Errorf("%s。如果是未配置项目，请使用 DeployAdhoc 接口", err.Error()))
+	}
+	if err := c.validateProjectTask(proj, packOnly, deployTarget); err != nil {
+		return buildToolErrorJSON(err)
 	}
 
-	// 浅拷贝 cfg
-	deployCfg := *c.cfg
-
-	deployer := NewDeployer(&deployCfg, proj, c.password)
-	deployer.DeployMode = DeployMode(deployModeStr)
-	deployer.OnProgress = func(level, message string) {
-		prefix := "📦 "
-		if level == "error" {
-			prefix = "⚠️ "
-		}
-		sendProgress(prefix + message)
+	task := TaskAssignPayload{
+		SessionID:    newDeploySessionID("deploy"),
+		Project:      proj.Name,
+		PackOnly:     packOnly,
+		DeployTarget: deployTarget,
+		DeployMode:   deployModeStr,
 	}
-
-	action := "部署"
-	if packOnly {
-		action = "打包"
+	task.ProjectDir = proj.ProjectDir
+	rec := newDeployTaskRecord(task.SessionID, "DeployProject", task)
+	run := func() (map[string]any, error) {
+		return c.runDeployTask(task, func(_ string, text string) {
+			sendProgress(text)
+		})
 	}
-	sendProgress(fmt.Sprintf("🚀 开始%s项目 [%s]...", action, proj.Name))
-
-	err = deployer.Run(packOnly, deployTarget)
-	if err != nil {
-		sendProgress(fmt.Sprintf("❌ %s失败: %s", action, err.Error()))
-		return fmt.Sprintf(`{"success":false,"error":"部署失败: %s"}`, err.Error())
+	if err := c.submitTask(rec, "", nil, run); err != nil {
+		return buildToolErrorJSON(err)
 	}
-
-	sendProgress(fmt.Sprintf("✅ %s项目 %s 完成", action, proj.Name))
-	tr := uap.BuildToolResult("", nil, fmt.Sprintf("%s项目 %s 完成", action, proj.Name))
-	return tr.Result
+	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	return buildAcceptedTaskResult(rec)
 }
 
 // toolDeployAdhoc 一次性部署未配置的项目到指定服务器
@@ -731,10 +997,10 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	sshHost, _ := args["ssh_host"].(string)
 
 	if projectDir == "" {
-		return `{"success":false,"error":"project_dir 参数不能为空"}`
+		return buildToolErrorJSON(fmt.Errorf("project_dir 参数不能为空"))
 	}
 	if sshHost == "" {
-		return `{"success":false,"error":"ssh_host 参数不能为空"}`
+		return buildToolErrorJSON(fmt.Errorf("ssh_host 参数不能为空"))
 	}
 
 	sshPort := 22
@@ -757,22 +1023,26 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 		ServicePort: servicePort,
 	}
 
-	deployCfg := *c.cfg
-	sendProgress(fmt.Sprintf("🚀 开始 adhoc 部署项目 [%s]...", projectName))
-	err := adhocDeploy(&deployCfg, adhoc, c.password, func(level, message string) {
-		prefix := "📦 "
-		if level == "error" {
-			prefix = "⚠️ "
-		}
-		sendProgress(prefix + message)
-	})
-	if err != nil {
-		sendProgress(fmt.Sprintf("❌ adhoc 部署失败: %s", err.Error()))
-		return fmt.Sprintf(`{"success":false,"error":"adhoc 部署失败: %s"}`, err.Error())
+	task := TaskAssignPayload{
+		SessionID:  newDeploySessionID("adhoc"),
+		Project:    projectName,
+		ProjectDir: adhoc.ProjectDir,
+		SSHHost:    adhoc.SSHHost,
+		SSHPort:    adhoc.SSHPort,
+		RemoteDir:  adhoc.RemoteDir,
+		StartArgs:  adhoc.StartArgs,
 	}
-	sendProgress(fmt.Sprintf("✅ adhoc 部署项目 %s 完成", projectName))
-	tr := uap.BuildToolResult("", nil, fmt.Sprintf("adhoc 部署项目 %s 完成", projectName))
-	return tr.Result
+	rec := newDeployTaskRecord(task.SessionID, "DeployAdhoc", task)
+	run := func() (map[string]any, error) {
+		return c.runDeployTask(task, func(_ string, text string) {
+			sendProgress(text)
+		})
+	}
+	if err := c.submitTask(rec, "", nil, run); err != nil {
+		return buildToolErrorJSON(err)
+	}
+	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	return buildAcceptedTaskResult(rec)
 }
 
 // toolListPipelines 列出可用 pipeline
@@ -808,59 +1078,56 @@ func (c *Connection) toolListPipelines() string {
 func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgress func(string)) string {
 	pipelineName, _ := args["pipeline"].(string)
 	if pipelineName == "" {
-		return `{"success":false,"error":"缺少 pipeline 参数"}`
+		return buildToolErrorJSON(fmt.Errorf("缺少 pipeline 参数"))
 	}
 
 	if c.cfg.PipelinesDir == "" {
-		return `{"success":false,"error":"未配置 pipelines 目录"}`
+		return buildToolErrorJSON(fmt.Errorf("未配置 pipelines 目录"))
 	}
 
 	pipCfg, err := LoadPipelines(c.cfg.PipelinesDir)
 	if err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"加载 pipelines 失败: %s"}`, err.Error())
+		return buildToolErrorJSON(fmt.Errorf("加载 pipelines 失败: %s", err.Error()))
 	}
 
 	pip := pipCfg.Get(pipelineName)
 	if pip == nil {
-		return fmt.Sprintf(`{"success":false,"error":"pipeline %q 不存在，可用: %v"}`, pipelineName, pipCfg.Names())
+		return buildToolErrorJSON(fmt.Errorf("pipeline %q 不存在，可用: %v", pipelineName, pipCfg.Names()))
 	}
 
 	if err := ValidatePipeline(pip, c.cfg); err != nil {
-		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
+		return buildToolErrorJSON(err)
 	}
 
-	sendProgress(fmt.Sprintf("🔄 开始执行 Pipeline: %s (%d 步)", pip.Name, len(pip.Steps)))
+	task := TaskAssignPayload{
+		SessionID: newDeploySessionID("pipeline"),
+		Pipeline:  pip.Name,
+	}
+	rec := newDeployTaskRecord(task.SessionID, "DeployPipeline", task)
+	run := func() (map[string]any, error) {
+		return c.runPipelineTask(task, func(_ string, text string) {
+			sendProgress(text)
+		})
+	}
+	if err := c.submitTask(rec, "", nil, run); err != nil {
+		return buildToolErrorJSON(err)
+	}
+	sendProgress(fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
+	return buildAcceptedTaskResult(rec)
+}
 
-	// 逐步执行
-	for i, step := range pip.Steps {
-		proj := c.cfg.GetProject(step.Project)
-		deployCfg := *c.cfg
-
-		sendProgress(fmt.Sprintf("🚀 [%d/%d] 部署项目 [%s]...", i+1, len(pip.Steps), proj.Name))
-
-		deployer := NewDeployer(&deployCfg, proj, c.password)
-		deployer.OnProgress = func(level, message string) {
-			prefix := "📦 "
-			if level == "error" {
-				prefix = "⚠️ "
-			}
-			sendProgress(prefix + message)
-		}
-		stepErr := deployer.Run(step.PackOnly, step.Target)
-
-		if stepErr != nil {
-			sendProgress(fmt.Sprintf("❌ [%d/%d] %s 失败: %v", i+1, len(pip.Steps), proj.Name, stepErr))
-			return fmt.Sprintf(`{"success":false,"error":"Pipeline %q 在步骤 [%d/%d] %s 失败: %v"}`,
-				pip.Name, i+1, len(pip.Steps), proj.Name, stepErr)
-		}
-
-		sendProgress(fmt.Sprintf("✅ [%d/%d] %s 完成", i+1, len(pip.Steps), proj.Name))
+func (c *Connection) toolDeployGetStatus(args map[string]interface{}) string {
+	sessionID, _ := args["session_id"].(string)
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return buildToolErrorJSON(fmt.Errorf("缺少 session_id 参数"))
 	}
 
-	sendProgress(fmt.Sprintf("✅ Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
-
-	tr := uap.BuildToolResult("", nil, fmt.Sprintf("Pipeline %q 全部完成 (%d 步)", pip.Name, len(pip.Steps)))
-	return tr.Result
+	rec := c.taskSnapshot(sessionID)
+	if rec == nil {
+		return buildToolErrorJSON(fmt.Errorf("会话 %s 不存在", sessionID))
+	}
+	return uap.BuildToolResult("", rec.snapshot(), "").Result
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

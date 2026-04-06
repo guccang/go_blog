@@ -111,9 +111,14 @@ func (cfg *PipelinesConfig) Names() []string {
 // ValidatePipeline 校验所有 step 的 project 是否存在于 DeployConfig
 func ValidatePipeline(p *Pipeline, deployCfg *DeployConfig) error {
 	var missing []string
-	for _, step := range p.Steps {
-		if deployCfg.GetProject(step.Project) == nil {
+	for idx, step := range p.Steps {
+		proj := deployCfg.GetProject(step.Project)
+		if proj == nil {
 			missing = append(missing, step.Project)
+			continue
+		}
+		if proj.BuildOnly && !step.PackOnly {
+			return fmt.Errorf("pipeline %q step[%d] project %q 仅支持 pack_only", p.Name, idx, step.Project)
 		}
 	}
 	if len(missing) > 0 {

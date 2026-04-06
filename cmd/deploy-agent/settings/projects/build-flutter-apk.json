@@ -1,0 +1,10 @@
+{
+    "pack_pattern": "build/app/outputs/flutter-apk/app-release-*.apk",
+    "build_only": true,
+    "build": {
+        "macos": {
+            "project_dir": "/Users/guccang/github_repo/go_blog/cmd/flutter-client-for-appagent/flutter_client_for_appagent",
+            "pack_script": "run-push-apk.sh"
+        }
+    }
+}

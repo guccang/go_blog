@@ -12,16 +12,16 @@ import (
 
 // Target 部署目标
 type Target struct {
-	Name          string // 逻辑名（local, ssh-prod, ssh-staging）
-	Host          string // user@host 或 local
-	Port          int    // SSH 端口，默认 22
-	RemoteDir     string // 部署目录
-	RemoteScript  string // 发布脚本名（可选）
-	Platform      string // 目标平台（linux/win/macos），local 时等于 HostPlatform
-	Type          string // 部署类型: "ssh"(默认) | "bridge"
-	BridgeURL     string // bridge HTTP 地址（type=bridge 时必填）
-	AuthToken     string // bridge 认证 token（type=bridge 时必填）
-	ServicePort   int    // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
+	Name         string // 逻辑名（local, ssh-prod, ssh-staging）
+	Host         string // user@host 或 local
+	Port         int    // SSH 端口，默认 22
+	RemoteDir    string // 部署目录
+	RemoteScript string // 发布脚本名（可选）
+	Platform     string // 目标平台（linux/win/macos），local 时等于 HostPlatform
+	Type         string // 部署类型: "ssh"(默认) | "bridge"
+	BridgeURL    string // bridge HTTP 地址（type=bridge 时必填）
+	AuthToken    string // bridge 认证 token（type=bridge 时必填）
+	ServicePort  int    // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
 }
 
 // ProjectConfig 项目级部署配置
@@ -31,6 +31,7 @@ type ProjectConfig struct {
 	ProjectDir   string    // 项目根目录
 	PackScript   string    // 打包脚本路径
 	PackPattern  string    // 输出文件名模式（{date} → YYYYMMDD_HHMMSS）
+	BuildOnly    bool      // 仅支持打包，不支持部署
 	Targets      []*Target // 部署目标列表
 	ConfigFile   string    // 来源 settings 文件路径
 	Configured   bool      // 是否有持久化 settings（.json 文件）
@@ -118,6 +119,7 @@ func (c *DeployConfig) ResolveAgentID(nameOrID string) string {
 type projectJSON struct {
 	AgentID      string                `json:"agent_id,omitempty"` // 对应的 UAP agent_id
 	PackPattern  string                `json:"pack_pattern,omitempty"`
+	BuildOnly    bool                  `json:"build_only,omitempty"`
 	Build        map[string]buildJSON  `json:"build"`
 	Targets      map[string]targetJSON `json:"targets"`
 	ProtectFiles []string              `json:"protect_files,omitempty"` // 增量部署时保护的文件
@@ -133,14 +135,14 @@ type buildJSON struct {
 
 // targetJSON 部署目标配置
 type targetJSON struct {
-	Host          string `json:"host,omitempty"`
-	Port          int    `json:"ssh_port,omitempty"`
-	RemoteDir     string `json:"remote_dir,omitempty"`
-	RemoteScript  string `json:"remote_script,omitempty"`
-	Platform      string `json:"platform,omitempty"`
-	Type          string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
-	BridgeURL     string `json:"bridge_url,omitempty"` // bridge HTTP 地址
-	AuthToken     string `json:"auth_token,omitempty"` // bridge 认证 token
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"ssh_port,omitempty"`
+	RemoteDir    string `json:"remote_dir,omitempty"`
+	RemoteScript string `json:"remote_script,omitempty"`
+	Platform     string `json:"platform,omitempty"`
+	Type         string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
+	BridgeURL    string `json:"bridge_url,omitempty"` // bridge HTTP 地址
+	AuthToken    string `json:"auth_token,omitempty"` // bridge 认证 token
 }
 
 // LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
@@ -415,7 +417,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			}
 		}
 
-		if len(filteredTargets) == 0 {
+		if len(filteredTargets) == 0 && !proj.BuildOnly {
 			continue // 该项目在当前过滤条件下没有可用 target
 		}
 
@@ -435,6 +437,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			if proj.PackPattern != "" {
 				existing.PackPattern = proj.PackPattern
 			}
+			existing.BuildOnly = proj.BuildOnly
 			existing.ProtectFiles = proj.ProtectFiles
 			existing.SetupDirs = proj.SetupDirs
 		} else {
@@ -497,6 +500,7 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string, globalTargets
 		Name:         projName,
 		AgentID:      pj.AgentID,
 		PackPattern:  projName + "_{date}.zip",
+		BuildOnly:    pj.BuildOnly,
 		ProtectFiles: pj.ProtectFiles,
 		SetupDirs:    pj.SetupDirs,
 	}
@@ -622,12 +626,12 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 
 	if isLocal {
 		return &Target{
-			Name:          targetName,
-			Host:          "local",
-			Port:          port,
-			RemoteDir:     tj.RemoteDir,
-			RemoteScript:  tj.RemoteScript,
-			Platform:      targetPlatform,
+			Name:         targetName,
+			Host:         "local",
+			Port:         port,
+			RemoteDir:    tj.RemoteDir,
+			RemoteScript: tj.RemoteScript,
+			Platform:     targetPlatform,
 		}, nil
 	}
 
@@ -643,15 +647,15 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			targetPlatform = "linux" // bridge 默认 linux
 		}
 		return &Target{
-			Name:          targetName,
-			Host:          tj.BridgeURL, // Host 存 bridge URL，用于显示
-			Port:          port,
-			RemoteDir:     tj.RemoteDir,
-			RemoteScript:  tj.RemoteScript,
-			Platform:      targetPlatform,
-			Type:          "bridge",
-			BridgeURL:     tj.BridgeURL,
-			AuthToken:     tj.AuthToken,
+			Name:         targetName,
+			Host:         tj.BridgeURL, // Host 存 bridge URL，用于显示
+			Port:         port,
+			RemoteDir:    tj.RemoteDir,
+			RemoteScript: tj.RemoteScript,
+			Platform:     targetPlatform,
+			Type:         "bridge",
+			BridgeURL:    tj.BridgeURL,
+			AuthToken:    tj.AuthToken,
 		}, nil
 	}
 
@@ -669,13 +673,13 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 	host := strings.TrimSpace(hostList[0])
 
 	return &Target{
-		Name:          targetName,
-		Host:          host,
-		Port:          port,
-		RemoteDir:     tj.RemoteDir,
-		RemoteScript:  tj.RemoteScript,
-		Platform:      targetPlatform,
-		Type:          "ssh",
+		Name:         targetName,
+		Host:         host,
+		Port:         port,
+		RemoteDir:    tj.RemoteDir,
+		RemoteScript: tj.RemoteScript,
+		Platform:     targetPlatform,
+		Type:         "ssh",
 	}, nil
 }
 

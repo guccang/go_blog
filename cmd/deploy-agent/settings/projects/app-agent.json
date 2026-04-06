@@ -1,4 +1,5 @@
 {
+    "agent_id": "app-app-agent",
     "pack_pattern": "app-agent_{date}.zip",
     "build": {
         "linux": {

@@ -35,6 +35,7 @@ type Deployer struct {
 	proj         *ProjectConfig // 当前项目配置
 	password     string
 	packFile     string                      // 打包后的 zip 文件名（不含路径）
+	packSource   string                      // 打包产物在本地的完整路径
 	SSHConnected bool                        // SSH 连接是否成功过（密码有效）
 	OnProgress   func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
 	DeployMode   DeployMode                  // 部署模式: auto/full/increment
@@ -107,6 +108,16 @@ func isLocalTarget(host string) bool {
 	return false
 }
 
+func (d *Deployer) packLocalPath() string {
+	if d.packSource != "" {
+		return d.packSource
+	}
+	if d.packFile == "" {
+		return ""
+	}
+	return filepath.Join(d.proj.ProjectDir, d.packFile)
+}
+
 // Run 执行部署 pipeline
 func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	start := time.Now()
@@ -115,7 +126,13 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	d.mergeAgentProtectedFiles()
 
 	targets := d.proj.Targets
+	if d.proj.BuildOnly && !packOnly {
+		return fmt.Errorf("project %q only supports pack_only", d.proj.Name)
+	}
 	if targetFilter != "" {
+		if len(targets) == 0 {
+			return fmt.Errorf("project %q has no deploy targets", d.proj.Name)
+		}
 		targets = nil
 		for _, t := range d.proj.Targets {
 			if t.Name == targetFilter || t.Host == targetFilter || strings.HasPrefix(t.Name, targetFilter+".") {
@@ -136,7 +153,7 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 		filteredTargets = append(filteredTargets, t)
 	}
 	targets = filteredTargets
-	if len(targets) == 0 {
+	if len(targets) == 0 && !packOnly {
 		return fmt.Errorf("no matching targets (host_platform=%s)", d.cfg.HostPlatform)
 	}
 
@@ -151,7 +168,7 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	if err := d.pack(targetPlatform); err != nil {
 		return fmt.Errorf("打包失败: %v", err)
 	}
-	packPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+	packPath := d.packLocalPath()
 	info, err := os.Stat(packPath)
 	if err != nil {
 		return fmt.Errorf("找不到打包文件: %v", err)
@@ -370,7 +387,7 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 	}
 
 	// 复制 zip 到目标目录（如果源和目标相同则跳过）
-	srcPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+	srcPath := d.packLocalPath()
 	dstPath := filepath.Join(targetDir, d.packFile)
 	absSrc, _ := filepath.Abs(srcPath)
 	absDst, _ := filepath.Abs(dstPath)
@@ -461,7 +478,7 @@ func (d *Deployer) deployBridge(t *Target, totalSteps int) error {
 		label = t.BridgeURL
 	}
 
-	zipPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+	zipPath := d.packLocalPath()
 
 	// Step 2: 上传
 	d.logf("info", "[STEP 2/%d] 上传到 Bridge %s...\n", totalSteps, label)
@@ -877,6 +894,7 @@ func (d *Deployer) pack(targetPlatform string) error {
 		return fi.ModTime().After(fj.ModTime())
 	})
 
+	d.packSource = matches[0]
 	d.packFile = filepath.Base(matches[0])
 	return nil
 }
@@ -928,7 +946,7 @@ func (d *Deployer) upload(client *ssh.Client, t *Target) error {
 	}
 	defer sftpClient.Close()
 
-	localPath := filepath.Join(d.proj.ProjectDir, d.packFile)
+	localPath := d.packLocalPath()
 	remotePath := t.RemoteDir + "/" + d.packFile
 
 	localFile, err := os.Open(localPath)
