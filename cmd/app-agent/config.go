@@ -6,6 +6,17 @@ import (
 	"os"
 )
 
+type OBSStorageConfig struct {
+	Endpoint         string `json:"endpoint,omitempty"`
+	Bucket           string `json:"bucket,omitempty"`
+	AK               string `json:"ak,omitempty"`
+	SK               string `json:"sk,omitempty"`
+	Region           string `json:"region,omitempty"`
+	KeyPrefix        string `json:"key_prefix,omitempty"`
+	PathStyle        bool   `json:"path_style,omitempty"`
+	DisableSSLVerify bool   `json:"disable_ssl_verify,omitempty"`
+}
+
 // Config defines app-agent settings.
 type Config struct {
 	HTTPPort int `json:"http_port"`
@@ -14,13 +25,17 @@ type Config struct {
 	AuthToken  string `json:"auth_token"`
 	AgentName  string `json:"agent_name"`
 
-	ReceiveToken           string `json:"receive_token,omitempty"`
-	MaxPendingPerUser      int    `json:"max_pending_per_user,omitempty"`
-	PendingMessageTTLHours int    `json:"pending_message_ttl_hours,omitempty"`
-	BlogAgentBaseURL       string `json:"blog_agent_base_url,omitempty"`
-	AppSessionTTLMinutes   int    `json:"app_session_ttl_minutes,omitempty"`
-	GroupStoreFile         string `json:"group_store_file,omitempty"`
-	AttachmentStoreDir     string `json:"attachment_store_dir,omitempty"`
+	ReceiveToken             string           `json:"receive_token,omitempty"`
+	MaxPendingPerUser        int              `json:"max_pending_per_user,omitempty"`
+	PendingMessageTTLHours   int              `json:"pending_message_ttl_hours,omitempty"`
+	BlogAgentBaseURL         string           `json:"blog_agent_base_url,omitempty"`
+	AppSessionTTLMinutes     int              `json:"app_session_ttl_minutes,omitempty"`
+	GroupStoreFile           string           `json:"group_store_file,omitempty"`
+	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
+	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
+	DownloadTicketSecret     string           `json:"download_ticket_secret,omitempty"`
+	DownloadTicketTTLSeconds int              `json:"download_ticket_ttl_seconds,omitempty"`
+	OBS                      OBSStorageConfig `json:"obs,omitempty"`
 
 	LLMAgentID     string `json:"llm_agent_id"`
 	BackendAgentID string `json:"backend_agent_id"`
@@ -33,18 +48,19 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		HTTPPort:               9002,
-		GatewayURL:             "ws://127.0.0.1:9000/ws/uap",
-		AgentName:              "app-agent",
-		MaxPendingPerUser:      200,
-		PendingMessageTTLHours: 24,
-		BlogAgentBaseURL:       "http://127.0.0.1:8888",
-		AppSessionTTLMinutes:   2880,
-		GroupStoreFile:         "app-groups.json",
-		AttachmentStoreDir:     "app-attachments",
-		LLMAgentID:             "llm-agent",
-		BackendAgentID:         "blog-agent",
-		ProtectedFiles:         []string{"app-agent.json"},
+		HTTPPort:                 9002,
+		GatewayURL:               "ws://127.0.0.1:9000/ws/uap",
+		AgentName:                "app-agent",
+		MaxPendingPerUser:        200,
+		PendingMessageTTLHours:   24,
+		BlogAgentBaseURL:         "http://127.0.0.1:8888",
+		AppSessionTTLMinutes:     2880,
+		GroupStoreFile:           "app-groups.json",
+		AttachmentStoreDir:       "app-attachments",
+		DownloadTicketTTLSeconds: 300,
+		LLMAgentID:               "llm-agent",
+		BackendAgentID:           "blog-agent",
+		ProtectedFiles:           []string{"app-agent.json"},
 	}
 }
 
@@ -56,6 +72,24 @@ func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
+	}
+	if cfg.MaxPendingPerUser <= 0 {
+		cfg.MaxPendingPerUser = 200
+	}
+	if cfg.PendingMessageTTLHours <= 0 {
+		cfg.PendingMessageTTLHours = 24
+	}
+	if cfg.AppSessionTTLMinutes <= 0 {
+		cfg.AppSessionTTLMinutes = 2880
+	}
+	if cfg.DownloadTicketTTLSeconds <= 0 {
+		cfg.DownloadTicketTTLSeconds = 300
+	}
+	if cfg.GroupStoreFile == "" {
+		cfg.GroupStoreFile = "app-groups.json"
+	}
+	if cfg.AttachmentStoreDir == "" {
+		cfg.AttachmentStoreDir = "app-attachments"
 	}
 	return cfg, nil
 }

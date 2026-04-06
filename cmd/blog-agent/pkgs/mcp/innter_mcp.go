@@ -929,7 +929,7 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
 	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射
 
-	return tools
+	return filterPublicInnerTools(tools)
 }
 
 // GetInnerMCPToolsProcessed returns inner MCP tools with processed function names

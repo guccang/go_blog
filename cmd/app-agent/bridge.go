@@ -41,18 +41,20 @@ type AppPushPayload struct {
 }
 
 type AppAttachment struct {
-	MessageType  string         `json:"message_type"`
-	FileID       string         `json:"file_id,omitempty"`
-	FileName     string         `json:"file_name,omitempty"`
-	FilePath     string         `json:"file_path,omitempty"`
-	InlineBase64 string         `json:"inline_base64,omitempty"`
-	FileSize     int            `json:"file_size,omitempty"`
-	Format       string         `json:"format,omitempty"`
-	MIMEType     string         `json:"mime_type,omitempty"`
-	DurationMS   int            `json:"duration_ms,omitempty"`
-	SpeechText   string         `json:"speech_text,omitempty"`
-	InputMode    string         `json:"input_mode,omitempty"`
-	Meta         map[string]any `json:"meta,omitempty"`
+	MessageType     string         `json:"message_type"`
+	FileID          string         `json:"file_id,omitempty"`
+	FileName        string         `json:"file_name,omitempty"`
+	FilePath        string         `json:"file_path,omitempty"`
+	InlineBase64    string         `json:"inline_base64,omitempty"`
+	FileSize        int            `json:"file_size,omitempty"`
+	Format          string         `json:"format,omitempty"`
+	MIMEType        string         `json:"mime_type,omitempty"`
+	DurationMS      int            `json:"duration_ms,omitempty"`
+	SpeechText      string         `json:"speech_text,omitempty"`
+	InputMode       string         `json:"input_mode,omitempty"`
+	StorageProvider string         `json:"storage_provider,omitempty"`
+	ObjectKey       string         `json:"object_key,omitempty"`
+	Meta            map[string]any `json:"meta,omitempty"`
 }
 
 // Bridge bridges app messages and UAP messages.
@@ -80,6 +82,10 @@ type Bridge struct {
 	// last sent APK version by user/group
 	lastApkVersions map[string]string
 	apkVersionMu    sync.RWMutex
+
+	obsStorage        objectStorage
+	downloadTickets   downloadTicketSigner
+	downloadTicketTTL time.Duration
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -91,28 +97,55 @@ func NewBridge(cfg *Config) *Bridge {
 	client.Tools = []uap.ToolDef{
 		{
 			Name:        "app.SendMessage",
-			Description: "Send a text message to an app user",
+			Description: "Send a plain text message to a single app user. Use this only for pure text; rich media should use app.SendRichMessage",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
-					"to_user":{"type":"string"},
-					"content":{"type":"string"}
+					"to_user":{"type":"string","description":"Target app user ID"},
+					"content":{"type":"string","description":"Plain text message body"}
 				},
 				"required":["to_user","content"]
 			}`),
 		},
 		{
 			Name:        "app.SendRichMessage",
-			Description: "Send a rich app message with text, image, audio, or file payload",
+			Description: "Send a rich app message to a single user. message_type selects text/image/audio/file and meta carries attachment-specific fields",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
-					"to_user":{"type":"string"},
-					"content":{"type":"string"},
-					"message_type":{"type":"string"},
-					"meta":{"type":"object"}
+					"to_user":{"type":"string","description":"Target app user ID"},
+					"content":{"type":"string","description":"Optional text body or caption"},
+					"message_type":{"type":"string","description":"App message type such as text, image, audio, or file"},
+					"meta":{"type":"object","description":"Attachment metadata and message-type-specific fields"}
 				},
 				"required":["to_user","message_type"]
+			}`),
+		},
+		{
+			Name:        "app.ListAPKPackages",
+			Description: "List APK packages already stored in app-agent. Use this first to discover file_id values before re-pushing an existing APK package.",
+			Parameters: json.RawMessage(`{
+				"type":"object",
+				"properties":{
+					"owner":{"type":"string","description":"Optional attachment owner filter"},
+					"query":{"type":"string","description":"Optional fuzzy match on file name, owner, version, or relative path"},
+					"limit":{"type":"integer","description":"Optional max result count. Default 50, max 200"}
+				}
+			}`),
+		},
+		{
+			Name:        "app.PushAPKPackage",
+			Description: "Push an existing stored APK package to one user or one group. Prefer file_id from app.ListAPKPackages; file_name may be ambiguous. Exactly one of to_user or group_id must be provided.",
+			Parameters: json.RawMessage(`{
+				"type":"object",
+				"properties":{
+					"to_user":{"type":"string","description":"Direct target app user ID"},
+					"group_id":{"type":"string","description":"Target group ID. Exactly one of to_user or group_id must be set"},
+					"file_id":{"type":"string","description":"Stored APK file_id returned by app.ListAPKPackages"},
+					"file_name":{"type":"string","description":"Stored APK file name. Use only when file_id is not available"},
+					"owner":{"type":"string","description":"Optional owner filter when selecting by file_name"},
+					"content":{"type":"string","description":"Optional push text shown to the receiver before install"}
+				}
 			}`),
 		},
 	}
@@ -122,16 +155,19 @@ func NewBridge(cfg *Config) *Bridge {
 	}
 
 	b := &Bridge{
-		cfg:              cfg,
-		client:           client,
-		groups:           newGroupManager(cfg.GroupStoreFile),
-		lastEventTime:    make(map[string]time.Time),
-		sessionUsers:     make(map[string]string),
-		pendingMessages:  make(map[string]*pendingMessage),
-		pendingByUser:    make(map[string][]string),
-		clients:          make(map[string]map[*appClientConn]struct{}),
-		delegationTokens: make(map[string]string),
-		lastApkVersions:  make(map[string]string),
+		cfg:               cfg,
+		client:            client,
+		groups:            newGroupManager(cfg.GroupStoreFile),
+		lastEventTime:     make(map[string]time.Time),
+		sessionUsers:      make(map[string]string),
+		pendingMessages:   make(map[string]*pendingMessage),
+		pendingByUser:     make(map[string][]string),
+		clients:           make(map[string]map[*appClientConn]struct{}),
+		delegationTokens:  make(map[string]string),
+		lastApkVersions:   make(map[string]string),
+		obsStorage:        newObjectStorage(cfg),
+		downloadTickets:   newDownloadTicketSigner(cfg),
+		downloadTicketTTL: time.Duration(cfg.DownloadTicketTTLSeconds) * time.Second,
 	}
 	client.OnMessage = b.handleUAPMessage
 	return b
@@ -292,9 +328,10 @@ func extractApkVersion(fileName string) string {
 }
 
 // compareVersion returns:
-//   1 if versionA > versionB
-//   0 if versionA == versionB
-//  -1 if versionA < versionB
+//
+//	 1 if versionA > versionB
+//	 0 if versionA == versionB
+//	-1 if versionA < versionB
 func compareVersion(versionA, versionB string) int {
 	if versionA == "" && versionB == "" {
 		return 0
@@ -391,8 +428,20 @@ func (b *Bridge) PushUploadedAPK(toUser, content, fileName string, src io.Reader
 	}
 
 	version := extractApkVersion(fileName)
+
+	// Get last version for logging
+	b.apkVersionMu.RLock()
+	lastVersion, exists := b.lastApkVersions[toUser]
+	b.apkVersionMu.RUnlock()
+
+	if version != "" {
+		log.Printf("[PushUploadedAPK] user=%s fileName=%s version=%s lastVersion=%v exists=%v",
+			toUser, fileName, version, lastVersion, exists)
+	}
+
 	if !b.shouldPushApk(toUser, version) {
-		return nil, fmt.Errorf("apk version %s is not newer than last sent version for user %s", version, toUser)
+		return nil, fmt.Errorf("apk version %s is not newer than last sent version %s for user %s",
+			version, lastVersion, toUser)
 	}
 
 	attachment, err := b.storeUploadedAPK(toUser, fileName, src)
@@ -437,7 +486,6 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 	// Record the version after successful storage
 	b.recordApkVersion(targetKey, version)
 
-	pushMeta := buildPushMeta(nil, attachment)
 	if attachment != nil && strings.TrimSpace(content) == "" {
 		if attachment.FileName != "" {
 			content = attachment.FileName
@@ -445,7 +493,7 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 			content = defaultAttachmentLabel(attachment)
 		}
 	}
-	if err := b.broadcastGroupMessage(groupID, robotAccount, content, "file", pushMeta); err != nil {
+	if err := b.broadcastGroupMessageWithAttachment(groupID, robotAccount, content, "file", nil, attachment); err != nil {
 		return nil, nil, err
 	}
 	return attachment, humanMembers, nil
@@ -500,6 +548,7 @@ func (b *Bridge) storeUploadedAPK(owner, fileName string, src io.Reader) (*AppAt
 		Format:      "apk",
 		MIMEType:    "application/vnd.android.package-archive",
 	}
+	b.applyAttachmentStorageFromFile(owner, attachment)
 	return attachment, nil
 }
 
@@ -517,8 +566,14 @@ func (b *Bridge) handleGroupMessage(groupID string, msg *AppMessage, attachment 
 	if msg == nil {
 		return fmt.Errorf("empty message")
 	}
-	pushMeta := buildPushMeta(sanitizeAppMetaForPush(msg.Meta), attachment)
-	if err := b.broadcastGroupMessage(groupID, msg.UserID, msg.Content, msg.MessageType, pushMeta); err != nil {
+	if err := b.broadcastGroupMessageWithAttachment(
+		groupID,
+		msg.UserID,
+		msg.Content,
+		msg.MessageType,
+		sanitizeAppMetaForPush(msg.Meta),
+		attachment,
+	); err != nil {
 		return err
 	}
 	robotAccount, ok := b.groups.RobotAccount(groupID)
@@ -623,7 +678,7 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	}
 	mimeType := attachmentMimeType(msg.MessageType, fileName, format)
 
-	return &AppAttachment{
+	attachment := &AppAttachment{
 		MessageType: msg.MessageType,
 		FileID:      fileID,
 		FileName:    fileName,
@@ -637,7 +692,9 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 		SpeechText:   stringMeta(msg.Meta, "speech_text"),
 		InputMode:    stringMeta(msg.Meta, "input_mode"),
 		Meta:         sanitizeAppMetaForForward(msg.Meta),
-	}, nil
+	}
+	b.applyAttachmentStorageFromBytes(msg.UserID, attachment, data)
+	return attachment, nil
 }
 
 func (b *Bridge) ensureAttachmentDir(userID string) (string, error) {
@@ -881,6 +938,55 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 		} else {
 			result = uap.BuildToolResult(msg.ID, nil, "rich message queued")
 		}
+	case "app.ListAPKPackages":
+		var args struct {
+			Owner string `json:"owner"`
+			Query string `json:"query"`
+			Limit int    `json:"limit"`
+		}
+		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("invalid arguments: %v", err))
+			break
+		}
+		items, err := b.listStoredAPKPackages(
+			strings.TrimSpace(args.Owner),
+			strings.TrimSpace(args.Query),
+			args.Limit,
+		)
+		if err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("list apk packages failed: %v", err))
+		} else {
+			result = uap.BuildToolResult(msg.ID, map[string]any{
+				"count": len(items),
+				"items": items,
+			}, "apk packages listed")
+		}
+	case "app.PushAPKPackage":
+		var args struct {
+			ToUser   string `json:"to_user"`
+			GroupID  string `json:"group_id"`
+			FileID   string `json:"file_id"`
+			FileName string `json:"file_name"`
+			Owner    string `json:"owner"`
+			Content  string `json:"content"`
+		}
+		if err := json.Unmarshal(payload.Arguments, &args); err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("invalid arguments: %v", err))
+			break
+		}
+		pushResult, err := b.pushStoredAPKPackage(
+			strings.TrimSpace(args.ToUser),
+			strings.TrimSpace(args.GroupID),
+			strings.TrimSpace(args.FileID),
+			strings.TrimSpace(args.FileName),
+			strings.TrimSpace(args.Owner),
+			strings.TrimSpace(args.Content),
+		)
+		if err != nil {
+			result = uap.BuildToolError(msg.ID, fmt.Sprintf("push apk package failed: %v", err))
+		} else {
+			result = uap.BuildToolResult(msg.ID, pushResult, "apk package queued")
+		}
 
 	default:
 		result = uap.BuildToolError(msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName))
@@ -1045,7 +1151,6 @@ func (b *Bridge) sendNotificationMessage(toUser, content, messageType string, me
 }
 
 func (b *Bridge) sendExistingAttachmentMessage(toUser, content, messageType string, meta map[string]any, attachment *AppAttachment) error {
-	pushMeta := buildPushMeta(meta, attachment)
 	if attachment != nil && strings.TrimSpace(content) == "" {
 		if attachment.FileName != "" {
 			content = attachment.FileName
@@ -1063,21 +1168,30 @@ func (b *Bridge) sendExistingAttachmentMessage(toUser, content, messageType stri
 			"origin":    "llm-agent",
 			"account":   toUser,
 		}
-		for k, v := range pushMeta {
+		for k, v := range meta {
 			if _, exists := groupMeta[k]; !exists {
 				groupMeta[k] = v
 			}
 		}
-		if err := b.broadcastGroupMessage(groupID, toUser, content, messageType, groupMeta); err != nil {
+		if err := b.broadcastGroupMessageWithAttachment(groupID, toUser, content, messageType, groupMeta, attachment); err != nil {
 			log.Printf("[Bridge] robot group broadcast failed group=%s account=%s: %v", groupID, toUser, err)
 		}
 		return nil
 	}
+	pushMeta := b.buildPushMetaForUser(meta, attachment, toUser)
 	log.Printf("[Bridge] deliver notification user=%s len=%d content=%q", toUser, len(content), shortText(content))
 	return b.sendAppPushWithType(toUser, content, messageType, pushMeta)
 }
 
 func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType string, meta map[string]any) error {
+	return b.broadcastGroupMessageWithAttachment(groupID, fromUser, content, messageType, meta, nil)
+}
+
+func (b *Bridge) broadcastGroupMessageWithAttachment(
+	groupID, fromUser, content, messageType string,
+	meta map[string]any,
+	attachment *AppAttachment,
+) error {
 	groupID = normalizeGroupID(groupID)
 	fromUser = strings.TrimSpace(fromUser)
 	if groupID == "" || fromUser == "" {
@@ -1136,15 +1250,15 @@ func (b *Bridge) broadcastGroupMessage(groupID, fromUser, content, messageType s
 			groupID, displayFrom)
 		return nil
 	}
-	if err := b.enqueueAndDeliverMany(recipients, AppPushPayload{
-		MessageID:   messageID,
-		Content:     truncateForApp(content),
-		MessageType: strings.TrimSpace(messageType),
-		Channel:     "app",
-		Timestamp:   time.Now().UnixMilli(),
-		Meta:        pushMeta,
-	}); err != nil {
-		return err
+	for _, member := range recipients {
+		if err := b.sendAppPushWithType(
+			member,
+			content,
+			messageType,
+			b.buildPushMetaForUser(pushMeta, attachment, member),
+		); err != nil {
+			return err
+		}
 	}
 	log.Printf("[Bridge] group message broadcast group=%s from=%s members=%d type=%s len=%d",
 		groupID, displayFrom, len(recipients), messageType, len(content))

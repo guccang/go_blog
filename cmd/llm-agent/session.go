@@ -27,6 +27,7 @@ type TaskSession struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Account     string `json:"account"`
+	Source      string `json:"source,omitempty"`
 
 	// 执行状态
 	Status     string     `json:"status"` // pending/running/done/failed/skipped
@@ -152,6 +153,7 @@ func NewChildSession(parent *TaskSession, title, description string) *TaskSessio
 		Title:       title,
 		Description: description,
 		Account:     parent.Account,
+		Source:      parent.Source,
 		Status:      "pending",
 		Messages:    make([]Message, 0),
 		ToolCalls:   make([]ToolCallRecord, 0),

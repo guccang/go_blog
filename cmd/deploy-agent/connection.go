@@ -464,12 +464,12 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 	defs := []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
-			Description: "列出所有可部署项目。configured=true 的项目使用 DeployProject 部署；configured=false 的项目使用 DeployAdhoc 部署",
+			Description: "列出 deploy-agent 已知项目及其 configured/targets 信息；仅做发现，不执行部署。configured=true 用 DeployProject，configured=false 用 DeployAdhoc",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
 			Name:        "AgentShutdown",
-			Description: "向指定 Agent 发送关闭命令（graceful 或 force）",
+			Description: "关闭指定 Agent。默认优雅退出；force=true 时立即强制退出。会修改目标 Agent 运行状态",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -482,7 +482,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "AgentStatus",
-			Description: "查询指定 Agent 的运行状态",
+			Description: "查询指定 Agent 的当前运行状态和最近心跳；只读，不会修改目标 Agent",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -493,7 +493,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployProject",
-			Description: "部署已配置的项目。使用 settings 中预配置的构建脚本、部署路径和发布脚本。部署前先用 DeployListProjects 确认项目存在且 configured=true。未配置的项目请使用 DeployAdhoc",
+			Description: "部署 settings 中已配置的项目。调用前先用 DeployListProjects 确认 project 存在且 configured=true；不要传 project_dir 或 ssh_host。未配置项目改用 DeployAdhoc",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -507,7 +507,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployAdhoc",
-			Description: "一次性部署未配置的项目到指定服务器。需要提供项目源码目录和 SSH 目标，无需预配置 settings 文件。如果项目已在 settings 中配置（configured=true），应使用 DeployProject 而非此接口",
+			Description: "一次性部署未在 settings 中配置的项目。必须提供 project_dir 和 ssh_host；如果项目已 configured=true，应改用 DeployProject 而不是此接口",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -525,12 +525,12 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployListPipelines",
-			Description: "列出可用的部署编排 pipeline",
+			Description: "列出可用的部署 pipeline；仅做发现，不执行任何部署步骤",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
 			Name:        "DeployPipeline",
-			Description: "执行部署编排 pipeline（按步骤顺序部署多个项目）",
+			Description: "执行预配置部署 pipeline，按定义顺序运行多个步骤；调用前可先用 DeployListPipelines 确认名称",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

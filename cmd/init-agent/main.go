@@ -23,7 +23,7 @@ func main() {
 
 	// Progressive deployment flags
 	quickstart := flag.Bool("quickstart", false, "快速启动模式（仅配置 gateway + blog-agent）")
-	addAgents := flag.String("add", "", "增量安装 agent（逗号分隔，如 llm-agent,corn-agent）")
+	addAgents := flag.String("add", "", "增量安装 agent（逗号分隔，如 llm-agent,cron-agent）")
 	recommend := flag.String("recommend", "", "根据意图推荐 agent（如 \"定时发博客\"）")
 	listAgents := flag.Bool("list", false, "列出所有可用 agent 及其状态")
 

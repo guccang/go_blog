@@ -11,17 +11,31 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
-import org.vosk.LibVosk
 import org.vosk.Model
 import org.vosk.Recognizer
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
 import java.io.RandomAccessFile
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.zip.ZipInputStream
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.flutter_client_for_appagent/vosk"
     private val installerChannelName = "com.example.flutter_client_for_appagent/installer"
+    private val zipChannelName = "com.example.flutter_client_for_appagent/zip"
+    private val requiredModelFiles =
+        listOf(
+            "am/final.mdl",
+            "conf/mfcc.conf",
+            "conf/model.conf",
+            "graph/HCLr.fst",
+            "graph/Gr.fst",
+        )
+    private val optionalIvectorFiles =
+        listOf("ivector/final.ie", "ivector/final.mat", "ivector/online_cmvn.conf")
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     @Volatile private var voskModel: Model? = null
 
@@ -43,6 +57,13 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "installApk" -> handleInstallApk(call, result)
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, zipChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "extractZip" -> handleExtractZip(call, result)
                     else -> result.notImplemented()
                 }
             }
@@ -68,13 +89,13 @@ class MainActivity : FlutterActivity() {
         }
         executor.execute {
             try {
-                val modelDir = File(modelPath)
-                if (!modelDir.exists() || !modelDir.isDirectory) {
+                val modelDir = resolveModelDir(modelPath)
+                if (modelDir == null) {
                     runOnUiThread {
                         result.success(
                             mapOf(
                                 "ready" to false,
-                                "message" to "Vosk model directory not found: $modelPath",
+                                "message" to "Vosk model directory is incomplete: $modelPath",
                             ),
                         )
                     }
@@ -88,11 +109,11 @@ class MainActivity : FlutterActivity() {
                     result.success(
                         mapOf(
                             "ready" to true,
-                            "message" to "Vosk model loaded",
+                            "message" to "Vosk model loaded: ${modelDir.absolutePath}",
                         ),
                     )
                 }
-            } catch (err: Exception) {
+            } catch (err: Throwable) {
                 runOnUiThread {
                     result.success(
                         mapOf(
@@ -103,6 +124,34 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    private fun resolveModelDir(modelPath: String): File? {
+        val modelDir = File(modelPath)
+        if (!modelDir.exists() || !modelDir.isDirectory) {
+            return null
+        }
+        if (isValidModelDir(modelDir)) {
+            return modelDir
+        }
+        val childDirs = modelDir.listFiles()?.filter { it.isDirectory } ?: return null
+        for (childDir in childDirs) {
+            if (isValidModelDir(childDir)) {
+                return childDir
+            }
+        }
+        return null
+    }
+
+    private fun isValidModelDir(modelDir: File): Boolean {
+        if (!requiredModelFiles.all { relativePath -> File(modelDir, relativePath).isFile }) {
+            return false
+        }
+        val ivectorDir = File(modelDir, "ivector")
+        if (ivectorDir.isDirectory) {
+            return optionalIvectorFiles.all { relativePath -> File(modelDir, relativePath).isFile }
+        }
+        return true
     }
 
     private fun handleTranscribeFile(call: MethodCall, result: MethodChannel.Result) {
@@ -237,6 +286,127 @@ class MainActivity : FlutterActivity() {
                     ((bytes[2].toInt() and 0xFF) shl 16) or
                     ((bytes[3].toInt() and 0xFF) shl 24)
             return if (value > 0) value.toFloat() else 16000f
+        }
+    }
+
+    private fun handleExtractZip(call: MethodCall, result: MethodChannel.Result) {
+        val zipPath = call.argument<String>("zipPath")?.trim().orEmpty()
+        val destPath = call.argument<String>("destPath")?.trim().orEmpty()
+        if (zipPath.isEmpty() || destPath.isEmpty()) {
+            runOnUiThread {
+                result.success(
+                    mapOf(
+                        "success" to false,
+                        "error" to "Invalid arguments: zipPath or destPath is empty",
+                    ),
+                )
+            }
+            return
+        }
+        executor.execute {
+            val tempDir = File("${destPath}.extracting")
+            try {
+                val zipFile = File(zipPath)
+                val destDir = File(destPath)
+                if (!zipFile.exists() || !zipFile.isFile) {
+                    runOnUiThread {
+                        result.success(
+                            mapOf(
+                                "success" to false,
+                                "error" to "ZIP file not found: $zipPath",
+                            ),
+                        )
+                    }
+                    return@execute
+                }
+                prepareEmptyDirectory(tempDir)
+                unzipToDirectory(zipFile, tempDir)
+                if (resolveModelDir(tempDir.absolutePath) == null) {
+                    throw IOException("Extracted Vosk model is incomplete")
+                }
+                moveDirectory(tempDir, destDir)
+                val finalModelDir =
+                    resolveModelDir(destDir.absolutePath)
+                        ?: throw IOException("Moved Vosk model is incomplete")
+                runOnUiThread {
+                    result.success(
+                        mapOf(
+                            "success" to true,
+                            "error" to "",
+                            "modelPath" to finalModelDir.absolutePath,
+                        ),
+                    )
+                }
+            } catch (err: Throwable) {
+                deleteIfExists(tempDir)
+                runOnUiThread {
+                    result.success(
+                        mapOf(
+                            "success" to false,
+                            "error" to "Extract ZIP failed: ${err.message ?: err.javaClass.simpleName}",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun prepareEmptyDirectory(dir: File) {
+        deleteIfExists(dir)
+        if (!dir.mkdirs() && !dir.isDirectory) {
+            throw IOException("Create directory failed: ${dir.absolutePath}")
+        }
+    }
+
+    private fun deleteIfExists(dir: File) {
+        if (dir.exists() && !dir.deleteRecursively()) {
+            throw IOException("Delete directory failed: ${dir.absolutePath}")
+        }
+    }
+
+    private fun moveDirectory(sourceDir: File, destDir: File) {
+        deleteIfExists(destDir)
+        if (!sourceDir.renameTo(destDir)) {
+            throw IOException(
+                "Move directory failed: ${sourceDir.absolutePath} -> ${destDir.absolutePath}",
+            )
+        }
+    }
+
+    private fun unzipToDirectory(zipFile: File, destDir: File) {
+        val canonicalDestDir = destDir.canonicalFile
+        val canonicalDestPrefix = "${canonicalDestDir.path}${File.separator}"
+        ZipInputStream(FileInputStream(zipFile)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val outFile = File(destDir, entry.name).canonicalFile
+                if (outFile.path != canonicalDestDir.path &&
+                    !outFile.path.startsWith(canonicalDestPrefix)
+                ) {
+                    throw IOException("Unsafe ZIP entry: ${entry.name}")
+                }
+                if (entry.isDirectory) {
+                    if (!outFile.mkdirs() && !outFile.isDirectory) {
+                        throw IOException("Create directory failed: ${outFile.absolutePath}")
+                    }
+                } else {
+                    outFile.parentFile?.let { parent ->
+                        if (!parent.mkdirs() && !parent.isDirectory) {
+                            throw IOException("Create directory failed: ${parent.absolutePath}")
+                        }
+                    }
+                    FileOutputStream(outFile).use { fos ->
+                        val buffer = ByteArray(8192)
+                        var len: Int
+                        while (zis.read(buffer).also { len = it } > 0) {
+                            fos.write(buffer, 0, len)
+                        }
+                        fos.fd.sync()
+                    }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
         }
     }
 }

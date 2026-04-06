@@ -17,6 +17,7 @@ type TaskContext struct {
 	Account       string
 	Query         string    // 用户问题（用于 plan_and_execute）
 	Source        string    // "web" | "wechat" | "llm_request"
+	PreferAudioReply bool
 	Messages      []Message // 预构建消息（nil 则自动构建）
 	SelectedTools []string
 	NoTools       bool

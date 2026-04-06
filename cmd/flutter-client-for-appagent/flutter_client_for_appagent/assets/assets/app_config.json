@@ -1,0 +1,6 @@
+{
+  "base_url": "http://blog.guccang.cn:8881",
+  "receive_token": "123456",
+  "enable_local_vosk": false,
+  "vosk_model_path": ""
+}

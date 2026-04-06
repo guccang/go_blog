@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -75,10 +77,11 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(loginResponse{
-		Success:      true,
-		SessionToken: session.Token,
-		UserID:       session.Account,
-		ExpiresAt:    session.ExpiresAt.UnixMilli(),
+		Success:         true,
+		SessionToken:    session.Token,
+		UserID:          session.Account,
+		ExpiresAt:       session.ExpiresAt.UnixMilli(),
+		ObsAgentBaseURL: strings.TrimSpace(h.cfg.ObsAgentBaseURL),
 	})
 }
 
@@ -277,6 +280,104 @@ func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", "inline; filename="+stat.Name())
 	http.ServeFile(w, r, filePath)
+}
+
+func (h *Handler) HandleUploadAPK(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		log.Printf("[Handler] unauthorized upload apk remote=%s path=%s", r.RemoteAddr, r.URL.Path)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+		return
+	}
+
+	groupID := normalizeGroupID(firstNonEmpty(r.FormValue("group_id"), r.FormValue("to_group")))
+	toUser := strings.TrimSpace(r.FormValue("to_user"))
+	if toUser == "" {
+		toUser = strings.TrimSpace(r.FormValue("user_id"))
+	}
+	if groupID != "" && toUser != "" {
+		http.Error(w, "to_user and group_id are mutually exclusive", http.StatusBadRequest)
+		return
+	}
+	if toUser == "" && groupID == "" {
+		http.Error(w, "to_user or group_id is required", http.StatusBadRequest)
+		return
+	}
+	content := strings.TrimSpace(r.FormValue("content"))
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		file, header, err = r.FormFile("apk")
+	}
+	if err != nil {
+		http.Error(w, "file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	fileName := strings.TrimSpace(header.Filename)
+	if fileName == "" {
+		http.Error(w, "file name is required", http.StatusBadRequest)
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(fileName), ".apk") {
+		http.Error(w, "only .apk files are supported", http.StatusBadRequest)
+		return
+	}
+	if content == "" {
+		content = fmt.Sprintf("收到新的安装包：%s", fileName)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if groupID != "" {
+		attachment, recipients, err := h.bridge.PushUploadedAPKToGroup(groupID, content, fileName, file)
+		if err != nil {
+			log.Printf("[Handler] upload apk failed group_id=%s file=%s remote=%s err=%v", groupID, fileName, r.RemoteAddr, err)
+			http.Error(w, "Upload APK failed", http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[Handler] upload apk accepted group_id=%s file=%s size=%d recipients=%d remote=%s",
+			groupID, attachment.FileName, attachment.FileSize, len(recipients), r.RemoteAddr)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success":         true,
+			"group_id":        groupID,
+			"recipient_users": recipients,
+			"recipient_count": len(recipients),
+			"message_type":    "file",
+			"file_id":         attachment.FileID,
+			"file_name":       attachment.FileName,
+			"file_size":       attachment.FileSize,
+			"file_format":     attachment.Format,
+			"mime_type":       attachment.MIMEType,
+		})
+		return
+	}
+
+	attachment, err := h.bridge.PushUploadedAPK(toUser, content, fileName, file)
+	if err != nil {
+		log.Printf("[Handler] upload apk failed to_user=%s file=%s remote=%s err=%v", toUser, fileName, r.RemoteAddr, err)
+		http.Error(w, "Upload APK failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[Handler] upload apk accepted to_user=%s file=%s size=%d remote=%s", toUser, attachment.FileName, attachment.FileSize, r.RemoteAddr)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":      true,
+		"to_user":      toUser,
+		"message_type": "file",
+		"file_id":      attachment.FileID,
+		"file_name":    attachment.FileName,
+		"file_size":    attachment.FileSize,
+		"file_format":  attachment.Format,
+		"mime_type":    attachment.MIMEType,
+	})
 }
 
 func (h *Handler) authorize(r *http.Request) bool {

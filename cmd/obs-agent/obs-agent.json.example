@@ -1,0 +1,15 @@
+{
+  "http_port": 9004,
+  "receive_token": "your-incoming-token",
+  "download_ticket_secret": "replace-this-with-a-long-random-secret",
+  "signed_url_ttl_seconds": 300,
+  "obs": {
+    "endpoint": "obs.cn-north-4.myhuaweicloud.com",
+    "bucket": "your-bucket",
+    "ak": "your-ak",
+    "sk": "your-sk",
+    "region": "cn-north-4",
+    "key_prefix": "app-attachments",
+    "path_style": false
+  }
+}

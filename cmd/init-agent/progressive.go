@@ -138,7 +138,7 @@ func RunQuickStartWizard(cfg *InitConfig) error {
 	fmt.Println()
 
 	fmt.Println("  想要定时任务？运行:")
-	fmt.Printf("    %s init-agent --add corn-agent\n", colorCyan("$"))
+	fmt.Printf("    %s init-agent --add cron-agent\n", colorCyan("$"))
 	fmt.Println()
 
 	fmt.Println("  想要项目部署？运行:")

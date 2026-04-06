@@ -1,0 +1,57 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "guccang@blog.guccang.cn",
+  "agent_name": "audio-agent",
+  "max_concurrent": 3,
+  "request_timeout_sec": 180,
+  "speech_to_text": {
+    "provider": "openai",
+    "model": "default"
+  },
+  "text_to_speech": {
+    "provider": "minimax",
+    "model": "default"
+  },
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "sk-cp-v2c4GTP9juEgaRyyy0b85yMnQdvdNFa9UnFIFuxubNG4R1xu91J8AlY7wcmTKEERwwqQcaCoEsIPQcMxNeN6znF3dhtDQbnUVGXPySMc88xAujm8SC14rFY",
+      "speech_to_text_path": "/audio/transcriptions",
+      "text_to_speech_path": "/audio/speech",
+      "speech_to_text_models": {
+        "default": {
+          "model": "gpt-4o-mini-transcribe"
+        }
+      },
+      "text_to_speech_models": {
+        "default": {
+          "model": "gpt-4o-mini-tts",
+          "default_voice": "alloy",
+          "response_format": "mp3"
+        }
+      }
+    },
+    "minimax": {
+      "base_url": "https://api.minimaxi.com",
+      "api_key": "sk-cp-v2c4GTP9juEgaRyyy0b85yMnQdvdNFa9UnFIFuxubNG4R1xu91J8AlY7wcmTKEERwwqQcaCoEsIPQcMxNeN6znF3dhtDQbnUVGXPySMc88xAujm8SC14rFY",
+      "text_to_speech_path": "/v1/t2a_v2",
+      "text_to_speech_models": {
+        "default": {
+          "model": "speech-2.8-hd",
+          "default_voice": "female-tianmei",
+          "response_format": "mp3",
+          "language_boost": "Chinese",
+          "speed": 1,
+          "volume": 1,
+          "pitch": 0,
+          "sample_rate": 32000,
+          "bitrate": 128000,
+          "channel": 1
+        }
+      }
+    }
+  },
+  "protected_files": [
+    "audio-agent.json"
+  ]
+}

@@ -83,7 +83,7 @@ b.skillMgr.SetAgentOnlineChecker(func(prefix string) bool {
 
 ```
 Load() → 扫描 workspace/skills/*/SKILL.md
-  ├─ 解析 YAML frontmatter（name, description, tools, agents, keywords）
+  ├─ 解析 YAML frontmatter（name, description, summary, tools, agents, keywords）
   ├─ 提取 Markdown 正文（技能详细文档）
   └─ 构建 SkillEntry 列表
 ```
@@ -93,8 +93,9 @@ Load() → 扫描 workspace/skills/*/SKILL.md
 ---
 name: coding
 description: 编码任务（新建项目、修改代码、调试）
-tools: CodegenStartSession, CodegenSendMessage
-agents: go_blog
+summary: 纯编码任务原文直传 AcpStartSession，后续修复再用 AcpSendMessage
+tools: AcpStartSession, AcpSendMessage
+agents: acp
 keywords: 编码, 开发, 代码, 项目
 ---
 # 编码技能详细说明
@@ -158,13 +159,13 @@ GetAvailableSkills() []SkillEntry {
 **规划提示词关键部分** (`cmd/llm-agent/planner.go:96-153`):
 ```
 ## 可用工具
-- CodegenStartSession: 启动编码会话 [参数: project(项目名)[必填], model, tool]
-- DeployProject: 部署项目 [参数: project_dir[必填], target[必填]]
+- AcpStartSession: 启动编码会话 [参数: project(项目名)[必填], model, tool]
+- DeployProject / DeployAdhoc: 部署项目 [已配置项目用 DeployProject；新项目或未配置项目用 DeployAdhoc]
 ...
 
 ## 领域指引（来自 skill）
 ### coding
-使用 CodegenStartSession 时：
+使用 AcpStartSession 时：
 - project 参数必须使用描述性名称（如 helloworld-web），禁止使用 account
 - tool 参数可选 claudecode/opencode，根据 agent 能力选择
 ...
@@ -182,16 +183,16 @@ GetAvailableSkills() []SkillEntry {
     {
       "id": "t1",
       "title": "启动编码会话创建项目",
-      "description": "调用 CodegenStartSession(project='blog-api', tool='claudecode', account='xxx')",
+      "description": "调用 AcpStartSession(project='blog-api', tool='claudecode')",
       "depends_on": [],
-      "tools_hint": ["CodegenStartSession"]
+      "tools_hint": ["AcpStartSession"]
     },
     {
       "id": "t2",
       "title": "部署到生产环境",
-      "description": "使用 t1 返回的 project_dir 调用 DeployProject(target='ssh-prod')",
+      "description": "使用 t1 返回的 project_dir 调用 DeployAdhoc(project='blog-api', ssh_host='deploy@prod-host')",
       "depends_on": ["t1"],
-      "tools_hint": ["DeployProject"]
+      "tools_hint": ["DeployAdhoc"]
     }
   ],
   "execution_mode": "dag"
@@ -214,8 +215,8 @@ ReviewPlan() → 注入 agentCapabilities（agent 详细能力信息）
 ## Agent 能力信息
 - **go_blog** [go_blog]: 博客管理
   部署目标:
-    - ssh-prod → root@114.115.214.86
-    - ssh-test → root@192.168.1.100
+    - ssh-prod → deploy@prod-host
+    - ssh-test → deploy@test-host
   可用模型: default, deepseek
   编码工具: claudecode, opencode
 
@@ -324,25 +325,25 @@ dagScheduler
 
 ```
 1. 规划阶段
-   ├─ 匹配 skill: coding（agents: go_blog ✓）
+   ├─ 匹配 skill: coding（agents: acp ✓）
    ├─ 注入 skillBlock: "project 参数禁止使用 account"
    └─ 生成计划:
-       t1: CodegenStartSession(project='blog-api', tool='claudecode')
-       t2: DeployProject(project_dir=<t1.project_dir>, target='ssh-prod')
+       t1: AcpStartSession(project='blog-api', tool='claudecode')
+       t2: DeployAdhoc(project='blog-api', project_dir=<t1.project_dir>, ssh_host='deploy@prod-host')
 
 2. 审查阶段
    ├─ 注入 agentCapabilities: go_blog 的 deploy_targets=['ssh-prod', 'ssh-test']
-   ├─ 检查 target='ssh-prod' ✓ 在可用列表中
+   ├─ 检查 deploy 步骤参数完整性（project_dir / ssh_host）✓
    └─ 审查通过
 
 3. 执行阶段
    ├─ t1 执行:
-   │   ├─ 过滤工具: CodegenStartSession + 基础工具
-   │   ├─ LLM 调用 CodegenStartSession → 返回 {project_dir: "/path/to/blog-api"}
+   │   ├─ 过滤工具: AcpStartSession + 基础工具
+   │   ├─ LLM 调用 AcpStartSession → 返回 {project_dir: "/path/to/blog-api"}
    │   └─ 标记完成 → 解锁 t2
    ├─ t2 执行:
    │   ├─ 注入 t1 结果: "关键工具返回数据: project_dir=/path/to/blog-api"
-   │   ├─ LLM 调用 DeployProject(project_dir='/path/to/blog-api', target='ssh-prod')
+   │   ├─ LLM 调用 DeployAdhoc(project='blog-api', project_dir='/path/to/blog-api', ssh_host='deploy@prod-host')
    │   └─ 检测 status='in_progress' → 标记为 async
 
 4. 综合阶段

@@ -5,8 +5,8 @@ void main() {
   testWidgets('renders app-agent client shell', (tester) async {
     await tester.pumpWidget(const AppAgentClientApp());
 
-    expect(find.text('App Agent Client'), findsOneWidget);
-    expect(find.text('Connect'), findsOneWidget);
-    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('App Agent'), findsOneWidget);
+    expect(find.text('Direct conversation'), findsOneWidget);
+    expect(find.text('发消息'), findsOneWidget);
   });
 }

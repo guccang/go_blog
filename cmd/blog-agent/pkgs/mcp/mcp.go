@@ -229,6 +229,9 @@ func CallMCPTool(toolName string, arguments map[string]interface{}) MCPToolRespo
 	if len(parts) == 2 {
 		callName = parts[1]
 	}
+	if !isPublicToolName(callName) {
+		return MCPToolResponse{Success: false, Error: fmt.Sprintf("tool not available: %s", callName)}
+	}
 
 	data := CallInnerTools(callName, arguments)
 	// 解析统一信封
@@ -265,6 +268,9 @@ func CallToolForAPI(toolCall MCPToolCall, requestID string) MCPToolResponse {
 	parts := splitToolName(toolCall.Name)
 	if len(parts) == 2 && parts[0] == "Inner_blog" {
 		callName = parts[1]
+	}
+	if !isPublicToolName(callName) {
+		return MCPToolResponse{Success: false, Error: fmt.Sprintf("tool not available: %s", callName)}
 	}
 
 	data := CallInnerToolsWithRequestID(callName, toolCall.Arguments, requestID)

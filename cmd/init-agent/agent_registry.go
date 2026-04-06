@@ -411,8 +411,8 @@ func AgentMetaRegistry() map[string]AgentMeta {
 			FeatureKeywords: []string{"MCP", "外部工具", "桥接", "tool", "bridge", "扩展"},
 			ShortPitch:      "MCP 外部工具桥接，连接第三方服务",
 		},
-		"corn-agent": {
-			Name: "corn-agent", Tier: TierProductivity,
+		"cron-agent": {
+			Name: "cron-agent", Tier: TierProductivity,
 			AgentDeps:       []string{"gateway", "llm-agent"},
 			FeatureKeywords: []string{"定时", "cron", "schedule", "计划任务", "自动", "定时发布", "定时任务"},
 			ShortPitch:      "定时任务调度，自动化周期性工作",

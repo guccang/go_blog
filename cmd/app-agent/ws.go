@@ -121,6 +121,12 @@ func (b *Bridge) enqueueAndDeliverMany(users []string, payload AppPushPayload) e
 
 	now := time.Now()
 	b.deliveryMu.Lock()
+	apkKey := pendingAPKKey(payload.MessageType, payload.Meta)
+	if apkKey != "" {
+		for _, user := range users {
+			b.dropPendingAPKForUserLocked(user, apkKey)
+		}
+	}
 
 	messageID := payload.MessageID
 	if messageID == "" {
@@ -171,6 +177,54 @@ func (b *Bridge) enqueueAndDeliverMany(users []string, payload AppPushPayload) e
 		}
 	}
 	return nil
+}
+
+func pendingAPKKey(messageType string, meta map[string]any) string {
+	if strings.TrimSpace(strings.ToLower(messageType)) != "file" || meta == nil {
+		return ""
+	}
+	fileName, _ := meta["file_name"].(string)
+	fileFormat, _ := meta["file_format"].(string)
+	normalizedName := strings.ToLower(strings.TrimSpace(fileName))
+	normalizedFormat := strings.ToLower(strings.TrimSpace(fileFormat))
+	if normalizedFormat != "apk" && !strings.HasSuffix(normalizedName, ".apk") {
+		return ""
+	}
+	if normalizedName == "" {
+		return ""
+	}
+	return normalizedName
+}
+
+func (b *Bridge) dropPendingAPKForUserLocked(userID, apkKey string) {
+	if strings.TrimSpace(userID) == "" || strings.TrimSpace(apkKey) == "" {
+		return
+	}
+	queue := b.pendingByUser[userID]
+	if len(queue) == 0 {
+		return
+	}
+	filtered := queue[:0]
+	for _, messageID := range queue {
+		msg := b.pendingMessages[messageID]
+		if msg == nil {
+			continue
+		}
+		if pendingAPKKey(msg.MessageType, msg.Meta) != apkKey {
+			filtered = append(filtered, messageID)
+			continue
+		}
+		delete(msg.Deliveries, userID)
+		log.Printf("[WS] drop stale pending apk user=%s file=%s message_id=%s", userID, apkKey, messageID)
+		if len(msg.Deliveries) == 0 {
+			delete(b.pendingMessages, messageID)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(b.pendingByUser, userID)
+		return
+	}
+	b.pendingByUser[userID] = append([]string(nil), filtered...)
 }
 
 func uniqueNonEmptyUsers(users []string) []string {

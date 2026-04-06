@@ -1,0 +1,38 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "",
+  "agent_name": "image-agent",
+  "max_concurrent": 3,
+  "request_timeout_sec": 180,
+  "image_to_text": {
+    "provider": "openai",
+    "model": "default"
+  },
+  "text_to_image": {
+    "provider": "openai",
+    "model": "default"
+  },
+  "providers": {
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "your-api-key",
+      "vision_path": "/chat/completions",
+      "image_generation_path": "/images/generations",
+      "vision_models": {
+        "default": {
+          "model": "gpt-4.1-mini",
+          "max_tokens": 1024
+        }
+      },
+      "generation_models": {
+        "default": {
+          "model": "gpt-image-1",
+          "size": "1024x1024"
+        }
+      }
+    }
+  },
+  "protected_files": [
+    "image-agent.json"
+  ]
+}

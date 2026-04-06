@@ -122,6 +122,7 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 		if directReply, ok := b.buildMCPToolListReply(query, b.getLLMTools()); ok {
 			store := NewSessionStore(b.cfg.SessionDir)
 			rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
+			rootSession.Source = ctx.Source
 			rootSession.AppendMessage(Message{Role: "assistant", Content: directReply})
 			rootSession.SetResult(directReply)
 			rootSession.SetStatus("done")
@@ -169,6 +170,7 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 
 	store := NewSessionStore(b.cfg.SessionDir)
 	rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
+	rootSession.Source = ctx.Source
 	for _, msg := range messages {
 		rootSession.AppendMessage(msg)
 	}

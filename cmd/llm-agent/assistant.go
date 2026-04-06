@@ -247,7 +247,7 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 	})
 }
 
-// handleCronReminder 处理 cron_reminder 定时提醒任务：发微信通知 + 回发 task_complete 到 corn-agent
+// handleCronReminder 处理 cron_reminder 定时提醒任务：发微信通知 + 回发 task_complete 到 cron-agent
 func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronReminderPayload) {
 	log.Printf("[CronReminder] task=%s account=%s wechat_user=%s message=%s",
 		taskID, payload.Account, payload.WechatUser, payload.Message)
@@ -296,7 +296,7 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 		log.Printf("[CronReminder] task=%s sent to wechat-agent=%s", taskID, wechatAgentID)
 	}
 
-	// 发送 task_complete 到 sourceAgent（corn-agent），而非 "blog-agent"
+	// 发送 task_complete 到 sourceAgent（cron-agent），而非 "blog-agent"
 	b.client.Send(&uap.Message{
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),

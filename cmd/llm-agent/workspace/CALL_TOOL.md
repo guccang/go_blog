@@ -5,8 +5,8 @@
 **所有 `call_tool()` 返回统一结构 `{"data": <实际值>}`**，始终通过 `result["data"]` 获取实际值：
 
 ```python
-result = call_tool("RawCurrentDate", {})
-date = result["data"]  # "2026-03-24"
+result = call_tool("RawGetAllBooks", {"account": "xxx"})
+books = result["data"]  # [{"id": "xxx", "title": "深入理解计算机系统", ...}, ...]
 
 result = call_tool("RawAddExercise", {...})
 exercise = result["data"]  # {"id": "xxx", "name": "慢跑", ...}
@@ -32,13 +32,13 @@ todos = result["data"]  # {"2026-03-09": [...], ...}
 ```python
 import json
 
-date = call_tool("RawCurrentDate", {})["data"]
-todos = call_tool("RawGetTodosRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})["data"]
-exercise = call_tool("RawGetExerciseRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": date})["data"]
+todos = call_tool("RawGetTodosRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": "2026-03-24"})["data"]
+exercise = call_tool("RawGetExerciseRange", {"account": "xxx", "startDate": "2026-03-09", "endDate": "2026-03-24"})["data"]
+reading = call_tool("RawGetBooksByStatus", {"account": "xxx", "status": "reading"})["data"]
 
-print(f"日期: {date}")
 print(f"待办: {json.dumps(todos, ensure_ascii=False)}")
 print(f"运动: {json.dumps(exercise, ensure_ascii=False)}")
+print(f"阅读中: {json.dumps(reading, ensure_ascii=False)}")
 ```
 
 **新增记录：**
@@ -56,7 +56,7 @@ print(result)
 
 **安全调用（失败不中断）：**
 ```python
-result = safe_call_tool("WebSearch", {"query": "test"}, default=None)
+result = safe_call_tool("RawGetProjectSummary", {"account": "xxx"}, default=None)
 if result:
     print(result["data"])
 ```

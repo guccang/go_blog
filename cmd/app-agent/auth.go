@@ -20,11 +20,12 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	Success      bool   `json:"success"`
-	SessionToken string `json:"session_token,omitempty"`
-	UserID       string `json:"user_id,omitempty"`
-	ExpiresAt    int64  `json:"expires_at,omitempty"`
-	Error        string `json:"error,omitempty"`
+	Success         bool   `json:"success"`
+	SessionToken    string `json:"session_token,omitempty"`
+	UserID          string `json:"user_id,omitempty"`
+	ExpiresAt       int64  `json:"expires_at,omitempty"`
+	ObsAgentBaseURL string `json:"obs_agent_base_url,omitempty"`
+	Error           string `json:"error,omitempty"`
 }
 
 type authError struct {
@@ -40,10 +41,10 @@ func (e *authError) Error() string {
 }
 
 type appSession struct {
-	Account          string
-	Token            string
-	ExpiresAt        time.Time
-	DelegationToken  string // delegation token for blog-agent API calls
+	Account         string
+	Token           string
+	ExpiresAt       time.Time
+	DelegationToken string // delegation token for blog-agent API calls
 }
 
 type authManager struct {

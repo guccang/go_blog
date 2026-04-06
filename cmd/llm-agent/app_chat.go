@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,11 +19,22 @@ type AppSink struct {
 	appUser       string
 	buf           strings.Builder
 	lastEventTime time.Time
+	audioSent     bool
 }
+
+var inlineAudioTagPattern = regexp.MustCompile(`(?is)<audio\b[^>]*\bsrc\s*=\s*"data:audio/([^;"]+);base64,([^"]+)"[^>]*>.*?</audio>`)
 
 func (s *AppSink) OnChunk(text string) { s.buf.WriteString(text) }
 
 func (s *AppSink) OnEvent(event, text string) {
+	if event == "audio_reply" {
+		if s.trySendAudioReply(text) {
+			s.audioSent = true
+			s.lastEventTime = time.Now()
+			return
+		}
+	}
+
 	if !isImportantEvent(event) && time.Since(s.lastEventTime) < 1*time.Second {
 		return
 	}
@@ -108,6 +121,110 @@ func (s *AppSink) OnEvent(event, text string) {
 
 func (s *AppSink) Streaming() bool { return false }
 func (s *AppSink) Result() string  { return s.buf.String() }
+func (s *AppSink) AudioSent() bool { return s.audioSent }
+
+func (s *AppSink) trySynthesizeAudioReply(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	agentID, ok := s.bridge.getToolAgent("TextToAudio")
+	if !ok {
+		log.Printf("[AppSink] TextToAudio tool not found for audio synthesis")
+		return false
+	}
+	args, _ := json.Marshal(map[string]any{
+		"text": text,
+	})
+	result, err := s.bridge.callRemoteAgent(context.Background(), "TextToAudio", agentID, args, nil)
+	if err != nil {
+		log.Printf("[AppSink] synthesize audio reply failed: %v", err)
+		return false
+	}
+	raw := ""
+	if result != nil {
+		raw = result.Result
+	}
+	if raw == "" {
+		return false
+	}
+	if !s.trySendAudioReply(raw) {
+		return false
+	}
+	s.audioSent = true
+	log.Printf("[AppSink] synthesized audio reply sent to=%s", s.appUser)
+	return true
+}
+
+func (s *AppSink) trySendAudioReply(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	var result struct {
+		AudioBase64 string `json:"audio_base64"`
+		AudioFormat string `json:"audio_format"`
+	}
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		log.Printf("[AppSink] parse audio_reply failed: %v", err)
+		return false
+	}
+	if strings.TrimSpace(result.AudioBase64) == "" {
+		return false
+	}
+	audioFormat := strings.TrimSpace(result.AudioFormat)
+	if audioFormat == "" {
+		audioFormat = "mp3"
+	}
+	return s.sendAudioRichMessage(result.AudioBase64, audioFormat)
+}
+
+func (s *AppSink) trySendInlineAudioFromText(text string) bool {
+	matches := inlineAudioTagPattern.FindStringSubmatch(strings.TrimSpace(text))
+	if len(matches) != 3 {
+		return false
+	}
+	audioFormat := normalizeAudioFormat(matches[1])
+	audioBase64 := strings.TrimSpace(matches[2])
+	if audioBase64 == "" {
+		return false
+	}
+	return s.sendAudioRichMessage(audioBase64, audioFormat)
+}
+
+func normalizeAudioFormat(v string) string {
+	v = strings.TrimSpace(strings.ToLower(v))
+	switch v {
+	case "mpeg":
+		return "mp3"
+	case "x-wav":
+		return "wav"
+	default:
+		if v == "" {
+			return "mp3"
+		}
+		return v
+	}
+}
+
+func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat string) bool {
+	args, _ := json.Marshal(map[string]any{
+		"to_user":      s.appUser,
+		"content":      "[语音回复]",
+		"message_type": "audio",
+		"meta": map[string]any{
+			"audio_base64": audioBase64,
+			"audio_format": audioFormat,
+			"input_mode":   "tts_reply",
+		},
+	})
+	if _, err := s.bridge.callRemoteAgent(context.Background(), "app.SendRichMessage", s.fromAgent, args, nil); err != nil {
+		log.Printf("[AppSink] send audio rich message failed: %v", err)
+		return false
+	}
+	log.Printf("[AppSink] audio rich message sent to=%s format=%s", s.appUser, audioFormat)
+	return true
+}
 
 func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	log.Printf("[App] from=%s user=%s content=%s", fromAgent, appUser, content)
@@ -126,6 +243,16 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	goctx, cancel := context.WithCancel(context.Background())
 	goctx = WithAuthenticatedUser(goctx, appUser)
 	defer cancel()
+
+	preferAudioReply := false
+	if inbound, ok := parseAppInboundMessage(content); ok && inbound != nil {
+		if strings.EqualFold(strings.TrimSpace(inbound.MessageType), "audio") {
+			preferAudioReply = true
+		}
+		if inbound.Attachment != nil && strings.EqualFold(strings.TrimSpace(inbound.Attachment.InputMode), "voice_audio") {
+			preferAudioReply = true
+		}
+	}
 
 	content = b.preprocessAppMessage(goctx, fromAgent, appUser, content)
 
@@ -215,13 +342,14 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	defer session.SetCancel(nil)
 
 	ctx := &TaskContext{
-		Ctx:      goctx,
-		TaskID:   taskID,
-		Account:  appUser,
-		Query:    content,
-		Source:   "app",
-		Messages: messagesCopy,
-		Sink:     sink,
+		Ctx:              goctx,
+		TaskID:           taskID,
+		Account:          appUser,
+		Query:            content,
+		Source:           "app",
+		PreferAudioReply: preferAudioReply,
+		Messages:         messagesCopy,
+		Sink:             sink,
 	}
 
 	taskStart := time.Now()
@@ -245,6 +373,21 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 
 	if err := b.sessionMgr.SaveSession(session); err != nil {
 		log.Printf("[App] save session failed: %v", err)
+	}
+
+	if !sink.AudioSent() && sink.trySendInlineAudioFromText(result) {
+		log.Printf("[App] extracted inline audio reply for %s, skip text reply", appUser)
+		return
+	}
+
+	if ctx.PreferAudioReply && !sink.AudioSent() && sink.trySynthesizeAudioReply(result) {
+		log.Printf("[App] synthesized audio reply for %s, skip text reply", appUser)
+		return
+	}
+
+	if sink.AudioSent() {
+		log.Printf("[App] audio reply already sent to %s, skip duplicate text reply", appUser)
+		return
 	}
 
 	const maxAppSize = 200 * 1024

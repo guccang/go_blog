@@ -136,6 +136,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		{Role: "user", Content: query},
 	}
 	session := NewRootSession("skill-"+newSessionID(), skillName, ctx.Account)
+	session.Source = ctx.Source
 	session.Messages = nil
 	session.ToolCalls = nil
 	session.AppendMessage(messages[0])

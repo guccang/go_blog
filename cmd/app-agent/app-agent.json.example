@@ -6,8 +6,18 @@
   "receive_token": "your-incoming-token",
   "blog_agent_base_url": "http://127.0.0.1:8888",
   "app_session_ttl_minutes": 2880,
-  "app_push_url": "http://127.0.0.1:8080/api/app/push",
-  "push_token": "your-push-token",
+  "obs_agent_base_url": "http://127.0.0.1:9004",
+  "download_ticket_secret": "replace-this-with-a-long-random-secret",
+  "download_ticket_ttl_seconds": 300,
+  "obs": {
+    "endpoint": "obs.cn-north-4.myhuaweicloud.com",
+    "bucket": "your-bucket",
+    "ak": "your-ak",
+    "sk": "your-sk",
+    "region": "cn-north-4",
+    "key_prefix": "app-attachments",
+    "path_style": false
+  },
   "llm_agent_id": "llm-agent",
   "backend_agent_id": "blog-agent"
 }

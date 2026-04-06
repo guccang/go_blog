@@ -1,96 +1,60 @@
 ---
 name: blog-data-opt
-description: 博客数据查询与操作技能。查询待办、运动、博客等数据并做汇总分析，以及新增/完成/删除运动记录、新增/完成/删除待办、创建博客等数据操作。
-summary: 用 Range 接口批量查询，操作前先查 id
-tools: RawGetTodosByDate,RawGetTodosRange,RawAddTodo,RawToggleTodo,RawDeleteTodo,RawUpdateTodo,RawGetExerciseByDate,RawGetExerciseRange,RawGetExerciseStats,RawAddExercise,RawToggleExercise,RawDeleteExercise,RawUpdateExercise,RawRecentExerciseRecords,RawAllBlogNameByDate,RawAllBlogNameByDateRange,RawAllBlogNameByDateRangeCount,RawGetCurrentTaskByRageDate,RawGetBlogData,RawSearchBlogContent,RawCurrentDate,RawCreateBlog
+description: 博客数据查询与操作技能。覆盖博客、待办、运动、项目、读书 5 个业务域的查询、汇总和写操作。
+summary: 范围查询优先 Range 接口，批量分析优先 ExecuteCode，修改前先查 id
+tools: RawGetTodosByDate,RawGetTodosRange,RawAddTodo,RawToggleTodo,RawDeleteTodo,RawUpdateTodo,RawGetExerciseByDate,RawGetExerciseRange,RawGetExerciseStats,RawAddExercise,RawToggleExercise,RawDeleteExercise,RawUpdateExercise,RawRecentExerciseRecords,RawAllBlogName,RawAllBlogNameByDate,RawAllBlogNameByDateRange,RawAllBlogNameByDateRangeCount,RawGetBlogData,RawGetBlogDataByDate,RawGetBlogByTitleMatch,RawSearchBlogContent,RawCreateBlog,RawBlogsByAuthType,RawBlogsByTag,RawGetAllBooks,RawGetBooksByStatus,RawGetReadingStats,RawUpdateReadingProgress,RawGetBookNotes,RawAddBook,RawCreateProject,RawGetProject,RawListProjects,RawUpdateProject,RawDeleteProject,RawAddProjectGoal,RawUpdateProjectGoal,RawDeleteProjectGoal,RawAddProjectOKR,RawUpdateProjectOKR,RawDeleteProjectOKR,RawUpdateProjectKeyResult,RawGetProjectSummary
 agents: blog,exec_code
-keywords: 博客,待办,运动,todo,exercise,blog,数据,查询,记录,周报,统计,日记,锻炼
+keywords: 博客,待办,运动,todo,exercise,blog,数据,查询,记录,周报,统计,日记,锻炼,项目,project,读书,阅读,reading,book
 ---
 
 # 数据查询与操作
 
-**call_tool 使用规范见 workspace/CALL_TOOL.md**
+## 适用场景
 
-## 查询原则
+- 查询待办、运动、博客内容或时间范围内的统计结果
+- 对多天数据做聚合、对比、周报汇总
+- 新增、完成、删除、更新待办或运动记录
+- 创建博客或按关键词搜索博客内容
 
-- 多源数据查询优先使用 ExecuteCode 批量处理，减少工具调用轮次
-- account 使用当前用户账号，不要向用户询问
-- **日期范围查询优先使用 Range 接口**，不要循环逐天调用单日接口
+## 必须遵守
 
-## 可用的查询接口
+- `account` 默认使用当前用户账号，不要向用户追问
+- 日期范围查询优先使用 `Range` 接口，不要循环逐天调用单日接口
+- 涉及完成、删除、更新时，先查出记录 `id` 再执行修改
+- 多源查询或批量统计优先使用 `ExecuteCode`，只输出最终结论
 
-### 基础工具
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawCurrentDate` | (无需参数) | str，如 `"2026-03-24"` |
+## 推荐流程
 
-### 单日查询
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawGetTodosByDate` | account, date | list，每项含 id/content/done |
-| `RawGetExerciseByDate` | account, date | list，每项含 id/name/duration 等 |
-| `RawAllBlogNameByDate` | account, date | str(空格分隔的标题列表) |
+1. 先确认目标实体和时间范围。
+2. 按数据类型选择接口：
+   - 待办：`RawGetTodosByDate`、`RawGetTodosRange`、`RawAddTodo`、`RawToggleTodo`、`RawDeleteTodo`、`RawUpdateTodo`
+   - 运动：`RawGetExerciseByDate`、`RawGetExerciseRange`、`RawGetExerciseStats`、`RawRecentExerciseRecords`、`RawAddExercise`、`RawToggleExercise`、`RawDeleteExercise`、`RawUpdateExercise`
+   - 博客：`RawAllBlogName`、`RawAllBlogNameByDate`、`RawAllBlogNameByDateRange`、`RawAllBlogNameByDateRangeCount`、`RawGetBlogData`、`RawGetBlogDataByDate`、`RawGetBlogByTitleMatch`、`RawSearchBlogContent`、`RawCreateBlog`、`RawBlogsByAuthType`、`RawBlogsByTag`
+   - 读书：`RawGetAllBooks`、`RawGetBooksByStatus`、`RawGetReadingStats`、`RawUpdateReadingProgress`、`RawGetBookNotes`、`RawAddBook`
+   - 项目：`RawCreateProject`、`RawGetProject`、`RawListProjects`、`RawUpdateProject`、`RawDeleteProject`、`RawAddProjectGoal`、`RawUpdateProjectGoal`、`RawDeleteProjectGoal`、`RawAddProjectOKR`、`RawUpdateProjectOKR`、`RawDeleteProjectOKR`、`RawUpdateProjectKeyResult`、`RawGetProjectSummary`
+3. 如果是分析任务，在 `ExecuteCode` 中完成聚合、统计、排序和格式化。
+4. 如果是修改任务，先查 `id`，再调用对应的新增、更新、切换或删除接口。
 
-### 范围查询
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawGetTodosRange` | account, startDate, endDate | dict, key 为日期 |
-| `RawGetExerciseRange` | account, startDate, endDate | list |
-| `RawAllBlogNameByDateRange` | account, startDate, endDate | str(空格分隔的标题列表) |
-| `RawAllBlogNameByDateRangeCount` | account, startDate, endDate | str(数字) |
-| `RawGetCurrentTaskByRageDate` | account, startDate, endDate | dict, key 为日期 |
-| `RawGetExerciseStats` | account, days | str(格式化文本) |
-| `RawRecentExerciseRecords` | account, days | str(格式化列表) |
+## 工具选择规则
 
-### 博客内容查询
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawGetBlogData` | account, title | str(markdown 纯文本) |
-| `RawSearchBlogContent` | account, keyword | str(格式化搜索结果) |
+- 单日单类数据查询，直接调用单个查询工具
+- 跨日期、跨类型或需要统计时，优先 `ExecuteCode + Range` 接口
+- `RawCreateBlog` 适用于直接创建博客；`tags` 用 `|` 分隔，`authType` 取值为 1/2/4/8/16
+- `RawAddExercise` 的 `intensity` 常见值为 `low`、`medium`、`high`
+- `RawAddTodo` 的 `urgency` 和 `importance` 取值为 `1-4`
 
-## 可用的操作接口
+## 禁止行为
 
-### 待办操作
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawAddTodo` | account, date, content, hours, minutes, urgency, importance | dict(新建的待办项) |
-| `RawToggleTodo` | account, date, id | dict({success:true}) |
-| `RawDeleteTodo` | account, date, id | dict({success:true}) |
-| `RawUpdateTodo` | account, date, id, hours, minutes | dict({success:true}) |
+- 为了范围查询而循环逐天调单日接口
+- 在需要 `id` 的修改操作前直接猜测或编造 `id`
+- 让用户手动提供当前账号
+- 把大段原始数据直接回灌给用户，不做整理和汇总
 
-### 运动记录操作
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawAddExercise` | account, date, name, exerciseType, duration, intensity, calories, notes | dict(新建的运动记录) |
-| `RawToggleExercise` | account, date, id | dict({success:true}) |
-| `RawDeleteExercise` | account, date, id | dict({success:true}) |
-| `RawUpdateExercise` | account, date, id, name, exerciseType, duration, intensity, calories, notes | dict({success:true}) |
+## 示例
 
-### 博客操作
-| 接口 | 参数 | data 类型 |
-|------|------|-----------|
-| `RawCreateBlog` | account, title, content, tags, authType, encrypt(可选) | str(操作结果) |
-
-- `tags`: 多个标签用 `|` 分隔
-- `authType`: 1=私有, 2=公开, 4=加密, 8=协作, 16=日记
-- `encrypt`: 0=否, 1=是（可选）
-- 创建成功后返回博客链接，格式为 `[title](/get?blogname=title)`
-
-## 操作注意事项
-
-- 完成/删除操作需要先查询获取记录的 `id`，再调用对应接口
-- `RawToggleExercise` 切换完成状态（未完成→完成，完成→未完成）
-- `RawAddExercise` 的 `exerciseType` 常见值：跑步、游泳、力量训练、瑜伽、骑行等
-- `RawAddExercise` 的 `intensity` 可选值：low、medium、high
-- `RawAddTodo` 的 urgency/importance 取值 1-4（1最高）
-
-## 常见查询模式
-
-### 单日数据
-直接调用对应的单日查询工具即可。
-
-### 日期范围数据
-使用 ExecuteCode + Range 接口一次性获取，不要循环逐天调用。
-
-### 数据聚合分析
-查询完数据后在 Python 中完成统计、汇总、对比等分析工作，只 print 最终结论。
+- “帮我总结这周做了哪些运动”
+  用 `RawGetExerciseRange` 拉区间数据，再在 `ExecuteCode` 中统计和整理
+- “把今天的待办第 3 条标记完成”
+  先查今天的待办列表，定位真实 `id`，再调用 `RawToggleTodo`
+- “创建一篇标题是《四月计划》的博客”
+  直接调用 `RawCreateBlog`，并按请求拼好 `title`、`content`、`tags`、`authType`

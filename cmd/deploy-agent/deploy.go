@@ -40,6 +40,48 @@ type Deployer struct {
 	DeployMode   DeployMode                  // 部署模式: auto/full/increment
 }
 
+type uploadProgressWriter struct {
+	deployer     *Deployer
+	label        string
+	total        int64
+	start        time.Time
+	written      int64
+	lastLoggedAt time.Time
+}
+
+func (w *uploadProgressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	w.written += int64(n)
+	now := time.Now()
+	if w.lastLoggedAt.IsZero() || now.Sub(w.lastLoggedAt) >= time.Second || w.written == w.total {
+		w.lastLoggedAt = now
+		w.logProgress(now)
+	}
+	return n, nil
+}
+
+func (w *uploadProgressWriter) logProgress(now time.Time) {
+	if w.total <= 0 {
+		return
+	}
+	elapsed := now.Sub(w.start).Seconds()
+	if elapsed <= 0 {
+		elapsed = 0.001
+	}
+	percent := float64(w.written) * 100 / float64(w.total)
+	speed := float64(w.written) / elapsed
+	w.deployer.logf(
+		"info",
+		"  > 上传进度 %s %.1f%% (%s/%s, %s/s, %.1fs)\n",
+		w.label,
+		percent,
+		formatSize(w.written),
+		formatSize(w.total),
+		formatSize(int64(speed)),
+		elapsed,
+	)
+}
+
 // NewDeployer 创建部署器
 func NewDeployer(cfg *DeployConfig, proj *ProjectConfig, password string) *Deployer {
 	return &Deployer{cfg: cfg, proj: proj, password: password}
@@ -911,7 +953,13 @@ func (d *Deployer) upload(client *ssh.Client, t *Target) error {
 	}
 	defer remoteFile.Close()
 
-	written, err := io.Copy(remoteFile, localFile)
+	progress := &uploadProgressWriter{
+		deployer: d,
+		label:    remotePath,
+		total:    localInfo.Size(),
+		start:    start,
+	}
+	written, err := io.Copy(remoteFile, io.TeeReader(localFile, progress))
 	if err != nil {
 		return fmt.Errorf("上传失败: %v", err)
 	}
@@ -1368,13 +1416,13 @@ func adhocDeploy(cfg *DeployConfig, adhoc *AdhocConfig, password string,
 		PackPattern: binName + "_{date}.zip",
 		Targets: []*Target{
 			{
-				Name:          "adhoc-ssh",
-				Host:          adhoc.SSHHost,
-				Port:          sshPort,
-				RemoteDir:     remoteDir,
-				RemoteScript:  "publish.sh",
-				Platform:      "linux",
-				ServicePort:   servicePort,
+				Name:         "adhoc-ssh",
+				Host:         adhoc.SSHHost,
+				Port:         sshPort,
+				RemoteDir:    remoteDir,
+				RemoteScript: "publish.sh",
+				Platform:     "linux",
+				ServicePort:  servicePort,
 			},
 		},
 	}

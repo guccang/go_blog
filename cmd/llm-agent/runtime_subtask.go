@@ -43,6 +43,10 @@ func (o *Orchestrator) runSubTaskLoop(
 	toolExec := NewToolExecutionRuntime(o.bridge)
 	eventSink := &functionEventSink{sendEvent: sendEvent}
 	var finalText string
+	executionSource := strings.TrimSpace(session.Source)
+	if executionSource == "" {
+		executionSource = "subtask"
+	}
 
 	for i := 0; i < maxIter; i++ {
 		if ctx != nil && ctx.Err() != nil {
@@ -115,7 +119,7 @@ func (o *Orchestrator) runSubTaskLoop(
 				Ctx:            ctx,
 				TaskID:         taskID,
 				Account:        session.Account,
-				Source:         "subtask",
+				Source:         executionSource,
 				Session:        session,
 				AvailableTools: toolView.AllTools,
 				Sink:           eventSink,

@@ -330,7 +330,8 @@ func (b *Bridge) handleGetToolDetail(toolName, agentID string) *ToolCallResult {
 	if toolName != "" {
 		// 单个工具查询
 		sanitized := sanitizeToolName(toolName)
-		for _, tool := range b.llmTools {
+		searchTools := b.injectVirtualTools(cloneTools(b.llmTools), false)
+		for _, tool := range searchTools {
 			if tool.Function.Name == sanitized || tool.Function.Name == toolName {
 				var sb strings.Builder
 				sb.WriteString(fmt.Sprintf("## %s\n%s\n\n", toolName, tool.Function.Description))
@@ -453,7 +454,7 @@ func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if noTools {
 		return tools
 	}
-	tools = append(tools, getSkillDetailTool, getToolDetailTool, getAgentDetailTool, planAndExecuteTool)
+	tools = append(tools, getSkillDetailTool, getToolDetailTool, getAgentDetailTool, webSearchTool, webFetchTool, planAndExecuteTool)
 	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		tools = append(tools, executeSkillTool)
 	}

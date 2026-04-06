@@ -6,6 +6,7 @@ svr="$(pwd)/app-agent"
 
 echo "Stopping app-agent..."
 pkill -f "$svr" || true
+lsof -ti:8883 | xargs kill -9 2>/dev/null || true
 sleep 1
 
 chmod +x app-agent

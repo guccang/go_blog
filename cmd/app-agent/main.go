@@ -8,11 +8,31 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"deploygen"
 )
+
+// CORS middleware
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		allowHeaders := "Content-Type, Authorization, X-App-Agent-Token, X-App-Agent-Session"
+		if requested := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers")); requested != "" {
+			allowHeaders = requested
+		}
+		w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	configFile := flag.String("config", "app-agent.json", "config file path")
@@ -56,6 +76,7 @@ func main() {
 	mux.HandleFunc("/api/app/login", handler.HandleLogin)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/message", handler.HandleMessage)
+	mux.HandleFunc("/api/app/upload-apk", handler.HandleUploadAPK)
 	mux.HandleFunc("/api/app/attachments/", handler.HandleAttachment)
 	mux.HandleFunc("/ws/app", handler.HandleWebSocket)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +91,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
-		Handler: mux,
+		Handler: corsMiddleware(mux),
 	}
 
 	go bridge.Run()

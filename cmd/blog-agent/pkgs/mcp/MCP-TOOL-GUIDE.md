@@ -29,6 +29,7 @@
 | 文件 | 职责 |
 |------|------|
 | `innter_mcp.go` | 工具定义中心：LLMTool 列表 + RegisterCallBack 注册 |
+| `public_tools.go` | 对外公开工具 allowlist，仅允许博客/锻炼/待办/项目/读书 5 个业务域暴露 |
 | `inner_blog_tools.go` | Blog 核心工具的回调函数实现 |
 | `inner_todo_tools.go` | TodoList 模块回调函数 |
 | `inner_exercise_tools.go` | Exercise 模块回调函数 |
@@ -121,6 +122,15 @@ RegisterCallBackPrompt("RawCreateBlog", "完成创建后返回博客链接格式
 ### 步骤三：添加 LLMTool 定义
 
 在 `innter_mcp.go` 的 `GetInnerMCPTools()` 函数返回的 `tools` 列表中添加工具定义。
+
+### 步骤四：确认是否允许对外暴露
+
+即使工具已经完成回调注册和 `LLMTool` 定义，也**不会自动对外公开**。  
+还需要检查 [`public_tools.go`](./public_tools.go) 中的 allowlist：
+
+- 属于博客、锻炼、待办、项目、读书 5 个业务域，才允许加入公开列表
+- 统计、诊断、网页抓取、AI 聚合、年度计划等内部工具，默认只保留内部回调，不对外暴露
+- HTTP `/assistant/mcp/tools` 和 gateway/UAP 注册都会复用这份 allowlist
 
 ---
 

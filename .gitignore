@@ -40,6 +40,7 @@ cmd/gateway/gateway.json
 cmd/llm-agent/llm-agent.json
 cmd/wechat-agent/wechat-agent.json
 cmd/app-agent/app-agent.json
+cmd/obs-agent/obs-agent.json
 cmd/blog-agent/blog-agent.json
 cmd/blog-agent/blog-agent
 cmd/deploy-agent/deploy-agent

@@ -1,86 +1,59 @@
 ---
 name: deploy
 description: 项目部署技能。当用户需要部署项目、发布上线、执行部署流水线时使用此技能。
-summary: 已配置项目用 DeployProject + deploy_target，未配置项目用 DeployAdhoc
-tools: DeployListProjects,DeployProject,DeployAdhoc,DeployPipeline
+summary: 独立部署先 ListProjects；configured=true 用 DeployProject，新项目直用 DeployAdhoc
+tools: DeployListProjects,DeployProject,DeployAdhoc,DeployListPipelines,DeployPipeline
 agents: deploy
 keywords: 部署,deploy,发布,上线
 ---
 
 # 项目部署
 
-## 部署流程（必须遵守）
+## 适用场景
 
-### 独立部署任务（用户直接说"部署xxx"）
-1. **先调用 DeployListProjects** 查看项目列表和配置状态
-2. 根据 `configured` 字段选择接口：
-   - `configured=true` → 使用 **DeployProject**（只需 project + deploy_target）
-   - `configured=false` → 使用 **DeployAdhoc**（需要 project_dir + ssh_host）
+- 用户直接要求部署、发布、上线某个项目
+- 编码任务完成后，需要把产物部署到本地或远程目标
+- 需要执行预配置的部署 pipeline
 
-### 编码→部署流程中的部署子任务
-- 新编码的项目没有预配置 settings，**直接使用 DeployAdhoc**
-- **不要调用 DeployListProjects**（新项目肯定不在列表中，调了也没用）
-- project 和 project_dir 从前置编码任务结果中获取
+## 必须遵守
 
-## 用户参数不可修改（强制规则）
+- 用户直接说“部署 xxx”时，先调用 `DeployListProjects` 看项目是否已配置
+- `configured=true` 只能用 `DeployProject`
+- `configured=false` 或编码任务刚产出的新项目，使用 `DeployAdhoc`
+- 用户指定的端口、域名、地址、环境参数不得擅自修改；冲突时直接返回失败原因
+- `DeployProject` / `DeployAdhoc` / `DeployPipeline` 是同步工具，返回后即可汇报结果，不要额外制造等待子任务
 
-用户指定的部署参数（端口、地址、环境等）**严禁擅自修改**：
-- 用户指定端口 → 必须使用该端口，不得更换
-- 端口被占用、权限不足等冲突 → **直接返回部署失败**并说明原因，不得自动更换端口
-- 地址、域名等参数同理，用户怎么说就怎么用
+## 推荐流程
 
-## DeployProject（已配置项目）
+1. 独立部署任务：
+   - 先调 `DeployListProjects`
+   - 根据 `configured` 选择 `DeployProject` 或 `DeployAdhoc`
+2. 编码后部署的新项目：
+   - 直接使用 `DeployAdhoc`
+   - `project` 和 `project_dir` 从前置编码结果中提取，不能猜
+3. 多项目编排：
+   - 先看 `DeployListPipelines`
+   - 再执行 `DeployPipeline`
+4. 部署失败时，返回具体错误；如果是编译错误，回到 `coding` 修代码后再重部署
 
-用于部署 settings 中已有配置的项目。配置文件已定义了构建脚本、部署路径、发布脚本等。
+## 工具选择规则
 
-**调用示例：**
+- `DeployListProjects`：只做发现，不执行部署
+- `DeployProject`：用于 settings 中已配置的项目，只传 `project` 和可选 `deploy_target`
+- `DeployAdhoc`：用于未配置项目或一次性部署，必须传 `project_dir` 和 `ssh_host`
+- `DeployListPipelines` / `DeployPipeline`：用于预配置的多步骤流水线
+- `ssh_host` 必须来自 agent 能力信息或用户明确指定的真实地址，例如 `deploy@prod-host`
 
-```json
-{
-  "project": "llm-agent",
-  "deploy_target": "ssh-prod"
-}
-```
+## 禁止行为
 
-- `project`：项目名称（来自 DeployListProjects）
-- `deploy_target`：部署目标（来自 DeployListProjects 返回的 targets 列表，如 local, ssh-prod）
-- **不要传** `ssh_host`、`project_dir` 等参数，已配置项目的路径由 settings 管理
+- 对已配置项目继续传 `project_dir`、`ssh_host` 给 `DeployProject`
+- 端口冲突后擅自换端口、改域名或改部署目标
+- 用 `ExecuteCode` 去猜项目目录、SSH 地址或发布参数
+- 对编码任务刚创建的新项目先调 `DeployListProjects` 再空转
 
-## DeployAdhoc（未配置项目/一次性部署）
+## 示例
 
-用于部署未在 settings 中配置的项目，需要手动指定源码目录和目标服务器。
-
-**调用示例（编码后部署新项目到远程服务器）：**
-
-```json
-{
-  "project": "helloworld-web",
-  "project_dir": "/path/from/coding/task/result",
-  "ssh_host": "root@114.115.214.86"
-}
-```
-
-- `project` 和 `project_dir` **必须**从前置编码任务的结果中提取，禁止猜测
-- `ssh_host` **必须**从系统提示的 agent 能力描述中获取真实地址，禁止使用别名
-
-## DeployPipeline 使用
-
-用于编排多步部署流水线：
-- 多项目按序部署
-- 自定义部署前/后脚本
-- 验证 URL 健康检查
-
-## 部署失败处理
-
-部署失败时的标准行为：
-1. 返回失败状态和具体错误原因（端口冲突、编译错误、网络不通等）
-2. **不得**自行重试并更换参数（如换端口）
-3. 编译错误 → 通过skill coding 修复源代码后重新部署
-4. 参数类错误（端口占用等） → 直接报告失败，由用户决定下一步
-
-## 注意事项
-
-- DeployProject/DeployAdhoc 是同步工具，调用后阻塞直到完成，不需要额外的"等待部署""检查状态"子任务
-- 编码和部署是两个独立步骤，拆解任务时分别作为子任务处理
-- **禁止**用 ExecuteCode 探索项目目录、查找 SSH 地址、读取源代码
-- 部署子任务应简洁：DeployListProjects → DeployProject/DeployAdhoc，通常只需 2 次调用
+- “部署 llm-agent 到 ssh-prod”
+  先 `DeployListProjects`，确认 `llm-agent` 为 `configured=true`，再调用 `DeployProject`
+- “把刚写好的 helloworld-web 部署到生产机”
+  直接从前置编码结果拿 `project` 和 `project_dir`，再调用 `DeployAdhoc`

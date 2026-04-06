@@ -170,6 +170,9 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 	}
 
 	success := err == nil
+	if err == nil && call.Source == "app" && originalName == "TextToAudio" && result != "" {
+		call.Sink.OnEvent("audio_reply", result)
+	}
 	if originalName == "ExecuteCode" && result != "" {
 		stdout, execSummary := parseExecuteCodeResult(result)
 		if stdout != "" {

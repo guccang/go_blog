@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -596,7 +597,8 @@ func SendLLMRequest(cfg *LLMConfig, messages []Message, tools []LLMTool) (string
 		}
 	}
 
-	return stripThinkTags(choice.Message.Content), choice.Message.ToolCalls, nil
+	content, toolCalls := normalizeResponseToolCalls(stripThinkTags(choice.Message.Content), choice.Message.ToolCalls)
+	return content, toolCalls, nil
 }
 
 // SendLLMRequestCtx context 感知的同步 LLM 请求，支持级联取消
@@ -697,7 +699,8 @@ func SendLLMRequestCtx(ctx context.Context, cfg *LLMConfig, messages []Message, 
 		}
 	}
 
-	return stripThinkTags(choice.Message.Content), choice.Message.ToolCalls, nil
+	content, toolCalls := normalizeResponseToolCalls(stripThinkTags(choice.Message.Content), choice.Message.ToolCalls)
+	return content, toolCalls, nil
 }
 
 // SendStreamingLLMRequest 发送流式 LLM 请求，逐 chunk 回调 onChunk，同时检测 tool_call
@@ -836,7 +839,8 @@ func sendStreamingLLMRequestOnce(cfg *LLMConfig, messages []Message, tools []LLM
 		log.Printf("[LLM] ← tool_call(stream): name=%s args=%s", tc.Function.Name, tc.Function.Arguments)
 	}
 
-	return stripThinkTags(text), toolCalls, nil
+	content, normalizedToolCalls := normalizeResponseToolCalls(stripThinkTags(text), toolCalls)
+	return content, normalizedToolCalls, nil
 }
 
 // parseStreamingResponse 解析 SSE 流式响应，提取文本、tool_calls 和 usage
@@ -1036,4 +1040,86 @@ func tailStr(s string, n int) string {
 		return s
 	}
 	return "..." + string(runes[len(runes)-n:])
+}
+
+var (
+	minimaxToolCallBlockRe = regexp.MustCompile(`(?s)<minimax:tool_call>\s*(.*?)\s*</minimax:tool_call>`)
+	minimaxInvokeRe        = regexp.MustCompile(`(?s)<invoke\s+name="([^"]+)">\s*(.*?)\s*</invoke>`)
+	minimaxParamRe         = regexp.MustCompile(`(?s)<parameter\s+name="([^"]+)">\s*(.*?)\s*</parameter>`)
+)
+
+func normalizeResponseToolCalls(content string, toolCalls []ToolCall) (string, []ToolCall) {
+	if len(toolCalls) > 0 {
+		return strings.TrimSpace(content), toolCalls
+	}
+	cleaned, extracted := extractMiniMaxXMLToolCalls(content)
+	if len(extracted) == 0 {
+		return strings.TrimSpace(content), nil
+	}
+	return strings.TrimSpace(cleaned), extracted
+}
+
+func extractMiniMaxXMLToolCalls(content string) (string, []ToolCall) {
+	if !strings.Contains(content, "<minimax:tool_call>") {
+		return content, nil
+	}
+
+	var toolCalls []ToolCall
+	cleaned := minimaxToolCallBlockRe.ReplaceAllStringFunc(content, func(block string) string {
+		matches := minimaxToolCallBlockRe.FindStringSubmatch(block)
+		if len(matches) < 2 {
+			return block
+		}
+		inner := matches[1]
+		invokes := minimaxInvokeRe.FindAllStringSubmatch(inner, -1)
+		if len(invokes) == 0 {
+			return block
+		}
+		for _, invoke := range invokes {
+			if len(invoke) < 3 {
+				continue
+			}
+			name := strings.TrimSpace(invoke[1])
+			if name == "" {
+				continue
+			}
+			argsMap := make(map[string]string)
+			for _, param := range minimaxParamRe.FindAllStringSubmatch(invoke[2], -1) {
+				if len(param) < 3 {
+					continue
+				}
+				key := strings.TrimSpace(param[1])
+				if key == "" {
+					continue
+				}
+				argsMap[key] = htmlUnescapeMinimal(strings.TrimSpace(param[2]))
+			}
+			argsJSON, _ := json.Marshal(argsMap)
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   fmt.Sprintf("minimax_xml_%d", len(toolCalls)+1),
+				Type: "function",
+				Function: FunctionCall{
+					Name:      name,
+					Arguments: string(argsJSON),
+				},
+			})
+		}
+		return ""
+	})
+
+	if len(toolCalls) > 0 {
+		log.Printf("[LLM] extracted %d MiniMax XML tool calls", len(toolCalls))
+	}
+	return cleaned, toolCalls
+}
+
+func htmlUnescapeMinimal(s string) string {
+	replacer := strings.NewReplacer(
+		"&lt;", "<",
+		"&gt;", ">",
+		"&amp;", "&",
+		"&quot;", "\"",
+		"&#39;", "'",
+	)
+	return replacer.Replace(s)
 }

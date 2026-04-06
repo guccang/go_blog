@@ -24,17 +24,18 @@ type appInboundMessage struct {
 }
 
 type appInboundAttachment struct {
-	MessageType string         `json:"message_type"`
-	FileID      string         `json:"file_id,omitempty"`
-	FileName    string         `json:"file_name,omitempty"`
-	FilePath    string         `json:"file_path,omitempty"`
-	FileSize    int            `json:"file_size,omitempty"`
-	Format      string         `json:"format,omitempty"`
-	MIMEType    string         `json:"mime_type,omitempty"`
-	DurationMS  int            `json:"duration_ms,omitempty"`
-	SpeechText  string         `json:"speech_text,omitempty"`
-	InputMode   string         `json:"input_mode,omitempty"`
-	Meta        map[string]any `json:"meta,omitempty"`
+	MessageType  string         `json:"message_type"`
+	FileID       string         `json:"file_id,omitempty"`
+	FileName     string         `json:"file_name,omitempty"`
+	FilePath     string         `json:"file_path,omitempty"`
+	InlineBase64 string         `json:"inline_base64,omitempty"`
+	FileSize     int            `json:"file_size,omitempty"`
+	Format       string         `json:"format,omitempty"`
+	MIMEType     string         `json:"mime_type,omitempty"`
+	DurationMS   int            `json:"duration_ms,omitempty"`
+	SpeechText   string         `json:"speech_text,omitempty"`
+	InputMode    string         `json:"input_mode,omitempty"`
+	Meta         map[string]any `json:"meta,omitempty"`
 }
 
 func parseAppInboundMessage(content string) (*appInboundMessage, bool) {
@@ -102,6 +103,9 @@ func (b *Bridge) preprocessAppAttachment(ctx context.Context, fromAgent, appUser
 		if text == "" {
 			return "用户发送了一段语音，但当前无法获得转写结果。"
 		}
+		if source == "stt_unavailable" {
+			return text
+		}
 		return fmt.Sprintf("用户发送的是语音消息。转写结果(%s):\n%s", source, text)
 	case "image":
 		if fromAgent != "" {
@@ -126,7 +130,19 @@ func (b *Bridge) transcribeAppAudio(ctx context.Context, attachment *appInboundA
 		return "", ""
 	}
 	fallback := strings.TrimSpace(attachment.SpeechText)
-	data, err := os.ReadFile(strings.TrimSpace(attachment.FilePath))
+	inlineBase64 := strings.TrimSpace(attachment.InlineBase64)
+	var data []byte
+	var err error
+	if inlineBase64 != "" {
+		data, err = base64.StdEncoding.DecodeString(inlineBase64)
+		if err != nil {
+			log.Printf("[AppPreprocess] decode inline audio attachment failed: %v", err)
+			data = nil
+		}
+	}
+	if len(data) == 0 {
+		data, err = os.ReadFile(strings.TrimSpace(attachment.FilePath))
+	}
 	if err != nil || len(data) == 0 {
 		if fallback != "" {
 			return fallback, "app"
@@ -143,7 +159,7 @@ func (b *Bridge) transcribeAppAudio(ctx context.Context, attachment *appInboundA
 			return fallback, "app"
 		}
 		log.Printf("[AppPreprocess] AudioToText tool not found")
-		return "", ""
+		return "用户发送了一段语音，但当前语音转文字服务暂不可用。请先改用文字输入，或稍后再试。", "stt_unavailable"
 	}
 
 	args, _ := json.Marshal(map[string]any{
@@ -157,7 +173,7 @@ func (b *Bridge) transcribeAppAudio(ctx context.Context, attachment *appInboundA
 		if fallback != "" {
 			return fallback, "app"
 		}
-		return "", ""
+		return "用户发送了一段语音，但当前语音转文字服务暂不可用。请先改用文字输入，或稍后再试。", "stt_unavailable"
 	}
 
 	text := extractTextField(result.Result, "text", "transcript", "content")
@@ -171,7 +187,19 @@ func (b *Bridge) describeAppImage(ctx context.Context, attachment *appInboundAtt
 	if attachment == nil {
 		return "", ""
 	}
-	data, err := os.ReadFile(strings.TrimSpace(attachment.FilePath))
+	inlineBase64 := strings.TrimSpace(attachment.InlineBase64)
+	var data []byte
+	var err error
+	if inlineBase64 != "" {
+		data, err = base64.StdEncoding.DecodeString(inlineBase64)
+		if err != nil {
+			log.Printf("[AppPreprocess] decode inline image attachment failed: %v", err)
+			data = nil
+		}
+	}
+	if len(data) == 0 {
+		data, err = os.ReadFile(strings.TrimSpace(attachment.FilePath))
+	}
 	if err != nil || len(data) == 0 {
 		if err != nil {
 			log.Printf("[AppPreprocess] read image attachment failed: %v", err)

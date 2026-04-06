@@ -25,7 +25,7 @@ func (b *Bridge) registerToolLocked(canonicalName string, handler ToolHandler) {
 
 	// 注册名称变体映射
 	sanitized := sanitizeToolName(canonicalName)
-	b.toolNameMap[sanitized] = canonicalName    // llm-agent_Bash → llm-agent.Bash
+	b.toolNameMap[sanitized] = canonicalName     // llm-agent_Bash → llm-agent.Bash
 	b.toolNameMap[canonicalName] = canonicalName // llm-agent.Bash → llm-agent.Bash
 
 	// 裸名映射（如 Bash）—— 仅在无冲突时
@@ -198,6 +198,10 @@ func (b *Bridge) registerBuiltinTools() {
 		}
 		return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
 	})
+
+	// WebSearch / WebFetch 虚拟工具
+	b.registerTool("WebSearch", builtinWebSearch)
+	b.registerTool("WebFetch", builtinWebFetch)
 }
 
 // registerRemoteTool 注册远程 agent 工具的 handler
