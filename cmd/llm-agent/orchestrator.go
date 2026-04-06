@@ -143,7 +143,7 @@ func detectAsyncResults(session *TaskSession) []AsyncSessionInfo {
 			})
 		}
 	}
-	return results
+	return dedupeAsyncSessions(results)
 }
 
 // defaultSubtaskPrompt 子任务 system prompt 的默认内容（workspace/SUBTASK.md 不存在时的 fallback）

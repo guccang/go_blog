@@ -59,6 +59,14 @@ func (rt *ComplexTaskRuntime) Run() string {
 		rt.sendEvent("plan_done", fmt.Sprintf("任务规划失败: %v", err))
 		rt.rootSession.SetStatus("failed")
 		rt.rootSession.SetError(err.Error())
+		rt.task.PersistedAssistant = buildPersistentAssistantRecord(AssistantRecordInput{
+			Query:         rt.query,
+			DisplayResult: fmt.Sprintf("抱歉，任务规划失败: %v", err),
+			Status:        "failed",
+			RootSession:   rt.rootSession,
+			FinalErr:      err,
+		})
+		appendFinalAssistantRecord(rt.rootSession, rt.task.PersistedAssistant)
 		rt.store.Save(rt.rootSession)
 		rt.store.SaveIndex(rt.rootSession, nil)
 		return fmt.Sprintf("抱歉，任务规划失败: %v", err)
@@ -249,7 +257,16 @@ func (rt *ComplexTaskRuntime) finishAsync(results []SubTaskResult, childSessions
 
 	log.Printf("[ComplexTask] async subtasks detected: async=%d deferred=%d, skip synthesis", asyncCount, deferCount)
 	summary := buildAsyncAcknowledgment(results)
-	finalizeRootSession(rt.store, rt.rootSession, "async", summary, childSessions)
+	assistantRecord := buildPersistentAssistantRecord(AssistantRecordInput{
+		Query:         rt.query,
+		DisplayResult: summary,
+		Status:        "async",
+		RootSession:   rt.rootSession,
+		ChildSessions: childSessions,
+		Results:       results,
+	})
+	rt.task.PersistedAssistant = assistantRecord
+	finalizeRootSession(rt.store, rt.rootSession, "async", summary, assistantRecord, childSessions)
 	log.Printf("[ComplexTask] ◀ 异步任务确认 taskID=%s duration=%v async=%d deferred=%d",
 		rt.task.TaskID, time.Since(rt.start), asyncCount, deferCount)
 	return summary, true
@@ -263,7 +280,16 @@ func (rt *ComplexTaskRuntime) synthesize(results []SubTaskResult, childSessions 
 	synthDuration := time.Since(synthStart)
 	log.Printf("[ComplexTask] ✓ 汇总完成 duration=%v summaryLen=%d", synthDuration, len(summary))
 
-	finalizeRootSession(rt.store, rt.rootSession, "done", summary, childSessions)
+	assistantRecord := buildPersistentAssistantRecord(AssistantRecordInput{
+		Query:         rt.query,
+		DisplayResult: summary,
+		Status:        "done",
+		RootSession:   rt.rootSession,
+		ChildSessions: childSessions,
+		Results:       results,
+	})
+	rt.task.PersistedAssistant = assistantRecord
+	finalizeRootSession(rt.store, rt.rootSession, "done", summary, assistantRecord, childSessions)
 
 	log.Printf("[ComplexTask] ◀ 复杂任务完成 taskID=%s duration=%v", rt.task.TaskID, time.Since(rt.start))
 	return summary

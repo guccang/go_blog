@@ -140,7 +140,15 @@ func (rt *ResumeRuntime) resumePendingSubTasks() {
 func (rt *ResumeRuntime) summarize() (string, error) {
 	allResults := buildSubTaskResults(rt.rootSession.Plan, rt.children)
 	summary := rt.orchestrator.Synthesize(rt.rootSession, rt.children, allResults, rt.rootSession.Title, rt.sendEvent)
-	finalizeRootSession(rt.orchestrator.store, rt.rootSession, "done", summary, rt.children)
+	assistantRecord := buildPersistentAssistantRecord(AssistantRecordInput{
+		Query:         rt.rootSession.Title,
+		DisplayResult: summary,
+		Status:        "done",
+		RootSession:   rt.rootSession,
+		ChildSessions: rt.children,
+		Results:       allResults,
+	})
+	finalizeRootSession(rt.orchestrator.store, rt.rootSession, "done", summary, assistantRecord, rt.children)
 
 	log.Printf("[Resume] ◀ 恢复完成 duration=%v summaryLen=%d", time.Since(rt.start), len(summary))
 	return summary, nil

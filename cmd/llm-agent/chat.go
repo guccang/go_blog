@@ -410,8 +410,9 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	}
 
 	// 8. 将 assistant 回复追加到对话历史
+	assistantContent := persistedAssistantContent(ctx, result)
 	session.mu.Lock()
-	session.Messages = append(session.Messages, Message{Role: "assistant", Content: result})
+	session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
 	session.mu.Unlock()
 
 	// 持久化会话
@@ -506,6 +507,21 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 			extra = " (tool_result)"
 		}
 		sb.WriteString(fmt.Sprintf("  [%d] %s: %d chars%s\n", i, msg.Role, charCount, extra))
+	}
+
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role != "assistant" {
+			continue
+		}
+		if status, inProgress, failed, ok := parseAssistantRecordSummary(msgs[i].Content); ok {
+			sb.WriteString("\n🧾 最近执行记录:\n")
+			sb.WriteString(fmt.Sprintf("  状态: %s\n", fallbackText(status, "unknown")))
+			sb.WriteString(fmt.Sprintf("  进行中: %s\n", fallbackText(inProgress, "无")))
+			sb.WriteString(fmt.Sprintf("  失败点: %s\n", fallbackText(failed, "无")))
+		} else {
+			sb.WriteString(fmt.Sprintf("\n🧾 最近 assistant 预览: %s\n", truncate(msgs[i].Content, 180)))
+		}
+		break
 	}
 
 	// 工具统计（按 agent 分组）

@@ -460,8 +460,9 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		}
 	}
 
+	assistantContent := persistedAssistantContent(ctx, result)
 	session.mu.Lock()
-	session.Messages = append(session.Messages, Message{Role: "assistant", Content: result})
+	session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
 	session.mu.Unlock()
 
 	if err := b.sessionMgr.SaveSession(session); err != nil {

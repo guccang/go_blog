@@ -108,6 +108,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 
 	// 将 assistant 回复追加到会话历史
 	if result != "" {
+		assistantContent := persistedAssistantContent(ctx, result)
 		session.mu.Lock()
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
@@ -117,7 +118,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 				{Role: "user", Content: payload.Query},
 			}
 		}
-		session.Messages = append(session.Messages, Message{Role: "assistant", Content: result})
+		session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
 		session.mu.Unlock()
 
 		// 持久化会话

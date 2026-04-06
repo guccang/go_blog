@@ -20,20 +20,22 @@ func buildSubTaskResults(plan *TaskPlan, children map[string]*TaskSession) []Sub
 			continue
 		}
 		results = append(results, SubTaskResult{
-			SubTaskID: subtask.ID,
-			Title:     subtask.Title,
-			Status:    child.Status,
-			Result:    child.Result,
-			Error:     child.Error,
+			SubTaskID:     subtask.ID,
+			Title:         subtask.Title,
+			Status:        child.Status,
+			Result:        child.Result,
+			Error:         child.Error,
+			AsyncSessions: dedupeAsyncSessions(detectAsyncResults(child)),
 		})
 	}
 	return results
 }
 
-func finalizeRootSession(store *SessionStore, root *TaskSession, status, summary string, children map[string]*TaskSession) {
+func finalizeRootSession(store *SessionStore, root *TaskSession, status, summary, assistantRecord string, children map[string]*TaskSession) {
 	root.SetStatus(status)
 	root.SetResult(summary)
 	root.Summary = summary
+	appendFinalAssistantRecord(root, assistantRecord)
 	if store != nil {
 		store.Save(root)
 		store.SaveIndex(root, childSessionList(children))

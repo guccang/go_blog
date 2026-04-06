@@ -12,17 +12,18 @@ import (
 
 // TaskContext 统一任务输入
 type TaskContext struct {
-	Ctx           context.Context // 可取消的 context（nil 表示不可取消）
-	TaskID        string
-	Account       string
-	Query         string    // 用户问题（用于 plan_and_execute）
-	Source        string    // "web" | "wechat" | "llm_request"
-	PreferAudioReply bool
-	Messages      []Message // 预构建消息（nil 则自动构建）
-	SelectedTools []string
-	NoTools       bool
-	Sink          EventSink
-	Trace         *RequestTrace // 请求追踪（可选）
+	Ctx                context.Context // 可取消的 context（nil 表示不可取消）
+	TaskID             string
+	Account            string
+	Query              string // 用户问题（用于 plan_and_execute）
+	Source             string // "web" | "wechat" | "llm_request"
+	PreferAudioReply   bool
+	Messages           []Message // 预构建消息（nil 则自动构建）
+	SelectedTools      []string
+	NoTools            bool
+	Sink               EventSink
+	PersistedAssistant string
+	Trace              *RequestTrace // 请求追踪（可选）
 }
 
 func isMCPToolListQuery(query string) bool {

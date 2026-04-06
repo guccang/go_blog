@@ -20,7 +20,7 @@ func buildAsyncAcknowledgment(results []SubTaskResult) string {
 			sb.WriteString(fmt.Sprintf("⏭ %s\n", r.Title))
 		case "async":
 			var sids []string
-			for _, a := range r.AsyncSessions {
+			for _, a := range dedupeAsyncSessions(r.AsyncSessions) {
 				sids = append(sids, a.SessionID)
 			}
 			sb.WriteString(fmt.Sprintf("⏳ %s (后台执行中: %s)\n", r.Title, strings.Join(sids, ", ")))

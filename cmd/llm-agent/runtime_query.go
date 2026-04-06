@@ -537,8 +537,6 @@ func (rt *QueryRuntime) finish() (string, error) {
 		} else if rt.rootSession.Status != "cancelled" {
 			rt.rootSession.SetStatus("done")
 		}
-		rt.store.Save(rt.rootSession)
-		rt.store.SaveIndex(rt.rootSession, nil)
 	}
 
 	if rt.state.FinalText == "" && rt.state.FinalErr != nil {
@@ -546,6 +544,25 @@ func (rt *QueryRuntime) finish() (string, error) {
 	}
 	if rt.state.FinalText == "" {
 		rt.state.FinalText = "抱歉，未能生成回复。"
+	}
+
+	assistantRecord := buildPersistentAssistantRecord(AssistantRecordInput{
+		Query:         rt.state.Query,
+		DisplayResult: rt.state.FinalText,
+		Status:        rt.rootSession.Status,
+		RootSession:   rt.rootSession,
+		FinalErr:      rt.state.FinalErr,
+	})
+	if strings.HasPrefix(strings.TrimSpace(assistantRecord), assistantRecordHeader) {
+		rt.task.PersistedAssistant = assistantRecord
+		appendFinalAssistantRecord(rt.rootSession, assistantRecord)
+	} else {
+		rt.task.PersistedAssistant = rt.state.FinalText
+	}
+
+	if !rt.state.ComplexHandled {
+		rt.store.Save(rt.rootSession)
+		rt.store.SaveIndex(rt.rootSession, nil)
 	}
 
 	totalDuration := time.Since(rt.taskStart)
