@@ -140,6 +140,14 @@ func (o *Orchestrator) runSubTaskLoop(
 				bizFailedMsgs = append(bizFailedMsgs, execResult.BusinessErr)
 			}
 			sessionRT.AppendToolResult(execResult.Result, tc.ID, i, nil)
+			if execResult.Success && execResult.BusinessErr == "" && isTerminalSessionTool(execResult.ToolName) {
+				finalText = buildTerminalToolSummary(execResult.ToolName, execResult.Result)
+				if finalText == "" {
+					finalText = text
+				}
+				log.Printf("[Orchestrator] subtask=%s terminal tool completed, stop loop: %s", subtask.ID, execResult.ToolName)
+				return finalText, nil
+			}
 		}
 
 		if len(bizFailedTools) > 0 {

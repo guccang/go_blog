@@ -27,6 +27,11 @@
             "build_platform": "linux"
         },
         {
+            "project": "app-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
             "project": "acp-agent",
             "target": "local",
             "build_platform": "macos"
@@ -38,6 +43,11 @@
         },
         {
             "project": "log-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+       {
+            "project": "cmd-agent",
             "target": "ssh-prod",
             "build_platform": "linux"
         },

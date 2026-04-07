@@ -9,5 +9,5 @@
 
 ## 会话类工具使用规则
 - AcpStartSession 返回后（无论 status 是 completed 还是 in_progress），编码任务即视为完成，**立即停止工具调用**，回复执行结果
-- **禁止**在 AcpStartSession 之后调用 AcpSendMessage、AcpGetStatus、AcpAnalyzeProject 等补充工具
+- **禁止**在 AcpStartSession 之后调用其他 ACP 补充工具
 - 同理，DeployProject 返回后部署任务即完成，不要继续调用其他工具

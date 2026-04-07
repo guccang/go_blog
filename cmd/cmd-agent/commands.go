@@ -375,6 +375,9 @@ func (a *CMDAGent) handleCgSend(req commandRequest, param string) error {
 	if !ok {
 		return a.sendClientNotify(req.route(), "❌ 没有活跃的编码会话，请先启动一个会话")
 	}
+	if last.Backend == "acp" {
+		return a.sendClientNotify(req.route(), "❌ acp-agent 已移除 AcpSendMessage，当前不支持 cg send")
+	}
 
 	requestID := "cmd_send_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	route := sessionRoute{
@@ -432,6 +435,9 @@ func (a *CMDAGent) handleCgStatus(req commandRequest) error {
 	last, ok := a.getUserCodegenSession(req.UserID)
 	if !ok {
 		return a.sendClientNotify(req.route(), "当前没有活跃的编码会话")
+	}
+	if last.Backend == "acp" {
+		return a.sendClientNotify(req.route(), "❌ acp-agent 已移除 AcpGetStatus，当前不支持 cg status")
 	}
 
 	requestID := "cmd_status_" + strconv.FormatInt(time.Now().UnixNano(), 10)
@@ -1049,9 +1055,6 @@ func codingBackendKindForAgent(agentID, fallback string) string {
 }
 
 func statusToolName(backend string) string {
-	if backend == "acp" {
-		return "AcpGetStatus"
-	}
 	return "CodegenGetStatus"
 }
 
@@ -1063,9 +1066,6 @@ func stopToolName(backend string) string {
 }
 
 func sendToolName(backend string) string {
-	if backend == "acp" {
-		return "AcpSendMessage"
-	}
 	return "CodegenSendMessage"
 }
 

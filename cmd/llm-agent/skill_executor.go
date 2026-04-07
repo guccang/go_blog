@@ -106,7 +106,7 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		sb.WriteString("\n## 执行策略\n")
 		sb.WriteString("- 调用子任务描述中指定的工具完成任务\n")
 		sb.WriteString("- AcpStartSession/DeployProject/DeployAdhoc 返回后，任务即完成，**立即停止工具调用**，回复执行结果\n")
-		sb.WriteString("- **禁止**在上述工具成功后继续调用 ExecuteCode、AcpSendMessage、AcpAnalyzeProject 等补充工具\n")
+		sb.WriteString("- **禁止**在上述工具成功后继续调用 ExecuteCode 等补充工具\n")
 		sb.WriteString("- 最终回复要简洁，包含执行结果和关键数据\n")
 	} else {
 		// 通用 skill：优先用 ExecuteCode 批量调用

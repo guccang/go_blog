@@ -200,12 +200,18 @@ func (rt *DAGExecutionRuntime) scheduleTask(st SubTaskPlan) {
 
 func (rt *DAGExecutionRuntime) runScheduledTask(st SubTaskPlan, sess *TaskSession, sibCtx string, taskIdx int) subtaskResultMsg {
 	steerCh := make(chan string, 1)
+	handleKey := buildSubTaskHandleKey(rt.rootSession.ID, st.ID)
 	rt.orchestrator.activeHandlesMu.Lock()
-	rt.orchestrator.activeHandles[st.ID] = &SubTaskHandle{SubTaskID: st.ID, SteerCh: steerCh}
+	rt.orchestrator.activeHandles[handleKey] = &SubTaskHandle{
+		HandleKey: handleKey,
+		RootID:    rt.rootSession.ID,
+		SubTaskID: st.ID,
+		SteerCh:   steerCh,
+	}
 	rt.orchestrator.activeHandlesMu.Unlock()
 	defer func() {
 		rt.orchestrator.activeHandlesMu.Lock()
-		delete(rt.orchestrator.activeHandles, st.ID)
+		delete(rt.orchestrator.activeHandles, handleKey)
 		rt.orchestrator.activeHandlesMu.Unlock()
 	}()
 
@@ -220,8 +226,7 @@ func (rt *DAGExecutionRuntime) runScheduledTask(st SubTaskPlan, sess *TaskSessio
 		rt.planLogger.LogSubTaskEnd(st.ID, result.Status, result.Result, time.Since(subTaskStart))
 	}
 
-	result = rt.detectAsync(st, sess, taskIdx, result)
-	result = rt.handleFailure(st, sess, sibCtx, taskIdx, steerCh, result)
+	result = rt.finalizeSubTaskOutcome(st, sess, sibCtx, taskIdx, steerCh, result)
 
 	if result.Status == "done" {
 		rt.safeSendEvent("subtask_done", fmt.Sprintf("[%d/%d] %s — 完成", taskIdx+1, len(rt.plan.SubTasks), st.Title))
@@ -231,6 +236,30 @@ func (rt *DAGExecutionRuntime) runScheduledTask(st SubTaskPlan, sess *TaskSessio
 	}
 
 	return subtaskResultMsg{result: result, session: sess}
+}
+
+func (rt *DAGExecutionRuntime) finalizeSubTaskOutcome(
+	st SubTaskPlan,
+	sess *TaskSession,
+	sibCtx string,
+	taskIdx int,
+	steerCh <-chan string,
+	result SubTaskResult,
+) SubTaskResult {
+	const maxFailureRecoveries = 3
+	for attempt := 0; attempt < maxFailureRecoveries; attempt++ {
+		result = rt.detectAsync(st, sess, taskIdx, result)
+		if result.Status != "failed" {
+			return result
+		}
+		next, handled := rt.handleFailureOnce(st, sess, sibCtx, taskIdx, steerCh, result)
+		result = next
+		if !handled {
+			return result
+		}
+		log.Printf("[Orchestrator] subtask=%s recovered attempt=%d status=%s", st.ID, attempt+1, result.Status)
+	}
+	return result
 }
 
 func (rt *DAGExecutionRuntime) detectAsync(st SubTaskPlan, sess *TaskSession, taskIdx int, result SubTaskResult) SubTaskResult {
@@ -259,16 +288,16 @@ func (rt *DAGExecutionRuntime) detectAsync(st SubTaskPlan, sess *TaskSession, ta
 	return result
 }
 
-func (rt *DAGExecutionRuntime) handleFailure(
+func (rt *DAGExecutionRuntime) handleFailureOnce(
 	st SubTaskPlan,
 	sess *TaskSession,
 	sibCtx string,
 	taskIdx int,
 	steerCh <-chan string,
 	result SubTaskResult,
-) SubTaskResult {
+) (SubTaskResult, bool) {
 	if result.Status != "failed" {
-		return result
+		return result, false
 	}
 
 	rt.safeSendEvent("subtask_fail", fmt.Sprintf("[%s] %s — 失败: %s", st.ID, st.Title, result.Error))
@@ -278,13 +307,13 @@ func (rt *DAGExecutionRuntime) handleFailure(
 	case "retry":
 		rt.safeSendEvent("retry_detail", fmt.Sprintf("[%s] 重试原因: %s\n原始错误: %s", st.ID, decision.Reason, result.Error))
 		rt.safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] 重试: %s", taskIdx+1, len(rt.plan.SubTasks), st.Title))
-		return rt.orchestrator.executeSubTask(rt.parentCtx, rt.taskID, st, sess, sibCtx, rt.tools, rt.safeSendEvent, steerCh)
+		return rt.orchestrator.executeSubTask(rt.parentCtx, rt.taskID, st, sess, sibCtx, rt.tools, rt.safeSendEvent, steerCh), true
 	case "modify":
 		modifiedSubtask := st
 		modifiedSubtask.Description = decision.Modifications
 		rt.safeSendEvent("modify_detail", fmt.Sprintf("[%s] 修改后重试\n原描述: %s\n新描述: %s", st.ID, truncate(st.Description, 200), truncate(decision.Modifications, 200)))
 		rt.safeSendEvent("subtask_start", fmt.Sprintf("[%d/%d] 修改后重试: %s", taskIdx+1, len(rt.plan.SubTasks), st.Title))
-		return rt.orchestrator.executeSubTask(rt.parentCtx, rt.taskID, modifiedSubtask, sess, sibCtx, rt.tools, rt.safeSendEvent, steerCh)
+		return rt.orchestrator.executeSubTask(rt.parentCtx, rt.taskID, modifiedSubtask, sess, sibCtx, rt.tools, rt.safeSendEvent, steerCh), true
 	case "skip":
 		result.Status = "skipped"
 		sess.SetStatus("skipped")
@@ -298,7 +327,7 @@ func (rt *DAGExecutionRuntime) handleFailure(
 		rt.parentCancel()
 		rt.aborted = true
 	}
-	return result
+	return result, false
 }
 
 func (rt *DAGExecutionRuntime) collectResults() {
@@ -324,8 +353,12 @@ func (rt *DAGExecutionRuntime) updateCompletedResults(msg subtaskResultMsg) {
 
 func (rt *DAGExecutionRuntime) unblockTasks(result SubTaskResult) {
 	unblocked := rt.scheduler.markDone(result.SubTaskID, result)
+	if len(unblocked) == 0 {
+		log.Printf("[Orchestrator] DAG markDone subtask=%s status=%s unblocked=0", result.SubTaskID, result.Status)
+	}
 	for _, st := range unblocked {
 		if !rt.aborted {
+			log.Printf("[Orchestrator] DAG unlock subtask=%s by=%s", st.ID, result.SubTaskID)
 			rt.scheduleTask(st)
 		}
 	}

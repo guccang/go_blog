@@ -1,5 +1,5 @@
 {
-    "name": "go_blog_dev",
+    "name": "win_dev",
     "description": "生产环境全量部署",
     "steps": [
         {

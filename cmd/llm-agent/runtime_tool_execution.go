@@ -50,6 +50,7 @@ type ToolExecutionResult struct {
 	ToolName    string
 	Result      string
 	BusinessErr string
+	Success     bool
 	Interrupted bool
 	FatalErr    error
 }
@@ -224,6 +225,7 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 		ToolName:    originalName,
 		Result:      result,
 		BusinessErr: bizErr,
+		Success:     success,
 	}
 }
 

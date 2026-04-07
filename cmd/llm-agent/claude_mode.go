@@ -273,16 +273,12 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 	var err error
 
 	if sessionID != "" {
-		// 续接已有会话
-		args := map[string]interface{}{
-			"prompt":          content,
-			"session_id":      sessionID,
-			"interactive":     interactive,
-			"caller_agent_id": b.cfg.AgentID,
-			"keep_session":    true,
-		}
-		argsJSON, _ := json.Marshal(args)
-		result, err = b.CallTool("AcpSendMessage", argsJSON)
+		b.sendWechat(fromAgent, wechatUser, "当前已移除 AcpSendMessage，多轮续聊不可用，请重新使用 /claude 启动新会话。")
+		sink.stop()
+		b.claudeSinksMu.Lock()
+		delete(b.claudeSinks, sessionKey("wechat", wechatUser))
+		b.claudeSinksMu.Unlock()
+		return
 	} else {
 		// 无 session_id，新建会话
 		session.mu.Lock()

@@ -478,8 +478,6 @@ var longRunningTools = map[string]bool{
 	"CodegenStartSession": true,
 	"CodegenSendMessage":  true,
 	"AcpStartSession":     true,
-	"AcpSendMessage":      true,
-	"AcpAnalyzeProject":   true,
 	"DeployProject":       true,
 	"DeployAdhoc":         true,
 	"DeployPipeline":      true,

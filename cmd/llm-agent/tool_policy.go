@@ -51,7 +51,7 @@ func (b *Bridge) ApplySubtaskPolicy(tools []LLMTool, hints []string) []LLMTool {
 		matched := b.skillMgr.MatchByTools(hints)
 		if len(matched) > 0 {
 			hasSkillMatch = true
-			// 将 skill 声明的所有工具也加入 hintSet（如 coding skill 的 AcpSendMessage 等）
+			// 将 skill 声明的所有工具也加入 hintSet
 			for _, skill := range matched {
 				for _, t := range skill.Tools {
 					hintSet[t] = true

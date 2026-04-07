@@ -176,18 +176,6 @@ func buildACPToolDefs() []uap.ToolDef {
 			}),
 		},
 		{
-			Name:        "AcpAnalyzeProject",
-			Description: "通过 ACP 协议调用 Claude Code 分析项目代码，给出优化建议。同步等待完成，进度通过 stream_event 推送。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"project": map[string]interface{}{"type": "string", "description": "项目名称"},
-					"prompt":  map[string]interface{}{"type": "string", "description": "用户的原始分析需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
-				},
-				"required": []string{"project", "prompt"},
-			}),
-		},
-		{
 			Name:        "AcpStartSession",
 			Description: "启动 ACP 编码会话（同步等待完成，进度通过 stream_event 推送）。默认在本轮完成后自动关闭 ACP 子进程；只有明确需要多轮续聊时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
@@ -201,31 +189,6 @@ func buildACPToolDefs() []uap.ToolDef {
 					"keep_session":    map[string]interface{}{"type": "boolean", "description": "是否在本轮完成后保留 ACP 会话供后续继续对话；默认 false"},
 				},
 				"required": []string{"project"},
-			}),
-		},
-		{
-			Name:        "AcpSendMessage",
-			Description: "向 ACP 会话追加消息并等待完成。默认在本轮完成后自动关闭 ACP 子进程；只有明确需要继续多轮对话时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"prompt":          map[string]interface{}{"type": "string", "description": "用户的原始消息内容，必须完整保留用户输入的原文，不得修改或重新措辞"},
-					"session_id":      map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
-					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式"},
-					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID"},
-					"keep_session":    map[string]interface{}{"type": "boolean", "description": "是否在本轮完成后继续保留会话；默认 false"},
-				},
-				"required": []string{"prompt"},
-			}),
-		},
-		{
-			Name:        "AcpGetStatus",
-			Description: "查看会话状态。传入 session_id 查询指定会话，不传则返回全局概览",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"session_id": map[string]interface{}{"type": "string", "description": "要查询的会话ID（可选，不传返回全局状态）"},
-				},
 			}),
 		},
 		{
@@ -277,14 +240,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListProjects()
 	case "AcpCreateProject":
 		result = c.toolCreateProject(args)
-	case "AcpAnalyzeProject":
-		result = c.toolAnalyzeProject(msg.From, msg.ID, args)
 	case "AcpStartSession":
 		result = c.toolStartSession(msg.From, msg.ID, args)
-	case "AcpSendMessage":
-		result = c.toolSendMessage(msg.From, msg.ID, args)
-	case "AcpGetStatus":
-		result = c.toolGetStatus(args)
 	case "AcpStopSession":
 		result = c.toolStopSession(args)
 	default:

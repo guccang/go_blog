@@ -1,0 +1,18 @@
+{
+    "agent_name": "codegen-agent-win",
+    "agent_type": "codegen",
+    "auth_token": "guccang@blog.guccang.cn",
+    "claude_path": "claude",
+    "go_backend_agent_id": "blog-agent",
+    "llm": {
+        "provider": "openrouter",
+        "model": "stepfun"
+    },
+    "max_concurrent": 1,
+    "max_turns": 10,
+    "opencode_path": "opencode",
+    "server_url": "ws://blog.guccang.cn:10086/ws/uap",
+    "workspaces": [
+        "e:/githubdesktop"
+    ]
+}
