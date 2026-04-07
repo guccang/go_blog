@@ -49,6 +49,19 @@ func GetSessionUser(sessionID string) string {
 	return ""
 }
 
+// GetUserSessionID 根据用户查找当前关联的会话。
+func GetUserSessionID(userID string) string {
+	if wechatBridge == nil {
+		return ""
+	}
+	wechatBridge.mu.RLock()
+	defer wechatBridge.mu.RUnlock()
+	if state := wechatBridge.userSessions[userID]; state != nil {
+		return state.SessionID
+	}
+	return ""
+}
+
 // InitWeChatBridge 初始化微信桥接，注入发送函数
 func InitWeChatBridge(sender SendFunc) {
 	wechatBridge = &WeChatBridge{
@@ -542,7 +555,7 @@ func StartDeployJSON(account, project, deployTarget, port string) string {
 	result := map[string]interface{}{
 		"success":    true,
 		"session_id": sessionID,
-		"message":    "部署会话已启动，进度将通过微信推送",
+		"message":    "部署会话已启动，进度将通过当前客户端推送",
 	}
 	if deployTarget != "" {
 		result["deploy_target"] = deployTarget
@@ -652,7 +665,7 @@ func StartPipelineJSON(account, pipeline string) string {
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"error":"%s"}`, err.Error())
 	}
-	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"Pipeline %s 已启动，进度将通过微信推送"}`, sessionID, pipeline)
+	return fmt.Sprintf(`{"success":true,"session_id":"%s","message":"Pipeline %s 已启动，进度将通过当前客户端推送"}`, sessionID, pipeline)
 }
 
 // CreateProjectJSON 在远程 agent 上创建项目并返回 JSON

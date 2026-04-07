@@ -259,8 +259,8 @@ func (a *Agent) ClearStopped(sessionID string) {
 	a.mu.Unlock()
 }
 
-// ExecuteTask 执行编码任务
-func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
+// ExecuteTask 执行编码任务。
+func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgentID string) {
 	sessionID := task.SessionID
 
 	// 调试：打印收到的任务参数
@@ -270,7 +270,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 解析项目路径
 	projectPath := a.resolveProject(task.Project)
 	if projectPath == "" {
-		conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 			SessionID: sessionID,
 			Status:    "error",
 			Error:     fmt.Sprintf("project not found in workspaces: %s", task.Project),
@@ -294,7 +294,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		var buildErr error
 		args, buildErr = a.buildArgs(task)
 		if buildErr != nil {
-			conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+			conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 				SessionID: sessionID, Status: "error", Error: buildErr.Error(),
 			})
 			return
@@ -308,7 +308,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("stdout pipe: %v", err),
 		})
 		return
@@ -316,14 +316,14 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("stderr pipe: %v", err),
 		})
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("start claude: %v", err),
 		})
 		return
@@ -341,7 +341,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	}()
 
 	// 发送开始事件
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+	conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 		SessionID: sessionID,
 		Event: StreamEvent{
 			Type: "system",
@@ -371,13 +371,13 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 				// OpenCode 的进度输出（工具调用、命令执行）走 stderr
 				event := parseOpenCodeStderr(line)
 				if event != nil {
-					conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+					conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 						SessionID: sessionID,
 						Event:     *event,
 					})
 				}
 			} else {
-				conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+				conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 					SessionID: sessionID,
 					Event:     StreamEvent{Type: "error", Text: "⚠️ " + line},
 				})
@@ -416,7 +416,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		// Done 仅由 TaskComplete 统一触发，防止 result 事件提前关闭 WeChat 通知
 		evt := *event
 		evt.Done = false
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
 			Event:     evt,
 		})
@@ -447,7 +447,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 	// 发送任务总结报告
 	if status == "done" {
 		report := summary.GenerateReport()
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
 			Event: StreamEvent{
 				Type: "summary",
@@ -457,7 +457,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload) {
 		})
 	}
 
-	conn.SendMsg(MsgTaskComplete, TaskCompletePayload{
+	conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 		SessionID: sessionID,
 		Status:    SessionStatus(status),
 		Error:     errMsg,
@@ -737,11 +737,11 @@ func ensureGitInit(projectPath string) {
 	cmd.Run()
 }
 
-// HandleFileRead 处理服务端的文件读取请求
-func (a *Agent) HandleFileRead(conn *Connection, req *FileReadPayload) {
+// HandleFileRead 处理服务端的文件读取请求。
+func (a *Agent) HandleFileRead(conn *Connection, req *FileReadPayload, replyAgentID string) {
 	projectPath := a.findProjectPath(req.Project)
 	if projectPath == "" {
-		conn.SendMsg(MsgFileReadResp, FileReadRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgFileReadResp, FileReadRespPayload{
 			RequestID: req.RequestID,
 			Error:     "project not found: " + req.Project,
 		})
@@ -754,7 +754,7 @@ func (a *Agent) HandleFileRead(conn *Connection, req *FileReadPayload) {
 	absFile, _ := filepath.Abs(fullPath)
 	rel, err := filepath.Rel(absProject, absFile)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		conn.SendMsg(MsgFileReadResp, FileReadRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgFileReadResp, FileReadRespPayload{
 			RequestID: req.RequestID,
 			Error:     "invalid file path",
 		})
@@ -763,24 +763,24 @@ func (a *Agent) HandleFileRead(conn *Connection, req *FileReadPayload) {
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		conn.SendMsg(MsgFileReadResp, FileReadRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgFileReadResp, FileReadRespPayload{
 			RequestID: req.RequestID,
 			Error:     err.Error(),
 		})
 		return
 	}
 
-	conn.SendMsg(MsgFileReadResp, FileReadRespPayload{
+	conn.SendTaskMsg(replyAgentID, MsgFileReadResp, FileReadRespPayload{
 		RequestID: req.RequestID,
 		Content:   string(data),
 	})
 }
 
-// HandleTreeRead 处理服务端的目录树读取请求
-func (a *Agent) HandleTreeRead(conn *Connection, req *TreeReadPayload) {
+// HandleTreeRead 处理服务端的目录树读取请求。
+func (a *Agent) HandleTreeRead(conn *Connection, req *TreeReadPayload, replyAgentID string) {
 	projectPath := a.findProjectPath(req.Project)
 	if projectPath == "" {
-		conn.SendMsg(MsgTreeReadResp, TreeReadRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgTreeReadResp, TreeReadRespPayload{
 			RequestID: req.RequestID,
 			Error:     "project not found: " + req.Project,
 		})
@@ -793,17 +793,17 @@ func (a *Agent) HandleTreeRead(conn *Connection, req *TreeReadPayload) {
 	}
 
 	tree := buildTree(projectPath, req.Project, 0, maxDepth)
-	conn.SendMsg(MsgTreeReadResp, TreeReadRespPayload{
+	conn.SendTaskMsg(replyAgentID, MsgTreeReadResp, TreeReadRespPayload{
 		RequestID: req.RequestID,
 		Tree:      tree,
 	})
 }
 
-// HandleProjectCreate 处理服务端的项目创建请求
-func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload) {
+// HandleProjectCreate 处理服务端的项目创建请求。
+func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload, replyAgentID string) {
 	name := req.Name
 	if name == "" {
-		conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 			RequestID: req.RequestID,
 			Error:     "project name is empty",
 		})
@@ -812,7 +812,7 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 
 	// 安全检查
 	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 			RequestID: req.RequestID,
 			Error:     "invalid project name: " + name,
 		})
@@ -821,7 +821,7 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 
 	// 检查是否已存在
 	if existing := a.findProjectPath(name); existing != "" {
-		conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 			RequestID: req.RequestID,
 			Error:     "project already exists: " + name,
 		})
@@ -830,7 +830,7 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 
 	// 在第一个 workspace 创建
 	if len(a.cfg.Workspaces) == 0 {
-		conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 			RequestID: req.RequestID,
 			Error:     "no workspace configured",
 		})
@@ -839,7 +839,7 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 
 	projectPath := filepath.Join(a.cfg.Workspaces[0], name)
 	if err := os.MkdirAll(projectPath, 0755); err != nil {
-		conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+		conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 			RequestID: req.RequestID,
 			Error:     fmt.Sprintf("create dir failed: %v", err),
 		})
@@ -849,7 +849,7 @@ func (a *Agent) HandleProjectCreate(conn *Connection, req *ProjectCreatePayload)
 	ensureGitInit(projectPath)
 	log.Printf("[INFO] project created: %s at %s", name, projectPath)
 
-	conn.SendMsg(MsgProjectCreateResp, ProjectCreateRespPayload{
+	conn.SendTaskMsg(replyAgentID, MsgProjectCreateResp, ProjectCreateRespPayload{
 		RequestID: req.RequestID,
 		Success:   true,
 	})

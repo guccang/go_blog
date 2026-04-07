@@ -1,0 +1,9 @@
+{
+  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
+  "agent_id": "cmd-agent",
+  "agent_name": "cmd-agent",
+  "workspace_dir": "workspace",
+  "protected_files": [
+    "cmd-agent.json"
+  ]
+}

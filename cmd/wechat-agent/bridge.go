@@ -119,7 +119,9 @@ func (b *Bridge) HandleWechatMessage(msg *WechatMessage) {
 
 	// 路由：结构化命令 → blog-agent，自然语言 → llm-agent
 	targetAgent := b.cfg.LLMAgentID
-	if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
+	if isCmdCommand(content) && b.cfg.CmdAgentID != "" {
+		targetAgent = b.cfg.CmdAgentID
+	} else if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
 		targetAgent = b.cfg.BackendAgentID
 	}
 	if targetAgent == "" {
@@ -494,10 +496,14 @@ func (b *Bridge) sendWebhookMarkdown(content string) error {
 
 // ========================= 帮助文本 =========================
 
-// isBackendCommand 判断消息是否为结构化命令（直接路由到 blog-agent，不经过 LLM）
+// isCmdCommand 判断消息是否应由 cmd-agent 处理。
+func isCmdCommand(content string) bool {
+	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg"
+}
+
+// isBackendCommand 判断消息是否为其他结构化命令（直接路由到 blog-agent，不经过 LLM）。
 func isBackendCommand(content string) bool {
-	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg" ||
-		content == "刷新提示词" || strings.EqualFold(content, "reload prompts")
+	return content == "刷新提示词" || strings.EqualFold(content, "reload prompts")
 }
 
 func getHelpText() string {

@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -54,5 +55,54 @@ func TestHandleWechatCommandAcceptsSlashCg(t *testing.T) {
 	result := HandleWechatCommand("ztt", "/cg")
 	if !strings.Contains(result, "cg agents") {
 		t.Fatalf("expected help text to mention cg agents, got %q", result)
+	}
+}
+
+func TestProjectListUnmarshalSupportsObjectArray(t *testing.T) {
+	var projects ProjectList
+	raw := []byte(`[{"name":"alpha"},{"name":"beta"},{"path":"/tmp/ignored"}]`)
+	if err := json.Unmarshal(raw, &projects); err != nil {
+		t.Fatalf("unmarshal ProjectList failed: %v", err)
+	}
+	if got, want := []string(projects), []string{"alpha", "beta"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("unexpected projects: %#v", got)
+	}
+}
+
+func TestEnrichPayloadWithRouteAddsAccountAndChannel(t *testing.T) {
+	raw := json.RawMessage(`{"session_id":"cg_1","status":"done"}`)
+	enriched := enrichPayloadWithRoute(raw, SessionRoute{
+		AgentID: "app-app-agent",
+		Channel: "app",
+		Account: "ztt",
+	})
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(enriched, &payload); err != nil {
+		t.Fatalf("unmarshal enriched payload failed: %v", err)
+	}
+	if payload["account"] != "ztt" {
+		t.Fatalf("unexpected account: %#v", payload["account"])
+	}
+	if payload["channel"] != "app" {
+		t.Fatalf("unexpected channel: %#v", payload["channel"])
+	}
+}
+
+func TestSystemPromptBuilderOverride(t *testing.T) {
+	oldClaude := ClaudeCodeSystemPromptBuilder
+	oldOpenCode := OpenCodeSystemPromptBuilder
+	ClaudeCodeSystemPromptBuilder = func() string { return "claude-override" }
+	OpenCodeSystemPromptBuilder = func() string { return "opencode-override" }
+	defer func() {
+		ClaudeCodeSystemPromptBuilder = oldClaude
+		OpenCodeSystemPromptBuilder = oldOpenCode
+	}()
+
+	if got := buildClaudeCodeSystemPrompt(); got != "claude-override" {
+		t.Fatalf("unexpected claude prompt: %q", got)
+	}
+	if got := buildOpenCodeSystemPrompt(); got != "opencode-override" {
+		t.Fatalf("unexpected opencode prompt: %q", got)
 	}
 }

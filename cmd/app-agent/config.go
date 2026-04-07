@@ -38,6 +38,7 @@ type Config struct {
 	OBS                      OBSStorageConfig `json:"obs,omitempty"`
 
 	LLMAgentID     string `json:"llm_agent_id"`
+	CmdAgentID     string `json:"cmd_agent_id,omitempty"`
 	BackendAgentID string `json:"backend_agent_id"`
 
 	ProtectedFiles []string `json:"protected_files,omitempty"`
@@ -59,6 +60,7 @@ func DefaultConfig() *Config {
 		AttachmentStoreDir:       "app-attachments",
 		DownloadTicketTTLSeconds: 300,
 		LLMAgentID:               "llm-agent",
+		CmdAgentID:               "cmd-agent",
 		BackendAgentID:           "blog-agent",
 		ProtectedFiles:           []string{"app-agent.json"},
 	}
@@ -84,6 +86,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.DownloadTicketTTLSeconds <= 0 {
 		cfg.DownloadTicketTTLSeconds = 300
+	}
+	if cfg.CmdAgentID == "" {
+		cfg.CmdAgentID = "cmd-agent"
 	}
 	if cfg.GroupStoreFile == "" {
 		cfg.GroupStoreFile = "app-groups.json"

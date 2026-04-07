@@ -19,5 +19,6 @@
     "path_style": false
   },
   "llm_agent_id": "llm-agent",
+  "cmd_agent_id": "cmd-agent",
   "backend_agent_id": "blog-agent"
 }

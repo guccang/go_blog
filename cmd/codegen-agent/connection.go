@@ -36,6 +36,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildCodegenToolDefs(fileToolKit),
 		Meta: map[string]any{
+			"projects":          projectNames(agent.ScanProjects()),
 			"workspaces":        cfg.Workspaces,
 			"models":            agent.ScanSettings(),
 			"claudecode_models": agent.ScanClaudeCodeSettings(),
@@ -77,13 +78,14 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 func (c *Connection) handleTaskAssign(msg *uap.Message) {
 	var payload TaskAssignPayload
 	json.Unmarshal(msg.Payload, &payload)
-	log.Printf("[INFO] received task: session=%s project=%s", payload.SessionID, payload.Project)
+	replyAgentID := strings.TrimSpace(msg.From)
+	log.Printf("[INFO] received task: session=%s project=%s from=%s", payload.SessionID, payload.Project, replyAgentID)
 
 	if c.agent.CanAccept() {
-		c.SendMsg(MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
-		go c.agent.ExecuteTask(c, &payload)
+		c.SendTaskMsg(replyAgentID, MsgTaskAccepted, TaskAcceptedPayload{SessionID: payload.SessionID})
+		go c.agent.ExecuteTask(c, &payload, replyAgentID)
 	} else {
-		c.SendMsg(MsgTaskRejected, TaskRejectedPayload{
+		c.SendTaskMsg(replyAgentID, MsgTaskRejected, TaskRejectedPayload{
 			SessionID: payload.SessionID,
 			Reason:    "agent at max capacity",
 		})
@@ -102,21 +104,21 @@ func (c *Connection) handleTaskStop(msg *uap.Message) {
 func (c *Connection) handleFileRead(msg *uap.Message) {
 	var payload FileReadPayload
 	json.Unmarshal(msg.Payload, &payload)
-	go c.agent.HandleFileRead(c, &payload)
+	go c.agent.HandleFileRead(c, &payload, msg.From)
 }
 
 // handleTreeRead 处理目录树读取请求
 func (c *Connection) handleTreeRead(msg *uap.Message) {
 	var payload TreeReadPayload
 	json.Unmarshal(msg.Payload, &payload)
-	go c.agent.HandleTreeRead(c, &payload)
+	go c.agent.HandleTreeRead(c, &payload, msg.From)
 }
 
 // handleProjectCreate 处理项目创建请求
 func (c *Connection) handleProjectCreate(msg *uap.Message) {
 	var payload ProjectCreatePayload
 	json.Unmarshal(msg.Payload, &payload)
-	go c.agent.HandleProjectCreate(c, &payload)
+	go c.agent.HandleProjectCreate(c, &payload, msg.From)
 }
 
 // handleNotify 处理通知消息
@@ -138,6 +140,15 @@ func (c *Connection) handleError(msg *uap.Message) {
 // SendMsg 发送消息给 blog-agent-agent（通过 gateway 路由）
 func (c *Connection) SendMsg(msgType string, payload interface{}) error {
 	targetAgent := c.cfg.GoBackendAgentID
+	return c.Client.SendTo(targetAgent, msgType, payload)
+}
+
+// SendTaskMsg 优先把异步任务消息回传给调用方；没有调用方时回退到默认 backend。
+func (c *Connection) SendTaskMsg(replyAgentID, msgType string, payload interface{}) error {
+	targetAgent := strings.TrimSpace(replyAgentID)
+	if targetAgent == "" {
+		targetAgent = c.cfg.GoBackendAgentID
+	}
 	return c.Client.SendTo(targetAgent, msgType, payload)
 }
 
@@ -249,6 +260,21 @@ func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 	}
 	return defs
 }
+
+func projectNames(projects []ProjectInfo) []string {
+	if len(projects) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project.Name == "" {
+			continue
+		}
+		names = append(names, project.Name)
+	}
+	return names
+}
+
 func (c *Connection) handleToolCall(msg *uap.Message) {
 	var payload uap.ToolCallPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -384,7 +410,7 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	// 注册完成通知，同步等待任务完成
 	completionCh := c.agent.RegisterCompletion(sessionID)
 	c.agent.RecordSession(sessionID, project, model, tool)
-	go c.agent.ExecuteTask(c, task)
+	go c.agent.ExecuteTask(c, task, "")
 
 	result := <-completionCh
 	if result.Status != "done" {
@@ -446,7 +472,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	// 注册完成通知，同步等待任务完成
 	completionCh := c.agent.RegisterCompletion(newSessionID)
 	c.agent.RecordSession(newSessionID, rec.Project, rec.Model, rec.Tool)
-	go c.agent.ExecuteTask(c, task)
+	go c.agent.ExecuteTask(c, task, "")
 
 	result := <-completionCh
 	if result.Status != "done" {

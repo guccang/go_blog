@@ -13,6 +13,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var (
+	// ClaudeCodeSystemPromptBuilder 允许外部 agent 覆盖默认 Claude Code 系统提示词来源。
+	ClaudeCodeSystemPromptBuilder func() string
+	// OpenCodeSystemPromptBuilder 允许外部 agent 覆盖默认 OpenCode 系统提示词来源。
+	OpenCodeSystemPromptBuilder func() string
+)
+
 // DirNode 目录树节点
 type DirNode struct {
 	Name     string     `json:"name"`
@@ -54,6 +61,7 @@ func (s *WebSocketSender) SendAgentMsg(msgType string, payload interface{}) erro
 type RemoteAgent struct {
 	ID               string
 	Name             string
+	AgentType        string
 	Sender           MessageSender   // 统一发送接口
 	Conn             *websocket.Conn // 直连模式保留（gateway 模式为 nil）
 	Workspaces       []string
@@ -74,10 +82,12 @@ type RemoteAgent struct {
 
 // AgentPool Agent 连接池
 type AgentPool struct {
-	agents  map[string]*RemoteAgent
-	mu      sync.RWMutex
-	pending map[string]chan json.RawMessage // request_id -> response channel
-	pendMu  sync.Mutex
+	agents   map[string]*RemoteAgent
+	mu       sync.RWMutex
+	pending  map[string]chan json.RawMessage // request_id -> response channel
+	pendMu   sync.Mutex
+	syncMu   sync.Mutex
+	lastSync time.Time
 }
 
 // NewAgentPool 创建 Agent 连接池
@@ -137,10 +147,11 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 			agent = &RemoteAgent{
 				ID:               payload.AgentID,
 				Name:             payload.Name,
+				AgentType:        payload.AgentType,
 				Sender:           &WebSocketSender{Conn: conn},
 				Conn:             conn,
 				Workspaces:       payload.Workspaces,
-				Projects:         payload.Projects,
+				Projects:         []string(payload.Projects),
 				Models:           payload.Models,
 				ClaudeCodeModels: payload.ClaudeCodeModels,
 				OpenCodeModels:   payload.OpenCodeModels,
@@ -166,7 +177,7 @@ func (p *AgentPool) HandleAgentWebSocket(conn *websocket.Conn) {
 				agent.mu.Lock()
 				agent.LastHeartbeat = time.Now()
 				if len(payload.Projects) > 0 {
-					agent.Projects = payload.Projects
+					agent.Projects = []string(payload.Projects)
 				}
 				if len(payload.Models) > 0 {
 					agent.Models = payload.Models
@@ -296,6 +307,7 @@ func (p *AgentPool) handleTaskComplete(agent *RemoteAgent, payload *TaskComplete
 
 // SelectAgent 按负载选择可用 agent（支持项目和工具匹配）
 func (p *AgentPool) SelectAgent(project, tool string) *RemoteAgent {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -495,11 +507,21 @@ func (p *AgentPool) dispatchTask(agent *RemoteAgent, session *CodeSession, promp
 
 // buildClaudeCodeSystemPrompt 构建 Claude Code 系统提示
 func buildClaudeCodeSystemPrompt() string {
+	if ClaudeCodeSystemPromptBuilder != nil {
+		if prompt := ClaudeCodeSystemPromptBuilder(); prompt != "" {
+			return prompt
+		}
+	}
 	return config.GetPrompt(config.GetAdminAccount(), "claude_code_system")
 }
 
 // buildOpenCodeSystemPrompt 构建 OpenCode 系统提示
 func buildOpenCodeSystemPrompt() string {
+	if OpenCodeSystemPromptBuilder != nil {
+		if prompt := OpenCodeSystemPromptBuilder(); prompt != "" {
+			return prompt
+		}
+	}
 	return config.GetPrompt(config.GetAdminAccount(), "opencode_system")
 }
 
@@ -549,6 +571,7 @@ func (p *AgentPool) StopAllRunningTasks() int {
 
 // GetAgents 获取所有 agent 信息（管理用）
 func (p *AgentPool) GetAgents() []map[string]interface{} {
+	p.ensureGatewayAgents()
 	// 优先从 gateway HTTP API 获取所有 UAP agent
 	if gatewayBridge != nil && gatewayBridge.gatewayHTTP != "" {
 		if agents := fetchAgentsFromGateway(); agents != nil {
@@ -566,6 +589,7 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 		result = append(result, map[string]interface{}{
 			"id":              agent.ID,
 			"name":            agent.Name,
+			"agent_type":      agent.AgentType,
 			"workspaces":      agent.Workspaces,
 			"projects":        agent.Projects,
 			"models":          agent.Models,
@@ -579,6 +603,134 @@ func (p *AgentPool) GetAgents() []map[string]interface{} {
 		agent.mu.Unlock()
 	}
 	return result
+}
+
+func (p *AgentPool) ensureGatewayAgents() {
+	if gatewayBridge == nil || gatewayBridge.client == nil || gatewayBridge.gatewayHTTP == "" {
+		return
+	}
+	if !gatewayBridge.client.IsConnected() {
+		return
+	}
+
+	p.syncMu.Lock()
+	defer p.syncMu.Unlock()
+	if time.Since(p.lastSync) < 2*time.Second {
+		return
+	}
+
+	snapshots := fetchGatewayAgentSnapshots()
+	if len(snapshots) == 0 {
+		return
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, snapshot := range snapshots {
+		p.upsertGatewaySnapshot(snapshot)
+	}
+	p.lastSync = time.Now()
+}
+
+type gatewayAgentSnapshot struct {
+	AgentID        string
+	AgentType      string
+	Name           string
+	Workspaces     []string
+	Projects       []string
+	Models         []string
+	ClaudeModels   []string
+	OpenCodeModels []string
+	CodingTools    []string
+	DeployTargets  []string
+	HostPlatform   string
+	Pipelines      []string
+	Capacity       int
+}
+
+func fetchGatewayAgentSnapshots() []gatewayAgentSnapshot {
+	agents := fetchAgentsFromGateway()
+	if len(agents) == 0 {
+		return nil
+	}
+
+	var snapshots []gatewayAgentSnapshot
+	for _, agent := range agents {
+		agentType, _ := agent["agent_type"].(string)
+		if agentType != "codegen" && agentType != "deploy" {
+			continue
+		}
+		meta, _ := agent["meta"].(map[string]interface{})
+		snapshot := gatewayAgentSnapshot{
+			AgentID:        stringValue(agent["agent_id"]),
+			AgentType:      agentType,
+			Name:           stringValue(agent["name"]),
+			Workspaces:     stringSliceValue(meta["workspaces"]),
+			Projects:       stringSliceValue(meta["projects"]),
+			Models:         stringSliceValue(meta["models"]),
+			ClaudeModels:   stringSliceValue(meta["claudecode_models"]),
+			OpenCodeModels: stringSliceValue(meta["opencode_models"]),
+			CodingTools:    stringSliceValue(meta["coding_tools"]),
+			DeployTargets:  stringSliceValue(meta["deploy_targets"]),
+			HostPlatform:   firstNonEmpty(stringValue(agent["host_platform"]), stringValue(meta["host_platform"])),
+			Pipelines:      stringSliceValue(meta["pipelines"]),
+			Capacity:       intValue(agent["capacity"]),
+		}
+		if snapshot.AgentType == "deploy" {
+			snapshot.CodingTools = []string{ToolDeploy}
+		}
+		if snapshot.AgentType == "codegen" && len(snapshot.CodingTools) == 0 {
+			snapshot.CodingTools = []string{ToolClaudeCode}
+		}
+		if snapshot.AgentID == "" {
+			continue
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots
+}
+
+func (p *AgentPool) upsertGatewaySnapshot(snapshot gatewayAgentSnapshot) {
+	agent := p.agents[snapshot.AgentID]
+	if agent == nil {
+		agent = &RemoteAgent{
+			ID:             snapshot.AgentID,
+			ActiveSessions: make(map[string]bool),
+			Sender: &GatewaySender{
+				client:    gatewayBridge.client,
+				toAgentID: snapshot.AgentID,
+			},
+			Status: "online",
+		}
+		p.agents[snapshot.AgentID] = agent
+	}
+
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	agent.Name = snapshot.Name
+	agent.AgentType = snapshot.AgentType
+	agent.Workspaces = cloneStrings(snapshot.Workspaces)
+	agent.Projects = cloneStrings(snapshot.Projects)
+	agent.Models = cloneStrings(snapshot.Models)
+	agent.ClaudeCodeModels = cloneStrings(snapshot.ClaudeModels)
+	agent.OpenCodeModels = cloneStrings(snapshot.OpenCodeModels)
+	agent.Tools = cloneStrings(snapshot.CodingTools)
+	agent.DeployTargets = cloneStrings(snapshot.DeployTargets)
+	agent.HostPlatform = snapshot.HostPlatform
+	agent.Pipelines = cloneStrings(snapshot.Pipelines)
+	if snapshot.Capacity > 0 {
+		agent.MaxConcurrent = snapshot.Capacity
+	}
+	agent.Status = "online"
+	if agent.Sender == nil {
+		agent.Sender = &GatewaySender{
+			client:    gatewayBridge.client,
+			toAgentID: snapshot.AgentID,
+		}
+	}
+	if agent.LastHeartbeat.IsZero() {
+		agent.LastHeartbeat = time.Now()
+	}
 }
 
 // fetchAgentsFromGateway 从 gateway HTTP API 获取所有 agent
@@ -614,6 +766,68 @@ func fetchAgentsFromGateway() []map[string]interface{} {
 	return result.Agents
 }
 
+func stringValue(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
+func intValue(v interface{}) int {
+	switch value := v.(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func stringSliceValue(v interface{}) []string {
+	switch value := v.(type) {
+	case []string:
+		return cloneStrings(value)
+	case []interface{}:
+		result := make([]string, 0, len(value))
+		for _, item := range value {
+			switch typed := item.(type) {
+			case string:
+				if typed != "" {
+					result = append(result, typed)
+				}
+			case map[string]interface{}:
+				if name, _ := typed["name"].(string); name != "" {
+					result = append(result, name)
+				}
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]string, len(values))
+	copy(cloned, values)
+	return cloned
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // GetAllModels 聚合所有在线 agent 的 Models（兼容旧版）
 func (p *AgentPool) GetAllModels() []string {
 	return p.GetAllClaudeCodeModels()
@@ -621,6 +835,7 @@ func (p *AgentPool) GetAllModels() []string {
 
 // GetAllClaudeCodeModels 聚合所有在线 agent 的 ClaudeCode 模型配置
 func (p *AgentPool) GetAllClaudeCodeModels() []string {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -644,6 +859,7 @@ func (p *AgentPool) GetAllClaudeCodeModels() []string {
 
 // GetAllOpenCodeModels 聚合所有在线 agent 的 OpenCode 模型配置
 func (p *AgentPool) GetAllOpenCodeModels() []string {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -667,6 +883,7 @@ func (p *AgentPool) GetAllOpenCodeModels() []string {
 
 // GetAllTools 聚合所有在线 agent 的编码工具，去重排序
 func (p *AgentPool) GetAllTools() []string {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -698,6 +915,7 @@ type PipelineInfo struct {
 
 // ListPipelines 聚合所有在线 deploy agent 的 pipeline 列表
 func (p *AgentPool) ListPipelines() []PipelineInfo {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -734,6 +952,7 @@ func (a *RemoteAgent) AgentSupportsTool(tool string) bool {
 
 // ListRemoteProjects 获取所有远程 agent 上报的项目（每个 agent-项目 组合独立输出）
 func (p *AgentPool) ListRemoteProjects() []RemoteProjectInfo {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -801,6 +1020,7 @@ type RemoteProjectInfo struct {
 
 // FindAgentForProject 查找拥有指定项目的 agent
 func (p *AgentPool) FindAgentForProject(project string) *RemoteAgent {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, agent := range p.agents {
@@ -901,6 +1121,7 @@ func (p *AgentPool) ReadRemoteTree(project string, maxDepth int) (*DirNode, erro
 
 // HasAgents 是否有可用 agent
 func (p *AgentPool) HasAgents() bool {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return len(p.agents) > 0
@@ -908,6 +1129,7 @@ func (p *AgentPool) HasAgents() bool {
 
 // CreateRemoteProject 通过 agent 在远程机器上创建项目
 func (p *AgentPool) CreateRemoteProject(agentName, projectName string) error {
+	p.ensureGatewayAgents()
 	agent := p.findOnlineAgentByName(agentName)
 	if agent == nil {
 		return fmt.Errorf("agent '%s' 不在线", agentName)
@@ -942,7 +1164,16 @@ func (p *AgentPool) CreateRemoteProject(agentName, projectName string) error {
 		}
 		// 创建成功，更新 agent 的项目列表
 		agent.mu.Lock()
-		agent.Projects = append(agent.Projects, projectName)
+		exists := false
+		for _, project := range agent.Projects {
+			if project == projectName {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			agent.Projects = append(agent.Projects, projectName)
+		}
 		agent.mu.Unlock()
 		return nil
 	case <-time.After(10 * time.Second):
@@ -952,11 +1183,13 @@ func (p *AgentPool) CreateRemoteProject(agentName, projectName string) error {
 
 // FindAgentByName 按名称查找在线 agent（公开方法）
 func (p *AgentPool) FindAgentByName(name string) *RemoteAgent {
+	p.ensureGatewayAgents()
 	return p.findOnlineAgentByName(name)
 }
 
 // GetAgentNames 获取所有在线 agent 名称
 func (p *AgentPool) GetAgentNames() []string {
+	p.ensureGatewayAgents()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	names := make([]string, 0, len(p.agents))

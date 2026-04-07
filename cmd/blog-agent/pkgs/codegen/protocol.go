@@ -31,19 +31,20 @@ type AgentMessage struct {
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {
-	AgentID          string   `json:"agent_id"`
-	Name             string   `json:"name"`
-	Workspaces       []string `json:"workspaces"`
-	Projects         []string `json:"projects"`                    // agent 上报的可用项目列表
-	Models           []string `json:"models,omitempty"`            // 兼容旧版
-	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
-	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
-	Tools            []string `json:"tools,omitempty"`             // agent 支持的编码工具列表 (claudecode, opencode)
-	MaxConcurrent    int      `json:"max_concurrent"`
-	AuthToken        string   `json:"auth_token,omitempty"`
-	DeployTargets    []string `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
-	HostPlatform     string   `json:"host_platform,omitempty"`  // 主机平台 "win"
-	Pipelines        []string `json:"pipelines,omitempty"`      // deploy agent 可用 pipeline
+	AgentID          string      `json:"agent_id"`
+	Name             string      `json:"name"`
+	AgentType        string      `json:"agent_type,omitempty"`
+	Workspaces       []string    `json:"workspaces"`
+	Projects         ProjectList `json:"projects"`                    // agent 上报的可用项目列表
+	Models           []string    `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string    `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string    `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string    `json:"tools,omitempty"`             // agent 支持的编码工具列表 (claudecode, opencode)
+	MaxConcurrent    int         `json:"max_concurrent"`
+	AuthToken        string      `json:"auth_token,omitempty"`
+	DeployTargets    []string    `json:"deploy_targets,omitempty"` // 可用部署目标 ["local","ssh-prod"]
+	HostPlatform     string      `json:"host_platform,omitempty"`  // 主机平台 "win"
+	Pipelines        []string    `json:"pipelines,omitempty"`      // deploy agent 可用 pipeline
 }
 
 // RegisterAckPayload 注册确认
@@ -54,14 +55,43 @@ type RegisterAckPayload struct {
 
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
-	AgentID          string   `json:"agent_id"`
-	ActiveSessions   int      `json:"active_sessions"`
-	Load             float64  `json:"load"`
-	Projects         []string `json:"projects,omitempty"`          // 定期更新项目列表
-	Models           []string `json:"models,omitempty"`            // 兼容旧版
-	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
-	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
-	Tools            []string `json:"tools,omitempty"`             // 定期更新编码工具列表
+	AgentID          string      `json:"agent_id"`
+	ActiveSessions   int         `json:"active_sessions"`
+	Load             float64     `json:"load"`
+	Projects         ProjectList `json:"projects,omitempty"`          // 定期更新项目列表
+	Models           []string    `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string    `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string    `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string    `json:"tools,omitempty"`             // 定期更新编码工具列表
+}
+
+// ProjectList 兼容 ["proj"] 和 [{"name":"proj"}] 两种项目列表格式。
+type ProjectList []string
+
+// UnmarshalJSON 支持老格式字符串数组和新格式对象数组。
+func (p *ProjectList) UnmarshalJSON(data []byte) error {
+	var names []string
+	if err := json.Unmarshal(data, &names); err == nil {
+		*p = ProjectList(names)
+		return nil
+	}
+
+	var items []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &items); err != nil {
+		return err
+	}
+
+	names = names[:0]
+	for _, item := range items {
+		if item.Name == "" {
+			continue
+		}
+		names = append(names, item.Name)
+	}
+	*p = ProjectList(names)
+	return nil
 }
 
 // TaskAssignPayload 任务分派
@@ -76,10 +106,10 @@ type TaskAssignPayload struct {
 	Tool          string `json:"tool,omitempty"`          // 编码工具: claudecode, opencode（默认 claudecode）
 	AutoDeploy    bool   `json:"auto_deploy,omitempty"`   // 编码完成后自动部署+验证
 	DeployOnly    bool   `json:"deploy_only,omitempty"`   // 跳过编码，直接部署+验证
-	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	DeployPort    string `json:"deploy_port,omitempty"`    // 部署端口号
-	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
-	Pipeline      string `json:"pipeline,omitempty"`       // deploy pipeline 名称
+	DeployTarget  string `json:"deploy_target,omitempty"` // 部署目标: local/ssh-prod/all
+	DeployPort    string `json:"deploy_port,omitempty"`   // 部署端口号
+	PackOnly      bool   `json:"pack_only,omitempty"`     // 仅打包不部署
+	Pipeline      string `json:"pipeline,omitempty"`      // deploy pipeline 名称
 }
 
 // TaskAcceptedPayload 任务接受确认

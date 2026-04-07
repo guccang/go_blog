@@ -285,7 +285,9 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	}
 
 	targetAgent := b.cfg.LLMAgentID
-	if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
+	if isCmdCommand(content) && b.cfg.CmdAgentID != "" {
+		targetAgent = b.cfg.CmdAgentID
+	} else if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
 		targetAgent = b.cfg.BackendAgentID
 	}
 	if targetAgent == "" {
@@ -1361,9 +1363,12 @@ func buildPushMessageID(userID string) string {
 	return fmt.Sprintf("%s-%d", sanitizeFileName(userID), time.Now().UnixNano())
 }
 
+func isCmdCommand(content string) bool {
+	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg"
+}
+
 func isBackendCommand(content string) bool {
-	return strings.HasPrefix(content, "/cg") || strings.HasPrefix(content, "cg ") || content == "cg" ||
-		strings.EqualFold(content, "reload prompts")
+	return strings.EqualFold(content, "reload prompts")
 }
 
 func getHelpText() string {

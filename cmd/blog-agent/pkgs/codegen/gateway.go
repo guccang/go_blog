@@ -93,6 +93,20 @@ type TaskEvent struct {
 	Error    string // 仅 complete 时有效
 }
 
+type SessionRoute struct {
+	AgentID string
+	Channel string
+	Account string
+}
+
+type GatewayBridgeOptions struct {
+	AgentID      string
+	AgentType    string
+	AgentName    string
+	Description  string
+	WorkspaceDir string
+}
+
 // GatewayBridge blog-agent 的 gateway 适配层
 type GatewayBridge struct {
 	client      *uap.Client
@@ -109,6 +123,9 @@ type GatewayBridge struct {
 	taskEventChannels map[string]chan TaskEvent
 	taskEventMu       sync.Mutex
 
+	sessionRoutes map[string]SessionRoute
+	routeMu       sync.RWMutex
+
 	mu sync.Mutex
 }
 
@@ -117,6 +134,17 @@ var gatewayBridge *GatewayBridge
 
 // InitGatewayBridge 初始化 blog-agent 到 gateway 的连接
 func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
+	InitGatewayBridgeWithOptions(gatewayURL, authToken, GatewayBridgeOptions{
+		AgentID:      "blog-agent",
+		AgentType:    "blog-agent",
+		AgentName:    "Go Blog Server",
+		Description:  "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+		WorkspaceDir: workspaceDir,
+	})
+}
+
+// InitGatewayBridgeWithOptions 初始化自定义 agent 身份的 gateway 连接。
+func InitGatewayBridgeWithOptions(gatewayURL, authToken string, opts GatewayBridgeOptions) {
 	// 统一 token：gateway_token 同时作为 agent 认证 token
 	if authToken != "" {
 		agentToken = authToken
@@ -125,9 +153,26 @@ func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 	// 构建工具定义和映射表
 	toolDefs, toolMapping := buildToolDefs()
 
-	client := uap.NewClient(gatewayURL, "blog-agent", "blog-agent", "Go Blog Server")
+	agentID := strings.TrimSpace(opts.AgentID)
+	if agentID == "" {
+		agentID = "blog-agent"
+	}
+	agentType := strings.TrimSpace(opts.AgentType)
+	if agentType == "" {
+		agentType = agentID
+	}
+	agentName := strings.TrimSpace(opts.AgentName)
+	if agentName == "" {
+		agentName = agentID
+	}
+	description := strings.TrimSpace(opts.Description)
+	if description == "" {
+		description = agentName
+	}
+
+	client := uap.NewClient(gatewayURL, agentID, agentType, agentName)
 	client.AuthToken = authToken
-	client.Description = "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏"
+	client.Description = description
 	client.Capacity = 100
 	client.Tools = toolDefs
 	client.Meta = map[string]any{
@@ -135,8 +180,8 @@ func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 	}
 
 	// 加载 workspace 描述
-	if workspaceDir != "" {
-		ws := agentbase.LoadWorkspace(workspaceDir)
+	if opts.WorkspaceDir != "" {
+		ws := agentbase.LoadWorkspace(opts.WorkspaceDir)
 		if ws.Summary != "" {
 			client.Description = ws.Summary
 		}
@@ -162,6 +207,7 @@ func InitGatewayBridge(gatewayURL, authToken, workspaceDir string) {
 		gatewayHTTP:       httpURL,
 		toolMapping:       toolMapping,
 		taskEventChannels: make(map[string]chan TaskEvent),
+		sessionRoutes:     make(map[string]SessionRoute),
 	}
 
 	client.OnMessage = bridge.handleMessage
@@ -196,6 +242,46 @@ func GetGatewayClient() *uap.Client {
 		return gatewayBridge.client
 	}
 	return nil
+}
+
+func (b *GatewayBridge) setSessionRoute(sessionID string, route SessionRoute) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || strings.TrimSpace(route.AgentID) == "" {
+		return
+	}
+	route.Account = strings.TrimSpace(route.Account)
+	route.Channel = strings.TrimSpace(route.Channel)
+	b.routeMu.Lock()
+	b.sessionRoutes[sessionID] = route
+	b.routeMu.Unlock()
+}
+
+func (b *GatewayBridge) sessionRoute(sessionID string) (SessionRoute, bool) {
+	b.routeMu.RLock()
+	defer b.routeMu.RUnlock()
+	route, ok := b.sessionRoutes[sessionID]
+	return route, ok
+}
+
+func (b *GatewayBridge) clearSessionRoute(sessionID string) {
+	b.routeMu.Lock()
+	delete(b.sessionRoutes, sessionID)
+	b.routeMu.Unlock()
+}
+
+func (b *GatewayBridge) updateUserSessionRoute(userID, channel, sourceAgentID string) {
+	if userID == "" || sourceAgentID == "" {
+		return
+	}
+	sessionID := GetUserSessionID(userID)
+	if sessionID == "" {
+		return
+	}
+	b.setSessionRoute(sessionID, SessionRoute{
+		AgentID: sourceAgentID,
+		Channel: channel,
+		Account: userID,
+	})
 }
 
 // handleMessage 处理从 gateway 收到的 UAP 消息
@@ -260,9 +346,7 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 			return
 		}
 		b.pool.handleStreamEvent(&payload)
-
-		// 转发 task_event 给所有 wechat-agent
-		b.forwardToWechatAgents(msg)
+		b.forwardTaskUpdate(msg.Type, payload.SessionID, msg.Payload)
 
 	case MsgTaskComplete:
 		// 兼容 codegen 协议（SessionID）和 UAP 协议（TaskID）
@@ -301,7 +385,8 @@ func (b *GatewayBridge) handleMessage(msg *uap.Message) {
 			json.Unmarshal(msg.Payload, &payload)
 			agent := b.getAgent(msg.From)
 			b.pool.handleTaskComplete(agent, &payload)
-			b.forwardToWechatAgents(msg)
+			b.forwardTaskUpdate(msg.Type, payload.SessionID, msg.Payload)
+			b.clearSessionRoute(payload.SessionID)
 		}
 
 	case MsgFileReadResp, MsgTreeReadResp, MsgProjectCreateResp:
@@ -408,15 +493,16 @@ func (b *GatewayBridge) handleRegister(msg *uap.Message) {
 	}
 
 	agent := &RemoteAgent{
-		ID:   agentID,
-		Name: payload.Name,
+		ID:        agentID,
+		Name:      payload.Name,
+		AgentType: payload.AgentType,
 		Sender: &GatewaySender{
 			client:    b.client,
 			toAgentID: agentID,
 		},
 		Conn:             nil, // gateway 模式无直连
 		Workspaces:       payload.Workspaces,
-		Projects:         payload.Projects,
+		Projects:         []string(payload.Projects),
 		Models:           payload.Models,
 		ClaudeCodeModels: payload.ClaudeCodeModels,
 		OpenCodeModels:   payload.OpenCodeModels,
@@ -457,7 +543,7 @@ func (b *GatewayBridge) handleHeartbeat(msg *uap.Message) {
 	agent.mu.Lock()
 	agent.LastHeartbeat = time.Now()
 	if len(payload.Projects) > 0 {
-		agent.Projects = payload.Projects
+		agent.Projects = []string(payload.Projects)
 	}
 	if len(payload.Models) > 0 {
 		agent.Models = payload.Models
@@ -519,6 +605,7 @@ func (b *GatewayBridge) handleNotify(msg *uap.Message) {
 
 	// 调用 handleWechatCommand，获取结果
 	result := handler(payload.To, payload.Content)
+	b.updateUserSessionRoute(payload.To, payload.Channel, msg.From)
 
 	// 回发结果给 wechat-agent
 	b.client.SendTo(msg.From, uap.MsgNotify, uap.NotifyPayload{
@@ -571,6 +658,7 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 	if !ok {
 		return
 	}
+	b.updateUserSessionRoute(payload.To, payload.Channel, msg.From)
 
 	if err := b.client.SendTo(msg.From, uap.MsgNotify, uap.NotifyPayload{
 		Channel: "app",
@@ -614,38 +702,36 @@ func (b *GatewayBridge) sendWechatViaGateway(toUser, content string) error {
 	})
 }
 
-// forwardToWechatAgents 转发消息给所有连接的 wechat-agent（通过 gateway 路由）
-// 尝试从 payload 中提取 session_id，注入关联的 account 字段
-func (b *GatewayBridge) forwardToWechatAgents(msg *uap.Message) {
-	wechatAgentID := "wechat-wechat-agent"
-	payload := enrichPayloadWithAccount(msg.Payload)
-	b.client.Send(&uap.Message{
-		Type:    msg.Type,
+func (b *GatewayBridge) forwardTaskUpdate(msgType, sessionID string, raw json.RawMessage) {
+	route, ok := b.sessionRoute(sessionID)
+	if !ok || route.AgentID == "" {
+		return
+	}
+	payload := enrichPayloadWithRoute(raw, route)
+	if err := b.client.Send(&uap.Message{
+		Type:    msgType,
 		ID:      uap.NewMsgID(),
-		From:    "blog-agent",
-		To:      wechatAgentID,
+		From:    b.client.AgentID,
+		To:      route.AgentID,
 		Payload: payload,
 		Ts:      time.Now().UnixMilli(),
-	})
+	}); err != nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: forward %s failed session=%s to=%s: %v", msgType, sessionID, route.AgentID, err)
+	}
 }
 
-// enrichPayloadWithAccount 尝试从 payload 提取 session_id，注入关联的 account
-func enrichPayloadWithAccount(raw json.RawMessage) json.RawMessage {
-	var base struct {
-		SessionID string `json:"session_id"`
-	}
-	if json.Unmarshal(raw, &base) != nil || base.SessionID == "" {
-		return raw
-	}
-	account := GetSessionUser(base.SessionID)
-	if account == "" {
-		return raw
-	}
+// enrichPayloadWithRoute 尝试给流式任务 payload 注入 account/channel，便于客户端回路由。
+func enrichPayloadWithRoute(raw json.RawMessage, route SessionRoute) json.RawMessage {
 	var m map[string]interface{}
 	if json.Unmarshal(raw, &m) != nil {
 		return raw
 	}
-	m["account"] = account
+	if route.Account != "" {
+		m["account"] = route.Account
+	}
+	if route.Channel != "" {
+		m["channel"] = route.Channel
+	}
 	enriched, err := json.Marshal(m)
 	if err != nil {
 		return raw

@@ -28,6 +28,7 @@ type Config struct {
 
 	// 消息路由目标
 	LLMAgentID     string `json:"llm_agent_id"`     // llm-agent 的 ID（自然语言）
+	CmdAgentID     string `json:"cmd_agent_id"`     // cmd-agent 的 ID（/cg 命令）
 	BackendAgentID string `json:"backend_agent_id"` // blog-agent 的 ID（结构化命令）
 
 	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
@@ -41,6 +42,7 @@ func DefaultConfig() *Config {
 		GatewayURL:     "ws://127.0.0.1:9000/ws/uap",
 		AgentName:      "wechat-agent",
 		LLMAgentID:     "llm-agent",
+		CmdAgentID:     "cmd-agent",
 		BackendAgentID: "blog-agent",
 
 		ProtectedFiles: []string{"wechat-agent.json"},
@@ -56,6 +58,9 @@ func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, err
+	}
+	if cfg.CmdAgentID == "" {
+		cfg.CmdAgentID = "cmd-agent"
 	}
 	return cfg, nil
 }

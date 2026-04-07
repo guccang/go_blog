@@ -281,7 +281,7 @@ func handleCgStart(userID, param string) string {
 	if autoDeploy {
 		info += "\n部署: 编码完成后自动部署"
 	}
-	info += fmt.Sprintf("\n会话: %s\n\n进度将通过微信推送", sessionID)
+	info += fmt.Sprintf("\n会话: %s\n\n进度将通过当前客户端推送", sessionID)
 	return info
 }
 
@@ -329,7 +329,7 @@ func handleCgDeploy(userID, param string) string {
 	if packOnly {
 		info += "\n模式: 仅打包"
 	}
-	info += fmt.Sprintf("\n会话: %s\n\n进度将通过微信推送", sessionID)
+	info += fmt.Sprintf("\n会话: %s\n\n进度将通过当前客户端推送", sessionID)
 	return info
 }
 
@@ -383,7 +383,7 @@ func handleCgPipeline(userID, param string) string {
 	if agentName != "" {
 		info += fmt.Sprintf(" (agent: %s)", agentName)
 	}
-	info += fmt.Sprintf("\n会话: %s\n\n进度将通过微信推送", sessionID)
+	info += fmt.Sprintf("\n会话: %s\n\n进度将通过当前客户端推送", sessionID)
 	return info
 }
 
