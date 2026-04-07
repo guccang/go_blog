@@ -56,6 +56,7 @@ cmd/acp-agent/acp-agent
 cmd/init-agent/init-agent
 cmd/corn-agent/corn-agent
 cmd/acp-agent/settings/claudecode/minimax.json
+cmd/acp-agent/settings/claudecode/claude-glm.json
 *.gradle
 /.gradle-local-apk
 /.gradle-local-serial
