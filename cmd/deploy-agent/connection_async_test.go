@@ -102,6 +102,56 @@ func TestDeployProjectBuildOnlyRunsAsyncAndRecordsArtifact(t *testing.T) {
 	}
 }
 
+func TestDeployProjectBuildOnlyPropagatesPort(t *testing.T) {
+	conn := newAsyncTestConnection(t, "flutter-apk-test", true, 1)
+
+	result := parseToolJSON(t, conn.toolDeployProject(map[string]interface{}{
+		"project":   "flutter-apk-test",
+		"pack_only": true,
+		"port":      8888,
+	}, func(string, string) {}))
+	if success, _ := result["success"].(bool); !success {
+		t.Fatalf("expected success result, got %#v", result)
+	}
+	if got, _ := result["port"].(float64); got != 8888 {
+		t.Fatalf("expected accepted result port=8888, got %#v", result["port"])
+	}
+
+	sessionID, _ := result["session_id"].(string)
+	final := waitForTaskStatus(t, conn, sessionID, deployTaskStatusDone, 4*time.Second)
+	if got, _ := final["port"].(float64); got != 8888 {
+		t.Fatalf("expected final status port=8888, got %#v", final["port"])
+	}
+	resultData, _ := final["result"].(map[string]interface{})
+	if got, _ := resultData["port"].(float64); got != 8888 {
+		t.Fatalf("expected result payload port=8888, got %#v", resultData["port"])
+	}
+}
+
+func TestCloneProjectWithServicePortOverridesTarget(t *testing.T) {
+	proj := &ProjectConfig{
+		Name: "demo",
+		Targets: []*Target{
+			{Name: "local", ServicePort: 0},
+			{Name: "ssh-prod", ServicePort: 0},
+		},
+	}
+
+	cloned := cloneProjectWithServicePort(proj, 8888, "ssh-prod")
+	if cloned == proj {
+		t.Fatalf("expected cloned project when service port override is provided")
+	}
+	if got := cloned.Targets[0].ServicePort; got != 0 {
+		t.Fatalf("expected local target port to remain 0, got %d", got)
+	}
+	if got := cloned.Targets[1].ServicePort; got != 8888 {
+		t.Fatalf("expected ssh-prod target port=8888, got %d", got)
+	}
+	if got := proj.Targets[1].ServicePort; got != 0 {
+		t.Fatalf("expected original project to remain unchanged, got %d", got)
+	}
+}
+
 func TestDeployProjectBuildOnlyRequiresPackOnly(t *testing.T) {
 	conn := newAsyncTestConnection(t, "flutter-apk-test", true, 1)
 

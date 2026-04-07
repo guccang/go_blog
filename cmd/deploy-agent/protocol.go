@@ -48,21 +48,22 @@ type HeartbeatPayload struct {
 
 // TaskAssignPayload 任务分派
 type TaskAssignPayload struct {
-	SessionID     string `json:"session_id"`
-	Project       string `json:"project"`
-	Prompt        string `json:"prompt"`
-	AutoDeploy    bool   `json:"auto_deploy,omitempty"`
-	DeployOnly    bool   `json:"deploy_only,omitempty"`
-	DeployTarget  string `json:"deploy_target,omitempty"`  // 部署目标: local/ssh-prod/all
-	PackOnly      bool   `json:"pack_only,omitempty"`      // 仅打包不部署
-	Pipeline      string `json:"pipeline,omitempty"`       // pipeline 名称（远程触发）
-	DeployMode    string `json:"deploy_mode,omitempty"`    // 部署模式: auto/full/increment
+	SessionID    string `json:"session_id"`
+	Project      string `json:"project"`
+	Prompt       string `json:"prompt"`
+	AutoDeploy   bool   `json:"auto_deploy,omitempty"`
+	DeployOnly   bool   `json:"deploy_only,omitempty"`
+	DeployTarget string `json:"deploy_target,omitempty"` // 部署目标: local/ssh-prod/all
+	PackOnly     bool   `json:"pack_only,omitempty"`     // 仅打包不部署
+	Pipeline     string `json:"pipeline,omitempty"`      // pipeline 名称（远程触发）
+	DeployMode   string `json:"deploy_mode,omitempty"`   // 部署模式: auto/full/increment
+	ServicePort  int    `json:"port,omitempty"`          // 服务监听端口（部署前 kill 占用该端口的进程）
 	// Adhoc 一次性部署参数（ssh_host 存在时进入 adhoc 模式）
-	ProjectDir    string `json:"project_dir,omitempty"`    // Go 项目目录
-	SSHHost       string `json:"ssh_host,omitempty"`       // SSH 目标（如 root@1.2.3.4）
-	SSHPort       int    `json:"ssh_port,omitempty"`       // SSH 端口（默认 22）
-	RemoteDir     string `json:"remote_dir,omitempty"`     // 远程部署目录
-	StartArgs     string `json:"start_args,omitempty"`     // 启动参数
+	ProjectDir string `json:"project_dir,omitempty"` // Go 项目目录
+	SSHHost    string `json:"ssh_host,omitempty"`    // SSH 目标（如 root@1.2.3.4）
+	SSHPort    int    `json:"ssh_port,omitempty"`    // SSH 端口（默认 22）
+	RemoteDir  string `json:"remote_dir,omitempty"`  // 远程部署目录
+	StartArgs  string `json:"start_args,omitempty"`  // 启动参数
 }
 
 // TaskAcceptedPayload 任务接受确认

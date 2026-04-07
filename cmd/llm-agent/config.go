@@ -200,7 +200,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Pipeline = &ToolPolicyPipeline{Global: cfg.ToolPolicy}
 	}
 	if cfg.Pipeline != nil && len(cfg.Pipeline.BaseTools) == 0 {
-		cfg.Pipeline.BaseTools = []string{"ExecuteCode", "Bash"}
+		cfg.Pipeline.BaseTools = []string{"ExecuteCode"}
 	}
 
 	// 解析 provider 引用，填充运行时字段

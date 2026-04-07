@@ -26,6 +26,7 @@ type deployTaskRecord struct {
 	Pipeline     string         `json:"pipeline,omitempty"`
 	ProjectDir   string         `json:"project_dir,omitempty"`
 	SSHHost      string         `json:"ssh_host,omitempty"`
+	ServicePort  int            `json:"port,omitempty"`
 	DeployTarget string         `json:"deploy_target,omitempty"`
 	PackOnly     bool           `json:"pack_only,omitempty"`
 	Status       string         `json:"status"`
@@ -46,6 +47,7 @@ func newDeployTaskRecord(sessionID, toolName string, task TaskAssignPayload) *de
 		Pipeline:     task.Pipeline,
 		ProjectDir:   task.ProjectDir,
 		SSHHost:      task.SSHHost,
+		ServicePort:  task.ServicePort,
 		DeployTarget: task.DeployTarget,
 		PackOnly:     task.PackOnly,
 		Status:       deployTaskStatusQueued,
@@ -77,6 +79,7 @@ func (r *deployTaskRecord) snapshot() map[string]any {
 		"pipeline":      r.Pipeline,
 		"project_dir":   r.ProjectDir,
 		"ssh_host":      r.SSHHost,
+		"port":          r.ServicePort,
 		"deploy_target": r.DeployTarget,
 		"pack_only":     r.PackOnly,
 		"status":        r.Status,

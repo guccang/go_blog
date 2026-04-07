@@ -1,6 +1,6 @@
 {
     "acp_agent_cmd": "npx",
-    "agent_name": "acp-agent-win",
+    "agent_name": "acp-agent-mac",
     "agent_type": "acp-agent",
     "analysis_timeout": 3600,
     "auth_token": "guccang@blog.guccang.cn",
@@ -15,6 +15,6 @@
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",
     "workspaces": [
-        "E:\\githubdesktop"
+        "/Users/guccang/github_repo/acpworkspace"
     ]
 }

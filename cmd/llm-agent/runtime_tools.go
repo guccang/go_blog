@@ -1,5 +1,7 @@
 package main
 
+import "log"
+
 type ToolRuntimeView struct {
 	AllTools        []LLMTool
 	VisibleTools    []LLMTool
@@ -38,6 +40,8 @@ func (b *Bridge) buildRootToolRuntimeView(ctx *TaskContext, query string, allToo
 	visible := b.injectVirtualTools(cloneTools(allTools), ctx.NoTools)
 	if !ctx.NoTools && query != "" && isGreeting(query) {
 		visible = nil
+	} else if !ctx.NoTools && query != "" {
+		visible = b.filterRootToolsByMatchedSkills(query, visible)
 	}
 	view := newToolRuntimeView(allTools, visible)
 	for _, tool := range visible {
@@ -46,6 +50,61 @@ func (b *Bridge) buildRootToolRuntimeView(ctx *TaskContext, query string, allToo
 		}
 	}
 	return view
+}
+
+func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) []LLMTool {
+	if b.skillMgr == nil || len(tools) == 0 {
+		return tools
+	}
+
+	limit := 2
+	if b.cfg != nil && b.cfg.MaxMatchedSkills > 0 {
+		limit = b.cfg.MaxMatchedSkills
+	}
+	matchedSkills := b.skillMgr.MatchByQuery(query, limit)
+	if len(matchedSkills) == 0 {
+		return tools
+	}
+
+	allowed := make(map[string]bool)
+	var matchedNames []string
+	for _, skill := range matchedSkills {
+		matchedNames = append(matchedNames, skill.Name)
+		for _, toolName := range skill.Tools {
+			allowed[toolName] = true
+			allowed[sanitizeToolName(toolName)] = true
+		}
+	}
+
+	var filtered []LLMTool
+	for _, tool := range tools {
+		name := b.resolveToolName(tool.Function.Name)
+		switch {
+		case isRootVirtualTool(name):
+			filtered = append(filtered, tool)
+		case allowed[name] || allowed[tool.Function.Name]:
+			filtered = append(filtered, tool)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return tools
+	}
+	log.Printf("[RootToolPolicy] matched skills=%v tools=%d→%d query=%s", matchedNames, len(tools), len(filtered), truncate(query, 120))
+	return filtered
+}
+
+func isRootVirtualTool(name string) bool {
+	switch name {
+	case "plan_and_execute", "execute_skill",
+		"get_skill_detail", "get_tool_detail", "get_agent_detail",
+		"WebSearch", "WebFetch",
+		"set_persona", "set_rule",
+		"list_providers", "get_current_model", "switch_provider", "switch_model":
+		return true
+	default:
+		return false
+	}
 }
 
 func (b *Bridge) buildSubTaskToolRuntimeView(tools []LLMTool, hints []string) *ToolRuntimeView {

@@ -1,0 +1,10 @@
+{
+  "gateway_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "guccang@blog.guccang.cn",
+  "agent_id": "cmd-agent",
+  "agent_name": "cmd-agent",
+  "workspace_dir": "workspace",
+  "protected_files": [
+    "cmd-agent.json"
+  ]
+}

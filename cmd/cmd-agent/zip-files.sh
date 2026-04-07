@@ -23,8 +23,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" cmd-agent.json workspace/
+# 打包二进制 + 配置 + 发布脚本
+zip -r "${OUTPUT}" "$BINNAME" cmd-agent.json publish.sh workspace/
 
 # 清理编译产物
 rm -f "$BINNAME"

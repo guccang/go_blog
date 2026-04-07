@@ -454,6 +454,10 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 	// 执行发布脚本
 	if t.RemoteScript != "" {
 		d.logf("info", "[STEP 4/%d] 执行 %s (local)...\n", totalSteps, t.RemoteScript)
+		if err := d.cleanupLocalPortOccupant(t.ServicePort); err != nil {
+			d.logf("error", "[ERROR] 清理端口 %d 失败: %v\n", t.ServicePort, err)
+			return fmt.Errorf("清理端口 %d 失败: %v", t.ServicePort, err)
+		}
 		scriptPath := filepath.Join(targetDir, t.RemoteScript)
 		if err := d.runLocalScript(scriptPath, targetDir); err != nil {
 			d.logf("error", "[ERROR] 执行 %s 失败: %v\n", t.RemoteScript, err)
@@ -469,6 +473,25 @@ func (d *Deployer) deployLocal(t *Target, totalSteps int) error {
 
 	d.logf("info", "[OK] %s 部署成功\n", label)
 	return nil
+}
+
+func (d *Deployer) cleanupLocalPortOccupant(port int) error {
+	if port <= 0 {
+		return nil
+	}
+
+	d.logf("info", "  > 清理本机端口 %d 占用...\n", port)
+	if runtime.GOOS == "windows" {
+		cmd := fmt.Sprintf(`for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%d" ^| findstr LISTENING') do taskkill /F /PID %%a`, port)
+		return d.runLocalCmd("cmd", []string{"/c", cmd}, "")
+	}
+
+	cmd := fmt.Sprintf(`PIDS=$(lsof -ti:%[1]d 2>/dev/null); `+
+		`if [ -z "$PIDS" ] && command -v ss >/dev/null 2>&1; then `+
+		`PIDS=$(ss -tlnp 2>/dev/null | grep ':%[1]d ' | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u); fi; `+
+		`if [ -z "$PIDS" ]; then echo "No process found on port %[1]d"; exit 0; fi; `+
+		`echo "Killing local port %[1]d PIDs: $PIDS"; echo "$PIDS" | tr ' ' '\n' | sed '/^$/d' | xargs kill -9`, port)
+	return d.runLocalCmd("bash", []string{"-lc", cmd}, "")
 }
 
 // deployBridge 通过 Bridge HTTP API 部署

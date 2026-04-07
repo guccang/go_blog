@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ type AsyncSessionInfo struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
 }
+
+const keyToolDataHeader = "关键工具返回数据（后续子任务必须引用，禁止编造）:"
 
 // extractKeyToolData 从子任务的 ToolCallRecords 中提取关键结构化字段
 // 用于 enriched sibling context，让后续依赖子任务能看到 project_dir、session_id 等数据
@@ -79,8 +82,29 @@ func extractKeyToolData(session *TaskSession) string {
 
 		if len(extracted) > 0 {
 			var kvs []string
-			for k, v := range extracted {
+			for _, k := range keyFields {
+				v, ok := extracted[k]
+				if !ok {
+					continue
+				}
 				kvs = append(kvs, fmt.Sprintf("%s=%s", k, v))
+			}
+			var extraKeys []string
+			for k := range extracted {
+				found := false
+				for _, ordered := range keyFields {
+					if k == ordered {
+						found = true
+						break
+					}
+				}
+				if !found {
+					extraKeys = append(extraKeys, k)
+				}
+			}
+			sort.Strings(extraKeys)
+			for _, k := range extraKeys {
+				kvs = append(kvs, fmt.Sprintf("%s=%s", k, extracted[k]))
 			}
 			parts = append(parts, fmt.Sprintf("- %s: %s", rec.ToolName, strings.Join(kvs, ", ")))
 		}
@@ -89,7 +113,20 @@ func extractKeyToolData(session *TaskSession) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "关键工具返回数据（后续子任务必须引用，禁止编造）:\n" + strings.Join(parts, "\n")
+	return keyToolDataHeader + "\n" + strings.Join(parts, "\n")
+}
+
+func buildSubTaskResultText(summary, keyData string) string {
+	summary = strings.TrimSpace(summary)
+	keyData = strings.TrimSpace(keyData)
+	switch {
+	case keyData == "":
+		return summary
+	case summary == "":
+		return keyData
+	default:
+		return keyData + "\n\n结果摘要:\n" + summary
+	}
 }
 
 // detectAsyncResults 从子任务的工具调用记录中检测异步会话
@@ -543,16 +580,9 @@ func (o *Orchestrator) executeSubTask(
 	// 标记完成
 	session.SetStatus("done")
 
-	// 构建完整结果：LLM 回复 + 关键工具数据
-	fullResult := finalText
+	// 构建完整结果：关键工具数据优先，保证 project_dir 等下游参数不会被长摘要截断。
 	keyData := extractKeyToolData(session)
-	if keyData != "" {
-		if finalText != "" {
-			fullResult = finalText + "\n\n" + keyData
-		} else {
-			fullResult = keyData
-		}
-	}
+	fullResult := buildSubTaskResultText(finalText, keyData)
 
 	session.SetResult(fullResult)
 	o.saveSession(session)

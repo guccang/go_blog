@@ -24,6 +24,12 @@ var bashBlacklist = []string{
 	"chmod -R 777 /",
 }
 
+var sourceWriteExtensions = []string{
+	".go", ".js", ".jsx", ".ts", ".tsx", ".py", ".java", ".kt", ".rs",
+	".c", ".cc", ".cpp", ".h", ".hpp", ".dart", ".html", ".css", ".scss",
+	".json", ".yaml", ".yml", ".xml", ".sql", ".sh",
+}
+
 // BashToolManager 内置 Bash 工具管理器
 type BashToolManager struct {
 	Timeout   time.Duration // 命令超时（默认 30s）
@@ -40,6 +46,9 @@ func (m *BashToolManager) Exec(parentCtx context.Context, command, workDir strin
 		if strings.Contains(cmdLower, blocked) {
 			return "", fmt.Errorf("命令被安全策略拦截: 包含危险操作 '%s'", blocked)
 		}
+	}
+	if looksLikeSourceMutationCommand(cmdLower) {
+		return "", fmt.Errorf("Bash 仅用于环境检查、日志/端口排查、构建和测试，不允许直接创建或编辑源码文件；编码请改用 execute_skill(coding) 或 AcpStartSession")
 	}
 
 	timeout := m.Timeout
@@ -119,9 +128,9 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 		toolName = sanitizeToolName(m.AgentID + ".Bash")
 	}
 
-	desc := fmt.Sprintf("在 %s 上执行 bash 命令", m.AgentID)
+	desc := fmt.Sprintf("在 %s 上执行一次性 bash 命令；仅用于环境检查、日志/端口/进程查看、构建、测试、打包等 shell 操作，禁止用它创建、覆盖或编辑业务源码文件", m.AgentID)
 	if m.Platform != "" {
-		desc = fmt.Sprintf("在 %s（%s）上执行 bash 命令", m.AgentID, m.Platform)
+		desc = fmt.Sprintf("在 %s（%s）上执行一次性 bash 命令；仅用于环境检查、日志/端口/进程查看、构建、测试、打包等 shell 操作，禁止用它创建、覆盖或编辑业务源码文件", m.AgentID, m.Platform)
 	}
 
 	return []LLMTool{
@@ -134,6 +143,27 @@ func (m *BashToolManager) ToolDefs() []LLMTool {
 			},
 		},
 	}
+}
+
+func looksLikeSourceMutationCommand(command string) bool {
+	hasWriteIntent := strings.Contains(command, " >") ||
+		strings.Contains(command, ">>") ||
+		strings.Contains(command, "tee ") ||
+		strings.Contains(command, "sed -i") ||
+		strings.Contains(command, "perl -0pi") ||
+		strings.Contains(command, "cat <<") ||
+		strings.Contains(command, "printf ") ||
+		strings.Contains(command, "echo ")
+	if !hasWriteIntent {
+		return false
+	}
+
+	for _, ext := range sourceWriteExtensions {
+		if strings.Contains(command, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // HandleTool 处理工具调用，返回 (result, handled)

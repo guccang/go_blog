@@ -156,6 +156,27 @@ func newDeploySessionID(prefix string) string {
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }
 
+func parseOptionalIntArg(args map[string]interface{}, key string) int {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return 0
+	}
+	switch v := raw.(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
 func buildAcceptedTaskResult(rec *deployTaskRecord) string {
 	data := rec.snapshot()
 	data["accepted"] = true
@@ -194,6 +215,26 @@ func (c *Connection) validateProjectTask(proj *ProjectConfig, packOnly bool, dep
 	return nil
 }
 
+func cloneProjectWithServicePort(proj *ProjectConfig, servicePort int, deployTarget string) *ProjectConfig {
+	if proj == nil || servicePort <= 0 {
+		return proj
+	}
+
+	cloned := *proj
+	cloned.Targets = make([]*Target, 0, len(proj.Targets))
+	for _, target := range proj.Targets {
+		if target == nil {
+			continue
+		}
+		targetCopy := *target
+		if deployTarget == "" || target.Name == deployTarget || target.Host == deployTarget || strings.HasPrefix(target.Name, deployTarget+".") {
+			targetCopy.ServicePort = servicePort
+		}
+		cloned.Targets = append(cloned.Targets, &targetCopy)
+	}
+	return &cloned
+}
+
 func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level, text string)) (map[string]any, error) {
 	emit := func(level, text string) {
 		if sendEvent != nil {
@@ -214,7 +255,7 @@ func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level,
 			SSHPort:     task.SSHPort,
 			RemoteDir:   task.RemoteDir,
 			StartArgs:   task.StartArgs,
-			ServicePort: 0,
+			ServicePort: task.ServicePort,
 		}
 
 		emit("system", fmt.Sprintf("🚀 开始 adhoc 部署到 %s...", task.SSHHost))
@@ -240,6 +281,7 @@ func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level,
 			"project_dir": task.ProjectDir,
 			"ssh_host":    task.SSHHost,
 			"remote_dir":  task.RemoteDir,
+			"port":        task.ServicePort,
 		}, nil
 	}
 
@@ -267,6 +309,7 @@ func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level,
 		emit("system", fmt.Sprintf("🚀 开始部署项目 [%s] (目标: %s)...", proj.Name, targetLabel))
 	}
 
+	proj = cloneProjectWithServicePort(proj, task.ServicePort, targetFilter)
 	deployer := NewDeployer(&deployCfg, proj, c.password)
 	deployer.DeployMode = DeployMode(task.DeployMode)
 	deployer.OnProgress = func(level, message string) {
@@ -297,6 +340,7 @@ func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level,
 	result := map[string]any{
 		"project":       proj.Name,
 		"project_dir":   proj.ProjectDir,
+		"port":          task.ServicePort,
 		"deploy_target": targetFilter,
 		"pack_only":     packOnly,
 	}
@@ -756,6 +800,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 				"properties": map[string]interface{}{
 					"project":       map[string]interface{}{"type": "string", "description": "项目名称（必须是 DeployListProjects 中 configured=true 的项目）"},
 					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标名称（如 local, ssh-prod），来自 DeployListProjects 返回的 targets 列表，不填则使用默认目标"},
+					"port":          map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程；会覆盖目标配置中的 service_port"},
 					"deploy_mode":   map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
 					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
 				},
@@ -957,6 +1002,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	packOnly, _ := args["pack_only"].(bool)
 	projectDir, _ := args["project_dir"].(string)
 	deployModeStr, _ := args["deploy_mode"].(string)
+	servicePort := parseOptionalIntArg(args, "port")
 
 	proj, err := c.resolveProject(projectName)
 	if err != nil && projectDir != "" {
@@ -990,6 +1036,7 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 		PackOnly:     packOnly,
 		DeployTarget: deployTarget,
 		DeployMode:   deployModeStr,
+		ServicePort:  servicePort,
 	}
 	task.ProjectDir = proj.ProjectDir
 	rec := newDeployTaskRecord(task.SessionID, "DeployProject", task)
@@ -1019,15 +1066,12 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	}
 
 	sshPort := 22
-	if p, ok := args["ssh_port"].(float64); ok && p > 0 {
-		sshPort = int(p)
+	if p := parseOptionalIntArg(args, "ssh_port"); p > 0 {
+		sshPort = p
 	}
 	remoteDir, _ := args["remote_dir"].(string)
 	startArgs, _ := args["start_args"].(string)
-	servicePort := 0
-	if p, ok := args["port"].(float64); ok && p > 0 {
-		servicePort = int(p)
-	}
+	servicePort := parseOptionalIntArg(args, "port")
 
 	adhoc := &AdhocConfig{
 		ProjectDir:  projectDir,
@@ -1039,13 +1083,14 @@ func (c *Connection) toolDeployAdhoc(args map[string]interface{}, sendProgress f
 	}
 
 	task := TaskAssignPayload{
-		SessionID:  newDeploySessionID("adhoc"),
-		Project:    projectName,
-		ProjectDir: adhoc.ProjectDir,
-		SSHHost:    adhoc.SSHHost,
-		SSHPort:    adhoc.SSHPort,
-		RemoteDir:  adhoc.RemoteDir,
-		StartArgs:  adhoc.StartArgs,
+		SessionID:   newDeploySessionID("adhoc"),
+		Project:     projectName,
+		ProjectDir:  adhoc.ProjectDir,
+		SSHHost:     adhoc.SSHHost,
+		SSHPort:     adhoc.SSHPort,
+		RemoteDir:   adhoc.RemoteDir,
+		StartArgs:   adhoc.StartArgs,
+		ServicePort: adhoc.ServicePort,
 	}
 	rec := newDeployTaskRecord(task.SessionID, "DeployAdhoc", task)
 	run := func() (map[string]any, error) {

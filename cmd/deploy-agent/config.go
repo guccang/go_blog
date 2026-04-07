@@ -143,6 +143,7 @@ type targetJSON struct {
 	Type         string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
 	BridgeURL    string `json:"bridge_url,omitempty"` // bridge HTTP 地址
 	AuthToken    string `json:"auth_token,omitempty"` // bridge 认证 token
+	ServicePort  int    `json:"service_port,omitempty"`
 }
 
 // LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
@@ -632,6 +633,7 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			RemoteDir:    tj.RemoteDir,
 			RemoteScript: tj.RemoteScript,
 			Platform:     targetPlatform,
+			ServicePort:  tj.ServicePort,
 		}, nil
 	}
 
@@ -656,6 +658,7 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 			Type:         "bridge",
 			BridgeURL:    tj.BridgeURL,
 			AuthToken:    tj.AuthToken,
+			ServicePort:  tj.ServicePort,
 		}, nil
 	}
 
@@ -680,6 +683,7 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 		RemoteScript: tj.RemoteScript,
 		Platform:     targetPlatform,
 		Type:         "ssh",
+		ServicePort:  tj.ServicePort,
 	}, nil
 }
 

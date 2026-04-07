@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -223,6 +224,80 @@ func (sm *SkillManager) MatchByTools(toolHints []string) []SkillEntry {
 	}
 
 	return matched
+}
+
+// MatchByQuery 根据用户请求的关键词静态匹配 skill，用于根任务工具收窄。
+func (sm *SkillManager) MatchByQuery(query string, limit int) []SkillEntry {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" || len(sm.skills) == 0 {
+		return nil
+	}
+
+	type scoredSkill struct {
+		Skill SkillEntry
+		Score int
+	}
+
+	var scored []scoredSkill
+	for _, skill := range sm.GetAvailableSkills() {
+		score := scoreSkillForQuery(skill, query)
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredSkill{Skill: skill, Score: score})
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].Score == scored[j].Score {
+			return scored[i].Skill.Name < scored[j].Skill.Name
+		}
+		return scored[i].Score > scored[j].Score
+	})
+
+	if limit > 0 && len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	matched := make([]SkillEntry, 0, len(scored))
+	for _, item := range scored {
+		matched = append(matched, item.Skill)
+	}
+	return matched
+}
+
+func scoreSkillForQuery(skill SkillEntry, query string) int {
+	score := 0
+	name := strings.ToLower(strings.TrimSpace(skill.Name))
+	if name != "" && strings.Contains(query, name) {
+		score += 100
+	}
+	for _, keyword := range skill.Keywords {
+		keyword = strings.ToLower(strings.TrimSpace(keyword))
+		if keyword != "" && strings.Contains(query, keyword) {
+			score += 20
+		}
+	}
+
+	switch skill.Name {
+	case "coding":
+		if containsAny(query, "编码", "代码", "开发", "编写", "实现", "修复", "bug", "重构", "写一个", "写个") {
+			score += 60
+		}
+	case "deploy":
+		if containsAny(query, "部署", "上线", "发布", "ssh-prod", "ssh") {
+			score += 60
+		}
+	}
+	return score
+}
+
+func containsAny(query string, keywords ...string) bool {
+	for _, keyword := range keywords {
+		if strings.Contains(query, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
 }
 
 // BuildCatalog 构建 skill 目录文本（Level 1，含 summary 用法要点）

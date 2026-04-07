@@ -317,15 +317,8 @@ func (rt *DAGExecutionRuntime) updateCompletedResults(msg subtaskResultMsg) {
 	if msg.result.Status != "done" {
 		return
 	}
-	enrichedResult := msg.result.Result
-	if msg.session != nil {
-		keyData := extractKeyToolData(msg.session)
-		if keyData != "" {
-			enrichedResult += "\n\n" + keyData
-		}
-	}
 	rt.completedResultsMu.Lock()
-	rt.completedResults[msg.result.SubTaskID] = enrichedResult
+	rt.completedResults[msg.result.SubTaskID] = msg.result.Result
 	rt.completedResultsMu.Unlock()
 }
 
