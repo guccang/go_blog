@@ -90,7 +90,7 @@ func initDelegationTokenStore() {
 // GatewaySender 通过 gateway 路由发送消息
 type GatewaySender struct {
 	client    *uap.Client
-	toAgentID string // 目标 agent ID（codegen-agent / deploy-agent 的 UAP ID）
+	toAgentID string // 目标 agent ID（acp-agent / deploy-agent 的 UAP ID）
 }
 
 // SendAgentMsg 通过 gateway 路由发送 AgentMessage

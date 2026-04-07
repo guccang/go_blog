@@ -132,7 +132,7 @@ func NewCMDAgent(cfg *Config) (*CMDAGent, error) {
 
 	client := uap.NewClient(cfg.GatewayURL, cfg.AgentID, "cmd", cfg.AgentName)
 	client.AuthToken = cfg.AuthToken
-	client.Description = "统一处理 /cg 命令并分发到 codegen-agent / deploy-agent"
+	client.Description = "统一处理 /cg 命令并分发到 acp-agent / deploy-agent"
 
 	a := &CMDAGent{
 		cfg:              cfg,
@@ -158,6 +158,10 @@ func (a *CMDAGent) Stop() {
 
 func (a *CMDAGent) handleMessage(msg *uap.Message) {
 	switch msg.Type {
+	case uap.MsgRegister:
+		a.handleRegister(msg)
+	case uap.MsgHeartbeat:
+		a.handleHeartbeat(msg)
 	case uap.MsgNotify:
 		a.handleNotify(msg)
 	case uap.MsgToolResult:
@@ -169,6 +173,14 @@ func (a *CMDAGent) handleMessage(msg *uap.Message) {
 	case "task_complete":
 		a.handleCodegenTaskComplete(msg)
 	}
+}
+
+func (a *CMDAGent) handleRegister(msg *uap.Message) {
+	_ = a.client.SendTo(msg.From, uap.MsgRegisterAck, uap.RegisterAckPayload{Success: true})
+}
+
+func (a *CMDAGent) handleHeartbeat(msg *uap.Message) {
+	_ = a.client.SendTo(msg.From, uap.MsgHeartbeatAck, struct{}{})
 }
 
 func (a *CMDAGent) handleNotify(msg *uap.Message) {

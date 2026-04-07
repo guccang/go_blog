@@ -171,6 +171,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 	if projectPath == "" {
 		return taskResult{Status: "error"}, fmt.Errorf("project not found in workspaces: %s", project)
 	}
+	log.Printf("[ACP] execute start: session=%s project=%s interactive=%v keep_session=%v prompt_len=%d", sessionID, project, interactive, keepSession, len(prompt))
 
 	// 记录会话
 	a.sessionsMu.Lock()
@@ -280,12 +281,35 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 			},
 		})
 
-		_, err = acpSession.conn.Prompt(ctx, acp.PromptRequest{
-			SessionId: acpSession.sessionID,
-			Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
-		})
+		promptDone := make(chan error, 1)
+		go func() {
+			_, promptErr := acpSession.conn.Prompt(ctx, acp.PromptRequest{
+				SessionId: acpSession.sessionID,
+				Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
+			})
+			promptDone <- promptErr
+		}()
+		watchdogStopped := make(chan struct{})
+		go a.watchPromptProgress(ctx, conn, callerAgentID, sessionID, requestID, project, acpClient, cancel, watchdogStopped)
+		err = <-promptDone
+		close(watchdogStopped)
 		if err != nil {
+			errText := err.Error()
+			if ctx.Err() != nil {
+				errText = fmt.Sprintf("%s (ctx=%v)", errText, ctx.Err())
+			}
+			lastAt, lastEvent := acpClient.ActivitySnapshot()
+			log.Printf("[ACP] prompt failed: session=%s project=%s err=%v last_event_at=%s last_event=%s", sessionID, project, err, lastAt.Format(time.RFC3339), lastEvent)
 			a.completeSession(sessionID, "failed", "")
+			a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+				SessionID: sessionID,
+				RequestID: requestID,
+				Event: StreamEvent{
+					Type: "system",
+					Text: fmt.Sprintf("❌ ACP 会话失败: %s", errText),
+					Done: true,
+				},
+			})
 			a.cleanupSessionRecord(sessionID)
 			go acpSession.Close()
 			return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
@@ -301,6 +325,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 		}
 
 		a.completeSession(sessionID, "completed", summary)
+		log.Printf("[ACP] prompt completed: session=%s project=%s files_written=%d files_edited=%d summary_len=%d", sessionID, project, len(uniqueStrings(filesWritten)), len(uniqueStrings(filesEdited)), len(summary))
 
 		// 一次性编码任务在完成后立即关闭 ACP 子进程，避免残留大量 node 进程。
 		if !shouldKeepSessionAlive(prompt, keepSession) {
@@ -411,12 +436,35 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 
 	log.Printf("[ACP] send_message: session=%s prompt_len=%d", sessionID, len(prompt))
 
-	_, err := acpSession.conn.Prompt(ctx, acp.PromptRequest{
-		SessionId: acpSession.sessionID,
-		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
-	})
+	promptDone := make(chan error, 1)
+	go func() {
+		_, promptErr := acpSession.conn.Prompt(ctx, acp.PromptRequest{
+			SessionId: acpSession.sessionID,
+			Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
+		})
+		promptDone <- promptErr
+	}()
+	watchdogStopped := make(chan struct{})
+	go a.watchPromptProgress(ctx, conn, callerAgentID, sessionID, requestID, project, acpClient, cancel, watchdogStopped)
+	err := <-promptDone
+	close(watchdogStopped)
 	if err != nil {
+		errText := err.Error()
+		if ctx.Err() != nil {
+			errText = fmt.Sprintf("%s (ctx=%v)", errText, ctx.Err())
+		}
+		lastAt, lastEvent := acpClient.ActivitySnapshot()
+		log.Printf("[ACP] send_message failed: session=%s err=%v last_event_at=%s last_event=%s", sessionID, err, lastAt.Format(time.RFC3339), lastEvent)
 		a.completeSession(sessionID, "failed", "")
+		a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+			SessionID: sessionID,
+			RequestID: requestID,
+			Event: StreamEvent{
+				Type: "system",
+				Text: fmt.Sprintf("❌ ACP 对话失败: %s", errText),
+				Done: true,
+			},
+		})
 		a.cleanupSessionRecord(sessionID)
 		go acpSession.Close()
 		return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
@@ -466,6 +514,51 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 		Model:        acpClient.GetModelID(),
 		CurrentMode:  acpClient.GetCurrentModeID(),
 	}, nil
+}
+
+func (a *Agent) watchPromptProgress(ctx context.Context, conn *Connection, callerAgentID, sessionID, requestID, project string, client *ACPClientImpl, cancel context.CancelFunc, stop <-chan struct{}) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	warned := false
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			lastAt, lastEvent := client.ActivitySnapshot()
+			idle := time.Since(lastAt)
+			if idle >= 45*time.Second && !warned {
+				warned = true
+				log.Printf("[ACP] stalled warning: session=%s project=%s idle=%s last_event=%s", sessionID, project, idle.Truncate(time.Second), lastEvent)
+				a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+					SessionID: sessionID,
+					RequestID: requestID,
+					Event: StreamEvent{
+						Type: "system",
+						Text: fmt.Sprintf("⏳ ACP 长时间无新进展（%s），最近事件: %s", idle.Truncate(time.Second), lastEvent),
+					},
+				})
+			}
+			if idle >= 120*time.Second {
+				log.Printf("[ACP] stalled timeout: session=%s project=%s idle=%s last_event=%s", sessionID, project, idle.Truncate(time.Second), lastEvent)
+				a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+					SessionID: sessionID,
+					RequestID: requestID,
+					Event: StreamEvent{
+						Type: "system",
+						Text: fmt.Sprintf("❌ ACP 长时间无进展，已中止。最近事件: %s", lastEvent),
+					},
+				})
+				cancel()
+				return
+			}
+			if idle < 45*time.Second {
+				warned = false
+			}
+		}
+	}
 }
 
 func (a *Agent) sendStreamEvent(conn *Connection, targetAgentID string, payload StreamEventPayload) {

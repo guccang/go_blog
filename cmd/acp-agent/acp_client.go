@@ -55,6 +55,8 @@ type ACPClientImpl struct {
 	filesWritten []string
 	filesEdited  []string
 	resultText   string
+	lastEventAt  time.Time
+	lastEvent    string
 
 	// 交互式权限模式
 	interactive  bool
@@ -77,6 +79,8 @@ type permissionResponse struct {
 func NewACPClientImpl(projectPath string) *ACPClientImpl {
 	return &ACPClientImpl{
 		projectPath: projectPath,
+		lastEventAt: time.Now(),
+		lastEvent:   "session initialized",
 	}
 }
 
@@ -138,6 +142,19 @@ func (c *ACPClientImpl) GetModelID() string {
 	return c.modelID
 }
 
+func (c *ACPClientImpl) markActivity(event string) {
+	c.mu.Lock()
+	c.lastEventAt = time.Now()
+	c.lastEvent = event
+	c.mu.Unlock()
+}
+
+func (c *ACPClientImpl) ActivitySnapshot() (time.Time, string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastEventAt, c.lastEvent
+}
+
 // SessionUpdate 处理 session/update 通知（核心：收集 agent 输出 + 推送事件）
 func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNotification) error {
 	update := params.Update
@@ -145,10 +162,13 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 	if update.AgentMessageChunk != nil {
 		if update.AgentMessageChunk.Content.Text != nil {
 			text := update.AgentMessageChunk.Content.Text.Text
+			preview := previewText(text, 160)
 			c.mu.Lock()
 			c.chunks = append(c.chunks, text)
 			cb := c.streamCb
 			c.mu.Unlock()
+			c.markActivity("assistant: " + preview)
+			log.Printf("[ACP] assistant_chunk: %s", preview)
 
 			if cb != nil {
 				cb(StreamEvent{Type: "assistant", Text: text})
@@ -160,9 +180,12 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 	if update.AgentThoughtChunk != nil {
 		if update.AgentThoughtChunk.Content.Text != nil {
 			text := update.AgentThoughtChunk.Content.Text.Text
+			preview := previewText(text, 160)
 			c.mu.Lock()
 			cb := c.streamCb
 			c.mu.Unlock()
+			c.markActivity("thought: " + preview)
+			log.Printf("[ACP] thought_chunk: %s", preview)
 
 			if cb != nil {
 				cb(StreamEvent{Type: "thought", Text: text})
@@ -171,7 +194,14 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 	}
 
 	if update.ToolCall != nil {
-		log.Printf("[ACP] tool_call: %s (status=%s)", update.ToolCall.Title, update.ToolCall.Status)
+		title := strings.TrimSpace(update.ToolCall.Title)
+		detail := buildToolDetail(update.ToolCall)
+		c.markActivity("tool_call: " + title)
+		if detail != "" {
+			log.Printf("[ACP] tool_call: %s (status=%s)%s", title, update.ToolCall.Status, detail)
+		} else {
+			log.Printf("[ACP] tool_call: %s (status=%s)", title, update.ToolCall.Status)
+		}
 
 		c.mu.Lock()
 		cb := c.streamCb
@@ -185,7 +215,6 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 			})
 
 			// 额外发送 tool_detail 事件（包含工具详情）
-			detail := buildToolDetail(update.ToolCall)
 			if detail != "" {
 				cb(StreamEvent{Type: "tool_detail", Text: detail})
 			}
@@ -205,13 +234,16 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 		}
 
 		if update.ToolCallUpdate.Status != nil {
-			log.Printf("[ACP] tool_call_update: status=%s", *update.ToolCallUpdate.Status)
+			statusText := string(*update.ToolCallUpdate.Status)
+			c.markActivity("tool_update: " + statusText)
+			log.Printf("[ACP] tool_call_update: %s", strings.TrimSpace(buildToolUpdateText(update.ToolCallUpdate)))
 		}
 	}
 
 	// Plan 事件：格式化执行计划推送
 	if update.Plan != nil {
 		planText := formatPlan(update.Plan.Entries)
+		c.markActivity(fmt.Sprintf("plan update: %d entries", len(update.Plan.Entries)))
 		log.Printf("[ACP] plan update: %d entries", len(update.Plan.Entries))
 
 		c.mu.Lock()
@@ -226,6 +258,7 @@ func (c *ACPClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 	// Mode 切换事件
 	if update.CurrentModeUpdate != nil {
 		modeID := string(update.CurrentModeUpdate.CurrentModeId)
+		c.markActivity("mode update: " + modeID)
 		log.Printf("[ACP] mode update: %s", modeID)
 
 		c.mu.Lock()
@@ -254,6 +287,8 @@ func (c *ACPClientImpl) ReadTextFile(ctx context.Context, params acp.ReadTextFil
 	if err != nil {
 		return acp.ReadTextFileResponse{}, fmt.Errorf("read file: %v", err)
 	}
+	c.markActivity("read file: " + filePath)
+	log.Printf("[ACP] read_file: %s (%d bytes)", filePath, len(data))
 
 	return acp.ReadTextFileResponse{
 		Content: string(data),
@@ -304,6 +339,7 @@ func (c *ACPClientImpl) WriteTextFile(ctx context.Context, params acp.WriteTextF
 	}
 	c.mu.Unlock()
 
+	c.markActivity(fmt.Sprintf("write file: %s", filePath))
 	log.Printf("[ACP] write_file: %s (new=%v)", filePath, isNew)
 
 	return acp.WriteTextFileResponse{}, nil
@@ -314,6 +350,7 @@ func (c *ACPClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 	// 交互模式：通过回调发给 llm-agent，阻塞等待用户回复
 	if c.interactive && c.onPermission != nil {
 		log.Printf("[ACP] permission request (interactive): tool=%v options=%d", params.ToolCall.Title, len(params.Options))
+		c.markActivity("permission request")
 		c.onPermission(params)
 
 		// 阻塞等待用户回复
@@ -350,6 +387,7 @@ func (c *ACPClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 	// 自动模式：查找 allow_once 选项
 	for _, opt := range params.Options {
 		if opt.Kind == acp.PermissionOptionKindAllowOnce {
+			c.markActivity("permission auto-approved")
 			return acp.RequestPermissionResponse{
 				Outcome: acp.RequestPermissionOutcome{
 					Selected: &acp.RequestPermissionOutcomeSelected{
@@ -362,6 +400,7 @@ func (c *ACPClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 	}
 	// 默认选第一个选项
 	if len(params.Options) > 0 {
+		c.markActivity("permission default-first-option")
 		return acp.RequestPermissionResponse{
 			Outcome: acp.RequestPermissionOutcome{
 				Selected: &acp.RequestPermissionOutcomeSelected{
@@ -424,6 +463,10 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 			name = name + ".json"
 		}
 		settingsFile := filepath.Join(cfg.ClaudeCodeSettingsDir, name)
+		if _, err := os.Stat(settingsFile); err != nil {
+			cancel()
+			return nil, nil, fmt.Errorf("default settings file not found: %s", settingsFile)
+		}
 		resolvedExtra = append(resolvedExtra, "--settings", settingsFile)
 	}
 
@@ -437,6 +480,8 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	// 读取 settings 文件：打印 model + 自动映射 ANTHROPIC_AUTH_TOKEN → ANTHROPIC_API_KEY
 	if settingsPath := extractSettingsPath(allArgs); settingsPath != "" {
 		applySettingsEnv(cmd, settingsPath)
+	} else {
+		log.Printf("[ACP] warning: no --settings provided, ACP child process may have no authentication env")
 	}
 
 	stdin, err := cmd.StdinPipe()
@@ -531,6 +576,18 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	}
 
 	return session, client, nil
+}
+
+func previewText(text string, limit int) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r", " "))
+	text = strings.ReplaceAll(text, "\n", " ")
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	return text[:limit] + "..."
 }
 
 // buildToolDetail 构建 tool_detail 文本（工具调用的详细信息）

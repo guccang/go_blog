@@ -244,7 +244,7 @@ func StopSessionForWeChat(userID string) (string, error) {
 		wechatBridge.mu.Unlock()
 	}
 
-	// 停止所有运行中的会话（包括 llm-agent 直接派发到 codegen-agent 的任务）
+	// 停止所有运行中的会话（包括 llm-agent 直接派发到 acp-agent 的任务）
 	stopped := StopAllSessions()
 
 	if stoppedSessionID != "" {

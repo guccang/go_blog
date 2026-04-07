@@ -99,16 +99,22 @@ func (a *CMDAGent) handleCgList(req commandRequest) error {
 		agent   string
 	}
 	var items []item
+	onlineCodingAgents := 0
 	for _, agent := range agents {
 		if !supportsCodingAgent(agent) {
 			continue
 		}
-		for _, project := range projectNamesFromMeta(agent.Meta) {
+		onlineCodingAgents++
+		projects := a.availableProjectsForAgent(agent)
+		for _, project := range projects {
 			items = append(items, item{project: project, agent: agent.Name})
 		}
 	}
 	if len(items) == 0 {
-		return a.sendClientNotify(req.route(), "📂 暂无编码项目\n\n请确保 codegen-agent 已连接并上报项目\n使用 cg create <名称[@agent]> 创建项目")
+		if onlineCodingAgents > 0 {
+			return a.sendClientNotify(req.route(), "📂 当前 acp-agent 已在线，但还没有编码项目\n\n使用 cg create <名称[@agent]> 创建项目")
+		}
+		return a.sendClientNotify(req.route(), "📂 暂无编码项目\n\n请确保 acp-agent 已连接并上报项目\n使用 cg create <名称[@agent]> 创建项目")
 	}
 
 	var sb strings.Builder
@@ -117,6 +123,53 @@ func (a *CMDAGent) handleCgList(req commandRequest) error {
 		sb.WriteString(fmt.Sprintf("%d. %s@%s\n", i+1, item.project, item.agent))
 	}
 	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
+}
+
+func (a *CMDAGent) availableProjectsForAgent(agent gatewayAgentSnapshot) []string {
+	projects := projectNamesFromMeta(agent.Meta)
+	if len(projects) == 0 {
+		projects = a.fetchProjectsFromAgent(agent)
+	}
+	return uniqueSorted(projects)
+}
+
+func (a *CMDAGent) fetchProjectsFromAgent(agent gatewayAgentSnapshot) []string {
+	toolName := ""
+	switch {
+	case hasTool(agent, "AcpListProjects"):
+		toolName = "AcpListProjects"
+	case hasTool(agent, "CodegenListProjects"):
+		toolName = "CodegenListProjects"
+	default:
+		return nil
+	}
+
+	requestID := "cmd_list_probe_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, toolName, map[string]any{})
+	if err != nil {
+		return nil
+	}
+	result := <-resultCh
+	if !result.Success {
+		return nil
+	}
+
+	var payload struct {
+		Projects []struct {
+			Name string `json:"name"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
+		return nil
+	}
+	var names []string
+	for _, item := range payload.Projects {
+		if strings.TrimSpace(item.Name) == "" {
+			continue
+		}
+		names = append(names, item.Name)
+	}
+	return uniqueSorted(names)
 }
 
 func (a *CMDAGent) handleCgModels(req commandRequest) error {
@@ -206,7 +259,7 @@ func (a *CMDAGent) handleCgCreate(req commandRequest, param string) error {
 	}
 
 	requestID := "cmd_create_" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	resultCh, err := a.callTool(agent.AgentID, requestID, "CodegenCreateProject", map[string]any{"name": projectName})
+	resultCh, err := a.callTool(agent.AgentID, requestID, createProjectToolName(agent), map[string]any{"name": projectName})
 	if err != nil {
 		return err
 	}
@@ -429,7 +482,32 @@ func (a *CMDAGent) handleCgStop(req commandRequest) error {
 
 func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 	if strings.TrimSpace(param) == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请指定项目名称\n用法: cg deploy <项目[@agent]> [#目标] [!pack]")
+		return a.sendClientNotify(req.route(), "⚠️ 请指定 deploy 子命令或项目\n用法: cg deploy <项目[@agent]> [#目标] [!pack]")
+	}
+	fields := strings.Fields(param)
+	switch fields[0] {
+	case "list", "ls":
+		return a.handleCgDeployList(req)
+	case "status":
+		return a.handleCgDeployStatus(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "adhoc":
+		return a.handleCgDeployAdhoc(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "pipelines":
+		return a.handleCgDeployPipelines(req)
+	case "pipeline":
+		return a.handleCgPipeline(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "read":
+		return a.handleCgDeployRead(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "write":
+		return a.handleCgDeployWrite(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "exec":
+		return a.handleCgDeployExec(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "env":
+		return a.handleCgDeployEnv(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "agent-status":
+		return a.handleCgDeployAgentStatus(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
+	case "agent-stop", "agent-shutdown":
+		return a.handleCgDeployAgentStop(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
 	}
 	deployParts := strings.SplitN(param, " ", 2)
 	project, agentName := parseProjectAgent(deployParts[0])
@@ -485,6 +563,266 @@ func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 	}
 	go a.awaitDeployResult(route, requestID, resultCh)
 	return nil
+}
+
+func (a *CMDAGent) handleCgDeployList(req commandRequest) error {
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	requestID := "cmd_deploy_list_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployListProjects", map[string]any{})
+	if err != nil {
+		return err
+	}
+	result := <-resultCh
+	if !result.Success {
+		return a.sendClientNotify(req.route(), "❌ 查询失败: "+result.Error)
+	}
+	var payload struct {
+		Projects []struct {
+			Name       string   `json:"name"`
+			Configured bool     `json:"configured"`
+			BuildOnly  bool     `json:"build_only"`
+			ProjectDir string   `json:"project_dir"`
+			Targets    []string `json:"targets"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
+		return a.sendClientNotify(req.route(), result.Result)
+	}
+	if len(payload.Projects) == 0 {
+		return a.sendClientNotify(req.route(), "当前无可用 deploy 项目")
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🚚 Deploy 项目 (%d个)\n\n", len(payload.Projects)))
+	for i, item := range payload.Projects {
+		mode := "adhoc"
+		if item.Configured {
+			mode = "configured"
+		}
+		sb.WriteString(fmt.Sprintf("%d. %s [%s]", i+1, item.Name, mode))
+		if item.BuildOnly {
+			sb.WriteString(" build-only")
+		}
+		if len(item.Targets) > 0 {
+			sb.WriteString(fmt.Sprintf(" targets=%s", strings.Join(item.Targets, ",")))
+		}
+		sb.WriteString("\n")
+	}
+	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
+}
+
+func (a *CMDAGent) handleCgDeployStatus(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) == 0 {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供 session_id\n用法: cg deploy status <session_id>")
+	}
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	requestID := "cmd_deploy_status_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployGetStatus", map[string]any{"session_id": fields[0]})
+	if err != nil {
+		return err
+	}
+	result := <-resultCh
+	if !result.Success {
+		return a.sendClientNotify(req.route(), "❌ 查询失败: "+result.Error)
+	}
+	var data map[string]any
+	if err := json.Unmarshal([]byte(result.Result), &data); err != nil {
+		return a.sendClientNotify(req.route(), result.Result)
+	}
+	text := fmt.Sprintf("session: %v\nstatus: %v", data["session_id"], data["status"])
+	if v, ok := data["tool_name"]; ok && fmt.Sprint(v) != "" {
+		text += "\ntool: " + fmt.Sprint(v)
+	}
+	if v, ok := data["project"]; ok && fmt.Sprint(v) != "" {
+		text += "\nproject: " + fmt.Sprint(v)
+	}
+	if v, ok := data["pipeline"]; ok && fmt.Sprint(v) != "" {
+		text += "\npipeline: " + fmt.Sprint(v)
+	}
+	if v, ok := data["error"]; ok && fmt.Sprint(v) != "" {
+		text += "\nerror: " + fmt.Sprint(v)
+	}
+	return a.sendClientNotify(req.route(), text)
+}
+
+func (a *CMDAGent) handleCgDeployAdhoc(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) < 3 {
+		return a.sendClientNotify(req.route(), "⚠️ 参数不足\n用法: cg deploy adhoc <项目> <目录> <ssh_host>")
+	}
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	project := fields[0]
+	projectDir := fields[1]
+	sshHost := fields[2]
+	requestID := "cmd_deploy_adhoc_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployAdhoc", map[string]any{
+		"project":     project,
+		"project_dir": projectDir,
+		"ssh_host":    sshHost,
+	})
+	if err != nil {
+		return err
+	}
+	result := <-resultCh
+	if !result.Success {
+		return a.sendClientNotify(req.route(), "❌ 提交失败: "+result.Error)
+	}
+	return a.sendClientNotify(req.route(), result.Result)
+}
+
+func (a *CMDAGent) handleCgDeployPipelines(req commandRequest) error {
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	requestID := "cmd_deploy_pipelines_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployListPipelines", map[string]any{})
+	if err != nil {
+		return err
+	}
+	result := <-resultCh
+	if !result.Success {
+		return a.sendClientNotify(req.route(), "❌ 查询失败: "+result.Error)
+	}
+	var payload []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Steps       int    `json:"steps"`
+	}
+	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
+		return a.sendClientNotify(req.route(), result.Result)
+	}
+	if len(payload) == 0 {
+		return a.sendClientNotify(req.route(), "暂无可用 deploy pipeline")
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("📋 Deploy Pipelines (%d个)\n\n", len(payload)))
+	for i, item := range payload {
+		sb.WriteString(fmt.Sprintf("%d. %s (%d steps)", i+1, item.Name, item.Steps))
+		if strings.TrimSpace(item.Description) != "" {
+			sb.WriteString(" - " + item.Description)
+		}
+		sb.WriteString("\n")
+	}
+	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
+}
+
+func (a *CMDAGent) handleCgDeployRead(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) < 2 {
+		return a.sendClientNotify(req.route(), "⚠️ 参数不足\n用法: cg deploy read <项目[@agent]> <路径>")
+	}
+	project, agentName := parseProjectAgent(fields[0])
+	agent, err := a.resolveDeployProjectAgent(project, agentName)
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	return a.forwardSimpleDeployTool(req, agent, "DeployReadFile", map[string]any{
+		"project": project,
+		"path":    fields[1],
+	})
+}
+
+func (a *CMDAGent) handleCgDeployWrite(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) < 3 {
+		return a.sendClientNotify(req.route(), "⚠️ 参数不足\n用法: cg deploy write <项目[@agent]> <路径> <内容>")
+	}
+	project, agentName := parseProjectAgent(fields[0])
+	agent, err := a.resolveDeployProjectAgent(project, agentName)
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	content := strings.TrimSpace(strings.TrimPrefix(param, fields[0]+" "+fields[1]))
+	return a.forwardSimpleDeployTool(req, agent, "DeployWriteFile", map[string]any{
+		"project": project,
+		"path":    fields[1],
+		"content": content,
+	})
+}
+
+func (a *CMDAGent) handleCgDeployExec(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) < 2 {
+		return a.sendClientNotify(req.route(), "⚠️ 参数不足\n用法: cg deploy exec <项目[@agent]> <命令>")
+	}
+	project, agentName := parseProjectAgent(fields[0])
+	agent, err := a.resolveDeployProjectAgent(project, agentName)
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	command := strings.TrimSpace(strings.TrimPrefix(param, fields[0]))
+	return a.forwardSimpleDeployTool(req, agent, "DeployExecBash", map[string]any{
+		"project": project,
+		"command": command,
+	})
+}
+
+func (a *CMDAGent) handleCgDeployEnv(req commandRequest, param string) error {
+	command := strings.TrimSpace(param)
+	if command == "" {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供命令\n用法: cg deploy env <命令>")
+	}
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	return a.forwardSimpleDeployTool(req, agent, "DeployExecEnvBash", map[string]any{
+		"command": command,
+	})
+}
+
+func (a *CMDAGent) handleCgDeployAgentStatus(req commandRequest, param string) error {
+	agentID := strings.TrimSpace(param)
+	if agentID == "" {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供 agent_id\n用法: cg deploy agent-status <agent_id>")
+	}
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	return a.forwardSimpleDeployTool(req, agent, "AgentStatus", map[string]any{"agent_id": agentID})
+}
+
+func (a *CMDAGent) handleCgDeployAgentStop(req commandRequest, param string) error {
+	fields := strings.Fields(param)
+	if len(fields) == 0 {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供 agent_id\n用法: cg deploy agent-stop <agent_id> [原因]")
+	}
+	agent, err := a.resolveAnyDeployAgent("")
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	reason := ""
+	if len(fields) > 1 {
+		reason = strings.TrimSpace(strings.TrimPrefix(param, fields[0]))
+	}
+	return a.forwardSimpleDeployTool(req, agent, "AgentShutdown", map[string]any{
+		"agent_id": fields[0],
+		"reason":   reason,
+	})
+}
+
+func (a *CMDAGent) forwardSimpleDeployTool(req commandRequest, agent gatewayAgentSnapshot, toolName string, args map[string]any) error {
+	requestID := "cmd_deploy_tool_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, toolName, args)
+	if err != nil {
+		return err
+	}
+	result := <-resultCh
+	if !result.Success {
+		return a.sendClientNotify(req.route(), "❌ 调用失败: "+result.Error)
+	}
+	return a.sendClientNotify(req.route(), result.Result)
 }
 
 func (a *CMDAGent) awaitDeployResult(route sessionRoute, requestID string, resultCh <-chan toolCallResult) {
@@ -604,14 +942,18 @@ func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny b
 		return gatewayAgentSnapshot{}, err
 	}
 	var candidates []gatewayAgentSnapshot
+	var preferredMatches []gatewayAgentSnapshot
 	for _, agent := range agents {
 		if !supportsCodingAgent(agent) {
 			continue
 		}
-		if preferredAgent != "" && !matchesAgentName(agent, preferredAgent) {
-			continue
+		if preferredAgent != "" {
+			if !matchesAgentName(agent, preferredAgent) {
+				continue
+			}
+			preferredMatches = append(preferredMatches, agent)
 		}
-		projects := projectNamesFromMeta(agent.Meta)
+		projects := a.availableProjectsForAgent(agent)
 		if allowAny || containsString(projects, project) {
 			candidates = append(candidates, agent)
 		}
@@ -621,6 +963,9 @@ func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny b
 	}
 	if len(candidates) == 0 {
 		if preferredAgent != "" {
+			if len(preferredMatches) > 0 {
+				return gatewayAgentSnapshot{}, fmt.Errorf("acp-agent %s 已在线，但未找到项目 %s，可先执行 cg list 确认项目列表", preferredAgent, project)
+			}
 			return gatewayAgentSnapshot{}, fmt.Errorf("未找到在线 coding agent: %s", preferredAgent)
 		}
 		if allowAny {
@@ -642,7 +987,7 @@ func (a *CMDAGent) resolveCodegenCreateAgent(project, preferredAgent string) (ga
 	}
 	var candidates []gatewayAgentSnapshot
 	for _, agent := range agents {
-		if !hasTool(agent, "CodegenCreateProject") {
+		if !supportsCreateProject(agent) {
 			continue
 		}
 		if preferredAgent != "" && !matchesAgentName(agent, preferredAgent) {
@@ -655,15 +1000,15 @@ func (a *CMDAGent) resolveCodegenCreateAgent(project, preferredAgent string) (ga
 	}
 	if len(candidates) == 0 {
 		if preferredAgent != "" {
-			return gatewayAgentSnapshot{}, fmt.Errorf("未找到支持创建项目的 codegen-agent: %s", preferredAgent)
+			return gatewayAgentSnapshot{}, fmt.Errorf("未找到支持创建项目的 acp-agent: %s", preferredAgent)
 		}
-		return gatewayAgentSnapshot{}, fmt.Errorf("当前无在线 codegen-agent，无法创建项目 %s", project)
+		return gatewayAgentSnapshot{}, fmt.Errorf("当前无在线 acp-agent，无法创建项目 %s", project)
 	}
 	var names []string
 	for _, agent := range candidates {
 		names = append(names, agent.Name)
 	}
-	return gatewayAgentSnapshot{}, fmt.Errorf("多个 codegen-agent 在线，请用 %s@<agent> 指定，可选: %s", project, strings.Join(uniqueSorted(names), ", "))
+	return gatewayAgentSnapshot{}, fmt.Errorf("多个 acp-agent 在线，请用 %s@<agent> 指定，可选: %s", project, strings.Join(uniqueSorted(names), ", "))
 }
 
 func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, prompt, model, tool string) (map[string]any, string) {
@@ -728,6 +1073,17 @@ func supportsCodingAgent(agent gatewayAgentSnapshot) bool {
 	return hasTool(agent, "CodegenListProjects") || hasTool(agent, "AcpListProjects") || hasTool(agent, "AcpStartSession")
 }
 
+func supportsCreateProject(agent gatewayAgentSnapshot) bool {
+	return hasTool(agent, "CodegenCreateProject") || hasTool(agent, "AcpCreateProject")
+}
+
+func createProjectToolName(agent gatewayAgentSnapshot) string {
+	if hasTool(agent, "AcpCreateProject") && !hasTool(agent, "CodegenCreateProject") {
+		return "AcpCreateProject"
+	}
+	return "CodegenCreateProject"
+}
+
 func (a *CMDAGent) resolveDeployAgent(project, preferredAgent string) (gatewayAgentSnapshot, error) {
 	agents, err := a.fetchGatewayAgents()
 	if err != nil {
@@ -790,6 +1146,44 @@ func (a *CMDAGent) resolveDeployAgent(project, preferredAgent string) (gatewayAg
 		return deployAgents[0], nil
 	}
 	return gatewayAgentSnapshot{}, fmt.Errorf("未找到已配置项目 %s 的 deploy-agent", project)
+}
+
+func (a *CMDAGent) resolveAnyDeployAgent(preferredAgent string) (gatewayAgentSnapshot, error) {
+	agents, err := a.fetchGatewayAgents()
+	if err != nil {
+		return gatewayAgentSnapshot{}, err
+	}
+	var matches []gatewayAgentSnapshot
+	for _, agent := range agents {
+		if !hasTool(agent, "DeployProject") {
+			continue
+		}
+		if preferredAgent != "" && !matchesAgentName(agent, preferredAgent) {
+			continue
+		}
+		matches = append(matches, agent)
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) == 0 {
+		if preferredAgent != "" {
+			return gatewayAgentSnapshot{}, fmt.Errorf("未找到在线 deploy-agent: %s", preferredAgent)
+		}
+		return gatewayAgentSnapshot{}, fmt.Errorf("当前无在线 deploy-agent")
+	}
+	var names []string
+	for _, agent := range matches {
+		names = append(names, agent.Name)
+	}
+	return gatewayAgentSnapshot{}, fmt.Errorf("多个 deploy-agent 在线，请指定 @agent，可选: %s", strings.Join(uniqueSorted(names), ", "))
+}
+
+func (a *CMDAGent) resolveDeployProjectAgent(project, preferredAgent string) (gatewayAgentSnapshot, error) {
+	if preferredAgent != "" {
+		return a.resolveAnyDeployAgent(preferredAgent)
+	}
+	return a.resolveDeployAgent(project, preferredAgent)
 }
 
 func (a *CMDAGent) resolvePipelineAgent(pipeline, preferredAgent string) (gatewayAgentSnapshot, error) {

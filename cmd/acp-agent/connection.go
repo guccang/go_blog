@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"agentbase"
@@ -162,6 +165,17 @@ func buildACPToolDefs() []uap.ToolDef {
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
+			Name:        "AcpCreateProject",
+			Description: "在本 agent 上创建新编码项目",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{"type": "string", "description": "项目名称"},
+				},
+				"required": []string{"name"},
+			}),
+		},
+		{
 			Name:        "AcpAnalyzeProject",
 			Description: "通过 ACP 协议调用 Claude Code 分析项目代码，给出优化建议。同步等待完成，进度通过 stream_event 推送。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
@@ -261,6 +275,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	switch payload.ToolName {
 	case "AcpListProjects":
 		result = c.toolListProjects()
+	case "AcpCreateProject":
+		result = c.toolCreateProject(args)
 	case "AcpAnalyzeProject":
 		result = c.toolAnalyzeProject(msg.From, msg.ID, args)
 	case "AcpStartSession":
@@ -296,6 +312,32 @@ func (c *Connection) toolListProjects() string {
 		"agent":    c.cfg.AgentName,
 	}
 	tr := uap.BuildToolResult("", data, fmt.Sprintf("列出%d个可分析项目", len(projects)))
+	return tr.Result
+}
+
+func (c *Connection) toolCreateProject(args map[string]interface{}) string {
+	name, _ := args["name"].(string)
+	if name == "" {
+		return `{"success":false,"error":"缺少项目名称(name参数)"}`
+	}
+	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return `{"success":false,"error":"无效的项目名称"}`
+	}
+	for _, project := range c.agent.ScanProjects() {
+		if project.Name == name {
+			return fmt.Sprintf(`{"success":false,"error":"项目 %s 已存在"}`, name)
+		}
+	}
+	if len(c.agent.cfg.Workspaces) == 0 {
+		return `{"success":false,"error":"未配置 workspace"}`
+	}
+
+	projectPath := filepath.Join(c.agent.cfg.Workspaces[0], name)
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"创建失败: %v"}`, err)
+	}
+	log.Printf("[INFO] project created via tool_call: %s at %s", name, projectPath)
+	tr := uap.BuildToolResult("", map[string]string{"name": name, "path": projectPath}, fmt.Sprintf("项目 %s 已创建", name))
 	return tr.Result
 }
 
