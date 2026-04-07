@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+type testDelegationToken struct {
+	targetAccount string
+}
+
+func (t *testDelegationToken) GetTargetAccount() string {
+	return t.targetAccount
+}
+
 func TestNormalizeCodegenCommand(t *testing.T) {
 	tests := []struct {
 		input string
@@ -48,6 +56,57 @@ func TestBuildAppNotifyReplyNormalizesSlashCg(t *testing.T) {
 	}
 	if receivedContent != "cg agents" {
 		t.Fatalf("unexpected normalized content: %q", receivedContent)
+	}
+}
+
+func TestStripAndCacheDelegationTokenWithoutParser(t *testing.T) {
+	oldParse := ParseDelegationTokenFromHeader
+	oldSet := SetDelegationToken
+	ParseDelegationTokenFromHeader = nil
+	SetDelegationToken = nil
+	defer func() {
+		ParseDelegationTokenFromHeader = oldParse
+		SetDelegationToken = oldSet
+	}()
+
+	bridge := &GatewayBridge{}
+	got := bridge.stripAndCacheDelegationToken("ztt", "[delegation:abc]/cg agents")
+	if got != "/cg agents" {
+		t.Fatalf("unexpected content after stripping delegation token: %q", got)
+	}
+}
+
+func TestStripAndCacheDelegationTokenCachesParsedToken(t *testing.T) {
+	oldParse := ParseDelegationTokenFromHeader
+	oldSet := SetDelegationToken
+	defer func() {
+		ParseDelegationTokenFromHeader = oldParse
+		SetDelegationToken = oldSet
+	}()
+
+	var cachedKey string
+	var cachedToken DelegationTokenHolder
+	ParseDelegationTokenFromHeader = func(header string) (DelegationTokenHolder, error) {
+		if header != "abc" {
+			t.Fatalf("unexpected delegation header: %q", header)
+		}
+		return &testDelegationToken{targetAccount: "ztt"}, nil
+	}
+	SetDelegationToken = func(key string, token DelegationTokenHolder) {
+		cachedKey = key
+		cachedToken = token
+	}
+
+	bridge := &GatewayBridge{}
+	got := bridge.stripAndCacheDelegationToken("ztt", "[delegation:abc]/cg agents")
+	if got != "/cg agents" {
+		t.Fatalf("unexpected content after stripping delegation token: %q", got)
+	}
+	if cachedKey != "ztt" {
+		t.Fatalf("unexpected cached key: %q", cachedKey)
+	}
+	if cachedToken == nil {
+		t.Fatalf("expected cached delegation token")
 	}
 }
 

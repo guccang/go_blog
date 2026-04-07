@@ -312,9 +312,9 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "CodegenCreateProject":
 		result = c.toolCreateProject(args)
 	case "CodegenStartSession":
-		result = c.toolStartSession(args)
+		result = c.toolStartSession(msg.From, msg.ID, args)
 	case "CodegenSendMessage":
-		result = c.toolSendMessage(args)
+		result = c.toolSendMessage(msg.From, msg.ID, args)
 	case "CodegenGetStatus":
 		result = c.toolGetStatus(args)
 	case "CodegenStopSession":
@@ -385,7 +385,7 @@ func (c *Connection) toolCreateProject(args map[string]interface{}) string {
 }
 
 // toolStartSession 启动编码会话（同步等待完成）
-func (c *Connection) toolStartSession(args map[string]interface{}) string {
+func (c *Connection) toolStartSession(replyAgentID, requestID string, args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
 	model, _ := args["model"].(string)
@@ -405,12 +405,13 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 		Prompt:    prompt,
 		Model:     model,
 		Tool:      tool,
+		RequestID: requestID,
 	}
 
 	// 注册完成通知，同步等待任务完成
 	completionCh := c.agent.RegisterCompletion(sessionID)
 	c.agent.RecordSession(sessionID, project, model, tool)
-	go c.agent.ExecuteTask(c, task, "")
+	go c.agent.ExecuteTask(c, task, replyAgentID)
 
 	result := <-completionCh
 	if result.Status != "done" {
@@ -433,7 +434,7 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 }
 
 // toolSendMessage 向编码会话追加消息（同步等待完成）
-func (c *Connection) toolSendMessage(args map[string]interface{}) string {
+func (c *Connection) toolSendMessage(replyAgentID, requestID string, args map[string]interface{}) string {
 	prompt, _ := args["prompt"].(string)
 	sessionID, _ := args["session_id"].(string)
 
@@ -467,12 +468,13 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		Model:         rec.Model,
 		Tool:          rec.Tool,
 		ClaudeSession: rec.ClaudeSession,
+		RequestID:     requestID,
 	}
 
 	// 注册完成通知，同步等待任务完成
 	completionCh := c.agent.RegisterCompletion(newSessionID)
 	c.agent.RecordSession(newSessionID, rec.Project, rec.Model, rec.Tool)
-	go c.agent.ExecuteTask(c, task, "")
+	go c.agent.ExecuteTask(c, task, replyAgentID)
 
 	result := <-completionCh
 	if result.Status != "done" {

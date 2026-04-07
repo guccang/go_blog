@@ -57,6 +57,20 @@ var currentDelegationToken DelegationTokenHolder
 
 // initDelegationTokenStore 初始化 delegation token 存储
 func initDelegationTokenStore() {
+	if ParseDelegationTokenFromHeader == nil {
+		ParseDelegationTokenFromHeader = func(header string) (DelegationTokenHolder, error) {
+			return nil, fmt.Errorf("delegation token parser not initialized")
+		}
+	}
+	if VerifyDelegationToken == nil {
+		VerifyDelegationToken = func(token DelegationTokenHolder) (string, error) {
+			return "", fmt.Errorf("delegation token verifier not initialized")
+		}
+	}
+	if PrepareMCPContext == nil {
+		PrepareMCPContext = func(requestID string, account string) {}
+	}
+
 	// 设置本地存储函数
 	SetDelegationToken = func(key string, token DelegationTokenHolder) {
 		// 存储到 map（兼容旧代码）
@@ -619,37 +633,10 @@ func (b *GatewayBridge) handleNotify(msg *uap.Message) {
 // 提取并缓存 delegation token，以便后续 tool call 使用
 func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPayload) {
 	// 从消息内容中提取 delegation token（格式：[delegation:xxx]actual content）
-	delegationToken := ""
-	content := payload.Content
+	content := b.stripAndCacheDelegationToken(payload.To, payload.Content)
 
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: handleAppNotify from=%s to=%s channel=%s",
 		msg.From, payload.To, payload.Channel)
-
-	if strings.HasPrefix(content, "[delegation:") {
-		// 查找匹配的 ]
-		endIdx := strings.Index(content, "]")
-		if endIdx > 13 { // "[delegation:" 长度为 13
-			delegationToken = content[13:endIdx]
-			// 实际的聊天内容
-			content = content[endIdx+1:]
-		}
-	}
-
-	// 设置 delegation token 到 MCP 包的上下文中
-	// 设置到 currentDelegationToken，后续 tool call 必须验证 account 匹配
-	if delegationToken != "" {
-		if tokenObj, err := ParseDelegationTokenFromHeader(delegationToken); err == nil {
-			// 使用 token 中的 target account 作为 key
-			targetAccount := tokenObj.GetTargetAccount()
-			SetDelegationToken(targetAccount, tokenObj)
-			log.MessageF(log.ModuleAgent, "CodeGen gateway: cached token: payload.To=%s token.TargetAccount=%s",
-				payload.To, targetAccount)
-		} else {
-			log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token: %v", err)
-		}
-	} else {
-		log.MessageF(log.ModuleAgent, "CodeGen gateway: no delegation token in message from %s", payload.To)
-	}
 
 	// 注意：这里只是缓存 token，实际的 tool call 验证在 handleToolCall 中进行
 	log.MessageF(log.ModuleAgent, "CodeGen gateway: app notify from=%s content_len=%d", msg.From, len(content))
@@ -667,6 +654,44 @@ func (b *GatewayBridge) handleAppNotify(msg *uap.Message, payload *uap.NotifyPay
 	}); err != nil {
 		log.WarnF(log.ModuleAgent, "CodeGen gateway: send app notify reply failed: %v", err)
 	}
+}
+
+func (b *GatewayBridge) stripAndCacheDelegationToken(userID, content string) string {
+	delegationToken := ""
+	if strings.HasPrefix(content, "[delegation:") {
+		endIdx := strings.Index(content, "]")
+		if endIdx > 12 {
+			delegationToken = content[12:endIdx]
+			content = content[endIdx+1:]
+		}
+	}
+
+	if delegationToken == "" {
+		log.MessageF(log.ModuleAgent, "CodeGen gateway: no delegation token in message from %s", userID)
+		return content
+	}
+	if ParseDelegationTokenFromHeader == nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token parser not initialized, skip caching for %s", userID)
+		return content
+	}
+
+	tokenObj, err := ParseDelegationTokenFromHeader(delegationToken)
+	if err != nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: failed to parse delegation token: %v", err)
+		return content
+	}
+	if tokenObj == nil {
+		log.WarnF(log.ModuleAgent, "CodeGen gateway: delegation token parser returned nil token for %s", userID)
+		return content
+	}
+
+	targetAccount := tokenObj.GetTargetAccount()
+	if SetDelegationToken != nil && targetAccount != "" {
+		SetDelegationToken(targetAccount, tokenObj)
+	}
+	log.MessageF(log.ModuleAgent, "CodeGen gateway: cached token: payload.To=%s token.TargetAccount=%s",
+		userID, targetAccount)
+	return content
 }
 
 func (b *GatewayBridge) buildAppNotifyReply(appUser, content string) (string, bool) {

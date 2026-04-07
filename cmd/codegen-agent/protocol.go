@@ -25,17 +25,17 @@ type SessionStatus string
 
 // RegisterPayload Agent 注册信息
 type RegisterPayload struct {
-	AgentID          string   `json:"agent_id"`
-	Name             string   `json:"name"`
-	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
-	Workspaces       []string `json:"workspaces"`
+	AgentID          string        `json:"agent_id"`
+	Name             string        `json:"name"`
+	AgentType        string        `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
+	Workspaces       []string      `json:"workspaces"`
 	Projects         []ProjectInfo `json:"projects"`
-	Models           []string `json:"models,omitempty"`            // 兼容旧版
-	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
-	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
-	Tools            []string `json:"tools,omitempty"`
-	MaxConcurrent    int      `json:"max_concurrent"`
-	AuthToken        string   `json:"auth_token,omitempty"`
+	Models           []string      `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string      `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string      `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string      `json:"tools,omitempty"`
+	MaxConcurrent    int           `json:"max_concurrent"`
+	AuthToken        string        `json:"auth_token,omitempty"`
 }
 
 // RegisterAckPayload 注册确认
@@ -46,15 +46,15 @@ type RegisterAckPayload struct {
 
 // HeartbeatPayload Agent 心跳
 type HeartbeatPayload struct {
-	AgentID          string   `json:"agent_id"`
-	AgentType        string   `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
-	ActiveSessions   int      `json:"active_sessions"`
-	Load             float64  `json:"load"`
+	AgentID          string        `json:"agent_id"`
+	AgentType        string        `json:"agent_type,omitempty"` // codegen(编码) / deploy(发布)
+	ActiveSessions   int           `json:"active_sessions"`
+	Load             float64       `json:"load"`
 	Projects         []ProjectInfo `json:"projects,omitempty"`
-	Models           []string `json:"models,omitempty"`            // 兼容旧版
-	ClaudeCodeModels []string `json:"claudecode_models,omitempty"` // Claude Code 模型配置
-	OpenCodeModels   []string `json:"opencode_models,omitempty"`   // OpenCode 模型配置
-	Tools            []string `json:"tools,omitempty"`
+	Models           []string      `json:"models,omitempty"`            // 兼容旧版
+	ClaudeCodeModels []string      `json:"claudecode_models,omitempty"` // Claude Code 模型配置
+	OpenCodeModels   []string      `json:"opencode_models,omitempty"`   // OpenCode 模型配置
+	Tools            []string      `json:"tools,omitempty"`
 }
 
 // TaskAssignPayload 任务分派
@@ -67,6 +67,7 @@ type TaskAssignPayload struct {
 	ClaudeSession string `json:"claude_session,omitempty"`
 	Model         string `json:"model,omitempty"`
 	Tool          string `json:"tool,omitempty"`
+	RequestID     string `json:"request_id,omitempty"`
 }
 
 // TaskAcceptedPayload 任务接受确认
@@ -103,12 +104,14 @@ type StreamEvent struct {
 // StreamEventPayload 流式事件转发
 type StreamEventPayload struct {
 	SessionID string      `json:"session_id"`
+	RequestID string      `json:"request_id,omitempty"`
 	Event     StreamEvent `json:"event"`
 }
 
 // TaskCompletePayload 任务完成
 type TaskCompletePayload struct {
 	SessionID string        `json:"session_id"`
+	RequestID string        `json:"request_id,omitempty"`
 	Status    SessionStatus `json:"status"`
 	Error     string        `json:"error,omitempty"`
 }

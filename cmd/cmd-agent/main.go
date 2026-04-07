@@ -1,8 +1,6 @@
 package main
 
 import (
-	"codegen"
-	"config"
 	"flag"
 	"fmt"
 	log "mylog"
@@ -47,36 +45,24 @@ func main() {
 	}
 
 	log.Info()
-	// cmd-agent 不依赖 sys_conf.md，最小化初始化 config 仅用于兼容 codegen 默认依赖。
-	config.InitManager("")
 	if err := log.Init(""); err != nil {
 		fmt.Fprintf(os.Stderr, "init log: %v\n", err)
 	}
 
-	codegen.Init()
-	codegen.ClaudeCodeSystemPromptBuilder = func() string { return claudeCodeSystemPrompt }
-	codegen.OpenCodeSystemPromptBuilder = func() string { return openCodeSystemPrompt }
-	codegen.AIRouteHandler = func(_, _, _ string) string {
-		return "⚠️ cmd-agent 只处理 /cg 命令"
+	agent, err := NewCMDAgent(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "init cmd-agent: %v\n", err)
+		os.Exit(1)
 	}
-	codegen.InitGatewayBridgeWithOptions(cfg.GatewayURL, cfg.AuthToken, codegen.GatewayBridgeOptions{
-		AgentID:      cfg.AgentID,
-		AgentType:    "cmd",
-		AgentName:    cfg.AgentName,
-		Description:  "统一处理 /cg 命令并转发到 codegen/deploy agent",
-		WorkspaceDir: cfg.WorkspaceDir,
-	})
-	// cmd-agent 只保留会话状态，不直接推微信，进度统一回到来源客户端。
-	codegen.InitWeChatBridge(nil)
-	codegen.SetWechatHandler(codegen.HandleWechatCommand)
 
 	log.MessageF(log.ModuleAgent, "cmd-agent started id=%s gateway=%s", cfg.AgentID, cfg.GatewayURL)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	<-sigCh
-	if client := codegen.GetGatewayClient(); client != nil {
-		client.Stop()
-	}
-	log.Message(log.ModuleAgent, "cmd-agent shutting down")
+	go func() {
+		<-sigCh
+		agent.Stop()
+	}()
+
+	agent.Run()
 }

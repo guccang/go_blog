@@ -1,0 +1,62 @@
+package main
+
+import "testing"
+
+func TestUnwrapInboundCommandAppMessageJSON(t *testing.T) {
+	user, content := unwrapInboundCommand(inboundNotify{
+		Channel: "app",
+		To:      "ztt",
+		Content: "APP_MESSAGE_JSON:\n{\n  \"content\": \"/cg agents\",\n  \"kind\": \"app_message\",\n  \"message_type\": \"text\",\n  \"scope\": \"direct\",\n  \"user_id\": \"ztt\"\n}",
+	})
+	if user != "ztt" {
+		t.Fatalf("unexpected user: %q", user)
+	}
+	if content != "/cg agents" {
+		t.Fatalf("unexpected content: %q", content)
+	}
+}
+
+func TestUnwrapInboundCommandStripsDelegationPrefix(t *testing.T) {
+	user, content := unwrapInboundCommand(inboundNotify{
+		Channel: "app",
+		To:      "ztt",
+		Content: "[delegation:abc]APP_MESSAGE_JSON:\n{\n  \"content\": \"/cg agents\",\n  \"kind\": \"app_message\",\n  \"message_type\": \"text\",\n  \"scope\": \"direct\",\n  \"user_id\": \"ztt\"\n}",
+	})
+	if user != "ztt" {
+		t.Fatalf("unexpected user: %q", user)
+	}
+	if content != "/cg agents" {
+		t.Fatalf("unexpected content: %q", content)
+	}
+}
+
+func TestNormalizeCodegenCommand(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"/cg", "cg"},
+		{"/cg agents", "cg agents"},
+		{" cg tools ", "cg tools"},
+	}
+	for _, tt := range tests {
+		if got := normalizeCodegenCommand(tt.in); got != tt.want {
+			t.Fatalf("normalizeCodegenCommand(%q)=%q want=%q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeTool(t *testing.T) {
+	if got := normalizeTool("oc"); got != "opencode" {
+		t.Fatalf("unexpected tool normalize result: %q", got)
+	}
+	if got := normalizeTool("claude"); got != "claudecode" {
+		t.Fatalf("unexpected tool normalize result: %q", got)
+	}
+}
+
+func TestSupportsCodingAgentIncludesACP(t *testing.T) {
+	if !supportsCodingAgent(gatewayAgentSnapshot{Tools: []string{"AcpStartSession"}}) {
+		t.Fatalf("expected ACP agent to be recognized as coding agent")
+	}
+}

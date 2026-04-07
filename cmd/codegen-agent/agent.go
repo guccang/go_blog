@@ -272,6 +272,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 	if projectPath == "" {
 		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 			SessionID: sessionID,
+			RequestID: task.RequestID,
 			Status:    "error",
 			Error:     fmt.Sprintf("project not found in workspaces: %s", task.Project),
 		})
@@ -295,7 +296,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 		args, buildErr = a.buildArgs(task)
 		if buildErr != nil {
 			conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
-				SessionID: sessionID, Status: "error", Error: buildErr.Error(),
+				SessionID: sessionID, RequestID: task.RequestID, Status: "error", Error: buildErr.Error(),
 			})
 			return
 		}
@@ -309,7 +310,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
-			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("stdout pipe: %v", err),
+			SessionID: sessionID, RequestID: task.RequestID, Status: "error", Error: fmt.Sprintf("stdout pipe: %v", err),
 		})
 		return
 	}
@@ -317,14 +318,14 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
-			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("stderr pipe: %v", err),
+			SessionID: sessionID, RequestID: task.RequestID, Status: "error", Error: fmt.Sprintf("stderr pipe: %v", err),
 		})
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
 		conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
-			SessionID: sessionID, Status: "error", Error: fmt.Sprintf("start claude: %v", err),
+			SessionID: sessionID, RequestID: task.RequestID, Status: "error", Error: fmt.Sprintf("start claude: %v", err),
 		})
 		return
 	}
@@ -343,6 +344,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 	// 发送开始事件
 	conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 		SessionID: sessionID,
+		RequestID: task.RequestID,
 		Event: StreamEvent{
 			Type: "system",
 			Text: fmt.Sprintf("🔧 %s 开始编码... (项目: %s, Agent: %s)", toolName, task.Project, a.cfg.AgentName),
@@ -373,12 +375,14 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 				if event != nil {
 					conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 						SessionID: sessionID,
+						RequestID: task.RequestID,
 						Event:     *event,
 					})
 				}
 			} else {
 				conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 					SessionID: sessionID,
+					RequestID: task.RequestID,
 					Event:     StreamEvent{Type: "error", Text: "⚠️ " + line},
 				})
 			}
@@ -418,6 +422,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 		evt.Done = false
 		conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: task.RequestID,
 			Event:     evt,
 		})
 	}
@@ -449,6 +454,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 		report := summary.GenerateReport()
 		conn.SendTaskMsg(replyAgentID, MsgStreamEvent, StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: task.RequestID,
 			Event: StreamEvent{
 				Type: "summary",
 				Text: report,
@@ -459,6 +465,7 @@ func (a *Agent) ExecuteTask(conn *Connection, task *TaskAssignPayload, replyAgen
 
 	conn.SendTaskMsg(replyAgentID, MsgTaskComplete, TaskCompletePayload{
 		SessionID: sessionID,
+		RequestID: task.RequestID,
 		Status:    SessionStatus(status),
 		Error:     errMsg,
 	})

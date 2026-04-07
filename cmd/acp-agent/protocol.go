@@ -33,6 +33,7 @@ type HeartbeatPayload struct {
 // TaskCompletePayload 任务完成（tool_call 完成通知）
 type TaskCompletePayload struct {
 	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitempty"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
 }
@@ -49,5 +50,6 @@ type StreamEvent struct {
 // StreamEventPayload 流式事件转发
 type StreamEventPayload struct {
 	SessionID string      `json:"session_id"`
+	RequestID string      `json:"request_id,omitempty"`
 	Event     StreamEvent `json:"event"`
 }

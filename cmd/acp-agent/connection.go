@@ -30,9 +30,11 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildACPToolDefs(),
 		Meta: map[string]any{
+			"projects":         projectNames(agent.ScanProjects()),
 			"workspaces":       cfg.Workspaces,
 			"acp_agent_cmd":    cfg.ACPAgentCmd,
 			"analysis_timeout": cfg.AnalysisTimeout,
+			"coding_backends":  []string{"acp"},
 		},
 	}
 
@@ -260,11 +262,11 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	case "AcpListProjects":
 		result = c.toolListProjects()
 	case "AcpAnalyzeProject":
-		result = c.toolAnalyzeProject(args)
+		result = c.toolAnalyzeProject(msg.From, msg.ID, args)
 	case "AcpStartSession":
-		result = c.toolStartSession(args)
+		result = c.toolStartSession(msg.From, msg.ID, args)
 	case "AcpSendMessage":
-		result = c.toolSendMessage(args)
+		result = c.toolSendMessage(msg.From, msg.ID, args)
 	case "AcpGetStatus":
 		result = c.toolGetStatus(args)
 	case "AcpStopSession":
@@ -297,7 +299,7 @@ func (c *Connection) toolListProjects() string {
 	return tr.Result
 }
 
-func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
+func (c *Connection) toolAnalyzeProject(callerAgentID, requestID string, args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
 
@@ -310,7 +312,7 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, nil, false, "", false)
+	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, nil, false, callerAgentID, false)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -326,7 +328,7 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 	return tr.Result
 }
 
-func (c *Connection) toolStartSession(args map[string]interface{}) string {
+func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
 
@@ -347,12 +349,15 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 		}
 	}
 	interactive, _ := args["interactive"].(bool)
-	callerAgentID, _ := args["caller_agent_id"].(string)
+	overrideCallerAgentID, _ := args["caller_agent_id"].(string)
 	keepSession, _ := args["keep_session"].(bool)
+	if overrideCallerAgentID != "" {
+		callerAgentID = overrideCallerAgentID
+	}
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
+	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -374,12 +379,15 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	return tr.Result
 }
 
-func (c *Connection) toolSendMessage(args map[string]interface{}) string {
+func (c *Connection) toolSendMessage(callerAgentID, requestID string, args map[string]interface{}) string {
 	prompt, _ := args["prompt"].(string)
 	sessionID, _ := args["session_id"].(string)
 	interactive, _ := args["interactive"].(bool)
-	callerAgentID, _ := args["caller_agent_id"].(string)
+	overrideCallerAgentID, _ := args["caller_agent_id"].(string)
 	keepSession, _ := args["keep_session"].(bool)
+	if overrideCallerAgentID != "" {
+		callerAgentID = overrideCallerAgentID
+	}
 
 	if prompt == "" {
 		return `{"success":false,"error":"缺少 prompt 参数"}`
@@ -401,7 +409,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		return `{"success":false,"error":"会话正在执行中，请等待完成后再发送消息"}`
 	}
 
-	result, err := c.agent.SendMessage(c, sessionID, prompt, interactive, callerAgentID, keepSession)
+	result, err := c.agent.SendMessage(c, sessionID, requestID, prompt, interactive, callerAgentID, keepSession)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}

@@ -166,7 +166,7 @@ func (a *Agent) resolveProject(project string) string {
 // interactive: 是否交互式权限模式
 // callerAgentID: 调用方 agent ID（交互模式下权限请求发给该 agent）
 // keepSession: 是否在本轮完成后保留 ACP 子进程供后续多轮对话复用
-func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
+func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
 	projectPath := a.resolveProject(project)
 	if projectPath == "" {
 		return taskResult{Status: "error"}, fmt.Errorf("project not found in workspaces: %s", project)
@@ -182,8 +182,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 	}
 	a.sessionsMu.Unlock()
 
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 		SessionID: sessionID,
+		RequestID: requestID,
 		Event: StreamEvent{
 			Type: "system",
 			Text: fmt.Sprintf("🔍 ACP 会话开始... (项目: %s, Agent: %s)", project, a.cfg.AgentName),
@@ -253,18 +254,10 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 		evt.SessionID = sessionID
 		payload := StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: requestID,
 			Event:     evt,
 		}
-		if streamTarget != "" {
-			// Claude Mode: 通过 notify(acp_stream) 发给调用方
-			conn.Client.SendTo(streamTarget, uap.MsgNotify, uap.NotifyPayload{
-				Channel: "acp_stream",
-				To:      sessionID,
-				Content: mustMarshalStr(payload),
-			})
-		} else {
-			conn.SendMsg(MsgStreamEvent, payload)
-		}
+		a.sendStreamEvent(conn, streamTarget, payload)
 	})
 
 	// 保存 ACPSession 到记录（供 SendMessage 复用）
@@ -278,8 +271,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 	log.Printf("[ACP] sending prompt: session=%s project=%s prompt_len=%d", sessionID, project, len(prompt))
 
 	if prompt != "" {
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: requestID,
 			Event: StreamEvent{
 				Type: "system",
 				Text: "📝 正在处理...",
@@ -315,8 +309,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 			go acpSession.Close()
 		}
 
-		conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+		a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: requestID,
 			Event: StreamEvent{
 				Type: "system",
 				Text: "✅ ACP 会话完成",
@@ -346,8 +341,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 		modeNames = append(modeNames, string(m.Id))
 	}
 
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 		SessionID: sessionID,
+		RequestID: requestID,
 		Event: StreamEvent{
 			Type: "system",
 			Text: "✅ ACP 会话就绪",
@@ -368,7 +364,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 // SendMessage 向已有 ACP 会话追加消息（多轮 Prompt）
 // interactive 和 callerAgentID 用于 Claude Mode 流式路由
 // keepSession: 本轮对话完成后是否继续保留会话
-func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
+func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
 	a.sessionsMu.Lock()
 	rec, ok := a.sessions[sessionID]
 	if !ok {
@@ -393,23 +389,17 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 		evt.SessionID = sessionID
 		payload := StreamEventPayload{
 			SessionID: sessionID,
+			RequestID: requestID,
 			Event:     evt,
 		}
-		if smStreamTarget != "" {
-			conn.Client.SendTo(smStreamTarget, uap.MsgNotify, uap.NotifyPayload{
-				Channel: "acp_stream",
-				To:      sessionID,
-				Content: mustMarshalStr(payload),
-			})
-		} else {
-			conn.SendMsg(MsgStreamEvent, payload)
-		}
+		a.sendStreamEvent(conn, smStreamTarget, payload)
 	})
 
 	projectPath := a.resolveProject(project)
 
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 		SessionID: sessionID,
+		RequestID: requestID,
 		Event: StreamEvent{
 			Type: "system",
 			Text: "📝 继续对话...",
@@ -457,8 +447,9 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 		go acpSession.Close()
 	}
 
-	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 		SessionID: sessionID,
+		RequestID: requestID,
 		Event: StreamEvent{
 			Type: "system",
 			Text: "✅ 对话完成",
@@ -475,6 +466,19 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 		Model:        acpClient.GetModelID(),
 		CurrentMode:  acpClient.GetCurrentModeID(),
 	}, nil
+}
+
+func (a *Agent) sendStreamEvent(conn *Connection, targetAgentID string, payload StreamEventPayload) {
+	targetAgentID = strings.TrimSpace(targetAgentID)
+	if targetAgentID != "" {
+		conn.Client.SendTo(targetAgentID, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "acp_stream",
+			To:      firstNonEmpty(payload.RequestID, payload.SessionID),
+			Content: mustMarshalStr(payload),
+		})
+		return
+	}
+	conn.SendMsg(MsgStreamEvent, payload)
 }
 
 // StopTask 停止 ACP 会话
@@ -686,4 +690,13 @@ func (a *Agent) cleanupPermissionWaiter(sessionID string) {
 func mustMarshalStr(v interface{}) string {
 	data, _ := json.Marshal(v)
 	return string(data)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
