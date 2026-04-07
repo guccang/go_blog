@@ -1,9 +1,0 @@
-{
-  "env": {
-    "ANTHROPIC_AUTH_TOKEN":"sk-01353K93dtG40mov4znWPqKdYg5puaqilEGsxNTvbgfcaNUP",
-    "ANTHROPIC_BASE_URL":"https://xinghuapi.com/",
-    "API_TIMEOUT_MS":"3000000",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":1
-  },
-  "model":"claude-opus-4-6"
-}
