@@ -173,7 +173,7 @@ func buildACPToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "AcpStartSession",
-			Description: "启动 ACP 编码会话（同步等待完成，进度通过 stream_event 推送）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
+			Description: "启动 ACP 编码会话（同步等待完成，进度通过 stream_event 推送）。默认在本轮完成后自动关闭 ACP 子进程；只有明确需要多轮续聊时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -182,13 +182,14 @@ func buildACPToolDefs() []uap.ToolDef {
 					"extra_args":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "动态 CLI 参数（如 --dangerously-skip-permissions, --settings path）"},
 					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式（默认 false）"},
 					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID（交互模式下权限请求和流式事件发给该 agent）"},
+					"keep_session":    map[string]interface{}{"type": "boolean", "description": "是否在本轮完成后保留 ACP 会话供后续继续对话；默认 false"},
 				},
 				"required": []string{"project"},
 			}),
 		},
 		{
 			Name:        "AcpSendMessage",
-			Description: "向 ACP 会话追加消息并等待完成（复用已有 ACP 会话多轮对话）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
+			Description: "向 ACP 会话追加消息并等待完成。默认在本轮完成后自动关闭 ACP 子进程；只有明确需要继续多轮对话时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -196,6 +197,7 @@ func buildACPToolDefs() []uap.ToolDef {
 					"session_id":      map[string]interface{}{"type": "string", "description": "要续接的会话ID（可选，默认使用最近的会话）"},
 					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式"},
 					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID"},
+					"keep_session":    map[string]interface{}{"type": "boolean", "description": "是否在本轮完成后继续保留会话；默认 false"},
 				},
 				"required": []string{"prompt"},
 			}),
@@ -308,7 +310,7 @@ func (c *Connection) toolAnalyzeProject(args map[string]interface{}) string {
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, nil, false, "")
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, nil, false, "", false)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -346,10 +348,11 @@ func (c *Connection) toolStartSession(args map[string]interface{}) string {
 	}
 	interactive, _ := args["interactive"].(bool)
 	callerAgentID, _ := args["caller_agent_id"].(string)
+	keepSession, _ := args["keep_session"].(bool)
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, extraArgs, interactive, callerAgentID)
+	result, err := c.agent.ExecuteACP(c, sessionID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -376,6 +379,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 	sessionID, _ := args["session_id"].(string)
 	interactive, _ := args["interactive"].(bool)
 	callerAgentID, _ := args["caller_agent_id"].(string)
+	keepSession, _ := args["keep_session"].(bool)
 
 	if prompt == "" {
 		return `{"success":false,"error":"缺少 prompt 参数"}`
@@ -397,7 +401,7 @@ func (c *Connection) toolSendMessage(args map[string]interface{}) string {
 		return `{"success":false,"error":"会话正在执行中，请等待完成后再发送消息"}`
 	}
 
-	result, err := c.agent.SendMessage(c, sessionID, prompt, interactive, callerAgentID)
+	result, err := c.agent.SendMessage(c, sessionID, prompt, interactive, callerAgentID, keepSession)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}

@@ -184,6 +184,7 @@ func (b *Bridge) handleClaudeModeFirstMessage(session *ChatSession, fromAgent, w
 		"extra_args":      extraArgs,
 		"interactive":     opts.Ask,
 		"caller_agent_id": b.cfg.AgentID,
+		"keep_session":    true,
 	}
 	if opts.Prompt != "" {
 		args["prompt"] = opts.Prompt
@@ -278,6 +279,7 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 			"session_id":      sessionID,
 			"interactive":     interactive,
 			"caller_agent_id": b.cfg.AgentID,
+			"keep_session":    true,
 		}
 		argsJSON, _ := json.Marshal(args)
 		result, err = b.CallTool("AcpSendMessage", argsJSON)
@@ -298,6 +300,7 @@ func (b *Bridge) handleClaudeModeMessage(session *ChatSession, fromAgent, wechat
 			"extra_args":      extraArgs,
 			"interactive":     interactive,
 			"caller_agent_id": b.cfg.AgentID,
+			"keep_session":    true,
 		}
 		argsJSON, _ := json.Marshal(args)
 		result, err = b.CallTool("AcpStartSession", argsJSON)

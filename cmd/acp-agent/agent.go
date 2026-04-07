@@ -27,6 +27,7 @@ type sessionRecord struct {
 	Active     bool
 	Status     string // "in_progress", "completed", "failed", "stopped"
 	Summary    string
+	KeepAlive  bool
 	ACPSession *ACPSession
 	ACPClient  *ACPClientImpl
 }
@@ -164,7 +165,8 @@ func (a *Agent) resolveProject(project string) string {
 // extraArgs: 动态 CLI 参数（如 --dangerously-skip-permissions, --settings 等）
 // interactive: 是否交互式权限模式
 // callerAgentID: 调用方 agent ID（交互模式下权限请求发给该 agent）
-func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string) (taskResult, error) {
+// keepSession: 是否在本轮完成后保留 ACP 子进程供后续多轮对话复用
+func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
 	projectPath := a.resolveProject(project)
 	if projectPath == "" {
 		return taskResult{Status: "error"}, fmt.Errorf("project not found in workspaces: %s", project)
@@ -173,9 +175,10 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 	// 记录会话
 	a.sessionsMu.Lock()
 	a.sessions[sessionID] = &sessionRecord{
-		Project: project,
-		Active:  true,
-		Status:  "in_progress",
+		Project:   project,
+		Active:    true,
+		Status:    "in_progress",
+		KeepAlive: shouldKeepSessionAlive(prompt, keepSession),
 	}
 	a.sessionsMu.Unlock()
 
@@ -305,9 +308,9 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 
 		a.completeSession(sessionID, "completed", summary)
 
-		// Claude Mode（有 callerAgentID）或交互模式：保留会话供后续多轮对话
-		// 非交互且非 Claude Mode（一次性执行）：后台关闭进程释放资源
-		if !interactive && callerAgentID == "" {
+		// 一次性编码任务在完成后立即关闭 ACP 子进程，避免残留大量 node 进程。
+		if !shouldKeepSessionAlive(prompt, keepSession) {
+			log.Printf("[ACP] auto closing completed session: session=%s project=%s", sessionID, project)
 			a.cleanupSessionRecord(sessionID)
 			go acpSession.Close()
 		}
@@ -364,7 +367,8 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, project, prompt string, 
 
 // SendMessage 向已有 ACP 会话追加消息（多轮 Prompt）
 // interactive 和 callerAgentID 用于 Claude Mode 流式路由
-func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interactive bool, callerAgentID string) (taskResult, error) {
+// keepSession: 本轮对话完成后是否继续保留会话
+func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
 	a.sessionsMu.Lock()
 	rec, ok := a.sessions[sessionID]
 	if !ok {
@@ -380,6 +384,7 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 	project := rec.Project
 	rec.Active = true
 	rec.Status = "in_progress"
+	rec.KeepAlive = keepSession
 	a.sessionsMu.Unlock()
 
 	// 设置 stream 回调（可能已切换 conn）
@@ -436,14 +441,21 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, prompt string, interact
 		summary = summary[:3000] + "\n..."
 	}
 
-	// 标记为非活跃但不关闭（保留会话供后续多轮）
-	a.sessionsMu.Lock()
-	if r, ok := a.sessions[sessionID]; ok {
-		r.Active = false
-		r.Status = "completed"
-		r.Summary = summary
+	if keepSession {
+		// Claude 多轮对话：保留会话供后续继续复用。
+		a.sessionsMu.Lock()
+		if r, ok := a.sessions[sessionID]; ok {
+			r.Active = false
+			r.Status = "completed"
+			r.Summary = summary
+		}
+		a.sessionsMu.Unlock()
+	} else {
+		log.Printf("[ACP] auto closing completed follow-up session: session=%s project=%s", sessionID, project)
+		a.completeSession(sessionID, "completed", summary)
+		a.cleanupSessionRecord(sessionID)
+		go acpSession.Close()
 	}
-	a.sessionsMu.Unlock()
 
 	conn.SendMsg(MsgStreamEvent, StreamEventPayload{
 		SessionID: sessionID,
@@ -495,6 +507,14 @@ func (a *Agent) cleanupSessionRecord(sessionID string) {
 	a.sessionsMu.Lock()
 	delete(a.sessions, sessionID)
 	a.sessionsMu.Unlock()
+}
+
+func shouldKeepSessionAlive(prompt string, keepSession bool) bool {
+	// 空 prompt 表示仅创建会话，天然需要保留供后续继续发送消息。
+	if strings.TrimSpace(prompt) == "" {
+		return true
+	}
+	return keepSession
 }
 
 // completeSession 标记会话完成
