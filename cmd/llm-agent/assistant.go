@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -51,6 +52,13 @@ type CronQueryPayload struct {
 	WechatUser string `json:"wechat_user"`        // 微信用户（有值则发送结果到微信）
 	Provider   string `json:"provider,omitempty"` // LLM provider
 	Model      string `json:"model,omitempty"`    // LLM model
+}
+
+type cronNotifyTarget struct {
+	Channel string
+	AgentID string
+	To      string
+	Label   string
 }
 
 // AssistantEventPayload MsgTaskEvent 的事件数据
@@ -248,7 +256,7 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 	})
 }
 
-// handleCronReminder 处理 cron_reminder 定时提醒任务：发微信通知 + 回发 task_complete 到 cron-agent
+// handleCronReminder 处理 cron_reminder 定时提醒任务：双端推送 + 回发 task_complete 到 cron-agent
 func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronReminderPayload) {
 	log.Printf("[CronReminder] task=%s account=%s wechat_user=%s message=%s",
 		taskID, payload.Account, payload.WechatUser, payload.Message)
@@ -256,45 +264,10 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 	status := "success"
 	errMsg := ""
 
-	if payload.WechatUser == "" && strings.TrimSpace(payload.Account) != "" {
-		appAgentID := b.findAppAgent()
-		if appAgentID == "" {
-			status = "failed"
-			errMsg = "no app-agent online"
-			log.Printf("[CronReminder] task=%s failed: %s", taskID, errMsg)
-		} else if err := b.client.SendTo(appAgentID, uap.MsgNotify, uap.NotifyPayload{
-			Channel: "app",
-			To:      strings.TrimSpace(payload.Account),
-			Content: "Reminder: " + payload.Message,
-		}); err != nil {
-			status = "failed"
-			errMsg = err.Error()
-			log.Printf("[CronReminder] task=%s send app notify failed: %v", taskID, err)
-		} else {
-			log.Printf("[CronReminder] task=%s sent to app-agent=%s account=%s", taskID, appAgentID, payload.Account)
-		}
-
-		b.client.Send(&uap.Message{
-			Type:    uap.MsgTaskComplete,
-			ID:      uap.NewMsgID(),
-			From:    b.cfg.AgentID,
-			To:      sourceAgent,
-			Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
-			Ts:      time.Now().UnixMilli(),
-		})
-
-		log.Printf("[CronReminder] task=%s completed status=%s", taskID, status)
-		return
-	}
-
-	wechatAgentID := b.findWechatAgent()
-	if wechatAgentID == "" {
+	if err := b.sendCronNotification(payload.Account, payload.WechatUser, "⏰ "+payload.Message); err != nil {
 		status = "failed"
-		errMsg = "no wechat-agent online"
-		log.Printf("[CronReminder] task=%s failed: %s", taskID, errMsg)
-	} else {
-		b.sendWechat(wechatAgentID, payload.WechatUser, "⏰ "+payload.Message)
-		log.Printf("[CronReminder] task=%s sent to wechat-agent=%s", taskID, wechatAgentID)
+		errMsg = err.Error()
+		log.Printf("[CronReminder] task=%s dual delivery failed: %v", taskID, err)
 	}
 
 	// 发送 task_complete 到 sourceAgent（cron-agent），而非 "blog-agent"
@@ -310,7 +283,7 @@ func (b *Bridge) handleCronReminder(taskID, sourceAgent string, payload *CronRem
 	log.Printf("[CronReminder] task=%s completed status=%s", taskID, status)
 }
 
-// handleCronQuery 处理 cron_query 定时查询任务：驱动 LLM + 工具调用循环执行查询，再发微信 + 回 task_complete
+// handleCronQuery 处理 cron_query 定时查询任务：驱动 LLM + 工具调用循环执行查询，再双端推送 + 回 task_complete
 func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryPayload) {
 	log.Printf("[CronQuery] task=%s account=%s wechat_user=%s query=%s",
 		taskID, payload.Account, payload.WechatUser, payload.Query)
@@ -362,27 +335,14 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 		log.Printf("[CronQuery] task=%s processTask done, resultLen=%d", taskID, len(result))
 	}
 
-	// 如果指定了微信用户，发送查询结果到微信
-	if payload.WechatUser != "" && result != "" {
-		wechatAgentID := b.findWechatAgent()
-		if wechatAgentID == "" {
-			log.Printf("[CronQuery] task=%s no wechat-agent online, skip sending", taskID)
-		} else {
-			b.sendWechat(wechatAgentID, payload.WechatUser, result)
-			log.Printf("[CronQuery] task=%s sent result to wechat user=%s", taskID, payload.WechatUser)
-		}
-	} else if result != "" && strings.TrimSpace(payload.Account) != "" {
-		appAgentID := b.findAppAgent()
-		if appAgentID == "" {
-			log.Printf("[CronQuery] task=%s no app-agent online, skip sending", taskID)
-		} else if err := b.client.SendTo(appAgentID, uap.MsgNotify, uap.NotifyPayload{
-			Channel: "app",
-			To:      strings.TrimSpace(payload.Account),
-			Content: result,
-		}); err != nil {
-			log.Printf("[CronQuery] task=%s send app notify failed: %v", taskID, err)
-		} else {
-			log.Printf("[CronQuery] task=%s sent result to app-agent=%s account=%s", taskID, appAgentID, payload.Account)
+	if result != "" {
+		if sendErr := b.sendCronNotification(payload.Account, payload.WechatUser, result); sendErr != nil {
+			if errMsg != "" {
+				errMsg += "; "
+			}
+			errMsg += sendErr.Error()
+			status = "failed"
+			log.Printf("[CronQuery] task=%s dual delivery failed: %v", taskID, sendErr)
 		}
 	}
 
@@ -397,6 +357,83 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 	})
 
 	log.Printf("[CronQuery] task=%s completed status=%s", taskID, status)
+}
+
+func resolveCronAppUser(account, wechatUser string) string {
+	account = strings.TrimSpace(account)
+	if account != "" {
+		return account
+	}
+	return strings.TrimSpace(wechatUser)
+}
+
+func buildCronNotifyTargets(account, wechatUser, wechatAgentID, appAgentID string) ([]cronNotifyTarget, []string) {
+	account = strings.TrimSpace(account)
+	wechatUser = strings.TrimSpace(wechatUser)
+
+	var (
+		targets []cronNotifyTarget
+		errs    []string
+	)
+
+	if wechatUser != "" {
+		if strings.TrimSpace(wechatAgentID) == "" {
+			errs = append(errs, "no wechat-agent online")
+		} else {
+			targets = append(targets, cronNotifyTarget{
+				Channel: "wechat",
+				AgentID: strings.TrimSpace(wechatAgentID),
+				To:      wechatUser,
+				Label:   "wechat",
+			})
+		}
+	}
+
+	if appUser := resolveCronAppUser(account, wechatUser); appUser != "" {
+		if strings.TrimSpace(appAgentID) == "" {
+			errs = append(errs, "no app-agent online")
+		} else {
+			targets = append(targets, cronNotifyTarget{
+				Channel: "app",
+				AgentID: strings.TrimSpace(appAgentID),
+				To:      appUser,
+				Label:   "app",
+			})
+		}
+	}
+
+	if len(targets) == 0 && len(errs) == 0 {
+		errs = append(errs, "no delivery target")
+	}
+
+	return targets, errs
+}
+
+func (b *Bridge) sendCronNotification(account, wechatUser, content string) error {
+	targets, errs := buildCronNotifyTargets(account, wechatUser, b.findWechatAgent(), b.findAppAgent())
+	for _, target := range targets {
+		switch target.Channel {
+		case "wechat":
+			b.sendWechat(target.AgentID, target.To, content)
+			log.Printf("[CronNotify] sent to wechat-agent=%s user=%s", target.AgentID, target.To)
+		case "app":
+			if err := b.client.SendTo(target.AgentID, uap.MsgNotify, uap.NotifyPayload{
+				Channel: "app",
+				To:      target.To,
+				Content: content,
+			}); err != nil {
+				errs = append(errs, fmt.Sprintf("send app notify failed: %v", err))
+				log.Printf("[CronNotify] send to app-agent=%s user=%s failed: %v", target.AgentID, target.To, err)
+			} else {
+				log.Printf("[CronNotify] sent to app-agent=%s user=%s", target.AgentID, target.To)
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 // findWechatAgent 查找在线的 wechat-agent ID
