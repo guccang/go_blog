@@ -24,6 +24,7 @@ go_blog
 /codegen
 /cmd/codegen-agent/settings
 cmd/codegen-agent/codegen-agent
+cmd/codegen-agent/settings/
 cmd/deploy-agent/nohup.out
 cmd/gateway/gateway
 cmd/llm-agent/llm-agent
@@ -32,7 +33,8 @@ cmd/app-agent/app-agent
 plan.txt
 
 # 含 auth_token/密码等敏感信息的运行配置（保留 .example 作为模板）
-cmd/codegen-agent/codegen-agent.json
+cmd/codegen-agent/codegen-agent
+cmd/codegen-agent/settings/.json
 cmd/deploy-agent/deploy-agent.json
 cmd/execute-code-agent/execute-code-agent.json
 cmd/env-agent/env-agent.json
