@@ -1093,21 +1093,64 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 		sessionPrefix = sessionPrefix[:8]
 	}
 
+	text := strings.TrimSpace(payload.Event.Text)
 	switch payload.Event.Type {
 	case "system":
-		return fmt.Sprintf("[system][%s] %s", sessionPrefix, payload.Event.Text)
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[system][%s] %s", sessionPrefix, text)
+	case "assistant":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[assistant][%s] %s", sessionPrefix, text)
+	case "thought":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[thought][%s] %s", sessionPrefix, text)
 	case "tool":
 		if payload.Event.ToolName != "" {
 			return fmt.Sprintf("[tool][%s] %s", sessionPrefix, payload.Event.ToolName)
 		}
-		return ""
-	case "error":
-		return fmt.Sprintf("[error][%s] %s", sessionPrefix, payload.Event.Text)
-	case "result":
-		if payload.Event.CostUSD > 0 {
-			return fmt.Sprintf("[result][%s] %s (cost: $%.4f)", sessionPrefix, payload.Event.Text, payload.Event.CostUSD)
+		if text == "" {
+			return ""
 		}
-		return fmt.Sprintf("[result][%s] %s", sessionPrefix, payload.Event.Text)
+		return fmt.Sprintf("[tool][%s] %s", sessionPrefix, text)
+	case "tool_detail":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[tool_detail][%s] %s", sessionPrefix, text)
+	case "tool_update":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[tool_update][%s] %s", sessionPrefix, text)
+	case "plan":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[plan][%s]\n%s", sessionPrefix, text)
+	case "mode":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[mode][%s] %s", sessionPrefix, text)
+	case "error":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("[error][%s] %s", sessionPrefix, text)
+	case "result":
+		if text == "" {
+			return ""
+		}
+		if payload.Event.CostUSD > 0 {
+			return fmt.Sprintf("[result][%s] %s (cost: $%.4f)", sessionPrefix, text, payload.Event.CostUSD)
+		}
+		return fmt.Sprintf("[result][%s] %s", sessionPrefix, text)
 	default:
 		return ""
 	}

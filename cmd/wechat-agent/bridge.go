@@ -323,21 +323,69 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 
 // formatEventForWeChat 将 stream_event 格式化为微信推送文本
 func formatEventForWeChat(payload *codegenStreamEvent) string {
+	sessionPrefix := payload.SessionID
+	if len(sessionPrefix) > 8 {
+		sessionPrefix = sessionPrefix[:8]
+	}
+
+	text := strings.TrimSpace(payload.Event.Text)
 	switch payload.Event.Type {
 	case "system":
-		return fmt.Sprintf("📦 [%s] %s", payload.SessionID[:8], payload.Event.Text)
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("📦 [%s] %s", sessionPrefix, text)
+	case "assistant":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("💬 [%s] %s", sessionPrefix, text)
+	case "thought":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("🧠 [%s] %s", sessionPrefix, text)
 	case "tool":
 		if payload.Event.ToolName != "" {
-			return fmt.Sprintf("🔧 [%s] 执行: %s", payload.SessionID[:8], payload.Event.ToolName)
+			return fmt.Sprintf("🔧 [%s] 执行: %s", sessionPrefix, payload.Event.ToolName)
 		}
-		return ""
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("🔧 [%s] %s", sessionPrefix, text)
+	case "tool_detail":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("📝 [%s] %s", sessionPrefix, text)
+	case "tool_update":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("✅ [%s] %s", sessionPrefix, text)
+	case "plan":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("🗂 [%s]\n%s", sessionPrefix, text)
+	case "mode":
+		if text == "" {
+			return ""
+		}
+		return fmt.Sprintf("🔄 [%s] %s", sessionPrefix, text)
 	case "error":
-		return fmt.Sprintf("⚠️ [%s] %s", payload.SessionID[:8], payload.Event.Text)
-	case "result":
-		if payload.Event.CostUSD > 0 {
-			return fmt.Sprintf("📊 [%s] %s (费用: $%.4f)", payload.SessionID[:8], payload.Event.Text, payload.Event.CostUSD)
+		if text == "" {
+			return ""
 		}
-		return fmt.Sprintf("📊 [%s] %s", payload.SessionID[:8], payload.Event.Text)
+		return fmt.Sprintf("⚠️ [%s] %s", sessionPrefix, text)
+	case "result":
+		if text == "" {
+			return ""
+		}
+		if payload.Event.CostUSD > 0 {
+			return fmt.Sprintf("📊 [%s] %s (费用: $%.4f)", sessionPrefix, text, payload.Event.CostUSD)
+		}
+		return fmt.Sprintf("📊 [%s] %s", sessionPrefix, text)
 	default:
 		return ""
 	}

@@ -15,6 +15,7 @@
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",
     "workspaces": [
-        "E:\\githubdesktop\\acpworkspace"
+        "E:\\githubdesktop\\acpworkspace",
+        "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
     ]
 }
