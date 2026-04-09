@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// ProcessRequestViaAgent 通过 llm-agent 处理 assistant 请求
-// 发送 MsgTaskAssign，监听 MsgTaskEvent 流式返回，写入 SSE
-func ProcessRequestViaAgent(account, query string, selectedTools []string, w http.ResponseWriter, flusher http.Flusher) error {
+// ProcessRequestViaAgent 通过 llm-agent 处理 assistant 请求。
+// 发送 MsgTaskAssign，监听 MsgTaskEvent 流式返回，写入 SSE。
+func ProcessRequestViaAgent(account, query string, w http.ResponseWriter, flusher http.Flusher) error {
 	// 检查 gateway 连接
 	if !codegen.IsLLMAgentOnline() {
 		return fmt.Errorf("llm-agent 不在线，请检查 gateway 和 agent 状态")
@@ -29,10 +29,9 @@ func ProcessRequestViaAgent(account, query string, selectedTools []string, w htt
 
 	// 构建 payload 并发送 MsgTaskAssign
 	taskPayload := map[string]interface{}{
-		"task_type":      "assistant_chat",
-		"query":          query,
-		"selected_tools": selectedTools,
-		"account":        account,
+		"task_type": "assistant_chat",
+		"query":     query,
+		"account":   account,
 	}
 
 	if err := codegen.SendTaskToLLMAgent(taskID, taskPayload); err != nil {

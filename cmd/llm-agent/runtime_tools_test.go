@@ -18,7 +18,6 @@ func testTool(name string) LLMTool {
 func TestBuildSubTaskToolRuntimeViewKeepsExecuteCode(t *testing.T) {
 	bridge := &Bridge{}
 	tools := []LLMTool{
-		testTool("plan_and_execute"),
 		testTool("ExecuteCode"),
 		testTool("RawGetTodosByDate"),
 	}
@@ -31,9 +30,6 @@ func TestBuildSubTaskToolRuntimeViewKeepsExecuteCode(t *testing.T) {
 	for _, tool := range view.VisibleTools {
 		if tool.Function.Name == "ExecuteCode" {
 			foundExecuteCode = true
-		}
-		if tool.Function.Name == "plan_and_execute" {
-			t.Fatalf("plan_and_execute should be hidden in subtask view")
 		}
 	}
 	if !foundExecuteCode {

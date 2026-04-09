@@ -65,10 +65,10 @@ func SendSyncLLMRequestNoTools(ctx context.Context, messages []Message, account 
 	return codegen.SendSyncLLMTask(messages, account, nil, true, 3*time.Minute)
 }
 
-// SendSyncLLMRequestWithSelectedTools sends an LLM request with only selected tools via llm-agent
-func SendSyncLLMRequestWithSelectedTools(ctx context.Context, messages []Message, account string, selectedTools []string) (string, error) {
-	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithSelectedTools via agent: account=%s, selectedTools=%v", account, selectedTools)
-	return codegen.SendSyncLLMTask(messages, account, selectedTools, false, 3*time.Minute)
+// SendSyncLLMRequestWithAllowedTools 发送带内部工具白名单约束的 LLM 请求。
+func SendSyncLLMRequestWithAllowedTools(ctx context.Context, messages []Message, account string, allowedTools []string) (string, error) {
+	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithAllowedTools via agent: account=%s, allowedTools=%v", account, allowedTools)
+	return codegen.SendSyncLLMTask(messages, account, allowedTools, false, 3*time.Minute)
 }
 
 // ToolCallEvent 工具调用事件（从进度回调中捕获）
@@ -77,10 +77,10 @@ type ToolCallEvent struct {
 	RawText  string // 原始事件文本
 }
 
-// SendSyncLLMRequestWithSelectedToolsAndCallback 带进度回调的工具调用 LLM 请求
-// 在执行过程中通过 callback 捕获每次工具调用事件
-func SendSyncLLMRequestWithSelectedToolsAndCallback(ctx context.Context, messages []Message, account string, selectedTools []string, callback func(event ToolCallEvent)) (string, error) {
-	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithSelectedToolsAndCallback via agent: account=%s, selectedTools=%v", account, selectedTools)
+// SendSyncLLMRequestWithAllowedToolsAndCallback 带进度回调的内部工具白名单 LLM 请求。
+// 在执行过程中通过 callback 捕获每次工具调用事件。
+func SendSyncLLMRequestWithAllowedToolsAndCallback(ctx context.Context, messages []Message, account string, allowedTools []string, callback func(event ToolCallEvent)) (string, error) {
+	log.DebugF(log.ModuleLLM, "SendSyncLLMRequestWithAllowedToolsAndCallback via agent: account=%s, allowedTools=%v", account, allowedTools)
 
 	var progressCb codegen.LLMProgressCallback
 	if callback != nil {
@@ -93,7 +93,7 @@ func SendSyncLLMRequestWithSelectedToolsAndCallback(ctx context.Context, message
 			}
 		}
 	}
-	return codegen.SendSyncLLMTaskWithProgress(messages, account, selectedTools, false, 3*time.Minute, progressCb)
+	return codegen.SendSyncLLMTaskWithProgress(messages, account, allowedTools, false, 3*time.Minute, progressCb)
 }
 
 // SendSyncLLMRequestWithContext sends a synchronous LLM request with context support via llm-agent

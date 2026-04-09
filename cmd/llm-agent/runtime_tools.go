@@ -1,12 +1,18 @@
 package main
 
-import "log"
+import (
+	"log"
+	"strings"
+)
 
 type ToolRuntimeView struct {
 	AllTools        []LLMTool
 	VisibleTools    []LLMTool
 	DiscoveredTools map[string]LLMTool
 	SourceReasons   map[string]string
+	Policy          string
+	MatchedSkills   []string
+	Hints           []string
 }
 
 func newToolRuntimeView(allTools, visibleTools []LLMTool) *ToolRuntimeView {
@@ -38,12 +44,22 @@ func cloneTools(tools []LLMTool) []LLMTool {
 
 func (b *Bridge) buildRootToolRuntimeView(ctx *TaskContext, query string, allTools []LLMTool) *ToolRuntimeView {
 	visible := b.injectVirtualTools(cloneTools(allTools), ctx.NoTools)
+	policy := "root_default"
+	var matchedSkills []string
 	if !ctx.NoTools && query != "" && isGreeting(query) {
 		visible = nil
+		policy = "root_greeting_disabled"
 	} else if !ctx.NoTools && query != "" {
-		visible = b.filterRootToolsByMatchedSkills(query, visible)
+		visible, matchedSkills = b.filterRootToolsByMatchedSkills(query, visible)
+		if len(matchedSkills) > 0 {
+			policy = "root_skill_match"
+		}
+	} else if ctx.NoTools {
+		policy = "root_no_tools"
 	}
 	view := newToolRuntimeView(allTools, visible)
+	view.Policy = policy
+	view.MatchedSkills = cloneStringSlice(matchedSkills)
 	for _, tool := range visible {
 		if _, ok := view.SourceReasons[tool.Function.Name]; !ok {
 			view.SourceReasons[tool.Function.Name] = "runtime"
@@ -52,9 +68,9 @@ func (b *Bridge) buildRootToolRuntimeView(ctx *TaskContext, query string, allToo
 	return view
 }
 
-func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) []LLMTool {
+func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) ([]LLMTool, []string) {
 	if b.skillMgr == nil || len(tools) == 0 {
-		return tools
+		return tools, nil
 	}
 
 	limit := 2
@@ -63,7 +79,7 @@ func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) [
 	}
 	matchedSkills := b.skillMgr.MatchByQuery(query, limit)
 	if len(matchedSkills) == 0 {
-		return tools
+		return tools, nil
 	}
 
 	allowed := make(map[string]bool)
@@ -88,15 +104,15 @@ func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) [
 	}
 
 	if len(filtered) == 0 {
-		return tools
+		return tools, matchedNames
 	}
 	log.Printf("[RootToolPolicy] matched skills=%v tools=%d→%d query=%s", matchedNames, len(tools), len(filtered), truncate(query, 120))
-	return filtered
+	return filtered, matchedNames
 }
 
 func isRootVirtualTool(name string) bool {
 	switch name {
-	case "plan_and_execute", "execute_skill",
+	case "execute_skill",
 		"get_skill_detail", "get_tool_detail", "get_agent_detail",
 		"WebSearch", "WebFetch",
 		"set_persona", "set_rule",
@@ -110,10 +126,21 @@ func isRootVirtualTool(name string) bool {
 func (b *Bridge) buildSubTaskToolRuntimeView(tools []LLMTool, hints []string) *ToolRuntimeView {
 	base := excludeVirtualTools(cloneTools(tools), hints)
 	visible := base
+	policy := "subtask_default"
+	var matchedSkills []string
 	if len(hints) > 0 {
 		visible = b.ApplySubtaskPolicy(base, hints)
+		policy = "subtask_hints"
+		if b.skillMgr != nil {
+			for _, skill := range b.skillMgr.MatchByTools(hints) {
+				matchedSkills = append(matchedSkills, skill.Name)
+			}
+		}
 	}
 	view := newToolRuntimeView(base, visible)
+	view.Policy = policy
+	view.Hints = cloneStringSlice(hints)
+	view.MatchedSkills = cloneStringSlice(matchedSkills)
 	for _, tool := range visible {
 		view.SourceReasons[tool.Function.Name] = "subtask"
 	}
@@ -127,6 +154,11 @@ func (b *Bridge) buildSkillToolRuntimeView(skill *SkillEntry, parentTools []LLMT
 	}
 	visible := b.filterToolsForSkill(skill, allTools)
 	view := newToolRuntimeView(allTools, visible)
+	view.Policy = "skill_scope"
+	view.Hints = cloneStringSlice(skill.Tools)
+	if skill != nil && strings.TrimSpace(skill.Name) != "" {
+		view.MatchedSkills = []string{strings.TrimSpace(skill.Name)}
+	}
 	for _, tool := range visible {
 		view.SourceReasons[tool.Function.Name] = "skill"
 	}

@@ -66,34 +66,34 @@ func (b *Bridge) getLLMTools() []LLMTool {
 	return b.llmTools
 }
 
-// filterToolsBySelection 根据用户选择过滤工具列表
-// selectedTools 为空时返回全部工具
-func (b *Bridge) filterToolsBySelection(selectedTools []string) []LLMTool {
+// filterToolsByAllowlist 根据系统允许列表过滤工具。
+// allowlist 为空时返回全部工具。
+func (b *Bridge) filterToolsByAllowlist(allowlist []string) []LLMTool {
 	allTools := b.getLLMTools()
-	if len(selectedTools) == 0 {
+	if len(allowlist) == 0 {
 		return allTools
 	}
 
 	// 构建 O(1) 查找表，同时支持 sanitized 名称（下划线）和原始名称（点号）
-	selectedMap := make(map[string]bool, len(selectedTools)*2)
-	for _, name := range selectedTools {
-		selectedMap[name] = true
-		selectedMap[sanitizeToolName(name)] = true
+	allowedMap := make(map[string]bool, len(allowlist)*2)
+	for _, name := range allowlist {
+		allowedMap[name] = true
+		allowedMap[sanitizeToolName(name)] = true
 	}
 
 	var filtered []LLMTool
 	for _, tool := range allTools {
-		if selectedMap[tool.Function.Name] {
+		if allowedMap[tool.Function.Name] {
 			filtered = append(filtered, tool)
 		}
 	}
 
 	if len(filtered) == 0 {
-		log.Printf("[Bridge] no tools matched selection %v, not using tools", selectedTools)
+		log.Printf("[Bridge] no tools matched allowlist %v, not using tools", allowlist)
 		return nil
 	}
 
-	log.Printf("[Bridge] filtered %d tools from %d by user selection", len(filtered), len(allTools))
+	log.Printf("[Bridge] filtered %d tools from %d by allowlist", len(filtered), len(allTools))
 	return filtered
 }
 
@@ -114,7 +114,7 @@ func (b *Bridge) buildBriefToolCatalog() string {
 	sb.WriteString("以下是所有在线 Agent 及其工具。需要了解工具参数时，调用 get_tool_detail(tool_name) 获取完整参数定义。\n\n")
 
 	// llm-agent 自身信息
-	sb.WriteString(fmt.Sprintf("### %s [%s]: LLM 编排中枢", b.cfg.AgentName, b.cfg.AgentID))
+	sb.WriteString(fmt.Sprintf("### %s [%s]: LLM 运行时中枢", b.cfg.AgentName, b.cfg.AgentID))
 	if b.client.HostPlatform != "" {
 		sb.WriteString(fmt.Sprintf(" | 平台: %s", b.client.HostPlatform))
 	}
@@ -200,7 +200,7 @@ func (b *Bridge) buildFullToolCatalog() string {
 	sb.WriteString("以下是所有在线 Agent 及其工具。直接调用工具即可，无需额外发现步骤。\n\n")
 
 	// llm-agent 自身信息
-	sb.WriteString(fmt.Sprintf("### %s [%s]: LLM 编排中枢", b.cfg.AgentName, b.cfg.AgentID))
+	sb.WriteString(fmt.Sprintf("### %s [%s]: LLM 运行时中枢", b.cfg.AgentName, b.cfg.AgentID))
 	if b.client.HostPlatform != "" {
 		sb.WriteString(fmt.Sprintf(" | 平台: %s", b.client.HostPlatform))
 	}
@@ -454,7 +454,7 @@ func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 	if noTools {
 		return tools
 	}
-	tools = append(tools, getSkillDetailTool, getToolDetailTool, getAgentDetailTool, webSearchTool, webFetchTool, planAndExecuteTool)
+	tools = append(tools, getSkillDetailTool, getToolDetailTool, getAgentDetailTool, webSearchTool, webFetchTool)
 	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
 		tools = append(tools, executeSkillTool)
 	}

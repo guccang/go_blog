@@ -15,20 +15,19 @@ import (
 
 // AssistantTaskPayload assistant_chat 任务的 payload
 type AssistantTaskPayload struct {
-	TaskType      string    `json:"task_type"`      // "assistant_chat"
-	Messages      []Message `json:"messages"`       // 对话历史（仅含最后一条 user 消息）
-	SelectedTools []string  `json:"selected_tools"` // 用户选择的工具
-	Account       string    `json:"account"`        // 用户账号
-	Query         string    `json:"query"`          // 用户问题
+	TaskType string    `json:"task_type"` // "assistant_chat"
+	Messages []Message `json:"messages"`  // 对话历史（仅含最后一条 user 消息）
+	Account  string    `json:"account"`   // 用户账号
+	Query    string    `json:"query"`     // 用户问题
 }
 
 // LLMRequestPayload llm_request 任务的 payload（go_blog 同步 LLM 请求代理）
 type LLMRequestPayload struct {
-	TaskType      string    `json:"task_type"`      // "llm_request"
-	Messages      []Message `json:"messages"`       // 预构建的消息列表
-	Account       string    `json:"account"`        // 用户账号
-	SelectedTools []string  `json:"selected_tools"` // 指定工具（nil=全部）
-	NoTools       bool      `json:"no_tools"`       // true=不使用工具
+	TaskType     string    `json:"task_type"`               // "llm_request"
+	Messages     []Message `json:"messages"`                // 预构建的消息列表
+	Account      string    `json:"account"`                 // 用户账号
+	AllowedTools []string  `json:"allowed_tools,omitempty"` // 系统约束工具白名单（nil=全部）
+	NoTools      bool      `json:"no_tools"`                // true=不使用工具
 }
 
 // ResumeTaskPayload resume_task 任务的 payload（断点续传）
@@ -63,11 +62,63 @@ type cronNotifyTarget struct {
 
 // AssistantEventPayload MsgTaskEvent 的事件数据
 type AssistantEventPayload struct {
-	Event string `json:"event"` // "chunk" | "tool_info" | "plan_start" | "plan_done" | "plan_review_start" | "plan_review_result" | "subtask_start" | "subtask_done" | "subtask_fail" | "subtask_skip" | "failure_decision" | "synthesis" | "resume" | "resume_info"
+	Event string `json:"event"` // "chunk" | "tool_info" | "thinking" | "tool_call" | "tool_result" | "tool_progress" | "task_complete" | "resume" | "resume_info" | "skill_*"
 	Text  string `json:"text"`
 }
 
-// handleAssistantTask 处理 assistant_chat 任务：流式 LLM + 工具调用循环 + 任务拆解支持
+type AssistantPromptOptions struct {
+	Query                      string
+	EnableTooling              bool
+	IncludeProjectInstructions bool
+	IncludeGitSnapshot         bool
+	IncludeUserRules           bool
+	IncludeAgentCapabilities   bool
+	IncludeToolCatalog         bool
+	IncludeSkillCatalog        bool
+	IncludeMemory              bool
+}
+
+func defaultAssistantPromptOptions() AssistantPromptOptions {
+	return AssistantPromptOptions{
+		EnableTooling:              true,
+		IncludeProjectInstructions: true,
+		IncludeGitSnapshot:         true,
+		IncludeUserRules:           true,
+		IncludeAgentCapabilities:   true,
+		IncludeToolCatalog:         true,
+		IncludeSkillCatalog:        true,
+		IncludeMemory:              true,
+	}
+}
+
+func (b *Bridge) buildAssistantPromptOptions(query string, enableTools bool) AssistantPromptOptions {
+	opts := defaultAssistantPromptOptions()
+	opts.Query = strings.TrimSpace(query)
+	opts.EnableTooling = enableTools
+
+	if !enableTools {
+		opts.IncludeAgentCapabilities = false
+		opts.IncludeToolCatalog = false
+		opts.IncludeSkillCatalog = false
+	}
+
+	if opts.Query != "" && isGreeting(opts.Query) {
+		opts.IncludeProjectInstructions = false
+		opts.IncludeGitSnapshot = false
+		opts.IncludeAgentCapabilities = false
+		opts.IncludeToolCatalog = false
+		opts.IncludeSkillCatalog = false
+		opts.IncludeMemory = false
+	}
+
+	return opts
+}
+
+func (b *Bridge) buildAssistantSystemPromptForQuery(account, query string, enableTools bool) (string, []PromptSection) {
+	return b.buildAssistantSystemPromptWithOptions(account, b.buildAssistantPromptOptions(query, enableTools))
+}
+
+// handleAssistantTask 处理 assistant_chat 任务：流式 LLM + 工具调用循环
 func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayload) {
 	log.Printf("[Assistant] task=%s account=%s query=%s", taskID, payload.Account, payload.Query)
 
@@ -82,8 +133,9 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 	} else {
 		// 续接对话：刷新 system prompt + 追加 user 消息
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, _ := b.buildAssistantSystemPrompt(payload.Account)
+			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(payload.Account, payload.Query, true)
 			session.Messages[0].Content = freshPrompt
+			session.PromptSections = promptSections
 		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
 		session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
@@ -92,13 +144,12 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 	session.mu.Unlock()
 
 	ctx := &TaskContext{
-		Ctx:           context.Background(),
-		TaskID:        taskID,
-		Account:       payload.Account,
-		Query:         payload.Query,
-		Source:        "web",
-		SelectedTools: payload.SelectedTools,
-		Sink:          &StreamingSink{bridge: b, taskID: taskID},
+		Ctx:     context.Background(),
+		TaskID:  taskID,
+		Account: payload.Account,
+		Query:   payload.Query,
+		Source:  "web",
+		Sink:    &StreamingSink{bridge: b, taskID: taskID},
 	}
 
 	// 如果有历史消息，传入作为上下文
@@ -120,11 +171,12 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		session.mu.Lock()
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
-			systemPrompt, _ := b.buildAssistantSystemPrompt(payload.Account)
+			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(payload.Account, payload.Query, true)
 			session.Messages = []Message{
 				{Role: "system", Content: systemPrompt},
 				{Role: "user", Content: payload.Query},
 			}
+			session.PromptSections = promptSections
 		}
 		session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
 		session.mu.Unlock()
@@ -159,18 +211,11 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
 	log.Printf("[Resume] task=%s resuming root_session=%s", taskID, payload.RootSessionID)
 
-	store := NewSessionStore(b.cfg.SessionDir)
-	orchestrator := NewOrchestrator(b, store)
-
-	// 获取工具列表
-	tools := b.getLLMTools()
-	tools = append(tools, planAndExecuteTool)
-
 	sendEvent := func(event, text string) {
 		b.sendTaskEvent(taskID, event, text)
 	}
 
-	result, err := orchestrator.Resume(payload.RootSessionID, tools, sendEvent)
+	result, err := b.resumeRootQuery(taskID, payload.RootSessionID, payload.Account, sendEvent)
 
 	status := "success"
 	errMsg := ""
@@ -204,14 +249,14 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 	log.Printf("[LLMRequest] task=%s account=%s messages=%d noTools=%v", taskID, payload.Account, len(payload.Messages), payload.NoTools)
 
 	ctx := &TaskContext{
-		Ctx:           context.Background(),
-		TaskID:        taskID,
-		Account:       payload.Account,
-		Source:        "llm_request",
-		Messages:      payload.Messages,
-		SelectedTools: payload.SelectedTools,
-		NoTools:       payload.NoTools,
-		Sink:          &LLMRequestSink{bridge: b, taskID: taskID},
+		Ctx:          context.Background(),
+		TaskID:       taskID,
+		Account:      payload.Account,
+		Source:       "llm_request",
+		Messages:     payload.Messages,
+		AllowedTools: payload.AllowedTools,
+		NoTools:      payload.NoTools,
+		Sink:         &LLMRequestSink{bridge: b, taskID: taskID},
 	}
 
 	result, err := b.processTask(ctx)
@@ -470,6 +515,10 @@ func (b *Bridge) findAppAgent() string {
 // buildAssistantSystemPrompt 构建固定的系统提示词（不随请求内容变化）
 // 结构：人设 → 用户规则 → Agent 目录 → Skill 目录 → 长期记忆 → 时间/账号信息
 func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSection) {
+	return b.buildAssistantSystemPromptWithOptions(account, defaultAssistantPromptOptions())
+}
+
+func (b *Bridge) buildAssistantSystemPromptWithOptions(account string, opts AssistantPromptOptions) (string, []PromptSection) {
 	var sb strings.Builder
 	var sections []PromptSection
 
@@ -512,42 +561,54 @@ func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSec
 	personaContent += "- 完成后要做最小必要验证；没验证就明确说明没验证。\n"
 	personaContent += "- 如果项目指令文件、用户规则、长期记忆与默认行为冲突，以这些持久指令为准。\n\n"
 	personaContent += "## 执行路径\n"
-	personaContent += "- 默认先直接使用当前轮可见工具完成任务，不要为了简单任务强行进入 plan_and_execute。\n"
-	personaContent += "- 只有当任务明显包含多个阶段、跨技能域、存在并行空间或需要显式恢复/编排时，再调用 plan_and_execute。\n"
-	personaContent += "- execute_skill 用于稳定、重复、边界清晰的专业任务模板；不要把它当成所有工具调用的统一入口。\n"
+	personaContent += "- 默认先直接使用当前轮可见工具完成任务。\n"
+	personaContent += "- execute_skill 只用于稳定、重复、边界清晰的专业任务模板；不要把它当成所有工具调用的统一入口。\n"
+	personaContent += "- 需要多阶段推进时，优先在同一轮对话中逐步调用工具和复用运行时上下文，不要额外插入中间执行层。\n"
 	personaContent += "- 编码、验证、部署尽量拆成独立阶段，结果中引用真实工具输出，禁止编造。\n\n"
 	writeSection("人设/基础", personaContent)
 
 	// 2. 项目指令（对齐 Claude Code 的 AGENTS.md/CLAUDE.md 注入）
-	if cwd, err := os.Getwd(); err == nil {
-		writeSection("项目指令", buildInstructionBlock(cwd))
-		writeSection("Git快照", buildGitStatusBlock(cwd))
+	if opts.IncludeProjectInstructions {
+		if cwd, err := os.Getwd(); err == nil {
+			writeSection("项目指令", buildInstructionBlock(cwd))
+			if opts.IncludeGitSnapshot {
+				writeSection("Git快照", buildGitStatusBlock(cwd))
+			}
+		}
 	}
 
 	// 3. 用户规则（使用账户特定的 memory manager）
-	if memMgr := b.GetMemoryManager(account); memMgr != nil {
-		rulesBlock := memMgr.BuildRulePromptBlock()
-		writeSection("用户规则", rulesBlock)
+	if opts.IncludeUserRules {
+		if memMgr := b.GetMemoryManager(account); memMgr != nil {
+			rulesBlock := memMgr.BuildRulePromptBlock()
+			writeSection("用户规则", rulesBlock)
+		}
 	}
 
 	// 4. Agent 能力概览（平台、SSH、部署目标、模型等，不含具体工具列表）
-	agentBlock := b.getAgentDescriptionBlock()
-	writeSection("Agent能力", agentBlock)
+	if opts.IncludeAgentCapabilities {
+		agentBlock := b.getAgentDescriptionBlock()
+		writeSection("Agent能力", agentBlock)
+	}
 
 	// 5. Agent 工具目录（LLM 可直接调用这些工具）
-	toolCatalog := b.buildBriefToolCatalog()
-	writeSection("工具目录", toolCatalog)
+	if opts.IncludeToolCatalog {
+		toolCatalog := b.buildBriefToolCatalog()
+		writeSection("工具目录", toolCatalog)
+	}
 
-	// 6. Skill 目录（复杂任务可通过 execute_skill 调用技能）
-	if b.skillMgr != nil {
+	// 6. Skill 目录（可按需通过 execute_skill 调用技能）
+	if opts.IncludeSkillCatalog && b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)
 	}
 
 	// 7. 长期记忆（使用账户特定的 memory manager）
-	if memMgr := b.GetMemoryManager(account); memMgr != nil {
-		memoryBlock := memMgr.BuildPromptBlock()
-		writeSection("长期记忆", memoryBlock)
+	if opts.IncludeMemory {
+		if memMgr := b.GetMemoryManager(account); memMgr != nil {
+			memoryBlock := memMgr.BuildPromptBlock()
+			writeSection("长期记忆", memoryBlock)
+		}
 	}
 
 	return sb.String(), sections

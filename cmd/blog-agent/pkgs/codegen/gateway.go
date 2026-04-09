@@ -1064,14 +1064,14 @@ func findLLMAgentID() string {
 // LLMProgressCallback 同步 LLM 请求的进度回调（nil 表示不需要进度通知）
 type LLMProgressCallback func(event, text string)
 
-// SendSyncLLMTask 发送同步 LLM 请求给 llm-agent，等待结果返回（不含进度回调）
-// messages 可以是任意可 JSON 序列化的消息列表
-func SendSyncLLMTask(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration) (string, error) {
-	return SendSyncLLMTaskWithProgress(messages, account, selectedTools, noTools, timeout, nil)
+// SendSyncLLMTask 发送同步 LLM 请求给 llm-agent，等待结果返回（不含进度回调）。
+// messages 可以是任意可 JSON 序列化的消息列表。
+func SendSyncLLMTask(messages interface{}, account string, allowedTools []string, noTools bool, timeout time.Duration) (string, error) {
+	return SendSyncLLMTaskWithProgress(messages, account, allowedTools, noTools, timeout, nil)
 }
 
-// SendSyncLLMTaskWithProgress 发送同步 LLM 请求给 llm-agent，等待结果返回（支持进度回调）
-func SendSyncLLMTaskWithProgress(messages interface{}, account string, selectedTools []string, noTools bool, timeout time.Duration, progressCb LLMProgressCallback) (string, error) {
+// SendSyncLLMTaskWithProgress 发送同步 LLM 请求给 llm-agent，等待结果返回（支持进度回调）。
+func SendSyncLLMTaskWithProgress(messages interface{}, account string, allowedTools []string, noTools bool, timeout time.Duration, progressCb LLMProgressCallback) (string, error) {
 	if gatewayBridge == nil || gatewayBridge.client == nil {
 		return "", fmt.Errorf("gateway bridge not initialized")
 	}
@@ -1091,11 +1091,11 @@ func SendSyncLLMTaskWithProgress(messages interface{}, account string, selectedT
 
 	// 构建 payload
 	taskPayload := map[string]interface{}{
-		"task_type":      "llm_request",
-		"messages":       messages,
-		"account":        account,
-		"selected_tools": selectedTools,
-		"no_tools":       noTools,
+		"task_type":     "llm_request",
+		"messages":      messages,
+		"account":       account,
+		"allowed_tools": allowedTools,
+		"no_tools":      noTools,
 	}
 
 	// 发送 MsgTaskAssign

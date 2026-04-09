@@ -53,20 +53,23 @@ func (m RuntimeMessage) ToMessage() Message {
 	}
 }
 
-// QueryState 保存一次 query runtime 的核心状态。
-type QueryState struct {
+// QueryLoopState 保存一次 query runtime 的核心状态。
+type QueryLoopState struct {
 	Query           string
 	AllTools        []LLMTool
-	Session         *SessionRuntime
+	PromptContext   SystemPromptContext
+	Session         *QuerySession
 	MaxIterations   int
 	PermissionMode  PermissionMode
 	FinalText       string
 	FinalErr        error
 	CompletedDirect bool
-	ComplexHandled  bool
 }
 
-type QueryRuntime struct {
+// QueryState 保留旧名称，兼容现有调用。
+type QueryState = QueryLoopState
+
+type QueryLoop struct {
 	bridge      *Bridge
 	task        *TaskContext
 	store       *SessionStore
@@ -74,9 +77,12 @@ type QueryRuntime struct {
 	trace       *RequestTrace
 	localTools  map[string]ToolHandler
 	toolExec    *ToolExecutionRuntime
-	state       QueryState
+	state       QueryLoopState
 	taskStart   time.Time
 }
+
+// QueryRuntime 保留旧名称，兼容现有调用。
+type QueryRuntime = QueryLoop
 
 func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	rt, err := b.prepareQueryRuntime(ctx)
@@ -86,7 +92,7 @@ func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
 	return rt.Run()
 }
 
-func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
+func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryLoop, error) {
 	taskStart := time.Now()
 	streaming := ctx.Sink.Streaming()
 	log.Printf("[processTask] ▶ 开始处理 taskID=%s source=%s account=%s streaming=%v query=%s",
@@ -96,9 +102,9 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 	var allTools []LLMTool
 	if ctx.NoTools {
 		log.Printf("[processTask] 工具模式: 禁用")
-	} else if len(ctx.SelectedTools) > 0 {
-		allTools = b.filterToolsBySelection(ctx.SelectedTools)
-		log.Printf("[processTask] 工具模式: 用户选择 selected=%d matched=%d", len(ctx.SelectedTools), len(allTools))
+	} else if len(ctx.AllowedTools) > 0 {
+		allTools = b.filterToolsByAllowlist(ctx.AllowedTools)
+		log.Printf("[processTask] 工具模式: 系统约束 allow=%d matched=%d", len(ctx.AllowedTools), len(allTools))
 	} else {
 		allTools = b.getLLMTools()
 		log.Printf("[processTask] 工具模式: skill+agent（%d 个 agent 工具 + 虚拟工具）", len(allTools))
@@ -128,14 +134,21 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 			rootSession.SetStatus("done")
 			store.Save(rootSession)
 			store.SaveIndex(rootSession, nil)
+			trace := NewRequestTrace(ctx.TaskID, ctx.Source, "root_query", query, rootSession)
+			trace.SetDescription(query)
+			trace.RecordPath("direct_reply", "命中 MCP 工具列表直答分支", nil)
+			trace.RecordEvent("direct_reply", "直接返回工具目录", directReply, 0, nil)
+			trace.Finish(rootSession.Status, directReply, nil)
+			store.SaveRequestTrace(trace)
 			log.Printf("[processTask] direct MCP tool list reply, toolCount=%d", len(allTools))
-			return &QueryRuntime{
+			return &QueryLoop{
 				bridge:      b,
 				task:        ctx,
 				store:       store,
 				rootSession: rootSession,
+				trace:       trace,
 				taskStart:   taskStart,
-				state: QueryState{
+				state: QueryLoopState{
 					Query:           query,
 					AllTools:        allTools,
 					FinalText:       directReply,
@@ -147,20 +160,34 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 	}
 
 	var messages []Message
+	enableToolPrompt := !ctx.NoTools
+	if query != "" && isGreeting(query) {
+		enableToolPrompt = false
+	}
+	promptContext := SystemPromptContext{
+		Account: strings.TrimSpace(ctx.Account),
+		Source:  strings.TrimSpace(ctx.Source),
+	}
 	if ctx.Messages != nil {
 		messages = make([]Message, len(ctx.Messages))
 		copy(messages, ctx.Messages)
-		if ctx.Source == "web" || ctx.Source == "wechat" {
+		if ctx.Source == "web" || ctx.Source == "wechat" || ctx.Source == "app" {
 			if len(messages) > 0 && messages[0].Role == "system" {
-				freshPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account)
+				freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(ctx.Account, query, enableToolPrompt)
 				messages[0].Content = freshPrompt
+				promptContext.Sections = clonePromptSections(promptSections)
 				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d prompt:\n%s", len(freshPrompt), freshPrompt)
 			}
 		} else {
 			log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
 		}
+		if len(messages) > 0 && messages[0].Role == "system" {
+			promptContext.SystemPrompt = messages[0].Content
+		}
 	} else {
-		systemPrompt, _ := b.buildAssistantSystemPrompt(ctx.Account)
+		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(ctx.Account, query, enableToolPrompt)
+		promptContext.SystemPrompt = systemPrompt
+		promptContext.Sections = clonePromptSections(promptSections)
 		messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: ctx.Query},
@@ -169,22 +196,42 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 	}
 
 	store := NewSessionStore(b.cfg.SessionDir)
-	rootSession := NewRootSession(ctx.TaskID, query, ctx.Account)
-	rootSession.Source = ctx.Source
+	var rootSession *TaskSession
+	if ctx.ResumeSession != nil {
+		rootSession = ctx.ResumeSession
+		rootSession.mu.Lock()
+		rootSession.Title = query
+		rootSession.Account = ctx.Account
+		rootSession.Source = ctx.Source
+		rootSession.Messages = nil
+		rootSession.mu.Unlock()
+		rootSession.SetStatus("running")
+	} else {
+		rootSession = NewRootSession(ctx.TaskID, query, ctx.Account)
+		rootSession.Source = ctx.Source
+	}
 	for _, msg := range messages {
 		rootSession.AppendMessage(msg)
 	}
+	ctx.CurrentSession = rootSession
 
-	trace := &RequestTrace{
-		TaskID:    ctx.TaskID,
-		Source:    ctx.Source,
-		Query:     query,
-		StartTime: taskStart,
-	}
+	trace := NewRequestTrace(ctx.TaskID, ctx.Source, "root_query", query, rootSession)
+	trace.SetDescription(query)
+	trace.RecordPath("task_start", "进入根任务 QueryLoop", map[string]string{
+		"source":   fallbackText(strings.TrimSpace(ctx.Source), "unknown"),
+		"no_tools": fmt.Sprintf("%t", ctx.NoTools),
+	})
+	trace.RecordPath("prompt_ready", fmt.Sprintf("构建初始消息 %d 条", len(messages)), map[string]string{
+		"system_prompt_len": fmt.Sprintf("%d", len(promptContext.SystemPrompt)),
+	})
 	ctx.Trace = trace
 	b.hooks.FireTaskStart(ctx)
 
 	toolView := b.buildRootToolRuntimeView(ctx, query, allTools)
+	trace.SetToolView(toolView)
+	trace.RecordPath("tool_view_ready", fmt.Sprintf("policy=%s visible=%d all=%d", toolView.Policy, len(toolView.VisibleTools), len(toolView.AllTools)), map[string]string{
+		"matched_skills": strings.Join(toolView.MatchedSkills, ","),
+	})
 	tools = toolView.Visible()
 	if !ctx.NoTools && len(tools) > 0 {
 		skillCount := 0
@@ -200,7 +247,25 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 		maxIter = 15
 	}
 
-	return &QueryRuntime{
+	if ctx.ResumeSnapshot != nil {
+		if strings.TrimSpace(ctx.ResumeSnapshot.Query) != "" {
+			query = strings.TrimSpace(ctx.ResumeSnapshot.Query)
+		}
+		if strings.TrimSpace(ctx.ResumeSnapshot.PromptContext.SystemPrompt) != "" {
+			promptContext = ctx.ResumeSnapshot.PromptContext
+		}
+		trace.RecordPath("resume_snapshot_loaded", "恢复已有 runtime snapshot", map[string]string{
+			"attachments":     fmt.Sprintf("%d", len(ctx.ResumeSnapshot.Attachments)),
+			"compact_history": fmt.Sprintf("%d", len(ctx.ResumeSnapshot.CompactHistory)),
+		})
+	}
+
+	sessionRT := NewQuerySession(messages, toolView, defaultQueryCompactConfig())
+	if ctx.ResumeSnapshot != nil {
+		sessionRT = NewQuerySessionFromSnapshot(messages, ctx.ResumeSnapshot, toolView, defaultQueryCompactConfig())
+	}
+
+	queryLoop := &QueryLoop{
 		bridge:      b,
 		task:        ctx,
 		store:       store,
@@ -208,15 +273,18 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryRuntime, error) {
 		trace:       trace,
 		localTools:  b.buildRuntimeLocalHandlers(ctx, allTools),
 		taskStart:   taskStart,
-		state: QueryState{
+		state: QueryLoopState{
 			Query:          query,
 			AllTools:       allTools,
-			Session:        NewSessionRuntime(messages, toolView, defaultQueryCompactConfig()),
+			PromptContext:  promptContext,
+			Session:        sessionRT,
 			MaxIterations:  maxIter,
 			PermissionMode: PermissionModeDefault,
 		},
 		toolExec: NewToolExecutionRuntime(b),
-	}, nil
+	}
+	queryLoop.saveCheckpoint("running")
+	return queryLoop, nil
 }
 
 func (b *Bridge) buildRuntimeLocalHandlers(ctx *TaskContext, allTools []LLMTool) map[string]ToolHandler {
@@ -270,28 +338,10 @@ func (b *Bridge) buildRuntimeLocalHandlers(ctx *TaskContext, allTools []LLMTool)
 		return b.handleGetAgentDetail(a.AgentID), nil
 	}
 
-	if b.skillMgr != nil && len(b.skillMgr.GetAllSkills()) > 0 {
-		capturedCtx := ctx
-		capturedTools := allTools
-		localHandlers["execute_skill"] = func(callCtx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
-			var skillArgs struct {
-				SkillName string `json:"skill_name"`
-				Query     string `json:"query"`
-			}
-			if err := json.Unmarshal(args, &skillArgs); err != nil {
-				return &ToolCallResult{Result: fmt.Sprintf("参数解析失败: %v", err), AgentID: "builtin"}, nil
-			}
-			sink.OnEvent("skill_start", fmt.Sprintf("正在执行技能: %s\n任务: %s", skillArgs.SkillName, skillArgs.Query))
-			log.Printf("[processTask] execute_skill: skill=%s query=%s", skillArgs.SkillName, truncate(skillArgs.Query, 200))
-			result := b.executeSkillSubTask(capturedCtx, skillArgs.SkillName, skillArgs.Query, capturedTools)
-			return &ToolCallResult{Result: result, AgentID: "builtin"}, nil
-		}
-	}
-
 	return localHandlers
 }
 
-func (rt *QueryRuntime) Run() (string, error) {
+func (rt *QueryLoop) queryLoop() (string, error) {
 	if rt.state.CompletedDirect {
 		return rt.state.FinalText, rt.state.FinalErr
 	}
@@ -305,9 +355,17 @@ func (rt *QueryRuntime) Run() (string, error) {
 			break
 		}
 
+		rt.drainMailboxAttachments(i + 1)
+
 		if meta := rt.state.Session.CompactIfNeeded(i, "query_turn"); meta != nil {
 			log.Printf("[processTask] 消息压缩 reason=%s messages=%d→%d chars=%d→%d toolTrim=%d",
 				meta.Reason, meta.BeforeMessages, meta.AfterMessages, meta.BeforeChars, meta.AfterChars, meta.ToolResultsTrimed)
+			if rt.trace != nil {
+				rt.trace.RecordRoundCompaction(i+1, meta)
+			}
+			rt.saveCheckpoint("running")
+		} else {
+			rt.saveRuntimeSnapshot("running")
 		}
 
 		log.Printf("[processTask] ── 迭代 %d/%d ── messages=%d tools=%d", i+1, rt.state.MaxIterations, len(rt.state.Session.Messages()), len(rt.state.Session.VisibleTools()))
@@ -317,7 +375,8 @@ func (rt *QueryRuntime) Run() (string, error) {
 			rt.state.Session.AppendMessage(RuntimeMessage{
 				Role:    "user",
 				Content: "你已经进行了多轮工具调用。请立即给出最终回复，总结目前已完成的工作和结果。不要再调用任何工具。",
-			}.ToMessage(), nil)
+			}.ToMessage(), rt.rootSession)
+			rt.saveCheckpoint("running")
 			rt.task.Sink.OnEvent("task_forced_summary", fmt.Sprintf("已执行 %d 轮工具调用，正在强制总结结果...", i))
 			log.Printf("[processTask] ⚠ 达到迭代上限，移除工具强制总结")
 		}
@@ -343,10 +402,15 @@ func (rt *QueryRuntime) Run() (string, error) {
 		log.Printf("[processTask] ← LLM 响应 duration=%v textLen=%d toolCalls=%d tools=%v",
 			llmDuration, len(text), len(toolCalls), tcNames)
 
-		currentRound := TraceRound{
-			Index:         i + 1,
-			LLMDurationMs: llmDuration.Milliseconds(),
-			TextLen:       len(text),
+		var currentRound *TraceRound
+		if rt.trace != nil {
+			rt.trace.RecordRoundLLM(i+1, llmDuration, text, toolCalls, rt.state.Session.VisibleTools())
+			currentRound = rt.trace.EnsureRound(i + 1)
+			rt.trace.RecordPath(fmt.Sprintf("round_%d_llm", i+1),
+				fmt.Sprintf("LLM返回 text_len=%d tool_calls=%d", len(text), len(toolCalls)),
+				map[string]string{"tools": strings.Join(tcNames, ",")})
+		} else {
+			currentRound = &TraceRound{Index: i + 1}
 		}
 
 		if len(toolCalls) > 0 {
@@ -356,13 +420,14 @@ func (rt *QueryRuntime) Run() (string, error) {
 		}
 
 		assistantMsg := RuntimeMessage{Role: "assistant", Content: text, ToolCalls: toolCalls}.ToMessage()
-		rt.rootSession.AppendMessage(assistantMsg)
+		rt.state.Session.AppendMessage(assistantMsg, rt.rootSession)
+		rt.saveCheckpoint("running")
 
 		if len(toolCalls) == 0 {
 			log.Printf("[processTask] ✓ 对话结束（无工具调用） resultLen=%d", len(text))
-			rt.trace.Rounds = append(rt.trace.Rounds, currentRound)
 			rt.state.FinalText = text
 			rt.rootSession.SetResult(text)
+			rt.saveCheckpoint("running")
 			rt.task.Sink.OnEvent("task_complete", fmt.Sprintf("处理完成，耗时 %s", fmtDuration(time.Since(rt.taskStart))))
 			break
 		}
@@ -371,64 +436,11 @@ func (rt *QueryRuntime) Run() (string, error) {
 			log.Printf("[processTask] ✓ 忽略工具调用（NoTools模式） resultLen=%d", len(text))
 			rt.state.FinalText = text
 			rt.rootSession.SetResult(text)
+			rt.saveCheckpoint("running")
 			break
 		}
 
-		planCallIdx := -1
-		for idx, tc := range toolCalls {
-			if tc.Function.Name == "plan_and_execute" {
-				planCallIdx = idx
-				break
-			}
-		}
-		if planCallIdx >= 0 {
-			var args struct {
-				Reasoning string `json:"reasoning"`
-			}
-			if err := json.Unmarshal([]byte(toolCalls[planCallIdx].Function.Arguments), &args); err == nil {
-				log.Printf("[processTask] plan_and_execute triggered at iteration %d: %s", i, args.Reasoning)
-			} else {
-				log.Printf("[processTask] plan_and_execute triggered at iteration %d", i)
-			}
-
-			var completedWork string
-			rt.rootSession.mu.Lock()
-			existingCalls := make([]ToolCallRecord, len(rt.rootSession.ToolCalls))
-			copy(existingCalls, rt.rootSession.ToolCalls)
-			rt.rootSession.mu.Unlock()
-			if len(existingCalls) > 0 {
-				var workSummary strings.Builder
-				for _, rec := range existingCalls {
-					status := "✅ 成功"
-					if !rec.Success {
-						status = "❌ 失败"
-					}
-					workSummary.WriteString(fmt.Sprintf("- %s(%s) → %s: %s\n",
-						rec.ToolName, truncate(rec.Arguments, 100), status, truncate(rec.Result, 200)))
-				}
-				completedWork = workSummary.String()
-				log.Printf("[processTask] passing %d completed tool calls to planner", len(existingCalls))
-			}
-
-			result := rt.bridge.handleComplexTask(rt.task, rt.rootSession, rt.store, rt.state.AllTools, completedWork)
-			rt.task.Sink.OnChunk(result)
-			rt.state.FinalText = result
-			rt.state.ComplexHandled = true
-			rt.trace.Rounds = append(rt.trace.Rounds, currentRound)
-			break
-		}
-
-		msgText := text
-		if len(toolCalls) > 0 {
-			msgText = ""
-		}
-		rt.state.Session.AppendMessage(RuntimeMessage{
-			Role:      "assistant",
-			Content:   msgText,
-			ToolCalls: toolCalls,
-		}.ToMessage(), nil)
-
-		bizFailedTools, bizFailedMsgs, interrupted := rt.executeToolCalls(i, toolCalls, &currentRound)
+		bizFailedTools, bizFailedMsgs, interrupted := rt.executeToolCalls(i, toolCalls, currentRound)
 		if interrupted {
 			break
 		}
@@ -436,14 +448,16 @@ func (rt *QueryRuntime) Run() (string, error) {
 		if len(bizFailedTools) > 0 {
 			rt.expandSiblingTools(bizFailedTools, bizFailedMsgs)
 		}
-
-		rt.trace.Rounds = append(rt.trace.Rounds, currentRound)
 	}
 
 	return rt.finish()
 }
 
-func (rt *QueryRuntime) callLLM() (string, []ToolCall, time.Duration, error) {
+func (rt *QueryLoop) Run() (string, error) {
+	return rt.queryLoop()
+}
+
+func (rt *QueryLoop) callLLM() (string, []ToolCall, time.Duration, error) {
 	llmCfg, llmFallbacks := rt.bridge.GetLLMConfigForSource(rt.task.Source)
 	llmStart := time.Now()
 	var (
@@ -463,7 +477,7 @@ func (rt *QueryRuntime) callLLM() (string, []ToolCall, time.Duration, error) {
 	return text, toolCalls, time.Since(llmStart), err
 }
 
-func (rt *QueryRuntime) executeToolCalls(iteration int, toolCalls []ToolCall, currentRound *TraceRound) ([]string, []string, bool) {
+func (rt *QueryLoop) executeToolCalls(iteration int, toolCalls []ToolCall, currentRound *TraceRound) ([]string, []string, bool) {
 	var bizFailedTools []string
 	var bizFailedMsgs []string
 
@@ -492,6 +506,7 @@ func (rt *QueryRuntime) executeToolCalls(iteration int, toolCalls []ToolCall, cu
 			Total:          len(toolCalls),
 			ToolCall:       tc,
 			TraceRound:     currentRound,
+			Trace:          rt.trace,
 		})
 		if execResult.Interrupted {
 			log.Printf("[processTask] ✗ 工具调用期间任务被取消 tool=%s taskID=%s", execResult.ToolName, rt.task.TaskID)
@@ -506,12 +521,13 @@ func (rt *QueryRuntime) executeToolCalls(iteration int, toolCalls []ToolCall, cu
 			log.Printf("[processTask] 业务失败检测: %s → %s", execResult.ToolName, execResult.BusinessErr)
 		}
 		rt.state.Session.AppendToolResult(execResult.Result, tc.ID, iteration, rt.rootSession)
+		rt.saveCheckpoint("running")
 	}
 
 	return bizFailedTools, bizFailedMsgs, false
 }
 
-func (rt *QueryRuntime) expandSiblingTools(bizFailedTools, bizFailedMsgs []string) {
+func (rt *QueryLoop) expandSiblingTools(bizFailedTools, bizFailedMsgs []string) {
 	newToolNames := rt.state.Session.ExpandSiblingTools(rt.bridge, bizFailedTools)
 
 	if len(newToolNames) == 0 {
@@ -524,19 +540,30 @@ func (rt *QueryRuntime) expandSiblingTools(bizFailedTools, bizFailedMsgs []strin
 	}
 	hint := fmt.Sprintf("以下工具返回业务失败:\n%s已补充同 Agent 的替代工具: %s\n你可以选择修复参数重试原工具，或使用替代工具完成任务。",
 		failInfo.String(), strings.Join(newToolNames, ", "))
-	rt.state.Session.AppendMessage(RuntimeMessage{Role: "user", Content: hint}.ToMessage(), nil)
+	attachment := newRuntimeAttachment(
+		RuntimeAttachmentSystemHint,
+		"工具业务失败恢复",
+		hint,
+		rt.rootSession.ID,
+		map[string]string{"expanded_tools": strings.Join(newToolNames, ",")},
+	)
+	rt.state.Session.InjectAttachments([]Attachment{attachment}, rt.rootSession)
+	rt.saveCheckpoint("running")
+	if rt.trace != nil {
+		rt.trace.RecordPath("tool_expand", fmt.Sprintf("业务失败后扩展兄弟工具: %s", strings.Join(newToolNames, ", ")), map[string]string{
+			"failed_tools": strings.Join(bizFailedTools, ","),
+		})
+	}
 	log.Printf("[processTask] 业务失败扩展: 新增 %d 个兄弟工具: %v", len(newToolNames), newToolNames)
 	rt.task.Sink.OnEvent("tool_expand", fmt.Sprintf("工具业务失败，补充兄弟工具: %s", strings.Join(newToolNames, ", ")))
 }
 
-func (rt *QueryRuntime) finish() (string, error) {
-	if !rt.state.ComplexHandled {
-		if rt.state.FinalErr != nil {
-			rt.rootSession.SetStatus("failed")
-			rt.rootSession.SetError(rt.state.FinalErr.Error())
-		} else if rt.rootSession.Status != "cancelled" {
-			rt.rootSession.SetStatus("done")
-		}
+func (rt *QueryLoop) finish() (string, error) {
+	if rt.state.FinalErr != nil {
+		rt.rootSession.SetStatus("failed")
+		rt.rootSession.SetError(rt.state.FinalErr.Error())
+	} else if rt.rootSession.Status != "cancelled" {
+		rt.rootSession.SetStatus("done")
 	}
 
 	if rt.state.FinalText == "" && rt.state.FinalErr != nil {
@@ -560,10 +587,9 @@ func (rt *QueryRuntime) finish() (string, error) {
 		rt.task.PersistedAssistant = rt.state.FinalText
 	}
 
-	if !rt.state.ComplexHandled {
-		rt.store.Save(rt.rootSession)
-		rt.store.SaveIndex(rt.rootSession, nil)
-	}
+	rt.store.Save(rt.rootSession)
+	rt.store.SaveIndex(rt.rootSession, nil)
+	rt.saveRuntimeSnapshot(rt.rootSession.Status)
 
 	totalDuration := time.Since(rt.taskStart)
 	status := "done"
@@ -574,6 +600,11 @@ func (rt *QueryRuntime) finish() (string, error) {
 		rt.task.TaskID, rt.task.Source, status, totalDuration, len(rt.state.FinalText))
 
 	if rt.trace != nil {
+		rt.trace.RecordPath("task_finish", fmt.Sprintf("status=%s result_len=%d", rt.rootSession.Status, len(rt.state.FinalText)), nil)
+		rt.trace.Finish(rt.rootSession.Status, rt.state.FinalText, rt.state.FinalErr)
+		if err := rt.store.SaveRequestTrace(rt.trace); err != nil {
+			log.Printf("[processTask] warn: save trace failed session=%s err=%v", rt.rootSession.ID, err)
+		}
 		if traceSummary := rt.trace.Summary(); traceSummary != "" {
 			log.Print(traceSummary)
 		}
@@ -590,4 +621,68 @@ func (rt *QueryRuntime) finish() (string, error) {
 	}
 
 	return rt.state.FinalText, rt.state.FinalErr
+}
+
+func (rt *QueryLoop) saveCheckpoint(status string) {
+	if rt.store == nil || rt.rootSession == nil || rt.state.Session == nil {
+		return
+	}
+	if rt.trace != nil {
+		rt.trace.RefreshFromSession(rt.rootSession)
+	}
+	if err := rt.store.Save(rt.rootSession); err != nil {
+		log.Printf("[processTask] warn: save checkpoint session failed session=%s err=%v", rt.rootSession.ID, err)
+	}
+	rt.saveRuntimeSnapshot(status)
+	if rt.trace != nil {
+		if err := rt.store.SaveRequestTrace(rt.trace); err != nil {
+			log.Printf("[processTask] warn: save trace failed session=%s err=%v", rt.rootSession.ID, err)
+		}
+	}
+}
+
+func (rt *QueryLoop) drainMailboxAttachments(roundIndex int) {
+	if rt.store == nil || rt.rootSession == nil || rt.state.Session == nil {
+		return
+	}
+	msgs, err := rt.store.DrainMailbox(rt.rootSession.RootID, rt.rootSession.ID)
+	if err != nil {
+		log.Printf("[processTask] warn: drain mailbox failed root=%s session=%s err=%v", rt.rootSession.RootID, rt.rootSession.ID, err)
+		return
+	}
+	attachments := attachmentsFromMailbox(msgs)
+	if len(attachments) == 0 {
+		return
+	}
+	injected := rt.state.Session.InjectAttachments(attachments, rt.rootSession)
+	if rt.trace != nil {
+		rt.trace.RecordRoundMailbox(roundIndex, injected, attachments)
+		rt.trace.RecordPath("mailbox_injected", fmt.Sprintf("注入 %d 条运行时上下文", injected), map[string]string{
+			"attachments": traceAttachmentKinds(attachments),
+		})
+	}
+	log.Printf("[processTask] injected runtime attachments session=%s count=%d", rt.rootSession.ID, injected)
+	rt.task.Sink.OnEvent("runtime_context", fmt.Sprintf("注入 %d 条运行时上下文", injected))
+	rt.saveCheckpoint("running")
+}
+
+func (rt *QueryLoop) injectMailboxAttachments() {
+	rt.drainMailboxAttachments(currentRoundIndex(rt.trace))
+}
+
+func (rt *QueryLoop) saveRuntimeSnapshot(status string) {
+	if rt.store == nil || rt.rootSession == nil || rt.state.Session == nil {
+		return
+	}
+	if strings.TrimSpace(status) == "" {
+		status = rt.rootSession.Status
+	}
+	snapshot := rt.state.Session.Snapshot(rt.rootSession.RootID, rt.rootSession.ID, rt.state.Query, status, rt.state.PromptContext)
+	if err := rt.store.SaveRuntimeSnapshot(snapshot); err != nil {
+		log.Printf("[processTask] warn: save runtime state failed session=%s err=%v", rt.rootSession.ID, err)
+	}
+}
+
+func (rt *QueryLoop) persistRuntimeState(status string) {
+	rt.saveRuntimeSnapshot(status)
 }

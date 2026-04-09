@@ -104,9 +104,8 @@ func shouldPersistStructuredAssistantRecord(input AssistantRecordInput) bool {
 	if input.RootSession != nil {
 		input.RootSession.mu.Lock()
 		toolCallCount := len(input.RootSession.ToolCalls)
-		hasPlan := input.RootSession.Plan != nil
 		input.RootSession.mu.Unlock()
-		if toolCallCount > 0 || hasPlan {
+		if toolCallCount > 0 {
 			return true
 		}
 	}
@@ -365,18 +364,6 @@ func collectKeyToolFacts(root *TaskSession, children map[string]*TaskSession) []
 		return facts
 	}
 
-	if root != nil && root.Plan != nil {
-		for _, subtask := range root.Plan.SubTasks {
-			if child, ok := children[subtask.ID]; ok {
-				appendFacts(subtask.Title+": ", child)
-				if len(facts) >= 8 {
-					return facts
-				}
-			}
-		}
-		return facts
-	}
-
 	var childIDs []string
 	for childID := range children {
 		childIDs = append(childIDs, childID)
@@ -508,14 +495,6 @@ func subTaskDescription(root *TaskSession, children map[string]*TaskSession, sub
 		child.mu.Unlock()
 		if strings.TrimSpace(desc) != "" {
 			return desc
-		}
-	}
-	if root == nil || root.Plan == nil {
-		return ""
-	}
-	for _, subtask := range root.Plan.SubTasks {
-		if subtask.ID == subTaskID {
-			return subtask.Description
 		}
 	}
 	return ""

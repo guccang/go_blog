@@ -435,7 +435,7 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 	sb.WriteString("\n## 可用 Agent 能力\n")
 
 	// 注入 llm-agent 自身信息
-	sb.WriteString(fmt.Sprintf("- **%s** (%s): LLM 编排中枢\n", b.cfg.AgentName, b.cfg.AgentID))
+	sb.WriteString(fmt.Sprintf("- **%s** (%s): LLM 运行时中枢\n", b.cfg.AgentName, b.cfg.AgentID))
 	if b.client.HostPlatform != "" {
 		sb.WriteString(fmt.Sprintf("  - 运行平台: %s\n", b.client.HostPlatform))
 	}

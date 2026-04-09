@@ -33,7 +33,6 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 	var request struct {
 		Messages    []Message `json:"messages"`
 		Stream      bool      `json:"stream"`
-		Tools       []string  `json:"selected_tools,omitempty"`
 		TypingSpeed string    `json:"typing_speed,omitempty"` // Typing speed setting
 	}
 
@@ -43,7 +42,7 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 		return http.StatusBadRequest
 	}
 
-	log.InfoF(log.ModuleLLM, "Assistant chat request parsed: %d messages, stream=%t, tools=%v", len(request.Messages), request.Stream, request.Tools)
+	log.InfoF(log.ModuleLLM, "Assistant chat request parsed: %d messages, stream=%t", len(request.Messages), request.Stream)
 
 	// Extract last user message as query
 	var userQuery string
@@ -89,7 +88,7 @@ func ProcessRequest(r *http.Request, w http.ResponseWriter) int {
 	}
 	account := auth.GetAccountBySession(session.Value)
 	log.InfoF(log.ModuleLLM, "Processing query via llm-agent: account=%s %s", account, userQuery)
-	err = ProcessRequestViaAgent(account, userQuery, request.Tools, w, flusher)
+	err = ProcessRequestViaAgent(account, userQuery, w, flusher)
 	if err != nil {
 		log.ErrorF(log.ModuleLLM, "Agent ProcessQuery failed: %v", err)
 		fmt.Fprintf(w, "data: Error processing query: %v\n\n", err)

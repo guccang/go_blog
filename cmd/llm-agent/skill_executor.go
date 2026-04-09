@@ -13,6 +13,13 @@ type skillLoopSink struct {
 	skillName string
 }
 
+type SkillSubtaskOutcome struct {
+	ChildSessionID string
+	Status         string
+	DirectResult   string
+	DetailedResult string
+}
+
 func (s *skillLoopSink) OnChunk(text string) {}
 
 func (s *skillLoopSink) OnEvent(event, text string) {
@@ -35,15 +42,18 @@ func (s *skillLoopSink) OnEvent(event, text string) {
 
 func (s *skillLoopSink) Streaming() bool { return false }
 
-// executeSkillSubTask 在独立子任务中执行技能
-func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, parentTools []LLMTool) string {
+// runSkillSubtask 在独立子任务中执行技能，并对齐 Claude Code 的 task-notification 回流语义。
+func (b *Bridge) runSkillSubtask(ctx *TaskContext, skillName, query string, parentTools []LLMTool) SkillSubtaskOutcome {
 	start := time.Now()
 
 	// 1. 查找 skill
 	skill := b.skillMgr.GetSkill(skillName)
 	if skill == nil {
 		log.Printf("[SkillSubTask] 技能不存在: %s", skillName)
-		return fmt.Sprintf("技能 '%s' 不存在，可用技能请参考 Skill 目录。", skillName)
+		return SkillSubtaskOutcome{
+			Status:       "failed",
+			DirectResult: fmt.Sprintf("技能 '%s' 不存在，可用技能请参考 Skill 目录。", skillName),
+		}
 	}
 
 	// 1.5 检查所需 agent 是否在线（同时检查 agentInfo 和 agentTools）
@@ -69,7 +79,10 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 			if !found {
 				b.catalogMu.RUnlock()
 				log.Printf("[SkillSubTask] ✗ 技能 %s 所需 agent %s 不在线", skillName, requiredPrefix)
-				return fmt.Sprintf("技能 %s 无法执行：所需 agent %s offline", skillName, requiredPrefix)
+				return SkillSubtaskOutcome{
+					Status:       "failed",
+					DirectResult: fmt.Sprintf("技能 %s 无法执行：所需 agent %s offline", skillName, requiredPrefix),
+				}
 			}
 		}
 		b.catalogMu.RUnlock()
@@ -131,23 +144,39 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 
 	systemPrompt := sb.String()
 
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: query},
+	var session *TaskSession
+	parentSession := ctx.CurrentSession
+	if parentSession != nil {
+		session = NewChildSession(parentSession, "skill:"+skillName, query)
+		session.ID = "skill_" + newSessionID()
+	} else {
+		session = NewRootSession("skill-"+newSessionID(), skillName, ctx.Account)
 	}
-	session := NewRootSession("skill-"+newSessionID(), skillName, ctx.Account)
 	session.Source = ctx.Source
 	session.Messages = nil
 	session.ToolCalls = nil
-	session.AppendMessage(messages[0])
-	session.AppendMessage(messages[1])
+	if parentSession != nil && ctx.Trace != nil {
+		ctx.Trace.RecordChildSession(session, "skill_subtask", "skill:"+skillName, "running")
+	}
+
+	trace := NewRequestTrace(ctx.TaskID, ctx.Source, "skill_subtask", query, session)
+	trace.SetDescription(query)
+	trace.SetToolView(toolView)
+	trace.RecordPath("skill_lookup", fmt.Sprintf("匹配 skill=%s", skillName), map[string]string{
+		"skill_tools": strings.Join(skill.Tools, ","),
+	})
+	trace.RecordPath("skill_tool_view", fmt.Sprintf("policy=%s visible=%d all=%d", toolView.Policy, len(toolView.VisibleTools), len(toolView.AllTools)), map[string]string{
+		"matched_skills": strings.Join(toolView.MatchedSkills, ","),
+	})
+	trace.RecordPath("skill_prompt_ready", fmt.Sprintf("system_prompt_len=%d", len(systemPrompt)), nil)
 
 	orchCfg := *b.cfg
 	orchCfg.SubTaskMaxIterations = 5
+	store := NewSessionStore(b.cfg.SessionDir)
 	orch := &Orchestrator{
-		bridge:        b,
-		cfg:           &orchCfg,
-		activeHandles: make(map[string]*SubTaskHandle),
+		bridge: b,
+		cfg:    &orchCfg,
+		store:  store,
 	}
 	sink := &skillLoopSink{base: ctx.Sink, skillName: skillName}
 	sendEvent := func(event, text string) {
@@ -158,14 +187,40 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 		ID:          "skill_" + newSessionID(),
 		Title:       "skill:" + skillName,
 		Description: query,
+		ContextMode: "fresh",
 		ToolsHint:   skill.Tools,
 	}
 
-	finalText, loopErr := orch.runSubTaskLoop(ctx.Ctx, ctx.TaskID, subtask, session, messages, toolView, sendEvent, nil, time.Time{})
-	if loopErr != nil {
-		log.Printf("[SkillSubTask] LLM/loop 失败 skill=%s error=%v", skillName, loopErr)
-		return fmt.Sprintf("技能 %s 执行失败: %v", skillName, loopErr)
+	subResult := orch.executeSubTask(ctx.Ctx, ctx.TaskID, subtask, session, parentSession, "", filteredTools, systemPrompt, sendEvent, trace)
+	if parentSession != nil {
+		orch.enqueueTaskNotification(parentSession, subtask, subResult, session)
+		trace.RecordPath("task_notification_enqueued", "子任务结果通过 task_notification 回流父会话", map[string]string{
+			"parent_session_id": parentSession.ID,
+			"status":            subResult.Status,
+		})
+		trace.RecordEvent("task_notification", "子任务结果回流父会话", buildTaskNotificationContent(subResult, session), 0, map[string]string{
+			"parent_session_id": parentSession.ID,
+		})
+		if err := store.SaveRequestTrace(trace); err != nil {
+			log.Printf("[SkillSubTask] warn: save trace failed session=%s err=%v", session.ID, err)
+		}
 	}
+	if subResult.Status == "failed" {
+		log.Printf("[SkillSubTask] LLM/loop 失败 skill=%s error=%s", skillName, subResult.Error)
+		direct := fmt.Sprintf("技能 %s 子任务已结束，status=%s，session_id=%s。", skillName, subResult.Status, session.ID)
+		if parentSession != nil {
+			direct += " 详细结果将通过 task_notification 注入下一轮上下文。"
+		} else {
+			direct = fmt.Sprintf("技能 %s 执行失败: %s", skillName, subResult.Error)
+		}
+		return SkillSubtaskOutcome{
+			ChildSessionID: session.ID,
+			Status:         subResult.Status,
+			DirectResult:   direct,
+			DetailedResult: subResult.Error,
+		}
+	}
+	finalText := subResult.Result
 
 	duration := time.Since(start)
 	ctx.Sink.OnEvent("skill_done", fmt.Sprintf("技能 %s 执行完成 (%s)", skillName, fmtDuration(duration)))
@@ -177,24 +232,39 @@ func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, 
 
 	// 构建结构化返回：执行日志 + LLM 总结
 	// 让主 LLM 清楚知道子任务做了什么、调了哪些工具、结果如何
-	var result strings.Builder
+	var resultText strings.Builder
 	if len(toolCalls) > 0 {
-		result.WriteString(fmt.Sprintf("技能 %s 执行日志（%s，%d次工具调用）:\n", skillName, fmtDuration(duration), len(toolCalls)))
+		resultText.WriteString(fmt.Sprintf("技能 %s 执行日志（%s，%d次工具调用）:\n", skillName, fmtDuration(duration), len(toolCalls)))
 		for _, sc := range toolCalls {
 			status := "✅"
 			if !sc.Success {
 				status = "❌"
 			}
-			result.WriteString(fmt.Sprintf("  %s %s(%s) → %s\n", status, sc.ToolName, sc.Arguments, sc.Result))
+			resultText.WriteString(fmt.Sprintf("  %s %s(%s) → %s\n", status, sc.ToolName, sc.Arguments, sc.Result))
 		}
-		result.WriteString("\n")
+		resultText.WriteString("\n")
 	}
 	if finalText != "" {
-		result.WriteString(finalText)
+		resultText.WriteString(finalText)
 	} else {
-		result.WriteString(fmt.Sprintf("技能 %s 已执行但未产生总结。", skillName))
+		resultText.WriteString(fmt.Sprintf("技能 %s 已执行但未产生总结。", skillName))
 	}
-	return result.String()
+	detailed := resultText.String()
+	direct := detailed
+	if parentSession != nil {
+		direct = fmt.Sprintf("技能 %s 子任务已结束，status=%s，session_id=%s。详细结果将通过 task_notification 注入下一轮上下文。", skillName, subResult.Status, session.ID)
+	}
+	return SkillSubtaskOutcome{
+		ChildSessionID: session.ID,
+		Status:         subResult.Status,
+		DirectResult:   direct,
+		DetailedResult: detailed,
+	}
+}
+
+// executeSkillSubTask 保留旧接口，兼容历史调用。
+func (b *Bridge) executeSkillSubTask(ctx *TaskContext, skillName, query string, parentTools []LLMTool) string {
+	return b.runSkillSubtask(ctx, skillName, query, parentTools).DirectResult
 }
 
 // filterToolsForSkill 按 skill 声明过滤工具
@@ -204,7 +274,7 @@ func (b *Bridge) filterToolsForSkill(skill *SkillEntry, parentTools []LLMTool) [
 		var filtered []LLMTool
 		for _, t := range parentTools {
 			name := t.Function.Name
-			if name == "plan_and_execute" || name == "execute_skill" || name == "set_persona" || name == "set_rule" {
+			if name == "execute_skill" || name == "set_persona" || name == "set_rule" {
 				continue
 			}
 			filtered = append(filtered, t)
@@ -223,7 +293,7 @@ func (b *Bridge) filterToolsForSkill(skill *SkillEntry, parentTools []LLMTool) [
 	for _, t := range parentTools {
 		name := t.Function.Name
 		originalName := b.resolveToolName(name)
-		if name == "plan_and_execute" || name == "execute_skill" || name == "set_persona" || name == "set_rule" {
+		if name == "execute_skill" || name == "set_persona" || name == "set_rule" {
 			continue
 		}
 		if hintSet[name] || hintSet[originalName] {

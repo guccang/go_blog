@@ -43,16 +43,8 @@ func (s *AppSink) OnEvent(event, text string) {
 	switch event {
 	case "thinking":
 		msg = "思考: " + text
-	case "tool_info", "plan_detail", "tool_result", "tool_progress", "skill_tool_result":
+	case "tool_info", "tool_result", "tool_progress", "skill_tool_result":
 		msg = text
-	case "plan_start":
-		msg = "计划开始: " + text
-	case "plan_done":
-		msg = "计划完成: " + text
-	case "plan_review_start":
-		msg = "计划审查: " + text
-	case "plan_review_result":
-		msg = "审查结果: " + text
 	case "subtask_start":
 		msg = "子任务开始: " + text
 	case "subtask_done":
@@ -69,10 +61,6 @@ func (s *AppSink) OnEvent(event, text string) {
 		msg = "子任务回复: " + text
 	case "tool_call":
 		msg = "工具调用: " + text
-	case "failure_decision":
-		msg = "降级决策: " + text
-	case "synthesis":
-		msg = "结果整理: " + text
 	case "subtask_async":
 		msg = "异步子任务: " + text
 	case "subtask_defer":
@@ -83,10 +71,6 @@ func (s *AppSink) OnEvent(event, text string) {
 		msg = "任务取消: " + text
 	case "task_forced_summary":
 		msg = "强制总结: " + text
-	case "plan_timing", "review_timing":
-		msg = "耗时: " + text
-	case "synthesis_done":
-		msg = "整理完成: " + text
 	case "subtask_timeout":
 		msg = "子任务超时: " + text
 	case "subtask_llm_error":
@@ -376,7 +360,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	session.LastActiveAt = time.Now()
 
 	if isNew || len(session.Messages) == 0 {
-		systemPrompt, promptSections := b.buildAssistantSystemPrompt(appUser)
+		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 		systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 		session.Messages = []Message{
 			{Role: "system", Content: systemPrompt},
@@ -386,7 +370,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		log.Printf("[App] 新会话 sessionID=%s user=%s", session.SessionID, appUser)
 	} else {
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPrompt(appUser)
+			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 			freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 			session.Messages[0].Content = freshPrompt
 			session.PromptSections = promptSections

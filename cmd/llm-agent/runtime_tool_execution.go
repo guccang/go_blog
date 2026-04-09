@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type ToolExecutionCall struct {
 	Mode           ToolExecutionMode
 	Ctx            context.Context
 	Task           *TaskContext
+	Trace          *RequestTrace
 	TaskID         string
 	Account        string
 	Source         string
@@ -153,14 +155,31 @@ func (rt *ToolExecutionRuntime) dispatchSkill(call ToolExecutionCall, callCtx co
 
 	call.Sink.OnEvent("skill_start", rt.formatSkillStart(call.Mode, call.ScopeID, skillArgs.SkillName, skillArgs.Query))
 	log.Printf("[ToolExecution] mode=%s scope=%s → execute_skill: skill=%s query=%s", call.Mode, call.ScopeID, skillArgs.SkillName, truncate(skillArgs.Query, 200))
-	result := rt.bridge.executeSkillSubTask(&TaskContext{
-		Ctx:     callCtx,
-		TaskID:  call.TaskID,
-		Account: call.Account,
-		Source:  call.Source,
-		Sink:    call.Sink,
+	outcome := rt.bridge.runSkillSubtask(&TaskContext{
+		Ctx:            callCtx,
+		TaskID:         call.TaskID,
+		Account:        call.Account,
+		Source:         call.Source,
+		Sink:           call.Sink,
+		Trace:          call.Trace,
+		CurrentSession: call.Session,
 	}, skillArgs.SkillName, skillArgs.Query, call.AvailableTools)
-	return &ToolCallResult{Result: result, AgentID: "builtin"}, nil, true
+	if call.Trace != nil && outcome.ChildSessionID != "" {
+		call.Trace.RecordEvent("child_session", "execute_skill 创建子任务",
+			fmt.Sprintf("skill=%s child_session=%s status=%s", skillArgs.SkillName, outcome.ChildSessionID, outcome.Status),
+			call.Iteration+1,
+			map[string]string{"skill": skillArgs.SkillName, "child_session_id": outcome.ChildSessionID})
+		call.Trace.RecordPath("execute_skill_child", fmt.Sprintf("skill=%s child_session=%s", skillArgs.SkillName, outcome.ChildSessionID), map[string]string{
+			"status": outcome.Status,
+		})
+		call.Trace.ChildSessions = appendUniqueTraceChild(call.Trace.ChildSessions, TraceChildSession{
+			SessionID: outcome.ChildSessionID,
+			Scope:     "skill_subtask",
+			Title:     "skill:" + skillArgs.SkillName,
+			Status:    outcome.Status,
+		})
+	}
+	return &ToolCallResult{Result: outcome.DirectResult, AgentID: "builtin"}, nil, true
 }
 
 func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, result string, tcResult *ToolCallResult, err error, duration time.Duration) ToolExecutionResult {
@@ -171,7 +190,7 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 	}
 
 	success := err == nil
-	if err == nil && call.Source == "app" && originalName == "TextToAudio" && result != "" {
+	if err == nil && (call.Source == "app" || call.Source == "wechat") && originalName == "TextToAudio" && result != "" {
 		call.Sink.OnEvent("audio_reply", result)
 	}
 	if originalName == "ExecuteCode" && result != "" {
@@ -196,16 +215,6 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 	}
 	call.Session.RecordToolCall(record)
 
-	if call.TraceRound != nil {
-		call.TraceRound.ToolCalls = append(call.TraceRound.ToolCalls, TraceToolCall{
-			ToolName:   originalName,
-			Arguments:  truncate(call.ToolCall.Function.Arguments, 100),
-			Success:    success,
-			DurationMs: duration.Milliseconds(),
-			ResultLen:  len(result),
-		})
-	}
-
 	var bizErr string
 	if err == nil && result != "" {
 		var bizResult struct {
@@ -215,6 +224,38 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 		if json.Unmarshal([]byte(result), &bizResult) == nil && !bizResult.Success && bizResult.Error != "" {
 			bizErr = bizResult.Error
 		}
+	}
+
+	if call.TraceRound != nil {
+		call.TraceRound.ToolCalls = append(call.TraceRound.ToolCalls, TraceToolCall{
+			ToolName:      originalName,
+			ToolCallID:    call.ToolCall.ID,
+			ScopeID:       call.ScopeID,
+			Arguments:     truncate(call.ToolCall.Function.Arguments, 160),
+			Success:       success,
+			DurationMs:    duration.Milliseconds(),
+			ResultLen:     len(result),
+			ResultPreview: truncate(strings.TrimSpace(result), 400),
+			BusinessErr:   truncate(strings.TrimSpace(bizErr), 200),
+			ToAgent:       toAgent,
+			FromAgent:     fromAgent,
+		})
+	}
+	if call.Trace != nil {
+		call.Trace.RecordPath("tool_call", fmt.Sprintf("%s success=%t duration=%s", originalName, success, fmtDuration(duration)), map[string]string{
+			"scope":        fallbackText(call.ScopeID, string(call.Mode)),
+			"tool_call_id": call.ToolCall.ID,
+			"to_agent":     toAgent,
+			"from_agent":   fromAgent,
+		})
+		call.Trace.RecordEvent("tool_call", originalName,
+			fmt.Sprintf("args=%s result=%s", truncate(call.ToolCall.Function.Arguments, 200), truncate(strings.TrimSpace(result), 500)),
+			call.Iteration+1,
+			map[string]string{
+				"success":        fmt.Sprintf("%t", success),
+				"business_error": truncate(strings.TrimSpace(bizErr), 200),
+			},
+		)
 	}
 
 	if call.Task != nil {

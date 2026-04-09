@@ -10,10 +10,10 @@ import (
 
 // LLMRequestPayload 发送给 llm-agent 的任务载荷
 type LLMRequestPayload struct {
-	TaskType      string        `json:"task_type"`       // "llm_request"
-	Messages      []LLMMessage  `json:"messages"`
-	SelectedTools []string      `json:"selected_tools"`  // 限定工具列表
-	Account       string        `json:"account"`         // 调用方标识
+	TaskType     string       `json:"task_type"` // "llm_request"
+	Messages     []LLMMessage `json:"messages"`
+	AllowedTools []string     `json:"allowed_tools,omitempty"` // 系统约束工具列表
+	Account      string       `json:"account"`                 // 调用方标识
 }
 
 // LLMMessage LLM 对话消息
@@ -344,8 +344,8 @@ func (o *Orchestrator) delegateToLLM(targetAgent string, osInfo *OSInfo, req Req
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: fmt.Sprintf("请在目标机器上检测并安装 %s", req.Software)},
 		},
-		SelectedTools: []string{execToolName},
-		Account:       "env-agent",
+		AllowedTools: []string{execToolName},
+		Account:      "env-agent",
 	}
 
 	timeout := time.Duration(o.conn.cfg.LLMTaskTimeout) * time.Second

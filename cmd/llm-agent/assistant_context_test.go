@@ -7,15 +7,6 @@ import (
 
 func TestBuildPersistentAssistantRecordForAsyncTask(t *testing.T) {
 	root := NewRootSession("task_async", "部署 blog-agent", "ztt")
-	root.Plan = &TaskPlan{
-		SubTasks: []SubTaskPlan{
-			{
-				ID:          "deploy",
-				Title:       "部署 blog-agent",
-				Description: "把 blog-agent 部署到 ssh-prod 服务器",
-			},
-		},
-	}
 	root.RecordToolCall(ToolCallRecord{
 		ToolName: "DeployProject",
 		Result:   `{"success":true,"status":"queued","session_id":"deploy_123","data":{"project":"blog-agent","deploy_target":"ssh-prod"}}`,
@@ -80,23 +71,6 @@ func TestBuildPersistentAssistantRecordFallsBackForPlainReply(t *testing.T) {
 
 	if record != "你好，有什么可以帮你？" {
 		t.Fatalf("expected plain reply to be kept, got %q", record)
-	}
-}
-
-func TestBuildAsyncAcknowledgmentDeduplicatesSessions(t *testing.T) {
-	summary := buildAsyncAcknowledgment([]SubTaskResult{
-		{
-			Title:  "部署 blog-agent",
-			Status: "async",
-			AsyncSessions: []AsyncSessionInfo{
-				{ToolName: "DeployProject", SessionID: "deploy_123"},
-				{ToolName: "DeployProject", SessionID: "deploy_123"},
-			},
-		},
-	})
-
-	if strings.Count(summary, "deploy_123") != 1 {
-		t.Fatalf("expected deduplicated session id, got summary: %s", summary)
 	}
 }
 

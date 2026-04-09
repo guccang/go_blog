@@ -41,54 +41,23 @@ type TaskSession struct {
 	// 工具调用记录
 	ToolCalls []ToolCallRecord `json:"tool_calls"`
 
-	// 子会话 ID 列表
-	ChildIDs []string `json:"child_ids,omitempty"`
-
-	// 执行计划（仅根/中间节点有）
-	Plan *TaskPlan `json:"plan,omitempty"`
-
 	// 结果
 	Result  string `json:"result,omitempty"`
 	Summary string `json:"summary,omitempty"`
 
-	// LLM 失败决策记录
-	FailureDecisions []FailureDecision `json:"failure_decisions,omitempty"`
-
-	// 计划修订记录
-	PlanRevisions []PlanRevision `json:"plan_revisions,omitempty"`
-
 	mu sync.Mutex `json:"-"` // 并发保护
-}
-
-// PlanRevision 计划修订记录
-type PlanRevision struct {
-	Version       int       `json:"version"`
-	Reason        string    `json:"reason"`
-	AddedTasks    []string  `json:"added_tasks,omitempty"`
-	RemovedTasks  []string  `json:"removed_tasks,omitempty"`
-	ModifiedTasks []string  `json:"modified_tasks,omitempty"`
-	Timestamp     time.Time `json:"timestamp"`
 }
 
 // ToolCallRecord 工具调用记录
 type ToolCallRecord struct {
-	ID        string `json:"id"`
-	ToolName  string `json:"tool_name"`
-	Arguments string `json:"arguments"`
-	Result    string `json:"result"`
-	Success   bool   `json:"success"`
-	DurationMs int64 `json:"duration_ms"`
-	Timestamp time.Time `json:"timestamp"`
-	Iteration int       `json:"iteration"` // 第几轮 agentic loop
-}
-
-// FailureDecision LLM 失败决策记录
-type FailureDecision struct {
-	SubTaskID     string    `json:"sub_task_id"`
-	Action        string    `json:"action"` // retry/skip/abort/modify
-	Reason        string    `json:"reason"`
-	Modifications string    `json:"modifications,omitempty"` // modify 时的新描述
-	Timestamp     time.Time `json:"timestamp"`
+	ID         string    `json:"id"`
+	ToolName   string    `json:"tool_name"`
+	Arguments  string    `json:"arguments"`
+	Result     string    `json:"result"`
+	Success    bool      `json:"success"`
+	DurationMs int64     `json:"duration_ms"`
+	Timestamp  time.Time `json:"timestamp"`
+	Iteration  int       `json:"iteration"` // 第几轮 agentic loop
 }
 
 // SessionIndex 索引文件结构（用于列表页）
@@ -99,12 +68,12 @@ type SessionIndex struct {
 	Status        string              `json:"status"`
 	CreatedAt     time.Time           `json:"created_at"`
 	FinishedAt    *time.Time          `json:"finished_at,omitempty"`
-	TotalSessions int                `json:"total_sessions"`
-	DoneCount     int                `json:"done_count"`
-	FailedCount   int                `json:"failed_count"`
-	SkippedCount  int                `json:"skipped_count"`
-	AsyncCount    int                `json:"async_count"`
-	DeferredCount int                `json:"deferred_count"`
+	TotalSessions int                 `json:"total_sessions"`
+	DoneCount     int                 `json:"done_count"`
+	FailedCount   int                 `json:"failed_count"`
+	SkippedCount  int                 `json:"skipped_count"`
+	AsyncCount    int                 `json:"async_count"`
+	DeferredCount int                 `json:"deferred_count"`
 	Children      []SessionIndexChild `json:"children"`
 }
 
@@ -205,27 +174,6 @@ func (s *TaskSession) SetResult(result string) {
 	s.Result = result
 }
 
-// AddChildID 添加子会话 ID
-func (s *TaskSession) AddChildID(childID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ChildIDs = append(s.ChildIDs, childID)
-}
-
-// AddPlanRevision 添加计划修订记录
-func (s *TaskSession) AddPlanRevision(rev PlanRevision) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.PlanRevisions = append(s.PlanRevisions, rev)
-}
-
-// AddFailureDecision 添加失败决策记录
-func (s *TaskSession) AddFailureDecision(decision FailureDecision) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.FailureDecisions = append(s.FailureDecisions, decision)
-}
-
 // DurationMs 计算执行耗时（毫秒）
 func (s *TaskSession) DurationMs() int64 {
 	if s.StartedAt == nil {
@@ -287,29 +235,6 @@ func (s *SessionStore) Load(rootID, sessionID string) (*TaskSession, error) {
 	}
 
 	return &session, nil
-}
-
-// LoadTree 加载整棵会话树（根会话 + 所有子会话）
-func (s *SessionStore) LoadTree(rootID string) (*TaskSession, map[string]*TaskSession, error) {
-	// 先加载根会话
-	root, err := s.Load(rootID, rootID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load root session: %v", err)
-	}
-
-	children := make(map[string]*TaskSession)
-
-	// 加载所有子会话
-	for _, childID := range root.ChildIDs {
-		child, err := s.Load(rootID, childID)
-		if err != nil {
-			log.Printf("[SessionStore] warn: failed to load child session %s: %v", childID, err)
-			continue
-		}
-		children[childID] = child
-	}
-
-	return root, children, nil
 }
 
 // SaveIndex 保存索引文件（用于列表页展示）

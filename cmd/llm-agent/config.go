@@ -64,24 +64,21 @@ type Config struct {
 	Fallbacks           []LLMConfig               `json:"fallbacks,omitempty"`
 	Providers           map[string]ProviderConfig `json:"providers,omitempty"`   // 服务商注册表
 	FallbackCooldownSec int                       `json:"fallback_cooldown_sec"` // 模型降级冷却秒数（默认 60）
-	MaxPlanRevisions    int                       `json:"max_plan_revisions"`    // 最大计划修订次数（默认 3）
 
 	ToolCallTimeoutSec int    `json:"tool_call_timeout_sec"`
 	LongToolTimeoutSec int    `json:"long_tool_timeout_sec"` // 长时间工具超时秒数（默认 600）
 	MaxToolIterations  int    `json:"max_tool_iterations"`
 	SystemPromptPrefix string `json:"system_prompt_prefix"`
 
-	// 任务拆解与编排配置
-	MaxSubTasks          int    `json:"max_sub_tasks"`           // 最大子任务数（默认 10）
+	// 隔离子任务配置（主要供 execute_skill 使用）
 	SubTaskMaxIterations int    `json:"sub_task_max_iterations"` // 子任务最大 agentic loop 轮次（默认 10）
 	SubTaskTimeoutSec    int    `json:"sub_task_timeout_sec"`    // 子任务超时秒数（默认 120）
 	SessionDir           string `json:"session_dir"`             // 会话持久化目录（默认 agent_sessions）
 	WorkspaceDir         string `json:"workspace_dir"`           // 工作区提示文件目录（默认 workspace）
 
 	// 并发控制配置
-	MaxConcurrent       int `json:"max_concurrent"`        // 最大并发任务数（默认 3）
-	TaskQueueSize       int `json:"task_queue_size"`       // 任务缓冲队列容量（默认 10）
-	MaxParallelSubtasks int `json:"max_parallel_subtasks"` // DAG 同层最大并行子任务数（默认 3）
+	MaxConcurrent int `json:"max_concurrent"`  // 最大并发任务数（默认 3）
+	TaskQueueSize int `json:"task_queue_size"` // 任务缓冲队列容量（默认 10）
 
 	// 通用会话上下文配置（替代微信专用配置）
 	WechatSessionTimeoutMin int    `json:"wechat_session_timeout_min"` // 会话超时分钟数（默认 30）
@@ -143,22 +140,19 @@ func DefaultConfig() *Config {
 			Model:    "chat",
 		},
 		FallbackCooldownSec: 60,
-		MaxPlanRevisions:    3,
 		LLMCallIntervalSec:  10,
 
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   3600,
 		MaxToolIterations:    32,
 		SystemPromptPrefix:   "你是 Go Blog 智能体，负责阅读代码、调用工具、执行任务并向用户汇报真实结果。收到明确任务后优先直接执行；不要空谈方案，不要编造已执行结果，不要擅自扩展需求。",
-		MaxSubTasks:          10,
 		SubTaskMaxIterations: 10,
 		SubTaskTimeoutSec:    120,
 		SessionDir:           "agent_sessions",
 		WorkspaceDir:         "workspace",
 
-		MaxConcurrent:       3,
-		TaskQueueSize:       10,
-		MaxParallelSubtasks: 3,
+		MaxConcurrent: 3,
+		TaskQueueSize: 10,
 
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,

@@ -273,8 +273,7 @@ async function sendStreamingRequest(aiMessageElement) {
             },
             body: JSON.stringify({
                 messages: chatMessages,
-                stream: true,
-                selected_tools: getSelectedTools()
+                stream: true
             })
         });
 
@@ -1223,29 +1222,6 @@ function formatDate(date) {
     });
 }
 
-// 获取选中的工具
-function getSelectedTools() {
-    // 优先从大面板获取选择，如果大面板不存在则从小面板获取
-    const selectedTools = [];
-
-    // 先尝试从大面板获取
-    const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large:checked');
-    if (largeCheckboxes.length > 0) {
-        largeCheckboxes.forEach(checkbox => {
-            selectedTools.push(checkbox.value);
-        });
-    } else {
-        // 如果大面板没有选择，从小面板获取
-        const smallCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:not(.mcp-tool-checkbox-large):checked');
-        smallCheckboxes.forEach(checkbox => {
-            selectedTools.push(checkbox.value);
-        });
-    }
-
-    // 如果没有选择任何工具，返回null表示使用所有可用工具
-    return selectedTools.length > 0 ? selectedTools : null;
-}
-
 // MCP工具相关函数
 function loadMCPTools() {
     console.log('正在加载MCP工具...');
@@ -1481,7 +1457,7 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
         
         <details class="mcp-tools-details" open>
             <summary>
-                <i class="fas fa-list"></i> 工具选择 (${tools.length})
+                <i class="fas fa-list"></i> 工具列表 (${tools.length})
             </summary>
             <div class="mcp-tools-list" id="mcp-tools-list">
                 ${tools.map(tool => {
@@ -1489,40 +1465,26 @@ function updateMCPToolsStatus(tools = [], serverStatus = {}) {
         const toolName = tool.name.split('.').slice(1).join('.');
         return `
                         <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
-                            <label class="mcp-tool-checkbox-label">
-                                <input type="checkbox" class="mcp-tool-checkbox" value="${tool.name}" checked>
-                                <div class="mcp-tool-content">
-                                    <div class="mcp-tool-name">
-                                        <i class="fas fa-cog"></i>
-                                        ${toolName}
-                                        <span style="opacity: 0.6; font-size: 0.8em; margin-left: 8px;">(${serverName})</span>
-                                    </div>
+                            <div class="mcp-tool-content">
+                                <div class="mcp-tool-name">
+                                    <i class="fas fa-cog"></i>
+                                    ${toolName}
+                                    <span style="opacity: 0.6; font-size: 0.8em; margin-left: 8px;">(${serverName})</span>
                                 </div>
-                            </label>
+                            </div>
                         </div>
                     `;
     }).join('')}
-            </div>
-            <div class="mcp-tools-actions">
-                <button class="mcp-tools-select-all" onclick="selectAllTools()">
-                    <i class="fas fa-check-double"></i> 全选
-                </button>
-                <button class="mcp-tools-select-none" onclick="selectNoTools()">
-                    <i class="fas fa-times"></i> 全不选
-                </button>
             </div>
         </details>
         
         <div class="mcp-tools-stats" style="margin-top: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem; color: rgba(255,255,255,0.7);">
             <div style="display: flex; justify-content: space-between;">
-                <span><i class="fas fa-check"></i> <span id="selected-tools-count">0</span> 已选择</span>
+                <span><i class="fas fa-route"></i> AI 自动按任务选择工具</span>
                 <span><i class="fas fa-server"></i> ${Object.keys(toolsByServer).length} 个服务器</span>
             </div>
         </div>
     `;
-
-    // 更新选中工具计数（默认全选）
-    updateSelectedToolsCount();
 }
 
 
@@ -1542,7 +1504,7 @@ function showMCPToolsDialog() {
             <div class="mcp-dialog-header">
                 <div class="dialog-title">
                     <i class="fas fa-tools"></i>
-                    <h3>MCP 工具选择器</h3>
+                    <h3>MCP 工具浏览器</h3>
                     <span class="tools-count">${mcpTools.length} 个工具可用</span>
                 </div>
                 <button class="close-dialog-btn" onclick="closeMCPToolsDialog()">
@@ -1597,7 +1559,7 @@ function showMCPToolsDialog() {
         dialog.classList.add('active');
     });
 
-    // 添加工具选择事件
+    // 添加对话框交互事件
     setupToolSelectionEvents(dialog);
 
     // 焦点管理
@@ -1803,7 +1765,7 @@ function toggleParams(button) {
     }
 }
 
-// 设置工具选择事件
+// 设置工具弹窗事件
 function setupToolSelectionEvents(dialog) {
     // 键盘快捷键
     dialog.addEventListener('keydown', function (e) {
@@ -1854,7 +1816,7 @@ function filterMCPTools(searchTerm) {
     if (summary) {
         const totalCount = toolItems.length;
         if (term === '') {
-            summary.innerHTML = `<i class="fas fa-list"></i> 工具选择 (${totalCount})`;
+            summary.innerHTML = `<i class="fas fa-list"></i> 工具列表 (${totalCount})`;
         } else {
             summary.innerHTML = `<i class="fas fa-search"></i> 搜索结果 (${visibleCount}/${totalCount})`;
         }
@@ -1901,32 +1863,6 @@ function toggleMCPToolsExpanded() {
     }
 }
 
-// 更新选中工具计数
-function updateSelectedToolsCount() {
-    const selectedCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:checked');
-    const countElement = document.getElementById('selected-tools-count');
-    if (countElement) {
-        countElement.textContent = selectedCheckboxes.length;
-    }
-}
-
-// 重写全选和全不选函数，添加计数更新
-function selectAllTools() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
-    });
-    updateSelectedToolsCount();
-}
-
-function selectNoTools() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    updateSelectedToolsCount();
-}
-
 // 大面板更新函数
 function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
     const toolsContainer = document.getElementById('mcp-tools-status-large');
@@ -1958,21 +1894,12 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
         const isEnabled = serverStatus[serverName]?.enabled || false;
         const statusClass = isConnected ? 'connected' : (isEnabled ? 'disconnected' : 'disabled');
         console.log("===========serverName", serverName);
-        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
-        console.log("===========checked", checked);
         return `
             <div class="mcp-server-item ${statusClass}">
-                <label class="mcp-server-checkbox-label">
-                    <input type="checkbox" 
-                           class="mcp-server-checkbox" 
-                           data-server="${serverName}"
-                           ${checked}
-                           onchange="toggleServerTools('${serverName}', this.checked)">
-                    <div class="mcp-server-info">
-                        <div class="mcp-server-name">${serverName}</div>
-                        <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
-                    </div>
-                </label>
+                <div class="mcp-server-info">
+                    <div class="mcp-server-name">${serverName}</div>
+                    <div class="mcp-server-desc">${serverTools.length} 个工具可用</div>
+                </div>
             </div>
         `;
     }).join('');
@@ -1990,7 +1917,7 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                         <span><i class="fas fa-tools"></i> ${tools.length} 个工具</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span><i class="fas fa-check"></i> <span id="selected-tools-count-large">0</span> 已选择</span>
+                        <span><i class="fas fa-route"></i> AI 自动按任务选择工具</span>
                         <span><i class="fas fa-sync-alt"></i> <button onclick="loadMCPTools()" style="background: none; border: none; color: #00d4aa; cursor: pointer; font-size: 0.9rem;">刷新</button></span>
                     </div>
                 </div>
@@ -2004,35 +1931,19 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
                            onkeyup="filterMCPToolsLarge(this.value)">
                 </div>
                 
-                <div class="mcp-tools-actions-large">
-                    <button class="mcp-tools-select-all" onclick="selectAllToolsLarge()">
-                        <i class="fas fa-check-double"></i> 全选
-                    </button>
-                    <button class="mcp-tools-select-none" onclick="selectNoToolsLarge()">
-                        <i class="fas fa-times"></i> 全不选
-                    </button>
-                    <button class="mcp-tools-select-all" onclick="syncToolsSelection()" style="background: rgba(161, 196, 253, 0.2); border-color: rgba(161, 196, 253, 0.4);">
-                        <i class="fas fa-sync"></i> 同步选择
-                    </button>
-                </div>
-                
                 <div class="mcp-tools-list-large" id="mcp-tools-list-large">
                     ${tools.map(tool => {
         const serverName = tool.name.split('.')[0];
         const toolName = tool.name.split('.').slice(1).join('.');
-        const checked = serverName.includes('Inner_blog') ? 'checked' : '';
         return `
                             <div class="mcp-tool-item" data-tool-name="${tool.name.toLowerCase()}" data-server="${serverName.toLowerCase()}" data-desc="${(tool.description || '').toLowerCase()}">
-                                <label class="mcp-tool-checkbox-label">
-                                    <input type="checkbox" class="mcp-tool-checkbox mcp-tool-checkbox-large" value="${tool.name}" ${checked}>
-                                    <div class="mcp-tool-content">
-                                        <div class="mcp-tool-name">
-                                            <i class="fas fa-cog"></i>
-                                            ${toolName}
-                                            <span style="opacity: 0.6; font-size: 0.85em; margin-left: 8px;">(${serverName})</span>
-                                        </div>
-                                        </div>
-                                </label>
+                                <div class="mcp-tool-content">
+                                    <div class="mcp-tool-name">
+                                        <i class="fas fa-cog"></i>
+                                        ${toolName}
+                                        <span style="opacity: 0.6; font-size: 0.85em; margin-left: 8px;">(${serverName})</span>
+                                    </div>
+                                </div>
                             </div>
                         `;
     }).join('')}
@@ -2040,9 +1951,6 @@ function updateMCPToolsStatusLarge(tools = [], serverStatus = {}) {
             </div>
         </div>
     `;
-
-    // 更新大面板选中工具计数（默认全选）
-    updateSelectedToolsCountLarge();
 }
 
 // 大面板搜索功能
@@ -2080,50 +1988,6 @@ function filterMCPToolsLarge(searchTerm) {
     }
 }
 
-// 大面板工具选择函数
-function selectAllToolsLarge() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = true;
-    });
-    updateSelectedToolsCountLarge();
-}
-
-function selectNoToolsLarge() {
-    const checkboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    updateSelectedToolsCountLarge();
-}
-
-// 同步大面板和小面板的选择
-function syncToolsSelection() {
-    const largeCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large');
-    const smallCheckboxes = document.querySelectorAll('.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)');
-
-    // 从大面板同步到小面板
-    largeCheckboxes.forEach(largeCheckbox => {
-        const toolName = largeCheckbox.value;
-        const smallCheckbox = Array.from(smallCheckboxes).find(cb => cb.value === toolName);
-        if (smallCheckbox) {
-            smallCheckbox.checked = largeCheckbox.checked;
-        }
-    });
-
-    updateSelectedToolsCount();
-    updateSelectedToolsCountLarge();
-}
-
-// 更新大面板选中工具计数
-function updateSelectedToolsCountLarge() {
-    const selectedCheckboxes = document.querySelectorAll('.mcp-tool-checkbox-large:checked');
-    const countElement = document.getElementById('selected-tools-count-large');
-    if (countElement) {
-        countElement.textContent = selectedCheckboxes.length;
-    }
-}
-
 // 切换大面板展开/收缩
 function toggleMCPPanel() {
     const panel = document.querySelector('.mcp-tools-panel');
@@ -2137,16 +2001,6 @@ function toggleMCPPanel() {
         toggleButton.className = 'fas fa-chevron-down';
     }
 }
-
-// 添加工具选择变化监听
-document.addEventListener('change', function (e) {
-    if (e.target.classList.contains('mcp-tool-checkbox')) {
-        updateSelectedToolsCount();
-        if (e.target.classList.contains('mcp-tool-checkbox-large')) {
-            updateSelectedToolsCountLarge();
-        }
-    }
-});
 
 // 标签切换功能
 function switchTab(tabName) {
@@ -2811,61 +2665,6 @@ function updateHealthCharts() {
     }
 }
 
-// 服务器工具切换函数
-function toggleServerTools(serverName, isChecked) {
-    console.log(`切换服务器 ${serverName} 的工具状态:`, isChecked);
-
-    // 使用与 groupToolsByServer 相同的逻辑获取该服务器下的所有工具
-    const toolsByServer = groupToolsByServer(mcpTools);
-    const serverTools = toolsByServer[serverName] || [];
-
-    console.log(`找到服务器 ${serverName} 下的工具:`, serverTools.map(tool => tool.name));
-
-    // 更新工具选择状态 - 更新所有相关的复选框
-    serverTools.forEach(tool => {
-        console.log(`处理工具: ${tool.name}`);
-
-        // 转义工具名称中的特殊字符用于CSS选择器
-        const escapedToolName = CSS.escape(tool.name);
-
-        // 更新大面板中的复选框
-        const largeCheckbox = document.querySelector(`.mcp-tool-checkbox-large[value="${escapedToolName}"]`);
-        if (largeCheckbox) {
-            largeCheckbox.checked = isChecked;
-            console.log(`更新大面板复选框: ${tool.name} -> ${isChecked}`);
-        } else {
-            console.log(`未找到大面板复选框: ${tool.name}`);
-        }
-
-        // 更新小面板中的复选框
-        const smallCheckbox = document.querySelector(`.mcp-tool-checkbox:not(.mcp-tool-checkbox-large)[value="${escapedToolName}"]`);
-        if (smallCheckbox) {
-            smallCheckbox.checked = isChecked;
-            console.log(`更新小面板复选框: ${tool.name} -> ${isChecked}`);
-        } else {
-            console.log(`未找到小面板复选框: ${tool.name}`);
-        }
-    });
-
-    // 更新选择计数
-    updateSelectedToolsCount();
-    updateSelectedToolsCountLarge();
-
-    // 同步工具选择状态
-    syncToolsSelection();
-
-    console.log(`${isChecked ? '启用' : '禁用'}了服务器 ${serverName} 的 ${serverTools.length} 个工具`);
-}
-
-// 更新选择的工具数量显示
-function updateSelectedToolsCountLarge() {
-    const selectedCount = document.querySelectorAll('.mcp-tool-checkbox-large:checked').length;
-    const countElement = document.getElementById('selected-tools-count-large');
-    if (countElement) {
-        countElement.textContent = selectedCount;
-    }
-}
-
 // 导出功能供外部使用
 window.AssistantApp = {
     sendMessage,
@@ -2878,13 +2677,6 @@ window.AssistantApp = {
     filterMCPToolsLarge,
     toggleMCPToolsExpanded,
     toggleMCPPanel,
-    selectAllTools,
-    selectNoTools,
-    selectAllToolsLarge,
-    selectNoToolsLarge,
-    syncToolsSelection,
-    toggleServerTools,
-    updateSelectedToolsCountLarge,
     switchTab,
     loadHealthData,
     updateHealthCharts,

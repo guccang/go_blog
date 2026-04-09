@@ -52,7 +52,7 @@ func main() {
 
 	log.Printf("[LLM-MCP] starting agent_id=%s, gateway=%s", cfg.AgentID, cfg.GatewayURL)
 	log.Printf("[LLM-MCP] LLM model=%s, base_url=%s", cfg.LLM.Model, cfg.LLM.BaseURL)
-	log.Printf("[LLM-MCP] concurrency: MaxConcurrent=%d TaskQueueSize=%d MaxParallelSubtasks=%d", cfg.MaxConcurrent, cfg.TaskQueueSize, cfg.MaxParallelSubtasks)
+	log.Printf("[LLM-MCP] concurrency: MaxConcurrent=%d TaskQueueSize=%d", cfg.MaxConcurrent, cfg.TaskQueueSize)
 
 	// 创建 Bridge
 	bridge := NewBridge(cfg)

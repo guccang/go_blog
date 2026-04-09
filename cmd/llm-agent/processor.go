@@ -15,15 +15,18 @@ type TaskContext struct {
 	Ctx                context.Context // 可取消的 context（nil 表示不可取消）
 	TaskID             string
 	Account            string
-	Query              string // 用户问题（用于 plan_and_execute）
+	Query              string // 用户问题
 	Source             string // "web" | "wechat" | "llm_request"
 	PreferAudioReply   bool
 	Messages           []Message // 预构建消息（nil 则自动构建）
-	SelectedTools      []string
+	AllowedTools       []string  // 系统约束的工具白名单，不对用户暴露
 	NoTools            bool
 	Sink               EventSink
 	PersistedAssistant string
 	Trace              *RequestTrace // 请求追踪（可选）
+	ResumeSession      *TaskSession  // 断点恢复时复用已有 session
+	ResumeSnapshot     *RuntimeSnapshot
+	CurrentSession     *TaskSession // 当前运行中的 session（供 execute_skill 等子任务继承）
 }
 
 func isMCPToolListQuery(query string) bool {

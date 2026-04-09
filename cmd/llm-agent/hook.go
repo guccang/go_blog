@@ -17,7 +17,6 @@ import (
 type TaskHook interface {
 	OnTaskStart(ctx *TaskContext)
 	OnToolCall(ctx *TaskContext, record ToolCallRecord)
-	OnPlanCreated(ctx *TaskContext, plan *TaskPlan)
 	OnSubTaskDone(ctx *TaskContext, result SubTaskResult)
 	OnTaskEnd(ctx *TaskContext, result string, toolCalls []ToolCallRecord, err error)
 }
@@ -27,7 +26,6 @@ type BaseTaskHook struct{}
 
 func (BaseTaskHook) OnTaskStart(_ *TaskContext)                                      {}
 func (BaseTaskHook) OnToolCall(_ *TaskContext, _ ToolCallRecord)                     {}
-func (BaseTaskHook) OnPlanCreated(_ *TaskContext, _ *TaskPlan)                       {}
 func (BaseTaskHook) OnSubTaskDone(_ *TaskContext, _ SubTaskResult)                   {}
 func (BaseTaskHook) OnTaskEnd(_ *TaskContext, _ string, _ []ToolCallRecord, _ error) {}
 
@@ -71,18 +69,6 @@ func (m *HookManager) FireToolCall(ctx *TaskContext, record ToolCallRecord) {
 		func() {
 			defer recoverHook("OnToolCall")
 			h.OnToolCall(ctx, record)
-		}()
-	}
-}
-
-// FirePlanCreated 触发计划创建事件
-func (m *HookManager) FirePlanCreated(ctx *TaskContext, plan *TaskPlan) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for _, h := range m.hooks {
-		func() {
-			defer recoverHook("OnPlanCreated")
-			h.OnPlanCreated(ctx, plan)
 		}()
 	}
 }

@@ -7,7 +7,7 @@ import "strings"
 // EventSink 抽象不同来源的输出差异
 type EventSink interface {
 	OnChunk(text string)        // LLM 文本片段
-	OnEvent(event, text string) // 结构化事件 (tool_info, plan_start, plan_done, subtask_*, etc.)
+	OnEvent(event, text string) // 结构化事件 (tool_info, thinking, tool_call, tool_result, subtask_*, skill_*, etc.)
 	Streaming() bool            // 是否使用流式 LLM 调用
 }
 
