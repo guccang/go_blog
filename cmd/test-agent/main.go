@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
 	configPath := flag.String("config", "test-agent.json", "配置文件路径")
 	suitePath := flag.String("suite", "", "测试套件 JSON 路径")
 	scenarioID := flag.String("scenario", "", "只执行指定场景 ID")
+	webMode := flag.Bool("web", false, "启动 Web 控制台")
+	listenAddr := flag.String("listen", "", "Web 控制台监听地址，优先于配置文件")
 	genConf := flag.Bool("genconf", false, "生成默认配置文件")
 	flag.Parse()
 
@@ -28,9 +31,24 @@ func main() {
 		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
 		os.Exit(1)
 	}
+	if strings.TrimSpace(*listenAddr) != "" {
+		cfg.Web.ListenAddr = strings.TrimSpace(*listenAddr)
+	}
+	if *webMode {
+		cfg.Web.Enabled = true
+	}
 
 	runner := NewRunner(cfg)
 	defer runner.Close()
+
+	if cfg.Web.Enabled {
+		fmt.Printf("test-agent dashboard listening on %s\n", cfg.Web.ListenAddr)
+		if err := StartDashboardServer(cfg, runner); err != nil {
+			fmt.Fprintf(os.Stderr, "start dashboard: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *suitePath != "" {
 		resolvedSuite := *suitePath

@@ -53,6 +53,7 @@ type Runner struct {
 	httpClient   *http.Client
 	client       *uap.Client
 	registeredCh chan bool
+	eventSink    RunnerEventSink
 
 	mu      sync.Mutex
 	current *scenarioRuntime
@@ -82,6 +83,12 @@ func NewRunner(cfg *Config) *Runner {
 		}
 	}
 	return r
+}
+
+func (r *Runner) SetEventSink(sink RunnerEventSink) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.eventSink = sink
 }
 
 func (r *Runner) Close() {
@@ -143,7 +150,7 @@ func (r *Runner) RunSuite(ctx context.Context, suite *TestSuite, scenarioID stri
 			report.FailedScenarios++
 		}
 		report.TotalScenarios++
-		_ = r.store.SaveSuiteReport(report)
+		r.saveSuiteReport(report)
 	}
 	report.FinishedAt = time.Now()
 	report.Status = RunStatusPassed
@@ -158,7 +165,7 @@ func (r *Runner) RunSuite(ctx context.Context, suite *TestSuite, scenarioID stri
 		report.AverageScore = totalScore / report.TotalScenarios
 	}
 	report.DimensionScores = aggregateDimensionScores(report.Runs)
-	_ = r.store.SaveSuiteReport(report)
+	r.saveSuiteReport(report)
 	return report, nil
 }
 
@@ -194,7 +201,7 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 	}()
 
 	_ = r.store.SaveScenario(run, scenario)
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 
 	availStep := run.beginStep("capture_availability", "抓取 Gateway health 和 agents 快照")
 	health, agents, err := r.captureAvailability()
@@ -202,7 +209,7 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 		run.finishStep(availStep, StepStatusFailed, err.Error(), nil)
 		run.Result.FinalError = err.Error()
 		run.finish(RunStatusError)
-		_ = r.store.SaveRun(run)
+		r.saveRun(run)
 		return run, nil
 	}
 	run.Health = health
@@ -210,21 +217,21 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 	run.finishStep(availStep, StepStatusPassed, "Gateway 可访问", map[string]any{
 		"agents": len(agents),
 	})
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 
 	dispatchStep := run.beginStep("dispatch_entry", "发送入口消息")
 	if err := r.dispatchScenario(run, scenario); err != nil {
 		run.finishStep(dispatchStep, StepStatusFailed, err.Error(), nil)
 		run.Result.FinalError = err.Error()
 		run.finish(RunStatusError)
-		_ = r.store.SaveRun(run)
+		r.saveRun(run)
 		return run, nil
 	}
 	run.finishStep(dispatchStep, StepStatusPassed, "入口消息发送成功", map[string]any{
 		"trace_id": traceID,
 		"task_id":  taskID,
 	})
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 
 	waitStep := run.beginStep("await_execution", "轮询等待链路完成")
 	waitErr := r.awaitScenario(ctx, run, scenario)
@@ -244,7 +251,7 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 			"events": len(trace.Events),
 		})
 	}
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 
 	llmStep := run.beginStep("collect_llm_trace", "尝试匹配 llm-agent trace 文件")
 	llmTrace, err := loadRecentLLMTrace(r.cfg.LLMTraceDir, scenario, run.StartedAt, run.TaskID)
@@ -256,7 +263,7 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 		run.LLMTrace = llmTrace
 		run.finishStep(llmStep, StepStatusPassed, filepath.Base(llmTrace.FilePath), nil)
 	}
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 
 	evalStep := run.beginStep("evaluate_assertions", "评估断言与评分")
 	r.evaluateRun(run, scenario, waitErr)
@@ -271,7 +278,7 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 	run.finishStep(evalStep, StepStatusPassed, run.Result.Status, map[string]any{
 		"score": run.Result.Scores.Total,
 	})
-	_ = r.store.SaveRun(run)
+	r.saveRun(run)
 	return run, nil
 }
 
@@ -445,7 +452,7 @@ func (r *Runner) handleMessage(msg *uap.Message) {
 			r.direct = &directObservation{msg: msg, notify: &payload}
 		}
 	}
-	_ = r.store.SaveRun(r.current.run)
+	r.saveRun(r.current.run)
 }
 
 func (r *Runner) currentDirectObservation() *directObservation {
@@ -474,6 +481,66 @@ func (r *Runner) fetchTrace(traceID string) (*ExecutionTraceSnapshot, error) {
 	trace.Summaries = collectTraceSummaries(payload.Events)
 	trace.Path = collectTracePath(payload.Events)
 	return trace, nil
+}
+
+func (r *Runner) publishEvent(event RunnerEvent) {
+	r.mu.Lock()
+	sink := r.eventSink
+	r.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	sink.HandleRunnerEvent(event)
+}
+
+func (r *Runner) saveRun(run *TestRun) {
+	_ = r.store.SaveRun(run)
+	r.publishEvent(RunnerEvent{
+		Type:         RunnerEventRunUpdated,
+		Mode:         firstNonEmpty(strings.TrimSpace(run.CollectionType), CollectionTypeManual),
+		EvaluationID: strings.TrimSpace(run.EvaluationID),
+		Run:          clonePointer(run),
+	})
+}
+
+func (r *Runner) saveSuiteReport(report *SystemEvaluationReport) {
+	_ = r.store.SaveSuiteReport(report)
+	r.publishEvent(RunnerEvent{
+		Type:         RunnerEventSuiteReport,
+		Mode:         CollectionTypeManual,
+		EvaluationID: strings.TrimSpace(report.EvaluationID),
+		SuiteReport:  clonePointer(report),
+	})
+}
+
+func (r *Runner) saveCollectionReport(report *SystemEvaluationReport) {
+	_ = r.store.SaveCollectionReport(report)
+	r.publishEvent(RunnerEvent{
+		Type:             RunnerEventCollectionReport,
+		Mode:             firstNonEmpty(strings.TrimSpace(report.CollectionType), CollectionTypeManual),
+		EvaluationID:     strings.TrimSpace(report.EvaluationID),
+		CollectionReport: clonePointer(report),
+	})
+}
+
+func (r *Runner) saveEvaluationPlan(evaluationID string, plan *EvaluationPlan) {
+	_ = r.store.SaveEvaluationPlan(evaluationID, plan)
+	r.publishEvent(RunnerEvent{
+		Type:         RunnerEventEvaluationPlan,
+		Mode:         "evaluation",
+		EvaluationID: strings.TrimSpace(evaluationID),
+		Plan:         clonePointer(plan),
+	})
+}
+
+func (r *Runner) saveFinalReport(report *FinalEvaluationReport) {
+	_ = r.store.SaveFinalReport(report)
+	r.publishEvent(RunnerEvent{
+		Type:         RunnerEventEvaluationDone,
+		Mode:         "evaluation",
+		EvaluationID: strings.TrimSpace(report.RunID),
+		FinalReport:  clonePointer(report),
+	})
 }
 
 func (r *Runner) getJSON(path string, target any) error {

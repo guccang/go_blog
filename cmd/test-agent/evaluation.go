@@ -39,19 +39,27 @@ func (r *Runner) RunEvaluation(ctx context.Context) (*FinalEvaluationReport, err
 		OnlineAgents: agents,
 	}
 	_ = r.store.SaveAvailability(evaluationID, health, agents)
+	r.publishEvent(RunnerEvent{
+		Type:         RunnerEventEvaluationStarted,
+		Mode:         "evaluation",
+		EvaluationID: evaluationID,
+		Health:       clonePointer(health),
+		OnlineAgents: cloneSlice(agents),
+		Message:      "evaluation started",
+	})
 
 	staticSuites, err := LoadSuitesFromDir(r.cfg.StaticSuiteDir)
 	if err != nil {
 		return nil, err
 	}
 	plan.StaticCollections = buildCollectionPlans(CollectionTypeStatic, staticSuites, indexAgentsByID(agents))
-	_ = r.store.SaveEvaluationPlan(evaluationID, plan)
+	r.saveEvaluationPlan(evaluationID, plan)
 
 	staticReport, err := r.runCollection(ctx, evaluationID, CollectionTypeStatic, "Static Evaluation Collection", staticSuites, nil, agents)
 	if err != nil {
 		return nil, err
 	}
-	_ = r.store.SaveCollectionReport(staticReport)
+	r.saveCollectionReport(staticReport)
 
 	dynamicReport := newCollectionReport(evaluationID, CollectionTypeDynamic, "Dynamic Evaluation Collection")
 	dynamicSuite, plannerRun, plannerSkipped, err := r.buildDynamicSuite(ctx, evaluationID, agents, staticReport)
@@ -72,18 +80,18 @@ func (r *Runner) RunEvaluation(ctx context.Context) (*FinalEvaluationReport, err
 		if err != nil {
 			return nil, err
 		}
-		_ = r.store.SaveCollectionReport(dynamicReport)
+		r.saveCollectionReport(dynamicReport)
 	} else {
 		if len(plan.Notes) == 0 {
 			plan.Notes = append(plan.Notes, "dynamic collection skipped")
 		}
 		finalizeCollectionReport(dynamicReport)
-		_ = r.store.SaveCollectionReport(dynamicReport)
+		r.saveCollectionReport(dynamicReport)
 	}
-	_ = r.store.SaveEvaluationPlan(evaluationID, plan)
+	r.saveEvaluationPlan(evaluationID, plan)
 
 	final := buildFinalEvaluationReport(r.cfg, startedAt, health, agents, plan, staticReport, dynamicReport)
-	_ = r.store.SaveFinalReport(final)
+	r.saveFinalReport(final)
 	return final, nil
 }
 
@@ -120,7 +128,7 @@ func (r *Runner) runCollection(ctx context.Context, evaluationID, collectionType
 					Reason:         skipReason,
 				})
 				report.SkippedScenarios++
-				_ = r.store.SaveCollectionReport(report)
+				r.saveCollectionReport(report)
 				continue
 			}
 
@@ -138,7 +146,7 @@ func (r *Runner) runCollection(ctx context.Context, evaluationID, collectionType
 			} else {
 				report.FailedScenarios++
 			}
-			_ = r.store.SaveCollectionReport(report)
+			r.saveCollectionReport(report)
 		}
 	}
 

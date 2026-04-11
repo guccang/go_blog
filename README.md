@@ -1,224 +1,278 @@
 # Go Blog Agent Platform
 
-一个以 `UAP Gateway + 多 Agent` 为核心的消息与任务编排平台。当前仓库的重点已经不再是传统博客介绍，而是：
+一个面向实际使用场景的多 Agent 平台。
 
-- Flutter App 如何接入 agent 网络
-- 企业微信如何接入 agent 网络
-- `llm-agent` / `metagpt-agent` 如何作为智能中枢调用其他 agent
-- 各 agent 如何通过统一协议协同完成工具调用、任务分派、通知回推
+这个仓库的重点不是单一博客系统，而是把 `Flutter`、企业微信、Web 后台、`llm-agent`、`metagpt-agent`、`deploy-agent` 这些能力接到同一套 Agent 网络里，让用户可以直接通过自然语言处理内容、任务和部署流程。
 
-## 项目定位
+当前最适合把它理解成：
 
-这个仓库现在可以理解成一个面向多终端的 Agent 平台：
+- 一个支持企业微信和 Flutter 客户端接入的 Agent 工作台
+- 一个支持多 Agent 协同编排的任务执行平台
+- 一个支持直接部署和 Pipeline 部署的工程交付平台
 
-- `app-agent` 负责承接 Flutter / App 侧消息、附件、会话与回推
-- `wechat-agent` 负责承接企业微信消息、回调、通知推送
-- `llm-agent` 负责通用 LLM 编排、工具调用、任务执行
-- `metagpt-agent` 提供一个基于 MetaGPT 的兼容实现，可替代 `llm-agent` 的核心任务流
-- `gateway` 负责 agent 注册、发现、消息路由、健康检查和 trace 观测
-- `blog-agent` 继续作为业务数据与站点服务节点存在，但不是 README 的重点
+## 用户能拿它做什么
+
+从用户视角看，这个平台适合做这些简单实用的事情：
+
+- 用企业微信管理日记、博客、待办、提醒、阅读记录、运动记录
+- 用 Flutter 客户端承接个人或团队的消息、附件、任务进度和结果回推
+- 让 `llm-agent` 或 `metagpt-agent` 自动选择工具，帮你查询、整理、执行、汇总
+- 让 `deploy-agent` 直接部署项目，或者按 Pipeline 跑完整交付流程
 
 一句话概括：
 
-> Flutter、企业微信、Web 都不是直接连具体工具，而是先连各自的接入 agent，再通过 Gateway 接入统一的智能体网络。
+> 用户面对的是微信或 Flutter，对话背后由 Gateway 把请求路由给多个专业 Agent 协同完成。
 
-## 核心能力
+## 典型使用案例
+
+### 1. 日记博客管理
+
+适合个人记录、家庭日志、小团队内容沉淀。
+
+用户可以直接在企业微信或 App 里发消息：
+
+- 今天写一篇关于最近工作的日记
+- 帮我整理这周博客草稿
+- 把这条想法追加到某篇文章后面
+- 查询我上个月写了多少篇日记
+
+平台背后会由 `blog-agent + llm-agent` 处理内容存储、检索、总结和组织。
+
+### 2. 锻炼管理
+
+适合记录每日运动、回顾训练情况、做阶段性总结。
+
+典型输入：
+
+- 记录今天跑步 5 公里
+- 查询这周运动记录
+- 帮我总结最近一个月的锻炼频率
+- 提醒我晚上 8 点锻炼
+
+这类任务可以由 `blog-agent` 的业务能力配合 `llm-agent` 的对话编排完成，微信场景尤其顺手。
+
+### 3. 阅读管理
+
+适合管理阅读计划、读书进度、阅读统计和总结。
+
+典型输入：
+
+- 记录今天读了 40 页
+- 查询本月阅读进度
+- 帮我整理最近读过的书和笔记
+- 按阅读时长给我做个简单总结
+
+适合把阅读数据长期沉淀下来，再通过 Agent 做周期性分析。
+
+### 4. 项目管理
+
+适合个人项目、小团队研发任务、日常推进和复盘。
+
+典型输入：
+
+- 帮我整理这个项目当前待办
+- 记录今天完成了哪些任务
+- 根据聊天内容生成一个本周计划
+- 把部署结果发回微信群或企业微信
+
+这里可以把 `wechat-agent`、`app-agent`、`llm-agent`、`deploy-agent` 串起来，形成从任务提出到结果回推的闭环。
+
+### 5. Flutter 客户端的组管理项目
+
+如果你要做一个 Flutter 端的小组管理、团队协作、项目管理类应用，这套仓库比较适合直接复用。
+
+Flutter 侧可以只关心这些事情：
+
+- 用户登录
+- 发送文本、图片、文件、语音
+- 展示对话消息、进度消息、最终结果
+- 展示附件和任务执行状态
+
+复杂的事情放在 Agent 网络里处理：
+
+- `app-agent` 负责 Flutter 消息接入和回推
+- `llm-agent` 或 `metagpt-agent` 负责理解任务、选择工具、调度执行
+- `wechat-agent` 可以作为补充通知通道
+- `deploy-agent` 可以负责发布后端或相关服务
+
+## 平台核心能力
 
 ### 1. 多终端统一接入
 
 - Flutter / App 通过 `app-agent` 接入
 - 企业微信通过 `wechat-agent` 接入
-- Web / HTTP 任务通过 `blog-agent` 或其它服务接入
-- 所有入口最终都走 UAP 消息协议，进入同一套 agent 网络
+- Web / HTTP 服务通过 `blog-agent` 或其他业务 Agent 接入
+- 所有入口最终都通过 Gateway 进入统一 Agent 网络
 
-### 2. 智能体任务编排
+### 2. 智能中枢编排
 
-- `llm-agent` 支持 `assistant_chat`
-- `llm-agent` 支持 `llm_request`
-- `llm-agent` 支持 `cron_query / cron_reminder / resume_task`
-- `llm-agent` 能从 Gateway 动态发现在线 tools / agents
-- `llm-agent` 能通过 `tool_call -> tool_result` 跨 agent 调用工具
+- `llm-agent` 负责通用任务理解、工具选择、工具调用循环
+- `metagpt-agent` 提供基于 MetaGPT 的兼容实现
+- 两者都可以作为系统的智能执行中枢
 
-### 3. Flutter 消息能力
+### 3. 实时进度和结果回推
 
-`app-agent` 提供完整的 App 接入层能力：
+- 微信可以收到任务进度和最终结果
+- Flutter 可以通过 WebSocket 接收流式回推
+- Agent 间执行过程可以被 Gateway 跟踪和审计
 
-- HTTP 登录接口：`/api/app/login`
-- App 消息入口：`/api/app/message`
-- WebSocket 推送入口：`/ws/app`
-- 支持文本、图片、音频、文件等消息类型
-- 支持附件落盘、附件描述、语音转写、图片识别预处理
-- 支持 agent 执行过程中的进度消息、最终回复、富消息回推
+### 4. 工具与 Agent 动态发现
 
-Flutter 侧不需要直接理解具体工具，只需要和 `app-agent` 对接：
+- Gateway 维护在线 Agent 列表
+- `llm-agent` 动态获取可用工具和部署目标
+- 新 Agent 上线后可以自动进入整体网络协作
 
-- 发送用户消息给 `app-agent`
-- 接收 `app-agent` 回推的普通文本或富消息
-- 由 `app-agent` 将消息路由到 `llm-agent`、`codegen-agent`、`deploy-agent` 等后端 agent
+## 消息接入视角
 
-### 4. 企业微信消息能力
+### Flutter / App
 
-`wechat-agent` 提供完整的企业微信接入层能力：
+Flutter 客户端不需要直接理解工具协议，只需要接 `app-agent`：
 
-- 接收企业微信回调消息
-- 将微信用户消息转发到 `llm-agent` 或命令类 agent
-- 通过 `wechat.SendMessage` / `wechat.SendMarkdown` 作为远程工具被调用
-- 将任务结果、进度、通知重新推送回企业微信用户或群
+- 登录：`/api/app/login`
+- 发送消息：`/api/app/message`
+- 实时回推：`/ws/app`
 
-这意味着微信端既可以作为：
-
-- 自然语言对话入口
-- 命令入口
-- 任务执行结果接收端
-- 定时提醒与自动推送接收端
-
-### 5. MetaGPT 兼容智能中枢
-
-仓库中已提供 `cmd/metagpt-agent/`，用于基于 MetaGPT 框架实现 `llm-agent` 的核心能力兼容：
-
-- 接收 `assistant_chat / llm_request / cron_query / cron_reminder / resume_task`
-- 接收 `wechat / app` 的 `notify`
-- 从 Gateway 拉取在线工具目录
-- 执行工具调用循环
-- 持久化 session、runtime snapshot、trace
-
-适用场景：
-
-- 想保留现有 UAP 协议与 agent 网络
-- 但希望把核心任务执行器替换成 MetaGPT Role/Action 模式
-
-## 关键消息流
-
-### Flutter -> agent 网络
+典型消息流：
 
 ```text
 Flutter App
-  -> app-agent (/api/app/message, /ws/app)
+  -> app-agent
   -> Gateway
   -> llm-agent / metagpt-agent
-  -> 目标工具 agent（blog-agent / deploy-agent / audio-agent / image-agent ...）
-  -> llm-agent / metagpt-agent 汇总结果
+  -> blog-agent / deploy-agent / 其它工具 agent
   -> app-agent
   -> Flutter App
 ```
 
-典型能力：
+这很适合做：
 
-- 文本提问
-- 语音提问后自动转写
-- 图片提问后自动识别
-- 执行过程中的进度推送
-- 富消息和附件回推
+- 团队工作台
+- 个人效率助手
+- 小组管理项目
+- 任务协同和结果通知客户端
 
-### 企业微信 -> agent 网络
+### 企业微信
+
+企业微信更适合日常高频使用，尤其是：
+
+- 查记录
+- 记待办
+- 发提醒
+- 触发部署
+- 接收部署结果和执行进度
+
+典型消息流：
 
 ```text
 企业微信用户
-  -> wechat-agent (callback)
+  -> wechat-agent
   -> Gateway
-  -> llm-agent / codegen-agent / 其它命令 agent
-  -> 目标工具 agent
-  -> 结果回到 wechat-agent
+  -> llm-agent / metagpt-agent
+  -> blog-agent / deploy-agent / 其它 agent
+  -> wechat-agent
   -> 企业微信用户
 ```
 
-典型能力：
+## deploy-agent：部署能力是 README 的重点之一
 
-- 微信里直接问业务问题
-- 微信里触发编码 / 部署 / 查询 / 定时提醒
-- 接收实时进度和最终结果
+`deploy-agent` 不只是“上传后执行脚本”，而是把部署做成 Agent 能力，支持两种主要模式。
 
-### 定时任务 -> 微信 / App 双端推送
+### 1. 直接部署
+
+适合明确知道项目和目标环境的场景。
+
+例如：
+
+- 把 `blog-agent` 直接部署到 `ssh-prod`
+- 把某个服务只做打包，不执行远端发布
+- 指定某个 deploy target 做一次临时部署
+
+对应能力包括：
+
+- `DeployProject`：按已配置项目执行部署
+- `DeployAdhoc`：对临时目录或临时项目做一次性部署
+
+适用场景：
+
+- 单项目快速发版
+- 修复后马上推到测试或生产环境
+- 明确知道部署目标，不需要复杂编排
+
+### 2. Pipeline 部署
+
+适合完整交付流程，尤其是多步骤、可复用、可标准化的场景。
+
+例如一个 Pipeline 可以包含：
+
+1. 拉取或准备构建产物
+2. 编译和打包
+3. 上传到目标机器
+4. 执行发布脚本
+5. 执行部署后验证
+6. 发送结果通知到微信或 App
+
+对应能力：
+
+- `DeployPipeline`
+
+适用场景：
+
+- 标准化发版
+- 多环境一致部署
+- 团队成员复用同一套交付流程
+- 希望把“构建、部署、验证、通知”做成固定流水线
+
+### 3. 什么时候用直接部署，什么时候用 Pipeline
+
+直接部署适合：
+
+- 我就想把某个项目发到 `ssh-prod`
+- 我已经知道项目名和目标环境
+- 我需要快，不需要一整套流水线
+
+Pipeline 适合：
+
+- 我希望一键执行完整交付流程
+- 团队里多人都复用同一套部署标准
+- 我希望后续排查问题时，能看到标准步骤和执行路径
+
+### 4. 用户侧使用方式
+
+用户不一定要自己调用底层工具名，通常可以直接通过自然语言或者微信命令触发。
+
+示例：
 
 ```text
-cron-agent
-  -> llm-agent / metagpt-agent
-  -> 生成提醒或查询结果
-  -> wechat-agent + app-agent
-  -> 企业微信用户 / Flutter 用户
+帮我把 blog-agent 部署到 ssh-prod
 ```
 
-## UAP 协议能力
+```text
+执行 prod-all pipeline
+```
 
-所有 agent 通过 UAP 互通。当前最关键的消息类型有：
+企业微信命令侧也支持直接操作：
 
-| 消息类型 | 作用 |
-| --- | --- |
-| `register` | agent 向 Gateway 注册 |
-| `heartbeat` | agent 保活 |
-| `notify` | 单向消息通知，常用于微信 / App 回推 |
-| `tool_call` | 调用另一个 agent 暴露的工具 |
-| `tool_result` | 工具执行结果 |
-| `task_assign` | 派发任务 |
-| `task_accepted` | 任务接收确认 |
-| `task_event` | 任务执行过程中的流式进度 |
-| `task_complete` | 任务完成结果 |
+```text
+cg deploy blog-agent #ssh-prod
+cg pipeline list
+cg pipeline prod-all
+```
 
-对 Flutter / 微信特别重要的点：
-
-- 前端不需要直接面对工具目录
-- 前端只和接入 agent 通信
-- 真正的工具选择、任务编排、执行过程都在 agent 网络内部完成
-
-## Agent 清单
+## 主要 Agent 清单
 
 | Agent | 位置 | 主要职责 |
 | --- | --- | --- |
-| `gateway` | `cmd/gateway/` | 注册、发现、路由、trace、health |
+| `gateway` | `cmd/gateway/` | 注册、发现、路由、健康检查、Trace |
 | `llm-agent` | `cmd/llm-agent/` | 通用 LLM 编排中枢 |
-| `metagpt-agent` | `cmd/metagpt-agent/` | MetaGPT 版任务执行中枢 |
-| `app-agent` | `cmd/app-agent/` | Flutter / App 接入、消息桥接、附件与回推 |
-| `wechat-agent` | `cmd/wechat-agent/` | 企业微信接入、通知发送、微信工具 |
-| `blog-agent` | `cmd/blog-agent/` | 业务数据、内容服务、主站能力 |
-| `deploy-agent` | `cmd/deploy-agent/` | 构建与部署 |
-| `codegen-agent` | `cmd/codegen-agent/` | 代码生成与编码会话 |
+| `metagpt-agent` | `cmd/metagpt-agent/` | MetaGPT 版智能执行中枢 |
+| `app-agent` | `cmd/app-agent/` | Flutter / App 接入、附件与消息回推 |
+| `wechat-agent` | `cmd/wechat-agent/` | 企业微信接入、通知发送 |
+| `blog-agent` | `cmd/blog-agent/` | 博客、待办、运动、阅读等业务能力 |
+| `deploy-agent` | `cmd/deploy-agent/` | 构建、打包、部署、Pipeline |
+| `codegen-agent` | `cmd/codegen-agent/` | 编码与代码会话 |
 | `execute-code-agent` | `cmd/execute-code-agent/` | 沙箱执行 |
-| `audio-agent` | `cmd/audio-agent/` | 语音相关能力 |
-| `image-agent` | `cmd/image-agent/` | 图像相关能力 |
 | `cron-agent` | `cmd/cron-agent/` | 定时任务 |
-| `log-agent` | `cmd/log-agent/` | 日志采集与分析 |
-| `mcp-agent` | `cmd/mcp-agent/` | MCP 工具接入 |
-| `test-agent` | `cmd/test-agent/` | 全链路测试与评估 |
-
-## Flutter 接入重点
-
-如果你的目标是做 Flutter + Agent 通信，建议重点关注这些目录：
-
-- [cmd/app-agent](cmd/app-agent/)
-- [cmd/llm-agent](cmd/llm-agent/)
-- [cmd/gateway](cmd/gateway/)
-
-Flutter 侧建议的接入方式：
-
-1. 用户先通过 `app-agent` 登录接口获取身份和会话能力
-2. 文本或附件消息发到 `app-agent`
-3. 长连接通过 `ws/app` 接收进度和回推
-4. 由 `app-agent` 将消息包装成 `notify(channel="app")` 发往目标 agent
-5. `llm-agent` 在内部完成工具调用，再把结果回推给 `app-agent`
-6. `app-agent` 再将结果投递回 Flutter 客户端
-
-这样做的好处：
-
-- Flutter 客户端不需要内置复杂工具协议
-- Flutter 客户端不需要直连多种后端 agent
-- 终端协议收敛，便于后续扩展到 Web、桌面、其它 IM
-
-## 企业微信接入重点
-
-如果你的目标是做微信 + Agent 通信，建议重点关注这些目录：
-
-- [cmd/wechat-agent](cmd/wechat-agent/)
-- [cmd/llm-agent](cmd/llm-agent/)
-- [docs/wechat_conversation_context.md](docs/wechat_conversation_context.md)
-- [docs/message_flow.md](docs/message_flow.md)
-
-企业微信侧当前支持的核心模式：
-
-- 微信消息作为自然语言入口
-- 微信消息作为命令入口
-- 微信侧接收任务进度
-- 微信侧接收定时提醒与查询结果
-- `wechat-agent` 作为工具被其它 agent 反向调用
+| `test-agent` | `cmd/test-agent/` | Agent 测试与评估 |
 
 ## 快速启动
 
@@ -238,23 +292,7 @@ go build
 ./llm-agent -config llm-agent.json
 ```
 
-### 3. 启动 app-agent
-
-```bash
-cd cmd/app-agent
-go build
-./app-agent -config app-agent.json
-```
-
-### 4. 启动 wechat-agent
-
-```bash
-cd cmd/wechat-agent
-go build
-./wechat-agent -config wechat-agent.json
-```
-
-### 5. 启动 metagpt-agent
+### 3. 启动 metagpt-agent
 
 ```bash
 cd cmd/metagpt-agent
@@ -264,7 +302,31 @@ pip install -r requirements.txt
 python main.py --config metagpt-agent.json
 ```
 
-## 推荐阅读顺序
+### 4. 启动 app-agent
+
+```bash
+cd cmd/app-agent
+go build
+./app-agent -config app-agent.json
+```
+
+### 5. 启动 wechat-agent
+
+```bash
+cd cmd/wechat-agent
+go build
+./wechat-agent -config wechat-agent.json
+```
+
+### 6. 启动 deploy-agent
+
+```bash
+cd cmd/deploy-agent
+go build
+./deploy-agent -config deploy-agent.json
+```
+
+## 推荐阅读
 
 - [docs/multi_agent_architecture.md](docs/multi_agent_architecture.md)
 - [docs/message_flow.md](docs/message_flow.md)
@@ -272,16 +334,23 @@ python main.py --config metagpt-agent.json
 - [cmd/metagpt-agent/README.md](cmd/metagpt-agent/README.md)
 - [cmd/test-agent/README.md](cmd/test-agent/README.md)
 
-## 当前 README 的取舍
+## 代码入口建议
 
-这个 README 故意弱化了原先大篇幅的博客业务介绍，改为突出：
+如果你关注 Flutter + Agent：
 
-- agent 网络能力
-- Flutter 接入能力
-- 企业微信接入能力
-- `llm-agent` / `metagpt-agent` 的智能中枢角色
+- [cmd/app-agent](cmd/app-agent/)
+- [cmd/flutter-client-for-appagent](cmd/flutter-client-for-appagent/)
+- [cmd/llm-agent](cmd/llm-agent/)
+- [cmd/gateway](cmd/gateway/)
 
-如果你关注的是博客业务本身，可以再看：
+如果你关注企业微信 + Agent：
 
-- [cmd/blog-agent](cmd/blog-agent/)
-- [cmd/blog-agent/README.md](cmd/blog-agent/README.md)
+- [cmd/wechat-agent](cmd/wechat-agent/)
+- [cmd/llm-agent](cmd/llm-agent/)
+- [docs/wechat_conversation_context.md](docs/wechat_conversation_context.md)
+
+如果你关注部署能力：
+
+- [cmd/deploy-agent](cmd/deploy-agent/)
+- [docs/message_flow.md](docs/message_flow.md)
+- [docs/multi_agent_architecture.md](docs/multi_agent_architecture.md)

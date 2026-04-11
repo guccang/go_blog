@@ -25,6 +25,7 @@ type Config struct {
 	CaptureHealth     bool          `json:"capture_health"`
 	Dynamic           DynamicConfig `json:"dynamic"`
 	Report            ReportConfig  `json:"report"`
+	Web               WebConfig     `json:"web"`
 }
 
 // DynamicConfig 动态评估集配置。
@@ -41,6 +42,12 @@ type DynamicConfig struct {
 type ReportConfig struct {
 	StaticWeight  int `json:"static_weight"`
 	DynamicWeight int `json:"dynamic_weight"`
+}
+
+// WebConfig Web 控制台配置。
+type WebConfig struct {
+	Enabled    bool   `json:"enabled"`
+	ListenAddr string `json:"listen_addr"`
 }
 
 func DefaultConfig() *Config {
@@ -79,6 +86,10 @@ func DefaultConfig() *Config {
 		Report: ReportConfig{
 			StaticWeight:  70,
 			DynamicWeight: 30,
+		},
+		Web: WebConfig{
+			Enabled:    false,
+			ListenAddr: ":18086",
 		},
 	}
 }
@@ -146,6 +157,9 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Report.StaticWeight == 0 && cfg.Report.DynamicWeight == 0 {
 		cfg.Report.StaticWeight = 70
 		cfg.Report.DynamicWeight = 30
+	}
+	if strings.TrimSpace(cfg.Web.ListenAddr) == "" {
+		cfg.Web.ListenAddr = ":18086"
 	}
 	return cfg, nil
 }
