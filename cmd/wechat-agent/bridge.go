@@ -26,7 +26,7 @@ type Bridge struct {
 	tokenMu       sync.Mutex
 
 	// codegen 事件节流
-	lastEventTime map[string]time.Time // session_id → 上次推送时间
+	lastEventTime map[string]time.Time // session_id:event_type → 上次推送时间
 	eventMu       sync.Mutex
 
 	// session → wechat user 映射（从 payload.Account 学习）
@@ -262,13 +262,14 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 	}
 	b.sessionMu.Unlock()
 
-	// 节流：同一 session 每 10 秒最多推送一次
+	// 节流：同一 session 的同一事件类型每 10 秒最多推送一次，避免 system 事件压掉 assistant chunk
+	throttleKey := codegenThrottleKey(payload.SessionID, payload.Event.Type)
 	b.eventMu.Lock()
-	lastTime := b.lastEventTime[payload.SessionID]
+	lastTime := b.lastEventTime[throttleKey]
 	now := time.Now()
 	shouldSend := now.Sub(lastTime) >= 10*time.Second
 	if shouldSend {
-		b.lastEventTime[payload.SessionID] = now
+		b.lastEventTime[throttleKey] = now
 	}
 	b.eventMu.Unlock()
 
@@ -295,7 +296,11 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 
 	// 清理节流状态
 	b.eventMu.Lock()
-	delete(b.lastEventTime, payload.SessionID)
+	for key := range b.lastEventTime {
+		if strings.HasPrefix(key, payload.SessionID+":") {
+			delete(b.lastEventTime, key)
+		}
+	}
 	b.eventMu.Unlock()
 
 	// 查找/学习 session → user 映射
@@ -319,6 +324,10 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	}
 
 	b.sendNotification(toUser, text)
+}
+
+func codegenThrottleKey(sessionID, eventType string) string {
+	return sessionID + ":" + strings.TrimSpace(eventType)
 }
 
 // formatEventForWeChat 将 stream_event 格式化为微信推送文本

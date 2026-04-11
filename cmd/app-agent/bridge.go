@@ -63,7 +63,7 @@ type Bridge struct {
 	client *uap.Client
 	groups *groupManager
 
-	lastEventTime map[string]time.Time
+	lastEventTime map[string]time.Time // session_id:event_type → 上次推送时间
 	eventMu       sync.Mutex
 
 	sessionUsers map[string]string
@@ -1035,12 +1035,13 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 	}
 	b.sessionMu.Unlock()
 
+	throttleKey := codegenThrottleKey(payload.SessionID, payload.Event.Type)
 	b.eventMu.Lock()
-	lastTime := b.lastEventTime[payload.SessionID]
+	lastTime := b.lastEventTime[throttleKey]
 	now := time.Now()
 	shouldSend := now.Sub(lastTime) >= 10*time.Second
 	if shouldSend {
-		b.lastEventTime[payload.SessionID] = now
+		b.lastEventTime[throttleKey] = now
 	}
 	b.eventMu.Unlock()
 
@@ -1064,7 +1065,11 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	}
 
 	b.eventMu.Lock()
-	delete(b.lastEventTime, payload.SessionID)
+	for key := range b.lastEventTime {
+		if strings.HasPrefix(key, payload.SessionID+":") {
+			delete(b.lastEventTime, key)
+		}
+	}
 	b.eventMu.Unlock()
 
 	toUser := ""
@@ -1085,6 +1090,10 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	}
 
 	b.sendNotification(toUser, text)
+}
+
+func codegenThrottleKey(sessionID, eventType string) string {
+	return sessionID + ":" + strings.TrimSpace(eventType)
 }
 
 func formatEventForApp(payload *codegenStreamEvent) string {
