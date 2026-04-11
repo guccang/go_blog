@@ -250,11 +250,22 @@ body {
     font-weight: 600;
 }
 
+.tag-filters-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
 .tag-filters {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     justify-content: center;
+}
+
+.tag-filter.is-collapsed-hidden {
+    display: none;
 }
 
 .tag-filter {
@@ -279,6 +290,29 @@ body {
     background-color: var(--accent-color);
     color: white;
     border-color: var(--accent-color);
+}
+
+.tag-filters-toggle {
+    padding: 8px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--card-bg), var(--primary-color));
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 10px var(--shadow-color);
+}
+
+.tag-filters-toggle:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.tag-filters-toggle[hidden] {
+    display: none;
 }
 
 /* Tag size variations based on count */
@@ -613,6 +647,15 @@ body {
     
     .tag-filters {
         justify-content: flex-start;
+        width: 100%;
+    }
+
+    .tag-filters-panel {
+        align-items: stretch;
+    }
+
+    .tag-filters-toggle {
+        width: 100%;
     }
     
     .bottom-fix-div {
@@ -653,6 +696,11 @@ body {
     .tag-filter {
         font-size: 12px;
         padding: 5px 10px;
+    }
+
+    .tag-filters-toggle {
+        font-size: 12px;
+        padding: 7px 14px;
     }
     
     .container {

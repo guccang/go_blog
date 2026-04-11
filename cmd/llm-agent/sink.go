@@ -15,11 +15,16 @@ type EventSink interface {
 type StreamingSink struct {
 	bridge *Bridge
 	taskID string
+	target string
 }
 
-func (s *StreamingSink) OnChunk(text string)        { s.bridge.sendTaskEvent(s.taskID, "chunk", text) }
-func (s *StreamingSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.taskID, event, text) }
-func (s *StreamingSink) Streaming() bool            { return true }
+func (s *StreamingSink) OnChunk(text string) {
+	s.bridge.sendTaskEventTo(s.taskID, s.target, "chunk", text)
+}
+func (s *StreamingSink) OnEvent(event, text string) {
+	s.bridge.sendTaskEventTo(s.taskID, s.target, event, text)
+}
+func (s *StreamingSink) Streaming() bool { return true }
 
 // BufferSink 缓冲输出（llm_request）
 type BufferSink struct {
@@ -36,9 +41,12 @@ type LLMRequestSink struct {
 	buf    strings.Builder
 	bridge *Bridge
 	taskID string
+	target string
 }
 
-func (s *LLMRequestSink) OnChunk(text string)        { s.buf.WriteString(text) }
-func (s *LLMRequestSink) OnEvent(event, text string) { s.bridge.sendTaskEvent(s.taskID, event, text) }
-func (s *LLMRequestSink) Streaming() bool            { return false }
-func (s *LLMRequestSink) Result() string             { return s.buf.String() }
+func (s *LLMRequestSink) OnChunk(text string) { s.buf.WriteString(text) }
+func (s *LLMRequestSink) OnEvent(event, text string) {
+	s.bridge.sendTaskEventTo(s.taskID, s.target, event, text)
+}
+func (s *LLMRequestSink) Streaming() bool { return false }
+func (s *LLMRequestSink) Result() string  { return s.buf.String() }

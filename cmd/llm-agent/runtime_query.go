@@ -85,6 +85,9 @@ type QueryLoop struct {
 type QueryRuntime = QueryLoop
 
 func (b *Bridge) processTask(ctx *TaskContext) (string, error) {
+	if ctx != nil {
+		ctx.Ctx = ensureAuthenticatedContext(ctx.Ctx, ctx.Account)
+	}
 	rt, err := b.prepareQueryRuntime(ctx)
 	if err != nil {
 		return "", err

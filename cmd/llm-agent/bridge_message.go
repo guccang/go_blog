@@ -114,21 +114,24 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				log.Printf("[Bridge] invalid assistant task payload: %v", err)
 				return
 			}
-			handler = func() { b.handleAssistantTask(taskPayload.TaskID, &assistantPayload) }
+			sourceAgent := msg.From
+			handler = func() { b.handleAssistantTask(taskPayload.TaskID, sourceAgent, &assistantPayload) }
 		case "llm_request":
 			var llmPayload LLMRequestPayload
 			if err := json.Unmarshal(taskPayload.Payload, &llmPayload); err != nil {
 				log.Printf("[Bridge] invalid llm_request payload: %v", err)
 				return
 			}
-			handler = func() { b.handleLLMRequestTask(taskPayload.TaskID, &llmPayload) }
+			sourceAgent := msg.From
+			handler = func() { b.handleLLMRequestTask(taskPayload.TaskID, sourceAgent, &llmPayload) }
 		case "resume_task":
 			var resumePayload ResumeTaskPayload
 			if err := json.Unmarshal(taskPayload.Payload, &resumePayload); err != nil {
 				log.Printf("[Bridge] invalid resume_task payload: %v", err)
 				return
 			}
-			handler = func() { b.handleResumeTask(taskPayload.TaskID, &resumePayload) }
+			sourceAgent := msg.From
+			handler = func() { b.handleResumeTask(taskPayload.TaskID, sourceAgent, &resumePayload) }
 		case "cron_reminder":
 			var wrapper struct {
 				Payload  json.RawMessage `json:"payload"`
@@ -183,7 +186,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			Type:    uap.MsgTaskAccepted,
 			ID:      uap.NewMsgID(),
 			From:    b.cfg.AgentID,
-			To:      "blog-agent",
+			To:      msg.From,
 			Payload: mustMarshal(uap.TaskAcceptedPayload{TaskID: taskPayload.TaskID}),
 			Ts:      time.Now().UnixMilli(),
 		})
@@ -208,7 +211,7 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 				Type: uap.MsgTaskRejected,
 				ID:   uap.NewMsgID(),
 				From: b.cfg.AgentID,
-				To:   "blog-agent",
+				To:   msg.From,
 				Payload: mustMarshal(uap.TaskRejectedPayload{
 					TaskID: taskPayload.TaskID,
 					Reason: fmt.Sprintf("agent at max capacity (active=%d/%d, queue=%d/%d)",
@@ -425,12 +428,12 @@ func (b *Bridge) RecoverInProgressTasks() {
 			b.registerTask(rid, "resume_task")
 			go func() {
 				defer b.deregisterTask(rid)
-				b.handleResumeTask(rid, &ResumeTaskPayload{RootSessionID: rid})
+				b.handleResumeTask(rid, "blog-agent", &ResumeTaskPayload{RootSessionID: rid})
 			}()
 		} else if b.enqueueOrReject(&queuedTask{
 			taskID:    rid,
 			taskType:  "resume_task",
-			handler:   func() { b.handleResumeTask(rid, &ResumeTaskPayload{RootSessionID: rid}) },
+			handler:   func() { b.handleResumeTask(rid, "blog-agent", &ResumeTaskPayload{RootSessionID: rid}) },
 			createdAt: time.Now(),
 		}) {
 			log.Printf("[Bridge] recover: enqueued %s", rid)

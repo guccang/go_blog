@@ -2,6 +2,7 @@
 let currentView = 'grid'; // 'grid' 或 'list'
 let currentFilter = 'all';
 let allBlogs = [];
+let tagFiltersExpanded = false;
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -210,6 +211,18 @@ function initializeTagFilters() {
             filterByTag(tag);
         });
     });
+
+    const toggleBtn = document.getElementById('tag-filters-toggle');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            tagFiltersExpanded = !tagFiltersExpanded;
+            syncTagFilterCollapse();
+        });
+    }
+
+    window.addEventListener('resize', syncTagFilterCollapse);
+    syncTagFilterCollapse();
 }
 
 // 按标签筛选
@@ -224,6 +237,7 @@ function filterByTag(tag) {
     }
     
     currentFilter = tag;
+    syncTagFilterCollapse();
     
     const blogCards = document.querySelectorAll('.link-card');
     let visibleCount = 0;
@@ -259,6 +273,48 @@ function filterByTag(tag) {
     updateFilterStats(visibleCount, tag);
     
     showToast(`已筛选标签: ${tag === 'all' ? '全部' : tag}`, 'info');
+}
+
+function getTagCollapseLimit() {
+    if (window.innerWidth <= 480) {
+        return 8;
+    }
+    if (window.innerWidth <= 768) {
+        return 12;
+    }
+    return 18;
+}
+
+function syncTagFilterCollapse() {
+    const tagFilters = document.getElementById('tag-filters');
+    const toggleBtn = document.getElementById('tag-filters-toggle');
+    if (!tagFilters || !toggleBtn) {
+        return;
+    }
+
+    const allTagButtons = Array.from(tagFilters.querySelectorAll('.tag-filter'));
+    const collapsibleButtons = allTagButtons.filter(btn => btn.getAttribute('data-tag') !== 'all');
+    const limit = getTagCollapseLimit();
+    const hiddenCount = Math.max(collapsibleButtons.length - limit, 0);
+
+    if (hiddenCount <= 0) {
+        collapsibleButtons.forEach(btn => btn.classList.remove('is-collapsed-hidden'));
+        toggleBtn.hidden = true;
+        toggleBtn.setAttribute('aria-expanded', 'true');
+        return;
+    }
+
+    collapsibleButtons.forEach((btn, index) => {
+        const isActive = btn.classList.contains('active');
+        const shouldHide = !tagFiltersExpanded && index >= limit && !isActive;
+        btn.classList.toggle('is-collapsed-hidden', shouldHide);
+    });
+
+    toggleBtn.hidden = false;
+    toggleBtn.setAttribute('aria-expanded', String(tagFiltersExpanded));
+    toggleBtn.textContent = tagFiltersExpanded
+        ? '收起标签'
+        : `展开更多标签 (${hiddenCount})`;
 }
 
 // 更新筛选统计

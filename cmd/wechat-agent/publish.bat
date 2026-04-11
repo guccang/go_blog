@@ -7,7 +7,7 @@ echo 停止 wechat-agent...
 taskkill /F /IM wechat-agent.exe 2>nul
 
 echo 启动 wechat-agent...
-start "wechat-agent" cmd /c "wechat-agent.exe -config agent.conf"
+start "wechat-agent" cmd /c "wechat-agent.exe --config wechat-agent.json"
 
 ping -n 3 127.0.0.1 >nul
 

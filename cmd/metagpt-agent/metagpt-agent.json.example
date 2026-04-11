@@ -1,0 +1,27 @@
+{
+  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
+  "gateway_http": "http://127.0.0.1:9000",
+  "auth_token": "",
+  "agent_id": "metagpt-agent",
+  "agent_name": "MetaGPT Agent",
+  "agent_type": "llm_mcp",
+  "description": "MetaGPT-based UAP agent compatible with llm-agent core task flow",
+  "llm": {
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key": "",
+    "model": "deepseek-chat",
+    "max_tokens": 8192,
+    "temperature": 0.3,
+    "timeout_sec": 180
+  },
+  "system_prompt_prefix": "你是基于 MetaGPT Role/Action 框架实现的工程型智能体。优先直接完成任务，禁止编造工具执行结果，调用工具前先理解参数和上下文。",
+  "max_tool_iterations": 16,
+  "tool_call_timeout_sec": 300,
+  "max_concurrent": 2,
+  "task_queue_size": 16,
+  "discovery_interval_sec": 30,
+  "heartbeat_interval_sec": 15,
+  "session_dir": "agent_sessions_metagpt",
+  "chat_session_dir": "chat_sessions_metagpt",
+  "workspace_dir": "workspace"
+}

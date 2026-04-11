@@ -187,9 +187,11 @@ type TaskStopPayload struct {
 
 // NotifyPayload 单向通知
 type NotifyPayload struct {
-	Channel string `json:"channel"` // 通知渠道: "wechat", "email"
-	To      string `json:"to"`      // 接收人
-	Content string `json:"content"`
+	Channel     string         `json:"channel"` // 通知渠道: "wechat", "email"
+	To          string         `json:"to"`      // 接收人
+	Content     string         `json:"content"`
+	MessageType string         `json:"message_type,omitempty"` // 可选消息类型: "text", "voice"
+	Meta        map[string]any `json:"meta,omitempty"`         // 可选附加元数据
 }
 
 // ========================= 错误载荷 =========================

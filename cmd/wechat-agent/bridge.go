@@ -153,7 +153,7 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 			return
 		}
 		if payload.Channel == "wechat" && payload.To != "" {
-			b.sendNotification(payload.To, payload.Content)
+			b.sendNotifyPayload(payload)
 		}
 
 	case uap.MsgToolCall:

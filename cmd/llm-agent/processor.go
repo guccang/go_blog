@@ -29,6 +29,21 @@ type TaskContext struct {
 	CurrentSession     *TaskSession // 当前运行中的 session（供 execute_skill 等子任务继承）
 }
 
+func ensureAuthenticatedContext(ctx context.Context, account string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if strings.TrimSpace(GetAuthenticatedUser(ctx)) != "" {
+		return ctx
+	}
+
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return ctx
+	}
+	return WithAuthenticatedUser(ctx, account)
+}
+
 func isMCPToolListQuery(query string) bool {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {

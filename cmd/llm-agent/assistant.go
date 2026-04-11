@@ -119,7 +119,7 @@ func (b *Bridge) buildAssistantSystemPromptForQuery(account, query string, enabl
 }
 
 // handleAssistantTask 处理 assistant_chat 任务：流式 LLM + 工具调用循环
-func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayload) {
+func (b *Bridge) handleAssistantTask(taskID, sourceAgent string, payload *AssistantTaskPayload) {
 	log.Printf("[Assistant] task=%s account=%s query=%s", taskID, payload.Account, payload.Query)
 
 	// Web 来源使用 ChatSession 管理多轮对话
@@ -149,7 +149,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		Account: payload.Account,
 		Query:   payload.Query,
 		Source:  "web",
-		Sink:    &StreamingSink{bridge: b, taskID: taskID},
+		Sink:    &StreamingSink{bridge: b, taskID: taskID, target: sourceAgent},
 	}
 
 	// 如果有历史消息，传入作为上下文
@@ -199,7 +199,7 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),
 		From:    b.cfg.AgentID,
-		To:      "blog-agent",
+		To:      sourceAgent,
 		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg}),
 		Ts:      time.Now().UnixMilli(),
 	})
@@ -208,11 +208,11 @@ func (b *Bridge) handleAssistantTask(taskID string, payload *AssistantTaskPayloa
 }
 
 // handleResumeTask 处理断点续传请求
-func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
+func (b *Bridge) handleResumeTask(taskID, sourceAgent string, payload *ResumeTaskPayload) {
 	log.Printf("[Resume] task=%s resuming root_session=%s", taskID, payload.RootSessionID)
 
 	sendEvent := func(event, text string) {
-		b.sendTaskEvent(taskID, event, text)
+		b.sendTaskEventTo(taskID, sourceAgent, event, text)
 	}
 
 	result, err := b.resumeRootQuery(taskID, payload.RootSessionID, payload.Account, sendEvent)
@@ -223,16 +223,16 @@ func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
 		status = "failed"
 		errMsg = err.Error()
 		log.Printf("[Resume] failed: %v", err)
-		b.sendTaskEvent(taskID, "chunk", fmt.Sprintf("恢复失败: %v", err))
+		b.sendTaskEventTo(taskID, sourceAgent, "chunk", fmt.Sprintf("恢复失败: %v", err))
 	} else {
-		b.sendTaskEvent(taskID, "chunk", result)
+		b.sendTaskEventTo(taskID, sourceAgent, "chunk", result)
 	}
 
 	b.client.Send(&uap.Message{
 		Type: uap.MsgTaskComplete,
 		ID:   uap.NewMsgID(),
 		From: b.cfg.AgentID,
-		To:   "blog-agent",
+		To:   sourceAgent,
 		Payload: mustMarshal(uap.TaskCompletePayload{
 			TaskID: taskID,
 			Status: status,
@@ -245,7 +245,7 @@ func (b *Bridge) handleResumeTask(taskID string, payload *ResumeTaskPayload) {
 }
 
 // handleLLMRequestTask 处理 llm_request 任务：使用预构建消息 + 工具调用循环
-func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload) {
+func (b *Bridge) handleLLMRequestTask(taskID, sourceAgent string, payload *LLMRequestPayload) {
 	log.Printf("[LLMRequest] task=%s account=%s messages=%d noTools=%v", taskID, payload.Account, len(payload.Messages), payload.NoTools)
 
 	ctx := &TaskContext{
@@ -256,7 +256,7 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 		Messages:     payload.Messages,
 		AllowedTools: payload.AllowedTools,
 		NoTools:      payload.NoTools,
-		Sink:         &LLMRequestSink{bridge: b, taskID: taskID},
+		Sink:         &LLMRequestSink{bridge: b, taskID: taskID, target: sourceAgent},
 	}
 
 	result, err := b.processTask(ctx)
@@ -273,7 +273,7 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 		Type:    uap.MsgTaskComplete,
 		ID:      uap.NewMsgID(),
 		From:    b.cfg.AgentID,
-		To:      "blog-agent",
+		To:      sourceAgent,
 		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg, Result: result}),
 		Ts:      time.Now().UnixMilli(),
 	})
@@ -283,6 +283,10 @@ func (b *Bridge) handleLLMRequestTask(taskID string, payload *LLMRequestPayload)
 
 // sendTaskEvent 发送任务进度事件
 func (b *Bridge) sendTaskEvent(taskID, event, text string) {
+	b.sendTaskEventTo(taskID, "blog-agent", event, text)
+}
+
+func (b *Bridge) sendTaskEventTo(taskID, targetAgent, event, text string) {
 	eventData := mustMarshal(AssistantEventPayload{
 		Event: event,
 		Text:  text,
@@ -292,7 +296,7 @@ func (b *Bridge) sendTaskEvent(taskID, event, text string) {
 		Type: uap.MsgTaskEvent,
 		ID:   uap.NewMsgID(),
 		From: b.cfg.AgentID,
-		To:   "blog-agent",
+		To:   targetAgent,
 		Payload: mustMarshal(uap.TaskEventPayload{
 			TaskID: taskID,
 			Event:  json.RawMessage(eventData),
@@ -345,7 +349,7 @@ func (b *Bridge) handleCronQuery(taskID, sourceAgent string, payload *CronQueryP
 		Account: account,
 		Query:   payload.Query,
 		Source:  "cron_query",
-		Sink:    &LLMRequestSink{bridge: b, taskID: taskID},
+		Sink:    &LLMRequestSink{bridge: b, taskID: taskID, target: sourceAgent},
 	}
 
 	// 如果指定了 provider/model，使用临时配置

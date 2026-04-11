@@ -16,7 +16,7 @@ chmod +x wechat-agent
 # 启动新进程（后台运行，日志写文件）
 # 使用 nohup + disown 确保进程与父进程完全分离（macOS 兼容）
 echo "启动 wechat-agent..."
-nohup "$svr" agent.conf > wechat-agent.log 2>&1 < /dev/null &
+nohup "$svr" --config wechat-agent.json > wechat-agent.log 2>&1 < /dev/null &
 disown
 
 sleep 1

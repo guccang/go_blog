@@ -1,0 +1,55 @@
+{
+  "id": "llm-cron-reminder-observe",
+  "title": "LLM Cron Reminder Observe",
+  "description": "链路观测：直接给 llm-agent 下发 cron_reminder 任务，观察 llm-agent -> wechat-agent -> task_complete 的执行路径。这个 suite 主要看路径，不强依赖最终 status 必须 success。",
+  "scenarios": [
+    {
+      "id": "llm-cron-reminder-delivery-path",
+      "title": "llm-agent cron_reminder delivery path",
+      "description": "要求 llm-agent 和 wechat-agent 在线。若 app-agent 不在线，最终 task_complete 可能为 failed，但链路观测仍然应成立。",
+      "category": "integration",
+      "priority": "P1",
+      "dependency_mode": "hybrid",
+      "tags": [
+        "llm-agent",
+        "wechat-agent",
+        "cron-reminder",
+        "trace"
+      ],
+      "entry": {
+        "type": "task_assign",
+        "to_agent": "llm-agent",
+        "task": {
+          "payload": {
+            "task_type": "cron_reminder",
+            "payload": {
+              "account": "ztt",
+              "wechat_user": "ztt",
+              "message": "test-agent cron reminder smoke"
+            }
+          }
+        }
+      },
+      "assertions": {
+        "timeout_sec": 20,
+        "expect_message_type": "task_complete",
+        "require_agents": [
+          "llm-agent",
+          "wechat-agent"
+        ],
+        "require_msg_types": [
+          "task_assign",
+          "notify",
+          "task_complete"
+        ],
+        "expected_path": [
+          "test-agent",
+          "llm-agent",
+          "wechat-agent",
+          "test-agent"
+        ],
+        "min_trace_events": 4
+      }
+    }
+  ]
+}

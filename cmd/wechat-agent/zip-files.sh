@@ -25,7 +25,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # 打包二进制 + 配置
-zip -r "${OUTPUT}" "$BINNAME" wechat-agent.conf
+zip -r "${OUTPUT}" "$BINNAME" publish.sh wechat-agent.json
 
 # 清理编译产物
 rm -f "$BINNAME"
