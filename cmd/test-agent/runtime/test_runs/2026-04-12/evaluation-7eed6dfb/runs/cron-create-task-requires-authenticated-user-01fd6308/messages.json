@@ -1,0 +1,14 @@
+[
+  {
+    "type": "tool_result",
+    "id": "f6b7406d",
+    "from": "cron_agent_903",
+    "to": "test-agent",
+    "payload": {
+      "request_id": "01fd6308",
+      "success": false,
+      "error": "权限拒绝：缺少认证用户"
+    },
+    "ts": 1775998389954
+  }
+]

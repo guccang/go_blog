@@ -1,0 +1,2485 @@
+{
+  "run_id": "evaluation-7eed6dfb",
+  "title": "test-agent-system-evaluation",
+  "status": "failed",
+  "started_at": "2026-04-12T20:53:09.597966+08:00",
+  "finished_at": "2026-04-12T20:53:34.382578+08:00",
+  "health": {
+    "status": "ok",
+    "agents": 12
+  },
+  "online_agents": [
+    {
+      "agent_id": "acp_717d62c8",
+      "agent_type": "acp",
+      "name": "acp-agent-win",
+      "description": "项目代码分析、编码（基于 ACP 协议）",
+      "tools": [
+        "AcpListProjects",
+        "AcpCreateProject",
+        "AcpStartSession",
+        "AcpStopSession"
+      ],
+      "capacity": 2,
+      "last_hb": "2026-04-12T20:53:08+08:00",
+      "meta": {
+        "acp_agent_cmd": "npx",
+        "analysis_timeout": 3600,
+        "coding_backends": [
+          "acp"
+        ],
+        "projects": [
+          "assistant",
+          "go-tetris",
+          "go-web-calculator",
+          "hello-world",
+          "helloworld-web",
+          "tetris",
+          "webfangkuai",
+          "xxx",
+          "Client",
+          "Public",
+          "Server",
+          "Tools"
+        ],
+        "workspaces": [
+          "E:\\githubdesktop\\acpworkspace",
+          "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+        ]
+      }
+    },
+    {
+      "agent_id": "app-app-agent",
+      "agent_type": "app",
+      "name": "app-agent",
+      "description": "App message forwarding agent",
+      "tools": [
+        "app.SendMessage",
+        "app.SendRichMessage",
+        "app.ListAPKPackages",
+        "app.PushAPKPackage"
+      ],
+      "capacity": 20,
+      "last_hb": "2026-04-12T20:53:01+08:00",
+      "meta": {
+        "http_port": 8883
+      }
+    },
+    {
+      "agent_id": "audio_agent_27252",
+      "agent_type": "audio_agent",
+      "name": "audio-agent",
+      "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+      "tools": [
+        "AudioToText",
+        "TextToAudio"
+      ],
+      "capacity": 3,
+      "last_hb": "2026-04-12T20:52:57+08:00"
+    },
+    {
+      "agent_id": "blog-agent",
+      "agent_type": "blog-agent",
+      "name": "Go Blog Server",
+      "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+      "tools": [
+        "RawGetBlogByTitleMatch",
+        "RawAllBlogName",
+        "RawGetBlogData",
+        "RawGetBlogDataByDate",
+        "RawAllBlogNameByDateRange",
+        "RawAllBlogNameByDateRangeCount",
+        "RawCreateBlog",
+        "RawBlogsByAuthType",
+        "RawBlogsByTag",
+        "RawSearchBlogContent",
+        "RawRecentExerciseRecords",
+        "RawGetExerciseByDate",
+        "RawGetExerciseRange",
+        "RawAddExercise",
+        "RawGetExerciseStats",
+        "RawToggleExercise",
+        "RawDeleteExercise",
+        "RawUpdateExercise",
+        "RawGetTodosByDate",
+        "RawGetTodosRange",
+        "RawAddTodo",
+        "RawToggleTodo",
+        "RawDeleteTodo",
+        "RawUpdateTodo",
+        "RawGetAllBooks",
+        "RawGetBooksByStatus",
+        "RawGetReadingStats",
+        "RawUpdateReadingProgress",
+        "RawGetBookNotes",
+        "RawAddBook",
+        "RawCreateProject",
+        "RawGetProject",
+        "RawListProjects",
+        "RawUpdateProject",
+        "RawDeleteProject",
+        "RawAddProjectGoal",
+        "RawUpdateProjectGoal",
+        "RawDeleteProjectGoal",
+        "RawAddProjectOKR",
+        "RawUpdateProjectOKR",
+        "RawDeleteProjectOKR",
+        "RawUpdateProjectKeyResult",
+        "RawGetProjectSummary"
+      ],
+      "capacity": 100,
+      "last_hb": "2026-04-12T20:52:58+08:00",
+      "meta": {
+        "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+        "role": "backend"
+      }
+    },
+    {
+      "agent_id": "cmd-agent",
+      "agent_type": "cmd",
+      "name": "cmd-agent",
+      "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+      "capacity": 1,
+      "last_hb": "2026-04-12T20:53:06+08:00"
+    },
+    {
+      "agent_id": "cron_agent_903",
+      "agent_type": "cron_agent",
+      "name": "cron-agent",
+      "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+      "tools": [
+        "cronCreateTask",
+        "cronListTasks",
+        "cronDeleteTask",
+        "cronTriggerTask",
+        "cronListPending"
+      ],
+      "capacity": 10,
+      "last_hb": "2026-04-12T20:52:55+08:00",
+      "meta": {
+        "version": "2.0.0"
+      }
+    },
+    {
+      "agent_id": "env_agent_17587",
+      "agent_type": "env_agent",
+      "name": "env-agent",
+      "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+      "tools": [
+        "EnvCheck",
+        "EnvInstall",
+        "EnvCheckAll",
+        "EnvSetup"
+      ],
+      "capacity": 3,
+      "last_hb": "2026-04-12T20:53:03+08:00",
+      "meta": {
+        "supported_software": [
+          "claude",
+          "curl",
+          "docker",
+          "git",
+          "go",
+          "java",
+          "mysql",
+          "nginx",
+          "node",
+          "python",
+          "redis"
+        ]
+      }
+    },
+    {
+      "agent_id": "exec_code_21360",
+      "agent_type": "execute_code",
+      "name": "execute-code-agent",
+      "description": "Python代码执行、MCP工具批量调用",
+      "tools": [
+        "ExecuteCode",
+        "ExecExecEnvBash"
+      ],
+      "capacity": 3,
+      "last_hb": "2026-04-12T20:53:08+08:00",
+      "meta": {
+        "host_platform": "windows",
+        "max_exec_time": 120,
+        "max_output_size": 50000,
+        "python_version": "3.14.2"
+      }
+    },
+    {
+      "agent_id": "llm-agent",
+      "agent_type": "llm_mcp",
+      "name": "LLM MCP Agent",
+      "description": "",
+      "host_platform": "Linux",
+      "host_ip": "192.168.0.169",
+      "workspace": "workspace",
+      "capacity": 3,
+      "last_hb": "2026-04-12T20:52:58+08:00",
+      "meta": {
+        "host_stats": {
+          "cpu_cores": 1,
+          "disk_free_gb": "1.3",
+          "disk_total_gb": "9.7",
+          "mem_total_gb": "1.8"
+        }
+      }
+    },
+    {
+      "agent_id": "log_query_18583",
+      "agent_type": "log_query",
+      "name": "log-agent-hw",
+      "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+      "tools": [
+        "ListLogSources",
+        "ReadLog",
+        "LogReadLog"
+      ],
+      "capacity": 10,
+      "last_hb": "2026-04-12T20:53:03+08:00",
+      "meta": {
+        "log_sources": {
+          "blog-agent": "blog-agent博客日志",
+          "env-agent": "evn-agent日志",
+          "execute-code-agent": "execute-agent日志,沙箱日志",
+          "gateway": "gateway日志",
+          "llm-agent": "llm-agent日志,llm日志",
+          "system": "系统日志,崩溃日志",
+          "wechat-agent": "wechat-agent日志,微信日志"
+        }
+      }
+    },
+    {
+      "agent_id": "test-agent",
+      "agent_type": "test_agent",
+      "name": "test-agent",
+      "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+      "capacity": 1,
+      "last_hb": "2026-04-12T20:53:09+08:00",
+      "meta": {
+        "purpose": "system-evaluation"
+      }
+    },
+    {
+      "agent_id": "wechat-wechat-agent",
+      "agent_type": "wechat",
+      "name": "wechat-agent",
+      "description": "企业微信消息发送",
+      "tools": [
+        "wechat.SendMessage",
+        "wechat.SendMarkdown"
+      ],
+      "capacity": 10,
+      "last_hb": "2026-04-12T20:53:05+08:00",
+      "meta": {
+        "http_port": 8884
+      }
+    }
+  ],
+  "execution_plan": {
+    "run_id": "evaluation-7eed6dfb",
+    "title": "test-agent-system-evaluation",
+    "started_at": "2026-04-12T20:53:09.597966+08:00",
+    "health": {
+      "status": "ok",
+      "agents": 12
+    },
+    "online_agents": [
+      {
+        "agent_id": "acp_717d62c8",
+        "agent_type": "acp",
+        "name": "acp-agent-win",
+        "description": "项目代码分析、编码（基于 ACP 协议）",
+        "tools": [
+          "AcpListProjects",
+          "AcpCreateProject",
+          "AcpStartSession",
+          "AcpStopSession"
+        ],
+        "capacity": 2,
+        "last_hb": "2026-04-12T20:53:08+08:00",
+        "meta": {
+          "acp_agent_cmd": "npx",
+          "analysis_timeout": 3600,
+          "coding_backends": [
+            "acp"
+          ],
+          "projects": [
+            "assistant",
+            "go-tetris",
+            "go-web-calculator",
+            "hello-world",
+            "helloworld-web",
+            "tetris",
+            "webfangkuai",
+            "xxx",
+            "Client",
+            "Public",
+            "Server",
+            "Tools"
+          ],
+          "workspaces": [
+            "E:\\githubdesktop\\acpworkspace",
+            "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+          ]
+        }
+      },
+      {
+        "agent_id": "app-app-agent",
+        "agent_type": "app",
+        "name": "app-agent",
+        "description": "App message forwarding agent",
+        "tools": [
+          "app.SendMessage",
+          "app.SendRichMessage",
+          "app.ListAPKPackages",
+          "app.PushAPKPackage"
+        ],
+        "capacity": 20,
+        "last_hb": "2026-04-12T20:53:01+08:00",
+        "meta": {
+          "http_port": 8883
+        }
+      },
+      {
+        "agent_id": "audio_agent_27252",
+        "agent_type": "audio_agent",
+        "name": "audio-agent",
+        "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+        "tools": [
+          "AudioToText",
+          "TextToAudio"
+        ],
+        "capacity": 3,
+        "last_hb": "2026-04-12T20:52:57+08:00"
+      },
+      {
+        "agent_id": "blog-agent",
+        "agent_type": "blog-agent",
+        "name": "Go Blog Server",
+        "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+        "tools": [
+          "RawGetBlogByTitleMatch",
+          "RawAllBlogName",
+          "RawGetBlogData",
+          "RawGetBlogDataByDate",
+          "RawAllBlogNameByDateRange",
+          "RawAllBlogNameByDateRangeCount",
+          "RawCreateBlog",
+          "RawBlogsByAuthType",
+          "RawBlogsByTag",
+          "RawSearchBlogContent",
+          "RawRecentExerciseRecords",
+          "RawGetExerciseByDate",
+          "RawGetExerciseRange",
+          "RawAddExercise",
+          "RawGetExerciseStats",
+          "RawToggleExercise",
+          "RawDeleteExercise",
+          "RawUpdateExercise",
+          "RawGetTodosByDate",
+          "RawGetTodosRange",
+          "RawAddTodo",
+          "RawToggleTodo",
+          "RawDeleteTodo",
+          "RawUpdateTodo",
+          "RawGetAllBooks",
+          "RawGetBooksByStatus",
+          "RawGetReadingStats",
+          "RawUpdateReadingProgress",
+          "RawGetBookNotes",
+          "RawAddBook",
+          "RawCreateProject",
+          "RawGetProject",
+          "RawListProjects",
+          "RawUpdateProject",
+          "RawDeleteProject",
+          "RawAddProjectGoal",
+          "RawUpdateProjectGoal",
+          "RawDeleteProjectGoal",
+          "RawAddProjectOKR",
+          "RawUpdateProjectOKR",
+          "RawDeleteProjectOKR",
+          "RawUpdateProjectKeyResult",
+          "RawGetProjectSummary"
+        ],
+        "capacity": 100,
+        "last_hb": "2026-04-12T20:52:58+08:00",
+        "meta": {
+          "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+          "role": "backend"
+        }
+      },
+      {
+        "agent_id": "cmd-agent",
+        "agent_type": "cmd",
+        "name": "cmd-agent",
+        "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+        "capacity": 1,
+        "last_hb": "2026-04-12T20:53:06+08:00"
+      },
+      {
+        "agent_id": "cron_agent_903",
+        "agent_type": "cron_agent",
+        "name": "cron-agent",
+        "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+        "tools": [
+          "cronCreateTask",
+          "cronListTasks",
+          "cronDeleteTask",
+          "cronTriggerTask",
+          "cronListPending"
+        ],
+        "capacity": 10,
+        "last_hb": "2026-04-12T20:52:55+08:00",
+        "meta": {
+          "version": "2.0.0"
+        }
+      },
+      {
+        "agent_id": "env_agent_17587",
+        "agent_type": "env_agent",
+        "name": "env-agent",
+        "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+        "tools": [
+          "EnvCheck",
+          "EnvInstall",
+          "EnvCheckAll",
+          "EnvSetup"
+        ],
+        "capacity": 3,
+        "last_hb": "2026-04-12T20:53:03+08:00",
+        "meta": {
+          "supported_software": [
+            "claude",
+            "curl",
+            "docker",
+            "git",
+            "go",
+            "java",
+            "mysql",
+            "nginx",
+            "node",
+            "python",
+            "redis"
+          ]
+        }
+      },
+      {
+        "agent_id": "exec_code_21360",
+        "agent_type": "execute_code",
+        "name": "execute-code-agent",
+        "description": "Python代码执行、MCP工具批量调用",
+        "tools": [
+          "ExecuteCode",
+          "ExecExecEnvBash"
+        ],
+        "capacity": 3,
+        "last_hb": "2026-04-12T20:53:08+08:00",
+        "meta": {
+          "host_platform": "windows",
+          "max_exec_time": 120,
+          "max_output_size": 50000,
+          "python_version": "3.14.2"
+        }
+      },
+      {
+        "agent_id": "llm-agent",
+        "agent_type": "llm_mcp",
+        "name": "LLM MCP Agent",
+        "description": "",
+        "host_platform": "Linux",
+        "host_ip": "192.168.0.169",
+        "workspace": "workspace",
+        "capacity": 3,
+        "last_hb": "2026-04-12T20:52:58+08:00",
+        "meta": {
+          "host_stats": {
+            "cpu_cores": 1,
+            "disk_free_gb": "1.3",
+            "disk_total_gb": "9.7",
+            "mem_total_gb": "1.8"
+          }
+        }
+      },
+      {
+        "agent_id": "log_query_18583",
+        "agent_type": "log_query",
+        "name": "log-agent-hw",
+        "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+        "tools": [
+          "ListLogSources",
+          "ReadLog",
+          "LogReadLog"
+        ],
+        "capacity": 10,
+        "last_hb": "2026-04-12T20:53:03+08:00",
+        "meta": {
+          "log_sources": {
+            "blog-agent": "blog-agent博客日志",
+            "env-agent": "evn-agent日志",
+            "execute-code-agent": "execute-agent日志,沙箱日志",
+            "gateway": "gateway日志",
+            "llm-agent": "llm-agent日志,llm日志",
+            "system": "系统日志,崩溃日志",
+            "wechat-agent": "wechat-agent日志,微信日志"
+          }
+        }
+      },
+      {
+        "agent_id": "test-agent",
+        "agent_type": "test_agent",
+        "name": "test-agent",
+        "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+        "capacity": 1,
+        "last_hb": "2026-04-12T20:53:09+08:00",
+        "meta": {
+          "purpose": "system-evaluation"
+        }
+      },
+      {
+        "agent_id": "wechat-wechat-agent",
+        "agent_type": "wechat",
+        "name": "wechat-agent",
+        "description": "企业微信消息发送",
+        "tools": [
+          "wechat.SendMessage",
+          "wechat.SendMarkdown"
+        ],
+        "capacity": 10,
+        "last_hb": "2026-04-12T20:53:05+08:00",
+        "meta": {
+          "http_port": 8884
+        }
+      }
+    ],
+    "static_collections": [
+      {
+        "id": "cron-auth-guard",
+        "title": "Cron Agent Auth Guard",
+        "collection_type": "static",
+        "source": "suites/cron-auth-guard.json",
+        "scenario_count": 1,
+        "items": [
+          {
+            "suite_id": "cron-auth-guard",
+            "scenario_id": "cron-create-task-requires-authenticated-user",
+            "title": "cronCreateTask requires authenticated_user",
+            "collection_type": "static",
+            "source": "suites/cron-auth-guard.json",
+            "entry_type": "tool_call",
+            "target_agent": "cron_agent_903",
+            "required_agents": [
+              "cron_agent_903"
+            ],
+            "tags": [
+              "cron-agent",
+              "auth",
+              "tool-call"
+            ],
+            "priority": "P0",
+            "eligible": true
+          }
+        ]
+      },
+      {
+        "id": "llm-cron-reminder-observe",
+        "title": "LLM Cron Reminder Observe",
+        "collection_type": "static",
+        "source": "suites/llm-cron-reminder-observe.json",
+        "scenario_count": 1,
+        "items": [
+          {
+            "suite_id": "llm-cron-reminder-observe",
+            "scenario_id": "llm-cron-reminder-delivery-path",
+            "title": "llm-agent cron_reminder delivery path",
+            "collection_type": "static",
+            "source": "suites/llm-cron-reminder-observe.json",
+            "entry_type": "task_assign",
+            "target_agent": "llm-agent",
+            "required_agents": [
+              "llm-agent",
+              "wechat-wechat-agent"
+            ],
+            "tags": [
+              "llm-agent",
+              "wechat-agent",
+              "cron-reminder",
+              "trace"
+            ],
+            "priority": "P1",
+            "eligible": true
+          }
+        ]
+      },
+      {
+        "id": "smoke-local",
+        "title": "Local Smoke",
+        "collection_type": "static",
+        "source": "suites/smoke-local.json",
+        "scenario_count": 1,
+        "items": [
+          {
+            "suite_id": "smoke-local",
+            "scenario_id": "cron-create-task-requires-authenticated-user",
+            "title": "cronCreateTask requires authenticated_user",
+            "collection_type": "static",
+            "source": "suites/smoke-local.json",
+            "entry_type": "tool_call",
+            "target_agent": "cron_agent_903",
+            "required_agents": [
+              "cron_agent_903"
+            ],
+            "tags": [
+              "cron-agent",
+              "auth"
+            ],
+            "priority": "P0",
+            "eligible": true
+          }
+        ]
+      }
+    ],
+    "dynamic_planner_run_id": "dynamic-plan-generator-8ccf203f",
+    "notes": [
+      "dynamic collection skipped"
+    ]
+  },
+  "static_report": {
+    "run_id": "evaluation-7eed6dfb",
+    "evaluation_id": "evaluation-7eed6dfb",
+    "title": "Static Evaluation Collection",
+    "collection_type": "static",
+    "status": "failed",
+    "started_at": "2026-04-12T20:53:09.674931+08:00",
+    "finished_at": "2026-04-12T20:53:11.173793+08:00",
+    "total_scenarios": 3,
+    "executed_scenarios": 3,
+    "passed_scenarios": 2,
+    "failed_scenarios": 1,
+    "average_score": 70,
+    "source_files": [
+      "suites/cron-auth-guard.json",
+      "suites/llm-cron-reminder-observe.json",
+      "suites/smoke-local.json"
+    ],
+    "dimension_scores": [
+      {
+        "name": "completion",
+        "average_score": 33,
+        "passed_runs": 1,
+        "total_runs": 3
+      },
+      {
+        "name": "routing",
+        "average_score": 83,
+        "passed_runs": 2,
+        "total_runs": 3
+      },
+      {
+        "name": "tool_usage",
+        "average_score": 100,
+        "passed_runs": 3,
+        "total_runs": 3
+      },
+      {
+        "name": "recovery",
+        "average_score": 33,
+        "passed_runs": 1,
+        "total_runs": 3
+      },
+      {
+        "name": "final_answer",
+        "average_score": 100,
+        "passed_runs": 3,
+        "total_runs": 3
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "cron-create-task-requires-authenticated-user-01fd6308",
+        "evaluation_id": "evaluation-7eed6dfb",
+        "suite_id": "cron-auth-guard",
+        "scenario_id": "cron-create-task-requires-authenticated-user",
+        "title": "cronCreateTask requires authenticated_user",
+        "description": "直接调用 cronCreateTask，不传 authenticated_user，预期返回 tool_result failed，并包含缺少认证用户的错误文本。",
+        "category": "contract",
+        "priority": "P0",
+        "dependency_mode": "mock",
+        "collection_type": "static",
+        "status": "passed",
+        "entry_type": "tool_call",
+        "target_agent": "cron_agent_903",
+        "trace_id": "01fd6308",
+        "started_at": "2026-04-12T20:53:09.675243+08:00",
+        "updated_at": "2026-04-12T20:53:10.130892+08:00",
+        "finished_at": "2026-04-12T20:53:10.130889+08:00",
+        "health": {
+          "status": "ok",
+          "agents": 12
+        },
+        "online_agents": [
+          {
+            "agent_id": "audio_agent_27252",
+            "agent_type": "audio_agent",
+            "name": "audio-agent",
+            "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+            "tools": [
+              "AudioToText",
+              "TextToAudio"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:52:57+08:00"
+          },
+          {
+            "agent_id": "env_agent_17587",
+            "agent_type": "env_agent",
+            "name": "env-agent",
+            "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+            "tools": [
+              "EnvCheck",
+              "EnvInstall",
+              "EnvCheckAll",
+              "EnvSetup"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:03+08:00",
+            "meta": {
+              "supported_software": [
+                "claude",
+                "curl",
+                "docker",
+                "git",
+                "go",
+                "java",
+                "mysql",
+                "nginx",
+                "node",
+                "python",
+                "redis"
+              ]
+            }
+          },
+          {
+            "agent_id": "acp_717d62c8",
+            "agent_type": "acp",
+            "name": "acp-agent-win",
+            "description": "项目代码分析、编码（基于 ACP 协议）",
+            "tools": [
+              "AcpListProjects",
+              "AcpCreateProject",
+              "AcpStartSession",
+              "AcpStopSession"
+            ],
+            "capacity": 2,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "acp_agent_cmd": "npx",
+              "analysis_timeout": 3600,
+              "coding_backends": [
+                "acp"
+              ],
+              "projects": [
+                "assistant",
+                "go-tetris",
+                "go-web-calculator",
+                "hello-world",
+                "helloworld-web",
+                "tetris",
+                "webfangkuai",
+                "xxx",
+                "Client",
+                "Public",
+                "Server",
+                "Tools"
+              ],
+              "workspaces": [
+                "E:\\githubdesktop\\acpworkspace",
+                "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+              ]
+            }
+          },
+          {
+            "agent_id": "cmd-agent",
+            "agent_type": "cmd",
+            "name": "cmd-agent",
+            "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:06+08:00"
+          },
+          {
+            "agent_id": "app-app-agent",
+            "agent_type": "app",
+            "name": "app-agent",
+            "description": "App message forwarding agent",
+            "tools": [
+              "app.SendMessage",
+              "app.SendRichMessage",
+              "app.ListAPKPackages",
+              "app.PushAPKPackage"
+            ],
+            "capacity": 20,
+            "last_hb": "2026-04-12T20:53:01+08:00",
+            "meta": {
+              "http_port": 8883
+            }
+          },
+          {
+            "agent_id": "blog-agent",
+            "agent_type": "blog-agent",
+            "name": "Go Blog Server",
+            "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+            "tools": [
+              "RawGetBlogByTitleMatch",
+              "RawAllBlogName",
+              "RawGetBlogData",
+              "RawGetBlogDataByDate",
+              "RawAllBlogNameByDateRange",
+              "RawAllBlogNameByDateRangeCount",
+              "RawCreateBlog",
+              "RawBlogsByAuthType",
+              "RawBlogsByTag",
+              "RawSearchBlogContent",
+              "RawRecentExerciseRecords",
+              "RawGetExerciseByDate",
+              "RawGetExerciseRange",
+              "RawAddExercise",
+              "RawGetExerciseStats",
+              "RawToggleExercise",
+              "RawDeleteExercise",
+              "RawUpdateExercise",
+              "RawGetTodosByDate",
+              "RawGetTodosRange",
+              "RawAddTodo",
+              "RawToggleTodo",
+              "RawDeleteTodo",
+              "RawUpdateTodo",
+              "RawGetAllBooks",
+              "RawGetBooksByStatus",
+              "RawGetReadingStats",
+              "RawUpdateReadingProgress",
+              "RawGetBookNotes",
+              "RawAddBook",
+              "RawCreateProject",
+              "RawGetProject",
+              "RawListProjects",
+              "RawUpdateProject",
+              "RawDeleteProject",
+              "RawAddProjectGoal",
+              "RawUpdateProjectGoal",
+              "RawDeleteProjectGoal",
+              "RawAddProjectOKR",
+              "RawUpdateProjectOKR",
+              "RawDeleteProjectOKR",
+              "RawUpdateProjectKeyResult",
+              "RawGetProjectSummary"
+            ],
+            "capacity": 100,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+              "role": "backend"
+            }
+          },
+          {
+            "agent_id": "test-agent",
+            "agent_type": "test_agent",
+            "name": "test-agent",
+            "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:09+08:00",
+            "meta": {
+              "purpose": "system-evaluation"
+            }
+          },
+          {
+            "agent_id": "wechat-wechat-agent",
+            "agent_type": "wechat",
+            "name": "wechat-agent",
+            "description": "企业微信消息发送",
+            "tools": [
+              "wechat.SendMessage",
+              "wechat.SendMarkdown"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:05+08:00",
+            "meta": {
+              "http_port": 8884
+            }
+          },
+          {
+            "agent_id": "log_query_18583",
+            "agent_type": "log_query",
+            "name": "log-agent-hw",
+            "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+            "tools": [
+              "ListLogSources",
+              "ReadLog",
+              "LogReadLog"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:03+08:00",
+            "meta": {
+              "log_sources": {
+                "blog-agent": "blog-agent博客日志",
+                "env-agent": "evn-agent日志",
+                "execute-code-agent": "execute-agent日志,沙箱日志",
+                "gateway": "gateway日志",
+                "llm-agent": "llm-agent日志,llm日志",
+                "system": "系统日志,崩溃日志",
+                "wechat-agent": "wechat-agent日志,微信日志"
+              }
+            }
+          },
+          {
+            "agent_id": "llm-agent",
+            "agent_type": "llm_mcp",
+            "name": "LLM MCP Agent",
+            "description": "",
+            "host_platform": "Linux",
+            "host_ip": "192.168.0.169",
+            "workspace": "workspace",
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "host_stats": {
+                "cpu_cores": 1,
+                "disk_free_gb": "1.3",
+                "disk_total_gb": "9.7",
+                "mem_total_gb": "1.8"
+              }
+            }
+          },
+          {
+            "agent_id": "exec_code_21360",
+            "agent_type": "execute_code",
+            "name": "execute-code-agent",
+            "description": "Python代码执行、MCP工具批量调用",
+            "tools": [
+              "ExecuteCode",
+              "ExecExecEnvBash"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "host_platform": "windows",
+              "max_exec_time": 120,
+              "max_output_size": 50000,
+              "python_version": "3.14.2"
+            }
+          },
+          {
+            "agent_id": "cron_agent_903",
+            "agent_type": "cron_agent",
+            "name": "cron-agent",
+            "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+            "tools": [
+              "cronCreateTask",
+              "cronListTasks",
+              "cronDeleteTask",
+              "cronTriggerTask",
+              "cronListPending"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:52:55+08:00",
+            "meta": {
+              "version": "2.0.0"
+            }
+          }
+        ],
+        "steps": [
+          {
+            "name": "capture_availability",
+            "status": "passed",
+            "detail": "Gateway 可访问",
+            "started_at": "2026-04-12T20:53:09.679919+08:00",
+            "finished_at": "2026-04-12T20:53:09.729518+08:00",
+            "data": {
+              "agents": 12
+            }
+          },
+          {
+            "name": "dispatch_entry",
+            "status": "passed",
+            "detail": "入口消息发送成功",
+            "started_at": "2026-04-12T20:53:09.732955+08:00",
+            "finished_at": "2026-04-12T20:53:09.733856+08:00",
+            "data": {
+              "task_id": "",
+              "trace_id": "01fd6308"
+            }
+          },
+          {
+            "name": "await_execution",
+            "status": "passed",
+            "detail": "链路执行结束",
+            "started_at": "2026-04-12T20:53:09.739476+08:00",
+            "finished_at": "2026-04-12T20:53:10.088678+08:00",
+            "data": {
+              "direct_message_from": "cron_agent_903",
+              "direct_message_type": "tool_result",
+              "event_count": 4,
+              "last_event": "cron_agent_903 -\u003e test-agent | tool_result | error: 权限拒绝：缺少认证用户",
+              "remaining_sec": 20,
+              "trace_status": "completed"
+            }
+          },
+          {
+            "name": "collect_trace",
+            "status": "passed",
+            "detail": "completed",
+            "started_at": "2026-04-12T20:53:10.08868+08:00",
+            "finished_at": "2026-04-12T20:53:10.107861+08:00",
+            "data": {
+              "events": 4
+            }
+          },
+          {
+            "name": "collect_llm_trace",
+            "status": "skipped",
+            "detail": "未匹配到 llm-agent trace",
+            "started_at": "2026-04-12T20:53:10.116193+08:00",
+            "finished_at": "2026-04-12T20:53:10.116195+08:00"
+          },
+          {
+            "name": "evaluate_assertions",
+            "status": "passed",
+            "detail": "passed",
+            "started_at": "2026-04-12T20:53:10.126369+08:00",
+            "finished_at": "2026-04-12T20:53:10.130892+08:00",
+            "data": {
+              "score": 60
+            }
+          }
+        ],
+        "observed_messages": [
+          {
+            "type": "tool_result",
+            "id": "f6b7406d",
+            "from": "cron_agent_903",
+            "to": "test-agent",
+            "payload": {
+              "request_id": "01fd6308",
+              "success": false,
+              "error": "权限拒绝：缺少认证用户"
+            },
+            "ts": 1775998389954
+          }
+        ],
+        "trace": {
+          "trace_id": "01fd6308",
+          "status": "completed",
+          "duration_ms": 0,
+          "events": [
+            {
+              "seq": 936417,
+              "ts": 1775998389954,
+              "kind": "msg_in",
+              "trace_id": "01fd6308",
+              "msg_id": "01fd6308",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "cron_agent_903",
+              "to_name": "cron-agent",
+              "msg_type": "tool_call",
+              "summary": "cronCreateTask"
+            },
+            {
+              "seq": 936418,
+              "ts": 1775998389954,
+              "kind": "msg_out",
+              "trace_id": "01fd6308",
+              "msg_id": "01fd6308",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "cron_agent_903",
+              "to_name": "cron-agent",
+              "msg_type": "tool_call",
+              "summary": "cronCreateTask"
+            },
+            {
+              "seq": 936419,
+              "ts": 1775998389954,
+              "kind": "msg_in",
+              "trace_id": "01fd6308",
+              "msg_id": "f6b7406d",
+              "from": "cron_agent_903",
+              "from_name": "cron-agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "tool_result",
+              "summary": "error: 权限拒绝：缺少认证用户"
+            },
+            {
+              "seq": 936420,
+              "ts": 1775998389954,
+              "kind": "msg_out",
+              "trace_id": "01fd6308",
+              "msg_id": "f6b7406d",
+              "from": "cron_agent_903",
+              "from_name": "cron-agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "tool_result",
+              "summary": "error: 权限拒绝：缺少认证用户"
+            }
+          ],
+          "agents": [
+            "cron_agent_903",
+            "test-agent"
+          ],
+          "message_types": [
+            "tool_call",
+            "tool_result"
+          ],
+          "summaries": [
+            "cronCreateTask",
+            "cronCreateTask",
+            "error: 权限拒绝：缺少认证用户",
+            "error: 权限拒绝：缺少认证用户"
+          ],
+          "path": [
+            "test-agent",
+            "cron_agent_903",
+            "test-agent",
+            "cron_agent_903",
+            "test-agent",
+            "cron_agent_903",
+            "test-agent"
+          ]
+        },
+        "result": {
+          "success": true,
+          "status": "passed",
+          "final_message_type": "tool_result",
+          "final_status": "failed",
+          "final_error": "权限拒绝：缺少认证用户",
+          "outcomes": [
+            {
+              "name": "direct_message_type",
+              "success": true,
+              "detail": "got=tool_result want=tool_result"
+            },
+            {
+              "name": "tool_success",
+              "success": true,
+              "detail": "got=false want=false"
+            },
+            {
+              "name": "error_contains",
+              "success": true,
+              "detail": "needle=\"权限拒绝：缺少认证用户\""
+            },
+            {
+              "name": "trace_events",
+              "success": true,
+              "detail": "got=4 want\u003e=2"
+            },
+            {
+              "name": "require_agent",
+              "success": true,
+              "detail": "cron_agent_903"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "tool_call"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "tool_result"
+            }
+          ],
+          "scores": {
+            "completion_score": 0,
+            "routing_score": 100,
+            "tool_usage_score": 100,
+            "recovery_score": 0,
+            "final_answer_score": 100,
+            "total": 60
+          }
+        }
+      },
+      {
+        "run_id": "llm-cron-reminder-delivery-path-5597f301",
+        "evaluation_id": "evaluation-7eed6dfb",
+        "suite_id": "llm-cron-reminder-observe",
+        "scenario_id": "llm-cron-reminder-delivery-path",
+        "title": "llm-agent cron_reminder delivery path",
+        "description": "要求 llm-agent 和 wechat-agent 在线。若 app-agent 不在线，最终 task_complete 可能为 failed，但链路观测仍然应成立。",
+        "category": "integration",
+        "priority": "P1",
+        "dependency_mode": "hybrid",
+        "collection_type": "static",
+        "status": "failed",
+        "entry_type": "task_assign",
+        "target_agent": "llm-agent",
+        "trace_id": "5597f301",
+        "task_id": "task-5597f301",
+        "started_at": "2026-04-12T20:53:10.160299+08:00",
+        "updated_at": "2026-04-12T20:53:10.705884+08:00",
+        "finished_at": "2026-04-12T20:53:10.705882+08:00",
+        "health": {
+          "status": "ok",
+          "agents": 12
+        },
+        "online_agents": [
+          {
+            "agent_id": "wechat-wechat-agent",
+            "agent_type": "wechat",
+            "name": "wechat-agent",
+            "description": "企业微信消息发送",
+            "tools": [
+              "wechat.SendMessage",
+              "wechat.SendMarkdown"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:05+08:00",
+            "meta": {
+              "http_port": 8884
+            }
+          },
+          {
+            "agent_id": "log_query_18583",
+            "agent_type": "log_query",
+            "name": "log-agent-hw",
+            "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+            "tools": [
+              "ListLogSources",
+              "ReadLog",
+              "LogReadLog"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "log_sources": {
+                "blog-agent": "blog-agent博客日志",
+                "env-agent": "evn-agent日志",
+                "execute-code-agent": "execute-agent日志,沙箱日志",
+                "gateway": "gateway日志",
+                "llm-agent": "llm-agent日志,llm日志",
+                "system": "系统日志,崩溃日志",
+                "wechat-agent": "wechat-agent日志,微信日志"
+              }
+            }
+          },
+          {
+            "agent_id": "llm-agent",
+            "agent_type": "llm_mcp",
+            "name": "LLM MCP Agent",
+            "description": "",
+            "host_platform": "Linux",
+            "host_ip": "192.168.0.169",
+            "workspace": "workspace",
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "host_stats": {
+                "cpu_cores": 1,
+                "disk_free_gb": "1.3",
+                "disk_total_gb": "9.7",
+                "mem_total_gb": "1.8"
+              }
+            }
+          },
+          {
+            "agent_id": "exec_code_21360",
+            "agent_type": "execute_code",
+            "name": "execute-code-agent",
+            "description": "Python代码执行、MCP工具批量调用",
+            "tools": [
+              "ExecuteCode",
+              "ExecExecEnvBash"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "host_platform": "windows",
+              "max_exec_time": 120,
+              "max_output_size": 50000,
+              "python_version": "3.14.2"
+            }
+          },
+          {
+            "agent_id": "cron_agent_903",
+            "agent_type": "cron_agent",
+            "name": "cron-agent",
+            "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+            "tools": [
+              "cronCreateTask",
+              "cronListTasks",
+              "cronDeleteTask",
+              "cronTriggerTask",
+              "cronListPending"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "version": "2.0.0"
+            }
+          },
+          {
+            "agent_id": "audio_agent_27252",
+            "agent_type": "audio_agent",
+            "name": "audio-agent",
+            "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+            "tools": [
+              "AudioToText",
+              "TextToAudio"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:10+08:00"
+          },
+          {
+            "agent_id": "env_agent_17587",
+            "agent_type": "env_agent",
+            "name": "env-agent",
+            "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+            "tools": [
+              "EnvCheck",
+              "EnvInstall",
+              "EnvCheckAll",
+              "EnvSetup"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "supported_software": [
+                "claude",
+                "curl",
+                "docker",
+                "git",
+                "go",
+                "java",
+                "mysql",
+                "nginx",
+                "node",
+                "python",
+                "redis"
+              ]
+            }
+          },
+          {
+            "agent_id": "acp_717d62c8",
+            "agent_type": "acp",
+            "name": "acp-agent-win",
+            "description": "项目代码分析、编码（基于 ACP 协议）",
+            "tools": [
+              "AcpListProjects",
+              "AcpCreateProject",
+              "AcpStartSession",
+              "AcpStopSession"
+            ],
+            "capacity": 2,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "acp_agent_cmd": "npx",
+              "analysis_timeout": 3600,
+              "coding_backends": [
+                "acp"
+              ],
+              "projects": [
+                "assistant",
+                "go-tetris",
+                "go-web-calculator",
+                "hello-world",
+                "helloworld-web",
+                "tetris",
+                "webfangkuai",
+                "xxx",
+                "Client",
+                "Public",
+                "Server",
+                "Tools"
+              ],
+              "workspaces": [
+                "E:\\githubdesktop\\acpworkspace",
+                "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+              ]
+            }
+          },
+          {
+            "agent_id": "cmd-agent",
+            "agent_type": "cmd",
+            "name": "cmd-agent",
+            "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:06+08:00"
+          },
+          {
+            "agent_id": "app-app-agent",
+            "agent_type": "app",
+            "name": "app-agent",
+            "description": "App message forwarding agent",
+            "tools": [
+              "app.SendMessage",
+              "app.SendRichMessage",
+              "app.ListAPKPackages",
+              "app.PushAPKPackage"
+            ],
+            "capacity": 20,
+            "last_hb": "2026-04-12T20:53:01+08:00",
+            "meta": {
+              "http_port": 8883
+            }
+          },
+          {
+            "agent_id": "blog-agent",
+            "agent_type": "blog-agent",
+            "name": "Go Blog Server",
+            "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+            "tools": [
+              "RawGetBlogByTitleMatch",
+              "RawAllBlogName",
+              "RawGetBlogData",
+              "RawGetBlogDataByDate",
+              "RawAllBlogNameByDateRange",
+              "RawAllBlogNameByDateRangeCount",
+              "RawCreateBlog",
+              "RawBlogsByAuthType",
+              "RawBlogsByTag",
+              "RawSearchBlogContent",
+              "RawRecentExerciseRecords",
+              "RawGetExerciseByDate",
+              "RawGetExerciseRange",
+              "RawAddExercise",
+              "RawGetExerciseStats",
+              "RawToggleExercise",
+              "RawDeleteExercise",
+              "RawUpdateExercise",
+              "RawGetTodosByDate",
+              "RawGetTodosRange",
+              "RawAddTodo",
+              "RawToggleTodo",
+              "RawDeleteTodo",
+              "RawUpdateTodo",
+              "RawGetAllBooks",
+              "RawGetBooksByStatus",
+              "RawGetReadingStats",
+              "RawUpdateReadingProgress",
+              "RawGetBookNotes",
+              "RawAddBook",
+              "RawCreateProject",
+              "RawGetProject",
+              "RawListProjects",
+              "RawUpdateProject",
+              "RawDeleteProject",
+              "RawAddProjectGoal",
+              "RawUpdateProjectGoal",
+              "RawDeleteProjectGoal",
+              "RawAddProjectOKR",
+              "RawUpdateProjectOKR",
+              "RawDeleteProjectOKR",
+              "RawUpdateProjectKeyResult",
+              "RawGetProjectSummary"
+            ],
+            "capacity": 100,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+              "role": "backend"
+            }
+          },
+          {
+            "agent_id": "test-agent",
+            "agent_type": "test_agent",
+            "name": "test-agent",
+            "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:09+08:00",
+            "meta": {
+              "purpose": "system-evaluation"
+            }
+          }
+        ],
+        "steps": [
+          {
+            "name": "capture_availability",
+            "status": "passed",
+            "detail": "Gateway 可访问",
+            "started_at": "2026-04-12T20:53:10.177956+08:00",
+            "finished_at": "2026-04-12T20:53:10.309291+08:00",
+            "data": {
+              "agents": 12
+            }
+          },
+          {
+            "name": "dispatch_entry",
+            "status": "passed",
+            "detail": "入口消息发送成功",
+            "started_at": "2026-04-12T20:53:10.313157+08:00",
+            "finished_at": "2026-04-12T20:53:10.313236+08:00",
+            "data": {
+              "task_id": "task-5597f301",
+              "trace_id": "5597f301"
+            }
+          },
+          {
+            "name": "await_execution",
+            "status": "passed",
+            "detail": "链路执行结束",
+            "started_at": "2026-04-12T20:53:10.316767+08:00",
+            "finished_at": "2026-04-12T20:53:10.669492+08:00",
+            "data": {
+              "direct_message_from": "llm-agent",
+              "direct_message_type": "task_complete",
+              "event_count": 6,
+              "last_event": "llm-agent -\u003e test-agent | task_complete | complete task=task-5597f301 status=success",
+              "remaining_sec": 20,
+              "trace_status": "completed"
+            }
+          },
+          {
+            "name": "collect_trace",
+            "status": "passed",
+            "detail": "completed",
+            "started_at": "2026-04-12T20:53:10.669497+08:00",
+            "finished_at": "2026-04-12T20:53:10.688344+08:00",
+            "data": {
+              "events": 6
+            }
+          },
+          {
+            "name": "collect_llm_trace",
+            "status": "skipped",
+            "detail": "未匹配到 llm-agent trace",
+            "started_at": "2026-04-12T20:53:10.696639+08:00",
+            "finished_at": "2026-04-12T20:53:10.696648+08:00"
+          },
+          {
+            "name": "evaluate_assertions",
+            "status": "passed",
+            "detail": "failed",
+            "started_at": "2026-04-12T20:53:10.705861+08:00",
+            "finished_at": "2026-04-12T20:53:10.705884+08:00",
+            "data": {
+              "score": 90
+            }
+          }
+        ],
+        "observed_messages": [
+          {
+            "type": "task_accepted",
+            "id": "dc9fcde7",
+            "from": "llm-agent",
+            "to": "test-agent",
+            "payload": {
+              "task_id": "task-5597f301"
+            },
+            "ts": 1775998390530
+          },
+          {
+            "type": "task_complete",
+            "id": "043ffcb5",
+            "from": "llm-agent",
+            "to": "test-agent",
+            "payload": {
+              "task_id": "task-5597f301",
+              "status": "success"
+            },
+            "ts": 1775998390530
+          }
+        ],
+        "trace": {
+          "trace_id": "5597f301",
+          "status": "completed",
+          "duration_ms": 1,
+          "events": [
+            {
+              "seq": 936425,
+              "ts": 1775998390530,
+              "kind": "msg_in",
+              "trace_id": "5597f301",
+              "msg_id": "5597f301",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "llm-agent",
+              "to_name": "LLM MCP Agent",
+              "msg_type": "task_assign",
+              "summary": "task=task-5597f301"
+            },
+            {
+              "seq": 936426,
+              "ts": 1775998390530,
+              "kind": "msg_out",
+              "trace_id": "5597f301",
+              "msg_id": "5597f301",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "llm-agent",
+              "to_name": "LLM MCP Agent",
+              "msg_type": "task_assign",
+              "summary": "task=task-5597f301"
+            },
+            {
+              "seq": 936427,
+              "ts": 1775998390531,
+              "kind": "msg_in",
+              "trace_id": "5597f301",
+              "msg_id": "dc9fcde7",
+              "from": "llm-agent",
+              "from_name": "LLM MCP Agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "task_accepted",
+              "summary": "accepted task=task-5597f301"
+            },
+            {
+              "seq": 936428,
+              "ts": 1775998390531,
+              "kind": "msg_out",
+              "trace_id": "5597f301",
+              "msg_id": "dc9fcde7",
+              "from": "llm-agent",
+              "from_name": "LLM MCP Agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "task_accepted",
+              "summary": "accepted task=task-5597f301"
+            },
+            {
+              "seq": 936433,
+              "ts": 1775998390531,
+              "kind": "msg_in",
+              "trace_id": "5597f301",
+              "msg_id": "043ffcb5",
+              "from": "llm-agent",
+              "from_name": "LLM MCP Agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "task_complete",
+              "summary": "complete task=task-5597f301 status=success",
+              "duration_ms": 1
+            },
+            {
+              "seq": 936434,
+              "ts": 1775998390531,
+              "kind": "msg_out",
+              "trace_id": "5597f301",
+              "msg_id": "043ffcb5",
+              "from": "llm-agent",
+              "from_name": "LLM MCP Agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "task_complete",
+              "summary": "complete task=task-5597f301 status=success"
+            }
+          ],
+          "agents": [
+            "llm-agent",
+            "test-agent"
+          ],
+          "message_types": [
+            "task_accepted",
+            "task_assign",
+            "task_complete"
+          ],
+          "summaries": [
+            "task=task-5597f301",
+            "task=task-5597f301",
+            "accepted task=task-5597f301",
+            "accepted task=task-5597f301",
+            "complete task=task-5597f301 status=success",
+            "complete task=task-5597f301 status=success"
+          ],
+          "path": [
+            "test-agent",
+            "llm-agent",
+            "test-agent",
+            "llm-agent",
+            "test-agent",
+            "llm-agent",
+            "test-agent",
+            "llm-agent",
+            "test-agent",
+            "llm-agent",
+            "test-agent"
+          ]
+        },
+        "result": {
+          "success": false,
+          "status": "failed",
+          "final_message_type": "task_complete",
+          "final_status": "success",
+          "outcomes": [
+            {
+              "name": "direct_message_type",
+              "success": true,
+              "detail": "got=task_complete want=task_complete"
+            },
+            {
+              "name": "trace_events",
+              "success": true,
+              "detail": "got=6 want\u003e=4"
+            },
+            {
+              "name": "require_agent",
+              "success": true,
+              "detail": "llm-agent"
+            },
+            {
+              "name": "require_agent",
+              "success": false,
+              "detail": "wechat-wechat-agent"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "task_assign"
+            },
+            {
+              "name": "require_msg_type",
+              "success": false,
+              "detail": "notify"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "task_complete"
+            },
+            {
+              "name": "expected_path",
+              "success": false,
+              "detail": "actual=test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent"
+            }
+          ],
+          "scores": {
+            "completion_score": 100,
+            "routing_score": 50,
+            "tool_usage_score": 100,
+            "recovery_score": 100,
+            "final_answer_score": 100,
+            "total": 90
+          }
+        }
+      },
+      {
+        "run_id": "cron-create-task-requires-authenticated-user-4489f901",
+        "evaluation_id": "evaluation-7eed6dfb",
+        "suite_id": "smoke-local",
+        "scenario_id": "cron-create-task-requires-authenticated-user",
+        "title": "cronCreateTask requires authenticated_user",
+        "description": "验证 cron-agent 工具授权。",
+        "category": "contract",
+        "priority": "P0",
+        "dependency_mode": "mock",
+        "collection_type": "static",
+        "status": "passed",
+        "entry_type": "tool_call",
+        "target_agent": "cron_agent_903",
+        "trace_id": "4489f901",
+        "started_at": "2026-04-12T20:53:10.719526+08:00",
+        "updated_at": "2026-04-12T20:53:11.158743+08:00",
+        "finished_at": "2026-04-12T20:53:11.158741+08:00",
+        "health": {
+          "status": "ok",
+          "agents": 12
+        },
+        "online_agents": [
+          {
+            "agent_id": "app-app-agent",
+            "agent_type": "app",
+            "name": "app-agent",
+            "description": "App message forwarding agent",
+            "tools": [
+              "app.SendMessage",
+              "app.SendRichMessage",
+              "app.ListAPKPackages",
+              "app.PushAPKPackage"
+            ],
+            "capacity": 20,
+            "last_hb": "2026-04-12T20:53:01+08:00",
+            "meta": {
+              "http_port": 8883
+            }
+          },
+          {
+            "agent_id": "blog-agent",
+            "agent_type": "blog-agent",
+            "name": "Go Blog Server",
+            "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+            "tools": [
+              "RawGetBlogByTitleMatch",
+              "RawAllBlogName",
+              "RawGetBlogData",
+              "RawGetBlogDataByDate",
+              "RawAllBlogNameByDateRange",
+              "RawAllBlogNameByDateRangeCount",
+              "RawCreateBlog",
+              "RawBlogsByAuthType",
+              "RawBlogsByTag",
+              "RawSearchBlogContent",
+              "RawRecentExerciseRecords",
+              "RawGetExerciseByDate",
+              "RawGetExerciseRange",
+              "RawAddExercise",
+              "RawGetExerciseStats",
+              "RawToggleExercise",
+              "RawDeleteExercise",
+              "RawUpdateExercise",
+              "RawGetTodosByDate",
+              "RawGetTodosRange",
+              "RawAddTodo",
+              "RawToggleTodo",
+              "RawDeleteTodo",
+              "RawUpdateTodo",
+              "RawGetAllBooks",
+              "RawGetBooksByStatus",
+              "RawGetReadingStats",
+              "RawUpdateReadingProgress",
+              "RawGetBookNotes",
+              "RawAddBook",
+              "RawCreateProject",
+              "RawGetProject",
+              "RawListProjects",
+              "RawUpdateProject",
+              "RawDeleteProject",
+              "RawAddProjectGoal",
+              "RawUpdateProjectGoal",
+              "RawDeleteProjectGoal",
+              "RawAddProjectOKR",
+              "RawUpdateProjectOKR",
+              "RawDeleteProjectOKR",
+              "RawUpdateProjectKeyResult",
+              "RawGetProjectSummary"
+            ],
+            "capacity": 100,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+              "role": "backend"
+            }
+          },
+          {
+            "agent_id": "test-agent",
+            "agent_type": "test_agent",
+            "name": "test-agent",
+            "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:09+08:00",
+            "meta": {
+              "purpose": "system-evaluation"
+            }
+          },
+          {
+            "agent_id": "wechat-wechat-agent",
+            "agent_type": "wechat",
+            "name": "wechat-agent",
+            "description": "企业微信消息发送",
+            "tools": [
+              "wechat.SendMessage",
+              "wechat.SendMarkdown"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:05+08:00",
+            "meta": {
+              "http_port": 8884
+            }
+          },
+          {
+            "agent_id": "log_query_18583",
+            "agent_type": "log_query",
+            "name": "log-agent-hw",
+            "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+            "tools": [
+              "ListLogSources",
+              "ReadLog",
+              "LogReadLog"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "log_sources": {
+                "blog-agent": "blog-agent博客日志",
+                "env-agent": "evn-agent日志",
+                "execute-code-agent": "execute-agent日志,沙箱日志",
+                "gateway": "gateway日志",
+                "llm-agent": "llm-agent日志,llm日志",
+                "system": "系统日志,崩溃日志",
+                "wechat-agent": "wechat-agent日志,微信日志"
+              }
+            }
+          },
+          {
+            "agent_id": "llm-agent",
+            "agent_type": "llm_mcp",
+            "name": "LLM MCP Agent",
+            "description": "",
+            "host_platform": "Linux",
+            "host_ip": "192.168.0.169",
+            "workspace": "workspace",
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:52:58+08:00",
+            "meta": {
+              "host_stats": {
+                "cpu_cores": 1,
+                "disk_free_gb": "1.3",
+                "disk_total_gb": "9.7",
+                "mem_total_gb": "1.8"
+              }
+            }
+          },
+          {
+            "agent_id": "exec_code_21360",
+            "agent_type": "execute_code",
+            "name": "execute-code-agent",
+            "description": "Python代码执行、MCP工具批量调用",
+            "tools": [
+              "ExecuteCode",
+              "ExecExecEnvBash"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "host_platform": "windows",
+              "max_exec_time": 120,
+              "max_output_size": 50000,
+              "python_version": "3.14.2"
+            }
+          },
+          {
+            "agent_id": "cron_agent_903",
+            "agent_type": "cron_agent",
+            "name": "cron-agent",
+            "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+            "tools": [
+              "cronCreateTask",
+              "cronListTasks",
+              "cronDeleteTask",
+              "cronTriggerTask",
+              "cronListPending"
+            ],
+            "capacity": 10,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "version": "2.0.0"
+            }
+          },
+          {
+            "agent_id": "audio_agent_27252",
+            "agent_type": "audio_agent",
+            "name": "audio-agent",
+            "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+            "tools": [
+              "AudioToText",
+              "TextToAudio"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:10+08:00"
+          },
+          {
+            "agent_id": "env_agent_17587",
+            "agent_type": "env_agent",
+            "name": "env-agent",
+            "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+            "tools": [
+              "EnvCheck",
+              "EnvInstall",
+              "EnvCheckAll",
+              "EnvSetup"
+            ],
+            "capacity": 3,
+            "last_hb": "2026-04-12T20:53:10+08:00",
+            "meta": {
+              "supported_software": [
+                "claude",
+                "curl",
+                "docker",
+                "git",
+                "go",
+                "java",
+                "mysql",
+                "nginx",
+                "node",
+                "python",
+                "redis"
+              ]
+            }
+          },
+          {
+            "agent_id": "acp_717d62c8",
+            "agent_type": "acp",
+            "name": "acp-agent-win",
+            "description": "项目代码分析、编码（基于 ACP 协议）",
+            "tools": [
+              "AcpListProjects",
+              "AcpCreateProject",
+              "AcpStartSession",
+              "AcpStopSession"
+            ],
+            "capacity": 2,
+            "last_hb": "2026-04-12T20:53:08+08:00",
+            "meta": {
+              "acp_agent_cmd": "npx",
+              "analysis_timeout": 3600,
+              "coding_backends": [
+                "acp"
+              ],
+              "projects": [
+                "assistant",
+                "go-tetris",
+                "go-web-calculator",
+                "hello-world",
+                "helloworld-web",
+                "tetris",
+                "webfangkuai",
+                "xxx",
+                "Client",
+                "Public",
+                "Server",
+                "Tools"
+              ],
+              "workspaces": [
+                "E:\\githubdesktop\\acpworkspace",
+                "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+              ]
+            }
+          },
+          {
+            "agent_id": "cmd-agent",
+            "agent_type": "cmd",
+            "name": "cmd-agent",
+            "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+            "capacity": 1,
+            "last_hb": "2026-04-12T20:53:06+08:00"
+          }
+        ],
+        "steps": [
+          {
+            "name": "capture_availability",
+            "status": "passed",
+            "detail": "Gateway 可访问",
+            "started_at": "2026-04-12T20:53:10.723402+08:00",
+            "finished_at": "2026-04-12T20:53:10.759606+08:00",
+            "data": {
+              "agents": 12
+            }
+          },
+          {
+            "name": "dispatch_entry",
+            "status": "passed",
+            "detail": "入口消息发送成功",
+            "started_at": "2026-04-12T20:53:10.763827+08:00",
+            "finished_at": "2026-04-12T20:53:10.763926+08:00",
+            "data": {
+              "task_id": "",
+              "trace_id": "4489f901"
+            }
+          },
+          {
+            "name": "await_execution",
+            "status": "passed",
+            "detail": "链路执行结束",
+            "started_at": "2026-04-12T20:53:10.768134+08:00",
+            "finished_at": "2026-04-12T20:53:11.118261+08:00",
+            "data": {
+              "direct_message_from": "cron_agent_903",
+              "direct_message_type": "tool_result",
+              "event_count": 4,
+              "last_event": "cron_agent_903 -\u003e test-agent | tool_result | error: 权限拒绝：缺少认证用户",
+              "remaining_sec": 20,
+              "trace_status": "completed"
+            }
+          },
+          {
+            "name": "collect_trace",
+            "status": "passed",
+            "detail": "completed",
+            "started_at": "2026-04-12T20:53:11.118263+08:00",
+            "finished_at": "2026-04-12T20:53:11.137591+08:00",
+            "data": {
+              "events": 4
+            }
+          },
+          {
+            "name": "collect_llm_trace",
+            "status": "skipped",
+            "detail": "未匹配到 llm-agent trace",
+            "started_at": "2026-04-12T20:53:11.148287+08:00",
+            "finished_at": "2026-04-12T20:53:11.148289+08:00"
+          },
+          {
+            "name": "evaluate_assertions",
+            "status": "passed",
+            "detail": "passed",
+            "started_at": "2026-04-12T20:53:11.158716+08:00",
+            "finished_at": "2026-04-12T20:53:11.158743+08:00",
+            "data": {
+              "score": 60
+            }
+          }
+        ],
+        "observed_messages": [
+          {
+            "type": "tool_result",
+            "id": "8e303a1b",
+            "from": "cron_agent_903",
+            "to": "test-agent",
+            "payload": {
+              "request_id": "4489f901",
+              "success": false,
+              "error": "权限拒绝：缺少认证用户"
+            },
+            "ts": 1775998390981
+          }
+        ],
+        "trace": {
+          "trace_id": "4489f901",
+          "status": "completed",
+          "duration_ms": 1,
+          "events": [
+            {
+              "seq": 936435,
+              "ts": 1775998390980,
+              "kind": "msg_in",
+              "trace_id": "4489f901",
+              "msg_id": "4489f901",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "cron_agent_903",
+              "to_name": "cron-agent",
+              "msg_type": "tool_call",
+              "summary": "cronCreateTask"
+            },
+            {
+              "seq": 936436,
+              "ts": 1775998390980,
+              "kind": "msg_out",
+              "trace_id": "4489f901",
+              "msg_id": "4489f901",
+              "from": "test-agent",
+              "from_name": "test-agent",
+              "to": "cron_agent_903",
+              "to_name": "cron-agent",
+              "msg_type": "tool_call",
+              "summary": "cronCreateTask"
+            },
+            {
+              "seq": 936437,
+              "ts": 1775998390981,
+              "kind": "msg_in",
+              "trace_id": "4489f901",
+              "msg_id": "8e303a1b",
+              "from": "cron_agent_903",
+              "from_name": "cron-agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "tool_result",
+              "summary": "error: 权限拒绝：缺少认证用户",
+              "duration_ms": 1
+            },
+            {
+              "seq": 936438,
+              "ts": 1775998390981,
+              "kind": "msg_out",
+              "trace_id": "4489f901",
+              "msg_id": "8e303a1b",
+              "from": "cron_agent_903",
+              "from_name": "cron-agent",
+              "to": "test-agent",
+              "to_name": "test-agent",
+              "msg_type": "tool_result",
+              "summary": "error: 权限拒绝：缺少认证用户"
+            }
+          ],
+          "agents": [
+            "cron_agent_903",
+            "test-agent"
+          ],
+          "message_types": [
+            "tool_call",
+            "tool_result"
+          ],
+          "summaries": [
+            "cronCreateTask",
+            "cronCreateTask",
+            "error: 权限拒绝：缺少认证用户",
+            "error: 权限拒绝：缺少认证用户"
+          ],
+          "path": [
+            "test-agent",
+            "cron_agent_903",
+            "test-agent",
+            "cron_agent_903",
+            "test-agent",
+            "cron_agent_903",
+            "test-agent"
+          ]
+        },
+        "result": {
+          "success": true,
+          "status": "passed",
+          "final_message_type": "tool_result",
+          "final_status": "failed",
+          "final_error": "权限拒绝：缺少认证用户",
+          "outcomes": [
+            {
+              "name": "direct_message_type",
+              "success": true,
+              "detail": "got=tool_result want=tool_result"
+            },
+            {
+              "name": "tool_success",
+              "success": true,
+              "detail": "got=false want=false"
+            },
+            {
+              "name": "error_contains",
+              "success": true,
+              "detail": "needle=\"权限拒绝：缺少认证用户\""
+            },
+            {
+              "name": "trace_events",
+              "success": true,
+              "detail": "got=4 want\u003e=2"
+            },
+            {
+              "name": "require_agent",
+              "success": true,
+              "detail": "cron_agent_903"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "tool_call"
+            },
+            {
+              "name": "require_msg_type",
+              "success": true,
+              "detail": "tool_result"
+            }
+          ],
+          "scores": {
+            "completion_score": 0,
+            "routing_score": 100,
+            "tool_usage_score": 100,
+            "recovery_score": 0,
+            "final_answer_score": 100,
+            "total": 60
+          }
+        }
+      }
+    ]
+  },
+  "dynamic_report": {
+    "run_id": "evaluation-7eed6dfb",
+    "evaluation_id": "evaluation-7eed6dfb",
+    "title": "Dynamic Evaluation Collection",
+    "collection_type": "dynamic",
+    "status": "skipped",
+    "started_at": "2026-04-12T20:53:11.183427+08:00",
+    "finished_at": "2026-04-12T20:53:34.370362+08:00",
+    "total_scenarios": 1,
+    "skipped_scenarios": 1,
+    "passed_scenarios": 0,
+    "failed_scenarios": 0,
+    "average_score": 0,
+    "skipped": [
+      {
+        "scenario_id": "dynamic-plan-generator",
+        "title": "dynamic-plan-generator",
+        "collection_type": "dynamic",
+        "target_agent": "llm-agent",
+        "reason": "dynamic plan parse failed: json: cannot unmarshal string into Go struct field ScenarioEntry.scenarios.entry.tool of type main.ToolCallEntry"
+      }
+    ],
+    "dimension_scores": [
+      {
+        "name": "completion",
+        "average_score": 0,
+        "passed_runs": 0,
+        "total_runs": 0
+      },
+      {
+        "name": "routing",
+        "average_score": 0,
+        "passed_runs": 0,
+        "total_runs": 0
+      },
+      {
+        "name": "tool_usage",
+        "average_score": 0,
+        "passed_runs": 0,
+        "total_runs": 0
+      },
+      {
+        "name": "recovery",
+        "average_score": 0,
+        "passed_runs": 0,
+        "total_runs": 0
+      },
+      {
+        "name": "final_answer",
+        "average_score": 0,
+        "passed_runs": 0,
+        "total_runs": 0
+      }
+    ],
+    "runs": null
+  },
+  "dimension_scores": [
+    {
+      "name": "completion",
+      "average_score": 33,
+      "passed_runs": 1,
+      "total_runs": 3
+    },
+    {
+      "name": "routing",
+      "average_score": 83,
+      "passed_runs": 2,
+      "total_runs": 3
+    },
+    {
+      "name": "tool_usage",
+      "average_score": 100,
+      "passed_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "name": "recovery",
+      "average_score": 33,
+      "passed_runs": 1,
+      "total_runs": 3
+    },
+    {
+      "name": "final_answer",
+      "average_score": 100,
+      "passed_runs": 3,
+      "total_runs": 3
+    }
+  ],
+  "agent_evaluations": [
+    {
+      "agent_id": "acp_717d62c8",
+      "agent_type": "acp",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "app-app-agent",
+      "agent_type": "app",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "audio_agent_27252",
+      "agent_type": "audio_agent",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "blog-agent",
+      "agent_type": "blog-agent",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "cmd-agent",
+      "agent_type": "cmd",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "cron_agent_903",
+      "agent_type": "cron_agent",
+      "online": true,
+      "targeted_runs": 2,
+      "observed_runs": 2,
+      "passed_runs": 2,
+      "failed_runs": 0,
+      "average_score": 60,
+      "last_observed_trace": "4489f901"
+    },
+    {
+      "agent_id": "env_agent_17587",
+      "agent_type": "env_agent",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "exec_code_21360",
+      "agent_type": "execute_code",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "llm-agent",
+      "agent_type": "llm_mcp",
+      "online": true,
+      "targeted_runs": 1,
+      "observed_runs": 1,
+      "passed_runs": 0,
+      "failed_runs": 1,
+      "average_score": 90,
+      "last_observed_trace": "5597f301"
+    },
+    {
+      "agent_id": "log_query_18583",
+      "agent_type": "log_query",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    },
+    {
+      "agent_id": "test-agent",
+      "agent_type": "test_agent",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 3,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0,
+      "last_observed_trace": "4489f901"
+    },
+    {
+      "agent_id": "wechat-wechat-agent",
+      "agent_type": "wechat",
+      "online": true,
+      "targeted_runs": 0,
+      "observed_runs": 0,
+      "passed_runs": 0,
+      "failed_runs": 0,
+      "average_score": 0
+    }
+  ],
+  "overall_score": 70,
+  "findings": [
+    "static collection: executed=3 passed=2 failed=1 skipped=0 avg=70",
+    "dynamic collection: executed=0 passed=0 failed=0 skipped=1 avg=0",
+    "dynamic collection skipped"
+  ]
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-12T20:28:35.443622+08:00",
+    "finished_at": "2026-04-12T20:28:35.527612+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-12T20:28:35.54328+08:00",
+    "finished_at": "2026-04-12T20:28:35.543882+08:00",
+    "data": {
+      "task_id": "task-7a09af56",
+      "trace_id": "7a09af56"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "running",
+    "detail": "轮询等待链路完成 · 已耗时 8s · 剩余 22s · trace=in_progress · events=6 · 最近事件=llm-agent -\u003e test-agent | task_event | event task=task-7a09af56",
+    "started_at": "2026-04-12T20:28:35.567664+08:00",
+    "data": {
+      "event_count": 6,
+      "last_event": "llm-agent -\u003e test-agent | task_event | event task=task-7a09af56",
+      "remaining_sec": 22,
+      "trace_status": "in_progress"
+    }
+  }
+]

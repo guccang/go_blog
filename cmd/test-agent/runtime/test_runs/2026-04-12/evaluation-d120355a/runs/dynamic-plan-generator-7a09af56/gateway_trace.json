@@ -1,0 +1,115 @@
+{
+  "trace_id": "7a09af56",
+  "status": "in_progress",
+  "duration_ms": 0,
+  "events": [
+    {
+      "seq": 932884,
+      "ts": 1775996917169,
+      "kind": "msg_in",
+      "trace_id": "7a09af56",
+      "msg_id": "7a09af56",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-7a09af56"
+    },
+    {
+      "seq": 932885,
+      "ts": 1775996917170,
+      "kind": "msg_out",
+      "trace_id": "7a09af56",
+      "msg_id": "7a09af56",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-7a09af56"
+    },
+    {
+      "seq": 932886,
+      "ts": 1775996917172,
+      "kind": "msg_in",
+      "trace_id": "7a09af56",
+      "msg_id": "54af053e",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-7a09af56"
+    },
+    {
+      "seq": 932887,
+      "ts": 1775996917172,
+      "kind": "msg_out",
+      "trace_id": "7a09af56",
+      "msg_id": "54af053e",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-7a09af56"
+    },
+    {
+      "seq": 932888,
+      "ts": 1775996917172,
+      "kind": "msg_in",
+      "trace_id": "7a09af56",
+      "msg_id": "6231355d",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_event",
+      "summary": "event task=task-7a09af56"
+    },
+    {
+      "seq": 932889,
+      "ts": 1775996917172,
+      "kind": "msg_out",
+      "trace_id": "7a09af56",
+      "msg_id": "6231355d",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_event",
+      "summary": "event task=task-7a09af56"
+    }
+  ],
+  "agents": [
+    "llm-agent",
+    "test-agent"
+  ],
+  "message_types": [
+    "task_accepted",
+    "task_assign",
+    "task_event"
+  ],
+  "summaries": [
+    "task=task-7a09af56",
+    "task=task-7a09af56",
+    "accepted task=task-7a09af56",
+    "accepted task=task-7a09af56",
+    "event task=task-7a09af56",
+    "event task=task-7a09af56"
+  ],
+  "path": [
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent"
+  ]
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "type": "task_accepted",
+    "id": "27723716",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-01d19aa0"
+    },
+    "ts": 1775922525252
+  },
+  {
+    "type": "task_event",
+    "id": "97ff53cf",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-01d19aa0",
+      "event": {
+        "event": "thinking",
+        "text": "正在思考..."
+      }
+    },
+    "ts": 1775922525253
+  },
+  {
+    "type": "task_event",
+    "id": "a082a4fd",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-01d19aa0",
+      "event": {
+        "event": "thinking",
+        "text": "LLM 响应完成 (15.6s)，正在整理结果..."
+      }
+    },
+    "ts": 1775922540831
+  },
+  {
+    "type": "task_event",
+    "id": "143779c0",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-01d19aa0",
+      "event": {
+        "event": "task_complete",
+        "text": "处理完成，耗时 15.6s"
+      }
+    },
+    "ts": 1775922540832
+  },
+  {
+    "type": "task_complete",
+    "id": "bcd5c4cf",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-01d19aa0",
+      "status": "success",
+      "result": "{\"id\":\"scenario-dynamic-001\",\"title\":\"Blog系统只读查询链路测试\",\"description\":\"验证blog-agent的只读查询能力是否正常，包括获取博客数据、搜索和获取统计数据\",\"category\":\"system-capability\",\"priority\":\"high\",\"tags\":[\"blog-agent\",\"read-only\",\"query\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"test-agent\",\"task\":\"执行Blog只读查询测试\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"test-agent\",\"blog-agent\"],\"require_msg_types\":[\"task_assign\",\"notify\"],\"min_trace_events\":3,\"expected_path\":\"test-agent-\u003eblog-agent-\u003etest-agent\"}}\n\n{\"id\":\"scenario-dynamic-002\",\"title\":\"音频转文本能力验证测试\",\"description\":\"测试audio_agent_27252的音频处理功能，验证TextToAudio和AudioToText工具的可用性\",\"category\":\"system-capability\",\"priority\":\"medium\",\"tags\":[\"audio_agent\",\"transcription\",\"capability\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"test-agent\",\"task\":\"测试audio_agent的音频转文本能力\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"test-agent\",\"audio_agent_27252\"],\"require_msg_types\":[\"task_assign\",\"tool_call\",\"notify\"],\"min_trace_events\":4,\"expected_path\":\"test-agent-\u003eaudio_agent_27252-\u003etest-agent\"}}\n\n{\"id\":\"scenario-dynamic-003\",\"title\":\"定时任务管理功能链路测试\",\"description\":\"验证cron_agent_903的任务创建、列表查询和触发功能，测试定时任务管理完整链路\",\"category\":\"system-capability\",\"priority\":\"medium\",\"tags\":[\"cron_agent\",\"scheduling\",\"management\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"test-agent\",\"task\":\"执行定时任务管理功能测试：创建、列表、触发\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"test-agent\",\"cron_agent_903\"],\"require_msg_types\":[\"task_assign\",\"tool_call\",\"notify\"],\"min_trace_events\":5,\"expected_path\":\"test-agent-\u003ecron_agent_903-\u003etest-agent\"}}"
+    },
+    "ts": 1775922540833
+  }
+]

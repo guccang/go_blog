@@ -17,12 +17,16 @@ type AgentConfig struct {
 	AgentType             string   `json:"agent_type"`              // agent 类型，默认 "acp"
 	AuthToken             string   `json:"auth_token"`              // 认证令牌
 	GoBackendAgentID      string   `json:"go_backend_agent_id"`     // blog-agent-agent 在 gateway 中的 ID
+	CodingBackend         string   `json:"coding_backend"`          // 编码后端：claude_acp / codex_exec
 	ACPAgentCmd           string   `json:"acp_agent_cmd"`           // ACP agent 命令，默认 "npx"
 	ACPAgentArgs          []string `json:"acp_agent_args"`          // ACP agent 参数，默认 ["-y", "@zed-industries/claude-agent-acp@latest"]
+	CodexCmd              string   `json:"codex_cmd"`               // Codex CLI 命令，默认 "codex"
+	CodexArgs             []string `json:"codex_args"`              // Codex CLI 参数，默认 ["exec", "--json", "--skip-git-repo-check"]
 	Workspaces            []string `json:"workspaces"`              // 项目工作区目录列表
 	MaxConcurrent         int      `json:"max_concurrent"`          // 最大并发数，默认 2
 	AnalysisTimeout       int      `json:"analysis_timeout"`        // ACP 分析超时（秒），默认 3600
 	ClaudeCodeSettingsDir string   `json:"claudecode_settings_dir"` // Claude Code settings 目录（默认 settings/claudecode/）
+	CodexSettingsDir      string   `json:"codex_settings_dir"`      // Codex settings 目录（默认 settings/codex/）
 	DefaultSettings       string   `json:"default_settings"`        // 默认 --settings 名称（如 "default"），extraArgs 未指定时自动使用
 
 	// 部署保护文件（deploy-agent 增量部署时跳过这些文件）
@@ -32,9 +36,12 @@ type AgentConfig struct {
 // DefaultConfig 默认配置
 func DefaultConfig() *AgentConfig {
 	return &AgentConfig{
+		CodingBackend:    BackendClaudeACP,
 		AgentType:        "acp",
 		ACPAgentCmd:      "npx",
 		ACPAgentArgs:     []string{"-y", "@zed-industries/claude-agent-acp@latest"},
+		CodexCmd:         "codex",
+		CodexArgs:        []string{"exec", "--json", "--skip-git-repo-check"},
 		MaxConcurrent:    2,
 		AnalysisTimeout:  3600,
 		GoBackendAgentID: "blog-agent",
@@ -68,11 +75,25 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	if cfg.AgentType == "" {
 		cfg.AgentType = "acp"
 	}
+	if strings.TrimSpace(cfg.CodingBackend) == "" {
+		cfg.CodingBackend = BackendClaudeACP
+	}
+	if normalized := normalizeCodingBackend(cfg.CodingBackend); normalized == "" {
+		return nil, fmt.Errorf("unsupported coding_backend: %s", cfg.CodingBackend)
+	} else {
+		cfg.CodingBackend = normalized
+	}
 	if cfg.ACPAgentCmd == "" {
 		cfg.ACPAgentCmd = "npx"
 	}
 	if len(cfg.ACPAgentArgs) == 0 {
 		cfg.ACPAgentArgs = []string{"-y", "@zed-industries/claude-agent-acp@latest"}
+	}
+	if cfg.CodexCmd == "" {
+		cfg.CodexCmd = "codex"
+	}
+	if len(cfg.CodexArgs) == 0 {
+		cfg.CodexArgs = []string{"exec", "--json", "--skip-git-repo-check"}
 	}
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = 2
@@ -98,6 +119,15 @@ func LoadConfig(path string) (*AgentConfig, error) {
 	if !filepath.IsAbs(cfg.ClaudeCodeSettingsDir) {
 		if abs, err := filepath.Abs(cfg.ClaudeCodeSettingsDir); err == nil {
 			cfg.ClaudeCodeSettingsDir = abs
+		}
+	}
+
+	if cfg.CodexSettingsDir == "" {
+		cfg.CodexSettingsDir = filepath.Join(configDir, "settings", "codex")
+	}
+	if !filepath.IsAbs(cfg.CodexSettingsDir) {
+		if abs, err := filepath.Abs(cfg.CodexSettingsDir); err == nil {
+			cfg.CodexSettingsDir = abs
 		}
 	}
 

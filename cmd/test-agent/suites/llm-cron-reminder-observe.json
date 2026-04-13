@@ -35,7 +35,7 @@
         "expect_message_type": "task_complete",
         "require_agents": [
           "llm-agent",
-          "wechat-agent"
+          "wechat-wechat-agent"
         ],
         "require_msg_types": [
           "task_assign",
@@ -45,7 +45,7 @@
         "expected_path": [
           "test-agent",
           "llm-agent",
-          "wechat-agent",
+          "wechat-wechat-agent",
           "test-agent"
         ],
         "min_trace_events": 4

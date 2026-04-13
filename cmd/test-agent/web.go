@@ -547,6 +547,84 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
       gap: 12px;
       align-items: center;
     }
+    .overview-strip {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .overview-block {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+    .overview-label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .overview-value {
+      font-size: 18px;
+      line-height: 1.4;
+    }
+    .progress-main {
+      font-size: 18px;
+      line-height: 1.4;
+    }
+    .progress-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .progress-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f7f2e8;
+      color: #31413b;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .progress-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .section-subtitle {
+      margin: 0 0 8px 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .callout {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #faf6ee;
+    }
+    .stack {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .compact-table th, .compact-table td {
+      padding: 6px 5px;
+      font-size: 12px;
+    }
+    details {
+      margin-top: 12px;
+    }
+    summary {
+      cursor: pointer;
+      color: var(--accent);
+    }
     button, select {
       border-radius: 999px;
       border: 1px solid var(--line);
@@ -620,6 +698,7 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
     @media (max-width: 960px) {
       .span-4, .span-6, .span-8, .span-12 { grid-column: span 12; }
       .wrap { padding: 14px; }
+      .overview-strip { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -638,6 +717,16 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
           <select id="scenarioSelect"></select>
           <button id="runSuite">运行选中 Suite</button>
           <span id="statusBadge" class="status">idle</span>
+        </div>
+        <div class="overview-strip">
+          <div class="overview-block">
+            <div class="overview-label">现在在做什么</div>
+            <div id="statusHeadline" class="overview-value">当前空闲</div>
+          </div>
+          <div class="overview-block">
+            <div class="overview-label">当前进度</div>
+            <div id="statusProgress" class="overview-value">暂无运行</div>
+          </div>
         </div>
         <div class="meta" id="lastMessage" style="margin-top: 10px;"></div>
       </div>
@@ -765,28 +854,212 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
         });
         html += '</tbody></table></div>';
       }
+      if (plan.notes && plan.notes.length) {
+        html += '<div class="callout"><div class="section-subtitle">计划备注</div><pre>' + escapeHtml(plan.notes.join('\n')) + '</pre></div>';
+      }
       return html;
+    }
+
+    function fmtDurationMs(ms) {
+      if (!Number.isFinite(ms) || ms < 0) return '-';
+      const totalSec = Math.round(ms / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      if (min > 0) return String(min) + 'm ' + String(sec) + 's';
+      return String(sec) + 's';
+    }
+
+    function currentStep(run) {
+      const steps = run && run.steps ? run.steps : [];
+      for (const step of steps) {
+        if (step.status === 'running') return step;
+      }
+      return steps.length ? steps[steps.length - 1] : null;
+    }
+
+    function latestTraceEvent(trace) {
+      const events = trace && trace.events ? trace.events : [];
+      return events.length ? events[events.length - 1] : null;
+    }
+
+    function humanizeStepName(name) {
+      const map = {
+        capture_availability: '检查 Gateway / Agents',
+        dispatch_entry: '发送入口消息',
+        await_execution: '等待链路完成',
+        collect_trace: '抓取 Trace',
+        collect_llm_trace: '匹配 LLM Trace',
+        evaluate_assertions: '评估断言'
+      };
+      return map[name] || name || '未知步骤';
+    }
+
+    function buildProgressPill(text) {
+      return '<span class="progress-pill">' + escapeHtml(text) + '</span>';
+    }
+
+    function extractStepLastEvent(step) {
+      const data = step && step.data ? step.data : null;
+      if (!data || !data.last_event) return '';
+      const parts = String(data.last_event).split(' | ');
+      if (parts.length >= 2) {
+        return parts[0] + ' / ' + parts[1];
+      }
+      return String(data.last_event);
+    }
+
+    function renderStepProgress(step, run) {
+      if (!step) return '<div class="progress-main">等待进度更新</div>';
+      const pills = [];
+      const data = step.data || {};
+      const startedAt = step.started_at || run?.started_at;
+      const finishedAt = step.finished_at || run?.updated_at;
+      if (startedAt && finishedAt) {
+        const elapsedMs = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+        if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+          pills.push(buildProgressPill('耗时 ' + fmtDurationMs(elapsedMs)));
+        }
+      }
+      if (Number.isFinite(data.remaining_sec) && step.status === 'running') {
+        pills.push(buildProgressPill('剩余 ' + String(data.remaining_sec) + 's'));
+      }
+      if (data.trace_status) {
+        pills.push(buildProgressPill('trace ' + String(data.trace_status)));
+      }
+      if (Number.isFinite(data.event_count)) {
+        pills.push(buildProgressPill(String(data.event_count) + ' 条事件'));
+      }
+      if (data.direct_message_type) {
+        pills.push(buildProgressPill('收到 ' + String(data.direct_message_type)));
+      }
+      let html = '<div class="progress-main">' + escapeHtml(humanizeStepName(step.name)) + '</div>';
+      if (pills.length) {
+        html += '<div class="progress-meta">' + pills.join('') + '</div>';
+      }
+      const note = extractStepLastEvent(step) || step.detail || '';
+      if (note) {
+        html += '<div class="progress-note">' + escapeHtml(note) + '</div>';
+      }
+      return html;
+    }
+
+    function renderRunResult(result) {
+      if (!result) return '<div class="empty">暂无结果。</div>';
+      const outcomes = result.outcomes || [];
+      const failedOutcomes = outcomes.filter(item => !item.success);
+      let html = '<div class="stack">';
+      html += '<div><div class="section-subtitle">结果摘要</div><table class="compact-table"><tbody>';
+      html += '<tr><th>状态</th><td>' + renderStatus(result.status) + '</td></tr>';
+      html += '<tr><th>最终消息</th><td>' + escapeHtml(result.final_message_type || '-') + '</td></tr>';
+      html += '<tr><th>最终状态</th><td>' + escapeHtml(result.final_status || '-') + '</td></tr>';
+      html += '<tr><th>断言</th><td>' + String(outcomes.length - failedOutcomes.length) + '/' + String(outcomes.length) + '</td></tr>';
+      html += '<tr><th>总分</th><td>' + String(result.scores?.total || 0) + '</td></tr>';
+      html += '</tbody></table></div>';
+      if (result.final_error) {
+        html += '<div class="callout"><div class="section-subtitle">错误</div><div>' + escapeHtml(result.final_error) + '</div></div>';
+      }
+      if (failedOutcomes.length) {
+        html += '<div><div class="section-subtitle">未通过断言</div><table class="compact-table"><thead><tr><th>断言</th><th>详情</th></tr></thead><tbody>';
+        failedOutcomes.forEach(item => {
+          html += '<tr><td>' + escapeHtml(item.name) + '</td><td>' + escapeHtml(item.detail || '') + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+      if (result.final_result) {
+        html += '<details><summary>查看原始结果内容</summary><pre>' + escapeHtml(result.final_result) + '</pre></details>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function renderTrace(trace) {
+      if (!trace) return '<div class="empty">暂无 trace 快照。</div>';
+      const lastEvent = latestTraceEvent(trace);
+      let html = '<div class="stack">';
+      html += '<div><div class="section-subtitle">链路快照</div><table class="compact-table"><tbody>';
+      html += '<tr><th>trace 状态</th><td>' + escapeHtml(trace.status || '-') + '</td></tr>';
+      html += '<tr><th>事件数</th><td>' + String((trace.events || []).length) + '</td></tr>';
+      html += '<tr><th>路径</th><td>' + escapeHtml((trace.path || []).join(' -> ') || '-') + '</td></tr>';
+      html += '<tr><th>最近事件</th><td>' + escapeHtml(lastEvent ? ((lastEvent.from || '-') + ' -> ' + (lastEvent.to || '-') + ' / ' + (lastEvent.msg_type || '-') + ' / ' + (lastEvent.summary || '-')) : '-') + '</td></tr>';
+      html += '</tbody></table></div>';
+      const events = (trace.events || []).slice(-5);
+      if (events.length) {
+        html += '<div><div class="section-subtitle">最近 5 条 Trace 事件</div><table class="compact-table"><thead><tr><th>Seq</th><th>Type</th><th>From</th><th>To</th><th>Summary</th></tr></thead><tbody>';
+        events.forEach(event => {
+          html += '<tr><td>' + escapeHtml(event.seq) + '</td><td>' + escapeHtml(event.msg_type || '-') + '</td><td>' + escapeHtml(event.from || '-') + '</td><td>' + escapeHtml(event.to || '-') + '</td><td>' + escapeHtml(event.summary || '-') + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function renderObservedMessages(messages) {
+      const items = (messages || []).slice(-5);
+      if (!items.length) return '<div class="empty">暂无直接收到的消息。</div>';
+      let html = '<div class="section-subtitle">最近 5 条直收消息</div><table class="compact-table"><thead><tr><th>Type</th><th>From</th><th>To</th><th>Time</th></tr></thead><tbody>';
+      items.forEach(item => {
+        html += '<tr><td>' + escapeHtml(item.type || '-') + '</td><td>' + escapeHtml(item.from || '-') + '</td><td>' + escapeHtml(item.to || '-') + '</td><td>' + escapeHtml(fmtTime(item.ts)) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function buildStatusHeadline(state) {
+      if (state.running && state.current_run) {
+        return '正在执行 ' + (state.current_run.title || state.current_run.scenario_id || '未知场景');
+      }
+      if (state.current_run) {
+        return '最近场景 ' + (state.current_run.title || state.current_run.scenario_id || '未知场景') + ' 已结束';
+      }
+      if (state.final_report) {
+        return '最近完整评估已结束';
+      }
+      if (state.suite_report) {
+        return '最近 Suite 已结束';
+      }
+      return state.error ? '当前存在错误' : '当前空闲';
+    }
+
+    function renderStatusProgress(state) {
+      if (state.running && state.current_run) {
+        return renderStepProgress(currentStep(state.current_run), state.current_run);
+      }
+      if (state.current_run && state.current_run.result) {
+        const summary = state.current_run.result.final_error || state.current_run.result.final_status || state.current_run.result.status || state.current_run.status || '-';
+        return '<div class="progress-main">最近结果</div><div class="progress-note">' + escapeHtml(summary) + '</div>';
+      }
+      const text = state.error || state.last_message || '暂无运行';
+      return '<div class="progress-main">' + escapeHtml(text) + '</div>';
     }
 
     function renderCurrentRun(run) {
       if (!run) return '<div class="empty">暂无运行中的场景。</div>';
+      const step = currentStep(run);
       let html = '<table><tbody>';
-      html += '<tr><th>scenario</th><td>' + escapeHtml(run.scenario_id) + '</td></tr>';
-      html += '<tr><th>title</th><td>' + escapeHtml(run.title) + '</td></tr>';
-      html += '<tr><th>status</th><td>' + renderStatus(run.status) + '</td></tr>';
-      html += '<tr><th>target</th><td>' + escapeHtml(run.target_agent) + '</td></tr>';
-      html += '<tr><th>trace</th><td>' + escapeHtml(run.trace_id) + '</td></tr>';
+      html += '<tr><th>场景</th><td>' + escapeHtml(run.scenario_id) + '</td></tr>';
+      html += '<tr><th>标题</th><td>' + escapeHtml(run.title) + '</td></tr>';
+      html += '<tr><th>当前状态</th><td>' + renderStatus(run.status) + '</td></tr>';
+      html += '<tr><th>目标 Agent</th><td>' + escapeHtml(run.target_agent) + '</td></tr>';
+      html += '<tr><th>Trace ID</th><td>' + escapeHtml(run.trace_id) + '</td></tr>';
+      html += '<tr><th>开始时间</th><td>' + escapeHtml(fmtTime(run.started_at)) + '</td></tr>';
+      html += '<tr><th>最近更新</th><td>' + escapeHtml(fmtTime(run.updated_at)) + '</td></tr>';
       html += '</tbody></table>';
+      if (step) {
+        html += '<div class="callout"><div class="section-subtitle">现在在做什么</div><div style="margin-bottom:8px;">' + renderStatus(step.status) + '</div>' + renderStepProgress(step, run) + '</div>';
+      }
+      html += '<div class="stack">';
       if (run.steps && run.steps.length) {
-        html += '<div style="margin-top:12px;"><table><thead><tr><th>Step</th><th>Status</th><th>Detail</th></tr></thead><tbody>';
-        run.steps.forEach(step => {
-          html += '<tr><td>' + escapeHtml(step.name) + '</td><td>' + renderStatus(step.status) + '</td><td>' + escapeHtml(step.detail || '') + '</td></tr>';
+        html += '<div><div class="section-subtitle">阶段进度</div><table class="compact-table"><thead><tr><th>Step</th><th>Status</th><th>Started</th><th>Finished</th><th>Detail</th></tr></thead><tbody>';
+        run.steps.forEach(stepItem => {
+          html += '<tr><td>' + escapeHtml(stepItem.name) + '</td><td>' + renderStatus(stepItem.status) + '</td><td>' + escapeHtml(fmtTime(stepItem.started_at)) + '</td><td>' + escapeHtml(fmtTime(stepItem.finished_at)) + '</td><td>' + escapeHtml(stepItem.detail || '') + '</td></tr>';
         });
         html += '</tbody></table></div>';
       }
-      if (run.result) {
-        html += '<div style="margin-top:12px;"><pre>' + escapeHtml(JSON.stringify(run.result, null, 2)) + '</pre></div>';
-      }
+      html += '<div>' + renderTrace(run.trace) + '</div>';
+      html += '<div>' + renderObservedMessages(run.observed_messages) + '</div>';
+      html += '<div>' + renderRunResult(run.result) + '</div>';
+      html += '</div>';
       return html;
     }
 
@@ -800,13 +1073,20 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
         html += '<tr><th>started_at</th><td>' + escapeHtml(fmtTime(final.started_at)) + '</td></tr>';
         html += '<tr><th>finished_at</th><td>' + escapeHtml(fmtTime(final.finished_at)) + '</td></tr>';
         html += '</tbody></table>';
-        if (final.findings && final.findings.length) {
-          html += '<div style="margin-top:12px;"><pre>' + escapeHtml(final.findings.join('\n')) + '</pre></div>';
+        html += '<div class="stack">';
+        html += '<div><div class="section-subtitle">静态评估</div>' + renderReport(final.static_report) + '</div>';
+        html += '<div><div class="section-subtitle">动态评估</div>' + renderReport(final.dynamic_report) + '</div>';
+        if (final.execution_plan && final.execution_plan.notes && final.execution_plan.notes.length) {
+          html += '<div class="callout"><div class="section-subtitle">评估备注</div><pre>' + escapeHtml(final.execution_plan.notes.join('\n')) + '</pre></div>';
         }
+        if (final.findings && final.findings.length) {
+          html += '<div class="callout"><div class="section-subtitle">结论摘要</div><pre>' + escapeHtml(final.findings.join('\n')) + '</pre></div>';
+        }
+        html += '</div>';
         return html;
       }
       if (state.suite_report) {
-        return renderReport(state.suite_report);
+        return '<div class="stack"><div class="callout"><div class="section-subtitle">Suite 结论</div><div>当前显示的是单个 Suite 结果，不是完整评估汇总。</div></div><div>' + renderReport(state.suite_report) + '</div></div>';
       }
       return '<div class="empty">暂无结果。</div>';
     }
@@ -858,6 +1138,8 @@ var dashboardPage = template.Must(template.New("dashboard").Parse(`<!doctype htm
       if (suiteSelect.value) renderScenarioOptions();
 
       document.getElementById('statusBadge').outerHTML = renderStatus(state.status || (state.running ? 'running' : 'idle')).replace('<span', '<span id="statusBadge"');
+      document.getElementById('statusHeadline').textContent = buildStatusHeadline(state);
+      document.getElementById('statusProgress').innerHTML = renderStatusProgress(state);
       document.getElementById('lastMessage').textContent = state.error || state.last_message || '';
       document.getElementById('modeValue').textContent = state.mode || '-';
       document.getElementById('agentCount').textContent = String((state.online_agents || []).length);

@@ -1,0 +1,66 @@
+[
+  {
+    "type": "task_accepted",
+    "id": "5141c7e8",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-bce45e3c"
+    },
+    "ts": 1775921983519
+  },
+  {
+    "type": "task_event",
+    "id": "c711d331",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-bce45e3c",
+      "event": {
+        "event": "thinking",
+        "text": "正在思考..."
+      }
+    },
+    "ts": 1775921983520
+  },
+  {
+    "type": "task_event",
+    "id": "162da033",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-bce45e3c",
+      "event": {
+        "event": "thinking",
+        "text": "LLM 响应完成 (19.3s)，正在整理结果..."
+      }
+    },
+    "ts": 1775922002804
+  },
+  {
+    "type": "task_event",
+    "id": "cc7eddad",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-bce45e3c",
+      "event": {
+        "event": "task_complete",
+        "text": "处理完成，耗时 19.3s"
+      }
+    },
+    "ts": 1775922002806
+  },
+  {
+    "type": "task_complete",
+    "id": "64a0a139",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-bce45e3c",
+      "status": "success",
+      "result": "{\"id\":\"dynamic-test-plan-001\",\"title\":\"动态评估测试场景集\",\"description\":\"针对未被静态评估覆盖的在线 agent 进行协同链路和系统能力验证\",\"scenarios\":[{\"id\":\"scenario-acp-001\",\"title\":\"ACP项目管理链路测试\",\"description\":\"测试 acp agent 的项目创建、查询功能链路，验证项目管理能力\",\"category\":\"system_capability\",\"priority\":\"medium\",\"tags\":[\"acp\",\"project\",\"read_only\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"acp_717d62c8\",\"tool\":\"AcpListProjects\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"acp_717d62c8\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}},{\"id\":\"scenario-blog-001\",\"title\":\"博客阅读数据查询链路测试\",\"description\":\"测试 blog-agent 的博客数据查询、书籍管理功能，验证内容管理能力\",\"category\":\"system_capability\",\"priority\":\"medium\",\"tags\":[\"blog\",\"read_only\",\"query\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"blog-agent\",\"tool\":\"RawAllBlogName\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"blog-agent\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}},{\"id\":\"scenario-env-001\",\"title\":\"环境检查链路测试\",\"description\":\"测试 env-agent 的环境检查和状态查询功能，验证环境管理能力\",\"category\":\"system_capability\",\"priority\":\"low\",\"tags\":[\"env\",\"check\",\"read_only\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"env_agent_17587\",\"tool\":\"EnvCheckAll\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"env_agent_17587\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}}]}"
+    },
+    "ts": 1775922002807
+  }
+]

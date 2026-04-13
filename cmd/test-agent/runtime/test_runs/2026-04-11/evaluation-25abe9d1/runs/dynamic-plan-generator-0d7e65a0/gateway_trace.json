@@ -1,0 +1,116 @@
+{
+  "trace_id": "0d7e65a0",
+  "status": "in_progress",
+  "duration_ms": 0,
+  "events": [
+    {
+      "seq": 752424,
+      "ts": 1775917372042,
+      "kind": "msg_in",
+      "trace_id": "0d7e65a0",
+      "msg_id": "0d7e65a0",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-0d7e65a0"
+    },
+    {
+      "seq": 752425,
+      "ts": 1775917372042,
+      "kind": "msg_out",
+      "trace_id": "0d7e65a0",
+      "msg_id": "0d7e65a0",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-0d7e65a0"
+    },
+    {
+      "seq": 752426,
+      "ts": 1775917372043,
+      "kind": "msg_in",
+      "trace_id": "0d7e65a0",
+      "msg_id": "43745e79",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "blog-agent",
+      "to_name": "Go Blog Server",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-0d7e65a0"
+    },
+    {
+      "seq": 752427,
+      "ts": 1775917372043,
+      "kind": "msg_out",
+      "trace_id": "0d7e65a0",
+      "msg_id": "43745e79",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "blog-agent",
+      "to_name": "Go Blog Server",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-0d7e65a0"
+    },
+    {
+      "seq": 752428,
+      "ts": 1775917372043,
+      "kind": "msg_in",
+      "trace_id": "0d7e65a0",
+      "msg_id": "40582e38",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "blog-agent",
+      "to_name": "Go Blog Server",
+      "msg_type": "task_event",
+      "summary": "event task=task-0d7e65a0"
+    },
+    {
+      "seq": 752429,
+      "ts": 1775917372043,
+      "kind": "msg_out",
+      "trace_id": "0d7e65a0",
+      "msg_id": "40582e38",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "blog-agent",
+      "to_name": "Go Blog Server",
+      "msg_type": "task_event",
+      "summary": "event task=task-0d7e65a0"
+    }
+  ],
+  "agents": [
+    "blog-agent",
+    "llm-agent",
+    "test-agent"
+  ],
+  "message_types": [
+    "task_accepted",
+    "task_assign",
+    "task_event"
+  ],
+  "summaries": [
+    "task=task-0d7e65a0",
+    "task=task-0d7e65a0",
+    "accepted task=task-0d7e65a0",
+    "accepted task=task-0d7e65a0",
+    "event task=task-0d7e65a0",
+    "event task=task-0d7e65a0"
+  ],
+  "path": [
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "blog-agent",
+    "llm-agent",
+    "blog-agent",
+    "llm-agent",
+    "blog-agent",
+    "llm-agent",
+    "blog-agent"
+  ]
+}

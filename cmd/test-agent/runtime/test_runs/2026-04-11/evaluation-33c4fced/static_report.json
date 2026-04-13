@@ -1,0 +1,88 @@
+{
+  "run_id": "evaluation-33c4fced",
+  "evaluation_id": "evaluation-33c4fced",
+  "title": "Static Evaluation Collection",
+  "collection_type": "static",
+  "status": "skipped",
+  "started_at": "2026-04-11T23:48:42.727491+08:00",
+  "finished_at": "2026-04-11T23:48:42.76371+08:00",
+  "total_scenarios": 3,
+  "skipped_scenarios": 3,
+  "passed_scenarios": 0,
+  "failed_scenarios": 0,
+  "average_score": 0,
+  "source_files": [
+    "suites/cron-auth-guard.json",
+    "suites/llm-cron-reminder-observe.json",
+    "suites/smoke-local.json"
+  ],
+  "skipped": [
+    {
+      "suite_id": "cron-auth-guard",
+      "scenario_id": "cron-create-task-requires-authenticated-user",
+      "title": "cronCreateTask requires authenticated_user",
+      "collection_type": "static",
+      "target_agent": "cron-agent",
+      "required_agents": [
+        "cron-agent"
+      ],
+      "reason": "target agent is offline"
+    },
+    {
+      "suite_id": "llm-cron-reminder-observe",
+      "scenario_id": "llm-cron-reminder-delivery-path",
+      "title": "llm-agent cron_reminder delivery path",
+      "collection_type": "static",
+      "target_agent": "llm-agent",
+      "required_agents": [
+        "llm-agent",
+        "wechat-agent"
+      ],
+      "reason": "required agent is offline: wechat-agent"
+    },
+    {
+      "suite_id": "smoke-local",
+      "scenario_id": "cron-create-task-requires-authenticated-user",
+      "title": "cronCreateTask requires authenticated_user",
+      "collection_type": "static",
+      "target_agent": "cron-agent",
+      "required_agents": [
+        "cron-agent"
+      ],
+      "reason": "target agent is offline"
+    }
+  ],
+  "dimension_scores": [
+    {
+      "name": "completion",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "routing",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "tool_usage",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "recovery",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "final_answer",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    }
+  ],
+  "runs": null
+}

@@ -66,6 +66,14 @@ func (r *Runner) RunEvaluation(ctx context.Context) (*FinalEvaluationReport, err
 	if plannerRun != nil {
 		plan.DynamicPlannerRunID = plannerRun.RunID
 	}
+	plannerFailed := plannerRun != nil && !plannerRun.Result.Success
+	if plannerFailed {
+		dynamicReport.Runs = append(dynamicReport.Runs, plannerRun)
+		dynamicReport.ExecutedScenarios++
+		dynamicReport.FailedScenarios++
+		dynamicReport.TotalScenarios++
+		plannerSkipped = nil
+	}
 	if len(plannerSkipped) > 0 {
 		dynamicReport.Skipped = append(dynamicReport.Skipped, plannerSkipped...)
 		dynamicReport.SkippedScenarios += len(plannerSkipped)
@@ -82,7 +90,9 @@ func (r *Runner) RunEvaluation(ctx context.Context) (*FinalEvaluationReport, err
 		}
 		r.saveCollectionReport(dynamicReport)
 	} else {
-		if len(plan.Notes) == 0 {
+		if plannerFailed {
+			plan.Notes = append(plan.Notes, "dynamic plan execution failed")
+		} else if len(plan.Notes) == 0 {
 			plan.Notes = append(plan.Notes, "dynamic collection skipped")
 		}
 		finalizeCollectionReport(dynamicReport)
@@ -113,6 +123,7 @@ func (r *Runner) runCollection(ctx context.Context, evaluationID, collectionType
 		report.SourceFiles = appendIfMissingString(report.SourceFiles, item.path)
 		for i := range item.suite.Scenarios {
 			scenario := item.suite.Scenarios[i]
+			normalizeScenarioAgentRefs(&scenario, onlineIndex)
 			scenario.CollectionType = collectionType
 			scenario.Source = firstNonEmpty(strings.TrimSpace(scenario.Source), item.path)
 			report.TotalScenarios++
@@ -165,7 +176,8 @@ func (r *Runner) buildDynamicSuite(ctx context.Context, evaluationID string, age
 	}
 
 	onlineIndex := indexAgentsByID(agents)
-	if _, ok := onlineIndex[r.cfg.Dynamic.GeneratorAgent]; !ok {
+	generatorAgent := resolveOnlineAgentRef(r.cfg.Dynamic.GeneratorAgent, onlineIndex)
+	if _, ok := onlineIndex[generatorAgent]; !ok {
 		return nil, nil, []SkippedScenario{{
 			ScenarioID:     "dynamic-plan-generator",
 			Title:          "dynamic plan generator",
@@ -176,6 +188,7 @@ func (r *Runner) buildDynamicSuite(ctx context.Context, evaluationID string, age
 	}
 
 	plannerScenario := r.buildDynamicPlannerScenario(agents, staticReport)
+	plannerScenario.Entry.ToAgent = generatorAgent
 	plannerRun, err := r.runScenario(ctx, "__dynamic_plan__", plannerScenario, runScenarioOptions{
 		EvaluationID:   evaluationID,
 		CollectionType: CollectionTypeDynamicPlan,
@@ -301,6 +314,7 @@ func buildCollectionPlan(collectionType string, item loadedSuite, online map[str
 		GeneratedBy:    item.suite.GeneratedBy,
 	}
 	for _, scenario := range item.suite.Scenarios {
+		normalizeScenarioAgentRefs(&scenario, online)
 		skipReason := scenarioSkipReason(&scenario, online, nil)
 		plan.Items = append(plan.Items, ScenarioPlanItem{
 			SuiteID:        item.suite.ID,
@@ -613,6 +627,7 @@ func validateGeneratedSuite(cfg *Config, suite *TestSuite, plannerRunID string, 
 		if strings.TrimSpace(scenario.Category) == "" {
 			scenario.Category = "dynamic"
 		}
+		normalizeScenarioAgentRefs(&scenario, online)
 		if len(scenario.Assertions.RequireAgents) == 0 {
 			scenario.Assertions.RequireAgents = scenario.requiredAgents()
 		}
@@ -657,11 +672,12 @@ func scenarioSkipReason(scenario *TestScenario, online map[string]GatewayAgentSn
 	if target == "" {
 		return "entry.to_agent is required"
 	}
+	target = resolveOnlineAgentRef(target, online)
 	if _, ok := online[target]; !ok {
 		return "target agent is offline"
 	}
 	for _, agentID := range scenario.requiredAgents() {
-		if _, ok := online[agentID]; !ok {
+		if _, ok := online[resolveOnlineAgentRef(agentID, online)]; !ok {
 			return fmt.Sprintf("required agent is offline: %s", agentID)
 		}
 	}

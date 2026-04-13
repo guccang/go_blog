@@ -51,7 +51,9 @@ func main() {
 	log.Printf("[INFO] Gateway: %s → blog-agent-agent: %s", cfg.ServerURL, cfg.GoBackendAgentID)
 	log.Printf("[INFO] Workspaces: %v", cfg.Workspaces)
 	log.Printf("[INFO] MaxConcurrent: %d, AnalysisTimeout: %ds", cfg.MaxConcurrent, cfg.AnalysisTimeout)
-	log.Printf("[INFO] ACP Command: %s %v", cfg.ACPAgentCmd, cfg.ACPAgentArgs)
+	backendCmd, backendArgs := cfg.BackendCommand()
+	log.Printf("[INFO] CodingBackend: %s", cfg.BackendLabel())
+	log.Printf("[INFO] BackendCommand: %s %v", backendCmd, backendArgs)
 
 	agent := NewAgent(agentID, cfg)
 	conn := NewConnection(cfg, agent)

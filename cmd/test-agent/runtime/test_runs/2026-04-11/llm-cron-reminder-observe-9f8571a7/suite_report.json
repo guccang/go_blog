@@ -1,0 +1,590 @@
+{
+  "run_id": "llm-cron-reminder-observe-9f8571a7",
+  "suite_id": "llm-cron-reminder-observe",
+  "title": "LLM Cron Reminder Observe",
+  "collection_type": "static",
+  "status": "failed",
+  "started_at": "2026-04-11T23:29:32.333919+08:00",
+  "finished_at": "2026-04-11T23:29:32.911749+08:00",
+  "total_scenarios": 1,
+  "executed_scenarios": 1,
+  "passed_scenarios": 0,
+  "failed_scenarios": 1,
+  "average_score": 90,
+  "dimension_scores": [
+    {
+      "name": "completion",
+      "average_score": 100,
+      "passed_runs": 1,
+      "total_runs": 1
+    },
+    {
+      "name": "routing",
+      "average_score": 50,
+      "passed_runs": 0,
+      "total_runs": 1
+    },
+    {
+      "name": "tool_usage",
+      "average_score": 100,
+      "passed_runs": 1,
+      "total_runs": 1
+    },
+    {
+      "name": "recovery",
+      "average_score": 100,
+      "passed_runs": 1,
+      "total_runs": 1
+    },
+    {
+      "name": "final_answer",
+      "average_score": 100,
+      "passed_runs": 1,
+      "total_runs": 1
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "llm-cron-reminder-delivery-path-a2d6ddf4",
+      "suite_id": "llm-cron-reminder-observe",
+      "scenario_id": "llm-cron-reminder-delivery-path",
+      "title": "llm-agent cron_reminder delivery path",
+      "description": "要求 llm-agent 和 wechat-agent 在线。若 app-agent 不在线，最终 task_complete 可能为 failed，但链路观测仍然应成立。",
+      "category": "integration",
+      "priority": "P1",
+      "dependency_mode": "hybrid",
+      "collection_type": "static",
+      "status": "failed",
+      "entry_type": "task_assign",
+      "target_agent": "llm-agent",
+      "trace_id": "a2d6ddf4",
+      "task_id": "task-a2d6ddf4",
+      "started_at": "2026-04-11T23:29:32.333928+08:00",
+      "updated_at": "2026-04-11T23:29:32.874897+08:00",
+      "finished_at": "2026-04-11T23:29:32.874896+08:00",
+      "health": {
+        "status": "ok",
+        "agents": 12
+      },
+      "online_agents": [
+        {
+          "agent_id": "exec_code_21360",
+          "agent_type": "execute_code",
+          "name": "execute-code-agent",
+          "description": "Python代码执行、MCP工具批量调用",
+          "tools": [
+            "ExecuteCode",
+            "ExecExecEnvBash"
+          ],
+          "capacity": 3,
+          "last_hb": "2026-04-11T23:29:33+08:00",
+          "meta": {
+            "host_platform": "windows",
+            "max_exec_time": 120,
+            "max_output_size": 50000,
+            "python_version": "3.14.2"
+          }
+        },
+        {
+          "agent_id": "cmd-agent",
+          "agent_type": "cmd",
+          "name": "cmd-agent",
+          "description": "统一处理 /cg 命令并分发到 acp-agent / deploy-agent",
+          "capacity": 1,
+          "last_hb": "2026-04-11T23:29:21+08:00"
+        },
+        {
+          "agent_id": "app-app-agent",
+          "agent_type": "app",
+          "name": "app-agent",
+          "description": "App message forwarding agent",
+          "tools": [
+            "app.SendMessage",
+            "app.SendRichMessage",
+            "app.ListAPKPackages",
+            "app.PushAPKPackage"
+          ],
+          "capacity": 20,
+          "last_hb": "2026-04-11T23:29:31+08:00",
+          "meta": {
+            "http_port": 8883
+          }
+        },
+        {
+          "agent_id": "blog-agent",
+          "agent_type": "blog-agent",
+          "name": "Go Blog Server",
+          "description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏",
+          "tools": [
+            "RawGetBlogByTitleMatch",
+            "RawAllBlogName",
+            "RawGetBlogData",
+            "RawGetBlogDataByDate",
+            "RawAllBlogNameByDateRange",
+            "RawAllBlogNameByDateRangeCount",
+            "RawCreateBlog",
+            "RawBlogsByAuthType",
+            "RawBlogsByTag",
+            "RawSearchBlogContent",
+            "RawRecentExerciseRecords",
+            "RawGetExerciseByDate",
+            "RawGetExerciseRange",
+            "RawAddExercise",
+            "RawGetExerciseStats",
+            "RawToggleExercise",
+            "RawDeleteExercise",
+            "RawUpdateExercise",
+            "RawGetTodosByDate",
+            "RawGetTodosRange",
+            "RawAddTodo",
+            "RawToggleTodo",
+            "RawDeleteTodo",
+            "RawUpdateTodo",
+            "RawGetAllBooks",
+            "RawGetBooksByStatus",
+            "RawGetReadingStats",
+            "RawUpdateReadingProgress",
+            "RawGetBookNotes",
+            "RawAddBook",
+            "RawCreateProject",
+            "RawGetProject",
+            "RawListProjects",
+            "RawUpdateProject",
+            "RawDeleteProject",
+            "RawAddProjectGoal",
+            "RawUpdateProjectGoal",
+            "RawDeleteProjectGoal",
+            "RawAddProjectOKR",
+            "RawUpdateProjectOKR",
+            "RawDeleteProjectOKR",
+            "RawUpdateProjectKeyResult",
+            "RawGetProjectSummary"
+          ],
+          "capacity": 100,
+          "last_hb": "2026-04-11T23:29:28+08:00",
+          "meta": {
+            "agent_description": "博客CRUD、待办清单、运动记录、阅读管理、年度计划、星座占卜、实用工具、游戏\r\n\r\n## 服务能力\r\n\r\n提供 go_blog 后端的完整业务接口，包括：\r\n\r\n- **博客管理**: 文章增删改查、标签管理、分类管理\r\n- **待办清单**: TODO 项目的创建、完成、删除\r\n- **运动记录**: 运动数据记录和查询\r\n- **阅读管理**: 书籍记录、阅读进度\r\n- **年度计划**: 年度目标设定和进度追踪\r\n- **星座占卜**: 星座运势查询\r\n- **实用工具**: 天气查询、翻译等\r\n- **游戏**: 小游戏功能",
+            "role": "backend"
+          }
+        },
+        {
+          "agent_id": "test-agent",
+          "agent_type": "test_agent",
+          "name": "test-agent",
+          "description": "用户模拟测试 agent，负责回放测试场景并落盘执行细节",
+          "capacity": 1,
+          "last_hb": "2026-04-11T23:29:21+08:00",
+          "meta": {
+            "purpose": "system-evaluation"
+          }
+        },
+        {
+          "agent_id": "wechat-wechat-agent",
+          "agent_type": "wechat",
+          "name": "wechat-agent",
+          "description": "企业微信消息发送",
+          "tools": [
+            "wechat.SendMessage",
+            "wechat.SendMarkdown"
+          ],
+          "capacity": 10,
+          "last_hb": "2026-04-11T23:29:20+08:00",
+          "meta": {
+            "http_port": 8884
+          }
+        },
+        {
+          "agent_id": "log_query_18583",
+          "agent_type": "log_query",
+          "name": "log-agent-hw",
+          "description": "通用日志查询代理，通过命名日志源查询服务器上的日志文件",
+          "tools": [
+            "ListLogSources",
+            "ReadLog",
+            "LogReadLog"
+          ],
+          "capacity": 10,
+          "last_hb": "2026-04-11T23:29:33+08:00",
+          "meta": {
+            "log_sources": {
+              "blog-agent": "blog-agent博客日志",
+              "env-agent": "evn-agent日志",
+              "execute-code-agent": "execute-agent日志,沙箱日志",
+              "gateway": "gateway日志",
+              "llm-agent": "llm-agent日志,llm日志",
+              "system": "系统日志,崩溃日志",
+              "wechat-agent": "wechat-agent日志,微信日志"
+            }
+          }
+        },
+        {
+          "agent_id": "llm-agent",
+          "agent_type": "llm_mcp",
+          "name": "LLM MCP Agent",
+          "description": "",
+          "host_platform": "Linux",
+          "host_ip": "192.168.0.169",
+          "workspace": "workspace",
+          "capacity": 3,
+          "last_hb": "2026-04-11T23:29:23+08:00",
+          "meta": {
+            "host_stats": {
+              "cpu_cores": 1,
+              "disk_free_gb": "1.5",
+              "disk_total_gb": "9.7",
+              "mem_total_gb": "1.8"
+            }
+          }
+        },
+        {
+          "agent_id": "acp_717d62c8",
+          "agent_type": "acp",
+          "name": "acp-agent-win",
+          "description": "项目代码分析、编码（基于 ACP 协议）",
+          "tools": [
+            "AcpListProjects",
+            "AcpCreateProject",
+            "AcpStartSession",
+            "AcpStopSession"
+          ],
+          "capacity": 2,
+          "last_hb": "2026-04-11T23:29:33+08:00",
+          "meta": {
+            "acp_agent_cmd": "npx",
+            "analysis_timeout": 3600,
+            "coding_backends": [
+              "acp"
+            ],
+            "projects": [
+              "assistant",
+              "go-tetris",
+              "go-web-calculator",
+              "hello-world",
+              "helloworld-web",
+              "tetris",
+              "webfangkuai",
+              "xxx",
+              "Client",
+              "Public",
+              "Server",
+              "Tools"
+            ],
+            "workspaces": [
+              "E:\\githubdesktop\\acpworkspace",
+              "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+            ]
+          }
+        },
+        {
+          "agent_id": "cron_agent_903",
+          "agent_type": "cron_agent",
+          "name": "cron-agent",
+          "description": "定时任务调度代理，支持 cron 表达式、间隔、延迟一次性任务，发送到 llm-agent 执行并推送微信",
+          "tools": [
+            "cronCreateTask",
+            "cronListTasks",
+            "cronDeleteTask",
+            "cronTriggerTask",
+            "cronListPending"
+          ],
+          "capacity": 10,
+          "last_hb": "2026-04-11T23:29:25+08:00",
+          "meta": {
+            "version": "2.0.0"
+          }
+        },
+        {
+          "agent_id": "audio_agent_27252",
+          "agent_type": "audio_agent",
+          "name": "audio-agent",
+          "description": "Audio multimodal agent for speech-to-text and text-to-speech",
+          "tools": [
+            "AudioToText",
+            "TextToAudio"
+          ],
+          "capacity": 3,
+          "last_hb": "2026-04-11T23:29:27+08:00"
+        },
+        {
+          "agent_id": "env_agent_17587",
+          "agent_type": "env_agent",
+          "name": "env-agent",
+          "description": "环境编排中心：远程检测/安装软件环境，支持预置脚本和 LLM 生成脚本",
+          "tools": [
+            "EnvCheck",
+            "EnvInstall",
+            "EnvCheckAll",
+            "EnvSetup"
+          ],
+          "capacity": 3,
+          "last_hb": "2026-04-11T23:29:33+08:00",
+          "meta": {
+            "supported_software": [
+              "claude",
+              "curl",
+              "docker",
+              "git",
+              "go",
+              "java",
+              "mysql",
+              "nginx",
+              "node",
+              "python",
+              "redis"
+            ]
+          }
+        }
+      ],
+      "steps": [
+        {
+          "name": "capture_availability",
+          "status": "passed",
+          "detail": "Gateway 可访问",
+          "started_at": "2026-04-11T23:29:32.341358+08:00",
+          "finished_at": "2026-04-11T23:29:32.43887+08:00",
+          "data": {
+            "agents": 12
+          }
+        },
+        {
+          "name": "dispatch_entry",
+          "status": "passed",
+          "detail": "入口消息发送成功",
+          "started_at": "2026-04-11T23:29:32.445711+08:00",
+          "finished_at": "2026-04-11T23:29:32.445795+08:00",
+          "data": {
+            "task_id": "task-a2d6ddf4",
+            "trace_id": "a2d6ddf4"
+          }
+        },
+        {
+          "name": "await_execution",
+          "status": "passed",
+          "detail": "链路执行结束",
+          "started_at": "2026-04-11T23:29:32.458712+08:00",
+          "finished_at": "2026-04-11T23:29:32.839259+08:00",
+          "data": {
+            "direct_message_from": "llm-agent",
+            "direct_message_type": "task_complete",
+            "event_count": 6,
+            "last_event": "llm-agent -\u003e test-agent | task_complete | complete task=task-a2d6ddf4 status=success",
+            "remaining_sec": 20,
+            "trace_status": "completed"
+          }
+        },
+        {
+          "name": "collect_trace",
+          "status": "passed",
+          "detail": "completed",
+          "started_at": "2026-04-11T23:29:32.839263+08:00",
+          "finished_at": "2026-04-11T23:29:32.857173+08:00",
+          "data": {
+            "events": 6
+          }
+        },
+        {
+          "name": "collect_llm_trace",
+          "status": "skipped",
+          "detail": "未匹配到 llm-agent trace",
+          "started_at": "2026-04-11T23:29:32.865433+08:00",
+          "finished_at": "2026-04-11T23:29:32.865437+08:00"
+        },
+        {
+          "name": "evaluate_assertions",
+          "status": "passed",
+          "detail": "failed",
+          "started_at": "2026-04-11T23:29:32.874883+08:00",
+          "finished_at": "2026-04-11T23:29:32.874897+08:00",
+          "data": {
+            "score": 90
+          }
+        }
+      ],
+      "observed_messages": [
+        {
+          "type": "task_complete",
+          "id": "95eb6e03",
+          "from": "llm-agent",
+          "to": "test-agent",
+          "payload": {
+            "task_id": "task-a2d6ddf4",
+            "status": "success"
+          },
+          "ts": 1775921374829
+        }
+      ],
+      "trace": {
+        "trace_id": "a2d6ddf4",
+        "status": "completed",
+        "duration_ms": 0,
+        "events": [
+          {
+            "seq": 761788,
+            "ts": 1775921374829,
+            "kind": "msg_in",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "a2d6ddf4",
+            "from": "test-agent",
+            "from_name": "test-agent",
+            "to": "llm-agent",
+            "to_name": "LLM MCP Agent",
+            "msg_type": "task_assign",
+            "summary": "task=task-a2d6ddf4"
+          },
+          {
+            "seq": 761789,
+            "ts": 1775921374829,
+            "kind": "msg_out",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "a2d6ddf4",
+            "from": "test-agent",
+            "from_name": "test-agent",
+            "to": "llm-agent",
+            "to_name": "LLM MCP Agent",
+            "msg_type": "task_assign",
+            "summary": "task=task-a2d6ddf4"
+          },
+          {
+            "seq": 761790,
+            "ts": 1775921374829,
+            "kind": "msg_in",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "c0f1ec5b",
+            "from": "llm-agent",
+            "from_name": "LLM MCP Agent",
+            "to": "blog-agent",
+            "to_name": "Go Blog Server",
+            "msg_type": "task_accepted",
+            "summary": "accepted task=task-a2d6ddf4"
+          },
+          {
+            "seq": 761791,
+            "ts": 1775921374829,
+            "kind": "msg_out",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "c0f1ec5b",
+            "from": "llm-agent",
+            "from_name": "LLM MCP Agent",
+            "to": "blog-agent",
+            "to_name": "Go Blog Server",
+            "msg_type": "task_accepted",
+            "summary": "accepted task=task-a2d6ddf4"
+          },
+          {
+            "seq": 761796,
+            "ts": 1775921374829,
+            "kind": "msg_in",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "95eb6e03",
+            "from": "llm-agent",
+            "from_name": "LLM MCP Agent",
+            "to": "test-agent",
+            "to_name": "test-agent",
+            "msg_type": "task_complete",
+            "summary": "complete task=task-a2d6ddf4 status=success"
+          },
+          {
+            "seq": 761797,
+            "ts": 1775921374829,
+            "kind": "msg_out",
+            "trace_id": "a2d6ddf4",
+            "msg_id": "95eb6e03",
+            "from": "llm-agent",
+            "from_name": "LLM MCP Agent",
+            "to": "test-agent",
+            "to_name": "test-agent",
+            "msg_type": "task_complete",
+            "summary": "complete task=task-a2d6ddf4 status=success"
+          }
+        ],
+        "agents": [
+          "blog-agent",
+          "llm-agent",
+          "test-agent"
+        ],
+        "message_types": [
+          "task_accepted",
+          "task_assign",
+          "task_complete"
+        ],
+        "summaries": [
+          "task=task-a2d6ddf4",
+          "task=task-a2d6ddf4",
+          "accepted task=task-a2d6ddf4",
+          "accepted task=task-a2d6ddf4",
+          "complete task=task-a2d6ddf4 status=success",
+          "complete task=task-a2d6ddf4 status=success"
+        ],
+        "path": [
+          "test-agent",
+          "llm-agent",
+          "test-agent",
+          "llm-agent",
+          "blog-agent",
+          "llm-agent",
+          "blog-agent",
+          "llm-agent",
+          "test-agent",
+          "llm-agent",
+          "test-agent"
+        ]
+      },
+      "result": {
+        "success": false,
+        "status": "failed",
+        "final_message_type": "task_complete",
+        "final_status": "success",
+        "outcomes": [
+          {
+            "name": "direct_message_type",
+            "success": true,
+            "detail": "got=task_complete want=task_complete"
+          },
+          {
+            "name": "trace_events",
+            "success": true,
+            "detail": "got=6 want\u003e=4"
+          },
+          {
+            "name": "require_agent",
+            "success": true,
+            "detail": "llm-agent"
+          },
+          {
+            "name": "require_agent",
+            "success": false,
+            "detail": "wechat-agent"
+          },
+          {
+            "name": "require_msg_type",
+            "success": true,
+            "detail": "task_assign"
+          },
+          {
+            "name": "require_msg_type",
+            "success": false,
+            "detail": "notify"
+          },
+          {
+            "name": "require_msg_type",
+            "success": true,
+            "detail": "task_complete"
+          },
+          {
+            "name": "expected_path",
+            "success": false,
+            "detail": "actual=test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e blog-agent -\u003e llm-agent -\u003e blog-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent"
+          }
+        ],
+        "scores": {
+          "completion_score": 100,
+          "routing_score": 50,
+          "tool_usage_score": 100,
+          "recovery_score": 100,
+          "final_answer_score": 100,
+          "total": 90
+        }
+      }
+    }
+  ]
+}

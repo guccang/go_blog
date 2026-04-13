@@ -1,0 +1,43 @@
+{
+  "id": "cron-create-task-requires-authenticated-user",
+  "title": "cronCreateTask requires authenticated_user",
+  "description": "验证 cron-agent 工具授权。",
+  "category": "contract",
+  "priority": "P0",
+  "dependency_mode": "mock",
+  "collection_type": "static",
+  "source": "suites/smoke-local.json",
+  "tags": [
+    "cron-agent",
+    "auth"
+  ],
+  "entry": {
+    "type": "tool_call",
+    "to_agent": "cron-agent",
+    "tool": {
+      "tool_name": "cronCreateTask",
+      "arguments": {
+        "name": "local smoke auth",
+        "task_type": "cron_reminder",
+        "account": "ztt",
+        "delay_sec": 30,
+        "message": "hello from smoke suite"
+      }
+    }
+  },
+  "assertions": {
+    "expect_message_type": "tool_result",
+    "expect_tool_success": false,
+    "error_contains": [
+      "权限拒绝：缺少认证用户"
+    ],
+    "require_agents": [
+      "cron-agent"
+    ],
+    "require_msg_types": [
+      "tool_call",
+      "tool_result"
+    ],
+    "min_trace_events": 2
+  }
+}

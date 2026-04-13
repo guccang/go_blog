@@ -1,0 +1,63 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T23:24:02.740797+08:00",
+    "finished_at": "2026-04-11T23:24:02.794438+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T23:24:02.796392+08:00",
+    "finished_at": "2026-04-11T23:24:02.79646+08:00",
+    "data": {
+      "task_id": "task-83ddacf8",
+      "trace_id": "83ddacf8"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "failed",
+    "detail": "scenario timeout after 30s",
+    "started_at": "2026-04-11T23:24:02.798822+08:00",
+    "finished_at": "2026-04-11T23:24:32.892013+08:00",
+    "data": {
+      "event_count": 12,
+      "last_event": "llm-agent -\u003e blog-agent | task_complete | complete task=task-83ddacf8 status=success",
+      "remaining_sec": 0,
+      "trace_status": "completed"
+    }
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T23:24:32.892017+08:00",
+    "finished_at": "2026-04-11T23:24:32.912789+08:00",
+    "data": {
+      "events": 12
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T23:24:32.919519+08:00",
+    "finished_at": "2026-04-11T23:24:32.919521+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "timeout",
+    "started_at": "2026-04-11T23:24:32.928371+08:00",
+    "finished_at": "2026-04-11T23:24:32.928385+08:00",
+    "data": {
+      "score": 40
+    }
+  }
+]

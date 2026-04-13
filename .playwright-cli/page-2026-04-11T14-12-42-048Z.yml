@@ -1,0 +1,84 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - heading "test-agent 实时检测控制台" [level=1] [ref=e4]
+    - paragraph [ref=e5]: 用于启动评估、实时查看执行路径、场景进度、静态/动态结果，以及最终评估结论。
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - button "运行完整评估" [disabled] [ref=e9]
+        - combobox [ref=e10]:
+          - option "选择 suite" [selected]
+          - option "Cron Agent Auth Guard"
+          - option "LLM Cron Reminder Observe"
+          - option "Local Smoke"
+        - combobox [ref=e11]:
+          - option "全部场景" [selected]
+        - button "运行选中 Suite" [disabled] [ref=e12]
+        - generic [ref=e13]: running
+      - generic [ref=e14]: suite queued
+    - generic [ref=e16]:
+      - generic [ref=e17]: 模式
+      - generic [ref=e18]: suite
+    - generic [ref=e20]:
+      - generic [ref=e21]: 在线 Agents
+      - generic [ref=e22]: "0"
+    - generic [ref=e24]:
+      - generic [ref=e25]: 综合得分
+      - generic [ref=e26]: "-"
+    - generic [ref=e27]:
+      - heading "在线 Agent" [level=2] [ref=e28]
+      - generic [ref=e30]: 暂无在线 agent
+    - generic [ref=e31]:
+      - heading "当前场景" [level=2] [ref=e32]
+      - generic [ref=e33]:
+        - table [ref=e34]:
+          - rowgroup [ref=e35]:
+            - row "scenario cron-create-task-requires-authenticated-user" [ref=e36]:
+              - rowheader "scenario" [ref=e37]
+              - cell "cron-create-task-requires-authenticated-user" [ref=e38]
+            - row "title cronCreateTask requires authenticated_user" [ref=e39]:
+              - rowheader "title" [ref=e40]
+              - cell "cronCreateTask requires authenticated_user" [ref=e41]
+            - row "status running" [ref=e42]:
+              - rowheader "status" [ref=e43]
+              - cell "running" [ref=e44]:
+                - generic [ref=e45]: running
+            - row "target cron-agent" [ref=e46]:
+              - rowheader "target" [ref=e47]
+              - cell "cron-agent" [ref=e48]
+            - row "trace e4eb71cf" [ref=e49]:
+              - rowheader "trace" [ref=e50]
+              - cell "e4eb71cf" [ref=e51]
+        - table [ref=e53]:
+          - rowgroup [ref=e54]:
+            - row "Step Status Detail" [ref=e55]:
+              - columnheader "Step" [ref=e56]
+              - columnheader "Status" [ref=e57]
+              - columnheader "Detail" [ref=e58]
+          - rowgroup [ref=e59]:
+            - row "capture_availability passed Gateway 可访问" [ref=e60]:
+              - cell "capture_availability" [ref=e61]
+              - cell "passed" [ref=e62]:
+                - generic [ref=e63]: passed
+              - cell "Gateway 可访问" [ref=e64]
+            - row "dispatch_entry passed 入口消息发送成功" [ref=e65]:
+              - cell "dispatch_entry" [ref=e66]
+              - cell "passed" [ref=e67]:
+                - generic [ref=e68]: passed
+              - cell "入口消息发送成功" [ref=e69]
+        - generic [ref=e71]: "{ \"success\": false, \"status\": \"running\", \"scores\": { \"completion_score\": 0, \"routing_score\": 0, \"tool_usage_score\": 0, \"recovery_score\": 0, \"final_answer_score\": 0, \"total\": 0 } }"
+    - generic [ref=e72]:
+      - heading "执行计划" [level=2] [ref=e73]
+      - generic [ref=e75]: 暂无执行计划。
+    - generic [ref=e76]:
+      - heading "静态评估集" [level=2] [ref=e77]
+      - generic [ref=e79]: 暂无数据。
+    - generic [ref=e80]:
+      - heading "动态评估集" [level=2] [ref=e81]
+      - generic [ref=e83]: 暂无数据。
+    - generic [ref=e84]:
+      - heading "最终结果 / Suite 结果" [level=2] [ref=e85]
+      - generic [ref=e87]: 暂无结果。
+    - generic [ref=e88]:
+      - heading "最近运行历史" [level=2] [ref=e89]
+      - generic [ref=e91]: 暂无历史。

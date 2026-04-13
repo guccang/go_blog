@@ -1,0 +1,82 @@
+{
+  "trace_id": "01fd6308",
+  "status": "completed",
+  "duration_ms": 0,
+  "events": [
+    {
+      "seq": 936417,
+      "ts": 1775998389954,
+      "kind": "msg_in",
+      "trace_id": "01fd6308",
+      "msg_id": "01fd6308",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "cron_agent_903",
+      "to_name": "cron-agent",
+      "msg_type": "tool_call",
+      "summary": "cronCreateTask"
+    },
+    {
+      "seq": 936418,
+      "ts": 1775998389954,
+      "kind": "msg_out",
+      "trace_id": "01fd6308",
+      "msg_id": "01fd6308",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "cron_agent_903",
+      "to_name": "cron-agent",
+      "msg_type": "tool_call",
+      "summary": "cronCreateTask"
+    },
+    {
+      "seq": 936419,
+      "ts": 1775998389954,
+      "kind": "msg_in",
+      "trace_id": "01fd6308",
+      "msg_id": "f6b7406d",
+      "from": "cron_agent_903",
+      "from_name": "cron-agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "tool_result",
+      "summary": "error: 权限拒绝：缺少认证用户"
+    },
+    {
+      "seq": 936420,
+      "ts": 1775998389954,
+      "kind": "msg_out",
+      "trace_id": "01fd6308",
+      "msg_id": "f6b7406d",
+      "from": "cron_agent_903",
+      "from_name": "cron-agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "tool_result",
+      "summary": "error: 权限拒绝：缺少认证用户"
+    }
+  ],
+  "agents": [
+    "cron_agent_903",
+    "test-agent"
+  ],
+  "message_types": [
+    "tool_call",
+    "tool_result"
+  ],
+  "summaries": [
+    "cronCreateTask",
+    "cronCreateTask",
+    "error: 权限拒绝：缺少认证用户",
+    "error: 权限拒绝：缺少认证用户"
+  ],
+  "path": [
+    "test-agent",
+    "cron_agent_903",
+    "test-agent",
+    "cron_agent_903",
+    "test-agent",
+    "cron_agent_903",
+    "test-agent"
+  ]
+}

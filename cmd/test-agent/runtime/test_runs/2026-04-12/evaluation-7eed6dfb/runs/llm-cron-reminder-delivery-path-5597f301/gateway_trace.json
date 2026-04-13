@@ -1,0 +1,116 @@
+{
+  "trace_id": "5597f301",
+  "status": "completed",
+  "duration_ms": 1,
+  "events": [
+    {
+      "seq": 936425,
+      "ts": 1775998390530,
+      "kind": "msg_in",
+      "trace_id": "5597f301",
+      "msg_id": "5597f301",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-5597f301"
+    },
+    {
+      "seq": 936426,
+      "ts": 1775998390530,
+      "kind": "msg_out",
+      "trace_id": "5597f301",
+      "msg_id": "5597f301",
+      "from": "test-agent",
+      "from_name": "test-agent",
+      "to": "llm-agent",
+      "to_name": "LLM MCP Agent",
+      "msg_type": "task_assign",
+      "summary": "task=task-5597f301"
+    },
+    {
+      "seq": 936427,
+      "ts": 1775998390531,
+      "kind": "msg_in",
+      "trace_id": "5597f301",
+      "msg_id": "dc9fcde7",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-5597f301"
+    },
+    {
+      "seq": 936428,
+      "ts": 1775998390531,
+      "kind": "msg_out",
+      "trace_id": "5597f301",
+      "msg_id": "dc9fcde7",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_accepted",
+      "summary": "accepted task=task-5597f301"
+    },
+    {
+      "seq": 936433,
+      "ts": 1775998390531,
+      "kind": "msg_in",
+      "trace_id": "5597f301",
+      "msg_id": "043ffcb5",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_complete",
+      "summary": "complete task=task-5597f301 status=success",
+      "duration_ms": 1
+    },
+    {
+      "seq": 936434,
+      "ts": 1775998390531,
+      "kind": "msg_out",
+      "trace_id": "5597f301",
+      "msg_id": "043ffcb5",
+      "from": "llm-agent",
+      "from_name": "LLM MCP Agent",
+      "to": "test-agent",
+      "to_name": "test-agent",
+      "msg_type": "task_complete",
+      "summary": "complete task=task-5597f301 status=success"
+    }
+  ],
+  "agents": [
+    "llm-agent",
+    "test-agent"
+  ],
+  "message_types": [
+    "task_accepted",
+    "task_assign",
+    "task_complete"
+  ],
+  "summaries": [
+    "task=task-5597f301",
+    "task=task-5597f301",
+    "accepted task=task-5597f301",
+    "accepted task=task-5597f301",
+    "complete task=task-5597f301 status=success",
+    "complete task=task-5597f301 status=success"
+  ],
+  "path": [
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent",
+    "llm-agent",
+    "test-agent"
+  ]
+}

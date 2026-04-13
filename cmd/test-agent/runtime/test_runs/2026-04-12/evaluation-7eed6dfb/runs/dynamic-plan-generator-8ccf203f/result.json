@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "status": "passed",
+  "final_message_type": "task_complete",
+  "final_status": "success",
+  "final_result": "{\n  \"id\": \"dynamic-assessment-plan\",\n  \"title\": \"动态评估场景生成\",\n  \"description\": \"针对静态评估未覆盖的在线agents生成协同链路和系统能力测试场景\",\n  \"scenarios\": [\n    {\n      \"id\": \"acp-project-list-and-create-chain\",\n      \"title\": \"ACP项目管理链路验证\",\n      \"description\": \"验证acp_717d62c8的项目列表查询和创建功能，测试AcpListProjects与AcpCreateProject的协同工作能力\",\n      \"category\": \"integration\",\n      \"priority\": \"high\",\n      \"tags\": [\"acp\", \"project-management\", \"read-write-chain\"],\n      \"entry\": {\n        \"type\": \"tool_call\",\n        \"agent_id\": \"acp_717d62c8\",\n        \"tool\": \"AcpListProjects\",\n        \"params\": {}\n      },\n      \"assertions\": {\n        \"expect_message_type\": \"tool_result\",\n        \"require_agents\": [\"acp_717d62c8\"],\n        \"require_msg_types\": [\"tool_result\"],\n        \"min_trace_events\": 1,\n        \"expected_path\": \"AcpListProjects -\u003e [验证项目列表非空/可创建] -\u003e AcpCreateProject -\u003e AcpListProjects\"\n      }\n    },\n    {\n      \"id\": \"blog-content-search-and-retrieval\",\n      \"title\": \"博客内容搜索与获取链路\",\n      \"description\": \"测试blog-agent的RawSearchBlogContent和RawGetBlogData功能，验证博客内容查询和检索的完整性\",\n      \"category\": \"system-capability\",\n      \"priority\": \"medium\",\n      \"tags\": [\"blog-agent\", \"content-retrieval\", \"search\"],\n      \"entry\": {\n        \"type\": \"tool_call\",\n        \"agent_id\": \"blog-agent\",\n        \"tool\": \"RawSearchBlogContent\",\n        \"params\": {\n          \"keyword\": \"test\"\n        }\n      },\n      \"assertions\": {\n        \"expect_message_type\": \"tool_result\",\n        \"require_agents\": [\"blog-agent\"],\n        \"require_msg_types\": [\"tool_result\"],\n        \"min_trace_events\": 1,\n        \"expected_path\": \"RawSearchBlogContent -\u003e [获取结果] -\u003e RawGetBlogData\"\n      }\n    },\n    {\n      \"id\": \"env-health-check-and-install\",\n      \"title\": \"环境健康检查与依赖安装链路\",\n      \"description\": \"验证env_agent_17587的EnvCheckAll和EnvCheck功能，测试环境状态检查和条件触发安装的能力\",\n      \"category\": \"system-capability\",\n      \"priority\": \"high\",\n      \"tags\": [\"env-agent\", \"health-check\", \"installation\"],\n      \"entry\": {\n        \"type\": \"tool_call\",\n        \"agent_id\": \"env_agent_17587\",\n        \"tool\": \"EnvCheckAll\",\n        \"params\": {}\n      },\n      \"assertions\": {\n        \"expect_message_type\": \"tool_result\",\n        \"require_agents\": [\"env_agent_17587\"],\n        \"require_msg_types\": [\"tool_result\"],\n        \"min_trace_events\": 1,\n        \"expected_path\": \"EnvCheckAll -\u003e [分析缺失] -\u003e EnvCheck(条件触发) -\u003e EnvInstall\"\n      }\n    }\n  ]\n}",
+  "outcomes": [
+    {
+      "name": "direct_message_type",
+      "success": true,
+      "detail": "got=task_complete want=task_complete"
+    },
+    {
+      "name": "task_status",
+      "success": true,
+      "detail": "got=success want=success"
+    },
+    {
+      "name": "trace_events",
+      "success": true,
+      "detail": "got=12 want\u003e=2"
+    },
+    {
+      "name": "require_agent",
+      "success": true,
+      "detail": "llm-agent"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_assign"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_complete"
+    }
+  ],
+  "scores": {
+    "completion_score": 100,
+    "routing_score": 100,
+    "tool_usage_score": 100,
+    "recovery_score": 100,
+    "final_answer_score": 100,
+    "total": 100
+  }
+}

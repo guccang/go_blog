@@ -1,0 +1,65 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T23:46:00.257668+08:00",
+    "finished_at": "2026-04-11T23:46:00.310204+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T23:46:00.312341+08:00",
+    "finished_at": "2026-04-11T23:46:00.31247+08:00",
+    "data": {
+      "task_id": "task-02eb5668",
+      "trace_id": "02eb5668"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "passed",
+    "detail": "链路执行结束",
+    "started_at": "2026-04-11T23:46:00.320889+08:00",
+    "finished_at": "2026-04-11T23:46:16.596434+08:00",
+    "data": {
+      "direct_message_from": "llm-agent",
+      "direct_message_type": "task_complete",
+      "event_count": 12,
+      "last_event": "llm-agent -\u003e test-agent | task_complete | complete task=task-02eb5668 status=success",
+      "remaining_sec": 14,
+      "trace_status": "completed"
+    }
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T23:46:16.596439+08:00",
+    "finished_at": "2026-04-11T23:46:16.616613+08:00",
+    "data": {
+      "events": 12
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T23:46:16.630176+08:00",
+    "finished_at": "2026-04-11T23:46:16.630179+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "passed",
+    "started_at": "2026-04-11T23:46:16.641639+08:00",
+    "finished_at": "2026-04-11T23:46:16.641674+08:00",
+    "data": {
+      "score": 100
+    }
+  }
+]

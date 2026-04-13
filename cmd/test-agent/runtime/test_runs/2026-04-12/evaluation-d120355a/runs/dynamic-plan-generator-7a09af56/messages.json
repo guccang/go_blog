@@ -1,0 +1,26 @@
+[
+  {
+    "type": "task_accepted",
+    "id": "54af053e",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-7a09af56"
+    },
+    "ts": 1775996917170
+  },
+  {
+    "type": "task_event",
+    "id": "6231355d",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-7a09af56",
+      "event": {
+        "event": "thinking",
+        "text": "正在思考..."
+      }
+    },
+    "ts": 1775996917171
+  }
+]

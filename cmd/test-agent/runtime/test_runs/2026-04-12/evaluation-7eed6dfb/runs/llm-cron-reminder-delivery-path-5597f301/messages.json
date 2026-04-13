@@ -1,0 +1,23 @@
+[
+  {
+    "type": "task_accepted",
+    "id": "dc9fcde7",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-5597f301"
+    },
+    "ts": 1775998390530
+  },
+  {
+    "type": "task_complete",
+    "id": "043ffcb5",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-5597f301",
+      "status": "success"
+    },
+    "ts": 1775998390530
+  }
+]

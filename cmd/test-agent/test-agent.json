@@ -1,0 +1,42 @@
+{
+  "gateway_url": "ws://blog.guccang.cn:10086/ws/uap",
+  "gateway_http": "http://blog.guccang.cn:10086",
+  "auth_token": "guccang@blog.guccang.cn",
+  "agent_id": "test-agent",
+  "agent_name": "test-agent",
+  "output_dir": "runtime/test_runs",
+  "suite_dir": "suites",
+  "static_suite_dir": "suites",
+  "default_timeout_sec": 20,
+  "poll_interval_ms": 500,
+  "settle_after_ms": 300,
+  "capture_agents": true,
+  "capture_health": true,
+  "dynamic": {
+    "enabled": true,
+    "generator_agent": "llm-agent",
+    "account": "test-agent",
+    "timeout_sec": 30,
+    "max_scenarios": 3,
+    "deny_tool_keywords": [
+      "deploy",
+      "delete",
+      "destroy",
+      "remove",
+      "publish",
+      "restart",
+      "shutdown",
+      "reboot",
+      "ssh",
+      "write"
+    ]
+  },
+  "report": {
+    "static_weight": 70,
+    "dynamic_weight": 30
+  },
+  "web": {
+    "enabled": true,
+    "listen_addr": ":18086"
+  }
+}

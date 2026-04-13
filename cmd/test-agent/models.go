@@ -419,6 +419,20 @@ func (r *TestRun) finishStep(index int, status, detail string, data map[string]a
 	r.UpdatedAt = now
 }
 
+func (r *TestRun) updateStep(index int, detail string, data map[string]any) {
+	if index < 0 || index >= len(r.Steps) {
+		return
+	}
+	now := time.Now()
+	if strings.TrimSpace(detail) != "" {
+		r.Steps[index].Detail = strings.TrimSpace(detail)
+	}
+	if data != nil {
+		r.Steps[index].Data = data
+	}
+	r.UpdatedAt = now
+}
+
 func (r *TestRun) appendObservedMessage(msg *uap.Message) {
 	if msg == nil {
 		return

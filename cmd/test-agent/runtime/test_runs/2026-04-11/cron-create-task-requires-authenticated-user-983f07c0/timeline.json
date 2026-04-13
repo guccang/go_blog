@@ -1,0 +1,57 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T22:17:57.368057+08:00",
+    "finished_at": "2026-04-11T22:17:58.475433+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T22:17:58.480802+08:00",
+    "finished_at": "2026-04-11T22:17:58.480961+08:00",
+    "data": {
+      "task_id": "",
+      "trace_id": "983f07c0"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "passed",
+    "detail": "链路执行结束",
+    "started_at": "2026-04-11T22:17:58.485591+08:00",
+    "finished_at": "2026-04-11T22:18:00.566079+08:00"
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T22:18:00.566082+08:00",
+    "finished_at": "2026-04-11T22:18:00.984736+08:00",
+    "data": {
+      "events": 4
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T22:18:00.994116+08:00",
+    "finished_at": "2026-04-11T22:18:00.994127+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "passed",
+    "started_at": "2026-04-11T22:18:01.004092+08:00",
+    "finished_at": "2026-04-11T22:18:01.004131+08:00",
+    "data": {
+      "score": 60
+    }
+  }
+]

@@ -17,7 +17,7 @@
       ],
       "entry": {
         "type": "tool_call",
-        "to_agent": "cron-agent",
+        "to_agent": "cron_agent_903",
         "tool": {
           "tool_name": "cronCreateTask",
           "arguments": {
@@ -36,7 +36,7 @@
           "权限拒绝：缺少认证用户"
         ],
         "require_agents": [
-          "cron-agent"
+          "cron_agent_903"
         ],
         "require_msg_types": [
           "tool_call",

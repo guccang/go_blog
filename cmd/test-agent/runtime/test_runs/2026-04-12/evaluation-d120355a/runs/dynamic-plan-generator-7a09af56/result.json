@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "status": "running",
+  "scores": {
+    "completion_score": 0,
+    "routing_score": 0,
+    "tool_usage_score": 0,
+    "recovery_score": 0,
+    "final_answer_score": 0,
+    "total": 0
+  }
+}

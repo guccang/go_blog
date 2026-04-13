@@ -1,0 +1,63 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T23:29:39.223435+08:00",
+    "finished_at": "2026-04-11T23:29:39.270448+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T23:29:39.275386+08:00",
+    "finished_at": "2026-04-11T23:29:39.275618+08:00",
+    "data": {
+      "task_id": "task-123328a4",
+      "trace_id": "123328a4"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "failed",
+    "detail": "scenario timeout after 30s",
+    "started_at": "2026-04-11T23:29:39.285532+08:00",
+    "finished_at": "2026-04-11T23:30:09.486773+08:00",
+    "data": {
+      "event_count": 12,
+      "last_event": "llm-agent -\u003e blog-agent | task_complete | complete task=task-123328a4 status=success",
+      "remaining_sec": 0,
+      "trace_status": "completed"
+    }
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T23:30:09.486778+08:00",
+    "finished_at": "2026-04-11T23:30:09.507362+08:00",
+    "data": {
+      "events": 12
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T23:30:09.51503+08:00",
+    "finished_at": "2026-04-11T23:30:09.515032+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "timeout",
+    "started_at": "2026-04-11T23:30:09.525061+08:00",
+    "finished_at": "2026-04-11T23:30:09.525073+08:00",
+    "data": {
+      "score": 40
+    }
+  }
+]

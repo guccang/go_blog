@@ -1,0 +1,42 @@
+{
+  "id": "dynamic-plan-generator",
+  "title": "dynamic-plan-generator",
+  "description": "请求 llm-agent 基于在线 agents 生成动态评估集",
+  "category": "planner",
+  "priority": "P1",
+  "collection_type": "dynamic_plan",
+  "entry": {
+    "type": "task_assign",
+    "to_agent": "llm-agent",
+    "task": {
+      "payload": {
+        "account": "test-agent",
+        "messages": [
+          {
+            "content": "你是 test-agent 的动态评估规划器。你的任务是输出一个严格 JSON 对象，用于描述最多 3 个动态测试场景。\n\n输出要求：\n1. 只能输出 JSON，不要 markdown，不要代码块，不要解释。\n2. 顶层结构必须是 {\"id\":\"...\",\"title\":\"...\",\"description\":\"...\",\"scenarios\":[...]}。\n3. 每个场景必须包含 id,title,description,category,priority,tags,entry,assertions。\n4. 只能使用当前在线 agent；禁止引用未在线 agent。\n5. 场景必须尽量选择低风险、可重复、可观测的路径，避免 destructive 行为。\n6. 如果使用 tool_call，优先选择只读、查询、校验或显式失败预期的工具。\n7. assertions 里必须尽量给出 expect_message_type、require_agents、require_msg_types、min_trace_events；如果是 task_assign，尽量给 expected_path。\n8. to_agent 必须是明确 agent_id，entry.type 只能是 notify、task_assign、tool_call。",
+            "role": "system"
+          },
+          {
+            "content": "以下是当前在线 agents 与工具：\n- agent=acp_717d62c8 type=acp tools=AcpListProjects,AcpCreateProject,AcpStartSession,AcpStopSession\n- agent=app-app-agent type=app tools=app.SendMessage,app.SendRichMessage,app.ListAPKPackages,app.PushAPKPackage\n- agent=audio_agent_27252 type=audio_agent tools=AudioToText,TextToAudio\n- agent=blog-agent type=blog-agent tools=RawGetBlogByTitleMatch,RawAllBlogName,RawGetBlogData,RawGetBlogDataByDate,RawAllBlogNameByDateRange,RawAllBlogNameByDateRangeCount,RawCreateBlog,RawBlogsByAuthType,RawBlogsByTag,RawSearchBlogContent,RawRecentExerciseRecords,RawGetExerciseByDate,RawGetExerciseRange,RawAddExercise,RawGetExerciseStats,RawToggleExercise,RawDeleteExercise,RawUpdateExercise,RawGetTodosByDate,RawGetTodosRange,RawAddTodo,RawToggleTodo,RawDeleteTodo,RawUpdateTodo,RawGetAllBooks,RawGetBooksByStatus,RawGetReadingStats,RawUpdateReadingProgress,RawGetBookNotes,RawAddBook,RawCreateProject,RawGetProject,RawListProjects,RawUpdateProject,RawDeleteProject,RawAddProjectGoal,RawUpdateProjectGoal,RawDeleteProjectGoal,RawAddProjectOKR,RawUpdateProjectOKR,RawDeleteProjectOKR,RawUpdateProjectKeyResult,RawGetProjectSummary\n- agent=cmd-agent type=cmd tools=\n- agent=cron_agent_903 type=cron_agent tools=cronCreateTask,cronListTasks,cronDeleteTask,cronTriggerTask,cronListPending\n- agent=env_agent_17587 type=env_agent tools=EnvCheck,EnvInstall,EnvCheckAll,EnvSetup\n- agent=exec_code_21360 type=execute_code tools=ExecuteCode,ExecExecEnvBash\n- agent=llm-agent type=llm_mcp tools=\n- agent=log_query_18583 type=log_query tools=ListLogSources,ReadLog,LogReadLog\n- agent=test-agent type=test_agent tools=\n- agent=wechat-wechat-agent type=wechat tools=wechat.SendMessage,wechat.SendMarkdown\n\n静态评估结果摘要：\n- executed=0 passed=0 failed=0 skipped=3 avg=0\n\n请优先补足静态评估未覆盖的在线 agent，生成协同链路和系统能力测试场景。",
+            "role": "user"
+          }
+        ],
+        "no_tools": true,
+        "task_type": "llm_request"
+      }
+    }
+  },
+  "assertions": {
+    "timeout_sec": 30,
+    "expect_message_type": "task_complete",
+    "expect_task_status": "success",
+    "require_agents": [
+      "llm-agent"
+    ],
+    "require_msg_types": [
+      "task_assign",
+      "task_complete"
+    ],
+    "min_trace_events": 2
+  }
+}

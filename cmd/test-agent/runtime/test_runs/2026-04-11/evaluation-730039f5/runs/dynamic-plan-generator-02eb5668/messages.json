@@ -1,0 +1,66 @@
+[
+  {
+    "type": "task_accepted",
+    "id": "b594a6fd",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-02eb5668"
+    },
+    "ts": 1775922362682
+  },
+  {
+    "type": "task_event",
+    "id": "247a1108",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-02eb5668",
+      "event": {
+        "event": "thinking",
+        "text": "正在思考..."
+      }
+    },
+    "ts": 1775922362684
+  },
+  {
+    "type": "task_event",
+    "id": "1b09795d",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-02eb5668",
+      "event": {
+        "event": "thinking",
+        "text": "LLM 响应完成 (15.6s)，正在整理结果..."
+      }
+    },
+    "ts": 1775922378276
+  },
+  {
+    "type": "task_event",
+    "id": "1b995076",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-02eb5668",
+      "event": {
+        "event": "task_complete",
+        "text": "处理完成，耗时 15.6s"
+      }
+    },
+    "ts": 1775922378278
+  },
+  {
+    "type": "task_complete",
+    "id": "980e6e63",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-02eb5668",
+      "status": "success",
+      "result": "{\"id\":\"dyn_001\",\"title\":\"博客内容发布协同链路测试\",\"description\":\"验证 blog-agent 创建博客内容后，通过 cron_agent 设置定时发布任务的协同链路\",\"category\":\"协同链路\",\"priority\":\"high\",\"tags\":[\"blog-agent\",\"cron_agent\",\"协同\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"blog-agent\",\"task\":\"create_blog\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"blog-agent\",\"cron_agent_903\"],\"require_msg_types\":[\"task_assign\",\"notify\"],\"min_trace_events\":4,\"expected_path\":[\"blog-agent::create\",\"cron_agent_903::create_task\"]}}\n\n{\"id\":\"dyn_002\",\"title\":\"环境检查与日志查询系统能力测试\",\"description\":\"验证 env_agent 检查环境状态后，通过 log_query 查询相关系统日志的集成能力\",\"category\":\"系统能力\",\"priority\":\"medium\",\"tags\":[\"env_agent\",\"log_query\",\"集成\"],\"entry\":{\"type\":\"tool_call\",\"to_agent\":\"env_agent_17587\",\"tool\":\"EnvCheckAll\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"env_agent_17587\",\"log_query_18583\"],\"require_msg_types\":[\"tool_call\",\"notify\"],\"min_trace_events\":3}}\n\n{\"id\":\"dyn_003\",\"title\":\"消息推送多通道能力测试\",\"description\":\"验证 app-agent 和 wechat-agent 各自独立发送消息到不同通道的能力\",\"category\":\"系统能力\",\"priority\":\"medium\",\"tags\":[\"app-agent\",\"wechat-agent\",\"消息推送\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"app-app-agent\",\"task\":\"send_rich_message\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"app-app-agent\",\"wechat-wechat-agent\"],\"require_msg_types\":[\"task_assign\",\"notify\",\"task_assign\"],\"min_trace_events\":4}}"
+    },
+    "ts": 1775922378279
+  }
+]

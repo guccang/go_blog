@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "status": "passed",
+  "final_message_type": "task_complete",
+  "final_status": "success",
+  "final_result": "{\"id\":\"dynamic-test-plan-001\",\"title\":\"动态评估测试场景集\",\"description\":\"针对未被静态评估覆盖的在线 agent 进行协同链路和系统能力验证\",\"scenarios\":[{\"id\":\"scenario-acp-001\",\"title\":\"ACP项目管理链路测试\",\"description\":\"测试 acp agent 的项目创建、查询功能链路，验证项目管理能力\",\"category\":\"system_capability\",\"priority\":\"medium\",\"tags\":[\"acp\",\"project\",\"read_only\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"acp_717d62c8\",\"tool\":\"AcpListProjects\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"acp_717d62c8\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}},{\"id\":\"scenario-blog-001\",\"title\":\"博客阅读数据查询链路测试\",\"description\":\"测试 blog-agent 的博客数据查询、书籍管理功能，验证内容管理能力\",\"category\":\"system_capability\",\"priority\":\"medium\",\"tags\":[\"blog\",\"read_only\",\"query\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"blog-agent\",\"tool\":\"RawAllBlogName\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"blog-agent\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}},{\"id\":\"scenario-env-001\",\"title\":\"环境检查链路测试\",\"description\":\"测试 env-agent 的环境检查和状态查询功能，验证环境管理能力\",\"category\":\"system_capability\",\"priority\":\"low\",\"tags\":[\"env\",\"check\",\"read_only\"],\"entry\":{\"type\":\"tool_call\",\"agent_id\":\"env_agent_17587\",\"tool\":\"EnvCheckAll\",\"params\":{}},\"assertions\":{\"expect_message_type\":\"tool_result\",\"require_agents\":[\"env_agent_17587\"],\"require_msg_types\":[\"tool_result\"],\"min_trace_events\":2}}]}",
+  "outcomes": [
+    {
+      "name": "direct_message_type",
+      "success": true,
+      "detail": "got=task_complete want=task_complete"
+    },
+    {
+      "name": "task_status",
+      "success": true,
+      "detail": "got=success want=success"
+    },
+    {
+      "name": "trace_events",
+      "success": true,
+      "detail": "got=12 want\u003e=2"
+    },
+    {
+      "name": "require_agent",
+      "success": true,
+      "detail": "llm-agent"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_assign"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_complete"
+    }
+  ],
+  "scores": {
+    "completion_score": 100,
+    "routing_score": 100,
+    "tool_usage_score": 100,
+    "recovery_score": 100,
+    "final_answer_score": 100,
+    "total": 100
+  }
+}

@@ -1,0 +1,65 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T23:27:04.182964+08:00",
+    "finished_at": "2026-04-11T23:27:04.260712+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T23:27:04.268164+08:00",
+    "finished_at": "2026-04-11T23:27:04.268327+08:00",
+    "data": {
+      "task_id": "",
+      "trace_id": "cd24bfb8"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "passed",
+    "detail": "链路执行结束",
+    "started_at": "2026-04-11T23:27:04.276036+08:00",
+    "finished_at": "2026-04-11T23:27:04.649539+08:00",
+    "data": {
+      "direct_message_from": "cron_agent_903",
+      "direct_message_type": "tool_result",
+      "event_count": 4,
+      "last_event": "cron_agent_903 -\u003e test-agent | tool_result | error: 权限拒绝：缺少认证用户",
+      "remaining_sec": 20,
+      "trace_status": "completed"
+    }
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T23:27:04.649541+08:00",
+    "finished_at": "2026-04-11T23:27:04.668894+08:00",
+    "data": {
+      "events": 4
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T23:27:04.676083+08:00",
+    "finished_at": "2026-04-11T23:27:04.676085+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "passed",
+    "started_at": "2026-04-11T23:27:04.68378+08:00",
+    "finished_at": "2026-04-11T23:27:04.683814+08:00",
+    "data": {
+      "score": 60
+    }
+  }
+]

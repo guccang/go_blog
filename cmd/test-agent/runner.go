@@ -234,7 +234,8 @@ func (r *Runner) runScenario(ctx context.Context, suiteID string, scenario *Test
 	r.saveRun(run)
 
 	waitStep := run.beginStep("await_execution", "轮询等待链路完成")
-	waitErr := r.awaitScenario(ctx, run, scenario)
+	r.saveRun(run)
+	waitErr := r.awaitScenario(ctx, run, scenario, waitStep)
 	if waitErr != nil {
 		run.finishStep(waitStep, StepStatusFailed, waitErr.Error(), nil)
 	} else {
@@ -361,14 +362,16 @@ func (r *Runner) dispatchScenario(run *TestRun, scenario *TestScenario) error {
 	}
 }
 
-func (r *Runner) awaitScenario(ctx context.Context, run *TestRun, scenario *TestScenario) error {
+func (r *Runner) awaitScenario(ctx context.Context, run *TestRun, scenario *TestScenario, waitStep int) error {
 	timeout := scenario.timeoutOrDefault(r.cfg.DefaultTimeoutSec)
 	deadline := time.Now().Add(timeout)
 	settle := time.Duration(r.cfg.SettleAfterMs) * time.Millisecond
 	poll := time.Duration(r.cfg.PollIntervalMs) * time.Millisecond
+	var lastProgress string
 
 	for {
-		if time.Now().After(deadline) {
+		now := time.Now()
+		if now.After(deadline) {
 			return fmt.Errorf("scenario timeout after %s", timeout)
 		}
 		select {
@@ -377,12 +380,18 @@ func (r *Runner) awaitScenario(ctx context.Context, run *TestRun, scenario *Test
 		default:
 		}
 
-		trace, _ := r.fetchTrace(run.TraceID)
+		trace, traceErr := r.fetchTrace(run.TraceID)
 		if trace != nil {
 			run.Trace = trace
 		}
 
 		terminal := r.currentDirectObservation()
+		progress := buildAwaitProgress(run, trace, terminal, now.Sub(run.StartedAt), time.Until(deadline), traceErr)
+		if progress != lastProgress {
+			run.updateStep(waitStep, progress, buildAwaitProgressData(trace, terminal, time.Until(deadline), traceErr))
+			r.saveRun(run)
+			lastProgress = progress
+		}
 		if terminal != nil && r.current != nil && r.current.expectedDirect != "" {
 			if settle > 0 {
 				time.Sleep(settle)
@@ -399,10 +408,89 @@ func (r *Runner) awaitScenario(ctx context.Context, run *TestRun, scenario *Test
 	}
 }
 
+func buildAwaitProgress(run *TestRun, trace *ExecutionTraceSnapshot, terminal *directObservation, elapsed, remaining time.Duration, traceErr error) string {
+	parts := []string{
+		"轮询等待链路完成",
+		fmt.Sprintf("已耗时 %s", roundedDuration(elapsed)),
+		fmt.Sprintf("剩余 %s", roundedDuration(remaining)),
+	}
+	switch {
+	case traceErr != nil:
+		parts = append(parts, "trace="+traceErr.Error())
+	case trace == nil:
+		parts = append(parts, "trace=not_found")
+	default:
+		parts = append(parts, fmt.Sprintf("trace=%s", firstNonEmpty(trace.Status, defaultTraceStatus)))
+		parts = append(parts, fmt.Sprintf("events=%d", len(trace.Events)))
+		if last := latestTraceEvent(trace); last != nil {
+			parts = append(parts, "最近事件="+formatTraceEventSummary(*last))
+		}
+	}
+	if terminal != nil && terminal.msg != nil {
+		parts = append(parts, "已收到直接消息="+terminal.msg.Type)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func buildAwaitProgressData(trace *ExecutionTraceSnapshot, terminal *directObservation, remaining time.Duration, traceErr error) map[string]any {
+	data := map[string]any{
+		"remaining_sec": int(maxDuration(remaining, 0).Round(time.Second) / time.Second),
+	}
+	if traceErr != nil {
+		data["trace_error"] = traceErr.Error()
+	}
+	if trace != nil {
+		data["trace_status"] = firstNonEmpty(trace.Status, defaultTraceStatus)
+		data["event_count"] = len(trace.Events)
+		if last := latestTraceEvent(trace); last != nil {
+			data["last_event"] = formatTraceEventSummary(*last)
+		}
+	}
+	if terminal != nil && terminal.msg != nil {
+		data["direct_message_type"] = terminal.msg.Type
+		data["direct_message_from"] = terminal.msg.From
+	}
+	return data
+}
+
+func latestTraceEvent(trace *ExecutionTraceSnapshot) *GatewayEvent {
+	if trace == nil || len(trace.Events) == 0 {
+		return nil
+	}
+	return &trace.Events[len(trace.Events)-1]
+}
+
+func formatTraceEventSummary(event GatewayEvent) string {
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(event.From) != "" || strings.TrimSpace(event.To) != "" {
+		parts = append(parts, strings.TrimSpace(event.From)+" -> "+strings.TrimSpace(event.To))
+	}
+	if strings.TrimSpace(event.MsgType) != "" {
+		parts = append(parts, strings.TrimSpace(event.MsgType))
+	}
+	if strings.TrimSpace(event.PayloadSummary) != "" {
+		parts = append(parts, strings.TrimSpace(event.PayloadSummary))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func roundedDuration(value time.Duration) string {
+	value = maxDuration(value, 0)
+	return value.Round(time.Second).String()
+}
+
+func maxDuration(value, minimum time.Duration) time.Duration {
+	if value < minimum {
+		return minimum
+	}
+	return value
+}
+
 func (r *Runner) handleMessage(msg *uap.Message) {
+	var snapshot *TestRun
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.current == nil || r.current.run == nil {
+		r.mu.Unlock()
 		return
 	}
 	r.current.run.appendObservedMessage(msg)
@@ -452,7 +540,12 @@ func (r *Runner) handleMessage(msg *uap.Message) {
 			r.direct = &directObservation{msg: msg, notify: &payload}
 		}
 	}
-	r.saveRun(r.current.run)
+	snapshot = clonePointer(r.current.run)
+	r.mu.Unlock()
+
+	if snapshot != nil {
+		r.saveRun(snapshot)
+	}
 }
 
 func (r *Runner) currentDirectObservation() *directObservation {

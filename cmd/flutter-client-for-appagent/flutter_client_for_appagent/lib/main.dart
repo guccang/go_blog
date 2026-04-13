@@ -8,6 +8,7 @@ import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -145,13 +146,21 @@ class AppPalette extends ThemeExtension<AppPalette> {
             0.08,
           )
         : _blendWithAccent(
-            _toneFromAccent(accentHsl, lightness: 0.975, saturationFactor: 0.14),
+            _toneFromAccent(
+              accentHsl,
+              lightness: 0.975,
+              saturationFactor: 0.14,
+            ),
             accent,
             0.03,
           );
     final backgroundBottom = isDark
         ? _blendWithAccent(
-            _toneFromAccent(accentHsl, lightness: 0.055, saturationFactor: 0.28),
+            _toneFromAccent(
+              accentHsl,
+              lightness: 0.055,
+              saturationFactor: 0.28,
+            ),
             accent,
             0.04,
           )
@@ -189,7 +198,11 @@ class AppPalette extends ThemeExtension<AppPalette> {
             0.08,
           )
         : _blendWithAccent(
-            _toneFromAccent(accentHsl, lightness: 0.945, saturationFactor: 0.10),
+            _toneFromAccent(
+              accentHsl,
+              lightness: 0.945,
+              saturationFactor: 0.10,
+            ),
             accent,
             0.04,
           );
@@ -227,38 +240,14 @@ class AppPalette extends ThemeExtension<AppPalette> {
             0.12,
           );
     final textPrimary = isDark
-        ? _toneFromAccent(
-            accentHsl,
-            lightness: 0.965,
-            saturationFactor: 0.06,
-          )
-        : _toneFromAccent(
-            accentHsl,
-            lightness: 0.10,
-            saturationFactor: 0.10,
-          );
+        ? _toneFromAccent(accentHsl, lightness: 0.965, saturationFactor: 0.06)
+        : _toneFromAccent(accentHsl, lightness: 0.10, saturationFactor: 0.10);
     final textSecondary = isDark
-        ? _toneFromAccent(
-            accentHsl,
-            lightness: 0.78,
-            saturationFactor: 0.12,
-          )
-        : _toneFromAccent(
-            accentHsl,
-            lightness: 0.30,
-            saturationFactor: 0.10,
-          );
+        ? _toneFromAccent(accentHsl, lightness: 0.78, saturationFactor: 0.12)
+        : _toneFromAccent(accentHsl, lightness: 0.30, saturationFactor: 0.10);
     final textMuted = isDark
-        ? _toneFromAccent(
-            accentHsl,
-            lightness: 0.62,
-            saturationFactor: 0.16,
-          )
-        : _toneFromAccent(
-            accentHsl,
-            lightness: 0.48,
-            saturationFactor: 0.10,
-          );
+        ? _toneFromAccent(accentHsl, lightness: 0.62, saturationFactor: 0.16)
+        : _toneFromAccent(accentHsl, lightness: 0.48, saturationFactor: 0.10);
     final accentSoft = isDark
         ? _blendWithAccent(surfaceRaised, accent, 0.22)
         : _blendWithAccent(surfaceSoft, accent, 0.12);
@@ -377,7 +366,11 @@ class AppPalette extends ThemeExtension<AppPalette> {
     }
     return AppPalette(
       backgroundTop: Color.lerp(backgroundTop, other.backgroundTop, t)!,
-      backgroundBottom: Color.lerp(backgroundBottom, other.backgroundBottom, t)!,
+      backgroundBottom: Color.lerp(
+        backgroundBottom,
+        other.backgroundBottom,
+        t,
+      )!,
       surface: Color.lerp(surface, other.surface, t)!,
       surfaceRaised: Color.lerp(surfaceRaised, other.surfaceRaised, t)!,
       surfaceMuted: Color.lerp(surfaceMuted, other.surfaceMuted, t)!,
@@ -406,24 +399,25 @@ extension AppPaletteContext on BuildContext {
 
 ThemeData _buildAppTheme(UiThemePreset preset) {
   final palette = AppPalette.fromPreset(preset);
-  final colorScheme = (preset.brightness == Brightness.dark
-          ? const ColorScheme.dark()
-          : const ColorScheme.light())
-      .copyWith(
-        brightness: preset.brightness,
-        primary: palette.accent,
-        secondary: palette.accent,
-        primaryContainer: palette.accentStrong,
-        secondaryContainer: palette.accentSoft,
-        surface: palette.surface,
-        error: palette.error,
-        onPrimary: _foregroundForColor(palette.accent),
-        onSecondary: _foregroundForColor(palette.accent),
-        onPrimaryContainer: _foregroundForColor(palette.accentStrong),
-        onSecondaryContainer: _foregroundForColor(palette.accentSoft),
-        onSurface: palette.textPrimary,
-        onError: Colors.white,
-      );
+  final colorScheme =
+      (preset.brightness == Brightness.dark
+              ? const ColorScheme.dark()
+              : const ColorScheme.light())
+          .copyWith(
+            brightness: preset.brightness,
+            primary: palette.accent,
+            secondary: palette.accent,
+            primaryContainer: palette.accentStrong,
+            secondaryContainer: palette.accentSoft,
+            surface: palette.surface,
+            error: palette.error,
+            onPrimary: _foregroundForColor(palette.accent),
+            onSecondary: _foregroundForColor(palette.accent),
+            onPrimaryContainer: _foregroundForColor(palette.accentStrong),
+            onSecondaryContainer: _foregroundForColor(palette.accentSoft),
+            onSurface: palette.textPrimary,
+            onError: Colors.white,
+          );
   return ThemeData(
     useMaterial3: true,
     brightness: preset.brightness,
@@ -903,6 +897,83 @@ class ClientConfig {
   }
 }
 
+class AppAgentUnauthorizedException implements Exception {
+  const AppAgentUnauthorizedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AppAuthSession {
+  const AppAuthSession({
+    required this.userId,
+    required this.accessToken,
+    required this.refreshToken,
+    required this.expiresAtMs,
+    required this.obsAgentBaseUrl,
+  });
+
+  final String userId;
+  final String accessToken;
+  final String refreshToken;
+  final int expiresAtMs;
+  final String obsAgentBaseUrl;
+
+  factory AppAuthSession.fromJson(
+    Map<String, dynamic> json, {
+    String fallbackUserId = '',
+    String fallbackRefreshToken = '',
+    String fallbackObsAgentBaseUrl = '',
+  }) {
+    final accessToken = (json['access_token'] ?? json['session_token'] ?? '')
+        .toString()
+        .trim();
+    final refreshToken = (json['refresh_token'] ?? fallbackRefreshToken)
+        .toString()
+        .trim();
+    final userId = (json['user_id'] ?? fallbackUserId).toString().trim();
+    final obsAgentBaseUrl =
+        (json['obs_agent_base_url'] ?? fallbackObsAgentBaseUrl)
+            .toString()
+            .trim();
+    final expiresAtMs = _resolveExpiresAtMs(json);
+    if (accessToken.isEmpty) {
+      throw const FormatException('missing access_token');
+    }
+    if (userId.isEmpty) {
+      throw const FormatException('missing user_id');
+    }
+    return AppAuthSession(
+      userId: userId,
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      expiresAtMs: expiresAtMs,
+      obsAgentBaseUrl: obsAgentBaseUrl,
+    );
+  }
+
+  static int _resolveExpiresAtMs(Map<String, dynamic> json) {
+    final rawExpiresAt = json['expires_at'];
+    if (rawExpiresAt is int) {
+      return rawExpiresAt;
+    }
+    final parsedExpiresAt = int.tryParse('${json['expires_at']}') ?? 0;
+    if (parsedExpiresAt > 0) {
+      return parsedExpiresAt;
+    }
+    final rawExpiresIn = json['expires_in'];
+    final expiresIn = rawExpiresIn is int
+        ? rawExpiresIn
+        : int.tryParse('${json['expires_in']}') ?? 0;
+    if (expiresIn <= 0) {
+      return 0;
+    }
+    return DateTime.now().millisecondsSinceEpoch + expiresIn * 1000;
+  }
+}
+
 class VoskTranscriber {
   static const MethodChannel _channel = MethodChannel(
     'com.example.flutter_client_for_appagent/vosk',
@@ -1020,6 +1091,12 @@ class ResumableFileDownloader {
           retryCount = 0;
           continue;
         }
+        if (response.statusCode == HttpStatus.unauthorized) {
+          final body = await response.stream.bytesToString();
+          throw AppAgentUnauthorizedException(
+            'download failed: ${response.statusCode} $body',
+          );
+        }
         if (response.statusCode < 200 || response.statusCode >= 300) {
           final body = await response.stream.bytesToString();
           throw HttpException('download failed: ${response.statusCode} $body');
@@ -1122,6 +1199,25 @@ class AppAgentClient {
   final String sessionToken;
   final String obsAgentBaseUrl;
 
+  Map<String, String> _sessionHeaders() {
+    return <String, String>{
+      if (receiveToken.trim().isNotEmpty)
+        'X-App-Agent-Token': receiveToken.trim(),
+      if (sessionToken.trim().isNotEmpty)
+        'X-App-Agent-Session': sessionToken.trim(),
+    };
+  }
+
+  Never _throwRequestError(String operation, http.Response resp) {
+    final body = resp.body.trim();
+    if (resp.statusCode == HttpStatus.unauthorized) {
+      throw AppAgentUnauthorizedException(
+        '$operation failed: ${resp.statusCode} $body',
+      );
+    }
+    throw HttpException('$operation failed: ${resp.statusCode} $body');
+  }
+
   Uri _buildAttachmentUri(String fileId) {
     final base = Uri.parse(baseUrl);
     final pathSegments = <String>[
@@ -1159,7 +1255,7 @@ class AppAgentClient {
     };
   }
 
-  Future<Map<String, dynamic>> login() async {
+  Future<AppAuthSession> login() async {
     final uri = Uri.parse('$baseUrl/api/app/login');
     final resp = await http
         .post(
@@ -1173,9 +1269,59 @@ class AppAgentClient {
         )
         .timeout(_httpTimeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw HttpException('login failed: ${resp.statusCode} ${resp.body}');
+      _throwRequestError('login', resp);
     }
-    return jsonDecode(resp.body) as Map<String, dynamic>;
+    return AppAuthSession.fromJson(
+      jsonDecode(resp.body) as Map<String, dynamic>,
+      fallbackUserId: userId,
+    );
+  }
+
+  Future<AppAuthSession> refreshSession(String refreshToken) async {
+    final uri = Uri.parse('$baseUrl/api/app/refresh');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            if (receiveToken.trim().isNotEmpty)
+              'X-App-Agent-Token': receiveToken.trim(),
+          },
+          body: jsonEncode({
+            'user_id': userId,
+            'refresh_token': refreshToken.trim(),
+          }),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('refresh', resp);
+    }
+    return AppAuthSession.fromJson(
+      jsonDecode(resp.body) as Map<String, dynamic>,
+      fallbackUserId: userId,
+      fallbackRefreshToken: refreshToken,
+    );
+  }
+
+  Future<void> logout({String refreshToken = ''}) async {
+    final uri = Uri.parse('$baseUrl/api/app/logout');
+    final resp = await http
+        .post(
+          uri,
+          headers: <String, String>{
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode({
+            'user_id': userId,
+            if (refreshToken.trim().isNotEmpty)
+              'refresh_token': refreshToken.trim(),
+          }),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('logout', resp);
+    }
   }
 
   Future<void> sendAppMessage(
@@ -1189,10 +1335,7 @@ class AppAgentClient {
           uri,
           headers: {
             HttpHeaders.contentTypeHeader: 'application/json',
-            if (receiveToken.trim().isNotEmpty)
-              'X-App-Agent-Token': receiveToken.trim(),
-            if (sessionToken.trim().isNotEmpty)
-              'X-App-Agent-Session': sessionToken.trim(),
+            ..._sessionHeaders(),
           },
           body: jsonEncode({
             'user_id': userId,
@@ -1203,7 +1346,7 @@ class AppAgentClient {
         )
         .timeout(_httpTimeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw HttpException('send failed: ${resp.statusCode} ${resp.body}');
+      _throwRequestError('send', resp);
     }
   }
 
@@ -1214,20 +1357,10 @@ class AppAgentClient {
       '$baseUrl/api/app/groups?user_id=$userId&session_token=$sessionToken',
     );
     final resp = await http
-        .get(
-          uri,
-          headers: {
-            if (receiveToken.trim().isNotEmpty)
-              'X-App-Agent-Token': receiveToken.trim(),
-            if (sessionToken.trim().isNotEmpty)
-              'X-App-Agent-Session': sessionToken.trim(),
-          },
-        )
+        .get(uri, headers: _sessionHeaders())
         .timeout(_httpTimeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw HttpException(
-        'list groups failed: ${resp.statusCode} ${resp.body}',
-      );
+      _throwRequestError('list groups', resp);
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final groups = (data['groups'] as List<dynamic>? ?? const [])
@@ -1243,10 +1376,7 @@ class AppAgentClient {
           uri,
           headers: {
             HttpHeaders.contentTypeHeader: 'application/json',
-            if (receiveToken.trim().isNotEmpty)
-              'X-App-Agent-Token': receiveToken.trim(),
-            if (sessionToken.trim().isNotEmpty)
-              'X-App-Agent-Session': sessionToken.trim(),
+            ..._sessionHeaders(),
           },
           body: jsonEncode({
             'action': action,
@@ -1256,9 +1386,7 @@ class AppAgentClient {
         )
         .timeout(_httpTimeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw HttpException(
-        'group $action failed: ${resp.statusCode} ${resp.body}',
-      );
+      _throwRequestError('group $action', resp);
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final groups = (data['groups'] as List<dynamic>? ?? const [])
@@ -1271,12 +1399,7 @@ class AppAgentClient {
     final uri = _buildWsUri(baseUrl, userId, sessionToken);
     return WebSocket.connect(
       uri.toString(),
-      headers: {
-        if (receiveToken.trim().isNotEmpty)
-          'X-App-Agent-Token': receiveToken.trim(),
-        if (sessionToken.trim().isNotEmpty)
-          'X-App-Agent-Session': sessionToken.trim(),
-      },
+      headers: _sessionHeaders(),
     ).timeout(_wsConnectTimeout);
   }
 
@@ -1284,6 +1407,11 @@ class AppAgentClient {
     final uri = _buildAttachmentUri(fileId);
     final resp = await http.get(uri, headers: _attachmentHeaders());
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      if (resp.statusCode == HttpStatus.unauthorized) {
+        throw AppAgentUnauthorizedException(
+          'download attachment failed: ${resp.statusCode} ${resp.body}',
+        );
+      }
       throw HttpException(
         'download attachment failed: ${resp.statusCode} ${resp.body}',
       );
@@ -1363,6 +1491,11 @@ class AppAgentClient {
         .get(uri, headers: _obsAgentHeaders())
         .timeout(_httpTimeout);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      if (resp.statusCode == HttpStatus.unauthorized) {
+        throw AppAgentUnauthorizedException(
+          'obs download sign failed: ${resp.statusCode} ${resp.body}',
+        );
+      }
       throw HttpException(
         'obs download sign failed: ${resp.statusCode} ${resp.body}',
       );
@@ -1426,6 +1559,15 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
+  static const String _lastLoginUserIdKey = 'auth::last_user_id';
+  static const String _refreshTokenStorageKey = 'auth::refresh_token';
+  static const Duration _sessionRefreshSkew = Duration(minutes: 1);
+  static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
   static const List<Duration> _voskDownloadRetryDelays = <Duration>[
     Duration(seconds: 1),
     Duration(seconds: 2),
@@ -1479,6 +1621,8 @@ class _ChatPageState extends State<ChatPage> {
   int _lastSequence = 0;
   String _status = 'Idle';
   String _sessionToken = '';
+  String _refreshToken = '';
+  int _sessionExpiresAtMs = 0;
   String _obsAgentBaseUrl = '';
   String _currentGroupId = '';
   String _configError = '';
@@ -1492,6 +1636,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _voskModelDownloading = false;
   double _voskModelDownloadProgress = 0.0;
   String? _voskModelDownloadError;
+  Future<bool>? _sessionRefreshFuture;
 
   @override
   void initState() {
@@ -1958,6 +2103,7 @@ class _ChatPageState extends State<ChatPage> {
         jsonDecode(raw) as Map<String, dynamic>,
       );
       final savedBaseUrl = prefs.getString(_baseUrlOverrideKey)?.trim() ?? '';
+      final savedUserId = prefs.getString(_lastLoginUserIdKey)?.trim() ?? '';
       // Use saved model path if available (from downloaded model), otherwise use asset config
       final savedModelPath = prefs.getString('vosk_model_path')?.trim() ?? '';
       final config = ClientConfig(
@@ -1977,12 +2123,16 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _clientConfig = config;
         _baseUrlController.text = config.baseUrl;
+        if (savedUserId.isNotEmpty) {
+          _userIdController.text = savedUserId;
+        }
         _configLoading = false;
         _configError = '';
         _status = 'Config loaded';
       });
       _appendSystem('Client config loaded.');
       unawaited(_initVoice());
+      unawaited(_restoreSavedLogin());
     } catch (err) {
       if (!mounted) {
         return;
@@ -2032,6 +2182,339 @@ class _ChatPageState extends State<ChatPage> {
       _status = 'URL updated';
     });
     _appendSystem('Server URL updated: $baseUrl');
+  }
+
+  bool get _sessionExpired {
+    if (_sessionToken.isEmpty) {
+      return true;
+    }
+    if (_sessionExpiresAtMs <= 0) {
+      return false;
+    }
+    return DateTime.now().millisecondsSinceEpoch >= _sessionExpiresAtMs;
+  }
+
+  bool get _sessionNeedsRefresh {
+    if (_refreshToken.trim().isEmpty) {
+      return false;
+    }
+    if (_sessionToken.isEmpty) {
+      return true;
+    }
+    if (_sessionExpiresAtMs <= 0) {
+      return false;
+    }
+    return DateTime.now().millisecondsSinceEpoch >=
+        _sessionExpiresAtMs - _sessionRefreshSkew.inMilliseconds;
+  }
+
+  Future<void> _persistRefreshToken({
+    required String userId,
+    required String refreshToken,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastLoginUserIdKey, userId.trim());
+      if (refreshToken.trim().isNotEmpty) {
+        await _secureStorage.write(
+          key: _refreshTokenStorageKey,
+          value: refreshToken.trim(),
+        );
+      }
+    } catch (err) {
+      debugPrint('Persist refresh token failed: $err');
+    }
+  }
+
+  Future<String> _readStoredRefreshToken() async {
+    try {
+      return (await _secureStorage.read(key: _refreshTokenStorageKey) ?? '')
+          .trim();
+    } catch (err) {
+      debugPrint('Read refresh token failed: $err');
+      return '';
+    }
+  }
+
+  Future<void> _clearStoredRefreshToken() async {
+    try {
+      await _secureStorage.delete(key: _refreshTokenStorageKey);
+    } catch (err) {
+      debugPrint('Clear refresh token failed: $err');
+    }
+  }
+
+  Future<void> _closeSocketForSessionReset() async {
+    _reconnectTimer?.cancel();
+    await _socketSub?.cancel();
+    await _socket?.close();
+    _socketSub = null;
+    _socket = null;
+    _connecting = false;
+    _connected = false;
+    _autoReconnect = false;
+  }
+
+  Future<void> _applySessionTokens(
+    AppAuthSession session, {
+    String? statusText,
+  }) async {
+    final nextRefreshToken = session.refreshToken.trim().isEmpty
+        ? _refreshToken.trim()
+        : session.refreshToken.trim();
+    _userIdController.text = session.userId;
+    if (mounted) {
+      setState(() {
+        _sessionToken = session.accessToken;
+        _refreshToken = nextRefreshToken;
+        _sessionExpiresAtMs = session.expiresAtMs;
+        if (session.obsAgentBaseUrl.isNotEmpty) {
+          _obsAgentBaseUrl = session.obsAgentBaseUrl;
+        }
+        if (statusText != null && statusText.trim().isNotEmpty) {
+          _status = statusText.trim();
+        }
+      });
+    } else {
+      _sessionToken = session.accessToken;
+      _refreshToken = nextRefreshToken;
+      _sessionExpiresAtMs = session.expiresAtMs;
+      if (session.obsAgentBaseUrl.isNotEmpty) {
+        _obsAgentBaseUrl = session.obsAgentBaseUrl;
+      }
+    }
+    await _persistRefreshToken(
+      userId: session.userId,
+      refreshToken: nextRefreshToken,
+    );
+  }
+
+  Future<void> _finishAuthenticatedLogin(
+    AppAuthSession session, {
+    required String successStatus,
+    bool clearPassword = true,
+    String? successMessage,
+  }) async {
+    await _closeSocketForSessionReset();
+    await _applySessionTokens(session, statusText: successStatus);
+    if (clearPassword) {
+      _passwordController.clear();
+    }
+    if (mounted) {
+      setState(() {
+        _lastSequence = 0;
+        _currentGroupId = '';
+        _historyByScope.clear();
+        _seenMessageIds.clear();
+        _autoInstallTriggered.clear();
+        _groups.clear();
+      });
+    } else {
+      _lastSequence = 0;
+      _currentGroupId = '';
+      _historyByScope.clear();
+      _seenMessageIds.clear();
+      _autoInstallTriggered.clear();
+      _groups.clear();
+    }
+    await _loadHistory('direct');
+    await _refreshGroups();
+    if (successMessage != null && successMessage.trim().isNotEmpty) {
+      _appendSystem(successMessage.trim());
+    }
+    unawaited(_connectWs());
+    unawaited(_restoreVoskDownloadProgress());
+  }
+
+  Future<void> _clearLocalAuthState({
+    required String status,
+    bool clearStoredRefreshToken = true,
+  }) async {
+    if (clearStoredRefreshToken) {
+      await _clearStoredRefreshToken();
+    }
+    await _closeSocketForSessionReset();
+    if (mounted) {
+      setState(() {
+        _loggingIn = false;
+        _sessionToken = '';
+        _refreshToken = '';
+        _sessionExpiresAtMs = 0;
+        _obsAgentBaseUrl = '';
+        _lastSequence = 0;
+        _currentGroupId = '';
+        _historyByScope.clear();
+        _seenMessageIds.clear();
+        _autoInstallTriggered.clear();
+        _groups.clear();
+        _status = status;
+      });
+    } else {
+      _loggingIn = false;
+      _sessionToken = '';
+      _refreshToken = '';
+      _sessionExpiresAtMs = 0;
+      _obsAgentBaseUrl = '';
+      _lastSequence = 0;
+      _currentGroupId = '';
+      _historyByScope.clear();
+      _seenMessageIds.clear();
+      _autoInstallTriggered.clear();
+      _groups.clear();
+      _status = status;
+    }
+  }
+
+  bool _isUnauthorizedError(Object err) {
+    if (err is AppAgentUnauthorizedException) {
+      return true;
+    }
+    final text = err.toString().toLowerCase();
+    return text.contains('401') ||
+        text.contains('unauthorized') ||
+        text.contains('login required');
+  }
+
+  Future<bool> _refreshSessionTokens({required bool forceRefresh}) async {
+    final inFlight = _sessionRefreshFuture;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final future = () async {
+      final userId = _userIdController.text.trim();
+      final refreshToken = _refreshToken.trim();
+      if (_clientConfig == null || userId.isEmpty || refreshToken.isEmpty) {
+        return _sessionToken.isNotEmpty && !forceRefresh;
+      }
+      try {
+        final session = await _client.refreshSession(refreshToken);
+        await _applySessionTokens(session);
+        return true;
+      } on AppAgentUnauthorizedException {
+        await _clearLocalAuthState(status: 'Login expired');
+        _appendSystem('登录已过期，请重新输入密码登录。');
+        return false;
+      } catch (err) {
+        if (!forceRefresh && _sessionToken.isNotEmpty && !_sessionExpired) {
+          return true;
+        }
+        rethrow;
+      }
+    }();
+
+    _sessionRefreshFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_sessionRefreshFuture, future)) {
+        _sessionRefreshFuture = null;
+      }
+    }
+  }
+
+  Future<bool> _ensureSessionReady({bool forceRefresh = false}) async {
+    if (!forceRefresh && _sessionToken.isNotEmpty && !_sessionNeedsRefresh) {
+      return true;
+    }
+    if (_refreshToken.trim().isEmpty) {
+      return _sessionToken.isNotEmpty && !forceRefresh;
+    }
+    return _refreshSessionTokens(forceRefresh: forceRefresh);
+  }
+
+  Future<void> _restoreSavedLogin() async {
+    if (_clientConfig == null || _loggingIn || _sessionToken.isNotEmpty) {
+      return;
+    }
+    final refreshToken = await _readStoredRefreshToken();
+    if (refreshToken.isEmpty) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _loggingIn = true;
+        _refreshToken = refreshToken;
+        _status = 'Restoring login...';
+      });
+    } else {
+      _loggingIn = true;
+      _refreshToken = refreshToken;
+      _status = 'Restoring login...';
+    }
+    try {
+      final refreshed = await _ensureSessionReady(forceRefresh: true);
+      if (!refreshed || _sessionToken.isEmpty) {
+        return;
+      }
+      final session = AppAuthSession(
+        userId: _userIdController.text.trim(),
+        accessToken: _sessionToken,
+        refreshToken: _refreshToken,
+        expiresAtMs: _sessionExpiresAtMs,
+        obsAgentBaseUrl: _obsAgentBaseUrl,
+      );
+      await _finishAuthenticatedLogin(
+        session,
+        successStatus: 'Login restored, connecting WebSocket...',
+        clearPassword: false,
+        successMessage: '已从安全存储恢复登录。',
+      );
+    } catch (err) {
+      if (mounted) {
+        setState(() {
+          _status = 'Auto login failed';
+        });
+      } else {
+        _status = 'Auto login failed';
+      }
+      _appendSystem(_describeRequestError(err, operation: 'Restore login'));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loggingIn = false;
+        });
+      } else {
+        _loggingIn = false;
+      }
+    }
+  }
+
+  Future<T> _runAuthed<T>(
+    String operation,
+    Future<T> Function(AppAgentClient client) action,
+  ) async {
+    final ready = await _ensureSessionReady();
+    if (!ready) {
+      throw const AppAgentUnauthorizedException('Please login first.');
+    }
+    try {
+      return await action(_client);
+    } catch (err) {
+      if (!_isUnauthorizedError(err)) {
+        rethrow;
+      }
+      final refreshed = await _ensureSessionReady(forceRefresh: true);
+      if (!refreshed) {
+        throw const AppAgentUnauthorizedException('Please login first.');
+      }
+      return action(_client);
+    }
+  }
+
+  Future<void> _logout() async {
+    final refreshToken = _refreshToken.trim();
+    try {
+      if (_clientConfig != null &&
+          (_sessionToken.isNotEmpty || refreshToken.isNotEmpty)) {
+        await _client.logout(refreshToken: refreshToken);
+      }
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Logout'));
+    } finally {
+      await _clearLocalAuthState(status: 'Logged out');
+      _appendSystem('已清除本地登录凭据。');
+    }
   }
 
   AppAgentClient get _client => AppAgentClient(
@@ -2168,6 +2651,9 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (err is SocketException) {
       return '$operation failed: unable to reach app-agent.';
+    }
+    if (err is AppAgentUnauthorizedException) {
+      return '$operation failed: login required or expired.';
     }
     final raw = err.toString();
     if (raw.startsWith('ClientException: ')) {
@@ -2361,11 +2847,14 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _refreshGroups() async {
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       return;
     }
     try {
-      final groups = await _client.listGroups();
+      final groups = await _runAuthed(
+        'Load groups',
+        (client) => client.listGroups(),
+      );
       final previousGroupId = _currentGroupId;
       final previousTabsExpanded = _groupTabsExpanded;
       final nextGroupId = _resolvePreferredGroupId(
@@ -2398,12 +2887,15 @@ class _ChatPageState extends State<ChatPage> {
       _appendSystem('Group ID is required.');
       return;
     }
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
     }
     try {
-      final groups = await _client.mutateGroup(action, groupId);
+      final groups = await _runAuthed(
+        'Group $action',
+        (client) => client.mutateGroup(action, groupId),
+      );
       final previousGroupId = _currentGroupId;
       final previousTabsExpanded = _groupTabsExpanded;
       final nextGroupId = action == 'leave'
@@ -2463,39 +2955,16 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     try {
-      final resp = await _client.login();
-      final sessionToken = (resp['session_token'] ?? '').toString();
-      final obsAgentBaseUrl = (resp['obs_agent_base_url'] ?? '')
-          .toString()
-          .trim();
-      if (sessionToken.isEmpty) {
-        throw const FormatException('missing session_token');
-      }
-      if (mounted) {
-        setState(() {
-          _sessionToken = sessionToken;
-          _obsAgentBaseUrl = obsAgentBaseUrl;
-          _lastSequence = 0;
-          _currentGroupId = '';
-          _historyByScope.clear();
-          _seenMessageIds.clear();
-          _groups.clear();
-          _status = 'Login success, connecting WebSocket...';
-        });
-      }
-      await _loadHistory('direct');
-      await _refreshGroups();
-      unawaited(_connectWs());
-      // Check for incomplete Vosk model download after login
-      unawaited(_restoreVoskDownloadProgress());
+      final session = await _client.login();
+      await _finishAuthenticatedLogin(
+        session,
+        successStatus: 'Login success, connecting WebSocket...',
+      );
     } catch (err) {
-      if (mounted) {
-        setState(() {
-          _sessionToken = '';
-          _obsAgentBaseUrl = '';
-          _status = 'Login failed';
-        });
-      }
+      await _clearLocalAuthState(
+        status: 'Login failed',
+        clearStoredRefreshToken: false,
+      );
       _appendSystem(_describeRequestError(err, operation: 'Login'));
     } finally {
       if (mounted) {
@@ -2518,7 +2987,7 @@ class _ChatPageState extends State<ChatPage> {
       _appendSystem('User ID is required.');
       return;
     }
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
     }
@@ -2534,7 +3003,10 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     try {
-      final socket = await _client.connectWebSocket();
+      final socket = await _runAuthed(
+        'WebSocket connect',
+        (client) => client.connectWebSocket(),
+      );
       await _socketSub?.cancel();
       await _socket?.close();
 
@@ -2819,19 +3291,21 @@ class _ChatPageState extends State<ChatPage> {
           );
           final existingFile = File(audioPath);
           if (!await existingFile.exists()) {
-            await _client.downloadAttachmentToFile(
-              fileId,
-              destinationPath: audioPath,
-              attachmentMeta: resolved,
-              onProgress: (receivedBytes, totalBytes, resumed) {
-                _updateDownloadStatus(
-                  label: '语音',
-                  receivedBytes: receivedBytes,
-                  totalBytes: totalBytes,
-                  resumed: resumed,
-                );
-              },
-            );
+            await _runAuthed('Download attachment', (client) {
+              return client.downloadAttachmentToFile(
+                fileId,
+                destinationPath: audioPath,
+                attachmentMeta: resolved,
+                onProgress: (receivedBytes, totalBytes, resumed) {
+                  _updateDownloadStatus(
+                    label: '语音',
+                    receivedBytes: receivedBytes,
+                    totalBytes: totalBytes,
+                    resumed: resumed,
+                  );
+                },
+              );
+            });
           }
           _clearDownloadStatus(successText: '语音下载完成');
           resolved['audio_path'] = audioPath;
@@ -2853,19 +3327,21 @@ class _ChatPageState extends State<ChatPage> {
           );
           final imageFile = File(imagePath);
           if (!await imageFile.exists()) {
-            await _client.downloadAttachmentToFile(
-              fileId,
-              destinationPath: imagePath,
-              attachmentMeta: resolved,
-              onProgress: (receivedBytes, totalBytes, resumed) {
-                _updateDownloadStatus(
-                  label: fileName.isEmpty ? '图片' : fileName,
-                  receivedBytes: receivedBytes,
-                  totalBytes: totalBytes,
-                  resumed: resumed,
-                );
-              },
-            );
+            await _runAuthed('Download attachment', (client) {
+              return client.downloadAttachmentToFile(
+                fileId,
+                destinationPath: imagePath,
+                attachmentMeta: resolved,
+                onProgress: (receivedBytes, totalBytes, resumed) {
+                  _updateDownloadStatus(
+                    label: fileName.isEmpty ? '图片' : fileName,
+                    receivedBytes: receivedBytes,
+                    totalBytes: totalBytes,
+                    resumed: resumed,
+                  );
+                },
+              );
+            });
           }
           _clearDownloadStatus(successText: '图片下载完成');
           final bytes = await imageFile.readAsBytes();
@@ -2891,19 +3367,21 @@ class _ChatPageState extends State<ChatPage> {
           );
           final file = File(filePath);
           if (!await file.exists()) {
-            await _client.downloadAttachmentToFile(
-              fileId,
-              destinationPath: filePath,
-              attachmentMeta: resolved,
-              onProgress: (receivedBytes, totalBytes, resumed) {
-                _updateDownloadStatus(
-                  label: fileName.isEmpty ? '附件' : fileName,
-                  receivedBytes: receivedBytes,
-                  totalBytes: totalBytes,
-                  resumed: resumed,
-                );
-              },
-            );
+            await _runAuthed('Download attachment', (client) {
+              return client.downloadAttachmentToFile(
+                fileId,
+                destinationPath: filePath,
+                attachmentMeta: resolved,
+                onProgress: (receivedBytes, totalBytes, resumed) {
+                  _updateDownloadStatus(
+                    label: fileName.isEmpty ? '附件' : fileName,
+                    receivedBytes: receivedBytes,
+                    totalBytes: totalBytes,
+                    resumed: resumed,
+                  );
+                },
+              );
+            });
           }
           _clearDownloadStatus(successText: '附件下载完成');
           resolved['file_path'] = filePath;
@@ -2996,19 +3474,21 @@ class _ChatPageState extends State<ChatPage> {
 
     // Download the APK
     try {
-      await _client.downloadAttachmentToFile(
-        fileId,
-        destinationPath: apkPath,
-        attachmentMeta: meta,
-        onProgress: (receivedBytes, totalBytes, resumed) {
-          _updateDownloadStatus(
-            label: fileName.isEmpty ? 'APK' : fileName,
-            receivedBytes: receivedBytes,
-            totalBytes: totalBytes,
-            resumed: resumed,
-          );
-        },
-      );
+      await _runAuthed('Download attachment', (client) {
+        return client.downloadAttachmentToFile(
+          fileId,
+          destinationPath: apkPath,
+          attachmentMeta: meta,
+          onProgress: (receivedBytes, totalBytes, resumed) {
+            _updateDownloadStatus(
+              label: fileName.isEmpty ? 'APK' : fileName,
+              receivedBytes: receivedBytes,
+              totalBytes: totalBytes,
+              resumed: resumed,
+            );
+          },
+        );
+      });
       // Try to extract version from filename (e.g., app-release-1.0.0.apk -> 1.0.0)
       String versionLabel = '';
       final versionMatch = RegExp(
@@ -3164,7 +3644,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _handleVoiceStart(LongPressStartDetails details) async {
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
     }
@@ -3288,11 +3768,11 @@ class _ChatPageState extends State<ChatPage> {
 
     switch (resolveVoiceGestureAction(dragOffset)) {
       case VoiceGestureAction.cancel:
-      await _cancelVoice();
-      return;
+        await _cancelVoice();
+        return;
       case VoiceGestureAction.transcribe:
-      await _transcribeVoiceToDraft();
-      return;
+        await _transcribeVoiceToDraft();
+        return;
       case VoiceGestureAction.sendAudio:
         await _sendVoiceAsAudio();
     }
@@ -3446,20 +3926,22 @@ class _ChatPageState extends State<ChatPage> {
         _sending = true;
       });
       try {
-        await _client.sendAppMessage(
-          label,
-          messageType: 'audio',
-          meta: <String, dynamic>{
-            'audio_base64': base64Encode(bytes),
-            'audio_format': audioFormat,
-            'duration_ms': recorded.duration.inMilliseconds,
-            if (_speechDraft.trim().isNotEmpty)
-              'speech_text': _speechDraft.trim(),
-            'input_mode': 'voice_audio',
-            if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
-            if (_currentGroupId.isNotEmpty) 'scope': 'group',
-          },
-        );
+        await _runAuthed('Send voice audio', (client) {
+          return client.sendAppMessage(
+            label,
+            messageType: 'audio',
+            meta: <String, dynamic>{
+              'audio_base64': base64Encode(bytes),
+              'audio_format': audioFormat,
+              'duration_ms': recorded.duration.inMilliseconds,
+              if (_speechDraft.trim().isNotEmpty)
+                'speech_text': _speechDraft.trim(),
+              'input_mode': 'voice_audio',
+              if (_currentGroupId.isNotEmpty) 'group_id': _currentGroupId,
+              if (_currentGroupId.isNotEmpty) 'scope': 'group',
+            },
+          );
+        });
         if (mounted) {
           setState(() {
             _status = 'Voice audio sent';
@@ -3487,7 +3969,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _pickAndSendImage(ImageSource source) async {
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
     }
@@ -3536,7 +4018,13 @@ class _ChatPageState extends State<ChatPage> {
       });
 
       try {
-        await _client.sendAppMessage('', messageType: 'image', meta: localMeta);
+        await _runAuthed('Send image', (client) {
+          return client.sendAppMessage(
+            '',
+            messageType: 'image',
+            meta: localMeta,
+          );
+        });
         if (mounted) {
           setState(() {
             _status = 'Image sent';
@@ -3690,7 +4178,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _sendMessage() async {
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
       return;
     }
@@ -3706,15 +4194,17 @@ class _ChatPageState extends State<ChatPage> {
     });
     try {
       if (_currentGroupId.isEmpty) {
-        await _client.sendMessage(text);
+        await _runAuthed('Send message', (client) => client.sendMessage(text));
       } else {
-        await _client.sendAppMessage(
-          text,
-          meta: <String, dynamic>{
-            'group_id': _currentGroupId,
-            'scope': 'group',
-          },
-        );
+        await _runAuthed('Send message', (client) {
+          return client.sendAppMessage(
+            text,
+            meta: <String, dynamic>{
+              'group_id': _currentGroupId,
+              'scope': 'group',
+            },
+          );
+        });
       }
       if (mounted) {
         setState(() {
@@ -3752,7 +4242,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_connecting) {
       return 'Connecting';
     }
-    if (_sessionToken.isEmpty) {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       return 'Login required';
     }
     return 'Offline';
@@ -3882,7 +4372,10 @@ class _ChatPageState extends State<ChatPage> {
                     const SizedBox(height: 4),
                     Text(
                       '中文语音识别小模型（约 40MB）',
-                      style: TextStyle(fontSize: 12, color: palette.textSecondary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: palette.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -3972,8 +4465,9 @@ class _ChatPageState extends State<ChatPage> {
                             ? null
                             : _downloadAndExtractVoskModel,
                         style: FilledButton.styleFrom(
-                          backgroundColor:
-                              hasPartial ? palette.warning : palette.accent,
+                          backgroundColor: hasPartial
+                              ? palette.warning
+                              : palette.accent,
                           foregroundColor: _foregroundForColor(
                             hasPartial ? palette.warning : palette.accent,
                           ),
@@ -4010,9 +4504,7 @@ class _ChatPageState extends State<ChatPage> {
               decoration: BoxDecoration(
                 color: palette.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: palette.error.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: palette.error.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -4025,10 +4517,7 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: Text(
                       _voskModelDownloadError!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: palette.error,
-                      ),
+                      style: TextStyle(fontSize: 11, color: palette.error),
                     ),
                   ),
                   IconButton(
@@ -4094,7 +4583,11 @@ class _ChatPageState extends State<ChatPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.palette_outlined, size: 18, color: palette.textSecondary),
+              Icon(
+                Icons.palette_outlined,
+                size: 18,
+                color: palette.textSecondary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -4111,7 +4604,10 @@ class _ChatPageState extends State<ChatPage> {
                     const SizedBox(height: 4),
                     Text(
                       '切换整套 UI 的主色、背景和控件氛围',
-                      style: TextStyle(fontSize: 12, color: palette.textSecondary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: palette.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -4347,7 +4843,8 @@ class _ChatPageState extends State<ChatPage> {
                           ChoiceChip(
                             selected: !groupsTabSelected,
                             label: const Text('Direct'),
-                            onSelected: (_) => unawaited(_switchToDirectScope()),
+                            onSelected: (_) =>
+                                unawaited(_switchToDirectScope()),
                           ),
                           if (hasGroups) ...[
                             const SizedBox(width: 8),
@@ -4372,7 +4869,8 @@ class _ChatPageState extends State<ChatPage> {
                                   ],
                                 ],
                               ),
-                              onSelected: (_) => unawaited(_switchToGroupsTab()),
+                              onSelected: (_) =>
+                                  unawaited(_switchToGroupsTab()),
                             ),
                           ],
                         ],
@@ -4391,7 +4889,9 @@ class _ChatPageState extends State<ChatPage> {
                             final group = _groups[index];
                             return ChoiceChip(
                               selected: _currentGroupId == group.id,
-                              label: Text('${group.id} (${group.members.length})'),
+                              label: Text(
+                                '${group.id} (${group.members.length})',
+                              ),
                               onSelected: (_) =>
                                   unawaited(_switchToGroupScope(group.id)),
                             );
@@ -4529,6 +5029,22 @@ class _ChatPageState extends State<ChatPage> {
                               icon: const Icon(Icons.link_off_rounded),
                               label: const Text('Disconnect'),
                             ),
+                            OutlinedButton.icon(
+                              onPressed:
+                                  _sessionToken.isEmpty && _refreshToken.isEmpty
+                                  ? null
+                                  : _logout,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: palette.textPrimary,
+                                minimumSize: const Size(120, 48),
+                                side: BorderSide(color: palette.borderStrong),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              icon: const Icon(Icons.logout_rounded),
+                              label: const Text('Logout'),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -4572,7 +5088,8 @@ class _ChatPageState extends State<ChatPage> {
                           value: receiveToken,
                           onCopy: receiveToken.isEmpty
                               ? null
-                              : () => unawaited(_copyText('Token', receiveToken)),
+                              : () =>
+                                    unawaited(_copyText('Token', receiveToken)),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -4677,10 +5194,10 @@ class _ChatPageState extends State<ChatPage> {
                 icon: _voiceInputMode
                     ? Icons.keyboard_alt_rounded
                     : Icons.graphic_eq_rounded,
-                  onPressed: canInteract ? _toggleVoiceInputMode : null,
-                  active: _voiceInputMode,
-                  activeColor: palette.accent,
-                ),
+                onPressed: canInteract ? _toggleVoiceInputMode : null,
+                active: _voiceInputMode,
+                activeColor: palette.accent,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: AnimatedSwitcher(
@@ -4711,10 +5228,15 @@ class _ChatPageState extends State<ChatPage> {
                               child: Text(
                                 _recording ? '松手 发送' : '按住 说话',
                                 style: TextStyle(
-                                  color: (_recording
-                                          ? _foregroundForColor(palette.accent)
-                                          : palette.textPrimary)
-                                      .withValues(alpha: _recording ? 1 : 0.9),
+                                  color:
+                                      (_recording
+                                              ? _foregroundForColor(
+                                                  palette.accent,
+                                                )
+                                              : palette.textPrimary)
+                                          .withValues(
+                                            alpha: _recording ? 1 : 0.9,
+                                          ),
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.2,
@@ -4751,17 +5273,14 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                           cursorColor: palette.accent,
                           decoration: InputDecoration(
-                            hintText: _currentGroupId.isEmpty
-                                ? '发消息'
-                                : '发群消息',
+                            hintText: _currentGroupId.isEmpty ? '发消息' : '发群消息',
                             hintStyle: TextStyle(
                               color: palette.textMuted,
                               fontSize: 15,
                             ),
                             filled: true,
                             fillColor: palette.surfaceSoft,
-                            floatingLabelBehavior:
-                                FloatingLabelBehavior.never,
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -4769,11 +5288,15 @@ class _ChatPageState extends State<ChatPage> {
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: palette.borderStrong),
+                              borderSide: BorderSide(
+                                color: palette.borderStrong,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: palette.borderStrong),
+                              borderSide: BorderSide(
+                                color: palette.borderStrong,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -5098,7 +5621,8 @@ class _ChatPageState extends State<ChatPage> {
                               return _MessageBubble(
                                 message: msg,
                                 isPlaying:
-                                    _playingAudioKey == _messagePlaybackKey(msg),
+                                    _playingAudioKey ==
+                                    _messagePlaybackKey(msg),
                                 onTap: () => _handleMessageTap(msg),
                                 onCopy: () async {
                                   await Clipboard.setData(
@@ -5164,7 +5688,9 @@ class _MessageBubble extends StatelessWidget {
     final bgColor = isSystem
         ? palette.messageSystem
         : (isOutgoing ? palette.messageOutgoing : palette.messageIncoming);
-    final fgColor = isOutgoing ? _foregroundForColor(bgColor) : palette.textPrimary;
+    final fgColor = isOutgoing
+        ? _foregroundForColor(bgColor)
+        : palette.textPrimary;
     final isAudio = message.messageType == 'audio';
     final isImage = message.messageType == 'image';
     final isApk = isApkChatMessage(message);
@@ -5406,8 +5932,7 @@ class _VoiceWaveformBadgeState extends State<_VoiceWaveformBadge>
                       builder: (context) {
                         final wave =
                             0.5 + 0.5 * math.sin(phase * 1.9 + i * 0.82);
-                        final height =
-                            _baseHeights[i] + _amplitudes[i] * wave;
+                        final height = _baseHeights[i] + _amplitudes[i] * wave;
                         final alpha = (0.46 + wave * 0.46).clamp(0.0, 1.0);
                         return Container(
                           width: 4,

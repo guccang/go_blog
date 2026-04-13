@@ -1,0 +1,54 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - heading "test-agent 实时检测控制台" [level=1] [ref=e4]
+    - paragraph [ref=e5]: 用于启动评估、实时查看执行路径、场景进度、静态/动态结果，以及最终评估结论。
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - button "运行完整评估" [ref=e9]
+        - combobox [ref=e10]:
+          - option "选择 suite" [selected]
+          - option "Cron Agent Auth Guard"
+          - option "LLM Cron Reminder Observe"
+          - option "Local Smoke"
+        - combobox [ref=e11]:
+          - option "全部场景" [selected]
+        - button "运行选中 Suite" [disabled] [ref=e12]
+        - generic [ref=e13]: idle
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: 现在在做什么
+          - generic [ref=e17]: 当前空闲
+        - generic [ref=e18]:
+          - generic [ref=e19]: 当前进度
+          - generic [ref=e20]: 暂无运行
+    - generic [ref=e22]:
+      - generic [ref=e23]: 模式
+      - generic [ref=e24]: "-"
+    - generic [ref=e26]:
+      - generic [ref=e27]: 在线 Agents
+      - generic [ref=e28]: "0"
+    - generic [ref=e30]:
+      - generic [ref=e31]: 综合得分
+      - generic [ref=e32]: "-"
+    - generic [ref=e33]:
+      - heading "在线 Agent" [level=2] [ref=e34]
+      - generic [ref=e36]: 暂无在线 agent
+    - generic [ref=e37]:
+      - heading "当前场景" [level=2] [ref=e38]
+      - generic [ref=e40]: 暂无运行中的场景。
+    - generic [ref=e41]:
+      - heading "执行计划" [level=2] [ref=e42]
+      - generic [ref=e44]: 暂无执行计划。
+    - generic [ref=e45]:
+      - heading "静态评估集" [level=2] [ref=e46]
+      - generic [ref=e48]: 暂无数据。
+    - generic [ref=e49]:
+      - heading "动态评估集" [level=2] [ref=e50]
+      - generic [ref=e52]: 暂无数据。
+    - generic [ref=e53]:
+      - heading "最终结果 / Suite 结果" [level=2] [ref=e54]
+      - generic [ref=e56]: 暂无结果。
+    - generic [ref=e57]:
+      - heading "最近运行历史" [level=2] [ref=e58]
+      - generic [ref=e60]: 暂无历史。

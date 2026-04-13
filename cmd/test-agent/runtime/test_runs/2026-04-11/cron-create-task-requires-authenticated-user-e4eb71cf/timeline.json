@@ -1,0 +1,29 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T22:04:54.423664+08:00",
+    "finished_at": "2026-04-11T22:04:55.771089+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T22:04:55.779145+08:00",
+    "finished_at": "2026-04-11T22:04:55.779361+08:00",
+    "data": {
+      "task_id": "",
+      "trace_id": "e4eb71cf"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "running",
+    "detail": "轮询等待链路完成",
+    "started_at": "2026-04-11T22:04:55.78594+08:00"
+  }
+]

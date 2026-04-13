@@ -1,0 +1,56 @@
+{
+  "success": false,
+  "status": "failed",
+  "final_message_type": "task_complete",
+  "final_status": "success",
+  "outcomes": [
+    {
+      "name": "direct_message_type",
+      "success": true,
+      "detail": "got=task_complete want=task_complete"
+    },
+    {
+      "name": "trace_events",
+      "success": true,
+      "detail": "got=6 want\u003e=4"
+    },
+    {
+      "name": "require_agent",
+      "success": true,
+      "detail": "llm-agent"
+    },
+    {
+      "name": "require_agent",
+      "success": false,
+      "detail": "wechat-wechat-agent"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_assign"
+    },
+    {
+      "name": "require_msg_type",
+      "success": false,
+      "detail": "notify"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_complete"
+    },
+    {
+      "name": "expected_path",
+      "success": false,
+      "detail": "actual=test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent -\u003e llm-agent -\u003e test-agent"
+    }
+  ],
+  "scores": {
+    "completion_score": 100,
+    "routing_score": 50,
+    "tool_usage_score": 100,
+    "recovery_score": 100,
+    "final_answer_score": 100,
+    "total": 90
+  }
+}

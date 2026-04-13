@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,5 +185,196 @@ func TestRunEvaluationStaticAndDynamicCollections(t *testing.T) {
 	finalReportPath := filepath.Join(cfg.OutputDir, time.Now().Format("2006-01-02"), final.RunID, "final_report.json")
 	if _, err := os.Stat(finalReportPath); err != nil {
 		t.Fatalf("expected final report on disk: %v", err)
+	}
+}
+
+func TestRunEvaluationPlannerFailureMarksDynamicCollectionFailed(t *testing.T) {
+	gw := newTestGateway(t)
+	defer gw.close()
+
+	plannerAgent := uap.NewClient(gw.wsURL(), "llm-agent", "planner", "llm-agent")
+	plannerAgent.OnMessage = func(msg *uap.Message) {
+		if msg.Type != uap.MsgTaskAssign {
+			return
+		}
+		var payload uap.TaskAssignPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			t.Errorf("plannerAgent unmarshal task_assign: %v", err)
+			return
+		}
+		_ = plannerAgent.SendTo(msg.From, uap.MsgTaskComplete, uap.TaskCompletePayload{
+			TaskID: payload.TaskID,
+			Status: "failed",
+			Error:  "planner failed",
+		})
+	}
+	go plannerAgent.Run()
+	defer plannerAgent.Stop()
+
+	time.Sleep(300 * time.Millisecond)
+
+	suiteDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.GatewayURL = gw.wsURL()
+	cfg.GatewayHTTP = gw.httpURL()
+	cfg.OutputDir = t.TempDir()
+	cfg.SuiteDir = suiteDir
+	cfg.StaticSuiteDir = suiteDir
+	cfg.DefaultTimeoutSec = 5
+	cfg.Dynamic.Enabled = true
+	cfg.Dynamic.GeneratorAgent = "llm-agent"
+	cfg.Dynamic.TimeoutSec = 5
+
+	runner := NewRunner(cfg)
+	defer runner.Close()
+
+	final, err := runner.RunEvaluation(context.Background())
+	if err != nil {
+		t.Fatalf("RunEvaluation error: %v", err)
+	}
+	if final.DynamicReport == nil {
+		t.Fatalf("expected dynamic report, got %+v", final)
+	}
+	if final.DynamicReport.Status != RunStatusFailed {
+		t.Fatalf("expected dynamic report failed, got %+v", final.DynamicReport)
+	}
+	if final.DynamicReport.ExecutedScenarios != 1 || final.DynamicReport.FailedScenarios != 1 {
+		t.Fatalf("expected failed planner run to count as executed failure, got %+v", final.DynamicReport)
+	}
+	if final.Status != RunStatusFailed {
+		t.Fatalf("expected final status failed, got %+v", final)
+	}
+}
+
+func TestNormalizeScenarioAgentRefsResolvesAliases(t *testing.T) {
+	online := map[string]GatewayAgentSnapshot{
+		"cron_agent_903": {
+			AgentID:   "cron_agent_903",
+			AgentType: "cron_agent",
+			Name:      "cron-agent",
+		},
+		"wechat-wechat-agent": {
+			AgentID:   "wechat-wechat-agent",
+			AgentType: "wechat",
+			Name:      "wechat-agent",
+		},
+	}
+
+	scenario := TestScenario{
+		Entry: ScenarioEntry{
+			Type:    EntryTypeNotify,
+			ToAgent: "cron-agent",
+			Notify: &NotifyEntry{
+				To: "wechat-agent",
+			},
+		},
+		Assertions: TestAssertions{
+			RequireAgents: []string{"cron-agent", "wechat-agent"},
+			ExpectedPath:  []string{"test-agent", "cron-agent", "wechat-agent"},
+		},
+	}
+
+	normalizeScenarioAgentRefs(&scenario, online)
+
+	if scenario.Entry.ToAgent != "cron_agent_903" {
+		t.Fatalf("expected to_agent normalized, got %q", scenario.Entry.ToAgent)
+	}
+	if scenario.Entry.Notify == nil || scenario.Entry.Notify.To != "wechat-wechat-agent" {
+		t.Fatalf("expected notify target normalized, got %+v", scenario.Entry.Notify)
+	}
+	if got := strings.Join(scenario.Assertions.RequireAgents, ","); got != "cron_agent_903,wechat-wechat-agent" {
+		t.Fatalf("expected require_agents normalized, got %q", got)
+	}
+	if got := strings.Join(scenario.Assertions.ExpectedPath, ","); got != "test-agent,cron_agent_903,wechat-wechat-agent" {
+		t.Fatalf("expected expected_path normalized, got %q", got)
+	}
+}
+
+func TestRunEvaluationStaticCollectionSupportsAgentAliases(t *testing.T) {
+	gw := newTestGateway(t)
+	defer gw.close()
+
+	cronAgent := uap.NewClient(gw.wsURL(), "cron_agent_903", "cron-agent", "cron-agent")
+	cronAgent.Tools = []uap.ToolDef{{Name: "cronCreateTask"}}
+	cronAgent.OnMessage = func(msg *uap.Message) {
+		if msg.Type != uap.MsgToolCall {
+			return
+		}
+		var payload uap.ToolCallPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			t.Errorf("cronAgent unmarshal tool call: %v", err)
+			return
+		}
+		_ = cronAgent.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   true,
+			Result:    `{"ok":true}`,
+		})
+	}
+	go cronAgent.Run()
+	defer cronAgent.Stop()
+
+	time.Sleep(300 * time.Millisecond)
+
+	suiteDir := t.TempDir()
+	staticSuitePath := filepath.Join(suiteDir, "static.json")
+	staticSuite := mustMarshal(map[string]any{
+		"id":          "static-suite",
+		"title":       "static-suite",
+		"description": "alias-compatible static suite",
+		"scenarios": []map[string]any{
+			{
+				"id":          "static-cron-alias",
+				"title":       "static-cron-alias",
+				"description": "cron agent alias",
+				"category":    "contract",
+				"priority":    "P0",
+				"entry": map[string]any{
+					"type":     EntryTypeToolCall,
+					"to_agent": "cron-agent",
+					"tool": map[string]any{
+						"tool_name": "cronCreateTask",
+						"arguments": map[string]any{"name": "alias"},
+					},
+				},
+				"assertions": map[string]any{
+					"expect_message_type": uap.MsgToolResult,
+					"expect_tool_success": true,
+					"require_agents":      []string{"cron-agent"},
+					"require_msg_types":   []string{uap.MsgToolCall, uap.MsgToolResult},
+					"expected_path":       []string{"test-agent", "cron-agent"},
+					"min_trace_events":    2,
+				},
+			},
+		},
+	})
+	if err := os.WriteFile(staticSuitePath, staticSuite, 0644); err != nil {
+		t.Fatalf("write static suite: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.GatewayURL = gw.wsURL()
+	cfg.GatewayHTTP = gw.httpURL()
+	cfg.OutputDir = t.TempDir()
+	cfg.SuiteDir = suiteDir
+	cfg.StaticSuiteDir = suiteDir
+	cfg.DefaultTimeoutSec = 5
+	cfg.Dynamic.Enabled = false
+
+	runner := NewRunner(cfg)
+	defer runner.Close()
+
+	final, err := runner.RunEvaluation(context.Background())
+	if err != nil {
+		t.Fatalf("RunEvaluation error: %v", err)
+	}
+	if final.StaticReport == nil {
+		t.Fatalf("expected static report, got %+v", final)
+	}
+	if final.StaticReport.ExecutedScenarios != 1 || final.StaticReport.PassedScenarios != 1 {
+		t.Fatalf("unexpected static report: %+v", final.StaticReport)
+	}
+	if final.StaticReport.SkippedScenarios != 0 {
+		t.Fatalf("expected no skipped static scenarios, got %+v", final.StaticReport)
 	}
 }

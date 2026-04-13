@@ -1,0 +1,65 @@
+[
+  {
+    "name": "capture_availability",
+    "status": "passed",
+    "detail": "Gateway 可访问",
+    "started_at": "2026-04-11T23:29:32.341358+08:00",
+    "finished_at": "2026-04-11T23:29:32.43887+08:00",
+    "data": {
+      "agents": 12
+    }
+  },
+  {
+    "name": "dispatch_entry",
+    "status": "passed",
+    "detail": "入口消息发送成功",
+    "started_at": "2026-04-11T23:29:32.445711+08:00",
+    "finished_at": "2026-04-11T23:29:32.445795+08:00",
+    "data": {
+      "task_id": "task-a2d6ddf4",
+      "trace_id": "a2d6ddf4"
+    }
+  },
+  {
+    "name": "await_execution",
+    "status": "passed",
+    "detail": "链路执行结束",
+    "started_at": "2026-04-11T23:29:32.458712+08:00",
+    "finished_at": "2026-04-11T23:29:32.839259+08:00",
+    "data": {
+      "direct_message_from": "llm-agent",
+      "direct_message_type": "task_complete",
+      "event_count": 6,
+      "last_event": "llm-agent -\u003e test-agent | task_complete | complete task=task-a2d6ddf4 status=success",
+      "remaining_sec": 20,
+      "trace_status": "completed"
+    }
+  },
+  {
+    "name": "collect_trace",
+    "status": "passed",
+    "detail": "completed",
+    "started_at": "2026-04-11T23:29:32.839263+08:00",
+    "finished_at": "2026-04-11T23:29:32.857173+08:00",
+    "data": {
+      "events": 6
+    }
+  },
+  {
+    "name": "collect_llm_trace",
+    "status": "skipped",
+    "detail": "未匹配到 llm-agent trace",
+    "started_at": "2026-04-11T23:29:32.865433+08:00",
+    "finished_at": "2026-04-11T23:29:32.865437+08:00"
+  },
+  {
+    "name": "evaluate_assertions",
+    "status": "passed",
+    "detail": "failed",
+    "started_at": "2026-04-11T23:29:32.874883+08:00",
+    "finished_at": "2026-04-11T23:29:32.874897+08:00",
+    "data": {
+      "score": 90
+    }
+  }
+]

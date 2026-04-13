@@ -1,0 +1,50 @@
+{
+  "id": "llm-cron-reminder-delivery-path",
+  "title": "llm-agent cron_reminder delivery path",
+  "description": "要求 llm-agent 和 wechat-agent 在线。若 app-agent 不在线，最终 task_complete 可能为 failed，但链路观测仍然应成立。",
+  "category": "integration",
+  "priority": "P1",
+  "dependency_mode": "hybrid",
+  "collection_type": "static",
+  "source": "suites/llm-cron-reminder-observe.json",
+  "tags": [
+    "llm-agent",
+    "wechat-agent",
+    "cron-reminder",
+    "trace"
+  ],
+  "entry": {
+    "type": "task_assign",
+    "to_agent": "llm-agent",
+    "task": {
+      "payload": {
+        "task_type": "cron_reminder",
+        "payload": {
+          "account": "ztt",
+          "wechat_user": "ztt",
+          "message": "test-agent cron reminder smoke"
+        }
+      }
+    }
+  },
+  "assertions": {
+    "timeout_sec": 20,
+    "expect_message_type": "task_complete",
+    "require_agents": [
+      "llm-agent",
+      "wechat-wechat-agent"
+    ],
+    "require_msg_types": [
+      "task_assign",
+      "notify",
+      "task_complete"
+    ],
+    "expected_path": [
+      "test-agent",
+      "llm-agent",
+      "wechat-wechat-agent",
+      "test-agent"
+    ],
+    "min_trace_events": 4
+  }
+}

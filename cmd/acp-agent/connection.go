@@ -28,16 +28,16 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		AgentID:     agent.ID,
 		AgentType:   "acp",
 		AgentName:   cfg.AgentName,
-		Description: "项目代码分析、编码（基于 ACP 协议）",
+		Description: "项目代码分析、编码（支持 Claude ACP / Codex CLI）",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildACPToolDefs(),
 		Meta: map[string]any{
 			"projects":         projectNames(agent.ScanProjects()),
 			"workspaces":       cfg.Workspaces,
-			"acp_agent_cmd":    cfg.ACPAgentCmd,
+			"coding_backend":   cfg.EffectiveCodingBackend(),
 			"analysis_timeout": cfg.AnalysisTimeout,
-			"coding_backends":  []string{"acp"},
+			"coding_backends":  []string{BackendClaudeACP, BackendCodexExec},
 		},
 	}
 
@@ -177,7 +177,7 @@ func buildACPToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "AcpStartSession",
-			Description: "启动 ACP 编码会话（同步等待完成，进度通过 stream_event 推送）。默认在本轮完成后自动关闭 ACP 子进程；只有明确需要多轮续聊时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
+			Description: "启动编码会话（后端由 acp-agent 配置决定，当前支持 Claude ACP / Codex CLI；同步等待完成，进度通过 stream_event 推送）。默认在本轮完成后自动关闭子进程；只有明确需要多轮续聊时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -362,7 +362,7 @@ func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[
 	}
 
 	data := map[string]interface{}{
-		"session_id":      sessionID,
+		"session_id":      result.SessionID,
 		"project_dir":     result.ProjectDir,
 		"summary":         result.Summary,
 		"files_written":   result.FilesWritten,
@@ -374,7 +374,7 @@ func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[
 	if result.FilesWritten == 0 && result.FilesEdited == 0 {
 		data["warning"] = "会话完成但未产生任何文件变更"
 	}
-	tr := uap.BuildToolResult("", data, fmt.Sprintf("ACP 会话 %s 完成", sessionID))
+	tr := uap.BuildToolResult("", data, fmt.Sprintf("%s 会话 %s 完成", c.cfg.BackendLabel(), sessionID))
 	return tr.Result
 }
 

@@ -30,6 +30,7 @@ type Config struct {
 	PendingMessageTTLHours   int              `json:"pending_message_ttl_hours,omitempty"`
 	BlogAgentBaseURL         string           `json:"blog_agent_base_url,omitempty"`
 	AppSessionTTLMinutes     int              `json:"app_session_ttl_minutes,omitempty"`
+	AppRefreshTokenTTLHours  int              `json:"app_refresh_token_ttl_hours,omitempty"`
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
 	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
 	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
@@ -56,6 +57,7 @@ func DefaultConfig() *Config {
 		PendingMessageTTLHours:   24,
 		BlogAgentBaseURL:         "http://127.0.0.1:8888",
 		AppSessionTTLMinutes:     2880,
+		AppRefreshTokenTTLHours:  720,
 		GroupStoreFile:           "app-groups.json",
 		AttachmentStoreDir:       "app-attachments",
 		DownloadTicketTTLSeconds: 300,
@@ -83,6 +85,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.AppSessionTTLMinutes <= 0 {
 		cfg.AppSessionTTLMinutes = 2880
+	}
+	if cfg.AppRefreshTokenTTLHours <= 0 {
+		cfg.AppRefreshTokenTTLHours = 720
 	}
 	if cfg.DownloadTicketTTLSeconds <= 0 {
 		cfg.DownloadTicketTTLSeconds = 300

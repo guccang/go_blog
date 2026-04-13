@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Handler handles app inbound HTTP and WebSocket requests.
@@ -20,6 +21,56 @@ type Handler struct {
 
 func NewHandler(cfg *Config, bridge *Bridge, auth *authManager) *Handler {
 	return &Handler{cfg: cfg, bridge: bridge, auth: auth}
+}
+
+func authSuccessResponse(session *issuedAuthSession, obsAgentBaseURL string) loginResponse {
+	if session == nil || session.Session == nil {
+		return loginResponse{
+			Success: false,
+			Error:   "missing auth session",
+		}
+	}
+	expiresIn := session.Session.ExpiresAt.Sub(time.Now()).Seconds()
+	if expiresIn < 0 {
+		expiresIn = 0
+	}
+	return loginResponse{
+		Success:         true,
+		SessionToken:    session.Session.Token,
+		AccessToken:     session.Session.Token,
+		RefreshToken:    session.RefreshToken,
+		UserID:          session.Session.Account,
+		ExpiresAt:       session.Session.ExpiresAt.UnixMilli(),
+		ExpiresIn:       int64(expiresIn),
+		TokenType:       "Bearer",
+		ObsAgentBaseURL: strings.TrimSpace(obsAgentBaseURL),
+	}
+}
+
+func writeAuthError(w http.ResponseWriter, err error) {
+	resp := loginResponse{
+		Success: false,
+		Error:   "invalid account or password",
+	}
+	status := http.StatusUnauthorized
+	if ae, ok := err.(*authError); ok {
+		switch ae.Code {
+		case "blog_agent_unreachable":
+			status = http.StatusServiceUnavailable
+			resp.Error = "blog-agent unreachable"
+		case "blog_agent_api_missing":
+			status = http.StatusBadGateway
+			resp.Error = "blog-agent app auth api not found"
+		case "blog_agent_bad_response", "blog_agent_bad_status":
+			status = http.StatusBadGateway
+			resp.Error = ae.Message
+		case "invalid_credentials", "invalid_refresh_token":
+			resp.Error = ae.Message
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -42,46 +93,81 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	session, err := h.auth.Login(req.UserID, req.Password)
 	if err != nil {
 		log.Printf("[Handler] login failed user=%s remote=%s err=%v", strings.TrimSpace(req.UserID), r.RemoteAddr, err)
-		resp := loginResponse{
-			Success: false,
-			Error:   "invalid account or password",
-		}
-		status := http.StatusUnauthorized
-		if ae, ok := err.(*authError); ok {
-			switch ae.Code {
-			case "blog_agent_unreachable":
-				status = http.StatusServiceUnavailable
-				resp.Error = "blog-agent unreachable"
-			case "blog_agent_api_missing":
-				status = http.StatusBadGateway
-				resp.Error = "blog-agent app auth api not found"
-			case "blog_agent_bad_response", "blog_agent_bad_status":
-				status = http.StatusBadGateway
-				resp.Error = ae.Message
-			case "invalid_credentials":
-				resp.Error = ae.Message
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(resp)
+		writeAuthError(w, err)
 		return
 	}
 
-	log.Printf("[Handler] login success user=%s remote=%s", session.Account, r.RemoteAddr)
+	log.Printf("[Handler] login success user=%s remote=%s", session.Session.Account, r.RemoteAddr)
 
 	// 存储 delegation token 到 bridge
-	if session.DelegationToken != "" {
-		h.bridge.SetDelegationToken(session.Account, session.DelegationToken)
+	if session.Session.DelegationToken != "" {
+		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(loginResponse{
-		Success:         true,
-		SessionToken:    session.Token,
-		UserID:          session.Account,
-		ExpiresAt:       session.ExpiresAt.UnixMilli(),
-		ObsAgentBaseURL: strings.TrimSpace(h.cfg.ObsAgentBaseURL),
+	_ = json.NewEncoder(w).Encode(authSuccessResponse(session, h.cfg.ObsAgentBaseURL))
+}
+
+func (h *Handler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		log.Printf("[Handler] unauthorized refresh remote=%s path=%s", r.RemoteAddr, r.URL.Path)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	session, err := h.auth.Refresh(req.UserID, req.RefreshToken)
+	if err != nil {
+		log.Printf("[Handler] refresh failed user=%s remote=%s err=%v", strings.TrimSpace(req.UserID), r.RemoteAddr, err)
+		writeAuthError(w, err)
+		return
+	}
+
+	log.Printf("[Handler] refresh success user=%s remote=%s", session.Session.Account, r.RemoteAddr)
+	if session.Session.DelegationToken != "" {
+		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(authSuccessResponse(session, h.cfg.ObsAgentBaseURL))
+}
+
+func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		log.Printf("[Handler] unauthorized logout remote=%s path=%s", r.RemoteAddr, r.URL.Path)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req logoutRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	}
+
+	h.auth.Logout(readAppSessionToken(r), req.RefreshToken, req.UserID)
+	if userID := strings.TrimSpace(req.UserID); userID != "" {
+		h.bridge.SetDelegationToken(userID, "")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
 	})
 }
 

@@ -1,0 +1,13 @@
+[
+  {
+    "type": "task_complete",
+    "id": "95eb6e03",
+    "from": "llm-agent",
+    "to": "test-agent",
+    "payload": {
+      "task_id": "task-a2d6ddf4",
+      "status": "success"
+    },
+    "ts": 1775921374829
+  }
+]

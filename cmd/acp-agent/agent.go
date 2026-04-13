@@ -24,6 +24,7 @@ type ProjectInfo struct {
 // sessionRecord ACP 会话记录（支持多轮 Prompt）
 type sessionRecord struct {
 	Project    string
+	Backend    string
 	Active     bool
 	Status     string // "in_progress", "completed", "failed", "stopped"
 	Summary    string
@@ -35,6 +36,7 @@ type sessionRecord struct {
 // taskResult 任务完成结果
 type taskResult struct {
 	Status         string
+	SessionID      string
 	Error          string
 	Summary        string
 	ProjectDir     string
@@ -161,12 +163,21 @@ func (a *Agent) resolveProject(project string) string {
 
 // ========================= ACP 执行 =========================
 
-// ExecuteACP 执行 ACP 会话（统一入口：分析 + 编码）
+// ExecuteACP 执行编码会话（统一入口：Claude ACP / Codex CLI）
 // extraArgs: 动态 CLI 参数（如 --dangerously-skip-permissions, --settings 等）
 // interactive: 是否交互式权限模式
 // callerAgentID: 调用方 agent ID（交互模式下权限请求发给该 agent）
 // keepSession: 是否在本轮完成后保留 ACP 子进程供后续多轮对话复用
 func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
+	switch a.cfg.EffectiveCodingBackend() {
+	case BackendCodexExec:
+		return a.executeCodexExec(conn, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
+	default:
+		return a.executeClaudeACP(conn, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
+	}
+}
+
+func (a *Agent) executeClaudeACP(conn *Connection, sessionID, requestID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
 	projectPath := a.resolveProject(project)
 	if projectPath == "" {
 		return taskResult{Status: "error"}, fmt.Errorf("project not found in workspaces: %s", project)
@@ -177,6 +188,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 	a.sessionsMu.Lock()
 	a.sessions[sessionID] = &sessionRecord{
 		Project:   project,
+		Backend:   BackendClaudeACP,
 		Active:    true,
 		Status:    "in_progress",
 		KeepAlive: shouldKeepSessionAlive(prompt, keepSession),
@@ -346,6 +358,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 
 		return taskResult{
 			Status:         "done",
+			SessionID:      sessionID,
 			Summary:        summary,
 			ProjectDir:     projectPath,
 			FilesWritten:   len(uniqueStrings(filesWritten)),
@@ -378,6 +391,7 @@ func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prom
 
 	return taskResult{
 		Status:         "done",
+		SessionID:      sessionID,
 		Summary:        fmt.Sprintf("会话已创建（idle），可用模式: %v", modeNames),
 		ProjectDir:     projectPath,
 		Model:          acpClient.GetModelID(),
@@ -399,6 +413,10 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 	if rec.ACPSession == nil {
 		a.sessionsMu.Unlock()
 		return taskResult{Status: "error"}, fmt.Errorf("session has no active ACP connection: %s", sessionID)
+	}
+	if rec.Backend != "" && rec.Backend != BackendClaudeACP {
+		a.sessionsMu.Unlock()
+		return taskResult{Status: "error"}, fmt.Errorf("backend %s does not support follow-up messages", rec.Backend)
 	}
 	acpSession := rec.ACPSession
 	acpClient := rec.ACPClient
@@ -507,6 +525,7 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 
 	return taskResult{
 		Status:       "done",
+		SessionID:    sessionID,
 		Summary:      summary,
 		ProjectDir:   projectPath,
 		FilesWritten: len(uniqueStrings(filesWritten)),
@@ -587,10 +606,19 @@ func (a *Agent) StopTask(sessionID string) {
 	if rec.ACPSession != nil {
 		log.Printf("[ACP] stopping session: %s", sessionID)
 		ctx := context.Background()
-		rec.ACPSession.conn.Cancel(ctx, acp.CancelNotification{
-			SessionId: rec.ACPSession.sessionID,
-		})
-		rec.ACPSession.Close()
+		if rec.Backend == BackendCodexExec {
+			if rec.ACPSession.cancel != nil {
+				rec.ACPSession.cancel()
+			}
+			if rec.ACPSession.cmd != nil && rec.ACPSession.cmd.Process != nil {
+				rec.ACPSession.cmd.Process.Kill()
+			}
+		} else if rec.ACPSession.conn != nil {
+			rec.ACPSession.conn.Cancel(ctx, acp.CancelNotification{
+				SessionId: rec.ACPSession.sessionID,
+			})
+			rec.ACPSession.Close()
+		}
 	}
 
 	a.completeSession(sessionID, "stopped", "")
@@ -740,6 +768,9 @@ func (a *Agent) setSessionMode(sessionID, modeID string) error {
 	}
 	if rec.ACPSession == nil {
 		return fmt.Errorf("session has no active ACP connection: %s", sessionID)
+	}
+	if rec.Backend != "" && rec.Backend != BackendClaudeACP {
+		return fmt.Errorf("backend %s does not support mode switching", rec.Backend)
 	}
 
 	// 验证模式是否在可用列表中

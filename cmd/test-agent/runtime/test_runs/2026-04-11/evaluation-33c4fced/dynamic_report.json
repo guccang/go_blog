@@ -1,0 +1,56 @@
+{
+  "run_id": "evaluation-33c4fced",
+  "evaluation_id": "evaluation-33c4fced",
+  "title": "Dynamic Evaluation Collection",
+  "collection_type": "dynamic",
+  "status": "skipped",
+  "started_at": "2026-04-11T23:48:42.826965+08:00",
+  "finished_at": "2026-04-11T23:48:59.224478+08:00",
+  "total_scenarios": 1,
+  "skipped_scenarios": 1,
+  "passed_scenarios": 0,
+  "failed_scenarios": 0,
+  "average_score": 0,
+  "skipped": [
+    {
+      "scenario_id": "dynamic-plan-generator",
+      "title": "dynamic-plan-generator",
+      "collection_type": "dynamic",
+      "target_agent": "llm-agent",
+      "reason": "dynamic plan parse failed: invalid character '{' after top-level value"
+    }
+  ],
+  "dimension_scores": [
+    {
+      "name": "completion",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "routing",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "tool_usage",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "recovery",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    },
+    {
+      "name": "final_answer",
+      "average_score": 0,
+      "passed_runs": 0,
+      "total_runs": 0
+    }
+  ],
+  "runs": null
+}

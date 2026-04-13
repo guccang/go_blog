@@ -1,0 +1,52 @@
+{
+  "success": true,
+  "status": "passed",
+  "final_message_type": "tool_result",
+  "final_status": "failed",
+  "final_error": "权限拒绝：缺少认证用户",
+  "outcomes": [
+    {
+      "name": "direct_message_type",
+      "success": true,
+      "detail": "got=tool_result want=tool_result"
+    },
+    {
+      "name": "tool_success",
+      "success": true,
+      "detail": "got=false want=false"
+    },
+    {
+      "name": "error_contains",
+      "success": true,
+      "detail": "needle=\"权限拒绝：缺少认证用户\""
+    },
+    {
+      "name": "trace_events",
+      "success": true,
+      "detail": "got=4 want\u003e=2"
+    },
+    {
+      "name": "require_agent",
+      "success": true,
+      "detail": "cron-agent"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "tool_call"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "tool_result"
+    }
+  ],
+  "scores": {
+    "completion_score": 0,
+    "routing_score": 100,
+    "tool_usage_score": 100,
+    "recovery_score": 0,
+    "final_answer_score": 100,
+    "total": 60
+  }
+}

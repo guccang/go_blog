@@ -1,0 +1,44 @@
+{
+  "id": "cron-create-task-requires-authenticated-user",
+  "title": "cronCreateTask requires authenticated_user",
+  "description": "直接调用 cronCreateTask，不传 authenticated_user，预期返回 tool_result failed，并包含缺少认证用户的错误文本。",
+  "category": "contract",
+  "priority": "P0",
+  "dependency_mode": "mock",
+  "collection_type": "static",
+  "source": "suites/cron-auth-guard.json",
+  "tags": [
+    "cron-agent",
+    "auth",
+    "tool-call"
+  ],
+  "entry": {
+    "type": "tool_call",
+    "to_agent": "cron_agent_903",
+    "tool": {
+      "tool_name": "cronCreateTask",
+      "arguments": {
+        "name": "test-agent auth smoke",
+        "task_type": "cron_reminder",
+        "account": "ztt",
+        "delay_sec": 30,
+        "message": "hello from test-agent"
+      }
+    }
+  },
+  "assertions": {
+    "expect_message_type": "tool_result",
+    "expect_tool_success": false,
+    "error_contains": [
+      "权限拒绝：缺少认证用户"
+    ],
+    "require_agents": [
+      "cron_agent_903"
+    ],
+    "require_msg_types": [
+      "tool_call",
+      "tool_result"
+    ],
+    "min_trace_events": 2
+  }
+}

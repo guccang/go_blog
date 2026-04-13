@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "status": "passed",
+  "final_message_type": "task_complete",
+  "final_status": "success",
+  "final_result": "{\"id\":\"dyn_001\",\"title\":\"博客内容发布协同链路测试\",\"description\":\"验证 blog-agent 创建博客内容后，通过 cron_agent 设置定时发布任务的协同链路\",\"category\":\"协同链路\",\"priority\":\"high\",\"tags\":[\"blog-agent\",\"cron_agent\",\"协同\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"blog-agent\",\"task\":\"create_blog\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"blog-agent\",\"cron_agent_903\"],\"require_msg_types\":[\"task_assign\",\"notify\"],\"min_trace_events\":4,\"expected_path\":[\"blog-agent::create\",\"cron_agent_903::create_task\"]}}\n\n{\"id\":\"dyn_002\",\"title\":\"环境检查与日志查询系统能力测试\",\"description\":\"验证 env_agent 检查环境状态后，通过 log_query 查询相关系统日志的集成能力\",\"category\":\"系统能力\",\"priority\":\"medium\",\"tags\":[\"env_agent\",\"log_query\",\"集成\"],\"entry\":{\"type\":\"tool_call\",\"to_agent\":\"env_agent_17587\",\"tool\":\"EnvCheckAll\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"env_agent_17587\",\"log_query_18583\"],\"require_msg_types\":[\"tool_call\",\"notify\"],\"min_trace_events\":3}}\n\n{\"id\":\"dyn_003\",\"title\":\"消息推送多通道能力测试\",\"description\":\"验证 app-agent 和 wechat-agent 各自独立发送消息到不同通道的能力\",\"category\":\"系统能力\",\"priority\":\"medium\",\"tags\":[\"app-agent\",\"wechat-agent\",\"消息推送\"],\"entry\":{\"type\":\"task_assign\",\"to_agent\":\"app-app-agent\",\"task\":\"send_rich_message\"},\"assertions\":{\"expect_message_type\":\"notify\",\"require_agents\":[\"app-app-agent\",\"wechat-wechat-agent\"],\"require_msg_types\":[\"task_assign\",\"notify\",\"task_assign\"],\"min_trace_events\":4}}",
+  "outcomes": [
+    {
+      "name": "direct_message_type",
+      "success": true,
+      "detail": "got=task_complete want=task_complete"
+    },
+    {
+      "name": "task_status",
+      "success": true,
+      "detail": "got=success want=success"
+    },
+    {
+      "name": "trace_events",
+      "success": true,
+      "detail": "got=12 want\u003e=2"
+    },
+    {
+      "name": "require_agent",
+      "success": true,
+      "detail": "llm-agent"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_assign"
+    },
+    {
+      "name": "require_msg_type",
+      "success": true,
+      "detail": "task_complete"
+    }
+  ],
+  "scores": {
+    "completion_score": 100,
+    "routing_score": 100,
+    "tool_usage_score": 100,
+    "recovery_score": 100,
+    "final_answer_score": 100,
+    "total": 100
+  }
+}

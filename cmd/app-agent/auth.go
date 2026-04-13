@@ -19,11 +19,25 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type refreshRequest struct {
+	UserID       string `json:"user_id"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type logoutRequest struct {
+	UserID       string `json:"user_id,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+}
+
 type loginResponse struct {
 	Success         bool   `json:"success"`
 	SessionToken    string `json:"session_token,omitempty"`
+	AccessToken     string `json:"access_token,omitempty"`
+	RefreshToken    string `json:"refresh_token,omitempty"`
 	UserID          string `json:"user_id,omitempty"`
 	ExpiresAt       int64  `json:"expires_at,omitempty"`
+	ExpiresIn       int64  `json:"expires_in,omitempty"`
+	TokenType       string `json:"token_type,omitempty"`
 	ObsAgentBaseURL string `json:"obs_agent_base_url,omitempty"`
 	Error           string `json:"error,omitempty"`
 }
@@ -47,11 +61,22 @@ type appSession struct {
 	DelegationToken string // delegation token for blog-agent API calls
 }
 
+type refreshGrant struct {
+	Account   string
+	ExpiresAt time.Time
+}
+
+type issuedAuthSession struct {
+	Session      *appSession
+	RefreshToken string
+}
+
 type authManager struct {
 	cfg              *Config
 	client           *http.Client
 	mu               sync.RWMutex
 	sessions         map[string]*appSession
+	refreshTokens    map[string]*refreshGrant
 	delegationSigner *delegation.Signer // for issuing delegation tokens
 }
 
@@ -63,11 +88,12 @@ func newAuthManager(cfg *Config) *authManager {
 			Timeout: 10 * time.Second,
 		},
 		sessions:         make(map[string]*appSession),
+		refreshTokens:    make(map[string]*refreshGrant),
 		delegationSigner: signer,
 	}
 }
 
-func (m *authManager) Login(userID, password string) (*appSession, error) {
+func (m *authManager) Login(userID, password string) (*issuedAuthSession, error) {
 	userID = strings.TrimSpace(userID)
 	password = strings.TrimSpace(password)
 	if userID == "" || password == "" {
@@ -77,15 +103,85 @@ func (m *authManager) Login(userID, password string) (*appSession, error) {
 		return nil, err
 	}
 
-	token, err := newSessionToken()
+	return m.issueAuthSession(userID)
+}
+
+func (m *authManager) Refresh(userID, refreshToken string) (*issuedAuthSession, error) {
+	userID = strings.TrimSpace(userID)
+	refreshToken = strings.TrimSpace(refreshToken)
+	if userID == "" || refreshToken == "" {
+		return nil, &authError{
+			Code:    "invalid_refresh_token",
+			Message: "user_id and refresh_token are required",
+		}
+	}
+
+	refreshHash := hashToken(refreshToken)
+	now := time.Now()
+
+	m.mu.RLock()
+	grant := m.refreshTokens[refreshHash]
+	m.mu.RUnlock()
+
+	if grant == nil || grant.Account != userID {
+		return nil, &authError{
+			Code:    "invalid_refresh_token",
+			Message: "refresh token is invalid",
+		}
+	}
+	if now.After(grant.ExpiresAt) {
+		m.mu.Lock()
+		delete(m.refreshTokens, refreshHash)
+		m.mu.Unlock()
+		return nil, &authError{
+			Code:    "invalid_refresh_token",
+			Message: "refresh token expired",
+		}
+	}
+
+	return m.issueAuthSession(userID)
+}
+
+func (m *authManager) Logout(accessToken, refreshToken, userID string) {
+	accessToken = strings.TrimSpace(accessToken)
+	refreshToken = strings.TrimSpace(refreshToken)
+	userID = strings.TrimSpace(userID)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if userID != "" {
+		m.revokeUserLocked(userID)
+		return
+	}
+	if accessToken != "" {
+		if session := m.sessions[accessToken]; session != nil {
+			m.revokeUserLocked(session.Account)
+			return
+		}
+	}
+	if refreshToken != "" {
+		if grant := m.refreshTokens[hashToken(refreshToken)]; grant != nil {
+			m.revokeUserLocked(grant.Account)
+		}
+	}
+}
+
+func (m *authManager) issueAuthSession(userID string) (*issuedAuthSession, error) {
+	accessToken, err := newOpaqueToken("access token")
+	if err != nil {
+		return nil, err
+	}
+	refreshToken, err := newOpaqueToken("refresh token")
 	if err != nil {
 		return nil, err
 	}
 
+	now := time.Now()
 	session := &appSession{
 		Account:   userID,
-		Token:     token,
-		ExpiresAt: time.Now().Add(time.Duration(m.cfg.AppSessionTTLMinutes) * time.Minute),
+		Token:     accessToken,
+		ExpiresAt: now.Add(time.Duration(m.cfg.AppSessionTTLMinutes) * time.Minute),
 	}
 
 	// Issue delegation token for blog-agent API calls
@@ -97,15 +193,22 @@ func (m *authManager) Login(userID, password string) (*appSession, error) {
 		session.DelegationToken = delegationToken
 	}
 
-	m.mu.Lock()
-	for existingToken, existing := range m.sessions {
-		if existing.Account == userID {
-			delete(m.sessions, existingToken)
-		}
+	refreshHash := hashToken(refreshToken)
+	refreshGrant := &refreshGrant{
+		Account:   userID,
+		ExpiresAt: now.Add(time.Duration(m.cfg.AppRefreshTokenTTLHours) * time.Hour),
 	}
-	m.sessions[token] = session
+
+	m.mu.Lock()
+	m.revokeUserLocked(userID)
+	m.sessions[accessToken] = session
+	m.refreshTokens[refreshHash] = refreshGrant
 	m.mu.Unlock()
-	return session, nil
+
+	return &issuedAuthSession{
+		Session:      session,
+		RefreshToken: refreshToken,
+	}, nil
 }
 
 // issueDelegationToken 签发委托令牌
@@ -172,6 +275,24 @@ func (m *authManager) CleanupExpired() {
 	for token, session := range m.sessions {
 		if now.After(session.ExpiresAt) {
 			delete(m.sessions, token)
+		}
+	}
+	for tokenHash, grant := range m.refreshTokens {
+		if now.After(grant.ExpiresAt) {
+			delete(m.refreshTokens, tokenHash)
+		}
+	}
+}
+
+func (m *authManager) revokeUserLocked(userID string) {
+	for existingToken, existing := range m.sessions {
+		if existing.Account == userID {
+			delete(m.sessions, existingToken)
+		}
+	}
+	for refreshHash, grant := range m.refreshTokens {
+		if grant.Account == userID {
+			delete(m.refreshTokens, refreshHash)
 		}
 	}
 }
@@ -348,10 +469,15 @@ func groupRobotPassword(groupID string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func newSessionToken() (string, error) {
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func newOpaqueToken(label string) (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate session token: %w", err)
+		return "", fmt.Errorf("generate %s: %w", label, err)
 	}
 	return hex.EncodeToString(buf), nil
 }

@@ -247,3 +247,73 @@ func TestRunnerRunToolCallScenario(t *testing.T) {
 		t.Fatalf("expected final result to contain hello, got %s", run.Result.FinalResult)
 	}
 }
+
+func TestRunnerHandleMessageDoesNotDeadlock(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.OutputDir = t.TempDir()
+
+	runner := NewRunner(cfg)
+	defer runner.Close()
+
+	scenario := &TestScenario{
+		ID:    "tool-result",
+		Title: "tool-result",
+		Entry: ScenarioEntry{
+			Type:    EntryTypeToolCall,
+			ToAgent: "cron-agent",
+			Tool: &ToolCallEntry{
+				ToolName: "cronCreateTask",
+			},
+		},
+	}
+	run := newTestRun("suite", scenario, "trace-1", "")
+
+	runner.mu.Lock()
+	runner.current = &scenarioRuntime{
+		run:            run,
+		scenario:       scenario,
+		expectedDirect: scenario.directMessageExpectation(),
+	}
+	runner.mu.Unlock()
+
+	payload, err := json.Marshal(uap.ToolResultPayload{
+		RequestID: "trace-1",
+		Success:   false,
+		Error:     "权限拒绝：缺少认证用户",
+	})
+	if err != nil {
+		t.Fatalf("marshal tool result: %v", err)
+	}
+
+	msg := &uap.Message{
+		Type:    uap.MsgToolResult,
+		ID:      "msg-1",
+		From:    "cron-agent",
+		To:      "test-agent",
+		Payload: payload,
+		Ts:      time.Now().UnixMilli(),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		runner.handleMessage(msg)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleMessage blocked")
+	}
+
+	direct := runner.currentDirectObservation()
+	if direct == nil || direct.toolResult == nil {
+		t.Fatalf("expected tool result observation, got %#v", direct)
+	}
+	if direct.toolResult.RequestID != "trace-1" {
+		t.Fatalf("expected request id trace-1, got %s", direct.toolResult.RequestID)
+	}
+	if len(run.ObservedMessages) != 1 {
+		t.Fatalf("expected 1 observed message, got %d", len(run.ObservedMessages))
+	}
+}
