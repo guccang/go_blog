@@ -177,6 +177,15 @@ func parseOptionalIntArg(args map[string]interface{}, key string) int {
 	}
 }
 
+func buildDeployCommandOptionsFromTask(task TaskAssignPayload) DeployCommandOptions {
+	return DeployCommandOptions{
+		Version:        task.Version,
+		Desc:           task.Desc,
+		PrivateKeyPath: task.PrivateKeyPath,
+		ProjectPath:    task.ProjectPath,
+	}
+}
+
 func buildAcceptedTaskResult(rec *deployTaskRecord) string {
 	data := rec.snapshot()
 	data["accepted"] = true
@@ -312,6 +321,7 @@ func (c *Connection) runDeployTask(task TaskAssignPayload, sendEvent func(level,
 	proj = cloneProjectWithServicePort(proj, task.ServicePort, targetFilter)
 	deployer := NewDeployer(&deployCfg, proj, c.password)
 	deployer.DeployMode = DeployMode(task.DeployMode)
+	deployer.CommandOptions = buildDeployCommandOptionsFromTask(task)
 	deployer.OnProgress = func(level, message string) {
 		evtType := "system"
 		prefix := "📦 "
@@ -407,6 +417,7 @@ func (c *Connection) runPipelineTask(task TaskAssignPayload, sendEvent func(leve
 		}
 
 		deployer := NewDeployer(&deployCfg, proj, c.password)
+		deployer.CommandOptions = buildDeployCommandOptionsFromTask(task)
 		deployer.OnProgress = func(level, message string) {
 			evtType := "system"
 			prefix := "📦 "
@@ -545,6 +556,7 @@ func (c *Connection) executeDeploy(task TaskAssignPayload) {
 
 	deployer := NewDeployer(&deployCfg, proj, c.password)
 	deployer.DeployMode = DeployMode(task.DeployMode)
+	deployer.CommandOptions = buildDeployCommandOptionsFromTask(task)
 	deployer.OnProgress = func(level, message string) {
 		evtType := "system"
 		prefix := "📦 "
@@ -669,6 +681,7 @@ func (c *Connection) executePipeline(task TaskAssignPayload) {
 		}
 
 		deployer := NewDeployer(&deployCfg, proj, c.password)
+		deployer.CommandOptions = buildDeployCommandOptionsFromTask(task)
 		deployer.OnProgress = func(level, message string) {
 			evtType := "system"
 			prefix := "📦 "
@@ -798,11 +811,15 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project":       map[string]interface{}{"type": "string", "description": "项目名称（必须是 DeployListProjects 中 configured=true 的项目）"},
-					"deploy_target": map[string]interface{}{"type": "string", "description": "部署目标名称（如 local, ssh-prod），来自 DeployListProjects 返回的 targets 列表，不填则使用默认目标"},
-					"port":          map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程；会覆盖目标配置中的 service_port"},
-					"deploy_mode":   map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
-					"pack_only":     map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
+					"project":          map[string]interface{}{"type": "string", "description": "项目名称（必须是 DeployListProjects 中 configured=true 的项目）"},
+					"deploy_target":    map[string]interface{}{"type": "string", "description": "部署目标名称（如 local, ssh-prod），来自 DeployListProjects 返回的 targets 列表，不填则使用默认目标"},
+					"port":             map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程；会覆盖目标配置中的 service_port"},
+					"deploy_mode":      map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
+					"pack_only":        map[string]interface{}{"type": "boolean", "description": "仅打包不部署"},
+					"version":          map[string]interface{}{"type": "string", "description": "命令型部署参数：版本号。适用于微信小游戏体验版等 command 目标"},
+					"desc":             map[string]interface{}{"type": "string", "description": "命令型部署参数：描述"},
+					"private_key_path": map[string]interface{}{"type": "string", "description": "命令型部署参数：私钥路径，支持 ~/ 和相对路径"},
+					"project_path":     map[string]interface{}{"type": "string", "description": "命令型部署参数：项目目录覆盖，支持 ~/ 和相对路径"},
 				},
 				"required": []string{"project"},
 			}),
@@ -1003,6 +1020,10 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	projectDir, _ := args["project_dir"].(string)
 	deployModeStr, _ := args["deploy_mode"].(string)
 	servicePort := parseOptionalIntArg(args, "port")
+	version, _ := args["version"].(string)
+	desc, _ := args["desc"].(string)
+	privateKeyPath, _ := args["private_key_path"].(string)
+	projectPathArg, _ := args["project_path"].(string)
 
 	proj, err := c.resolveProject(projectName)
 	if err != nil && projectDir != "" {
@@ -1031,12 +1052,16 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 	}
 
 	task := TaskAssignPayload{
-		SessionID:    newDeploySessionID("deploy"),
-		Project:      proj.Name,
-		PackOnly:     packOnly,
-		DeployTarget: deployTarget,
-		DeployMode:   deployModeStr,
-		ServicePort:  servicePort,
+		SessionID:      newDeploySessionID("deploy"),
+		Project:        proj.Name,
+		PackOnly:       packOnly,
+		DeployTarget:   deployTarget,
+		DeployMode:     deployModeStr,
+		ServicePort:    servicePort,
+		Version:        version,
+		Desc:           desc,
+		PrivateKeyPath: privateKeyPath,
+		ProjectPath:    projectPathArg,
 	}
 	task.ProjectDir = proj.ProjectDir
 	rec := newDeployTaskRecord(task.SessionID, "DeployProject", task)

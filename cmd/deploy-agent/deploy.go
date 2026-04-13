@@ -31,14 +31,15 @@ const (
 
 // Deployer 部署编排器
 type Deployer struct {
-	cfg          *DeployConfig  // 全局配置（SSH 等）
-	proj         *ProjectConfig // 当前项目配置
-	password     string
-	packFile     string                      // 打包后的 zip 文件名（不含路径）
-	packSource   string                      // 打包产物在本地的完整路径
-	SSHConnected bool                        // SSH 连接是否成功过（密码有效）
-	OnProgress   func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
-	DeployMode   DeployMode                  // 部署模式: auto/full/increment
+	cfg            *DeployConfig  // 全局配置（SSH 等）
+	proj           *ProjectConfig // 当前项目配置
+	password       string
+	packFile       string                      // 打包后的 zip 文件名（不含路径）
+	packSource     string                      // 打包产物在本地的完整路径
+	SSHConnected   bool                        // SSH 连接是否成功过（密码有效）
+	OnProgress     func(level, message string) // daemon 模式进度回调（nil 则输出到 stdout）
+	DeployMode     DeployMode                  // 部署模式: auto/full/increment
+	CommandOptions DeployCommandOptions        // 命令型部署运行参数
 }
 
 type uploadProgressWriter struct {
@@ -48,6 +49,13 @@ type uploadProgressWriter struct {
 	start        time.Time
 	written      int64
 	lastLoggedAt time.Time
+}
+
+type DeployCommandOptions struct {
+	Version        string
+	Desc           string
+	PrivateKeyPath string
+	ProjectPath    string
 }
 
 func (w *uploadProgressWriter) Write(p []byte) (int, error) {
@@ -118,6 +126,21 @@ func (d *Deployer) packLocalPath() string {
 	return filepath.Join(d.proj.ProjectDir, d.packFile)
 }
 
+func (d *Deployer) needsPack(targets []*Target) bool {
+	if len(targets) == 0 {
+		return true
+	}
+	for _, t := range targets {
+		if t == nil {
+			continue
+		}
+		if t.Type != "command" {
+			return true
+		}
+	}
+	return false
+}
+
 // Run 执行部署 pipeline
 func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	start := time.Now()
@@ -157,23 +180,30 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 		return fmt.Errorf("no matching targets (host_platform=%s)", d.cfg.HostPlatform)
 	}
 
+	needsPack := d.needsPack(targets)
+	if packOnly && !needsPack {
+		return fmt.Errorf("project %q has no pack step for selected targets", d.proj.Name)
+	}
+
 	totalSteps := 4
-	if packOnly {
+	if packOnly || !needsPack {
 		totalSteps = 1
 	}
 
-	// Step 1: 打包（根据 target 平台决定是否交叉编译）
-	d.logf("info", "[STEP 1/%d] 打包项目 [%s]...\n", totalSteps, d.proj.Name)
-	targetPlatform := d.inferTargetPlatform(targets)
-	if err := d.pack(targetPlatform); err != nil {
-		return fmt.Errorf("打包失败: %v", err)
+	if needsPack {
+		// Step 1: 打包（根据 target 平台决定是否交叉编译）
+		d.logf("info", "[STEP 1/%d] 打包项目 [%s]...\n", totalSteps, d.proj.Name)
+		targetPlatform := d.inferTargetPlatform(targets)
+		if err := d.pack(targetPlatform); err != nil {
+			return fmt.Errorf("打包失败: %v", err)
+		}
+		packPath := d.packLocalPath()
+		info, err := os.Stat(packPath)
+		if err != nil {
+			return fmt.Errorf("找不到打包文件: %v", err)
+		}
+		d.logf("info", "[STEP 1/%d] 打包完成: %s (%s)\n", totalSteps, d.packFile, formatSize(info.Size()))
 	}
-	packPath := d.packLocalPath()
-	info, err := os.Stat(packPath)
-	if err != nil {
-		return fmt.Errorf("找不到打包文件: %v", err)
-	}
-	d.logf("info", "[STEP 1/%d] 打包完成: %s (%s)\n", totalSteps, d.packFile, formatSize(info.Size()))
 
 	if packOnly {
 		d.logf("info", "[DONE] 打包完成，耗时 %s\n", formatDuration(time.Since(start)))
@@ -184,7 +214,13 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	var errs []string
 	for _, t := range targets {
 		var err error
-		if isLocalTarget(t.Host) {
+		if t.Type == "command" {
+			stepIndex := 2
+			if !needsPack {
+				stepIndex = 1
+			}
+			err = d.deployCommand(t, stepIndex, totalSteps)
+		} else if isLocalTarget(t.Host) {
 			err = d.deployLocal(t, totalSteps)
 		} else if t.Type == "bridge" {
 			err = d.deployBridge(t, totalSteps)
@@ -201,6 +237,119 @@ func (d *Deployer) Run(packOnly bool, targetFilter string) error {
 	}
 
 	d.logf("info", "[DONE] 项目 [%s] 部署完成，耗时 %s\n", d.proj.Name, formatDuration(time.Since(start)))
+	return nil
+}
+
+func resolvePathShorthand(raw, baseDir string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	value = os.ExpandEnv(value)
+	if value == "~" || strings.HasPrefix(value, "~/") {
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			if value == "~" {
+				value = homeDir
+			} else {
+				value = filepath.Join(homeDir, value[2:])
+			}
+		}
+	}
+	if filepath.IsAbs(value) {
+		return filepath.Clean(value)
+	}
+	if baseDir != "" {
+		if abs, err := filepath.Abs(filepath.Join(baseDir, value)); err == nil {
+			return abs
+		}
+		return filepath.Join(baseDir, value)
+	}
+	if abs, err := filepath.Abs(value); err == nil {
+		return abs
+	}
+	return filepath.Clean(value)
+}
+
+func resolveCommandBinary(raw, workDir string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, ".") || strings.HasPrefix(value, "~") || strings.ContainsAny(value, `/\`) {
+		return resolvePathShorthand(value, workDir)
+	}
+	return value
+}
+
+func (d *Deployer) buildCommandEnv(t *Target, workDir string) []string {
+	envMap := make(map[string]string, len(t.CommandEnv)+5)
+	for key, value := range t.CommandEnv {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		resolved := strings.TrimSpace(value)
+		if resolved == "" {
+			continue
+		}
+		if strings.HasSuffix(strings.ToUpper(key), "_PATH") {
+			resolved = resolvePathShorthand(resolved, workDir)
+		}
+		envMap[key] = resolved
+	}
+
+	if d.CommandOptions.Version != "" {
+		envMap["WECHAT_CI_VERSION"] = d.CommandOptions.Version
+	}
+	if d.CommandOptions.Desc != "" {
+		envMap["WECHAT_CI_DESC"] = d.CommandOptions.Desc
+	}
+	if d.CommandOptions.PrivateKeyPath != "" {
+		envMap["WECHAT_CI_PRIVATE_KEY_PATH"] = resolvePathShorthand(d.CommandOptions.PrivateKeyPath, workDir)
+	}
+	if d.CommandOptions.ProjectPath != "" {
+		envMap["WECHAT_CI_PROJECT_PATH"] = resolvePathShorthand(d.CommandOptions.ProjectPath, workDir)
+	}
+
+	keys := make([]string, 0, len(envMap))
+	for key := range envMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	env := make([]string, 0, len(keys))
+	for _, key := range keys {
+		env = append(env, key+"="+envMap[key])
+	}
+	return env
+}
+
+func (d *Deployer) deployCommand(t *Target, stepIndex, totalSteps int) error {
+	label := "local"
+	if t.Name != "" && !strings.HasPrefix(t.Name, "default-") {
+		label = t.Name + " (command)"
+	}
+
+	workDir := t.WorkDir
+	if workDir == "" {
+		workDir = d.proj.ProjectDir
+	}
+	workDir = resolvePathShorthand(workDir, d.proj.ProjectDir)
+	if info, err := os.Stat(workDir); err != nil || !info.IsDir() {
+		return fmt.Errorf("命令工作目录不存在: %s", workDir)
+	}
+
+	command := resolveCommandBinary(t.Command, workDir)
+	if command == "" {
+		return fmt.Errorf("command target %q missing command", t.Name)
+	}
+
+	d.logf("info", "[STEP %d/%d] 执行命令部署 %s...\n", stepIndex, totalSteps, label)
+	if err := d.runLocalCmdWithEnv(command, append([]string(nil), t.CommandArgs...), workDir, d.buildCommandEnv(t, workDir)); err != nil {
+		d.logf("error", "[ERROR] 执行命令部署 %s 失败: %v\n", label, err)
+		return fmt.Errorf("执行命令部署 %s 失败: %v", label, err)
+	}
+	d.logf("info", "[OK] %s 命令执行成功\n", label)
 	return nil
 }
 

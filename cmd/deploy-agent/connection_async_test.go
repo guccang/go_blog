@@ -167,6 +167,73 @@ func TestDeployProjectBuildOnlyRequiresPackOnly(t *testing.T) {
 	}
 }
 
+func TestDeployProjectCommandTargetPublishesWithWechatEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	scriptPath := filepath.Join(projectDir, "capture.sh")
+	outputPath := filepath.Join(projectDir, "upload_env.json")
+	scriptContent := "#!/bin/bash\nset -e\nprintf '{\"version\":\"%s\",\"desc\":\"%s\",\"private_key_path\":\"%s\"}' \"$WECHAT_CI_VERSION\" \"$WECHAT_CI_DESC\" \"$WECHAT_CI_PRIVATE_KEY_PATH\" > upload_env.json\n"
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		t.Fatalf("WriteFile command script failed: %v", err)
+	}
+
+	cfg := &DeployConfig{
+		HostPlatform:  platformSubdir(),
+		MaxConcurrent: 1,
+		Projects: map[string]*ProjectConfig{
+			"jump-tower-game-upload": {
+				Name:       "jump-tower-game-upload",
+				ProjectDir: projectDir,
+				Targets: []*Target{
+					{
+						Name:        "local",
+						Host:        "local",
+						Type:        "command",
+						Platform:    platformSubdir(),
+						Command:     "bash",
+						CommandArgs: []string{"capture.sh"},
+						CommandEnv: map[string]string{
+							"WECHAT_CI_PRIVATE_KEY_PATH": "../default-private.key",
+						},
+						WorkDir: projectDir,
+					},
+				},
+			},
+		},
+		ProjectOrder: []string{"jump-tower-game-upload"},
+	}
+	conn := NewConnection(cfg, "", "deploy-agent-command-test")
+
+	result := parseToolJSON(t, conn.toolDeployProject(map[string]interface{}{
+		"project":          "jump-tower-game-upload",
+		"version":          "2.3.4",
+		"desc":             "体验版 2.3.4",
+		"private_key_path": "../override-private.key",
+	}, func(string, string) {}))
+	if success, _ := result["success"].(bool); !success {
+		t.Fatalf("expected success result, got %#v", result)
+	}
+
+	sessionID, _ := result["session_id"].(string)
+	waitForTaskStatus(t, conn, sessionID, deployTaskStatusDone, 4*time.Second)
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile output failed: %v", err)
+	}
+
+	got := string(data)
+	wantPath := resolvePathShorthand("../override-private.key", projectDir)
+	for _, part := range []string{
+		`"version":"2.3.4"`,
+		`"desc":"体验版 2.3.4"`,
+		`"private_key_path":"` + wantPath + `"`,
+	} {
+		if !strings.Contains(got, part) {
+			t.Fatalf("expected output to contain %s, got %s", part, got)
+		}
+	}
+}
+
 func TestDeployProjectAsyncRejectsWhenBusy(t *testing.T) {
 	conn := newAsyncTestConnection(t, "flutter-apk-test", false, 1)
 

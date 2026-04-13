@@ -27,6 +27,10 @@ func main() {
 	targetName := flag.String("target", "", "发布目标（local/ssh-prod/all，默认 local）")
 	packOnly := flag.Bool("pack-only", false, "只打包不部署")
 	password := flag.String("password", "", "SSH 密码")
+	version := flag.String("version", "", "命令型部署参数：版本号")
+	desc := flag.String("desc", "", "命令型部署参数：描述")
+	privateKeyPath := flag.String("private-key-path", "", "命令型部署参数：私钥路径（支持 ~/ 和相对路径）")
+	projectPath := flag.String("project-path", "", "命令型部署参数：项目目录覆盖（支持 ~/ 和相对路径）")
 	listProjects := flag.Bool("list", false, "列出所有配置的项目和可用目标")
 	pipelineName := flag.String("pipeline", "", "执行指定的部署编排")
 	// --init flags
@@ -63,6 +67,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  -pack-only            只打包不部署\n")
 		fmt.Fprintf(os.Stderr, "  -force-full           强制完整部署\n")
 		fmt.Fprintf(os.Stderr, "  -password <pwd>       SSH 密码\n")
+		fmt.Fprintf(os.Stderr, "  -version <x.y.z>      命令型部署版本号（如微信小游戏体验版）\n")
+		fmt.Fprintf(os.Stderr, "  -desc <text>          命令型部署描述\n")
+		fmt.Fprintf(os.Stderr, "  -private-key-path <p> 命令型部署私钥路径（支持 ~/ 和相对路径）\n")
+		fmt.Fprintf(os.Stderr, "  -project-path <dir>   命令型部署项目目录覆盖\n")
 		fmt.Fprintf(os.Stderr, "  -list                 列出所有项目和目标\n\n")
 		fmt.Fprintf(os.Stderr, "控制协议:\n")
 		fmt.Fprintf(os.Stderr, "  -shutdown <agent-id>  关闭指定 agent（all=关闭所有）\n")
@@ -255,7 +263,8 @@ func main() {
 
 	// daemon 模式需要加载所有 target 和所有平台配置，以支持前端动态选择
 	// 检测 daemon 模式（有 server_url 且未显式指定 CLI 参数）
-	isCliMode := *projectName != "" || *targetName != "" || *packOnly || *pipelineName != "" || *forceFull
+	isCliMode := *projectName != "" || *targetName != "" || *packOnly || *pipelineName != "" || *forceFull ||
+		*version != "" || *desc != "" || *privateKeyPath != "" || *projectPath != ""
 	if cfg.ServerURL != "" && !isCliMode && !*listProjects {
 		cfg, err = LoadConfigForDaemon(*configPath)
 		if err != nil {
@@ -511,6 +520,12 @@ func main() {
 			if *forceFull {
 				deployer.DeployMode = DeployModeFull
 			}
+			deployer.CommandOptions = DeployCommandOptions{
+				Version:        *version,
+				Desc:           *desc,
+				PrivateKeyPath: *privateKeyPath,
+				ProjectPath:    *projectPath,
+			}
 			if deployErr := deployer.Run(packOnly, targetFilter); deployErr != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Pipeline %q 在步骤 [%d/%d] %s 失败: %v\n",
 					pip.Name, i+1, len(pip.Steps), step.Project, deployErr)
@@ -628,6 +643,12 @@ func main() {
 		deployer := NewDeployer(cfg, proj, pwd)
 		if *forceFull {
 			deployer.DeployMode = DeployModeFull
+		}
+		deployer.CommandOptions = DeployCommandOptions{
+			Version:        *version,
+			Desc:           *desc,
+			PrivateKeyPath: *privateKeyPath,
+			ProjectPath:    *projectPath,
 		}
 		deployErr := deployer.Run(*packOnly, "")
 

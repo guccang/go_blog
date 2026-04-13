@@ -18,10 +18,14 @@ type Target struct {
 	RemoteDir    string // 部署目录
 	RemoteScript string // 发布脚本名（可选）
 	Platform     string // 目标平台（linux/win/macos），local 时等于 HostPlatform
-	Type         string // 部署类型: "ssh"(默认) | "bridge"
+	Type         string // 部署类型: "ssh"(默认) | "bridge" | "command"
 	BridgeURL    string // bridge HTTP 地址（type=bridge 时必填）
 	AuthToken    string // bridge 认证 token（type=bridge 时必填）
 	ServicePort  int    // 服务监听端口（部署前 kill 占用该端口的进程，0 表示不处理）
+	Command      string // 本机命令型部署入口（type=command 时必填）
+	CommandArgs  []string
+	CommandEnv   map[string]string
+	WorkDir      string // 命令型部署工作目录（默认 ProjectDir）
 }
 
 // ProjectConfig 项目级部署配置
@@ -135,15 +139,30 @@ type buildJSON struct {
 
 // targetJSON 部署目标配置
 type targetJSON struct {
-	Host         string `json:"host,omitempty"`
-	Port         int    `json:"ssh_port,omitempty"`
-	RemoteDir    string `json:"remote_dir,omitempty"`
-	RemoteScript string `json:"remote_script,omitempty"`
-	Platform     string `json:"platform,omitempty"`
-	Type         string `json:"type,omitempty"`       // "ssh"(默认) | "bridge"
-	BridgeURL    string `json:"bridge_url,omitempty"` // bridge HTTP 地址
-	AuthToken    string `json:"auth_token,omitempty"` // bridge 认证 token
-	ServicePort  int    `json:"service_port,omitempty"`
+	Host         string            `json:"host,omitempty"`
+	Port         int               `json:"ssh_port,omitempty"`
+	RemoteDir    string            `json:"remote_dir,omitempty"`
+	RemoteScript string            `json:"remote_script,omitempty"`
+	Platform     string            `json:"platform,omitempty"`
+	Type         string            `json:"type,omitempty"`       // "ssh"(默认) | "bridge" | "command"
+	BridgeURL    string            `json:"bridge_url,omitempty"` // bridge HTTP 地址
+	AuthToken    string            `json:"auth_token,omitempty"` // bridge 认证 token
+	ServicePort  int               `json:"service_port,omitempty"`
+	Command      string            `json:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
+	WorkDir      string            `json:"work_dir,omitempty"`
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 // LoadConfigForDaemon daemon 模式配置加载：加载所有 target 配置
@@ -355,6 +374,21 @@ func mergeTargetJSON(global, project targetJSON) targetJSON {
 	}
 	if project.AuthToken != "" {
 		result.AuthToken = project.AuthToken
+	}
+	if project.ServicePort > 0 {
+		result.ServicePort = project.ServicePort
+	}
+	if project.Command != "" {
+		result.Command = project.Command
+	}
+	if len(project.Args) > 0 {
+		result.Args = append([]string(nil), project.Args...)
+	}
+	if len(project.Env) > 0 {
+		result.Env = cloneStringMap(project.Env)
+	}
+	if project.WorkDir != "" {
+		result.WorkDir = project.WorkDir
 	}
 	return result
 }
@@ -576,6 +610,19 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string, globalTargets
 		if err != nil {
 			return nil, nil, fmt.Errorf("target %q: %v", name, err)
 		}
+		if t != nil && t.Type == "command" {
+			if t.WorkDir == "" {
+				t.WorkDir = proj.ProjectDir
+			} else if !filepath.IsAbs(t.WorkDir) {
+				t.WorkDir = filepath.Join(proj.ProjectDir, t.WorkDir)
+			}
+			if info, err := os.Stat(t.WorkDir); err != nil || !info.IsDir() {
+				return nil, nil, fmt.Errorf("target %q: command work_dir not found: %s", name, t.WorkDir)
+			}
+			if t.RemoteDir == "" {
+				t.RemoteDir = t.WorkDir
+			}
+		}
 		if t != nil {
 			targets = append(targets, t)
 		}
@@ -623,6 +670,28 @@ func (c *DeployConfig) parseTargetJSON(name string, tj *targetJSON) (*Target, er
 	deployType := tj.Type
 	if deployType == "" {
 		deployType = "ssh"
+	}
+
+	if deployType == "command" {
+		if tj.Command == "" {
+			return nil, fmt.Errorf("command is required for command target %q", targetName)
+		}
+		if targetPlatform == "" {
+			targetPlatform = c.HostPlatform
+		}
+		return &Target{
+			Name:        targetName,
+			Host:        "local",
+			Port:        port,
+			RemoteDir:   tj.RemoteDir,
+			Platform:    targetPlatform,
+			Type:        "command",
+			ServicePort: tj.ServicePort,
+			Command:     tj.Command,
+			CommandArgs: append([]string(nil), tj.Args...),
+			CommandEnv:  cloneStringMap(tj.Env),
+			WorkDir:     tj.WorkDir,
+		}, nil
 	}
 
 	if isLocal {
