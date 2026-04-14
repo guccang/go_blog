@@ -57,6 +57,79 @@ func TestLoadConfigIncludesBuildOnlyProjectWithoutTargets(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSupportsProjectAliases(t *testing.T) {
+	projectDir := t.TempDir()
+	settingsDir := filepath.Join(t.TempDir(), "settings")
+	projectsDir := filepath.Join(settingsDir, "projects")
+	if err := os.MkdirAll(projectsDir, 0755); err != nil {
+		t.Fatalf("MkdirAll projectsDir failed: %v", err)
+	}
+
+	projectJSON := mustJSONString(map[string]any{
+		"aliases": []string{"跳塔上传", "微信跳塔"},
+		"build": map[string]any{
+			platformSubdir(): map[string]any{
+				"project_dir": projectDir,
+			},
+		},
+		"targets": map[string]any{
+			"local": map[string]any{
+				"remote_dir": projectDir,
+			},
+		},
+	})
+	if err := os.WriteFile(filepath.Join(projectsDir, "jump-tower-game-upload.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("WriteFile project json failed: %v", err)
+	}
+
+	configPath := filepath.Join(t.TempDir(), "deploy-agent.json")
+	configJSON := mustJSONString(map[string]any{
+		"settings_dir": settingsDir,
+		"workspaces":   []string{},
+	})
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("WriteFile config failed: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath, "all")
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+
+	if proj := cfg.GetProject("跳塔上传"); proj == nil || proj.Name != "jump-tower-game-upload" {
+		t.Fatalf("expected alias 跳塔上传 to resolve canonical project, got %#v", proj)
+	}
+	if cfg.ProjectAlias["微信跳塔"] != "jump-tower-game-upload" {
+		t.Fatalf("expected alias map to contain 微信跳塔, got %#v", cfg.ProjectAlias)
+	}
+}
+
+func TestBuildProjectMetaNamesIncludesAliases(t *testing.T) {
+	cfg := &DeployConfig{
+		Projects: map[string]*ProjectConfig{
+			"jump-tower-game-upload": {
+				Name:    "jump-tower-game-upload",
+				Aliases: []string{"跳塔上传", "微信跳塔"},
+			},
+		},
+		ProjectOrder: []string{"jump-tower-game-upload"},
+	}
+
+	names := buildProjectMetaNames(cfg)
+	for _, want := range []string{"jump-tower-game-upload", "跳塔上传", "微信跳塔"} {
+		found := false
+		for _, name := range names {
+			if name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected meta project names to contain %q, got %#v", want, names)
+		}
+	}
+}
+
 func TestDeployProjectBuildOnlyRunsAsyncAndRecordsArtifact(t *testing.T) {
 	conn := newAsyncTestConnection(t, "flutter-apk-test", true, 1)
 

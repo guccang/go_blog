@@ -48,12 +48,13 @@ func NewConnection(cfg *DeployConfig, password string, agentID string) *Connecti
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildDeployToolDefs(cfg, fileToolKit),
 		Meta: map[string]any{
-			"projects":       cfg.ProjectNames(),
-			"ssh_hosts":      cfg.SSHHosts,
-			"deploy_targets": cfg.TargetNames,
-			"host_platform":  cfg.HostPlatform,
-			"target_hosts":   buildTargetHostMap(cfg),
-			"pipelines":      scanPipelineNames(cfg),
+			"projects":        buildProjectMetaNames(cfg),
+			"project_aliases": buildProjectAliasMeta(cfg),
+			"ssh_hosts":       cfg.SSHHosts,
+			"deploy_targets":  cfg.TargetNames,
+			"host_platform":   cfg.HostPlatform,
+			"target_hosts":    buildTargetHostMap(cfg),
+			"pipelines":       scanPipelineNames(cfg),
 		},
 	}
 
@@ -175,6 +176,48 @@ func parseOptionalIntArg(args map[string]interface{}, key string) int {
 	default:
 		return 0
 	}
+}
+
+func buildProjectMetaNames(cfg *DeployConfig) []string {
+	if cfg == nil {
+		return nil
+	}
+	var names []string
+	for _, name := range cfg.ProjectNames() {
+		names = append(names, name)
+		if proj := cfg.GetProject(name); proj != nil {
+			names = append(names, proj.Aliases...)
+		}
+	}
+	return uniqueStrings(names)
+}
+
+func buildProjectAliasMeta(cfg *DeployConfig) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	result := make(map[string]string, len(cfg.ProjectAlias))
+	for alias, canonical := range cfg.ProjectAlias {
+		result[alias] = canonical
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func uniqueStrings(items []string) []string {
+	seen := make(map[string]bool, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
 }
 
 func buildDeployCommandOptionsFromTask(task TaskAssignPayload) DeployCommandOptions {
@@ -778,7 +821,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 	defs := []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
-			Description: "列出 deploy-agent 已知项目及其 configured/targets 信息；仅做发现，不执行部署。configured=true 用 DeployProject，configured=false 用 DeployAdhoc",
+			Description: "列出 deploy-agent 已知项目及其 configured/targets/aliases 信息；仅做发现，不执行部署。configured=true 用 DeployProject，configured=false 用 DeployAdhoc",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
@@ -811,7 +854,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project":          map[string]interface{}{"type": "string", "description": "项目名称（必须是 DeployListProjects 中 configured=true 的项目）"},
+					"project":          map[string]interface{}{"type": "string", "description": "项目名称或别名（必须匹配 DeployListProjects 返回的项目或 aliases，且 configured=true）"},
 					"deploy_target":    map[string]interface{}{"type": "string", "description": "部署目标名称（如 local, ssh-prod），来自 DeployListProjects 返回的 targets 列表，不填则使用默认目标"},
 					"port":             map[string]interface{}{"type": "integer", "description": "服务监听端口。部署前自动 kill 占用该端口的进程；会覆盖目标配置中的 service_port"},
 					"deploy_mode":      map[string]interface{}{"type": "string", "enum": []string{"auto", "full", "increment"}, "description": "部署模式: auto=自动检测（默认）, full=完整部署覆盖所有文件, increment=增量部署保护配置文件"},
@@ -830,7 +873,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"project":     map[string]interface{}{"type": "string", "description": "项目名称（Go 项目的二进制名，即 go.mod module 路径最后一段）"},
+					"project":     map[string]interface{}{"type": "string", "description": "项目名称或别名（Go 项目的二进制名，即 go.mod module 路径最后一段）"},
 					"project_dir": map[string]interface{}{"type": "string", "description": "Go 项目目录绝对路径（包含 go.mod 的目录）"},
 					"ssh_host":    map[string]interface{}{"type": "string", "description": buildSSHHostDesc(cfg)},
 					"ssh_port":    map[string]interface{}{"type": "integer", "description": "SSH 端口（默认 22）"},
@@ -969,6 +1012,7 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 func (c *Connection) toolListProjects() string {
 	type projectInfo struct {
 		Name       string   `json:"name"`
+		Aliases    []string `json:"aliases,omitempty"`
 		Configured bool     `json:"configured"`
 		BuildOnly  bool     `json:"build_only,omitempty"`
 		ProjectDir string   `json:"project_dir"`
@@ -984,6 +1028,7 @@ func (c *Connection) toolListProjects() string {
 		}
 		projects = append(projects, projectInfo{
 			Name:       proj.Name,
+			Aliases:    append([]string{}, proj.Aliases...),
 			Configured: proj.Configured,
 			BuildOnly:  proj.BuildOnly,
 			ProjectDir: proj.ProjectDir,

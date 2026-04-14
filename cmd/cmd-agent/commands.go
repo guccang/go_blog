@@ -628,6 +628,7 @@ func (a *CMDAGent) handleCgDeployList(req commandRequest) error {
 	var payload struct {
 		Projects []struct {
 			Name       string   `json:"name"`
+			Aliases    []string `json:"aliases"`
 			Configured bool     `json:"configured"`
 			BuildOnly  bool     `json:"build_only"`
 			ProjectDir string   `json:"project_dir"`
@@ -648,6 +649,9 @@ func (a *CMDAGent) handleCgDeployList(req commandRequest) error {
 			mode = "configured"
 		}
 		sb.WriteString(fmt.Sprintf("%d. %s [%s]", i+1, item.Name, mode))
+		if len(item.Aliases) > 0 {
+			sb.WriteString(fmt.Sprintf(" aliases=%s", strings.Join(item.Aliases, ",")))
+		}
 		if item.BuildOnly {
 			sb.WriteString(" build-only")
 		}
@@ -1121,14 +1125,15 @@ func (a *CMDAGent) resolveDeployAgent(project, preferredAgent string) (gatewayAg
 		}
 		var payload struct {
 			Projects []struct {
-				Name string `json:"name"`
+				Name    string   `json:"name"`
+				Aliases []string `json:"aliases"`
 			} `json:"projects"`
 		}
 		if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
 			continue
 		}
 		for _, item := range payload.Projects {
-			if item.Name == project {
+			if item.Name == project || containsString(item.Aliases, project) {
 				matches = append(matches, agent)
 				break
 			}

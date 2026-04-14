@@ -31,6 +31,7 @@ type Target struct {
 // ProjectConfig 项目级部署配置
 type ProjectConfig struct {
 	Name         string    // 项目名称（settings 文件名）
+	Aliases      []string  // 项目别名（支持中文）
 	AgentID      string    // 对应的 UAP agent_id（用于 ctrl_shutdown 等控制协议路由）
 	ProjectDir   string    // 项目根目录
 	PackScript   string    // 打包脚本路径
@@ -68,6 +69,7 @@ type DeployConfig struct {
 
 	// 多项目配置
 	Projects     map[string]*ProjectConfig // 项目名 → 配置
+	ProjectAlias map[string]string         // 项目别名 → 主项目名
 	ProjectOrder []string                  // 保持声明顺序
 
 	// UAP gateway 配置
@@ -103,7 +105,13 @@ func (c *DeployConfig) DefaultProject() *ProjectConfig {
 
 // GetProject 按名称获取项目配置
 func (c *DeployConfig) GetProject(name string) *ProjectConfig {
-	return c.Projects[name]
+	if proj, ok := c.Projects[name]; ok {
+		return proj
+	}
+	if canonical, ok := c.ProjectAlias[strings.TrimSpace(name)]; ok {
+		return c.Projects[canonical]
+	}
+	return nil
 }
 
 // ProjectNames 返回所有项目名称（按声明顺序）
@@ -121,6 +129,7 @@ func (c *DeployConfig) ResolveAgentID(nameOrID string) string {
 
 // projectJSON 项目 JSON 配置（仅用于 unmarshal）
 type projectJSON struct {
+	Aliases      []string              `json:"aliases,omitempty"`  // 项目别名（支持中文）
 	AgentID      string                `json:"agent_id,omitempty"` // 对应的 UAP agent_id
 	PackPattern  string                `json:"pack_pattern,omitempty"`
 	BuildOnly    bool                  `json:"build_only,omitempty"`
@@ -176,6 +185,7 @@ func LoadConfig(path string, targetFilter string) (*DeployConfig, error) {
 	cfg := &DeployConfig{
 		MaxConcurrent: 1,
 		Projects:      make(map[string]*ProjectConfig),
+		ProjectAlias:  make(map[string]string),
 		TargetFilter:  targetFilter,
 	}
 
@@ -324,7 +334,41 @@ func (c *DeployConfig) scanWorkspaces() {
 			}
 			c.Projects[projName] = proj
 			c.ProjectOrder = append(c.ProjectOrder, projName)
+			c.registerProjectAliases(proj)
 		}
+	}
+}
+
+func normalizeProjectAliases(items []string) []string {
+	seen := make(map[string]bool, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func (c *DeployConfig) registerProjectAliases(proj *ProjectConfig) {
+	if c == nil || proj == nil {
+		return
+	}
+	if c.ProjectAlias == nil {
+		c.ProjectAlias = make(map[string]string)
+	}
+	for _, alias := range normalizeProjectAliases(proj.Aliases) {
+		if alias == proj.Name {
+			continue
+		}
+		if existing, ok := c.ProjectAlias[alias]; ok && existing != proj.Name {
+			fmt.Fprintf(os.Stderr, "warning: project alias %q already bound to %s, skip %s\n", alias, existing, proj.Name)
+			continue
+		}
+		c.ProjectAlias[alias] = proj.Name
 	}
 }
 
@@ -459,6 +503,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 		// 叠加到 workspace 发现的项目，或新建（向后兼容无 workspace 的 .json 项目）
 		if existing, ok := c.Projects[projName]; ok {
 			// workspace 已发现该项目，叠加 settings
+			existing.Aliases = normalizeProjectAliases(proj.Aliases)
 			existing.Targets = filteredTargets
 			existing.ConfigFile = filePath
 			existing.Configured = true
@@ -475,6 +520,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			existing.BuildOnly = proj.BuildOnly
 			existing.ProtectFiles = proj.ProtectFiles
 			existing.SetupDirs = proj.SetupDirs
+			c.registerProjectAliases(existing)
 		} else {
 			// 纯 .json 项目（不在 workspace 中），向后兼容
 			proj.Targets = filteredTargets
@@ -482,6 +528,7 @@ func (c *DeployConfig) loadProjectsDir(settingsDir string) error {
 			proj.Configured = true
 			c.Projects[projName] = proj
 			c.ProjectOrder = append(c.ProjectOrder, projName)
+			c.registerProjectAliases(proj)
 		}
 	}
 
@@ -533,6 +580,7 @@ func (c *DeployConfig) parseProjectJSON(projName, filePath string, globalTargets
 
 	proj := &ProjectConfig{
 		Name:         projName,
+		Aliases:      normalizeProjectAliases(pj.Aliases),
 		AgentID:      pj.AgentID,
 		PackPattern:  projName + "_{date}.zip",
 		BuildOnly:    pj.BuildOnly,
