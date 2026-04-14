@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -30,6 +31,7 @@ type codexExecutionPlan struct {
 	Args     []string
 	Env      []string
 	Model    string
+	Settings string
 	Warnings []string
 }
 
@@ -84,6 +86,41 @@ func newCodexRunState() *codexRunState {
 	return &codexRunState{
 		filesWritten: make(map[string]bool),
 		filesEdited:  make(map[string]bool),
+	}
+}
+
+func logCodexStreamEvent(sessionID string, evt StreamEvent) {
+	label := strings.TrimSpace(evt.Type)
+	if label == "" {
+		label = "event"
+	}
+	displayLabel := map[string]string{
+		"assistant":   "回复",
+		"thought":     "思考",
+		"tool":        "工具调用",
+		"tool_detail": "工具详情",
+		"tool_update": "工具进度",
+		"plan":        "执行计划",
+		"system":      "系统",
+		"mode":        "模式切换",
+		"error":       "错误",
+	}[label]
+	if displayLabel == "" {
+		displayLabel = label
+	}
+
+	text := strings.TrimSpace(evt.Text)
+	toolName := strings.TrimSpace(evt.ToolName)
+
+	switch {
+	case toolName != "" && text != "":
+		log.Printf("[Codex][%s][%s] %s | %s", sessionID, displayLabel, toolName, previewText(text, 300))
+	case toolName != "":
+		log.Printf("[Codex][%s][%s] %s", sessionID, displayLabel, toolName)
+	case text != "":
+		log.Printf("[Codex][%s][%s] %s", sessionID, displayLabel, previewText(text, 300))
+	default:
+		log.Printf("[Codex][%s][%s]", sessionID, displayLabel)
 	}
 }
 
@@ -232,6 +269,30 @@ func formatCodexTodoPlan(items []codexTodoItem) string {
 	return sb.String()
 }
 
+func buildCodexStartInfo(sessionID, project, projectPath string, prompt string, keepSession bool, cfg *AgentConfig, plan codexExecutionPlan, cmdArgs []string) string {
+	var sb strings.Builder
+	sb.WriteString("🚀 Codex 编码启动\n")
+	sb.WriteString(fmt.Sprintf("会话: %s\n", sessionID))
+	sb.WriteString(fmt.Sprintf("后端: %s\n", cfg.BackendLabel()))
+	sb.WriteString(fmt.Sprintf("项目: %s\n", project))
+	sb.WriteString(fmt.Sprintf("项目路径: %s\n", projectPath))
+	sb.WriteString(fmt.Sprintf("工作目录: %s\n", projectPath))
+	if strings.TrimSpace(plan.Model) != "" {
+		sb.WriteString(fmt.Sprintf("模型: %s\n", plan.Model))
+	} else {
+		sb.WriteString("模型: (使用 Codex 当前默认配置)\n")
+	}
+	if strings.TrimSpace(plan.Settings) != "" {
+		sb.WriteString(fmt.Sprintf("Settings: %s\n", plan.Settings))
+	} else {
+		sb.WriteString("Settings: (未指定)\n")
+	}
+	sb.WriteString(fmt.Sprintf("保留会话: %v\n", keepSession))
+	sb.WriteString(fmt.Sprintf("Prompt长度: %d\n", len(prompt)))
+	sb.WriteString(fmt.Sprintf("命令: %s %s", cfg.CodexCmd, strings.Join(cmdArgs, " ")))
+	return sb.String()
+}
+
 func buildCodexExecutionPlan(cfg *AgentConfig, extraArgs []string) (codexExecutionPlan, error) {
 	plan := codexExecutionPlan{
 		Args: append([]string{}, cfg.CodexArgs...),
@@ -248,7 +309,8 @@ func buildCodexExecutionPlan(cfg *AgentConfig, extraArgs []string) (codexExecuti
 		}
 		settingsPath = filepath.Join(cfg.CodexSettingsDir, name)
 		if _, err := os.Stat(settingsPath); err != nil {
-			return codexExecutionPlan{}, fmt.Errorf("default settings file not found: %s", settingsPath)
+			log.Printf("[Codex] default settings skipped: %s (reason: %v)", settingsPath, err)
+			settingsPath = ""
 		}
 	}
 
@@ -258,6 +320,7 @@ func buildCodexExecutionPlan(cfg *AgentConfig, extraArgs []string) (codexExecuti
 			return codexExecutionPlan{}, err
 		}
 		applyCodexSettings(&plan, settings, settingsPath)
+		plan.Settings = settingsPath
 	}
 
 	args, warnings := translateCodexExtraArgs(resolvedExtra)
@@ -446,10 +509,26 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 	defer cancel()
 
 	cmdArgs := append([]string{}, plan.Args...)
-	cmdArgs = append(cmdArgs, prompt)
+	cmdArgs = append(cmdArgs, "-")
+	startInfo := buildCodexStartInfo(sessionID, project, projectPath, prompt, keepSession, a.cfg, plan, cmdArgs)
+	log.Printf("[Codex][%s][启动信息]\n%s", sessionID, startInfo)
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+		SessionID: sessionID,
+		RequestID: requestID,
+		Event: StreamEvent{
+			Type: "system",
+			Text: startInfo,
+		},
+	})
 	cmd := exec.CommandContext(ctx, a.cfg.CodexCmd, cmdArgs...)
 	cmd.Dir = projectPath
 	cmd.Env = plan.Env
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		a.completeSession(sessionID, "failed", "")
+		a.cleanupSessionRecord(sessionID)
+		return taskResult{Status: "error"}, fmt.Errorf("stdin pipe: %v", err)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -470,6 +549,14 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 		return taskResult{Status: "error"}, fmt.Errorf("start codex exec: %v", err)
 	}
 	log.Printf("[Codex] started %s %s (pid=%d, dir=%s)", a.cfg.CodexCmd, strings.Join(cmdArgs, " "), cmd.Process.Pid, projectPath)
+	go func() {
+		defer stdin.Close()
+		if _, err := io.WriteString(stdin, prompt); err != nil {
+			log.Printf("[Codex] stdin write error: %v", err)
+			return
+		}
+		log.Printf("[Codex] prompt sent via stdin (%d chars)", len(prompt))
+	}()
 
 	a.sessionsMu.Lock()
 	if rec, ok := a.sessions[sessionID]; ok {
@@ -507,6 +594,7 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 
 	emit := func(evt StreamEvent) {
 		evt.SessionID = sessionID
+		logCodexStreamEvent(sessionID, evt)
 		a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 			SessionID: sessionID,
 			RequestID: requestID,

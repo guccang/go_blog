@@ -83,9 +83,8 @@ func getCodegenHelpText() string {
 		"cg start <项目[@agent]> #<模型> <需求> — 指定模型\n" +
 		"cg start <项目[@agent]> @oc <需求> — 用OpenCode\n" +
 		"cg start <项目[@agent]> !deploy <需求> — 编码后自动部署\n" +
-		"cg deploy <项目[@agent]> — 部署已配置项目\n" +
+		"cg deploy <项目[@agent]> [#目标] [!pack] [--version/-v 版本] [--desc/-d 描述] — 部署已配置项目\n" +
 		"cg deploy list — 列出 deploy 项目\n" +
-		"cg deploy status <session_id> — 查询部署状态\n" +
 		"cg deploy adhoc <项目> <目录> <ssh_host> — 一次性部署\n" +
 		"cg deploy pipelines — 列出可用编排\n" +
 		"cg deploy pipeline <编排名[@agent]> — 执行部署编排\n" +

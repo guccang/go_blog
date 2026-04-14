@@ -54,7 +54,7 @@ func TestBuildPersistentAssistantRecordForAsyncTask(t *testing.T) {
 	if !strings.Contains(record, "状态: async") {
 		t.Fatalf("expected async status in record: %s", record)
 	}
-	if !strings.Contains(record, "恢复建议: 优先使用 DeployGetStatus 查询 session_id=deploy_123") {
+	if !strings.Contains(record, "恢复建议: 优先根据 stream_event 和 task_complete 跟踪 session_id=deploy_123") {
 		t.Fatalf("expected recovery hint in record: %s", record)
 	}
 	if !strings.Contains(record, "DeployProject: session_id=deploy_123, status=queued, project=blog-agent, deploy_target=ssh-prod") {

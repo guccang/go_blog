@@ -1,6 +1,7 @@
 {
     "acp_agent_cmd": "npx",
-    "agent_name": "acp-agent-win",
+    "coding_backend": "codex_exec",
+    "agent_name": "acp-agent-wxgame",
     "agent_type": "acp-agent",
     "analysis_timeout": 3600,
     "auth_token": "guccang@blog.guccang.cn",
@@ -15,7 +16,6 @@
     "max_turns": 20,
     "server_url": "ws://blog.guccang.cn:10086/ws/uap",
     "workspaces": [
-        "E:\\githubdesktop\\acpworkspace",
-        "E:\\MiaoMiao-1-day\\src\\OriginalVersion_15321_Src"
+        "/Users/guccang/github_repo/weixingame"
     ]
 }

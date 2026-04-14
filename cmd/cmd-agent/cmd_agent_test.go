@@ -73,3 +73,36 @@ func TestCreateProjectToolNamePrefersACP(t *testing.T) {
 		t.Fatalf("createProjectToolName()=%q want=%q", got, "AcpCreateProject")
 	}
 }
+
+func TestParseDeployCommandOptions(t *testing.T) {
+	opts, err := parseDeployCommandOptions("#upload !pack --version 1.2.3 --desc release-123 --private-key-path /tmp/key --project-path /tmp/project")
+	if err != nil {
+		t.Fatalf("parseDeployCommandOptions failed: %v", err)
+	}
+	if opts.Target != "upload" || !opts.PackOnly {
+		t.Fatalf("unexpected target/packOnly: %#v", opts)
+	}
+	if opts.Version != "1.2.3" || opts.Desc != "release-123" {
+		t.Fatalf("unexpected version/desc: %#v", opts)
+	}
+	if opts.PrivateKeyPath != "/tmp/key" || opts.ProjectPath != "/tmp/project" {
+		t.Fatalf("unexpected path options: %#v", opts)
+	}
+}
+
+func TestParseDeployCommandOptionsRejectsUnknownFlag(t *testing.T) {
+	_, err := parseDeployCommandOptions("--unknown value")
+	if err == nil {
+		t.Fatalf("expected unknown flag to fail")
+	}
+}
+
+func TestParseDeployCommandOptionsSupportsShortFlags(t *testing.T) {
+	opts, err := parseDeployCommandOptions("-v 2.0.1 -d release-note")
+	if err != nil {
+		t.Fatalf("parseDeployCommandOptions failed: %v", err)
+	}
+	if opts.Version != "2.0.1" || opts.Desc != "release-note" {
+		t.Fatalf("unexpected short flag parse result: %#v", opts)
+	}
+}

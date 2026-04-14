@@ -228,7 +228,7 @@ func buildRecoverySuggestion(asyncSessions []AsyncSessionInfo, keyFacts, failedI
 		for _, info := range asyncSessions {
 			sessionIDs = append(sessionIDs, info.SessionID)
 		}
-		return fmt.Sprintf("优先使用 DeployGetStatus 查询 session_id=%s；继续执行时复用已有 session_id、project_dir 和 deploy_target，不要重复创建任务。",
+		return fmt.Sprintf("优先根据 stream_event 和 task_complete 跟踪 session_id=%s；继续执行时复用已有 session_id、project_dir 和 deploy_target，不要重复创建任务。",
 			strings.Join(sessionIDs, ", "))
 	}
 	if len(failedItems) > 0 {

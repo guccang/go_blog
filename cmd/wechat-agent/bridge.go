@@ -262,12 +262,12 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 	}
 	b.sessionMu.Unlock()
 
-	// 节流：同一 session 的同一事件类型每 10 秒最多推送一次，避免 system 事件压掉 assistant chunk
-	throttleKey := codegenThrottleKey(payload.SessionID, payload.Event.Type)
+	// 节流：仅抑制重复事件，不吞掉新的执行步骤/思考/工具更新。
+	throttleKey := codegenThrottleKey(payload.SessionID, payload.Event.Type, payload.Event.Text, payload.Event.ToolName)
 	b.eventMu.Lock()
 	lastTime := b.lastEventTime[throttleKey]
 	now := time.Now()
-	shouldSend := now.Sub(lastTime) >= 10*time.Second
+	shouldSend := now.Sub(lastTime) >= 2*time.Second
 	if shouldSend {
 		b.lastEventTime[throttleKey] = now
 	}
@@ -326,8 +326,24 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	b.sendNotification(toUser, text)
 }
 
-func codegenThrottleKey(sessionID, eventType string) string {
-	return sessionID + ":" + strings.TrimSpace(eventType)
+func codegenThrottleKey(sessionID, eventType, eventText, toolName string) string {
+	return sessionID + ":" + codegenEventSignature(eventType, eventText, toolName)
+}
+
+func codegenEventSignature(eventType, eventText, toolName string) string {
+	eventType = strings.TrimSpace(eventType)
+	toolName = strings.TrimSpace(toolName)
+	eventText = strings.Join(strings.Fields(strings.TrimSpace(eventText)), " ")
+	switch {
+	case toolName != "" && eventText != "":
+		return eventType + ":" + toolName + ":" + eventText
+	case toolName != "":
+		return eventType + ":" + toolName
+	case eventText != "":
+		return eventType + ":" + eventText
+	default:
+		return eventType
+	}
 }
 
 // formatEventForWeChat 将 stream_event 格式化为微信推送文本

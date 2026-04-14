@@ -253,11 +253,49 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		return
 	}
 
+	success, errText := interpretToolResult(result)
+	if !success {
+		log.Printf("[WARN] tool_call failed from=%s tool=%s err=%s", msg.From, payload.ToolName, errText)
+		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
+			RequestID: msg.ID,
+			Success:   false,
+			Result:    result,
+			Error:     errText,
+		})
+		return
+	}
+
 	c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
 		RequestID: msg.ID,
 		Success:   true,
 		Result:    result,
 	})
+}
+
+func interpretToolResult(raw string) (bool, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return true, ""
+	}
+
+	var payload struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return true, ""
+	}
+	if payload.Success == nil || *payload.Success {
+		return true, ""
+	}
+	if strings.TrimSpace(payload.Error) != "" {
+		return false, strings.TrimSpace(payload.Error)
+	}
+	if strings.TrimSpace(payload.Message) != "" {
+		return false, strings.TrimSpace(payload.Message)
+	}
+	return false, "tool execution failed"
 }
 
 // ========================= Tool 实现 =========================

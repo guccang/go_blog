@@ -81,8 +81,7 @@ func TestDeployProjectBuildOnlyRunsAsyncAndRecordsArtifact(t *testing.T) {
 		t.Fatalf("expected session_id in result, got %#v", result)
 	}
 
-	statusJSON := conn.toolDeployGetStatus(map[string]interface{}{"session_id": sessionID})
-	status := parseToolJSON(t, statusJSON)
+	status := waitForTaskObserved(t, conn, sessionID, 2*time.Second)
 	gotStatus, _ := status["status"].(string)
 	if gotStatus != deployTaskStatusQueued && gotStatus != deployTaskStatusInProgress {
 		t.Fatalf("expected queued/in_progress, got %#v", status)
@@ -307,12 +306,42 @@ func waitForTaskStatus(t *testing.T, conn *Connection, sessionID, want string, t
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		status := parseToolJSON(t, conn.toolDeployGetStatus(map[string]interface{}{"session_id": sessionID}))
-		if got, _ := status["status"].(string); got == want {
-			return status
+		if status := snapshotTaskStatus(conn, sessionID); status != nil {
+			if got, _ := status["status"].(string); got == want {
+				return status
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for session %s to reach %s", sessionID, want)
 	return nil
+}
+
+func waitForTaskObserved(t *testing.T, conn *Connection, sessionID string, timeout time.Duration) map[string]interface{} {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if status := snapshotTaskStatus(conn, sessionID); status != nil {
+			return status
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for session %s to be observed", sessionID)
+	return nil
+}
+
+func snapshotTaskStatus(conn *Connection, sessionID string) map[string]interface{} {
+	rec := conn.taskSnapshot(sessionID)
+	if rec == nil {
+		return nil
+	}
+	raw, err := json.Marshal(rec.snapshot())
+	if err != nil {
+		return nil
+	}
+	var normalized map[string]interface{}
+	if err := json.Unmarshal(raw, &normalized); err != nil {
+		return nil
+	}
+	return normalized
 }

@@ -807,7 +807,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployProject",
-			Description: "异步提交 settings 中已配置项目的部署或打包任务。调用后立即返回 session_id；后续用 DeployGetStatus 查询结果。调用前先用 DeployListProjects 确认 project 存在且 configured=true",
+			Description: "异步提交 settings 中已配置项目的部署或打包任务。调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果。调用前先用 DeployListProjects 确认 project 存在且 configured=true",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -826,7 +826,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployAdhoc",
-			Description: "异步提交一次性部署任务。必须提供 project_dir 和 ssh_host；调用后立即返回 session_id，后续用 DeployGetStatus 查询结果",
+			Description: "异步提交一次性部署任务。必须提供 project_dir 和 ssh_host；调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -849,24 +849,13 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployPipeline",
-			Description: "异步提交预配置部署 pipeline。调用后立即返回 session_id；后续用 DeployGetStatus 查询结果",
+			Description: "异步提交预配置部署 pipeline。调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"pipeline": map[string]interface{}{"type": "string", "description": "pipeline 名称"},
 				},
 				"required": []string{"pipeline"},
-			}),
-		},
-		{
-			Name:        "DeployGetStatus",
-			Description: "查询异步部署或打包任务状态。传入 DeployProject、DeployAdhoc 或 DeployPipeline 返回的 session_id",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"session_id": map[string]interface{}{"type": "string", "description": "异步任务 session_id"},
-				},
-				"required": []string{"session_id"},
 			}),
 		},
 	}
@@ -946,8 +935,6 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListPipelines()
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args, sendAsyncProgress)
-	case "DeployGetStatus":
-		result = c.toolDeployGetStatus(args)
 	case "AgentShutdown":
 		c.toolAgentShutdown(msg, args)
 		return
@@ -1199,20 +1186,6 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgres
 	}
 	sendProgress(task.SessionID, fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
 	return buildAcceptedTaskResult(rec)
-}
-
-func (c *Connection) toolDeployGetStatus(args map[string]interface{}) string {
-	sessionID, _ := args["session_id"].(string)
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return buildToolErrorJSON(fmt.Errorf("缺少 session_id 参数"))
-	}
-
-	rec := c.taskSnapshot(sessionID)
-	if rec == nil {
-		return buildToolErrorJSON(fmt.Errorf("会话 %s 不存在", sessionID))
-	}
-	return uap.BuildToolResult("", rec.snapshot(), "").Result
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

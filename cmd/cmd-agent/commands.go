@@ -15,6 +15,56 @@ type commandRequest struct {
 	Content       string
 }
 
+type deployCommandOptions struct {
+	Target         string
+	PackOnly       bool
+	Version        string
+	Desc           string
+	PrivateKeyPath string
+	ProjectPath    string
+}
+
+func parseDeployCommandOptions(rest string) (deployCommandOptions, error) {
+	var opts deployCommandOptions
+	fields := strings.Fields(strings.TrimSpace(rest))
+	for index := 0; index < len(fields); index++ {
+		field := fields[index]
+		switch {
+		case strings.HasPrefix(field, "#"):
+			opts.Target = strings.TrimPrefix(field, "#")
+		case strings.EqualFold(field, "!pack"):
+			opts.PackOnly = true
+		case field == "--version" || field == "-v":
+			if index+1 >= len(fields) {
+				return opts, fmt.Errorf("缺少 %s 的值", field)
+			}
+			index++
+			opts.Version = fields[index]
+		case field == "--desc" || field == "-d":
+			if index+1 >= len(fields) {
+				return opts, fmt.Errorf("缺少 %s 的值", field)
+			}
+			index++
+			opts.Desc = fields[index]
+		case field == "--private-key-path":
+			if index+1 >= len(fields) {
+				return opts, fmt.Errorf("缺少 --private-key-path 的值")
+			}
+			index++
+			opts.PrivateKeyPath = fields[index]
+		case field == "--project-path":
+			if index+1 >= len(fields) {
+				return opts, fmt.Errorf("缺少 --project-path 的值")
+			}
+			index++
+			opts.ProjectPath = fields[index]
+		default:
+			return opts, fmt.Errorf("不支持的 deploy 参数: %s", field)
+		}
+	}
+	return opts, nil
+}
+
 func (a *CMDAGent) dispatchCommand(req commandRequest) error {
 	args := strings.TrimSpace(strings.TrimPrefix(req.Content, "cg"))
 	if args == "" {
@@ -488,14 +538,12 @@ func (a *CMDAGent) handleCgStop(req commandRequest) error {
 
 func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 	if strings.TrimSpace(param) == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请指定 deploy 子命令或项目\n用法: cg deploy <项目[@agent]> [#目标] [!pack]")
+		return a.sendClientNotify(req.route(), "⚠️ 请指定 deploy 子命令或项目\n用法: cg deploy <项目[@agent]> [#目标] [!pack] [--version/-v 版本] [--desc/-d 描述]")
 	}
 	fields := strings.Fields(param)
 	switch fields[0] {
 	case "list", "ls":
 		return a.handleCgDeployList(req)
-	case "status":
-		return a.handleCgDeployStatus(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
 	case "adhoc":
 		return a.handleCgDeployAdhoc(req, strings.TrimSpace(strings.TrimPrefix(param, fields[0])))
 	case "pipelines":
@@ -522,21 +570,9 @@ func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 		rest = strings.TrimSpace(deployParts[1])
 	}
 
-	deployTarget := ""
-	packOnly := false
-	for rest != "" && (strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "!")) {
-		optParts := strings.SplitN(rest, " ", 2)
-		opt := optParts[0]
-		if strings.HasPrefix(opt, "#") {
-			deployTarget = strings.TrimPrefix(opt, "#")
-		} else if strings.EqualFold(opt, "!pack") {
-			packOnly = true
-		}
-		if len(optParts) > 1 {
-			rest = strings.TrimSpace(optParts[1])
-		} else {
-			rest = ""
-		}
+	deployOpts, err := parseDeployCommandOptions(rest)
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
 	}
 
 	agent, err := a.resolveDeployAgent(project, agentName)
@@ -555,14 +591,18 @@ func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 	}
 	a.setPendingRoute(requestID, route)
 
-	if err := a.sendClientNotify(route, buildDeployInfo(project, agentNameOrDefault(agentName, agent.Name), deployTarget, packOnly, requestID)); err != nil {
+	if err := a.sendClientNotify(route, buildDeployInfo(project, agentNameOrDefault(agentName, agent.Name), deployOpts.Target, deployOpts.PackOnly, requestID, deployOpts)); err != nil {
 		return err
 	}
 
 	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployProject", map[string]any{
-		"project":       project,
-		"deploy_target": deployTarget,
-		"pack_only":     packOnly,
+		"project":          project,
+		"deploy_target":    deployOpts.Target,
+		"pack_only":        deployOpts.PackOnly,
+		"version":          deployOpts.Version,
+		"desc":             deployOpts.Desc,
+		"private_key_path": deployOpts.PrivateKeyPath,
+		"project_path":     deployOpts.ProjectPath,
 	})
 	if err != nil {
 		return err
@@ -617,44 +657,6 @@ func (a *CMDAGent) handleCgDeployList(req commandRequest) error {
 		sb.WriteString("\n")
 	}
 	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
-}
-
-func (a *CMDAGent) handleCgDeployStatus(req commandRequest, param string) error {
-	fields := strings.Fields(param)
-	if len(fields) == 0 {
-		return a.sendClientNotify(req.route(), "⚠️ 请提供 session_id\n用法: cg deploy status <session_id>")
-	}
-	agent, err := a.resolveAnyDeployAgent("")
-	if err != nil {
-		return a.sendClientNotify(req.route(), "❌ "+err.Error())
-	}
-	requestID := "cmd_deploy_status_" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployGetStatus", map[string]any{"session_id": fields[0]})
-	if err != nil {
-		return err
-	}
-	result := <-resultCh
-	if !result.Success {
-		return a.sendClientNotify(req.route(), "❌ 查询失败: "+result.Error)
-	}
-	var data map[string]any
-	if err := json.Unmarshal([]byte(result.Result), &data); err != nil {
-		return a.sendClientNotify(req.route(), result.Result)
-	}
-	text := fmt.Sprintf("session: %v\nstatus: %v", data["session_id"], data["status"])
-	if v, ok := data["tool_name"]; ok && fmt.Sprint(v) != "" {
-		text += "\ntool: " + fmt.Sprint(v)
-	}
-	if v, ok := data["project"]; ok && fmt.Sprint(v) != "" {
-		text += "\nproject: " + fmt.Sprint(v)
-	}
-	if v, ok := data["pipeline"]; ok && fmt.Sprint(v) != "" {
-		text += "\npipeline: " + fmt.Sprint(v)
-	}
-	if v, ok := data["error"]; ok && fmt.Sprint(v) != "" {
-		text += "\nerror: " + fmt.Sprint(v)
-	}
-	return a.sendClientNotify(req.route(), text)
 }
 
 func (a *CMDAGent) handleCgDeployAdhoc(req commandRequest, param string) error {
@@ -1235,7 +1237,7 @@ func buildStartInfo(project, agentName, model, tool string, autoDeploy bool, req
 	return info
 }
 
-func buildDeployInfo(project, agentName, deployTarget string, packOnly bool, requestID string) string {
+func buildDeployInfo(project, agentName, deployTarget string, packOnly bool, requestID string, opts deployCommandOptions) string {
 	info := fmt.Sprintf("🚀 部署已启动\n\n项目: %s", project)
 	if agentName != "" {
 		info += fmt.Sprintf("\nAgent: %s", agentName)
@@ -1245,6 +1247,18 @@ func buildDeployInfo(project, agentName, deployTarget string, packOnly bool, req
 	}
 	if packOnly {
 		info += "\n模式: 仅打包"
+	}
+	if strings.TrimSpace(opts.Version) != "" {
+		info += fmt.Sprintf("\n版本: %s", opts.Version)
+	}
+	if strings.TrimSpace(opts.Desc) != "" {
+		info += fmt.Sprintf("\n描述: %s", opts.Desc)
+	}
+	if strings.TrimSpace(opts.PrivateKeyPath) != "" {
+		info += fmt.Sprintf("\n私钥: %s", opts.PrivateKeyPath)
+	}
+	if strings.TrimSpace(opts.ProjectPath) != "" {
+		info += fmt.Sprintf("\n项目目录覆盖: %s", opts.ProjectPath)
 	}
 	info += fmt.Sprintf("\n请求: %s\n\n进度将通过当前客户端推送", requestID)
 	return info

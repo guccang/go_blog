@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,6 +70,52 @@ func TestBuildCodexExecutionPlanAppliesSettingsAndTranslatesArgs(t *testing.T) {
 	}
 }
 
+func TestBuildCodexExecutionPlanSkipsMissingDefaultSettings(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CodingBackend = BackendCodexExec
+	cfg.CodexSettingsDir = t.TempDir()
+	cfg.DefaultSettings = "minimax"
+
+	plan, err := buildCodexExecutionPlan(cfg, nil)
+	if err != nil {
+		t.Fatalf("buildCodexExecutionPlan should skip missing default settings, got: %v", err)
+	}
+	if !hasOrderedArgs(plan.Args, "exec", "--json") {
+		t.Fatalf("expected exec/json defaults in args: %#v", plan.Args)
+	}
+}
+
+func TestBuildCodexStartInfoContainsCoreFields(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CodingBackend = BackendCodexExec
+
+	info := buildCodexStartInfo(
+		"acp_123",
+		"demo",
+		"/tmp/demo",
+		"请修复登录失败问题",
+		false,
+		cfg,
+		codexExecutionPlan{Model: "gpt-5.4", Settings: "/tmp/settings/codex/default.json"},
+		[]string{"exec", "--json", "-"},
+	)
+
+	for _, want := range []string{
+		"会话: acp_123",
+		"后端: Codex",
+		"项目: demo",
+		"项目路径: /tmp/demo",
+		"模型: gpt-5.4",
+		"Settings: /tmp/settings/codex/default.json",
+		"Prompt长度:",
+		"命令: codex exec --json -",
+	} {
+		if !strings.Contains(info, want) {
+			t.Fatalf("expected start info to contain %q, got:\n%s", want, info)
+		}
+	}
+}
+
 func TestCodexRunStateConsumesKeyEvents(t *testing.T) {
 	state := newCodexRunState()
 	var events []StreamEvent
@@ -108,6 +156,27 @@ func TestCodexRunStateConsumesKeyEvents(t *testing.T) {
 	}
 	if len(events) < 3 {
 		t.Fatalf("expected stream events, got %d", len(events))
+	}
+}
+
+func TestLogCodexStreamEventIncludesToolAndPreview(t *testing.T) {
+	var buf bytes.Buffer
+	prevWriter := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prevWriter)
+
+	logCodexStreamEvent("acp_123", StreamEvent{
+		Type:     "tool_update",
+		ToolName: "rg",
+		Text:     "search completed",
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "[Codex][acp_123][工具进度]") {
+		t.Fatalf("expected session/type in log, got %q", got)
+	}
+	if !strings.Contains(got, "rg | search completed") {
+		t.Fatalf("expected tool and text in log, got %q", got)
 	}
 }
 
