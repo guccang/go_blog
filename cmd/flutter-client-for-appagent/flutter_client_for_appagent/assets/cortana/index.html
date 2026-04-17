@@ -14,35 +14,44 @@ canvas { display: block; }
 </head>
 <body>
 <div id="status">Initializing...</div>
+<script src="./vendor/pixi.min.js"></script>
+<script src="./vendor/live2dcubismcore.min.js"></script>
+<script src="./vendor/cubism4.min.js"></script>
 <script>
 const log = (msg) => {
   console.log('[Cortana] ' + msg);
   document.getElementById('status').textContent = msg;
 };
 
-log('Loading scripts...');
+window.PIXI = window.PIXI || PIXI;
 
-// 使用 pixi-live2d-display 方案
-const MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori_pro_t02.model3.json';
+const MODEL_URL = './model/haru/haru_greeter_t03.model3.json';
+const expressionMap = {
+  happy: 'f01',
+  sad: 'f04',
+  surprised: 'f07',
+};
+const motionMap = {
+  TapBody: ['Tap', 0],
+  Tap: ['Tap', 0],
+  Idle: ['Idle', 0],
+  IdleAlt: ['Idle', 1],
+  IdleWave: ['Idle', 2],
+};
 
 let app, model;
 
-async function loadScript(src) {
-  log('Loading: ' + src.split('/').pop());
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = () => { log('Loaded: ' + src.split('/').pop()); resolve(); };
-    s.onerror = (e) => { log('Failed: ' + src.split('/').pop()); reject(e); };
-    document.head.appendChild(s);
-  });
-}
-
 async function init() {
   try {
-    // 动态加载 PIXI 和 pixi-live2d-display
-    await loadScript('https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js');
-    await loadScript('https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js');
+    if (!window.PIXI) {
+      throw new Error('PIXI runtime is missing');
+    }
+    if (!window.PIXI.live2d || !window.PIXI.live2d.Live2DModel) {
+      throw new Error('pixi-live2d cubism4 runtime is missing');
+    }
+    if (!window.Live2DCubismCore) {
+      throw new Error('Live2D Cubism Core is missing');
+    }
 
     log('Creating PIXI app...');
     app = new PIXI.Application({
@@ -56,18 +65,27 @@ async function init() {
     log('Loading Live2D model...');
     model = await PIXI.live2d.Live2DModel.from(MODEL_URL);
     app.stage.addChild(model);
+    model.eventMode = 'static';
+    model.cursor = 'pointer';
+    model.on('hit', (hitAreas) => {
+      log('Model hit: ' + hitAreas.join(', '));
+      if (hitAreas.includes('Body')) {
+        setMotion('TapBody', 0);
+      }
+    });
 
     // 居中缩放
     model.anchor.set(0.5, 0.5);
     model.x = app.screen.width / 2;
     model.y = app.screen.height * 0.55;
-    const scale = Math.min(app.screen.width, app.screen.height) / 1000;
+    const scale = Math.min(app.screen.width, app.screen.height) / 720;
     model.scale.set(scale);
 
     log('Ready!');
     setTimeout(() => { document.getElementById('status').style.display = 'none'; }, 2000);
   } catch (e) {
-    log('Error: ' + e.message);
+    const message = e && e.message ? e.message : String(e);
+    log('Error: ' + message);
     console.error(e);
   }
 }
@@ -76,13 +94,15 @@ async function init() {
 function setExpression(name) {
   log('setExpression: ' + name);
   if (!model) return log('Model not ready');
-  try { model.expression(name); } catch(e) { log('Expression error: ' + e.message); }
+  const mapped = expressionMap[name] || name;
+  try { model.expression(mapped); } catch(e) { log('Expression error: ' + e.message); }
 }
 
 function setMotion(group, index) {
   log('setMotion: ' + group + ', ' + index);
   if (!model) return log('Model not ready');
-  try { model.motion(group, index); } catch(e) { log('Motion error: ' + e.message); }
+  const mapped = motionMap[group] || [group, index || 0];
+  try { model.motion(mapped[0], mapped[1]); } catch(e) { log('Motion error: ' + e.message); }
 }
 
 function startLipSync(amp) {
@@ -96,7 +116,7 @@ function stopLipSync() {
 }
 
 function setCostume(name) {
-  log('setCostume: ' + name + ' (not implemented)');
+  log('setCostume skipped: local haru model has no costume variants');
 }
 
 window.addEventListener('resize', () => {
@@ -106,6 +126,16 @@ window.addEventListener('resize', () => {
     model.x = app.screen.width / 2;
     model.y = app.screen.height * 0.55;
   }
+});
+
+window.addEventListener('error', (event) => {
+  const message = event && event.message ? event.message : 'Unknown window error';
+  log('Window error: ' + message);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event && event.reason ? (event.reason.message || String(event.reason)) : 'Unknown promise rejection';
+  log('Unhandled rejection: ' + reason);
 });
 
 init();

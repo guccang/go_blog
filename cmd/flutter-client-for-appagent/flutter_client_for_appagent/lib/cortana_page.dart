@@ -18,8 +18,7 @@ class _CortanaPageState extends State<CortanaPage> {
   bool _speaking = false;
 
   static const _expressions = ['happy', 'sad', 'surprised'];
-  static const _motions = [('TapBody', 0), ('Idle', 0)];
-  static const _costumes = ['default', 'casual', 'formal'];
+  static const _motions = [('TapBody', 0), ('Idle', 0), ('IdleAlt', 1)];
 
   @override
   void dispose() {
@@ -69,10 +68,14 @@ class _CortanaPageState extends State<CortanaPage> {
               _webCtrl = ctrl;
               debugPrint('[Cortana] WebView created');
             },
-            onLoadStart: (ctrl, url) => debugPrint('[Cortana] Load start: $url'),
+            onLoadStart: (ctrl, url) =>
+                debugPrint('[Cortana] Load start: $url'),
             onLoadStop: (ctrl, url) => debugPrint('[Cortana] Load stop: $url'),
-            onConsoleMessage: (ctrl, msg) => debugPrint('[Cortana Console] ${msg.message}'),
-            onLoadError: (ctrl, url, code, msg) => debugPrint('[Cortana Error] $code: $msg'),
+            onConsoleMessage: (ctrl, msg) =>
+                debugPrint('[Cortana Console] ${msg.message}'),
+            onReceivedError: (ctrl, request, error) => debugPrint(
+              '[Cortana Error] ${error.type}: ${error.description} (${request.url})',
+            ),
           ),
         ),
         Container(
@@ -101,17 +104,8 @@ class _CortanaPageState extends State<CortanaPage> {
                         child: ActionChip(
                           label: Text(m.$1),
                           avatar: const Icon(Icons.directions_run, size: 14),
-                          onPressed: () => _callJS("setMotion('${m.$1}', ${m.$2})"),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    for (final c in _costumes)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ActionChip(
-                          label: Text(c),
-                          avatar: const Icon(Icons.checkroom, size: 14),
-                          onPressed: () => _callJS("setCostume('$c')"),
+                          onPressed: () =>
+                              _callJS("setMotion('${m.$1}', ${m.$2})"),
                         ),
                       ),
                   ],
@@ -128,15 +122,24 @@ class _CortanaPageState extends State<CortanaPage> {
                         hintText: '输入让 Cortana 说的话...',
                         isDense: true,
                         border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
-                    onPressed: _speaking ? null : () => _speak(_textCtrl.text.trim()),
+                    onPressed: _speaking
+                        ? null
+                        : () => _speak(_textCtrl.text.trim()),
                     icon: _speaking
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.record_voice_over),
                     label: Text(_speaking ? '说话中' : '说话'),
                   ),
