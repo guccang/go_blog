@@ -77,19 +77,28 @@ func (b *Bridge) filterRootToolsByMatchedSkills(query string, tools []LLMTool) (
 	if b.cfg != nil && b.cfg.MaxMatchedSkills > 0 {
 		limit = b.cfg.MaxMatchedSkills
 	}
-	matchedSkills := b.skillMgr.MatchByQuery(query, limit)
-	if len(matchedSkills) == 0 {
+	const confidenceThreshold = 0.3 // 低于此分数不收窄工具
+
+	scoredSkills := b.skillMgr.MatchByQueryScored(query, limit)
+	if len(scoredSkills) == 0 {
 		return tools, nil
 	}
 
 	allowed := make(map[string]bool)
 	var matchedNames []string
-	for _, skill := range matchedSkills {
-		matchedNames = append(matchedNames, skill.Name)
-		for _, toolName := range skill.Tools {
+	for _, ss := range scoredSkills {
+		if ss.Confidence < confidenceThreshold {
+			log.Printf("[RootToolPolicy] skill=%s confidence=%.2f < threshold=%.2f, skipped", ss.Skill.Name, ss.Confidence, confidenceThreshold)
+			continue
+		}
+		matchedNames = append(matchedNames, ss.Skill.Name)
+		for _, toolName := range ss.Skill.Tools {
 			allowed[toolName] = true
 			allowed[sanitizeToolName(toolName)] = true
 		}
+	}
+	if len(matchedNames) == 0 {
+		return tools, nil
 	}
 
 	var filtered []LLMTool

@@ -17,6 +17,7 @@ type SkillEntry struct {
 	Tools       []string // YAML tools（关联的工具名列表）
 	Agents      []string // YAML agents（所需 agent 前缀列表，如 blog-agent, exec_code）
 	Keywords    []string // YAML keywords（用于静态匹配的关键词列表）
+	SyncMode    bool     // YAML sync: true → 子任务同步返回完整结果，不走mailbox
 	Content     string   // Markdown body（frontmatter 之后的正文）
 	FilePath    string   // 文件路径（调试用）
 }
@@ -158,6 +159,8 @@ func parseSkillFile(content, filePath string) (*SkillEntry, error) {
 					skill.Agents = append(skill.Agents, a)
 				}
 			}
+		case "sync":
+			skill.SyncMode = value == "true"
 		}
 	}
 
@@ -226,25 +229,33 @@ func (sm *SkillManager) MatchByTools(toolHints []string) []SkillEntry {
 	return matched
 }
 
-// MatchByQuery 根据用户请求的关键词静态匹配 skill，用于根任务工具收窄。
-func (sm *SkillManager) MatchByQuery(query string, limit int) []SkillEntry {
+// ScoredSkill skill匹配结果，含归一化置信度
+type ScoredSkill struct {
+	Skill      SkillEntry
+	Score      int
+	Confidence float64 // 0~1，Score/maxScore(160)
+}
+
+// MatchByQueryScored 返回带置信度的匹配结果
+func (sm *SkillManager) MatchByQueryScored(query string, limit int) []ScoredSkill {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" || len(sm.skills) == 0 {
 		return nil
 	}
 
-	type scoredSkill struct {
-		Skill SkillEntry
-		Score int
-	}
+	const maxScore = 160.0 // name(100) + keywords(20*n) + special(60)
 
-	var scored []scoredSkill
+	var scored []ScoredSkill
 	for _, skill := range sm.GetAvailableSkills() {
 		score := scoreSkillForQuery(skill, query)
 		if score <= 0 {
 			continue
 		}
-		scored = append(scored, scoredSkill{Skill: skill, Score: score})
+		conf := float64(score) / maxScore
+		if conf > 1.0 {
+			conf = 1.0
+		}
+		scored = append(scored, ScoredSkill{Skill: skill, Score: score, Confidence: conf})
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -257,7 +268,12 @@ func (sm *SkillManager) MatchByQuery(query string, limit int) []SkillEntry {
 	if limit > 0 && len(scored) > limit {
 		scored = scored[:limit]
 	}
+	return scored
+}
 
+// MatchByQuery 根据用户请求的关键词静态匹配 skill，用于根任务工具收窄。
+func (sm *SkillManager) MatchByQuery(query string, limit int) []SkillEntry {
+	scored := sm.MatchByQueryScored(query, limit)
 	matched := make([]SkillEntry, 0, len(scored))
 	for _, item := range scored {
 		matched = append(matched, item.Skill)
@@ -332,6 +348,9 @@ func (sm *SkillManager) BuildCatalogWithToolHint() string {
 	sb.WriteString("1. 当前任务明显匹配某个 skill 时再使用（如 coding、deploy、data-query）\n")
 	sb.WriteString("2. 每个 skill 调用只处理单一技能域\n")
 	sb.WriteString("3. 跨技能任务优先直接拆成多个步骤或多个子任务\n\n")
+	sb.WriteString("**决策约束**：调用 execute_skill 前必须先输出决策JSON（单独一行）：\n")
+	sb.WriteString("```json\n{\"skill_decision\":{\"name\":\"<skill名>\",\"reason\":\"<匹配原因>\",\"confidence\":0.0}}\n```\n")
+	sb.WriteString("confidence < 0.7 时禁止调用 execute_skill，改为直接使用工具完成任务。\n\n")
 	for _, skill := range sm.skills {
 		offline := sm.offlineAgents(&skill)
 		if len(offline) > 0 {

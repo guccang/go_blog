@@ -192,7 +192,7 @@ func (b *Bridge) runSkillSubtask(ctx *TaskContext, skillName, query string, pare
 	}
 
 	subResult := orch.executeSubTask(ctx.Ctx, ctx.TaskID, subtask, session, parentSession, "", filteredTools, systemPrompt, sendEvent, trace)
-	if parentSession != nil {
+	if parentSession != nil && !skill.SyncMode {
 		orch.enqueueTaskNotification(parentSession, subtask, subResult, session)
 		trace.RecordPath("task_notification_enqueued", "子任务结果通过 task_notification 回流父会话", map[string]string{
 			"parent_session_id": parentSession.ID,
@@ -208,7 +208,7 @@ func (b *Bridge) runSkillSubtask(ctx *TaskContext, skillName, query string, pare
 	if subResult.Status == "failed" {
 		log.Printf("[SkillSubTask] LLM/loop 失败 skill=%s error=%s", skillName, subResult.Error)
 		direct := fmt.Sprintf("技能 %s 子任务已结束，status=%s，session_id=%s。", skillName, subResult.Status, session.ID)
-		if parentSession != nil {
+		if parentSession != nil && !skill.SyncMode {
 			direct += " 详细结果将通过 task_notification 注入下一轮上下文。"
 		} else {
 			direct = fmt.Sprintf("技能 %s 执行失败: %s", skillName, subResult.Error)
@@ -251,7 +251,7 @@ func (b *Bridge) runSkillSubtask(ctx *TaskContext, skillName, query string, pare
 	}
 	detailed := resultText.String()
 	direct := detailed
-	if parentSession != nil {
+	if parentSession != nil && !skill.SyncMode {
 		direct = fmt.Sprintf("技能 %s 子任务已结束，status=%s，session_id=%s。详细结果将通过 task_notification 注入下一轮上下文。", skillName, subResult.Status, session.ID)
 	}
 	return SkillSubtaskOutcome{
