@@ -395,7 +395,9 @@ func compareVersion(versionA, versionB string) int {
 	return 0
 }
 
-// shouldPushApk checks if the APK should be pushed based on version comparison
+// shouldPushApk reports whether version gating would allow an APK push.
+// APK push tools no longer block on version comparisons, but this helper is
+// kept for diagnostics and compatibility with existing callers.
 func (b *Bridge) shouldPushApk(target, version string) bool {
 	if version == "" {
 		// No version info, always push
@@ -441,11 +443,6 @@ func (b *Bridge) PushUploadedAPK(toUser, content, fileName string, src io.Reader
 			toUser, fileName, version, lastVersion, exists)
 	}
 
-	if !b.shouldPushApk(toUser, version) {
-		return nil, fmt.Errorf("apk version %s is not newer than last sent version %s for user %s",
-			version, lastVersion, toUser)
-	}
-
 	attachment, err := b.storeUploadedAPK(toUser, fileName, src)
 	if err != nil {
 		return nil, err
@@ -468,9 +465,6 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 
 	version := extractApkVersion(fileName)
 	targetKey := "group:" + groupID
-	if !b.shouldPushApk(targetKey, version) {
-		return nil, nil, fmt.Errorf("apk version %s is not newer than last sent version for group %s", version, groupID)
-	}
 
 	robotAccount, ok := b.groups.RobotAccount(groupID)
 	if !ok {

@@ -73,10 +73,6 @@ func (b *Bridge) pushStoredAPKPackage(toUser, groupID, fileID, fileName, owner, 
 	}
 
 	if toUser != "" {
-		lastVersion, _ := b.lastApkVersionForTarget(toUser)
-		if !b.shouldPushApk(toUser, version) {
-			return nil, fmt.Errorf("apk version %s is not newer than last sent version %s for user %s", version, lastVersion, toUser)
-		}
 		if err := b.sendExistingAttachmentMessage(toUser, content, "file", nil, attachment); err != nil {
 			return nil, err
 		}
@@ -86,10 +82,6 @@ func (b *Bridge) pushStoredAPKPackage(toUser, groupID, fileID, fileName, owner, 
 	}
 
 	targetKey := "group:" + groupID
-	lastVersion, _ := b.lastApkVersionForTarget(targetKey)
-	if !b.shouldPushApk(targetKey, version) {
-		return nil, fmt.Errorf("apk version %s is not newer than last sent version %s for group %s", version, lastVersion, groupID)
-	}
 	robotAccount, ok := b.groups.RobotAccount(groupID)
 	if !ok {
 		return nil, fmt.Errorf("group robot account not found")

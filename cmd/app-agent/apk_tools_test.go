@@ -142,6 +142,41 @@ func TestPushStoredAPKPackageToUserReusesExistingFile(t *testing.T) {
 	}
 }
 
+func TestPushStoredAPKPackageAllowsSameVersionRepeatPush(t *testing.T) {
+	bridge := newTestBridgeWithAttachmentDir(t)
+
+	if _, err := bridge.PushUploadedAPK(
+		"repo",
+		"",
+		"app-release-2.0.0.apk",
+		bytes.NewReader([]byte("apk-binary")),
+	); err != nil {
+		t.Fatalf("PushUploadedAPK seed returned error: %v", err)
+	}
+	items, err := bridge.listStoredAPKPackages("repo", "", 10)
+	if err != nil {
+		t.Fatalf("listStoredAPKPackages returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 stored apk package, got %d", len(items))
+	}
+
+	if _, err := bridge.pushStoredAPKPackage("alice", "", items[0].FileID, "", "", "第一次下发"); err != nil {
+		t.Fatalf("first pushStoredAPKPackage returned error: %v", err)
+	}
+	if _, err := bridge.pushStoredAPKPackage("alice", "", items[0].FileID, "", "", "第二次下发"); err != nil {
+		t.Fatalf("second pushStoredAPKPackage returned error: %v", err)
+	}
+
+	queue := bridge.pendingForUser("alice")
+	if len(queue) != 1 {
+		t.Fatalf("expected alice to have latest pending message only, got %d", len(queue))
+	}
+	if queue[0].Content != "第二次下发" {
+		t.Fatalf("expected latest pending content to be kept, got %q", queue[0].Content)
+	}
+}
+
 func TestPushStoredAPKPackageToGroupQueuesHumanMembers(t *testing.T) {
 	bridge := newTestBridgeWithAttachmentDir(t)
 	bridge.groups.groups["g1"] = &appGroup{
