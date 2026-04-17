@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,19 @@ type deployCommandOptions struct {
 	Desc           string
 	PrivateKeyPath string
 	ProjectPath    string
+}
+
+type codingProjectInfo struct {
+	Name    string `json:"name"`
+	AgentID string `json:"agent_id"`
+	Agent   string `json:"agent"`
+}
+
+type deployProjectInfo struct {
+	Name          string   `json:"name"`
+	AgentID       string   `json:"agent_id"`
+	Agent         string   `json:"agent"`
+	DeployTargets []string `json:"deploy_targets"`
 }
 
 func parseDeployCommandOptions(rest string) (deployCommandOptions, error) {
@@ -63,6 +77,104 @@ func parseDeployCommandOptions(rest string) (deployCommandOptions, error) {
 		}
 	}
 	return opts, nil
+}
+
+func (a *CMDAGent) listCodingProjects() ([]codingProjectInfo, error) {
+	agents, err := a.fetchGatewayAgents()
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]codingProjectInfo, 0)
+	for _, agent := range agents {
+		if !supportsCodingAgent(agent) {
+			continue
+		}
+		for _, project := range a.availableProjectsForAgent(agent) {
+			items = append(items, codingProjectInfo{
+				Name:    project,
+				AgentID: agent.AgentID,
+				Agent:   agent.Name,
+			})
+		}
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].Agent < items[j].Agent
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items, nil
+}
+
+func (a *CMDAGent) listDeployProjects() ([]deployProjectInfo, error) {
+	agents, err := a.fetchGatewayAgents()
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]deployProjectInfo, 0)
+	for _, agent := range agents {
+		if !hasTool(agent, "DeployListProjects") {
+			continue
+		}
+		projects := a.fetchDeployProjectsForAgent(agent)
+		for _, project := range projects {
+			items = append(items, deployProjectInfo{
+				Name:          project.Name,
+				AgentID:       agent.AgentID,
+				Agent:         agent.Name,
+				DeployTargets: project.DeployTargets,
+			})
+		}
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].Agent < items[j].Agent
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items, nil
+}
+
+func (a *CMDAGent) fetchDeployProjectsForAgent(agent gatewayAgentSnapshot) []deployProjectInfo {
+	requestID := "cmd_deploy_list_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployListProjects", map[string]any{})
+	if err != nil {
+		return nil
+	}
+	result := <-resultCh
+	if !result.Success {
+		return nil
+	}
+
+	var payload struct {
+		Projects []struct {
+			Name    string   `json:"name"`
+			Aliases []string `json:"aliases"`
+			Targets []string `json:"targets"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
+		return nil
+	}
+
+	items := make([]deployProjectInfo, 0, len(payload.Projects))
+	for _, item := range payload.Projects {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		items = append(items, deployProjectInfo{
+			Name:          name,
+			AgentID:       agent.AgentID,
+			Agent:         agent.Name,
+			DeployTargets: uniqueSorted(item.Targets),
+		})
+	}
+	return items
 }
 
 func (a *CMDAGent) dispatchCommand(req commandRequest) error {
@@ -139,38 +251,18 @@ func (a *CMDAGent) handleCgAgents(req commandRequest) error {
 }
 
 func (a *CMDAGent) handleCgList(req commandRequest) error {
-	agents, err := a.fetchGatewayAgents()
+	items, err := a.listCodingProjects()
 	if err != nil {
 		return err
 	}
-
-	type item struct {
-		project string
-		agent   string
-	}
-	var items []item
-	onlineCodingAgents := 0
-	for _, agent := range agents {
-		if !supportsCodingAgent(agent) {
-			continue
-		}
-		onlineCodingAgents++
-		projects := a.availableProjectsForAgent(agent)
-		for _, project := range projects {
-			items = append(items, item{project: project, agent: agent.Name})
-		}
-	}
 	if len(items) == 0 {
-		if onlineCodingAgents > 0 {
-			return a.sendClientNotify(req.route(), "📂 当前 acp-agent 已在线，但还没有编码项目\n\n使用 cg create <名称[@agent]> 创建项目")
-		}
 		return a.sendClientNotify(req.route(), "📂 暂无编码项目\n\n请确保 acp-agent 已连接并上报项目\n使用 cg create <名称[@agent]> 创建项目")
 	}
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("📂 编码项目 (%d个)\n\n", len(items)))
 	for i, item := range items {
-		sb.WriteString(fmt.Sprintf("%d. %s@%s\n", i+1, item.project, item.agent))
+		sb.WriteString(fmt.Sprintf("%d. %s@%s\n", i+1, item.Name, item.Agent))
 	}
 	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
 }
@@ -288,36 +380,7 @@ func (a *CMDAGent) handleCgTools(req commandRequest) error {
 }
 
 func (a *CMDAGent) handleCgCreate(req commandRequest, param string) error {
-	if strings.TrimSpace(param) == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请指定项目名称\n用法: cg create <名称[@agent]>")
-	}
-
-	fields := strings.Fields(param)
-	projectName, agentName := parseProjectAgent(fields[0])
-	if agentName == "" {
-		for _, field := range fields[1:] {
-			if strings.HasPrefix(field, "@") {
-				agentName = strings.TrimPrefix(field, "@")
-				break
-			}
-		}
-	}
-
-	agent, err := a.resolveCodegenCreateAgent(projectName, agentName)
-	if err != nil {
-		return a.sendClientNotify(req.route(), "❌ "+err.Error())
-	}
-
-	requestID := "cmd_create_" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	resultCh, err := a.callTool(agent.AgentID, requestID, createProjectToolName(agent), map[string]any{"name": projectName})
-	if err != nil {
-		return err
-	}
-	result := <-resultCh
-	if !result.Success {
-		return a.sendClientNotify(req.route(), "❌ 创建失败: "+result.Error)
-	}
-	return a.sendClientNotify(req.route(), fmt.Sprintf("✅ 项目 **%s** 已在 agent **%s** 上创建", projectName, agent.Name))
+	return a.sendClientNotify(req.route(), "❌ cg create 已下线。请直接使用 `cg start <项目> <需求>`，项目不存在时会在启动会话时自动创建。")
 }
 
 func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
@@ -612,51 +675,19 @@ func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 }
 
 func (a *CMDAGent) handleCgDeployList(req commandRequest) error {
-	agent, err := a.resolveAnyDeployAgent("")
-	if err != nil {
-		return a.sendClientNotify(req.route(), "❌ "+err.Error())
-	}
-	requestID := "cmd_deploy_list_" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	resultCh, err := a.callTool(agent.AgentID, requestID, "DeployListProjects", map[string]any{})
+	items, err := a.listDeployProjects()
 	if err != nil {
 		return err
 	}
-	result := <-resultCh
-	if !result.Success {
-		return a.sendClientNotify(req.route(), "❌ 查询失败: "+result.Error)
-	}
-	var payload struct {
-		Projects []struct {
-			Name       string   `json:"name"`
-			Aliases    []string `json:"aliases"`
-			Configured bool     `json:"configured"`
-			BuildOnly  bool     `json:"build_only"`
-			ProjectDir string   `json:"project_dir"`
-			Targets    []string `json:"targets"`
-		} `json:"projects"`
-	}
-	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
-		return a.sendClientNotify(req.route(), result.Result)
-	}
-	if len(payload.Projects) == 0 {
+	if len(items) == 0 {
 		return a.sendClientNotify(req.route(), "当前无可用 deploy 项目")
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("🚚 Deploy 项目 (%d个)\n\n", len(payload.Projects)))
-	for i, item := range payload.Projects {
-		mode := "adhoc"
-		if item.Configured {
-			mode = "configured"
-		}
-		sb.WriteString(fmt.Sprintf("%d. %s [%s]", i+1, item.Name, mode))
-		if len(item.Aliases) > 0 {
-			sb.WriteString(fmt.Sprintf(" aliases=%s", strings.Join(item.Aliases, ",")))
-		}
-		if item.BuildOnly {
-			sb.WriteString(" build-only")
-		}
-		if len(item.Targets) > 0 {
-			sb.WriteString(fmt.Sprintf(" targets=%s", strings.Join(item.Targets, ",")))
+	sb.WriteString(fmt.Sprintf("🚚 Deploy 项目 (%d个)\n\n", len(items)))
+	for i, item := range items {
+		sb.WriteString(fmt.Sprintf("%d. %s@%s", i+1, item.Name, item.Agent))
+		if len(item.DeployTargets) > 0 {
+			sb.WriteString(fmt.Sprintf(" targets=%s", strings.Join(item.DeployTargets, ",")))
 		}
 		sb.WriteString("\n")
 	}
@@ -794,34 +825,11 @@ func (a *CMDAGent) handleCgDeployEnv(req commandRequest, param string) error {
 }
 
 func (a *CMDAGent) handleCgDeployAgentStatus(req commandRequest, param string) error {
-	agentID := strings.TrimSpace(param)
-	if agentID == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请提供 agent_id\n用法: cg deploy agent-status <agent_id>")
-	}
-	agent, err := a.resolveAnyDeployAgent("")
-	if err != nil {
-		return a.sendClientNotify(req.route(), "❌ "+err.Error())
-	}
-	return a.forwardSimpleDeployTool(req, agent, "AgentStatus", map[string]any{"agent_id": agentID})
+	return a.sendClientNotify(req.route(), "❌ cg deploy agent-status 已下线。请改用 gateway 或进程管理侧的状态检查方式。")
 }
 
 func (a *CMDAGent) handleCgDeployAgentStop(req commandRequest, param string) error {
-	fields := strings.Fields(param)
-	if len(fields) == 0 {
-		return a.sendClientNotify(req.route(), "⚠️ 请提供 agent_id\n用法: cg deploy agent-stop <agent_id> [原因]")
-	}
-	agent, err := a.resolveAnyDeployAgent("")
-	if err != nil {
-		return a.sendClientNotify(req.route(), "❌ "+err.Error())
-	}
-	reason := ""
-	if len(fields) > 1 {
-		reason = strings.TrimSpace(strings.TrimPrefix(param, fields[0]))
-	}
-	return a.forwardSimpleDeployTool(req, agent, "AgentShutdown", map[string]any{
-		"agent_id": fields[0],
-		"reason":   reason,
-	})
+	return a.sendClientNotify(req.route(), "❌ cg deploy agent-stop 已下线。请改用部署控制面或宿主机进程管理方式停止 Agent。")
 }
 
 func (a *CMDAGent) forwardSimpleDeployTool(req commandRequest, agent gatewayAgentSnapshot, toolName string, args map[string]any) error {
@@ -1080,14 +1088,11 @@ func supportsCodingAgent(agent gatewayAgentSnapshot) bool {
 }
 
 func supportsCreateProject(agent gatewayAgentSnapshot) bool {
-	return hasTool(agent, "CodegenCreateProject") || hasTool(agent, "AcpCreateProject")
+	return false
 }
 
 func createProjectToolName(agent gatewayAgentSnapshot) string {
-	if hasTool(agent, "AcpCreateProject") && !hasTool(agent, "CodegenCreateProject") {
-		return "AcpCreateProject"
-	}
-	return "CodegenCreateProject"
+	return ""
 }
 
 func (a *CMDAGent) resolveDeployAgent(project, preferredAgent string) (gatewayAgentSnapshot, error) {

@@ -291,7 +291,7 @@ var getAgentDetailTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "get_agent_detail",
-		Description: "获取指定 Agent 的详细信息，包括完整描述、工具列表、平台信息等。",
+		Description: "获取指定 Agent 的详细能力信息，包括描述、平台、部署目标和工具列表。仅在需要确认某个 Agent 能力边界时使用，不替代实际工具调用。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -307,7 +307,7 @@ var getToolDetailTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "get_tool_detail",
-		Description: "获取工具的完整参数定义（JSON Schema）。在调用不熟悉的工具前使用。",
+		Description: "获取某个工具的完整参数定义和 JSON Schema。适用于准备调用不熟悉的工具或需要确认精确参数名时；不会执行该工具。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

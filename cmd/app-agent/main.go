@@ -77,6 +77,7 @@ func main() {
 	mux.HandleFunc("/api/app/refresh", handler.HandleRefresh)
 	mux.HandleFunc("/api/app/logout", handler.HandleLogout)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
+	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
 	mux.HandleFunc("/api/app/message", handler.HandleMessage)
 	mux.HandleFunc("/api/app/upload-apk", handler.HandleUploadAPK)
 	mux.HandleFunc("/api/app/attachments/", handler.HandleAttachment)

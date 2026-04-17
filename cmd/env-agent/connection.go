@@ -73,7 +73,7 @@ func buildEnvToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "EnvCheck",
-			Description: "远程检测目标 agent 上指定软件的安装状态和版本",
+			Description: "检查目标 agent 上某个软件是否已安装，以及当前版本是否满足要求。适用于单项环境确认；只读，不执行安装。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -86,7 +86,7 @@ func buildEnvToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "EnvInstall",
-			Description: "远程安装指定软件到目标 agent（先检测，未安装则安装）",
+			Description: "在目标 agent 上安装指定软件。调用前会先检测当前状态；仅在确实需要补装单个软件时使用，会修改目标环境。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -99,7 +99,7 @@ func buildEnvToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "EnvCheckAll",
-			Description: "远程检测目标 agent 上所有常用软件的安装状态",
+			Description: "批量检查目标 agent 上常用软件的安装状态。适用于部署前巡检或环境快照，不执行安装。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -110,7 +110,7 @@ func buildEnvToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "EnvSetup",
-			Description: "远程批量检测+安装软件环境（支持预置脚本和 LLM 生成脚本）",
+			Description: "按 requirements 批量检测并补齐目标 agent 的软件环境。适用于一次性环境准备；会修改目标环境，不用于单项只读检查。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

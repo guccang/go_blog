@@ -31,7 +31,7 @@ var webSearchTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "WebSearch",
-		Description: "搜索互联网，返回标题、URL 和摘要列表。适用于实时信息、技术资料、网页发现等场景。",
+		Description: "搜索互联网并返回候选结果的标题、URL 和摘要。用于发现实时信息、技术资料或候选网页；拿到结果后再按需用 WebFetch 抓正文。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -47,7 +47,7 @@ var webFetchTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "WebFetch",
-		Description: "抓取指定 URL 的网页正文纯文本，返回 URL、内容、长度和是否截断。",
+		Description: "抓取单个 HTTP/HTTPS URL 的网页正文纯文本，并返回内容、长度和截断标记。适用于已经确认目标页面后的精读，不用于全量遍历搜索结果。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

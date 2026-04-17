@@ -285,7 +285,7 @@ var setPersonaTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "set_persona",
-		Description: "设置或修改助手的人设信息。当用户要求设定、修改人设（名字、年龄、性别、性格、称呼等）时，调用此工具保存。",
+		Description: "设置或修改助手的人设信息，如名字、称呼、性格、年龄设定等。仅在用户明确要求调整助手身份设定时使用，不处理普通事实记忆。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

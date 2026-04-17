@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	log "mylog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -57,10 +58,25 @@ func main() {
 
 	log.MessageF(log.ModuleAgent, "cmd-agent started id=%s gateway=%s", cfg.AgentID, cfg.GatewayURL)
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", agent.HandleHealth)
+	mux.HandleFunc("/api/codegen/projects", agent.HandleCodegenProjects)
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler: mux,
+	}
+	go func() {
+		log.MessageF(log.ModuleAgent, "cmd-agent http listening on :%d", cfg.HTTPPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "cmd-agent http server error: %v\n", err)
+		}
+	}()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		_ = server.Close()
 		agent.Stop()
 	}()
 

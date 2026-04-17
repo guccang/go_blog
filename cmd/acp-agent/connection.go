@@ -161,23 +161,12 @@ func buildACPToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "AcpListProjects",
-			Description: "列出可分析的项目列表",
+			Description: "列出当前 acp-agent 可用的编码项目名称。仅用于项目发现和匹配，不创建项目，也不启动会话。",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
-			Name:        "AcpCreateProject",
-			Description: "在本 agent 上创建新编码项目",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{"type": "string", "description": "项目名称"},
-				},
-				"required": []string{"name"},
-			}),
-		},
-		{
 			Name:        "AcpStartSession",
-			Description: "启动编码会话（后端由 acp-agent 配置决定，当前支持 Claude ACP / Codex CLI；同步等待完成，进度通过 stream_event 推送）。默认在本轮完成后自动关闭子进程；只有明确需要多轮续聊时才传 keep_session=true。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
+			Description: "启动一次新的编码会话并同步等待结果。适用于创建项目、修改代码、修复 bug、重构等主流程；项目不存在时可自动创建。进度通过 stream_event 推送，默认本轮结束后自动关闭；只有明确需要继续对话时才传 keep_session=true。重要：prompt 必须使用用户原始输入，禁止改写、翻译、扩写或重述。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -193,7 +182,7 @@ func buildACPToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "AcpStopSession",
-			Description: "停止 ACP 会话",
+			Description: "停止正在运行的 ACP 编码会话。仅在用户明确要求中断、取消或结束当前会话时使用，不用于启动新任务或查询状态。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -238,8 +227,6 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	switch payload.ToolName {
 	case "AcpListProjects":
 		result = c.toolListProjects()
-	case "AcpCreateProject":
-		result = c.toolCreateProject(args)
 	case "AcpStartSession":
 		result = c.toolStartSession(msg.From, msg.ID, args)
 	case "AcpStopSession":

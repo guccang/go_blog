@@ -17,10 +17,36 @@ type Handler struct {
 	cfg    *Config
 	bridge *Bridge
 	auth   *authManager
+	client *http.Client
 }
 
 func NewHandler(cfg *Config, bridge *Bridge, auth *authManager) *Handler {
-	return &Handler{cfg: cfg, bridge: bridge, auth: auth}
+	return &Handler{
+		cfg:    cfg,
+		bridge: bridge,
+		auth:   auth,
+		client: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+type codegenProjectsResponse struct {
+	Success        bool                `json:"success"`
+	CodingProjects []codingProjectInfo `json:"coding_projects"`
+	DeployProjects []deployProjectInfo `json:"deploy_projects"`
+	Error          string              `json:"error,omitempty"`
+}
+
+type codingProjectInfo struct {
+	Name    string `json:"name"`
+	AgentID string `json:"agent_id"`
+	Agent   string `json:"agent"`
+}
+
+type deployProjectInfo struct {
+	Name          string   `json:"name"`
+	AgentID       string   `json:"agent_id"`
+	Agent         string   `json:"agent"`
+	DeployTargets []string `json:"deploy_targets"`
 }
 
 func authSuccessResponse(session *issuedAuthSession, obsAgentBaseURL string) loginResponse {
@@ -329,6 +355,60 @@ func (h *Handler) HandleGroups(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) HandleCodegenProjects(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+
+	resp, err := h.client.Get(strings.TrimRight(h.cfg.CmdAgentBaseURL, "/") + "/api/codegen/projects")
+	if err != nil {
+		h.writeCodegenProjectsError(w, http.StatusBadGateway, "cmd-agent unreachable: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	var payload codegenProjectsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		h.writeCodegenProjectsError(w, http.StatusBadGateway, "invalid cmd-agent response")
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !payload.Success {
+		errMsg := strings.TrimSpace(payload.Error)
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("cmd-agent returned %d", resp.StatusCode)
+		}
+		h.writeCodegenProjectsError(w, http.StatusBadGateway, errMsg)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (h *Handler) writeCodegenProjectsError(w http.ResponseWriter, status int, errMsg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(codegenProjectsResponse{
+		Success: false,
+		Error:   errMsg,
+	})
 }
 
 func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {
