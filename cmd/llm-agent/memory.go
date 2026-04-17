@@ -806,7 +806,7 @@ var setRuleTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "set_rule",
-		Description: "记录用户对助手的规则或提醒。当用户说'记住...'、'以后...'、'你要...'、'不要...'、'每次...'等设定行为规则时调用。",
+		Description: "记录用户对助手的长期规则或提醒，例如“以后都这样做”“不要这么回复”“每次先检查”。仅用于行为规则和偏好，不用于保存普通任务结果。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

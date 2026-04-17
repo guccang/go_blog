@@ -160,7 +160,7 @@ var executeSkillTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "execute_skill",
-		Description: "执行一个技能。这是处理用户任务的首选方式——技能封装了完整的工具集和执行策略，在独立子任务中运行并返回结果。匹配到可用技能时必须优先使用。",
+		Description: "执行一个稳定的单技能工作流，在隔离子任务中运行并返回结果。仅在任务明显落入某个 skill 域时使用；不要把它当成所有工具调用的统一入口。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -183,7 +183,7 @@ var getSkillDetailTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "get_skill_detail",
-		Description: "获取指定技能的详细文档，包括工具列表、执行策略和历史经验。在决定是否使用某个技能前，可以先查看其详细说明。",
+		Description: "获取指定技能的详细文档，包括工具列表、执行策略和历史经验。适用于决定是否进入某个 skill 前先确认边界；不会实际执行技能。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

@@ -97,7 +97,7 @@ func NewBridge(cfg *Config) *Bridge {
 	client.Tools = []uap.ToolDef{
 		{
 			Name:        "app.SendMessage",
-			Description: "Send a plain text message to a single app user. Use this only for pure text; rich media should use app.SendRichMessage",
+			Description: "Send a plain text message to one app user. Use only for pure text with no attachment metadata; images, audio, files, or structured payloads must use app.SendRichMessage.",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
@@ -109,7 +109,7 @@ func NewBridge(cfg *Config) *Bridge {
 		},
 		{
 			Name:        "app.SendRichMessage",
-			Description: "Send a rich app message to a single user. message_type selects text/image/audio/file and meta carries attachment-specific fields",
+			Description: "Send a structured app message to one user. Use this for image, audio, file, or text-with-metadata payloads; message_type selects the content kind and meta carries attachment-specific fields.",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
@@ -123,7 +123,7 @@ func NewBridge(cfg *Config) *Bridge {
 		},
 		{
 			Name:        "app.ListAPKPackages",
-			Description: "List APK packages already stored in app-agent. Use this first to discover file_id values before re-pushing an existing APK package.",
+			Description: "List APK packages already stored in app-agent, including file_id and metadata needed for reuse. Use this before pushing an existing APK so you can select an exact file_id instead of guessing by file name.",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
@@ -135,7 +135,7 @@ func NewBridge(cfg *Config) *Bridge {
 		},
 		{
 			Name:        "app.PushAPKPackage",
-			Description: "Push an existing stored APK package to one user or one group. Prefer file_id from app.ListAPKPackages; file_name may be ambiguous. Exactly one of to_user or group_id must be provided.",
+			Description: "Push one stored APK package to exactly one app user or one group. Prefer file_id returned by app.ListAPKPackages; file_name is only a fallback and may be ambiguous. Exactly one of to_user or group_id must be provided.",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{

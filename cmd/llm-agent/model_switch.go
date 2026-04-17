@@ -96,7 +96,7 @@ var listProvidersTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "list_providers",
-		Description: "列出所有可用的 LLM 服务商及其模型列表。用于了解可切换的模型选项。",
+		Description: "列出当前可切换的 LLM 服务商及其模型列表。仅用于查看候选项和参数，不会修改当前模型。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {},
@@ -109,7 +109,7 @@ var getCurrentModelTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "get_current_model",
-		Description: "获取当前正在使用的 LLM 服务商和模型信息。",
+		Description: "获取当前正在使用的服务商、模型 key 和实际 model_id。仅做只读查询，不会切换模型。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {},
@@ -122,7 +122,7 @@ var switchProviderTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "switch_provider",
-		Description: "切换到指定的 LLM 服务商（使用其默认模型）。切换后后续所有 LLM 请求将使用新服务商。",
+		Description: "将运行时 LLM 切换到指定服务商，并自动使用该服务商的默认模型。会影响后续对话与工具评估路径，仅在用户明确要求换服务商时使用。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -140,7 +140,7 @@ var switchModelTool = LLMTool{
 	Type: "function",
 	Function: LLMFunction{
 		Name:        "switch_model",
-		Description: "切换到指定的模型。可以跨服务商切换，需要同时指定 provider 和 model。",
+		Description: "将运行时 LLM 切换到指定 provider 下的指定模型。会影响后续全部 LLM 请求；仅在用户明确要求切换模型时使用。",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

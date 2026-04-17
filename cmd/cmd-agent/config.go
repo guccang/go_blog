@@ -11,6 +11,7 @@ type Config struct {
 	AuthToken      string   `json:"auth_token,omitempty"`
 	AgentID        string   `json:"agent_id,omitempty"`
 	AgentName      string   `json:"agent_name,omitempty"`
+	HTTPPort       int      `json:"http_port,omitempty"`
 	WorkspaceDir   string   `json:"workspace_dir,omitempty"`
 	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
@@ -20,6 +21,7 @@ func DefaultConfig() *Config {
 		GatewayURL:     "ws://127.0.0.1:9000/ws/uap",
 		AgentID:        "cmd-agent",
 		AgentName:      "cmd-agent",
+		HTTPPort:       9013,
 		WorkspaceDir:   "workspace",
 		ProtectedFiles: []string{"cmd-agent.json"},
 	}
@@ -42,6 +44,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.WorkspaceDir == "" {
 		cfg.WorkspaceDir = "workspace"
+	}
+	if cfg.HTTPPort <= 0 {
+		cfg.HTTPPort = 9013
 	}
 	return cfg, nil
 }

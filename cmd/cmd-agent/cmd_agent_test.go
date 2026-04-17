@@ -62,15 +62,15 @@ func TestSupportsCodingAgentIncludesACP(t *testing.T) {
 }
 
 func TestSupportsCreateProjectIncludesACP(t *testing.T) {
-	if !supportsCreateProject(gatewayAgentSnapshot{Tools: []string{"AcpCreateProject"}}) {
-		t.Fatalf("expected ACP agent to be recognized as create-project agent")
+	if supportsCreateProject(gatewayAgentSnapshot{Tools: []string{"AcpCreateProject"}}) {
+		t.Fatalf("expected create-project support to be disabled")
 	}
 }
 
-func TestCreateProjectToolNamePrefersACP(t *testing.T) {
+func TestCreateProjectToolNameDisabled(t *testing.T) {
 	got := createProjectToolName(gatewayAgentSnapshot{Tools: []string{"AcpCreateProject"}})
-	if got != "AcpCreateProject" {
-		t.Fatalf("createProjectToolName()=%q want=%q", got, "AcpCreateProject")
+	if got != "" {
+		t.Fatalf("createProjectToolName()=%q want empty", got)
 	}
 }
 

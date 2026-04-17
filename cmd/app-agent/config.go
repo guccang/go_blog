@@ -29,6 +29,7 @@ type Config struct {
 	MaxPendingPerUser        int              `json:"max_pending_per_user,omitempty"`
 	PendingMessageTTLHours   int              `json:"pending_message_ttl_hours,omitempty"`
 	BlogAgentBaseURL         string           `json:"blog_agent_base_url,omitempty"`
+	CmdAgentBaseURL          string           `json:"cmd_agent_base_url,omitempty"`
 	AppSessionTTLMinutes     int              `json:"app_session_ttl_minutes,omitempty"`
 	AppRefreshTokenTTLHours  int              `json:"app_refresh_token_ttl_hours,omitempty"`
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
@@ -56,6 +57,7 @@ func DefaultConfig() *Config {
 		MaxPendingPerUser:        200,
 		PendingMessageTTLHours:   24,
 		BlogAgentBaseURL:         "http://127.0.0.1:8888",
+		CmdAgentBaseURL:          "http://127.0.0.1:9013",
 		AppSessionTTLMinutes:     2880,
 		AppRefreshTokenTTLHours:  720,
 		GroupStoreFile:           "app-groups.json",
@@ -94,6 +96,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.CmdAgentID == "" {
 		cfg.CmdAgentID = "cmd-agent"
+	}
+	if cfg.CmdAgentBaseURL == "" {
+		cfg.CmdAgentBaseURL = "http://127.0.0.1:9013"
 	}
 	if cfg.GroupStoreFile == "" {
 		cfg.GroupStoreFile = "app-groups.json"

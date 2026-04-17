@@ -191,23 +191,12 @@ func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 	defs := []uap.ToolDef{
 		{
 			Name:        "CodegenListProjects",
-			Description: "列出本 agent 上的编码项目、可用工具和模型配置",
+			Description: "列出当前 codegen-agent 可用的项目名称、可选工具和模型配置。仅用于项目发现与匹配，不执行提交、推送或编码操作。",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
-			Name:        "CodegenCreateProject",
-			Description: "在本 agent 上创建新编码项目",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"name": map[string]interface{}{"type": "string", "description": "项目名称"},
-				},
-				"required": []string{"name"},
-			}),
-		},
-		{
 			Name:        "CodegenStartSession",
-			Description: "启动 AI 编码会话（同步等待完成，进度通过 stream_event 推送）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改、缩写、翻译或重新措辞。",
+			Description: "启动一次新的 codegen 会话并同步等待结果。用于提交代码、推送远程仓库或执行单轮编码任务；项目不存在时由后端自行处理。进度通过 stream_event 推送。重要：prompt 必须使用用户原始输入，禁止改写、翻译、扩写或重述。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -221,7 +210,7 @@ func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenSendMessage",
-			Description: "向编码会话追加消息并等待完成（基于上一次会话续接）。重要：prompt 参数必须使用用户的原始输入原文，禁止修改或重新措辞。",
+			Description: "向已有 codegen 会话追加一条消息并等待结果。仅用于继续最近或指定的会话，不用于创建新项目或启动第一轮任务。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -233,7 +222,7 @@ func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenGetStatus",
-			Description: "查看编码会话状态。传入 session_id 查询指定会话的状态（in_progress/completed/failed），不传则返回全局概览",
+			Description: "查询 codegen 会话状态。适用于查看指定会话是否仍在运行、是否完成以及最近摘要；只读，不会推进任务。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -243,7 +232,7 @@ func buildCodegenToolDefs(ftk *agentbase.FileToolKit) []uap.ToolDef {
 		},
 		{
 			Name:        "CodegenStopSession",
-			Description: "停止编码会话",
+			Description: "停止正在运行的 codegen 会话。仅在用户明确要求中断、取消或结束当前会话时使用，不用于查询状态。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -309,8 +298,6 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	switch payload.ToolName {
 	case "CodegenListProjects":
 		result = c.toolListProjects()
-	case "CodegenCreateProject":
-		result = c.toolCreateProject(args)
 	case "CodegenStartSession":
 		result = c.toolStartSession(msg.From, msg.ID, args)
 	case "CodegenSendMessage":

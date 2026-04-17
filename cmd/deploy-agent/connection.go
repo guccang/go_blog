@@ -821,36 +821,12 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 	defs := []uap.ToolDef{
 		{
 			Name:        "DeployListProjects",
-			Description: "列出 deploy-agent 已知项目及其 configured/targets/aliases 信息；仅做发现，不执行部署。configured=true 用 DeployProject，configured=false 用 DeployAdhoc",
+			Description: "列出 deploy-agent 已知项目，以及每个项目的 configured、targets 和 aliases 信息。仅做发现，不执行部署。configured=true 时用 DeployProject，configured=false 或临时项目时用 DeployAdhoc。",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
-			Name:        "AgentShutdown",
-			Description: "关闭指定 Agent。默认优雅退出；force=true 时立即强制退出。会修改目标 Agent 运行状态",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{"type": "string", "description": "目标 Agent ID"},
-					"reason":   map[string]interface{}{"type": "string", "description": "关闭原因"},
-					"force":    map[string]interface{}{"type": "boolean", "description": "是否强制立即退出（跳过 drain）"},
-				},
-				"required": []string{"agent_id"},
-			}),
-		},
-		{
-			Name:        "AgentStatus",
-			Description: "查询指定 Agent 的当前运行状态和最近心跳；只读，不会修改目标 Agent",
-			Parameters: mustMarshalJSON(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"agent_id": map[string]interface{}{"type": "string", "description": "目标 Agent ID"},
-				},
-				"required": []string{"agent_id"},
-			}),
-		},
-		{
 			Name:        "DeployProject",
-			Description: "异步提交 settings 中已配置项目的部署或打包任务。调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果。调用前先用 DeployListProjects 确认 project 存在且 configured=true",
+			Description: "异步提交已配置项目的部署或打包任务。仅适用于 DeployListProjects 返回 configured=true 的项目；调用后立即返回 session_id，后续进度和结果通过 stream_event/task_complete 回流。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -869,7 +845,7 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployAdhoc",
-			Description: "异步提交一次性部署任务。必须提供 project_dir 和 ssh_host；调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果",
+			Description: "异步提交一次性部署任务。适用于未配置项目、刚完成编码的新项目或临时目录发布；必须提供 project_dir 和 ssh_host。调用后立即返回 session_id，后续进度和结果通过 stream_event/task_complete 回流。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -887,12 +863,12 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 		},
 		{
 			Name:        "DeployListPipelines",
-			Description: "列出可用的部署 pipeline；仅做发现，不执行任何部署步骤",
+			Description: "列出可用的部署 pipeline 名称与元数据。仅做发现，不执行任何部署步骤；选择 pipeline 前先用它确认候选项。",
 			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
 			Name:        "DeployPipeline",
-			Description: "异步提交预配置部署 pipeline。调用后立即返回 session_id，并通过 stream_event/task_complete 推送进度与结果",
+			Description: "异步提交预配置部署 pipeline。适用于多步骤、预先编排好的发布流程；调用后立即返回 session_id，后续进度和结果通过 stream_event/task_complete 回流。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -978,12 +954,6 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListPipelines()
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args, sendAsyncProgress)
-	case "AgentShutdown":
-		c.toolAgentShutdown(msg, args)
-		return
-	case "AgentStatus":
-		c.toolAgentStatus(msg, args)
-		return
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{

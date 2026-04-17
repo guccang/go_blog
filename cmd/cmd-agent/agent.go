@@ -111,6 +111,13 @@ type deployAcceptedResult struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type codegenProjectsResponse struct {
+	Success        bool                `json:"success"`
+	CodingProjects []codingProjectInfo `json:"coding_projects"`
+	DeployProjects []deployProjectInfo `json:"deploy_projects"`
+	Error          string              `json:"error,omitempty"`
+}
+
 type CMDAGent struct {
 	cfg         *Config
 	client      *uap.Client
@@ -154,6 +161,51 @@ func (a *CMDAGent) Run() {
 
 func (a *CMDAGent) Stop() {
 	a.client.Stop()
+}
+
+func (a *CMDAGent) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+	})
+}
+
+func (a *CMDAGent) HandleCodegenProjects(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	codingProjects, err := a.listCodingProjects()
+	if err != nil {
+		a.writeCodegenProjectsError(w, http.StatusBadGateway, err)
+		return
+	}
+	deployProjects, err := a.listDeployProjects()
+	if err != nil {
+		a.writeCodegenProjectsError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(codegenProjectsResponse{
+		Success:        true,
+		CodingProjects: codingProjects,
+		DeployProjects: deployProjects,
+	})
+}
+
+func (a *CMDAGent) writeCodegenProjectsError(w http.ResponseWriter, status int, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(codegenProjectsResponse{
+		Success: false,
+		Error:   err.Error(),
+	})
 }
 
 func (a *CMDAGent) handleMessage(msg *uap.Message) {

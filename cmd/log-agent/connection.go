@@ -71,7 +71,7 @@ func buildLogToolDefs(readLogDesc string) []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "ListLogSources",
-			Description: "列出所有可查询的日志源（名称、路径、描述）",
+			Description: "列出所有可查询日志源的名称、路径和描述。仅用于发现日志源与确认参数，不读取日志内容。",
 			Parameters:  agentbase.MustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
 		},
 		{
