@@ -63,8 +63,16 @@ class _CortanaPageState extends State<CortanaPage> {
               transparentBackground: true,
               allowFileAccessFromFileURLs: true,
               allowUniversalAccessFromFileURLs: true,
+              javaScriptEnabled: true,
             ),
-            onWebViewCreated: (ctrl) => _webCtrl = ctrl,
+            onWebViewCreated: (ctrl) {
+              _webCtrl = ctrl;
+              debugPrint('[Cortana] WebView created');
+            },
+            onLoadStart: (ctrl, url) => debugPrint('[Cortana] Load start: $url'),
+            onLoadStop: (ctrl, url) => debugPrint('[Cortana] Load stop: $url'),
+            onConsoleMessage: (ctrl, msg) => debugPrint('[Cortana Console] ${msg.message}'),
+            onLoadError: (ctrl, url, code, msg) => debugPrint('[Cortana Error] $code: $msg'),
           ),
         ),
         Container(

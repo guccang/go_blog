@@ -8,33 +8,52 @@
 body { background: #1a1a2e; overflow: hidden; }
 canvas { display: block; }
 #status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-  color: #aaa; font-size: 12px; font-family: sans-serif; }
+  color: #aaa; font-size: 12px; font-family: sans-serif; padding: 8px 12px;
+  background: rgba(0,0,0,0.7); border-radius: 4px; max-width: 90%; text-align: center; }
 </style>
 </head>
 <body>
-<div id="status">Loading Live2D...</div>
-<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+<div id="status">Initializing...</div>
 <script>
+const log = (msg) => {
+  console.log('[Cortana] ' + msg);
+  document.getElementById('status').textContent = msg;
+};
+
+log('Loading scripts...');
+
 // 使用 pixi-live2d-display 方案
 const MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori_pro_t02.model3.json';
 
 let app, model;
 
-async function init() {
-  // 动态加载 PIXI 和 pixi-live2d-display
-  await loadScript('https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js');
-  await loadScript('https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js');
-
-  app = new PIXI.Application({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundAlpha: 0,
-    antialias: true,
+async function loadScript(src) {
+  log('Loading: ' + src.split('/').pop());
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => { log('Loaded: ' + src.split('/').pop()); resolve(); };
+    s.onerror = (e) => { log('Failed: ' + src.split('/').pop()); reject(e); };
+    document.head.appendChild(s);
   });
-  document.body.appendChild(app.view);
+}
 
+async function init() {
   try {
+    // 动态加载 PIXI 和 pixi-live2d-display
+    await loadScript('https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js');
+
+    log('Creating PIXI app...');
+    app = new PIXI.Application({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      backgroundAlpha: 0,
+      antialias: true,
+    });
+    document.body.appendChild(app.view);
+
+    log('Loading Live2D model...');
     model = await PIXI.live2d.Live2DModel.from(MODEL_URL);
     app.stage.addChild(model);
 
@@ -45,34 +64,27 @@ async function init() {
     const scale = Math.min(app.screen.width, app.screen.height) / 1000;
     model.scale.set(scale);
 
-    document.getElementById('status').style.display = 'none';
+    log('Ready!');
+    setTimeout(() => { document.getElementById('status').style.display = 'none'; }, 2000);
   } catch (e) {
-    document.getElementById('status').textContent = 'Model load failed: ' + e.message;
+    log('Error: ' + e.message);
+    console.error(e);
   }
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
 }
 
 // Flutter JS Bridge 接口
 function setExpression(name) {
-  if (!model) return;
-  try { model.expression(name); } catch(e) {}
+  log('setExpression: ' + name);
+  if (!model) return log('Model not ready');
+  try { model.expression(name); } catch(e) { log('Expression error: ' + e.message); }
 }
 
 function setMotion(group, index) {
-  if (!model) return;
-  try { model.motion(group, index); } catch(e) {}
+  log('setMotion: ' + group + ', ' + index);
+  if (!model) return log('Model not ready');
+  try { model.motion(group, index); } catch(e) { log('Motion error: ' + e.message); }
 }
 
-let lipTimer = null;
 function startLipSync(amp) {
   if (!model) return;
   try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', amp || 0.5); } catch(e) {}
@@ -81,6 +93,10 @@ function startLipSync(amp) {
 function stopLipSync() {
   if (!model) return;
   try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0); } catch(e) {}
+}
+
+function setCostume(name) {
+  log('setCostume: ' + name + ' (not implemented)');
 }
 
 window.addEventListener('resize', () => {
