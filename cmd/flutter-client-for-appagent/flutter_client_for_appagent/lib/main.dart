@@ -19,6 +19,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
+import 'cortana_page.dart';
 
 void main() {
   runApp(const AppAgentClientApp());
@@ -958,7 +959,7 @@ class CodegenProjectsSnapshot {
   }
 }
 
-enum RootTab { chat, codegen }
+enum RootTab { chat, codegen, cortana }
 
 enum CodegenLaunchMode { code, deploy }
 
@@ -6350,7 +6351,11 @@ class _ChatPageState extends State<ChatPage> {
       ),
       body: Stack(
         children: [
-          _rootTab == RootTab.chat ? _buildChatBody() : _buildCodegenBody(),
+          _rootTab == RootTab.chat
+              ? _buildChatBody()
+              : _rootTab == RootTab.codegen
+                  ? _buildCodegenBody()
+                  : const CortanaPage(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -6378,6 +6383,11 @@ class _ChatPageState extends State<ChatPage> {
             icon: Icon(Icons.terminal_outlined),
             selectedIcon: Icon(Icons.terminal_rounded),
             label: '编码发布',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.face_outlined),
+            selectedIcon: Icon(Icons.face_rounded),
+            label: 'Cortana',
           ),
         ],
       ),

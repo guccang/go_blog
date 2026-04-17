@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; overflow: hidden; }
+canvas { display: block; }
+#status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  color: #aaa; font-size: 12px; font-family: sans-serif; }
+</style>
+</head>
+<body>
+<div id="status">Loading Live2D...</div>
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+<script>
+// 使用 pixi-live2d-display 方案
+const MODEL_URL = 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori_pro_t02.model3.json';
+
+let app, model;
+
+async function init() {
+  // 动态加载 PIXI 和 pixi-live2d-display
+  await loadScript('https://cdn.jsdelivr.net/npm/pixi.js@6/dist/browser/pixi.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js');
+
+  app = new PIXI.Application({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundAlpha: 0,
+    antialias: true,
+  });
+  document.body.appendChild(app.view);
+
+  try {
+    model = await PIXI.live2d.Live2DModel.from(MODEL_URL);
+    app.stage.addChild(model);
+
+    // 居中缩放
+    model.anchor.set(0.5, 0.5);
+    model.x = app.screen.width / 2;
+    model.y = app.screen.height * 0.55;
+    const scale = Math.min(app.screen.width, app.screen.height) / 1000;
+    model.scale.set(scale);
+
+    document.getElementById('status').style.display = 'none';
+  } catch (e) {
+    document.getElementById('status').textContent = 'Model load failed: ' + e.message;
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// Flutter JS Bridge 接口
+function setExpression(name) {
+  if (!model) return;
+  try { model.expression(name); } catch(e) {}
+}
+
+function setMotion(group, index) {
+  if (!model) return;
+  try { model.motion(group, index); } catch(e) {}
+}
+
+let lipTimer = null;
+function startLipSync(amp) {
+  if (!model) return;
+  try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', amp || 0.5); } catch(e) {}
+}
+
+function stopLipSync() {
+  if (!model) return;
+  try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0); } catch(e) {}
+}
+
+window.addEventListener('resize', () => {
+  if (!app) return;
+  app.renderer.resize(window.innerWidth, window.innerHeight);
+  if (model) {
+    model.x = app.screen.width / 2;
+    model.y = app.screen.height * 0.55;
+  }
+});
+
+init();
+</script>
+</body>
+</html>
