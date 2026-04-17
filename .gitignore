@@ -63,3 +63,5 @@ cmd/deploy-agent/settings/projects/
 /.gradle-local-apk
 /.gradle-local-serial
 /.gradle-local
+cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/version.g.dart
+cmd/flutter-client-for-appagent/flutter_client_for_appagent/pubspec.yaml
