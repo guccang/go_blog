@@ -1,4 +1,6 @@
 *.png
+!cmd/flutter-client-for-appagent/flutter_client_for_appagent/assets/cortana/model/haru/haru_greeter_t03.2048/texture_00.png
+!cmd/flutter-client-for-appagent/flutter_client_for_appagent/assets/cortana/model/haru/haru_greeter_t03.2048/texture_01.png
 *.jpg
 *.webp
 *.avif

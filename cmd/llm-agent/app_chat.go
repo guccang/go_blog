@@ -23,6 +23,44 @@ type AppSink struct {
 }
 
 var inlineAudioTagPattern = regexp.MustCompile(`(?is)<audio\b[^>]*\bsrc\s*=\s*"data:audio/([^;"]+);base64,([^"]+)"[^>]*>.*?</audio>`)
+var cortanaActionPlanTagPattern = regexp.MustCompile(`(?is)\[CORTANA_ACTION_PLAN\]\s*(\{.*\})`)
+var cortanaActionPlanFencePattern = regexp.MustCompile("(?is)```(?:cortana|cortana_plan|json)\\s*(\\{.*\\})\\s*```")
+
+func buildCortanaOutputPrompt() string {
+	return `
+## Cortana 输出协议
+- 当前请求来自 Cortana 文本入口，目标是驱动语音回复和 Live2D 动作。
+- 优先给出自然、简洁、适合口播的中文回复，不要写多余前缀，不要解释你在遵循协议。
+- 在正文最后额外附加一个动作计划块，格式必须严格如下：
+[CORTANA_ACTION_PLAN]
+{
+  "speech_text": "最终要播报的文本",
+  "expression": "happy",
+  "fallback_expression": "happy",
+  "expression_hold_ms": 1600,
+  "mood": "warm",
+  "actions": [
+    {"motion": "IdleWave", "delay": 0, "index": 0, "hold_ms": 1800},
+    {"motion": "Tap", "delay": 1800, "index": 0, "hold_ms": 900, "resume_to_idle": true},
+    {"motion": "Idle", "delay": 3600, "index": 0}
+  ]
+}
+- ` + "`speech_text`" + ` 必须与正文口播内容一致或是正文的自然口语化版本。
+- ` + "`expression`" + ` 目前只用这三个值之一：` + "`happy`" + `、` + "`sad`" + `、` + "`surprised`" + `。
+- ` + "`fallback_expression`" + ` 可选，表示短暂表情结束后回落到哪个基础表情；默认 ` + "`happy`" + `。
+- ` + "`expression_hold_ms`" + ` 可选，表示当前表情保持多久后再切回 ` + "`fallback_expression`" + `。
+- ` + "`mood`" + ` 可选，用来描述整体气质，例如 ` + "`warm`" + `、` + "`calm`" + `、` + "`alert`" + `、` + "`playful`" + `。
+- ` + "`motion`" + ` 优先只用这些语义动作名：` + "`Idle`" + `、` + "`IdleAlt`" + `、` + "`IdleWave`" + `、` + "`Tap`" + `。
+- ` + "`index`" + ` 可选，表示同一动作组的具体变体序号；不写时默认 0。
+- ` + "`delay`" + ` 单位毫秒，表示从语音开始播放后的触发时间；动作数量控制在 1-4 个。
+- ` + "`hold_ms`" + ` 可选，表示该动作预期持续的时间窗口，便于前端安排回落动作。
+- ` + "`resume_to_idle`" + ` 可选，为 true 时表示该动作结束后可自动回到基础待机。
+- 如果是问候、欢迎、轻松语气，优先用 ` + "`IdleWave`" + ` / ` + "`happy`" + `。
+- 如果是解释说明或长回复，优先用 ` + "`Idle`" + `、` + "`IdleAlt`" + ` 交替，避免频繁 ` + "`Tap`" + `。
+- 如果是道歉、遗憾、安慰，使用 ` + "`sad`" + `，动作以 ` + "`Idle`" + ` / ` + "`IdleAlt`" + ` 为主。
+- 如果有强调、惊讶、兴奋、重大提醒，可以使用 ` + "`surprised`" + ` 并插入一次 ` + "`Tap`" + `。
+- 不要输出 markdown 代码围栏，不要输出多个动作计划块，不要遗漏 ` + "`speech_text`" + `。`
+}
 
 func (s *AppSink) OnChunk(text string) { s.buf.WriteString(text) }
 
@@ -107,7 +145,59 @@ func (s *AppSink) Streaming() bool { return false }
 func (s *AppSink) Result() string  { return s.buf.String() }
 func (s *AppSink) AudioSent() bool { return s.audioSent }
 
-func (s *AppSink) trySynthesizeAudioReply(text string) bool {
+func parseCortanaActionPlanJSON(raw string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return nil
+	}
+	if nested, ok := payload["cortana_action_plan"].(map[string]any); ok {
+		payload = nested
+	}
+	if payload == nil {
+		return nil
+	}
+	if _, ok := payload["expression"]; ok {
+		return payload
+	}
+	if _, ok := payload["actions"]; ok {
+		return payload
+	}
+	if _, ok := payload["speech_text"]; ok {
+		return payload
+	}
+	return nil
+}
+
+func extractCortanaActionPlan(text string) (string, map[string]any) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return text, nil
+	}
+
+	patterns := []*regexp.Regexp{
+		cortanaActionPlanTagPattern,
+		cortanaActionPlanFencePattern,
+	}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(text)
+		if len(matches) < 2 {
+			continue
+		}
+		payload := parseCortanaActionPlanJSON(matches[1])
+		if payload == nil {
+			continue
+		}
+		cleaned := strings.TrimSpace(pattern.ReplaceAllString(text, ""))
+		return cleaned, payload
+	}
+	return text, nil
+}
+
+func (s *AppSink) trySynthesizeAudioReply(text string, actionPlan map[string]any) bool {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return false
@@ -132,7 +222,7 @@ func (s *AppSink) trySynthesizeAudioReply(text string) bool {
 	if raw == "" {
 		return false
 	}
-	if !s.trySendAudioReply(raw) {
+	if !s.trySendAudioReplyWithSpeechText(raw, text, actionPlan) {
 		return false
 	}
 	s.audioSent = true
@@ -141,26 +231,44 @@ func (s *AppSink) trySynthesizeAudioReply(text string) bool {
 }
 
 func (s *AppSink) trySendAudioReply(raw string) bool {
+	return s.trySendAudioReplyWithSpeechText(raw, "", nil)
+}
+
+func (s *AppSink) trySendAudioReplyWithSpeechText(raw, speechText string, actionPlan map[string]any) bool {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return false
 	}
-	var result struct {
-		AudioBase64 string `json:"audio_base64"`
-		AudioFormat string `json:"audio_format"`
-	}
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		log.Printf("[AppSink] parse audio_reply failed: %v", err)
 		return false
 	}
-	if strings.TrimSpace(result.AudioBase64) == "" {
+	audioBase64 := strings.TrimSpace(fmt.Sprint(payload["audio_base64"]))
+	if audioBase64 == "" {
 		return false
 	}
-	audioFormat := strings.TrimSpace(result.AudioFormat)
+	audioFormat := strings.TrimSpace(fmt.Sprint(payload["audio_format"]))
 	if audioFormat == "" {
 		audioFormat = "mp3"
 	}
-	return s.sendAudioRichMessage(result.AudioBase64, audioFormat)
+	if len(actionPlan) == 0 {
+		if nested, ok := payload["cortana_action_plan"].(map[string]any); ok && len(nested) > 0 {
+			actionPlan = nested
+		} else {
+			candidate := map[string]any{}
+			if expression := strings.TrimSpace(fmt.Sprint(payload["expression"])); expression != "" {
+				candidate["expression"] = expression
+			}
+			if actions, ok := payload["actions"].([]any); ok && len(actions) > 0 {
+				candidate["actions"] = actions
+			}
+			if len(candidate) > 0 {
+				actionPlan = candidate
+			}
+		}
+	}
+	return s.sendAudioRichMessage(audioBase64, audioFormat, speechText, actionPlan)
 }
 
 func (s *AppSink) trySendAudioReplyFromToolCalls(toolCalls []ToolCall) bool {
@@ -215,7 +323,7 @@ func (s *AppSink) trySendAudioReplyFromToolCall(tc ToolCall) bool {
 	if result == nil || strings.TrimSpace(result.Result) == "" {
 		return false
 	}
-	if !s.trySendAudioReply(result.Result) {
+	if !s.trySendAudioReplyWithSpeechText(result.Result, text, nil) {
 		return false
 	}
 
@@ -224,7 +332,7 @@ func (s *AppSink) trySendAudioReplyFromToolCall(tc ToolCall) bool {
 	return true
 }
 
-func (s *AppSink) trySendInlineAudioFromText(text string) bool {
+func (s *AppSink) trySendInlineAudioFromText(text string, actionPlan map[string]any) bool {
 	matches := inlineAudioTagPattern.FindStringSubmatch(strings.TrimSpace(text))
 	if len(matches) != 3 {
 		return false
@@ -234,7 +342,7 @@ func (s *AppSink) trySendInlineAudioFromText(text string) bool {
 	if audioBase64 == "" {
 		return false
 	}
-	return s.sendAudioRichMessage(audioBase64, audioFormat)
+	return s.sendAudioRichMessage(audioBase64, audioFormat, text, actionPlan)
 }
 
 func normalizeAudioFormat(v string) string {
@@ -263,16 +371,21 @@ func firstNonEmptyMapString(data map[string]any, keys ...string) string {
 	return ""
 }
 
-func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat string) bool {
+func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText string, actionPlan map[string]any) bool {
+	meta := map[string]any{
+		"audio_base64": audioBase64,
+		"audio_format": audioFormat,
+		"input_mode":   "tts_reply",
+		"speech_text":  strings.TrimSpace(speechText),
+	}
+	if len(actionPlan) > 0 {
+		meta["cortana_action_plan"] = actionPlan
+	}
 	args, _ := json.Marshal(map[string]any{
 		"to_user":      s.appUser,
 		"content":      "[语音回复]",
 		"message_type": "audio",
-		"meta": map[string]any{
-			"audio_base64": audioBase64,
-			"audio_format": audioFormat,
-			"input_mode":   "tts_reply",
-		},
+		"meta":         meta,
 	})
 	if _, err := s.bridge.callRemoteAgent(context.Background(), "app.SendRichMessage", s.fromAgent, args, nil); err != nil {
 		log.Printf("[AppSink] send audio rich message failed: %v", err)
@@ -301,12 +414,23 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	defer cancel()
 
 	preferAudioReply := false
+	cortanaTextMode := false
 	if inbound, ok := parseAppInboundMessage(content); ok && inbound != nil {
 		if strings.EqualFold(strings.TrimSpace(inbound.MessageType), "audio") {
 			preferAudioReply = true
 		}
 		if inbound.Attachment != nil && strings.EqualFold(strings.TrimSpace(inbound.Attachment.InputMode), "voice_audio") {
 			preferAudioReply = true
+		}
+		if inbound.Meta != nil {
+			if strings.EqualFold(strings.TrimSpace(fmt.Sprint(inbound.Meta["input_mode"])), "cortana_text") {
+				preferAudioReply = true
+				cortanaTextMode = true
+			}
+			replyMode := strings.TrimSpace(fmt.Sprint(inbound.Meta["reply_mode"]))
+			if strings.EqualFold(replyMode, "audio") || strings.EqualFold(replyMode, "audio_preferred") {
+				preferAudioReply = true
+			}
 		}
 	}
 
@@ -362,6 +486,9 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	if isNew || len(session.Messages) == 0 {
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 		systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+		if cortanaTextMode {
+			systemPrompt += buildCortanaOutputPrompt() + "\n"
+		}
 		session.Messages = []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: content},
@@ -372,6 +499,9 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
 			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 			freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+			if cortanaTextMode {
+				freshPrompt += buildCortanaOutputPrompt() + "\n"
+			}
 			session.Messages[0].Content = freshPrompt
 			session.PromptSections = promptSections
 		}
@@ -436,6 +566,13 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		}
 	}
 
+	result, cortanaActionPlan := extractCortanaActionPlan(result)
+	if cortanaActionPlan != nil {
+		if speechText := strings.TrimSpace(fmt.Sprint(cortanaActionPlan["speech_text"])); speechText != "" {
+			result = speechText
+		}
+	}
+
 	if strings.TrimSpace(result) == "" {
 		if sink.AudioSent() {
 			result = "[已发送语音回复]"
@@ -453,12 +590,12 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		log.Printf("[App] save session failed: %v", err)
 	}
 
-	if !sink.AudioSent() && sink.trySendInlineAudioFromText(result) {
+	if !sink.AudioSent() && sink.trySendInlineAudioFromText(result, cortanaActionPlan) {
 		log.Printf("[App] extracted inline audio reply for %s, skip text reply", appUser)
 		return
 	}
 
-	if ctx.PreferAudioReply && !sink.AudioSent() && sink.trySynthesizeAudioReply(result) {
+	if ctx.PreferAudioReply && !sink.AudioSent() && sink.trySynthesizeAudioReply(result, cortanaActionPlan) {
 		log.Printf("[App] synthesized audio reply for %s, skip text reply", appUser)
 		return
 	}

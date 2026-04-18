@@ -10,16 +10,45 @@ canvas { display: block; }
 #status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
   color: #aaa; font-size: 12px; font-family: sans-serif; padding: 8px 12px;
   background: rgba(0,0,0,0.7); border-radius: 4px; max-width: 90%; text-align: center; }
+#details { position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 38vh;
+  overflow: auto; white-space: pre-wrap; color: #d7e3ff; font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 10px 12px; background: rgba(0,0,0,0.62); border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12); }
 </style>
 </head>
 <body>
 <div id="status">Initializing...</div>
+<div id="details">Booting Cortana diagnostics...</div>
 <script src="./vendor/pixi.min.js"></script>
 <script src="./vendor/live2dcubismcore.min.js"></script>
 <script src="./vendor/cubism4.min.js"></script>
 <script>
+const detailsEl = document.getElementById('details');
+const detailLines = [];
+
+function postToFlutter(payload) {
+  try {
+    if (window.flutter_inappwebview && typeof window.flutter_inappwebview.callHandler === 'function') {
+      window.flutter_inappwebview.callHandler('cortanaLog', payload);
+    }
+  } catch (_) {}
+}
+
+function appendDetail(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  detailLines.push(line);
+  if (detailLines.length > 120) {
+    detailLines.shift();
+  }
+  detailsEl.textContent = detailLines.join('\n');
+}
+
 const log = (msg) => {
-  console.log('[Cortana] ' + msg);
+  const full = '[Cortana] ' + msg;
+  console.log(full);
+  appendDetail(msg);
+  postToFlutter(full);
   document.getElementById('status').textContent = msg;
 };
 
@@ -27,9 +56,9 @@ window.PIXI = window.PIXI || PIXI;
 
 const MODEL_URL = './model/haru/haru_greeter_t03.model3.json';
 const expressionMap = {
-  happy: 'f01',
-  sad: 'f04',
-  surprised: 'f07',
+  happy: 'f04',
+  sad: 'f03',
+  surprised: 'f05',
 };
 const motionMap = {
   TapBody: ['Tap', 0],
@@ -40,9 +69,137 @@ const motionMap = {
 };
 
 let app, model;
+let initStartedAt = Date.now();
+let lastModelConfig = null;
+let resolvedModelUrl = null;
+let actionReady = false;
+
+function layoutModel() {
+  if (!app || !model) {
+    return;
+  }
+
+  const baseWidth = model.internalModel && model.internalModel.width
+    ? model.internalModel.width
+    : model.width || 1;
+  const baseHeight = model.internalModel && model.internalModel.height
+    ? model.internalModel.height
+    : model.height || 1;
+
+  // 优先完整显示全身：底部对齐，并按可用宽高双重约束自适应缩放。
+  const maxWidth = app.screen.width * 0.72;
+  const maxHeight = app.screen.height * 0.88;
+  const scale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
+
+  model.anchor.set(0.5, 1);
+  model.scale.set(scale);
+  model.x = app.screen.width / 2;
+  model.y = app.screen.height * 0.96;
+
+  log(
+    `Model laid out: base=${baseWidth.toFixed(2)}x${baseHeight.toFixed(2)}, ` +
+    `screen=${app.screen.width}x${app.screen.height}, scale=${scale.toFixed(4)}, ` +
+    `pos=(${model.x.toFixed(1)}, ${model.y.toFixed(1)})`
+  );
+}
+
+function resourceUrl(relativePath) {
+  const baseUrl = resolvedModelUrl || new URL(MODEL_URL, document.baseURI).toString();
+  return new URL(relativePath, baseUrl).toString();
+}
+
+async function fetchStatus(url) {
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    const result = {
+      url,
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText || '',
+      contentType: response.headers.get('content-type') || '',
+      contentLength: response.headers.get('content-length') || '',
+    };
+    log(`FETCH ${result.status} ${url} type=${result.contentType || '-'} len=${result.contentLength || '-'}`);
+    return result;
+  } catch (error) {
+    const result = {
+      url,
+      ok: false,
+      status: -1,
+      statusText: error && error.message ? error.message : String(error),
+      contentType: '',
+      contentLength: '',
+    };
+    log(`FETCH ERROR ${url} reason=${result.statusText}`);
+    return result;
+  }
+}
+
+function collectModelResources(modelJson) {
+  const refs = modelJson && modelJson.FileReferences ? modelJson.FileReferences : {};
+  const resources = [];
+  const push = (relativePath, kind, required = true) => {
+    if (!relativePath) {
+      return;
+    }
+    resources.push({ url: resourceUrl(relativePath), relativePath, kind, required });
+  };
+  push(refs.Moc, 'moc', true);
+  push(refs.Physics, 'physics', false);
+  push(refs.Pose, 'pose', false);
+  push(refs.DisplayInfo, 'displayInfo', false);
+  push(refs.UserData, 'userData', false);
+
+  (refs.Textures || []).forEach((path, index) => push(path, `texture[${index}]`, true));
+  (refs.Expressions || []).forEach((item, index) => push(item && item.File, `expression[${index}]`, false));
+
+  const motions = refs.Motions || {};
+  Object.keys(motions).forEach((groupName) => {
+    (motions[groupName] || []).forEach((item, index) => {
+      push(item && item.File, `motion.${groupName}[${index}]`, false);
+      push(item && item.Sound, `motionSound.${groupName}[${index}]`, false);
+    });
+  });
+
+  return resources;
+}
+
+async function verifyRequiredResources() {
+  log(`Page URL: ${window.location.href}`);
+  log(`Base URI: ${document.baseURI}`);
+  log(`UserAgent: ${navigator.userAgent}`);
+  resolvedModelUrl = new URL(MODEL_URL, document.baseURI).toString();
+  log(`Resolved model URL: ${resolvedModelUrl}`);
+
+  const modelResponse = await fetchStatus(resolvedModelUrl);
+  if (!modelResponse.ok) {
+    throw new Error(`Model JSON cannot be fetched: ${MODEL_URL}`);
+  }
+
+  lastModelConfig = await fetch(resolvedModelUrl, { cache: 'no-store' }).then((r) => r.json());
+  const resources = collectModelResources(lastModelConfig);
+  log(`Model resources discovered: ${resources.length}`);
+
+  const missing = [];
+  for (const resource of resources) {
+    const result = await fetchStatus(resource.url);
+    if (!result.ok && resource.required) {
+      missing.push(`${resource.kind}: ${resource.relativePath}`);
+    } else if (!result.ok) {
+      log(`Optional resource missing: ${resource.kind}: ${resource.relativePath}`);
+    }
+  }
+
+  return { missing, resources };
+}
 
 async function init() {
   try {
+    log(`Init start, MODEL_URL=${MODEL_URL}`);
+    log(`PIXI present=${!!window.PIXI}, version=${window.PIXI && window.PIXI.VERSION ? window.PIXI.VERSION : 'unknown'}`);
+    log(`Live2D namespace present=${!!(window.PIXI && window.PIXI.live2d)}`);
+    log(`Live2DCubismCore present=${!!window.Live2DCubismCore}`);
+
     if (!window.PIXI) {
       throw new Error('PIXI runtime is missing');
     }
@@ -61,49 +218,95 @@ async function init() {
       antialias: true,
     });
     document.body.appendChild(app.view);
+    log(`PIXI canvas attached, size=${app.screen.width}x${app.screen.height}`);
+
+    const verification = await verifyRequiredResources();
+    if (verification.missing.length > 0) {
+      throw new Error(
+        'Missing Cortana assets: ' + verification.missing.join(', ')
+      );
+    }
 
     log('Loading Live2D model...');
     model = await PIXI.live2d.Live2DModel.from(MODEL_URL);
+    log(`Live2D model loaded: ${model && model.internalModel && model.internalModel.settings ? model.internalModel.settings.name || 'unnamed' : 'unknown'}`);
     app.stage.addChild(model);
-    model.eventMode = 'static';
+    // 当前 vendor/pixi.min.js 是 Pixi 6，点击交互要用 interactive。
+    model.interactive = true;
+    model.buttonMode = true;
     model.cursor = 'pointer';
     model.on('hit', (hitAreas) => {
       log('Model hit: ' + hitAreas.join(', '));
       if (hitAreas.includes('Body')) {
-        setMotion('TapBody', 0);
+        window.setMotion('TapBody', 0);
       }
     });
+    actionReady = true;
+    log(`Action ready: expressions=${Object.keys(expressionMap).join(', ')}, motions=${Object.keys(motionMap).join(', ')}`);
 
-    // 居中缩放
-    model.anchor.set(0.5, 0.5);
-    model.x = app.screen.width / 2;
-    model.y = app.screen.height * 0.55;
-    const scale = Math.min(app.screen.width, app.screen.height) / 720;
-    model.scale.set(scale);
+    layoutModel();
 
-    log('Ready!');
+    log(`Ready in ${Date.now() - initStartedAt}ms`);
     setTimeout(() => { document.getElementById('status').style.display = 'none'; }, 2000);
   } catch (e) {
     const message = e && e.message ? e.message : String(e);
     log('Error: ' + message);
     console.error(e);
+    if (e && e.stack) {
+      appendDetail('STACK:\n' + e.stack);
+      postToFlutter('[Cortana Stack] ' + e.stack);
+    }
   }
 }
 
 // Flutter JS Bridge 接口
-function setExpression(name) {
+window.setExpression = async function setExpression(name) {
   log('setExpression: ' + name);
-  if (!model) return log('Model not ready');
+  if (!actionReady || !model) {
+    log('Model not ready');
+    return 'model-not-ready';
+  }
   const mapped = expressionMap[name] || name;
-  try { model.expression(mapped); } catch(e) { log('Expression error: ' + e.message); }
-}
+  try {
+    const result = await model.expression(mapped);
+    log(`Expression applied: input=${name}, mapped=${mapped}, result=${result}`);
+    return { ok: true, mapped, result };
+  } catch (e) {
+    log(`Expression error: input=${name}, mapped=${mapped}, message=${e && e.message ? e.message : e}`);
+    throw e;
+  }
+};
 
-function setMotion(group, index) {
+window.setExpressionFor = async function setExpressionFor(name, holdMs, fallbackName) {
+  const applied = await window.setExpression(name);
+  const hold = Number.isFinite(holdMs) ? holdMs : parseInt(holdMs || '0', 10) || 0;
+  const fallback = fallbackName || 'happy';
+  if (hold > 0) {
+    setTimeout(() => {
+      window.setExpression(fallback).catch((e) => {
+        log(`Expression fallback error: ${e && e.message ? e.message : e}`);
+      });
+    }, hold);
+  }
+  return applied;
+};
+
+window.setMotion = async function setMotion(group, index) {
   log('setMotion: ' + group + ', ' + index);
-  if (!model) return log('Model not ready');
+  if (!actionReady || !model) {
+    log('Model not ready');
+    return 'model-not-ready';
+  }
   const mapped = motionMap[group] || [group, index || 0];
-  try { model.motion(mapped[0], mapped[1]); } catch(e) { log('Motion error: ' + e.message); }
-}
+  try {
+    const result = await model.motion(mapped[0], mapped[1]);
+    log(`Motion applied: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], result=${result ? 'started' : 'empty'}`);
+    return { ok: true, mappedGroup: mapped[0], mappedIndex: mapped[1] };
+  } catch (e) {
+    log(`Motion error: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], message=${e && e.message ? e.message : e}`);
+    throw e;
+  }
+};
 
 function startLipSync(amp) {
   if (!model) return;
@@ -122,20 +325,39 @@ function setCostume(name) {
 window.addEventListener('resize', () => {
   if (!app) return;
   app.renderer.resize(window.innerWidth, window.innerHeight);
-  if (model) {
-    model.x = app.screen.width / 2;
-    model.y = app.screen.height * 0.55;
-  }
+  layoutModel();
 });
 
 window.addEventListener('error', (event) => {
   const message = event && event.message ? event.message : 'Unknown window error';
   log('Window error: ' + message);
+  if (event && event.error && event.error.stack) {
+    appendDetail('WINDOW STACK:\n' + event.error.stack);
+  }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event && event.reason ? (event.reason.message || String(event.reason)) : 'Unknown promise rejection';
   log('Unhandled rejection: ' + reason);
+  if (event && event.reason && event.reason.stack) {
+    appendDetail('REJECTION STACK:\n' + event.reason.stack);
+  }
+});
+
+window.cortanaDebugState = () => ({
+  pageUrl: window.location.href,
+  baseUri: document.baseURI,
+  pixiPresent: !!window.PIXI,
+  pixiVersion: window.PIXI && window.PIXI.VERSION ? window.PIXI.VERSION : null,
+  live2dPresent: !!(window.PIXI && window.PIXI.live2d && window.PIXI.live2d.Live2DModel),
+  cubismCorePresent: !!window.Live2DCubismCore,
+  appCreated: !!app,
+  modelCreated: !!model,
+  actionReady,
+  modelUrl: MODEL_URL,
+  elapsedMs: Date.now() - initStartedAt,
+  lastModelConfig,
+  lastLogs: detailLines.slice(-20),
 });
 
 init();

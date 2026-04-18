@@ -840,6 +840,50 @@ class PushEnvelope {
   final Map<String, dynamic>? meta;
 }
 
+typedef ScopedHistoryPersistCallback = Future<void> Function(String scopeKey);
+
+class ScopedHistoryPersistenceCoordinator {
+  ScopedHistoryPersistenceCoordinator(this._persist);
+
+  final ScopedHistoryPersistCallback _persist;
+  final Map<String, Future<void>> _tails = <String, Future<void>>{};
+  final Map<String, int> _revisions = <String, int>{};
+  int _epoch = 0;
+
+  void schedule(String scopeKey) {
+    final normalizedScopeKey = scopeKey.trim();
+    if (normalizedScopeKey.isEmpty) {
+      return;
+    }
+    final scheduledEpoch = _epoch;
+    final revision = (_revisions[normalizedScopeKey] ?? 0) + 1;
+    _revisions[normalizedScopeKey] = revision;
+
+    final previous = _tails[normalizedScopeKey] ?? Future<void>.value();
+    late final Future<void> future;
+    future = previous.catchError((_) {}).then((_) async {
+      // 同一 scope 的并发写只落最后一次，避免旧快照覆盖新消息。
+      if (_epoch != scheduledEpoch) {
+        return;
+      }
+      if (_revisions[normalizedScopeKey] != revision) {
+        return;
+      }
+      await _persist(normalizedScopeKey);
+    });
+    _tails[normalizedScopeKey] = future.whenComplete(() {
+      if (identical(_tails[normalizedScopeKey], future)) {
+        _tails.remove(normalizedScopeKey);
+      }
+    });
+  }
+
+  void invalidate() {
+    _epoch++;
+    _revisions.clear();
+  }
+}
+
 class RecordedAudio {
   const RecordedAudio({required this.path, required this.duration});
 
@@ -962,6 +1006,36 @@ class CodegenProjectsSnapshot {
 enum RootTab { chat, codegen, cortana }
 
 enum CodegenLaunchMode { code, deploy }
+
+class CodegenHistoryItem {
+  const CodegenHistoryItem({
+    required this.timestamp,
+    required this.command,
+    required this.mode,
+  });
+
+  final DateTime timestamp;
+  final String command;
+  final CodegenLaunchMode mode;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'timestamp': timestamp.toIso8601String(),
+      'command': command,
+      'mode': mode.name,
+    };
+  }
+
+  factory CodegenHistoryItem.fromJson(Map<String, dynamic> json) {
+    return CodegenHistoryItem(
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      command: (json['command'] ?? '').toString(),
+      mode: json['mode'] == 'deploy'
+          ? CodegenLaunchMode.deploy
+          : CodegenLaunchMode.code,
+    );
+  }
+}
 
 class ClientConfig {
   const ClientConfig({
@@ -1669,6 +1743,8 @@ class _ChatPageState extends State<ChatPage> {
   static const String _codeProjectKey = 'codegen::last_code_project';
   static const String _deployProjectKey = 'codegen::last_deploy_project';
   static const String _deployTargetKey = 'codegen::last_deploy_target';
+  static const String _deployArgsKey = 'codegen::last_deploy_args';
+  static const String _codegenHistoryKey = 'codegen::history';
   static const Duration _sessionRefreshSkew = Duration(minutes: 1);
   static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1689,6 +1765,7 @@ class _ChatPageState extends State<ChatPage> {
   final _messageController = TextEditingController();
   final _codegenPromptController = TextEditingController();
   final _codegenSearchController = TextEditingController();
+  final _deployArgsController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _controlsScrollController = ScrollController();
@@ -1705,6 +1782,8 @@ class _ChatPageState extends State<ChatPage> {
 
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
+  late final ScopedHistoryPersistenceCoordinator _historyPersistence =
+      ScopedHistoryPersistenceCoordinator(_persistHistory);
   final List<GroupInfo> _groups = <GroupInfo>[];
   final List<CodingProjectInfo> _codingProjects = <CodingProjectInfo>[];
   final List<DeployProjectInfo> _deployProjects = <DeployProjectInfo>[];
@@ -1734,6 +1813,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _codegenSending = false;
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
+  List<CodegenHistoryItem> _codegenHistory = [];
   int _lastSequence = 0;
   String _status = 'Idle';
   String _sessionToken = '';
@@ -1765,6 +1845,7 @@ class _ChatPageState extends State<ChatPage> {
     super.initState();
     _appendSystem('Loading client config...');
     unawaited(_restoreCodegenPreferences());
+    unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
     unawaited(_restoreVoskDownloadProgress());
   }
@@ -1813,6 +1894,7 @@ class _ChatPageState extends State<ChatPage> {
     _messageController.dispose();
     _codegenPromptController.dispose();
     _codegenSearchController.dispose();
+    _deployArgsController.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
     _controlsScrollController.dispose();
@@ -2425,6 +2507,7 @@ class _ChatPageState extends State<ChatPage> {
     if (clearPassword) {
       _passwordController.clear();
     }
+    _historyPersistence.invalidate();
     if (mounted) {
       setState(() {
         _lastSequence = 0;
@@ -2460,6 +2543,7 @@ class _ChatPageState extends State<ChatPage> {
       await _clearStoredRefreshToken();
     }
     await _closeSocketForSessionReset();
+    _historyPersistence.invalidate();
     if (mounted) {
       setState(() {
         _loggingIn = false;
@@ -2661,7 +2745,9 @@ class _ChatPageState extends State<ChatPage> {
       final codeProject = prefs.getString(_codeProjectKey)?.trim() ?? '';
       final deployProject = prefs.getString(_deployProjectKey)?.trim() ?? '';
       final deployTarget = prefs.getString(_deployTargetKey)?.trim() ?? '';
+      final deployArgs = prefs.getString(_deployArgsKey)?.trim() ?? '';
       if (!mounted) {
+        _deployArgsController.text = deployArgs;
         _selectedCodeProjectQualifiedName = codeProject;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
@@ -2671,6 +2757,7 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
       setState(() {
+        _deployArgsController.text = deployArgs;
         _selectedCodeProjectQualifiedName = codeProject;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
@@ -2693,9 +2780,52 @@ class _ChatPageState extends State<ChatPage> {
         _selectedDeployProjectQualifiedName,
       );
       await prefs.setString(_deployTargetKey, _selectedDeployTarget);
+      await prefs.setString(_deployArgsKey, _deployArgsController.text.trim());
+
+      // 保存历史记录
+      final historyJson = jsonEncode(
+        _codegenHistory.map((item) => item.toJson()).toList(),
+      );
+      await prefs.setString(_codegenHistoryKey, historyJson);
     } catch (_) {
       // Ignore local preference persistence failures.
     }
+  }
+
+  Future<void> _loadCodegenHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getString(_codegenHistoryKey);
+      if (historyJson != null && historyJson.isNotEmpty) {
+        final List<dynamic> historyList = jsonDecode(historyJson);
+        setState(() {
+          _codegenHistory = historyList
+              .map(
+                (item) =>
+                    CodegenHistoryItem.fromJson(item as Map<String, dynamic>),
+              )
+              .toList();
+        });
+      }
+    } catch (_) {
+      // Ignore history load failures.
+    }
+  }
+
+  void _addCodegenHistory(String command, CodegenLaunchMode mode) {
+    final item = CodegenHistoryItem(
+      timestamp: DateTime.now(),
+      command: command,
+      mode: mode,
+    );
+    setState(() {
+      _codegenHistory.insert(0, item);
+      // 只保留最近50条记录
+      if (_codegenHistory.length > 50) {
+        _codegenHistory = _codegenHistory.sublist(0, 50);
+      }
+    });
+    unawaited(_persistCodegenPreferences());
   }
 
   void _syncCodegenSelections() {
@@ -2856,6 +2986,10 @@ class _ChatPageState extends State<ChatPage> {
     if (_deployPackOnly) {
       parts.add('!pack');
     }
+    final deployArgs = _deployArgsController.text.trim();
+    if (deployArgs.isNotEmpty) {
+      parts.add(deployArgs);
+    }
     return parts.join(' ');
   }
 
@@ -2897,6 +3031,10 @@ class _ChatPageState extends State<ChatPage> {
         });
       }
       _appendSystem('命令已发送，执行进度会继续在聊天流中返回。');
+
+      // 添加到历史记录
+      _addCodegenHistory(command, _codegenMode);
+
       if (_codegenMode == CodegenLaunchMode.code) {
         _codegenPromptController.clear();
       }
@@ -2911,6 +3049,134 @@ class _ChatPageState extends State<ChatPage> {
           _codegenSending = false;
         });
       }
+    }
+  }
+
+  bool _isCortanaProgressMessage(ChatMessage msg) {
+    if (msg.messageType != 'text') {
+      return false;
+    }
+    final content = msg.content.trim();
+    if (content.isEmpty) {
+      return true;
+    }
+    const progressPrefixes = <String>[
+      '收到消息',
+      '思考:',
+      '工具调用:',
+      '工具结果:',
+      '工具进度:',
+      '子任务开始:',
+      '子任务完成:',
+      '子任务失败:',
+      '子任务跳过:',
+      '子任务结果:',
+      '子任务思考:',
+      '子任务回复:',
+      '异步子任务:',
+      '延后处理:',
+      '任务完成:',
+      '任务取消:',
+      '强制总结:',
+      '子任务超时:',
+      '模型错误:',
+      '进度:',
+      '重试:',
+      '修改:',
+      '路由:',
+      '技能开始:',
+      '技能工具调用:',
+      '技能完成:',
+    ];
+    return progressPrefixes.any(content.startsWith);
+  }
+
+  CortanaReplyPayload? _extractCortanaReplyPayload(ChatMessage msg) {
+    if (msg.direction != MessageDirection.incoming) {
+      return null;
+    }
+    if (msg.messageType == 'audio') {
+      final meta = msg.meta ?? const <String, dynamic>{};
+      final audioPath = (meta['audio_path'] ?? '').toString().trim();
+      final speechText = (meta['speech_text'] ?? '').toString().trim();
+      final rawActionPlan = meta['cortana_action_plan'];
+      final actionPlan = rawActionPlan is Map
+          ? Map<String, dynamic>.from(rawActionPlan)
+          : null;
+      if (audioPath.isEmpty) {
+        return null;
+      }
+      return CortanaReplyPayload(
+        text: speechText.isNotEmpty ? speechText : 'Cortana 语音回复',
+        audioPath: audioPath,
+        audioFormat: (meta['audio_format'] ?? '').toString().trim(),
+        actionPlan: actionPlan,
+      );
+    }
+    if (msg.messageType == 'text' && !_isCortanaProgressMessage(msg)) {
+      return CortanaReplyPayload(text: msg.content.trim());
+    }
+    return null;
+  }
+
+  Future<CortanaReplyPayload> _sendCortanaMessage(String message) async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      throw Exception('Please login first');
+    }
+
+    final startTime = DateTime.now();
+    final baselineCount = _messages.length;
+    CortanaReplyPayload? latestTextReply;
+    DateTime? latestTextAt;
+
+    try {
+      await _runAuthed('Send Cortana message', (client) {
+        return client.sendAppMessage(
+          message,
+          meta: <String, dynamic>{
+            'input_mode': 'cortana_text',
+            'reply_mode': 'audio_preferred',
+          },
+        );
+      });
+
+      while (DateTime.now().difference(startTime).inSeconds < 30) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        final appendedMessages = _messages.skip(baselineCount);
+        for (final msg in appendedMessages.toList().reversed) {
+          final payload = _extractCortanaReplyPayload(msg);
+          if (payload == null) {
+            continue;
+          }
+          if (payload.hasAudio) {
+            if (payload.text.trim().isNotEmpty) {
+              return payload;
+            }
+            return CortanaReplyPayload(
+              text: latestTextReply?.text ?? 'Cortana 语音回复',
+              audioPath: payload.audioPath,
+              audioFormat: payload.audioFormat,
+            );
+          }
+          latestTextReply = payload;
+          latestTextAt = DateTime.now();
+        }
+
+        if (latestTextReply != null &&
+            latestTextAt != null &&
+            DateTime.now().difference(latestTextAt) >=
+                const Duration(milliseconds: 1500)) {
+          return latestTextReply;
+        }
+      }
+
+      if (latestTextReply != null) {
+        return latestTextReply;
+      }
+
+      throw Exception('No response from assistant');
+    } catch (err) {
+      throw Exception('Failed to send message: $err');
     }
   }
 
@@ -3041,7 +3307,7 @@ class _ChatPageState extends State<ChatPage> {
     _historyByScope[message.scopeKey] = <ChatMessage>[...existing, message];
     if (!mounted) {
       if (persist) {
-        unawaited(_persistHistory(message.scopeKey));
+        _historyPersistence.schedule(message.scopeKey);
       }
       return;
     }
@@ -3051,7 +3317,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     });
     if (persist) {
-      unawaited(_persistHistory(message.scopeKey));
+      _historyPersistence.schedule(message.scopeKey);
     }
     if (message.scopeKey == _currentScopeKey) {
       _scrollToBottom();
@@ -3990,7 +4256,7 @@ class _ChatPageState extends State<ChatPage> {
     if (mounted && target.scopeKey == _currentScopeKey) {
       setState(() {});
     }
-    await _persistHistory(target.scopeKey);
+    _historyPersistence.schedule(target.scopeKey);
   }
 
   bool _isSameStoredMessage(ChatMessage a, ChatMessage b) {
@@ -6084,22 +6350,29 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                       ),
-                      IconButton(
-                        onPressed: _codegenLoading
-                            ? null
-                            : () => unawaited(_loadCodegenProjects()),
-                        tooltip: '刷新项目',
-                        icon: Icon(
-                          Icons.refresh_rounded,
-                          color: palette.textPrimary,
-                        ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '从 acp-agent 和 deploy-agent 的现有项目中快速选择，直接发送 /cg 命令。',
                     style: TextStyle(color: palette.textSecondary, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _codegenLoading
+                          ? null
+                          : () => unawaited(_loadCodegenProjects()),
+                      icon: _codegenLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded),
+                      label: Text(_codegenLoading ? '刷新中...' : '刷新编码和发布项目'),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Wrap(
@@ -6242,6 +6515,20 @@ class _ChatPageState extends State<ChatPage> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('仅打包'),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _deployArgsController,
+                      onChanged: (_) {
+                        setState(() {});
+                        unawaited(_persistCodegenPreferences());
+                      },
+                      decoration: const InputDecoration(
+                        labelText: '发布参数',
+                        hintText: '例如：--version 3.2.2 --desc 灰度体验版',
+                        helperText: '会原样追加到 /cg deploy 命令末尾',
+                        isDense: true,
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 10),
                   Text(
@@ -6282,10 +6569,174 @@ class _ChatPageState extends State<ChatPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            // 历史记录
+            if (_codegenHistory.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                decoration: BoxDecoration(
+                  color: palette.surface.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: palette.border),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 18,
+                      color: Colors.black.withValues(alpha: 0.18),
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.history,
+                          color: palette.textSecondary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '历史记录',
+                          style: TextStyle(
+                            color: palette.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _codegenHistory.clear();
+                            });
+                            unawaited(_persistCodegenPreferences());
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: const Text('清空'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _codegenHistory.length > 10
+                          ? 10
+                          : _codegenHistory.length,
+                      separatorBuilder: (context, index) =>
+                          Divider(color: palette.border, height: 16),
+                      itemBuilder: (context, index) {
+                        final item = _codegenHistory[index];
+                        final timeStr = _formatHistoryTime(item.timestamp);
+                        return InkWell(
+                          onTap: () {
+                            // 点击历史记录，填充到输入框
+                            if (item.mode == CodegenLaunchMode.code) {
+                              // 从命令中提取需求文本
+                              final parts = item.command.split(' ');
+                              if (parts.length > 3) {
+                                final prompt = parts.sublist(3).join(' ');
+                                _codegenPromptController.text = prompt;
+                              }
+                            }
+                            setState(() {
+                              _codegenMode = item.mode;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 4,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            item.mode == CodegenLaunchMode.code
+                                            ? Colors.blue.withValues(alpha: 0.2)
+                                            : Colors.green.withValues(
+                                                alpha: 0.2,
+                                              ),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        item.mode == CodegenLaunchMode.code
+                                            ? '编码'
+                                            : '发布',
+                                        style: TextStyle(
+                                          color:
+                                              item.mode ==
+                                                  CodegenLaunchMode.code
+                                              ? Colors.blue
+                                              : Colors.green,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      timeStr,
+                                      style: TextStyle(
+                                        color: palette.textSecondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  item.command,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontFamily: 'monospace',
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatHistoryTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+
+    if (diff.inMinutes < 1) {
+      return '刚刚';
+    } else if (diff.inHours < 1) {
+      return '${diff.inMinutes}分钟前';
+    } else if (diff.inDays < 1) {
+      return '${diff.inHours}小时前';
+    } else if (diff.inDays < 7) {
+      return '${diff.inDays}天前';
+    } else {
+      return '${time.month}月${time.day}日 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    }
   }
 
   @override
@@ -6354,8 +6805,8 @@ class _ChatPageState extends State<ChatPage> {
           _rootTab == RootTab.chat
               ? _buildChatBody()
               : _rootTab == RootTab.codegen
-                  ? _buildCodegenBody()
-                  : const CortanaPage(),
+              ? _buildCodegenBody()
+              : CortanaPage(onSendMessage: _sendCortanaMessage),
         ],
       ),
       bottomNavigationBar: NavigationBar(
