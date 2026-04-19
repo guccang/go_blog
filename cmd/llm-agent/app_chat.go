@@ -14,12 +14,13 @@ import (
 
 // AppSink App 实时进度推送 + 结果缓冲
 type AppSink struct {
-	bridge        *Bridge
-	fromAgent     string
-	appUser       string
-	buf           strings.Builder
-	lastEventTime time.Time
-	audioSent     bool
+	bridge           *Bridge
+	fromAgent        string
+	appUser          string
+	cortanaRequestID string
+	buf              strings.Builder
+	lastEventTime    time.Time
+	audioSent        bool
 }
 
 var inlineAudioTagPattern = regexp.MustCompile(`(?is)<audio\b[^>]*\bsrc\s*=\s*"data:audio/([^;"]+);base64,([^"]+)"[^>]*>.*?</audio>`)
@@ -378,6 +379,9 @@ func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText stri
 		"input_mode":   "tts_reply",
 		"speech_text":  strings.TrimSpace(speechText),
 	}
+	if strings.TrimSpace(s.cortanaRequestID) != "" {
+		meta["cortana_request_id"] = strings.TrimSpace(s.cortanaRequestID)
+	}
 	if len(actionPlan) > 0 {
 		meta["cortana_action_plan"] = actionPlan
 	}
@@ -415,6 +419,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 
 	preferAudioReply := false
 	cortanaTextMode := false
+	cortanaRequestID := ""
 	if inbound, ok := parseAppInboundMessage(content); ok && inbound != nil {
 		if strings.EqualFold(strings.TrimSpace(inbound.MessageType), "audio") {
 			preferAudioReply = true
@@ -427,6 +432,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 				preferAudioReply = true
 				cortanaTextMode = true
 			}
+			cortanaRequestID = strings.TrimSpace(fmt.Sprint(inbound.Meta["cortana_request_id"]))
 			replyMode := strings.TrimSpace(fmt.Sprint(inbound.Meta["reply_mode"]))
 			if strings.EqualFold(replyMode, "audio") || strings.EqualFold(replyMode, "audio_preferred") {
 				preferAudioReply = true
@@ -519,9 +525,10 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	session.mu.Unlock()
 
 	sink := &AppSink{
-		bridge:    b,
-		fromAgent: fromAgent,
-		appUser:   appUser,
+		bridge:           b,
+		fromAgent:        fromAgent,
+		appUser:          appUser,
+		cortanaRequestID: cortanaRequestID,
 	}
 
 	session.SetCancel(cancel)

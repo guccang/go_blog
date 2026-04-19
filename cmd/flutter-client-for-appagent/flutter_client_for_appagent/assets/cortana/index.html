@@ -25,7 +25,9 @@ canvas { display: block; }
 <script src="./vendor/cubism4.min.js"></script>
 <script>
 const detailsEl = document.getElementById('details');
+const statusEl = document.getElementById('status');
 const detailLines = [];
+let diagnosticsVisible = false;
 
 function postToFlutter(payload) {
   try {
@@ -44,12 +46,18 @@ function appendDetail(msg) {
   detailsEl.textContent = detailLines.join('\n');
 }
 
+function applyDiagnosticsVisibility(visible) {
+  diagnosticsVisible = !!visible;
+  detailsEl.style.display = diagnosticsVisible ? 'block' : 'none';
+  statusEl.style.display = diagnosticsVisible ? 'block' : 'none';
+}
+
 const log = (msg) => {
   const full = '[Cortana] ' + msg;
   console.log(full);
   appendDetail(msg);
   postToFlutter(full);
-  document.getElementById('status').textContent = msg;
+  statusEl.textContent = msg;
 };
 
 window.PIXI = window.PIXI || PIXI;
@@ -73,6 +81,112 @@ let initStartedAt = Date.now();
 let lastModelConfig = null;
 let resolvedModelUrl = null;
 let actionReady = false;
+let motionQueue = Promise.resolve();
+let lastAppliedMotion = null;
+let lastQueuedMotion = null;
+let lastMotionRequestedAt = 0;
+let lastLayoutLogAt = 0;
+const userViewState = {
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+};
+const speechFocusState = {
+  active: false,
+  progress: 0,
+  from: 0,
+  to: 0,
+  startedAt: 0,
+  durationMs: 520,
+  targetScale: 1.26,
+  targetOffsetX: 0,
+  targetOffsetY: 0.15,
+  rafId: 0,
+};
+const lipSyncState = {
+  current: 0,
+  target: 0,
+  lastTs: 0,
+  rafId: 0,
+};
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function easeInOutCubic(t) {
+  if (t <= 0) {
+    return 0;
+  }
+  if (t >= 1) {
+    return 1;
+  }
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function ensureLipSyncLoop() {
+  if (lipSyncState.rafId) {
+    return;
+  }
+  lipSyncState.lastTs = 0;
+  const tick = (ts) => {
+    if (!model || !model.internalModel || !model.internalModel.coreModel) {
+      lipSyncState.rafId = 0;
+      return;
+    }
+    const dt = lipSyncState.lastTs > 0 ? ts - lipSyncState.lastTs : 16;
+    lipSyncState.lastTs = ts;
+    const easing = clamp(dt / 180, 0.08, 0.32);
+    lipSyncState.current += (lipSyncState.target - lipSyncState.current) * easing;
+    const settled =
+      Math.abs(lipSyncState.current - lipSyncState.target) < 0.01 &&
+      lipSyncState.target < 0.01;
+    try {
+      model.internalModel.coreModel.setParameterValueById(
+        'ParamMouthOpenY',
+        clamp(lipSyncState.current, 0, 1)
+      );
+    } catch (_) {}
+    if (settled) {
+      lipSyncState.current = 0;
+      lipSyncState.target = 0;
+      lipSyncState.lastTs = 0;
+      lipSyncState.rafId = 0;
+      return;
+    }
+    lipSyncState.rafId = requestAnimationFrame(tick);
+  };
+  lipSyncState.rafId = requestAnimationFrame(tick);
+}
+
+function animateSpeechFocus(active) {
+  speechFocusState.active = !!active;
+  speechFocusState.from = speechFocusState.progress;
+  speechFocusState.to = active ? 1 : 0;
+  speechFocusState.startedAt = performance.now();
+  if (speechFocusState.rafId) {
+    cancelAnimationFrame(speechFocusState.rafId);
+  }
+
+  const step = (ts) => {
+    const elapsed = ts - speechFocusState.startedAt;
+    const progress = clamp(elapsed / speechFocusState.durationMs, 0, 1);
+    const eased = easeInOutCubic(progress);
+    speechFocusState.progress =
+      speechFocusState.from +
+      (speechFocusState.to - speechFocusState.from) * eased;
+    layoutModel();
+    if (progress < 1) {
+      speechFocusState.rafId = requestAnimationFrame(step);
+      return;
+    }
+    speechFocusState.progress = speechFocusState.to;
+    speechFocusState.rafId = 0;
+    layoutModel();
+  };
+
+  speechFocusState.rafId = requestAnimationFrame(step);
+}
 
 function layoutModel() {
   if (!app || !model) {
@@ -86,21 +200,34 @@ function layoutModel() {
     ? model.internalModel.height
     : model.height || 1;
 
-  // 优先完整显示全身：底部对齐，并按可用宽高双重约束自适应缩放。
-  const maxWidth = app.screen.width * 0.72;
-  const maxHeight = app.screen.height * 0.88;
-  const scale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
+  // 常态尽量给角色更多画面空间，语音播放时再进一步推近到上半身。
+  const maxWidth = app.screen.width * 0.9;
+  const maxHeight = app.screen.height * 0.96;
+  const baseScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
+  const speechScale = 1 + (speechFocusState.targetScale - 1) * speechFocusState.progress;
+  const scale = baseScale * userViewState.scale * speechScale;
+  const offsetX =
+    app.screen.width *
+    (userViewState.offsetX + speechFocusState.targetOffsetX * speechFocusState.progress);
+  const offsetY =
+    app.screen.height *
+    (userViewState.offsetY + speechFocusState.targetOffsetY * speechFocusState.progress);
 
   model.anchor.set(0.5, 1);
   model.scale.set(scale);
-  model.x = app.screen.width / 2;
-  model.y = app.screen.height * 0.96;
+  model.x = app.screen.width / 2 + offsetX;
+  model.y = app.screen.height * 0.985 + offsetY;
 
-  log(
-    `Model laid out: base=${baseWidth.toFixed(2)}x${baseHeight.toFixed(2)}, ` +
-    `screen=${app.screen.width}x${app.screen.height}, scale=${scale.toFixed(4)}, ` +
-    `pos=(${model.x.toFixed(1)}, ${model.y.toFixed(1)})`
-  );
+  const now = performance.now();
+  if (now - lastLayoutLogAt > 240) {
+    lastLayoutLogAt = now;
+    log(
+      `Model laid out: base=${baseWidth.toFixed(2)}x${baseHeight.toFixed(2)}, ` +
+      `screen=${app.screen.width}x${app.screen.height}, scale=${scale.toFixed(4)}, ` +
+      `userScale=${userViewState.scale.toFixed(3)}, focus=${speechFocusState.progress.toFixed(3)}, ` +
+      `pos=(${model.x.toFixed(1)}, ${model.y.toFixed(1)}), speechTargetY=${speechFocusState.targetOffsetY.toFixed(3)}`
+    );
+  }
 }
 
 function resourceUrl(relativePath) {
@@ -247,7 +374,13 @@ async function init() {
     layoutModel();
 
     log(`Ready in ${Date.now() - initStartedAt}ms`);
-    setTimeout(() => { document.getElementById('status').style.display = 'none'; }, 2000);
+    if (diagnosticsVisible) {
+      setTimeout(() => {
+        if (diagnosticsVisible) {
+          statusEl.style.display = 'none';
+        }
+      }, 2000);
+    }
   } catch (e) {
     const message = e && e.message ? e.message : String(e);
     log('Error: ' + message);
@@ -298,29 +431,93 @@ window.setMotion = async function setMotion(group, index) {
     return 'model-not-ready';
   }
   const mapped = motionMap[group] || [group, index || 0];
-  try {
-    const result = await model.motion(mapped[0], mapped[1]);
-    log(`Motion applied: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], result=${result ? 'started' : 'empty'}`);
-    return { ok: true, mappedGroup: mapped[0], mappedIndex: mapped[1] };
-  } catch (e) {
-    log(`Motion error: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], message=${e && e.message ? e.message : e}`);
-    throw e;
+  const now = performance.now();
+  if (
+    lastQueuedMotion &&
+    lastQueuedMotion.group === mapped[0] &&
+    lastQueuedMotion.index === mapped[1] &&
+    now - lastMotionRequestedAt < 260
+  ) {
+    log(`Motion skipped: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], reason=dedup`);
+    return {
+      ok: true,
+      mappedGroup: mapped[0],
+      mappedIndex: mapped[1],
+      skipped: true,
+    };
   }
+  lastMotionRequestedAt = now;
+  lastQueuedMotion = { group: mapped[0], index: mapped[1] };
+
+  motionQueue = motionQueue
+    .catch(() => {})
+    .then(async () => {
+      const isMotionSwitch =
+        !lastAppliedMotion ||
+        lastAppliedMotion.group !== mapped[0] ||
+        lastAppliedMotion.index !== mapped[1];
+      if (isMotionSwitch) {
+        try {
+          const manager = model.internalModel && model.internalModel.motionManager;
+          if (manager && typeof manager.stopAllMotions === 'function') {
+            manager.stopAllMotions();
+          }
+        } catch (e) {
+          log(`Motion stop warning: ${e && e.message ? e.message : e}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 34));
+      }
+      try {
+        const result = await model.motion(mapped[0], mapped[1]);
+        lastAppliedMotion = { group: mapped[0], index: mapped[1] };
+        log(`Motion applied: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], result=${result ? 'started' : 'empty'}`);
+        return { ok: true, mappedGroup: mapped[0], mappedIndex: mapped[1] };
+      } catch (e) {
+        log(`Motion error: input=${group}[${index}], mapped=${mapped[0]}[${mapped[1]}], message=${e && e.message ? e.message : e}`);
+        throw e;
+      }
+    });
+  return motionQueue;
 };
 
 function startLipSync(amp) {
-  if (!model) return;
-  try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', amp || 0.5); } catch(e) {}
+  lipSyncState.target = clamp(Number(amp) || 0, 0, 1);
+  ensureLipSyncLoop();
 }
 
 function stopLipSync() {
-  if (!model) return;
-  try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0); } catch(e) {}
+  lipSyncState.target = 0;
+  ensureLipSyncLoop();
 }
 
 function setCostume(name) {
   log('setCostume skipped: local haru model has no costume variants');
 }
+
+window.setUserViewTransform = function setUserViewTransform(scale, offsetX, offsetY) {
+  userViewState.scale = clamp(Number(scale) || 1, 0.6, 1.6);
+  userViewState.offsetX = clamp(Number(offsetX) || 0, -0.45, 0.45);
+  userViewState.offsetY = clamp(Number(offsetY) || 0, -0.4, 0.4);
+  layoutModel();
+  return {
+    ok: true,
+    userViewState: {
+      scale: userViewState.scale,
+      offsetX: userViewState.offsetX,
+      offsetY: userViewState.offsetY,
+    },
+  };
+};
+
+window.beginSpeechFocus = function beginSpeechFocus() {
+  animateSpeechFocus(true);
+  return { ok: true, active: true };
+};
+
+window.endSpeechFocus = function endSpeechFocus() {
+  animateSpeechFocus(false);
+  return { ok: true, active: false };
+};
 
 window.addEventListener('resize', () => {
   if (!app) return;
@@ -356,10 +553,29 @@ window.cortanaDebugState = () => ({
   actionReady,
   modelUrl: MODEL_URL,
   elapsedMs: Date.now() - initStartedAt,
+  userViewState: {
+    scale: userViewState.scale,
+    offsetX: userViewState.offsetX,
+    offsetY: userViewState.offsetY,
+  },
+  speechFocusState: {
+    active: speechFocusState.active,
+    progress: speechFocusState.progress,
+  },
+  lipSyncState: {
+    current: lipSyncState.current,
+    target: lipSyncState.target,
+  },
   lastModelConfig,
   lastLogs: detailLines.slice(-20),
 });
 
+window.setDiagnosticsVisible = function setDiagnosticsVisibility(visible) {
+  applyDiagnosticsVisibility(visible);
+  return { ok: true, visible: diagnosticsVisible };
+};
+
+applyDiagnosticsVisibility(false);
 init();
 </script>
 </body>

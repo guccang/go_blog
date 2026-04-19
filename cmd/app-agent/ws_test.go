@@ -13,17 +13,30 @@ import (
 )
 
 type fakeOBSStorage struct {
-	putCount int
-	lastReq  obsstore.PutObjectRequest
+	putCount    int
+	headCount   int
+	existing    map[string]bool
+	lastHeadKey string
+	lastReq     obsstore.PutObjectRequest
 }
 
 func (f *fakeOBSStorage) Enabled() bool {
 	return true
 }
 
+func (f *fakeOBSStorage) HeadObject(_ context.Context, key string) (bool, error) {
+	f.headCount++
+	f.lastHeadKey = key
+	return f.existing != nil && f.existing[key], nil
+}
+
 func (f *fakeOBSStorage) PutObject(_ context.Context, req obsstore.PutObjectRequest) error {
 	f.putCount++
 	f.lastReq = req
+	if f.existing == nil {
+		f.existing = make(map[string]bool)
+	}
+	f.existing[req.Key] = true
 	return nil
 }
 
@@ -165,6 +178,61 @@ func TestPushUploadedAPKQueuesOBSDownloadMetaWhenConfigured(t *testing.T) {
 	}
 	if got := meta["download_ticket_expire_at"]; got != int64(1234567890) {
 		t.Fatalf("expected download_ticket_expire_at=1234567890, got %#v", got)
+	}
+}
+
+func TestPushStoredAPKPackageReusesExistingOBSObject(t *testing.T) {
+	bridge := newTestBridgeWithAttachmentDir(t)
+	fakeStore := &fakeOBSStorage{}
+	bridge.obsStorage = fakeStore
+	bridge.downloadTickets = &fakeDownloadTicketSigner{
+		token:     "ticket-123",
+		expiresAt: 1234567890,
+	}
+	bridge.downloadTicketTTL = 5 * time.Minute
+
+	attachment, err := bridge.PushUploadedAPK(
+		"ztt",
+		"首次上传",
+		"app-release.apk",
+		bytes.NewReader([]byte("apk-binary")),
+	)
+	if err != nil {
+		t.Fatalf("PushUploadedAPK returned error: %v", err)
+	}
+	if attachment == nil {
+		t.Fatalf("expected attachment to be returned")
+	}
+	if fakeStore.putCount != 1 {
+		t.Fatalf("expected first upload to hit OBS once, got %d", fakeStore.putCount)
+	}
+
+	beforeHeadCount := fakeStore.headCount
+	beforePutCount := fakeStore.putCount
+	result, err := bridge.pushStoredAPKPackage("alice", "", attachment.FileID, "", "", "复用安装包")
+	if err != nil {
+		t.Fatalf("pushStoredAPKPackage returned error: %v", err)
+	}
+	if got, _ := result["storage_provider"].(string); got != "obs" {
+		t.Fatalf("expected storage_provider=obs, got %q", got)
+	}
+	if fakeStore.headCount <= beforeHeadCount {
+		t.Fatalf("expected stored APK reuse to check OBS existence")
+	}
+	if fakeStore.putCount != beforePutCount {
+		t.Fatalf("expected stored APK reuse to skip OBS re-upload, putCount=%d before=%d", fakeStore.putCount, beforePutCount)
+	}
+
+	queue := bridge.pendingForUser("alice")
+	if len(queue) != 1 {
+		t.Fatalf("expected 1 pending payload for alice, got %d", len(queue))
+	}
+	meta := queue[0].Meta
+	if got := meta["object_key"]; got != attachment.ObjectKey {
+		t.Fatalf("expected object_key %q, got %#v", attachment.ObjectKey, got)
+	}
+	if got := meta["download_ticket"]; got != "ticket-123" {
+		t.Fatalf("expected download_ticket=ticket-123, got %#v", got)
 	}
 }
 

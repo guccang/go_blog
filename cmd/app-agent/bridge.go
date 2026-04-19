@@ -635,17 +635,24 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	}
 	base64Text, fileName, format := attachmentPayload(msg.MessageType, msg.Meta)
 	if base64Text == "" {
-		mimeType := attachmentMimeType(msg.MessageType, fileName, format)
-		return &AppAttachment{
-			MessageType: msg.MessageType,
-			FileName:    fileName,
-			Format:      format,
-			MIMEType:    mimeType,
-			DurationMS:  intMeta(msg.Meta, "duration_ms"),
-			SpeechText:  stringMeta(msg.Meta, "speech_text"),
-			InputMode:   stringMeta(msg.Meta, "input_mode"),
-			Meta:        sanitizeAppMetaForForward(msg.Meta),
-		}, nil
+		attachment := &AppAttachment{
+			MessageType:     msg.MessageType,
+			FileID:          stringMeta(msg.Meta, "file_id"),
+			FileName:        fileName,
+			FilePath:        stringMeta(msg.Meta, "file_path"),
+			Format:          format,
+			MIMEType:        attachmentMimeType(msg.MessageType, fileName, format),
+			DurationMS:      intMeta(msg.Meta, "duration_ms"),
+			SpeechText:      stringMeta(msg.Meta, "speech_text"),
+			InputMode:       stringMeta(msg.Meta, "input_mode"),
+			StorageProvider: stringMeta(msg.Meta, "storage_provider"),
+			ObjectKey:       stringMeta(msg.Meta, "object_key"),
+			Meta:            sanitizeAppMetaForForward(msg.Meta),
+		}
+		if !hasConcreteAttachment(attachment) {
+			return nil, nil
+		}
+		return attachment, nil
 	}
 
 	data, err := base64.StdEncoding.DecodeString(base64Text)
@@ -691,6 +698,25 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	}
 	b.applyAttachmentStorageFromBytes(msg.UserID, attachment, data)
 	return attachment, nil
+}
+
+func hasConcreteAttachment(attachment *AppAttachment) bool {
+	if attachment == nil {
+		return false
+	}
+	if strings.TrimSpace(attachment.FileID) != "" {
+		return true
+	}
+	if strings.TrimSpace(attachment.FilePath) != "" {
+		return true
+	}
+	if strings.TrimSpace(attachment.InlineBase64) != "" {
+		return true
+	}
+	if attachment.FileSize > 0 {
+		return true
+	}
+	return false
 }
 
 func (b *Bridge) ensureAttachmentDir(userID string) (string, error) {

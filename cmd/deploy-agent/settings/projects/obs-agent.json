@@ -35,6 +35,5 @@
         }
     },
     "protect_files": [
-        "obs-agent.json"
     ]
 }

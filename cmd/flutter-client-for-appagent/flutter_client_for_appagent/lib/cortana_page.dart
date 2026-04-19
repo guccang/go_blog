@@ -1,31 +1,82 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:http/http.dart' as http;
 
 class CortanaReplyPayload {
   const CortanaReplyPayload({
     required this.text,
     this.audioPath = '',
+    this.audioBytes,
     this.audioFormat = '',
     this.actionPlan,
+    this.requestId = '',
   });
 
   final String text;
   final String audioPath;
+  final Uint8List? audioBytes;
   final String audioFormat;
   final Map<String, dynamic>? actionPlan;
+  final String requestId;
 
-  bool get hasAudio => audioPath.trim().isNotEmpty;
+  bool get hasAudio => audioPath.trim().isNotEmpty || audioBytes != null;
+}
+
+class CortanaReplayItem {
+  const CortanaReplayItem({
+    required this.id,
+    required this.text,
+    required this.audioPath,
+    this.audioBytes,
+    required this.audioFormat,
+    required this.createdAt,
+    this.actionPlan,
+    this.sourceLabel = '',
+  });
+
+  final String id;
+  final String text;
+  final String audioPath;
+  final Uint8List? audioBytes;
+  final String audioFormat;
+  final DateTime createdAt;
+  final Map<String, dynamic>? actionPlan;
+  final String sourceLabel;
+}
+
+class _CortanaVoiceHistoryItem {
+  const _CortanaVoiceHistoryItem({
+    required this.id,
+    required this.text,
+    required this.audioPath,
+    this.audioBytes,
+    required this.audioFormat,
+    required this.createdAt,
+    this.actionPlan,
+  });
+
+  final String id;
+  final String text;
+  final String audioPath;
+  final Uint8List? audioBytes;
+  final String audioFormat;
+  final DateTime createdAt;
+  final Map<String, dynamic>? actionPlan;
 }
 
 class CortanaPage extends StatefulWidget {
-  const CortanaPage({super.key, this.onSendMessage});
+  const CortanaPage({
+    super.key,
+    this.onSendMessage,
+    this.externalVoiceHistory = const <CortanaReplayItem>[],
+  });
 
   final Future<CortanaReplyPayload> Function(String message)? onSendMessage;
+  final List<CortanaReplayItem> externalVoiceHistory;
 
   @override
   State<CortanaPage> createState() => _CortanaPageState();
@@ -40,13 +91,25 @@ class _CortanaPageState extends State<CortanaPage> {
   final TextEditingController _textCtrl = TextEditingController();
   final AudioPlayer _audio = AudioPlayer();
   Timer? _lipTimer;
+  Timer? _debugStateTimer;
   StreamSubscription<Duration>? _audioPositionSub;
   final List<Timer> _motionTimers = <Timer>[];
   bool _speaking = false;
   InAppLocalhostServer? _localhostServer;
   Future<void>? _androidLocalhostFuture;
   String? _androidLoadStatus;
-  bool _logExpanded = false;
+  bool _showLogs = false;
+  int _playbackToken = 0;
+  final List<String> _runtimeLogs = <String>[];
+  final List<_CortanaVoiceHistoryItem> _voiceHistory = <_CortanaVoiceHistoryItem>[];
+  double _modelUserScale = 1.0;
+  double _modelUserOffsetX = 0.0;
+  double _modelUserOffsetY = 0.0;
+  bool _live2dSummaryExpanded = false;
+  bool _expressionActionsExpanded = false;
+  bool _viewControlsExpanded = false;
+  bool _replayExpanded = false;
+  Map<String, dynamic>? _live2dDebugState;
 
   static const _expressions = ['happy', 'sad', 'surprised'];
   static const _motions = ['Idle', 'IdleAlt', 'IdleWave', 'Tap'];
@@ -87,30 +150,33 @@ class _CortanaPageState extends State<CortanaPage> {
         port: _localhostPort,
       );
       _androidLoadStatus = 'Starting localhost server on $_localhostPort';
+      _appendLog(_androidLoadStatus!);
       _androidLocalhostFuture = _localhostServer!
           .start()
           .then((_) {
             if (mounted) {
-              setState(() {
-                _androidLoadStatus =
-                    'Localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath';
-              });
+              _updateLoadStatus(
+                'Localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
+              );
             }
           })
           .catchError((Object error) {
             if (mounted) {
-              setState(() {
-                _androidLoadStatus = 'Localhost start failed: $error';
-              });
+              _updateLoadStatus('Localhost start failed: $error');
             }
             throw error;
           });
     }
+    _debugStateTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_refreshLive2dDebugState()),
+    );
   }
 
   @override
   void dispose() {
     _resetPlaybackEffects();
+    _debugStateTimer?.cancel();
     _audio.dispose();
     _textCtrl.dispose();
     final localhostServer = _localhostServer;
@@ -120,6 +186,59 @@ class _CortanaPageState extends State<CortanaPage> {
     super.dispose();
   }
 
+  void _appendLog(String message) {
+    final text = message.trim();
+    if (text.isEmpty) {
+      return;
+    }
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final entry = '[$hh:$mm:$ss] $text';
+    debugPrint('[Cortana Log] $entry');
+    if (!mounted) {
+      _runtimeLogs.insert(0, entry);
+      if (_runtimeLogs.length > 40) {
+        _runtimeLogs.removeRange(40, _runtimeLogs.length);
+      }
+      return;
+    }
+    setState(() {
+      _runtimeLogs.insert(0, entry);
+      if (_runtimeLogs.length > 40) {
+        _runtimeLogs.removeRange(40, _runtimeLogs.length);
+      }
+    });
+  }
+
+  void _updateLoadStatus(String message) {
+    if (!mounted) {
+      _androidLoadStatus = message;
+      return;
+    }
+    setState(() {
+      _androidLoadStatus = message;
+    });
+    _appendLog(message);
+  }
+
+  Future<void> _syncDiagnosticsVisibility() async {
+    await _callJS('window.setDiagnosticsVisible(${_showLogs ? 'true' : 'false'})');
+  }
+
+  String _jsDouble(double value) => value.toStringAsFixed(4);
+
+  Future<void> _syncModelViewTransform() async {
+    await _callJS(
+      'window.setUserViewTransform('
+      '${_jsDouble(_modelUserScale)}, '
+      '${_jsDouble(_modelUserOffsetX)}, '
+      '${_jsDouble(_modelUserOffsetY)})',
+    );
+    await _refreshLive2dDebugState();
+  }
+
   Future<void> _callJS(String js) async {
     try {
       final result = await _webCtrl?.evaluateJavascript(source: js);
@@ -127,6 +246,37 @@ class _CortanaPageState extends State<CortanaPage> {
     } catch (error, stackTrace) {
       debugPrint('[Cortana JS Call Error] $js => $error');
       debugPrint('$stackTrace');
+      _appendLog('JS 调用失败: $error');
+    }
+  }
+
+  Future<void> _refreshLive2dDebugState() async {
+    final ctrl = _webCtrl;
+    if (ctrl == null) {
+      return;
+    }
+    try {
+      final state = await ctrl.evaluateJavascript(
+        source: 'JSON.stringify(window.cortanaDebugState ? window.cortanaDebugState() : null);',
+      );
+      final raw = state?.toString().trim() ?? '';
+      if (raw.isEmpty || raw == 'null' || raw == 'undefined') {
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return;
+      }
+      final normalized = Map<String, dynamic>.from(decoded);
+      if (!mounted) {
+        _live2dDebugState = normalized;
+        return;
+      }
+      setState(() {
+        _live2dDebugState = normalized;
+      });
+    } catch (error) {
+      _appendLog('刷新 Live2D 状态失败: $error');
     }
   }
 
@@ -154,54 +304,39 @@ class _CortanaPageState extends State<CortanaPage> {
           callback: (args) {
             final payload = args.isNotEmpty ? args.first : null;
             debugPrint('[Cortana Bridge] $payload');
+            _appendLog('Bridge: $payload');
             return {'ok': true};
           },
         );
       },
       onLoadStart: (ctrl, url) {
         debugPrint('[Cortana] Load start: $url');
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-          setState(() {
-            _androidLoadStatus = 'WebView load start: $url';
-          });
-        }
+        _updateLoadStatus('WebView load start: $url');
       },
       onLoadStop: (ctrl, url) async {
         debugPrint('[Cortana] Load stop: $url');
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-          setState(() {
-            _androidLoadStatus = 'WebView load stop: $url';
-          });
-        }
-        final state = await ctrl.evaluateJavascript(
-          source:
-              'window.cortanaDebugState ? JSON.stringify(window.cortanaDebugState()) : "debug-state-unavailable";',
-        );
-        debugPrint('[Cortana] JS state after load: $state');
+        _updateLoadStatus('WebView load stop: $url');
+        await _syncDiagnosticsVisibility();
+        await _syncModelViewTransform();
+        await _refreshLive2dDebugState();
       },
-      onConsoleMessage: (ctrl, msg) =>
-          debugPrint('[Cortana Console] ${msg.message}'),
+      onConsoleMessage: (ctrl, msg) {
+        debugPrint('[Cortana Console] ${msg.message}');
+        _appendLog('Console: ${msg.message}');
+      },
       onReceivedError: (ctrl, request, error) {
         debugPrint(
           '[Cortana Error] ${error.type}: ${error.description} (${request.url})',
         );
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-          setState(() {
-            _androidLoadStatus =
-                'WebView error: ${error.description} (${request.url})';
-          });
-        }
+        _updateLoadStatus('WebView error: ${error.description} (${request.url})');
       },
       onReceivedHttpError: (ctrl, request, response) {
         debugPrint(
           '[Cortana HTTP Error] ${response.statusCode} ${response.reasonPhrase} (${request.url})',
         );
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-          setState(() {
-            _androidLoadStatus =
-                'HTTP ${response.statusCode} ${response.reasonPhrase} (${request.url})';
-          });
-        }
+        _updateLoadStatus(
+          'HTTP ${response.statusCode} ${response.reasonPhrase} (${request.url})',
+        );
       },
     );
   }
@@ -363,31 +498,6 @@ class _CortanaPageState extends State<CortanaPage> {
     };
   }
 
-  Future<Uint8List> _synthesizeReplyAudio(String replyText) async {
-    final ttsUrl = Uri.parse('http://blog.guccang.cn:10086/api/tts');
-    final ttsResponse = await http
-        .post(
-          ttsUrl,
-          headers: const <String, String>{
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer guccang@blog.guccang.cn',
-          },
-          body: jsonEncode(<String, dynamic>{
-            'text': replyText,
-            'provider': 'minimax',
-            'voice': 'female-tianmei',
-          }),
-        )
-        .timeout(const Duration(seconds: 30));
-
-    if (ttsResponse.statusCode != 200) {
-      throw Exception(
-        'TTS failed: ${ttsResponse.statusCode} ${ttsResponse.body}',
-      );
-    }
-    return Uint8List.fromList(ttsResponse.bodyBytes);
-  }
-
   int _estimateSpeechDurationMs(String text) {
     final normalized = text.trim();
     if (normalized.isEmpty) {
@@ -432,6 +542,7 @@ class _CortanaPageState extends State<CortanaPage> {
     double progress,
     List<double> profile,
     DateTime startedAt,
+    double previousAmplitude,
   ) {
     if (profile.isEmpty) {
       return 0.24;
@@ -443,14 +554,13 @@ class _CortanaPageState extends State<CortanaPage> {
     final current = profile[segmentIndex];
     final next = profile[(segmentIndex + 1).clamp(0, profile.length - 1)];
     final blended = current + (next - current) * localT;
-    final pulse =
-        0.08 *
-        (0.5 +
-            ((startedAt.millisecondsSinceEpoch ~/ 80 +
-                        (clamped * 1000).round()) %
-                    7) /
-                7);
-    return (blended + pulse).clamp(0.12, 0.96);
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    final pulse = 0.04 * (1 + math.sin(elapsedMs / 260.0)) * 0.5;
+    final target = (blended + pulse).clamp(0.12, 0.9);
+    return (previousAmplitude + (target - previousAmplitude) * 0.28).clamp(
+      0.12,
+      0.9,
+    );
   }
 
   void _startLipSyncLoop(String replyText) {
@@ -460,15 +570,21 @@ class _CortanaPageState extends State<CortanaPage> {
     final estimatedDurationMs = _estimateSpeechDurationMs(replyText);
     final profile = _buildLipSyncProfile(replyText);
     final startedAt = DateTime.now();
+    var currentAmplitude = 0.22;
 
     void pushLipSync(Duration position) {
       final progress = position.inMilliseconds / estimatedDurationMs;
-      final amp = _lipAmplitudeForProgress(progress, profile, startedAt);
-      _callJS('window.startLipSync($amp)');
+      currentAmplitude = _lipAmplitudeForProgress(
+        progress,
+        profile,
+        startedAt,
+        currentAmplitude,
+      );
+      _callJS('window.startLipSync(${_jsDouble(currentAmplitude)})');
     }
 
     _audioPositionSub = _audio.onPositionChanged.listen(pushLipSync);
-    _lipTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+    _lipTimer = Timer.periodic(const Duration(milliseconds: 180), (_) {
       final elapsed = DateTime.now().difference(startedAt);
       pushLipSync(elapsed);
     });
@@ -506,6 +622,234 @@ class _CortanaPageState extends State<CortanaPage> {
     }
   }
 
+  void _rememberVoiceHistory(
+    CortanaReplyPayload reply, {
+    required String audioPath,
+    Uint8List? audioBytes,
+    required String audioFormat,
+  }) {
+    final text = reply.text.trim();
+    if ((audioPath.trim().isEmpty && audioBytes == null) || text.isEmpty) {
+      return;
+    }
+    final item = _CortanaVoiceHistoryItem(
+      id: '${DateTime.now().microsecondsSinceEpoch}_$audioPath',
+      text: text,
+      audioPath: audioPath,
+      audioBytes: audioBytes,
+      audioFormat: audioFormat,
+      createdAt: DateTime.now(),
+      actionPlan: reply.actionPlan == null
+          ? null
+          : Map<String, dynamic>.from(reply.actionPlan!),
+    );
+    if (!mounted) {
+      _voiceHistory.insert(0, item);
+      if (_voiceHistory.length > 3) {
+        _voiceHistory.removeRange(3, _voiceHistory.length);
+      }
+      return;
+    }
+    setState(() {
+      _voiceHistory.insert(0, item);
+      if (_voiceHistory.length > 3) {
+        _voiceHistory.removeRange(3, _voiceHistory.length);
+      }
+    });
+  }
+
+  List<CortanaReplayItem> _combinedVoiceHistory() {
+    final combined = <CortanaReplayItem>[];
+    final seenIds = <String>{};
+
+    void addItem(CortanaReplayItem item) {
+      if (!seenIds.add(item.id)) {
+        return;
+      }
+      combined.add(item);
+    }
+
+    for (final item in widget.externalVoiceHistory) {
+      addItem(item);
+    }
+    for (final item in _voiceHistory) {
+      addItem(
+        CortanaReplayItem(
+          id: item.id,
+          text: item.text,
+          audioPath: item.audioPath,
+          audioBytes: item.audioBytes,
+          audioFormat: item.audioFormat,
+          createdAt: item.createdAt,
+          actionPlan: item.actionPlan,
+          sourceLabel: 'Cortana',
+        ),
+      );
+    }
+
+    combined.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (combined.length <= 6) {
+      return combined;
+    }
+    return combined.sublist(0, 6);
+  }
+
+  Future<void> _playReplyAudio(
+    CortanaReplyPayload reply, {
+    bool showSnackBar = true,
+    bool rememberHistory = true,
+  }) async {
+    final replyText = reply.text.trim();
+    if (replyText.isEmpty) {
+      throw Exception('LLM returned empty response');
+    }
+
+    final playbackToken = ++_playbackToken;
+    final actionPlan = _getActionPlan(
+      replyText,
+      hasAudio: reply.hasAudio,
+      remoteActionPlan: reply.actionPlan,
+    );
+    final expression = _normalizeExpression(
+      (actionPlan['expression'] ?? 'happy').toString(),
+    );
+    final fallbackExpression = _normalizeExpression(
+      (actionPlan['fallback_expression'] ?? 'happy').toString(),
+    );
+    final rawExpressionHoldMs = actionPlan['expression_hold_ms'];
+    final expressionHoldMs = rawExpressionHoldMs is int
+        ? rawExpressionHoldMs
+        : int.tryParse('$rawExpressionHoldMs') ?? 0;
+
+    _resetPlaybackEffects();
+    await _audio.stop();
+    await _callJS('window.stopLipSync()');
+    if (playbackToken != _playbackToken) {
+      return;
+    }
+
+    if (expressionHoldMs > 0) {
+      await _callJS(
+        "window.setExpressionFor('$expression', $expressionHoldMs, '$fallbackExpression')",
+      );
+    } else {
+      await _callJS("window.setExpression('$expression')");
+    }
+
+    final actions = actionPlan['actions'] as List<dynamic>? ?? [];
+    _scheduleActions(actions);
+
+    String audioPath = reply.audioPath.trim();
+    Uint8List? audioBytes = reply.audioBytes;
+    String audioFormat = reply.audioFormat.trim();
+    if (playbackToken != _playbackToken) {
+      return;
+    }
+
+    if (audioPath.isEmpty && audioBytes == null) {
+      _appendLog('LLM 未返回可播放语音，本次仅展示文本回复');
+      _resetPlaybackEffects();
+      await _callJS('window.stopLipSync()');
+      if (showSnackBar && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cortana: $replyText'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    var speechFocusStarted = false;
+    try {
+      await _callJS('window.beginSpeechFocus()');
+      speechFocusStarted = true;
+      _startLipSyncLoop(replyText);
+
+      if (audioPath.isNotEmpty) {
+        await _audio.play(DeviceFileSource(audioPath));
+      } else if (audioBytes != null) {
+        await _audio.play(BytesSource(audioBytes));
+      } else {
+        throw Exception('No playable audio source');
+      }
+      await _audio.onPlayerComplete.first;
+
+      if (playbackToken != _playbackToken) {
+        return;
+      }
+
+      if (rememberHistory) {
+        _rememberVoiceHistory(
+          CortanaReplyPayload(
+            text: replyText,
+            audioPath: audioPath,
+            audioBytes: audioBytes,
+            audioFormat: audioFormat,
+            actionPlan: reply.actionPlan,
+            requestId: reply.requestId,
+          ),
+          audioPath: audioPath,
+          audioBytes: audioBytes,
+          audioFormat: audioFormat,
+        );
+      }
+    } finally {
+      _resetPlaybackEffects();
+      await _callJS('window.stopLipSync()');
+      if (speechFocusStarted) {
+        await _callJS('window.endSpeechFocus()');
+      }
+    }
+
+    if (showSnackBar && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cortana: $replyText'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _replayHistory(_CortanaVoiceHistoryItem item) async {
+    if (_speaking) {
+      return;
+    }
+
+    setState(() => _speaking = true);
+    try {
+      await _playReplyAudio(
+        CortanaReplyPayload(
+          text: item.text,
+          audioPath: item.audioPath,
+          audioBytes: item.audioBytes,
+          audioFormat: item.audioFormat,
+          actionPlan: item.actionPlan,
+        ),
+        rememberHistory: false,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('[Cortana Replay Error] $e');
+      debugPrint('$stackTrace');
+      _appendLog('历史重播失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('重播失败: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _speaking = false);
+      }
+    }
+  }
+
   Future<void> _speak(String text) async {
     if (text.isEmpty || _speaking) return;
 
@@ -527,75 +871,19 @@ class _CortanaPageState extends State<CortanaPage> {
 
     try {
       debugPrint('[Cortana] Sending message: $text');
+      _appendLog('发送请求: $text');
       final reply = await widget.onSendMessage!(text);
-      final replyText = reply.text.trim();
-
-      if (replyText.isEmpty) {
-        throw Exception('LLM returned empty response');
-      }
-
       debugPrint(
-        '[Cortana LLM] User: $text, Reply: $replyText, audio=${reply.audioPath}',
+        '[Cortana LLM] User: $text, Reply: ${reply.text.trim()}, audio=${reply.audioPath}, request=${reply.requestId}',
       );
-
-      final actionPlan = _getActionPlan(
-        replyText,
-        hasAudio: reply.hasAudio,
-        remoteActionPlan: reply.actionPlan,
-      );
-      final expression = _normalizeExpression(
-        (actionPlan['expression'] ?? 'happy').toString(),
-      );
-      final fallbackExpression = _normalizeExpression(
-        (actionPlan['fallback_expression'] ?? 'happy').toString(),
-      );
-      final rawExpressionHoldMs = actionPlan['expression_hold_ms'];
-      final expressionHoldMs = rawExpressionHoldMs is int
-          ? rawExpressionHoldMs
-          : int.tryParse('$rawExpressionHoldMs') ?? 0;
-
-      _resetPlaybackEffects();
-      await _audio.stop();
-      if (expressionHoldMs > 0) {
-        await _callJS(
-          "window.setExpressionFor('$expression', $expressionHoldMs, '$fallbackExpression')",
-        );
-      } else {
-        await _callJS("window.setExpression('$expression')");
-      }
-
-      final actions = actionPlan['actions'] as List<dynamic>? ?? [];
-      _scheduleActions(actions);
-      _startLipSyncLoop(replyText);
-
-      if (reply.hasAudio) {
-        await _audio.play(DeviceFileSource(reply.audioPath));
-      } else {
-        final audioBytes = await _synthesizeReplyAudio(replyText);
-        debugPrint(
-          '[Cortana TTS] Fallback synthesized ${audioBytes.length} bytes',
-        );
-        await _audio.play(BytesSource(audioBytes));
-      }
-
-      await _audio.onPlayerComplete.first;
-
-      _resetPlaybackEffects();
-      await _callJS('window.stopLipSync()');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Cortana: $replyText'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      await _playReplyAudio(reply);
     } catch (e, stackTrace) {
       debugPrint('[Cortana Error] $e');
       debugPrint('$stackTrace');
+      _appendLog('对话失败: $e');
       _resetPlaybackEffects();
       await _callJS('window.stopLipSync()');
+      await _callJS('window.endSpeechFocus()');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -613,170 +901,630 @@ class _CortanaPageState extends State<CortanaPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  String _formatFlag(bool value) => value ? '已就绪' : '未就绪';
+
+  String _shortValue(Object? value) {
+    final text = (value ?? '').toString().trim();
+    if (text.isEmpty) {
+      return '-';
+    }
+    if (text.length <= 42) {
+      return text;
+    }
+    return '${text.substring(0, 39)}...';
+  }
+
+  Widget _buildLive2dMetric(
+    BuildContext context, {
+    required String label,
+    required String value,
+    IconData? icon,
+  }) {
     final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: cs.primary),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelMedium),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.fromLTRB(12, 10, 12, 10),
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildLive2dSummaryContent(BuildContext context) {
+    final state = _live2dDebugState ?? const <String, dynamic>{};
+    final userViewState = state['userViewState'] is Map
+        ? Map<String, dynamic>.from(state['userViewState'] as Map)
+        : const <String, dynamic>{};
+    final speechFocusState = state['speechFocusState'] is Map
+        ? Map<String, dynamic>.from(state['speechFocusState'] as Map)
+        : const <String, dynamic>{};
+    final lipSyncState = state['lipSyncState'] is Map
+        ? Map<String, dynamic>.from(state['lipSyncState'] as Map)
+        : const <String, dynamic>{};
+    final lastModelConfig = state['lastModelConfig'] is Map
+        ? Map<String, dynamic>.from(state['lastModelConfig'] as Map)
+        : const <String, dynamic>{};
+
+    final modelCreated = state['modelCreated'] == true;
+    final appCreated = state['appCreated'] == true;
+    final live2dPresent = state['live2dPresent'] == true;
+    final speechActive = speechFocusState['active'] == true;
+    final motionName = _shortValue(
+      lastModelConfig['motion'] ?? lastModelConfig['motionGroup'],
+    );
+    final expressionName = _shortValue(lastModelConfig['expression']);
+    final modelUrl = _shortValue(state['modelUrl']);
+    final pixiVersion = _shortValue(state['pixiVersion']);
+    final elapsedMs = (state['elapsedMs'] ?? 0).toString();
+    final transformText =
+        '缩放 ${((userViewState['scale'] ?? _modelUserScale) as num).toStringAsFixed(2)}'
+        ' / X ${((userViewState['offsetX'] ?? _modelUserOffsetX) as num).toStringAsFixed(2)}'
+        ' / Y ${((userViewState['offsetY'] ?? _modelUserOffsetY) as num).toStringAsFixed(2)}';
+    final speechText =
+        '${speechActive ? '播放中' : '空闲'}'
+        ' · ${((speechFocusState['progress'] ?? 0) as num).toStringAsFixed(2)}';
+    final lipText =
+        '当前 ${((lipSyncState['current'] ?? 0) as num).toStringAsFixed(2)}'
+        ' / 目标 ${((lipSyncState['target'] ?? 0) as num).toStringAsFixed(2)}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: IconButton(
+            tooltip: '刷新数据',
+            onPressed: () => unawaited(_refreshLive2dDebugState()),
+            icon: const Icon(Icons.refresh, size: 18),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildLive2dMetric(
+              context,
+              label: '渲染环境',
+              value:
+                  '${_formatFlag(appCreated)} / ${_formatFlag(live2dPresent)}',
+              icon: Icons.layers,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '模型实例',
+              value: _formatFlag(modelCreated),
+              icon: Icons.face_retouching_natural,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: 'Pixi',
+              value: pixiVersion,
+              icon: Icons.memory,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '初始化耗时',
+              value: '$elapsedMs ms',
+              icon: Icons.timelapse,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '当前表情',
+              value: expressionName,
+              icon: Icons.emoji_emotions_outlined,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '当前动作',
+              value: motionName,
+              icon: Icons.directions_run,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '语音状态',
+              value: speechText,
+              icon: Icons.graphic_eq,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '口型同步',
+              value: lipText,
+              icon: Icons.record_voice_over,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '视角参数',
+              value: transformText,
+              icon: Icons.threed_rotation,
+            ),
+            _buildLive2dMetric(
+              context,
+              label: '模型地址',
+              value: modelUrl,
+              icon: Icons.link,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandableSectionCard({
+    required String storageKey,
+    required String title,
+    required String subtitle,
+    required bool expanded,
+    required ValueChanged<bool> onExpansionChanged,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return _buildSectionCard(
+      padding: EdgeInsets.zero,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: PageStorageKey<String>(storageKey),
+          initiallyExpanded: expanded,
+          onExpansionChanged: onExpansionChanged,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing:
+              trailing ??
+              Icon(expanded ? Icons.expand_less : Icons.expand_more),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: child,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildViewControlsContent() {
+    final scaleText = _modelUserScale.toStringAsFixed(2);
+    final offsetXText = _modelUserOffsetX.toStringAsFixed(2);
+    final offsetYText = _modelUserOffsetY.toStringAsFixed(2);
     return Column(
       children: [
-        Expanded(
+        Row(
+          children: [
+            const SizedBox(width: 52, child: Text('缩放')),
+            Expanded(
+              child: Slider(
+                value: _modelUserScale,
+                min: 0.8,
+                max: 1.35,
+                divisions: 22,
+                label: scaleText,
+                onChanged: (value) {
+                  setState(() {
+                    _modelUserScale = value;
+                  });
+                  unawaited(_syncModelViewTransform());
+                },
+              ),
+            ),
+            SizedBox(
+              width: 42,
+              child: Text(scaleText, textAlign: TextAlign.end),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            const SizedBox(width: 52, child: Text('左右')),
+            Expanded(
+              child: Slider(
+                value: _modelUserOffsetX,
+                min: -0.35,
+                max: 0.35,
+                divisions: 28,
+                label: offsetXText,
+                onChanged: (value) {
+                  setState(() {
+                    _modelUserOffsetX = value;
+                  });
+                  unawaited(_syncModelViewTransform());
+                },
+              ),
+            ),
+            SizedBox(
+              width: 42,
+              child: Text(offsetXText, textAlign: TextAlign.end),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            const SizedBox(width: 52, child: Text('上下')),
+            Expanded(
+              child: Slider(
+                value: _modelUserOffsetY,
+                min: -0.28,
+                max: 0.28,
+                divisions: 28,
+                label: offsetYText,
+                onChanged: (value) {
+                  setState(() {
+                    _modelUserOffsetY = value;
+                  });
+                  unawaited(_syncModelViewTransform());
+                },
+              ),
+            ),
+            SizedBox(
+              width: 42,
+              child: Text(offsetYText, textAlign: TextAlign.end),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReplayHistoryContent(
+    BuildContext context,
+    List<CortanaReplayItem> replayHistory,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    if (replayHistory.isEmpty) {
+      return Text(
+        '暂无可重播语音',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+    return Column(
+      children: [
+        for (final item in replayHistory)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
+                leading: const Icon(Icons.history),
+                title: Text(
+                  item.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '${item.createdAt.hour.toString().padLeft(2, '0')}:${item.createdAt.minute.toString().padLeft(2, '0')}:${item.createdAt.second.toString().padLeft(2, '0')}'
+                  '${item.audioFormat.trim().isEmpty ? '' : ' · ${item.audioFormat}'}'
+                  '${item.sourceLabel.trim().isEmpty ? '' : ' · ${item.sourceLabel}'}',
+                ),
+                trailing: IconButton(
+                  tooltip: '重播',
+                  onPressed: _speaking
+                      ? null
+                      : () => _replayHistory(
+                          _CortanaVoiceHistoryItem(
+                            id: item.id,
+                            text: item.text,
+                            audioPath: item.audioPath,
+                            audioBytes: item.audioBytes,
+                            audioFormat: item.audioFormat,
+                            createdAt: item.createdAt,
+                            actionPlan: item.actionPlan,
+                          ),
+                        ),
+                  icon: const Icon(Icons.play_arrow),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLogsContent() {
+    if (_runtimeLogs.isEmpty) {
+      return Text(
+        '暂无日志',
+        style: Theme.of(context).textTheme.bodyMedium,
+      );
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _runtimeLogs.length > 12 ? 12 : _runtimeLogs.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 6),
+        itemBuilder: (context, index) => Text(
+          _runtimeLogs[index],
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final replayHistory = _combinedVoiceHistory();
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final overlayWidth = math.min(
+      screenWidth < 640 ? screenWidth - 24 : screenWidth * 0.36,
+      360.0,
+    );
+    final scaleText = _modelUserScale.toStringAsFixed(2);
+    final offsetXText = _modelUserOffsetX.toStringAsFixed(2);
+    final offsetYText = _modelUserOffsetY.toStringAsFixed(2);
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child:
+              (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              ? FutureBuilder<void>(
+                  future: _androidLocalhostFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Cortana localhost failed: ${snapshot.error}',
+                        ),
+                      );
+                    }
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+                    return _buildWebView(
+                      initialUrlRequest: URLRequest(
+                        url: WebUri(
+                          'http://localhost:$_localhostPort/$_cortanaLocalPath',
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : _buildWebView(initialFile: _cortanaHtmlAsset),
+        ),
+        SafeArea(
           child: Stack(
             children: [
-              Positioned.fill(
-                child:
-                    (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-                    ? FutureBuilder<void>(
-                        future: _androidLocalhostFuture,
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text(
-                                'Cortana localhost failed: ${snapshot.error}',
-                              ),
-                            );
-                          }
-                          if (snapshot.connectionState !=
-                              ConnectionState.done) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-                          return _buildWebView(
-                            initialUrlRequest: URLRequest(
-                              url: WebUri(
-                                'http://localhost:$_localhostPort/$_cortanaLocalPath',
+              Positioned(
+                left: 12,
+                top: 12,
+                child: SizedBox(
+                  width: overlayWidth,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildExpandableSectionCard(
+                            storageKey: 'cortana-live2d-summary',
+                            title: 'Live2D 数据',
+                            subtitle: _live2dSummaryExpanded
+                                ? '点击收起'
+                                : '默认折叠，点击查看',
+                            expanded: _live2dSummaryExpanded,
+                            onExpansionChanged: (expanded) {
+                              setState(() {
+                                _live2dSummaryExpanded = expanded;
+                              });
+                            },
+                            child: _buildLive2dSummaryContent(context),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildExpandableSectionCard(
+                            storageKey: 'cortana-expression-actions',
+                            title: '表情与动作',
+                            subtitle: _expressionActionsExpanded
+                                ? '点击收起'
+                                : '默认折叠，点击展开控制',
+                            expanded: _expressionActionsExpanded,
+                            onExpansionChanged: (expanded) {
+                              setState(() {
+                                _expressionActionsExpanded = expanded;
+                              });
+                            },
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  for (final e in _expressions)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: ActionChip(
+                                        label: Text(e),
+                                        onPressed: () => _callJS(
+                                          "window.setExpression('$e')",
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  for (final m in _motions)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: ActionChip(
+                                        label: Text(m),
+                                        avatar: const Icon(
+                                          Icons.directions_run,
+                                          size: 14,
+                                        ),
+                                        onPressed: () => _callJS(
+                                          "window.setMotion('${_normalizeMotion(m)}', 0)",
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                          );
-                        },
-                      )
-                    : _buildWebView(initialFile: _cortanaHtmlAsset),
-              ),
-              if (!kIsWeb &&
-                  defaultTargetPlatform == TargetPlatform.android &&
-                  _androidLoadStatus != null)
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  top: 12,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _logExpanded = !_logExpanded;
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.72),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _logExpanded
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _logExpanded
-                                    ? _androidLoadStatus!
-                                    : '日志 (点击展开)',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildExpandableSectionCard(
+                            storageKey: 'cortana-view-controls',
+                            title: '视角调整',
+                            subtitle:
+                                '当前: 缩放 $scaleText / X $offsetXText / Y $offsetYText',
+                            expanded: _viewControlsExpanded,
+                            onExpansionChanged: (expanded) {
+                              setState(() {
+                                _viewControlsExpanded = expanded;
+                              });
+                            },
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _modelUserScale = 1.0;
+                                      _modelUserOffsetX = 0.0;
+                                      _modelUserOffsetY = 0.0;
+                                    });
+                                    unawaited(_syncModelViewTransform());
+                                  },
+                                  child: const Text('重置'),
                                 ),
-                                maxLines: _logExpanded ? null : 1,
-                                overflow: _logExpanded
-                                    ? TextOverflow.visible
-                                    : TextOverflow.ellipsis,
-                              ),
+                                Icon(
+                                  _viewControlsExpanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                            child: _buildViewControlsContent(),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildExpandableSectionCard(
+                            storageKey: 'cortana-replay-history',
+                            title: '语音重播',
+                            subtitle: replayHistory.isEmpty
+                                ? '暂无记录，默认折叠'
+                                : '共 ${replayHistory.length} 条，默认折叠',
+                            expanded: _replayExpanded,
+                            onExpansionChanged: (expanded) {
+                              setState(() {
+                                _replayExpanded = expanded;
+                              });
+                            },
+                            child: _buildReplayHistoryContent(
+                              context,
+                              replayHistory,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildExpandableSectionCard(
+                            storageKey: 'cortana-runtime-logs',
+                            title: '显示日志',
+                            subtitle: _showLogs
+                                ? (_androidLoadStatus ?? '点击收起')
+                                : '默认折叠，点击查看',
+                            expanded: _showLogs,
+                            onExpansionChanged: (expanded) {
+                              setState(() {
+                                _showLogs = expanded;
+                              });
+                              unawaited(_syncDiagnosticsVisibility());
+                            },
+                            child: _buildLogsContent(),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
-        ),
-        Container(
-          color: cs.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 表情行
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final e in _expressions)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ActionChip(
-                          label: Text(e),
-                          onPressed: () =>
-                              _callJS("window.setExpression('$e')"),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    for (final m in _motions)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ActionChip(
-                          label: Text(m),
-                          avatar: const Icon(Icons.directions_run, size: 14),
-                          onPressed: () => _callJS(
-                            "window.setMotion('${_normalizeMotion(m)}', 0)",
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: _buildSectionCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textCtrl,
+                          decoration: const InputDecoration(
+                            hintText: '输入让 Cortana 说的话...',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              // 说话输入行
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textCtrl,
-                      decoration: const InputDecoration(
-                        hintText: '输入让 Cortana 说的话...',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: _speaking
+                            ? null
+                            : () => _speak(_textCtrl.text.trim()),
+                        icon: _speaking
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.record_voice_over),
+                        label: Text(_speaking ? '说话中' : '说话'),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: _speaking
-                        ? null
-                        : () => _speak(_textCtrl.text.trim()),
-                    icon: _speaking
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.record_voice_over),
-                    label: Text(_speaking ? '说话中' : '说话'),
-                  ),
-                ],
+                ),
               ),
             ],
           ),

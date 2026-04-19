@@ -18,7 +18,7 @@ import (
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		allowHeaders := "Content-Type, Authorization, X-App-Agent-Token, X-Download-Ticket"
 		if requested := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers")); requested != "" {
 			allowHeaders = requested
@@ -79,6 +79,11 @@ func main() {
 
 	handler := NewHandler(cfg, store, signer)
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/obs/upload", handler.HandleUpload)
+	mux.HandleFunc("/api/obs/proxy-upload", handler.HandleProxyUpload)
+	mux.HandleFunc("/api/obs/list", handler.HandleList)
+	mux.HandleFunc("/api/obs/delete", handler.HandleDelete)
+	mux.HandleFunc("/api/obs/info", handler.HandleObjectInfo)
 	mux.HandleFunc("/api/obs/download/", handler.HandleDownload)
 	mux.HandleFunc("/health", handler.HandleHealth)
 

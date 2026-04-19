@@ -87,3 +87,19 @@ func TestBuildCortanaOutputPromptContainsProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestCortanaRequestIDCanBeAttachedToAudioReplyMeta(t *testing.T) {
+	sink := &AppSink{cortanaRequestID: "req-123"}
+	meta := map[string]any{
+		"audio_base64": "ZmFrZQ==",
+		"audio_format": "mp3",
+		"input_mode":   "tts_reply",
+		"speech_text":  "你好",
+	}
+	if strings.TrimSpace(sink.cortanaRequestID) != "" {
+		meta["cortana_request_id"] = strings.TrimSpace(sink.cortanaRequestID)
+	}
+	if got := meta["cortana_request_id"]; got != "req-123" {
+		t.Fatalf("unexpected cortana_request_id: %#v", got)
+	}
+}

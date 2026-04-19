@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,14 @@ type deployProjectInfo struct {
 	AgentID       string   `json:"agent_id"`
 	Agent         string   `json:"agent"`
 	DeployTargets []string `json:"deploy_targets"`
+}
+
+type obsDownloadResponse struct {
+	Success   bool              `json:"success"`
+	URL       string            `json:"url"`
+	ExpiresAt int64             `json:"expires_at"`
+	Method    string            `json:"method"`
+	Headers   map[string]string `json:"headers"`
 }
 
 func authSuccessResponse(session *issuedAuthSession, obsAgentBaseURL string) loginResponse {
@@ -444,8 +453,111 @@ func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if redirectURL, err := h.resolveAttachmentRedirectURL(userID, fileID, filePath, stat.Name()); err != nil {
+		log.Printf("[Handler] resolve attachment redirect failed user=%s file_id=%s err=%v", userID, fileID, err)
+	} else if redirectURL != "" {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
 	w.Header().Set("Content-Disposition", "inline; filename="+stat.Name())
 	http.ServeFile(w, r, filePath)
+}
+
+func (h *Handler) resolveAttachmentRedirectURL(userID, fileID, filePath, fileName string) (string, error) {
+	if h == nil || h.bridge == nil || h.cfg == nil {
+		return "", nil
+	}
+	if strings.TrimSpace(h.cfg.ObsAgentBaseURL) == "" {
+		return "", nil
+	}
+	if !strings.EqualFold(filepath.Ext(strings.TrimSpace(fileName)), ".apk") {
+		return "", nil
+	}
+
+	owner, err := attachmentOwnerForFile(h.cfg.AttachmentStoreDir, filePath)
+	if err != nil {
+		return "", err
+	}
+	attachment := &AppAttachment{
+		MessageType:     "file",
+		FileID:          strings.TrimSpace(fileID),
+		FileName:        strings.TrimSpace(fileName),
+		FilePath:        filePath,
+		Format:          "apk",
+		MIMEType:        "application/vnd.android.package-archive",
+		StorageProvider: "obs",
+		ObjectKey: buildAttachmentObjectKey(
+			"file",
+			owner,
+			fileID,
+			fileName,
+		),
+	}
+	ticket, _, err := h.bridge.issueDownloadTicket(strings.TrimSpace(userID), attachment)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(ticket) == "" {
+		return "", nil
+	}
+	return h.requestObsDownloadURL(fileID, ticket)
+}
+
+func attachmentOwnerForFile(rootDir, filePath string) (string, error) {
+	absRoot, err := filepath.Abs(attachmentRootDir(rootDir))
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment root: %w", err)
+	}
+	absFile, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment file: %w", err)
+	}
+	rel, err := filepath.Rel(absRoot, absFile)
+	if err != nil {
+		return "", fmt.Errorf("resolve attachment relative path: %w", err)
+	}
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
+		return "", fmt.Errorf("attachment path escaped root")
+	}
+	parts := strings.Split(rel, "/")
+	if len(parts) < 2 {
+		return "", nil
+	}
+	return strings.TrimSpace(parts[0]), nil
+}
+
+func (h *Handler) requestObsDownloadURL(fileID, ticket string) (string, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(h.cfg.ObsAgentBaseURL), "/")
+	if baseURL == "" {
+		return "", nil
+	}
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/obs/download/"+url.PathEscape(strings.TrimSpace(fileID))+"?ticket="+url.QueryEscape(strings.TrimSpace(ticket)), nil)
+	if err != nil {
+		return "", fmt.Errorf("build obs-agent download request: %w", err)
+	}
+	token := strings.TrimSpace(firstNonEmpty(h.cfg.ObsAgentToken, h.cfg.ReceiveToken))
+	if token != "" {
+		req.Header.Set("X-App-Agent-Token", token)
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request obs-agent download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("obs-agent download sign failed: %s %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var payload obsDownloadResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("decode obs-agent download response: %w", err)
+	}
+	if strings.TrimSpace(payload.URL) == "" {
+		return "", fmt.Errorf("obs-agent download response missing url")
+	}
+	return strings.TrimSpace(payload.URL), nil
 }
 
 func (h *Handler) HandleUploadAPK(w http.ResponseWriter, r *http.Request) {

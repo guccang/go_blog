@@ -3,6 +3,7 @@ import 'dart:convert'
     show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -842,6 +843,24 @@ class PushEnvelope {
 
 typedef ScopedHistoryPersistCallback = Future<void> Function(String scopeKey);
 
+String resolvePreferredGroupId(
+  List<GroupInfo> groups, {
+  String? preferredGroupId,
+  bool allowImplicitSingleSelection = true,
+}) {
+  if (groups.isEmpty) {
+    return '';
+  }
+  final preferred = preferredGroupId?.trim() ?? '';
+  if (preferred.isNotEmpty && groups.any((group) => group.id == preferred)) {
+    return preferred;
+  }
+  if (allowImplicitSingleSelection && groups.length == 1) {
+    return groups.first.id;
+  }
+  return '';
+}
+
 class ScopedHistoryPersistenceCoordinator {
   ScopedHistoryPersistenceCoordinator(this._persist);
 
@@ -947,12 +966,14 @@ class DeployProjectInfo {
     required this.agentId,
     required this.agent,
     required this.deployTargets,
+    required this.buildOnly,
   });
 
   final String name;
   final String agentId;
   final String agent;
   final List<String> deployTargets;
+  final bool buildOnly;
 
   String get qualifiedName => '$name@$agent';
 
@@ -966,6 +987,7 @@ class DeployProjectInfo {
       agentId: (json['agent_id'] ?? '').toString().trim(),
       agent: (json['agent'] ?? '').toString().trim(),
       deployTargets: targets,
+      buildOnly: json['build_only'] == true,
     );
   }
 }
@@ -1033,6 +1055,105 @@ class CodegenHistoryItem {
       mode: json['mode'] == 'deploy'
           ? CodegenLaunchMode.deploy
           : CodegenLaunchMode.code,
+    );
+  }
+}
+
+class CodegenHistoryCommandDetails {
+  const CodegenHistoryCommandDetails({
+    required this.mode,
+    required this.projectQualifiedName,
+    required this.requestText,
+    required this.target,
+    required this.extraArgs,
+    required this.autoDeploy,
+    required this.packOnly,
+  });
+
+  final CodegenLaunchMode mode;
+  final String projectQualifiedName;
+  final String requestText;
+  final String target;
+  final String extraArgs;
+  final bool autoDeploy;
+  final bool packOnly;
+
+  factory CodegenHistoryCommandDetails.parse(CodegenHistoryItem item) {
+    final tokens = item.command
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+    if (tokens.length < 3 || tokens.first != '/cg') {
+      return CodegenHistoryCommandDetails(
+        mode: item.mode,
+        projectQualifiedName: '',
+        requestText: '',
+        target: '',
+        extraArgs: '',
+        autoDeploy: false,
+        packOnly: false,
+      );
+    }
+
+    final action = tokens[1];
+    if (action == 'start') {
+      var autoDeploy = false;
+      final projectQualifiedName = tokens[2];
+      var requestStart = 3;
+      if (tokens.length > 3 && tokens[3] == '!deploy') {
+        autoDeploy = true;
+        requestStart = 4;
+      }
+      final requestText = requestStart < tokens.length
+          ? tokens.sublist(requestStart).join(' ')
+          : '';
+      return CodegenHistoryCommandDetails(
+        mode: CodegenLaunchMode.code,
+        projectQualifiedName: projectQualifiedName,
+        requestText: requestText,
+        target: '',
+        extraArgs: '',
+        autoDeploy: autoDeploy,
+        packOnly: false,
+      );
+    }
+
+    if (action == 'deploy') {
+      var target = '';
+      var packOnly = false;
+      final projectQualifiedName = tokens[2];
+      final args = <String>[];
+      for (final token in tokens.skip(3)) {
+        if (token.startsWith('#') && target.isEmpty) {
+          target = token.substring(1);
+          continue;
+        }
+        if (token == '!pack') {
+          packOnly = true;
+          continue;
+        }
+        args.add(token);
+      }
+      return CodegenHistoryCommandDetails(
+        mode: CodegenLaunchMode.deploy,
+        projectQualifiedName: projectQualifiedName,
+        requestText: '',
+        target: target,
+        extraArgs: args.join(' '),
+        autoDeploy: false,
+        packOnly: packOnly,
+      );
+    }
+
+    return CodegenHistoryCommandDetails(
+      mode: item.mode,
+      projectQualifiedName: '',
+      requestText: '',
+      target: '',
+      extraArgs: '',
+      autoDeploy: false,
+      packOnly: false,
     );
   }
 }
@@ -1332,16 +1453,6 @@ class ResumableFileDownloader {
   }
 }
 
-class _SignedAttachmentDownload {
-  const _SignedAttachmentDownload({
-    required this.uri,
-    required this.headersBuilder,
-  });
-
-  final Uri uri;
-  final DownloadHeadersBuilder headersBuilder;
-}
-
 class AppAgentClient {
   static const Duration _httpTimeout = Duration(seconds: 8);
   static const Duration _wsConnectTimeout = Duration(seconds: 8);
@@ -1408,13 +1519,6 @@ class AppAgentClient {
         'X-App-Agent-Session': sessionToken.trim(),
       if (rangeStart != null && rangeStart > 0)
         HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
-    };
-  }
-
-  Map<String, String> _obsAgentHeaders() {
-    return <String, String>{
-      if (receiveToken.trim().isNotEmpty)
-        'X-App-Agent-Token': receiveToken.trim(),
     };
   }
 
@@ -1604,29 +1708,6 @@ class AppAgentClient {
     DownloadProgressCallback? onProgress,
   }) async {
     final downloader = const ResumableFileDownloader();
-    final meta = attachmentMeta == null
-        ? const <String, dynamic>{}
-        : Map<String, dynamic>.from(attachmentMeta);
-
-    if (_shouldTryObsDownload(meta)) {
-      final downloadTicket = (meta['download_ticket'] ?? '').toString().trim();
-      try {
-        final signed = await _requestObsDownload(
-          fileId,
-          downloadTicket: downloadTicket,
-        );
-        await downloader.downloadToFile(
-          signed.uri,
-          destinationPath: destinationPath,
-          headersBuilder: signed.headersBuilder,
-          onProgress: onProgress,
-        );
-        return;
-      } catch (_) {
-        // Fall back to the legacy app-agent attachment endpoint.
-      }
-    }
-
     final uri = _buildAttachmentUri(fileId);
     await downloader.downloadToFile(
       uri,
@@ -1634,70 +1715,6 @@ class AppAgentClient {
       headersBuilder: ({int? rangeStart}) =>
           _attachmentHeaders(rangeStart: rangeStart),
       onProgress: onProgress,
-    );
-  }
-
-  bool _shouldTryObsDownload(Map<String, dynamic> meta) {
-    final storageProvider = (meta['storage_provider'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-    final downloadTicket = (meta['download_ticket'] ?? '').toString().trim();
-    final objectKey = (meta['object_key'] ?? '').toString().trim();
-    return obsAgentBaseUrl.trim().isNotEmpty &&
-        downloadTicket.isNotEmpty &&
-        (storageProvider == 'obs' || objectKey.isNotEmpty);
-  }
-
-  Future<_SignedAttachmentDownload> _requestObsDownload(
-    String fileId, {
-    required String downloadTicket,
-  }) async {
-    final base = Uri.parse(obsAgentBaseUrl);
-    final pathSegments = <String>[
-      ...base.pathSegments.where((segment) => segment.isNotEmpty),
-      'api',
-      'obs',
-      'download',
-      fileId,
-    ];
-    final uri = base.replace(
-      pathSegments: pathSegments,
-      queryParameters: <String, String>{'ticket': downloadTicket},
-    );
-    final resp = await http
-        .get(uri, headers: _obsAgentHeaders())
-        .timeout(_httpTimeout);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      if (resp.statusCode == HttpStatus.unauthorized) {
-        throw AppAgentUnauthorizedException(
-          'obs download sign failed: ${resp.statusCode} ${resp.body}',
-        );
-      }
-      throw HttpException(
-        'obs download sign failed: ${resp.statusCode} ${resp.body}',
-      );
-    }
-
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final url = (data['url'] ?? '').toString().trim();
-    if (url.isEmpty) {
-      throw const FormatException('missing signed download url');
-    }
-    final headerMap = <String, String>{};
-    final rawHeaders = data['headers'];
-    if (rawHeaders is Map) {
-      for (final entry in rawHeaders.entries) {
-        headerMap[entry.key.toString()] = (entry.value ?? '').toString();
-      }
-    }
-    return _SignedAttachmentDownload(
-      uri: Uri.parse(url),
-      headersBuilder: ({int? rangeStart}) => <String, String>{
-        ...headerMap,
-        if (rangeStart != null && rangeStart > 0)
-          HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
-      },
     );
   }
 
@@ -1739,6 +1756,7 @@ class _ChatPageState extends State<ChatPage> {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
   static const String _lastLoginUserIdKey = 'auth::last_user_id';
   static const String _refreshTokenStorageKey = 'auth::refresh_token';
+  static const String _lastReadAtStoragePrefix = 'chat_last_read_at';
   static const String _codegenModeKey = 'codegen::last_mode';
   static const String _codeProjectKey = 'codegen::last_code_project';
   static const String _deployProjectKey = 'codegen::last_deploy_project';
@@ -1782,6 +1800,7 @@ class _ChatPageState extends State<ChatPage> {
 
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
+  final Map<String, GlobalKey> _messageAnchorKeys = <String, GlobalKey>{};
   late final ScopedHistoryPersistenceCoordinator _historyPersistence =
       ScopedHistoryPersistenceCoordinator(_persistHistory);
   final List<GroupInfo> _groups = <GroupInfo>[];
@@ -1789,6 +1808,7 @@ class _ChatPageState extends State<ChatPage> {
   final List<DeployProjectInfo> _deployProjects = <DeployProjectInfo>[];
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
+  final Set<String> _consumedCortanaReplyKeys = <String>{};
 
   WebSocket? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -2514,6 +2534,7 @@ class _ChatPageState extends State<ChatPage> {
         _currentGroupId = '';
         _historyByScope.clear();
         _seenMessageIds.clear();
+        _consumedCortanaReplyKeys.clear();
         _autoInstallTriggered.clear();
         _groups.clear();
       });
@@ -2522,6 +2543,7 @@ class _ChatPageState extends State<ChatPage> {
       _currentGroupId = '';
       _historyByScope.clear();
       _seenMessageIds.clear();
+      _consumedCortanaReplyKeys.clear();
       _autoInstallTriggered.clear();
       _groups.clear();
     }
@@ -2555,6 +2577,7 @@ class _ChatPageState extends State<ChatPage> {
         _currentGroupId = '';
         _historyByScope.clear();
         _seenMessageIds.clear();
+        _consumedCortanaReplyKeys.clear();
         _autoInstallTriggered.clear();
         _groups.clear();
         _codingProjects.clear();
@@ -2572,6 +2595,7 @@ class _ChatPageState extends State<ChatPage> {
       _currentGroupId = '';
       _historyByScope.clear();
       _seenMessageIds.clear();
+      _consumedCortanaReplyKeys.clear();
       _autoInstallTriggered.clear();
       _groups.clear();
       _codingProjects.clear();
@@ -2714,15 +2738,92 @@ class _ChatPageState extends State<ChatPage> {
     return null;
   }
 
+  List<String> _buildProjectSearchFields(
+    String name,
+    String agent,
+    String qualifiedName,
+  ) {
+    return <String>[name, agent, qualifiedName]
+        .map(_normalizeProjectSearchText)
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  String _normalizeProjectSearchText(String input) {
+    return input.trim().toLowerCase().replaceAll(RegExp(r'[\s_\-@./\\]+'), '');
+  }
+
+  bool _isSubsequenceMatch(String needle, String haystack) {
+    if (needle.isEmpty) {
+      return true;
+    }
+    var haystackIndex = 0;
+    for (final codeUnit in needle.codeUnits) {
+      var found = false;
+      while (haystackIndex < haystack.length) {
+        if (haystack.codeUnitAt(haystackIndex) == codeUnit) {
+          haystackIndex++;
+          found = true;
+          break;
+        }
+        haystackIndex++;
+      }
+      if (!found) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _matchesProjectSearch(
+    String query,
+    String name,
+    String agent,
+    String qualifiedName,
+  ) {
+    final tokens = query
+        .split(RegExp(r'\s+'))
+        .map(_normalizeProjectSearchText)
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) {
+      return true;
+    }
+    final fields = _buildProjectSearchFields(name, agent, qualifiedName);
+    return tokens.every(
+      (token) => fields.any(
+        (field) => field.contains(token) || _isSubsequenceMatch(token, field),
+      ),
+    );
+  }
+
+  String? _resolveDropdownValue<T>(
+    List<T> projects,
+    String? selectedQualifiedName,
+    String Function(T project) getQualifiedName,
+  ) {
+    final selected = selectedQualifiedName?.trim() ?? '';
+    if (selected.isEmpty) {
+      return null;
+    }
+    final exists = projects.any(
+      (project) => getQualifiedName(project) == selected,
+    );
+    return exists ? selected : null;
+  }
+
   List<CodingProjectInfo> get _filteredCodingProjects {
     final query = _codegenSearchController.text.trim().toLowerCase();
     if (query.isEmpty) {
       return List<CodingProjectInfo>.from(_codingProjects);
     }
     return _codingProjects.where((project) {
-      return project.name.toLowerCase().contains(query) ||
-          project.agent.toLowerCase().contains(query) ||
-          project.qualifiedName.toLowerCase().contains(query);
+      return _matchesProjectSearch(
+        query,
+        project.name,
+        project.agent,
+        project.qualifiedName,
+      );
     }).toList();
   }
 
@@ -2732,10 +2833,35 @@ class _ChatPageState extends State<ChatPage> {
       return List<DeployProjectInfo>.from(_deployProjects);
     }
     return _deployProjects.where((project) {
-      return project.name.toLowerCase().contains(query) ||
-          project.agent.toLowerCase().contains(query) ||
-          project.qualifiedName.toLowerCase().contains(query);
+      return _matchesProjectSearch(
+        query,
+        project.name,
+        project.agent,
+        project.qualifiedName,
+      );
     }).toList();
+  }
+
+  void _syncFilteredCodegenSelections() {
+    final filteredCoding = _filteredCodingProjects;
+    if (filteredCoding.isNotEmpty &&
+        filteredCoding.every(
+          (project) =>
+              project.qualifiedName != _selectedCodeProjectQualifiedName,
+        )) {
+      _selectedCodeProjectQualifiedName = filteredCoding.first.qualifiedName;
+    }
+
+    final filteredDeploy = _filteredDeployProjects;
+    if (filteredDeploy.isNotEmpty &&
+        filteredDeploy.every(
+          (project) =>
+              project.qualifiedName != _selectedDeployProjectQualifiedName,
+        )) {
+      _selectedDeployProjectQualifiedName = filteredDeploy.first.qualifiedName;
+    }
+
+    _syncCodegenSelections();
   }
 
   Future<void> _restoreCodegenPreferences() async {
@@ -2828,6 +2954,205 @@ class _ChatPageState extends State<ChatPage> {
     unawaited(_persistCodegenPreferences());
   }
 
+  void _applyCodegenHistoryItem(CodegenHistoryItem item) {
+    final details = CodegenHistoryCommandDetails.parse(item);
+    setState(() {
+      _codegenMode = details.mode;
+      if (details.mode == CodegenLaunchMode.code) {
+        if (details.projectQualifiedName.isNotEmpty &&
+            _codingProjects.any(
+              (project) =>
+                  project.qualifiedName == details.projectQualifiedName,
+            )) {
+          _selectedCodeProjectQualifiedName = details.projectQualifiedName;
+        }
+        _codegenAutoDeploy = details.autoDeploy;
+        _codegenPromptController.text = details.requestText;
+      } else {
+        if (details.projectQualifiedName.isNotEmpty &&
+            _deployProjects.any(
+              (project) =>
+                  project.qualifiedName == details.projectQualifiedName,
+            )) {
+          _selectedDeployProjectQualifiedName = details.projectQualifiedName;
+        }
+        _syncCodegenSelections();
+        if (details.target.isNotEmpty &&
+            _selectedDeployProject?.deployTargets.contains(details.target) ==
+                true) {
+          _selectedDeployTarget = details.target;
+        }
+        _deployPackOnly = details.packOnly;
+        _deployArgsController.text = details.extraArgs;
+      }
+    });
+    unawaited(_persistCodegenPreferences());
+  }
+
+  Future<void> _showCodegenHistoryDetails(CodegenHistoryItem item) async {
+    final details = CodegenHistoryCommandDetails.parse(item);
+    final palette = _palette;
+    final exactTime =
+        '${item.timestamp.year}-${item.timestamp.month.toString().padLeft(2, '0')}-${item.timestamp.day.toString().padLeft(2, '0')} '
+        '${item.timestamp.hour.toString().padLeft(2, '0')}:${item.timestamp.minute.toString().padLeft(2, '0')}:${item.timestamp.second.toString().padLeft(2, '0')}';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: palette.border),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: item.mode == CodegenLaunchMode.code
+                                ? Colors.blue.withValues(alpha: 0.2)
+                                : Colors.green.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            item.mode == CodegenLaunchMode.code ? '编码' : '发布',
+                            style: TextStyle(
+                              color: item.mode == CodegenLaunchMode.code
+                                  ? Colors.blue
+                                  : Colors.green,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                          tooltip: '关闭',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '历史记录详情',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '记录时间：$exactTime',
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _buildHistoryDetailRow('项目', details.projectQualifiedName),
+                    if (details.mode == CodegenLaunchMode.code)
+                      _buildHistoryDetailRow(
+                        '自动发布',
+                        details.autoDeploy ? '是' : '否',
+                      ),
+                    if (details.mode == CodegenLaunchMode.code)
+                      _buildHistoryDetailRow('需求', details.requestText),
+                    if (details.mode == CodegenLaunchMode.deploy)
+                      _buildHistoryDetailRow(
+                        '部署目标',
+                        details.target.isEmpty ? '未指定' : details.target,
+                      ),
+                    if (details.mode == CodegenLaunchMode.deploy)
+                      _buildHistoryDetailRow(
+                        '仅打包',
+                        details.packOnly ? '是' : '否',
+                      ),
+                    if (details.mode == CodegenLaunchMode.deploy)
+                      _buildHistoryDetailRow(
+                        '附加参数',
+                        details.extraArgs.isEmpty ? '无' : details.extraArgs,
+                      ),
+                    _buildHistoryDetailRow('完整命令', item.command, mono: true),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _applyCodegenHistoryItem(item);
+                        },
+                        icon: const Icon(Icons.edit_note_rounded),
+                        label: const Text('回填到当前表单'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHistoryDetailRow(String label, String value, {bool mono = false}) {
+    final palette = _palette;
+    final displayValue = value.trim().isEmpty ? '未识别' : value.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: palette.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: palette.surfaceMuted,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: palette.border),
+            ),
+            child: SelectableText(
+              displayValue,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 13,
+                height: 1.5,
+                fontFamily: mono ? 'monospace' : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _syncCodegenSelections() {
     final selectedCoding = _selectedCodingProject;
     if (selectedCoding == null && _codingProjects.isNotEmpty) {
@@ -2841,6 +3166,9 @@ class _ChatPageState extends State<ChatPage> {
     if (deployProject == null) {
       _selectedDeployTarget = '';
       return;
+    }
+    if (deployProject.buildOnly) {
+      _deployPackOnly = true;
     }
     if (_selectedDeployTarget.isNotEmpty &&
         deployProject.deployTargets.contains(_selectedDeployTarget)) {
@@ -2944,6 +3272,10 @@ class _ChatPageState extends State<ChatPage> {
     }
     setState(() {
       _selectedDeployProjectQualifiedName = value;
+      final deployProject = _selectedDeployProject;
+      if (deployProject?.buildOnly == true) {
+        _deployPackOnly = true;
+      }
       _syncCodegenSelections();
     });
     unawaited(_persistCodegenPreferences());
@@ -2983,7 +3315,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_selectedDeployTarget.isNotEmpty) {
       parts.add('#$_selectedDeployTarget');
     }
-    if (_deployPackOnly) {
+    if (_deployPackOnly || project.buildOnly) {
       parts.add('!pack');
     }
     final deployArgs = _deployArgsController.text.trim();
@@ -3098,19 +3430,30 @@ class _ChatPageState extends State<ChatPage> {
     if (msg.messageType == 'audio') {
       final meta = msg.meta ?? const <String, dynamic>{};
       final audioPath = (meta['audio_path'] ?? '').toString().trim();
+      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
       final speechText = (meta['speech_text'] ?? '').toString().trim();
       final rawActionPlan = meta['cortana_action_plan'];
       final actionPlan = rawActionPlan is Map
           ? Map<String, dynamic>.from(rawActionPlan)
           : null;
-      if (audioPath.isEmpty) {
+      Uint8List? audioBytes;
+      if (audioBase64.isNotEmpty) {
+        try {
+          audioBytes = base64Decode(audioBase64);
+        } catch (_) {
+          audioBytes = null;
+        }
+      }
+      if (audioPath.isEmpty && audioBytes == null) {
         return null;
       }
       return CortanaReplyPayload(
         text: speechText.isNotEmpty ? speechText : 'Cortana 语音回复',
         audioPath: audioPath,
+        audioBytes: audioBytes,
         audioFormat: (meta['audio_format'] ?? '').toString().trim(),
         actionPlan: actionPlan,
+        requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
       );
     }
     if (msg.messageType == 'text' && !_isCortanaProgressMessage(msg)) {
@@ -3119,15 +3462,80 @@ class _ChatPageState extends State<ChatPage> {
     return null;
   }
 
+  String _buildCortanaRequestId() {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final userId = _userIdController.text.trim();
+    return 'cortana_${userId}_$now';
+  }
+
+  String _buildCortanaReplyKey(ChatMessage msg) {
+    final audioPath = (msg.meta?['audio_path'] ?? '').toString().trim();
+    final audioBase64 = (msg.meta?['audio_base64'] ?? '').toString().trim();
+    final requestId = (msg.meta?['cortana_request_id'] ?? '').toString().trim();
+    return [
+      msg.timestamp.millisecondsSinceEpoch.toString(),
+      msg.messageType,
+      requestId,
+      audioPath,
+      audioBase64,
+      msg.content.trim(),
+    ].join('|');
+  }
+
+  List<CortanaReplayItem> _buildCortanaReplayHistory() {
+    final replayItems = <CortanaReplayItem>[];
+    for (final msg in _messages.toList().reversed) {
+      if (msg.direction != MessageDirection.incoming ||
+          msg.messageType != 'audio') {
+        continue;
+      }
+      final meta = msg.meta ?? const <String, dynamic>{};
+      final audioPath = (meta['audio_path'] ?? '').toString().trim();
+      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
+      Uint8List? audioBytes;
+      if (audioBase64.isNotEmpty) {
+        try {
+          audioBytes = base64Decode(audioBase64);
+        } catch (_) {
+          audioBytes = null;
+        }
+      }
+      if (audioPath.isEmpty && audioBytes == null) {
+        continue;
+      }
+      final rawActionPlan = meta['cortana_action_plan'];
+      replayItems.add(
+        CortanaReplayItem(
+          id: _buildCortanaReplyKey(msg),
+          text: (meta['speech_text'] ?? msg.content).toString().trim(),
+          audioPath: audioPath,
+          audioBytes: audioBytes,
+          audioFormat: (meta['audio_format'] ?? '').toString().trim(),
+          createdAt: msg.timestamp,
+          actionPlan: rawActionPlan is Map
+              ? Map<String, dynamic>.from(rawActionPlan)
+              : null,
+          sourceLabel: '聊天页签',
+        ),
+      );
+      if (replayItems.length >= 6) {
+        break;
+      }
+    }
+    return replayItems;
+  }
+
   Future<CortanaReplyPayload> _sendCortanaMessage(String message) async {
     if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       throw Exception('Please login first');
     }
 
     final startTime = DateTime.now();
+    const audioWaitTimeout = Duration(seconds: 45);
     final baselineCount = _messages.length;
+    final requestId = _buildCortanaRequestId();
     CortanaReplyPayload? latestTextReply;
-    DateTime? latestTextAt;
+    String? latestTextKey;
 
     try {
       await _runAuthed('Send Cortana message', (client) {
@@ -3136,41 +3544,52 @@ class _ChatPageState extends State<ChatPage> {
           meta: <String, dynamic>{
             'input_mode': 'cortana_text',
             'reply_mode': 'audio_preferred',
+            'cortana_request_id': requestId,
           },
         );
       });
 
-      while (DateTime.now().difference(startTime).inSeconds < 30) {
+      while (DateTime.now().difference(startTime) < audioWaitTimeout) {
         await Future.delayed(const Duration(milliseconds: 500));
         final appendedMessages = _messages.skip(baselineCount);
         for (final msg in appendedMessages.toList().reversed) {
+          final replyKey = _buildCortanaReplyKey(msg);
+          if (_consumedCortanaReplyKeys.contains(replyKey)) {
+            continue;
+          }
           final payload = _extractCortanaReplyPayload(msg);
           if (payload == null) {
             continue;
           }
           if (payload.hasAudio) {
+            if (payload.requestId.isNotEmpty &&
+                payload.requestId != requestId) {
+              continue;
+            }
+            _consumedCortanaReplyKeys.add(replyKey);
             if (payload.text.trim().isNotEmpty) {
               return payload;
             }
             return CortanaReplyPayload(
               text: latestTextReply?.text ?? 'Cortana 语音回复',
               audioPath: payload.audioPath,
+              requestId: payload.requestId,
               audioFormat: payload.audioFormat,
+              actionPlan: payload.actionPlan,
             );
           }
+          if (latestTextKey == replyKey) {
+            continue;
+          }
           latestTextReply = payload;
-          latestTextAt = DateTime.now();
-        }
-
-        if (latestTextReply != null &&
-            latestTextAt != null &&
-            DateTime.now().difference(latestTextAt) >=
-                const Duration(milliseconds: 1500)) {
-          return latestTextReply;
+          latestTextKey = replyKey;
         }
       }
 
       if (latestTextReply != null) {
+        if (latestTextKey != null) {
+          _consumedCortanaReplyKeys.add(latestTextKey);
+        }
         return latestTextReply;
       }
 
@@ -3235,18 +3654,13 @@ class _ChatPageState extends State<ChatPage> {
   String _resolvePreferredGroupId(
     List<GroupInfo> groups, {
     String? preferredGroupId,
+    bool allowImplicitSingleSelection = true,
   }) {
-    if (groups.isEmpty) {
-      return '';
-    }
-    final preferred = preferredGroupId?.trim() ?? '';
-    if (preferred.isNotEmpty && groups.any((group) => group.id == preferred)) {
-      return preferred;
-    }
-    if (groups.length == 1) {
-      return groups.first.id;
-    }
-    return '';
+    return resolvePreferredGroupId(
+      groups,
+      preferredGroupId: preferredGroupId,
+      allowImplicitSingleSelection: allowImplicitSingleSelection,
+    );
   }
 
   Future<void> _copyText(String label, String value) async {
@@ -3321,6 +3735,9 @@ class _ChatPageState extends State<ChatPage> {
     }
     if (message.scopeKey == _currentScopeKey) {
       _scrollToBottom();
+      if (message.direction == MessageDirection.incoming) {
+        unawaited(_markScopeAsRead(message.scopeKey));
+      }
     }
   }
 
@@ -3340,6 +3757,134 @@ class _ChatPageState extends State<ChatPage> {
       }
       _scrollController.jumpTo(target);
     });
+  }
+
+  String _lastReadAtStorageKey(String scopeKey) =>
+      '$_lastReadAtStoragePrefix::${_userIdController.text.trim()}::$scopeKey';
+
+  String _messageAnchorId(ChatMessage message) {
+    return [
+      message.scopeKey,
+      message.timestamp.microsecondsSinceEpoch.toString(),
+      message.direction.name,
+      message.authorId,
+      message.groupId,
+      message.messageType,
+      message.content,
+    ].join('|');
+  }
+
+  GlobalKey _messageAnchorKey(ChatMessage message) {
+    final anchorId = _messageAnchorId(message);
+    return _messageAnchorKeys.putIfAbsent(anchorId, GlobalKey.new);
+  }
+
+  Future<int> _readLastReadAtMs(String scopeKey) async {
+    final userId = _userIdController.text.trim();
+    if (userId.isEmpty) {
+      return 0;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_lastReadAtStorageKey(scopeKey)) ?? 0;
+  }
+
+  Future<void> _persistLastReadAtMs(String scopeKey, int timestampMs) async {
+    final userId = _userIdController.text.trim();
+    if (userId.isEmpty || timestampMs <= 0) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_lastReadAtStorageKey(scopeKey), timestampMs);
+  }
+
+  ChatMessage? _firstUnreadMessageForScope(String scopeKey, int lastReadAtMs) {
+    final history = _historyByScope[scopeKey];
+    if (history == null || history.isEmpty) {
+      return null;
+    }
+    for (final message in history) {
+      if (message.direction != MessageDirection.incoming) {
+        continue;
+      }
+      if (message.timestamp.millisecondsSinceEpoch > lastReadAtMs) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _scrollToMessage(
+    ChatMessage message, {
+    bool animated = false,
+    int attempts = 0,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final anchorKey = _messageAnchorKey(message);
+      final anchorContext = anchorKey.currentContext;
+      if (anchorContext == null) {
+        if (attempts >= 6) {
+          _scrollToBottom(animated: animated);
+          return;
+        }
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 16), () {
+            return _scrollToMessage(
+              message,
+              animated: animated,
+              attempts: attempts + 1,
+            );
+          }),
+        );
+        return;
+      }
+      Scrollable.ensureVisible(
+        anchorContext,
+        duration: animated
+            ? const Duration(milliseconds: 180)
+            : Duration.zero,
+        curve: Curves.easeOut,
+        alignment: 0.06,
+      );
+    });
+  }
+
+  Future<void> _scrollToUnreadOrBottom(String scopeKey) async {
+    final lastReadAtMs = await _readLastReadAtMs(scopeKey);
+    final unreadMessage = _firstUnreadMessageForScope(scopeKey, lastReadAtMs);
+    if (unreadMessage != null) {
+      await _scrollToMessage(unreadMessage);
+      return;
+    }
+    _scrollToBottom(animated: false);
+  }
+
+  Future<void> _revealScopeEntryPoint(String scopeKey) async {
+    await _scrollToUnreadOrBottom(scopeKey);
+    await _markScopeAsRead(scopeKey);
+  }
+
+  Future<void> _markScopeAsRead(String scopeKey) async {
+    final history = _historyByScope[scopeKey];
+    if (history == null || history.isEmpty) {
+      return;
+    }
+    var latestIncomingAtMs = 0;
+    for (final message in history) {
+      if (message.direction != MessageDirection.incoming) {
+        continue;
+      }
+      final timestampMs = message.timestamp.millisecondsSinceEpoch;
+      if (timestampMs > latestIncomingAtMs) {
+        latestIncomingAtMs = timestampMs;
+      }
+    }
+    if (latestIncomingAtMs <= 0) {
+      return;
+    }
+    await _persistLastReadAtMs(scopeKey, latestIncomingAtMs);
   }
 
   String _describeRequestError(Object err, {required String operation}) {
@@ -3465,7 +4010,7 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         setState(() {});
         if (scopeKey == _currentScopeKey) {
-          _scrollToBottom(animated: false);
+          unawaited(_revealScopeEntryPoint(scopeKey));
         }
       }
       return;
@@ -3478,7 +4023,7 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         setState(() {});
         if (scopeKey == _currentScopeKey) {
-          _scrollToBottom(animated: false);
+          unawaited(_revealScopeEntryPoint(scopeKey));
         }
       }
     } catch (_) {
@@ -3560,6 +4105,7 @@ class _ChatPageState extends State<ChatPage> {
       final nextGroupId = _resolvePreferredGroupId(
         groups,
         preferredGroupId: _currentGroupId,
+        allowImplicitSingleSelection: false,
       );
       if (mounted) {
         setState(() {
@@ -6261,25 +6807,29 @@ class _ChatPageState extends State<ChatPage> {
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
                             final msg = _messages[index];
-                            return _MessageBubble(
-                              message: msg,
-                              isPlaying:
-                                  _playingAudioKey == _messagePlaybackKey(msg),
-                              onTap: () => _handleMessageTap(msg),
-                              onCopy: () async {
-                                await Clipboard.setData(
-                                  ClipboardData(text: msg.content),
-                                );
-                                if (!context.mounted) {
-                                  return;
-                                }
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Message copied'),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              },
+                            return KeyedSubtree(
+                              key: _messageAnchorKey(msg),
+                              child: _MessageBubble(
+                                message: msg,
+                                isPlaying:
+                                    _playingAudioKey ==
+                                    _messagePlaybackKey(msg),
+                                onTap: () => _handleMessageTap(msg),
+                                onCopy: () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: msg.content),
+                                  );
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Message copied'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                              ),
                             );
                           },
                         ),
@@ -6396,10 +6946,14 @@ class _ChatPageState extends State<ChatPage> {
                   const SizedBox(height: 14),
                   TextField(
                     controller: _codegenSearchController,
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) {
+                      setState(() {
+                        _syncFilteredCodegenSelections();
+                      });
+                    },
                     decoration: const InputDecoration(
                       labelText: '搜索项目',
-                      hintText: '输入项目名或 agent',
+                      hintText: '支持项目名、agent、多关键词模糊搜索',
                       prefixIcon: Icon(Icons.search_rounded),
                       isDense: true,
                     ),
@@ -6420,7 +6974,11 @@ class _ChatPageState extends State<ChatPage> {
                   const SizedBox(height: 14),
                   if (_codegenMode == CodegenLaunchMode.code) ...[
                     DropdownButtonFormField<String>(
-                      initialValue: selectedCodingProject?.qualifiedName,
+                      initialValue: _resolveDropdownValue<CodingProjectInfo>(
+                        codingProjects,
+                        selectedCodingProject?.qualifiedName,
+                        (project) => project.qualifiedName,
+                      ),
                       items: codingProjects
                           .map(
                             (project) => DropdownMenuItem<String>(
@@ -6461,7 +7019,11 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ] else ...[
                     DropdownButtonFormField<String>(
-                      initialValue: selectedDeployProject?.qualifiedName,
+                      initialValue: _resolveDropdownValue<DeployProjectInfo>(
+                        deployProjects,
+                        selectedDeployProject?.qualifiedName,
+                        (project) => project.qualifiedName,
+                      ),
                       items: deployProjects
                           .map(
                             (project) => DropdownMenuItem<String>(
@@ -6509,11 +7071,18 @@ class _ChatPageState extends State<ChatPage> {
                       value: _deployPackOnly,
                       onChanged: (value) {
                         setState(() {
-                          _deployPackOnly = value;
+                          _deployPackOnly =
+                              selectedDeployProject?.buildOnly == true
+                              ? true
+                              : value;
                         });
+                        unawaited(_persistCodegenPreferences());
                       },
                       contentPadding: EdgeInsets.zero,
                       title: const Text('仅打包'),
+                      subtitle: selectedDeployProject?.buildOnly == true
+                          ? const Text('该项目仅支持打包，不能直接部署')
+                          : null,
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -6631,20 +7200,7 @@ class _ChatPageState extends State<ChatPage> {
                         final item = _codegenHistory[index];
                         final timeStr = _formatHistoryTime(item.timestamp);
                         return InkWell(
-                          onTap: () {
-                            // 点击历史记录，填充到输入框
-                            if (item.mode == CodegenLaunchMode.code) {
-                              // 从命令中提取需求文本
-                              final parts = item.command.split(' ');
-                              if (parts.length > 3) {
-                                final prompt = parts.sublist(3).join(' ');
-                                _codegenPromptController.text = prompt;
-                              }
-                            }
-                            setState(() {
-                              _codegenMode = item.mode;
-                            });
-                          },
+                          onTap: () => _showCodegenHistoryDetails(item),
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -6706,6 +7262,14 @@ class _ChatPageState extends State<ChatPage> {
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '点击查看详情',
+                                  style: TextStyle(
+                                    color: palette.textSecondary,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
@@ -6806,7 +7370,10 @@ class _ChatPageState extends State<ChatPage> {
               ? _buildChatBody()
               : _rootTab == RootTab.codegen
               ? _buildCodegenBody()
-              : CortanaPage(onSendMessage: _sendCortanaMessage),
+              : CortanaPage(
+                  onSendMessage: _sendCortanaMessage,
+                  externalVoiceHistory: _buildCortanaReplayHistory(),
+                ),
         ],
       ),
       bottomNavigationBar: NavigationBar(

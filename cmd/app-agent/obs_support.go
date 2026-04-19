@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +20,7 @@ import (
 
 type objectStorage interface {
 	Enabled() bool
+	HeadObject(ctx context.Context, key string) (bool, error)
 	PutObject(ctx context.Context, req obsstore.PutObjectRequest) error
 }
 
@@ -26,6 +30,9 @@ type downloadTicketSigner interface {
 }
 
 func newObjectStorage(cfg *Config) objectStorage {
+	if remote := newRemoteObjectStorage(cfg); remote != nil {
+		return remote
+	}
 	if cfg == nil || !cfg.OBS.hasAnyValue() {
 		return nil
 	}
@@ -47,6 +54,132 @@ func newObjectStorage(cfg *Config) objectStorage {
 		return nil
 	}
 	return store
+}
+
+type remoteObjectStorage struct {
+	baseURL string
+	token   string
+	client  *http.Client
+}
+
+func newRemoteObjectStorage(cfg *Config) objectStorage {
+	if cfg == nil || strings.TrimSpace(cfg.ObsAgentBaseURL) == "" {
+		return nil
+	}
+	return &remoteObjectStorage{
+		baseURL: strings.TrimRight(strings.TrimSpace(cfg.ObsAgentBaseURL), "/"),
+		token:   strings.TrimSpace(firstNonEmpty(cfg.ObsAgentToken, cfg.ReceiveToken)),
+		client:  &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (s *remoteObjectStorage) Enabled() bool {
+	return s != nil && strings.TrimSpace(s.baseURL) != ""
+}
+
+func (s *remoteObjectStorage) HeadObject(ctx context.Context, key string) (bool, error) {
+	if !s.Enabled() {
+		return false, nil
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false, fmt.Errorf("object key is required")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/api/obs/info?object_key="+url.QueryEscape(key), nil)
+	if err != nil {
+		return false, fmt.Errorf("build obs-agent head request: %w", err)
+	}
+	s.applyAuth(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("request obs-agent object info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return true, nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return false, fmt.Errorf("obs-agent object info unauthorized: %s", resp.Status)
+	default:
+		// obs-agent /info currently does not distinguish not-found from lookup failure.
+		// Treat non-success as "not confirmed existing" so uploads can continue.
+		return false, nil
+	}
+}
+
+func (s *remoteObjectStorage) PutObject(ctx context.Context, req obsstore.PutObjectRequest) error {
+	if !s.Enabled() {
+		return fmt.Errorf("obs-agent upload is disabled")
+	}
+	if strings.TrimSpace(req.Key) == "" {
+		return fmt.Errorf("object key is required")
+	}
+	if req.Body == nil {
+		return fmt.Errorf("object body is required")
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	part, err := writer.CreateFormFile("file", fileNameFromObjectKey(req.Key))
+	if err != nil {
+		return fmt.Errorf("create multipart file field: %w", err)
+	}
+	if _, err := io.Copy(part, req.Body); err != nil {
+		return fmt.Errorf("copy multipart body: %w", err)
+	}
+	if err := writer.WriteField("object_key", strings.TrimSpace(req.Key)); err != nil {
+		return fmt.Errorf("write object_key field: %w", err)
+	}
+	if strings.TrimSpace(req.ContentType) != "" {
+		if err := writer.WriteField("content_type", strings.TrimSpace(req.ContentType)); err != nil {
+			return fmt.Errorf("write content_type field: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("close multipart body: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/obs/proxy-upload", body)
+	if err != nil {
+		return fmt.Errorf("build obs-agent upload request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+	s.applyAuth(httpReq)
+
+	resp, err := s.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("request obs-agent proxy upload: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("obs-agent proxy upload failed: %s %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	return nil
+}
+
+func (s *remoteObjectStorage) applyAuth(req *http.Request) {
+	if s == nil || req == nil || strings.TrimSpace(s.token) == "" {
+		return
+	}
+	req.Header.Set("X-App-Agent-Token", strings.TrimSpace(s.token))
+}
+
+func fileNameFromObjectKey(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "attachment.bin"
+	}
+	if idx := strings.LastIndex(key, "/"); idx >= 0 && idx+1 < len(key) {
+		key = key[idx+1:]
+	}
+	if key == "" {
+		return "attachment.bin"
+	}
+	return key
 }
 
 func newDownloadTicketSigner(cfg *Config) downloadTicketSigner {
@@ -77,13 +210,24 @@ func (b *Bridge) applyAttachmentStorage(
 		return
 	}
 
-	objectKey := buildAttachmentObjectKey(
-		attachment.MessageType,
-		owner,
-		attachment.FileID,
-		attachment.FileName,
-		time.Now(),
-	)
+	objectKey := strings.TrimSpace(attachment.ObjectKey)
+	if objectKey == "" {
+		objectKey = buildAttachmentObjectKey(
+			attachment.MessageType,
+			owner,
+			attachment.FileID,
+			attachment.FileName,
+		)
+	}
+	if exists, err := b.obsStorage.HeadObject(context.Background(), objectKey); err != nil {
+		log.Printf("[Bridge] head attachment object failed file_id=%s key=%s err=%v", attachment.FileID, objectKey, err)
+	} else if exists {
+		attachment.StorageProvider = "obs"
+		attachment.ObjectKey = objectKey
+		log.Printf("[Bridge] reuse attachment in OBS file_id=%s key=%s owner=%s size=%d",
+			attachment.FileID, attachment.ObjectKey, owner, size)
+		return
+	}
 	log.Printf("[Bridge] upload attachment to OBS start file_id=%s key=%s owner=%s size=%d message_type=%s",
 		attachment.FileID, objectKey, owner, size, strings.TrimSpace(attachment.MessageType))
 	if err := b.obsStorage.PutObject(context.Background(), obsstore.PutObjectRequest{
@@ -229,18 +373,19 @@ func (b *Bridge) issueDownloadTicket(userID string, attachment *AppAttachment) (
 	}, ttl)
 }
 
-func buildAttachmentObjectKey(messageType, owner, fileID, fileName string, now time.Time) string {
+func buildAttachmentObjectKey(messageType, owner, fileID, fileName string) string {
 	safeType := sanitizeFileName(firstNonEmpty(strings.ToLower(strings.TrimSpace(messageType)), "file"))
 	safeOwner := sanitizeFileName(firstNonEmpty(strings.TrimSpace(owner), "anonymous"))
+	safeFileID := sanitizeFileName(canonicalAttachmentFileID(fileID))
+	if safeFileID == "" {
+		safeFileID = "attachment"
+	}
 	safeName := sanitizeFileName(firstNonEmpty(strings.TrimSpace(fileName), "attachment.bin"))
 	return fmt.Sprintf(
-		"app/%s/%s/%04d/%02d/%02d/%s/%s",
+		"app/%s/%s/%s/%s",
 		safeType,
 		safeOwner,
-		now.Year(),
-		now.Month(),
-		now.Day(),
-		sanitizeFileName(strings.TrimSpace(fileID)),
+		safeFileID,
 		safeName,
 	)
 }

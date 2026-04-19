@@ -106,3 +106,21 @@ func TestParseDeployCommandOptionsSupportsShortFlags(t *testing.T) {
 		t.Fatalf("unexpected short flag parse result: %#v", opts)
 	}
 }
+
+func TestFindDeployProjectInfoMatchesAlias(t *testing.T) {
+	items := []deployProjectInfo{
+		{
+			Name:      "build-flutter-apk",
+			Aliases:   []string{"flutter-apk"},
+			BuildOnly: true,
+		},
+	}
+
+	got := findDeployProjectInfo(items, "flutter-apk")
+	if got == nil {
+		t.Fatalf("expected alias match")
+	}
+	if got.Name != "build-flutter-apk" || !got.BuildOnly {
+		t.Fatalf("unexpected project info: %#v", got)
+	}
+}

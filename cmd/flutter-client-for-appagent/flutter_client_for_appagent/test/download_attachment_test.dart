@@ -5,10 +5,7 @@ import 'package:flutter_client_for_appagent/main.dart';
 
 void main() {
   group('AppAgentClient.downloadAttachmentToFile', () {
-    Future<AppAgentClient> createClient(
-      HttpServer server, {
-      String obsAgentBaseUrl = '',
-    }) async {
+    Future<AppAgentClient> createClient(HttpServer server) async {
       final host = server.address.address;
       return AppAgentClient(
         baseUrl: 'http://$host:${server.port}',
@@ -16,7 +13,6 @@ void main() {
         password: '',
         receiveToken: '',
         sessionToken: 'token',
-        obsAgentBaseUrl: obsAgentBaseUrl,
       );
     }
 
@@ -159,20 +155,10 @@ void main() {
       expect(await File('$destinationPath.part').exists(), isFalse);
     });
 
-    test('downloads via obs-agent signed url before falling back', () async {
+    test('downloads via app-agent redirect to direct download url', () async {
       final payload = List<int>.generate(24 * 1024, (index) => index % 251);
       var appRequestCount = 0;
-      var obsRequestCount = 0;
       var directRequestCount = 0;
-
-      final appServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => appServer.close(force: true));
-      appServer.listen((request) async {
-        appRequestCount++;
-        request.response.statusCode = HttpStatus.internalServerError;
-        request.response.write('app-agent should not be used');
-        await request.response.close();
-      });
 
       final directServer = await HttpServer.bind(
         InternetAddress.loopbackIPv4,
@@ -187,14 +173,14 @@ void main() {
         await request.response.close();
       });
 
-      final obsServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => obsServer.close(force: true));
-      obsServer.listen((request) async {
-        obsRequestCount++;
+      final appServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => appServer.close(force: true));
+      appServer.listen((request) async {
+        appRequestCount++;
         final host = directServer.address.address;
         final url = 'http://$host:${directServer.port}/object.bin';
-        request.response.statusCode = HttpStatus.ok;
-        request.response.write('{"url":"$url","headers":{},"method":"GET"}');
+        request.response.statusCode = HttpStatus.found;
+        request.response.headers.set(HttpHeaders.locationHeader, url);
         await request.response.close();
       });
 
@@ -204,31 +190,20 @@ void main() {
       addTearDown(() => tempDir.delete(recursive: true));
       final destinationPath = '${tempDir.path}/attachment.bin';
 
-      final obsHost = obsServer.address.address;
-      final client = await createClient(
-        appServer,
-        obsAgentBaseUrl: 'http://$obsHost:${obsServer.port}',
-      );
+      final client = await createClient(appServer);
       await client.downloadAttachmentToFile(
         'test-file',
         destinationPath: destinationPath,
-        attachmentMeta: <String, dynamic>{
-          'storage_provider': 'obs',
-          'download_ticket': 'ticket-1',
-          'object_key': 'app/test-file',
-        },
       );
 
       expect(await File(destinationPath).readAsBytes(), payload);
-      expect(obsRequestCount, 1);
       expect(directRequestCount, 1);
-      expect(appRequestCount, 0);
+      expect(appRequestCount, 1);
     });
 
-    test('falls back to app-agent when obs-agent signing fails', () async {
+    test('downloads directly from app-agent when no redirect is returned', () async {
       final payload = List<int>.generate(18 * 1024, (index) => index % 233);
       var appRequestCount = 0;
-      var obsRequestCount = 0;
 
       final appServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => appServer.close(force: true));
@@ -240,37 +215,19 @@ void main() {
         await request.response.close();
       });
 
-      final obsServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => obsServer.close(force: true));
-      obsServer.listen((request) async {
-        obsRequestCount++;
-        request.response.statusCode = HttpStatus.forbidden;
-        request.response.write('invalid ticket');
-        await request.response.close();
-      });
-
       final tempDir = await Directory.systemTemp.createTemp(
         'download_attachment_obs_fallback_',
       );
       addTearDown(() => tempDir.delete(recursive: true));
       final destinationPath = '${tempDir.path}/attachment.bin';
 
-      final obsHost = obsServer.address.address;
-      final client = await createClient(
-        appServer,
-        obsAgentBaseUrl: 'http://$obsHost:${obsServer.port}',
-      );
+      final client = await createClient(appServer);
       await client.downloadAttachmentToFile(
         'test-file',
         destinationPath: destinationPath,
-        attachmentMeta: <String, dynamic>{
-          'storage_provider': 'obs',
-          'download_ticket': 'ticket-2',
-        },
       );
 
       expect(await File(destinationPath).readAsBytes(), payload);
-      expect(obsRequestCount, 1);
       expect(appRequestCount, 1);
     });
   });

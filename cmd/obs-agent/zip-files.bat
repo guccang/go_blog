@@ -5,6 +5,6 @@ set OUTPUT=obs-agent_%TS%.zip
 set BINNAME=obs-agent.exe
 
 go build -o %BINNAME% .
-powershell -NoProfile -Command "Compress-Archive -Force -Path '%BINNAME%','obs-agent.json','publish.bat' -DestinationPath '%OUTPUT%'"
+powershell -NoProfile -Command "Compress-Archive -Force -Path '%BINNAME%','obs-agent.json','publish.bat','test_obs_api.sh'  -DestinationPath '%OUTPUT%'"
 del /q %BINNAME%
 echo generated %OUTPUT%

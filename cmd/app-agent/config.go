@@ -35,6 +35,7 @@ type Config struct {
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
 	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
 	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
+	ObsAgentToken            string           `json:"obs_agent_token,omitempty"`
 	DownloadTicketSecret     string           `json:"download_ticket_secret,omitempty"`
 	DownloadTicketTTLSeconds int              `json:"download_ticket_ttl_seconds,omitempty"`
 	OBS                      OBSStorageConfig `json:"obs,omitempty"`

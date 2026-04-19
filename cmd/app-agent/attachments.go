@@ -64,6 +64,18 @@ func buildAttachmentFileIDWithTimestamp(rootDir, filePath string, ts int64) (str
 	return base64.RawURLEncoding.EncodeToString([]byte(rel)), nil
 }
 
+func canonicalAttachmentFileID(fileID string) string {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(fileID))
+	if err != nil {
+		return strings.TrimSpace(fileID)
+	}
+	rel := stripAttachmentTimestampSuffix(filepath.ToSlash(filepath.Clean(string(decoded))))
+	if rel == "." || rel == "" {
+		return strings.TrimSpace(fileID)
+	}
+	return base64.RawURLEncoding.EncodeToString([]byte(rel))
+}
+
 // resolveAttachmentPath extracts the actual file path from a file_id.
 // Handles both legacy file_ids (without timestamp) and new file_ids (with timestamp suffix).
 func resolveAttachmentPath(rootDir, fileID string) (string, error) {
@@ -77,10 +89,7 @@ func resolveAttachmentPath(rootDir, fileID string) (string, error) {
 		return "", fmt.Errorf("invalid attachment path")
 	}
 
-	// Strip timestamp suffix (format: base_<timestamp>.ext) if present
-	// Timestamp pattern: underscore followed by 10-13 digits (seconds or milliseconds), before file extension
-	tsPattern := regexp.MustCompile(`_\d{10,13}\.`)
-	rel = tsPattern.ReplaceAllString(rel, ".")
+	rel = stripAttachmentTimestampSuffix(rel)
 
 	absRoot, err := filepath.Abs(rootDir)
 	if err != nil {
@@ -96,6 +105,12 @@ func resolveAttachmentPath(rootDir, fileID string) (string, error) {
 		return "", fmt.Errorf("attachment path escaped root")
 	}
 	return absPath, nil
+}
+
+func stripAttachmentTimestampSuffix(path string) string {
+	// Timestamp pattern: underscore followed by 10-13 digits (seconds or milliseconds), before file extension
+	tsPattern := regexp.MustCompile(`_\d{10,13}\.`)
+	return tsPattern.ReplaceAllString(path, ".")
 }
 
 func attachmentMimeType(messageType, fileName, format string) string {

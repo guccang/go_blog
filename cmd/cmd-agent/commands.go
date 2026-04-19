@@ -33,9 +33,11 @@ type codingProjectInfo struct {
 
 type deployProjectInfo struct {
 	Name          string   `json:"name"`
+	Aliases       []string `json:"aliases,omitempty"`
 	AgentID       string   `json:"agent_id"`
 	Agent         string   `json:"agent"`
 	DeployTargets []string `json:"deploy_targets"`
+	BuildOnly     bool     `json:"build_only,omitempty"`
 }
 
 func parseDeployCommandOptions(rest string) (deployCommandOptions, error) {
@@ -77,6 +79,20 @@ func parseDeployCommandOptions(rest string) (deployCommandOptions, error) {
 		}
 	}
 	return opts, nil
+}
+
+func findDeployProjectInfo(items []deployProjectInfo, project string) *deployProjectInfo {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil
+	}
+	for i := range items {
+		item := &items[i]
+		if item.Name == project || containsString(item.Aliases, project) {
+			return item
+		}
+	}
+	return nil
 }
 
 func (a *CMDAGent) listCodingProjects() ([]codingProjectInfo, error) {
@@ -152,9 +168,10 @@ func (a *CMDAGent) fetchDeployProjectsForAgent(agent gatewayAgentSnapshot) []dep
 
 	var payload struct {
 		Projects []struct {
-			Name    string   `json:"name"`
-			Aliases []string `json:"aliases"`
-			Targets []string `json:"targets"`
+			Name      string   `json:"name"`
+			Aliases   []string `json:"aliases"`
+			Targets   []string `json:"targets"`
+			BuildOnly bool     `json:"build_only"`
 		} `json:"projects"`
 	}
 	if err := json.Unmarshal([]byte(result.Result), &payload); err != nil {
@@ -169,9 +186,11 @@ func (a *CMDAGent) fetchDeployProjectsForAgent(agent gatewayAgentSnapshot) []dep
 		}
 		items = append(items, deployProjectInfo{
 			Name:          name,
+			Aliases:       uniqueSorted(item.Aliases),
 			AgentID:       agent.AgentID,
 			Agent:         agent.Name,
 			DeployTargets: uniqueSorted(item.Targets),
+			BuildOnly:     item.BuildOnly,
 		})
 	}
 	return items
@@ -641,6 +660,9 @@ func (a *CMDAGent) handleCgDeploy(req commandRequest, param string) error {
 	agent, err := a.resolveDeployAgent(project, agentName)
 	if err != nil {
 		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	if projectInfo := findDeployProjectInfo(a.fetchDeployProjectsForAgent(agent), project); projectInfo != nil && projectInfo.BuildOnly {
+		deployOpts.PackOnly = true
 	}
 
 	requestID := "cmd_deploy_" + strconv.FormatInt(time.Now().UnixNano(), 10)
