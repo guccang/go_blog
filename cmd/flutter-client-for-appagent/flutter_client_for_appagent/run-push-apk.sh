@@ -30,6 +30,13 @@ usage() {
   --skip-build      跳过构建，直接推送已存在的版本化 APK
   -h, --help        显示帮助
 
+兼容说明:
+  deploy-agent 无参调用时，会回退到历史默认值：
+  默认用户 RUN_PUSH_APK_DEFAULT_USER（未设置时为 ztt）
+  默认群组 RUN_PUSH_APK_DEFAULT_GROUP
+  默认服务 RUN_PUSH_APK_DEFAULT_SERVER（未设置时为 http://blog.guccang.cn:8883）
+  默认 token 先取 RUN_PUSH_APK_DEFAULT_TOKEN，再取 assets/app_config.json 中的 receive_token
+
 示例:
   ./run-push-apk.sh -u ztt -s http://127.0.0.1:9002 -t test-token
   ./run-push-apk.sh -g team-alpha -s http://blog.guccang.cn:8883 -t 123456
@@ -61,29 +68,100 @@ to_display_version() {
     fi
 }
 
-APP_AGENT_SERVER="${APP_AGENT_SERVER:-http://127.0.0.1:9002}"
-APP_AGENT_TOKEN="${APP_AGENT_TOKEN:-}"
+APP_AGENT_SERVER_FROM_ENV="${APP_AGENT_SERVER-}"
+APP_AGENT_TOKEN_FROM_ENV="${APP_AGENT_TOKEN-}"
+APP_AGENT_SERVER="${APP_AGENT_SERVER_FROM_ENV:-http://127.0.0.1:9002}"
+APP_AGENT_TOKEN="${APP_AGENT_TOKEN_FROM_ENV:-}"
 TARGET_USER=""
 TARGET_GROUP=""
 MESSAGE="新的安装包已下发，点击安装"
 SKIP_BUILD=0
+TARGET_EXPLICIT=0
+SERVER_EXPLICIT=0
+TOKEN_EXPLICIT=0
+
+read_default_receive_token() {
+    local app_config="assets/app_config.json"
+    local line
+    if [[ ! -f "${app_config}" ]]; then
+        return 1
+    fi
+    while IFS= read -r line; do
+        case "$line" in
+            *\"receive_token\"*)
+                line="${line#*:}"
+                line="${line//[[:space:]\",]/}"
+                if [[ -n "${line}" ]]; then
+                    echo "$line"
+                    return 0
+                fi
+                ;;
+        esac
+    done < "${app_config}"
+    return 1
+}
+
+apply_legacy_defaults_for_deploy_agent() {
+    local fallback_user fallback_group fallback_server fallback_token
+
+    fallback_user="${RUN_PUSH_APK_DEFAULT_USER:-ztt}"
+    fallback_group="${RUN_PUSH_APK_DEFAULT_GROUP:-}"
+
+    if [[ -n "${fallback_user}" && -n "${fallback_group}" ]]; then
+        echo "RUN_PUSH_APK_DEFAULT_USER 与 RUN_PUSH_APK_DEFAULT_GROUP 不能同时设置" >&2
+        exit 1
+    fi
+
+    if [[ -n "${fallback_user}" ]]; then
+        TARGET_USER="${fallback_user}"
+        echo "未指定 -u/-g，兼容 deploy-agent 无参调用，回退到默认用户: ${TARGET_USER}"
+    elif [[ -n "${fallback_group}" ]]; then
+        TARGET_GROUP="${fallback_group}"
+        echo "未指定 -u/-g，兼容 deploy-agent 无参调用，回退到默认群组: ${TARGET_GROUP}"
+    fi
+
+    if [[ -z "${TARGET_USER}" && -z "${TARGET_GROUP}" ]]; then
+        return 0
+    fi
+
+    if [[ "${SERVER_EXPLICIT}" -eq 0 && -z "${APP_AGENT_SERVER_FROM_ENV}" ]]; then
+        fallback_server="${RUN_PUSH_APK_DEFAULT_SERVER:-http://blog.guccang.cn:8883}"
+        if [[ -n "${fallback_server}" ]]; then
+            APP_AGENT_SERVER="${fallback_server}"
+        fi
+    fi
+
+    if [[ "${TOKEN_EXPLICIT}" -eq 0 && -z "${APP_AGENT_TOKEN_FROM_ENV}" ]]; then
+        fallback_token="${RUN_PUSH_APK_DEFAULT_TOKEN:-}"
+        if [[ -z "${fallback_token}" ]]; then
+            fallback_token="$(read_default_receive_token || true)"
+        fi
+        if [[ -n "${fallback_token}" ]]; then
+            APP_AGENT_TOKEN="${fallback_token}"
+        fi
+    fi
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -u|--user)
             TARGET_USER="${2:-}"
+            TARGET_EXPLICIT=1
             shift 2
             ;;
         -g|--group)
             TARGET_GROUP="${2:-}"
+            TARGET_EXPLICIT=1
             shift 2
             ;;
         -s|--server)
             APP_AGENT_SERVER="${2:-}"
+            SERVER_EXPLICIT=1
             shift 2
             ;;
         -t|--token)
             APP_AGENT_TOKEN="${2:-}"
+            TOKEN_EXPLICIT=1
             shift 2
             ;;
         -m|--message)
@@ -105,6 +183,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ "${TARGET_EXPLICIT}" -eq 0 && -z "${TARGET_USER}" && -z "${TARGET_GROUP}" ]]; then
+    apply_legacy_defaults_for_deploy_agent
+fi
 
 if [[ -n "${TARGET_USER}" && -n "${TARGET_GROUP}" ]]; then
     echo "不能同时指定 -u/--user 与 -g/--group" >&2

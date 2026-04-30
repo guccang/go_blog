@@ -59,6 +59,16 @@ func (f *fakeSignedURLStore) GetObjectMeta(_ context.Context, _ string) (*obssto
 	return f.meta, f.metaErr
 }
 
+type fakeProxyUploader struct {
+	err error
+	req proxyUploadRequest
+}
+
+func (f *fakeProxyUploader) Upload(_ context.Context, req proxyUploadRequest) error {
+	f.req = req
+	return f.err
+}
+
 func TestHandleDownloadReturnsSignedURL(t *testing.T) {
 	now := time.UnixMilli(1_700_000_000_000)
 	signer := downloadticket.NewSignerWithClock("secret", func() time.Time { return now })
@@ -260,6 +270,8 @@ func TestHandleUploadUnauthorized(t *testing.T) {
 
 func TestHandleProxyUpload(t *testing.T) {
 	handler := NewHandler(&Config{ReceiveToken: "token"}, &fakeSignedURLStore{}, nil)
+	uploader := &fakeProxyUploader{}
+	handler.uploader = uploader
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -286,6 +298,12 @@ func TestHandleProxyUpload(t *testing.T) {
 	if !ok || key == "" {
 		t.Fatalf("expected non-empty object_key, got %v", payload["object_key"])
 	}
+	if uploader.req.ObjectKey == "" {
+		t.Fatalf("expected uploader to receive object key")
+	}
+	if uploader.req.LocalPath == "" {
+		t.Fatalf("expected uploader to receive local temp path")
+	}
 }
 
 func TestHandleProxyUploadMissingFile(t *testing.T) {
@@ -300,6 +318,28 @@ func TestHandleProxyUploadMissingFile(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleProxyUploadUploadFailure(t *testing.T) {
+	handler := NewHandler(&Config{ReceiveToken: "token"}, &fakeSignedURLStore{}, nil)
+	handler.uploader = &fakeProxyUploader{err: fmt.Errorf("upload failed")}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, _ := w.CreateFormFile("file", "test.txt")
+	fmt.Fprint(part, "hello world")
+	w.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/obs/proxy-upload", &buf)
+	req.Header.Set("Authorization", "Bearer token")
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+
+	handler.HandleProxyUpload(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

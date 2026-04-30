@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -127,6 +128,74 @@ func (a *Agent) ScanProjects() []ProjectInfo {
 		}
 	}
 	return projects
+}
+
+// ScanClaudeCodeSettings 扫描 Claude Code settings 名称（去掉 .json 后缀）
+func (a *Agent) ScanClaudeCodeSettings() []string {
+	return scanJSONSettingNames(a.cfg.ClaudeCodeSettingsDir)
+}
+
+// ScanCodexSettings 扫描 Codex settings 名称（去掉 .json 后缀）
+func (a *Agent) ScanCodexSettings() []string {
+	return scanJSONSettingNames(a.cfg.CodexSettingsDir)
+}
+
+// ScanTools 返回当前 acp-agent 实际支持的编码工具
+func (a *Agent) ScanTools() []string {
+	switch a.cfg.EffectiveCodingBackend() {
+	case BackendCodexExec:
+		return []string{"codex"}
+	default:
+		return []string{"claudecode"}
+	}
+}
+
+func scanJSONSettingNames(dir string) []string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var items []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasSuffix(strings.ToLower(name), ".json") {
+			continue
+		}
+		name = strings.TrimSpace(strings.TrimSuffix(name, filepath.Ext(name)))
+		if name == "" {
+			continue
+		}
+		items = append(items, name)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return uniqueSorted(items)
+}
+
+func uniqueSorted(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // resolveProject 在 workspaces 中查找项目，不存在则在第一个 workspace 创建

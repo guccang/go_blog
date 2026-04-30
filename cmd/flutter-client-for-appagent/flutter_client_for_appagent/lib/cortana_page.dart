@@ -97,19 +97,21 @@ class _CortanaPageState extends State<CortanaPage> {
   bool _speaking = false;
   InAppLocalhostServer? _localhostServer;
   Future<void>? _androidLocalhostFuture;
-  String? _androidLoadStatus;
-  bool _showLogs = false;
   int _playbackToken = 0;
-  final List<String> _runtimeLogs = <String>[];
   final List<_CortanaVoiceHistoryItem> _voiceHistory = <_CortanaVoiceHistoryItem>[];
   double _modelUserScale = 1.0;
   double _modelUserOffsetX = 0.0;
   double _modelUserOffsetY = 0.0;
+  bool _controlPanelVisible = false;
   bool _live2dSummaryExpanded = false;
   bool _expressionActionsExpanded = false;
   bool _viewControlsExpanded = false;
   bool _replayExpanded = false;
+  bool _logsExpanded = false;
   Map<String, dynamic>? _live2dDebugState;
+  final List<String> _logEntries = <String>[];
+
+  static const int _maxLogEntries = 80;
 
   static const _expressions = ['happy', 'sad', 'surprised'];
   static const _motions = ['Idle', 'IdleAlt', 'IdleWave', 'Tap'];
@@ -149,8 +151,7 @@ class _CortanaPageState extends State<CortanaPage> {
         documentRoot: 'assets/cortana',
         port: _localhostPort,
       );
-      _androidLoadStatus = 'Starting localhost server on $_localhostPort';
-      _appendLog(_androidLoadStatus!);
+      _appendLog('Starting localhost server on $_localhostPort');
       _androidLocalhostFuture = _localhostServer!
           .start()
           .then((_) {
@@ -198,33 +199,26 @@ class _CortanaPageState extends State<CortanaPage> {
     final entry = '[$hh:$mm:$ss] $text';
     debugPrint('[Cortana Log] $entry');
     if (!mounted) {
-      _runtimeLogs.insert(0, entry);
-      if (_runtimeLogs.length > 40) {
-        _runtimeLogs.removeRange(40, _runtimeLogs.length);
+      _logEntries.insert(0, entry);
+      if (_logEntries.length > _maxLogEntries) {
+        _logEntries.removeRange(_maxLogEntries, _logEntries.length);
       }
       return;
     }
     setState(() {
-      _runtimeLogs.insert(0, entry);
-      if (_runtimeLogs.length > 40) {
-        _runtimeLogs.removeRange(40, _runtimeLogs.length);
+      _logEntries.insert(0, entry);
+      if (_logEntries.length > _maxLogEntries) {
+        _logEntries.removeRange(_maxLogEntries, _logEntries.length);
       }
     });
   }
 
   void _updateLoadStatus(String message) {
-    if (!mounted) {
-      _androidLoadStatus = message;
-      return;
-    }
-    setState(() {
-      _androidLoadStatus = message;
-    });
     _appendLog(message);
   }
 
-  Future<void> _syncDiagnosticsVisibility() async {
-    await _callJS('window.setDiagnosticsVisible(${_showLogs ? 'true' : 'false'})');
+  Future<void> _hideDiagnostics() async {
+    await _callJS('window.setDiagnosticsVisible(false)');
   }
 
   String _jsDouble(double value) => value.toStringAsFixed(4);
@@ -316,7 +310,7 @@ class _CortanaPageState extends State<CortanaPage> {
       onLoadStop: (ctrl, url) async {
         debugPrint('[Cortana] Load stop: $url');
         _updateLoadStatus('WebView load stop: $url');
-        await _syncDiagnosticsVisibility();
+        await _hideDiagnostics();
         await _syncModelViewTransform();
         await _refreshLive2dDebugState();
       },
@@ -850,8 +844,67 @@ class _CortanaPageState extends State<CortanaPage> {
     }
   }
 
+  Future<void> _replayLatestExternalVoice() async {
+    if (_speaking) {
+      return;
+    }
+
+    final latest = widget.externalVoiceHistory.isEmpty
+        ? null
+        : widget.externalVoiceHistory.first;
+    if (latest == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('聊天页签里还没有可播放的语音'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _speaking = true);
+    try {
+      _appendLog('输入为空，重播聊天页签最近一条语音');
+      await _playReplyAudio(
+        CortanaReplyPayload(
+          text: latest.text,
+          audioPath: latest.audioPath,
+          audioBytes: latest.audioBytes,
+          audioFormat: latest.audioFormat,
+          actionPlan: latest.actionPlan,
+        ),
+        rememberHistory: false,
+      );
+    } catch (e, stackTrace) {
+      debugPrint('[Cortana Replay Latest External Error] $e');
+      debugPrint('$stackTrace');
+      _appendLog('重播聊天页签语音失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('重播失败: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _speaking = false);
+      }
+    }
+  }
+
   Future<void> _speak(String text) async {
-    if (text.isEmpty || _speaking) return;
+    if (_speaking) {
+      return;
+    }
+    if (text.isEmpty) {
+      await _replayLatestExternalVoice();
+      return;
+    }
 
     // 检查是否有消息发送回调
     if (widget.onSendMessage == null) {
@@ -1267,24 +1320,213 @@ class _CortanaPageState extends State<CortanaPage> {
     );
   }
 
-  Widget _buildLogsContent() {
-    if (_runtimeLogs.isEmpty) {
+  Widget _buildLogsContent(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_logEntries.isEmpty) {
       return Text(
-        '暂无日志',
+        '暂无日志输出',
         style: Theme.of(context).textTheme.bodyMedium,
       );
     }
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 220),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _runtimeLogs.length > 12 ? 12 : _runtimeLogs.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 6),
-        itemBuilder: (context, index) => Text(
-          _runtimeLogs[index],
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontFamily: 'monospace',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '最近 ${_logEntries.length} 条',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _logEntries.clear();
+                });
+              },
+              icon: const Icon(Icons.clear_all, size: 16),
+              label: const Text('清空'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 220),
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: _logEntries.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemBuilder: (context, index) {
+              final entry = _logEntries[index];
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: SelectableText(
+                  entry,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    height: 1.35,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlPanel(
+    BuildContext context, {
+    required double overlayWidth,
+    required List<CortanaReplayItem> replayHistory,
+    required String scaleText,
+    required String offsetXText,
+    required String offsetYText,
+  }) {
+    return Positioned(
+      left: 12,
+      top: 58,
+      child: SizedBox(
+        width: overlayWidth,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-live2d-summary',
+                  title: 'Live2D 数据',
+                  subtitle: _live2dSummaryExpanded ? '点击收起' : '默认折叠，点击查看',
+                  expanded: _live2dSummaryExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _live2dSummaryExpanded = expanded;
+                    });
+                  },
+                  child: _buildLive2dSummaryContent(context),
+                ),
+                const SizedBox(height: 8),
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-expression-actions',
+                  title: '表情与动作',
+                  subtitle: _expressionActionsExpanded
+                      ? '点击收起'
+                      : '默认折叠，点击展开控制',
+                  expanded: _expressionActionsExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _expressionActionsExpanded = expanded;
+                    });
+                  },
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final e in _expressions)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ActionChip(
+                              label: Text(e),
+                              onPressed: () => _callJS(
+                                "window.setExpression('$e')",
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        for (final m in _motions)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ActionChip(
+                              label: Text(m),
+                              avatar: const Icon(
+                                Icons.directions_run,
+                                size: 14,
+                              ),
+                              onPressed: () => _callJS(
+                                "window.setMotion('${_normalizeMotion(m)}', 0)",
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-view-controls',
+                  title: '视角调整',
+                  subtitle: '当前: 缩放 $scaleText / X $offsetXText / Y $offsetYText',
+                  expanded: _viewControlsExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _viewControlsExpanded = expanded;
+                    });
+                  },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _modelUserScale = 1.0;
+                            _modelUserOffsetX = 0.0;
+                            _modelUserOffsetY = 0.0;
+                          });
+                          unawaited(_syncModelViewTransform());
+                        },
+                        child: const Text('重置'),
+                      ),
+                      Icon(
+                        _viewControlsExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                      ),
+                    ],
+                  ),
+                  child: _buildViewControlsContent(),
+                ),
+                const SizedBox(height: 8),
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-replay-history',
+                  title: '语音重播',
+                  subtitle: replayHistory.isEmpty
+                      ? '暂无记录，默认折叠'
+                      : '共 ${replayHistory.length} 条，默认折叠',
+                  expanded: _replayExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _replayExpanded = expanded;
+                    });
+                  },
+                  child: _buildReplayHistoryContent(context, replayHistory),
+                ),
+                const SizedBox(height: 8),
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-runtime-logs',
+                  title: '运行日志',
+                  subtitle: _logEntries.isEmpty
+                      ? '暂无日志，默认折叠'
+                      : '共 ${_logEntries.length} 条，默认折叠',
+                  expanded: _logsExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _logsExpanded = expanded;
+                    });
+                  },
+                  child: _buildLogsContent(context),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1296,8 +1538,8 @@ class _CortanaPageState extends State<CortanaPage> {
     final replayHistory = _combinedVoiceHistory();
     final screenWidth = MediaQuery.sizeOf(context).width;
     final overlayWidth = math.min(
-      screenWidth < 640 ? screenWidth - 24 : screenWidth * 0.36,
-      360.0,
+      screenWidth < 640 ? screenWidth - 72 : screenWidth * 0.28,
+      300.0,
     );
     final scaleText = _modelUserScale.toStringAsFixed(2);
     final offsetXText = _modelUserOffsetX.toStringAsFixed(2);
@@ -1340,151 +1582,35 @@ class _CortanaPageState extends State<CortanaPage> {
               Positioned(
                 left: 12,
                 top: 12,
-                child: SizedBox(
-                  width: overlayWidth,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+                child: _buildSectionCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _controlPanelVisible = !_controlPanelVisible;
+                      });
+                    },
+                    icon: Icon(
+                      _controlPanelVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.tune,
                     ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildExpandableSectionCard(
-                            storageKey: 'cortana-live2d-summary',
-                            title: 'Live2D 数据',
-                            subtitle: _live2dSummaryExpanded
-                                ? '点击收起'
-                                : '默认折叠，点击查看',
-                            expanded: _live2dSummaryExpanded,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _live2dSummaryExpanded = expanded;
-                              });
-                            },
-                            child: _buildLive2dSummaryContent(context),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildExpandableSectionCard(
-                            storageKey: 'cortana-expression-actions',
-                            title: '表情与动作',
-                            subtitle: _expressionActionsExpanded
-                                ? '点击收起'
-                                : '默认折叠，点击展开控制',
-                            expanded: _expressionActionsExpanded,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _expressionActionsExpanded = expanded;
-                              });
-                            },
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  for (final e in _expressions)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: ActionChip(
-                                        label: Text(e),
-                                        onPressed: () => _callJS(
-                                          "window.setExpression('$e')",
-                                        ),
-                                      ),
-                                    ),
-                                  const SizedBox(width: 8),
-                                  for (final m in _motions)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: ActionChip(
-                                        label: Text(m),
-                                        avatar: const Icon(
-                                          Icons.directions_run,
-                                          size: 14,
-                                        ),
-                                        onPressed: () => _callJS(
-                                          "window.setMotion('${_normalizeMotion(m)}', 0)",
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildExpandableSectionCard(
-                            storageKey: 'cortana-view-controls',
-                            title: '视角调整',
-                            subtitle:
-                                '当前: 缩放 $scaleText / X $offsetXText / Y $offsetYText',
-                            expanded: _viewControlsExpanded,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _viewControlsExpanded = expanded;
-                              });
-                            },
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _modelUserScale = 1.0;
-                                      _modelUserOffsetX = 0.0;
-                                      _modelUserOffsetY = 0.0;
-                                    });
-                                    unawaited(_syncModelViewTransform());
-                                  },
-                                  child: const Text('重置'),
-                                ),
-                                Icon(
-                                  _viewControlsExpanded
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                ),
-                              ],
-                            ),
-                            child: _buildViewControlsContent(),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildExpandableSectionCard(
-                            storageKey: 'cortana-replay-history',
-                            title: '语音重播',
-                            subtitle: replayHistory.isEmpty
-                                ? '暂无记录，默认折叠'
-                                : '共 ${replayHistory.length} 条，默认折叠',
-                            expanded: _replayExpanded,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _replayExpanded = expanded;
-                              });
-                            },
-                            child: _buildReplayHistoryContent(
-                              context,
-                              replayHistory,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildExpandableSectionCard(
-                            storageKey: 'cortana-runtime-logs',
-                            title: '显示日志',
-                            subtitle: _showLogs
-                                ? (_androidLoadStatus ?? '点击收起')
-                                : '默认折叠，点击查看',
-                            expanded: _showLogs,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _showLogs = expanded;
-                              });
-                              unawaited(_syncDiagnosticsVisibility());
-                            },
-                            child: _buildLogsContent(),
-                          ),
-                        ],
-                      ),
-                    ),
+                    label: Text(_controlPanelVisible ? '隐藏面板' : '控制面板'),
                   ),
                 ),
               ),
+              if (_controlPanelVisible)
+                _buildControlPanel(
+                  context,
+                  overlayWidth: overlayWidth,
+                  replayHistory: replayHistory,
+                  scaleText: scaleText,
+                  offsetXText: offsetXText,
+                  offsetYText: offsetYText,
+                ),
               Positioned(
                 left: 12,
                 right: 12,

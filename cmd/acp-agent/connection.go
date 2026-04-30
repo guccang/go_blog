@@ -33,11 +33,16 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 		Capacity:    cfg.MaxConcurrent,
 		Tools:       buildACPToolDefs(),
 		Meta: map[string]any{
-			"projects":         projectNames(agent.ScanProjects()),
-			"workspaces":       cfg.Workspaces,
-			"coding_backend":   cfg.EffectiveCodingBackend(),
-			"analysis_timeout": cfg.AnalysisTimeout,
-			"coding_backends":  []string{BackendClaudeACP, BackendCodexExec},
+			"projects":             projectNames(agent.ScanProjects()),
+			"workspaces":           cfg.Workspaces,
+			"coding_backend":       cfg.EffectiveCodingBackend(),
+			"analysis_timeout":     cfg.AnalysisTimeout,
+			"coding_backends":      []string{BackendClaudeACP, BackendCodexExec},
+			"coding_tools":         agent.ScanTools(),
+			"claudecode_settings":  agent.ScanClaudeCodeSettings(),
+			"codex_settings":       agent.ScanCodexSettings(),
+			"default_settings":     cfg.DefaultSettings,
+			"supports_interactive": cfg.SupportsInteractivePermissions(),
 		},
 	}
 

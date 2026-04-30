@@ -61,6 +61,8 @@ func normalizeTool(tool string) string {
 		return "opencode"
 	case "cc", "claude", "claudecode":
 		return "claudecode"
+	case "codex":
+		return "codex"
 	default:
 		return strings.ToLower(strings.TrimSpace(tool))
 	}
@@ -82,6 +84,8 @@ func getCodegenHelpText() string {
 		"cg start <项目[@agent]> <需求> — 启动编码\n" +
 		"cg start <项目[@agent]> #<模型> <需求> — 指定模型\n" +
 		"cg start <项目[@agent]> @oc <需求> — 用OpenCode\n" +
+		"cg start <项目[@agent]> @codex <需求> — 用Codex\n" +
+		"cg start <项目[@agent]> @claudecode --settings <名称> <需求> — 指定 Claude settings\n" +
 		"cg start <项目[@agent]> !deploy <需求> — 编码后自动部署\n" +
 		"cg deploy <项目[@agent]> [#目标] [!pack] [--version/-v 版本] [--desc/-d 描述] — 部署已配置项目\n" +
 		"cg deploy list — 列出 deploy 项目\n" +

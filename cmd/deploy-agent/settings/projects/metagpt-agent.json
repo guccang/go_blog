@@ -18,8 +18,6 @@
             "remote_script": "publish.sh"
         },
         "ssh-prod": {
-            "host": "root@114.115.214.86",
-            "platform": "linux",
             "remote_dir": "/data/program/go/go_blog/cmd/metagpt-agent",
             "remote_script": "publish.sh"
         }

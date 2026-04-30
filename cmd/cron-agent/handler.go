@@ -64,7 +64,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 }
 
 func (c *Connection) buildAuthorizer() agentbase.Authorizer {
-	return agentbase.NewToolAuthorizer(map[string]agentbase.ToolPolicy{
+	base := agentbase.NewToolAuthorizer(map[string]agentbase.ToolPolicy{
 		"cronCreateTask": {
 			Mode:                     agentbase.ToolPolicyModeMatchAccount,
 			AccountArg:               "account",
@@ -75,27 +75,22 @@ func (c *Connection) buildAuthorizer() agentbase.Authorizer {
 			AccountArg:               "account",
 			RequireAuthenticatedUser: false,
 		},
-		"cronDeleteTask": {
-			Mode:                     agentbase.ToolPolicyModeMatchOwner,
-			ResourceIDArg:            "task_id",
-			RequireAuthenticatedUser: true,
-			OwnershipResolver: agentbase.OwnershipResolverFunc(func(ctx *agentbase.AuthorizationContext) (string, bool, error) {
-				return c.resolveTaskOwnerByID(ctx.ResourceID)
-			}),
-		},
-		"cronTriggerTask": {
-			Mode:                     agentbase.ToolPolicyModeMatchOwner,
-			ResourceIDArg:            "task_id",
-			RequireAuthenticatedUser: true,
-			OwnershipResolver: agentbase.OwnershipResolverFunc(func(ctx *agentbase.AuthorizationContext) (string, bool, error) {
-				return c.resolveTaskOwnerByID(ctx.ResourceID)
-			}),
-		},
 		"cronListPending": {
 			Mode:                     agentbase.ToolPolicyModeMatchAccount,
 			AccountArg:               "account",
 			RequireAuthenticatedUser: false,
 		},
+	})
+
+	return agentbase.AuthorizerFunc(func(ctx *agentbase.AuthorizationContext) agentbase.AuthorizationDecision {
+		switch ctx.ToolName {
+		case "cronDeleteTask":
+			return c.authorizeDeleteTask(ctx)
+		case "cronTriggerTask":
+			return c.authorizeTriggerTask(ctx)
+		default:
+			return base.AuthorizeToolCall(ctx)
+		}
 	})
 }
 
@@ -109,6 +104,77 @@ func (c *Connection) resolveTaskOwnerByID(taskID string) (string, bool, error) {
 		return "", false, nil
 	}
 	return strings.TrimSpace(task.CreatedBy), true, nil
+}
+
+func (c *Connection) authorizeDeleteTask(ctx *agentbase.AuthorizationContext) agentbase.AuthorizationDecision {
+	if strings.TrimSpace(ctx.AuthenticatedUser) == "" {
+		return agentbase.DenyDecision("权限拒绝：缺少认证用户", "missing_authenticated_user")
+	}
+	_, err := c.resolveTaskIDForOwner(ctx.AuthenticatedUser, ctx.Arguments)
+	if err != nil {
+		return agentbase.DenyDecision(fmt.Sprintf("权限校验失败：%v", err), "delete_task_resolve_failed")
+	}
+	return agentbase.AllowDecision()
+}
+
+func (c *Connection) authorizeTriggerTask(ctx *agentbase.AuthorizationContext) agentbase.AuthorizationDecision {
+	if strings.TrimSpace(ctx.AuthenticatedUser) == "" {
+		return agentbase.DenyDecision("权限拒绝：缺少认证用户", "missing_authenticated_user")
+	}
+	taskID := stringValue(ctx.Arguments, "task_id")
+	if taskID == "" {
+		return agentbase.DenyDecision("权限校验失败：task_id 不能为空", "missing_task_id")
+	}
+	owner, found, err := c.resolveTaskOwnerByID(taskID)
+	if err != nil {
+		return agentbase.DenyDecision(fmt.Sprintf("权限校验失败：%v", err), "ownership_resolve_error")
+	}
+	if !found || strings.TrimSpace(owner) == "" {
+		return agentbase.DenyDecision("权限校验失败：资源不存在或未找到创建者", "ownership_not_found")
+	}
+	if strings.TrimSpace(owner) != strings.TrimSpace(ctx.AuthenticatedUser) {
+		return agentbase.DenyDecision("权限拒绝：只能操作自己创建的资源", "owner_mismatch")
+	}
+	return agentbase.AllowDecision()
+}
+
+func stringValue(args map[string]interface{}, key string) string {
+	value, _ := args[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func (c *Connection) resolveTaskIDForOwner(owner string, args map[string]interface{}) (string, error) {
+	taskID := stringValue(args, "task_id")
+	taskName := stringValue(args, "task_name")
+
+	if taskID != "" {
+		task, ok := c.engine.GetTask(taskID)
+		if !ok {
+			return "", fmt.Errorf("任务不存在: %s", taskID)
+		}
+		if strings.TrimSpace(task.CreatedBy) != strings.TrimSpace(owner) {
+			return "", fmt.Errorf("只能操作自己创建的资源")
+		}
+		return taskID, nil
+	}
+
+	if taskName == "" {
+		return "", fmt.Errorf("task_id 或 task_name 至少提供一个")
+	}
+
+	matches := c.engine.FindTasksByOwnerAndName(owner, taskName)
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("未找到名称为 %q 的任务", taskName)
+	case 1:
+		return matches[0].ID, nil
+	default:
+		ids := make([]string, 0, len(matches))
+		for _, task := range matches {
+			ids = append(ids, task.ID)
+		}
+		return "", fmt.Errorf("存在 %d 个同名任务，请改用 task_id 删除: %s", len(matches), strings.Join(ids, ", "))
+	}
 }
 
 // ========================= 工具定义 =========================
@@ -137,18 +203,23 @@ func buildToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "cronListTasks",
-			Description: "列出所有定时任务",
-			Parameters:  agentbase.MustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
-		},
-		{
-			Name:        "cronDeleteTask",
-			Description: "删除指定定时任务",
+			Description: "列出定时任务；传 account 时按账户作用域过滤",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"task_id": map[string]interface{}{"type": "string", "description": "任务 ID"},
+					"account": map[string]interface{}{"type": "string", "description": "用户账号；推荐显式传入以返回对应账户的完整任务列表"},
 				},
-				"required": []string{"task_id"},
+			}),
+		},
+		{
+			Name:        "cronDeleteTask",
+			Description: "删除指定定时任务；优先使用 task_id，也可在同一创建者范围内按 task_name 删除",
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"task_id":   map[string]interface{}{"type": "string", "description": "任务 ID；有值时优先按 ID 删除"},
+					"task_name": map[string]interface{}{"type": "string", "description": "任务名称；当拿不到 task_id 时可作为兜底，若存在多个同名任务会提示改用 task_id"},
+				},
 			}),
 		},
 		{
@@ -164,8 +235,13 @@ func buildToolDefs() []uap.ToolDef {
 		},
 		{
 			Name:        "cronListPending",
-			Description: "[debug] 列出正在执行中的任务（已发送到 llm-agent 尚未返回 task_complete 的执行）",
-			Parameters:  agentbase.MustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+			Description: "[debug] 列出正在执行中的任务（已发送到 llm-agent 尚未返回 task_complete 的执行）；传 account 时按账户作用域过滤",
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"account": map[string]interface{}{"type": "string", "description": "用户账号；推荐显式传入以返回对应账户的执行中任务"},
+				},
+			}),
 		},
 	}
 }
@@ -355,10 +431,10 @@ func (c *Connection) toolListTasks(authenticatedUser string, args map[string]int
 }
 
 func (c *Connection) toolDeleteTask(authenticatedUser string, args map[string]interface{}) (string, bool) {
-	taskID, _ := args["task_id"].(string)
-	if taskID == "" {
-		log.Printf("[CronAgent] ✗ toolDeleteTask: task_id 为空")
-		return "task_id 不能为空", false
+	taskID, err := c.resolveTaskIDForOwner(authenticatedUser, args)
+	if err != nil {
+		log.Printf("[CronAgent] ✗ toolDeleteTask: %v", err)
+		return err.Error(), false
 	}
 
 	log.Printf("[CronAgent] toolDeleteTask ID=%s", taskID)
@@ -412,8 +488,7 @@ func (c *Connection) toolListPending(authenticatedUser string, args map[string]i
 }
 
 func stringArg(args map[string]interface{}, key string) string {
-	value, _ := args[key].(string)
-	return strings.TrimSpace(value)
+	return stringValue(args, key)
 }
 
 func resolveTaskOwner(authenticatedUser, account string) string {

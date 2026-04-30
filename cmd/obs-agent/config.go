@@ -13,6 +13,8 @@ type Config struct {
 	ReceiveToken         string          `json:"receive_token,omitempty"`
 	DownloadTicketSecret string          `json:"download_ticket_secret,omitempty"`
 	SignedURLTTLSeconds  int             `json:"signed_url_ttl_seconds,omitempty"`
+	ObsutilPath          string          `json:"obsutil_path,omitempty"`
+	ObsutilTimeoutSecs   int             `json:"obsutil_timeout_seconds,omitempty"`
 	OBS                  obsstore.Config `json:"obs,omitempty"`
 	ProtectedFiles       []string        `json:"protected_files,omitempty"`
 }
@@ -21,6 +23,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		HTTPPort:            9004,
 		SignedURLTTLSeconds: 300,
+		ObsutilTimeoutSecs:  1800,
 		ProtectedFiles:      []string{"obs-agent.json"},
 	}
 }
@@ -39,6 +42,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.SignedURLTTLSeconds <= 0 {
 		cfg.SignedURLTTLSeconds = 300
+	}
+	if cfg.ObsutilTimeoutSecs <= 0 {
+		cfg.ObsutilTimeoutSecs = 1800
 	}
 	return cfg, nil
 }

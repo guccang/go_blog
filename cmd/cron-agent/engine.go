@@ -186,6 +186,26 @@ func (e *CronEngine) ListTasksByOwner(owner string) []*CronTask {
 	return tasks
 }
 
+func (e *CronEngine) FindTasksByOwnerAndName(owner, name string) []*CronTask {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	owner = strings.TrimSpace(owner)
+	name = strings.TrimSpace(name)
+	if owner == "" || name == "" {
+		return nil
+	}
+
+	tasks := make([]*CronTask, 0)
+	for _, t := range e.tasks {
+		e.normalizeTaskOwnership(t)
+		if t.CreatedBy == owner && strings.TrimSpace(t.Name) == name {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks
+}
+
 // TriggerTask 立即触发任务执行一次
 func (e *CronEngine) TriggerTask(id string) error {
 	e.mu.RLock()

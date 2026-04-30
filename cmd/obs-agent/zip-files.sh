@@ -17,7 +17,7 @@ BINNAME="obs-agent${EXT}"
 echo "building obs-agent (${GOOS}/${GOARCH})..."
 go build -o "$BINNAME" .
 
-zip -r "${OUTPUT}" "$BINNAME" obs-agent.json publish.sh test_obs_api.sh
+zip -r "${OUTPUT}" "$BINNAME" obs-agent.json publish.sh test_obs_api.sh obsutil
 rm -f "$BINNAME"
 
 echo "generated ${OUTPUT}"

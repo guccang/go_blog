@@ -26,9 +26,12 @@ type deployCommandOptions struct {
 }
 
 type codingProjectInfo struct {
-	Name    string `json:"name"`
-	AgentID string `json:"agent_id"`
-	Agent   string `json:"agent"`
+	Name               string   `json:"name"`
+	AgentID            string   `json:"agent_id"`
+	Agent              string   `json:"agent"`
+	AvailableTools     []string `json:"available_tools,omitempty"`
+	ClaudeCodeSettings []string `json:"claudecode_settings,omitempty"`
+	DefaultSettings    string   `json:"default_settings,omitempty"`
 }
 
 type deployProjectInfo struct {
@@ -108,9 +111,12 @@ func (a *CMDAGent) listCodingProjects() ([]codingProjectInfo, error) {
 		}
 		for _, project := range a.availableProjectsForAgent(agent) {
 			items = append(items, codingProjectInfo{
-				Name:    project,
-				AgentID: agent.AgentID,
-				Agent:   agent.Name,
+				Name:               project,
+				AgentID:            agent.AgentID,
+				Agent:              agent.Name,
+				AvailableTools:     codingToolsForAgent(agent),
+				ClaudeCodeSettings: stringSliceFromAny(agent.Meta["claudecode_settings"]),
+				DefaultSettings:    stringFromAny(agent.Meta["default_settings"]),
 			})
 		}
 	}
@@ -381,6 +387,7 @@ func (a *CMDAGent) handleCgTools(req commandRequest) error {
 
 	labels := map[string]string{
 		"claudecode": "Claude Code (默认)",
+		"codex":      "Codex",
 		"opencode":   "OpenCode",
 		"acp":        "ACP / Claude Agent",
 	}
@@ -393,7 +400,7 @@ func (a *CMDAGent) handleCgTools(req commandRequest) error {
 		}
 		sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, label))
 	}
-	sb.WriteString("\n用法: cg start <项目> @oc <需求>")
+	sb.WriteString("\n用法: cg start <项目> @codex <需求>")
 	sb.WriteString("\n别名: @oc/@opencode=OpenCode, @cc/@claude=ClaudeCode")
 	return a.sendClientNotify(req.route(), strings.TrimSpace(sb.String()))
 }
@@ -419,8 +426,12 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 
 	model := ""
 	tool := ""
+	settings := ""
 	autoDeploy := false
-	for strings.HasPrefix(rest, "#") || strings.HasPrefix(rest, "@") || strings.HasPrefix(rest, "!") {
+	for strings.HasPrefix(rest, "#") ||
+		strings.HasPrefix(rest, "@") ||
+		strings.HasPrefix(rest, "!") ||
+		strings.HasPrefix(rest, "--settings ") {
 		optParts := strings.SplitN(rest, " ", 2)
 		opt := optParts[0]
 		if strings.HasPrefix(opt, "#") {
@@ -429,6 +440,18 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 			tool = normalizeTool(strings.TrimPrefix(opt, "@"))
 		} else if strings.EqualFold(opt, "!deploy") {
 			autoDeploy = true
+		} else if opt == "--settings" {
+			if len(optParts) < 2 || strings.TrimSpace(optParts[1]) == "" {
+				return a.sendClientNotify(req.route(), "⚠️ --settings 后面必须填写配置名")
+			}
+			settingsParts := strings.SplitN(strings.TrimSpace(optParts[1]), " ", 2)
+			settings = strings.TrimSpace(settingsParts[0])
+			if len(settingsParts) > 1 {
+				rest = strings.TrimSpace(settingsParts[1])
+			} else {
+				rest = ""
+			}
+			continue
 		}
 		if len(optParts) > 1 {
 			rest = strings.TrimSpace(optParts[1])
@@ -440,8 +463,11 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 	if rest == "" {
 		return a.sendClientNotify(req.route(), "⚠️ 请提供编码需求")
 	}
+	if settings != "" && tool != "" && tool != "claudecode" {
+		return a.sendClientNotify(req.route(), "⚠️ 当前只有 Claude Code 支持 --settings")
+	}
 
-	agent, err := a.resolveCodingAgent(project, agentName, false)
+	agent, err := a.resolveCodingAgent(project, agentName, false, tool)
 	if err != nil {
 		return a.sendClientNotify(req.route(), "❌ "+err.Error())
 	}
@@ -457,11 +483,11 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 	}
 	a.setPendingRoute(requestID, route)
 
-	if err := a.sendClientNotify(route, buildStartInfo(project, agentNameOrDefault(agentName, agent.Name), model, tool, autoDeploy, requestID)); err != nil {
+	if err := a.sendClientNotify(route, buildStartInfo(project, agentNameOrDefault(agentName, agent.Name), model, tool, settings, autoDeploy, requestID)); err != nil {
 		return err
 	}
 
-	args, toolName := buildCodingStartCall(agent, a.cfg.AgentID, project, rest, model, tool)
+	args, toolName := buildCodingStartCall(agent, a.cfg.AgentID, project, rest, model, tool, settings)
 	route.Kind = codingBackendKind(toolName)
 	resultCh, err := a.callTool(agent.AgentID, requestID, toolName, args)
 	if err != nil {
@@ -978,7 +1004,7 @@ func (a *CMDAGent) startAutoDeploy(route sessionRoute, result codegenToolResult)
 	a.awaitDeployResult(deployRoute, requestID, resultCh)
 }
 
-func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny bool) (gatewayAgentSnapshot, error) {
+func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny bool, requestedTool string) (gatewayAgentSnapshot, error) {
 	agents, err := a.fetchGatewayAgents()
 	if err != nil {
 		return gatewayAgentSnapshot{}, err
@@ -987,6 +1013,9 @@ func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny b
 	var preferredMatches []gatewayAgentSnapshot
 	for _, agent := range agents {
 		if !supportsCodingAgent(agent) {
+			continue
+		}
+		if requestedTool != "" && !agentSupportsCodingTool(agent, requestedTool) {
 			continue
 		}
 		if preferredAgent != "" {
@@ -1011,7 +1040,13 @@ func (a *CMDAGent) resolveCodingAgent(project, preferredAgent string, allowAny b
 			return gatewayAgentSnapshot{}, fmt.Errorf("未找到在线 coding agent: %s", preferredAgent)
 		}
 		if allowAny {
+			if requestedTool != "" {
+				return gatewayAgentSnapshot{}, fmt.Errorf("当前无支持 %s 的在线 coding agent", requestedTool)
+			}
 			return gatewayAgentSnapshot{}, fmt.Errorf("当前无在线 coding agent")
+		}
+		if requestedTool != "" {
+			return gatewayAgentSnapshot{}, fmt.Errorf("未找到支持 %s 的项目 %s", requestedTool, project)
 		}
 		return gatewayAgentSnapshot{}, fmt.Errorf("未找到项目 %s，可先执行 cg list 或 cg create %s", project, project)
 	}
@@ -1053,13 +1088,20 @@ func (a *CMDAGent) resolveCodegenCreateAgent(project, preferredAgent string) (ga
 	return gatewayAgentSnapshot{}, fmt.Errorf("多个 acp-agent 在线，请用 %s@<agent> 指定，可选: %s", project, strings.Join(uniqueSorted(names), ", "))
 }
 
-func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, prompt, model, tool string) (map[string]any, string) {
+func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, prompt, model, tool, settings string) (map[string]any, string) {
 	if hasTool(agent, "AcpStartSession") && !hasTool(agent, "CodegenStartSession") {
 		args := map[string]any{
 			"project":         project,
 			"prompt":          prompt,
 			"caller_agent_id": callerAgentID,
 			"keep_session":    true,
+		}
+		var extraArgs []string
+		if settings != "" {
+			extraArgs = append(extraArgs, "--settings", settings)
+		}
+		if len(extraArgs) > 0 {
+			args["extra_args"] = extraArgs
 		}
 		return args, "AcpStartSession"
 	}
@@ -1251,7 +1293,7 @@ func (a *CMDAGent) resolvePipelineAgent(pipeline, preferredAgent string) (gatewa
 	return gatewayAgentSnapshot{}, fmt.Errorf("多个 deploy-agent 都有 pipeline %s，请用 %s@<agent> 指定，可选: %s", pipeline, pipeline, strings.Join(uniqueSorted(names), ", "))
 }
 
-func buildStartInfo(project, agentName, model, tool string, autoDeploy bool, requestID string) string {
+func buildStartInfo(project, agentName, model, tool, settings string, autoDeploy bool, requestID string) string {
 	info := fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s", project)
 	if agentName != "" {
 		info += fmt.Sprintf("\nAgent: %s", agentName)
@@ -1259,8 +1301,11 @@ func buildStartInfo(project, agentName, model, tool string, autoDeploy bool, req
 	if model != "" {
 		info += fmt.Sprintf("\n模型: %s", model)
 	}
-	if tool != "" && tool != "claudecode" {
+	if tool != "" {
 		info += fmt.Sprintf("\n工具: %s", tool)
+	}
+	if settings != "" {
+		info += fmt.Sprintf("\nSettings: %s", settings)
 	}
 	if autoDeploy {
 		info += "\n部署: 编码完成后自动部署"

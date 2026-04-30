@@ -53,6 +53,9 @@ func TestNormalizeTool(t *testing.T) {
 	if got := normalizeTool("claude"); got != "claudecode" {
 		t.Fatalf("unexpected tool normalize result: %q", got)
 	}
+	if got := normalizeTool("codex"); got != "codex" {
+		t.Fatalf("unexpected tool normalize result: %q", got)
+	}
 }
 
 func TestSupportsCodingAgentIncludesACP(t *testing.T) {
@@ -122,5 +125,47 @@ func TestFindDeployProjectInfoMatchesAlias(t *testing.T) {
 	}
 	if got.Name != "build-flutter-apk" || !got.BuildOnly {
 		t.Fatalf("unexpected project info: %#v", got)
+	}
+}
+
+func TestBuildCodingStartCallForACPAddsSettings(t *testing.T) {
+	agent := gatewayAgentSnapshot{
+		Tools: []string{"AcpStartSession"},
+		Meta: map[string]any{
+			"coding_backend": "claude_acp",
+		},
+	}
+
+	args, toolName := buildCodingStartCall(
+		agent,
+		"cmd-agent",
+		"demo",
+		"实现登录页",
+		"",
+		"claudecode",
+		"minimax",
+	)
+	if toolName != "AcpStartSession" {
+		t.Fatalf("unexpected tool name: %q", toolName)
+	}
+	extraArgs, ok := args["extra_args"].([]string)
+	if !ok {
+		t.Fatalf("expected []string extra_args, got %#v", args["extra_args"])
+	}
+	if len(extraArgs) != 2 || extraArgs[0] != "--settings" || extraArgs[1] != "minimax" {
+		t.Fatalf("unexpected extra_args: %#v", extraArgs)
+	}
+}
+
+func TestCodingToolsForACPAgentFallsBackToBackend(t *testing.T) {
+	agent := gatewayAgentSnapshot{
+		Tools: []string{"AcpStartSession"},
+		Meta: map[string]any{
+			"coding_backend": "codex_exec",
+		},
+	}
+	tools := codingToolsForAgent(agent)
+	if len(tools) != 1 || tools[0] != "codex" {
+		t.Fatalf("unexpected tools: %#v", tools)
 	}
 }

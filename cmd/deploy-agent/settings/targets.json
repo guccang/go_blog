@@ -1,6 +1,6 @@
 {
     "ssh-prod": {
-        "host": "root@114.115.214.86",
+        "host": "vibecoding@114.115.214.86",
         "platform": "linux",
         "type": "ssh"
     }

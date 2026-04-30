@@ -38,9 +38,12 @@ type codegenProjectsResponse struct {
 }
 
 type codingProjectInfo struct {
-	Name    string `json:"name"`
-	AgentID string `json:"agent_id"`
-	Agent   string `json:"agent"`
+	Name               string   `json:"name"`
+	AgentID            string   `json:"agent_id"`
+	Agent              string   `json:"agent"`
+	AvailableTools     []string `json:"available_tools,omitempty"`
+	ClaudeCodeSettings []string `json:"claudecode_settings,omitempty"`
+	DefaultSettings    string   `json:"default_settings,omitempty"`
 }
 
 type deployProjectInfo struct {

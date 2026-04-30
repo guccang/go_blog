@@ -3,7 +3,6 @@ import 'dart:convert'
     show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -901,6 +900,35 @@ class ScopedHistoryPersistenceCoordinator {
     _epoch++;
     _revisions.clear();
   }
+
+  Future<void> flushScope(String scopeKey) async {
+    final normalizedScopeKey = scopeKey.trim();
+    if (normalizedScopeKey.isEmpty) {
+      return;
+    }
+    schedule(normalizedScopeKey);
+    final tail = _tails[normalizedScopeKey];
+    if (tail == null) {
+      return;
+    }
+    await tail.catchError((_) {});
+  }
+
+  Future<void> flushAll([Iterable<String>? scopeKeys]) async {
+    final normalizedScopeKeys =
+        (scopeKeys ?? <String>[..._revisions.keys, ..._tails.keys])
+            .map((scopeKey) => scopeKey.trim())
+            .where((scopeKey) => scopeKey.isNotEmpty)
+            .toSet()
+            .toList();
+    if (normalizedScopeKeys.isEmpty) {
+      return;
+    }
+    for (final scopeKey in normalizedScopeKeys) {
+      schedule(scopeKey);
+    }
+    await Future.wait(normalizedScopeKeys.map(flushScope), eagerError: false);
+  }
 }
 
 class RecordedAudio {
@@ -943,19 +971,38 @@ class CodingProjectInfo {
     required this.name,
     required this.agentId,
     required this.agent,
+    required this.availableTools,
+    required this.claudeCodeSettings,
+    required this.defaultSettings,
   });
 
   final String name;
   final String agentId;
   final String agent;
+  final List<String> availableTools;
+  final List<String> claudeCodeSettings;
+  final String defaultSettings;
 
   String get qualifiedName => '$name@$agent';
 
   factory CodingProjectInfo.fromJson(Map<String, dynamic> json) {
+    final availableTools =
+        (json['available_tools'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString().trim().toLowerCase())
+            .where((item) => item.isNotEmpty)
+            .toList();
+    final claudeCodeSettings =
+        (json['claudecode_settings'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString().trim())
+            .where((item) => item.isNotEmpty)
+            .toList();
     return CodingProjectInfo(
       name: (json['name'] ?? '').toString().trim(),
       agentId: (json['agent_id'] ?? '').toString().trim(),
       agent: (json['agent'] ?? '').toString().trim(),
+      availableTools: availableTools,
+      claudeCodeSettings: claudeCodeSettings,
+      defaultSettings: (json['default_settings'] ?? '').toString().trim(),
     );
   }
 }
@@ -1064,6 +1111,8 @@ class CodegenHistoryCommandDetails {
     required this.mode,
     required this.projectQualifiedName,
     required this.requestText,
+    required this.tool,
+    required this.claudeSettings,
     required this.target,
     required this.extraArgs,
     required this.autoDeploy,
@@ -1073,6 +1122,8 @@ class CodegenHistoryCommandDetails {
   final CodegenLaunchMode mode;
   final String projectQualifiedName;
   final String requestText;
+  final String tool;
+  final String claudeSettings;
   final String target;
   final String extraArgs;
   final bool autoDeploy;
@@ -1089,6 +1140,8 @@ class CodegenHistoryCommandDetails {
         mode: item.mode,
         projectQualifiedName: '',
         requestText: '',
+        tool: '',
+        claudeSettings: '',
         target: '',
         extraArgs: '',
         autoDeploy: false,
@@ -1099,11 +1152,28 @@ class CodegenHistoryCommandDetails {
     final action = tokens[1];
     if (action == 'start') {
       var autoDeploy = false;
+      var tool = '';
+      var claudeSettings = '';
       final projectQualifiedName = tokens[2];
       var requestStart = 3;
-      if (tokens.length > 3 && tokens[3] == '!deploy') {
-        autoDeploy = true;
-        requestStart = 4;
+      while (requestStart < tokens.length) {
+        final token = tokens[requestStart];
+        if (token == '!deploy') {
+          autoDeploy = true;
+          requestStart++;
+          continue;
+        }
+        if (token.startsWith('@')) {
+          tool = token.substring(1);
+          requestStart++;
+          continue;
+        }
+        if (token == '--settings' && requestStart + 1 < tokens.length) {
+          claudeSettings = tokens[requestStart + 1];
+          requestStart += 2;
+          continue;
+        }
+        break;
       }
       final requestText = requestStart < tokens.length
           ? tokens.sublist(requestStart).join(' ')
@@ -1112,6 +1182,8 @@ class CodegenHistoryCommandDetails {
         mode: CodegenLaunchMode.code,
         projectQualifiedName: projectQualifiedName,
         requestText: requestText,
+        tool: tool,
+        claudeSettings: claudeSettings,
         target: '',
         extraArgs: '',
         autoDeploy: autoDeploy,
@@ -1139,6 +1211,8 @@ class CodegenHistoryCommandDetails {
         mode: CodegenLaunchMode.deploy,
         projectQualifiedName: projectQualifiedName,
         requestText: '',
+        tool: '',
+        claudeSettings: '',
         target: target,
         extraArgs: args.join(' '),
         autoDeploy: false,
@@ -1150,6 +1224,8 @@ class CodegenHistoryCommandDetails {
       mode: item.mode,
       projectQualifiedName: '',
       requestText: '',
+      tool: '',
+      claudeSettings: '',
       target: '',
       extraArgs: '',
       autoDeploy: false,
@@ -1752,13 +1828,17 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
   static const String _lastLoginUserIdKey = 'auth::last_user_id';
   static const String _refreshTokenStorageKey = 'auth::refresh_token';
+  static const String _historyStoragePrefix = 'chat_history::';
+  static const String _historyBackupStoragePrefix = 'chat_history_secure::';
   static const String _lastReadAtStoragePrefix = 'chat_last_read_at';
   static const String _codegenModeKey = 'codegen::last_mode';
   static const String _codeProjectKey = 'codegen::last_code_project';
+  static const String _codeToolKey = 'codegen::last_code_tool';
+  static const String _claudeSettingsKey = 'codegen::last_claude_settings';
   static const String _deployProjectKey = 'codegen::last_deploy_project';
   static const String _deployTargetKey = 'codegen::last_deploy_target';
   static const String _deployArgsKey = 'codegen::last_deploy_args';
@@ -1847,6 +1927,8 @@ class _ChatPageState extends State<ChatPage> {
   String _speechDraft = '';
   String _codegenError = '';
   String _selectedCodeProjectQualifiedName = '';
+  String _selectedCodeTool = '';
+  String _selectedClaudeSettings = '';
   String _selectedDeployProjectQualifiedName = '';
   String _selectedDeployTarget = '';
   DateTime? _recordStartedAt;
@@ -1863,11 +1945,22 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _appendSystem('Loading client config...');
     unawaited(_restoreCodegenPreferences());
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
     unawaited(_restoreVoskDownloadProgress());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushHistoryToDisk());
+    }
   }
 
   Future<void> _restoreVoskDownloadProgress() async {
@@ -1904,6 +1997,8 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_flushHistoryToDisk());
     _reconnectTimer?.cancel();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.close());
@@ -1921,6 +2016,14 @@ class _ChatPageState extends State<ChatPage> {
     unawaited(_audioPlayer.dispose());
     unawaited(_audioRecorder.dispose());
     super.dispose();
+  }
+
+  Future<void> _flushHistoryToDisk() async {
+    try {
+      await _historyPersistence.flushAll(_historyByScope.keys);
+    } catch (err) {
+      debugPrint('Flush history failed: $err');
+    }
   }
 
   Future<void> _initVoice() async {
@@ -2547,7 +2650,7 @@ class _ChatPageState extends State<ChatPage> {
       _autoInstallTriggered.clear();
       _groups.clear();
     }
-    await _loadHistory('direct');
+    await _loadAllHistoryForUser();
     await _refreshGroups();
     await _loadCodegenProjects(silent: true);
     if (successMessage != null && successMessage.trim().isNotEmpty) {
@@ -2729,6 +2832,25 @@ class _ChatPageState extends State<ChatPage> {
     return null;
   }
 
+  List<String> get _selectedCodingProjectTools {
+    final project = _selectedCodingProject;
+    if (project == null) {
+      return const <String>[];
+    }
+    if (project.availableTools.isEmpty) {
+      return const <String>['claudecode'];
+    }
+    return List<String>.from(project.availableTools);
+  }
+
+  List<String> get _selectedClaudeSettingsOptions {
+    final project = _selectedCodingProject;
+    if (project == null) {
+      return const <String>[];
+    }
+    return List<String>.from(project.claudeCodeSettings);
+  }
+
   DeployProjectInfo? get _selectedDeployProject {
     for (final project in _deployProjects) {
       if (project.qualifiedName == _selectedDeployProjectQualifiedName) {
@@ -2869,12 +2991,16 @@ class _ChatPageState extends State<ChatPage> {
       final prefs = await SharedPreferences.getInstance();
       final modeName = prefs.getString(_codegenModeKey)?.trim() ?? '';
       final codeProject = prefs.getString(_codeProjectKey)?.trim() ?? '';
+      final codeTool = prefs.getString(_codeToolKey)?.trim() ?? '';
+      final claudeSettings = prefs.getString(_claudeSettingsKey)?.trim() ?? '';
       final deployProject = prefs.getString(_deployProjectKey)?.trim() ?? '';
       final deployTarget = prefs.getString(_deployTargetKey)?.trim() ?? '';
       final deployArgs = prefs.getString(_deployArgsKey)?.trim() ?? '';
       if (!mounted) {
         _deployArgsController.text = deployArgs;
         _selectedCodeProjectQualifiedName = codeProject;
+        _selectedCodeTool = codeTool;
+        _selectedClaudeSettings = claudeSettings;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
         _codegenMode = modeName == CodegenLaunchMode.deploy.name
@@ -2885,6 +3011,8 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         _deployArgsController.text = deployArgs;
         _selectedCodeProjectQualifiedName = codeProject;
+        _selectedCodeTool = codeTool;
+        _selectedClaudeSettings = claudeSettings;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
         _codegenMode = modeName == CodegenLaunchMode.deploy.name
@@ -2901,6 +3029,8 @@ class _ChatPageState extends State<ChatPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_codegenModeKey, _codegenMode.name);
       await prefs.setString(_codeProjectKey, _selectedCodeProjectQualifiedName);
+      await prefs.setString(_codeToolKey, _selectedCodeTool);
+      await prefs.setString(_claudeSettingsKey, _selectedClaudeSettings);
       await prefs.setString(
         _deployProjectKey,
         _selectedDeployProjectQualifiedName,
@@ -2966,6 +3096,8 @@ class _ChatPageState extends State<ChatPage> {
             )) {
           _selectedCodeProjectQualifiedName = details.projectQualifiedName;
         }
+        _selectedCodeTool = details.tool;
+        _selectedClaudeSettings = details.claudeSettings;
         _codegenAutoDeploy = details.autoDeploy;
         _codegenPromptController.text = details.requestText;
       } else {
@@ -3070,6 +3202,19 @@ class _ChatPageState extends State<ChatPage> {
                     _buildHistoryDetailRow('项目', details.projectQualifiedName),
                     if (details.mode == CodegenLaunchMode.code)
                       _buildHistoryDetailRow(
+                        '工具',
+                        details.tool.isEmpty ? '默认' : details.tool,
+                      ),
+                    if (details.mode == CodegenLaunchMode.code &&
+                        details.tool == 'claudecode')
+                      _buildHistoryDetailRow(
+                        'Settings',
+                        details.claudeSettings.isEmpty
+                            ? '未指定'
+                            : details.claudeSettings,
+                      ),
+                    if (details.mode == CodegenLaunchMode.code)
+                      _buildHistoryDetailRow(
                         '自动发布',
                         details.autoDeploy ? '是' : '否',
                       ),
@@ -3113,7 +3258,11 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildHistoryDetailRow(String label, String value, {bool mono = false}) {
+  Widget _buildHistoryDetailRow(
+    String label,
+    String value, {
+    bool mono = false,
+  }) {
     final palette = _palette;
     final displayValue = value.trim().isEmpty ? '未识别' : value.trim();
     return Padding(
@@ -3157,6 +3306,33 @@ class _ChatPageState extends State<ChatPage> {
     final selectedCoding = _selectedCodingProject;
     if (selectedCoding == null && _codingProjects.isNotEmpty) {
       _selectedCodeProjectQualifiedName = _codingProjects.first.qualifiedName;
+    }
+    final codeTools = _selectedCodingProjectTools;
+    if (codeTools.isEmpty) {
+      _selectedCodeTool = '';
+      _selectedClaudeSettings = '';
+    } else {
+      if (_selectedCodeTool.isEmpty || !codeTools.contains(_selectedCodeTool)) {
+        if (codeTools.contains('claudecode')) {
+          _selectedCodeTool = 'claudecode';
+        } else if (codeTools.contains('codex')) {
+          _selectedCodeTool = 'codex';
+        } else {
+          _selectedCodeTool = codeTools.first;
+        }
+      }
+      final settingsOptions = _selectedClaudeSettingsOptions;
+      if (_selectedCodeTool != 'claudecode' || settingsOptions.isEmpty) {
+        _selectedClaudeSettings = '';
+      } else if (!settingsOptions.contains(_selectedClaudeSettings)) {
+        final defaultSettings = _selectedCodingProject?.defaultSettings ?? '';
+        if (defaultSettings.isNotEmpty &&
+            settingsOptions.contains(defaultSettings)) {
+          _selectedClaudeSettings = defaultSettings;
+        } else {
+          _selectedClaudeSettings = settingsOptions.first;
+        }
+      }
     }
     final selectedDeploy = _selectedDeployProject;
     if (selectedDeploy == null && _deployProjects.isNotEmpty) {
@@ -3261,6 +3437,30 @@ class _ChatPageState extends State<ChatPage> {
     }
     setState(() {
       _selectedCodeProjectQualifiedName = value;
+      _syncCodegenSelections();
+    });
+    unawaited(_persistCodegenPreferences());
+  }
+
+  void _handleCodeToolChanged(String? tool) {
+    final value = tool?.trim().toLowerCase() ?? '';
+    if (value.isEmpty || value == _selectedCodeTool) {
+      return;
+    }
+    setState(() {
+      _selectedCodeTool = value;
+      _syncCodegenSelections();
+    });
+    unawaited(_persistCodegenPreferences());
+  }
+
+  void _handleClaudeSettingsChanged(String? settings) {
+    final value = settings?.trim() ?? '';
+    if (value == _selectedClaudeSettings) {
+      return;
+    }
+    setState(() {
+      _selectedClaudeSettings = value;
     });
     unawaited(_persistCodegenPreferences());
   }
@@ -3300,6 +3500,14 @@ class _ChatPageState extends State<ChatPage> {
       }
       final prompt = _codegenPromptController.text.trim();
       final parts = <String>['/cg', 'start', project.qualifiedName];
+      if (_selectedCodeTool.isNotEmpty) {
+        parts.add('@$_selectedCodeTool');
+      }
+      if (_selectedCodeTool == 'claudecode' &&
+          _selectedClaudeSettings.isNotEmpty) {
+        parts.add('--settings');
+        parts.add(_selectedClaudeSettings);
+      }
       if (_codegenAutoDeploy) {
         parts.add('!deploy');
       }
@@ -3335,6 +3543,16 @@ class _ChatPageState extends State<ChatPage> {
     if (_codegenMode == CodegenLaunchMode.code) {
       if (_selectedCodingProject == null) {
         _appendSystem('请先选择编码项目。');
+        return;
+      }
+      if (_selectedCodeTool.isEmpty) {
+        _appendSystem('请先选择编码工具。');
+        return;
+      }
+      if (_selectedCodeTool == 'claudecode' &&
+          _selectedClaudeSettingsOptions.isNotEmpty &&
+          _selectedClaudeSettings.isEmpty) {
+        _appendSystem('请选择 Claude settings。');
         return;
       }
       if (_codegenPromptController.text.trim().isEmpty) {
@@ -3842,9 +4060,7 @@ class _ChatPageState extends State<ChatPage> {
       }
       Scrollable.ensureVisible(
         anchorContext,
-        duration: animated
-            ? const Duration(milliseconds: 180)
-            : Duration.zero,
+        duration: animated ? const Duration(milliseconds: 180) : Duration.zero,
         curve: Curves.easeOut,
         alignment: 0.06,
       );
@@ -3919,8 +4135,20 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _handleMessageTap(ChatMessage message) async {
     if (message.messageType == 'audio') {
-      final meta = message.meta;
-      final audioPath = (meta?['audio_path'] ?? '').toString().trim();
+      final meta = Map<String, dynamic>.from(message.meta ?? const {});
+      var audioPath = (meta['audio_path'] ?? '').toString().trim();
+      if (audioPath.isEmpty || !await File(audioPath).exists()) {
+        final hydrated = await _hydrateIncomingMediaMeta(
+          messageType: 'audio',
+          meta: meta,
+        );
+        audioPath = (hydrated['audio_path'] ?? '').toString().trim();
+        if (audioPath.isNotEmpty) {
+          await _updateMessageMeta(message, <String, dynamic>{
+            'audio_path': audioPath,
+          });
+        }
+      }
       if (audioPath.isEmpty) {
         _appendSystem('Audio file unavailable for playback.');
         return;
@@ -3996,7 +4224,40 @@ class _ChatPageState extends State<ChatPage> {
   String _groupScopeKey(String groupId) => 'group:${groupId.toLowerCase()}';
 
   String _historyStorageKey(String scopeKey) =>
-      'chat_history::${_userIdController.text.trim()}::$scopeKey';
+      '$_historyStoragePrefix${_userIdController.text.trim()}::$scopeKey';
+
+  String _historyBackupStorageKey(String scopeKey) =>
+      '$_historyBackupStoragePrefix${_userIdController.text.trim()}::$scopeKey';
+
+  String? _extractScopeKey(String key, String userId, String prefix) {
+    final normalizedUserId = userId.trim();
+    final normalizedPrefix = '$prefix$normalizedUserId::';
+    if (!key.startsWith(normalizedPrefix)) {
+      return null;
+    }
+    final scopeKey = key.substring(normalizedPrefix.length).trim();
+    return scopeKey.isEmpty ? null : scopeKey;
+  }
+
+  Future<String> _readPersistedHistoryRaw(
+    SharedPreferences prefs,
+    String scopeKey,
+  ) async {
+    final primary = prefs.getString(_historyStorageKey(scopeKey)) ?? '';
+    if (primary.isNotEmpty) {
+      return primary;
+    }
+    try {
+      return (await _secureStorage.read(
+                key: _historyBackupStorageKey(scopeKey),
+              ) ??
+              '')
+          .trim();
+    } catch (err) {
+      debugPrint('Read history backup failed for $scopeKey: $err');
+      return '';
+    }
+  }
 
   Future<void> _loadHistory(String scopeKey) async {
     final userId = _userIdController.text.trim();
@@ -4004,8 +4265,8 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_historyStorageKey(scopeKey));
-    if (raw == null || raw.isEmpty) {
+    final raw = await _readPersistedHistoryRaw(prefs, scopeKey);
+    if (raw.isEmpty) {
       _historyByScope[scopeKey] = <ChatMessage>[];
       if (mounted) {
         setState(() {});
@@ -4031,6 +4292,45 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _loadAllHistoryForUser() async {
+    final userId = _userIdController.text.trim();
+    if (userId.isEmpty) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final scopeKeys = <String>{'direct'};
+
+    for (final key in prefs.getKeys()) {
+      final scopeKey = _extractScopeKey(key, userId, _historyStoragePrefix);
+      if (scopeKey != null) {
+        scopeKeys.add(scopeKey);
+      }
+    }
+
+    try {
+      final secureEntries = await _secureStorage.readAll();
+      for (final key in secureEntries.keys) {
+        final scopeKey = _extractScopeKey(
+          key,
+          userId,
+          _historyBackupStoragePrefix,
+        );
+        if (scopeKey != null) {
+          scopeKeys.add(scopeKey);
+        }
+      }
+    } catch (err) {
+      debugPrint('Enumerate secure history backup failed: $err');
+    }
+
+    for (final scopeKey in scopeKeys) {
+      await _loadHistory(scopeKey);
+    }
+    if (!_historyByScope.containsKey('direct')) {
+      _historyByScope['direct'] = <ChatMessage>[];
+    }
+  }
+
   Future<void> _persistHistory(String scopeKey) async {
     final userId = _userIdController.text.trim();
     if (userId.isEmpty) {
@@ -4039,7 +4339,16 @@ class _ChatPageState extends State<ChatPage> {
     final prefs = await SharedPreferences.getInstance();
     final history = _historyByScope[scopeKey] ?? const <ChatMessage>[];
     final data = history.map((msg) => msg.toJson()).toList();
-    await prefs.setString(_historyStorageKey(scopeKey), jsonEncode(data));
+    final encoded = jsonEncode(data);
+    await prefs.setString(_historyStorageKey(scopeKey), encoded);
+    try {
+      await _secureStorage.write(
+        key: _historyBackupStorageKey(scopeKey),
+        value: encoded,
+      );
+    } catch (err) {
+      debugPrint('Persist history backup failed for $scopeKey: $err');
+    }
   }
 
   Future<void> _switchToDirectScope() async {
@@ -6995,6 +7304,54 @@ class _ChatPageState extends State<ChatPage> {
                         isDense: true,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedCodeTool.isEmpty
+                          ? null
+                          : _selectedCodeTool,
+                      items: _selectedCodingProjectTools
+                          .map(
+                            (tool) => DropdownMenuItem<String>(
+                              value: tool,
+                              child: Text(switch (tool) {
+                                'codex' => 'codex',
+                                'claudecode' => 'claudecode',
+                                _ => tool,
+                              }),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _selectedCodingProjectTools.isEmpty
+                          ? null
+                          : _handleCodeToolChanged,
+                      decoration: const InputDecoration(
+                        labelText: '编码工具',
+                        isDense: true,
+                      ),
+                    ),
+                    if (_selectedCodeTool == 'claudecode' &&
+                        _selectedClaudeSettingsOptions.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedClaudeSettings.isEmpty
+                            ? null
+                            : _selectedClaudeSettings,
+                        items: _selectedClaudeSettingsOptions
+                            .map(
+                              (settings) => DropdownMenuItem<String>(
+                                value: settings,
+                                child: Text(settings),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _handleClaudeSettingsChanged,
+                        decoration: const InputDecoration(
+                          labelText: 'Claude Settings',
+                          helperText: '配置来自 acp-agent settings/claudecode',
+                          isDense: true,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     TextField(
                       controller: _codegenPromptController,

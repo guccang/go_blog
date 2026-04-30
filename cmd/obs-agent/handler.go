@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,13 +35,19 @@ type ticketVerifier interface {
 }
 
 type Handler struct {
-	cfg    *Config
-	store  signedURLStore
-	signer ticketVerifier
+	cfg      *Config
+	store    signedURLStore
+	signer   ticketVerifier
+	uploader proxyUploader
 }
 
 func NewHandler(cfg *Config, store signedURLStore, signer ticketVerifier) *Handler {
-	return &Handler{cfg: cfg, store: store, signer: signer}
+	return &Handler{
+		cfg:      cfg,
+		store:    store,
+		signer:   signer,
+		uploader: newProxyUploader(cfg),
+	}
 }
 
 func (h *Handler) HandleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -236,24 +246,58 @@ func (h *Handler) HandleProxyUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[obs-agent] proxy-upload request filename=%s size=%d key=%s content_type=%s remote=%s",
 		header.Filename, header.Size, objectKey, contentType, r.RemoteAddr)
-
-	if err := h.store.PutObject(r.Context(), obsstore.PutObjectRequest{
-		Key:         objectKey,
-		Body:        file,
-		Size:        header.Size,
-		ContentType: contentType,
-	}); err != nil {
+	start := time.Now()
+	tempPath, err := writeTempUploadFile(file, header.Filename)
+	if err != nil {
 		log.Printf("[obs-agent] proxy upload failed key=%s err=%v", objectKey, err)
 		http.Error(w, "upload to obs failed", http.StatusBadGateway)
 		return
 	}
+	defer os.Remove(tempPath)
 
-	log.Printf("[obs-agent] proxy-upload ok key=%s size=%d", objectKey, header.Size)
+	if h.uploader == nil {
+		log.Printf("[obs-agent] proxy upload failed key=%s err=%v", objectKey, "obsutil uploader is disabled")
+		http.Error(w, "upload to obs failed", http.StatusBadGateway)
+		return
+	}
+	if err := h.uploader.Upload(r.Context(), proxyUploadRequest{
+		LocalPath:    tempPath,
+		ObjectKey:    objectKey,
+		ContentType:  contentType,
+		OriginalName: header.Filename,
+	}); err != nil {
+		log.Printf("[obs-agent] proxy upload failed key=%s duration_ms=%d err=%v", objectKey, time.Since(start).Milliseconds(), err)
+		http.Error(w, "upload to obs failed", http.StatusBadGateway)
+		return
+	}
+
+	log.Printf("[obs-agent] proxy-upload ok key=%s size=%d duration_ms=%d", objectKey, header.Size, time.Since(start).Milliseconds())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
 		"object_key": objectKey,
 		"size":       header.Size,
 	})
+}
+
+func writeTempUploadFile(src multipart.File, fileName string) (string, error) {
+	if src == nil {
+		return "", fmt.Errorf("file stream is required")
+	}
+	pattern := "obs-agent-upload-*"
+	if ext := strings.TrimSpace(filepath.Ext(fileName)); ext != "" {
+		pattern += ext
+	}
+	tempFile, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", fmt.Errorf("create temp upload file: %w", err)
+	}
+	defer tempFile.Close()
+
+	if _, err := io.Copy(tempFile, src); err != nil {
+		_ = os.Remove(tempFile.Name())
+		return "", fmt.Errorf("copy upload temp file: %w", err)
+	}
+	return tempFile.Name(), nil
 }
 
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {

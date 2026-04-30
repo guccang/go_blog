@@ -1,6 +1,7 @@
 #!/bin/bash
 # cmd-agent 发布脚本
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "停止 cmd-agent..."
 
@@ -11,19 +12,20 @@ if [ -f cmd-agent.pid ]; then
     rm -f cmd-agent.pid
 fi
 pkill -f '\./cmd-agent' 2>/dev/null || true
+pkill -f "$SCRIPT_DIR/cmd-agent" 2>/dev/null || true
 sleep 1
 
-chmod +x cmd-agent
+chmod +x "$SCRIPT_DIR/cmd-agent"
 
 echo "启动 cmd-agent..."
-nohup ./cmd-agent -config cmd-agent.json > cmd-agent.log 2>&1 < /dev/null &
+nohup "$SCRIPT_DIR/cmd-agent" -config "$SCRIPT_DIR/cmd-agent.json" > "$SCRIPT_DIR/cmd-agent.log" 2>&1 < /dev/null &
 disown
 
 sleep 1
-if pgrep -f '\./cmd-agent' > /dev/null; then
-    echo "cmd-agent 启动成功 (PID: $(pgrep -f '\./cmd-agent'))"
+if pgrep -f "$SCRIPT_DIR/cmd-agent" > /dev/null; then
+    echo "cmd-agent 启动成功 (PID: $(pgrep -f "$SCRIPT_DIR/cmd-agent"))"
 else
     echo "cmd-agent 启动失败，查看日志:"
-    tail -20 cmd-agent.log
+    tail -20 "$SCRIPT_DIR/cmd-agent.log"
     exit 1
 fi

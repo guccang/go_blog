@@ -104,6 +104,86 @@ func TestLoadConfigSupportsProjectAliases(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMergesTargetsFromGlobalTargetsJSON(t *testing.T) {
+	projectDir := t.TempDir()
+	settingsDir := filepath.Join(t.TempDir(), "settings")
+	projectsDir := filepath.Join(settingsDir, "projects")
+	if err := os.MkdirAll(projectsDir, 0755); err != nil {
+		t.Fatalf("MkdirAll projectsDir failed: %v", err)
+	}
+
+	targetsJSON := mustJSONString(map[string]any{
+		"ssh-prod": map[string]any{
+			"host":     "deploy@example.com",
+			"platform": "linux",
+			"type":     "ssh",
+			"ssh_port": 2222,
+		},
+	})
+	if err := os.WriteFile(filepath.Join(settingsDir, "targets.json"), []byte(targetsJSON), 0644); err != nil {
+		t.Fatalf("WriteFile targets.json failed: %v", err)
+	}
+
+	projectJSON := mustJSONString(map[string]any{
+		"build": map[string]any{
+			platformSubdir(): map[string]any{
+				"project_dir": projectDir,
+			},
+		},
+		"targets": map[string]any{
+			"ssh-prod": map[string]any{
+				"remote_dir":    "/srv/demo",
+				"remote_script": "publish.sh",
+			},
+		},
+	})
+	if err := os.WriteFile(filepath.Join(projectsDir, "demo.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("WriteFile project json failed: %v", err)
+	}
+
+	configPath := filepath.Join(t.TempDir(), "deploy-agent.json")
+	configJSON := mustJSONString(map[string]any{
+		"settings_dir": settingsDir,
+		"workspaces":   []string{},
+	})
+	if err := os.WriteFile(configPath, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("WriteFile config failed: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath, "all")
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+
+	proj := cfg.GetProject("demo")
+	if proj == nil {
+		t.Fatalf("expected demo project to be loaded")
+	}
+	if len(proj.Targets) != 1 {
+		t.Fatalf("expected 1 target, got %d", len(proj.Targets))
+	}
+
+	target := proj.Targets[0]
+	if target.Name != "ssh-prod" {
+		t.Fatalf("expected ssh-prod target, got %q", target.Name)
+	}
+	if target.Host != "deploy@example.com" {
+		t.Fatalf("expected host from targets.json, got %q", target.Host)
+	}
+	if target.Platform != "linux" {
+		t.Fatalf("expected platform from targets.json, got %q", target.Platform)
+	}
+	if target.Port != 2222 {
+		t.Fatalf("expected ssh_port from targets.json, got %d", target.Port)
+	}
+	if target.RemoteDir != "/srv/demo" {
+		t.Fatalf("expected remote_dir from project json, got %q", target.RemoteDir)
+	}
+	if target.RemoteScript != "publish.sh" {
+		t.Fatalf("expected remote_script from project json, got %q", target.RemoteScript)
+	}
+}
+
 func TestBuildProjectMetaNamesIncludesAliases(t *testing.T) {
 	cfg := &DeployConfig{
 		Projects: map[string]*ProjectConfig{

@@ -577,6 +577,47 @@ func codingToolsFromMeta(meta map[string]any) []string {
 	return uniqueSorted(stringSliceFromAny(meta["coding_tools"]))
 }
 
+func codingToolsForAgent(agent gatewayAgentSnapshot) []string {
+	tools := codingToolsFromMeta(agent.Meta)
+	if len(tools) > 0 {
+		return tools
+	}
+	if hasTool(agent, "AcpStartSession") {
+		switch strings.TrimSpace(fmt.Sprintf("%v", agent.Meta["coding_backend"])) {
+		case "codex_exec":
+			return []string{"codex"}
+		default:
+			return []string{"claudecode"}
+		}
+	}
+	return nil
+}
+
+func agentSupportsCodingTool(agent gatewayAgentSnapshot, tool string) bool {
+	tool = normalizeTool(tool)
+	if tool == "" {
+		return true
+	}
+	for _, item := range codingToolsForAgent(agent) {
+		if normalizeTool(item) == tool {
+			return true
+		}
+	}
+	return false
+}
+
+func stringFromAny(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
+}
+
 func stringSliceFromAny(v any) []string {
 	switch val := v.(type) {
 	case []string:

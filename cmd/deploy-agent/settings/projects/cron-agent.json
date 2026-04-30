@@ -28,8 +28,6 @@
             "remote_script": "publish.bat"
         },
         "ssh-prod": {
-            "host": "root@114.115.214.86",
-            "platform": "linux",
             "remote_dir": "/data/program/go/go_blog/cmd/cron-agent",
             "remote_script": "publish.sh"
         }

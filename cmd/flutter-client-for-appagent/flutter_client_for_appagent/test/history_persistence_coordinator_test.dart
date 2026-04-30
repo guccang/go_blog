@@ -63,5 +63,33 @@ void main() {
         expect(persistedScopes, <String>['direct', 'direct']);
       },
     );
+
+    test(
+      'flushAll waits for latest queued write after in-flight work completes',
+      () async {
+        final persistedScopes = <String>[];
+        final gate = Completer<void>();
+
+        late final ScopedHistoryPersistenceCoordinator coordinator;
+        coordinator = ScopedHistoryPersistenceCoordinator((scopeKey) async {
+          if (scopeKey == 'direct' && !gate.isCompleted) {
+            await gate.future;
+          }
+          persistedScopes.add(scopeKey);
+        });
+
+        coordinator.schedule('direct');
+        await Future<void>.delayed(Duration.zero);
+
+        final flushFuture = coordinator.flushAll();
+        await Future<void>.delayed(Duration.zero);
+        expect(persistedScopes, isEmpty);
+
+        gate.complete();
+        await flushFuture;
+
+        expect(persistedScopes, <String>['direct', 'direct']);
+      },
+    );
   });
 }

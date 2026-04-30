@@ -34,6 +34,13 @@ type BlogManager struct {
 
 var blogManager *BlogManager
 
+const publicStateBlogTitle = "sys_blog_public_state"
+
+type publicStateBlogData struct {
+	UpdatedAt   string   `json:"updated_at"`
+	PublicBlogs []string `json:"public_blogs"`
+}
+
 func Info() {
 	log.InfoF(log.ModuleBlog, "info blog v4.0 (simple)")
 }
@@ -70,6 +77,8 @@ func getBlogStore(account string) *BlogStore {
 			store.blogs[b.Title] = b
 		}
 	}
+	restorePublicStateFromSystemBlog(store.blogs)
+	syncPublicStateSystemBlog(account, store.blogs)
 	log.DebugF(log.ModuleBlog, "BlogStore loaded account=%s, count=%d", account, len(store.blogs))
 
 	blogManager.stores[account] = store
@@ -161,6 +170,8 @@ func ImportBlogsFromPathWithAccount(account, dir string) {
 			}
 		}
 	}
+	restorePublicStateFromSystemBlog(store.blogs)
+	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlogs(account, store.blogs)
 }
 
@@ -206,6 +217,7 @@ func AddBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 
 	log.DebugF(log.ModuleBlog, "add blog %s", title)
 	store.blogs[title] = b
+	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlog(account, b)
 	return 0
 }
@@ -236,6 +248,7 @@ func ModifyBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 		b.Account = udb.Account
 	}
 
+	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlog(account, b)
 	return 0
 }
@@ -249,13 +262,14 @@ func DeleteBlogWithAccount(account, title string) int {
 	if _, ok := store.blogs[title]; !ok {
 		return 1
 	}
-	if config.IsSysFile(title) == 1 {
+	if title == publicStateBlogTitle || config.IsSysFile(title) == 1 {
 		return 2
 	}
 	if db.DeleteBlogWithAccount(account, title) == 1 {
 		return 3
 	}
 	delete(store.blogs, title)
+	syncPublicStateSystemBlog(account, store.blogs)
 	return 0
 }
 
@@ -444,6 +458,7 @@ func SetSameAuthWithAccount(account, blogname string) {
 			db.SaveBlog(account, b)
 		}
 	}
+	syncPublicStateSystemBlog(account, store.blogs)
 }
 
 // getURLBlogNames 获取博客内链接的博客名
@@ -469,6 +484,7 @@ func AddAuthTypeWithAccount(account, blogname string, flag int) {
 
 	if b, ok := store.blogs[blogname]; ok {
 		b.AuthType |= flag
+		syncPublicStateSystemBlog(account, store.blogs)
 		db.SaveBlog(account, b)
 	}
 }
@@ -484,8 +500,84 @@ func DelAuthTypeWithAccount(account, blogname string, flag int) {
 		if b.AuthType == 0 {
 			b.AuthType = module.EAuthType_private
 		}
+		syncPublicStateSystemBlog(account, store.blogs)
 		db.SaveBlog(account, b)
 	}
+}
+
+func collectPublicBlogTitles(blogs map[string]*module.Blog) []string {
+	publicBlogs := make([]string, 0)
+	for title, b := range blogs {
+		if title == publicStateBlogTitle || b == nil {
+			continue
+		}
+		if (b.AuthType & module.EAuthType_public) != 0 {
+			publicBlogs = append(publicBlogs, title)
+		}
+	}
+	sort.Strings(publicBlogs)
+	return publicBlogs
+}
+
+func applyPublicBlogTitles(blogs map[string]*module.Blog, publicBlogs []string) {
+	for _, title := range publicBlogs {
+		if b, ok := blogs[title]; ok && b != nil {
+			b.AuthType |= module.EAuthType_public
+		}
+	}
+}
+
+func restorePublicStateFromSystemBlog(blogs map[string]*module.Blog) {
+	stateBlog, ok := blogs[publicStateBlogTitle]
+	if !ok || stateBlog == nil || stateBlog.Content == "" {
+		return
+	}
+
+	var data publicStateBlogData
+	if err := json.Unmarshal([]byte(stateBlog.Content), &data); err != nil {
+		log.ErrorF(log.ModuleBlog, "parse %s failed err=%v", publicStateBlogTitle, err)
+		return
+	}
+	applyPublicBlogTitles(blogs, data.PublicBlogs)
+}
+
+func syncPublicStateSystemBlog(account string, blogs map[string]*module.Blog) {
+	now := strTime()
+	data := publicStateBlogData{
+		UpdatedAt:   now,
+		PublicBlogs: collectPublicBlogTitles(blogs),
+	}
+
+	content, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.ErrorF(log.ModuleBlog, "marshal %s failed err=%v", publicStateBlogTitle, err)
+		return
+	}
+
+	stateBlog, ok := blogs[publicStateBlogTitle]
+	if !ok || stateBlog == nil {
+		stateBlog = &module.Blog{
+			Title:      publicStateBlogTitle,
+			CreateTime: now,
+			AccessTime: now,
+			Account:    account,
+		}
+		blogs[publicStateBlogTitle] = stateBlog
+	}
+
+	stateBlog.Content = string(content)
+	stateBlog.ModifyTime = now
+	stateBlog.AccessTime = now
+	stateBlog.AuthType = module.EAuthType_private
+	stateBlog.Tags = "sys,public-state"
+	stateBlog.Encrypt = 0
+	stateBlog.Account = account
+	stateBlog.ModifyNum++
+	if stateBlog.CreateTime == "" {
+		stateBlog.CreateTime = now
+	}
+
+	db.SaveBlog(account, stateBlog)
 }
 
 // GetURLBlogNamesWithAccount 获取博客内链接的博客名
