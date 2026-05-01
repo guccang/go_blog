@@ -47,6 +47,11 @@
             "build_platform": "linux"
         },
        {
+            "project": "cortana-agent",
+            "target": "ssh-prod",
+            "build_platform": "linux"
+        },
+        {
             "project": "cmd-agent",
             "target": "ssh-prod",
             "build_platform": "linux"
@@ -55,6 +60,11 @@
             "project": "gateway",
             "target": "ssh-prod",
             "build_platform": "linux"
+        },
+        {
+            "project": "deploy-agent",
+            "target": "local",
+            "build_platform": "macos"
         }
     ]
 }

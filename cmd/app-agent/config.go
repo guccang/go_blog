@@ -41,9 +41,10 @@ type Config struct {
 	DownloadTicketTTLSeconds int              `json:"download_ticket_ttl_seconds,omitempty"`
 	OBS                      OBSStorageConfig `json:"obs,omitempty"`
 
-	LLMAgentID     string `json:"llm_agent_id"`
-	CmdAgentID     string `json:"cmd_agent_id,omitempty"`
-	BackendAgentID string `json:"backend_agent_id"`
+	LLMAgentID      string `json:"llm_agent_id"`
+	CmdAgentID      string `json:"cmd_agent_id,omitempty"`
+	BackendAgentID  string `json:"backend_agent_id"`
+	CortanaAgentID  string `json:"cortana_agent_id,omitempty"`
 
 	ProtectedFiles []string `json:"protected_files,omitempty"`
 

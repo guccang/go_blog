@@ -409,6 +409,19 @@ func main() {
 		agentID := fmt.Sprintf("deploy_%s_%d", cfg.AgentName, os.Getpid())
 		conn := NewConnection(cfg, pwd, agentID)
 
+		// 启动 settings 目录热加载监控
+		if cfg.SettingsDir != "" {
+			settingsDir := cfg.SettingsDir
+			if !filepath.IsAbs(settingsDir) {
+				settingsDir = filepath.Join(filepath.Dir(*configPath), settingsDir)
+			}
+			watcher := NewConfigWatcher(settingsDir, func() error {
+				return conn.ReloadConfig()
+			})
+			go watcher.Start()
+			log.Printf("[INFO] config watcher started, monitoring: %s", settingsDir)
+		}
+
 		// 启动环境检测（异步，不阻塞 agent 启动）
 		if envCfg != nil && len(envCfg.Requirements) > 0 {
 			gatewayHTTP := envCfg.GatewayHTTP

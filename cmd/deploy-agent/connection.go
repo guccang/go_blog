@@ -18,6 +18,7 @@ type Connection struct {
 	*agentbase.AgentBase // 组合基类
 
 	cfg         *DeployConfig
+	cfgMu       sync.Mutex // 保护 cfg 重载时的并发安全
 	password    string
 	activeTasks map[string]bool
 	taskRecords map[string]*deployTaskRecord
@@ -877,6 +878,11 @@ func buildDeployToolDefs(cfg *DeployConfig, ftk *agentbase.FileToolKit) []uap.To
 				"required": []string{"pipeline"},
 			}),
 		},
+		{
+			Name:        "DeployReloadConfig",
+			Description: "重新加载 settings 配置目录中的所有项目、目标和 pipeline 配置，无需重启 deploy-agent 进程。适用于通过配置文件增删改项目或调整部署目标后热生效。",
+			Parameters:  mustMarshalJSON(map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}),
+		},
 	}
 	// 追加 DeployExecEnvBash（供 env-agent 远程执行环境检测命令）
 	for _, td := range ftk.ToolDefs() {
@@ -954,6 +960,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListPipelines()
 	case "DeployPipeline":
 		result = c.toolDeployPipeline(args, sendAsyncProgress)
+	case "DeployReloadConfig":
+		result = c.toolReloadConfig()
 	default:
 		if result, handled := c.fileToolKit.HandleTool(payload.ToolName, args); handled {
 			c.Client.SendTo(msg.From, uap.MsgToolResult, uap.ToolResultPayload{
@@ -1040,7 +1048,9 @@ func (c *Connection) toolDeployProject(args map[string]interface{}, sendProgress
 		if reloadErr != nil {
 			return fmt.Sprintf(`{"success":false,"error":"重新加载配置失败: %s"}`, reloadErr.Error())
 		}
+		c.cfgMu.Lock()
 		c.cfg = newCfg
+		c.cfgMu.Unlock()
 		proj = c.cfg.GetProject(projectName)
 		if proj == nil {
 			return fmt.Sprintf(`{"success":false,"error":"初始化完成但未找到项目 %q，请检查项目目录"}`, projectName)
@@ -1201,6 +1211,89 @@ func (c *Connection) toolDeployPipeline(args map[string]interface{}, sendProgres
 	}
 	sendProgress(task.SessionID, fmt.Sprintf("🕒 任务已接受 session_id=%s", task.SessionID))
 	return buildAcceptedTaskResult(rec)
+}
+
+func (c *Connection) toolReloadConfig() string {
+	oldProjectCount := len(c.cfg.Projects)
+	oldTargetCount := len(c.cfg.TargetNames)
+	oldPipelineCount := 0
+	if c.cfg.PipelinesDir != "" {
+		if pipCfg, err := LoadPipelines(c.cfg.PipelinesDir); err == nil {
+			oldPipelineCount = len(pipCfg.Pipelines)
+		}
+	}
+
+	if err := c.ReloadConfig(); err != nil {
+		return buildToolErrorJSON(fmt.Errorf("配置重载失败: %s", err.Error()))
+	}
+
+	result := map[string]interface{}{
+		"success":     true,
+		"projects":    len(c.cfg.Projects),
+		"targets":     len(c.cfg.TargetNames),
+		"ssh_hosts":   c.cfg.SSHHosts,
+	}
+	if c.cfg.PipelinesDir != "" {
+		if pipCfg, err := LoadPipelines(c.cfg.PipelinesDir); err == nil {
+			result["pipelines"] = len(pipCfg.Pipelines)
+		}
+	}
+
+	summary := fmt.Sprintf("配置已重载: 项目 %d→%d, 目标 %d→%d",
+		oldProjectCount, len(c.cfg.Projects),
+		oldTargetCount, len(c.cfg.TargetNames))
+	if c.cfg.PipelinesDir != "" {
+		if pipCfg, err := LoadPipelines(c.cfg.PipelinesDir); err == nil {
+			if cnt := len(pipCfg.Pipelines); oldPipelineCount != cnt {
+				summary += fmt.Sprintf(", pipeline %d→%d", oldPipelineCount, cnt)
+			}
+		}
+	}
+
+	tr := uap.BuildToolResult("", result, summary)
+	return tr.Result
+}
+
+// ReloadConfig 重新加载 settings 配置（projects、targets、pipelines），
+// 并同步更新 Agent 的工具定义和元数据，无需重启进程。
+func (c *Connection) ReloadConfig() error {
+	if c.cfg.ConfigPath == "" {
+		return fmt.Errorf("config path not set, cannot reload")
+	}
+
+	newCfg, err := LoadConfigForDaemon(c.cfg.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	// 重建工具定义（反映新的 SSH hosts / targets / pipelines）
+	newTools := buildDeployToolDefs(newCfg, c.fileToolKit)
+
+	// 原子更新 cfg 和 AgentBase 的对外元数据
+	c.cfgMu.Lock()
+	c.cfg = newCfg
+	c.cfgMu.Unlock()
+
+	c.Client.Tools = newTools
+	c.Client.Meta = map[string]any{
+		"projects":        buildProjectMetaNames(newCfg),
+		"project_aliases": buildProjectAliasMeta(newCfg),
+		"ssh_hosts":       newCfg.SSHHosts,
+		"deploy_targets":  newCfg.TargetNames,
+		"host_platform":   newCfg.HostPlatform,
+		"target_hosts":    buildTargetHostMap(newCfg),
+		"pipelines":       scanPipelineNames(newCfg),
+	}
+
+	// 更新 Capacity（MaxConcurrent 可能已变更）
+	if newCfg.MaxConcurrent > 0 {
+		c.Client.Capacity = newCfg.MaxConcurrent
+	}
+
+	log.Printf("[ReloadConfig] config reloaded: projects=%d targets=%d ssh_hosts=%v pipelines=%v max_concurrent=%d",
+		len(newCfg.Projects), len(newCfg.TargetNames), newCfg.SSHHosts, scanPipelineNames(newCfg), newCfg.MaxConcurrent)
+
+	return nil
 }
 
 // mustMarshalJSON 将值序列化为 JSON，失败时返回空对象

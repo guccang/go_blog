@@ -84,6 +84,9 @@ class CortanaPage extends StatefulWidget {
     this.onTapWhenFloating,
     this.onModeChanged,
     this.contextualExpression,
+    this.showBadge = false,
+    this.autoCollapseDelay = const Duration(seconds: 8),
+    this.onBroadcast,
   });
 
   final CortanaDisplayMode mode;
@@ -92,12 +95,15 @@ class CortanaPage extends StatefulWidget {
   final VoidCallback? onTapWhenFloating;
   final ValueChanged<CortanaDisplayMode>? onModeChanged;
   final String? contextualExpression;
+  final bool showBadge;
+  final Duration autoCollapseDelay;
+  final void Function(CortanaReplyPayload payload)? onBroadcast;
 
   @override
-  State<CortanaPage> createState() => _CortanaPageState();
+  State<CortanaPage> createState() => CortanaPageState();
 }
 
-class _CortanaPageState extends State<CortanaPage> {
+class CortanaPageState extends State<CortanaPage> {
   static const _jsLogHandlerName = 'cortanaLog';
   static const _cortanaHtmlAsset = 'assets/cortana/index.html';
   static const _cortanaLocalPath = 'index.html';
@@ -107,6 +113,7 @@ class _CortanaPageState extends State<CortanaPage> {
   final AudioPlayer _audio = AudioPlayer();
   Timer? _lipTimer;
   Timer? _debugStateTimer;
+  Timer? _broadcastAutoCollapseTimer;
   StreamSubscription<Duration>? _audioPositionSub;
   final List<Timer> _motionTimers = <Timer>[];
   bool _speaking = false;
@@ -126,6 +133,7 @@ class _CortanaPageState extends State<CortanaPage> {
   Map<String, dynamic>? _live2dDebugState;
   final List<String> _logEntries = <String>[];
   Offset? _floatingOffset;
+  bool _isDragging = false;
   String? _lastContextualExpression;
 
   static const int _maxLogEntries = 80;
@@ -211,6 +219,7 @@ class _CortanaPageState extends State<CortanaPage> {
   void dispose() {
     _resetPlaybackEffects();
     _debugStateTimer?.cancel();
+    _broadcastAutoCollapseTimer?.cancel();
     _audio.dispose();
     _textCtrl.dispose();
     final localhostServer = _localhostServer;
@@ -930,6 +939,47 @@ class _CortanaPageState extends State<CortanaPage> {
     }
   }
 
+  /// 播放服务器推送的播报（无需用户输入，自动播放）
+  Future<void> playBroadcast(CortanaReplyPayload payload, {VoidCallback? onFinished}) async {
+    if (_speaking) {
+      return;
+    }
+
+    setState(() => _speaking = true);
+    _broadcastAutoCollapseTimer?.cancel();
+
+    try {
+      debugPrint('[Cortana Broadcast] Playing: ${payload.text}');
+      _appendLog('播报: ${payload.text}');
+      await _playReplyAudio(payload);
+      onFinished?.call();
+    } catch (e, stackTrace) {
+      debugPrint('[Cortana Broadcast Error] $e');
+      debugPrint('$stackTrace');
+      _appendLog('播报失败: $e');
+      _resetPlaybackEffects();
+      await _callJS('window.stopLipSync()');
+      await _callJS('window.endSpeechFocus()');
+    } finally {
+      if (mounted) {
+        setState(() => _speaking = false);
+        // 播报完成后自动折叠
+        _startAutoCollapseTimer();
+      }
+    }
+  }
+
+  void _startAutoCollapseTimer() {
+    _broadcastAutoCollapseTimer?.cancel();
+    _broadcastAutoCollapseTimer = Timer(widget.autoCollapseDelay, () {
+      if (!mounted) return;
+      if (widget.mode != CortanaDisplayMode.fullscreen &&
+          widget.mode != CortanaDisplayMode.collapsed) {
+        widget.onModeChanged?.call(CortanaDisplayMode.collapsed);
+      }
+    });
+  }
+
   Future<void> _speak(String text) async {
     if (_speaking) {
       return;
@@ -1646,25 +1696,43 @@ class _CortanaPageState extends State<CortanaPage> {
 
   Widget _buildCollapsedAvatar(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.primaryContainer,
-            cs.tertiaryContainer,
-          ],
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                cs.primaryContainer,
+                cs.tertiaryContainer,
+              ],
+            ),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.face_rounded,
+              size: 28,
+              color: cs.onPrimaryContainer,
+            ),
+          ),
         ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.face_rounded,
-          size: 28,
-          color: cs.onPrimaryContainer,
-        ),
-      ),
+        if (widget.showBadge)
+          Positioned(
+            right: 2,
+            top: 2,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cs.error,
+                border: Border.all(color: cs.surface, width: 2),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1700,7 +1768,7 @@ class _CortanaPageState extends State<CortanaPage> {
       children: [
         // WebView - always in AnimatedPositioned, transitions smoothly
         AnimatedPositioned(
-          duration: const Duration(milliseconds: 350),
+          duration: _isDragging ? Duration.zero : const Duration(milliseconds: 350),
           curve: Curves.easeInOut,
           left: isFullscreen ? 0.0 : clampedOffset.dx,
           top: isFullscreen ? 0.0 : clampedOffset.dy,
@@ -1720,7 +1788,11 @@ class _CortanaPageState extends State<CortanaPage> {
                 : () {
                     widget.onTapWhenFloating?.call();
                   },
-            onPanStart: isFullscreen ? null : (_) {},
+            onPanStart: isFullscreen
+                ? null
+                : (_) {
+                    _isDragging = true;
+                  },
             onPanUpdate: isFullscreen
                 ? null
                 : (details) {
@@ -1736,9 +1808,18 @@ class _CortanaPageState extends State<CortanaPage> {
                 ? null
                 : (_) {
                     if (!mounted) return;
+                    _isDragging = false;
                     setState(() {
-                      _floatingOffset = _defaultFloatingPosition(
-                        _floatingSizeForMode(widget.mode),
+                      // Snap to nearest horizontal edge, keep vertical position
+                      final size = _floatingSizeForMode(widget.mode);
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final currentOffset =
+                          _floatingOffset ?? _defaultFloatingPosition(size);
+                      final centerX = currentOffset.dx + size.width / 2;
+                      final snapLeft = centerX < screenWidth / 2;
+                      _floatingOffset = Offset(
+                        snapLeft ? 12.0 : screenWidth - size.width - 12.0,
+                        currentOffset.dy,
                       );
                     });
                   },

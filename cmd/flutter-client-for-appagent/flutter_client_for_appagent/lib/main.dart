@@ -18,7 +18,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
-import 'cortana_page.dart' show CortanaDisplayMode, CortanaPage, CortanaReplayItem, CortanaReplyPayload;
+import 'cortana_page.dart' show CortanaDisplayMode, CortanaPage, CortanaPageState, CortanaReplayItem, CortanaReplyPayload;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
@@ -1687,6 +1687,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<bool>? _sessionRefreshFuture;
   RootTab _rootTab = RootTab.chat;
   CortanaDisplayMode _cortanaFloatingMode = CortanaDisplayMode.collapsed;
+  final GlobalKey<CortanaPageState> _cortanaPageKey = GlobalKey<CortanaPageState>();
+  bool _cortanaBadge = false;
+  CortanaReplyPayload? _pendingCortanaBroadcast;
   String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
 
@@ -2817,9 +2820,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     setState(() {
       _codegenHistory.insert(0, item);
-      // 只保留最近50条记录
-      if (_codegenHistory.length > 50) {
-        _codegenHistory = _codegenHistory.sublist(0, 50);
+      // 只保留最近100条记录
+      if (_codegenHistory.length > 100) {
+        _codegenHistory = _codegenHistory.sublist(0, 100);
       }
     });
     unawaited(_persistCodegenPreferences());
@@ -3483,6 +3486,56 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     }
     return replayItems;
+  }
+
+  void _handleCortanaBroadcast(dynamic envelope, Map<String, dynamic> meta) {
+    final broadcastText = (meta['cortana_text'] ?? envelope.content ?? '').toString().trim();
+    if (broadcastText.isEmpty) return;
+
+    final expression = (meta['cortana_expression'] ?? 'happy').toString().trim();
+    final motion = (meta['cortana_motion'] ?? 'IdleWave').toString().trim();
+
+    debugPrint('[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion');
+
+    final payload = CortanaReplyPayload(
+      text: broadcastText,
+      actionPlan: <String, dynamic>{
+        'expression': expression,
+        'motion': motion,
+        'actions': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'motion': motion,
+            'delay': 0,
+          },
+        ],
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _pendingCortanaBroadcast = payload;
+      _cortanaBadge = true;
+      // 从折叠模式展开
+      if (_cortanaFloatingMode == CortanaDisplayMode.collapsed) {
+        _cortanaFloatingMode = CortanaDisplayMode.small;
+      }
+    });
+
+    // 在下一帧调用 playBroadcast
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final broadcast = _pendingCortanaBroadcast;
+      if (broadcast == null) return;
+      _pendingCortanaBroadcast = null;
+      _cortanaPageKey.currentState?.playBroadcast(broadcast, onFinished: () {
+        if (mounted) {
+          setState(() {
+            _cortanaBadge = false;
+          });
+        }
+      });
+    });
   }
 
   Future<CortanaReplyPayload> _sendCortanaMessage(String message) async {
@@ -4525,6 +4578,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         meta: meta,
         isGroupMessage: isGroupMessage,
       )) {
+        return;
+      }
+
+      // 检测 Cortana 播报消息
+      final origin = (meta['origin'] ?? '').toString();
+      if (envelope.messageType == 'cortana_broadcast' || origin == 'cortana-agent') {
+        _handleCortanaBroadcast(envelope, meta);
         return;
       }
 
@@ -7158,10 +7218,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Widget _buildCortanaLayer() {
     final isFullscreen = _rootTab == RootTab.cortana;
     return CortanaPage(
+      key: _cortanaPageKey,
       mode: isFullscreen ? CortanaDisplayMode.fullscreen : _cortanaFloatingMode,
       onSendMessage: _sendCortanaMessage,
       externalVoiceHistory: _buildCortanaReplayHistory(),
       contextualExpression: _cortanaContextualExpression,
+      showBadge: _cortanaBadge,
+      autoCollapseDelay: const Duration(seconds: 8),
       onTapWhenFloating: () {
         setState(() {
           _rootTab = RootTab.cortana;
@@ -7171,6 +7234,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       onModeChanged: (mode) {
         setState(() {
           _cortanaFloatingMode = mode;
+          if (mode == CortanaDisplayMode.collapsed) {
+            _cortanaBadge = false;
+          }
         });
       },
     );

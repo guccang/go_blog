@@ -905,6 +905,10 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 		log.Printf("[Bridge] notify payload from=%s channel=%s to=%s len=%d content=%q",
 			msg.From, payload.Channel, payload.To, len(payload.Content), shortText(payload.Content))
 		if payload.Channel == "app" && payload.To != "" {
+			// 检查是否是 cortana-agent 的播报消息
+			if b.handleCortanaBroadcast(payload) {
+				return
+			}
 			b.sendNotification(payload.To, payload.Content)
 		}
 
@@ -1677,6 +1681,58 @@ func getHelpText() string {
 		"/cg status show progress\n" +
 		"/cg stop stop codegen\n\n" +
 		"Other messages will be forwarded to llm-agent."
+}
+
+// handleCortanaBroadcast 处理来自 cortana-agent 的播报消息
+// 返回 true 表示已处理（不需要继续走普通通知流程）
+func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
+	content := strings.TrimSpace(payload.Content)
+	if content == "" {
+		return false
+	}
+
+	// 检查是否是 cortana_broadcast JSON 格式
+	var broadcast struct {
+		Kind        string `json:"kind"`
+		Text        string `json:"text"`
+		Expression  string `json:"expression"`
+		Motion      string `json:"motion"`
+		Origin      string `json:"origin"`
+		BroadcastID string `json:"broadcast_id"`
+		Timestamp   int64  `json:"timestamp"`
+	}
+	if err := json.Unmarshal([]byte(content), &broadcast); err != nil {
+		return false
+	}
+	if broadcast.Kind != "cortana_broadcast" {
+		return false
+	}
+
+	toUser := strings.TrimSpace(payload.To)
+	broadcastText := strings.TrimSpace(broadcast.Text)
+	if toUser == "" || broadcastText == "" {
+		log.Printf("[Bridge] cortana broadcast missing user or text")
+		return true
+	}
+
+	log.Printf("[Bridge] cortana broadcast user=%s text=%q expression=%s motion=%s",
+		toUser, broadcastText, broadcast.Expression, broadcast.Motion)
+
+	// 构建 cortana 播报推送 meta
+	cortanaMeta := map[string]any{
+		"origin":          "cortana-agent",
+		"broadcast_id":    broadcast.BroadcastID,
+		"cortana_expression": broadcast.Expression,
+		"cortana_motion":     broadcast.Motion,
+		"cortana_text":       broadcastText,
+	}
+
+	// 如果有播报时间戳，添加到 meta
+	if broadcast.Timestamp > 0 {
+		cortanaMeta["cortana_broadcast_ts"] = broadcast.Timestamp
+	}
+
+	return b.sendAppPushWithType(toUser, broadcastText, "cortana_broadcast", cortanaMeta) == nil
 }
 
 func shortText(text string) string {
