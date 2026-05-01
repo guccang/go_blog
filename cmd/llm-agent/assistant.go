@@ -53,6 +53,18 @@ type CronQueryPayload struct {
 	Model      string `json:"model,omitempty"`    // LLM model
 }
 
+type CortanaProactivePayload struct {
+	TaskType           string           `json:"task_type"`
+	Account            string           `json:"account"`
+	Online             bool             `json:"online"`
+	AllowFullAccess    bool             `json:"allow_full_access"`
+	ProactiveMode      string           `json:"proactive_mode"`
+	TriggerReason      string           `json:"trigger_reason"`
+	Snapshot           map[string]any   `json:"snapshot"`
+	EventContext       map[string]any   `json:"event_context,omitempty"`
+	RecentInteractions []map[string]any `json:"recent_interactions,omitempty"`
+}
+
 type cronNotifyTarget struct {
 	Channel string
 	AgentID string
@@ -479,10 +491,37 @@ func (b *Bridge) sendCronNotification(account, wechatUser, content string) error
 		}
 	}
 
+	if strings.TrimSpace(account) != "" {
+		args, _ := json.Marshal(map[string]any{
+			"account":        strings.TrimSpace(account),
+			"trigger_source": "cron_agent",
+			"trigger_reason": "cron_notification_sent",
+			"content":        strings.TrimSpace(content),
+			"summary":        shortCronContent(content),
+			"timestamp":      time.Now().UnixMilli(),
+			"metadata": map[string]any{
+				"wechat_user": strings.TrimSpace(wechatUser),
+			},
+		})
+		if _, err := b.CallTool("cortana.TriggerEvent", args); err != nil {
+			log.Printf("[CronNotify] cortana trigger failed account=%s err=%v", account, err)
+		} else {
+			log.Printf("[CronNotify] cortana trigger sent account=%s", account)
+		}
+	}
+
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func shortCronContent(content string) string {
+	content = strings.TrimSpace(content)
+	if len(content) <= 80 {
+		return content
+	}
+	return content[:80] + "..."
 }
 
 // findWechatAgent 查找在线的 wechat-agent ID

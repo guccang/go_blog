@@ -298,26 +298,27 @@ func uniqueNonEmptyUsers(users []string) []string {
 
 func (b *Bridge) registerClient(client *appClientConn) {
 	b.deliveryMu.Lock()
-	defer b.deliveryMu.Unlock()
-
 	if b.clients[client.userID] == nil {
 		b.clients[client.userID] = make(map[*appClientConn]struct{})
 	}
 	b.clients[client.userID][client] = struct{}{}
+	b.deliveryMu.Unlock()
+	go b.syncCortanaPresence(client.userID)
 }
 
 func (b *Bridge) unregisterClient(client *appClientConn) {
 	b.deliveryMu.Lock()
-	defer b.deliveryMu.Unlock()
-
 	userClients := b.clients[client.userID]
 	if len(userClients) == 0 {
+		b.deliveryMu.Unlock()
 		return
 	}
 	delete(userClients, client)
 	if len(userClients) == 0 {
 		delete(b.clients, client.userID)
 	}
+	b.deliveryMu.Unlock()
+	go b.syncCortanaPresence(client.userID)
 }
 
 func (b *Bridge) flushPendingToClient(client *appClientConn) error {

@@ -31,6 +31,7 @@ type Config struct {
 	AgentName            string            `json:"agent_name"`             // Agent 显示名称
 	BlogAgentID          string            `json:"blog_agent_id"`          // blog-agent ID
 	CronAgentID          string            `json:"cron_agent_id"`          // cron-agent ID
+	LLMAgentID           string            `json:"llm_agent_id"`           // llm-agent ID
 	AudioAgentID         string            `json:"audio_agent_id"`         // audio-agent ID (TTS)
 	AppAgentID           string            `json:"app_agent_id"`           // app-agent ID (推送)
 	CheckIntervalSec     int               `json:"check_interval_sec"`     // 数据检查间隔秒数
@@ -49,6 +50,7 @@ func DefaultConfig() *Config {
 		AgentName:            "cortana-agent",
 		BlogAgentID:          "blog-agent",
 		CronAgentID:          "cron-agent",
+		LLMAgentID:           "llm-agent",
 		AudioAgentID:         "audio-agent",
 		AppAgentID:           "app-agent",
 		CheckIntervalSec:     120,
@@ -140,6 +142,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.CronAgentID == "" {
 		cfg.CronAgentID = "cron-agent"
+	}
+	if cfg.LLMAgentID == "" {
+		cfg.LLMAgentID = "llm-agent"
 	}
 	if cfg.AudioAgentID == "" {
 		cfg.AudioAgentID = "audio-agent"

@@ -168,6 +168,14 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			queryPayload.Model = wrapper.Model
 			sourceAgent := msg.From
 			handler = func() { b.handleCronQuery(taskPayload.TaskID, sourceAgent, &queryPayload) }
+		case "cortana_proactive":
+			var proactivePayload CortanaProactivePayload
+			if err := json.Unmarshal(taskPayload.Payload, &proactivePayload); err != nil {
+				log.Printf("[Bridge] invalid cortana_proactive payload: %v", err)
+				return
+			}
+			sourceAgent := msg.From
+			handler = func() { b.handleCortanaProactiveTask(taskPayload.TaskID, sourceAgent, &proactivePayload) }
 		default:
 			log.Printf("[Bridge] unknown task_type: %s, sending task_complete failure to %s", taskType.TaskType, msg.From)
 			b.client.Send(&uap.Message{

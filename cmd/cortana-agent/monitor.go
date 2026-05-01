@@ -33,9 +33,10 @@ type MonitorEngine struct {
 	registry *AccountRegistry
 
 	// OnGenerateTTS 可选：TTS 语音生成回调（由 Connection 注入）
-	OnGenerateTTS      func(text string) (audioBase64 string, format string)
-	OnPerformCheck     func(account string) *MonitorResult
-	OnExecuteBroadcast func(decision BroadcastDecision)
+	OnGenerateTTS       func(text string) (audioBase64 string, format string)
+	OnPerformCheck      func(account string) *MonitorResult
+	OnExecuteBroadcast  func(decision BroadcastDecision)
+	OnEvaluateProactive func(account string, result *MonitorResult) (BroadcastDecision, bool)
 
 	mu             sync.Mutex
 	running        bool
@@ -154,6 +155,19 @@ func (e *MonitorEngine) runCheckCycle() {
 		result := e.performCheck(account)
 		e.updateState(result)
 
+		if e.OnEvaluateProactive != nil {
+			if decision, handled := e.OnEvaluateProactive(account, result); handled {
+				if decision.ShouldBroadcast {
+					log.Printf("[Monitor] 主动编排触发 account=%s broadcast_id=%s text=%q",
+						account, decision.BroadcastID, decision.Text)
+					e.executeBroadcast(decision)
+				} else if decision.SkipReason != "" {
+					log.Printf("[Monitor] 主动编排跳过 account=%s reason=%s", account, decision.SkipReason)
+				}
+				continue
+			}
+		}
+
 		decision := e.decider.Evaluate(result)
 		if decision.ShouldBroadcast {
 			log.Printf("[Monitor] 触发播报 account=%s broadcast_id=%s text=%q expression=%s motion=%s",
@@ -225,6 +239,24 @@ func (e *MonitorEngine) HasAccount(account string) bool {
 		return false
 	}
 	return e.registry.HasAccount(account)
+}
+
+func (e *MonitorEngine) GetSession(account string) *CortanaUserSession {
+	if e.registry == nil {
+		return nil
+	}
+	return e.registry.GetSession(account)
+}
+
+func (e *MonitorEngine) SyncUserSession(payload CortanaSyncUserPayload) *CortanaUserSession {
+	if e.registry == nil {
+		return nil
+	}
+	return e.registry.SyncUserSession(payload)
+}
+
+func (e *MonitorEngine) ExecuteBroadcast(decision BroadcastDecision) {
+	e.executeBroadcast(decision)
 }
 
 // checkBlogData 查询博客相关数据

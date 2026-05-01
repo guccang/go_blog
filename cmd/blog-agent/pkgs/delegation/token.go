@@ -12,14 +12,14 @@ import (
 
 // DelegationToken 委托令牌结构
 type DelegationToken struct {
-	IssuerAgentID   string   `json:"iss"`        // 签发代理 ID: "app-agent"
-	AuthorizedUser  string   `json:"sub"`         // 授权用户: "john"
-	TargetAccount   string   `json:"aud"`         // 目标账户: "ztt"
-	Scope           []string `json:"scope"`       // 权限范围: ["blog:read", "todo:read"]
-	IssuedAt        int64    `json:"iat"`         // 签发时间戳
-	ExpiresAt       int64    `json:"exp"`         // 过期时间戳
-	Nonce           string   `json:"jti"`          // 随机数 (防重放)
-	Signature       string   `json:"sig"`          // HMAC-SHA256 签名
+	IssuerAgentID  string   `json:"iss"`   // 签发代理 ID: "app-agent"
+	AuthorizedUser string   `json:"sub"`   // 授权用户: "john"
+	TargetAccount  string   `json:"aud"`   // 目标账户: "ztt"
+	Scope          []string `json:"scope"` // 权限范围: ["blog:read", "todo:read"]
+	IssuedAt       int64    `json:"iat"`   // 签发时间戳
+	ExpiresAt      int64    `json:"exp"`   // 过期时间戳
+	Nonce          string   `json:"jti"`   // 随机数 (防重放)
+	Signature      string   `json:"sig"`   // HMAC-SHA256 签名
 }
 
 // TokenClaims 用于签名的内容（不包含签名本身）
@@ -166,10 +166,13 @@ func NewDelegationToken(issuerAgentID, authorizedUser, targetAccount string, sco
 
 // Scopes 权限范围常量
 const (
-	ScopeBlogRead    = "blog:read"
-	ScopeBlogWrite   = "blog:write"
-	ScopeTodoRead    = "todo:read"
-	ScopeTodoWrite   = "todo:write"
+	ScopeBlogRead      = "blog:read"
+	ScopeBlogWrite     = "blog:write"
+	ScopeTodoRead      = "todo:read"
+	ScopeTodoWrite     = "todo:write"
+	ScopeExerciseRead  = "exercise:read"
+	ScopeReadingRead   = "reading:read"
+	ScopeProjectRead   = "project:read"
 	ScopeYearPlanRead  = "yearplan:read"
 	ScopeYearPlanWrite = "yearplan:write"
 )
@@ -180,6 +183,9 @@ var AllScopes = []string{
 	ScopeBlogWrite,
 	ScopeTodoRead,
 	ScopeTodoWrite,
+	ScopeExerciseRead,
+	ScopeReadingRead,
+	ScopeProjectRead,
 	ScopeYearPlanRead,
 	ScopeYearPlanWrite,
 }

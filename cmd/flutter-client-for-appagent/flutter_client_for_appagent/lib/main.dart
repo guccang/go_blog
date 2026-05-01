@@ -983,12 +983,20 @@ class ClientConfig {
     required this.receiveToken,
     required this.enableLocalVosk,
     required this.voskModelPath,
+    required this.cortanaEnabledDefault,
+    required this.cortanaAllowFullAccessDefault,
+    required this.cortanaAutoPlayDefault,
+    required this.cortanaProactiveModeDefault,
   });
 
   final String baseUrl;
   final String receiveToken;
   final bool enableLocalVosk;
   final String voskModelPath;
+  final bool cortanaEnabledDefault;
+  final bool cortanaAllowFullAccessDefault;
+  final bool cortanaAutoPlayDefault;
+  final String cortanaProactiveModeDefault;
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) {
     return ClientConfig(
@@ -996,6 +1004,12 @@ class ClientConfig {
       receiveToken: (json['receive_token'] ?? '').toString().trim(),
       enableLocalVosk: json['enable_local_vosk'] == true,
       voskModelPath: (json['vosk_model_path'] ?? '').toString().trim(),
+      cortanaEnabledDefault: json['cortana_enabled_default'] != false,
+      cortanaAllowFullAccessDefault:
+          json['cortana_allow_full_access_default'] != false,
+      cortanaAutoPlayDefault: json['cortana_auto_play_default'] != false,
+      cortanaProactiveModeDefault:
+          (json['cortana_proactive_mode_default'] ?? 'high').toString().trim(),
     );
   }
 }
@@ -1438,6 +1452,54 @@ class AppAgentClient {
 
   Future<void> sendMessage(String content) => sendAppMessage(content);
 
+  Future<void> sendCortanaEvent(
+    String eventKind, {
+    String content = '',
+    Map<String, dynamic>? meta,
+  }) {
+    return sendAppMessage(
+      content,
+      messageType: 'event',
+      meta: <String, dynamic>{
+        'event_kind': eventKind,
+        if (meta != null) ...meta,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchCortanaSettings() async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/cortana/settings?user_id=$userId&session_token=$sessionToken',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('get cortana settings', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> saveCortanaSettings(
+    Map<String, dynamic> settings,
+  ) async {
+    final uri = Uri.parse('$baseUrl/api/app/cortana/settings');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{'user_id': userId, ...settings}),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('save cortana settings', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<List<GroupInfo>> listGroups() async {
     final uri = Uri.parse(
       '$baseUrl/api/app/groups?user_id=$userId&session_token=$sessionToken',
@@ -1577,6 +1639,11 @@ class _BufferedStreamUpdate {
   _BufferedStreamUpdate({required this.scopeKey, required this.message});
 }
 
+const bool _defaultCortanaEnabled = true;
+const bool _defaultCortanaAllowFullAccess = true;
+const bool _defaultCortanaAutoPlay = true;
+const String _defaultCortanaProactiveMode = 'high';
+
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
   static const String _lastLoginUserIdKey = 'auth::last_user_id';
@@ -1592,6 +1659,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _deployTargetKey = 'codegen::last_deploy_target';
   static const String _deployArgsKey = 'codegen::last_deploy_args';
   static const String _codegenHistoryKey = 'codegen::history';
+  static const String _cortanaEnabledKey = 'cortana::enabled';
+  static const String _cortanaAllowFullAccessKey = 'cortana::allow_full_access';
+  static const String _cortanaAutoPlayKey = 'cortana::auto_play';
+  static const String _cortanaProactiveModeKey = 'cortana::proactive_mode';
   static const Duration _sessionRefreshSkew = Duration(minutes: 1);
   static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1638,6 +1709,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
   final Set<String> _consumedCortanaReplyKeys = <String>{};
+  final Map<String, DateTime> _cortanaUiEventAt = <String, DateTime>{};
 
   WebSocket? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -1664,6 +1736,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _passwordVisible = false;
   bool _codegenLoading = false;
   bool _codegenSending = false;
+  bool _cortanaEnabled = _defaultCortanaEnabled;
+  bool _cortanaAllowFullAccess = _defaultCortanaAllowFullAccess;
+  bool _cortanaAutoPlay = _defaultCortanaAutoPlay;
+  String _cortanaProactiveMode = _defaultCortanaProactiveMode;
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
   List<CodegenHistoryItem> _codegenHistory = [];
@@ -2204,6 +2280,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         voskModelPath: savedModelPath.isNotEmpty
             ? savedModelPath
             : assetConfig.voskModelPath,
+        cortanaEnabledDefault: assetConfig.cortanaEnabledDefault,
+        cortanaAllowFullAccessDefault:
+            assetConfig.cortanaAllowFullAccessDefault,
+        cortanaAutoPlayDefault: assetConfig.cortanaAutoPlayDefault,
+        cortanaProactiveModeDefault: assetConfig.cortanaProactiveModeDefault,
       );
       if (config.baseUrl.isEmpty) {
         throw const FormatException('base_url is required');
@@ -2213,6 +2294,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       setState(() {
         _clientConfig = config;
+        _cortanaEnabled =
+            prefs.getBool(_cortanaEnabledKey) ?? config.cortanaEnabledDefault;
+        _cortanaAllowFullAccess =
+            prefs.getBool(_cortanaAllowFullAccessKey) ??
+            config.cortanaAllowFullAccessDefault;
+        _cortanaAutoPlay =
+            prefs.getBool(_cortanaAutoPlayKey) ?? config.cortanaAutoPlayDefault;
+        _cortanaProactiveMode =
+            prefs.getString(_cortanaProactiveModeKey)?.trim().isNotEmpty == true
+            ? prefs.getString(_cortanaProactiveModeKey)!.trim()
+            : config.cortanaProactiveModeDefault;
         _baseUrlController.text = config.baseUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
@@ -2269,10 +2361,50 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         receiveToken: _clientConfig?.receiveToken ?? '',
         enableLocalVosk: _clientConfig?.enableLocalVosk ?? false,
         voskModelPath: _clientConfig?.voskModelPath ?? '',
+        cortanaEnabledDefault: _clientConfig?.cortanaEnabledDefault ?? true,
+        cortanaAllowFullAccessDefault:
+            _clientConfig?.cortanaAllowFullAccessDefault ?? true,
+        cortanaAutoPlayDefault: _clientConfig?.cortanaAutoPlayDefault ?? true,
+        cortanaProactiveModeDefault:
+            _clientConfig?.cortanaProactiveModeDefault ?? 'high',
       );
       _status = 'URL updated';
     });
     _appendSystem('Server URL updated: $baseUrl');
+  }
+
+  Future<void> _syncCortanaSettings({bool silent = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_cortanaEnabledKey, _cortanaEnabled);
+    await prefs.setBool(_cortanaAllowFullAccessKey, _cortanaAllowFullAccess);
+    await prefs.setBool(_cortanaAutoPlayKey, _cortanaAutoPlay);
+    await prefs.setString(_cortanaProactiveModeKey, _cortanaProactiveMode);
+    if (_clientConfig == null ||
+        (_sessionToken.isEmpty && _refreshToken.isEmpty) ||
+        _userIdController.text.trim().isEmpty) {
+      return;
+    }
+    final payload = <String, dynamic>{
+      'enabled': _cortanaEnabled,
+      'allow_full_access': _cortanaAllowFullAccess,
+      'auto_play': _cortanaAutoPlay,
+      'proactive_mode': _cortanaProactiveMode,
+    };
+    try {
+      await _runAuthed(
+        'Sync Cortana settings',
+        (client) => client.saveCortanaSettings(payload),
+      );
+      if (!silent) {
+        _appendSystem('Cortana 设置已同步');
+      }
+    } catch (err) {
+      if (!silent) {
+        _appendSystem(
+          _describeRequestError(err, operation: 'Sync Cortana settings'),
+        );
+      }
+    }
   }
 
   bool get _sessionExpired {
@@ -2414,6 +2546,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _loadAllHistoryForUser();
     await _refreshGroups();
     await _loadCodegenProjects(silent: true);
+    await _syncCortanaSettings(silent: true);
     if (successMessage != null && successMessage.trim().isNotEmpty) {
       _appendSystem(successMessage.trim());
     }
@@ -3614,6 +3747,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       '[Cortana Broadcast] raise floating cortana mode=$_cortanaFloatingMode text=${payload.text}',
     );
 
+    if (!_cortanaAutoPlay) {
+      return;
+    }
+
     _cortanaBroadcastQueue.enqueue(payload, (nextPayload, onFinished) {
       _playQueuedCortanaBroadcast(nextPayload, onFinished);
     });
@@ -3707,6 +3844,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (err) {
       throw Exception('Failed to send message: $err');
     }
+  }
+
+  void _reportCortanaUiEvent(
+    String eventKind, {
+    String summary = '',
+    Duration cooldown = const Duration(seconds: 12),
+  }) {
+    final now = DateTime.now();
+    final last = _cortanaUiEventAt[eventKind];
+    if (last != null && now.difference(last) < cooldown) {
+      return;
+    }
+    _cortanaUiEventAt[eventKind] = now;
+    unawaited(
+      _runAuthed('Report Cortana UI event', (client) {
+        return client.sendCortanaEvent(
+          eventKind,
+          meta: <String, dynamic>{
+            'summary': summary,
+            'root_tab': _rootTab.name,
+            'floating_mode': _cortanaFloatingMode.name,
+          },
+        );
+      }).catchError((Object err, StackTrace _) {
+        debugPrint('[Cortana UI Event] $eventKind failed: $err');
+      }),
+    );
   }
 
   Future<T> _runAuthed<T>(
@@ -4614,6 +4778,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _status = 'WebSocket connected';
         });
       }
+      unawaited(_syncCortanaSettings(silent: true));
     } catch (err) {
       final errorText = _describeRequestError(
         err,
@@ -6711,6 +6876,89 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                               : () =>
                                     unawaited(_copyText('Token', receiveToken)),
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Cortana',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: palette.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SwitchListTile.adaptive(
+                          value: _cortanaEnabled,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('启用 Cortana'),
+                          subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
+                          onChanged: (value) {
+                            setState(() {
+                              _cortanaEnabled = value;
+                            });
+                            unawaited(_syncCortanaSettings());
+                          },
+                        ),
+                        SwitchListTile.adaptive(
+                          value: _cortanaAllowFullAccess,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('允许全量感知'),
+                          subtitle: const Text('开放待办、锻炼、阅读、年度目标等数据'),
+                          onChanged: !_cortanaEnabled
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _cortanaAllowFullAccess = value;
+                                  });
+                                  unawaited(_syncCortanaSettings());
+                                },
+                        ),
+                        SwitchListTile.adaptive(
+                          value: _cortanaAutoPlay,
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('主动播报自动播放'),
+                          subtitle: const Text('收到主动互动后直接语音播报'),
+                          onChanged: !_cortanaEnabled
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _cortanaAutoPlay = value;
+                                  });
+                                  unawaited(_syncCortanaSettings());
+                                },
+                        ),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          value: _cortanaProactiveMode,
+                          decoration: const InputDecoration(
+                            labelText: '主动模式',
+                            isDense: true,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'high',
+                              child: Text('High'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'normal',
+                              child: Text('Normal'),
+                            ),
+                            DropdownMenuItem(value: 'low', child: Text('Low')),
+                          ],
+                          onChanged: !_cortanaEnabled
+                              ? null
+                              : (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _cortanaProactiveMode = value.trim();
+                                  });
+                                  unawaited(_syncCortanaSettings());
+                                },
+                        ),
                         const SizedBox(height: 8),
                         Row(
                           children: [
@@ -7330,6 +7578,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _rootTab = RootTab.cortana;
           _cortanaFloatingMode = CortanaDisplayMode.collapsed;
         });
+        _reportCortanaUiEvent(
+          'cortana_floating_tap',
+          summary: '用户点击了 Cortana 浮动页签',
+        );
       },
       onModeChanged: (mode) {
         setState(() {
@@ -7419,6 +7671,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           setState(() {
             _rootTab = nextTab;
           });
+          if (nextTab == RootTab.cortana) {
+            _reportCortanaUiEvent(
+              'cortana_tab_open',
+              summary: '用户切换到了 Cortana 页签',
+            );
+          }
           if (nextTab == RootTab.codegen) {
             _triggerCortanaContextualExpression('surprised');
             if (_codingProjects.isEmpty &&

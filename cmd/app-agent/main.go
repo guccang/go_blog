@@ -71,12 +71,16 @@ func main() {
 
 	bridge := NewBridge(cfg)
 	auth := newAuthManager(cfg)
-	handler := NewHandler(cfg, bridge, auth, newCortanaToolSync(cfg, bridge))
+	cortanaSettings := NewCortanaSettingsStore(cfg.CortanaSettingsFile)
+	cortanaSync := newCortanaToolSync(cfg, bridge)
+	bridge.SetCortanaSync(cortanaSync, cortanaSettings)
+	handler := NewHandler(cfg, bridge, auth, cortanaSync, cortanaSettings)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/app/login", handler.HandleLogin)
 	mux.HandleFunc("/api/app/refresh", handler.HandleRefresh)
 	mux.HandleFunc("/api/app/logout", handler.HandleLogout)
+	mux.HandleFunc("/api/app/cortana/settings", handler.HandleCortanaSettings)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
 	mux.HandleFunc("/api/app/message", handler.HandleMessage)

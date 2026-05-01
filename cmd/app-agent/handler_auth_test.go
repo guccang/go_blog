@@ -6,24 +6,32 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 )
 
 type stubCortanaSync struct {
-	registerCalls   []string
+	syncCalls       []CortanaSyncPayload
 	unregisterCalls []string
-	registerErr     error
+	eventCalls      []CortanaEventPayload
+	syncErr         error
 	unregisterErr   error
+	eventErr        error
 }
 
-func (s *stubCortanaSync) RegisterAccount(account string) error {
-	s.registerCalls = append(s.registerCalls, account)
-	return s.registerErr
+func (s *stubCortanaSync) SyncUserSession(payload CortanaSyncPayload) error {
+	s.syncCalls = append(s.syncCalls, payload)
+	return s.syncErr
 }
 
 func (s *stubCortanaSync) UnregisterAccount(account string) error {
 	s.unregisterCalls = append(s.unregisterCalls, account)
 	return s.unregisterErr
+}
+
+func (s *stubCortanaSync) TriggerEvent(payload CortanaEventPayload) error {
+	s.eventCalls = append(s.eventCalls, payload)
+	return s.eventErr
 }
 
 func newTestHandler(t *testing.T, syncer cortanaAccountSync) (*Handler, *authManager) {
@@ -44,7 +52,9 @@ func newTestHandler(t *testing.T, syncer cortanaAccountSync) (*Handler, *authMan
 
 	auth := newAuthManager(cfg)
 	bridge := NewBridge(cfg)
-	return NewHandler(cfg, bridge, auth, syncer), auth
+	settings := NewCortanaSettingsStore(filepath.Join(t.TempDir(), "cortana-settings.json"))
+	bridge.SetCortanaSync(syncer, settings)
+	return NewHandler(cfg, bridge, auth, syncer, settings), auth
 }
 
 func TestHandleLoginRegistersCortanaAccount(t *testing.T) {
@@ -60,13 +70,13 @@ func TestHandleLoginRegistersCortanaAccount(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(syncer.registerCalls) != 1 || syncer.registerCalls[0] != "alice" {
-		t.Fatalf("unexpected register calls: %#v", syncer.registerCalls)
+	if len(syncer.syncCalls) != 1 || syncer.syncCalls[0].Account != "alice" {
+		t.Fatalf("unexpected sync calls: %#v", syncer.syncCalls)
 	}
 }
 
 func TestHandleRefreshRegistersCortanaAccountEvenIfSyncFails(t *testing.T) {
-	syncer := &stubCortanaSync{registerErr: errors.New("boom")}
+	syncer := &stubCortanaSync{syncErr: errors.New("boom")}
 	handler, auth := newTestHandler(t, syncer)
 
 	issued, err := auth.Login("alice", "pw")
@@ -83,8 +93,8 @@ func TestHandleRefreshRegistersCortanaAccountEvenIfSyncFails(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(syncer.registerCalls) != 1 || syncer.registerCalls[0] != "alice" {
-		t.Fatalf("unexpected register calls: %#v", syncer.registerCalls)
+	if len(syncer.syncCalls) != 1 || syncer.syncCalls[0].Account != "alice" {
+		t.Fatalf("unexpected sync calls: %#v", syncer.syncCalls)
 	}
 }
 

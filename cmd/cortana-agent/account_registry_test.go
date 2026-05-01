@@ -33,3 +33,25 @@ func TestAccountRegistryOperations(t *testing.T) {
 		t.Fatalf("expected account to be removed")
 	}
 }
+
+func TestAccountRegistrySyncUserSession(t *testing.T) {
+	registry := NewAccountRegistry()
+	session := registry.SyncUserSession(CortanaSyncUserPayload{
+		Account:    "alice",
+		Registered: true,
+		Online:     true,
+		Settings: CortanaUserSettings{
+			Enabled:         true,
+			AllowFullAccess: true,
+			AutoPlay:        false,
+			ProactiveMode:   "high",
+			UpdatedAt:       123,
+		},
+	})
+	if session == nil {
+		t.Fatalf("expected session")
+	}
+	if !session.Online || !session.AllowFullAccess || session.AutoPlay {
+		t.Fatalf("unexpected session: %#v", session)
+	}
+}

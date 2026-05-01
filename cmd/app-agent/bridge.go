@@ -88,6 +88,9 @@ type Bridge struct {
 	lastApkVersions map[string]string
 	apkVersionMu    sync.RWMutex
 
+	cortanaSync     cortanaAccountSync
+	cortanaSettings *CortanaSettingsStore
+
 	obsStorage        objectStorage
 	downloadTickets   downloadTicketSigner
 	downloadTicketTTL time.Duration
@@ -227,6 +230,78 @@ func (b *Bridge) PendingMessageCount() int {
 	return total
 }
 
+func (b *Bridge) SetCortanaSync(syncer cortanaAccountSync, settingsStore *CortanaSettingsStore) {
+	b.delegationMu.Lock()
+	b.cortanaSync = syncer
+	b.cortanaSettings = settingsStore
+	b.delegationMu.Unlock()
+}
+
+func (b *Bridge) HasOnlineClient(userID string) bool {
+	b.deliveryMu.Lock()
+	defer b.deliveryMu.Unlock()
+	return len(b.clients[strings.TrimSpace(userID)]) > 0
+}
+
+func (b *Bridge) syncCortanaPresence(userID string) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return
+	}
+
+	b.delegationMu.Lock()
+	syncer := b.cortanaSync
+	settingsStore := b.cortanaSettings
+	b.delegationMu.Unlock()
+	if syncer == nil {
+		return
+	}
+
+	settings := DefaultCortanaSettings()
+	if settingsStore != nil {
+		settings = settingsStore.Get(userID)
+	}
+	payload := CortanaSyncPayload{
+		Account:    userID,
+		Registered: true,
+		Online:     b.HasOnlineClient(userID),
+		LastSeenAt: time.Now().UnixMilli(),
+		Settings:   settings,
+	}
+	if err := syncer.SyncUserSession(payload); err != nil {
+		log.Printf("[Bridge] cortana sync failed user=%s err=%v", userID, err)
+	}
+}
+
+func (b *Bridge) triggerCortanaEvent(payload CortanaEventPayload) {
+	payload.Account = strings.TrimSpace(payload.Account)
+	payload.TriggerSource = strings.TrimSpace(payload.TriggerSource)
+	if payload.Account == "" || payload.TriggerSource == "" {
+		return
+	}
+
+	b.delegationMu.Lock()
+	syncer := b.cortanaSync
+	b.delegationMu.Unlock()
+	if syncer == nil {
+		return
+	}
+
+	if payload.TriggerReason == "" {
+		payload.TriggerReason = payload.TriggerSource
+	}
+	if payload.Timestamp <= 0 {
+		payload.Timestamp = time.Now().UnixMilli()
+	}
+	if payload.Metadata == nil {
+		payload.Metadata = make(map[string]any)
+	}
+	if err := syncer.TriggerEvent(payload); err != nil {
+		log.Printf("[Bridge] cortana trigger failed user=%s source=%s err=%v",
+			payload.Account, payload.TriggerSource, err)
+	}
+}
+
 // SetDelegationToken 设置用户的 delegation token
 func (b *Bridge) SetDelegationToken(userID, token string) {
 	b.delegationMu.Lock()
@@ -249,6 +324,10 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	}
 	log.Printf("[Bridge] inbound app message user=%s type=%s len=%d content=%q",
 		msg.UserID, msg.MessageType, len(content), shortText(content))
+
+	if handled := b.handleCortanaClientEvent(msg, content); handled {
+		return
+	}
 
 	attachment, err := b.persistAttachment(msg)
 	if err != nil {
@@ -330,6 +409,75 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 	} else {
 		log.Printf("[Bridge] routed app notify user=%s target=%s", msg.UserID, targetAgent)
 	}
+
+	if cortanaEvent, ok := b.buildCortanaChatEvent(msg, content); ok {
+		go b.triggerCortanaEvent(cortanaEvent)
+	}
+}
+
+func (b *Bridge) handleCortanaClientEvent(msg *AppMessage, content string) bool {
+	if msg == nil || !strings.EqualFold(strings.TrimSpace(msg.MessageType), "event") {
+		return false
+	}
+
+	kind := strings.TrimSpace(stringMeta(msg.Meta, "event_kind"))
+	if kind == "" {
+		kind = strings.TrimSpace(stringMeta(msg.Meta, "trigger_reason"))
+	}
+	if kind == "" {
+		log.Printf("[Bridge] ignore empty cortana client event user=%s", msg.UserID)
+		return true
+	}
+
+	metadata := sanitizeAppMetaForForward(msg.Meta)
+	summary := stringMeta(metadata, "summary")
+	delete(metadata, "event_kind")
+	delete(metadata, "summary")
+	payload := CortanaEventPayload{
+		Account:       msg.UserID,
+		TriggerSource: "flutter_client",
+		TriggerReason: kind,
+		Content:       content,
+		Summary:       summary,
+		Metadata:      metadata,
+		Timestamp:     time.Now().UnixMilli(),
+	}
+	go b.triggerCortanaEvent(payload)
+	log.Printf("[Bridge] cortana client event user=%s reason=%s", msg.UserID, kind)
+	return true
+}
+
+func (b *Bridge) buildCortanaChatEvent(msg *AppMessage, content string) (CortanaEventPayload, bool) {
+	if msg == nil {
+		return CortanaEventPayload{}, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(msg.MessageType), "text") {
+		return CortanaEventPayload{}, false
+	}
+	if content == "" || isCmdCommand(content) || isBackendCommand(content) {
+		return CortanaEventPayload{}, false
+	}
+	if strings.EqualFold(strings.TrimSpace(fmt.Sprint(msg.Meta["input_mode"])), "cortana_text") {
+		return CortanaEventPayload{}, false
+	}
+
+	metadata := map[string]any{
+		"message_type": msg.MessageType,
+		"input_mode":   strings.TrimSpace(fmt.Sprint(msg.Meta["input_mode"])),
+		"trace_id":     strings.TrimSpace(msg.TraceID),
+	}
+	if sessionID := strings.TrimSpace(msg.SessionID); sessionID != "" {
+		metadata["session_id"] = sessionID
+	}
+	return CortanaEventPayload{
+		Account:       msg.UserID,
+		TriggerSource: "chat_message",
+		TriggerReason: "chat_message",
+		Content:       content,
+		Summary:       shortText(content),
+		Metadata:      metadata,
+		Timestamp:     time.Now().UnixMilli(),
+	}, true
 }
 
 // extractApkVersion extracts version from APK filename.
@@ -765,6 +913,9 @@ func (b *Bridge) buildAppContentForAgent(msg *AppMessage, attachment *AppAttachm
 	}
 	if msg.Meta != nil {
 		payload["meta"] = sanitizeAppMetaForForward(msg.Meta)
+	}
+	if b.cortanaSettings != nil {
+		payload["cortana_settings"] = b.cortanaSettings.Get(msg.UserID)
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

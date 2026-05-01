@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,12 @@ type Connection struct {
 	decider *BroadcastDecider
 	caller  *agentbase.RemoteCaller
 	catalog *agentbase.ToolCatalog
+
+	broadcastSender func(account, text, expression, motion string) error
+	proactiveMu     sync.Mutex
+	proactiveTasks  map[string]chan uap.TaskCompletePayload
+	eventMu         sync.Mutex
+	eventCooldowns  map[string]time.Time
 
 	activeCount int32
 }
@@ -51,9 +58,12 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	}
 
 	c := &Connection{
-		AgentBase: agentbase.NewAgentBase(baseCfg),
-		cfg:       cfg,
+		AgentBase:      agentbase.NewAgentBase(baseCfg),
+		cfg:            cfg,
+		proactiveTasks: make(map[string]chan uap.TaskCompletePayload),
+		eventCooldowns: make(map[string]time.Time),
 	}
+	c.broadcastSender = c.sendBroadcast
 
 	// 创建工具目录和远程调用器（用于 TTS 等跨 agent 调用）
 	c.catalog = agentbase.NewToolCatalog(cfg.GatewayHTTPURL)
@@ -81,9 +91,11 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	c.decider = NewBroadcastDecider(cfg)
 	c.monitor = NewMonitorEngine(cfg, c.Client, c.decider, NewAccountRegistry())
 	c.monitor.OnGenerateTTS = c.generateTTSAudio
+	c.monitor.OnEvaluateProactive = c.evaluateProactive
 
 	// 注册消息处理器
 	c.RegisterToolCallHandler(c.handleToolCall)
+	c.RegisterHandler(uap.MsgTaskComplete, c.handleTaskComplete)
 
 	log.Printf("[CortanaAgent] ✓ 连接管理器创建完成")
 
@@ -119,6 +131,47 @@ func buildToolDefs() []uap.ToolDef {
 					"account": map[string]interface{}{"type": "string", "description": "用户账号"},
 				},
 				"required": []string{"account"},
+			}),
+		},
+		{
+			Name:        "cortana.SyncUserSession",
+			Description: "同步 app 用户当前的在线状态、授权偏好和主动互动配置",
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"account":      map[string]interface{}{"type": "string"},
+					"registered":   map[string]interface{}{"type": "boolean"},
+					"online":       map[string]interface{}{"type": "boolean"},
+					"last_seen_at": map[string]interface{}{"type": "integer"},
+					"settings": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"enabled":           map[string]interface{}{"type": "boolean"},
+							"allow_full_access": map[string]interface{}{"type": "boolean"},
+							"auto_play":         map[string]interface{}{"type": "boolean"},
+							"proactive_mode":    map[string]interface{}{"type": "string"},
+							"updated_at":        map[string]interface{}{"type": "integer"},
+						},
+					},
+				},
+				"required": []string{"account"},
+			}),
+		},
+		{
+			Name:        "cortana.TriggerEvent",
+			Description: "接收来自 app-agent、cron 或其他 agent 的上下文事件，并由 Cortana 判断是否主动互动",
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"account":        map[string]interface{}{"type": "string"},
+					"trigger_source": map[string]interface{}{"type": "string"},
+					"trigger_reason": map[string]interface{}{"type": "string"},
+					"content":        map[string]interface{}{"type": "string"},
+					"summary":        map[string]interface{}{"type": "string"},
+					"timestamp":      map[string]interface{}{"type": "integer"},
+					"metadata":       map[string]interface{}{"type": "object"},
+				},
+				"required": []string{"account", "trigger_source"},
 			}),
 		},
 		{
@@ -171,6 +224,20 @@ func buildToolDefs() []uap.ToolDef {
 			}),
 		},
 		{
+			Name:        "cortana.PushTestVoice",
+			Description: "向 Flutter client 推送一条测试语音播报，便于联调自动播放链路",
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"account":    map[string]interface{}{"type": "string", "description": "目标用户账号"},
+					"text":       map[string]interface{}{"type": "string", "description": "要播报的测试文本"},
+					"expression": map[string]interface{}{"type": "string", "description": "可选：Cortana 表情 (happy/sad/surprised)"},
+					"motion":     map[string]interface{}{"type": "string", "description": "可选：Cortana 动作 (IdleWave/IdleAlt/Tap/Idle)"},
+				},
+				"required": []string{"account", "text"},
+			}),
+		},
+		{
 			Name:        "cortana.CheckNow",
 			Description: "立即执行一次数据检查（博客、待办、运动等），返回检查结果",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
@@ -215,6 +282,10 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 	switch payload.ToolName {
 	case "cortana.RegisterAccount":
 		result, success = c.toolRegisterAccount(args)
+	case "cortana.SyncUserSession":
+		result, success = c.toolSyncUserSession(args)
+	case "cortana.TriggerEvent":
+		result, success = c.toolTriggerEvent(args)
 	case "cortana.UnregisterAccount":
 		result, success = c.toolUnregisterAccount(args)
 	case "cortana.ListAccounts":
@@ -225,6 +296,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result, success = c.toolListBroadcasts()
 	case "cortana.TriggerBroadcast":
 		result, success = c.toolTriggerBroadcast(args)
+	case "cortana.PushTestVoice":
+		result, success = c.toolPushTestVoice(args)
 	case "cortana.CheckNow":
 		result, success = c.toolCheckNow(args)
 	default:
@@ -272,6 +345,23 @@ func (c *Connection) toolRegisterAccount(args map[string]interface{}) (string, b
 	return string(resp), true
 }
 
+func (c *Connection) toolSyncUserSession(args map[string]interface{}) (string, bool) {
+	raw, _ := json.Marshal(args)
+	var payload CortanaSyncUserPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return fmt.Sprintf("sync payload 无效: %v", err), false
+	}
+	session := c.monitor.SyncUserSession(payload)
+	if session == nil {
+		return "account 不能为空", false
+	}
+	resp, _ := json.Marshal(map[string]interface{}{
+		"success": true,
+		"session": session,
+	})
+	return string(resp), true
+}
+
 func (c *Connection) toolUnregisterAccount(args map[string]interface{}) (string, bool) {
 	account, _ := args["account"].(string)
 	account = strings.TrimSpace(account)
@@ -291,10 +381,33 @@ func (c *Connection) toolUnregisterAccount(args map[string]interface{}) (string,
 	return string(resp), true
 }
 
+func (c *Connection) toolTriggerEvent(args map[string]interface{}) (string, bool) {
+	raw, _ := json.Marshal(args)
+	var payload CortanaTriggerEventPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return fmt.Sprintf("trigger payload 无效: %v", err), false
+	}
+	decision, handled, err := c.handleProactiveEvent(payload)
+	if err != nil {
+		return fmt.Sprintf("主动事件处理失败: %v", err), false
+	}
+	resp, _ := json.Marshal(map[string]interface{}{
+		"success":  true,
+		"handled":  handled,
+		"decision": decision,
+	})
+	return string(resp), true
+}
+
 func (c *Connection) toolListAccounts() (string, bool) {
 	accounts := c.monitor.ListAccounts()
+	sessions := make([]*CortanaUserSession, 0, len(accounts))
+	for _, account := range accounts {
+		sessions = append(sessions, c.monitor.GetSession(account))
+	}
 	resp, _ := json.Marshal(map[string]interface{}{
 		"accounts": accounts,
+		"sessions": sessions,
 		"total":    len(accounts),
 	})
 	return string(resp), true
@@ -357,6 +470,8 @@ func (c *Connection) toolTriggerBroadcast(args map[string]interface{}) (string, 
 			motion = bc.Motion
 		}
 	}
+	expression = sanitizeExpression(expression)
+	motion = sanitizeMotion(motion)
 
 	if account == "" {
 		return "account 不能为空", false
@@ -365,7 +480,7 @@ func (c *Connection) toolTriggerBroadcast(args map[string]interface{}) (string, 
 	log.Printf("[CortanaAgent] 手动触发播报 account=%s broadcast_id=%s text=%q",
 		account, broadcastID, text)
 
-	if err := c.sendBroadcast(account, text, expression, motion); err != nil {
+	if err := c.broadcastSender(account, text, expression, motion); err != nil {
 		return fmt.Sprintf("播报失败: %v", err), false
 	}
 
@@ -373,6 +488,44 @@ func (c *Connection) toolTriggerBroadcast(args map[string]interface{}) (string, 
 		"success":      true,
 		"broadcast_id": broadcastID,
 		"account":      account,
+	})
+	return string(resp), true
+}
+
+func (c *Connection) toolPushTestVoice(args map[string]interface{}) (string, bool) {
+	account, _ := args["account"].(string)
+	account = strings.TrimSpace(account)
+	text, _ := args["text"].(string)
+	text = strings.TrimSpace(text)
+	expression, _ := args["expression"].(string)
+	motion, _ := args["motion"].(string)
+
+	if account == "" {
+		return "account 不能为空", false
+	}
+	if text == "" {
+		return "text 不能为空", false
+	}
+
+	expression = emptyDefault(expression, "happy")
+	motion = emptyDefault(motion, "IdleWave")
+	expression = sanitizeExpression(expression)
+	motion = sanitizeMotion(motion)
+
+	log.Printf("[CortanaAgent] 推送测试语音 account=%s text=%q expression=%s motion=%s",
+		account, text, expression, motion)
+
+	if err := c.broadcastSender(account, text, expression, motion); err != nil {
+		return fmt.Sprintf("测试语音推送失败: %v", err), false
+	}
+
+	resp, _ := json.Marshal(map[string]interface{}{
+		"success":    true,
+		"account":    account,
+		"text":       text,
+		"expression": expression,
+		"motion":     motion,
+		"kind":       "test_voice",
 	})
 	return string(resp), true
 }
@@ -399,6 +552,8 @@ func (c *Connection) sendBroadcast(account, text, expression, motion string) err
 	if account == "" {
 		return fmt.Errorf("目标用户为空")
 	}
+	expression = sanitizeExpression(expression)
+	motion = sanitizeMotion(motion)
 
 	// 生成 TTS 语音
 	audioBase64, audioFormat := c.generateTTSAudio(text)

@@ -1340,6 +1340,29 @@ class CortanaPageState extends State<CortanaPage> {
     );
   }
 
+  Widget _buildControlActionChip(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onPressed,
+    IconData? icon,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return ActionChip(
+      backgroundColor: cs.surface,
+      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.7)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      avatar: icon == null ? null : Icon(icon, size: 14, color: cs.primary),
+      label: Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: cs.onSurface,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      onPressed: onPressed,
+    );
+  }
+
   Widget _buildViewControlsContent() {
     final scaleText = _modelUserScale.toStringAsFixed(2);
     final offsetXText = _modelUserOffsetX.toStringAsFixed(2);
@@ -1482,7 +1505,12 @@ class CortanaPageState extends State<CortanaPage> {
   Widget _buildLogsContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_logEntries.isEmpty) {
-      return Text('暂无日志输出', style: Theme.of(context).textTheme.bodyMedium);
+      return Text(
+        '暂无日志输出',
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1506,32 +1534,46 @@ class CortanaPageState extends State<CortanaPage> {
           ],
         ),
         const SizedBox(height: 6),
-        ConstrainedBox(
+        Container(
+          width: double.infinity,
           constraints: const BoxConstraints(maxHeight: 220),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: _logEntries.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 6),
-            itemBuilder: (context, index) {
-              final entry = _logEntries[index];
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: SelectableText(
-                  entry,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(height: 1.35),
-                ),
-              );
-            },
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.55),
+            ),
+          ),
+          child: Scrollbar(
+            thumbVisibility: _logEntries.length > 6,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (var index = 0; index < _logEntries.length; index++) ...[
+                    if (index > 0) const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surface,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: SelectableText(
+                        _logEntries[index],
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          height: 1.35,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -1582,36 +1624,27 @@ class CortanaPageState extends State<CortanaPage> {
                       _expressionActionsExpanded = expanded;
                     });
                   },
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final e in _expressions)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text(e),
-                              onPressed: () =>
-                                  _callJS("window.setExpression('$e')"),
-                            ),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final e in _expressions)
+                        _buildControlActionChip(
+                          context,
+                          label: e,
+                          onPressed: () =>
+                              _callJS("window.setExpression('$e')"),
+                        ),
+                      for (final m in _motions)
+                        _buildControlActionChip(
+                          context,
+                          label: m,
+                          icon: Icons.directions_run,
+                          onPressed: () => _callJS(
+                            "window.setMotion('${_normalizeMotion(m)}', 0)",
                           ),
-                        const SizedBox(width: 8),
-                        for (final m in _motions)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text(m),
-                              avatar: const Icon(
-                                Icons.directions_run,
-                                size: 14,
-                              ),
-                              onPressed: () => _callJS(
-                                "window.setMotion('${_normalizeMotion(m)}', 0)",
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),

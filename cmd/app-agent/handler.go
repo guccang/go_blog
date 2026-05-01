@@ -16,20 +16,22 @@ import (
 
 // Handler handles app inbound HTTP and WebSocket requests.
 type Handler struct {
-	cfg     *Config
-	bridge  *Bridge
-	auth    *authManager
-	client  *http.Client
-	cortana cortanaAccountSync
+	cfg      *Config
+	bridge   *Bridge
+	auth     *authManager
+	client   *http.Client
+	cortana  cortanaAccountSync
+	settings *CortanaSettingsStore
 }
 
-func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync) *Handler {
+func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync, settings *CortanaSettingsStore) *Handler {
 	return &Handler{
-		cfg:     cfg,
-		bridge:  bridge,
-		auth:    auth,
-		client:  &http.Client{Timeout: 10 * time.Second},
-		cortana: cortana,
+		cfg:      cfg,
+		bridge:   bridge,
+		auth:     auth,
+		client:   &http.Client{Timeout: 10 * time.Second},
+		cortana:  cortana,
+		settings: settings,
 	}
 }
 
@@ -146,8 +148,8 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if session.Session.DelegationToken != "" {
 		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
 	}
-	if err := h.syncCortanaRegister(session.Session.Account); err != nil {
-		log.Printf("[Handler] cortana register failed after login user=%s err=%v", session.Session.Account, err)
+	if err := h.syncCortanaSession(session.Session.Account); err != nil {
+		log.Printf("[Handler] cortana sync failed after login user=%s err=%v", session.Session.Account, err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -182,8 +184,8 @@ func (h *Handler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	if session.Session.DelegationToken != "" {
 		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
 	}
-	if err := h.syncCortanaRegister(session.Session.Account); err != nil {
-		log.Printf("[Handler] cortana register failed after refresh user=%s err=%v", session.Session.Account, err)
+	if err := h.syncCortanaSession(session.Session.Account); err != nil {
+		log.Printf("[Handler] cortana sync failed after refresh user=%s err=%v", session.Session.Account, err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -223,11 +225,21 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) syncCortanaRegister(account string) error {
+func (h *Handler) syncCortanaSession(account string) error {
 	if h == nil || h.cortana == nil {
 		return nil
 	}
-	return h.cortana.RegisterAccount(account)
+	settings := DefaultCortanaSettings()
+	if h.settings != nil {
+		settings = h.settings.Get(account)
+	}
+	return h.cortana.SyncUserSession(CortanaSyncPayload{
+		Account:    account,
+		Registered: true,
+		Online:     h.bridge != nil && h.bridge.HasOnlineClient(account),
+		LastSeenAt: time.Now().UnixMilli(),
+		Settings:   settings,
+	})
 }
 
 func (h *Handler) syncCortanaUnregister(account string) error {
@@ -235,6 +247,74 @@ func (h *Handler) syncCortanaUnregister(account string) error {
 		return nil
 	}
 	return h.cortana.UnregisterAccount(account)
+}
+
+func (h *Handler) HandleCortanaSettings(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	account := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if r.Method == http.MethodPost {
+		var req struct {
+			UserID      string `json:"user_id"`
+			Enabled     *bool  `json:"enabled"`
+			AllowAccess *bool  `json:"allow_full_access"`
+			AutoPlay    *bool  `json:"auto_play"`
+			Mode        string `json:"proactive_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if account == "" {
+			account = strings.TrimSpace(req.UserID)
+		}
+		if account == "" || !h.validateAppSession(r, account) {
+			http.Error(w, "Login required", http.StatusUnauthorized)
+			return
+		}
+		current := DefaultCortanaSettings()
+		if h.settings != nil {
+			current = h.settings.Get(account)
+		}
+		if req.Enabled != nil {
+			current.Enabled = *req.Enabled
+		}
+		if req.AllowAccess != nil {
+			current.AllowFullAccess = *req.AllowAccess
+		}
+		if req.AutoPlay != nil {
+			current.AutoPlay = *req.AutoPlay
+		}
+		if strings.TrimSpace(req.Mode) != "" {
+			current.ProactiveMode = strings.TrimSpace(req.Mode)
+		}
+		current.UpdatedAt = time.Now().UnixMilli()
+		if h.settings != nil {
+			current = h.settings.Set(account, current)
+		}
+		_ = h.syncCortanaSession(account)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "settings": current})
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if account == "" || !h.validateAppSession(r, account) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+	settings := DefaultCortanaSettings()
+	if h.settings != nil {
+		settings = h.settings.Get(account)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "settings": settings})
 }
 
 func (h *Handler) HandleMessage(w http.ResponseWriter, r *http.Request) {

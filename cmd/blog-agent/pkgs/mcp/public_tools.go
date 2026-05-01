@@ -58,6 +58,10 @@ var publicToolNames = map[string]struct{}{
 	"RawDeleteProjectOKR":       {},
 	"RawUpdateProjectKeyResult": {},
 	"RawGetProjectSummary":      {},
+
+	// YearPlan
+	"RawGetMonthGoal": {},
+	"RawGetYearGoals": {},
 }
 
 func normalizePublicToolName(toolName string) string {
