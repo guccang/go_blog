@@ -59,7 +59,7 @@ func TestHandleAttachmentRedirectsAPKViaObsAgent(t *testing.T) {
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth)
+	handler := NewHandler(cfg, bridge, auth, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/app/attachments/"+fileID+"?user_id=alice&session_token=session-1", nil)
 	req.Header.Set("X-App-Agent-Token", "app-token")
@@ -120,7 +120,7 @@ func TestHandleAttachmentFallsBackToLocalWhenObsAgentFails(t *testing.T) {
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth)
+	handler := NewHandler(cfg, bridge, auth, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/app/attachments/"+fileID+"?user_id=alice&session_token=session-1", nil)
 	req.Header.Set("X-App-Agent-Token", "app-token")
@@ -178,7 +178,7 @@ func TestHandleAttachmentUpgradesRemoteHTTPRedirectToHTTPS(t *testing.T) {
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth)
+	handler := NewHandler(cfg, bridge, auth, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/app/attachments/"+fileID+"?user_id=alice&session_token=session-1", nil)
 	req.Header.Set("X-App-Agent-Token", "app-token")
@@ -236,7 +236,7 @@ func TestHandleAttachmentFallsBackToLocalForHuaweiObsDefaultDomainAPK(t *testing
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth)
+	handler := NewHandler(cfg, bridge, auth, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/app/attachments/"+fileID+"?user_id=alice&session_token=session-1", nil)
 	req.Header.Set("X-App-Agent-Token", "app-token")

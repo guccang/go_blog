@@ -25,12 +25,12 @@ type ACPSession struct {
 }
 
 // Close 关闭 ACP 会话（带超时保护，防止 Wait 挂起）
+// 先杀进程树再 cancel，避免 exec.CommandContext 先单独杀掉父进程导致 Getpgid 失败、子进程泄漏。
 func (s *ACPSession) Close() {
-	if s.cancel != nil {
-		s.cancel()
-	}
 	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Kill()
+		if err := killProcessTree(s.cmd); err != nil {
+			log.Printf("[ACP] warning: kill process tree pid=%d failed: %v", s.cmd.Process.Pid, err)
+		}
 		// Wait with timeout: Windows 上 Kill 后 Wait 可能因管道未关闭而挂起
 		done := make(chan error, 1)
 		go func() {
@@ -42,6 +42,9 @@ func (s *ACPSession) Close() {
 		case <-time.After(5 * time.Second):
 			log.Printf("[ACP] warning: process pid=%d didn't exit within 5s after kill", s.cmd.Process.Pid)
 		}
+	}
+	if s.cancel != nil {
+		s.cancel()
 	}
 }
 
@@ -474,6 +477,7 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 
 	// 启动 claude-agent-acp 子进程
 	cmd := exec.CommandContext(ctx, cfg.ACPAgentCmd, allArgs...)
+	configureProcessTree(cmd)
 	cmd.Dir = projectPath
 	cmd.Stderr = os.Stderr
 
@@ -526,7 +530,7 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	})
 	if err != nil {
 		cancel()
-		cmd.Process.Kill()
+		_ = killProcessTree(cmd)
 		cmd.Wait()
 		return nil, nil, fmt.Errorf("acp initialize: %v", err)
 	}
@@ -541,7 +545,7 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	})
 	if err != nil {
 		cancel()
-		cmd.Process.Kill()
+		_ = killProcessTree(cmd)
 		cmd.Wait()
 		return nil, nil, fmt.Errorf("acp new session: %v", err)
 	}

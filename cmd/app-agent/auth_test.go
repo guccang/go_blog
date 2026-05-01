@@ -83,7 +83,9 @@ func TestAuthManagerLogoutRevokesRefreshToken(t *testing.T) {
 		t.Fatalf("login failed: %v", err)
 	}
 
-	manager.Logout(issued.Session.Token, issued.RefreshToken, "demo-user")
+	if account := manager.Logout(issued.Session.Token, issued.RefreshToken, "demo-user"); account != "demo-user" {
+		t.Fatalf("expected logout account demo-user, got %q", account)
+	}
 
 	if manager.Validate(issued.Session.Token, "demo-user") {
 		t.Fatalf("expected logout to revoke access token")

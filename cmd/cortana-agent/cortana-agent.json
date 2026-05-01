@@ -1,0 +1,103 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "gateway_http_url": "http://127.0.0.1:10086",
+  "auth_token": "",
+  "agent_name": "cortana-agent",
+  "blog_agent_id": "blog-agent",
+  "cron_agent_id": "cron-agent",
+  "audio_agent_id": "audio-agent",
+  "app_agent_id": "app-agent",
+  "check_interval_sec": 120,
+  "broadcast_cooldown_sec": 600,
+  "quiet_hours_start": "",
+  "quiet_hours_end": "",
+  "broadcasts": [
+    {
+      "id": "morning_greeting",
+      "trigger": "time_range",
+      "time_start": "06:00",
+      "time_end": "10:00",
+      "data_sources": null,
+      "interval_sec": 0,
+      "max_per_day": 1,
+      "min_count": 0,
+      "template": "早上好！又是充满活力的一天。",
+      "expression": "happy",
+      "motion": "IdleWave"
+    },
+    {
+      "id": "evening_summary",
+      "trigger": "time_range",
+      "time_start": "20:00",
+      "time_end": "23:00",
+      "data_sources": null,
+      "interval_sec": 0,
+      "max_per_day": 1,
+      "min_count": 0,
+      "template": "晚上好！今天过得怎么样？别忘了回顾一下今天的收获。",
+      "expression": "happy",
+      "motion": "IdleAlt"
+    },
+    {
+      "id": "new_blog_alert",
+      "trigger": "data_change",
+      "time_start": "",
+      "time_end": "",
+      "data_sources": [
+        "blog_new_count"
+      ],
+      "interval_sec": 0,
+      "max_per_day": 5,
+      "min_count": 1,
+      "template": "主人，检测到{{blog_new_count}}篇新博客文章，要去看看吗？",
+      "expression": "surprised",
+      "motion": "Tap"
+    },
+    {
+      "id": "todo_overdue_reminder",
+      "trigger": "data_change",
+      "time_start": "",
+      "time_end": "",
+      "data_sources": [
+        "todo_overdue_count"
+      ],
+      "interval_sec": 0,
+      "max_per_day": 3,
+      "min_count": 1,
+      "template": "你还有{{todo_overdue_count}}个待办事项需要处理哦。",
+      "expression": "sad",
+      "motion": "IdleAlt"
+    },
+    {
+      "id": "exercise_reminder",
+      "trigger": "time_range",
+      "time_start": "17:00",
+      "time_end": "20:00",
+      "data_sources": null,
+      "interval_sec": 0,
+      "max_per_day": 1,
+      "min_count": 0,
+      "template": "今天的运动时间到了！别忘了保持健康。",
+      "expression": "surprised",
+      "motion": "Tap"
+    },
+    {
+      "id": "agent_offline_alert",
+      "trigger": "data_change",
+      "time_start": "",
+      "time_end": "",
+      "data_sources": [
+        "agent_offline"
+      ],
+      "interval_sec": 0,
+      "max_per_day": 10,
+      "min_count": 1,
+      "template": "{{offline_agent_name}}服务已离线，请注意检查。",
+      "expression": "sad",
+      "motion": "Idle"
+    }
+  ],
+  "protected_files": [
+    "cortana-agent.json"
+  ]
+}

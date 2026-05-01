@@ -121,17 +121,29 @@ class CodegenHistoryItem {
     required this.timestamp,
     required this.command,
     required this.mode,
+    this.locked = false,
   });
 
   final DateTime timestamp;
   final String command;
   final CodegenLaunchMode mode;
+  final bool locked;
+
+  CodegenHistoryItem copyWith({bool? locked}) {
+    return CodegenHistoryItem(
+      timestamp: timestamp,
+      command: command,
+      mode: mode,
+      locked: locked ?? this.locked,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       'timestamp': timestamp.toIso8601String(),
       'command': command,
       'mode': mode.name,
+      'locked': locked,
     };
   }
 
@@ -142,6 +154,7 @@ class CodegenHistoryItem {
       mode: json['mode'] == 'deploy'
           ? CodegenLaunchMode.deploy
           : CodegenLaunchMode.code,
+      locked: json['locked'] == true,
     );
   }
 }

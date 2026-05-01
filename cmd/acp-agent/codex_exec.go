@@ -521,6 +521,7 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 		},
 	})
 	cmd := exec.CommandContext(ctx, a.cfg.CodexCmd, cmdArgs...)
+	configureProcessTree(cmd)
 	cmd.Dir = projectPath
 	cmd.Env = plan.Env
 	stdin, err := cmd.StdinPipe()
@@ -620,6 +621,13 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 	stdoutErr := stdoutScanner.Err()
 	waitErr := cmd.Wait()
 	<-stderrDone
+
+	// 清理残留子进程（cmd.Wait 返回后 codex 子进程可能尚未退出）
+	if cmd.Process != nil {
+		if err := killProcessTree(cmd); err != nil {
+			log.Printf("[Codex] warning: kill process tree pid=%d failed: %v", cmd.Process.Pid, err)
+		}
+	}
 
 	if stdoutErr != nil {
 		waitErr = fmt.Errorf("stdout scan: %v", stdoutErr)

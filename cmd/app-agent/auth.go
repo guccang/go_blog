@@ -142,7 +142,7 @@ func (m *authManager) Refresh(userID, refreshToken string) (*issuedAuthSession, 
 	return m.issueAuthSession(userID)
 }
 
-func (m *authManager) Logout(accessToken, refreshToken, userID string) {
+func (m *authManager) Logout(accessToken, refreshToken, userID string) string {
 	accessToken = strings.TrimSpace(accessToken)
 	refreshToken = strings.TrimSpace(refreshToken)
 	userID = strings.TrimSpace(userID)
@@ -152,19 +152,21 @@ func (m *authManager) Logout(accessToken, refreshToken, userID string) {
 
 	if userID != "" {
 		m.revokeUserLocked(userID)
-		return
+		return userID
 	}
 	if accessToken != "" {
 		if session := m.sessions[accessToken]; session != nil {
 			m.revokeUserLocked(session.Account)
-			return
+			return session.Account
 		}
 	}
 	if refreshToken != "" {
 		if grant := m.refreshTokens[hashToken(refreshToken)]; grant != nil {
 			m.revokeUserLocked(grant.Account)
+			return grant.Account
 		}
 	}
+	return ""
 }
 
 func (m *authManager) issueAuthSession(userID string) (*issuedAuthSession, error) {

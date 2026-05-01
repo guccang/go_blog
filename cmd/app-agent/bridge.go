@@ -91,6 +91,9 @@ type Bridge struct {
 	obsStorage        objectStorage
 	downloadTickets   downloadTicketSigner
 	downloadTicketTTL time.Duration
+
+	toolCallMu       sync.Mutex
+	pendingToolCalls map[string]chan uap.ToolResultPayload
 }
 
 type codegenStreamState struct {
@@ -180,6 +183,7 @@ func NewBridge(cfg *Config) *Bridge {
 		obsStorage:        newObjectStorage(cfg),
 		downloadTickets:   newDownloadTicketSigner(cfg),
 		downloadTicketTTL: time.Duration(cfg.DownloadTicketTTLSeconds) * time.Second,
+		pendingToolCalls:  make(map[string]chan uap.ToolResultPayload),
 	}
 	client.OnMessage = b.handleUAPMessage
 	return b
@@ -920,6 +924,17 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 		}
 		b.handleToolCall(msg, &payload)
 
+	case uap.MsgToolResult:
+		var payload uap.ToolResultPayload
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			log.Printf("[Bridge] invalid tool_result payload: %v", err)
+			return
+		}
+		if !b.resolvePendingToolCall(payload) {
+			log.Printf("[Bridge] unmatched tool_result request_id=%s from=%s success=%v",
+				payload.RequestID, msg.From, payload.Success)
+		}
+
 	case "stream_event":
 		b.handleCodegenStreamEvent(msg)
 
@@ -1033,6 +1048,85 @@ func (b *Bridge) handleToolCall(msg *uap.Message, payload *uap.ToolCallPayload) 
 	if err := b.client.SendTo(msg.From, uap.MsgToolResult, result); err != nil {
 		log.Printf("[Bridge] send tool result failed: %v", err)
 	}
+}
+
+func (b *Bridge) CallTool(targetAgentID, toolName string, arguments any, timeout time.Duration) (uap.ToolResultPayload, error) {
+	var zero uap.ToolResultPayload
+
+	targetAgentID = strings.TrimSpace(targetAgentID)
+	toolName = strings.TrimSpace(toolName)
+	if targetAgentID == "" {
+		return zero, fmt.Errorf("target agent id is required")
+	}
+	if toolName == "" {
+		return zero, fmt.Errorf("tool name is required")
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+
+	argumentsJSON, err := json.Marshal(arguments)
+	if err != nil {
+		return zero, fmt.Errorf("marshal tool arguments: %w", err)
+	}
+
+	msgID := uap.NewMsgID()
+	resultCh := make(chan uap.ToolResultPayload, 1)
+
+	b.toolCallMu.Lock()
+	b.pendingToolCalls[msgID] = resultCh
+	b.toolCallMu.Unlock()
+
+	defer func() {
+		b.toolCallMu.Lock()
+		delete(b.pendingToolCalls, msgID)
+		b.toolCallMu.Unlock()
+	}()
+
+	err = b.client.Send(&uap.Message{
+		Type: uap.MsgToolCall,
+		ID:   msgID,
+		From: b.client.AgentID,
+		To:   targetAgentID,
+		Payload: mustMarshalToolCall(uap.ToolCallPayload{
+			ToolName:  toolName,
+			Arguments: argumentsJSON,
+		}),
+		Ts: time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return zero, err
+	}
+
+	select {
+	case result := <-resultCh:
+		if !result.Success {
+			return result, fmt.Errorf("%s", result.Error)
+		}
+		return result, nil
+	case <-time.After(timeout):
+		return zero, fmt.Errorf("tool call timeout: %s", toolName)
+	}
+}
+
+func (b *Bridge) resolvePendingToolCall(result uap.ToolResultPayload) bool {
+	b.toolCallMu.Lock()
+	resultCh := b.pendingToolCalls[result.RequestID]
+	b.toolCallMu.Unlock()
+	if resultCh == nil {
+		return false
+	}
+
+	select {
+	case resultCh <- result:
+	default:
+	}
+	return true
+}
+
+func mustMarshalToolCall(payload uap.ToolCallPayload) json.RawMessage {
+	data, _ := json.Marshal(payload)
+	return data
 }
 
 type codegenStreamEvent struct {
@@ -1700,6 +1794,8 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 		Origin      string `json:"origin"`
 		BroadcastID string `json:"broadcast_id"`
 		Timestamp   int64  `json:"timestamp"`
+		AudioBase64 string `json:"audio_base64"`
+		AudioFormat string `json:"audio_format"`
 	}
 	if err := json.Unmarshal([]byte(content), &broadcast); err != nil {
 		return false
@@ -1715,13 +1811,13 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 		return true
 	}
 
-	log.Printf("[Bridge] cortana broadcast user=%s text=%q expression=%s motion=%s",
-		toUser, broadcastText, broadcast.Expression, broadcast.Motion)
+	log.Printf("[Bridge] cortana broadcast user=%s text=%q expression=%s motion=%s audio=%dbytes",
+		toUser, broadcastText, broadcast.Expression, broadcast.Motion, len(broadcast.AudioBase64))
 
 	// 构建 cortana 播报推送 meta
 	cortanaMeta := map[string]any{
-		"origin":          "cortana-agent",
-		"broadcast_id":    broadcast.BroadcastID,
+		"origin":             "cortana-agent",
+		"broadcast_id":       broadcast.BroadcastID,
 		"cortana_expression": broadcast.Expression,
 		"cortana_motion":     broadcast.Motion,
 		"cortana_text":       broadcastText,
@@ -1730,6 +1826,12 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 	// 如果有播报时间戳，添加到 meta
 	if broadcast.Timestamp > 0 {
 		cortanaMeta["cortana_broadcast_ts"] = broadcast.Timestamp
+	}
+
+	// 如果有 TTS 语音数据，添加到 meta
+	if broadcast.AudioBase64 != "" {
+		cortanaMeta["cortana_audio_base64"] = broadcast.AudioBase64
+		cortanaMeta["cortana_audio_format"] = broadcast.AudioFormat
 	}
 
 	return b.sendAppPushWithType(toUser, broadcastText, "cortana_broadcast", cortanaMeta) == nil

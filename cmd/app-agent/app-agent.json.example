@@ -13,5 +13,6 @@
   "download_ticket_ttl_seconds": 300,
   "llm_agent_id": "llm-agent",
   "cmd_agent_id": "cmd-agent",
-  "backend_agent_id": "blog-agent"
+  "backend_agent_id": "blog-agent",
+  "cortana_agent_id": "cortana-agent"
 }

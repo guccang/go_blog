@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:audioplayers/audioplayers.dart';
@@ -6,12 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-enum CortanaDisplayMode {
-  fullscreen,
-  expanded,
-  small,
-  collapsed,
-}
+enum CortanaDisplayMode { fullscreen, expanded, small, collapsed }
 
 class CortanaReplyPayload {
   const CortanaReplyPayload({
@@ -75,6 +71,13 @@ class _CortanaVoiceHistoryItem {
   final Map<String, dynamic>? actionPlan;
 }
 
+class _QueuedBroadcast {
+  const _QueuedBroadcast(this.payload, this.onFinished);
+
+  final CortanaReplyPayload payload;
+  final VoidCallback? onFinished;
+}
+
 class CortanaPage extends StatefulWidget {
   const CortanaPage({
     super.key,
@@ -110,6 +113,8 @@ class CortanaPageState extends State<CortanaPage> {
   static const _localhostPort = 18080;
   InAppWebViewController? _webCtrl;
   final TextEditingController _textCtrl = TextEditingController();
+  final ListQueue<_QueuedBroadcast> _queuedBroadcasts =
+      ListQueue<_QueuedBroadcast>();
   final AudioPlayer _audio = AudioPlayer();
   Timer? _lipTimer;
   Timer? _debugStateTimer;
@@ -120,7 +125,8 @@ class CortanaPageState extends State<CortanaPage> {
   InAppLocalhostServer? _localhostServer;
   Future<void>? _androidLocalhostFuture;
   int _playbackToken = 0;
-  final List<_CortanaVoiceHistoryItem> _voiceHistory = <_CortanaVoiceHistoryItem>[];
+  final List<_CortanaVoiceHistoryItem> _voiceHistory =
+      <_CortanaVoiceHistoryItem>[];
   double _modelUserScale = 1.0;
   double _modelUserOffsetX = 0.0;
   double _modelUserOffsetY = 0.0;
@@ -135,6 +141,8 @@ class CortanaPageState extends State<CortanaPage> {
   Offset? _floatingOffset;
   bool _isDragging = false;
   String? _lastContextualExpression;
+
+  bool get isSpeaking => _speaking;
 
   static const int _maxLogEntries = 80;
   static const double _floatingCollapsedSize = 48.0;
@@ -293,7 +301,8 @@ class CortanaPageState extends State<CortanaPage> {
     }
     try {
       final state = await ctrl.evaluateJavascript(
-        source: 'JSON.stringify(window.cortanaDebugState ? window.cortanaDebugState() : null);',
+        source:
+            'JSON.stringify(window.cortanaDebugState ? window.cortanaDebugState() : null);',
       );
       final raw = state?.toString().trim() ?? '';
       if (raw.isEmpty || raw == 'null' || raw == 'undefined') {
@@ -364,7 +373,9 @@ class CortanaPageState extends State<CortanaPage> {
         debugPrint(
           '[Cortana Error] ${error.type}: ${error.description} (${request.url})',
         );
-        _updateLoadStatus('WebView error: ${error.description} (${request.url})');
+        _updateLoadStatus(
+          'WebView error: ${error.description} (${request.url})',
+        );
       },
       onReceivedHttpError: (ctrl, request, response) {
         debugPrint(
@@ -940,11 +951,22 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   /// 播放服务器推送的播报（无需用户输入，自动播放）
-  Future<void> playBroadcast(CortanaReplyPayload payload, {VoidCallback? onFinished}) async {
+  Future<void> playBroadcast(
+    CortanaReplyPayload payload, {
+    VoidCallback? onFinished,
+  }) async {
     if (_speaking) {
+      _queuedBroadcasts.addLast(_QueuedBroadcast(payload, onFinished));
       return;
     }
 
+    return _playBroadcastNow(payload, onFinished: onFinished);
+  }
+
+  Future<void> _playBroadcastNow(
+    CortanaReplyPayload payload, {
+    VoidCallback? onFinished,
+  }) async {
     setState(() => _speaking = true);
     _broadcastAutoCollapseTimer?.cancel();
 
@@ -963,7 +985,13 @@ class CortanaPageState extends State<CortanaPage> {
     } finally {
       if (mounted) {
         setState(() => _speaking = false);
-        // 播报完成后自动折叠
+      }
+      if (_queuedBroadcasts.isNotEmpty) {
+        final next = _queuedBroadcasts.removeFirst();
+        unawaited(_playBroadcastNow(next.payload, onFinished: next.onFinished));
+        return;
+      }
+      if (mounted) {
         _startAutoCollapseTimer();
       }
     }
@@ -1040,10 +1068,7 @@ class CortanaPageState extends State<CortanaPage> {
   Size _floatingSizeForMode(CortanaDisplayMode mode) {
     switch (mode) {
       case CortanaDisplayMode.collapsed:
-        return const Size(
-          _floatingCollapsedSize,
-          _floatingCollapsedSize,
-        );
+        return const Size(_floatingCollapsedSize, _floatingCollapsedSize);
       case CortanaDisplayMode.small:
         return const Size(_floatingSmallWidth, _floatingSmallHeight);
       case CortanaDisplayMode.expanded:
@@ -1073,7 +1098,11 @@ class CortanaPageState extends State<CortanaPage> {
     final navBarHeight = 80.0;
     return Offset(
       screenSize.width - floatingSize.width - 12,
-      screenSize.height - floatingSize.height - bottomPadding - navBarHeight - 8,
+      screenSize.height -
+          floatingSize.height -
+          bottomPadding -
+          navBarHeight -
+          8,
     );
   }
 
@@ -1083,7 +1112,10 @@ class CortanaPageState extends State<CortanaPage> {
     final bottomPadding = MediaQuery.paddingOf(context).bottom + 80;
     return Offset(
       offset.dx.clamp(0.0, screenSize.width - floatingSize.width),
-      offset.dy.clamp(topPadding, screenSize.height - floatingSize.height - bottomPadding),
+      offset.dy.clamp(
+        topPadding,
+        screenSize.height - floatingSize.height - bottomPadding,
+      ),
     );
   }
 
@@ -1149,10 +1181,7 @@ class CortanaPageState extends State<CortanaPage> {
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Padding(
-        padding: padding,
-        child: child,
-      ),
+      child: Padding(padding: padding, child: child),
     );
   }
 
@@ -1399,10 +1428,7 @@ class CortanaPageState extends State<CortanaPage> {
   ) {
     final cs = Theme.of(context).colorScheme;
     if (replayHistory.isEmpty) {
-      return Text(
-        '暂无可重播语音',
-        style: Theme.of(context).textTheme.bodyMedium,
-      );
+      return Text('暂无可重播语音', style: Theme.of(context).textTheme.bodyMedium);
     }
     return Column(
       children: [
@@ -1456,10 +1482,7 @@ class CortanaPageState extends State<CortanaPage> {
   Widget _buildLogsContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (_logEntries.isEmpty) {
-      return Text(
-        '暂无日志输出',
-        style: Theme.of(context).textTheme.bodyMedium,
-      );
+      return Text('暂无日志输出', style: Theme.of(context).textTheme.bodyMedium);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1503,9 +1526,9 @@ class CortanaPageState extends State<CortanaPage> {
                 ),
                 child: SelectableText(
                   entry,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    height: 1.35,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(height: 1.35),
                 ),
               );
             },
@@ -1552,9 +1575,7 @@ class CortanaPageState extends State<CortanaPage> {
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-expression-actions',
                   title: '表情与动作',
-                  subtitle: _expressionActionsExpanded
-                      ? '点击收起'
-                      : '默认折叠，点击展开控制',
+                  subtitle: _expressionActionsExpanded ? '点击收起' : '默认折叠，点击展开控制',
                   expanded: _expressionActionsExpanded,
                   onExpansionChanged: (expanded) {
                     setState(() {
@@ -1570,9 +1591,8 @@ class CortanaPageState extends State<CortanaPage> {
                             padding: const EdgeInsets.only(right: 6),
                             child: ActionChip(
                               label: Text(e),
-                              onPressed: () => _callJS(
-                                "window.setExpression('$e')",
-                              ),
+                              onPressed: () =>
+                                  _callJS("window.setExpression('$e')"),
                             ),
                           ),
                         const SizedBox(width: 8),
@@ -1598,7 +1618,8 @@ class CortanaPageState extends State<CortanaPage> {
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-view-controls',
                   title: '视角调整',
-                  subtitle: '当前: 缩放 $scaleText / X $offsetXText / Y $offsetYText',
+                  subtitle:
+                      '当前: 缩放 $scaleText / X $offsetXText / Y $offsetYText',
                   expanded: _viewControlsExpanded,
                   onExpansionChanged: (expanded) {
                     setState(() {
@@ -1673,9 +1694,7 @@ class CortanaPageState extends State<CortanaPage> {
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Cortana localhost failed: ${snapshot.error}',
-              ),
+              child: Text('Cortana localhost failed: ${snapshot.error}'),
             );
           }
           if (snapshot.connectionState != ConnectionState.done) {
@@ -1704,10 +1723,7 @@ class CortanaPageState extends State<CortanaPage> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                cs.primaryContainer,
-                cs.tertiaryContainer,
-              ],
+              colors: [cs.primaryContainer, cs.tertiaryContainer],
             ),
           ),
           child: Center(
@@ -1741,7 +1757,9 @@ class CortanaPageState extends State<CortanaPage> {
     final cs = Theme.of(context).colorScheme;
     final isFullscreen = widget.mode == CortanaDisplayMode.fullscreen;
     final isCollapsed = widget.mode == CortanaDisplayMode.collapsed;
-    final floatingSize = isFullscreen ? null : _floatingSizeForMode(widget.mode);
+    final floatingSize = isFullscreen
+        ? null
+        : _floatingSizeForMode(widget.mode);
     final borderRadius = isFullscreen
         ? BorderRadius.zero
         : BorderRadius.circular(isCollapsed ? floatingSize!.width / 2 : 16);
@@ -1768,7 +1786,9 @@ class CortanaPageState extends State<CortanaPage> {
       children: [
         // WebView - always in AnimatedPositioned, transitions smoothly
         AnimatedPositioned(
-          duration: _isDragging ? Duration.zero : const Duration(milliseconds: 350),
+          duration: _isDragging
+              ? Duration.zero
+              : const Duration(milliseconds: 350),
           curve: Curves.easeInOut,
           left: isFullscreen ? 0.0 : clampedOffset.dx,
           top: isFullscreen ? 0.0 : clampedOffset.dy,
@@ -1780,8 +1800,7 @@ class CortanaPageState extends State<CortanaPage> {
             onTap: isFullscreen
                 ? null
                 : () {
-                    widget.onModeChanged
-                        ?.call(_nextFloatingMode(widget.mode));
+                    widget.onModeChanged?.call(_nextFloatingMode(widget.mode));
                   },
             onLongPress: isFullscreen
                 ? null
@@ -1868,8 +1887,7 @@ class CortanaPageState extends State<CortanaPage> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                cs.surfaceContainerLow
-                                    .withValues(alpha: 0.9),
+                                cs.surfaceContainerLow.withValues(alpha: 0.9),
                                 Colors.transparent,
                               ],
                             ),
@@ -1897,15 +1915,17 @@ class CortanaPageState extends State<CortanaPage> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () {
-                              widget.onModeChanged
-                                  ?.call(CortanaDisplayMode.collapsed);
+                              widget.onModeChanged?.call(
+                                CortanaDisplayMode.collapsed,
+                              );
                             },
                             child: Container(
                               width: 24,
                               height: 24,
                               decoration: BoxDecoration(
-                                color: cs.surfaceContainerLow
-                                    .withValues(alpha: 0.85),
+                                color: cs.surfaceContainerLow.withValues(
+                                  alpha: 0.85,
+                                ),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
@@ -1947,8 +1967,7 @@ class CortanaPageState extends State<CortanaPage> {
                             ? Icons.visibility_off_outlined
                             : Icons.tune,
                       ),
-                      label: Text(
-                          _controlPanelVisible ? '隐藏面板' : '控制面板'),
+                      label: Text(_controlPanelVisible ? '隐藏面板' : '控制面板'),
                     ),
                   ),
                 ),

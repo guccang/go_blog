@@ -18,7 +18,14 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
-import 'cortana_page.dart' show CortanaDisplayMode, CortanaPage, CortanaPageState, CortanaReplayItem, CortanaReplyPayload;
+import 'cortana_broadcast_queue.dart';
+import 'cortana_page.dart'
+    show
+        CortanaDisplayMode,
+        CortanaPage,
+        CortanaPageState,
+        CortanaReplayItem,
+        CortanaReplyPayload;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
@@ -1687,9 +1694,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<bool>? _sessionRefreshFuture;
   RootTab _rootTab = RootTab.chat;
   CortanaDisplayMode _cortanaFloatingMode = CortanaDisplayMode.collapsed;
-  final GlobalKey<CortanaPageState> _cortanaPageKey = GlobalKey<CortanaPageState>();
+  final GlobalKey<CortanaPageState> _cortanaPageKey =
+      GlobalKey<CortanaPageState>();
   bool _cortanaBadge = false;
-  CortanaReplyPayload? _pendingCortanaBroadcast;
+  final CortanaBroadcastQueue _cortanaBroadcastQueue = CortanaBroadcastQueue();
   String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
 
@@ -2820,9 +2828,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     setState(() {
       _codegenHistory.insert(0, item);
-      // 只保留最近100条记录
+      // 只保留最近100条记录，但锁定的记录不会被移除
       if (_codegenHistory.length > 100) {
-        _codegenHistory = _codegenHistory.sublist(0, 100);
+        final locked = _codegenHistory.where((e) => e.locked).toList();
+        final unlocked = _codegenHistory.where((e) => !e.locked).toList();
+        if (unlocked.length > 100 - locked.length) {
+          _codegenHistory = [
+            ...locked,
+            ...unlocked.sublist(0, 100 - locked.length),
+          ];
+        }
       }
     });
     unawaited(_persistCodegenPreferences());
@@ -2861,6 +2876,49 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _deployPackOnly = details.packOnly;
         _deployArgsController.text = details.extraArgs;
       }
+    });
+    unawaited(_persistCodegenPreferences());
+  }
+
+  void _reExecuteCodegenHistory(CodegenHistoryItem item) {
+    _appendOutgoing(item.command);
+    setState(() {
+      _codegenSending = true;
+    });
+    _runAuthed('Re-execute codegen command', (client) {
+          return client.sendMessage(item.command);
+        })
+        .then((_) {
+          if (mounted) {
+            setState(() {
+              _status = item.mode == CodegenLaunchMode.code
+                  ? 'Code command sent'
+                  : 'Deploy command sent';
+            });
+          }
+          _triggerCortanaContextualExpression('surprised');
+          _appendSystem('命令已重新发送，执行进度会继续在聊天流中返回。');
+          _addCodegenHistory(item.command, item.mode);
+        })
+        .catchError((err) {
+          _appendSystem(
+            _describeRequestError(err, operation: 'Re-execute codegen command'),
+          );
+        })
+        .whenComplete(() {
+          if (mounted) {
+            setState(() {
+              _codegenSending = false;
+            });
+          }
+        });
+  }
+
+  void _toggleCodegenHistoryLock(CodegenHistoryItem item) {
+    setState(() {
+      final idx = _codegenHistory.indexOf(item);
+      if (idx == -1) return;
+      _codegenHistory[idx] = item.copyWith(locked: !item.locked);
     });
     unawaited(_persistCodegenPreferences());
   }
@@ -2917,7 +2975,31 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
+                        if (item.locked) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.lock_rounded,
+                            size: 16,
+                            color: palette.textSecondary,
+                          ),
+                        ],
                         const Spacer(),
+                        IconButton(
+                          onPressed: () {
+                            _toggleCodegenHistoryLock(item);
+                            Navigator.of(context).pop();
+                            _showCodegenHistoryDetails(
+                              item.copyWith(locked: !item.locked),
+                            );
+                          },
+                          icon: Icon(
+                            item.locked
+                                ? Icons.lock_rounded
+                                : Icons.lock_open_rounded,
+                            size: 20,
+                          ),
+                          tooltip: item.locked ? '取消锁定' : '锁定',
+                        ),
                         IconButton(
                           onPressed: () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.close_rounded),
@@ -2979,6 +3061,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                     _buildHistoryDetailRow('完整命令', item.command, mono: true),
                     const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _reExecuteCodegenHistory(item);
+                        },
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('直接执行'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -3390,35 +3487,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (msg.direction != MessageDirection.incoming) {
       return null;
     }
-    if (msg.messageType == 'audio') {
-      final meta = msg.meta ?? const <String, dynamic>{};
-      final audioPath = (meta['audio_path'] ?? '').toString().trim();
-      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
-      final speechText = (meta['speech_text'] ?? '').toString().trim();
-      final rawActionPlan = meta['cortana_action_plan'];
-      final actionPlan = rawActionPlan is Map
-          ? Map<String, dynamic>.from(rawActionPlan)
-          : null;
-      Uint8List? audioBytes;
-      if (audioBase64.isNotEmpty) {
-        try {
-          audioBytes = base64Decode(audioBase64);
-        } catch (_) {
-          audioBytes = null;
-        }
-      }
-      if (audioPath.isEmpty && audioBytes == null) {
-        return null;
-      }
-      return CortanaReplyPayload(
-        text: speechText.isNotEmpty ? speechText : 'Cortana 语音回复',
-        audioPath: audioPath,
-        audioBytes: audioBytes,
-        audioFormat: (meta['audio_format'] ?? '').toString().trim(),
-        actionPlan: actionPlan,
-        requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
-      );
-    }
     if (msg.messageType == 'text' && !_isCortanaProgressMessage(msg)) {
       return CortanaReplyPayload(text: msg.content.trim());
     }
@@ -3489,53 +3557,109 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleCortanaBroadcast(dynamic envelope, Map<String, dynamic> meta) {
-    final broadcastText = (meta['cortana_text'] ?? envelope.content ?? '').toString().trim();
+    final broadcastText = (meta['cortana_text'] ?? envelope.content ?? '')
+        .toString()
+        .trim();
     if (broadcastText.isEmpty) return;
 
-    final expression = (meta['cortana_expression'] ?? 'happy').toString().trim();
+    final expression = (meta['cortana_expression'] ?? 'happy')
+        .toString()
+        .trim();
     final motion = (meta['cortana_motion'] ?? 'IdleWave').toString().trim();
 
-    debugPrint('[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion');
+    // 提取 TTS 音频数据
+    final audioBase64 = (meta['cortana_audio_base64'] ?? '').toString().trim();
+    final audioFormat = (meta['cortana_audio_format'] ?? '').toString().trim();
+    Uint8List? audioBytes;
+    if (audioBase64.isNotEmpty) {
+      try {
+        audioBytes = base64Decode(audioBase64);
+      } catch (_) {
+        audioBytes = null;
+      }
+    }
+
+    debugPrint(
+      '[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion audio=${audioBytes != null ? "${audioBytes.length}bytes" : "none"}',
+    );
 
     final payload = CortanaReplyPayload(
       text: broadcastText,
+      audioBytes: audioBytes,
+      audioFormat: audioFormat,
       actionPlan: <String, dynamic>{
         'expression': expression,
         'motion': motion,
         'actions': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'motion': motion,
-            'delay': 0,
-          },
+          <String, dynamic>{'motion': motion, 'delay': 0},
         ],
       },
     );
 
     if (!mounted) return;
 
+    _presentCortanaFloatingBroadcast(payload);
+  }
+
+  void _presentCortanaFloatingBroadcast(CortanaReplyPayload payload) {
     setState(() {
-      _pendingCortanaBroadcast = payload;
       _cortanaBadge = true;
-      // 从折叠模式展开
-      if (_cortanaFloatingMode == CortanaDisplayMode.collapsed) {
+      if (_rootTab != RootTab.cortana &&
+          _cortanaFloatingMode == CortanaDisplayMode.collapsed) {
         _cortanaFloatingMode = CortanaDisplayMode.small;
       }
     });
 
-    // 在下一帧调用 playBroadcast
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final broadcast = _pendingCortanaBroadcast;
-      if (broadcast == null) return;
-      _pendingCortanaBroadcast = null;
-      _cortanaPageKey.currentState?.playBroadcast(broadcast, onFinished: () {
+    debugPrint(
+      '[Cortana Broadcast] raise floating cortana mode=$_cortanaFloatingMode text=${payload.text}',
+    );
+
+    _cortanaBroadcastQueue.enqueue(payload, (nextPayload, onFinished) {
+      _playQueuedCortanaBroadcast(nextPayload, onFinished);
+    });
+  }
+
+  void _playQueuedCortanaBroadcast(
+    CortanaReplyPayload payload,
+    void Function() onFinished, {
+    int retryCount = 0,
+  }) {
+    final cortanaState = _cortanaPageKey.currentState;
+    if (cortanaState == null) {
+      if (retryCount >= 10) {
+        debugPrint(
+          '[Cortana Broadcast] CortanaPage not ready after retries, drop broadcast: ${payload.text}',
+        );
+        onFinished();
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future<void>.delayed(const Duration(milliseconds: 120), () {
+          if (!mounted) {
+            onFinished();
+            return;
+          }
+          _playQueuedCortanaBroadcast(
+            payload,
+            onFinished,
+            retryCount: retryCount + 1,
+          );
+        });
+      });
+      return;
+    }
+
+    cortanaState.playBroadcast(
+      payload,
+      onFinished: () {
         if (mounted) {
           setState(() {
-            _cortanaBadge = false;
+            _cortanaBadge = _cortanaBroadcastQueue.hasPending;
           });
         }
-      });
-    });
+        onFinished();
+      },
+    );
   }
 
   Future<CortanaReplyPayload> _sendCortanaMessage(String message) async {
@@ -3544,11 +3668,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
 
     final startTime = DateTime.now();
-    const audioWaitTimeout = Duration(seconds: 45);
+    const replyTimeout = Duration(seconds: 20);
     final baselineCount = _messages.length;
     final requestId = _buildCortanaRequestId();
-    CortanaReplyPayload? latestTextReply;
-    String? latestTextKey;
 
     try {
       await _runAuthed('Send Cortana message', (client) {
@@ -3556,13 +3678,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           message,
           meta: <String, dynamic>{
             'input_mode': 'cortana_text',
-            'reply_mode': 'audio_preferred',
             'cortana_request_id': requestId,
           },
         );
       });
 
-      while (DateTime.now().difference(startTime) < audioWaitTimeout) {
+      while (DateTime.now().difference(startTime) < replyTimeout) {
         await Future.delayed(const Duration(milliseconds: 500));
         final appendedMessages = _messages.skip(baselineCount);
         for (final msg in appendedMessages.toList().reversed) {
@@ -3574,36 +3695,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           if (payload == null) {
             continue;
           }
-          if (payload.hasAudio) {
-            if (payload.requestId.isNotEmpty &&
-                payload.requestId != requestId) {
-              continue;
-            }
-            _consumedCortanaReplyKeys.add(replyKey);
-            if (payload.text.trim().isNotEmpty) {
-              return payload;
-            }
-            return CortanaReplyPayload(
-              text: latestTextReply?.text ?? 'Cortana 语音回复',
-              audioPath: payload.audioPath,
-              requestId: payload.requestId,
-              audioFormat: payload.audioFormat,
-              actionPlan: payload.actionPlan,
-            );
-          }
-          if (latestTextKey == replyKey) {
+          if (payload.requestId.isNotEmpty && payload.requestId != requestId) {
             continue;
           }
-          latestTextReply = payload;
-          latestTextKey = replyKey;
+          _consumedCortanaReplyKeys.add(replyKey);
+          return payload;
         }
-      }
-
-      if (latestTextReply != null) {
-        if (latestTextKey != null) {
-          _consumedCortanaReplyKeys.add(latestTextKey);
-        }
-        return latestTextReply;
       }
 
       throw Exception('No response from assistant');
@@ -3801,8 +3898,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final history = _historyByScope[scopeKey];
     final index = history != null
         ? history.lastIndexWhere(
-            (item) =>
-                (item.meta?['_message_id'] ?? '').toString() == messageId,
+            (item) => (item.meta?['_message_id'] ?? '').toString() == messageId,
           )
         : -1;
 
@@ -3831,8 +3927,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
 
-    final updates =
-        Map<String, _BufferedStreamUpdate>.from(_bufferedStreamUpdates);
+    final updates = Map<String, _BufferedStreamUpdate>.from(
+      _bufferedStreamUpdates,
+    );
     _bufferedStreamUpdates.clear();
 
     bool anyUpdated = false;
@@ -3842,8 +3939,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final history = _historyByScope[u.scopeKey];
       if (history == null) continue;
       final index = history.lastIndexWhere(
-        (item) =>
-            (item.meta?['_message_id'] ?? '').toString() == entry.key,
+        (item) => (item.meta?['_message_id'] ?? '').toString() == entry.key,
       );
       if (index < 0) continue;
 
@@ -4583,7 +4679,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       // 检测 Cortana 播报消息
       final origin = (meta['origin'] ?? '').toString();
-      if (envelope.messageType == 'cortana_broadcast' || origin == 'cortana-agent') {
+      if (envelope.messageType == 'cortana_broadcast' ||
+          origin == 'cortana-agent') {
         _handleCortanaBroadcast(envelope, meta);
         return;
       }
@@ -7191,12 +7288,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       onSend: _sendCodegenCommand,
       onClearHistory: () {
         setState(() {
-          _codegenHistory.clear();
+          _codegenHistory.removeWhere((item) => !item.locked);
         });
         unawaited(_persistCodegenPreferences());
       },
       onShowHistoryDetails: (item) =>
           unawaited(_showCodegenHistoryDetails(item)),
+      onReExecute: (item) => _reExecuteCodegenHistory(item),
+      onToggleLock: (item) => _toggleCodegenHistoryLock(item),
     );
   }
 
@@ -7227,6 +7326,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       autoCollapseDelay: const Duration(seconds: 8),
       onTapWhenFloating: () {
         setState(() {
+          _cortanaBadge = false;
           _rootTab = RootTab.cortana;
           _cortanaFloatingMode = CortanaDisplayMode.collapsed;
         });
@@ -7308,9 +7408,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       body: Stack(
         children: [
           if (_rootTab != RootTab.cortana)
-            _rootTab == RootTab.chat
-                ? _buildChatBody()
-                : _buildCodegenBody(),
+            _rootTab == RootTab.chat ? _buildChatBody() : _buildCodegenBody(),
           _buildCortanaLayer(),
         ],
       ),
@@ -7372,8 +7470,11 @@ class _MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<_MessageBubble> {
   static const Duration _typewriterTick = Duration(milliseconds: 18);
+  static const int _kCollapseThreshold = 400;
   Timer? _typewriterTimer;
   int _visibleChars = 0;
+  bool _expanded = false;
+  bool _userToggledExpand = false;
 
   ChatMessage get message => widget.message;
 
@@ -7413,6 +7514,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
     if (oldWidget.message.content != widget.message.content ||
         oldWidget.message.meta != widget.message.meta ||
         oldWidget.message.messageType != widget.message.messageType) {
+      if (!_userToggledExpand) {
+        _expanded = false;
+      }
       _syncTypewriter(forceFullText: false);
     }
   }
@@ -7497,6 +7601,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
         : '';
     final imageBase64 = (message.meta?['image_base64'] ?? '').toString().trim();
     final displayText = _displayText;
+    final textOverflows =
+        !isAudio && !isImage && displayText.length > _kCollapseThreshold;
+    final collapsedText = textOverflows && !_expanded
+        ? '${displayText.substring(0, _kCollapseThreshold)}...'
+        : displayText;
     Uint8List? imageBytes;
     if (isImage && imageBase64.isNotEmpty) {
       try {
@@ -7511,7 +7620,14 @@ class _MessageBubbleState extends State<_MessageBubble> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         child: InkWell(
-          onTap: (isAudio || isApk) ? () => widget.onTap() : null,
+          onTap: (isAudio || isApk)
+              ? () => widget.onTap()
+              : textOverflows
+              ? () => setState(() {
+                  _expanded = !_expanded;
+                  _userToggledExpand = true;
+                })
+              : null,
           onLongPress: () => widget.onCopy(),
           borderRadius: BorderRadius.circular(18),
           child: Container(
@@ -7618,14 +7734,26 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       ),
                     ],
                   ),
-                if (!isAudio && !isImage)
+                if (!isAudio && !isImage) ...[
                   Text(
-                    displayText,
+                    collapsedText,
                     style: TextStyle(
                       color: isSystem ? palette.textSecondary : fgColor,
                       height: 1.35,
                     ),
                   ),
+                  if (textOverflows) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _expanded ? '点击收起' : '点击展开',
+                      style: TextStyle(
+                        color: palette.accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 6),
                 Text(
                   isImage

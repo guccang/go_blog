@@ -16,18 +16,20 @@ import (
 
 // Handler handles app inbound HTTP and WebSocket requests.
 type Handler struct {
-	cfg    *Config
-	bridge *Bridge
-	auth   *authManager
-	client *http.Client
+	cfg     *Config
+	bridge  *Bridge
+	auth    *authManager
+	client  *http.Client
+	cortana cortanaAccountSync
 }
 
-func NewHandler(cfg *Config, bridge *Bridge, auth *authManager) *Handler {
+func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync) *Handler {
 	return &Handler{
-		cfg:    cfg,
-		bridge: bridge,
-		auth:   auth,
-		client: &http.Client{Timeout: 10 * time.Second},
+		cfg:     cfg,
+		bridge:  bridge,
+		auth:    auth,
+		client:  &http.Client{Timeout: 10 * time.Second},
+		cortana: cortana,
 	}
 }
 
@@ -144,6 +146,9 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if session.Session.DelegationToken != "" {
 		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
 	}
+	if err := h.syncCortanaRegister(session.Session.Account); err != nil {
+		log.Printf("[Handler] cortana register failed after login user=%s err=%v", session.Session.Account, err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(authSuccessResponse(session, h.cfg.ObsAgentBaseURL))
@@ -177,6 +182,9 @@ func (h *Handler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 	if session.Session.DelegationToken != "" {
 		h.bridge.SetDelegationToken(session.Session.Account, session.Session.DelegationToken)
 	}
+	if err := h.syncCortanaRegister(session.Session.Account); err != nil {
+		log.Printf("[Handler] cortana register failed after refresh user=%s err=%v", session.Session.Account, err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(authSuccessResponse(session, h.cfg.ObsAgentBaseURL))
@@ -201,15 +209,32 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.auth.Logout(readAppSessionToken(r), req.RefreshToken, req.UserID)
-	if userID := strings.TrimSpace(req.UserID); userID != "" {
-		h.bridge.SetDelegationToken(userID, "")
+	account := h.auth.Logout(readAppSessionToken(r), req.RefreshToken, req.UserID)
+	if account != "" {
+		h.bridge.SetDelegationToken(account, "")
+		if err := h.syncCortanaUnregister(account); err != nil {
+			log.Printf("[Handler] cortana unregister failed after logout user=%s err=%v", account, err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
 	})
+}
+
+func (h *Handler) syncCortanaRegister(account string) error {
+	if h == nil || h.cortana == nil {
+		return nil
+	}
+	return h.cortana.RegisterAccount(account)
+}
+
+func (h *Handler) syncCortanaUnregister(account string) error {
+	if h == nil || h.cortana == nil {
+		return nil
+	}
+	return h.cortana.UnregisterAccount(account)
 }
 
 func (h *Handler) HandleMessage(w http.ResponseWriter, r *http.Request) {

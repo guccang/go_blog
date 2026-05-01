@@ -67,10 +67,11 @@ func main() {
 	}
 
 	log.Printf("[App-Agent] starting, HTTP port=%d, gateway=%s", cfg.HTTPPort, cfg.GatewayURL)
+	log.Printf("[App-Agent] cortana_agent_id=%s", cfg.CortanaAgentID)
 
 	bridge := NewBridge(cfg)
 	auth := newAuthManager(cfg)
-	handler := NewHandler(cfg, bridge, auth)
+	handler := NewHandler(cfg, bridge, auth, newCortanaToolSync(cfg, bridge))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/app/login", handler.HandleLogin)

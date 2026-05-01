@@ -62,6 +62,8 @@ class CodegenBody extends StatelessWidget {
     required this.onSend,
     required this.onClearHistory,
     required this.onShowHistoryDetails,
+    required this.onReExecute,
+    required this.onToggleLock,
     required this.sending,
   });
 
@@ -101,6 +103,8 @@ class CodegenBody extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onClearHistory;
   final ValueChanged<CodegenHistoryItem> onShowHistoryDetails;
+  final ValueChanged<CodegenHistoryItem> onReExecute;
+  final ValueChanged<CodegenHistoryItem> onToggleLock;
 
   @override
   Widget build(BuildContext context) {
@@ -433,12 +437,24 @@ class CodegenBody extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  '最近命令',
-                  style: TextStyle(
-                    color: palette.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                child: Text.rich(
+                  TextSpan(
+                    text: '最近命令',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: ' (${history.length}条)',
+                        style: TextStyle(
+                          color: palette.textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -453,7 +469,7 @@ class CodegenBody extends StatelessWidget {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: history.length > 10 ? 10 : history.length,
+            itemCount: history.length,
             separatorBuilder: (context, index) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final item = history[index];
@@ -498,6 +514,14 @@ class CodegenBody extends StatelessWidget {
                                 ),
                               ),
                             ),
+                            if (item.locked) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.lock_rounded,
+                                size: 14,
+                                color: palette.textSecondary,
+                              ),
+                            ],
                             const Spacer(),
                             Text(
                               _formatTime(item.timestamp),
@@ -518,6 +542,47 @@ class CodegenBody extends StatelessWidget {
                             height: 1.45,
                             fontFamily: 'monospace',
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              height: 30,
+                              child: IconButton(
+                                onPressed: () => onToggleLock(item),
+                                icon: Icon(
+                                  item.locked
+                                      ? Icons.lock_rounded
+                                      : Icons.lock_open_rounded,
+                                  size: 18,
+                                ),
+                                tooltip: item.locked ? '取消锁定' : '锁定',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 30,
+                                  minHeight: 30,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              height: 30,
+                              child: IconButton(
+                                onPressed: () => onReExecute(item),
+                                icon: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 20,
+                                ),
+                                tooltip: '再次执行',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 30,
+                                  minHeight: 30,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -703,7 +703,9 @@ func (a *Agent) StopTask(sessionID string) {
 				rec.ACPSession.cancel()
 			}
 			if rec.ACPSession.cmd != nil && rec.ACPSession.cmd.Process != nil {
-				rec.ACPSession.cmd.Process.Kill()
+				if err := killProcessTree(rec.ACPSession.cmd); err != nil {
+					log.Printf("[ACP] warning: stop codex session=%s kill process tree failed: %v", sessionID, err)
+				}
 			}
 		} else if rec.ACPSession.conn != nil {
 			rec.ACPSession.conn.Cancel(ctx, acp.CancelNotification{
