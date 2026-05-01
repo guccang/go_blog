@@ -18,7 +18,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
-import 'cortana_page.dart';
+import 'cortana_page.dart' show CortanaDisplayMode, CortanaPage, CortanaReplayItem, CortanaReplyPayload;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
@@ -1686,6 +1686,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _voskModelDownloadError;
   Future<bool>? _sessionRefreshFuture;
   RootTab _rootTab = RootTab.chat;
+  CortanaDisplayMode _cortanaFloatingMode = CortanaDisplayMode.collapsed;
+  String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
 
   @override
@@ -1746,6 +1748,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_flushHistoryToDisk());
     _reconnectTimer?.cancel();
+    _cortanaExpressionTimer?.cancel();
     _streamFlushTimer?.cancel();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.close());
@@ -3318,6 +3321,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               : 'Deploy command sent';
         });
       }
+      _triggerCortanaContextualExpression('surprised');
       _appendSystem('命令已发送，执行进度会继续在聊天流中返回。');
 
       // 添加到历史记录
@@ -3693,6 +3697,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _scrollToBottom();
       if (message.direction == MessageDirection.incoming) {
         unawaited(_markScopeAsRead(message.scopeKey));
+        _triggerCortanaContextualExpression('surprised');
       }
     }
   }
@@ -7135,6 +7140,42 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  Timer? _cortanaExpressionTimer;
+
+  void _triggerCortanaContextualExpression(String expression) {
+    _cortanaExpressionTimer?.cancel();
+    setState(() {
+      _cortanaContextualExpression = expression;
+    });
+    _cortanaExpressionTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() {
+        _cortanaContextualExpression = null;
+      });
+    });
+  }
+
+  Widget _buildCortanaLayer() {
+    final isFullscreen = _rootTab == RootTab.cortana;
+    return CortanaPage(
+      mode: isFullscreen ? CortanaDisplayMode.fullscreen : _cortanaFloatingMode,
+      onSendMessage: _sendCortanaMessage,
+      externalVoiceHistory: _buildCortanaReplayHistory(),
+      contextualExpression: _cortanaContextualExpression,
+      onTapWhenFloating: () {
+        setState(() {
+          _rootTab = RootTab.cortana;
+          _cortanaFloatingMode = CortanaDisplayMode.collapsed;
+        });
+      },
+      onModeChanged: (mode) {
+        setState(() {
+          _cortanaFloatingMode = mode;
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = _palette;
@@ -7174,7 +7215,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   ? (_currentGroupId.isEmpty
                         ? 'Direct conversation'
                         : 'Group ${_currentGroupId.toLowerCase()}')
-                  : 'Fast path for /cg start and /cg deploy',
+                  : _rootTab == RootTab.codegen
+                  ? 'Fast path for /cg start and /cg deploy'
+                  : 'Live2D Assistant',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -7198,14 +7241,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          _rootTab == RootTab.chat
-              ? _buildChatBody()
-              : _rootTab == RootTab.codegen
-              ? _buildCodegenBody()
-              : CortanaPage(
-                  onSendMessage: _sendCortanaMessage,
-                  externalVoiceHistory: _buildCortanaReplayHistory(),
-                ),
+          if (_rootTab != RootTab.cortana)
+            _rootTab == RootTab.chat
+                ? _buildChatBody()
+                : _buildCodegenBody(),
+          _buildCortanaLayer(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -7215,12 +7255,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           setState(() {
             _rootTab = nextTab;
           });
-          if (nextTab == RootTab.codegen &&
-              _codingProjects.isEmpty &&
-              _deployProjects.isEmpty &&
-              !_codegenLoading &&
-              _sessionToken.isNotEmpty) {
-            unawaited(_loadCodegenProjects());
+          if (nextTab == RootTab.codegen) {
+            _triggerCortanaContextualExpression('surprised');
+            if (_codingProjects.isEmpty &&
+                _deployProjects.isEmpty &&
+                !_codegenLoading &&
+                _sessionToken.isNotEmpty) {
+              unawaited(_loadCodegenProjects());
+            }
           }
         },
         destinations: const [

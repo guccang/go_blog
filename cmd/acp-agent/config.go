@@ -24,7 +24,7 @@ type AgentConfig struct {
 	CodexArgs             []string `json:"codex_args"`              // Codex CLI 参数，默认 ["exec", "--json", "--skip-git-repo-check"]
 	Workspaces            []string `json:"workspaces"`              // 项目工作区目录列表
 	MaxConcurrent         int      `json:"max_concurrent"`          // 最大并发数，默认 2
-	AnalysisTimeout       int      `json:"analysis_timeout"`        // ACP 分析超时（秒），默认 3600
+	AnalysisTimeout       int      `json:"analysis_timeout"`        // ACP/编码任务超时（秒），默认 1800
 	ClaudeCodeSettingsDir string   `json:"claudecode_settings_dir"` // Claude Code settings 目录（默认 settings/claudecode/）
 	CodexSettingsDir      string   `json:"codex_settings_dir"`      // Codex settings 目录（默认 settings/codex/）
 	DefaultSettings       string   `json:"default_settings"`        // 默认 --settings 名称（如 "default"），extraArgs 未指定时自动使用
@@ -43,7 +43,7 @@ func DefaultConfig() *AgentConfig {
 		CodexCmd:         "codex",
 		CodexArgs:        []string{"exec", "--json", "--skip-git-repo-check"},
 		MaxConcurrent:    2,
-		AnalysisTimeout:  3600,
+		AnalysisTimeout:  1800,
 		GoBackendAgentID: "blog-agent",
 
 		ProtectedFiles: []string{"acp-agent.json", "settings/"},
@@ -99,7 +99,7 @@ func LoadConfig(path string) (*AgentConfig, error) {
 		cfg.MaxConcurrent = 2
 	}
 	if cfg.AnalysisTimeout <= 0 {
-		cfg.AnalysisTimeout = 3600
+		cfg.AnalysisTimeout = 1800
 	}
 	if cfg.GoBackendAgentID == "" {
 		cfg.GoBackendAgentID = "blog-agent"

@@ -1,125 +1,173 @@
-		function onSearch(){
-			var match = document.getElementById('search').value;
-			if (match.trim() === '') return;
+// ===== Search =====
+function onSearch() {
+    var match = document.getElementById('search').value;
+    if (match.trim() === '') return;
 
-			// Check if it's a reload command
-			var isReloadCommand = match.toLowerCase().startsWith('@reload');
+    var isReloadCommand = match.toLowerCase().startsWith('@reload');
+    var xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == 4 && xhr.status == 200) {
+            if (isReloadCommand) {
+                document.getElementById('search').value = '';
+                setTimeout(function() {
+                    window.location.href = xhr.responseURL;
+                }, 1000);
+            } else {
+                window.location.href = xhr.responseURL;
+            }
+        }
+    };
+    xhr.open('GET', '/search?match=' + encodeURIComponent(match), true);
+    xhr.send();
+}
 
-			var xhr = new XMLHttpRequest();
-			xhr.onreadystatechange = function() {
-				if (xhr.readyState == 4 && xhr.status == 200) {
-					if (isReloadCommand) {
-						// Show browser notification for reload completion
-						showReloadNotification();
-						// Clear the search input
-						document.getElementById('search').value = '';
-						// Still redirect to show the reload confirmation
-						setTimeout(function() {
-							window.location.href = xhr.responseURL;
-						}, 1000);
-					} else {
-						window.location.href = xhr.responseURL;
-					}
-				}
-			};
-			xhr.open('GET', '/search?match=' + encodeURIComponent(match), true);
-			xhr.send();
-		}
+// ===== View Toggle =====
+var isGridView = true;
 
-		function showReloadNotification() {
-			// Try to use browser notification API
-			if ("Notification" in window) {
-				if (Notification.permission === "granted") {
-					new Notification("系统重新加载完成", {
-						body: "配置文件已重新加载完成！",
-						icon: "/statics/logo/favicon.ico"
-					});
-				} else if (Notification.permission !== "denied") {
-					Notification.requestPermission().then(function(permission) {
-						if (permission === "granted") {
-							new Notification("系统重新加载完成", {
-								body: "配置文件已重新加载完成！",
-								icon: "/statics/logo/favicon.ico"
-							});
-						}
-					});
-				}
-			}
-			
-			// Fallback: show a toast notification
-			if (typeof showToast === 'function') {
-				showToast('系统重新加载完成！', 'success');
-			} else {
-				// Simple alert as last resort
-				alert('系统重新加载完成！');
-			}
-		}
+function toggleView() {
+    var grid = document.getElementById('blogContainer');
+    var icon = document.getElementById('view-icon');
 
-		PageHistoryBack()
+    isGridView = !isGridView;
+    grid.classList.toggle('list-view');
 
-		document.addEventListener('keydown', function(event) {
-			if (event.key === "Enter") {
-				event.preventDefault();
-				onSearch()
-			}
-		});
+    if (isGridView) {
+        icon.className = 'fas fa-th-large';
+    } else {
+        icon.className = 'fas fa-list';
+    }
 
-		let isGridView = true;
+    localStorage.setItem('blogViewPreference', isGridView ? 'grid' : 'list');
+}
 
-		function toggleView() {
-			const container = document.querySelector('.container');
-			const viewIcon = document.getElementById('view-icon');
-			const viewText = document.getElementById('view-text');
-			
-			isGridView = !isGridView;
-			container.classList.toggle('list-view');
-			
-			if (isGridView) {
-				viewIcon.textContent = '📑';
-				viewText.textContent = '网格视图';
-			} else {
-				viewIcon.textContent = '📋';
-				viewText.textContent = '列表视图';
-			}
-			
-			// Save preference to localStorage
-			localStorage.setItem('blogViewPreference', isGridView ? 'grid' : 'list');
-		}
+// ===== Keyboard Shortcuts =====
+document.addEventListener('keydown', function(event) {
+    if (event.key === "Enter" && document.activeElement === document.getElementById('search')) {
+        event.preventDefault();
+        onSearch();
+    }
+});
 
-		// Load saved preference on page load
-		document.addEventListener('DOMContentLoaded', function() {
-			const savedView = localStorage.getItem('blogViewPreference');
-			if (savedView === 'list') {
-				toggleView();
-			}
-			
-			// 设置圆形头像中的首字符
-			const titleSpans = document.querySelectorAll('.circle-text');
-			titleSpans.forEach(span => {
-				const titleText = span.getAttribute('data-title');
-				if (titleText && titleText.length > 0) {
-					// 提取第一个字符，适用于英文和中文
-					span.textContent = titleText.charAt(0);
-				}
-			});
-			
-			// Add animation for link cards on page load
-			const cards = document.querySelectorAll('.link-card');
-			cards.forEach((card, index) => {
-				card.style.opacity = '0';
-				card.style.transform = 'translateY(20px)';
-				setTimeout(() => {
-					card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-					card.style.opacity = '1';
-					card.style.transform = 'translateY(0)';
-				}, 100 * index);
-			});
-		});
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', function() {
+    // Restore view preference
+    var savedView = localStorage.getItem('blogViewPreference');
+    if (savedView === 'list') {
+        toggleView();
+    }
 
-		function navigateToTodolist(event) {
-			event.preventDefault();
-			const today = new Date().toISOString().split('T')[0];
-			window.location.href = `/todolist?date=${today}`;
-		}
+    // Top bar scroll effect
+    var topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        window.addEventListener('scroll', function() {
+            if (window.scrollY > 10) {
+                topBar.classList.add('scrolled');
+            } else {
+                topBar.classList.remove('scrolled');
+            }
+        });
+    }
 
+    // ===== Blog Category Fold =====
+    var container = document.getElementById('blogContainer');
+    if (!container) return;
 
+    var cards = Array.from(container.querySelectorAll('.blog-card'));
+    if (cards.length === 0) return;
+
+    var categories = [
+        { key: 'blog',     label: '📝 日常博客', color: '#d4734a' },
+        { key: 'diary',    label: '📔 日记文件', color: '#e67e22' },
+        { key: 'exercise', label: '💪 锻炼文件', color: '#27ae60' },
+        { key: 'memory',   label: '🧠 记忆文件', color: '#3498db' },
+        { key: 'ai',       label: '🤖 AI 生成', color: '#9b59b6' },
+        { key: 'system',   label: '⚙ 系统文件', color: '#6c757d' },
+    ];
+
+    function classifyCard(card) {
+        var title = (card.getAttribute('data-title') || '').toLowerCase();
+        var isDiary = card.getAttribute('data-diary') === 'true';
+        if (title.startsWith('sys_') || title.startsWith('mcp_') || title === 'sys_accounts') return 'system';
+        if (title.startsWith('agent_')) return 'ai';
+        if (title.includes('memory') || title.includes('\u8bb0\u5fc6')) return 'memory';
+        if (title.includes('exercise') || title.includes('\u953b\u70bc') || title.includes('workout') || title.includes('\u5065\u8eab')) return 'exercise';
+        if (isDiary || title.startsWith('\u65e5\u8bb0_') || title.startsWith('diary_')) return 'diary';
+        return 'blog';
+    }
+
+    var groups = {};
+    categories.forEach(function(c) { groups[c.key] = []; });
+    cards.forEach(function(card) { groups[classifyCard(card)].push(card); });
+
+    function getCollapseState(key) {
+        try {
+            var saved = localStorage.getItem('blog_category_state');
+            if (saved) { var s = JSON.parse(saved); if (s[key] !== undefined) return s[key]; }
+        } catch(e) {}
+        return key !== 'blog';
+    }
+
+    function saveCollapseState(key, collapsed) {
+        try {
+            var s = {};
+            var saved = localStorage.getItem('blog_category_state');
+            if (saved) s = JSON.parse(saved);
+            s[key] = collapsed;
+            localStorage.setItem('blog_category_state', JSON.stringify(s));
+        } catch(e) {}
+    }
+
+    container.innerHTML = '';
+    container.classList.add('categorized');
+
+    categories.forEach(function(cat) {
+        var items = groups[cat.key];
+        if (items.length === 0) return;
+
+        var collapsed = getCollapseState(cat.key);
+
+        var section = document.createElement('div');
+        section.className = 'category-section';
+
+        var header = document.createElement('div');
+        header.className = 'category-header';
+        header.style.borderLeftColor = cat.color;
+
+        var left = document.createElement('div');
+        left.className = 'category-header-left';
+        left.innerHTML = '<span class="category-label">' + cat.label + '</span><span class="category-count">' + items.length + '</span>';
+
+        var toggle = document.createElement('span');
+        toggle.className = 'category-toggle';
+        toggle.innerHTML = '<i class="fas fa-chevron-' + (collapsed ? 'right' : 'down') + '"></i>';
+
+        header.appendChild(left);
+        header.appendChild(toggle);
+
+        var body = document.createElement('div');
+        body.className = 'category-body' + (collapsed ? ' collapsed' : '');
+        items.forEach(function(card) { body.appendChild(card); });
+
+        header.addEventListener('click', function() {
+            var isC = body.classList.toggle('collapsed');
+            toggle.innerHTML = '<i class="fas fa-chevron-' + (isC ? 'right' : 'down') + '"></i>';
+            saveCollapseState(cat.key, isC);
+        });
+
+        section.appendChild(header);
+        section.appendChild(body);
+        container.appendChild(section);
+    });
+
+    // Adjust category body grid for list view
+    if (savedView === 'list') {
+        document.querySelectorAll('.category-body').forEach(function(b) {
+            b.style.gridTemplateColumns = '1fr';
+        });
+    }
+});
+
+// ===== History Back =====
+function PageHistoryBack() {
+    // handled by utils.js if needed
+}

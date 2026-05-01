@@ -7,7 +7,6 @@ import (
 	"control"
 	"fmt"
 	t "html/template"
-	"math"
 	"module"
 	log "mylog"
 	h "net/http"
@@ -59,11 +58,6 @@ type LinkData struct {
 	IS_DIARY     bool
 }
 
-type TagInfo struct {
-	Name  string
-	Count int
-}
-
 type GameData struct {
 	Name        string
 	Path        string
@@ -76,7 +70,6 @@ type LinkDatas struct {
 	RECENT_LINKS    []LinkData
 	VERSION         string
 	BLOGS_NUMBER    int
-	TAGS            []TagInfo
 	USER_ACCOUNT    string
 	USER_AVATAR     string
 	GAMES           []GameData
@@ -194,55 +187,11 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 	datas.USER_ACCOUNT = account
 	datas.USER_AVATAR = generateUserAvatar(account)
 
-	// 获取所有博客用于标签计数（基于权限标志）
-	allBlogs := control.GetAll(account, math.MaxInt32, flag)
-
-	all_tags := make(map[string]int)
-
-	// 遍历所有博客计算标签数量
-	for _, b := range allBlogs {
-		// 跳过不符合权限标志的博客
-		if (b.AuthType & flag) == 0 {
-			continue
-		}
-
-		// 统计标签出现次数（统一转换为小写）
-		if b.Tags != "" {
-			tags := strings.Split(b.Tags, "|")
-			for _, tag := range tags {
-				if tag == "" {
-					continue
-				}
-				lowerTag := strings.ToLower(tag)
-				cnt, ok := all_tags[lowerTag]
-				if !ok {
-					all_tags[lowerTag] = 1
-				} else {
-					all_tags[lowerTag] = cnt + 1
-				}
-			}
-		}
-	}
-
 	for _, b := range blogs {
 
 		// not show encrypt blog
 		if (b.AuthType & flag) == 0 {
 			continue
-		}
-		// if strings.HasPrefix(strings.ToLower(b.Title), "agent_") && !strings.HasPrefix(strings.ToLower(b.Title), "agent_index") {
-		// 	continue
-		// }
-
-		// 处理博客标签
-		var blogTags []string
-		if b.Tags != "" {
-			tags := strings.Split(b.Tags, "|")
-			for _, tag := range tags {
-				if tag != "" {
-					blogTags = append(blogTags, tag)
-				}
-			}
 		}
 
 		// Include account parameter in URL for public blogs to ensure correct blog retrieval
@@ -255,25 +204,12 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 			URL:          url,
 			DESC:         b.Title,
 			ACCESS_TIME:  b.AccessTime,
-			TAGS:         blogTags,
 			IS_ENCRYPTED: b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0,
 			IS_DIARY:     (b.AuthType & module.EAuthType_diary) != 0,
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 
 	}
-
-	// Create TagInfo slice from all_tags map
-	for tag, count := range all_tags {
-		datas.TAGS = append(datas.TAGS, TagInfo{Name: tag, Count: count})
-	}
-	// Sort by count descending, then by name ascending
-	sort.Slice(datas.TAGS, func(i, j int) bool {
-		if datas.TAGS[i].Count != datas.TAGS[j].Count {
-			return datas.TAGS[i].Count > datas.TAGS[j].Count
-		}
-		return datas.TAGS[i].Name < datas.TAGS[j].Name
-	})
 
 	// 处理最近访问的博客
 	recent := make([]LinkData, len(datas.LINKS))

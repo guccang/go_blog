@@ -6,6 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+enum CortanaDisplayMode {
+  fullscreen,
+  expanded,
+  small,
+  collapsed,
+}
+
 class CortanaReplyPayload {
   const CortanaReplyPayload({
     required this.text,
@@ -71,12 +78,20 @@ class _CortanaVoiceHistoryItem {
 class CortanaPage extends StatefulWidget {
   const CortanaPage({
     super.key,
+    this.mode = CortanaDisplayMode.fullscreen,
     this.onSendMessage,
     this.externalVoiceHistory = const <CortanaReplayItem>[],
+    this.onTapWhenFloating,
+    this.onModeChanged,
+    this.contextualExpression,
   });
 
+  final CortanaDisplayMode mode;
   final Future<CortanaReplyPayload> Function(String message)? onSendMessage;
   final List<CortanaReplayItem> externalVoiceHistory;
+  final VoidCallback? onTapWhenFloating;
+  final ValueChanged<CortanaDisplayMode>? onModeChanged;
+  final String? contextualExpression;
 
   @override
   State<CortanaPage> createState() => _CortanaPageState();
@@ -110,8 +125,15 @@ class _CortanaPageState extends State<CortanaPage> {
   bool _logsExpanded = false;
   Map<String, dynamic>? _live2dDebugState;
   final List<String> _logEntries = <String>[];
+  Offset? _floatingOffset;
+  String? _lastContextualExpression;
 
   static const int _maxLogEntries = 80;
+  static const double _floatingCollapsedSize = 48.0;
+  static const double _floatingSmallWidth = 120.0;
+  static const double _floatingSmallHeight = 120.0;
+  static const double _floatingExpandedWidth = 240.0;
+  static const double _floatingExpandedHeight = 320.0;
 
   static const _expressions = ['happy', 'sad', 'surprised'];
   static const _motions = ['Idle', 'IdleAlt', 'IdleWave', 'Tap'];
@@ -172,6 +194,17 @@ class _CortanaPageState extends State<CortanaPage> {
       const Duration(seconds: 3),
       (_) => unawaited(_refreshLive2dDebugState()),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant CortanaPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.contextualExpression != null &&
+        widget.contextualExpression != _lastContextualExpression) {
+      _lastContextualExpression = widget.contextualExpression;
+      final expr = _normalizeExpression(widget.contextualExpression!);
+      unawaited(_callJS("window.setExpression('$expr')"));
+    }
   }
 
   @override
@@ -954,6 +987,56 @@ class _CortanaPageState extends State<CortanaPage> {
     }
   }
 
+  Size _floatingSizeForMode(CortanaDisplayMode mode) {
+    switch (mode) {
+      case CortanaDisplayMode.collapsed:
+        return const Size(
+          _floatingCollapsedSize,
+          _floatingCollapsedSize,
+        );
+      case CortanaDisplayMode.small:
+        return const Size(_floatingSmallWidth, _floatingSmallHeight);
+      case CortanaDisplayMode.expanded:
+        return const Size(_floatingExpandedWidth, _floatingExpandedHeight);
+      case CortanaDisplayMode.fullscreen:
+        final size = MediaQuery.sizeOf(context);
+        return size;
+    }
+  }
+
+  CortanaDisplayMode _nextFloatingMode(CortanaDisplayMode current) {
+    switch (current) {
+      case CortanaDisplayMode.collapsed:
+        return CortanaDisplayMode.small;
+      case CortanaDisplayMode.small:
+        return CortanaDisplayMode.expanded;
+      case CortanaDisplayMode.expanded:
+        return CortanaDisplayMode.collapsed;
+      case CortanaDisplayMode.fullscreen:
+        return CortanaDisplayMode.expanded;
+    }
+  }
+
+  Offset _defaultFloatingPosition(Size floatingSize) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final navBarHeight = 80.0;
+    return Offset(
+      screenSize.width - floatingSize.width - 12,
+      screenSize.height - floatingSize.height - bottomPadding - navBarHeight - 8,
+    );
+  }
+
+  Offset _clampFloatingOffset(Offset offset, Size floatingSize) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom + 80;
+    return Offset(
+      offset.dx.clamp(0.0, screenSize.width - floatingSize.width),
+      offset.dy.clamp(topPadding, screenSize.height - floatingSize.height - bottomPadding),
+    );
+  }
+
   String _formatFlag(bool value) => value ? '已就绪' : '未就绪';
 
   String _shortValue(Object? value) {
@@ -1533,9 +1616,76 @@ class _CortanaPageState extends State<CortanaPage> {
     );
   }
 
+  Widget _buildWebViewForPlatform() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return FutureBuilder<void>(
+        future: _androidLocalhostFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Cortana localhost failed: ${snapshot.error}',
+              ),
+            );
+          }
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return _buildWebView(
+            initialUrlRequest: URLRequest(
+              url: WebUri(
+                'http://localhost:$_localhostPort/$_cortanaLocalPath',
+              ),
+            ),
+          );
+        },
+      );
+    }
+    return _buildWebView(initialFile: _cortanaHtmlAsset);
+  }
+
+  Widget _buildCollapsedAvatar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer,
+            cs.tertiaryContainer,
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.face_rounded,
+          size: 28,
+          color: cs.onPrimaryContainer,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final replayHistory = _combinedVoiceHistory();
+    final cs = Theme.of(context).colorScheme;
+    final isFullscreen = widget.mode == CortanaDisplayMode.fullscreen;
+    final isCollapsed = widget.mode == CortanaDisplayMode.collapsed;
+    final floatingSize = isFullscreen ? null : _floatingSizeForMode(widget.mode);
+    final borderRadius = isFullscreen
+        ? BorderRadius.zero
+        : BorderRadius.circular(isCollapsed ? floatingSize!.width / 2 : 16);
+
+    // Calculate floating position
+    Offset clampedOffset = Offset.zero;
+    if (!isFullscreen) {
+      final defaultPos = _defaultFloatingPosition(floatingSize!);
+      final offset = _floatingOffset ?? defaultPos;
+      clampedOffset = _clampFloatingOffset(offset, floatingSize);
+    }
+
     final screenWidth = MediaQuery.sizeOf(context).width;
     final overlayWidth = math.min(
       screenWidth < 640 ? screenWidth - 72 : screenWidth * 0.28,
@@ -1544,117 +1694,236 @@ class _CortanaPageState extends State<CortanaPage> {
     final scaleText = _modelUserScale.toStringAsFixed(2);
     final offsetXText = _modelUserOffsetX.toStringAsFixed(2);
     final offsetYText = _modelUserOffsetY.toStringAsFixed(2);
+    final replayHistory = _combinedVoiceHistory();
 
     return Stack(
       children: [
-        Positioned.fill(
-          child:
-              (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-              ? FutureBuilder<void>(
-                  future: _androidLocalhostFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Cortana localhost failed: ${snapshot.error}',
-                        ),
-                      );
-                    }
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    }
-                    return _buildWebView(
-                      initialUrlRequest: URLRequest(
-                        url: WebUri(
-                          'http://localhost:$_localhostPort/$_cortanaLocalPath',
-                        ),
-                      ),
-                    );
+        // WebView - always in AnimatedPositioned, transitions smoothly
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          left: isFullscreen ? 0.0 : clampedOffset.dx,
+          top: isFullscreen ? 0.0 : clampedOffset.dy,
+          right: isFullscreen ? 0.0 : null,
+          bottom: isFullscreen ? 0.0 : null,
+          width: isFullscreen ? null : floatingSize?.width,
+          height: isFullscreen ? null : floatingSize?.height,
+          child: GestureDetector(
+            onTap: isFullscreen
+                ? null
+                : () {
+                    widget.onModeChanged
+                        ?.call(_nextFloatingMode(widget.mode));
                   },
-                )
-              : _buildWebView(initialFile: _cortanaHtmlAsset),
-        ),
-        SafeArea(
-          child: Stack(
-            children: [
-              Positioned(
-                left: 12,
-                top: 12,
-                child: _buildSectionCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _controlPanelVisible = !_controlPanelVisible;
-                      });
-                    },
-                    icon: Icon(
-                      _controlPanelVisible
-                          ? Icons.visibility_off_outlined
-                          : Icons.tune,
-                    ),
-                    label: Text(_controlPanelVisible ? '隐藏面板' : '控制面板'),
-                  ),
+            onLongPress: isFullscreen
+                ? null
+                : () {
+                    widget.onTapWhenFloating?.call();
+                  },
+            onPanStart: isFullscreen ? null : (_) {},
+            onPanUpdate: isFullscreen
+                ? null
+                : (details) {
+                    if (!mounted) return;
+                    setState(() {
+                      _floatingOffset = _clampFloatingOffset(
+                        (_floatingOffset ?? clampedOffset) + details.delta,
+                        floatingSize!,
+                      );
+                    });
+                  },
+            onPanEnd: isFullscreen
+                ? null
+                : (_) {
+                    if (!mounted) return;
+                    setState(() {
+                      _floatingOffset = _defaultFloatingPosition(
+                        _floatingSizeForMode(widget.mode),
+                      );
+                    });
+                  },
+            child: Material(
+              color: Colors.transparent,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+                decoration: BoxDecoration(
+                  borderRadius: borderRadius,
+                  border: isFullscreen
+                      ? null
+                      : Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.6),
+                          width: 1.5,
+                        ),
+                  boxShadow: isFullscreen
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: cs.shadow.withValues(alpha: 0.25),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                 ),
-              ),
-              if (_controlPanelVisible)
-                _buildControlPanel(
-                  context,
-                  overlayWidth: overlayWidth,
-                  replayHistory: replayHistory,
-                  scaleText: scaleText,
-                  offsetXText: offsetXText,
-                  offsetYText: offsetYText,
-                ),
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: _buildSectionCard(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textCtrl,
-                          decoration: const InputDecoration(
-                            hintText: '输入让 Cortana 说的话...',
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // WebView (hidden behind avatar in collapsed mode)
+                    if (!isCollapsed)
+                      _buildWebViewForPlatform()
+                    else
+                      _buildCollapsedAvatar(context),
+                    // Drag handle indicator (floating only, non-collapsed)
+                    if (!isFullscreen && !isCollapsed)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          height: 20,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                cs.surfaceContainerLow
+                                    .withValues(alpha: 0.9),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 24,
+                              height: 3,
+                              margin: const EdgeInsets.only(top: 6),
+                              decoration: BoxDecoration(
+                                color: cs.onSurface.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: _speaking
-                            ? null
-                            : () => _speak(_textCtrl.text.trim()),
-                        icon: _speaking
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.record_voice_over),
-                        label: Text(_speaking ? '说话中' : '说话'),
+                    // Close/collapse button (floating only, non-collapsed)
+                    if (!isFullscreen && !isCollapsed)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              widget.onModeChanged
+                                  ?.call(CortanaDisplayMode.collapsed);
+                            },
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerLow
+                                    .withValues(alpha: 0.85),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: cs.onSurface.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
+        // Fullscreen overlays (only when in fullscreen mode)
+        if (isFullscreen)
+          SafeArea(
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 12,
+                  top: 12,
+                  child: _buildSectionCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _controlPanelVisible = !_controlPanelVisible;
+                        });
+                      },
+                      icon: Icon(
+                        _controlPanelVisible
+                            ? Icons.visibility_off_outlined
+                            : Icons.tune,
+                      ),
+                      label: Text(
+                          _controlPanelVisible ? '隐藏面板' : '控制面板'),
+                    ),
+                  ),
+                ),
+                if (_controlPanelVisible)
+                  _buildControlPanel(
+                    context,
+                    overlayWidth: overlayWidth,
+                    replayHistory: replayHistory,
+                    scaleText: scaleText,
+                    offsetXText: offsetXText,
+                    offsetYText: offsetYText,
+                  ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: _buildSectionCard(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _textCtrl,
+                            decoration: const InputDecoration(
+                              hintText: '输入让 Cortana 说的话...',
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _speaking
+                              ? null
+                              : () => _speak(_textCtrl.text.trim()),
+                          icon: _speaking
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.record_voice_over),
+                          label: Text(_speaking ? '说话中' : '说话'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

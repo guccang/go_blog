@@ -3,7 +3,7 @@
     "coding_backend": "codex_exec",
     "agent_name": "acp-agent-mac",
     "agent_type": "acp-agent",
-    "analysis_timeout": 3600,
+    "analysis_timeout": 1800,
     "auth_token": "guccang@blog.guccang.cn",
     "claude_path": "claude",
     "default_settings": "minimax",

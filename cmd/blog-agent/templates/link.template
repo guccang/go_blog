@@ -1,493 +1,277 @@
 <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG - 博客</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/link.css">
+</head>
+<body>
+    <!-- 侧边栏导航 -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/main" class="logo">
+                <div class="logo-icon">G</div>
+                <span class="logo-text">GUCCANG</span>
+            </a>
+        </div>
 
-<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title> GUCCANG/LINK </title>
-		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    	<link rel="stylesheet" href="/css/link.css">
-	</head>
+        <nav class="sidebar-nav">
+            <a href="/editor" class="nav-item">
+                <i class="fas fa-pen-to-square"></i>
+                <span>写博客</span>
+            </a>
+            <a href="/todolist" class="nav-item" onclick="navigateToTodolist(event)">
+                <i class="fas fa-check-square"></i>
+                <span>每日任务</span>
+            </a>
+            <a href="/monthgoal" class="nav-item">
+                <i class="fas fa-calendar-alt"></i>
+                <span>月度计划</span>
+            </a>
+            <a href="/yearplan" class="nav-item">
+                <i class="fas fa-calendar"></i>
+                <span>年度计划</span>
+            </a>
+            <a href="/exercise" class="nav-item">
+                <i class="fas fa-dumbbell"></i>
+                <span>锻炼管理</span>
+            </a>
+            <a href="/reading" class="nav-item">
+                <i class="fas fa-book-open"></i>
+                <span>读书记录</span>
+            </a>
+            <a href="/skill" class="nav-item">
+                <i class="fas fa-bullseye"></i>
+                <span>技能学习</span>
+            </a>
+            <a href="/taskbreakdown" class="nav-item">
+                <i class="fas fa-list-check"></i>
+                <span>任务拆解</span>
+            </a>
+        </nav>
 
-	<body>
-		<div class="top-sidebar-cotainer">
-		  <div class="top-sidebar" >
-			<div class="nav-container">
-				<a href="/main">
-					<div class="img-cycle">G</div>
-				</a>
-				<a href="/editor" class="nav-item"><span class="nav-icon">📝</span><span class="nav-text">创建博客</span></a>
-				<a href="/todolist" class="nav-item" onclick="navigateToTodolist(event)"><span class="nav-icon">✅</span><span class="nav-text">每日任务</span></a>
-				<a href="/monthgoal" class="nav-item"><span class="nav-icon">📅</span><span class="nav-text">月度计划</span></a>
-				<a href="/yearplan" class="nav-item"><span class="nav-icon">📆</span><span class="nav-text">年度计划</span></a>
-				<a href="/exercise" class="nav-item"><span class="nav-icon">💪</span><span class="nav-text">锻炼管理</span></a>
-				<a href="/reading" class="nav-item"><span class="nav-icon">📚</span><span class="nav-text">读书记录</span></a>
-				<a href="/skill" class="nav-item"><span class="nav-icon">🎯</span><span class="nav-text">技能学习</span></a>
-				<a href="/taskbreakdown" class="nav-item"><span class="nav-icon">📋</span><span class="nav-text">任务拆解</span></a>
-				<a href="/lifecountdown" class="nav-item"><span class="nav-icon">⏰</span><span class="nav-text">人生倒计时</span></a>
-				<a href="/statistics" class="nav-item"><span class="nav-icon">📊</span><span class="nav-text">访问统计</span></a>
-				<a href="/tools" class="nav-item"><span class="nav-icon">🛠️</span><span class="nav-text">实用工具</span></a>
-				<a href="/config" class="nav-item"><span class="nav-icon">🔧</span><span class="nav-text">系统配置</span></a>
-				<a href="/agent" class="nav-item"><span class="nav-icon">🤖</span><span class="nav-text">Agent</span></a>
-				<a href="/codegen" class="nav-item"><span class="nav-icon">💻</span><span class="nav-text">编码助手</span></a>
-				<a href="/public?account={{.USER_ACCOUNT}}" class="nav-item"><span class="nav-icon">🌐</span><span class="nav-text">公开博客</span></a>
-			</div>
-			<div class="search-toggle-container">
-				<div class="search-container">
-					<input id="search" type="text" placeholder="搜索博客或标签..." list="search_list">
-				<datalist id="search_list">
-					<!-- 标签建议 -->
-					{{range .TAGS}}
-						<option>{{.Name}}</option>
-					{{end}}
-					<!-- 搜索命令建议 -->
-					<option>@tag match </option>
-					<option>@auth match public</option>
-					<option>@auth match private</option>
-					<option>@auth match encrypt</option>
-					<option>@timed match </option>
-					<option>@reload cfg</option>
-				</datalist>
-					<button type="button" class="search-btn" onclick="onSearch()">搜索</button>
-					<select id="search-command-select" class="search-command-select" title="选择搜索命令">
-						<option value="">选择命令</option>
-						{{range .SEARCH_COMMANDS}}
-						<option value="{{.Name}}" data-hasparam="{{.HasParam}}" data-paramhint="{{.ParamHint}}">{{.DisplayName}}</option>
-						{{end}}
-					</select>
-				</div>
-				<div class="header-actions">
-					<button class="view-toggle" onclick="toggleView()" title="切换视图">
-						<i id="view-icon">📑</i>
-						<span id="view-text">网格视图</span>
-					</button>
-					<div class="user-info">
-						<div class="user-avatar">{{.USER_AVATAR}}</div>
-						<a href="/account" class="user-name" style="color: inherit; text-decoration: none; cursor: pointer;" title="点击查看账户信息">{{.USER_ACCOUNT}}</a>
-					</div>
-				</div>
-			</div>
-		  </div>
-		</div>
+        <div class="sidebar-divider"></div>
 
-		<!-- 最近查看区域 -->
-		<div class="recent-section">
-			<h2 class="section-title">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 5px;">
-					<path d="M12 7V12L16 14M12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				最近查看
-			</h2>
-			<div class="recent-container">
-			{{if .RECENT_LINKS}}
-				{{range .RECENT_LINKS}}
-					<div class="recent-card-circle">
-						<a href="{{.URL}}" class="circle-link">
-							<div class="circle-avatar">
-								<span class="circle-text" data-title="{{.DESC}}"></span>
-							</div>
-							<span class="circle-title">
-								{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
-							</span>
-						</a>
-					</div>
-				{{end}}
-			{{else}}
-				<div class="empty-recent">暂无最近查看记录</div>
-			{{end}}
-			</div>
-		</div>
-	</div>
+        <nav class="sidebar-nav">
+            <a href="/statistics" class="nav-item">
+                <i class="fas fa-chart-bar"></i>
+                <span>访问统计</span>
+            </a>
+            <a href="/tools" class="nav-item">
+                <i class="fas fa-toolbox"></i>
+                <span>实用工具</span>
+            </a>
+            <a href="/lifecountdown" class="nav-item">
+                <i class="fas fa-hourglass-half"></i>
+                <span>人生倒计时</span>
+            </a>
+            <a href="/agent" class="nav-item">
+                <i class="fas fa-robot"></i>
+                <span>Agent</span>
+            </a>
+            <a href="/codegen" class="nav-item">
+                <i class="fas fa-code"></i>
+                <span>编码助手</span>
+            </a>
+            <a href="/config" class="nav-item">
+                <i class="fas fa-gear"></i>
+                <span>系统配置</span>
+            </a>
+        </nav>
 
+        <div class="sidebar-footer">
+            <a href="/public?account={{.USER_ACCOUNT}}" class="nav-item">
+                <i class="fas fa-globe"></i>
+                <span>公开博客</span>
+            </a>
+            <a href="/account" class="user-profile">
+                <div class="user-avatar">{{.USER_AVATAR}}</div>
+                <div class="user-info-text">
+                    <span class="user-name">{{.USER_ACCOUNT}}</span>
+                    <span class="user-role">Blogger</span>
+                </div>
+            </a>
+        </div>
+    </aside>
 
-	<!-- 热门标签区域 -->
-	<div class="tags-section">
-		<h2 class="section-title">
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 5px;">
-				<path d="M20.59 13.41L13.42 20.58C13.2343 20.7657 13.0137 20.9134 12.7709 21.0148C12.5281 21.1162 12.2678 21.1693 12.005 21.171C11.7422 21.1727 11.4813 21.123 11.2368 21.0248C10.9923 20.9266 10.7691 20.7818 10.58 20.598L3 13V3H13L20.59 10.59C20.9625 10.9645 21.1716 11.4716 21.1716 12C21.1716 12.5284 20.9625 13.0355 20.59 13.41Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			热门标签
-		</h2>
-		<div class="tags-container" id="tagsContainer">
-			<div class="tag-filters" id="tagFilters">
-				{{range .TAGS}}
-					<button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}" onclick="searchByTag('{{.Name}}')">{{.Name}} ({{.Count}})</button>
-				{{end}}
-			</div>
-			<div class="tags-toggle-btn" id="tagsToggleBtn" onclick="toggleTags()">
-				<span id="tagsToggleText">展开更多</span>
-				<i class="fas fa-chevron-down" id="tagsToggleIcon"></i>
-			</div>
-		</div>
-	</div>
+    <!-- 移动端遮罩 -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-	<script>
-	function toggleTags() {
-		const container = document.getElementById('tagsContainer');
-		const btnText = document.getElementById('tagsToggleText');
-		const btnIcon = document.getElementById('tagsToggleIcon');
-		
-		if (container.classList.contains('expanded')) {
-			container.classList.remove('expanded');
-			btnText.textContent = '展开更多';
-			btnIcon.className = 'fas fa-chevron-down';
-		} else {
-			container.classList.add('expanded');
-			btnText.textContent = '收起标签';
-			btnIcon.className = 'fas fa-chevron-up';
-		}
-	}
+    <!-- 主内容区域 -->
+    <main class="main-content">
+        <!-- 顶部栏 -->
+        <header class="top-bar">
+            <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
+            </button>
 
-	// 检查是否需要显示展开按钮
-	document.addEventListener('DOMContentLoaded', function() {
-		const filters = document.getElementById('tagFilters');
-		const btn = document.getElementById('tagsToggleBtn');
-		// 如果标签高度超过一定值（比如100px），显示按钮，否则隐藏
-		if (filters.scrollHeight <= 100) {
-			btn.style.display = 'none';
-		}
-	});
-	</script>
+            <div class="search-wrapper">
+                <i class="fas fa-search search-icon"></i>
+                <input id="search" type="text" placeholder="搜索博客..." class="search-input">
+                <select id="search-command-select" class="search-command" title="搜索命令" onchange="handleSearchCommand(this)">
+                    <option value="">命令</option>
+                    {{range .SEARCH_COMMANDS}}
+                    <option value="{{.Name}}" data-hasparam="{{.HasParam}}" data-paramhint="{{.ParamHint}}">{{.DisplayName}}</option>
+                    {{end}}
+                </select>
+            </div>
 
-	<div class="container" id="blogContainer">
-		{{range .LINKS}}
-			<div class="link-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}">
-				<a class="link-with-dot" href="{{.URL}}">
-				{{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
-				</a>
-			</div>
-		{{end}}
-		</div>
+            <div class="header-actions">
+                <button class="btn-icon" onclick="toggleView()" title="切换视图">
+                    <i id="view-icon" class="fas fa-th-large"></i>
+                </button>
+            </div>
+        </header>
 
-		<a href="/editor" class="create-btn" title="创建新博客">+</a>
-		
-		<!-- 智能助手悬浮图标 -->
-		<a href="/assistant" class="assistant-floating-btn" title="智能助手">
-			<i class="fas fa-robot"></i>
-		</a>	
+        <!-- 欢迎区域 & 统计 -->
+        <section class="welcome-section">
+            <div class="welcome-text">
+                <h1>欢迎回来</h1>
+                <p>你共有 <strong>{{.BLOGS_NUMBER}}</strong> 篇博客</p>
+            </div>
+            <div class="quick-stats">
+                <div class="stat-item">
+                    <span class="stat-value">{{len .RECENT_LINKS}}</span>
+                    <span class="stat-label">最近更新</span>
+                </div>
+            </div>
+        </section>
 
-		<div class="bottom-fix-div">
-		<span class="right-label">博客数量: {{.BLOGS_NUMBER}}</span>
-		<span class="right-label">版本: {{.VERSION}}</span>
-		</div>
+        <!-- 最近查看 -->
+        {{if .RECENT_LINKS}}
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-clock"></i> 最近查看
+                </h2>
+            </div>
+            <div class="recent-scroll">
+                {{range .RECENT_LINKS}}
+                <a href="{{.URL}}" class="recent-card">
+                    <div class="recent-avatar">
+                        <span class="recent-char">{{.DESC}}</span>
+                    </div>
+                    <span class="recent-title">
+                        {{if .IS_ENCRYPTED}}<i class="fas fa-lock"></i>{{end}}
+                        {{if .IS_DIARY}}<i class="fas fa-book"></i>{{end}}
+                        {{.DESC}}
+                    </span>
+                </a>
+                {{end}}
+            </div>
+        </section>
+        {{end}}
 
-    	<script src="/js/move_assistant.js"></script>
-		<script src="/js/utils.js"></script>
-		<script src="/js/link.js"></script>
-		<script src="/js/global-reminder.js"></script>
+        <!-- 博客列表 -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-newspaper"></i> 全部博客
+                </h2>
+                <span class="section-badge">{{.BLOGS_NUMBER}}</span>
+            </div>
 
-		<script>
-		// 点击标签进行搜索
-		function searchByTag(tagName) {
-			const searchInput = document.getElementById('search');
-			if (searchInput) {
-				searchInput.value = "@tag match " + tagName;
-				onSearch();
-			}
-		}
+            <div class="blog-grid" id="blogContainer">
+                {{range .LINKS}}
+                <article class="blog-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}">
+                    <a href="{{.URL}}" class="blog-card-link">
+                        <div class="blog-card-body">
+                            <h3 class="blog-card-title">
+                                {{if .IS_ENCRYPTED}}<i class="fas fa-lock lock-icon"></i>{{end}}
+                                {{if .IS_DIARY}}<i class="fas fa-book diary-icon"></i>{{end}}
+                                {{.DESC}}
+                            </h3>
+                            <div class="blog-card-meta">
+                                {{if .ACCESS_TIME}}
+                                <span class="blog-date"><i class="far fa-clock"></i> {{.ACCESS_TIME}}</span>
+                                {{end}}
+                            </div>
+                        </div>
+                        <div class="blog-card-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                    </a>
+                </article>
+                {{end}}
+            </div>
 
-		// 填充搜索命令到搜索框
-		function fillSearchCommand(commandOrButton) {
-			const searchInput = document.getElementById('search');
-			if (!searchInput) return;
+            {{if not .LINKS}}
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <i class="fas fa-inbox"></i>
+                </div>
+                <h3>还没有博客</h3>
+                <p>点击右下角的 + 按钮开始写你的第一篇博客吧</p>
+            </div>
+            {{end}}
+        </section>
+    </main>
 
-			let command = '';
-			let hasParam = false;
-			let paramHint = '';
+    <!-- 浮动按钮 -->
+    <a href="/editor" class="fab fab-create" title="创建新博客">
+        <i class="fas fa-plus"></i>
+    </a>
+    <a href="/assistant" class="fab fab-assistant" title="智能助手">
+        <i class="fas fa-robot"></i>
+    </a>
 
-			if (typeof commandOrButton === 'string') {
-				// 向后兼容：直接使用命令字符串
-				command = commandOrButton;
-				hasParam = command.endsWith(' ');
-			} else {
-				// 新方式：从按钮元素获取数据
-				const button = commandOrButton;
-				command = button.getAttribute('data-command');
-				hasParam = button.getAttribute('data-hasparam') === 'true';
-				paramHint = button.getAttribute('data-paramhint') || '';
+    <!-- 底部状态栏 -->
+    <footer class="status-bar">
+        <span>博客数量: {{.BLOGS_NUMBER}}</span>
+        <span>版本: {{.VERSION}}</span>
+    </footer>
 
-				// 如果命令需要参数，添加空格
-				if (hasParam) {
-					command += ' ';
-				}
-			}
+    <script src="/js/move_assistant.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/link.js"></script>
+    <script src="/js/global-reminder.js"></script>
 
-			searchInput.value = command;
-			searchInput.focus();
+    <script>
+    // 侧边栏切换
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebarOverlay').classList.toggle('show');
+    }
 
-			// 如果命令需要额外参数，将光标定位到命令末尾
-			if (hasParam) {
-				searchInput.setSelectionRange(command.length, command.length);
-				// 显示参数提示
-				if (paramHint) {
-					showCommandHint(`请输入${paramHint}`);
-				}
-			} else {
-				// 不需要参数的命令，直接执行搜索
-				setTimeout(() => {
-					if (searchInput.value === command) {
-						onSearch();
-					}
-				}, 100);
-			}
-		}
+    // 处理搜索命令选择
+    function handleSearchCommand(select) {
+        const option = select.options[select.selectedIndex];
+        if (!option || !option.value) return;
+        const command = option.value;
+        const hasParam = option.getAttribute('data-hasparam') === 'true';
+        const paramHint = option.getAttribute('data-paramhint') || '';
+        const searchInput = document.getElementById('search');
+        if (!searchInput) return;
+        let text = command;
+        if (hasParam) text += ' ';
+        searchInput.value = text;
+        searchInput.focus();
+        if (hasParam) {
+            searchInput.setSelectionRange(text.length, text.length);
+        } else {
+            setTimeout(() => { if (searchInput.value === text) onSearch(); }, 100);
+        }
+        select.selectedIndex = 0;
+    }
 
-		// 显示命令提示
-		function showCommandHint(message) {
-			// 创建或更新提示元素
-			let hintEl = document.getElementById('search-command-hint');
-			if (!hintEl) {
-				hintEl = document.createElement('div');
-				hintEl.id = 'search-command-hint';
-				hintEl.style.cssText = `
-					position: fixed;
-					top: 100px;
-					right: 20px;
-					background: #4CAF50;
-					color: white;
-					padding: 10px 15px;
-					border-radius: 5px;
-					box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-					z-index: 1000;
-					font-size: 14px;
-					animation: fadeIn 0.3s;
-				`;
-				document.body.appendChild(hintEl);
-			}
+    // 导航到当日todolist
+    function navigateToTodolist(event) {
+        event.preventDefault();
+        const today = new Date().toISOString().split('T')[0];
+        window.location.href = `/todolist?date=${today}`;
+    }
 
-			hintEl.textContent = message;
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 设置最近查看的首字符
+        document.querySelectorAll('.recent-char').forEach(function(el) {
+            var title = el.textContent;
+            if (title && title.length > 0) el.textContent = title.charAt(0);
+        });
 
-			// 3秒后自动隐藏
-			setTimeout(() => {
-				if (hintEl.parentNode) {
-					hintEl.style.animation = 'fadeOut 0.3s';
-					setTimeout(() => {
-						if (hintEl.parentNode) {
-							hintEl.parentNode.removeChild(hintEl);
-						}
-					}, 300);
-				}
-			}, 3000);
-		}
-
-		// 处理搜索命令选择
-		function handleSearchCommandSelect() {
-			const select = document.getElementById('search-command-select');
-			if (!select) return;
-
-			const selectedOption = select.options[select.selectedIndex];
-			if (!selectedOption || !selectedOption.value) return;
-
-			const command = selectedOption.value;
-			const hasParam = selectedOption.getAttribute('data-hasparam') === 'true';
-			const paramHint = selectedOption.getAttribute('data-paramhint') || '';
-
-			const searchInput = document.getElementById('search');
-			if (!searchInput) return;
-
-			// 填充命令到输入框
-			let commandText = command;
-			if (hasParam) {
-				commandText += ' ';
-			}
-
-			searchInput.value = commandText;
-			searchInput.focus();
-
-			// 如果命令需要额外参数，将光标定位到命令末尾
-			if (hasParam) {
-				searchInput.setSelectionRange(commandText.length, commandText.length);
-				// 显示参数提示
-				if (paramHint) {
-					showCommandHint(`请输入${paramHint}`);
-				}
-			} else {
-				// 不需要参数的命令，直接执行搜索
-				setTimeout(() => {
-					if (searchInput.value === commandText) {
-						onSearch();
-					}
-				}, 100);
-			}
-
-			// 重置选择器到默认选项
-			setTimeout(() => {
-				select.selectedIndex = 0;
-			}, 10);
-		}
-
-		// 初始化搜索命令选择器事件
-		document.addEventListener('DOMContentLoaded', function() {
-			const searchCommandSelect = document.getElementById('search-command-select');
-			if (searchCommandSelect) {
-				searchCommandSelect.addEventListener('change', handleSearchCommandSelect);
-			}
-		});
-
-		// 添加CSS动画
-		const style = document.createElement('style');
-		style.textContent = `
-			@keyframes fadeIn {
-				from { opacity: 0; transform: translateY(-10px); }
-				to { opacity: 1; transform: translateY(0); }
-			}
-			@keyframes fadeOut {
-				from { opacity: 1; transform: translateY(0); }
-				to { opacity: 0; transform: translateY(-10px); }
-			}
-			.tag-hidden {
-				display: none !important;
-			}
-			.toggle-btn {
-				background-color: var(--secondary-color);
-				color: var(--text-color);
-				border: 1px dashed var(--border-color);
-			}
-			.toggle-btn:hover {
-				background-color: var(--accent-color);
-				color: white;
-				border-color: var(--accent-color);
-			}
-		`;
-		document.head.appendChild(style);
-
-		// ========== 博客分类折叠功能 ==========
-		(function() {
-			const container = document.getElementById('blogContainer');
-			if (!container) return;
-
-			const cards = Array.from(container.querySelectorAll('.link-card'));
-			if (cards.length === 0) return;
-
-			const categories = [
-				{ key: 'blog',     label: '📝 日常博客',  color: '#e76f51' },
-				{ key: 'diary',    label: '📔 日记文件',  color: '#e67e22' },
-				{ key: 'exercise', label: '💪 锻炼文件',  color: '#27ae60' },
-				{ key: 'memory',   label: '🧠 记忆文件',  color: '#3498db' },
-				{ key: 'ai',       label: '🤖 AI生成',    color: '#9b59b6' },
-				{ key: 'system',   label: '⚙️ 系统文件',  color: '#6c757d' },
-			];
-
-			function classifyCard(card) {
-				const title = (card.getAttribute('data-title') || '').toLowerCase();
-				const isDiary = card.getAttribute('data-diary') === 'true';
-
-				if (title.startsWith('sys_') || title.startsWith('mcp_') || title === 'sys_accounts') return 'system';
-				if (title.startsWith('agent_')) return 'ai';
-				if (title.includes('memory') || title.includes('记忆')) return 'memory';
-				if (title.includes('exercise') || title.includes('锻炼') || title.includes('workout') || title.includes('健身')) return 'exercise';
-				if (isDiary || title.startsWith('日记_') || title.startsWith('diary_')) return 'diary';
-				return 'blog';
-			}
-
-			const groups = {};
-			categories.forEach(c => groups[c.key] = []);
-			cards.forEach(card => groups[classifyCard(card)].push(card));
-
-			function getCollapseState(key) {
-				try {
-					const saved = localStorage.getItem('blog_category_state');
-					if (saved) { const s = JSON.parse(saved); if (s[key] !== undefined) return s[key]; }
-				} catch(e) {}
-				return key !== 'blog';
-			}
-
-			function saveCollapseState(key, collapsed) {
-				try {
-					let s = {};
-					const saved = localStorage.getItem('blog_category_state');
-					if (saved) s = JSON.parse(saved);
-					s[key] = collapsed;
-					localStorage.setItem('blog_category_state', JSON.stringify(s));
-				} catch(e) {}
-			}
-
-			container.innerHTML = '';
-
-			categories.forEach(cat => {
-				const items = groups[cat.key];
-				if (items.length === 0) return;
-
-				const collapsed = getCollapseState(cat.key);
-
-				const section = document.createElement('div');
-				section.className = 'category-section';
-
-				const header = document.createElement('div');
-				header.className = 'category-header';
-				header.style.borderLeftColor = cat.color;
-				header.innerHTML =
-					'<div class="category-header-left">' +
-						'<span class="category-label">' + cat.label + '</span>' +
-						'<span class="category-count">' + items.length + '</span>' +
-					'</div>' +
-					'<span class="category-toggle">' +
-						'<i class="fas fa-chevron-' + (collapsed ? 'right' : 'down') + '"></i>' +
-					'</span>';
-
-				const body = document.createElement('div');
-				body.className = 'category-body' + (collapsed ? ' collapsed' : '');
-				items.forEach(card => body.appendChild(card));
-
-				header.addEventListener('click', function() {
-					const isC = body.classList.toggle('collapsed');
-					header.querySelector('.category-toggle i').className = 'fas fa-chevron-' + (isC ? 'right' : 'down');
-					saveCollapseState(cat.key, isC);
-				});
-
-				section.appendChild(header);
-				section.appendChild(body);
-				container.appendChild(section);
-			});
-		})();
-
-		// 标签折叠功能
-		document.addEventListener('DOMContentLoaded', function() {
-			const MAX_VISIBLE_TAGS = 20;
-			const tagContainer = document.querySelector('.tag-filters');
-			if (!tagContainer) return;
-
-			const tags = tagContainer.querySelectorAll('.tag-filter:not(.toggle-btn)');
-			const totalTags = tags.length;
-
-			if (totalTags <= MAX_VISIBLE_TAGS) return;
-
-			// 创建切换按钮
-			const toggleBtn = document.createElement('button');
-			toggleBtn.className = 'tag-filter toggle-btn';
-			toggleBtn.innerHTML = '展开更多 <i class="fas fa-chevron-down"></i>';
-			toggleBtn.onclick = function() {
-				const isExpanded = toggleBtn.getAttribute('data-expanded') === 'true';
-				if (isExpanded) {
-					// 收起
-					tags.forEach((tag, index) => {
-						if (index >= MAX_VISIBLE_TAGS) {
-							tag.classList.add('tag-hidden');
-						}
-					});
-					toggleBtn.innerHTML = '展开更多 <i class="fas fa-chevron-down"></i>';
-					toggleBtn.setAttribute('data-expanded', 'false');
-				} else {
-					// 展开
-					tags.forEach(tag => {
-						tag.classList.remove('tag-hidden');
-					});
-					toggleBtn.innerHTML = '收起 <i class="fas fa-chevron-up"></i>';
-					toggleBtn.setAttribute('data-expanded', 'true');
-				}
-			};
-
-			// 初始隐藏多余标签
-			tags.forEach((tag, index) => {
-				if (index >= MAX_VISIBLE_TAGS) {
-					tag.classList.add('tag-hidden');
-				}
-			});
-
-			// 添加按钮到容器末尾
-			tagContainer.appendChild(toggleBtn);
-		});
-		</script>
-		
-	</body>
+    });
+    </script>
+</body>
 </html>

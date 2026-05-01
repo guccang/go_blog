@@ -1,119 +1,116 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GUCCANG/PUBLIC</title>
+    <title>GUCCANG - 公开博客</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/css/public.css">
 </head>
-
 <body>
-    <div class="top-sidebar-cotainer">
-        <div class="top-sidebar">
-            <a href="/main">
-                <div class="img-cycle">G</div>
+    <!-- 顶部导航 -->
+    <header class="top-nav">
+        <div class="top-nav-inner">
+            <a href="/main" class="nav-brand">
+                <div class="brand-icon">G</div>
+                <span class="brand-text">GUCCANG</span>
             </a>
 
-            <div class="search-container">
-                <input type="text" id="search" placeholder="搜索博客或标签..." autocomplete="off">
-                <button type="button" class="search-btn" onclick="onSearch()">搜索</button>
+            <div class="nav-search">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="search" placeholder="搜索公开博客..." autocomplete="off" class="nav-search-input">
             </div>
 
-            <button type="button" class="view-toggle" title="切换视图">
-                <i id="view-icon">📑</i>
-                <span id="view-text">网格视图</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- 页面标题 -->
-    <div class="page-header">
-        <h1 class="page-title">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 8px;">
-                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="currentColor"/>
-            </svg>
-            公开博客
-        </h1>
-        <p class="page-description">展示所有公开标签的博客文章</p>
-    </div>
-
-    <!-- 统计信息 -->
-    <div class="stats-section">
-        <div class="stat-card">
-            <div class="stat-number">{{.BLOGS_NUMBER}}</div>
-            <div class="stat-label">公开博客</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{len .TAGS}}</div>
-            <div class="stat-label">公开标签</div>
-        </div>
-    </div>
-
-    <!-- 标签筛选 -->
-    <div class="filter-section">
-        <h3 class="filter-title">按标签筛选</h3>
-        <div class="tag-filters-panel">
-            <div class="tag-filters" id="tag-filters">
-                <button type="button" class="tag-filter active" data-tag="all">全部</button>
-                {{range .TAGS}}
-                    <button type="button" class="tag-filter {{if ge .Count 10}}tag-size-large{{else if ge .Count 5}}tag-size-medium{{else}}tag-size-small{{end}}" data-tag="{{.Name}}" data-count="{{.Count}}">{{.Name}} ({{.Count}})</button>
-                {{end}}
+            <div class="nav-actions">
+                <button class="btn-icon" onclick="toggleView()" title="切换视图">
+                    <i id="view-icon" class="fas fa-th-large"></i>
+                </button>
             </div>
-            <button type="button" class="tag-filters-toggle" id="tag-filters-toggle" hidden>展开更多标签</button>
         </div>
-    </div>
+    </header>
 
-    <!-- 小游戏入口 -->
-    <div class="games-section">
-        <h3 class="games-title">小游戏</h3>
-        <div class="games-container">
-            {{range .GAMES}}
-                <a class="game-card" href="{{.Path}}">
-                    <div class="game-name">{{.Name}}</div>
-                </a>
-            {{end}}
+    <!-- 英雄区域 -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">公开博客</h1>
+            <p class="hero-subtitle">探索思考、记录与分享</p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span class="hero-stat-value">{{.BLOGS_NUMBER}}</span>
+                    <span class="hero-stat-label">篇文章</span>
+                </div>
+            </div>
         </div>
-    </div>
+    </section>
 
     <!-- 博客列表 -->
-    <div class="container" id="blog-container">
-        {{range .LINKS}}
-            <div class="link-card" data-tags="{{range .TAGS}}{{.}} {{end}}">
-                <a class="link-with-dot" href="{{.URL}}">
-                    <div class="blog-title">
-                        {{if .IS_ENCRYPTED}}<span class="encrypt-lock">🔒</span>{{end}}{{if .IS_DIARY}}<span class="diary-icon">📔</span>{{end}}{{.DESC}}
-                    </div>
-                    {{if .ACCESS_TIME}}
-                        <div class="blog-time">访问时间: {{.ACCESS_TIME}}</div>
-                    {{end}}
-                    {{if .TAGS}}
-                        <div class="blog-tags">
-                            {{range .TAGS}}
-                                <span class="tag">{{.}}</span>
+    <main class="blog-main">
+        <div class="blog-grid" id="blog-container">
+            {{range .LINKS}}
+            <article class="blog-card">
+                <a href="{{.URL}}" class="blog-card-inner">
+                    <div class="blog-card-content">
+                        <h2 class="blog-card-title">
+                            {{if .IS_ENCRYPTED}}<i class="fas fa-lock"></i>{{end}}
+                            {{if .IS_DIARY}}<i class="fas fa-book"></i>{{end}}
+                            {{.DESC}}
+                        </h2>
+                        <div class="blog-card-footer">
+                            {{if .ACCESS_TIME}}
+                            <span class="blog-date">
+                                <i class="far fa-calendar-alt"></i> {{.ACCESS_TIME}}
+                            </span>
                             {{end}}
                         </div>
-                    {{end}}
+                    </div>
+                    <div class="blog-card-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
                 </a>
+            </article>
+            {{end}}
+        </div>
+
+        {{if not .LINKS}}
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-newspaper"></i>
             </div>
+            <h2>暂无公开博客</h2>
+            <p>这里还没有公开的博客文章，请稍后再来</p>
+        </div>
         {{end}}
-    </div>
+    </main>
 
-    <!-- 空状态 -->
-    <div class="empty-state" id="empty-state" style="display: none;">
-        <div class="empty-icon">📝</div>
-        <h3>暂无公开博客</h3>
-        <p>当前没有找到符合条件的公开博客</p>
-    </div>
+    <!-- 小游戏 -->
+    {{if .GAMES}}
+    <section class="games-section">
+        <div class="games-inner">
+            <h2 class="games-title">
+                <i class="fas fa-gamepad"></i> 小游戏
+            </h2>
+            <div class="games-grid">
+                {{range .GAMES}}
+                <a class="game-card" href="{{.Path}}">
+                    <span class="game-icon">{{.Icon}}</span>
+                    <span class="game-name">{{.Name}}</span>
+                </a>
+                {{end}}
+            </div>
+        </div>
+    </section>
+    {{end}}
 
-
-    <div class="bottom-fix-div">
-        <span class="right-label">公开博客数量: {{.BLOGS_NUMBER}}</span>
-        <span class="right-label">版本: {{.VERSION}}</span>
-    </div>
+    <!-- 底部 -->
+    <footer class="page-footer">
+        <div class="footer-inner">
+            <span>公开博客数量: {{.BLOGS_NUMBER}}</span>
+            <span class="footer-dot">·</span>
+            <span>版本: {{.VERSION}}</span>
+        </div>
+    </footer>
 
     <script src="/js/utils.js"></script>
     <script src="/js/public.js"></script>
 </body>
-</html> 
+</html>

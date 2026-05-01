@@ -612,6 +612,8 @@ func (a *Agent) watchPromptProgress(ctx context.Context, conn *Connection, calle
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	warned := false
+	warnAfter := a.promptProgressWarnAfter()
+	timeoutAfter := a.promptProgressTimeout()
 	for {
 		select {
 		case <-stop:
@@ -621,7 +623,7 @@ func (a *Agent) watchPromptProgress(ctx context.Context, conn *Connection, calle
 		case <-ticker.C:
 			lastAt, lastEvent := client.ActivitySnapshot()
 			idle := time.Since(lastAt)
-			if idle >= 45*time.Second && !warned {
+			if idle >= warnAfter && !warned {
 				warned = true
 				log.Printf("[ACP] stalled warning: session=%s project=%s idle=%s last_event=%s", sessionID, project, idle.Truncate(time.Second), lastEvent)
 				a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
@@ -633,7 +635,7 @@ func (a *Agent) watchPromptProgress(ctx context.Context, conn *Connection, calle
 					},
 				})
 			}
-			if idle >= 120*time.Second {
+			if idle >= timeoutAfter {
 				log.Printf("[ACP] stalled timeout: session=%s project=%s idle=%s last_event=%s", sessionID, project, idle.Truncate(time.Second), lastEvent)
 				a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
 					SessionID: sessionID,
@@ -646,11 +648,28 @@ func (a *Agent) watchPromptProgress(ctx context.Context, conn *Connection, calle
 				cancel()
 				return
 			}
-			if idle < 45*time.Second {
+			if idle < warnAfter {
 				warned = false
 			}
 		}
 	}
+}
+
+func (a *Agent) promptProgressTimeout() time.Duration {
+	timeout := time.Duration(a.cfg.AnalysisTimeout) * time.Second
+	if timeout <= 0 {
+		return 30 * time.Minute
+	}
+	return timeout
+}
+
+func (a *Agent) promptProgressWarnAfter() time.Duration {
+	timeout := a.promptProgressTimeout()
+	warnAfter := timeout / 2
+	if warnAfter < 45*time.Second {
+		return 45 * time.Second
+	}
+	return warnAfter
 }
 
 func (a *Agent) sendStreamEvent(conn *Connection, targetAgentID string, payload StreamEventPayload) {
