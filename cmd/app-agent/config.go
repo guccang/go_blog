@@ -8,6 +8,7 @@ import (
 
 type OBSStorageConfig struct {
 	Endpoint         string `json:"endpoint,omitempty"`
+	PublicEndpoint   string `json:"public_endpoint,omitempty"`
 	Bucket           string `json:"bucket,omitempty"`
 	AK               string `json:"ak,omitempty"`
 	SK               string `json:"sk,omitempty"`

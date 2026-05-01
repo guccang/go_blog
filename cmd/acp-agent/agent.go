@@ -142,11 +142,15 @@ func (a *Agent) ScanCodexSettings() []string {
 
 // ScanTools 返回当前 acp-agent 实际支持的编码工具
 func (a *Agent) ScanTools() []string {
+	return []string{"claudecode", "codex"}
+}
+
+func (a *Agent) DefaultTool() string {
 	switch a.cfg.EffectiveCodingBackend() {
 	case BackendCodexExec:
-		return []string{"codex"}
+		return "codex"
 	default:
-		return []string{"claudecode"}
+		return "claudecode"
 	}
 }
 
@@ -237,8 +241,8 @@ func (a *Agent) resolveProject(project string) string {
 // interactive: 是否交互式权限模式
 // callerAgentID: 调用方 agent ID（交互模式下权限请求发给该 agent）
 // keepSession: 是否在本轮完成后保留 ACP 子进程供后续多轮对话复用
-func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool) (taskResult, error) {
-	switch a.cfg.EffectiveCodingBackend() {
+func (a *Agent) ExecuteACP(conn *Connection, sessionID, requestID, project, prompt string, extraArgs []string, interactive bool, callerAgentID string, keepSession bool, requestedTool string) (taskResult, error) {
+	switch backendForTool(requestedTool, a.cfg.EffectiveCodingBackend()) {
 	case BackendCodexExec:
 		return a.executeCodexExec(conn, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
 	default:

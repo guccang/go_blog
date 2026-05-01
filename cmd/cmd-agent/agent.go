@@ -593,6 +593,18 @@ func codingToolsForAgent(agent gatewayAgentSnapshot) []string {
 	return nil
 }
 
+func defaultToolForAgent(agent gatewayAgentSnapshot) string {
+	if tool := normalizeTool(stringFromAny(agent.Meta["default_tool"])); tool != "" {
+		return tool
+	}
+	switch strings.TrimSpace(fmt.Sprintf("%v", agent.Meta["coding_backend"])) {
+	case "codex_exec":
+		return "codex"
+	default:
+		return "claudecode"
+	}
+}
+
 func agentSupportsCodingTool(agent gatewayAgentSnapshot, tool string) bool {
 	tool = normalizeTool(tool)
 	if tool == "" {

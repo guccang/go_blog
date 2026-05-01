@@ -26,6 +26,28 @@ func (cfg *AgentConfig) EffectiveCodingBackend() string {
 	return backend
 }
 
+func normalizeCodingTool(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "claude", "claudecode", "cc":
+		return "claudecode"
+	case "codex":
+		return "codex"
+	default:
+		return ""
+	}
+}
+
+func backendForTool(tool string, fallback string) string {
+	switch normalizeCodingTool(tool) {
+	case "claudecode":
+		return BackendClaudeACP
+	case "codex":
+		return BackendCodexExec
+	default:
+		return fallback
+	}
+}
+
 func (cfg *AgentConfig) BackendLabel() string {
 	switch cfg.EffectiveCodingBackend() {
 	case BackendCodexExec:

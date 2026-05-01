@@ -16,10 +16,12 @@ import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import 'codegen/codegen_body.dart';
+import 'codegen/models.dart';
+import 'cortana_page.dart';
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
-import 'cortana_page.dart';
 
 void main() {
   runApp(const AppAgentClientApp());
@@ -966,273 +968,7 @@ class GroupInfo {
   }
 }
 
-class CodingProjectInfo {
-  const CodingProjectInfo({
-    required this.name,
-    required this.agentId,
-    required this.agent,
-    required this.availableTools,
-    required this.claudeCodeSettings,
-    required this.defaultSettings,
-  });
-
-  final String name;
-  final String agentId;
-  final String agent;
-  final List<String> availableTools;
-  final List<String> claudeCodeSettings;
-  final String defaultSettings;
-
-  String get qualifiedName => '$name@$agent';
-
-  factory CodingProjectInfo.fromJson(Map<String, dynamic> json) {
-    final availableTools =
-        (json['available_tools'] as List<dynamic>? ?? const [])
-            .map((item) => item.toString().trim().toLowerCase())
-            .where((item) => item.isNotEmpty)
-            .toList();
-    final claudeCodeSettings =
-        (json['claudecode_settings'] as List<dynamic>? ?? const [])
-            .map((item) => item.toString().trim())
-            .where((item) => item.isNotEmpty)
-            .toList();
-    return CodingProjectInfo(
-      name: (json['name'] ?? '').toString().trim(),
-      agentId: (json['agent_id'] ?? '').toString().trim(),
-      agent: (json['agent'] ?? '').toString().trim(),
-      availableTools: availableTools,
-      claudeCodeSettings: claudeCodeSettings,
-      defaultSettings: (json['default_settings'] ?? '').toString().trim(),
-    );
-  }
-}
-
-class DeployProjectInfo {
-  const DeployProjectInfo({
-    required this.name,
-    required this.agentId,
-    required this.agent,
-    required this.deployTargets,
-    required this.buildOnly,
-  });
-
-  final String name;
-  final String agentId;
-  final String agent;
-  final List<String> deployTargets;
-  final bool buildOnly;
-
-  String get qualifiedName => '$name@$agent';
-
-  factory DeployProjectInfo.fromJson(Map<String, dynamic> json) {
-    final targets = (json['deploy_targets'] as List<dynamic>? ?? const [])
-        .map((item) => item.toString().trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    return DeployProjectInfo(
-      name: (json['name'] ?? '').toString().trim(),
-      agentId: (json['agent_id'] ?? '').toString().trim(),
-      agent: (json['agent'] ?? '').toString().trim(),
-      deployTargets: targets,
-      buildOnly: json['build_only'] == true,
-    );
-  }
-}
-
-class CodegenProjectsSnapshot {
-  const CodegenProjectsSnapshot({
-    required this.codingProjects,
-    required this.deployProjects,
-  });
-
-  final List<CodingProjectInfo> codingProjects;
-  final List<DeployProjectInfo> deployProjects;
-
-  factory CodegenProjectsSnapshot.fromJson(Map<String, dynamic> json) {
-    final codingProjects =
-        (json['coding_projects'] as List<dynamic>? ?? const [])
-            .map(
-              (item) =>
-                  CodingProjectInfo.fromJson(item as Map<String, dynamic>),
-            )
-            .where((item) => item.name.isNotEmpty && item.agent.isNotEmpty)
-            .toList();
-    final deployProjects =
-        (json['deploy_projects'] as List<dynamic>? ?? const [])
-            .map(
-              (item) =>
-                  DeployProjectInfo.fromJson(item as Map<String, dynamic>),
-            )
-            .where((item) => item.name.isNotEmpty && item.agent.isNotEmpty)
-            .toList();
-    return CodegenProjectsSnapshot(
-      codingProjects: codingProjects,
-      deployProjects: deployProjects,
-    );
-  }
-}
-
 enum RootTab { chat, codegen, cortana }
-
-enum CodegenLaunchMode { code, deploy }
-
-class CodegenHistoryItem {
-  const CodegenHistoryItem({
-    required this.timestamp,
-    required this.command,
-    required this.mode,
-  });
-
-  final DateTime timestamp;
-  final String command;
-  final CodegenLaunchMode mode;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'timestamp': timestamp.toIso8601String(),
-      'command': command,
-      'mode': mode.name,
-    };
-  }
-
-  factory CodegenHistoryItem.fromJson(Map<String, dynamic> json) {
-    return CodegenHistoryItem(
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      command: (json['command'] ?? '').toString(),
-      mode: json['mode'] == 'deploy'
-          ? CodegenLaunchMode.deploy
-          : CodegenLaunchMode.code,
-    );
-  }
-}
-
-class CodegenHistoryCommandDetails {
-  const CodegenHistoryCommandDetails({
-    required this.mode,
-    required this.projectQualifiedName,
-    required this.requestText,
-    required this.tool,
-    required this.claudeSettings,
-    required this.target,
-    required this.extraArgs,
-    required this.autoDeploy,
-    required this.packOnly,
-  });
-
-  final CodegenLaunchMode mode;
-  final String projectQualifiedName;
-  final String requestText;
-  final String tool;
-  final String claudeSettings;
-  final String target;
-  final String extraArgs;
-  final bool autoDeploy;
-  final bool packOnly;
-
-  factory CodegenHistoryCommandDetails.parse(CodegenHistoryItem item) {
-    final tokens = item.command
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((token) => token.isNotEmpty)
-        .toList();
-    if (tokens.length < 3 || tokens.first != '/cg') {
-      return CodegenHistoryCommandDetails(
-        mode: item.mode,
-        projectQualifiedName: '',
-        requestText: '',
-        tool: '',
-        claudeSettings: '',
-        target: '',
-        extraArgs: '',
-        autoDeploy: false,
-        packOnly: false,
-      );
-    }
-
-    final action = tokens[1];
-    if (action == 'start') {
-      var autoDeploy = false;
-      var tool = '';
-      var claudeSettings = '';
-      final projectQualifiedName = tokens[2];
-      var requestStart = 3;
-      while (requestStart < tokens.length) {
-        final token = tokens[requestStart];
-        if (token == '!deploy') {
-          autoDeploy = true;
-          requestStart++;
-          continue;
-        }
-        if (token.startsWith('@')) {
-          tool = token.substring(1);
-          requestStart++;
-          continue;
-        }
-        if (token == '--settings' && requestStart + 1 < tokens.length) {
-          claudeSettings = tokens[requestStart + 1];
-          requestStart += 2;
-          continue;
-        }
-        break;
-      }
-      final requestText = requestStart < tokens.length
-          ? tokens.sublist(requestStart).join(' ')
-          : '';
-      return CodegenHistoryCommandDetails(
-        mode: CodegenLaunchMode.code,
-        projectQualifiedName: projectQualifiedName,
-        requestText: requestText,
-        tool: tool,
-        claudeSettings: claudeSettings,
-        target: '',
-        extraArgs: '',
-        autoDeploy: autoDeploy,
-        packOnly: false,
-      );
-    }
-
-    if (action == 'deploy') {
-      var target = '';
-      var packOnly = false;
-      final projectQualifiedName = tokens[2];
-      final args = <String>[];
-      for (final token in tokens.skip(3)) {
-        if (token.startsWith('#') && target.isEmpty) {
-          target = token.substring(1);
-          continue;
-        }
-        if (token == '!pack') {
-          packOnly = true;
-          continue;
-        }
-        args.add(token);
-      }
-      return CodegenHistoryCommandDetails(
-        mode: CodegenLaunchMode.deploy,
-        projectQualifiedName: projectQualifiedName,
-        requestText: '',
-        tool: '',
-        claudeSettings: '',
-        target: target,
-        extraArgs: args.join(' '),
-        autoDeploy: false,
-        packOnly: packOnly,
-      );
-    }
-
-    return CodegenHistoryCommandDetails(
-      mode: item.mode,
-      projectQualifiedName: '',
-      requestText: '',
-      tool: '',
-      claudeSettings: '',
-      target: '',
-      extraArgs: '',
-      autoDeploy: false,
-      packOnly: false,
-    );
-  }
-}
 
 class ClientConfig {
   const ClientConfig({
@@ -1828,6 +1564,12 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
+class _BufferedStreamUpdate {
+  final String scopeKey;
+  final ChatMessage message;
+  _BufferedStreamUpdate({required this.scopeKey, required this.message});
+}
+
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
   static const String _lastLoginUserIdKey = 'auth::last_user_id';
@@ -1893,6 +1635,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   WebSocket? _socket;
   StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
+  Timer? _streamFlushTimer;
+  final Map<String, _BufferedStreamUpdate> _bufferedStreamUpdates = {};
+  static const Duration _streamFlushInterval = Duration(milliseconds: 80);
+  bool _scrollToBottomScheduled = false;
 
   bool _connecting = false;
   bool _connected = false;
@@ -2000,6 +1746,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_flushHistoryToDisk());
     _reconnectTimer?.cancel();
+    _streamFlushTimer?.cancel();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.close());
     _userIdController.dispose();
@@ -2838,15 +2585,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return const <String>[];
     }
     if (project.availableTools.isEmpty) {
+      if (project.defaultTool.isNotEmpty) {
+        return <String>[project.defaultTool];
+      }
       return const <String>['claudecode'];
     }
     return List<String>.from(project.availableTools);
   }
 
-  List<String> get _selectedClaudeSettingsOptions {
+  List<String> get _selectedToolSettingsOptions {
     final project = _selectedCodingProject;
     if (project == null) {
       return const <String>[];
+    }
+    if (_selectedCodeTool == 'codex') {
+      return List<String>.from(project.codexSettings);
     }
     return List<String>.from(project.claudeCodeSettings);
   }
@@ -2917,21 +2670,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         (field) => field.contains(token) || _isSubsequenceMatch(token, field),
       ),
     );
-  }
-
-  String? _resolveDropdownValue<T>(
-    List<T> projects,
-    String? selectedQualifiedName,
-    String Function(T project) getQualifiedName,
-  ) {
-    final selected = selectedQualifiedName?.trim() ?? '';
-    if (selected.isEmpty) {
-      return null;
-    }
-    final exists = projects.any(
-      (project) => getQualifiedName(project) == selected,
-    );
-    return exists ? selected : null;
   }
 
   List<CodingProjectInfo> get _filteredCodingProjects {
@@ -3206,12 +2944,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         details.tool.isEmpty ? '默认' : details.tool,
                       ),
                     if (details.mode == CodegenLaunchMode.code &&
-                        details.tool == 'claudecode')
+                        details.claudeSettings.isNotEmpty)
                       _buildHistoryDetailRow(
                         'Settings',
-                        details.claudeSettings.isEmpty
-                            ? '未指定'
-                            : details.claudeSettings,
+                        details.claudeSettings,
                       ),
                     if (details.mode == CodegenLaunchMode.code)
                       _buildHistoryDetailRow(
@@ -3313,7 +3049,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _selectedClaudeSettings = '';
     } else {
       if (_selectedCodeTool.isEmpty || !codeTools.contains(_selectedCodeTool)) {
-        if (codeTools.contains('claudecode')) {
+        final defaultTool =
+            _selectedCodingProject?.defaultTool.trim().toLowerCase() ?? '';
+        if (defaultTool.isNotEmpty && codeTools.contains(defaultTool)) {
+          _selectedCodeTool = defaultTool;
+        } else if (codeTools.contains('claudecode')) {
           _selectedCodeTool = 'claudecode';
         } else if (codeTools.contains('codex')) {
           _selectedCodeTool = 'codex';
@@ -3321,8 +3061,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _selectedCodeTool = codeTools.first;
         }
       }
-      final settingsOptions = _selectedClaudeSettingsOptions;
-      if (_selectedCodeTool != 'claudecode' || settingsOptions.isEmpty) {
+      final settingsOptions = _selectedToolSettingsOptions;
+      if (settingsOptions.isEmpty) {
         _selectedClaudeSettings = '';
       } else if (!settingsOptions.contains(_selectedClaudeSettings)) {
         final defaultSettings = _selectedCodingProject?.defaultSettings ?? '';
@@ -3503,8 +3243,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (_selectedCodeTool.isNotEmpty) {
         parts.add('@$_selectedCodeTool');
       }
-      if (_selectedCodeTool == 'claudecode' &&
-          _selectedClaudeSettings.isNotEmpty) {
+      if (_selectedClaudeSettings.isNotEmpty) {
         parts.add('--settings');
         parts.add(_selectedClaudeSettings);
       }
@@ -3549,10 +3288,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _appendSystem('请先选择编码工具。');
         return;
       }
-      if (_selectedCodeTool == 'claudecode' &&
-          _selectedClaudeSettingsOptions.isNotEmpty &&
+      if (_selectedToolSettingsOptions.isNotEmpty &&
           _selectedClaudeSettings.isEmpty) {
-        _appendSystem('请选择 Claude settings。');
+        _appendSystem('请选择编码工具配置。');
         return;
       }
       if (_codegenPromptController.text.trim().isEmpty) {
@@ -3959,12 +3697,140 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  bool _replaceMessageById({
+    required String scopeKey,
+    required String messageId,
+    required ChatMessage message,
+    String? updateStatus,
+  }) {
+    if (messageId.trim().isEmpty) {
+      return false;
+    }
+    final history = _historyByScope[scopeKey];
+    if (history == null || history.isEmpty) {
+      return false;
+    }
+    final index = history.lastIndexWhere(
+      (item) => (item.meta?['_message_id'] ?? '').toString() == messageId,
+    );
+    if (index < 0) {
+      return false;
+    }
+    final updated = List<ChatMessage>.from(history);
+    updated[index] = message;
+    final shouldStickToBottom =
+        scopeKey == _currentScopeKey && _isNearBottom(_scrollController);
+    _historyByScope[scopeKey] = updated;
+    if (mounted) {
+      setState(() {
+        if (updateStatus != null) {
+          _status = updateStatus;
+        }
+      });
+    }
+    _historyPersistence.schedule(scopeKey);
+    if (shouldStickToBottom) {
+      _scrollToBottom(animated: false);
+    }
+    return true;
+  }
+
+  void _bufferCodegenStreamUpdate({
+    required String scopeKey,
+    required String messageId,
+    required ChatMessage message,
+  }) {
+    final history = _historyByScope[scopeKey];
+    final index = history != null
+        ? history.lastIndexWhere(
+            (item) =>
+                (item.meta?['_message_id'] ?? '').toString() == messageId,
+          )
+        : -1;
+
+    if (index < 0) {
+      _appendMessage(message, updateStatus: 'Received message');
+      return;
+    }
+
+    _bufferedStreamUpdates[messageId] = _BufferedStreamUpdate(
+      scopeKey: scopeKey,
+      message: message,
+    );
+
+    _streamFlushTimer ??= Timer.periodic(_streamFlushInterval, (_) {
+      _flushCodegenStreamUpdates();
+    });
+  }
+
+  void _flushCodegenStreamUpdates() {
+    if (_bufferedStreamUpdates.isEmpty) {
+      _streamFlushTimer?.cancel();
+      _streamFlushTimer = null;
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final updates =
+        Map<String, _BufferedStreamUpdate>.from(_bufferedStreamUpdates);
+    _bufferedStreamUpdates.clear();
+
+    bool anyUpdated = false;
+    String? lastUpdatedScopeKey;
+    for (final entry in updates.entries) {
+      final u = entry.value;
+      final history = _historyByScope[u.scopeKey];
+      if (history == null) continue;
+      final index = history.lastIndexWhere(
+        (item) =>
+            (item.meta?['_message_id'] ?? '').toString() == entry.key,
+      );
+      if (index < 0) continue;
+
+      final updated = List<ChatMessage>.from(history);
+      updated[index] = u.message;
+      _historyByScope[u.scopeKey] = updated;
+      _historyPersistence.schedule(u.scopeKey);
+      anyUpdated = true;
+      lastUpdatedScopeKey = u.scopeKey;
+    }
+
+    if (anyUpdated) {
+      setState(() {});
+      if (lastUpdatedScopeKey == _currentScopeKey &&
+          _isNearBottom(_scrollController)) {
+        _scrollToBottom(animated: false);
+      }
+    }
+  }
+
+  bool _isNearBottom(ScrollController controller, {double threshold = 120}) {
+    if (!controller.hasClients) {
+      return true;
+    }
+    return controller.position.extentAfter <= threshold;
+  }
+
   void _scrollToBottom({bool animated = true}) {
+    if (_scrollToBottomScheduled) {
+      return;
+    }
+    _scrollToBottomScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottomScheduled = false;
       if (!_scrollController.hasClients) {
         return;
       }
-      final target = _scrollController.position.maxScrollExtent + 80;
+      final position = _scrollController.position;
+      final target = math.max(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((position.pixels - target).abs() < 1) {
+        return;
+      }
       if (animated) {
         _scrollController.animateTo(
           target,
@@ -3981,6 +3847,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       '$_lastReadAtStoragePrefix::${_userIdController.text.trim()}::$scopeKey';
 
   String _messageAnchorId(ChatMessage message) {
+    final stableMessageId = (message.meta?['_message_id'] ?? '')
+        .toString()
+        .trim();
+    if (stableMessageId.isNotEmpty) {
+      return '${message.scopeKey}|$stableMessageId';
+    }
+    final origin = (message.meta?['origin'] ?? '').toString().trim();
+    final sessionId = (message.meta?['session_id'] ?? '').toString().trim();
+    if (origin == 'codegen-stream' && sessionId.isNotEmpty) {
+      return '${message.scopeKey}|$origin|$sessionId';
+    }
     return [
       message.scopeKey,
       message.timestamp.microsecondsSinceEpoch.toString(),
@@ -3988,7 +3865,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       message.authorId,
       message.groupId,
       message.messageType,
-      message.content,
     ].join('|');
   }
 
@@ -4623,9 +4499,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final envelope = PushEnvelope.fromJson(decoded);
       if (envelope.messageId.isNotEmpty) {
         _sendSocketAck(envelope.messageId);
-        if (_seenMessageIds.contains(envelope.messageId)) {
-          return;
-        }
       }
       final meta = envelope.meta ?? <String, dynamic>{};
       final groupId = (meta['group_id'] ?? '').toString().trim();
@@ -4655,6 +4528,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         messageType: envelope.messageType,
         meta: meta,
       );
+      final messageMeta = Map<String, dynamic>.from(resolvedMeta);
+      if (envelope.messageId.isNotEmpty) {
+        messageMeta['_message_id'] = envelope.messageId;
+      }
       final scopeKey = groupId.isEmpty ? 'direct' : _groupScopeKey(groupId);
       final fromUser = (resolvedMeta['from_user'] ?? '').toString().trim();
       final isSystemMessage = envelope.messageType == 'system';
@@ -4673,17 +4550,43 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return;
       }
 
+      final chatMessage = ChatMessage(
+        content: envelope.content,
+        direction: direction,
+        timestamp: when,
+        scopeKey: scopeKey,
+        authorId: fromUser,
+        groupId: groupId,
+        messageType: envelope.messageType,
+        meta: messageMeta,
+      );
+      if (envelope.messageId.isNotEmpty) {
+        final origin = (meta['origin'] ?? '').toString();
+        if (origin == 'codegen-stream') {
+          _bufferCodegenStreamUpdate(
+            scopeKey: scopeKey,
+            messageId: envelope.messageId,
+            message: chatMessage,
+          );
+          _seenMessageIds.add(envelope.messageId);
+          return;
+        }
+      }
+      if (envelope.messageId.isNotEmpty &&
+          _replaceMessageById(
+            scopeKey: scopeKey,
+            messageId: envelope.messageId,
+            message: chatMessage,
+            updateStatus: isSystemMessage
+                ? envelope.content
+                : 'Received message',
+          )) {
+        _seenMessageIds.add(envelope.messageId);
+        return;
+      }
+
       _appendMessage(
-        ChatMessage(
-          content: envelope.content,
-          direction: direction,
-          timestamp: when,
-          scopeKey: scopeKey,
-          authorId: fromUser,
-          groupId: groupId,
-          messageType: envelope.messageType,
-          meta: resolvedMeta,
-        ),
+        chatMessage,
         updateStatus: isSystemMessage ? envelope.content : 'Received message',
       );
       if (!isSystemMessage &&
@@ -4697,7 +4600,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           authorId: fromUser,
           groupId: groupId,
           messageType: envelope.messageType,
-          meta: resolvedMeta,
+          meta: messageMeta,
         );
         if (isApkChatMessage(autoInstallMessage) &&
             envelope.messageId.isNotEmpty &&
@@ -7158,506 +7061,78 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Widget _buildCodegenBody() {
     final palette = _palette;
-    final codingProjects = _filteredCodingProjects;
-    final deployProjects = _filteredDeployProjects;
-    final selectedCodingProject = _selectedCodingProject;
-    final selectedDeployProject = _selectedDeployProject;
-    final commandPreview = _buildCodegenCommandPreview();
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            palette.backgroundTop,
-            palette.surfaceMuted,
-            palette.backgroundBottom,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+    return CodegenBody(
+      palette: CodegenBodyPalette(
+        backgroundTop: palette.backgroundTop,
+        surfaceMuted: palette.surfaceMuted,
+        backgroundBottom: palette.backgroundBottom,
+        surface: palette.surface,
+        border: palette.border,
+        textPrimary: palette.textPrimary,
+        textSecondary: palette.textSecondary,
+        error: palette.error,
       ),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 18),
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-              decoration: BoxDecoration(
-                color: palette.surface.withValues(alpha: 0.96),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: palette.border),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 18,
-                    color: Colors.black.withValues(alpha: 0.18),
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '编码发布',
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '从 acp-agent 和 deploy-agent 的现有项目中快速选择，直接发送 /cg 命令。',
-                    style: TextStyle(color: palette.textSecondary, height: 1.4),
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: _codegenLoading
-                          ? null
-                          : () => unawaited(_loadCodegenProjects()),
-                      icon: _codegenLoading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh_rounded),
-                      label: Text(_codegenLoading ? '刷新中...' : '刷新编码和发布项目'),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        selected: _codegenMode == CodegenLaunchMode.code,
-                        label: const Text('编码'),
-                        onSelected: (_) =>
-                            _setCodegenMode(CodegenLaunchMode.code),
-                      ),
-                      ChoiceChip(
-                        selected: _codegenMode == CodegenLaunchMode.deploy,
-                        label: const Text('发布'),
-                        onSelected: (_) =>
-                            _setCodegenMode(CodegenLaunchMode.deploy),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: _codegenSearchController,
-                    onChanged: (_) {
-                      setState(() {
-                        _syncFilteredCodegenSelections();
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: '搜索项目',
-                      hintText: '支持项目名、agent、多关键词模糊搜索',
-                      prefixIcon: Icon(Icons.search_rounded),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  if (_codegenLoading)
-                    const LinearProgressIndicator(minHeight: 3),
-                  if (_codegenError.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _codegenError,
-                      style: TextStyle(
-                        color: palette.error,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  if (_codegenMode == CodegenLaunchMode.code) ...[
-                    DropdownButtonFormField<String>(
-                      initialValue: _resolveDropdownValue<CodingProjectInfo>(
-                        codingProjects,
-                        selectedCodingProject?.qualifiedName,
-                        (project) => project.qualifiedName,
-                      ),
-                      items: codingProjects
-                          .map(
-                            (project) => DropdownMenuItem<String>(
-                              value: project.qualifiedName,
-                              child: Text(project.qualifiedName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: codingProjects.isEmpty
-                          ? null
-                          : _handleCodeProjectChanged,
-                      decoration: const InputDecoration(
-                        labelText: '编码项目',
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedCodeTool.isEmpty
-                          ? null
-                          : _selectedCodeTool,
-                      items: _selectedCodingProjectTools
-                          .map(
-                            (tool) => DropdownMenuItem<String>(
-                              value: tool,
-                              child: Text(switch (tool) {
-                                'codex' => 'codex',
-                                'claudecode' => 'claudecode',
-                                _ => tool,
-                              }),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _selectedCodingProjectTools.isEmpty
-                          ? null
-                          : _handleCodeToolChanged,
-                      decoration: const InputDecoration(
-                        labelText: '编码工具',
-                        isDense: true,
-                      ),
-                    ),
-                    if (_selectedCodeTool == 'claudecode' &&
-                        _selectedClaudeSettingsOptions.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: _selectedClaudeSettings.isEmpty
-                            ? null
-                            : _selectedClaudeSettings,
-                        items: _selectedClaudeSettingsOptions
-                            .map(
-                              (settings) => DropdownMenuItem<String>(
-                                value: settings,
-                                child: Text(settings),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _handleClaudeSettingsChanged,
-                        decoration: const InputDecoration(
-                          labelText: 'Claude Settings',
-                          helperText: '配置来自 acp-agent settings/claudecode',
-                          isDense: true,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _codegenPromptController,
-                      minLines: 4,
-                      maxLines: 7,
-                      decoration: const InputDecoration(
-                        labelText: '编码需求',
-                        hintText: '例如：增加一个页签可以快速选择项目并执行编码发布',
-                        alignLabelWithHint: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      value: _codegenAutoDeploy,
-                      onChanged: (value) {
-                        setState(() {
-                          _codegenAutoDeploy = value;
-                        });
-                      },
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('编码完成后自动部署'),
-                    ),
-                  ] else ...[
-                    DropdownButtonFormField<String>(
-                      initialValue: _resolveDropdownValue<DeployProjectInfo>(
-                        deployProjects,
-                        selectedDeployProject?.qualifiedName,
-                        (project) => project.qualifiedName,
-                      ),
-                      items: deployProjects
-                          .map(
-                            (project) => DropdownMenuItem<String>(
-                              value: project.qualifiedName,
-                              child: Text(project.qualifiedName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: deployProjects.isEmpty
-                          ? null
-                          : _handleDeployProjectChanged,
-                      decoration: const InputDecoration(
-                        labelText: '部署项目',
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedDeployTarget.isEmpty
-                          ? null
-                          : _selectedDeployTarget,
-                      items: selectedDeployProject == null
-                          ? const <DropdownMenuItem<String>>[]
-                          : selectedDeployProject.deployTargets
-                                .map(
-                                  (target) => DropdownMenuItem<String>(
-                                    value: target,
-                                    child: Text(target),
-                                  ),
-                                )
-                                .toList(),
-                      onChanged:
-                          selectedDeployProject == null ||
-                              selectedDeployProject.deployTargets.isEmpty
-                          ? null
-                          : _handleDeployTargetChanged,
-                      decoration: const InputDecoration(
-                        labelText: '部署目标',
-                        hintText: '可选',
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      value: _deployPackOnly,
-                      onChanged: (value) {
-                        setState(() {
-                          _deployPackOnly =
-                              selectedDeployProject?.buildOnly == true
-                              ? true
-                              : value;
-                        });
-                        unawaited(_persistCodegenPreferences());
-                      },
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('仅打包'),
-                      subtitle: selectedDeployProject?.buildOnly == true
-                          ? const Text('该项目仅支持打包，不能直接部署')
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _deployArgsController,
-                      onChanged: (_) {
-                        setState(() {});
-                        unawaited(_persistCodegenPreferences());
-                      },
-                      decoration: const InputDecoration(
-                        labelText: '发布参数',
-                        hintText: '例如：--version 3.2.2 --desc 灰度体验版',
-                        helperText: '会原样追加到 /cg deploy 命令末尾',
-                        isDense: true,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  Text(
-                    '命令预览',
-                    style: TextStyle(
-                      color: palette.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    commandPreview,
-                    style: TextStyle(
-                      color: palette.textPrimary,
-                      fontFamily: 'monospace',
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _codegenSending || _codegenLoading
-                          ? null
-                          : _sendCodegenCommand,
-                      icon: Icon(
-                        _codegenMode == CodegenLaunchMode.code
-                            ? Icons.terminal_rounded
-                            : Icons.rocket_launch_rounded,
-                      ),
-                      label: Text(
-                        _codegenMode == CodegenLaunchMode.code
-                            ? '发送编码命令'
-                            : '发送发布命令',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // 历史记录
-            if (_codegenHistory.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                decoration: BoxDecoration(
-                  color: palette.surface.withValues(alpha: 0.96),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: palette.border),
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 18,
-                      color: Colors.black.withValues(alpha: 0.18),
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.history,
-                          color: palette.textSecondary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '历史记录',
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _codegenHistory.clear();
-                            });
-                            unawaited(_persistCodegenPreferences());
-                          },
-                          icon: const Icon(Icons.delete_outline, size: 16),
-                          label: const Text('清空'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _codegenHistory.length > 10
-                          ? 10
-                          : _codegenHistory.length,
-                      separatorBuilder: (context, index) =>
-                          Divider(color: palette.border, height: 16),
-                      itemBuilder: (context, index) {
-                        final item = _codegenHistory[index];
-                        final timeStr = _formatHistoryTime(item.timestamp);
-                        return InkWell(
-                          onTap: () => _showCodegenHistoryDetails(item),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 4,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            item.mode == CodegenLaunchMode.code
-                                            ? Colors.blue.withValues(alpha: 0.2)
-                                            : Colors.green.withValues(
-                                                alpha: 0.2,
-                                              ),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        item.mode == CodegenLaunchMode.code
-                                            ? '编码'
-                                            : '发布',
-                                        style: TextStyle(
-                                          color:
-                                              item.mode ==
-                                                  CodegenLaunchMode.code
-                                              ? Colors.blue
-                                              : Colors.green,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      timeStr,
-                                      style: TextStyle(
-                                        color: palette.textSecondary,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  item.command,
-                                  style: TextStyle(
-                                    color: palette.textPrimary,
-                                    fontFamily: 'monospace',
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '点击查看详情',
-                                  style: TextStyle(
-                                    color: palette.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
+      loading: _codegenLoading,
+      sending: _codegenSending,
+      errorText: _codegenError,
+      mode: _codegenMode,
+      codingProjects: _filteredCodingProjects,
+      deployProjects: _filteredDeployProjects,
+      selectedCodingProject: _selectedCodingProject,
+      selectedDeployProject: _selectedDeployProject,
+      selectedCodeTool: _selectedCodeTool,
+      selectedToolSettings: _selectedClaudeSettings,
+      selectedCodeToolOptions: _selectedCodingProjectTools,
+      selectedToolSettingsOptions: _selectedToolSettingsOptions,
+      selectedDeployTarget: _selectedDeployTarget,
+      commandPreview: _buildCodegenCommandPreview(),
+      autoDeploy: _codegenAutoDeploy,
+      deployPackOnly: _deployPackOnly,
+      codegenPromptController: _codegenPromptController,
+      codegenSearchController: _codegenSearchController,
+      deployArgsController: _deployArgsController,
+      history: _codegenHistory,
+      onRefresh: () => unawaited(_loadCodegenProjects()),
+      onModeChanged: _setCodegenMode,
+      onSearchChanged: (_) {
+        setState(() {
+          _syncFilteredCodegenSelections();
+        });
+      },
+      onCodeProjectChanged: _handleCodeProjectChanged,
+      onCodeToolChanged: _handleCodeToolChanged,
+      onToolSettingsChanged: _handleClaudeSettingsChanged,
+      onPromptChanged: (_) => setState(() {}),
+      onAutoDeployChanged: (value) {
+        setState(() {
+          _codegenAutoDeploy = value;
+        });
+        unawaited(_persistCodegenPreferences());
+      },
+      onDeployProjectChanged: _handleDeployProjectChanged,
+      onDeployTargetChanged: _handleDeployTargetChanged,
+      onDeployPackOnlyChanged: (value) {
+        setState(() {
+          _deployPackOnly = _selectedDeployProject?.buildOnly == true
+              ? true
+              : value;
+        });
+        unawaited(_persistCodegenPreferences());
+      },
+      onDeployArgsChanged: (_) {
+        setState(() {});
+        unawaited(_persistCodegenPreferences());
+      },
+      onSend: _sendCodegenCommand,
+      onClearHistory: () {
+        setState(() {
+          _codegenHistory.clear();
+        });
+        unawaited(_persistCodegenPreferences());
+      },
+      onShowHistoryDetails: (item) =>
+          unawaited(_showCodegenHistoryDetails(item)),
     );
-  }
-
-  String _formatHistoryTime(DateTime time) {
-    final now = DateTime.now();
-    final diff = now.difference(time);
-
-    if (diff.inMinutes < 1) {
-      return '刚刚';
-    } else if (diff.inHours < 1) {
-      return '${diff.inMinutes}分钟前';
-    } else if (diff.inDays < 1) {
-      return '${diff.inHours}小时前';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays}天前';
-    } else {
-      return '${time.month}月${time.day}日 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    }
   }
 
   @override
@@ -7770,7 +7245,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   const _MessageBubble({
     required this.message,
     required this.onTap,
@@ -7782,6 +7257,107 @@ class _MessageBubble extends StatelessWidget {
   final Future<void> Function() onTap;
   final Future<void> Function() onCopy;
   final bool isPlaying;
+
+  @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  static const Duration _typewriterTick = Duration(milliseconds: 18);
+  Timer? _typewriterTimer;
+  int _visibleChars = 0;
+
+  ChatMessage get message => widget.message;
+
+  bool get _shouldAnimateStreamText {
+    // 流式 codegen 消息频繁覆盖同一条记录，逐字动画会持续改变气泡高度，
+    // 再叠加自动滚动，容易出现页面上下抖动。
+    return false;
+  }
+
+  String get _displayText {
+    final fullText = _resolvedText;
+    if (!_shouldAnimateStreamText) {
+      return fullText;
+    }
+    final end = _visibleChars.clamp(0, fullText.length);
+    return fullText.substring(0, end);
+  }
+
+  String get _resolvedText {
+    if (!isApkChatMessage(message)) {
+      return message.content;
+    }
+    final version = extractApkVersion(message);
+    final versionLine = version != null ? '\n版本: $version' : '';
+    return '${message.content}$versionLine\n点击安装 APK';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTypewriter(forceFullText: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.content != widget.message.content ||
+        oldWidget.message.meta != widget.message.meta ||
+        oldWidget.message.messageType != widget.message.messageType) {
+      _syncTypewriter(forceFullText: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _typewriterTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncTypewriter({required bool forceFullText}) {
+    _typewriterTimer?.cancel();
+    final fullText = _resolvedText;
+    if (!_shouldAnimateStreamText || fullText.isEmpty) {
+      _visibleChars = fullText.length;
+      return;
+    }
+    if (forceFullText) {
+      _visibleChars = fullText.length;
+      return;
+    }
+    if (_visibleChars > fullText.length) {
+      _visibleChars = fullText.length;
+    }
+    if (_visibleChars == 0) {
+      _visibleChars = math.min(1, fullText.length);
+    }
+    if (_visibleChars >= fullText.length) {
+      return;
+    }
+    _typewriterTimer = Timer.periodic(_typewriterTick, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final latestText = _resolvedText;
+      if (_visibleChars >= latestText.length) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        final remaining = latestText.length - _visibleChars;
+        final step = remaining > 180
+            ? 8
+            : remaining > 80
+            ? 4
+            : remaining > 24
+            ? 2
+            : 1;
+        _visibleChars = math.min(latestText.length, _visibleChars + step);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -7812,6 +7388,7 @@ class _MessageBubble extends StatelessWidget {
         ? '${(durationMs / 1000).toStringAsFixed(1)}s'
         : '';
     final imageBase64 = (message.meta?['image_base64'] ?? '').toString().trim();
+    final displayText = _displayText;
     Uint8List? imageBytes;
     if (isImage && imageBase64.isNotEmpty) {
       try {
@@ -7826,8 +7403,8 @@ class _MessageBubble extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         child: InkWell(
-          onTap: (isAudio || isApk) ? () => onTap() : null,
-          onLongPress: () => onCopy(),
+          onTap: (isAudio || isApk) ? () => widget.onTap() : null,
+          onLongPress: () => widget.onCopy(),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -7899,7 +7476,7 @@ class _MessageBubble extends StatelessWidget {
                       if (message.content.trim().isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Text(
-                          message.content,
+                          displayText,
                           style: TextStyle(
                             color: isSystem ? palette.textSecondary : fgColor,
                             height: 1.35,
@@ -7913,7 +7490,7 @@ class _MessageBubble extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        isPlaying
+                        widget.isPlaying
                             ? Icons.pause_circle_filled
                             : Icons.play_circle_fill,
                         color: isSystem ? palette.textSecondary : fgColor,
@@ -7935,9 +7512,7 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 if (!isAudio && !isImage)
                   Text(
-                    isApk
-                        ? '${message.content}${extractApkVersion(message) != null ? '\n版本: ${extractApkVersion(message)}' : ''}\n点击安装 APK'
-                        : message.content,
+                    displayText,
                     style: TextStyle(
                       color: isSystem ? palette.textSecondary : fgColor,
                       height: 1.35,

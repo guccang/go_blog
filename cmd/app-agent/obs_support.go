@@ -38,6 +38,7 @@ func newObjectStorage(cfg *Config) objectStorage {
 	}
 	store, err := obsstore.New(obsstore.Config{
 		Endpoint:         cfg.OBS.Endpoint,
+		PublicEndpoint:   cfg.OBS.PublicEndpoint,
 		Bucket:           cfg.OBS.Bucket,
 		AccessKey:        cfg.OBS.AK,
 		SecretKey:        cfg.OBS.SK,

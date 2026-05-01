@@ -1,7 +1,7 @@
 {
     "acp_agent_cmd": "npx",
     "coding_backend": "codex_exec",
-    "agent_name": "acp-agent-wxgame",
+    "agent_name": "acp-agent-mac",
     "agent_type": "acp-agent",
     "analysis_timeout": 3600,
     "auth_token": "guccang@blog.guccang.cn",

@@ -39,6 +39,7 @@ func NewConnection(cfg *AgentConfig, agent *Agent) *Connection {
 			"analysis_timeout":     cfg.AnalysisTimeout,
 			"coding_backends":      []string{BackendClaudeACP, BackendCodexExec},
 			"coding_tools":         agent.ScanTools(),
+			"default_tool":         agent.DefaultTool(),
 			"claudecode_settings":  agent.ScanClaudeCodeSettings(),
 			"codex_settings":       agent.ScanCodexSettings(),
 			"default_settings":     cfg.DefaultSettings,
@@ -177,6 +178,7 @@ func buildACPToolDefs() []uap.ToolDef {
 				"properties": map[string]interface{}{
 					"project":         map[string]interface{}{"type": "string", "description": "项目名称"},
 					"prompt":          map[string]interface{}{"type": "string", "description": "用户的原始编码需求，必须完整保留用户输入的原文，不得修改、缩写、翻译或重新措辞"},
+					"tool":            map[string]interface{}{"type": "string", "description": "编码工具（claudecode / codex）；为空时使用 agent 默认后端"},
 					"extra_args":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "动态 CLI 参数（如 --dangerously-skip-permissions, --settings path）"},
 					"interactive":     map[string]interface{}{"type": "boolean", "description": "是否启用交互式权限模式（默认 false）"},
 					"caller_agent_id": map[string]interface{}{"type": "string", "description": "调用方 agent ID（交互模式下权限请求和流式事件发给该 agent）"},
@@ -341,7 +343,7 @@ func (c *Connection) toolAnalyzeProject(callerAgentID, requestID string, args ma
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, nil, false, callerAgentID, false)
+	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, nil, false, callerAgentID, false, "")
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}
@@ -360,6 +362,7 @@ func (c *Connection) toolAnalyzeProject(callerAgentID, requestID string, args ma
 func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[string]interface{}) string {
 	project, _ := args["project"].(string)
 	prompt, _ := args["prompt"].(string)
+	requestedTool, _ := args["tool"].(string)
 
 	if project == "" {
 		return `{"success":false,"error":"缺少 project 参数"}`
@@ -386,7 +389,7 @@ func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[
 
 	sessionID := fmt.Sprintf("acp_%d", time.Now().UnixNano())
 
-	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession)
+	result, err := c.agent.ExecuteACP(c, sessionID, requestID, project, prompt, extraArgs, interactive, callerAgentID, keepSession, requestedTool)
 	if err != nil {
 		return fmt.Sprintf(`{"success":false,"session_id":"%s","error":"%s"}`, sessionID, escapeJSON(err.Error()))
 	}

@@ -5,6 +5,7 @@
   "signed_url_ttl_seconds": 300,
   "obs": {
     "endpoint": "obs.cn-north-4.myhuaweicloud.com",
+    "public_endpoint": "https://download.example.com",
     "bucket": "your-bucket",
     "ak": "your-ak",
     "sk": "your-sk",

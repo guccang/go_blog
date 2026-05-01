@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ var ErrDisabled = errors.New("obs store is disabled")
 
 type Config struct {
 	Endpoint         string `json:"endpoint,omitempty"`
+	PublicEndpoint   string `json:"public_endpoint,omitempty"`
 	Bucket           string `json:"bucket,omitempty"`
 	AccessKey        string `json:"ak,omitempty"`
 	SecretKey        string `json:"sk,omitempty"`
@@ -270,7 +273,7 @@ func (s *Store) CreateSignedPutURL(_ context.Context, key, contentType string, t
 		}
 	}
 	return &SignedURL{
-		URL:       output.SignedUrl,
+		URL:       s.publicSignedURL(output.SignedUrl),
 		Method:    "PUT",
 		ExpiresAt: time.Now().Add(ttl).UnixMilli(),
 		Headers:   headers,
@@ -304,7 +307,7 @@ func (s *Store) CreateSignedGetURL(_ context.Context, key string, ttl time.Durat
 		}
 	}
 	return &SignedURL{
-		URL:       output.SignedUrl,
+		URL:       s.publicSignedURL(output.SignedUrl),
 		Method:    "GET",
 		ExpiresAt: time.Now().Add(ttl).UnixMilli(),
 		Headers:   headers,
@@ -321,12 +324,73 @@ func IsNotFound(err error) bool {
 
 func (c Config) normalized() Config {
 	c.Endpoint = strings.TrimSpace(c.Endpoint)
+	if c.Endpoint != "" && !hasEndpointScheme(c.Endpoint) {
+		c.Endpoint = "https://" + c.Endpoint
+	}
+	c.PublicEndpoint = strings.TrimSpace(c.PublicEndpoint)
+	if c.PublicEndpoint != "" && !hasEndpointScheme(c.PublicEndpoint) {
+		c.PublicEndpoint = "https://" + c.PublicEndpoint
+	}
 	c.Bucket = strings.TrimSpace(c.Bucket)
 	c.AccessKey = strings.TrimSpace(c.AccessKey)
 	c.SecretKey = strings.TrimSpace(c.SecretKey)
 	c.Region = strings.TrimSpace(c.Region)
 	c.KeyPrefix = strings.Trim(c.KeyPrefix, "/")
 	return c
+}
+
+func hasEndpointScheme(endpoint string) bool {
+	return strings.Contains(strings.TrimSpace(endpoint), "://")
+}
+
+func normalizeSignedURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") {
+		return raw
+	}
+	if isLocalSignedURLHost(parsed.Hostname()) {
+		return raw
+	}
+	parsed.Scheme = "https"
+	return parsed.String()
+}
+
+func (s *Store) publicSignedURL(raw string) string {
+	raw = normalizeSignedURL(raw)
+	publicEndpoint := strings.TrimSpace(s.cfg.PublicEndpoint)
+	if publicEndpoint == "" {
+		return raw
+	}
+	signedURL, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	publicURL, err := url.Parse(publicEndpoint)
+	if err != nil || strings.TrimSpace(publicURL.Host) == "" {
+		return raw
+	}
+	signedURL.Scheme = publicURL.Scheme
+	signedURL.Host = publicURL.Host
+	return signedURL.String()
+}
+
+func isLocalSignedURLHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (c Config) isZero() bool {

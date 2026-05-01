@@ -30,7 +30,9 @@ type codingProjectInfo struct {
 	AgentID            string   `json:"agent_id"`
 	Agent              string   `json:"agent"`
 	AvailableTools     []string `json:"available_tools,omitempty"`
+	DefaultTool        string   `json:"default_tool,omitempty"`
 	ClaudeCodeSettings []string `json:"claudecode_settings,omitempty"`
+	CodexSettings      []string `json:"codex_settings,omitempty"`
 	DefaultSettings    string   `json:"default_settings,omitempty"`
 }
 
@@ -115,7 +117,9 @@ func (a *CMDAGent) listCodingProjects() ([]codingProjectInfo, error) {
 				AgentID:            agent.AgentID,
 				Agent:              agent.Name,
 				AvailableTools:     codingToolsForAgent(agent),
+				DefaultTool:        defaultToolForAgent(agent),
 				ClaudeCodeSettings: stringSliceFromAny(agent.Meta["claudecode_settings"]),
+				CodexSettings:      stringSliceFromAny(agent.Meta["codex_settings"]),
 				DefaultSettings:    stringFromAny(agent.Meta["default_settings"]),
 			})
 		}
@@ -463,10 +467,6 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 	if rest == "" {
 		return a.sendClientNotify(req.route(), "⚠️ 请提供编码需求")
 	}
-	if settings != "" && tool != "" && tool != "claudecode" {
-		return a.sendClientNotify(req.route(), "⚠️ 当前只有 Claude Code 支持 --settings")
-	}
-
 	agent, err := a.resolveCodingAgent(project, agentName, false, tool)
 	if err != nil {
 		return a.sendClientNotify(req.route(), "❌ "+err.Error())
@@ -1095,6 +1095,9 @@ func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, pr
 			"prompt":          prompt,
 			"caller_agent_id": callerAgentID,
 			"keep_session":    true,
+		}
+		if tool != "" {
+			args["tool"] = tool
 		}
 		var extraArgs []string
 		if settings != "" {

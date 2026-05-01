@@ -137,6 +137,49 @@ func (b *Bridge) enqueueAndDeliverMany(users []string, payload AppPushPayload) e
 		ttl = 24 * time.Hour
 	}
 
+	if existing := b.pendingMessages[messageID]; existing != nil {
+		existing.Content = payload.Content
+		existing.MessageType = payload.MessageType
+		existing.Channel = payload.Channel
+		existing.Timestamp = payload.Timestamp
+		existing.Meta = cloneMeta(payload.Meta)
+		existing.ExpiresAt = now.Add(ttl)
+		for _, user := range users {
+			if delivery := existing.Deliveries[user]; delivery != nil {
+				b.nextSequence++
+				delivery.Sequence = b.nextSequence
+				delivery.AckedAt = time.Time{}
+			} else {
+				b.nextSequence++
+				existing.Deliveries[user] = &pendingDelivery{
+					UserID:   user,
+					Sequence: b.nextSequence,
+				}
+				if !queueContainsMessageID(b.pendingByUser[user], messageID) {
+					b.pendingByUser[user] = append(b.pendingByUser[user], messageID)
+				}
+				b.trimPendingForUserLocked(user)
+			}
+		}
+		clients := make([]*appClientConn, 0, len(users))
+		for _, user := range users {
+			for client := range b.clients[user] {
+				clients = append(clients, client)
+			}
+		}
+		b.deliveryMu.Unlock()
+
+		log.Printf("[WS] update message id=%s users=%v type=%s len=%d",
+			messageID, users, payload.MessageType, len(payload.Content))
+
+		for _, client := range clients {
+			if err := b.flushPendingToClient(client); err != nil {
+				log.Printf("[WS] flush pending failed for %s: %v", client.userID, err)
+			}
+		}
+		return nil
+	}
+
 	msg := &pendingMessage{
 		MessageID:   messageID,
 		Content:     payload.Content,
@@ -177,6 +220,15 @@ func (b *Bridge) enqueueAndDeliverMany(users []string, payload AppPushPayload) e
 		}
 	}
 	return nil
+}
+
+func queueContainsMessageID(queue []string, messageID string) bool {
+	for _, item := range queue {
+		if item == messageID {
+			return true
+		}
+	}
+	return false
 }
 
 func pendingAPKKey(messageType string, meta map[string]any) string {

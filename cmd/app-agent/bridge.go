@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"uap"
 )
@@ -69,6 +71,9 @@ type Bridge struct {
 	sessionUsers map[string]string
 	sessionMu    sync.Mutex
 
+	codegenMu      sync.Mutex
+	codegenStreams map[string]*codegenStreamState
+
 	deliveryMu      sync.Mutex
 	nextSequence    int64
 	pendingMessages map[string]*pendingMessage
@@ -86,6 +91,12 @@ type Bridge struct {
 	obsStorage        objectStorage
 	downloadTickets   downloadTicketSigner
 	downloadTicketTTL time.Duration
+}
+
+type codegenStreamState struct {
+	UserID    string
+	MessageID string
+	Content   string
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -160,6 +171,7 @@ func NewBridge(cfg *Config) *Bridge {
 		groups:            newGroupManager(cfg.GroupStoreFile),
 		lastEventTime:     make(map[string]time.Time),
 		sessionUsers:      make(map[string]string),
+		codegenStreams:    make(map[string]*codegenStreamState),
 		pendingMessages:   make(map[string]*pendingMessage),
 		pendingByUser:     make(map[string][]string),
 		clients:           make(map[string]map[*appClientConn]struct{}),
@@ -1045,6 +1057,10 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 
+	if payload.Event.Type == "thinking" {
+		payload.Event.Type = "thought"
+	}
+
 	toUser := ""
 	b.sessionMu.Lock()
 	if payload.Account != "" {
@@ -1055,7 +1071,18 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 	}
 	b.sessionMu.Unlock()
 
-	// 节流：仅抑制重复事件，不吞掉新的执行步骤/思考/工具更新。
+	// assistant/thought 是流式 chunk，必须逐块合并，否则容易只留下残缺句子。
+	// 其他类型仍保留节流，避免重复系统/工具事件刷屏。
+	if payload.Event.Type == "assistant" || payload.Event.Type == "thought" {
+		text := formatEventForApp(&payload)
+		if text == "" {
+			return
+		}
+		b.upsertCodegenStreamMessage(toUser, payload.SessionID, text)
+		return
+	}
+
+	// 节流：仅抑制重复事件，不吞掉新的执行步骤/工具更新。
 	throttleKey := codegenThrottleKey(payload.SessionID, payload.Event.Type, payload.Event.Text, payload.Event.ToolName)
 	b.eventMu.Lock()
 	lastTime := b.lastEventTime[throttleKey]
@@ -1075,7 +1102,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 
-	b.sendNotification(toUser, text)
+	b.upsertCodegenStreamMessage(toUser, payload.SessionID, text)
 }
 
 func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
@@ -1110,7 +1137,9 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 		text = fmt.Sprintf("Codegen task completed\nSession: %s", payload.SessionID)
 	}
 
-	b.sendNotification(toUser, text)
+	if !b.finalizeCodegenStreamMessage(toUser, payload.SessionID, text) {
+		b.sendNotification(toUser, text)
+	}
 }
 
 func codegenThrottleKey(sessionID, eventType, eventText, toolName string) string {
@@ -1200,6 +1229,168 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 	default:
 		return ""
 	}
+}
+
+func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, text string) {
+	toUser = strings.TrimSpace(toUser)
+	sessionID = strings.TrimSpace(sessionID)
+	text = strings.TrimSpace(text)
+	if toUser == "" || sessionID == "" || text == "" {
+		return
+	}
+
+	messageID := "codegen_stream:" + sessionID
+
+	b.codegenMu.Lock()
+	state := b.codegenStreams[sessionID]
+	if state == nil {
+		state = &codegenStreamState{
+			UserID:    toUser,
+			MessageID: messageID,
+			Content:   text,
+		}
+		b.codegenStreams[sessionID] = state
+	} else {
+		state.UserID = toUser
+		state.Content = mergeCodegenStreamText(state.Content, text)
+	}
+	content := state.Content
+	b.codegenMu.Unlock()
+
+	_ = b.sendAppPushPayload(AppPushPayload{
+		MessageID:   messageID,
+		UserID:      toUser,
+		Content:     truncateForApp(content),
+		MessageType: "text",
+		Channel:     "app",
+		Timestamp:   time.Now().UnixMilli(),
+		Meta: map[string]any{
+			"origin":     "codegen-stream",
+			"session_id": sessionID,
+		},
+	})
+}
+
+func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, finalLine string) bool {
+	toUser = strings.TrimSpace(toUser)
+	sessionID = strings.TrimSpace(sessionID)
+	finalLine = strings.TrimSpace(finalLine)
+	if sessionID == "" {
+		return false
+	}
+
+	b.codegenMu.Lock()
+	state := b.codegenStreams[sessionID]
+	if state == nil {
+		b.codegenMu.Unlock()
+		return false
+	}
+	if toUser == "" {
+		toUser = state.UserID
+	}
+	content := mergeCodegenStreamText(state.Content, finalLine)
+	messageID := state.MessageID
+	delete(b.codegenStreams, sessionID)
+	b.codegenMu.Unlock()
+
+	_ = b.sendAppPushPayload(AppPushPayload{
+		MessageID:   messageID,
+		UserID:      toUser,
+		Content:     truncateForApp(content),
+		MessageType: "text",
+		Channel:     "app",
+		Timestamp:   time.Now().UnixMilli(),
+		Meta: map[string]any{
+			"origin":     "codegen-stream",
+			"session_id": sessionID,
+			"final":      true,
+		},
+	})
+	return true
+}
+
+func mergeCodegenStreamText(existing, next string) string {
+	existing = strings.TrimSpace(existing)
+	next = strings.TrimSpace(next)
+	switch {
+	case existing == "":
+		return next
+	case next == "":
+		return existing
+	case strings.HasSuffix(existing, next):
+		return existing
+	}
+
+	lines := strings.Split(existing, "\n")
+	lastLine := strings.TrimSpace(lines[len(lines)-1])
+
+	// 如果最后一行和 next 具有相同的 [type][session] 前缀，
+	// 则只扩展最后一行内容，避免前面已有 system 行时无法合并 assistant/thought chunk。
+	if lastPrefix, lastContent := splitCodegenPrefix(lastLine); lastPrefix != "" {
+		if nextPrefix, nextContent := splitCodegenPrefix(next); nextPrefix != "" && lastPrefix == nextPrefix {
+			lines[len(lines)-1] = lastPrefix + " " + joinCodegenStreamChunks(lastContent, nextContent)
+			return strings.Join(lines, "\n")
+		}
+	}
+
+	return existing + "\n" + next
+}
+
+func joinCodegenStreamChunks(existing, next string) string {
+	existing = strings.TrimRightFunc(existing, unicode.IsSpace)
+	next = strings.TrimLeftFunc(next, unicode.IsSpace)
+	switch {
+	case existing == "":
+		return next
+	case next == "":
+		return existing
+	}
+
+	lastRune, _ := utf8.DecodeLastRuneInString(existing)
+	firstRune, _ := utf8.DecodeRuneInString(next)
+	if shouldInsertStreamSpace(lastRune, firstRune) {
+		return existing + " " + next
+	}
+	return existing + next
+}
+
+func shouldInsertStreamSpace(lastRune, firstRune rune) bool {
+	if lastRune == utf8.RuneError || firstRune == utf8.RuneError {
+		return false
+	}
+	if unicode.IsSpace(lastRune) || unicode.IsSpace(firstRune) {
+		return false
+	}
+	if unicode.IsLetter(lastRune) && unicode.IsLetter(firstRune) {
+		return true
+	}
+	if unicode.IsDigit(lastRune) && unicode.IsLetter(firstRune) {
+		return true
+	}
+	if unicode.IsLetter(lastRune) && unicode.IsDigit(firstRune) {
+		return true
+	}
+	return false
+}
+
+// splitCodegenPrefix 解析 "[type][session] content" 格式的字符串，
+// 返回前缀（含方括号）和内容文本。
+func splitCodegenPrefix(text string) (prefix, content string) {
+	if len(text) == 0 || text[0] != '[' {
+		return "", text
+	}
+	close1 := strings.IndexByte(text, ']')
+	if close1 < 0 || close1+1 >= len(text) || text[close1+1] != '[' {
+		return "", text
+	}
+	close2 := strings.IndexByte(text[close1+1:], ']')
+	if close2 < 0 {
+		return "", text
+	}
+	prefixEnd := close1 + 1 + close2 + 1 // 位置在第二个 ] 之后
+	prefix = text[:prefixEnd]
+	content = strings.TrimSpace(text[prefixEnd:])
+	return prefix, content
 }
 
 const maxAppMessageSize = 256 * 1024
@@ -1378,6 +1569,22 @@ func (b *Bridge) sendAppPushWithType(toUser, content, messageType string, meta m
 	}
 	if payload.MessageType == "" {
 		payload.MessageType = "text"
+	}
+	return b.sendAppPushPayload(payload)
+}
+
+func (b *Bridge) sendAppPushPayload(payload AppPushPayload) error {
+	if strings.TrimSpace(payload.UserID) == "" {
+		return fmt.Errorf("empty user")
+	}
+	if strings.TrimSpace(payload.MessageType) == "" {
+		payload.MessageType = "text"
+	}
+	if strings.TrimSpace(payload.Channel) == "" {
+		payload.Channel = "app"
+	}
+	if payload.Timestamp <= 0 {
+		payload.Timestamp = time.Now().UnixMilli()
 	}
 	return b.enqueueAndDeliver(payload)
 }

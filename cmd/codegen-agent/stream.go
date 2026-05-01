@@ -257,7 +257,7 @@ func parseStreamLine(line string) *StreamEvent {
 			switch block.Type {
 			case "thinking":
 				if block.Thinking != "" {
-					return &StreamEvent{Type: "thinking", Text: block.Thinking}
+					return &StreamEvent{Type: "thought", Text: block.Thinking}
 				}
 			case "text":
 				if block.Text != "" {

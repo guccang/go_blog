@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -42,7 +43,9 @@ type codingProjectInfo struct {
 	AgentID            string   `json:"agent_id"`
 	Agent              string   `json:"agent"`
 	AvailableTools     []string `json:"available_tools,omitempty"`
+	DefaultTool        string   `json:"default_tool,omitempty"`
 	ClaudeCodeSettings []string `json:"claudecode_settings,omitempty"`
+	CodexSettings      []string `json:"codex_settings,omitempty"`
 	DefaultSettings    string   `json:"default_settings,omitempty"`
 }
 
@@ -560,7 +563,57 @@ func (h *Handler) requestObsDownloadURL(fileID, ticket string) (string, error) {
 	if strings.TrimSpace(payload.URL) == "" {
 		return "", fmt.Errorf("obs-agent download response missing url")
 	}
-	return strings.TrimSpace(payload.URL), nil
+	normalized := normalizeObsDownloadURL(payload.URL)
+	if shouldBypassObsRedirectForAPK(normalized) {
+		return "", nil
+	}
+	return normalized, nil
+}
+
+func normalizeObsDownloadURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	if strings.EqualFold(parsed.Scheme, "http") && !isLoopbackHost(parsed.Hostname()) {
+		parsed.Scheme = "https"
+		return parsed.String()
+	}
+	return raw
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func shouldBypassObsRedirectForAPK(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return false
+	}
+	// 华为 OBS 默认域名下载 .apk/.ipa 会返回 400 InsecureDownloadForbidden。
+	// 未配置自定义下载域名时，回退到 app-agent 本地下载链路更稳定。
+	return strings.Contains(host, ".obs.") && strings.Contains(host, ".myhuaweicloud.com")
 }
 
 func (h *Handler) HandleUploadAPK(w http.ResponseWriter, r *http.Request) {
