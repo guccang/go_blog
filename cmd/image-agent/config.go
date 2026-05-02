@@ -12,11 +12,17 @@ type VisionModelConfig struct {
 }
 
 type ImageGenerationModelConfig struct {
-	Model string `json:"model"`
-	Size  string `json:"size,omitempty"`
+	Model           string `json:"model"`
+	Size            string `json:"size,omitempty"`
+	AspectRatio     string `json:"aspect_ratio,omitempty"`
+	ResponseFormat  string `json:"response_format,omitempty"`
+	N               int    `json:"n,omitempty"`
+	PromptOptimizer bool   `json:"prompt_optimizer,omitempty"`
+	AIGCWatermark   bool   `json:"aigc_watermark,omitempty"`
 }
 
 type ImageProviderConfig struct {
+	Kind                string                                `json:"kind,omitempty"`
 	BaseURL             string                                `json:"base_url"`
 	APIKey              string                                `json:"api_key"`
 	VisionPath          string                                `json:"vision_path"`
@@ -53,6 +59,7 @@ func DefaultConfig() *Config {
 		RequestTimeoutSec: 180,
 		Providers: map[string]ImageProviderConfig{
 			"openai": {
+				Kind:                "openai",
 				BaseURL:             "https://api.openai.com/v1",
 				APIKey:              "",
 				VisionPath:          "/chat/completions",
@@ -62,6 +69,20 @@ func DefaultConfig() *Config {
 				},
 				GenerationModels: map[string]ImageGenerationModelConfig{
 					"default": {Model: "gpt-image-1", Size: "1024x1024"},
+				},
+			},
+			"minimax": {
+				Kind:                "minimax",
+				BaseURL:             "https://api.minimaxi.com",
+				APIKey:              "",
+				ImageGenerationPath: "/v1/image_generation",
+				GenerationModels: map[string]ImageGenerationModelConfig{
+					"default": {
+						Model:          "image-01",
+						AspectRatio:    "1:1",
+						ResponseFormat: "base64",
+						N:              1,
+					},
 				},
 			},
 		},
@@ -96,9 +117,6 @@ func LoadConfig(path string) (*Config, error) {
 	if len(cfg.Providers) == 0 {
 		return nil, fmt.Errorf("providers is required")
 	}
-	if _, _, err := cfg.ResolveVision(); err != nil {
-		return nil, err
-	}
 	if _, _, err := cfg.ResolveGeneration(); err != nil {
 		return nil, err
 	}
@@ -110,11 +128,19 @@ func (c *Config) ResolveVision() (*ImageProviderConfig, *VisionModelConfig, erro
 	if !ok {
 		return nil, nil, fmt.Errorf("image_to_text provider not found: %s", c.ImageToText.Provider)
 	}
+	if len(provider.VisionModels) == 0 {
+		return nil, nil, fmt.Errorf("image_to_text provider has no vision models: %s", c.ImageToText.Provider)
+	}
 	model, ok := provider.VisionModels[c.ImageToText.Model]
 	if !ok {
 		return nil, nil, fmt.Errorf("image_to_text model not found: %s/%s", c.ImageToText.Provider, c.ImageToText.Model)
 	}
 	return &provider, &model, nil
+}
+
+func (c *Config) HasVisionTool() bool {
+	_, _, err := c.ResolveVision()
+	return err == nil
 }
 
 func (c *Config) ResolveGeneration() (*ImageProviderConfig, *ImageGenerationModelConfig, error) {

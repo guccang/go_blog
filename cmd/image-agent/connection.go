@@ -25,7 +25,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		Description: "Image multimodal agent for image-to-text and text-to-image",
 		AuthToken:   cfg.AuthToken,
 		Capacity:    cfg.MaxConcurrent,
-		Tools:       buildImageToolDefs(),
+		Tools:       buildImageToolDefs(cfg),
 	}
 
 	c := &Connection{
@@ -37,9 +37,10 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	return c
 }
 
-func buildImageToolDefs() []uap.ToolDef {
-	return []uap.ToolDef{
-		{
+func buildImageToolDefs(cfg *Config) []uap.ToolDef {
+	tools := make([]uap.ToolDef, 0, 3)
+	if cfg == nil || cfg.HasVisionTool() {
+		tools = append(tools, uap.ToolDef{
 			Name:        "ImageToText",
 			Description: "Convert image content to text with a configured vision model",
 			Parameters: agentbase.MustMarshalJSON(map[string]any{
@@ -51,20 +52,63 @@ func buildImageToolDefs() []uap.ToolDef {
 				},
 				"required": []string{"image_base64"},
 			}),
-		},
-		{
+		})
+	}
+	tools = append(tools,
+		uap.ToolDef{
 			Name:        "TextToImage",
-			Description: "Generate an image from text with a configured image generation model",
+			Description: "Generate image(s) from text. Return image_base64 and app_message metadata; send app_message via app.SendRichMessage to display in Flutter and let app-agent persist it through obs-agent.",
 			Parameters: agentbase.MustMarshalJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"prompt": map[string]any{"type": "string", "description": "Image generation prompt"},
-					"size":   map[string]any{"type": "string", "description": "Optional size such as 1024x1024"},
+					"prompt":           map[string]any{"type": "string", "description": "Image generation prompt"},
+					"size":             map[string]any{"type": "string", "description": "Optional OpenAI-compatible size such as 1024x1024"},
+					"aspect_ratio":     map[string]any{"type": "string", "description": "Optional MiniMax aspect ratio such as 1:1, 16:9, 9:16"},
+					"response_format":  map[string]any{"type": "string", "description": "Optional response format: base64 or url. Use base64 when returning to Flutter."},
+					"width":            map[string]any{"type": "integer", "description": "Optional MiniMax width, must be set together with height"},
+					"height":           map[string]any{"type": "integer", "description": "Optional MiniMax height, must be set together with width"},
+					"n":                map[string]any{"type": "integer", "description": "Optional image count. MiniMax supports 1 to 9."},
+					"seed":             map[string]any{"type": "integer", "description": "Optional deterministic seed"},
+					"prompt_optimizer": map[string]any{"type": "boolean", "description": "Optional MiniMax prompt optimizer switch"},
+					"aigc_watermark":   map[string]any{"type": "boolean", "description": "Optional MiniMax AIGC watermark switch"},
 				},
 				"required": []string{"prompt"},
 			}),
 		},
-	}
+		uap.ToolDef{
+			Name:        "ImageToImage",
+			Description: "Generate image(s) from text plus MiniMax subject reference image(s). Return image_base64 and app_message metadata; send app_message via app.SendRichMessage to display in Flutter and let app-agent persist it through obs-agent.",
+			Parameters: agentbase.MustMarshalJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"prompt": map[string]any{"type": "string", "description": "Image generation prompt"},
+					"subject_reference": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"type":       map[string]any{"type": "string", "description": "Reference type, for example character"},
+								"image_file": map[string]any{"type": "string", "description": "Reference image URL accepted by MiniMax"},
+							},
+							"required": []string{"image_file"},
+						},
+					},
+					"reference_image_url": map[string]any{"type": "string", "description": "Convenience single reference image URL"},
+					"reference_type":      map[string]any{"type": "string", "description": "Convenience single reference type, defaults to character"},
+					"aspect_ratio":        map[string]any{"type": "string", "description": "Optional MiniMax aspect ratio such as 1:1, 16:9, 9:16"},
+					"response_format":     map[string]any{"type": "string", "description": "Optional response format: base64 or url. Use base64 when returning to Flutter."},
+					"width":               map[string]any{"type": "integer", "description": "Optional MiniMax width, must be set together with height"},
+					"height":              map[string]any{"type": "integer", "description": "Optional MiniMax height, must be set together with width"},
+					"n":                   map[string]any{"type": "integer", "description": "Optional image count. MiniMax supports 1 to 9."},
+					"seed":                map[string]any{"type": "integer", "description": "Optional deterministic seed"},
+					"prompt_optimizer":    map[string]any{"type": "boolean", "description": "Optional MiniMax prompt optimizer switch"},
+					"aigc_watermark":      map[string]any{"type": "boolean", "description": "Optional MiniMax AIGC watermark switch"},
+				},
+				"required": []string{"prompt"},
+			}),
+		},
+	)
+	return tools
 }
 
 func (c *Connection) handleToolCall(msg *uap.Message) {
@@ -94,6 +138,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result, err = c.toolImageToText(args)
 	case "TextToImage":
 		result, err = c.toolTextToImage(args)
+	case "ImageToImage":
+		result, err = c.toolImageToImage(args)
 	default:
 		c.sendToolError(msg.From, msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName))
 		return
@@ -125,11 +171,23 @@ func (c *Connection) toolTextToImage(args map[string]any) (map[string]any, error
 	if prompt == "" {
 		return nil, fmt.Errorf("prompt is required")
 	}
-	size, _ := args["size"].(string)
-	return c.client.Generate(context.Background(), GenerateImageParams{
-		Prompt: prompt,
-		Size:   size,
-	})
+	params := generationParamsFromArgs(args)
+	params.Prompt = prompt
+	return c.client.Generate(context.Background(), params)
+}
+
+func (c *Connection) toolImageToImage(args map[string]any) (map[string]any, error) {
+	prompt, _ := args["prompt"].(string)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	params := generationParamsFromArgs(args)
+	params.Prompt = prompt
+	params.SubjectReference = parseSubjectReferences(args)
+	if len(params.SubjectReference) == 0 {
+		return nil, fmt.Errorf("subject_reference or reference_image_url is required")
+	}
+	return c.client.Generate(context.Background(), params)
 }
 
 func (c *Connection) sendToolResult(target, requestID string, result map[string]any) {
@@ -151,4 +209,108 @@ func (c *Connection) sendToolError(target, requestID, message string) {
 	}); err != nil {
 		log.Printf("[ImageAgent] send tool_error failed: %v", err)
 	}
+}
+
+func generationParamsFromArgs(args map[string]any) GenerateImageParams {
+	return GenerateImageParams{
+		Size:            stringArg(args, "size"),
+		AspectRatio:     stringArg(args, "aspect_ratio"),
+		ResponseFormat:  stringArg(args, "response_format"),
+		Width:           intArg(args, "width"),
+		Height:          intArg(args, "height"),
+		N:               intArg(args, "n"),
+		Seed:            int64PtrArg(args, "seed"),
+		PromptOptimizer: boolPtrArg(args, "prompt_optimizer"),
+		AIGCWatermark:   boolPtrArg(args, "aigc_watermark"),
+	}
+}
+
+func parseSubjectReferences(args map[string]any) []SubjectReference {
+	var refs []SubjectReference
+	if raw, ok := args["subject_reference"].([]any); ok {
+		for _, item := range raw {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			imageFile := stringArg(m, "image_file")
+			if imageFile == "" {
+				continue
+			}
+			refType := stringArg(m, "type")
+			if refType == "" {
+				refType = "character"
+			}
+			refs = append(refs, SubjectReference{Type: refType, ImageFile: imageFile})
+		}
+	}
+	if imageURL := stringArg(args, "reference_image_url"); imageURL != "" {
+		refType := stringArg(args, "reference_type")
+		if refType == "" {
+			refType = "character"
+		}
+		refs = append(refs, SubjectReference{Type: refType, ImageFile: imageURL})
+	}
+	return refs
+}
+
+func stringArg(args map[string]any, key string) string {
+	if args == nil {
+		return ""
+	}
+	v, _ := args[key].(string)
+	return v
+}
+
+func intArg(args map[string]any, key string) int {
+	if args == nil {
+		return 0
+	}
+	switch v := args[key].(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+func int64PtrArg(args map[string]any, key string) *int64 {
+	if args == nil {
+		return nil
+	}
+	switch v := args[key].(type) {
+	case int:
+		n := int64(v)
+		return &n
+	case int64:
+		n := v
+		return &n
+	case float64:
+		n := int64(v)
+		return &n
+	case json.Number:
+		n, err := v.Int64()
+		if err == nil {
+			return &n
+		}
+	}
+	return nil
+}
+
+func boolPtrArg(args map[string]any, key string) *bool {
+	if args == nil {
+		return nil
+	}
+	v, ok := args[key].(bool)
+	if !ok {
+		return nil
+	}
+	return &v
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -225,6 +226,7 @@ func (b *Bridge) applyAttachmentStorage(
 	} else if exists {
 		attachment.StorageProvider = "obs"
 		attachment.ObjectKey = objectKey
+		b.uploadAttachmentMetaSidecar(owner, attachment)
 		log.Printf("[Bridge] reuse attachment in OBS file_id=%s key=%s owner=%s size=%d",
 			attachment.FileID, attachment.ObjectKey, owner, size)
 		return
@@ -249,8 +251,111 @@ func (b *Bridge) applyAttachmentStorage(
 
 	attachment.StorageProvider = "obs"
 	attachment.ObjectKey = objectKey
+	b.uploadAttachmentMetaSidecar(owner, attachment)
 	log.Printf("[Bridge] upload attachment to OBS success file_id=%s key=%s owner=%s size=%d storage_provider=%s",
 		attachment.FileID, attachment.ObjectKey, owner, size, attachment.StorageProvider)
+}
+
+type attachmentMetaSidecar struct {
+	Kind            string         `json:"kind"`
+	SchemaVersion   int            `json:"schema_version"`
+	ObjectKey       string         `json:"object_key"`
+	MetaObjectKey   string         `json:"meta_object_key"`
+	StorageProvider string         `json:"storage_provider,omitempty"`
+	Owner           string         `json:"owner,omitempty"`
+	MessageType     string         `json:"message_type,omitempty"`
+	FileID          string         `json:"file_id,omitempty"`
+	FileName        string         `json:"file_name,omitempty"`
+	FileSize        int            `json:"file_size,omitempty"`
+	Format          string         `json:"format,omitempty"`
+	MIMEType        string         `json:"mime_type,omitempty"`
+	DurationMS      int            `json:"duration_ms,omitempty"`
+	Description     string         `json:"description,omitempty"`
+	SpeechText      string         `json:"speech_text,omitempty"`
+	InputMode       string         `json:"input_mode,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
+	UpdatedAt       int64          `json:"updated_at"`
+}
+
+func (b *Bridge) uploadAttachmentMetaSidecar(owner string, attachment *AppAttachment) {
+	if b == nil ||
+		b.obsStorage == nil ||
+		!b.obsStorage.Enabled() ||
+		attachment == nil ||
+		strings.TrimSpace(attachment.ObjectKey) == "" {
+		return
+	}
+	metaKey := attachmentMetaObjectKey(attachment.ObjectKey)
+	sidecar := attachmentMetaSidecar{
+		Kind:            "app_attachment",
+		SchemaVersion:   1,
+		ObjectKey:       attachment.ObjectKey,
+		MetaObjectKey:   metaKey,
+		StorageProvider: firstNonEmpty(attachment.StorageProvider, "obs"),
+		Owner:           strings.TrimSpace(owner),
+		MessageType:     strings.TrimSpace(attachment.MessageType),
+		FileID:          strings.TrimSpace(attachment.FileID),
+		FileName:        strings.TrimSpace(attachment.FileName),
+		FileSize:        attachment.FileSize,
+		Format:          strings.TrimSpace(attachment.Format),
+		MIMEType:        strings.TrimSpace(attachment.MIMEType),
+		DurationMS:      attachment.DurationMS,
+		Description:     strings.TrimSpace(attachment.Description),
+		SpeechText:      strings.TrimSpace(attachment.SpeechText),
+		InputMode:       strings.TrimSpace(attachment.InputMode),
+		Metadata:        sanitizeAttachmentSidecarMeta(attachment.Meta),
+		UpdatedAt:       time.Now().UnixMilli(),
+	}
+	data, err := json.MarshalIndent(sidecar, "", "  ")
+	if err != nil {
+		log.Printf("[Bridge] marshal attachment meta sidecar failed file_id=%s key=%s err=%v", attachment.FileID, metaKey, err)
+		return
+	}
+	data = append(data, '\n')
+	if err := b.obsStorage.PutObject(context.Background(), obsstore.PutObjectRequest{
+		Key:         metaKey,
+		Body:        bytes.NewReader(data),
+		Size:        int64(len(data)),
+		ContentType: "application/json; charset=utf-8",
+		Metadata: map[string]string{
+			"file_id":      attachment.FileID,
+			"owner":        strings.TrimSpace(owner),
+			"message_type": strings.TrimSpace(attachment.MessageType),
+			"sidecar_for":  attachment.ObjectKey,
+		},
+	}); err != nil {
+		log.Printf("[Bridge] upload attachment meta sidecar failed file_id=%s key=%s err=%v", attachment.FileID, metaKey, err)
+		return
+	}
+	log.Printf("[Bridge] upload attachment meta sidecar success file_id=%s key=%s", attachment.FileID, metaKey)
+}
+
+func attachmentMetaObjectKey(objectKey string) string {
+	objectKey = strings.TrimSpace(objectKey)
+	if objectKey == "" {
+		return ""
+	}
+	return objectKey + ".meta.json"
+}
+
+func sanitizeAttachmentSidecarMeta(meta map[string]any) map[string]any {
+	if meta == nil {
+		return nil
+	}
+	out := make(map[string]any, len(meta))
+	for key, value := range meta {
+		switch key {
+		case "audio_base64", "image_base64", "file_base64", "zip_base64", "inline_base64":
+			text, _ := value.(string)
+			out[key+"_present"] = strings.TrimSpace(text) != ""
+		default:
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (b *Bridge) applyAttachmentStorageFromBytes(owner string, attachment *AppAttachment, data []byte) {

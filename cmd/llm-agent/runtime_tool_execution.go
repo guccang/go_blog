@@ -193,6 +193,10 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 	if err == nil && (call.Source == "app" || call.Source == "wechat") && originalName == "TextToAudio" && result != "" {
 		call.Sink.OnEvent("audio_reply", result)
 	}
+	if err == nil && call.Source == "app" && (originalName == "TextToImage" || originalName == "ImageToImage") && result != "" {
+		call.Sink.OnEvent("image_reply", result)
+		result = summarizeImageGenerationToolResult(result)
+	}
 	if originalName == "ExecuteCode" && result != "" {
 		stdout, execSummary := parseExecuteCodeResult(result)
 		if stdout != "" {
@@ -272,6 +276,57 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 		BusinessErr: bizErr,
 		Success:     success,
 	}
+}
+
+func summarizeImageGenerationToolResult(raw string) string {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
+		return `{"message":"image generated and sent to Flutter"}`
+	}
+	scrubImageBase64(payload)
+	payload["message"] = "image generated and sent to Flutter"
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return `{"message":"image generated and sent to Flutter"}`
+	}
+	return string(data)
+}
+
+func scrubImageBase64(payload map[string]any) {
+	if payload == nil {
+		return
+	}
+	if v := mapStringValue(payload, "image_base64"); v != "" {
+		payload["image_base64_present"] = true
+		delete(payload, "image_base64")
+	}
+	if appMessage, ok := payload["app_message"].(map[string]any); ok {
+		if meta, ok := appMessage["meta"].(map[string]any); ok {
+			scrubImageBase64(meta)
+		}
+	}
+	if images, ok := payload["images"].([]any); ok {
+		for _, item := range images {
+			if image, ok := item.(map[string]any); ok {
+				scrubImageBase64(image)
+			}
+		}
+	}
+}
+
+func mapStringValue(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	value, ok := payload[key]
+	if !ok || value == nil {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }
 
 func (rt *ToolExecutionRuntime) formatToolCallEvent(mode ToolExecutionMode, scopeID, originalName, args string, idx, total int) string {

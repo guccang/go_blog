@@ -1,11 +1,11 @@
 {
   "server_url": "ws://127.0.0.1:10086/ws/uap",
-  "auth_token": "",
+  "auth_token": "guccang@blog.guccang.cn",
   "agent_name": "image-agent",
   "max_concurrent": 3,
   "request_timeout_sec": 180,
   "image_to_text": {
-    "provider": "openai",
+    "provider": "minimax",
     "model": "default"
   },
   "text_to_image": {
@@ -35,7 +35,7 @@
     "minimax": {
       "kind": "minimax",
       "base_url": "https://api.minimaxi.com",
-      "api_key": "your-minimax-api-key",
+   	  "api_key": "sk-cp-v2c4GTP9juEgaRyyy0b85yMnQdvdNFa9UnFIFuxubNG4R1xu91J8AlY7wcmTKEERwwqQcaCoEsIPQcMxNeN6znF3dhtDQbnUVGXPySMc88xAujm8SC14rFY",
       "image_generation_path": "/v1/image_generation",
       "generation_models": {
         "default": {
@@ -48,6 +48,5 @@
     }
   },
   "protected_files": [
-    "image-agent.json"
   ]
 }

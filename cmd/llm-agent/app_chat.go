@@ -21,6 +21,7 @@ type AppSink struct {
 	buf              strings.Builder
 	lastEventTime    time.Time
 	audioSent        bool
+	imageSent        bool
 }
 
 var inlineAudioTagPattern = regexp.MustCompile(`(?is)<audio\b[^>]*\bsrc\s*=\s*"data:audio/([^;"]+);base64,([^"]+)"[^>]*>.*?</audio>`)
@@ -69,6 +70,13 @@ func (s *AppSink) OnEvent(event, text string) {
 	if event == "audio_reply" {
 		if s.trySendAudioReply(text) {
 			s.audioSent = true
+			s.lastEventTime = time.Now()
+			return
+		}
+	}
+	if event == "image_reply" {
+		if s.trySendImageReply(text) {
+			s.imageSent = true
 			s.lastEventTime = time.Now()
 			return
 		}
@@ -145,6 +153,7 @@ func (s *AppSink) OnEvent(event, text string) {
 func (s *AppSink) Streaming() bool { return false }
 func (s *AppSink) Result() string  { return s.buf.String() }
 func (s *AppSink) AudioSent() bool { return s.audioSent }
+func (s *AppSink) ImageSent() bool { return s.imageSent }
 
 func parseCortanaActionPlanJSON(raw string) map[string]any {
 	raw = strings.TrimSpace(raw)
@@ -399,6 +408,71 @@ func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText stri
 	return true
 }
 
+func (s *AppSink) trySendImageReply(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		log.Printf("[AppSink] parse image_reply failed: %v", err)
+		return false
+	}
+
+	content := firstNonEmptyMapString(payload, "content")
+	if content == "" {
+		content = "图片已生成"
+	}
+
+	meta := map[string]any{}
+	if appMessage, ok := payload["app_message"].(map[string]any); ok {
+		if appContent := firstNonEmptyMapString(appMessage, "content"); appContent != "" {
+			content = appContent
+		}
+		if nestedMeta, ok := appMessage["meta"].(map[string]any); ok {
+			for k, v := range nestedMeta {
+				meta[k] = v
+			}
+		}
+	}
+	for _, key := range []string{"image_base64", "image_url", "image_format", "file_name", "filename", "source_agent", "source_model", "source_vendor"} {
+		if _, exists := meta[key]; !exists {
+			if value, ok := payload[key]; ok {
+				meta[key] = value
+			}
+		}
+	}
+
+	imageBase64 := firstNonEmptyMapString(meta, "image_base64")
+	imageURL := firstNonEmptyMapString(meta, "image_url")
+	if imageBase64 == "" && imageURL == "" {
+		return false
+	}
+	if firstNonEmptyMapString(meta, "image_format") == "" {
+		meta["image_format"] = "png"
+	}
+	if firstNonEmptyMapString(meta, "file_name") == "" {
+		if filename := firstNonEmptyMapString(meta, "filename"); filename != "" {
+			meta["file_name"] = filename
+		} else {
+			meta["file_name"] = "generated_image.png"
+		}
+	}
+
+	args, _ := json.Marshal(map[string]any{
+		"to_user":      s.appUser,
+		"content":      content,
+		"message_type": "image",
+		"meta":         meta,
+	})
+	if _, err := s.bridge.callRemoteAgent(context.Background(), "app.SendRichMessage", s.fromAgent, args, nil); err != nil {
+		log.Printf("[AppSink] send image rich message failed: %v", err)
+		return false
+	}
+	log.Printf("[AppSink] image rich message sent to=%s format=%s", s.appUser, strings.TrimSpace(fmt.Sprint(meta["image_format"])))
+	return true
+}
+
 func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	log.Printf("[App] from=%s user=%s content=%s", fromAgent, appUser, content)
 
@@ -629,6 +703,10 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 
 	if sink.AudioSent() {
 		log.Printf("[App] audio reply already sent to %s, skip duplicate text reply", appUser)
+		return
+	}
+	if sink.ImageSent() {
+		log.Printf("[App] image reply already sent to %s, skip duplicate text reply", appUser)
 		return
 	}
 

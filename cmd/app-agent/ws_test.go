@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +21,8 @@ type fakeOBSStorage struct {
 	existing    map[string]bool
 	lastHeadKey string
 	lastReq     obsstore.PutObjectRequest
+	bodies      map[string][]byte
+	putKeys     []string
 }
 
 func (f *fakeOBSStorage) Enabled() bool {
@@ -33,10 +38,20 @@ func (f *fakeOBSStorage) HeadObject(_ context.Context, key string) (bool, error)
 func (f *fakeOBSStorage) PutObject(_ context.Context, req obsstore.PutObjectRequest) error {
 	f.putCount++
 	f.lastReq = req
+	if req.Body != nil {
+		data, _ := io.ReadAll(req.Body)
+		if f.bodies == nil {
+			f.bodies = make(map[string][]byte)
+		}
+		f.bodies[req.Key] = data
+		req.Body = bytes.NewReader(data)
+		f.lastReq = req
+	}
 	if f.existing == nil {
 		f.existing = make(map[string]bool)
 	}
 	f.existing[req.Key] = true
+	f.putKeys = append(f.putKeys, req.Key)
 	return nil
 }
 
@@ -161,6 +176,27 @@ func TestPushUploadedAPKQueuesOBSDownloadMetaWhenConfigured(t *testing.T) {
 	if attachment.ObjectKey == "" {
 		t.Fatalf("expected object key to be assigned")
 	}
+	metaKey := attachmentMetaObjectKey(attachment.ObjectKey)
+	metaBody := bridge.obsStorage.(*fakeOBSStorage).bodies[metaKey]
+	if len(metaBody) == 0 {
+		t.Fatalf("expected sidecar meta object %s to be uploaded", metaKey)
+	}
+	var sidecar map[string]any
+	if err := json.Unmarshal(metaBody, &sidecar); err != nil {
+		t.Fatalf("decode sidecar meta: %v", err)
+	}
+	if got := sidecar["kind"]; got != "app_attachment" {
+		t.Fatalf("expected sidecar kind=app_attachment, got %#v", got)
+	}
+	if got := sidecar["object_key"]; got != attachment.ObjectKey {
+		t.Fatalf("expected sidecar object_key %q, got %#v", attachment.ObjectKey, got)
+	}
+	if got := sidecar["description"]; got != "新的安装包已下发，点击安装" {
+		t.Fatalf("expected sidecar description, got %#v", got)
+	}
+	if strings.Contains(string(metaBody), "apk-binary") {
+		t.Fatalf("sidecar meta must not contain attachment body")
+	}
 
 	queue := bridge.pendingForUser("ztt")
 	if len(queue) != 1 {
@@ -203,8 +239,8 @@ func TestPushStoredAPKPackageReusesExistingOBSObject(t *testing.T) {
 	if attachment == nil {
 		t.Fatalf("expected attachment to be returned")
 	}
-	if fakeStore.putCount != 1 {
-		t.Fatalf("expected first upload to hit OBS once, got %d", fakeStore.putCount)
+	if fakeStore.putCount != 2 {
+		t.Fatalf("expected first upload to put file and sidecar, got %d", fakeStore.putCount)
 	}
 
 	beforeHeadCount := fakeStore.headCount
@@ -219,8 +255,11 @@ func TestPushStoredAPKPackageReusesExistingOBSObject(t *testing.T) {
 	if fakeStore.headCount <= beforeHeadCount {
 		t.Fatalf("expected stored APK reuse to check OBS existence")
 	}
-	if fakeStore.putCount != beforePutCount {
-		t.Fatalf("expected stored APK reuse to skip OBS re-upload, putCount=%d before=%d", fakeStore.putCount, beforePutCount)
+	if fakeStore.putCount != beforePutCount+1 {
+		t.Fatalf("expected stored APK reuse to refresh only sidecar, putCount=%d before=%d", fakeStore.putCount, beforePutCount)
+	}
+	if got := fakeStore.putKeys[len(fakeStore.putKeys)-1]; got != attachmentMetaObjectKey(attachment.ObjectKey) {
+		t.Fatalf("expected stored APK reuse to refresh sidecar %q, got %q", attachmentMetaObjectKey(attachment.ObjectKey), got)
 	}
 
 	queue := bridge.pendingForUser("alice")

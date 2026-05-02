@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,6 +53,7 @@ type AppAttachment struct {
 	Format          string         `json:"format,omitempty"`
 	MIMEType        string         `json:"mime_type,omitempty"`
 	DurationMS      int            `json:"duration_ms,omitempty"`
+	Description     string         `json:"description,omitempty"`
 	SpeechText      string         `json:"speech_text,omitempty"`
 	InputMode       string         `json:"input_mode,omitempty"`
 	StorageProvider string         `json:"storage_provider,omitempty"`
@@ -589,7 +591,7 @@ func (b *Bridge) PushUploadedAPK(toUser, content, fileName string, src io.Reader
 			toUser, fileName, version, lastVersion, exists)
 	}
 
-	attachment, err := b.storeUploadedAPK(toUser, fileName, src)
+	attachment, err := b.storeUploadedAPK(toUser, content, fileName, src)
 	if err != nil {
 		return nil, err
 	}
@@ -620,7 +622,7 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 	if err != nil {
 		return nil, nil, err
 	}
-	attachment, err := b.storeUploadedAPK(robotAccount, fileName, src)
+	attachment, err := b.storeUploadedAPK(robotAccount, content, fileName, src)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -641,7 +643,7 @@ func (b *Bridge) PushUploadedAPKToGroup(groupID, content, fileName string, src i
 	return attachment, humanMembers, nil
 }
 
-func (b *Bridge) storeUploadedAPK(owner, fileName string, src io.Reader) (*AppAttachment, error) {
+func (b *Bridge) storeUploadedAPK(owner, content, fileName string, src io.Reader) (*AppAttachment, error) {
 	if strings.TrimSpace(owner) == "" {
 		return nil, fmt.Errorf("empty owner")
 	}
@@ -689,6 +691,7 @@ func (b *Bridge) storeUploadedAPK(owner, fileName string, src io.Reader) (*AppAt
 		FileSize:    int(written),
 		Format:      "apk",
 		MIMEType:    "application/vnd.android.package-archive",
+		Description: strings.TrimSpace(content),
 	}
 	b.applyAttachmentStorageFromFile(owner, attachment)
 	return attachment, nil
@@ -779,6 +782,9 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 	if msg == nil || msg.Meta == nil {
 		return nil, nil
 	}
+	if err := hydrateImageURLMeta(msg.Meta); err != nil {
+		return nil, err
+	}
 	base64Text, fileName, format := attachmentPayload(msg.MessageType, msg.Meta)
 	if base64Text == "" {
 		attachment := &AppAttachment{
@@ -789,6 +795,7 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 			Format:          format,
 			MIMEType:        attachmentMimeType(msg.MessageType, fileName, format),
 			DurationMS:      intMeta(msg.Meta, "duration_ms"),
+			Description:     strings.TrimSpace(msg.Content),
 			SpeechText:      stringMeta(msg.Meta, "speech_text"),
 			InputMode:       stringMeta(msg.Meta, "input_mode"),
 			StorageProvider: stringMeta(msg.Meta, "storage_provider"),
@@ -838,6 +845,7 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 		Format:       format,
 		MIMEType:     mimeType,
 		DurationMS:   intMeta(msg.Meta, "duration_ms"),
+		Description:  strings.TrimSpace(msg.Content),
 		SpeechText:   stringMeta(msg.Meta, "speech_text"),
 		InputMode:    stringMeta(msg.Meta, "input_mode"),
 		Meta:         sanitizeAppMetaForForward(msg.Meta),
@@ -910,7 +918,7 @@ func attachmentPayload(messageType string, meta map[string]any) (base64Text stri
 	if meta == nil {
 		return "", "", ""
 	}
-	fileName = stringMeta(meta, "file_name")
+	fileName = firstNonEmpty(stringMeta(meta, "file_name"), stringMeta(meta, "filename"))
 	format = stringMeta(meta, "audio_format")
 	switch messageType {
 	case "audio":
@@ -928,6 +936,63 @@ func attachmentPayload(messageType string, meta map[string]any) (base64Text stri
 			stringMeta(meta, "audio_base64"),
 			stringMeta(meta, "zip_base64"),
 		), fileName, firstNonEmpty(stringMeta(meta, "file_format"), format)
+	}
+}
+
+func hydrateImageURLMeta(meta map[string]any) error {
+	if meta == nil || stringMeta(meta, "image_base64") != "" {
+		return nil
+	}
+	imageURL := stringMeta(meta, "image_url")
+	if imageURL == "" {
+		return nil
+	}
+	if !strings.HasPrefix(strings.ToLower(imageURL), "http://") && !strings.HasPrefix(strings.ToLower(imageURL), "https://") {
+		return fmt.Errorf("image_url must be http or https")
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(imageURL)
+	if err != nil {
+		return fmt.Errorf("download image_url: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	if err != nil {
+		return fmt.Errorf("read image_url: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("download image_url status=%d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("download image_url returned empty body")
+	}
+	meta["image_base64"] = base64.StdEncoding.EncodeToString(data)
+	if stringMeta(meta, "image_format") == "" {
+		if format := imageFormatFromContentType(resp.Header.Get("Content-Type")); format != "" {
+			meta["image_format"] = format
+		}
+	}
+	if stringMeta(meta, "file_name") == "" {
+		if filename := stringMeta(meta, "filename"); filename != "" {
+			meta["file_name"] = filename
+		}
+	}
+	return nil
+}
+
+func imageFormatFromContentType(contentType string) string {
+	contentType = strings.TrimSpace(strings.ToLower(strings.Split(contentType, ";")[0]))
+	switch contentType {
+	case "image/png":
+		return "png"
+	case "image/jpeg", "image/jpg":
+		return "jpg"
+	case "image/webp":
+		return "webp"
+	case "image/gif":
+		return "gif"
+	default:
+		return ""
 	}
 }
 
