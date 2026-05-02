@@ -20,15 +20,16 @@ type PromptSection struct {
 
 // ChatSession 通用聊天会话
 type ChatSession struct {
-	SessionKey     string          `json:"session_key"`     // "{source}_{userID}"
-	Source         string          `json:"source"`          // "wechat" | "web" | "api"
-	UserID         string          `json:"user_id"`
-	Account        string          `json:"account"`
-	SessionID      string          `json:"session_id"`      // 唯一ID（用于持久化文件名）
-	Messages       []Message       `json:"messages"`
-	LastActiveAt   time.Time       `json:"last_active_at"`
-	TurnCount      int             `json:"turn_count"`
-	PromptSections []PromptSection `json:"prompt_sections"` // system prompt 各区块字符统计
+	SessionKey     string                 `json:"session_key"` // "{source}_{userID}"
+	Source         string                 `json:"source"`      // "wechat" | "web" | "api"
+	UserID         string                 `json:"user_id"`
+	Account        string                 `json:"account"`
+	SessionID      string                 `json:"session_id"` // 唯一ID（用于持久化文件名）
+	Messages       []Message              `json:"messages"`
+	LastActiveAt   time.Time              `json:"last_active_at"`
+	TurnCount      int                    `json:"turn_count"`
+	PromptSections []PromptSection        `json:"prompt_sections"` // system prompt 各区块字符统计
+	CortanaState   *CortanaCompanionState `json:"cortana_state,omitempty"`
 
 	// Claude Mode 状态
 	ClaudeMode        bool   `json:"claude_mode,omitempty"`         // 是否在 Claude 直连模式
@@ -54,10 +55,10 @@ type ChatSession struct {
 
 // PendingPermission 待处理的权限请求
 type PendingPermission struct {
-	RequestID    string
-	SessionID    string
-	ACPAgentID   string
-	Options      []PermOptionInfo
+	RequestID  string
+	SessionID  string
+	ACPAgentID string
+	Options    []PermOptionInfo
 }
 
 // PermOptionInfo 权限选项信息（供消息展示）
@@ -183,6 +184,17 @@ func (m *ChatSessionManager) Get(source, userID string) *ChatSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.sessions[key]
+}
+
+// SessionStats 返回按 source 分类的活跃会话计数和总数
+func (m *ChatSessionManager) SessionStats() (total int, bySource map[string]int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	bySource = make(map[string]int)
+	for _, session := range m.sessions {
+		bySource[session.Source]++
+	}
+	return len(m.sessions), bySource
 }
 
 // Reset 显式重置某用户的会话

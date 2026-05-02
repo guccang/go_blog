@@ -22,30 +22,33 @@ type ACPSession struct {
 	conn      *acp.ClientSideConnection
 	sessionID acp.SessionId
 	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
 // Close 关闭 ACP 会话（带超时保护，防止 Wait 挂起）
 // 先杀进程树再 cancel，避免 exec.CommandContext 先单独杀掉父进程导致 Getpgid 失败、子进程泄漏。
 func (s *ACPSession) Close() {
-	if s.cmd != nil && s.cmd.Process != nil {
-		if err := killProcessTree(s.cmd); err != nil {
-			log.Printf("[ACP] warning: kill process tree pid=%d failed: %v", s.cmd.Process.Pid, err)
+	s.closeOnce.Do(func() {
+		if s.cmd != nil && s.cmd.Process != nil {
+			if err := killProcessTree(s.cmd); err != nil {
+				log.Printf("[ACP] warning: kill process tree pid=%d failed: %v", s.cmd.Process.Pid, err)
+			}
+			// Wait with timeout: Windows 上 Kill 后 Wait 可能因管道未关闭而挂起
+			done := make(chan error, 1)
+			go func() {
+				done <- s.cmd.Wait()
+			}()
+			select {
+			case <-done:
+				// 进程已正常退出
+			case <-time.After(5 * time.Second):
+				log.Printf("[ACP] warning: process pid=%d didn't exit within 5s after kill", s.cmd.Process.Pid)
+			}
 		}
-		// Wait with timeout: Windows 上 Kill 后 Wait 可能因管道未关闭而挂起
-		done := make(chan error, 1)
-		go func() {
-			done <- s.cmd.Wait()
-		}()
-		select {
-		case <-done:
-			// 进程已正常退出
-		case <-time.After(5 * time.Second):
-			log.Printf("[ACP] warning: process pid=%d didn't exit within 5s after kill", s.cmd.Process.Pid)
+		if s.cancel != nil {
+			s.cancel()
 		}
-	}
-	if s.cancel != nil {
-		s.cancel()
-	}
+	})
 }
 
 // ACPClientImpl 实现 acp.Client 接口
@@ -478,6 +481,10 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	// 启动 claude-agent-acp 子进程
 	cmd := exec.CommandContext(ctx, cfg.ACPAgentCmd, allArgs...)
 	configureProcessTree(cmd)
+	cmd.Cancel = func() error {
+		return killProcessTree(cmd)
+	}
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = projectPath
 	cmd.Stderr = os.Stderr
 

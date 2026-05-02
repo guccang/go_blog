@@ -1043,6 +1043,10 @@ func tailStr(s string, n int) string {
 }
 
 var (
+	dsmlToolCallBlockRe  = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+tool_calls>\s*(.*?)\s*</[｜|]+DSML[｜|]+tool_calls>`)
+	dsmlInvokeRe         = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+invoke\s+name="([^"]+)">\s*(.*?)\s*</[｜|]+DSML[｜|]+invoke>`)
+	dsmlParamRe          = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+parameter\s+name="([^"]+)"([^>]*)>\s*(.*?)\s*</[｜|]+DSML[｜|]+parameter>`)
+	dsmlStringAttrRe     = regexp.MustCompile(`\bstring="(true|false)"`)
 	minimaxToolCallBlockRe = regexp.MustCompile(`(?s)<minimax:tool_call>\s*(.*?)\s*</minimax:tool_call>`)
 	minimaxInvokeRe        = regexp.MustCompile(`(?s)<invoke\s+name="([^"]+)">\s*(.*?)\s*</invoke>`)
 	minimaxParamRe         = regexp.MustCompile(`(?s)<parameter\s+name="([^"]+)">\s*(.*?)\s*</parameter>`)
@@ -1052,13 +1056,88 @@ func normalizeResponseToolCalls(content string, toolCalls []ToolCall) (string, [
 	if len(toolCalls) > 0 {
 		return strings.TrimSpace(content), toolCalls
 	}
-	cleaned, extracted := extractMiniMaxXMLToolCalls(content)
+	cleaned, extracted := extractDSMLToolCalls(content)
+	cleaned, miniMaxCalls := extractMiniMaxXMLToolCalls(cleaned)
+	extracted = append(extracted, miniMaxCalls...)
 	legacyCleaned, legacyCalls := extractLegacyToolCallBlocks(cleaned)
 	if len(extracted) == 0 && len(legacyCalls) == 0 {
 		return strings.TrimSpace(content), nil
 	}
 	extracted = append(extracted, legacyCalls...)
 	return strings.TrimSpace(legacyCleaned), extracted
+}
+
+func extractDSMLToolCalls(content string) (string, []ToolCall) {
+	if !strings.Contains(content, "DSML") {
+		return content, nil
+	}
+
+	var toolCalls []ToolCall
+	cleaned := dsmlToolCallBlockRe.ReplaceAllStringFunc(content, func(block string) string {
+		matches := dsmlToolCallBlockRe.FindStringSubmatch(block)
+		if len(matches) < 2 {
+			return block
+		}
+		inner := matches[1]
+		invokes := dsmlInvokeRe.FindAllStringSubmatch(inner, -1)
+		if len(invokes) == 0 {
+			return block
+		}
+		for _, invoke := range invokes {
+			if len(invoke) < 3 {
+				continue
+			}
+			name := strings.TrimSpace(invoke[1])
+			if name == "" {
+				continue
+			}
+			argsMap := make(map[string]any)
+			for _, param := range dsmlParamRe.FindAllStringSubmatch(invoke[2], -1) {
+				if len(param) < 4 {
+					continue
+				}
+				key := strings.TrimSpace(param[1])
+				if key == "" {
+					continue
+				}
+				stringMode := true
+				if attr := dsmlStringAttrRe.FindStringSubmatch(param[2]); len(attr) >= 2 {
+					stringMode = attr[1] != "false"
+				}
+				argsMap[key] = parseDSMLParamValue(param[3], stringMode)
+			}
+			argsJSON, _ := json.Marshal(argsMap)
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   fmt.Sprintf("dsml_xml_%d", len(toolCalls)+1),
+				Type: "function",
+				Function: FunctionCall{
+					Name:      name,
+					Arguments: string(argsJSON),
+				},
+			})
+		}
+		return ""
+	})
+
+	if len(toolCalls) > 0 {
+		log.Printf("[LLM] extracted %d DSML tool calls", len(toolCalls))
+	}
+	return cleaned, toolCalls
+}
+
+func parseDSMLParamValue(raw string, stringMode bool) any {
+	value := htmlUnescapeMinimal(strings.TrimSpace(raw))
+	if stringMode {
+		return value
+	}
+
+	var structured any
+	if err := json.Unmarshal([]byte(value), &structured); err == nil {
+		return structured
+	}
+
+	// 上游若错误标注了 string=false，退回字符串，避免整个 tool_call 丢失。
+	return value
 }
 
 func extractMiniMaxXMLToolCalls(content string) (string, []ToolCall) {

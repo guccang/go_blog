@@ -353,24 +353,6 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 			log.Printf("[Bridge] send help failed: %v", err)
 		}
 		return
-	case content == "/status" || content == "status":
-		if msg.MessageType != "text" {
-			break
-		}
-		connStatus := "not connected"
-		if b.IsConnected() {
-			connStatus = "connected"
-		}
-		statusText := fmt.Sprintf(
-			"App Agent status\nGateway: %s\nOnline clients: %d\nPending messages: %d",
-			connStatus,
-			b.OnlineClientCount(),
-			b.PendingMessageCount(),
-		)
-		if err := b.sendAppPush(msg.UserID, statusText, nil); err != nil {
-			log.Printf("[Bridge] send status failed: %v", err)
-		}
-		return
 	}
 
 	if !b.IsConnected() {

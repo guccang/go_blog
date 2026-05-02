@@ -255,6 +255,13 @@ func (e *MonitorEngine) SyncUserSession(payload CortanaSyncUserPayload) *Cortana
 	return e.registry.SyncUserSession(payload)
 }
 
+func (e *MonitorEngine) AppendInteraction(account string, item map[string]any) {
+	if e.registry == nil {
+		return
+	}
+	e.registry.AppendInteraction(account, item)
+}
+
 func (e *MonitorEngine) ExecuteBroadcast(decision BroadcastDecision) {
 	e.executeBroadcast(decision)
 }

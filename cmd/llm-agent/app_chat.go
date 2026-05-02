@@ -472,10 +472,20 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		return
 	}
 
+	if isStatusCommand(content) {
+		reply := b.buildStatusInfo("app", appUser)
+		b.sendApp(fromAgent, appUser, reply)
+		return
+	}
+
 	session, isNew := b.sessionMgr.GetOrCreate("app", appUser, appUser)
 
 	session.processing.Lock()
 	defer session.processing.Unlock()
+
+	if cortanaTextMode && session.CortanaState == nil {
+		session.CortanaState = loadCortanaCompanionState(b.cfg.WorkspaceDir, appUser)
+	}
 
 	feedbackMsg := "收到消息，开始处理..."
 	if !isNew {
@@ -493,6 +503,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 		systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 		if cortanaTextMode {
+			systemPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
 		}
 		session.Messages = []Message{
@@ -506,6 +517,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 			freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 			if cortanaTextMode {
+				freshPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
 				freshPrompt += buildCortanaOutputPrompt() + "\n"
 			}
 			session.Messages[0].Content = freshPrompt
@@ -591,10 +603,18 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	assistantContent := persistedAssistantContent(ctx, result)
 	session.mu.Lock()
 	session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
+	if cortanaTextMode {
+		session.CortanaState = updateCortanaCompanionState(session.CortanaState, content, result)
+	}
 	session.mu.Unlock()
 
 	if err := b.sessionMgr.SaveSession(session); err != nil {
 		log.Printf("[App] save session failed: %v", err)
+	}
+	if cortanaTextMode {
+		if err := saveCortanaCompanionState(b.cfg.WorkspaceDir, appUser, session.CortanaState); err != nil {
+			log.Printf("[App] save cortana companion state failed: %v", err)
+		}
 	}
 
 	if !sink.AudioSent() && sink.trySendInlineAudioFromText(result, cortanaActionPlan) {

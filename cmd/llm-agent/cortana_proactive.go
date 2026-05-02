@@ -79,11 +79,12 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 5. 口播简短、自然、中文。
 6. 当 proactive_mode=high 且用户在线、已授权全量访问时，不要把“没有待办/没有新内容”直接等同于“不该互动”。
 7. 在 high 模式下，如果没有明确任务提醒，也可以主动返回轻量陪伴类消息，例如问候、陪伴式闲聊、温和鼓励、状态确认、轻提醒、生活化寒暄，但仍要自然、克制、像真人助理。
-8. high 模式下，只有在明显会打扰用户、完全没有可聊内容、或者刚刚互动过不久时，才返回 should_interact=false。
+8. 当前阶段不要因为“刚刚互动过”就抑制 Cortana；除非内容明显重复、明显不合时宜、或者会造成打扰，否则优先允许继续互动。
 9. 如果 snapshot 大部分为空，也不要机械地因为“无数据”就拒绝互动；可以基于时间段、在线状态和 high 模式给出一句轻陪伴消息。
 10. 如果 event_context 提供了 trigger_source、trigger_reason、content 或 summary，要优先理解“为什么此刻触发”，例如用户刚打开 Cortana 页签、刚点了 Cortana 浮窗、刚发了一句聊天、刚收到 cron 提醒。
 11. 如果 trigger_source 与聊天相关，可以结合 content 判断用户是在求助、表达情绪、还是只是路过，然后决定是安抚、追问、提醒还是轻陪伴。
-12. 陪伴类消息不要空泛鸡汤，尽量具体、像对当前在线的本人说话。`)
+12. 即使 recent_interactions 里存在最近消息，也不要把它当作硬性冷却规则；当前目标是先充分观察无冷却下的互动表现。
+13. 陪伴类消息不要空泛鸡汤，尽量具体、像对当前在线的本人说话。`)
 
 	body, _ := json.Marshal(payload)
 	messages := []Message{

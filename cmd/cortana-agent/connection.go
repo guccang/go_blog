@@ -26,8 +26,6 @@ type Connection struct {
 	broadcastSender func(account, text, expression, motion string) error
 	proactiveMu     sync.Mutex
 	proactiveTasks  map[string]chan uap.TaskCompletePayload
-	eventMu         sync.Mutex
-	eventCooldowns  map[string]time.Time
 
 	activeCount int32
 }
@@ -61,7 +59,6 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 		AgentBase:      agentbase.NewAgentBase(baseCfg),
 		cfg:            cfg,
 		proactiveTasks: make(map[string]chan uap.TaskCompletePayload),
-		eventCooldowns: make(map[string]time.Time),
 	}
 	c.broadcastSender = c.sendBroadcast
 
@@ -92,6 +89,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	c.monitor = NewMonitorEngine(cfg, c.Client, c.decider, NewAccountRegistry())
 	c.monitor.OnGenerateTTS = c.generateTTSAudio
 	c.monitor.OnEvaluateProactive = c.evaluateProactive
+	c.monitor.OnExecuteBroadcast = c.executeBroadcastDecision
 
 	// 注册消息处理器
 	c.RegisterToolCallHandler(c.handleToolCall)
@@ -480,6 +478,14 @@ func (c *Connection) toolTriggerBroadcast(args map[string]interface{}) (string, 
 	log.Printf("[CortanaAgent] 手动触发播报 account=%s broadcast_id=%s text=%q",
 		account, broadcastID, text)
 
+	c.recordBroadcastInteraction(BroadcastDecision{
+		Account:         account,
+		BroadcastID:     broadcastID,
+		Text:            text,
+		Expression:      expression,
+		Motion:          motion,
+		ShouldBroadcast: true,
+	})
 	if err := c.broadcastSender(account, text, expression, motion); err != nil {
 		return fmt.Sprintf("播报失败: %v", err), false
 	}
@@ -515,6 +521,14 @@ func (c *Connection) toolPushTestVoice(args map[string]interface{}) (string, boo
 	log.Printf("[CortanaAgent] 推送测试语音 account=%s text=%q expression=%s motion=%s",
 		account, text, expression, motion)
 
+	c.recordBroadcastInteraction(BroadcastDecision{
+		Account:         account,
+		BroadcastID:     "test_voice",
+		Text:            text,
+		Expression:      expression,
+		Motion:          motion,
+		ShouldBroadcast: true,
+	})
 	if err := c.broadcastSender(account, text, expression, motion); err != nil {
 		return fmt.Sprintf("测试语音推送失败: %v", err), false
 	}
@@ -585,6 +599,18 @@ func (c *Connection) sendBroadcast(account, text, expression, motion string) err
 		account, text, expression, motion, len(audioBase64))
 
 	return c.Client.SendTo(c.cfg.AppAgentID, uap.MsgNotify, notify)
+}
+
+func (c *Connection) executeBroadcastDecision(decision BroadcastDecision) {
+	if !decision.ShouldBroadcast {
+		return
+	}
+	c.decider.RecordBroadcast(decision.Account, decision.BroadcastID)
+	c.recordBroadcastInteraction(decision)
+	if err := c.broadcastSender(decision.Account, decision.Text, decision.Expression, decision.Motion); err != nil {
+		log.Printf("[CortanaAgent] 执行播报失败 account=%s broadcast_id=%s err=%v",
+			decision.Account, decision.BroadcastID, err)
+	}
 }
 
 // generateTTSAudio 调用 audio-agent 生成 TTS 语音

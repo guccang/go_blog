@@ -20,6 +20,7 @@ type CortanaUserSnapshot struct {
 	Exercise      map[string]any `json:"exercise,omitempty"`
 	Reading       map[string]any `json:"reading,omitempty"`
 	YearPlan      map[string]any `json:"year_plan,omitempty"`
+	Goals         map[string]any `json:"goals,omitempty"`
 	Projects      map[string]any `json:"projects,omitempty"`
 	Agents        map[string]any `json:"agents,omitempty"`
 }
@@ -108,14 +109,15 @@ func (c *Connection) requestProactiveDecision(session *CortanaUserSession, resul
 	snapshot := c.collectSnapshot(session, result, event)
 	taskID := fmt.Sprintf("cortana_proactive_%s_%d", session.Account, time.Now().UnixMilli())
 	payload := CortanaProactiveTaskPayload{
-		TaskType:        "cortana_proactive",
-		Account:         session.Account,
-		Online:          session.Online,
-		AllowFullAccess: session.AllowFullAccess,
-		ProactiveMode:   session.ProactiveMode,
-		TriggerReason:   defaultString(event.TriggerReason, "monitor_cycle"),
-		Snapshot:        snapshot,
-		EventContext:    snapshot.EventContext,
+		TaskType:           "cortana_proactive",
+		Account:            session.Account,
+		Online:             session.Online,
+		AllowFullAccess:    session.AllowFullAccess,
+		ProactiveMode:      session.ProactiveMode,
+		TriggerReason:      defaultString(event.TriggerReason, "monitor_cycle"),
+		Snapshot:           snapshot,
+		EventContext:       snapshot.EventContext,
+		RecentInteractions: cloneInteractionList(session.RecentInteractions),
 	}
 	body, _ := json.Marshal(payload)
 	ch := make(chan uap.TaskCompletePayload, 1)
@@ -218,6 +220,11 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 			"month":   int(month),
 		}),
 	}
+	snapshot.Goals = map[string]any{
+		"all_current": c.safeCallJSON("RawGetCurrentGoals", map[string]any{
+			"account": account,
+		}),
+	}
 	snapshot.Projects = map[string]any{
 		"summary": c.safeCallJSON("RawGetProjectSummary", map[string]any{
 			"account": account,
@@ -240,6 +247,7 @@ func (c *Connection) handleProactiveEvent(event CortanaTriggerEventPayload) (Bro
 			event.Account, event.TriggerSource, event.TriggerReason, "invalid proactive event")
 		return BroadcastDecision{SkipReason: "invalid proactive event"}, false, nil
 	}
+	c.recordIncomingInteraction(event)
 
 	session := c.monitor.GetSession(event.Account)
 	if session == nil || !session.Registered {
@@ -257,12 +265,6 @@ func (c *Connection) handleProactiveEvent(event CortanaTriggerEventPayload) (Bro
 			event.Account, event.TriggerSource, event.TriggerReason, "user offline")
 		return BroadcastDecision{SkipReason: "user offline"}, true, nil
 	}
-	if c.shouldThrottleEvent(session.Account, event) {
-		log.Printf("[CortanaAgent] proactive event skipped account=%s source=%s reason=%s skip_reason=%s",
-			event.Account, event.TriggerSource, event.TriggerReason, "event cooldown active")
-		return BroadcastDecision{SkipReason: "event cooldown active"}, true, nil
-	}
-
 	result := c.monitor.CheckNow(session.Account)
 	if !session.AllowFullAccess {
 		decision := c.decider.Evaluate(result)
@@ -303,37 +305,6 @@ func (c *Connection) executeBroadcastAndRecord(decision BroadcastDecision) {
 		return
 	}
 	c.monitor.ExecuteBroadcast(decision)
-}
-
-func (c *Connection) shouldThrottleEvent(account string, event CortanaTriggerEventPayload) bool {
-	key := strings.TrimSpace(account) + ":" + defaultString(event.TriggerReason, event.TriggerSource)
-	now := time.Now()
-	cooldown := proactiveEventCooldown(event)
-
-	c.eventMu.Lock()
-	defer c.eventMu.Unlock()
-	if last, ok := c.eventCooldowns[key]; ok && now.Sub(last) < cooldown {
-		return true
-	}
-	c.eventCooldowns[key] = now
-	return false
-}
-
-func proactiveEventCooldown(event CortanaTriggerEventPayload) time.Duration {
-	source := strings.ToLower(strings.TrimSpace(event.TriggerSource))
-	reason := strings.ToLower(strings.TrimSpace(event.TriggerReason))
-	switch {
-	case strings.Contains(reason, "floating"), strings.Contains(reason, "tab"):
-		return 90 * time.Second
-	case strings.Contains(source, "chat"):
-		return 3 * time.Minute
-	case strings.Contains(source, "cron"), strings.Contains(reason, "cron"):
-		return 5 * time.Minute
-	case strings.Contains(source, "agent"):
-		return 2 * time.Minute
-	default:
-		return 2 * time.Minute
-	}
 }
 
 func (c *Connection) safeCallValue(tool string, args map[string]any) any {
@@ -394,6 +365,64 @@ func cloneAnyMap(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func cloneInteractionList(in []map[string]any) []map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(in))
+	for _, item := range in {
+		out = append(out, cloneAnyMap(item))
+	}
+	return out
+}
+
+func (c *Connection) recordIncomingInteraction(event CortanaTriggerEventPayload) {
+	if c == nil || c.monitor == nil {
+		return
+	}
+	c.monitor.AppendInteraction(event.Account, map[string]any{
+		"role":           "user",
+		"kind":           "event",
+		"trigger_source": strings.TrimSpace(event.TriggerSource),
+		"trigger_reason": defaultString(event.TriggerReason, event.TriggerSource),
+		"summary":        shortInteractionText(event.Summary, event.Content),
+		"content":        strings.TrimSpace(event.Content),
+		"timestamp":      event.Timestamp,
+	})
+}
+
+func (c *Connection) recordBroadcastInteraction(decision BroadcastDecision) {
+	if c == nil || c.monitor == nil {
+		return
+	}
+	c.monitor.AppendInteraction(decision.Account, map[string]any{
+		"role":         "assistant",
+		"kind":         "broadcast",
+		"broadcast_id": strings.TrimSpace(decision.BroadcastID),
+		"summary":      shortInteractionText("", decision.Text),
+		"content":      strings.TrimSpace(decision.Text),
+		"expression":   strings.TrimSpace(decision.Expression),
+		"motion":       strings.TrimSpace(decision.Motion),
+		"timestamp":    time.Now().UnixMilli(),
+	})
+}
+
+func shortInteractionText(summary, content string) string {
+	summary = strings.TrimSpace(summary)
+	if summary != "" {
+		return summary
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	rs := []rune(content)
+	if len(rs) <= 48 {
+		return content
+	}
+	return string(rs[:48]) + "..."
 }
 
 func defaultString(value, fallback string) string {

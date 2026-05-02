@@ -16,16 +16,17 @@ type CortanaUserSettings struct {
 }
 
 type CortanaUserSession struct {
-	Account         string              `json:"account"`
-	Registered      bool                `json:"registered"`
-	Online          bool                `json:"online"`
-	AllowFullAccess bool                `json:"allow_full_access"`
-	AutoPlay        bool                `json:"auto_play"`
-	ProactiveMode   string              `json:"proactive_mode"`
-	Enabled         bool                `json:"enabled"`
-	LastSeenAt      int64               `json:"last_seen_at"`
-	UpdatedAt       int64               `json:"updated_at"`
-	Settings        CortanaUserSettings `json:"settings"`
+	Account            string              `json:"account"`
+	Registered         bool                `json:"registered"`
+	Online             bool                `json:"online"`
+	AllowFullAccess    bool                `json:"allow_full_access"`
+	AutoPlay           bool                `json:"auto_play"`
+	ProactiveMode      string              `json:"proactive_mode"`
+	Enabled            bool                `json:"enabled"`
+	LastSeenAt         int64               `json:"last_seen_at"`
+	UpdatedAt          int64               `json:"updated_at"`
+	Settings           CortanaUserSettings `json:"settings"`
+	RecentInteractions []map[string]any    `json:"recent_interactions,omitempty"`
 }
 
 type CortanaSyncUserPayload struct {
@@ -167,10 +168,41 @@ func (r *AccountRegistry) ListAccounts() []string {
 	return accounts
 }
 
+func (r *AccountRegistry) AppendInteraction(account string, item map[string]any) {
+	account = strings.TrimSpace(account)
+	if account == "" || len(item) == 0 {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	session := r.sessions[account]
+	if session == nil {
+		session = &CortanaUserSession{Account: account}
+		r.sessions[account] = session
+	}
+	entry := cloneAnyMap(item)
+	if entry == nil {
+		return
+	}
+	session.RecentInteractions = append(session.RecentInteractions, entry)
+	const maxRecentInteractions = 8
+	if len(session.RecentInteractions) > maxRecentInteractions {
+		session.RecentInteractions = append([]map[string]any(nil), session.RecentInteractions[len(session.RecentInteractions)-maxRecentInteractions:]...)
+	}
+}
+
 func cloneCortanaSession(in *CortanaUserSession) *CortanaUserSession {
 	if in == nil {
 		return nil
 	}
 	out := *in
+	if len(in.RecentInteractions) > 0 {
+		out.RecentInteractions = make([]map[string]any, 0, len(in.RecentInteractions))
+		for _, item := range in.RecentInteractions {
+			out.RecentInteractions = append(out.RecentInteractions, cloneAnyMap(item))
+		}
+	}
 	return &out
 }

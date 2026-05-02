@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -66,6 +68,27 @@ type obsDownloadResponse struct {
 	ExpiresAt int64             `json:"expires_at"`
 	Method    string            `json:"method"`
 	Headers   map[string]string `json:"headers"`
+}
+
+type appLogSource struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+type appLogFileEntry struct {
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Size         int64  `json:"size"`
+	ModifiedAt   int64  `json:"modified_at"`
+	ModifiedText string `json:"modified_text"`
+}
+
+type logAgentConfigSnapshot struct {
+	LogSources map[string]struct {
+		Path        string `json:"path"`
+		Description string `json:"description"`
+	} `json:"log_sources"`
 }
 
 func authSuccessResponse(session *issuedAuthSession, obsAgentBaseURL string) loginResponse {
@@ -522,6 +545,142 @@ func (h *Handler) HandleCodegenProjects(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func (h *Handler) HandleLogSources(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+
+	sources, err := h.loadConfiguredLogSources()
+	if err != nil {
+		h.writeLogError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"sources": sources,
+		"count":   len(sources),
+	})
+}
+
+func (h *Handler) HandleLogFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	sourceName := strings.TrimSpace(r.URL.Query().Get("source"))
+	if userID == "" || sourceName == "" {
+		http.Error(w, "user_id and source are required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+
+	source, err := h.resolveConfiguredLogSource(sourceName)
+	if err != nil {
+		h.writeLogError(w, http.StatusBadRequest, err)
+		return
+	}
+	files, err := listLogFiles(source.Path)
+	if err != nil {
+		h.writeLogError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"source":  source,
+		"files":   files,
+		"count":   len(files),
+	})
+}
+
+func (h *Handler) HandleLogContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	sourceName := strings.TrimSpace(r.URL.Query().Get("source"))
+	fileName := strings.TrimSpace(r.URL.Query().Get("file"))
+	if userID == "" || sourceName == "" {
+		http.Error(w, "user_id and source are required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+
+	source, err := h.resolveConfiguredLogSource(sourceName)
+	if err != nil {
+		h.writeLogError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	lines := 400
+	if raw := strings.TrimSpace(r.URL.Query().Get("lines")); raw != "" {
+		parsed, parseErr := strconv.Atoi(raw)
+		if parseErr != nil {
+			h.writeLogError(w, http.StatusBadRequest, fmt.Errorf("invalid lines: %w", parseErr))
+			return
+		}
+		if parsed > 0 {
+			lines = parsed
+		}
+	}
+	if lines > 2000 {
+		lines = 2000
+	}
+
+	logPath, content, matchedLines, truncated, err := readLogContent(source.Path, fileName, lines)
+	if err != nil {
+		h.writeLogError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":       true,
+		"source":        source,
+		"file":          filepath.Base(logPath),
+		"log_path":      logPath,
+		"content":       content,
+		"matched_lines": matchedLines,
+		"truncated":     truncated,
+	})
+}
+
 func (h *Handler) writeCodegenProjectsError(w http.ResponseWriter, status int, errMsg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -529,6 +688,247 @@ func (h *Handler) writeCodegenProjectsError(w http.ResponseWriter, status int, e
 		Success: false,
 		Error:   errMsg,
 	})
+}
+
+func (h *Handler) writeLogError(w http.ResponseWriter, status int, err error) {
+	errMsg := "log request failed"
+	if err != nil {
+		errMsg = err.Error()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": false,
+		"error":   errMsg,
+	})
+}
+
+func (h *Handler) loadConfiguredLogSources() ([]appLogSource, error) {
+	configPath := strings.TrimSpace(h.cfg.LogAgentConfigFile)
+	if configPath == "" {
+		return nil, fmt.Errorf("log_agent_config_file is not configured")
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("read log-agent config failed: %w", err)
+	}
+	var snapshot logAgentConfigSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return nil, fmt.Errorf("parse log-agent config failed: %w", err)
+	}
+	sources := make([]appLogSource, 0, len(snapshot.LogSources))
+	for name, src := range snapshot.LogSources {
+		sources = append(sources, appLogSource{
+			Name:        strings.TrimSpace(name),
+			Path:        strings.TrimSpace(src.Path),
+			Description: strings.TrimSpace(src.Description),
+		})
+	}
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].Name < sources[j].Name
+	})
+	return sources, nil
+}
+
+func (h *Handler) resolveConfiguredLogSource(name string) (appLogSource, error) {
+	sources, err := h.loadConfiguredLogSources()
+	if err != nil {
+		return appLogSource{}, err
+	}
+	for _, source := range sources {
+		if source.Name == name {
+			if source.Path == "" {
+				return appLogSource{}, fmt.Errorf("log source %q has empty path", name)
+			}
+			return source, nil
+		}
+	}
+	return appLogSource{}, fmt.Errorf("unknown log source %q", name)
+}
+
+func listLogFiles(dir string) ([]appLogFileEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read log directory failed: %w", err)
+	}
+
+	files := make([]appLogFileEntry, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		lowerName := strings.ToLower(name)
+		if !strings.HasSuffix(lowerName, ".log") && !strings.Contains(lowerName, "log") {
+			continue
+		}
+		files = append(files, appLogFileEntry{
+			Name:         name,
+			Path:         filepath.Join(dir, name),
+			Size:         info.Size(),
+			ModifiedAt:   info.ModTime().UnixMilli(),
+			ModifiedText: info.ModTime().Format("2006-01-02 15:04:05"),
+		})
+	}
+	if len(files) == 0 {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			name := strings.TrimSpace(entry.Name())
+			files = append(files, appLogFileEntry{
+				Name:         name,
+				Path:         filepath.Join(dir, name),
+				Size:         info.Size(),
+				ModifiedAt:   info.ModTime().UnixMilli(),
+				ModifiedText: info.ModTime().Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].ModifiedAt == files[j].ModifiedAt {
+			return files[i].Name < files[j].Name
+		}
+		return files[i].ModifiedAt > files[j].ModifiedAt
+	})
+	return files, nil
+}
+
+func readLogContent(dir, fileName string, lines int) (string, string, int, bool, error) {
+	if lines <= 0 {
+		lines = 400
+	}
+	filePath := ""
+	if fileName != "" {
+		path, err := resolveLogFilePath(dir, fileName)
+		if err != nil {
+			return "", "", 0, false, err
+		}
+		filePath = path
+	} else {
+		files, err := listLogFiles(dir)
+		if err != nil {
+			return "", "", 0, false, err
+		}
+		if len(files) == 0 {
+			return "", "", 0, false, fmt.Errorf("no log files found under %s", dir)
+		}
+		filePath = files[0].Path
+	}
+
+	content, matchedLines, truncated, err := tailLogFile(filePath, lines)
+	if err != nil {
+		return "", "", 0, false, err
+	}
+	return filePath, content, matchedLines, truncated, nil
+}
+
+func resolveLogFilePath(dir, fileName string) (string, error) {
+	joined := filepath.Join(dir, fileName)
+	absPath, err := filepath.Abs(joined)
+	if err != nil {
+		return "", fmt.Errorf("resolve log path failed: %w", err)
+	}
+	absBase, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve log base path failed: %w", err)
+	}
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+		return "", fmt.Errorf("invalid log file path")
+	}
+	stat, err := os.Stat(absPath)
+	if err != nil {
+		return "", fmt.Errorf("stat log file failed: %w", err)
+	}
+	if stat.IsDir() {
+		return "", fmt.Errorf("log file is a directory")
+	}
+	return absPath, nil
+}
+
+func tailLogFile(filePath string, lines int) (string, int, bool, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("open log file failed: %w", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return "", 0, false, fmt.Errorf("stat log file failed: %w", err)
+	}
+	if stat.Size() == 0 {
+		return "", 0, false, nil
+	}
+
+	maxCandidates := lines * 10
+	if maxCandidates > 50000 {
+		maxCandidates = 50000
+	}
+	entries := tailReadLines(file, stat.Size(), maxCandidates)
+	if len(entries) > lines {
+		entries = entries[len(entries)-lines:]
+	}
+
+	content := strings.Join(entries, "\n")
+	truncated := false
+	const maxResponseBytes = 100 * 1024
+	if len(content) > maxResponseBytes {
+		content = content[len(content)-maxResponseBytes:]
+		truncated = true
+	}
+	return content, len(entries), truncated, nil
+}
+
+func tailReadLines(file *os.File, fileSize int64, maxLines int) []string {
+	const chunkSize = 32 * 1024
+
+	var buf []byte
+	offset := fileSize
+	for offset > 0 {
+		readSize := int64(chunkSize)
+		if readSize > offset {
+			readSize = offset
+		}
+		offset -= readSize
+
+		chunk := make([]byte, readSize)
+		n, err := file.ReadAt(chunk, offset)
+		if err != nil && err != io.EOF {
+			break
+		}
+		buf = append(chunk[:n], buf...)
+
+		lineCount := 0
+		for _, b := range buf {
+			if b == '\n' {
+				lineCount++
+			}
+		}
+		if lineCount >= maxLines+1 {
+			break
+		}
+	}
+
+	allLines := strings.Split(string(buf), "\n")
+	for len(allLines) > 0 && allLines[0] == "" {
+		allLines = allLines[1:]
+	}
+	for len(allLines) > 0 && allLines[len(allLines)-1] == "" {
+		allLines = allLines[:len(allLines)-1]
+	}
+	if len(allLines) > maxLines {
+		allLines = allLines[len(allLines)-maxLines:]
+	}
+	return allLines
 }
 
 func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {

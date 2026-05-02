@@ -522,6 +522,10 @@ func (a *Agent) executeCodexExec(conn *Connection, sessionID, requestID, project
 	})
 	cmd := exec.CommandContext(ctx, a.cfg.CodexCmd, cmdArgs...)
 	configureProcessTree(cmd)
+	cmd.Cancel = func() error {
+		return killProcessTree(cmd)
+	}
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = projectPath
 	cmd.Env = plan.Env
 	stdin, err := cmd.StdinPipe()

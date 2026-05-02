@@ -78,6 +78,16 @@ func HandleMonthGoal(w h.ResponseWriter, r *h.Request) {
 	view.PageMonthGoal(w, yearInt, monthInt)
 }
 
+// HandleGoal renders the unified goal management page
+func HandleGoal(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleGoal", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", 302)
+		return
+	}
+	view.PageGoal(w)
+}
+
 // HandleStatistics renders the statistics page
 func HandleStatistics(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleStatistics", r)

@@ -51,6 +51,34 @@ class CortanaReplayItem {
   final String sourceLabel;
 }
 
+class CortanaLogSource {
+  const CortanaLogSource({
+    required this.name,
+    required this.path,
+    required this.description,
+  });
+
+  final String name;
+  final String path;
+  final String description;
+}
+
+class CortanaLogFile {
+  const CortanaLogFile({
+    required this.name,
+    required this.path,
+    required this.size,
+    required this.modifiedAt,
+    required this.modifiedText,
+  });
+
+  final String name;
+  final String path;
+  final int size;
+  final DateTime? modifiedAt;
+  final String modifiedText;
+}
+
 class _CortanaVoiceHistoryItem {
   const _CortanaVoiceHistoryItem({
     required this.id,
@@ -85,22 +113,32 @@ class CortanaPage extends StatefulWidget {
     this.onSendMessage,
     this.externalVoiceHistory = const <CortanaReplayItem>[],
     this.onTapWhenFloating,
+    this.onLongPressWhenFloating,
     this.onModeChanged,
     this.contextualExpression,
     this.showBadge = false,
     this.autoCollapseDelay = const Duration(seconds: 8),
+    this.floatingBottomInset = 0,
     this.onBroadcast,
+    this.onListLogSources,
+    this.onListLogFiles,
+    this.onReadLogFile,
   });
 
   final CortanaDisplayMode mode;
   final Future<CortanaReplyPayload> Function(String message)? onSendMessage;
   final List<CortanaReplayItem> externalVoiceHistory;
   final VoidCallback? onTapWhenFloating;
+  final VoidCallback? onLongPressWhenFloating;
   final ValueChanged<CortanaDisplayMode>? onModeChanged;
   final String? contextualExpression;
   final bool showBadge;
   final Duration autoCollapseDelay;
+  final double floatingBottomInset;
   final void Function(CortanaReplyPayload payload)? onBroadcast;
+  final Future<List<CortanaLogSource>> Function()? onListLogSources;
+  final Future<List<CortanaLogFile>> Function(String source)? onListLogFiles;
+  final Future<String> Function(String source, String file)? onReadLogFile;
 
   @override
   State<CortanaPage> createState() => CortanaPageState();
@@ -138,6 +176,15 @@ class CortanaPageState extends State<CortanaPage> {
   bool _logsExpanded = false;
   Map<String, dynamic>? _live2dDebugState;
   final List<String> _logEntries = <String>[];
+  List<CortanaLogSource> _logSources = const <CortanaLogSource>[];
+  List<CortanaLogFile> _logFiles = const <CortanaLogFile>[];
+  String _selectedLogSource = '';
+  String _selectedLogFile = '';
+  String _selectedLogContent = '';
+  String _logViewerError = '';
+  bool _logSourcesLoading = false;
+  bool _logFilesLoading = false;
+  bool _logContentLoading = false;
   Offset? _floatingOffset;
   bool _isDragging = false;
   String? _lastContextualExpression;
@@ -265,6 +312,160 @@ class CortanaPageState extends State<CortanaPage> {
 
   void _updateLoadStatus(String message) {
     _appendLog(message);
+  }
+
+  Future<void> _ensureLogViewerLoaded() async {
+    if (widget.onListLogSources == null) {
+      return;
+    }
+    if (_logSourcesLoading) {
+      return;
+    }
+    if (_logSources.isNotEmpty && _selectedLogContent.isNotEmpty) {
+      return;
+    }
+    await _loadLogSources();
+  }
+
+  Future<void> _loadLogSources({bool force = false}) async {
+    final loader = widget.onListLogSources;
+    if (loader == null) {
+      return;
+    }
+    if (_logSourcesLoading) {
+      return;
+    }
+    if (!force && _logSources.isNotEmpty) {
+      return;
+    }
+    setState(() {
+      _logSourcesLoading = true;
+      _logViewerError = '';
+    });
+    try {
+      final sources = await loader();
+      if (!mounted) {
+        return;
+      }
+      final selectedSource = sources.any((item) => item.name == _selectedLogSource)
+          ? _selectedLogSource
+          : (sources.isNotEmpty ? sources.first.name : '');
+      setState(() {
+        _logSources = sources;
+        _selectedLogSource = selectedSource;
+        _logFiles = const <CortanaLogFile>[];
+        _selectedLogFile = '';
+        _selectedLogContent = '';
+      });
+      if (selectedSource.isNotEmpty) {
+        await _loadLogFiles(selectedSource);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _logViewerError = '加载日志源失败: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _logSourcesLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLogFiles(String source, {bool force = false}) async {
+    final loader = widget.onListLogFiles;
+    if (loader == null || source.trim().isEmpty) {
+      return;
+    }
+    if (_logFilesLoading) {
+      return;
+    }
+    if (!force &&
+        _selectedLogSource == source &&
+        _logFiles.isNotEmpty &&
+        _selectedLogFile.isNotEmpty) {
+      return;
+    }
+    setState(() {
+      _logFilesLoading = true;
+      _logViewerError = '';
+      _selectedLogSource = source;
+      _logFiles = const <CortanaLogFile>[];
+      _selectedLogFile = '';
+      _selectedLogContent = '';
+    });
+    try {
+      final files = await loader(source);
+      if (!mounted) {
+        return;
+      }
+      final selectedFile = files.any((item) => item.name == _selectedLogFile)
+          ? _selectedLogFile
+          : (files.isNotEmpty ? files.first.name : '');
+      setState(() {
+        _logFiles = files;
+        _selectedLogFile = selectedFile;
+      });
+      if (selectedFile.isNotEmpty) {
+        await _loadLogContent(source, selectedFile);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _logViewerError = '加载日志文件失败: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _logFilesLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLogContent(String source, String file) async {
+    final loader = widget.onReadLogFile;
+    if (loader == null || source.trim().isEmpty || file.trim().isEmpty) {
+      return;
+    }
+    if (_logContentLoading) {
+      return;
+    }
+    setState(() {
+      _logContentLoading = true;
+      _logViewerError = '';
+      _selectedLogSource = source;
+      _selectedLogFile = file;
+      _selectedLogContent = '';
+    });
+    try {
+      final content = await loader(source, file);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _selectedLogContent = content.trim();
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _logViewerError = '读取日志内容失败: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _logContentLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _hideDiagnostics() async {
@@ -967,6 +1168,16 @@ class CortanaPageState extends State<CortanaPage> {
     CortanaReplyPayload payload, {
     VoidCallback? onFinished,
   }) async {
+    var finishNotified = false;
+
+    void notifyFinished() {
+      if (finishNotified) {
+        return;
+      }
+      finishNotified = true;
+      onFinished?.call();
+    }
+
     setState(() => _speaking = true);
     _broadcastAutoCollapseTimer?.cancel();
 
@@ -974,7 +1185,7 @@ class CortanaPageState extends State<CortanaPage> {
       debugPrint('[Cortana Broadcast] Playing: ${payload.text}');
       _appendLog('播报: ${payload.text}');
       await _playReplyAudio(payload);
-      onFinished?.call();
+      notifyFinished();
     } catch (e, stackTrace) {
       debugPrint('[Cortana Broadcast Error] $e');
       debugPrint('$stackTrace');
@@ -983,6 +1194,7 @@ class CortanaPageState extends State<CortanaPage> {
       await _callJS('window.stopLipSync()');
       await _callJS('window.endSpeechFocus()');
     } finally {
+      notifyFinished();
       if (mounted) {
         setState(() => _speaking = false);
       }
@@ -1101,6 +1313,7 @@ class CortanaPageState extends State<CortanaPage> {
       screenSize.height -
           floatingSize.height -
           bottomPadding -
+          widget.floatingBottomInset -
           navBarHeight -
           8,
     );
@@ -1109,7 +1322,8 @@ class CortanaPageState extends State<CortanaPage> {
   Offset _clampFloatingOffset(Offset offset, Size floatingSize) {
     final screenSize = MediaQuery.sizeOf(context);
     final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
-    final bottomPadding = MediaQuery.paddingOf(context).bottom + 80;
+    final bottomPadding =
+        MediaQuery.paddingOf(context).bottom + 80 + widget.floatingBottomInset;
     return Offset(
       offset.dx.clamp(0.0, screenSize.width - floatingSize.width),
       offset.dy.clamp(
@@ -1504,74 +1718,208 @@ class CortanaPageState extends State<CortanaPage> {
 
   Widget _buildLogsContent(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (_logEntries.isEmpty) {
-      return Text(
-        '暂无日志输出',
-        style: Theme.of(
-          context,
-        ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '最近 ${_logEntries.length} 条',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _logEntries.clear();
-                });
-              },
-              icon: const Icon(Icons.clear_all, size: 16),
-              label: const Text('清空'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxHeight: 220),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.55),
-            ),
+    final hasRemoteLogViewer =
+        widget.onListLogSources != null &&
+        widget.onListLogFiles != null &&
+        widget.onReadLogFile != null;
+    if (!hasRemoteLogViewer) {
+      if (_logEntries.isEmpty) {
+        return Text(
+          '暂无日志输出',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '最近 ${_logEntries.length} 条',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _logEntries.clear();
+                  });
+                },
+                icon: const Icon(Icons.clear_all, size: 16),
+                label: const Text('清空'),
+              ),
+            ],
           ),
-          child: Scrollbar(
-            thumbVisibility: _logEntries.length > 6,
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  for (var index = 0; index < _logEntries.length; index++) ...[
-                    if (index > 0) const SizedBox(height: 6),
-                    Container(
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 220),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.55),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Scrollbar(
+                thumbVisibility: _logEntries.length > 6,
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: _logEntries.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 6),
+                  itemBuilder: (context, index) {
+                    return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: cs.surface,
+                        color: cs.surface.withValues(alpha: 0.96),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: SelectableText(
                         _logEntries[index],
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          height: 1.35,
+                          height: 1.4,
                           color: cs.onSurface,
+                          fontFamily: 'monospace',
                         ),
                       ),
-                    ),
-                  ],
-                ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final sourceItems = _logSources;
+    final fileItems = _logFiles;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '日志文件',
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _logSourcesLoading || _logFilesLoading || _logContentLoading
+                  ? null
+                  : () => unawaited(_loadLogSources(force: true)),
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('刷新'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        if (_logViewerError.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              _logViewerError,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: cs.error),
+            ),
+          ),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedLogSource.isEmpty ? null : _selectedLogSource,
+          decoration: const InputDecoration(
+            labelText: '日志源',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: [
+            for (final source in sourceItems)
+              DropdownMenuItem<String>(
+                value: source.name,
+                child: Text(
+                  source.description.isEmpty
+                      ? source.name
+                      : '${source.name} · ${source.description}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: _logSourcesLoading
+              ? null
+              : (value) {
+                  if (value == null || value == _selectedLogSource) {
+                    return;
+                  }
+                  unawaited(_loadLogFiles(value, force: true));
+                },
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedLogFile.isEmpty ? null : _selectedLogFile,
+          decoration: const InputDecoration(
+            labelText: '日志文件',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: [
+            for (final file in fileItems)
+              DropdownMenuItem<String>(
+                value: file.name,
+                child: Text(
+                  file.modifiedText.isEmpty
+                      ? file.name
+                      : '${file.name} · ${file.modifiedText}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: _logFilesLoading || _selectedLogSource.isEmpty
+              ? null
+              : (value) {
+                  if (value == null || value == _selectedLogFile) {
+                    return;
+                  }
+                  unawaited(_loadLogContent(_selectedLogSource, value));
+                },
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 260, minHeight: 120),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.55),
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Scrollbar(
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(10),
+                child: SelectableText(
+                  _logContentLoading
+                      ? '日志加载中...'
+                      : (_selectedLogContent.isEmpty ? '暂无日志内容' : _selectedLogContent),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    height: 1.45,
+                    color: cs.onSurface,
+                    fontFamily: 'monospace',
+                  ),
+                ),
               ),
             ),
           ),
@@ -1701,14 +2049,21 @@ class CortanaPageState extends State<CortanaPage> {
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-runtime-logs',
                   title: '运行日志',
-                  subtitle: _logEntries.isEmpty
-                      ? '暂无日志，默认折叠'
-                      : '共 ${_logEntries.length} 条，默认折叠',
+                  subtitle: widget.onListLogSources == null
+                      ? (_logEntries.isEmpty
+                            ? '暂无日志，默认折叠'
+                            : '共 ${_logEntries.length} 条，默认折叠')
+                      : (_selectedLogFile.isEmpty
+                            ? '支持查看日志文件，默认折叠'
+                            : '当前文件: $_selectedLogFile'),
                   expanded: _logsExpanded,
                   onExpansionChanged: (expanded) {
                     setState(() {
                       _logsExpanded = expanded;
                     });
+                    if (expanded) {
+                      unawaited(_ensureLogViewerLoaded());
+                    }
                   },
                   child: _buildLogsContent(context),
                 ),
@@ -1833,12 +2188,16 @@ class CortanaPageState extends State<CortanaPage> {
             onTap: isFullscreen
                 ? null
                 : () {
+                    if (widget.mode == CortanaDisplayMode.collapsed) {
+                      widget.onTapWhenFloating?.call();
+                      return;
+                    }
                     widget.onModeChanged?.call(_nextFloatingMode(widget.mode));
                   },
             onLongPress: isFullscreen
                 ? null
                 : () {
-                    widget.onTapWhenFloating?.call();
+                    widget.onLongPressWhenFloating?.call();
                   },
             onPanStart: isFullscreen
                 ? null

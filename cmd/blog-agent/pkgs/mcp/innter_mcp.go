@@ -306,6 +306,25 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawUpdateProjectKeyResult", Inner_blog_RawUpdateProjectKeyResult)
 	RegisterCallBack("RawGetProjectSummary", Inner_blog_RawGetProjectSummary)
 
+	// 新增模块工具 - YearPlan (之前定义但未注册)
+	RegisterCallBack("RawGetMonthGoal", Inner_blog_RawGetMonthGoal)
+	RegisterCallBack("RawGetYearGoals", Inner_blog_RawGetYearGoals)
+	RegisterCallBack("RawAddYearTask", Inner_blog_RawAddYearTask)
+	RegisterCallBack("RawUpdateYearTask", Inner_blog_RawUpdateYearTask)
+
+	// 新增模块工具 - TaskBreakdown
+	RegisterCallBack("RawGetAllComplexTasks", Inner_blog_RawGetAllComplexTasks)
+	RegisterCallBack("RawGetComplexTasksByStatus", Inner_blog_RawGetComplexTasksByStatus)
+	RegisterCallBack("RawGetComplexTaskStats", Inner_blog_RawGetComplexTaskStats)
+	RegisterCallBack("RawCreateComplexTask", Inner_blog_RawCreateComplexTask)
+
+	// 新增模块工具 - Goal (统一目标管理)
+	RegisterCallBack("RawGetGoal", Inner_blog_RawGetGoal)
+	RegisterCallBack("RawGetCurrentGoals", Inner_blog_RawGetCurrentGoals)
+	RegisterCallBack("RawSaveGoal", Inner_blog_RawSaveGoal)
+	RegisterCallBack("RawAddGoalTask", Inner_blog_RawAddGoalTask)
+	RegisterCallBack("RawUpdateGoalTask", Inner_blog_RawUpdateGoalTask)
+
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -925,6 +944,13 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawDeleteProjectOKR", Description: "删除项目OKR，返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "projectID": map[string]string{"type": "string", "description": "项目ID"}, "okrID": map[string]string{"type": "string", "description": "OKR ID"}}, "required": []string{"account", "projectID", "okrID"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateProjectKeyResult", Description: "更新OKR关键结果(Key Result)，返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "projectID": map[string]string{"type": "string", "description": "项目ID"}, "okrID": map[string]string{"type": "string", "description": "OKR ID"}, "keyResultID": map[string]string{"type": "string", "description": "关键结果ID，不填则新增"}, "title": map[string]string{"type": "string", "description": "关键结果标题"}, "metricType": map[string]string{"type": "string", "description": "度量类型"}, "targetValue": map[string]interface{}{"type": "number", "description": "目标值"}, "currentValue": map[string]interface{}{"type": "number", "description": "当前值"}, "unit": map[string]string{"type": "string", "description": "单位"}, "status": map[string]string{"type": "string", "description": "状态 pending/in_progress/completed/cancelled"}}, "required": []string{"account", "projectID", "okrID", "title", "metricType", "targetValue"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetProjectSummary", Description: "获取所有项目汇总统计，返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+
+		// =================================== Goal 模块工具 (统一目标管理) =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetGoal", Description: "获取指定层级/周期的目标(含任务列表和进度)。返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "level": map[string]string{"type": "string", "description": "目标层级:daily/weekly/monthly/yearly"}, "period": map[string]string{"type": "string", "description": "周期标识:2026-05-02/2026-W18/2026-05/2026"}}, "required": []string{"account", "level", "period"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawGetCurrentGoals", Description: "获取当前所有层级(daily/weekly/monthly/yearly)的活跃目标摘要(进度/任务数等)。返回JSON(dict)", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawSaveGoal", Description: "保存目标概述和状态。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "level": map[string]string{"type": "string", "description": "目标层级:daily/weekly/monthly/yearly"}, "period": map[string]string{"type": "string", "description": "周期标识"}, "overview": map[string]string{"type": "string", "description": "目标描述"}, "status": map[string]string{"type": "string", "description": "状态:active/completed/archived"}}, "required": []string{"account", "level", "period"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddGoalTask", Description: "为目标添加子任务。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "level": map[string]string{"type": "string", "description": "目标层级"}, "period": map[string]string{"type": "string", "description": "周期标识"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述"}, "priority": map[string]string{"type": "string", "description": "优先级:low/medium/high"}}, "required": []string{"account", "level", "period", "title"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawUpdateGoalTask", Description: "更新目标子任务的状态/标题。cortana可通过此接口标记任务完成。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "level": map[string]string{"type": "string", "description": "目标层级"}, "period": map[string]string{"type": "string", "description": "周期标识"}, "taskID": map[string]string{"type": "string", "description": "任务ID"}, "status": map[string]string{"type": "string", "description": "新状态:pending/in_progress/completed/cancelled"}, "title": map[string]string{"type": "string", "description": "新标题(可选)"}}, "required": []string{"account", "level", "period", "taskID"}}}},
 	}
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
 	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射

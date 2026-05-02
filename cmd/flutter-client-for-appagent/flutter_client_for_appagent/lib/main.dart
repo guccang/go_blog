@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
@@ -22,6 +23,8 @@ import 'cortana_broadcast_queue.dart';
 import 'cortana_page.dart'
     show
         CortanaDisplayMode,
+        CortanaLogFile,
+        CortanaLogSource,
         CortanaPage,
         CortanaPageState,
         CortanaReplayItem,
@@ -1517,6 +1520,69 @@ class AppAgentClient {
     return groups;
   }
 
+  Future<List<CortanaLogSource>> listLogSources() async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/logs/sources?user_id=$userId&session_token=$sessionToken',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list log sources', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final items = data['sources'] as List<dynamic>? ?? const [];
+    return items.map((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      return CortanaLogSource(
+        name: (map['name'] as String? ?? '').trim(),
+        path: (map['path'] as String? ?? '').trim(),
+        description: (map['description'] as String? ?? '').trim(),
+      );
+    }).toList();
+  }
+
+  Future<List<CortanaLogFile>> listLogFiles(String source) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/logs/files?user_id=$userId&session_token=$sessionToken&source=${Uri.encodeQueryComponent(source)}',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list log files', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final items = data['files'] as List<dynamic>? ?? const [];
+    return items.map((item) {
+      final map = Map<String, dynamic>.from(item as Map);
+      final modifiedAtMs = (map['modified_at'] as num?)?.toInt();
+      return CortanaLogFile(
+        name: (map['name'] as String? ?? '').trim(),
+        path: (map['path'] as String? ?? '').trim(),
+        size: (map['size'] as num?)?.toInt() ?? 0,
+        modifiedAt: modifiedAtMs == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(modifiedAtMs),
+        modifiedText: (map['modified_text'] as String? ?? '').trim(),
+      );
+    }).toList();
+  }
+
+  Future<String> readLogFile(String source, String file, {int lines = 400}) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/logs/content?user_id=$userId&session_token=$sessionToken&source=${Uri.encodeQueryComponent(source)}&file=${Uri.encodeQueryComponent(file)}&lines=$lines',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('read log file', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return (data['content'] as String? ?? '').trim();
+  }
+
   Future<List<GroupInfo>> mutateGroup(String action, String groupId) async {
     final uri = Uri.parse('$baseUrl/api/app/groups');
     final resp = await http
@@ -1558,12 +1624,11 @@ class AppAgentClient {
     );
   }
 
-  Future<WebSocket> connectWebSocket() {
-    final uri = _buildWsUri(baseUrl, userId, sessionToken);
-    return WebSocket.connect(
-      uri.toString(),
-      headers: _sessionHeaders(),
-    ).timeout(_wsConnectTimeout);
+  Future<WebSocketChannel> connectWebSocket() async {
+    final uri = _buildWsUri(baseUrl, userId, sessionToken, receiveToken);
+    final channel = WebSocketChannel.connect(uri);
+    await channel.ready.timeout(_wsConnectTimeout);
+    return channel;
   }
 
   Future<List<int>> downloadAttachment(String fileId) async {
@@ -1599,7 +1664,12 @@ class AppAgentClient {
     );
   }
 
-  static Uri _buildWsUri(String baseUrl, String userId, String sessionToken) {
+  static Uri _buildWsUri(
+    String baseUrl,
+    String userId,
+    String sessionToken,
+    String receiveToken,
+  ) {
     final base = Uri.parse(baseUrl);
     final scheme = base.scheme == 'https' ? 'wss' : 'ws';
     final pathSegments = <String>[
@@ -1612,6 +1682,7 @@ class AppAgentClient {
       pathSegments: pathSegments,
       queryParameters: <String, String>{
         'user_id': userId,
+        if (receiveToken.trim().isNotEmpty) 'token': receiveToken.trim(),
         if (sessionToken.trim().isNotEmpty)
           'session_token': sessionToken.trim(),
       },
@@ -1709,9 +1780,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
   final Set<String> _consumedCortanaReplyKeys = <String>{};
-  final Map<String, DateTime> _cortanaUiEventAt = <String, DateTime>{};
 
-  WebSocket? _socket;
+  WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
   Timer? _streamFlushTimer;
@@ -1776,6 +1846,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final CortanaBroadcastQueue _cortanaBroadcastQueue = CortanaBroadcastQueue();
   String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
+  bool _startupGreetingShown = false;
+  bool _loginGreetingShown = false;
 
   @override
   void initState() {
@@ -1838,7 +1910,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cortanaExpressionTimer?.cancel();
     _streamFlushTimer?.cancel();
     unawaited(_socketSub?.cancel());
-    unawaited(_socket?.close());
+    unawaited(_socket?.sink.close());
     _userIdController.dispose();
     _passwordController.dispose();
     _baseUrlController.dispose();
@@ -2314,6 +2386,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _status = 'Config loaded';
       });
       _appendSystem('Client config loaded.');
+      _maybeShowStartupGreeting();
       unawaited(_initVoice());
       unawaited(_restoreSavedLogin());
     } catch (err) {
@@ -2470,7 +2543,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _closeSocketForSessionReset() async {
     _reconnectTimer?.cancel();
     await _socketSub?.cancel();
-    await _socket?.close();
+    await _socket?.sink.close();
     _socketSub = null;
     _socket = null;
     _connecting = false;
@@ -2550,6 +2623,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (successMessage != null && successMessage.trim().isNotEmpty) {
       _appendSystem(successMessage.trim());
     }
+    _maybeShowLoginGreeting(restored: !clearPassword);
     unawaited(_connectWs());
     unawaited(_restoreVoskDownloadProgress());
   }
@@ -2581,6 +2655,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _deployProjects.clear();
         _codegenError = '';
         _status = status;
+        _loginGreetingShown = false;
       });
     } else {
       _loggingIn = false;
@@ -2599,6 +2674,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _deployProjects.clear();
       _codegenError = '';
       _status = status;
+      _loginGreetingShown = false;
     }
   }
 
@@ -3701,6 +3777,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final motion = (meta['cortana_motion'] ?? 'IdleWave').toString().trim();
 
     // 提取 TTS 音频数据
+    final audioPath = (meta['cortana_audio_path'] ?? '').toString().trim();
     final audioBase64 = (meta['cortana_audio_base64'] ?? '').toString().trim();
     final audioFormat = (meta['cortana_audio_format'] ?? '').toString().trim();
     Uint8List? audioBytes;
@@ -3713,11 +3790,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
 
     debugPrint(
-      '[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion audio=${audioBytes != null ? "${audioBytes.length}bytes" : "none"}',
+      '[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion audioPath=${audioPath.isEmpty ? "none" : audioPath} audio=${audioBytes != null ? "${audioBytes.length}bytes" : "none"}',
     );
 
     final payload = CortanaReplyPayload(
       text: broadcastText,
+      audioPath: audioPath,
       audioBytes: audioBytes,
       audioFormat: audioFormat,
       actionPlan: <String, dynamic>{
@@ -3728,6 +3806,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ],
       },
     );
+
+    if (audioPath.isEmpty && audioBytes == null) {
+      debugPrint(
+        '[Cortana Broadcast] audio missing, fallback to text-only broadcast',
+      );
+    }
 
     if (!mounted) return;
 
@@ -3846,17 +3930,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _reportCortanaUiEvent(
-    String eventKind, {
-    String summary = '',
-    Duration cooldown = const Duration(seconds: 12),
-  }) {
-    final now = DateTime.now();
-    final last = _cortanaUiEventAt[eventKind];
-    if (last != null && now.difference(last) < cooldown) {
-      return;
-    }
-    _cortanaUiEventAt[eventKind] = now;
+  void _reportCortanaUiEvent(String eventKind, {String summary = ''}) {
     unawaited(
       _runAuthed('Report Cortana UI event', (client) {
         return client.sendCortanaEvent(
@@ -3964,6 +4038,45 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       updateStatus: text,
     );
+  }
+
+  void _showGreetingSnackBar(String text) {
+    if (!mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (messenger == null) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
+        );
+    });
+  }
+
+  void _maybeShowStartupGreeting() {
+    if (_startupGreetingShown) {
+      return;
+    }
+    _startupGreetingShown = true;
+    _appendSystem('欢迎来到 App Agent，可以先登录，也可以先查看当前配置。');
+    _showGreetingSnackBar('欢迎来到 App Agent');
+  }
+
+  void _maybeShowLoginGreeting({required bool restored}) {
+    if (_loginGreetingShown) {
+      return;
+    }
+    _loginGreetingShown = true;
+    final text = restored ? '欢迎回来，连接已恢复，可以继续对话。' : '登录成功，欢迎回来，可以开始对话。';
+    _appendSystem(text);
+    _showGreetingSnackBar(restored ? '欢迎回来' : '登录成功');
   }
 
   void _appendOutgoing(
@@ -4757,10 +4870,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         (client) => client.connectWebSocket(),
       );
       await _socketSub?.cancel();
-      await _socket?.close();
+      await _socket?.sink.close();
 
       _socket = socket;
-      _socketSub = socket.listen(
+      _socketSub = socket.stream.listen(
         _onWsData,
         onError: (Object err, StackTrace stackTrace) {
           _handleSocketClosed('WebSocket error: $err');
@@ -4799,7 +4912,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _autoReconnect = false;
     _reconnectTimer?.cancel();
     await _socketSub?.cancel();
-    await _socket?.close();
+    await _socket?.sink.close();
     _socketSub = null;
     _socket = null;
     if (mounted) {
@@ -4957,7 +5070,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     try {
-      socket.add(
+      socket.sink.add(
         jsonEncode(<String, dynamic>{'type': 'ack', 'message_id': messageId}),
       );
     } catch (_) {}
@@ -7564,23 +7677,50 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Widget _buildCortanaLayer() {
     final isFullscreen = _rootTab == RootTab.cortana;
+    final floatingBottomInset = _rootTab == RootTab.chat ? 116.0 : 28.0;
     return CortanaPage(
       key: _cortanaPageKey,
       mode: isFullscreen ? CortanaDisplayMode.fullscreen : _cortanaFloatingMode,
       onSendMessage: _sendCortanaMessage,
+      onListLogSources: () => _runAuthed(
+        'List log sources',
+        (client) => client.listLogSources(),
+      ),
+      onListLogFiles: (source) => _runAuthed(
+        'List log files',
+        (client) => client.listLogFiles(source),
+      ),
+      onReadLogFile: (source, file) => _runAuthed(
+        'Read log file',
+        (client) => client.readLogFile(source, file),
+      ),
       externalVoiceHistory: _buildCortanaReplayHistory(),
       contextualExpression: _cortanaContextualExpression,
       showBadge: _cortanaBadge,
       autoCollapseDelay: const Duration(seconds: 8),
+      floatingBottomInset: floatingBottomInset,
       onTapWhenFloating: () {
+        setState(() {
+          _cortanaBadge = false;
+          _cortanaFloatingMode =
+              _cortanaFloatingMode == CortanaDisplayMode.collapsed
+              ? CortanaDisplayMode.small
+              : _cortanaFloatingMode;
+        });
+        _reportCortanaUiEvent(
+          'cortana_floating_tap',
+          summary: '用户点击了 Cortana 浮动按钮并展开小窗',
+        );
+      },
+      onLongPressWhenFloating: () {
         setState(() {
           _cortanaBadge = false;
           _rootTab = RootTab.cortana;
           _cortanaFloatingMode = CortanaDisplayMode.collapsed;
         });
         _reportCortanaUiEvent(
-          'cortana_floating_tap',
-          summary: '用户点击了 Cortana 浮动页签',
+          'cortana_floating_long_press',
+          summary: '用户长按 Cortana 浮动按钮并进入页签',
         );
       },
       onModeChanged: (mode) {

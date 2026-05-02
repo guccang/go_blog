@@ -26,6 +26,10 @@
                 <i class="fas fa-check-square"></i>
                 <span>每日任务</span>
             </a>
+            <a href="/goal" class="nav-item">
+                <i class="fas fa-flag-checkered"></i>
+                <span>目标管理</span>
+            </a>
             <a href="/monthgoal" class="nav-item">
                 <i class="fas fa-calendar-alt"></i>
                 <span>月度计划</span>

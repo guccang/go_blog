@@ -168,6 +168,18 @@ func isContextCommand(content string) bool {
 	return false
 }
 
+// isStatusCommand 判断是否为状态查看命令
+func isStatusCommand(content string) bool {
+	content = strings.TrimSpace(content)
+	cmds := []string{"/status", "status", "状态"}
+	for _, cmd := range cmds {
+		if strings.EqualFold(content, cmd) {
+			return true
+		}
+	}
+	return false
+}
+
 // isStopCommand 判断是否为停止任务命令
 func isStopCommand(content string) bool {
 	content = strings.TrimSpace(content)
@@ -287,6 +299,17 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	// 3. 上下文查看命令
 	if isContextCommand(content) {
 		reply := b.buildContextDebugInfo("wechat", wechatUser)
+		b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
+			Channel: "wechat",
+			To:      wechatUser,
+			Content: reply,
+		})
+		return
+	}
+
+	// 3.1 状态查看命令
+	if isStatusCommand(content) {
+		reply := b.buildStatusInfo("wechat", wechatUser)
 		b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
 			Channel: "wechat",
 			To:      wechatUser,
@@ -589,6 +612,134 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 		for _, line := range chatPreviews {
 			sb.WriteString("  ")
 			sb.WriteString(line)
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// buildStatusInfo 构建当前运行状态概览：模型、调用统计、活跃会话、Agent 状态
+func (b *Bridge) buildStatusInfo(source, userID string) string {
+	var sb strings.Builder
+
+	sb.WriteString("📊 Status\n")
+	sb.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
+
+	// 1. 当前模型
+	if b.activeLLM != nil {
+		provider, modelKey, modelID := b.activeLLM.GetInfo()
+		cfg := b.activeLLM.Get()
+		sb.WriteString(fmt.Sprintf("🤖 当前模型: %s/%s (%s)\n", provider, modelKey, modelID))
+		sb.WriteString(fmt.Sprintf("   max_tokens=%d temperature=%.2f\n", cfg.MaxTokens, cfg.Temperature))
+		if sc, ok := b.sourceLLMs[source]; ok {
+			sb.WriteString(fmt.Sprintf("   渠道覆盖: %s/%s\n", sc.LLM.Provider, sc.LLM.Model))
+		}
+	} else {
+		sb.WriteString("🤖 当前模型: 未初始化\n")
+	}
+
+	// 2. 调用统计
+	sb.WriteString("\n📈 调用统计:\n")
+	if b.tokenStats != nil {
+		if summary := b.tokenStats.Summary(); summary != "" {
+			// Summary 输出已经包含格式化的 token/流量/5xx/分模型明细
+			// 添加缩进以符合整体格式
+			for _, line := range strings.Split(summary, "\n") {
+				if line != "" {
+					sb.WriteString("   ")
+					sb.WriteString(line)
+					sb.WriteString("\n")
+				}
+			}
+		} else {
+			sb.WriteString("   暂无调用记录\n")
+		}
+	} else {
+		sb.WriteString("   统计未启用\n")
+	}
+
+	// 3. 活跃会话
+	sb.WriteString("\n📋 活跃会话:\n")
+	total, bySource := b.sessionMgr.SessionStats()
+	if total == 0 {
+		sb.WriteString("   无活跃会话\n")
+	} else {
+		sb.WriteString(fmt.Sprintf("   总数: %d", total))
+		// 按 source 排序输出
+		keys := make([]string, 0, len(bySource))
+		for k := range bySource {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			sb.WriteString(fmt.Sprintf(" | %s: %d", k, bySource[k]))
+		}
+		sb.WriteString("\n")
+	}
+
+	// 4. 当前会话上下文摘要
+	session := b.sessionMgr.Get(source, userID)
+	if session != nil {
+		session.mu.Lock()
+		sessionID := session.SessionID
+		turnCount := session.TurnCount
+		maxTurns := b.sessionMgr.maxTurns
+		msgCount := len(session.Messages)
+		lastActive := session.LastActiveAt
+		claudeMode := session.ClaudeMode
+		claudeCurrentMode := session.ClaudeCurrentMode
+		session.mu.Unlock()
+
+		sb.WriteString(fmt.Sprintf("\n💬 当前会话: %s\n", sessionID))
+		sb.WriteString(fmt.Sprintf("   source=%s user=%s\n", source, userID))
+		sb.WriteString(fmt.Sprintf("   活跃: %s | 轮次: %d/%d | 消息: %d\n",
+			lastActive.Format("2006-01-02 15:04"), turnCount, maxTurns, msgCount))
+		if claudeMode {
+			mode := "claude"
+			if strings.TrimSpace(claudeCurrentMode) != "" {
+				mode = "claude/" + strings.TrimSpace(claudeCurrentMode)
+			}
+			sb.WriteString(fmt.Sprintf("   模式: %s\n", mode))
+		}
+	} else {
+		sb.WriteString("\n💬 当前会话: 无活跃会话\n")
+	}
+
+	// 5. Agent 状态
+	b.catalogMu.RLock()
+	agents := make([]AgentInfo, 0, len(b.agentInfo))
+	for _, info := range b.agentInfo {
+		agents = append(agents, info)
+	}
+	b.catalogMu.RUnlock()
+
+	sb.WriteString("\n🔗 Agent 状态:\n")
+	if len(agents) == 0 {
+		sb.WriteString("   无已注册 Agent\n")
+	} else {
+		// 按 agent_id 排序
+		sort.Slice(agents, func(i, j int) bool {
+			return agents[i].ID < agents[j].ID
+		})
+		sb.WriteString(fmt.Sprintf("   总数: %d\n", len(agents)))
+		for _, a := range agents {
+			// 显示名称，优先 Name 再 ID
+			displayName := a.ID
+			if a.Name != "" {
+				displayName = a.Name + " (" + a.ID + ")"
+			}
+			sb.WriteString(fmt.Sprintf("   · %s\n", displayName))
+			if a.Description != "" {
+				sb.WriteString(fmt.Sprintf("     %s\n", a.Description))
+			}
+			sb.WriteString(fmt.Sprintf("     工具数: %d", len(a.ToolNames)))
+			if a.HostPlatform != "" {
+				sb.WriteString(fmt.Sprintf(" | 平台: %s", a.HostPlatform))
+			}
+			if a.HostIP != "" {
+				sb.WriteString(fmt.Sprintf(" | IP: %s", a.HostIP))
+			}
 			sb.WriteString("\n")
 		}
 	}

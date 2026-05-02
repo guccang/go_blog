@@ -718,6 +718,24 @@ func PageYearPlan(w h.ResponseWriter, year int) {
 	}
 }
 
+// PageGoal renders the unified goal management page
+func PageGoal(w h.ResponseWriter) {
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "goal.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse goal template", h.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render goal template", h.StatusInternalServerError)
+		return
+	}
+}
+
 // PageMonthGoal renders the month goal page
 func PageMonthGoal(w h.ResponseWriter, year int, month int) {
 	tmpDir := config.GetHttpTemplatePath()

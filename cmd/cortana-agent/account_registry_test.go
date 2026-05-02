@@ -55,3 +55,33 @@ func TestAccountRegistrySyncUserSession(t *testing.T) {
 		t.Fatalf("unexpected session: %#v", session)
 	}
 }
+
+func TestAppendInteractionKeepsLatestEntries(t *testing.T) {
+	registry := NewAccountRegistry()
+	registry.SyncUserSession(CortanaSyncUserPayload{
+		Account:    "demo",
+		Registered: true,
+		Online:     true,
+		Settings:   defaultCortanaUserSettings(),
+	})
+
+	for i := 0; i < 10; i++ {
+		registry.AppendInteraction("demo", map[string]any{
+			"summary": i,
+		})
+	}
+
+	session := registry.GetSession("demo")
+	if session == nil {
+		t.Fatalf("expected session")
+	}
+	if got := len(session.RecentInteractions); got != 8 {
+		t.Fatalf("expected 8 recent interactions, got %d", got)
+	}
+	if session.RecentInteractions[0]["summary"] != 2 {
+		t.Fatalf("expected oldest retained interaction to be 2, got %#v", session.RecentInteractions[0]["summary"])
+	}
+	if session.RecentInteractions[7]["summary"] != 9 {
+		t.Fatalf("expected latest retained interaction to be 9, got %#v", session.RecentInteractions[7]["summary"])
+	}
+}

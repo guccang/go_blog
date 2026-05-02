@@ -25,6 +25,8 @@ import (
 	"view"
 	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
 	"yearplan"
+
+	goalpkg "goal"
 )
 
 // Info displays package version information
@@ -259,7 +261,17 @@ func Init() int {
 	h.HandleFunc("/api/tasks/daily-overlap", taskbreakdown.HandleDailyTimeOverlap)
 	h.HandleFunc("/api/tasks/sync-to-todo", taskbreakdown.HandleSyncToTodo)
 
-	// Year plan and goal routes
+	// Goal management routes (unified daily/weekly/monthly/yearly)
+	h.HandleFunc("/goal", HandleGoal)
+	h.HandleFunc("/api/goal", goalpkg.HandleGetGoal)
+	h.HandleFunc("/api/goal/save", goalpkg.HandleSaveGoal)
+	h.HandleFunc("/api/goal/task", goalpkg.HandleAddGoalTask)
+	h.HandleFunc("/api/goal/task/update", goalpkg.HandleUpdateGoalTask)
+	h.HandleFunc("/api/goal/task/delete", goalpkg.HandleDeleteGoalTask)
+	h.HandleFunc("/api/goals/current", goalpkg.HandleGetCurrentGoals)
+	h.HandleFunc("/api/goals", goalpkg.HandleListGoals)
+
+	// Legacy year plan and goal routes (kept for backward compatibility)
 	h.HandleFunc("/yearplan", HandleYearPlan)
 	h.HandleFunc("/monthgoal", HandleMonthGoal)
 	h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)

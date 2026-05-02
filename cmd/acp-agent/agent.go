@@ -396,7 +396,7 @@ func (a *Agent) executeClaudeACP(conn *Connection, sessionID, requestID, project
 				},
 			})
 			a.cleanupSessionRecord(sessionID)
-			go acpSession.Close()
+			acpSession.Close()
 			return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
 		}
 
@@ -416,7 +416,7 @@ func (a *Agent) executeClaudeACP(conn *Connection, sessionID, requestID, project
 		if !shouldKeepSessionAlive(prompt, keepSession) {
 			log.Printf("[ACP] auto closing completed session: session=%s project=%s", sessionID, project)
 			a.cleanupSessionRecord(sessionID)
-			go acpSession.Close()
+			acpSession.Close()
 		}
 
 		a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
@@ -557,7 +557,7 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 			},
 		})
 		a.cleanupSessionRecord(sessionID)
-		go acpSession.Close()
+		acpSession.Close()
 		return taskResult{Status: "error"}, fmt.Errorf("acp prompt: %v", err)
 	}
 
@@ -583,7 +583,7 @@ func (a *Agent) SendMessage(conn *Connection, sessionID, requestID, prompt strin
 		log.Printf("[ACP] auto closing completed follow-up session: session=%s project=%s", sessionID, project)
 		a.completeSession(sessionID, "completed", summary)
 		a.cleanupSessionRecord(sessionID)
-		go acpSession.Close()
+		acpSession.Close()
 	}
 
 	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{

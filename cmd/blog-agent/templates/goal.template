@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>目标管理</title>
+    <link rel="stylesheet" href="/statics/css/style.css">
+    <style>
+        .goal-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .goal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .goal-tabs { display: flex; gap: 4px; background: #2a2a3e; border-radius: 12px; padding: 4px; }
+        .goal-tab { padding: 10px 24px; border-radius: 10px; cursor: pointer; color: #999; font-size: 14px; transition: all 0.2s; border: none; background: transparent; }
+        .goal-tab:hover { color: #fff; }
+        .goal-tab.active { background: #4f46e5; color: #fff; }
+        .goal-card { background: #1e1e2e; border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+        .goal-overview { width: 100%; min-height: 80px; background: #16162a; border: 1px solid #333; border-radius: 10px; color: #e0e0e0; padding: 14px; font-size: 14px; resize: vertical; font-family: inherit; margin-bottom: 12px; }
+        .goal-overview:focus { outline: none; border-color: #4f46e5; }
+        .goal-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+        .goal-progress { flex: 1; }
+        .progress-bar { height: 6px; background: #333; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 3px; transition: width 0.3s; }
+        .progress-text { font-size: 12px; color: #888; margin-top: 4px; }
+        .btn { padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; border: none; transition: all 0.2s; }
+        .btn-primary { background: #4f46e5; color: #fff; }
+        .btn-primary:hover { background: #4338ca; }
+        .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
+        .btn-danger { background: transparent; color: #ef4444; border: 1px solid #ef4444; }
+        .btn-success { background: transparent; color: #22c55e; border: 1px solid #22c55e; }
+        .task-list { list-style: none; padding: 0; margin: 0; }
+        .task-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #16162a; border-radius: 8px; margin-bottom: 8px; transition: background 0.2s; }
+        .task-item:hover { background: #22223a; }
+        .task-checkbox { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #555; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; transition: all 0.2s; }
+        .task-checkbox.done { background: #22c55e; border-color: #22c55e; color: #fff; }
+        .task-title { flex: 1; font-size: 14px; color: #e0e0e0; }
+        .task-title.done { text-decoration: line-through; color: #666; }
+        .task-priority { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #333; color: #aaa; }
+        .task-priority.high { background: #7c1d1d; color: #fca5a5; }
+        .task-actions { display: flex; gap: 4px; }
+        .add-task-row { display: flex; gap: 8px; margin-top: 12px; }
+        .add-task-input { flex: 1; background: #16162a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; padding: 8px 12px; font-size: 13px; }
+        .add-task-input:focus { outline: none; border-color: #4f46e5; }
+        .priority-select { background: #16162a; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; padding: 8px; font-size: 13px; }
+        .period-label { font-size: 13px; color: #888; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        .goal-status { font-size: 12px; padding: 4px 10px; border-radius: 6px; }
+        .goal-status.active { background: #1e3a5f; color: #60a5fa; }
+        .goal-status.completed { background: #14532d; color: #4ade80; }
+    </style>
+</head>
+<body>
+    <div class="goal-container">
+        <div class="goal-header">
+            <h2 style="margin:0; color:#e0e0e0;">目标管理</h2>
+            <div class="goal-tabs" id="tabs">
+                <button class="goal-tab active" data-level="daily">日目标</button>
+                <button class="goal-tab" data-level="weekly">周目标</button>
+                <button class="goal-tab" data-level="monthly">月目标</button>
+                <button class="goal-tab" data-level="yearly">年目标</button>
+            </div>
+        </div>
+
+        <div id="goalContent"></div>
+    </div>
+
+    <script src="/statics/js/goal.js"></script>
+</body>
+</html>

@@ -262,6 +262,10 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 		rt.bridge.hooks.FireToolCall(call.Task, record)
 	}
 
+	if success && bizErr == "" && call.Source == "app" {
+		go rt.bridge.triggerCortanaToolEvent(call.Account, originalName, call.ToolCall.Function.Arguments, result)
+	}
+
 	return ToolExecutionResult{
 		ToolName:    originalName,
 		Result:      result,

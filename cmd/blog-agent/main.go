@@ -10,6 +10,7 @@ import (
 	"delegation"
 	"exercise"
 	"fmt"
+	"goal"
 	"http"
 	"ioutils"
 	"llm"
@@ -75,6 +76,7 @@ func main() {
 	tools.Info()
 	exercise.Info()
 	reading.Info()
+	goal.Info()
 
 	// Init
 	config.Init(args[1])
@@ -173,6 +175,7 @@ func main() {
 	llm.Init()
 	sms.Init()
 	exercise.Init()
+	goal.InitGoalModule()
 	share.Init()
 
 	// 注入 AI 路由处理器到 codegen（处理非 cg 命令的微信消息）

@@ -524,6 +524,53 @@ func shortCronContent(content string) string {
 	return content[:80] + "..."
 }
 
+func (b *Bridge) triggerCortanaToolEvent(account, toolName, argsJSON, result string) {
+	account = strings.TrimSpace(account)
+	toolName = strings.TrimSpace(toolName)
+	if account == "" || toolName == "" {
+		return
+	}
+
+	toolName = strings.TrimPrefix(toolName, "Inner_blog.")
+	var triggerReason string
+	switch toolName {
+	case "RawAddTodo":
+		triggerReason = "todo_created"
+	case "RawToggleTodo":
+		triggerReason = "todo_toggled"
+	case "RawUpdateTodo":
+		triggerReason = "todo_updated"
+	case "RawDeleteTodo":
+		triggerReason = "todo_deleted"
+	default:
+		return
+	}
+
+	var args map[string]any
+	_ = json.Unmarshal([]byte(argsJSON), &args)
+	var resultPayload any
+	_ = json.Unmarshal([]byte(result), &resultPayload)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account":        account,
+		"trigger_source": "tool_result",
+		"trigger_reason": triggerReason,
+		"summary":        toolName,
+		"content":        strings.TrimSpace(result),
+		"timestamp":      time.Now().UnixMilli(),
+		"metadata": map[string]any{
+			"tool_name": toolName,
+			"arguments": args,
+			"result":    resultPayload,
+		},
+	})
+	if _, err := b.CallTool("cortana.TriggerEvent", payload); err != nil {
+		log.Printf("[CortanaToolEvent] trigger failed account=%s tool=%s err=%v", account, toolName, err)
+		return
+	}
+	log.Printf("[CortanaToolEvent] trigger sent account=%s tool=%s reason=%s", account, toolName, triggerReason)
+}
+
 // findWechatAgent 查找在线的 wechat-agent ID
 func (b *Bridge) findWechatAgent() string {
 	b.catalogMu.RLock()
