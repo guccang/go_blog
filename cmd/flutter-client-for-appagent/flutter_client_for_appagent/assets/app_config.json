@@ -6,5 +6,11 @@
   "cortana_enabled_default": true,
   "cortana_allow_full_access_default": true,
   "cortana_auto_play_default": true,
-  "cortana_proactive_mode_default": "high"
+  "cortana_proactive_mode_default": "high",
+  "cortana_high_freq_start_hour_default": 9,
+  "cortana_high_freq_start_minute_default": 0,
+  "cortana_high_freq_end_hour_default": 22,
+  "cortana_high_freq_end_minute_default": 0,
+  "cortana_persona_name_default": "Cortana",
+  "cortana_persona_description_default": ""
 }

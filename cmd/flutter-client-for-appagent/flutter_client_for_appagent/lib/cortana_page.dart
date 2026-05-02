@@ -9,6 +9,103 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 enum CortanaDisplayMode { fullscreen, expanded, small, collapsed }
 
+class CortanaSettings {
+  const CortanaSettings({
+    this.enabled = true,
+    this.allowFullAccess = true,
+    this.autoPlay = true,
+    this.proactiveMode = 'high',
+    this.highFreqStartHour = 9,
+    this.highFreqStartMinute = 0,
+    this.highFreqEndHour = 22,
+    this.highFreqEndMinute = 0,
+    this.personaName = 'Cortana',
+    this.personaDescription = '',
+  });
+
+  final bool enabled;
+  final bool allowFullAccess;
+  final bool autoPlay;
+  final String proactiveMode;
+  final int highFreqStartHour;
+  final int highFreqStartMinute;
+  final int highFreqEndHour;
+  final int highFreqEndMinute;
+  final String personaName;
+  final String personaDescription;
+
+  CortanaSettings copyWith({
+    bool? enabled,
+    bool? allowFullAccess,
+    bool? autoPlay,
+    String? proactiveMode,
+    int? highFreqStartHour,
+    int? highFreqStartMinute,
+    int? highFreqEndHour,
+    int? highFreqEndMinute,
+    String? personaName,
+    String? personaDescription,
+  }) {
+    return CortanaSettings(
+      enabled: enabled ?? this.enabled,
+      allowFullAccess: allowFullAccess ?? this.allowFullAccess,
+      autoPlay: autoPlay ?? this.autoPlay,
+      proactiveMode: proactiveMode ?? this.proactiveMode,
+      highFreqStartHour: highFreqStartHour ?? this.highFreqStartHour,
+      highFreqStartMinute: highFreqStartMinute ?? this.highFreqStartMinute,
+      highFreqEndHour: highFreqEndHour ?? this.highFreqEndHour,
+      highFreqEndMinute: highFreqEndMinute ?? this.highFreqEndMinute,
+      personaName: personaName ?? this.personaName,
+      personaDescription: personaDescription ?? this.personaDescription,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'enabled': enabled,
+      'allow_full_access': allowFullAccess,
+      'auto_play': autoPlay,
+      'proactive_mode': proactiveMode,
+      'high_freq_start_hour': highFreqStartHour,
+      'high_freq_start_minute': highFreqStartMinute,
+      'high_freq_end_hour': highFreqEndHour,
+      'high_freq_end_minute': highFreqEndMinute,
+      'persona_name': personaName,
+      'persona_description': personaDescription,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CortanaSettings &&
+        other.enabled == enabled &&
+        other.allowFullAccess == allowFullAccess &&
+        other.autoPlay == autoPlay &&
+        other.proactiveMode == proactiveMode &&
+        other.highFreqStartHour == highFreqStartHour &&
+        other.highFreqStartMinute == highFreqStartMinute &&
+        other.highFreqEndHour == highFreqEndHour &&
+        other.highFreqEndMinute == highFreqEndMinute &&
+        other.personaName == personaName &&
+        other.personaDescription == personaDescription;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        enabled,
+        allowFullAccess,
+        autoPlay,
+        proactiveMode,
+        highFreqStartHour,
+        highFreqStartMinute,
+        highFreqEndHour,
+        highFreqEndMinute,
+        personaName,
+        personaDescription,
+      );
+}
+
 class CortanaReplyPayload {
   const CortanaReplyPayload({
     required this.text,
@@ -123,6 +220,8 @@ class CortanaPage extends StatefulWidget {
     this.onListLogSources,
     this.onListLogFiles,
     this.onReadLogFile,
+    this.settings = const CortanaSettings(),
+    this.onSettingsChanged,
   });
 
   final CortanaDisplayMode mode;
@@ -139,6 +238,8 @@ class CortanaPage extends StatefulWidget {
   final Future<List<CortanaLogSource>> Function()? onListLogSources;
   final Future<List<CortanaLogFile>> Function(String source)? onListLogFiles;
   final Future<String> Function(String source, String file)? onReadLogFile;
+  final CortanaSettings settings;
+  final ValueChanged<CortanaSettings>? onSettingsChanged;
 
   @override
   State<CortanaPage> createState() => CortanaPageState();
@@ -168,7 +269,10 @@ class CortanaPageState extends State<CortanaPage> {
   double _modelUserScale = 1.0;
   double _modelUserOffsetX = 0.0;
   double _modelUserOffsetY = 0.0;
+  final TextEditingController _personaNameCtrl = TextEditingController();
+  final TextEditingController _personaDescCtrl = TextEditingController();
   bool _controlPanelVisible = false;
+  bool _cortanaSettingsExpanded = false;
   bool _live2dSummaryExpanded = false;
   bool _expressionActionsExpanded = false;
   bool _viewControlsExpanded = false;
@@ -257,6 +361,8 @@ class CortanaPageState extends State<CortanaPage> {
       const Duration(seconds: 3),
       (_) => unawaited(_refreshLive2dDebugState()),
     );
+    _personaNameCtrl.text = widget.settings.personaName;
+    _personaDescCtrl.text = widget.settings.personaDescription;
   }
 
   @override
@@ -268,6 +374,14 @@ class CortanaPageState extends State<CortanaPage> {
       final expr = _normalizeExpression(widget.contextualExpression!);
       unawaited(_callJS("window.setExpression('$expr')"));
     }
+    if (widget.settings != oldWidget.settings) {
+      if (widget.settings.personaName != _personaNameCtrl.text) {
+        _personaNameCtrl.text = widget.settings.personaName;
+      }
+      if (widget.settings.personaDescription != _personaDescCtrl.text) {
+        _personaDescCtrl.text = widget.settings.personaDescription;
+      }
+    }
   }
 
   @override
@@ -277,6 +391,8 @@ class CortanaPageState extends State<CortanaPage> {
     _broadcastAutoCollapseTimer?.cancel();
     _audio.dispose();
     _textCtrl.dispose();
+    _personaNameCtrl.dispose();
+    _personaDescCtrl.dispose();
     final localhostServer = _localhostServer;
     if (localhostServer != null) {
       unawaited(localhostServer.close());
@@ -548,9 +664,8 @@ class CortanaPageState extends State<CortanaPage> {
         ctrl.addJavaScriptHandler(
           handlerName: _jsLogHandlerName,
           callback: (args) {
-            final payload = args.isNotEmpty ? args.first : null;
-            debugPrint('[Cortana Bridge] $payload');
-            _appendLog('Bridge: $payload');
+            // Agent bridge logs are suppressed;
+            // only Flutter-native logs are displayed.
             return {'ok': true};
           },
         );
@@ -567,8 +682,8 @@ class CortanaPageState extends State<CortanaPage> {
         await _refreshLive2dDebugState();
       },
       onConsoleMessage: (ctrl, msg) {
-        debugPrint('[Cortana Console] ${msg.message}');
-        _appendLog('Console: ${msg.message}');
+        // Agent logs from WebView console are suppressed;
+        // only Flutter-native logs are displayed.
       },
       onReceivedError: (ctrl, request, error) {
         debugPrint(
@@ -1928,6 +2043,187 @@ class CortanaPageState extends State<CortanaPage> {
     );
   }
 
+  Widget _buildCortanaSettingsContent(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final s = widget.settings;
+    final cb = widget.onSettingsChanged;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile.adaptive(
+          value: s.enabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('启用 Cortana'),
+          subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
+          onChanged: cb == null
+              ? null
+              : (v) => cb(s.copyWith(enabled: v)),
+        ),
+        SwitchListTile.adaptive(
+          value: s.allowFullAccess,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('允许全量感知'),
+          subtitle: const Text('开放待办、锻炼、阅读、年度目标等数据'),
+          onChanged: !s.enabled || cb == null
+              ? null
+              : (v) => cb(s.copyWith(allowFullAccess: v)),
+        ),
+        SwitchListTile.adaptive(
+          value: s.autoPlay,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('主动播报自动播放'),
+          subtitle: const Text('收到主动互动后直接语音播报'),
+          onChanged: !s.enabled || cb == null
+              ? null
+              : (v) => cb(s.copyWith(autoPlay: v)),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          value: s.proactiveMode,
+          decoration: const InputDecoration(
+            labelText: '主动模式',
+            isDense: true,
+          ),
+          items: const [
+            DropdownMenuItem(value: 'high', child: Text('High')),
+            DropdownMenuItem(value: 'normal', child: Text('Normal')),
+            DropdownMenuItem(value: 'low', child: Text('Low')),
+          ],
+          onChanged: !s.enabled || cb == null
+              ? null
+              : (v) {
+                  if (v == null || v.trim().isEmpty) return;
+                  cb(s.copyWith(proactiveMode: v.trim()));
+                },
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '高频触发时间',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: cs.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '在此时间段内 Cortana 主动播报频率更高',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: cs.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildTimePicker(
+                context,
+                label: '开始',
+                hour: s.highFreqStartHour,
+                minute: s.highFreqStartMinute,
+                onChanged: cb == null
+                    ? null
+                    : (h, m) => cb(s.copyWith(
+                          highFreqStartHour: h,
+                          highFreqStartMinute: m,
+                        )),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Text('—'),
+            ),
+            Expanded(
+              child: _buildTimePicker(
+                context,
+                label: '结束',
+                hour: s.highFreqEndHour,
+                minute: s.highFreqEndMinute,
+                onChanged: cb == null
+                    ? null
+                    : (h, m) => cb(s.copyWith(
+                          highFreqEndHour: h,
+                          highFreqEndMinute: m,
+                        )),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '人设配置',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: cs.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _personaNameCtrl,
+          decoration: const InputDecoration(
+            labelText: '名称',
+            hintText: 'Cortana',
+            isDense: true,
+          ),
+          onChanged: cb == null
+              ? null
+              : (v) => cb(s.copyWith(personaName: v.trim())),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _personaDescCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: '人设描述',
+            hintText: '例如：你是一个友好、乐于助人的 AI 助手...',
+            isDense: true,
+            alignLabelWithHint: true,
+          ),
+          onChanged: cb == null
+              ? null
+              : (v) => cb(s.copyWith(personaDescription: v.trim())),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimePicker(
+    BuildContext context, {
+    required String label,
+    required int hour,
+    required int minute,
+    required void Function(int hour, int minute)? onChanged,
+  }) {
+    final hh = hour.toString().padLeft(2, '0');
+    final mm = minute.toString().padLeft(2, '0');
+    return InkWell(
+      onTap: onChanged == null
+          ? null
+          : () async {
+              final time = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(hour: hour, minute: minute),
+              );
+              if (time != null) {
+                onChanged(time.hour, time.minute);
+              }
+            },
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+        ),
+        child: Text(
+          '$hh:$mm',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+      ),
+    );
+  }
+
   Widget _buildControlPanel(
     BuildContext context, {
     required double overlayWidth,
@@ -1949,6 +2245,21 @@ class CortanaPageState extends State<CortanaPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _buildExpandableSectionCard(
+                  storageKey: 'cortana-settings',
+                  title: 'Cortana 设置',
+                  subtitle: _cortanaSettingsExpanded
+                      ? '点击收起'
+                      : '默认折叠，点击配置',
+                  expanded: _cortanaSettingsExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _cortanaSettingsExpanded = expanded;
+                    });
+                  },
+                  child: _buildCortanaSettingsContent(context),
+                ),
+                const SizedBox(height: 8),
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-live2d-summary',
                   title: 'Live2D 数据',

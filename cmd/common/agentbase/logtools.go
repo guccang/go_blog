@@ -1,15 +1,19 @@
 package agentbase
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"uap"
 )
+
+// ============================================================================
+// LogToolKit — agent 自身日志查询
+// ============================================================================
 
 // LogToolKit 日志查询工具包
 // 通过 UAP 工具机制暴露给 llm-agent 远程查询 agent 运行日志
@@ -67,53 +71,76 @@ func (lt *LogToolKit) HandleTool(toolName string, args map[string]interface{}) (
 
 // toolReadLog 查询日志文件（委托给公共函数 ReadLogFile）
 func (lt *LogToolKit) toolReadLog(args map[string]interface{}) string {
-	// 解析参数
-	lines := 200
-	if v, ok := args["lines"].(float64); ok && v > 0 {
-		lines = int(v)
-	}
-	if lines > 2000 {
-		lines = 2000
-	}
+	opts := ParseReadLogArgs(args)
 
-	keyword, _ := args["keyword"].(string)
-	startTimeStr, _ := args["start_time"].(string)
-	endTimeStr, _ := args["end_time"].(string)
-
-	// 解析时间范围
-	var startTime, endTime time.Time
-	if startTimeStr != "" {
-		t, err := parseLogTime(startTimeStr)
+	var err error
+	if v, ok := args["start_time"].(string); ok && v != "" {
+		opts.StartTime, err = ParseLogTime(v)
 		if err != nil {
 			return marshalResult(false, fmt.Sprintf("start_time 格式错误: %v", err), nil)
 		}
-		startTime = t
 	}
-	if endTimeStr != "" {
-		t, err := parseLogTime(endTimeStr)
+	if v, ok := args["end_time"].(string); ok && v != "" {
+		opts.EndTime, err = ParseLogTime(v)
 		if err != nil {
 			return marshalResult(false, fmt.Sprintf("end_time 格式错误: %v", err), nil)
 		}
-		endTime = t
 	}
 
-	return ReadLogFile(lt.logPath, lines, keyword, startTime, endTime)
+	return ReadLogFile(lt.logPath, opts)
 }
 
+// ============================================================================
+// ReadLogOptions — ReadLogFile 参数
+// ============================================================================
+
+// ReadLogOptions 日志查询选项
+type ReadLogOptions struct {
+	Lines           int       // 返回行数，默认 200，上限 2000
+	Keyword         string    // 关键词过滤
+	Regex           string    // 正则过滤
+	CaseInsensitive bool      // 不区分大小写
+	StartTime       time.Time // 起始时间
+	EndTime         time.Time // 结束时间
+}
+
+// ParseReadLogArgs 从 tool args 中解析 ReadLogOptions
+func ParseReadLogArgs(args map[string]interface{}) ReadLogOptions {
+	opts := ReadLogOptions{Lines: 200}
+
+	if v, ok := args["lines"].(float64); ok && v > 0 {
+		opts.Lines = int(v)
+	}
+	if opts.Lines > 2000 {
+		opts.Lines = 2000
+	}
+
+	opts.Keyword, _ = args["keyword"].(string)
+	opts.Regex, _ = args["regex"].(string)
+
+	if v, ok := args["case_sensitive"].(bool); ok {
+		opts.CaseInsensitive = !v
+	}
+
+	return opts
+}
+
+// ============================================================================
+// ReadLogFile — 核心日志查询
+// ============================================================================
+
 // ReadLogFile 通用日志查询（公共函数）
-// 从指定文件读取最后 lines 行，支持关键词和时间范围过滤
-// 返回 JSON 格式结果字符串
-func ReadLogFile(filePath string, lines int, keyword string, startTime, endTime time.Time) string {
-	if lines <= 0 {
-		lines = 200
+// 从指定文件读取最后 lines 行，支持关键词/正则/时间范围过滤
+func ReadLogFile(filePath string, opts ReadLogOptions) string {
+	if opts.Lines <= 0 {
+		opts.Lines = 200
 	}
-	if lines > 2000 {
-		lines = 2000
+	if opts.Lines > 2000 {
+		opts.Lines = 2000
 	}
 
-	hasTimeFilter := !startTime.IsZero() || !endTime.IsZero()
+	hasTimeFilter := !opts.StartTime.IsZero() || !opts.EndTime.IsZero()
 
-	// 打开日志文件
 	f, err := os.Open(filePath)
 	if err != nil {
 		return marshalResult(false, fmt.Sprintf("打开日志文件失败: %v", err), nil)
@@ -134,8 +161,22 @@ func ReadLogFile(filePath string, lines int, keyword string, startTime, endTime 
 		})
 	}
 
-	// 从文件末尾反向读取候选行（最多读 lines*10 行或 50000 行，确保过滤后有足够结果）
-	maxCandidates := lines * 10
+	// 编译正则
+	var re *regexp.Regexp
+	if opts.Regex != "" {
+		pattern := opts.Regex
+		if opts.CaseInsensitive {
+			pattern = "(?i)" + pattern
+		}
+		var err error
+		re, err = regexp.Compile(pattern)
+		if err != nil {
+			return marshalResult(false, fmt.Sprintf("正则表达式无效: %v", err), nil)
+		}
+	}
+
+	// 从文件末尾反向读取候选行
+	maxCandidates := opts.Lines * 10
 	if maxCandidates > 50000 {
 		maxCandidates = 50000
 	}
@@ -145,34 +186,45 @@ func ReadLogFile(filePath string, lines int, keyword string, startTime, endTime 
 	var matched []string
 	for _, line := range candidateLines {
 		// 关键词过滤
-		if keyword != "" && !strings.Contains(line, keyword) {
+		if opts.Keyword != "" {
+			if opts.CaseInsensitive {
+				if !strings.Contains(strings.ToLower(line), strings.ToLower(opts.Keyword)) {
+					continue
+				}
+			} else {
+				if !strings.Contains(line, opts.Keyword) {
+					continue
+				}
+			}
+		}
+
+		// 正则过滤
+		if re != nil && !re.MatchString(line) {
 			continue
 		}
+
 		// 时间范围过滤
 		if hasTimeFilter {
 			lineTime, ok := extractLineTime(line)
 			if ok {
-				if !startTime.IsZero() && lineTime.Before(startTime) {
+				if !opts.StartTime.IsZero() && lineTime.Before(opts.StartTime) {
 					continue
 				}
-				if !endTime.IsZero() && lineTime.After(endTime) {
+				if !opts.EndTime.IsZero() && lineTime.After(opts.EndTime) {
 					continue
 				}
 			}
-			// 无法解析时间的行：如果设置了时间过滤则跳过
 		}
 		matched = append(matched, line)
 	}
 
-	// 只取最后 lines 行
-	if len(matched) > lines {
-		matched = matched[len(matched)-lines:]
+	if len(matched) > opts.Lines {
+		matched = matched[len(matched)-opts.Lines:]
 	}
 
 	content := strings.Join(matched, "\n")
 	truncated := false
 
-	// 响应截断到 100KB
 	const maxResponseBytes = 100 * 1024
 	if len(content) > maxResponseBytes {
 		content = content[len(content)-maxResponseBytes:]
@@ -187,13 +239,17 @@ func ReadLogFile(filePath string, lines int, keyword string, startTime, endTime 
 	})
 }
 
+// ============================================================================
+// tailReadLines — 高效分块反向读取
+// ============================================================================
+
 // tailReadLines 从文件末尾反向分块读取，返回最后 maxLines 行
-// 使用 32KB 分块读取，不会将整个文件加载到内存
 func tailReadLines(f *os.File, fileSize int64, maxLines int) []string {
-	const chunkSize = 32 * 1024 // 32KB
+	const chunkSize = 32 * 1024
 
 	var buf []byte
 	offset := fileSize
+	totalNewlines := 0
 
 	for offset > 0 {
 		readSize := int64(chunkSize)
@@ -209,26 +265,22 @@ func tailReadLines(f *os.File, fileSize int64, maxLines int) []string {
 		}
 		chunk = chunk[:n]
 
-		// 拼接到 buf 前面
-		buf = append(chunk, buf...)
-
-		// 检查是否已有足够行数
-		lineCount := 0
-		for _, b := range buf {
+		for _, b := range chunk {
 			if b == '\n' {
-				lineCount++
+				totalNewlines++
 			}
 		}
-		if lineCount >= maxLines+1 {
+
+		buf = append(chunk, buf...)
+
+		if totalNewlines >= maxLines+1 {
 			break
 		}
 	}
 
-	// 按行分割
 	text := string(buf)
 	allLines := strings.Split(text, "\n")
 
-	// 去掉首尾空行
 	for len(allLines) > 0 && allLines[0] == "" {
 		allLines = allLines[1:]
 	}
@@ -236,7 +288,6 @@ func tailReadLines(f *os.File, fileSize int64, maxLines int) []string {
 		allLines = allLines[:len(allLines)-1]
 	}
 
-	// 只取最后 maxLines 行
 	if len(allLines) > maxLines {
 		allLines = allLines[len(allLines)-maxLines:]
 	}
@@ -244,31 +295,52 @@ func tailReadLines(f *os.File, fileSize int64, maxLines int) []string {
 	return allLines
 }
 
-// extractLineTime 从行首解析 Go 标准日志时间格式 "2006/01/02 15:04:05"
-func extractLineTime(line string) (time.Time, bool) {
-	// Go 标准 log 包格式: "2006/01/02 15:04:05 ..."
-	if len(line) < 19 {
-		return time.Time{}, false
-	}
-	timeStr := line[:19]
-	t, err := time.ParseInLocation("2006/01/02 15:04:05", timeStr, time.Local)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return t, true
+// ============================================================================
+// 时间解析
+// ============================================================================
+
+// 常见日志时间格式，按长度降序排列以优先匹配
+var logTimeFormats = []string{
+	time.RFC3339Nano,                 // "2006-01-02T15:04:05.999999999Z07:00"
+	"2006-01-02T15:04:05.000-07:00", // ISO 8601 with ms and tz
+	"2006-01-02T15:04:05.000Z",      // ISO 8601 with ms and Z
+	"2006-01-02T15:04:05-07:00",     // ISO 8601 with tz
+	"2006-01-02T15:04:05Z",          // ISO 8601 with Z
+	time.RFC3339,                      // "2006-01-02T15:04:05Z07:00"
+	"2006-01-02T15:04:05.000",       // ISO 8601 with ms, no tz
+	"2006-01-02T15:04:05",           // ISO 8601, no tz
+	"2006/01/02 15:04:05",           // Go standard log
+	"2006-01-02 15:04:05",           // ISO date + space-separated time
+	"2006/01/02 15:04:05.000",       // Go log with ms
+	"Jan  2 15:04:05",               // syslog (space-padded day)
+	"Jan 2 15:04:05",                // syslog (single-space day)
+	"2006-01-02",                    // date only
 }
 
-// parseLogTime 解析用户输入的时间参数
+// extractLineTime 从行首解析日志时间戳，支持多种常见格式
+func extractLineTime(line string) (time.Time, bool) {
+	for _, format := range logTimeFormats {
+		if len(line) < len(format) {
+			continue
+		}
+		candidate := line[:len(format)]
+		t, err := time.ParseInLocation(format, candidate, time.Local)
+		if err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// ParseLogTime 解析用户输入的时间参数
 // 支持完整格式 "2006-01-02 15:04:05" 和仅时间 "15:04:05"（补今天日期）
-func parseLogTime(s string) (time.Time, error) {
+func ParseLogTime(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 
-	// 完整格式
 	if t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local); err == nil {
 		return t, nil
 	}
 
-	// 仅时间，补今天日期
 	if t, err := time.ParseInLocation("15:04:05", s, time.Local); err == nil {
 		now := time.Now()
 		return time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local), nil
@@ -277,11 +349,8 @@ func parseLogTime(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("不支持的时间格式 %q，请使用 \"2006-01-02 15:04:05\" 或 \"15:04:05\"", s)
 }
 
-// mustMarshalJSONLog 内部序列化（避免与 filetools.go 的同名函数冲突）
-func mustMarshalJSONLog(v interface{}) json.RawMessage {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return json.RawMessage(`{}`)
-	}
-	return json.RawMessage(data)
+// TailReadLines 从文件末尾反向分块读取，返回最后 maxLines 行（导出供 log-agent 等使用）
+func TailReadLines(f *os.File, fileSize int64, maxLines int) []string {
+	return tailReadLines(f, fileSize, maxLines)
 }
+

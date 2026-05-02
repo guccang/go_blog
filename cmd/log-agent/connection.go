@@ -38,7 +38,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 
 	readLogDesc := fmt.Sprintf("查询指定日志源的日志文件。可用源: %s。用 ListLogSources 查看详情", sourcesStr)
 
-	tools := append(buildLogToolDefs(readLogDesc), logToolKit.ToolDefs()...)
+	tools := append(buildLogToolDefs(readLogDesc, sourcesStr), logToolKit.ToolDefs()...)
 
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
@@ -67,7 +67,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 }
 
 // buildLogToolDefs 构建 log-agent 的工具定义
-func buildLogToolDefs(readLogDesc string) []uap.ToolDef {
+func buildLogToolDefs(readLogDesc, sourcesStr string) []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "ListLogSources",
@@ -104,8 +104,66 @@ func buildLogToolDefs(readLogDesc string) []uap.ToolDef {
 						"type":        "string",
 						"description": "结束时间，格式同上",
 					},
+					"regex": map[string]interface{}{
+						"type":        "string",
+						"description": "正则表达式过滤，如 \"ERROR|FATAL\"，与 keyword 为 AND 关系",
+					},
+					"case_sensitive": map[string]interface{}{
+						"type":        "boolean",
+						"description": "关键词/正则是否区分大小写，默认 true。设为 false 则不区分",
+					},
 				},
 				"required": []string{"source"},
+			}),
+		},
+		{
+			Name:        "AnalyzeLog",
+			Description: fmt.Sprintf("对日志进行统计分析。可用源: %s。analysis 可选: top_errors(Top-N错误统计), error_timeline(时序分布), top_values(字段Top-N统计,配合 field), rate(频率/匹配率), summary(日志概览)。无需手写 grep/awk，按预设模板自动汇总", sourcesStr),
+			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"source": map[string]interface{}{
+						"type":        "string",
+						"description": "日志源名称",
+					},
+					"analysis": map[string]interface{}{
+						"type":        "string",
+						"description": "分析类型: top_errors, error_timeline, top_values, rate, summary",
+					},
+					"keyword": map[string]interface{}{
+						"type":        "string",
+						"description": "预过滤关键词，如 ERROR、WARN、指定 IP",
+					},
+					"field": map[string]interface{}{
+						"type":        "integer",
+						"description": "字段索引(1-based)，用于 top_values 提取指定列，如第1列填1",
+					},
+					"top_n": map[string]interface{}{
+						"type":        "integer",
+						"description": "返回 Top-N 条结果，默认 10，上限 100",
+					},
+					"interval": map[string]interface{}{
+						"type":        "string",
+						"description": "时间聚合粒度，用于 error_timeline: \"1m\"/\"5m\"/\"15m\"/\"1h\"，默认 \"5m\"",
+					},
+					"start_time": map[string]interface{}{
+						"type":        "string",
+						"description": "起始时间，格式 \"2006-01-02 15:04:05\" 或 \"15:04:05\"",
+					},
+					"end_time": map[string]interface{}{
+						"type":        "string",
+						"description": "结束时间，格式同上",
+					},
+					"file": map[string]interface{}{
+						"type":        "string",
+						"description": "日志文件名，不填则使用最新 .log 文件",
+					},
+					"lines": map[string]interface{}{
+						"type":        "integer",
+						"description": "扫描行数，默认 5000，上限 100000",
+					},
+				},
+				"required": []string{"source", "analysis"},
 			}),
 		},
 	}
@@ -151,6 +209,8 @@ func (c *Connection) handleToolCallMsg(msg *uap.Message) {
 		result = c.toolListLogSources()
 	case "ReadLog":
 		result = c.toolReadLog(args)
+	case "AnalyzeLog":
+		result = c.toolAnalyzeLog(args)
 	default:
 		c.Client.SendTo(msg.From, uap.MsgToolResult, uap.BuildToolError(msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName)))
 		return
@@ -171,21 +231,53 @@ func (c *Connection) handleError(msg *uap.Message) {
 
 // ========================= 工具实现 =========================
 
-// toolListLogSources 列出所有可查日志源
+// toolListLogSources 列出所有可查日志源（含文件统计）
 func (c *Connection) toolListLogSources() string {
 	type sourceInfo struct {
-		Name        string `json:"name"`
-		Path        string `json:"path"`
-		Description string `json:"description"`
+		Name         string `json:"name"`
+		Path         string `json:"path"`
+		Description  string `json:"description"`
+		FileCount    int    `json:"file_count"`
+		NewestFile   string `json:"newest_file,omitempty"`
+		LastModified string `json:"last_modified,omitempty"`
+		TotalSizeMB  int64  `json:"total_size_mb,omitempty"`
 	}
 
 	sources := make([]sourceInfo, 0, len(c.cfg.LogSources))
 	for name, src := range c.cfg.LogSources {
-		sources = append(sources, sourceInfo{
+		info := sourceInfo{
 			Name:        name,
 			Path:        src.Path,
 			Description: src.Description,
-		})
+		}
+
+		entries, err := os.ReadDir(src.Path)
+		if err == nil {
+			var latestTime time.Time
+			for _, e := range entries {
+				if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".log") {
+					continue
+				}
+				info.FileCount++
+				fi, fiErr := e.Info()
+				if fiErr != nil {
+					continue
+				}
+				info.TotalSizeMB += fi.Size()
+				if fi.ModTime().After(latestTime) {
+					latestTime = fi.ModTime()
+					info.NewestFile = e.Name()
+				}
+			}
+			if info.TotalSizeMB > 0 {
+				info.TotalSizeMB = info.TotalSizeMB / (1024 * 1024)
+			}
+			if !latestTime.IsZero() {
+				info.LastModified = latestTime.Format("2006-01-02 15:04:05")
+			}
+		}
+
+		sources = append(sources, info)
 	}
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
 
@@ -196,14 +288,13 @@ func (c *Connection) toolListLogSources() string {
 	return string(data)
 }
 
-// toolReadLog 查询指定日志源的日志
-func (c *Connection) toolReadLog(args map[string]interface{}) string {
+// resolveLogFile 根据 source+file 参数解析日志文件路径
+func (c *Connection) resolveLogFile(args map[string]interface{}) (string, string) {
 	source, _ := args["source"].(string)
 	if source == "" {
-		return agentbase.ErrorJSON("缺少 source 参数")
+		return "", agentbase.ErrorJSON("缺少 source 参数")
 	}
 
-	// 查找日志源
 	logSource, ok := c.cfg.LogSources[source]
 	if !ok {
 		names := make([]string, 0, len(c.cfg.LogSources))
@@ -211,80 +302,85 @@ func (c *Connection) toolReadLog(args map[string]interface{}) string {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		return agentbase.ErrorJSON(fmt.Sprintf("未知日志源 %q，可用源: %s", source, strings.Join(names, ", ")))
+		return "", agentbase.ErrorJSON(fmt.Sprintf("未知日志源 %q，可用源: %s", source, strings.Join(names, ", ")))
 	}
 
-	// 获取文件名
 	file, _ := args["file"].(string)
-	var filePath string
-
 	if file != "" {
-		// 指定了文件名 → 拼接路径并校验不逃逸
-		filePath = filepath.Join(logSource.Path, file)
-		// 路径逃逸检查：确保结果路径在 source.Path 下
+		filePath := filepath.Join(logSource.Path, file)
 		absPath, err := filepath.Abs(filePath)
 		if err != nil {
-			return agentbase.ErrorJSON(fmt.Sprintf("路径解析失败: %v", err))
+			return "", agentbase.ErrorJSON(fmt.Sprintf("路径解析失败: %v", err))
 		}
 		absBase, err := filepath.Abs(logSource.Path)
 		if err != nil {
-			return agentbase.ErrorJSON(fmt.Sprintf("基础路径解析失败: %v", err))
+			return "", agentbase.ErrorJSON(fmt.Sprintf("基础路径解析失败: %v", err))
 		}
 		if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
-			return agentbase.ErrorJSON("路径不合法，禁止访问日志源目录之外的文件")
+			return "", agentbase.ErrorJSON("路径不合法，禁止访问日志源目录之外的文件")
 		}
-	} else {
-		// 未指定文件名 → 扫描目录找最新 .log 文件
-		latest, err := findLatestLogFile(logSource.Path)
-		if err != nil {
-			return agentbase.ErrorJSON(fmt.Sprintf("扫描日志目录失败: %v", err))
-		}
-		filePath = latest
+		return filePath, ""
 	}
 
-	// 解析查询参数
-	lines := 200
-	if v, ok := args["lines"].(float64); ok && v > 0 {
-		lines = int(v)
+	latest, err := findLatestLogFile(logSource.Path)
+	if err != nil {
+		return "", agentbase.ErrorJSON(fmt.Sprintf("扫描日志目录失败: %v", err))
 	}
-	if lines > 2000 {
-		lines = 2000
+	return latest, ""
+}
+
+// toolReadLog 查询指定日志源的日志
+func (c *Connection) toolReadLog(args map[string]interface{}) string {
+	filePath, errMsg := c.resolveLogFile(args)
+	if errMsg != "" {
+		return errMsg
+	}
+
+	opts := agentbase.ParseReadLogArgs(args)
+
+	if v, ok := args["start_time"].(string); ok && v != "" {
+		t, err := agentbase.ParseLogTime(v)
+		if err != nil {
+			return agentbase.ErrorJSON(fmt.Sprintf("start_time 格式错误: %v", err))
+		}
+		opts.StartTime = t
+	}
+	if v, ok := args["end_time"].(string); ok && v != "" {
+		t, err := agentbase.ParseLogTime(v)
+		if err != nil {
+			return agentbase.ErrorJSON(fmt.Sprintf("end_time 格式错误: %v", err))
+		}
+		opts.EndTime = t
+	}
+
+	log.Printf("[ReadLog] source=%s file=%s lines=%d keyword=%q regex=%q",
+		args["source"], filePath, opts.Lines, opts.Keyword, opts.Regex)
+
+	return agentbase.ReadLogFile(filePath, opts)
+}
+
+// toolAnalyzeLog 对日志执行预设分析
+func (c *Connection) toolAnalyzeLog(args map[string]interface{}) string {
+	filePath, errMsg := c.resolveLogFile(args)
+	if errMsg != "" {
+		return errMsg
+	}
+
+	analysis, _ := args["analysis"].(string)
+	if analysis == "" {
+		return agentbase.ErrorJSON("缺少 analysis 参数，可选: top_errors, error_timeline, top_values, rate, summary")
 	}
 
 	keyword, _ := args["keyword"].(string)
-	startTimeStr, _ := args["start_time"].(string)
-	endTimeStr, _ := args["end_time"].(string)
+	topN := agentbase.GetOptionalIntParam(args, "top_n", 10)
+	field := agentbase.GetOptionalIntParam(args, "field", 1)
+	interval, _ := args["interval"].(string)
+	lines := agentbase.GetOptionalIntParam(args, "lines", 5000)
 
-	var startTime, endTime time.Time
-	if startTimeStr != "" {
-		t, err := time.ParseInLocation("2006-01-02 15:04:05", strings.TrimSpace(startTimeStr), time.Local)
-		if err != nil {
-			// 尝试仅时间格式
-			t2, err2 := time.ParseInLocation("15:04:05", strings.TrimSpace(startTimeStr), time.Local)
-			if err2 != nil {
-				return agentbase.ErrorJSON(fmt.Sprintf("start_time 格式错误: %v", err))
-			}
-			now := time.Now()
-			t = time.Date(now.Year(), now.Month(), now.Day(), t2.Hour(), t2.Minute(), t2.Second(), 0, time.Local)
-		}
-		startTime = t
-	}
-	if endTimeStr != "" {
-		t, err := time.ParseInLocation("2006-01-02 15:04:05", strings.TrimSpace(endTimeStr), time.Local)
-		if err != nil {
-			t2, err2 := time.ParseInLocation("15:04:05", strings.TrimSpace(endTimeStr), time.Local)
-			if err2 != nil {
-				return agentbase.ErrorJSON(fmt.Sprintf("end_time 格式错误: %v", err))
-			}
-			now := time.Now()
-			t = time.Date(now.Year(), now.Month(), now.Day(), t2.Hour(), t2.Minute(), t2.Second(), 0, time.Local)
-		}
-		endTime = t
-	}
+	log.Printf("[AnalyzeLog] source=%s file=%s analysis=%s keyword=%q topN=%d lines=%d",
+		args["source"], filePath, analysis, keyword, topN, lines)
 
-	log.Printf("[ReadLog] source=%s file=%s lines=%d keyword=%q", source, filePath, lines, keyword)
-
-	return agentbase.ReadLogFile(filePath, lines, keyword, startTime, endTime)
+	return analyzeLogFile(filePath, analysis, keyword, field, topN, interval, lines)
 }
 
 // findLatestLogFile 在目录中找到最新修改的 .log 文件

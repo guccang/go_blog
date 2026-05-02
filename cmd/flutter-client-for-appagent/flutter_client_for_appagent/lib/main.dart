@@ -28,7 +28,8 @@ import 'cortana_page.dart'
         CortanaPage,
         CortanaPageState,
         CortanaReplayItem,
-        CortanaReplyPayload;
+        CortanaReplyPayload,
+        CortanaSettings;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
@@ -990,6 +991,12 @@ class ClientConfig {
     required this.cortanaAllowFullAccessDefault,
     required this.cortanaAutoPlayDefault,
     required this.cortanaProactiveModeDefault,
+    required this.cortanaHighFreqStartHourDefault,
+    required this.cortanaHighFreqStartMinuteDefault,
+    required this.cortanaHighFreqEndHourDefault,
+    required this.cortanaHighFreqEndMinuteDefault,
+    required this.cortanaPersonaNameDefault,
+    required this.cortanaPersonaDescriptionDefault,
   });
 
   final String baseUrl;
@@ -1000,6 +1007,12 @@ class ClientConfig {
   final bool cortanaAllowFullAccessDefault;
   final bool cortanaAutoPlayDefault;
   final String cortanaProactiveModeDefault;
+  final int cortanaHighFreqStartHourDefault;
+  final int cortanaHighFreqStartMinuteDefault;
+  final int cortanaHighFreqEndHourDefault;
+  final int cortanaHighFreqEndMinuteDefault;
+  final String cortanaPersonaNameDefault;
+  final String cortanaPersonaDescriptionDefault;
 
   factory ClientConfig.fromJson(Map<String, dynamic> json) {
     return ClientConfig(
@@ -1013,6 +1026,18 @@ class ClientConfig {
       cortanaAutoPlayDefault: json['cortana_auto_play_default'] != false,
       cortanaProactiveModeDefault:
           (json['cortana_proactive_mode_default'] ?? 'high').toString().trim(),
+      cortanaHighFreqStartHourDefault:
+          (json['cortana_high_freq_start_hour_default'] as num?)?.toInt() ?? 9,
+      cortanaHighFreqStartMinuteDefault:
+          (json['cortana_high_freq_start_minute_default'] as num?)?.toInt() ?? 0,
+      cortanaHighFreqEndHourDefault:
+          (json['cortana_high_freq_end_hour_default'] as num?)?.toInt() ?? 22,
+      cortanaHighFreqEndMinuteDefault:
+          (json['cortana_high_freq_end_minute_default'] as num?)?.toInt() ?? 0,
+      cortanaPersonaNameDefault:
+          (json['cortana_persona_name_default'] ?? 'Cortana').toString().trim(),
+      cortanaPersonaDescriptionDefault:
+          (json['cortana_persona_description_default'] ?? '').toString().trim(),
     );
   }
 }
@@ -1734,6 +1759,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _cortanaAllowFullAccessKey = 'cortana::allow_full_access';
   static const String _cortanaAutoPlayKey = 'cortana::auto_play';
   static const String _cortanaProactiveModeKey = 'cortana::proactive_mode';
+  static const String _cortanaHighFreqStartHourKey =
+      'cortana::high_freq_start_hour';
+  static const String _cortanaHighFreqStartMinuteKey =
+      'cortana::high_freq_start_minute';
+  static const String _cortanaHighFreqEndHourKey =
+      'cortana::high_freq_end_hour';
+  static const String _cortanaHighFreqEndMinuteKey =
+      'cortana::high_freq_end_minute';
+  static const String _cortanaPersonaNameKey = 'cortana::persona_name';
+  static const String _cortanaPersonaDescriptionKey =
+      'cortana::persona_description';
   static const Duration _sessionRefreshSkew = Duration(minutes: 1);
   static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1810,6 +1846,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _cortanaAllowFullAccess = _defaultCortanaAllowFullAccess;
   bool _cortanaAutoPlay = _defaultCortanaAutoPlay;
   String _cortanaProactiveMode = _defaultCortanaProactiveMode;
+  int _cortanaHighFreqStartHour = 9;
+  int _cortanaHighFreqStartMinute = 0;
+  int _cortanaHighFreqEndHour = 22;
+  int _cortanaHighFreqEndMinute = 0;
+  String _cortanaPersonaName = 'Cortana';
+  String _cortanaPersonaDescription = '';
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
   List<CodegenHistoryItem> _codegenHistory = [];
@@ -2357,6 +2399,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             assetConfig.cortanaAllowFullAccessDefault,
         cortanaAutoPlayDefault: assetConfig.cortanaAutoPlayDefault,
         cortanaProactiveModeDefault: assetConfig.cortanaProactiveModeDefault,
+        cortanaHighFreqStartHourDefault:
+            assetConfig.cortanaHighFreqStartHourDefault,
+        cortanaHighFreqStartMinuteDefault:
+            assetConfig.cortanaHighFreqStartMinuteDefault,
+        cortanaHighFreqEndHourDefault:
+            assetConfig.cortanaHighFreqEndHourDefault,
+        cortanaHighFreqEndMinuteDefault:
+            assetConfig.cortanaHighFreqEndMinuteDefault,
+        cortanaPersonaNameDefault: assetConfig.cortanaPersonaNameDefault,
+        cortanaPersonaDescriptionDefault:
+            assetConfig.cortanaPersonaDescriptionDefault,
       );
       if (config.baseUrl.isEmpty) {
         throw const FormatException('base_url is required');
@@ -2377,6 +2430,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             prefs.getString(_cortanaProactiveModeKey)?.trim().isNotEmpty == true
             ? prefs.getString(_cortanaProactiveModeKey)!.trim()
             : config.cortanaProactiveModeDefault;
+        _cortanaHighFreqStartHour =
+            prefs.getInt(_cortanaHighFreqStartHourKey) ??
+            config.cortanaHighFreqStartHourDefault;
+        _cortanaHighFreqStartMinute =
+            prefs.getInt(_cortanaHighFreqStartMinuteKey) ??
+            config.cortanaHighFreqStartMinuteDefault;
+        _cortanaHighFreqEndHour =
+            prefs.getInt(_cortanaHighFreqEndHourKey) ??
+            config.cortanaHighFreqEndHourDefault;
+        _cortanaHighFreqEndMinute =
+            prefs.getInt(_cortanaHighFreqEndMinuteKey) ??
+            config.cortanaHighFreqEndMinuteDefault;
+        _cortanaPersonaName =
+            prefs.getString(_cortanaPersonaNameKey)?.trim().isNotEmpty == true
+            ? prefs.getString(_cortanaPersonaNameKey)!.trim()
+            : config.cortanaPersonaNameDefault;
+        _cortanaPersonaDescription =
+            prefs.getString(_cortanaPersonaDescriptionKey)
+                    ?.trim()
+                    .isNotEmpty ==
+                true
+            ? prefs.getString(_cortanaPersonaDescriptionKey)!.trim()
+            : config.cortanaPersonaDescriptionDefault;
         _baseUrlController.text = config.baseUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
@@ -2440,11 +2516,36 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         cortanaAutoPlayDefault: _clientConfig?.cortanaAutoPlayDefault ?? true,
         cortanaProactiveModeDefault:
             _clientConfig?.cortanaProactiveModeDefault ?? 'high',
+        cortanaHighFreqStartHourDefault:
+            _clientConfig?.cortanaHighFreqStartHourDefault ?? 9,
+        cortanaHighFreqStartMinuteDefault:
+            _clientConfig?.cortanaHighFreqStartMinuteDefault ?? 0,
+        cortanaHighFreqEndHourDefault:
+            _clientConfig?.cortanaHighFreqEndHourDefault ?? 22,
+        cortanaHighFreqEndMinuteDefault:
+            _clientConfig?.cortanaHighFreqEndMinuteDefault ?? 0,
+        cortanaPersonaNameDefault:
+            _clientConfig?.cortanaPersonaNameDefault ?? 'Cortana',
+        cortanaPersonaDescriptionDefault:
+            _clientConfig?.cortanaPersonaDescriptionDefault ?? '',
       );
       _status = 'URL updated';
     });
     _appendSystem('Server URL updated: $baseUrl');
   }
+
+  CortanaSettings get _cortanaSettings => CortanaSettings(
+    enabled: _cortanaEnabled,
+    allowFullAccess: _cortanaAllowFullAccess,
+    autoPlay: _cortanaAutoPlay,
+    proactiveMode: _cortanaProactiveMode,
+    highFreqStartHour: _cortanaHighFreqStartHour,
+    highFreqStartMinute: _cortanaHighFreqStartMinute,
+    highFreqEndHour: _cortanaHighFreqEndHour,
+    highFreqEndMinute: _cortanaHighFreqEndMinute,
+    personaName: _cortanaPersonaName,
+    personaDescription: _cortanaPersonaDescription,
+  );
 
   Future<void> _syncCortanaSettings({bool silent = false}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -2452,17 +2553,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await prefs.setBool(_cortanaAllowFullAccessKey, _cortanaAllowFullAccess);
     await prefs.setBool(_cortanaAutoPlayKey, _cortanaAutoPlay);
     await prefs.setString(_cortanaProactiveModeKey, _cortanaProactiveMode);
+    await prefs.setInt(_cortanaHighFreqStartHourKey, _cortanaHighFreqStartHour);
+    await prefs.setInt(
+      _cortanaHighFreqStartMinuteKey,
+      _cortanaHighFreqStartMinute,
+    );
+    await prefs.setInt(_cortanaHighFreqEndHourKey, _cortanaHighFreqEndHour);
+    await prefs.setInt(
+      _cortanaHighFreqEndMinuteKey,
+      _cortanaHighFreqEndMinute,
+    );
+    await prefs.setString(_cortanaPersonaNameKey, _cortanaPersonaName);
+    await prefs.setString(
+      _cortanaPersonaDescriptionKey,
+      _cortanaPersonaDescription,
+    );
     if (_clientConfig == null ||
         (_sessionToken.isEmpty && _refreshToken.isEmpty) ||
         _userIdController.text.trim().isEmpty) {
       return;
     }
-    final payload = <String, dynamic>{
-      'enabled': _cortanaEnabled,
-      'allow_full_access': _cortanaAllowFullAccess,
-      'auto_play': _cortanaAutoPlay,
-      'proactive_mode': _cortanaProactiveMode,
-    };
+    final payload = _cortanaSettings.toJson();
     try {
       await _runAuthed(
         'Sync Cortana settings',
@@ -2478,6 +2589,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
       }
     }
+  }
+
+  void _applyCortanaSettings(CortanaSettings settings) {
+    setState(() {
+      _cortanaEnabled = settings.enabled;
+      _cortanaAllowFullAccess = settings.allowFullAccess;
+      _cortanaAutoPlay = settings.autoPlay;
+      _cortanaProactiveMode = settings.proactiveMode;
+      _cortanaHighFreqStartHour = settings.highFreqStartHour;
+      _cortanaHighFreqStartMinute = settings.highFreqStartMinute;
+      _cortanaHighFreqEndHour = settings.highFreqEndHour;
+      _cortanaHighFreqEndMinute = settings.highFreqEndMinute;
+      _cortanaPersonaName = settings.personaName;
+      _cortanaPersonaDescription = settings.personaDescription;
+    });
+    unawaited(_syncCortanaSettings());
   }
 
   bool get _sessionExpired {
@@ -6990,89 +7117,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                     unawaited(_copyText('Token', receiveToken)),
                         ),
                         const SizedBox(height: 12),
-                        Text(
-                          'Cortana',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: palette.textMuted,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SwitchListTile.adaptive(
-                          value: _cortanaEnabled,
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('启用 Cortana'),
-                          subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
-                          onChanged: (value) {
-                            setState(() {
-                              _cortanaEnabled = value;
-                            });
-                            unawaited(_syncCortanaSettings());
-                          },
-                        ),
-                        SwitchListTile.adaptive(
-                          value: _cortanaAllowFullAccess,
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('允许全量感知'),
-                          subtitle: const Text('开放待办、锻炼、阅读、年度目标等数据'),
-                          onChanged: !_cortanaEnabled
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _cortanaAllowFullAccess = value;
-                                  });
-                                  unawaited(_syncCortanaSettings());
-                                },
-                        ),
-                        SwitchListTile.adaptive(
-                          value: _cortanaAutoPlay,
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('主动播报自动播放'),
-                          subtitle: const Text('收到主动互动后直接语音播报'),
-                          onChanged: !_cortanaEnabled
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    _cortanaAutoPlay = value;
-                                  });
-                                  unawaited(_syncCortanaSettings());
-                                },
-                        ),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          value: _cortanaProactiveMode,
-                          decoration: const InputDecoration(
-                            labelText: '主动模式',
-                            isDense: true,
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'high',
-                              child: Text('High'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'normal',
-                              child: Text('Normal'),
-                            ),
-                            DropdownMenuItem(value: 'low', child: Text('Low')),
-                          ],
-                          onChanged: !_cortanaEnabled
-                              ? null
-                              : (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    _cortanaProactiveMode = value.trim();
-                                  });
-                                  unawaited(_syncCortanaSettings());
-                                },
-                        ),
-                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
@@ -7731,6 +7775,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
         });
       },
+      settings: _cortanaSettings,
+      onSettingsChanged: _applyCortanaSettings,
     );
   }
 
