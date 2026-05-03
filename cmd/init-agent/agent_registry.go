@@ -238,7 +238,7 @@ func AllAgentSchemas() []AgentSchema {
 				{Key: "llm.api_key", Label: "LLM API Key", Description: "LLM API 密钥", Type: FieldString, Required: true, DefaultValue: "", Group: "custom"},
 				{Key: "llm.max_tokens", Label: "最大 Token 数", Description: "LLM 最大输出 token", Type: FieldInt, Required: false, DefaultValue: 8192, Group: "custom"},
 				{Key: "max_concurrent", Label: "最大并发数", Description: "最大并发任务数", Type: FieldInt, Required: false, DefaultValue: 3, Shared: true, Group: "agent"},
-				{Key: "max_tool_iterations", Label: "工具迭代上限", Description: "工具调用最大迭代次数", Type: FieldInt, Required: false, DefaultValue: 32, Group: "custom"},
+				{Key: "max_tool_iterations", Label: "工具迭代上限", Description: "工具调用最大迭代次数", Type: FieldInt, Required: false, DefaultValue: 15, Group: "custom"},
 				{Key: "session_dir", Label: "会话目录", Description: "会话持久化目录", Type: FieldPath, Required: false, DefaultValue: "agent_sessions", Group: "custom"},
 				{Key: "workspace_dir", Label: "工作区目录", Description: "工作区目录", Type: FieldPath, Required: false, DefaultValue: "workspace", Group: "custom"},
 			},

@@ -144,7 +144,7 @@ func DefaultConfig() *Config {
 
 		ToolCallTimeoutSec:   120,
 		LongToolTimeoutSec:   3600,
-		MaxToolIterations:    32,
+		MaxToolIterations:    15,
 		SystemPromptPrefix:   "你是 Go Blog 智能体，负责阅读代码、调用工具、执行任务并向用户汇报真实结果。收到明确任务后优先直接执行；不要空谈方案，不要编造已执行结果，不要擅自扩展需求。",
 		SubTaskMaxIterations: 10,
 		SubTaskTimeoutSec:    120,
@@ -156,7 +156,7 @@ func DefaultConfig() *Config {
 
 		WechatSessionTimeoutMin: 30,
 		WechatMaxMessages:       40,
-		WechatMaxTurns:          15,
+		WechatMaxTurns:          66,
 		ChatSessionDir:          "chat_sessions",
 
 		MemoryDir:               "workspace/memory",

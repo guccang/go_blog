@@ -28,6 +28,37 @@ var inlineAudioTagPattern = regexp.MustCompile(`(?is)<audio\b[^>]*\bsrc\s*=\s*"d
 var cortanaActionPlanTagPattern = regexp.MustCompile(`(?is)\[CORTANA_ACTION_PLAN\]\s*(\{.*\})`)
 var cortanaActionPlanFencePattern = regexp.MustCompile("(?is)```(?:cortana|cortana_plan|json)\\s*(\\{.*\\})\\s*```")
 
+func resolveAppConversationMode(inbound *appInboundMessage) (preferAudioReply bool, cortanaRequestID string) {
+	if inbound == nil {
+		return false, ""
+	}
+	if strings.EqualFold(strings.TrimSpace(inbound.MessageType), "audio") {
+		preferAudioReply = true
+	}
+	if inbound.Attachment != nil && strings.EqualFold(strings.TrimSpace(inbound.Attachment.InputMode), "voice_audio") {
+		preferAudioReply = true
+	}
+	if inbound.Meta == nil {
+		return preferAudioReply, ""
+	}
+
+	inputMode := strings.TrimSpace(strings.ToLower(firstNonEmptyMapString(inbound.Meta, "input_mode")))
+	replyMode := strings.TrimSpace(strings.ToLower(firstNonEmptyMapString(inbound.Meta, "reply_mode")))
+
+	if inputMode == "cortana_text" {
+		preferAudioReply = true
+	}
+
+	switch replyMode {
+	case "audio", "audio_preferred":
+		preferAudioReply = true
+	case "text", "text_only":
+		preferAudioReply = false
+	}
+
+	return preferAudioReply, firstNonEmptyMapString(inbound.Meta, "cortana_request_id")
+}
+
 func buildCortanaOutputPrompt() string {
 	return `
 ## Cortana 输出协议
@@ -492,26 +523,11 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	defer cancel()
 
 	preferAudioReply := false
-	cortanaTextMode := false
+	cortanaContextMode := false
 	cortanaRequestID := ""
 	if inbound, ok := parseAppInboundMessage(content); ok && inbound != nil {
-		if strings.EqualFold(strings.TrimSpace(inbound.MessageType), "audio") {
-			preferAudioReply = true
-		}
-		if inbound.Attachment != nil && strings.EqualFold(strings.TrimSpace(inbound.Attachment.InputMode), "voice_audio") {
-			preferAudioReply = true
-		}
-		if inbound.Meta != nil {
-			if strings.EqualFold(strings.TrimSpace(fmt.Sprint(inbound.Meta["input_mode"])), "cortana_text") {
-				preferAudioReply = true
-				cortanaTextMode = true
-			}
-			cortanaRequestID = strings.TrimSpace(fmt.Sprint(inbound.Meta["cortana_request_id"]))
-			replyMode := strings.TrimSpace(fmt.Sprint(inbound.Meta["reply_mode"]))
-			if strings.EqualFold(replyMode, "audio") || strings.EqualFold(replyMode, "audio_preferred") {
-				preferAudioReply = true
-			}
-		}
+		preferAudioReply, cortanaRequestID = resolveAppConversationMode(inbound)
+		cortanaContextMode = inbound.Scope != "group"
 	}
 
 	content = b.preprocessAppMessage(goctx, fromAgent, appUser, content)
@@ -557,7 +573,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	session.processing.Lock()
 	defer session.processing.Unlock()
 
-	if cortanaTextMode && session.CortanaState == nil {
+	if cortanaContextMode && session.CortanaState == nil {
 		session.CortanaState = loadCortanaCompanionState(b.cfg.WorkspaceDir, appUser)
 	}
 
@@ -576,7 +592,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	if isNew || len(session.Messages) == 0 {
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 		systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-		if cortanaTextMode {
+		if cortanaContextMode {
 			systemPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
 		}
@@ -590,7 +606,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
 			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
 			freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-			if cortanaTextMode {
+			if cortanaContextMode {
 				freshPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
 				freshPrompt += buildCortanaOutputPrompt() + "\n"
 			}
@@ -677,7 +693,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	assistantContent := persistedAssistantContent(ctx, result)
 	session.mu.Lock()
 	session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
-	if cortanaTextMode {
+	if cortanaContextMode {
 		session.CortanaState = updateCortanaCompanionState(session.CortanaState, content, result)
 	}
 	session.mu.Unlock()
@@ -685,7 +701,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	if err := b.sessionMgr.SaveSession(session); err != nil {
 		log.Printf("[App] save session failed: %v", err)
 	}
-	if cortanaTextMode {
+	if cortanaContextMode {
 		if err := saveCortanaCompanionState(b.cfg.WorkspaceDir, appUser, session.CortanaState); err != nil {
 			log.Printf("[App] save cortana companion state failed: %v", err)
 		}

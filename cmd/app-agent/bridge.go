@@ -394,9 +394,6 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		log.Printf("[Bridge] routed app notify user=%s target=%s", msg.UserID, targetAgent)
 	}
 
-	if cortanaEvent, ok := b.buildCortanaChatEvent(msg, content); ok {
-		go b.triggerCortanaEvent(cortanaEvent)
-	}
 }
 
 func (b *Bridge) handleCortanaClientEvent(msg *AppMessage, content string) bool {
@@ -429,39 +426,6 @@ func (b *Bridge) handleCortanaClientEvent(msg *AppMessage, content string) bool 
 	go b.triggerCortanaEvent(payload)
 	log.Printf("[Bridge] cortana client event user=%s reason=%s", msg.UserID, kind)
 	return true
-}
-
-func (b *Bridge) buildCortanaChatEvent(msg *AppMessage, content string) (CortanaEventPayload, bool) {
-	if msg == nil {
-		return CortanaEventPayload{}, false
-	}
-	if !strings.EqualFold(strings.TrimSpace(msg.MessageType), "text") {
-		return CortanaEventPayload{}, false
-	}
-	if content == "" || isCmdCommand(content) || isBackendCommand(content) {
-		return CortanaEventPayload{}, false
-	}
-	if strings.EqualFold(strings.TrimSpace(fmt.Sprint(msg.Meta["input_mode"])), "cortana_text") {
-		return CortanaEventPayload{}, false
-	}
-
-	metadata := map[string]any{
-		"message_type": msg.MessageType,
-		"input_mode":   strings.TrimSpace(fmt.Sprint(msg.Meta["input_mode"])),
-		"trace_id":     strings.TrimSpace(msg.TraceID),
-	}
-	if sessionID := strings.TrimSpace(msg.SessionID); sessionID != "" {
-		metadata["session_id"] = sessionID
-	}
-	return CortanaEventPayload{
-		Account:       msg.UserID,
-		TriggerSource: "chat_message",
-		TriggerReason: "chat_message",
-		Content:       content,
-		Summary:       shortText(content),
-		Metadata:      metadata,
-		Timestamp:     time.Now().UnixMilli(),
-	}, true
 }
 
 // extractApkVersion extracts version from APK filename.

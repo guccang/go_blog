@@ -203,14 +203,14 @@ Messages[4]: {Role: "assistant", Content: "已完成：..."}
 
 WechatSessionTimeoutMin int  `json:"wechat_session_timeout_min"` // 默认 30
 WechatMaxMessages       int  `json:"wechat_max_messages"`        // 默认 40
-WechatMaxTurns          int  `json:"wechat_max_turns"`           // 默认 15
+WechatMaxTurns          int  `json:"wechat_max_turns"`           // 默认 66
 ```
 
 | 配置项 | 默认值 | 说明 |
 |-------|--------|------|
 | `wechat_session_timeout_min` | 30 | 无活动超过此分钟数后自动开启新会话 |
 | `wechat_max_messages` | 40 | 超过后触发消息压缩（旧消息 → 摘要） |
-| `wechat_max_turns` | 15 | 超过后下条消息自动开启新会话 |
+| `wechat_max_turns` | 66 | 超过后下条消息自动开启新会话 |
 
 ---
 

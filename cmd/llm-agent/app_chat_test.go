@@ -103,3 +103,40 @@ func TestCortanaRequestIDCanBeAttachedToAudioReplyMeta(t *testing.T) {
 		t.Fatalf("unexpected cortana_request_id: %#v", got)
 	}
 }
+
+func TestResolveAppConversationModeSplitsAudioReplyFromCortanaText(t *testing.T) {
+	inbound := &appInboundMessage{
+		MessageType: "text",
+		Meta: map[string]any{
+			"conversation_mode": "cortana",
+			"input_mode":        "cortana_chat",
+			"reply_mode":        "text",
+		},
+	}
+	preferAudio, requestID := resolveAppConversationMode(inbound)
+	if preferAudio {
+		t.Fatalf("chat replies should not force audio when reply_mode is text")
+	}
+	if requestID != "" {
+		t.Fatalf("unexpected request id: %q", requestID)
+	}
+}
+
+func TestResolveAppConversationModeKeepsCortanaVoiceAudioReply(t *testing.T) {
+	inbound := &appInboundMessage{
+		MessageType: "text",
+		Meta: map[string]any{
+			"conversation_mode":  "cortana",
+			"input_mode":         "cortana_text",
+			"reply_mode":         "audio_preferred",
+			"cortana_request_id": "req-456",
+		},
+	}
+	preferAudio, requestID := resolveAppConversationMode(inbound)
+	if !preferAudio {
+		t.Fatalf("Cortana voice entry should prefer audio")
+	}
+	if requestID != "req-456" {
+		t.Fatalf("unexpected request id: %q", requestID)
+	}
+}

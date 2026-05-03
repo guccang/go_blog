@@ -1911,7 +1911,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _cortanaWakeListening = false;
   bool _cortanaWakeHandling = false;
   bool _cortanaWakePausedForLifecycle = false;
+  bool _speechTransitioning = false;
   Future<void> _speechStopTail = Future<void>.value();
+  String _lastSpeechStatusLog = '';
   String _lastCortanaWakeTranscript = '';
 
   @override
@@ -2015,12 +2017,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _handleSpeechRecognitionStatus(String status) {
-    _appendSystem('Speech recognition status: $status');
+    if (_lastSpeechStatusLog != status) {
+      _lastSpeechStatusLog = status;
+      _appendSystem('Speech recognition status: $status');
+    }
     if (_isSpeechDoneStatus(status) && _cortanaWakeListening) {
       _cortanaWakeListening = false;
-      if (!_cortanaWakeHandling) {
-        _scheduleCortanaWakeRestart();
-      }
+      unawaited(_handleCortanaWakeSessionEnded());
     }
   }
 
@@ -2055,6 +2058,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final previous = _speechStopTail;
     late final Future<void> next;
     next = previous.catchError((_) {}).then((_) async {
+      _speechTransitioning = true;
       try {
         if (cancel) {
           await _speechToText.cancel();
@@ -2066,10 +2070,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           await _speechToText.cancel();
         } catch (_) {}
       }
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      _speechTransitioning = false;
     });
     _speechStopTail = next;
     return next;
+  }
+
+  Future<void> _handleCortanaWakeSessionEnded() async {
+    await _stopSpeechRecognition(cancel: true);
+    if (!_cortanaWakeHandling) {
+      _scheduleCortanaWakeRestart(delay: const Duration(milliseconds: 1200));
+    }
   }
 
   Future<bool> _ensureSystemSpeechRecognitionReady({
@@ -2190,7 +2202,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       !_recording &&
       !_sending &&
       !_transcribingVoice &&
-      !_cortanaWakeHandling;
+      !_cortanaWakeHandling &&
+      !_speechTransitioning;
 
   void _scheduleCortanaWakeRestart({
     Duration delay = const Duration(milliseconds: 500),
@@ -2209,9 +2222,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _pauseCortanaWakeListening({required bool cancel}) async {
     _cortanaWakeRestartTimer?.cancel();
-    if (!_cortanaWakeListening && !_speechToText.isListening) {
-      return;
-    }
     _cortanaWakeListening = false;
     await _stopSpeechRecognition(cancel: cancel);
   }
@@ -4236,8 +4246,37 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (msg.direction != MessageDirection.incoming) {
       return null;
     }
+    final meta = msg.meta ?? const <String, dynamic>{};
+    if (msg.messageType == 'audio') {
+      final audioPath = (meta['audio_path'] ?? '').toString().trim();
+      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
+      Uint8List? audioBytes;
+      if (audioBase64.isNotEmpty) {
+        try {
+          audioBytes = base64Decode(audioBase64);
+        } catch (_) {
+          audioBytes = null;
+        }
+      }
+      if (audioPath.isNotEmpty || audioBytes != null) {
+        final rawActionPlan = meta['cortana_action_plan'];
+        return CortanaReplyPayload(
+          text: (meta['speech_text'] ?? msg.content).toString().trim(),
+          audioPath: audioPath,
+          audioBytes: audioBytes,
+          audioFormat: (meta['audio_format'] ?? '').toString().trim(),
+          actionPlan: rawActionPlan is Map
+              ? Map<String, dynamic>.from(rawActionPlan)
+              : null,
+          requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
+        );
+      }
+    }
     if (msg.messageType == 'text' && !_isCortanaProgressMessage(msg)) {
-      return CortanaReplyPayload(text: msg.content.trim());
+      return CortanaReplyPayload(
+        text: msg.content.trim(),
+        requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
+      );
     }
     return null;
   }
@@ -4430,23 +4469,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     final startTime = DateTime.now();
     const replyTimeout = Duration(seconds: 20);
-    final baselineCount = _messages.length;
     final requestId = _buildCortanaRequestId();
+    final meta = <String, dynamic>{
+      'conversation_mode': 'cortana',
+      'input_mode': 'cortana_text',
+      'reply_mode': 'audio_preferred',
+      'cortana_request_id': requestId,
+    };
+    _appendOutgoing(
+      message,
+      meta: meta,
+      scopeKeyOverride: 'direct',
+      groupIdOverride: '',
+    );
+    final baselineCount =
+        (_historyByScope['direct'] ?? const <ChatMessage>[]).length;
 
     try {
       await _runAuthed('Send Cortana message', (client) {
-        return client.sendAppMessage(
-          message,
-          meta: <String, dynamic>{
-            'input_mode': 'cortana_text',
-            'cortana_request_id': requestId,
-          },
-        );
+        return client.sendAppMessage(message, meta: meta);
       });
 
       while (DateTime.now().difference(startTime) < replyTimeout) {
         await Future.delayed(const Duration(milliseconds: 500));
-        final appendedMessages = _messages.skip(baselineCount);
+        final directMessages =
+            _historyByScope['direct'] ?? const <ChatMessage>[];
+        final appendedMessages = directMessages.skip(baselineCount);
         for (final msg in appendedMessages.toList().reversed) {
           final replyKey = _buildCortanaReplyKey(msg);
           if (_consumedCortanaReplyKeys.contains(replyKey)) {
@@ -4623,15 +4671,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     String text, {
     String messageType = 'text',
     Map<String, dynamic>? meta,
+    String? scopeKeyOverride,
+    String? groupIdOverride,
   }) {
+    final scopeKey = scopeKeyOverride ?? _currentScopeKey;
+    final groupId = groupIdOverride ?? _currentGroupId;
     _appendMessage(
       ChatMessage(
         content: text,
         direction: MessageDirection.outgoing,
         timestamp: DateTime.now(),
-        scopeKey: _currentScopeKey,
+        scopeKey: scopeKey,
         authorId: _userIdController.text.trim(),
-        groupId: _currentGroupId,
+        groupId: groupId,
         messageType: messageType,
         meta: meta,
       ),
@@ -6626,24 +6678,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     FocusScope.of(context).unfocus();
     _messageController.clear();
-    _appendOutgoing(text);
+    final meta = <String, dynamic>{
+      if (_currentGroupId.isEmpty) ...<String, dynamic>{
+        'conversation_mode': 'cortana',
+        'input_mode': 'cortana_chat',
+        'reply_mode': 'text',
+      },
+      if (_currentGroupId.isNotEmpty) ...<String, dynamic>{
+        'group_id': _currentGroupId,
+        'scope': 'group',
+      },
+    };
+    _appendOutgoing(text, meta: meta.isEmpty ? null : meta);
     setState(() {
       _sending = true;
     });
     try {
-      if (_currentGroupId.isEmpty) {
-        await _runAuthed('Send message', (client) => client.sendMessage(text));
-      } else {
-        await _runAuthed('Send message', (client) {
-          return client.sendAppMessage(
-            text,
-            meta: <String, dynamic>{
-              'group_id': _currentGroupId,
-              'scope': 'group',
-            },
-          );
-        });
-      }
+      await _runAuthed('Send message', (client) {
+        return client.sendAppMessage(text, meta: meta);
+      });
       if (mounted) {
         setState(() {
           _status = 'Message sent';
