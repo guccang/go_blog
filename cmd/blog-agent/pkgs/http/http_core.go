@@ -16,15 +16,16 @@ import (
 	h "net/http"
 	"os"
 	"path/filepath"
-	"projectmgmt"
 	"strings"
-	"taskbreakdown"
 	"tetris"
 	"todolist"
 	"tools"
 	"view"
 	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
-	"yearplan"
+	// [Phase 3] 以下模块已屏蔽，统一使用 goal + todolist
+	// "projectmgmt"
+	// "taskbreakdown"
+	// "yearplan"
 
 	goalpkg "goal"
 )
@@ -195,10 +196,10 @@ func Init() int {
 		log.ErrorF(log.ModuleHandler, "Failed to initialize todolist: %v", err)
 	}
 
-	// Initialize task breakdown before registering handlers
-	if err := taskbreakdown.InitTaskBreakdown(); err != nil {
-		log.ErrorF(log.ModuleHandler, "Failed to initialize task breakdown: %v", err)
-	}
+	// [Phase 3] taskbreakdown 已屏蔽，统一使用 goal
+	// if err := taskbreakdown.InitTaskBreakdown(); err != nil {
+	// 	log.ErrorF(log.ModuleHandler, "Failed to initialize task breakdown: %v", err)
+	// }
 
 	// Core routes
 	h.HandleFunc("/main", HandleLink)
@@ -243,23 +244,23 @@ func Init() int {
 	h.HandleFunc("/api/todos/history", todolist.HandleHistoricalTodos)
 	h.HandleFunc("/api/todos/order", todolist.HandleUpdateTodoOrder)
 
-	// Task breakdown routes
-	h.HandleFunc("/taskbreakdown", taskbreakdown.HandleTaskBreakdown)
-	h.HandleFunc("/taskbreakdown/completed", taskbreakdown.HandleCompletedTasks)
-	h.HandleFunc("/taskbreakdown/deleted", taskbreakdown.HandleDeletedTasks)
-	h.HandleFunc("/api/tasks", taskbreakdown.HandleTasks)
-	h.HandleFunc("/api/tasks/", taskbreakdown.HandleTasks) // 处理带ID的路径
-	h.HandleFunc("/api/tasks/progress", taskbreakdown.HandleTaskProgress)
-	h.HandleFunc("/api/tasks/order", taskbreakdown.HandleTaskOrder)
-	h.HandleFunc("/api/tasks/subtasks", taskbreakdown.HandleSubtasks)
-	h.HandleFunc("/api/tasks/timeline", taskbreakdown.HandleTimeline)
-	h.HandleFunc("/api/tasks/graph", taskbreakdown.HandleTaskGraph)
-	h.HandleFunc("/api/tasks/trends", taskbreakdown.HandleTimeTrends)
-	h.HandleFunc("/api/tasks/statistics", taskbreakdown.HandleStatistics)
-	h.HandleFunc("/api/tasks/search", taskbreakdown.HandleSearchTasks)
-	h.HandleFunc("/api/tasks/time-analysis", taskbreakdown.HandleTaskTimeAnalysis)
-	h.HandleFunc("/api/tasks/daily-overlap", taskbreakdown.HandleDailyTimeOverlap)
-	h.HandleFunc("/api/tasks/sync-to-todo", taskbreakdown.HandleSyncToTodo)
+	// [Phase 3] Task breakdown routes 已屏蔽，统一使用 goal
+	// h.HandleFunc("/taskbreakdown", taskbreakdown.HandleTaskBreakdown)
+	// h.HandleFunc("/taskbreakdown/completed", taskbreakdown.HandleCompletedTasks)
+	// h.HandleFunc("/taskbreakdown/deleted", taskbreakdown.HandleDeletedTasks)
+	// h.HandleFunc("/api/tasks", taskbreakdown.HandleTasks)
+	// h.HandleFunc("/api/tasks/", taskbreakdown.HandleTasks) // 处理带ID的路径
+	// h.HandleFunc("/api/tasks/progress", taskbreakdown.HandleTaskProgress)
+	// h.HandleFunc("/api/tasks/order", taskbreakdown.HandleTaskOrder)
+	// h.HandleFunc("/api/tasks/subtasks", taskbreakdown.HandleSubtasks)
+	// h.HandleFunc("/api/tasks/timeline", taskbreakdown.HandleTimeline)
+	// h.HandleFunc("/api/tasks/graph", taskbreakdown.HandleTaskGraph)
+	// h.HandleFunc("/api/tasks/trends", taskbreakdown.HandleTimeTrends)
+	// h.HandleFunc("/api/tasks/statistics", taskbreakdown.HandleStatistics)
+	// h.HandleFunc("/api/tasks/search", taskbreakdown.HandleSearchTasks)
+	// h.HandleFunc("/api/tasks/time-analysis", taskbreakdown.HandleTaskTimeAnalysis)
+	// h.HandleFunc("/api/tasks/daily-overlap", taskbreakdown.HandleDailyTimeOverlap)
+	// h.HandleFunc("/api/tasks/sync-to-todo", taskbreakdown.HandleSyncToTodo)
 
 	// Goal management routes (unified daily/weekly/monthly/yearly)
 	h.HandleFunc("/goal", HandleGoal)
@@ -268,35 +269,34 @@ func Init() int {
 	h.HandleFunc("/api/goal/task", goalpkg.HandleAddGoalTask)
 	h.HandleFunc("/api/goal/task/update", goalpkg.HandleUpdateGoalTask)
 	h.HandleFunc("/api/goal/task/delete", goalpkg.HandleDeleteGoalTask)
+	h.HandleFunc("/api/goal/delete", goalpkg.HandleDeleteGoal)
 	h.HandleFunc("/api/goals/current", goalpkg.HandleGetCurrentGoals)
 	h.HandleFunc("/api/goals", goalpkg.HandleListGoals)
 
-	// Legacy year plan and goal routes (kept for backward compatibility)
-	h.HandleFunc("/yearplan", HandleYearPlan)
-	h.HandleFunc("/monthgoal", HandleMonthGoal)
-	h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)
-	h.HandleFunc("/api/saveplan", yearplan.HandleSavePlan)
+	// [Phase 3] Legacy year plan / month goal routes 已屏蔽，统一使用 goal
+	// h.HandleFunc("/yearplan", HandleYearPlan)
+	// h.HandleFunc("/monthgoal", HandleMonthGoal)
+	// h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)
+	// h.HandleFunc("/api/saveplan", yearplan.HandleSavePlan)
+	// h.HandleFunc("/api/monthgoal", yearplan.HandleGetMonthGoal)
+	// h.HandleFunc("/api/savemonthgoal", yearplan.HandleSaveMonthGoal)
+	// h.HandleFunc("/api/weekgoal", yearplan.HandleGetWeekGoal)
+	// h.HandleFunc("/api/saveweekgoal", yearplan.HandleSaveWeekGoal)
+	// h.HandleFunc("/api/addtask", yearplan.HandleAddTask)
+	// h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
+	// h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
+	// h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
 
-	// Month goal routes
-	h.HandleFunc("/api/monthgoal", yearplan.HandleGetMonthGoal)
-	h.HandleFunc("/api/savemonthgoal", yearplan.HandleSaveMonthGoal)
-	h.HandleFunc("/api/weekgoal", yearplan.HandleGetWeekGoal)
-	h.HandleFunc("/api/saveweekgoal", yearplan.HandleSaveWeekGoal)
-	h.HandleFunc("/api/addtask", yearplan.HandleAddTask)
-	h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
-	h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
-	h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
+	// [Phase 3] Statistics routes 已屏蔽
+	// h.HandleFunc("/statistics", HandleStatistics)
+	// h.HandleFunc("/api/statistics", HandleStatisticsAPI)
 
-	// Statistics routes
-	h.HandleFunc("/statistics", HandleStatistics)
-	h.HandleFunc("/api/statistics", HandleStatisticsAPI)
-
-	// Project management routes
-	h.HandleFunc("/api/projects", projectmgmt.HandleProjects)
-	h.HandleFunc("/api/projects/summary", projectmgmt.HandleProjectSummary)
-	h.HandleFunc("/api/projects/goals", projectmgmt.HandleProjectGoals)
-	h.HandleFunc("/api/projects/okrs", projectmgmt.HandleProjectOKRs)
-	h.HandleFunc("/api/projects/key-results", projectmgmt.HandleProjectKeyResults)
+	// [Phase 3] Project management routes 已屏蔽
+	// h.HandleFunc("/api/projects", projectmgmt.HandleProjects)
+	// h.HandleFunc("/api/projects/summary", projectmgmt.HandleProjectSummary)
+	// h.HandleFunc("/api/projects/goals", projectmgmt.HandleProjectGoals)
+	// h.HandleFunc("/api/projects/okrs", projectmgmt.HandleProjectOKRs)
+	// h.HandleFunc("/api/projects/key-results", projectmgmt.HandleProjectKeyResults)
 
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)
@@ -326,9 +326,9 @@ func Init() int {
 	h.HandleFunc("/api/books/notes", HandleBookNotesAPI)
 	h.HandleFunc("/api/books/insights", HandleBookInsightsAPI)
 
-	// Advanced reading feature routes
-	h.HandleFunc("/api/reading-plans", HandleReadingPlansAPI)
-	h.HandleFunc("/api/reading-goals", HandleReadingGoalsAPI)
+	// [Phase 3] Advanced reading routes 已屏蔽 (goals/plans 由统一 goal 模块管理)
+	// h.HandleFunc("/api/reading-plans", HandleReadingPlansAPI)
+	// h.HandleFunc("/api/reading-goals", HandleReadingGoalsAPI)
 	h.HandleFunc("/api/book-recommendations", HandleBookRecommendationsAPI)
 	h.HandleFunc("/api/reading-session", HandleReadingSessionAPI)
 	h.HandleFunc("/api/book-collections", HandleBookCollectionsAPI)

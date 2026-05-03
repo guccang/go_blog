@@ -4,7 +4,7 @@ import (
 	"blog"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 )
@@ -58,10 +58,25 @@ func HandleGetGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"success": true,
 		"data":    goal,
-	})
+	}
+
+	// Provide period navigation data when requested
+	if r.URL.Query().Get("nav") == "true" {
+		prev, errPrev := PrevPeriod(level, period)
+		next, errNext := NextPeriod(level, period)
+		if errPrev == nil && errNext == nil {
+			resp["nav"] = map[string]string{
+				"prev":    prev,
+				"current": period,
+				"next":    next,
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 // HandleSaveGoal saves goal overview
@@ -77,7 +92,7 @@ func HandleSaveGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -88,10 +103,10 @@ func HandleSaveGoal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Level     string `json:"level"`
-		Period    string `json:"period"`
-		Overview  string `json:"overview"`
-		Status    string `json:"status"`
+		Level    string  `json:"level"`
+		Period   string  `json:"period"`
+		Overview *string `json:"overview"`
+		Status   *string `json:"status"`
 	}
 
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -123,11 +138,11 @@ func HandleSaveGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Overview != "" {
-		goal.Overview = req.Overview
+	if req.Overview != nil {
+		goal.Overview = *req.Overview
 	}
-	if req.Status != "" {
-		goal.Status = req.Status
+	if req.Status != nil {
+		goal.Status = *req.Status
 	}
 
 	if err := SaveGoal(account, goal); err != nil {
@@ -158,7 +173,7 @@ func HandleAddGoalTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -217,7 +232,7 @@ func HandleUpdateGoalTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -272,7 +287,7 @@ func HandleDeleteGoalTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -313,6 +328,68 @@ func HandleDeleteGoalTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleDeleteGoal deletes an entire goal (blog entry)
+func HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": "Method not allowed",
+		})
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": "Failed to read request body",
+		})
+		return
+	}
+
+	var req struct {
+		Level  string `json:"level"`
+		Period string `json:"period"`
+	}
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": "Failed to parse JSON: " + err.Error(),
+		})
+		return
+	}
+
+	if req.Level == "" || req.Period == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": "level and period are required",
+		})
+		return
+	}
+
+	account := getAccount(r)
+	if err := DeleteGoal(account, req.Level, req.Period); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Goal deleted successfully",
+	})
+}
+
 // HandleGetCurrentGoals returns all current active goals (for cortana-friendly access)
 func HandleGetCurrentGoals(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -343,8 +420,17 @@ func HandleListGoals(w http.ResponseWriter, r *http.Request) {
 		level = LevelMonthly
 	}
 
+	year := time.Now().Year()
+	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+		if yearStr == "all" {
+			year = 0 // disable year filter
+		} else if parsed, err := fmt.Sscanf(yearStr, "%d", &year); err == nil && parsed == 1 {
+			// parsed successfully
+		}
+	}
+
 	account := getAccount(r)
-	goals, err := ListGoalsByLevel(account, level, time.Now().Year())
+	goals, err := ListGoalsByLevel(account, level, year)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{

@@ -21,6 +21,8 @@ class CortanaSettings {
     this.highFreqEndMinute = 0,
     this.personaName = 'Cortana',
     this.personaDescription = '',
+    this.voiceWakeEnabled = false,
+    this.wakePhrase = '嗨 Cortana',
   });
 
   final bool enabled;
@@ -33,6 +35,8 @@ class CortanaSettings {
   final int highFreqEndMinute;
   final String personaName;
   final String personaDescription;
+  final bool voiceWakeEnabled;
+  final String wakePhrase;
 
   CortanaSettings copyWith({
     bool? enabled,
@@ -45,6 +49,8 @@ class CortanaSettings {
     int? highFreqEndMinute,
     String? personaName,
     String? personaDescription,
+    bool? voiceWakeEnabled,
+    String? wakePhrase,
   }) {
     return CortanaSettings(
       enabled: enabled ?? this.enabled,
@@ -57,6 +63,8 @@ class CortanaSettings {
       highFreqEndMinute: highFreqEndMinute ?? this.highFreqEndMinute,
       personaName: personaName ?? this.personaName,
       personaDescription: personaDescription ?? this.personaDescription,
+      voiceWakeEnabled: voiceWakeEnabled ?? this.voiceWakeEnabled,
+      wakePhrase: wakePhrase ?? this.wakePhrase,
     );
   }
 
@@ -72,6 +80,8 @@ class CortanaSettings {
       'high_freq_end_minute': highFreqEndMinute,
       'persona_name': personaName,
       'persona_description': personaDescription,
+      'voice_wake_enabled': voiceWakeEnabled,
+      'wake_phrase': wakePhrase,
     };
   }
 
@@ -88,22 +98,26 @@ class CortanaSettings {
         other.highFreqEndHour == highFreqEndHour &&
         other.highFreqEndMinute == highFreqEndMinute &&
         other.personaName == personaName &&
-        other.personaDescription == personaDescription;
+        other.personaDescription == personaDescription &&
+        other.voiceWakeEnabled == voiceWakeEnabled &&
+        other.wakePhrase == wakePhrase;
   }
 
   @override
   int get hashCode => Object.hash(
-        enabled,
-        allowFullAccess,
-        autoPlay,
-        proactiveMode,
-        highFreqStartHour,
-        highFreqStartMinute,
-        highFreqEndHour,
-        highFreqEndMinute,
-        personaName,
-        personaDescription,
-      );
+    enabled,
+    allowFullAccess,
+    autoPlay,
+    proactiveMode,
+    highFreqStartHour,
+    highFreqStartMinute,
+    highFreqEndHour,
+    highFreqEndMinute,
+    personaName,
+    personaDescription,
+    voiceWakeEnabled,
+    wakePhrase,
+  );
 }
 
 class CortanaReplyPayload {
@@ -271,6 +285,7 @@ class CortanaPageState extends State<CortanaPage> {
   double _modelUserOffsetY = 0.0;
   final TextEditingController _personaNameCtrl = TextEditingController();
   final TextEditingController _personaDescCtrl = TextEditingController();
+  final TextEditingController _wakePhraseCtrl = TextEditingController();
   bool _controlPanelVisible = false;
   bool _cortanaSettingsExpanded = false;
   bool _live2dSummaryExpanded = false;
@@ -363,6 +378,7 @@ class CortanaPageState extends State<CortanaPage> {
     );
     _personaNameCtrl.text = widget.settings.personaName;
     _personaDescCtrl.text = widget.settings.personaDescription;
+    _wakePhraseCtrl.text = widget.settings.wakePhrase;
   }
 
   @override
@@ -381,6 +397,9 @@ class CortanaPageState extends State<CortanaPage> {
       if (widget.settings.personaDescription != _personaDescCtrl.text) {
         _personaDescCtrl.text = widget.settings.personaDescription;
       }
+      if (widget.settings.wakePhrase != _wakePhraseCtrl.text) {
+        _wakePhraseCtrl.text = widget.settings.wakePhrase;
+      }
     }
   }
 
@@ -393,6 +412,7 @@ class CortanaPageState extends State<CortanaPage> {
     _textCtrl.dispose();
     _personaNameCtrl.dispose();
     _personaDescCtrl.dispose();
+    _wakePhraseCtrl.dispose();
     final localhostServer = _localhostServer;
     if (localhostServer != null) {
       unawaited(localhostServer.close());
@@ -463,7 +483,8 @@ class CortanaPageState extends State<CortanaPage> {
       if (!mounted) {
         return;
       }
-      final selectedSource = sources.any((item) => item.name == _selectedLogSource)
+      final selectedSource =
+          sources.any((item) => item.name == _selectedLogSource)
           ? _selectedLogSource
           : (sources.isNotEmpty ? sources.first.name : '');
       setState(() {
@@ -1316,9 +1337,7 @@ class CortanaPageState extends State<CortanaPage> {
       if (_queuedBroadcasts.isNotEmpty) {
         final next = _queuedBroadcasts.removeFirst();
         unawaited(_playBroadcastNow(next.payload, onFinished: next.onFinished));
-        return;
-      }
-      if (mounted) {
+      } else if (mounted) {
         _startAutoCollapseTimer();
       }
     }
@@ -1391,6 +1410,8 @@ class CortanaPageState extends State<CortanaPage> {
       }
     }
   }
+
+  Future<void> speakText(String text) => _speak(text.trim());
 
   Size _floatingSizeForMode(CortanaDisplayMode mode) {
     switch (mode) {
@@ -1932,7 +1953,8 @@ class CortanaPageState extends State<CortanaPage> {
             ),
             const Spacer(),
             TextButton.icon(
-              onPressed: _logSourcesLoading || _logFilesLoading || _logContentLoading
+              onPressed:
+                  _logSourcesLoading || _logFilesLoading || _logContentLoading
                   ? null
                   : () => unawaited(_loadLogSources(force: true)),
               icon: const Icon(Icons.refresh, size: 16),
@@ -2028,7 +2050,9 @@ class CortanaPageState extends State<CortanaPage> {
                 child: SelectableText(
                   _logContentLoading
                       ? '日志加载中...'
-                      : (_selectedLogContent.isEmpty ? '暂无日志内容' : _selectedLogContent),
+                      : (_selectedLogContent.isEmpty
+                            ? '暂无日志内容'
+                            : _selectedLogContent),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     height: 1.45,
                     color: cs.onSurface,
@@ -2056,9 +2080,7 @@ class CortanaPageState extends State<CortanaPage> {
           contentPadding: EdgeInsets.zero,
           title: const Text('启用 Cortana'),
           subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
-          onChanged: cb == null
-              ? null
-              : (v) => cb(s.copyWith(enabled: v)),
+          onChanged: cb == null ? null : (v) => cb(s.copyWith(enabled: v)),
         ),
         SwitchListTile.adaptive(
           value: s.allowFullAccess,
@@ -2080,13 +2102,38 @@ class CortanaPageState extends State<CortanaPage> {
               ? null
               : (v) => cb(s.copyWith(autoPlay: v)),
         ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          value: s.proactiveMode,
+        SwitchListTile.adaptive(
+          value: s.voiceWakeEnabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('语音唤醒'),
+          subtitle: Text(
+            '前台持续监听“${s.wakePhrase.trim().isEmpty ? '嗨 Cortana' : s.wakePhrase.trim()}”后进入语音对话',
+          ),
+          onChanged: !s.enabled || cb == null
+              ? null
+              : (v) => cb(s.copyWith(voiceWakeEnabled: v)),
+        ),
+        TextField(
+          controller: _wakePhraseCtrl,
+          enabled: s.enabled && s.voiceWakeEnabled && cb != null,
           decoration: const InputDecoration(
-            labelText: '主动模式',
+            labelText: '唤醒词',
+            hintText: '嗨 Cortana',
             isDense: true,
           ),
+          onChanged: cb == null
+              ? null
+              : (v) => cb(
+                  s.copyWith(
+                    wakePhrase: v.trim().isEmpty ? '嗨 Cortana' : v.trim(),
+                  ),
+                ),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          initialValue: s.proactiveMode,
+          decoration: const InputDecoration(labelText: '主动模式', isDense: true),
           items: const [
             DropdownMenuItem(value: 'high', child: Text('High')),
             DropdownMenuItem(value: 'normal', child: Text('Normal')),
@@ -2125,10 +2172,12 @@ class CortanaPageState extends State<CortanaPage> {
                 minute: s.highFreqStartMinute,
                 onChanged: cb == null
                     ? null
-                    : (h, m) => cb(s.copyWith(
+                    : (h, m) => cb(
+                        s.copyWith(
                           highFreqStartHour: h,
                           highFreqStartMinute: m,
-                        )),
+                        ),
+                      ),
               ),
             ),
             const Padding(
@@ -2143,10 +2192,9 @@ class CortanaPageState extends State<CortanaPage> {
                 minute: s.highFreqEndMinute,
                 onChanged: cb == null
                     ? null
-                    : (h, m) => cb(s.copyWith(
-                          highFreqEndHour: h,
-                          highFreqEndMinute: m,
-                        )),
+                    : (h, m) => cb(
+                        s.copyWith(highFreqEndHour: h, highFreqEndMinute: m),
+                      ),
               ),
             ),
           ],
@@ -2212,14 +2260,8 @@ class CortanaPageState extends State<CortanaPage> {
             },
       borderRadius: BorderRadius.circular(8),
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-        ),
-        child: Text(
-          '$hh:$mm',
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
+        decoration: InputDecoration(labelText: label, isDense: true),
+        child: Text('$hh:$mm', style: Theme.of(context).textTheme.bodyLarge),
       ),
     );
   }
@@ -2248,9 +2290,7 @@ class CortanaPageState extends State<CortanaPage> {
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-settings',
                   title: 'Cortana 设置',
-                  subtitle: _cortanaSettingsExpanded
-                      ? '点击收起'
-                      : '默认折叠，点击配置',
+                  subtitle: _cortanaSettingsExpanded ? '点击收起' : '默认折叠，点击配置',
                   expanded: _cortanaSettingsExpanded,
                   onExpansionChanged: (expanded) {
                     setState(() {
@@ -2387,6 +2427,9 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   Widget _buildWebViewForPlatform() {
+    if (kIsWeb) {
+      return _buildWebCortanaBackdrop(context);
+    }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return FutureBuilder<void>(
         future: _androidLocalhostFuture,
@@ -2410,6 +2453,26 @@ class CortanaPageState extends State<CortanaPage> {
       );
     }
     return _buildWebView(initialFile: _cortanaHtmlAsset);
+  }
+
+  Widget _buildWebCortanaBackdrop(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [cs.surfaceContainerHigh, cs.surface],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.face_rounded,
+          size: 96,
+          color: cs.primary.withValues(alpha: 0.42),
+        ),
+      ),
+    );
   }
 
   Widget _buildCollapsedAvatar(BuildContext context) {

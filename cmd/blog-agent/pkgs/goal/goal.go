@@ -194,6 +194,106 @@ func UpdateTask(account, level, period, taskID string, updated Task) error {
 	return fmt.Errorf("task %s not found", taskID)
 }
 
+// DeleteGoal removes an entire goal (blog entry) for the given level and period
+func DeleteGoal(account, level, period string) error {
+	title := goalTitle(level, period)
+	ret := blog.DeleteBlogWithAccount(account, title)
+	if ret != 0 {
+		return fmt.Errorf("failed to delete goal: not found or system file")
+	}
+	return nil
+}
+
+// PrevPeriod computes the previous period for navigation
+func PrevPeriod(level, period string) (string, error) {
+	switch level {
+	case LevelDaily:
+		t, err := time.Parse("2006-01-02", period)
+		if err != nil {
+			return "", fmt.Errorf("invalid daily period: %s", period)
+		}
+		return t.AddDate(0, 0, -1).Format("2006-01-02"), nil
+	case LevelWeekly:
+		year, week, err := parseISOWeek(period)
+		if err != nil {
+			return "", err
+		}
+		// Get the Monday of the given ISO week, then subtract 7 days
+		t := isoWeekStart(year, week).AddDate(0, 0, -7)
+		y, w := t.ISOWeek()
+		return fmt.Sprintf("%d-W%02d", y, w), nil
+	case LevelMonthly:
+		t, err := time.Parse("2006-01", period)
+		if err != nil {
+			return "", fmt.Errorf("invalid monthly period: %s", period)
+		}
+		return t.AddDate(0, -1, 0).Format("2006-01"), nil
+	case LevelYearly:
+		year, err := strconv.Atoi(period)
+		if err != nil {
+			return "", fmt.Errorf("invalid yearly period: %s", period)
+		}
+		return fmt.Sprintf("%d", year-1), nil
+	default:
+		return "", fmt.Errorf("unknown level: %s", level)
+	}
+}
+
+// NextPeriod computes the next period for navigation
+func NextPeriod(level, period string) (string, error) {
+	switch level {
+	case LevelDaily:
+		t, err := time.Parse("2006-01-02", period)
+		if err != nil {
+			return "", fmt.Errorf("invalid daily period: %s", period)
+		}
+		return t.AddDate(0, 0, 1).Format("2006-01-02"), nil
+	case LevelWeekly:
+		year, week, err := parseISOWeek(period)
+		if err != nil {
+			return "", err
+		}
+		t := isoWeekStart(year, week).AddDate(0, 0, 7)
+		y, w := t.ISOWeek()
+		return fmt.Sprintf("%d-W%02d", y, w), nil
+	case LevelMonthly:
+		t, err := time.Parse("2006-01", period)
+		if err != nil {
+			return "", fmt.Errorf("invalid monthly period: %s", period)
+		}
+		return t.AddDate(0, 1, 0).Format("2006-01"), nil
+	case LevelYearly:
+		year, err := strconv.Atoi(period)
+		if err != nil {
+			return "", fmt.Errorf("invalid yearly period: %s", period)
+		}
+		return fmt.Sprintf("%d", year+1), nil
+	default:
+		return "", fmt.Errorf("unknown level: %s", level)
+	}
+}
+
+// parseISOWeek parses "2006-W05" format, returning year and week number
+func parseISOWeek(s string) (int, int, error) {
+	var year, week int
+	if _, err := fmt.Sscanf(s, "%d-W%d", &year, &week); err != nil {
+		return 0, 0, fmt.Errorf("invalid ISO week format: %s", s)
+	}
+	return year, week, nil
+}
+
+// isoWeekStart returns the Monday of the given ISO year and week
+func isoWeekStart(year, week int) time.Time {
+	// January 4th is always in ISO week 1
+	t := time.Date(year, 1, 4, 0, 0, 0, 0, time.UTC)
+	// Back up to Monday
+	for t.Weekday() != time.Monday {
+		t = t.AddDate(0, 0, -1)
+	}
+	// Add (week-1) weeks
+	return t.AddDate(0, 0, 7*(week-1))
+}
+
 // DeleteTask removes a task from a goal
 func DeleteTask(account, level, period, taskID string) error {
 	goal, err := GetGoal(account, level, period)
@@ -232,9 +332,9 @@ func GetCurrentGoals(account string) (map[string]*GoalSummary, error) {
 	return summaries, nil
 }
 
-// ListGoalsByLevel lists all goals for a given level within a year range
+// ListGoalsByLevel lists all goals for a given level, optionally filtered by year (0 = no filter)
 func ListGoalsByLevel(account, level string, year int) ([]*GoalSummary, error) {
-	prefix := goalTitle(level, fmt.Sprintf("%d", year))
+	yearStr := fmt.Sprintf("%d", year)
 	var summaries []*GoalSummary
 
 	for _, b := range blog.GetBlogsWithAccount(account) {
@@ -245,7 +345,9 @@ func ListGoalsByLevel(account, level string, year int) ([]*GoalSummary, error) {
 		if err := json.Unmarshal([]byte(b.Content), &goal); err != nil {
 			continue
 		}
-		_ = prefix
+		if year > 0 && !strings.HasPrefix(goal.Period, yearStr) {
+			continue
+		}
 		summaries = append(summaries, goal.Summary())
 	}
 	return summaries, nil

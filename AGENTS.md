@@ -23,6 +23,8 @@ cd cmd/blog-agent && ./go_blog ../blogs_txt/sys_conf.md
 
 Build other agents from their own directories, for example `cd cmd/gateway && go build -o gateway`.
 
+Flutter 客户端改动验证禁止使用 `flutter build apk` 或其他 APK 打包命令；只做语法检测、静态分析和必要的单元测试，例如 `dart analyze`、`flutter analyze`、`dart format --set-exit-if-changed`、`flutter test`。
+
 ## Coding Style & Naming Conventions
 Follow standard Go formatting with `gofmt`; keep imports grouped as standard library, third-party, then internal modules. Shared mutable state must be guarded with `sync.RWMutex`. New multi-tenant APIs should use the `WithAccount` suffix, for example `GetBlogWithAccount`. Exported names use PascalCase; private helpers use camelCase. Storage types usually end with `Store`, managers with `Manager`, and enum-like constants often use an `E` prefix. Prefer Chinese comments when adding non-obvious logic.
 

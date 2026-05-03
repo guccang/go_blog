@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -37,6 +38,9 @@ import 'vosk_model_locator.dart';
 void main() {
   runApp(const AppAgentClientApp());
 }
+
+bool get _isAndroidHost => !kIsWeb && Platform.isAndroid;
+bool get _isWindowsHost => !kIsWeb && Platform.isWindows;
 
 class UiThemePreset {
   const UiThemePreset({
@@ -1029,7 +1033,8 @@ class ClientConfig {
       cortanaHighFreqStartHourDefault:
           (json['cortana_high_freq_start_hour_default'] as num?)?.toInt() ?? 9,
       cortanaHighFreqStartMinuteDefault:
-          (json['cortana_high_freq_start_minute_default'] as num?)?.toInt() ?? 0,
+          (json['cortana_high_freq_start_minute_default'] as num?)?.toInt() ??
+          0,
       cortanaHighFreqEndHourDefault:
           (json['cortana_high_freq_end_hour_default'] as num?)?.toInt() ?? 22,
       cortanaHighFreqEndMinuteDefault:
@@ -1594,7 +1599,11 @@ class AppAgentClient {
     }).toList();
   }
 
-  Future<String> readLogFile(String source, String file, {int lines = 400}) async {
+  Future<String> readLogFile(
+    String source,
+    String file, {
+    int lines = 400,
+  }) async {
     final uri = Uri.parse(
       '$baseUrl/api/app/logs/content?user_id=$userId&session_token=$sessionToken&source=${Uri.encodeQueryComponent(source)}&file=${Uri.encodeQueryComponent(file)}&lines=$lines',
     );
@@ -1739,6 +1748,8 @@ const bool _defaultCortanaEnabled = true;
 const bool _defaultCortanaAllowFullAccess = true;
 const bool _defaultCortanaAutoPlay = true;
 const String _defaultCortanaProactiveMode = 'high';
+const bool _defaultCortanaVoiceWakeEnabled = false;
+const String _defaultCortanaWakePhrase = '嗨 Cortana';
 
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
@@ -1770,6 +1781,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _cortanaPersonaNameKey = 'cortana::persona_name';
   static const String _cortanaPersonaDescriptionKey =
       'cortana::persona_description';
+  static const String _cortanaVoiceWakeEnabledKey =
+      'cortana::voice_wake_enabled';
+  static const String _cortanaWakePhraseKey = 'cortana::wake_phrase';
   static const Duration _sessionRefreshSkew = Duration(minutes: 1);
   static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1820,6 +1834,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
+  Timer? _cortanaWakeRestartTimer;
   Timer? _streamFlushTimer;
   final Map<String, _BufferedStreamUpdate> _bufferedStreamUpdates = {};
   static const Duration _streamFlushInterval = Duration(milliseconds: 80);
@@ -1830,6 +1845,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _loggingIn = false;
   bool _recording = false;
   bool _speechReady = false;
+  bool _systemSpeechReady = false;
   bool _useLocalVosk = false;
   bool _sending = false;
   bool _transcribingVoice = false;
@@ -1852,6 +1868,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _cortanaHighFreqEndMinute = 0;
   String _cortanaPersonaName = 'Cortana';
   String _cortanaPersonaDescription = '';
+  bool _cortanaVoiceWakeEnabled = _defaultCortanaVoiceWakeEnabled;
+  String _cortanaWakePhrase = _defaultCortanaWakePhrase;
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
   List<CodegenHistoryItem> _codegenHistory = [];
@@ -1890,6 +1908,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
   bool _startupGreetingShown = false;
   bool _loginGreetingShown = false;
+  bool _cortanaWakeListening = false;
+  bool _cortanaWakeHandling = false;
+  bool _cortanaWakePausedForLifecycle = false;
+  Future<void> _speechStopTail = Future<void>.value();
+  String _lastCortanaWakeTranscript = '';
 
   @override
   void initState() {
@@ -1908,7 +1931,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _cortanaWakePausedForLifecycle = true;
+      unawaited(_pauseCortanaWakeListening(cancel: true));
       unawaited(_flushHistoryToDisk());
+    } else if (state == AppLifecycleState.resumed) {
+      _cortanaWakePausedForLifecycle = false;
+      _scheduleCortanaWakeRestart();
     }
   }
 
@@ -1950,9 +1978,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_flushHistoryToDisk());
     _reconnectTimer?.cancel();
     _cortanaExpressionTimer?.cancel();
+    _cortanaWakeRestartTimer?.cancel();
     _streamFlushTimer?.cancel();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.sink.close());
+    unawaited(_pauseCortanaWakeListening(cancel: true));
     _userIdController.dispose();
     _passwordController.dispose();
     _baseUrlController.dispose();
@@ -1977,10 +2007,111 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  bool _isSpeechDoneStatus(String status) {
+    final normalized = status.toLowerCase().trim();
+    return normalized == 'done' ||
+        normalized == 'notlistening' ||
+        normalized == 'not_listening';
+  }
+
+  void _handleSpeechRecognitionStatus(String status) {
+    _appendSystem('Speech recognition status: $status');
+    if (_isSpeechDoneStatus(status) && _cortanaWakeListening) {
+      _cortanaWakeListening = false;
+      if (!_cortanaWakeHandling) {
+        _scheduleCortanaWakeRestart();
+      }
+    }
+  }
+
+  void _handleSpeechRecognitionError(Object error) {
+    _appendSystem('Speech recognition error: $error');
+    if (_isSpeechBusyError(error)) {
+      unawaited(_resetBusySpeechRecognition());
+      return;
+    }
+    if (_cortanaWakeListening) {
+      _cortanaWakeListening = false;
+      if (!_cortanaWakeHandling) {
+        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+      }
+    }
+  }
+
+  bool _isSpeechBusyError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('error_busy') || text.contains('recognizer_busy');
+  }
+
+  Future<void> _resetBusySpeechRecognition() async {
+    _cortanaWakeListening = false;
+    await _stopSpeechRecognition(cancel: true);
+    if (!_cortanaWakeHandling) {
+      _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+    }
+  }
+
+  Future<void> _stopSpeechRecognition({required bool cancel}) {
+    final previous = _speechStopTail;
+    late final Future<void> next;
+    next = previous.catchError((_) {}).then((_) async {
+      try {
+        if (cancel) {
+          await _speechToText.cancel();
+        } else if (_speechToText.isListening) {
+          await _speechToText.stop();
+        }
+      } catch (_) {
+        try {
+          await _speechToText.cancel();
+        } catch (_) {}
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    });
+    _speechStopTail = next;
+    return next;
+  }
+
+  Future<bool> _ensureSystemSpeechRecognitionReady({
+    bool silent = false,
+  }) async {
+    if (_systemSpeechReady) {
+      return true;
+    }
+    try {
+      final available = await _speechToText.initialize(
+        onError: _handleSpeechRecognitionError,
+        onStatus: _handleSpeechRecognitionStatus,
+      );
+      if (!mounted) {
+        return false;
+      }
+      if (!available && !silent) {
+        _appendSystem('Speech recognition not available on this device.');
+      }
+      setState(() {
+        _systemSpeechReady = available;
+      });
+      return available;
+    } catch (err, stack) {
+      if (!mounted) {
+        return false;
+      }
+      if (!silent) {
+        _appendSystem('Speech recognition init failed: $err');
+      }
+      debugPrint('Speech init error: $err\n$stack');
+      setState(() {
+        _systemSpeechReady = false;
+      });
+      return false;
+    }
+  }
+
   Future<void> _initVoice() async {
     final config = _clientConfig;
     final prefs = await SharedPreferences.getInstance();
-    if (Platform.isAndroid && config != null && config.enableLocalVosk) {
+    if (_isAndroidHost && config != null && config.enableLocalVosk) {
       final modelPath = await _resolveAvailableVoskModelPath(
         preferredPath: config.voskModelPath,
       );
@@ -2004,6 +2135,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               _useLocalVosk = true;
             });
             _appendSystem('Vosk local speech recognition is ready.');
+            await _ensureSystemSpeechRecognitionReady(silent: true);
+            _scheduleCortanaWakeRestart();
             return;
           }
           await prefs.remove('vosk_model_path');
@@ -2038,36 +2171,301 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     }
 
+    final available = await _ensureSystemSpeechRecognitionReady();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _speechReady = available;
+      _useLocalVosk = false;
+    });
+    _scheduleCortanaWakeRestart();
+  }
+
+  bool get _canListenForCortanaWake =>
+      mounted &&
+      _cortanaEnabled &&
+      _cortanaVoiceWakeEnabled &&
+      !_cortanaWakePausedForLifecycle &&
+      !_recording &&
+      !_sending &&
+      !_transcribingVoice &&
+      !_cortanaWakeHandling;
+
+  void _scheduleCortanaWakeRestart({
+    Duration delay = const Duration(milliseconds: 500),
+  }) {
+    _cortanaWakeRestartTimer?.cancel();
+    if (!_canListenForCortanaWake) {
+      return;
+    }
+    _cortanaWakeRestartTimer = Timer(delay, () {
+      if (!mounted || !_canListenForCortanaWake) {
+        return;
+      }
+      unawaited(_startCortanaWakeListening());
+    });
+  }
+
+  Future<void> _pauseCortanaWakeListening({required bool cancel}) async {
+    _cortanaWakeRestartTimer?.cancel();
+    if (!_cortanaWakeListening && !_speechToText.isListening) {
+      return;
+    }
+    _cortanaWakeListening = false;
+    await _stopSpeechRecognition(cancel: cancel);
+  }
+
+  Future<String?> _resolveSpeechLocaleId() async {
     try {
-      final available = await _speechToText.initialize(
-        onError: (error) {
-          _appendSystem('Speech recognition error: $error');
+      final locales = await _speechToText.locales();
+      if (locales.isEmpty) {
+        return null;
+      }
+      final zhLocale = locales.firstWhere(
+        (locale) =>
+            locale.localeId == 'zh_CN' || locale.localeId.startsWith('zh'),
+        orElse: () => locales.first,
+      );
+      return zhLocale.localeId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _compactWakeText(String text) {
+    return normalizeSpeechTranscript(
+      text,
+    ).toLowerCase().replaceAll(RegExp(r"""[\s,，.。!！?？、:：;；"“”'‘’]"""), '');
+  }
+
+  Set<String> _wakePhraseAliases() {
+    return <String>{
+      _cortanaWakePhrase,
+      _defaultCortanaWakePhrase,
+      '嘿 Cortana',
+      'Hey Cortana',
+      'Hi Cortana',
+      '你好 Cortana',
+      '嗨 科塔娜',
+      '嘿 科塔娜',
+      '嗨 小娜',
+    }.map(_compactWakeText).where((text) => text.isNotEmpty).toSet();
+  }
+
+  String _stripWakePhrase(String transcript) {
+    var command = normalizeSpeechTranscript(transcript);
+    final configured = _cortanaWakePhrase.trim();
+    if (configured.isNotEmpty) {
+      command = command.replaceFirst(
+        RegExp(RegExp.escape(configured), caseSensitive: false),
+        '',
+      );
+    }
+    command = command.replaceFirst(
+      RegExp(
+        r'(嗨|嘿|hello|hey|hi|你好)?\s*(cortana|科塔娜|小娜)\s*[,，。.!！?？、]?\s*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    return normalizeSpeechTranscript(command);
+  }
+
+  String? _extractCortanaWakeCommand(String transcript) {
+    final compact = _compactWakeText(transcript);
+    if (compact.isEmpty) {
+      return null;
+    }
+    for (final alias in _wakePhraseAliases()) {
+      if (compact.contains(alias)) {
+        return _stripWakePhrase(transcript);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _startCortanaWakeListening() async {
+    if (!_canListenForCortanaWake || _speechToText.isListening) {
+      return;
+    }
+    await _speechStopTail.catchError((_) {});
+    final ready = await _ensureSystemSpeechRecognitionReady(silent: true);
+    if (!ready || !_canListenForCortanaWake) {
+      return;
+    }
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      _appendSystem('语音唤醒需要麦克风权限。');
+      return;
+    }
+
+    try {
+      final localeId = await _resolveSpeechLocaleId();
+      _lastCortanaWakeTranscript = '';
+      final started = await _speechToText.listen(
+        onResult: (result) {
+          final transcript = normalizeSpeechTranscript(result.recognizedWords);
+          if (transcript.isEmpty ||
+              transcript == _lastCortanaWakeTranscript ||
+              _cortanaWakeHandling) {
+            return;
+          }
+          _lastCortanaWakeTranscript = transcript;
+          final command = _extractCortanaWakeCommand(transcript);
+          if (command != null) {
+            unawaited(_handleCortanaWakeDetected(command));
+          }
         },
-        onStatus: (status) {
-          _appendSystem('Speech recognition status: $status');
+        listenFor: const Duration(minutes: 5),
+        pauseFor: const Duration(seconds: 3),
+        localeId: localeId,
+        listenOptions: stt.SpeechListenOptions(
+          listenMode: stt.ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+        ),
+      );
+      _cortanaWakeListening = started;
+      if (started && mounted) {
+        setState(() {
+          _status = '语音唤醒监听中';
+        });
+      }
+    } catch (err, stack) {
+      _cortanaWakeListening = false;
+      debugPrint('Cortana wake listen error: $err\n$stack');
+      if (_isSpeechBusyError(err)) {
+        await _stopSpeechRecognition(cancel: true);
+        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+      } else {
+        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+      }
+    }
+  }
+
+  Future<String> _listenForCortanaWakeCommand() async {
+    if (!await _ensureSystemSpeechRecognitionReady(silent: true)) {
+      return '';
+    }
+    final completer = Completer<String>();
+    var transcript = '';
+    try {
+      await _speechStopTail.catchError((_) {});
+      final localeId = await _resolveSpeechLocaleId();
+      var started = await _listenForCortanaCommandOnce(
+        localeId: localeId,
+        onTranscript: (text, finalResult) {
+          transcript = text;
+          if (finalResult && text.isNotEmpty && !completer.isCompleted) {
+            completer.complete(text);
+          }
         },
       );
-      if (!mounted) {
-        return;
+      if (!started) {
+        await _stopSpeechRecognition(cancel: true);
+        started = await _listenForCortanaCommandOnce(
+          localeId: localeId,
+          onTranscript: (text, finalResult) {
+            transcript = text;
+            if (finalResult && text.isNotEmpty && !completer.isCompleted) {
+              completer.complete(text);
+            }
+          },
+        );
       }
-      if (!available) {
-        _appendSystem('Speech recognition not available on this device.');
+      if (!started) {
+        return '';
       }
-      setState(() {
-        _speechReady = available;
-        _useLocalVosk = false;
-      });
+      if (mounted) {
+        setState(() {
+          _status = 'Cortana 已唤醒，正在聆听...';
+        });
+      }
+      return await Future.any<String>([
+        completer.future,
+        Future<String>.delayed(const Duration(seconds: 10), () => transcript),
+      ]);
     } catch (err, stack) {
+      debugPrint('Cortana command listen error: $err\n$stack');
+      if (_isSpeechBusyError(err)) {
+        await _stopSpeechRecognition(cancel: true);
+      }
+      return transcript;
+    } finally {
+      await _stopSpeechRecognition(cancel: false);
+    }
+  }
+
+  Future<bool> _listenForCortanaCommandOnce({
+    required String? localeId,
+    required void Function(String transcript, bool finalResult) onTranscript,
+  }) async {
+    return await _speechToText.listen(
+      onResult: (result) {
+        onTranscript(
+          normalizeSpeechTranscript(result.recognizedWords),
+          result.finalResult,
+        );
+      },
+      listenFor: const Duration(seconds: 10),
+      pauseFor: const Duration(seconds: 2),
+      localeId: localeId,
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: false,
+      ),
+    );
+  }
+
+  Future<void> _handleCortanaWakeDetected(String initialCommand) async {
+    if (_cortanaWakeHandling) {
+      return;
+    }
+    _cortanaWakeHandling = true;
+    try {
+      await _pauseCortanaWakeListening(cancel: false);
       if (!mounted) {
         return;
       }
-      _appendSystem('Speech recognition init failed: $err');
-      debugPrint('Speech init error: $err\n$stack');
       setState(() {
-        _speechReady = false;
-        _useLocalVosk = false;
+        _rootTab = RootTab.cortana;
+        _cortanaFloatingMode = CortanaDisplayMode.collapsed;
+        _cortanaBadge = false;
+        _status = 'Cortana 已唤醒';
       });
+      _triggerCortanaContextualExpression('surprised');
+      _appendSystem('检测到语音唤醒词：$_cortanaWakePhrase');
+
+      var command = normalizeSpeechTranscript(initialCommand);
+      if (command.isEmpty) {
+        command = normalizeSpeechTranscript(
+          await _listenForCortanaWakeCommand(),
+        );
+      }
+      if (command.isEmpty) {
+        _appendSystem('已唤醒 Cortana，但未识别到有效语音内容。');
+        return;
+      }
+      await _speakCortanaWakeCommand(command);
+    } finally {
+      _cortanaWakeHandling = false;
+      _scheduleCortanaWakeRestart(delay: const Duration(seconds: 1));
     }
+  }
+
+  Future<void> _speakCortanaWakeCommand(String command) async {
+    _appendSystem('Cortana 语音对话：$command');
+    for (var attempt = 0; attempt < 10; attempt++) {
+      final state = _cortanaPageKey.currentState;
+      if (state != null) {
+        await state.speakText(command);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    throw StateError('Cortana 页面尚未准备好。');
   }
 
   static const String _voskModelUrl =
@@ -2275,7 +2673,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       await _deleteDirectoryIfExists(tempModelDir);
 
       String? resolvedModelPath;
-      if (Platform.isAndroid) {
+      if (_isAndroidHost) {
         final extractResp = await _zipExtractor.extractZip(
           archiveFile.path,
           modelPath,
@@ -2447,12 +2845,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ? prefs.getString(_cortanaPersonaNameKey)!.trim()
             : config.cortanaPersonaNameDefault;
         _cortanaPersonaDescription =
-            prefs.getString(_cortanaPersonaDescriptionKey)
-                    ?.trim()
-                    .isNotEmpty ==
+            prefs.getString(_cortanaPersonaDescriptionKey)?.trim().isNotEmpty ==
                 true
             ? prefs.getString(_cortanaPersonaDescriptionKey)!.trim()
             : config.cortanaPersonaDescriptionDefault;
+        _cortanaVoiceWakeEnabled =
+            prefs.getBool(_cortanaVoiceWakeEnabledKey) ??
+            _defaultCortanaVoiceWakeEnabled;
+        _cortanaWakePhrase =
+            prefs.getString(_cortanaWakePhraseKey)?.trim().isNotEmpty == true
+            ? prefs.getString(_cortanaWakePhraseKey)!.trim()
+            : _defaultCortanaWakePhrase;
         _baseUrlController.text = config.baseUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
@@ -2545,6 +2948,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     highFreqEndMinute: _cortanaHighFreqEndMinute,
     personaName: _cortanaPersonaName,
     personaDescription: _cortanaPersonaDescription,
+    voiceWakeEnabled: _cortanaVoiceWakeEnabled,
+    wakePhrase: _cortanaWakePhrase,
   );
 
   Future<void> _syncCortanaSettings({bool silent = false}) async {
@@ -2559,15 +2964,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _cortanaHighFreqStartMinute,
     );
     await prefs.setInt(_cortanaHighFreqEndHourKey, _cortanaHighFreqEndHour);
-    await prefs.setInt(
-      _cortanaHighFreqEndMinuteKey,
-      _cortanaHighFreqEndMinute,
-    );
+    await prefs.setInt(_cortanaHighFreqEndMinuteKey, _cortanaHighFreqEndMinute);
     await prefs.setString(_cortanaPersonaNameKey, _cortanaPersonaName);
     await prefs.setString(
       _cortanaPersonaDescriptionKey,
       _cortanaPersonaDescription,
     );
+    await prefs.setBool(_cortanaVoiceWakeEnabledKey, _cortanaVoiceWakeEnabled);
+    await prefs.setString(_cortanaWakePhraseKey, _cortanaWakePhrase);
     if (_clientConfig == null ||
         (_sessionToken.isEmpty && _refreshToken.isEmpty) ||
         _userIdController.text.trim().isEmpty) {
@@ -2603,7 +3007,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _cortanaHighFreqEndMinute = settings.highFreqEndMinute;
       _cortanaPersonaName = settings.personaName;
       _cortanaPersonaDescription = settings.personaDescription;
+      _cortanaVoiceWakeEnabled = settings.voiceWakeEnabled;
+      _cortanaWakePhrase = settings.wakePhrase.trim().isEmpty
+          ? _defaultCortanaWakePhrase
+          : settings.wakePhrase.trim();
     });
+    if (_cortanaVoiceWakeEnabled && _cortanaEnabled) {
+      _scheduleCortanaWakeRestart();
+    } else {
+      unawaited(_pauseCortanaWakeListening(cancel: true));
+    }
     unawaited(_syncCortanaSettings());
   }
 
@@ -5595,7 +6008,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _installDownloadedApk(String apkPath) async {
-    if (!Platform.isAndroid) {
+    if (!_isAndroidHost) {
       _appendSystem('APK 安装仅支持 Android 客户端。');
       return;
     }
@@ -5676,16 +6089,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_recording || _sending) {
       return;
     }
+    await _pauseCortanaWakeListening(cancel: true);
 
     final hasPermission = await _audioRecorder.hasPermission();
     if (!hasPermission) {
       _appendSystem('Microphone permission denied.');
+      _scheduleCortanaWakeRestart();
       return;
     }
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final useWaveFile = Platform.isWindows || _useLocalVosk;
+      final useWaveFile = _isWindowsHost || _useLocalVosk;
       final fileExt = useWaveFile ? 'wav' : 'm4a';
       final path =
           '${tempDir.path}${Platform.pathSeparator}app_voice_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
@@ -5760,6 +6175,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       });
     } catch (err) {
       _appendSystem('Voice record start failed: $err');
+      _scheduleCortanaWakeRestart();
     }
   }
 
@@ -5807,11 +6223,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final startedAt = _recordStartedAt;
     _recordStartedAt = null;
     _recordDragStartGlobalPosition = null;
-    try {
-      if (_speechToText.isListening) {
-        await _speechToText.stop();
-      }
-    } catch (_) {}
+    await _stopSpeechRecognition(cancel: false);
 
     String? path;
     try {
@@ -5843,13 +6255,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _cancelVoice() async {
-    try {
-      if (_speechToText.isListening) {
-        await _speechToText.cancel();
-      }
-    } catch (_) {}
+    await _stopSpeechRecognition(cancel: true);
     await _stopRecording(discard: true);
     _appendSystem('Voice input cancelled.');
+    _scheduleCortanaWakeRestart();
   }
 
   Future<void> _transcribeVoiceToDraft() async {
@@ -5907,6 +6316,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _transcribingVoice = false;
         });
       }
+      _scheduleCortanaWakeRestart();
     }
   }
 
@@ -5914,6 +6324,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final recorded = await _stopRecording(discard: false);
     if (recorded == null) {
       _appendSystem('Voice recording unavailable.');
+      _scheduleCortanaWakeRestart();
       return;
     }
 
@@ -5928,7 +6339,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
       final seconds = recorded.duration.inMilliseconds / 1000;
       final label = '[Voice ${seconds.toStringAsFixed(1)}s]';
-      final audioFormat = (Platform.isWindows || _useLocalVosk) ? 'wav' : 'm4a';
+      final audioFormat = (_isWindowsHost || _useLocalVosk) ? 'wav' : 'm4a';
       final savedAudioPath = await _persistVoiceMessage(
         bytes: bytes,
         extension: audioFormat,
@@ -5981,6 +6392,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     } catch (err) {
       _appendSystem(_describeRequestError(err, operation: 'Send voice audio'));
+    } finally {
+      _scheduleCortanaWakeRestart();
     }
   }
 
@@ -7726,14 +8139,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       key: _cortanaPageKey,
       mode: isFullscreen ? CortanaDisplayMode.fullscreen : _cortanaFloatingMode,
       onSendMessage: _sendCortanaMessage,
-      onListLogSources: () => _runAuthed(
-        'List log sources',
-        (client) => client.listLogSources(),
-      ),
-      onListLogFiles: (source) => _runAuthed(
-        'List log files',
-        (client) => client.listLogFiles(source),
-      ),
+      onListLogSources: () =>
+          _runAuthed('List log sources', (client) => client.listLogSources()),
+      onListLogFiles: (source) =>
+          _runAuthed('List log files', (client) => client.listLogFiles(source)),
       onReadLogFile: (source, file) => _runAuthed(
         'Read log file',
         (client) => client.readLogFile(source, file),
@@ -7845,8 +8254,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          if (_rootTab != RootTab.cortana)
-            _rootTab == RootTab.chat ? _buildChatBody() : _buildCodegenBody(),
+          Offstage(
+            offstage: _rootTab != RootTab.chat,
+            child: TickerMode(
+              enabled: _rootTab == RootTab.chat,
+              child: _buildChatBody(),
+            ),
+          ),
+          Offstage(
+            offstage: _rootTab != RootTab.codegen,
+            child: TickerMode(
+              enabled: _rootTab == RootTab.codegen,
+              child: _buildCodegenBody(),
+            ),
+          ),
           _buildCortanaLayer(),
         ],
       ),

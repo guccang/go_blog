@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>星座占卜运势 - 神秘星空</title>
-    <link rel="stylesheet" href="/statics/css/public.css">
+    <link rel="stylesheet" href="/css/public.css">
     <link rel="stylesheet" href="/css/constellation.css">
     <script src="/js/constellation.js" defer></script>
 </head>
