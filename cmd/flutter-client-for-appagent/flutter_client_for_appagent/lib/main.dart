@@ -16,7 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart' hide AndroidOptions;
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -3912,14 +3912,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
     setState(() {
       _codegenHistory.insert(0, item);
-      // 只保留最近100条记录，但锁定的记录不会被移除
-      if (_codegenHistory.length > 100) {
+      // 只保留最近1000条记录，但锁定的记录不会被移除
+      if (_codegenHistory.length > 1000) {
         final locked = _codegenHistory.where((e) => e.locked).toList();
         final unlocked = _codegenHistory.where((e) => !e.locked).toList();
-        if (unlocked.length > 100 - locked.length) {
+        if (unlocked.length > 1000 - locked.length) {
           _codegenHistory = [
             ...locked,
-            ...unlocked.sublist(0, 100 - locked.length),
+            ...unlocked.sublist(0, 1000 - locked.length),
           ];
         }
       }

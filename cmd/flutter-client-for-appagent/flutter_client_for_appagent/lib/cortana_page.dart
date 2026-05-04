@@ -1914,11 +1914,7 @@ class CortanaPageState extends State<CortanaPage> {
     final cs = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [cs.surfaceContainerHigh, cs.surface],
-        ),
+        color: Colors.transparent,
       ),
       child: Center(
         child: Icon(
@@ -1974,6 +1970,7 @@ class CortanaPageState extends State<CortanaPage> {
     final cs = Theme.of(context).colorScheme;
     final isFullscreen = widget.mode == CortanaDisplayMode.fullscreen;
     final isCollapsed = widget.mode == CortanaDisplayMode.collapsed;
+    final isFloating = !isFullscreen;
     final floatingSize = isFullscreen
         ? null
         : _floatingSizeForMode(widget.mode);
@@ -2070,23 +2067,25 @@ class CortanaPageState extends State<CortanaPage> {
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
                   borderRadius: borderRadius,
-                  border: isFullscreen
-                      ? null
-                      : Border.all(
+                  border: isFloating && isCollapsed
+                      ? Border.all(
                           color: cs.outlineVariant.withValues(alpha: 0.6),
                           width: 1.5,
-                        ),
-                  boxShadow: isFullscreen
-                      ? null
-                      : [
+                        )
+                      : null,
+                  boxShadow: isFloating && isCollapsed
+                      ? [
                           BoxShadow(
                             color: cs.shadow.withValues(alpha: 0.25),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
-                        ],
+                        ]
+                      : null,
                 ),
-                clipBehavior: Clip.antiAlias,
+                clipBehavior: isFloating && !isCollapsed
+                    ? Clip.none
+                    : Clip.antiAlias,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -2101,25 +2100,15 @@ class CortanaPageState extends State<CortanaPage> {
                         top: 0,
                         left: 0,
                         right: 0,
-                        child: Container(
+                        child: SizedBox(
                           height: 20,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                cs.surfaceContainerLow.withValues(alpha: 0.9),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
                           child: Center(
                             child: Container(
                               width: 24,
                               height: 3,
                               margin: const EdgeInsets.only(top: 6),
                               decoration: BoxDecoration(
-                                color: cs.onSurface.withValues(alpha: 0.3),
+                                color: cs.onSurface.withValues(alpha: 0.22),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
@@ -2144,9 +2133,7 @@ class CortanaPageState extends State<CortanaPage> {
                               width: 24,
                               height: 24,
                               decoration: BoxDecoration(
-                                color: cs.surfaceContainerLow.withValues(
-                                  alpha: 0.85,
-                                ),
+                                color: cs.surface.withValues(alpha: 0.36),
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
