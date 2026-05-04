@@ -116,45 +116,101 @@ class CodegenProjectsSnapshot {
 
 enum CodegenLaunchMode { code, deploy }
 
+class CodegenProcessEntry {
+  const CodegenProcessEntry({
+    required this.timestamp,
+    required this.content,
+    required this.origin,
+    this.sessionId = '',
+  });
+
+  final DateTime timestamp;
+  final String content;
+  final String origin;
+  final String sessionId;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'timestamp': timestamp.toIso8601String(),
+      'content': content,
+      'origin': origin,
+      'session_id': sessionId,
+    };
+  }
+
+  factory CodegenProcessEntry.fromJson(Map<String, dynamic> json) {
+    return CodegenProcessEntry(
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      content: (json['content'] ?? '').toString(),
+      origin: (json['origin'] ?? '').toString(),
+      sessionId: (json['session_id'] ?? '').toString(),
+    );
+  }
+}
+
 class CodegenHistoryItem {
   const CodegenHistoryItem({
+    required this.id,
     required this.timestamp,
     required this.command,
     required this.mode,
     this.locked = false,
+    this.completed = false,
+    this.processEntries = const <CodegenProcessEntry>[],
   });
 
+  final String id;
   final DateTime timestamp;
   final String command;
   final CodegenLaunchMode mode;
   final bool locked;
+  final bool completed;
+  final List<CodegenProcessEntry> processEntries;
 
-  CodegenHistoryItem copyWith({bool? locked}) {
+  CodegenHistoryItem copyWith({
+    bool? locked,
+    bool? completed,
+    List<CodegenProcessEntry>? processEntries,
+  }) {
     return CodegenHistoryItem(
+      id: id,
       timestamp: timestamp,
       command: command,
       mode: mode,
       locked: locked ?? this.locked,
+      completed: completed ?? this.completed,
+      processEntries: processEntries ?? this.processEntries,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'timestamp': timestamp.toIso8601String(),
       'command': command,
       'mode': mode.name,
       'locked': locked,
+      'completed': completed,
+      'process_entries': processEntries.map((item) => item.toJson()).toList(),
     };
   }
 
   factory CodegenHistoryItem.fromJson(Map<String, dynamic> json) {
     return CodegenHistoryItem(
+      id: (json['id'] ?? '').toString(),
       timestamp: DateTime.parse(json['timestamp'] as String),
       command: (json['command'] ?? '').toString(),
       mode: json['mode'] == 'deploy'
           ? CodegenLaunchMode.deploy
           : CodegenLaunchMode.code,
       locked: json['locked'] == true,
+      completed: json['completed'] == true,
+      processEntries: (json['process_entries'] as List<dynamic>? ?? const [])
+          .map(
+            (item) =>
+                CodegenProcessEntry.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
     );
   }
 }

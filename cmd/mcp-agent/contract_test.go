@@ -27,7 +27,7 @@ func TestDiffServersDetectsAddedRemovedChanged(t *testing.T) {
 func TestNewConnectionUsesMCPBridgeAgentType(t *testing.T) {
 	cfg := DefaultConfig()
 	manager := NewMCPManager(cfg.ToolPrefix)
-	conn := NewConnection(cfg, "mcp-agent-test", manager, "mcp-agent.json")
+	conn := NewConnection(cfg, "mcp-agent-test", manager, "mcp-agent.json", "测试地图服务")
 	if conn == nil {
 		t.Fatalf("expected connection to be created")
 	}

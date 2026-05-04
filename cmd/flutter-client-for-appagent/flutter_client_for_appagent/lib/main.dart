@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'dart:convert'
-    show base64Decode, base64Encode, jsonDecode, jsonEncode, utf8;
+    show
+        JsonEncoder,
+        base64Decode,
+        base64Encode,
+        jsonDecode,
+        jsonEncode,
+        utf8;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -10,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,16 +28,18 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
 import 'cortana_broadcast_queue.dart';
+import 'cortana_history_page.dart';
 import 'cortana_page.dart'
     show
         CortanaDisplayMode,
-        CortanaLogFile,
-        CortanaLogSource,
         CortanaPage,
         CortanaPageState,
         CortanaReplayItem,
         CortanaReplyPayload,
-        CortanaSettings;
+        CortanaSettings,
+        FlutterClientLogEntry,
+        addFlutterClientLog,
+        flutterClientLogs;
 import 'speech_transcript_formatter.dart';
 import 'version.g.dart';
 import 'vosk_model_locator.dart';
@@ -642,6 +651,77 @@ class _AppAgentClientAppState extends State<AppAgentClientApp> {
   }
 }
 
+class LlmDebugEvent {
+  const LlmDebugEvent({
+    required this.event,
+    required this.content,
+    required this.timestamp,
+    required this.meta,
+  });
+
+  final String event;
+  final String content;
+  final DateTime timestamp;
+  final Map<String, dynamic> meta;
+
+  String get label {
+    switch (event) {
+      case 'debug_prompt':
+        return '提示词';
+      case 'debug_llm_round':
+        return 'LLM';
+      case 'tool_call':
+        return '工具调用';
+      case 'tool_result':
+        return '工具结果';
+      case 'thinking':
+        return '思考';
+      case 'tool_info':
+        return '工具';
+      case 'task_complete':
+        return '完成';
+      default:
+        return event;
+    }
+  }
+
+  Map<String, dynamic> get payload {
+    final raw = meta['debug_payload'];
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    return const <String, dynamic>{};
+  }
+
+  String get detailText {
+    final data = payload;
+    if (event == 'debug_prompt') {
+      final prompt = (data['system_prompt'] ?? '').toString();
+      if (prompt.trim().isNotEmpty) {
+        return prompt;
+      }
+    }
+    if (event == 'debug_llm_round') {
+      final assistant = (data['assistant_text'] ?? '').toString();
+      final calls = data['tool_calls'];
+      final parts = <String>[];
+      if (assistant.trim().isNotEmpty) {
+        parts.add(assistant);
+      }
+      if (calls is List && calls.isNotEmpty) {
+        parts.add(const JsonEncoder.withIndent('  ').convert(calls));
+      }
+      if (parts.isNotEmpty) {
+        return parts.join('\n\n');
+      }
+    }
+    return content;
+  }
+}
+
 class ChatMessage {
   ChatMessage({
     required this.content,
@@ -670,6 +750,7 @@ class ChatMessage {
         ? null
         : Map<String, dynamic>.from(meta!);
     sanitizedMeta?.remove('audio_base64');
+    sanitizedMeta?.remove('video_base64');
     return {
       'content': content,
       'direction': direction.name,
@@ -983,7 +1064,7 @@ class GroupInfo {
   }
 }
 
-enum RootTab { chat, codegen, cortana }
+enum RootTab { chat, codegen, cortana, debug, settings }
 
 class ClientConfig {
   const ClientConfig({
@@ -1188,6 +1269,31 @@ class ZipExtractor {
       throw Exception(error.isEmpty ? 'Zip extraction failed' : error);
     }
     return resp;
+  }
+}
+
+class DeviceLocationProvider {
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.flutter_client_for_appagent/location',
+  );
+
+  Future<Map<String, dynamic>> getCurrentLocation() async {
+    debugPrint('[Cortana Location] invoke native getCurrentLocation');
+    final resp = await _channel.invokeMapMethod<String, dynamic>(
+      'getCurrentLocation',
+    );
+    if (resp == null) {
+      debugPrint('[Cortana Location] native returned null response');
+      return <String, dynamic>{
+        'available': false,
+        'permission': 'unknown',
+        'message': 'Location provider returned empty response',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+    }
+    final location = Map<String, dynamic>.from(resp);
+    debugPrint('[Cortana Location] native response: ${jsonEncode(location)}');
+    return location;
   }
 }
 
@@ -1550,73 +1656,6 @@ class AppAgentClient {
     return groups;
   }
 
-  Future<List<CortanaLogSource>> listLogSources() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/logs/sources?user_id=$userId&session_token=$sessionToken',
-    );
-    final resp = await http
-        .get(uri, headers: _sessionHeaders())
-        .timeout(_httpTimeout);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      _throwRequestError('list log sources', resp);
-    }
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final items = data['sources'] as List<dynamic>? ?? const [];
-    return items.map((item) {
-      final map = Map<String, dynamic>.from(item as Map);
-      return CortanaLogSource(
-        name: (map['name'] as String? ?? '').trim(),
-        path: (map['path'] as String? ?? '').trim(),
-        description: (map['description'] as String? ?? '').trim(),
-      );
-    }).toList();
-  }
-
-  Future<List<CortanaLogFile>> listLogFiles(String source) async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/logs/files?user_id=$userId&session_token=$sessionToken&source=${Uri.encodeQueryComponent(source)}',
-    );
-    final resp = await http
-        .get(uri, headers: _sessionHeaders())
-        .timeout(_httpTimeout);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      _throwRequestError('list log files', resp);
-    }
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final items = data['files'] as List<dynamic>? ?? const [];
-    return items.map((item) {
-      final map = Map<String, dynamic>.from(item as Map);
-      final modifiedAtMs = (map['modified_at'] as num?)?.toInt();
-      return CortanaLogFile(
-        name: (map['name'] as String? ?? '').trim(),
-        path: (map['path'] as String? ?? '').trim(),
-        size: (map['size'] as num?)?.toInt() ?? 0,
-        modifiedAt: modifiedAtMs == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(modifiedAtMs),
-        modifiedText: (map['modified_text'] as String? ?? '').trim(),
-      );
-    }).toList();
-  }
-
-  Future<String> readLogFile(
-    String source,
-    String file, {
-    int lines = 400,
-  }) async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/logs/content?user_id=$userId&session_token=$sessionToken&source=${Uri.encodeQueryComponent(source)}&file=${Uri.encodeQueryComponent(file)}&lines=$lines',
-    );
-    final resp = await http
-        .get(uri, headers: _sessionHeaders())
-        .timeout(_httpTimeout);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      _throwRequestError('read log file', resp);
-    }
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    return (data['content'] as String? ?? '').trim();
-  }
-
   Future<List<GroupInfo>> mutateGroup(String action, String groupId) async {
     final uri = Uri.parse('$baseUrl/api/app/groups');
     final resp = await http
@@ -1656,6 +1695,44 @@ class AppAgentClient {
     return CodegenProjectsSnapshot.fromJson(
       jsonDecode(resp.body) as Map<String, dynamic>,
     );
+  }
+
+  Future<List<CortanaReplayItem>> listCortanaVoiceHistory({
+    int limit = 200,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/cortana/history?user_id=$userId&session_token=$sessionToken&limit=$limit',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list cortana history', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final items = (data['items'] as List<dynamic>? ?? const [])
+        .map((item) {
+          final json = item as Map<String, dynamic>;
+          final createdAtValue = json['created_at'];
+          final createdAtMillis = createdAtValue is int
+              ? createdAtValue
+              : int.tryParse('$createdAtValue') ??
+                    DateTime.now().millisecondsSinceEpoch;
+          return CortanaReplayItem(
+            id: (json['id'] ?? '').toString().trim(),
+            text: (json['text'] ?? '').toString().trim(),
+            audioPath: '',
+            audioFormat: (json['audio_format'] ?? '').toString().trim(),
+            createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
+            sourceLabel: '服务端历史',
+            fileId: (json['file_id'] ?? '').toString().trim(),
+            storageProvider: (json['storage_provider'] ?? '').toString().trim(),
+            objectKey: (json['object_key'] ?? '').toString().trim(),
+          );
+        })
+        .where((item) => item.text.isNotEmpty && item.fileId.isNotEmpty)
+        .toList();
+    return items;
   }
 
   Future<WebSocketChannel> connectWebSocket() async {
@@ -1738,10 +1815,21 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _BufferedStreamUpdate {
-  final String scopeKey;
-  final ChatMessage message;
-  _BufferedStreamUpdate({required this.scopeKey, required this.message});
+class _CodegenStreamState {
+  _CodegenStreamState({
+    required this.scopeKey,
+    required this.streamMessageId,
+    required this.latestMessage,
+  });
+
+  String scopeKey;
+  final String streamMessageId;
+  ChatMessage latestMessage;
+  String fullContent = '';
+  String pendingDelta = '';
+  int segmentIndex = 0;
+  String? activeSegmentMessageId;
+  bool finalSeen = false;
 }
 
 const bool _defaultCortanaEnabled = true;
@@ -1750,6 +1838,7 @@ const bool _defaultCortanaAutoPlay = true;
 const String _defaultCortanaProactiveMode = 'high';
 const bool _defaultCortanaVoiceWakeEnabled = false;
 const String _defaultCortanaWakePhrase = '嗨 Cortana';
+const String _defaultCortanaOwnerTitle = '';
 
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _baseUrlOverrideKey = 'client_config::base_url_override';
@@ -1779,6 +1868,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _cortanaHighFreqEndMinuteKey =
       'cortana::high_freq_end_minute';
   static const String _cortanaPersonaNameKey = 'cortana::persona_name';
+  static const String _cortanaOwnerTitleKey = 'cortana::owner_title';
   static const String _cortanaPersonaDescriptionKey =
       'cortana::persona_description';
   static const String _cortanaVoiceWakeEnabledKey =
@@ -1815,6 +1905,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final VoskTranscriber _voskTranscriber = VoskTranscriber();
   final ApkInstaller _apkInstaller = ApkInstaller();
   final ZipExtractor _zipExtractor = ZipExtractor();
+  final DeviceLocationProvider _locationProvider = DeviceLocationProvider();
   final ResumableFileDownloader _fileDownloader = const ResumableFileDownloader(
     retryDelays: _voskDownloadRetryDelays,
   );
@@ -1827,6 +1918,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final List<GroupInfo> _groups = <GroupInfo>[];
   final List<CodingProjectInfo> _codingProjects = <CodingProjectInfo>[];
   final List<DeployProjectInfo> _deployProjects = <DeployProjectInfo>[];
+  final List<LlmDebugEvent> _llmDebugEvents = <LlmDebugEvent>[];
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
   final Set<String> _consumedCortanaReplyKeys = <String>{};
@@ -1835,9 +1927,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
   Timer? _cortanaWakeRestartTimer;
+  Timer? _cortanaLocationTimer;
   Timer? _streamFlushTimer;
-  final Map<String, _BufferedStreamUpdate> _bufferedStreamUpdates = {};
+  final Map<String, _CodegenStreamState> _codegenStreamStates =
+      <String, _CodegenStreamState>{};
+  final Set<String> _pendingCodegenStreamIds = <String>{};
   static const Duration _streamFlushInterval = Duration(milliseconds: 80);
+  static const int _codegenStreamSegmentLimit = 2200;
   bool _scrollToBottomScheduled = false;
 
   bool _connecting = false;
@@ -1853,6 +1949,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _playingAudioKey;
   bool _autoReconnect = false;
   bool _configLoading = true;
+  bool _sidebarExpanded = false;
   bool _controlsExpanded = false;
   bool _groupTabsExpanded = false;
   bool _passwordVisible = false;
@@ -1867,12 +1964,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _cortanaHighFreqEndHour = 22;
   int _cortanaHighFreqEndMinute = 0;
   String _cortanaPersonaName = 'Cortana';
+  String _cortanaOwnerTitle = _defaultCortanaOwnerTitle;
   String _cortanaPersonaDescription = '';
   bool _cortanaVoiceWakeEnabled = _defaultCortanaVoiceWakeEnabled;
   String _cortanaWakePhrase = _defaultCortanaWakePhrase;
+  final TextEditingController _cortanaPersonaNameCtrl = TextEditingController();
+  final TextEditingController _cortanaOwnerTitleCtrl = TextEditingController();
+  final TextEditingController _cortanaPersonaDescCtrl = TextEditingController();
+  final TextEditingController _cortanaWakePhraseCtrl = TextEditingController();
+  bool _cortanaChatSettingsExpanded = false;
+  bool _cortanaChatLogsExpanded = false;
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
   List<CodegenHistoryItem> _codegenHistory = [];
+  String _activeCodegenHistoryId = '';
   int _lastSequence = 0;
   String _status = 'Idle';
   String _sessionToken = '';
@@ -1915,6 +2020,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _speechStopTail = Future<void>.value();
   String _lastSpeechStatusLog = '';
   String _lastCortanaWakeTranscript = '';
+  bool _cortanaLocationUpdating = false;
+  Map<String, dynamic>? _lastCortanaDeviceContext;
+  DateTime? _lastCortanaLocationReportAt;
 
   @override
   void initState() {
@@ -1925,6 +2033,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
     unawaited(_restoreVoskDownloadProgress());
+    _scheduleCortanaLocationRefresh(initial: true);
   }
 
   @override
@@ -1939,6 +2048,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } else if (state == AppLifecycleState.resumed) {
       _cortanaWakePausedForLifecycle = false;
       _scheduleCortanaWakeRestart();
+      _scheduleCortanaLocationRefresh(initial: false);
     }
   }
 
@@ -1981,6 +2091,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _reconnectTimer?.cancel();
     _cortanaExpressionTimer?.cancel();
     _cortanaWakeRestartTimer?.cancel();
+    _cortanaLocationTimer?.cancel();
     _streamFlushTimer?.cancel();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.sink.close());
@@ -1993,6 +2104,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _codegenPromptController.dispose();
     _codegenSearchController.dispose();
     _deployArgsController.dispose();
+    _cortanaPersonaNameCtrl.dispose();
+    _cortanaOwnerTitleCtrl.dispose();
+    _cortanaPersonaDescCtrl.dispose();
+    _cortanaWakePhraseCtrl.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
     _controlsScrollController.dispose();
@@ -2854,6 +2969,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             prefs.getString(_cortanaPersonaNameKey)?.trim().isNotEmpty == true
             ? prefs.getString(_cortanaPersonaNameKey)!.trim()
             : config.cortanaPersonaNameDefault;
+        _cortanaOwnerTitle =
+            prefs.getString(_cortanaOwnerTitleKey)?.trim() ??
+            _defaultCortanaOwnerTitle;
         _cortanaPersonaDescription =
             prefs.getString(_cortanaPersonaDescriptionKey)?.trim().isNotEmpty ==
                 true
@@ -2866,6 +2984,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             prefs.getString(_cortanaWakePhraseKey)?.trim().isNotEmpty == true
             ? prefs.getString(_cortanaWakePhraseKey)!.trim()
             : _defaultCortanaWakePhrase;
+        _cortanaPersonaNameCtrl.text = _cortanaPersonaName;
+        _cortanaOwnerTitleCtrl.text = _cortanaOwnerTitle;
+        _cortanaPersonaDescCtrl.text = _cortanaPersonaDescription;
+        _cortanaWakePhraseCtrl.text = _cortanaWakePhrase;
         _baseUrlController.text = config.baseUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
@@ -2957,6 +3079,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     highFreqEndHour: _cortanaHighFreqEndHour,
     highFreqEndMinute: _cortanaHighFreqEndMinute,
     personaName: _cortanaPersonaName,
+    ownerTitle: _cortanaOwnerTitle,
     personaDescription: _cortanaPersonaDescription,
     voiceWakeEnabled: _cortanaVoiceWakeEnabled,
     wakePhrase: _cortanaWakePhrase,
@@ -2976,6 +3099,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await prefs.setInt(_cortanaHighFreqEndHourKey, _cortanaHighFreqEndHour);
     await prefs.setInt(_cortanaHighFreqEndMinuteKey, _cortanaHighFreqEndMinute);
     await prefs.setString(_cortanaPersonaNameKey, _cortanaPersonaName);
+    await prefs.setString(_cortanaOwnerTitleKey, _cortanaOwnerTitle);
     await prefs.setString(
       _cortanaPersonaDescriptionKey,
       _cortanaPersonaDescription,
@@ -3005,6 +3129,155 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  Map<String, dynamic>? _currentCortanaDeviceContext() {
+    final context = _lastCortanaDeviceContext;
+    if (context == null || context.isEmpty) {
+      return null;
+    }
+    return Map<String, dynamic>.from(context);
+  }
+
+  Future<Map<String, dynamic>?> _refreshCortanaDeviceContext({
+    bool report = false,
+    bool force = false,
+  }) async {
+    if (_cortanaLocationUpdating) {
+      return _currentCortanaDeviceContext();
+    }
+    if (!force && (!_cortanaEnabled || !_cortanaAllowFullAccess)) {
+      return _currentCortanaDeviceContext();
+    }
+    if (_clientConfig == null ||
+        (_sessionToken.isEmpty && _refreshToken.isEmpty) ||
+        _userIdController.text.trim().isEmpty) {
+      return _currentCortanaDeviceContext();
+    }
+
+    _cortanaLocationUpdating = true;
+    try {
+      final location = _isAndroidHost
+          ? await _locationProvider.getCurrentLocation()
+          : <String, dynamic>{
+              'available': false,
+              'permission': 'unsupported_platform',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+            };
+      final locationLog = _describeCortanaLocationForLog(location);
+      debugPrint('[Cortana Device Context] location captured: $locationLog');
+      addFlutterClientLog('定位采集: $locationLog');
+      final now = DateTime.now();
+      final context = <String, dynamic>{
+        'client': <String, dynamic>{
+          'platform': kIsWeb ? 'web' : Platform.operatingSystem,
+          'app_version': appVersion,
+          'captured_at': now.millisecondsSinceEpoch,
+          'timezone': now.timeZoneName,
+          'timezone_offset_minutes': now.timeZoneOffset.inMinutes,
+        },
+        'location': location,
+      };
+      _lastCortanaDeviceContext = context;
+      debugPrint('[Cortana Device Context] payload: ${jsonEncode(context)}');
+
+      final shouldReport =
+          report &&
+          (force ||
+              _lastCortanaLocationReportAt == null ||
+              now.difference(_lastCortanaLocationReportAt!) >
+                  const Duration(minutes: 10));
+      if (shouldReport) {
+        _lastCortanaLocationReportAt = now;
+        unawaited(
+          _runAuthed('Report Cortana device context', (client) {
+            return client.sendCortanaEvent(
+              'device_context_update',
+              meta: <String, dynamic>{
+                'summary': _buildCortanaLocationSummary(location),
+                'device_context': context,
+              },
+            );
+          }).then((_) {
+            debugPrint(
+              '[Cortana Device Context] report sent: $locationLog',
+            );
+            addFlutterClientLog('定位上报成功: $locationLog');
+          }).catchError((Object err, StackTrace _) {
+            debugPrint('[Cortana Device Context] report failed: $err');
+            addFlutterClientLog('定位上报失败: $err');
+          }),
+        );
+      }
+      return context;
+    } catch (err) {
+      debugPrint('[Cortana Device Context] refresh failed: $err');
+      return _currentCortanaDeviceContext();
+    } finally {
+      _cortanaLocationUpdating = false;
+    }
+  }
+
+  String _buildCortanaLocationSummary(Map<String, dynamic> location) {
+    if (location['available'] == true) {
+      final lat = location['latitude'];
+      final lon = location['longitude'];
+      final accuracy = location['accuracy_m'];
+      return '客户端位置已更新: lat=$lat lon=$lon accuracy_m=$accuracy';
+    }
+    final permission = (location['permission'] ?? '').toString().trim();
+    final message = (location['message'] ?? '').toString().trim();
+    return [
+      '客户端位置不可用',
+      if (permission.isNotEmpty) 'permission=$permission',
+      if (message.isNotEmpty) message,
+    ].join(' ');
+  }
+
+  String _describeCortanaLocationForLog(Map<String, dynamic> location) {
+    if (location['available'] == true) {
+      final lat = location['latitude'];
+      final lon = location['longitude'];
+      final accuracy = location['accuracy_m'];
+      final provider = (location['provider'] ?? '').toString().trim();
+      final locationTime = location['location_time'];
+      final message = (location['message'] ?? '').toString().trim();
+      return [
+        'available=true',
+        'lat=$lat',
+        'lon=$lon',
+        'accuracy_m=$accuracy',
+        if (provider.isNotEmpty) 'provider=$provider',
+        if (locationTime != null) 'location_time=$locationTime',
+        if (message.isNotEmpty) 'message=$message',
+      ].join(' ');
+    }
+    final permission = (location['permission'] ?? '').toString().trim();
+    final message = (location['message'] ?? '').toString().trim();
+    final providerEnabled = location['provider_enabled'];
+    return [
+      'available=false',
+      if (permission.isNotEmpty) 'permission=$permission',
+      if (providerEnabled != null) 'provider_enabled=$providerEnabled',
+      if (message.isNotEmpty) 'message=$message',
+    ].join(' ');
+  }
+
+  void _scheduleCortanaLocationRefresh({required bool initial}) {
+    _cortanaLocationTimer?.cancel();
+    final delay = initial ? const Duration(seconds: 2) : Duration.zero;
+    Future<void>.delayed(delay, () {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_refreshCortanaDeviceContext(report: true));
+    });
+    _cortanaLocationTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_refreshCortanaDeviceContext(report: true));
+    });
+  }
+
   void _applyCortanaSettings(CortanaSettings settings) {
     setState(() {
       _cortanaEnabled = settings.enabled;
@@ -3016,16 +3289,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _cortanaHighFreqEndHour = settings.highFreqEndHour;
       _cortanaHighFreqEndMinute = settings.highFreqEndMinute;
       _cortanaPersonaName = settings.personaName;
+      _cortanaOwnerTitle = settings.ownerTitle;
       _cortanaPersonaDescription = settings.personaDescription;
       _cortanaVoiceWakeEnabled = settings.voiceWakeEnabled;
       _cortanaWakePhrase = settings.wakePhrase.trim().isEmpty
           ? _defaultCortanaWakePhrase
           : settings.wakePhrase.trim();
     });
+    if (_cortanaPersonaNameCtrl.text != _cortanaPersonaName) {
+      _cortanaPersonaNameCtrl.text = _cortanaPersonaName;
+    }
+    if (_cortanaOwnerTitleCtrl.text != _cortanaOwnerTitle) {
+      _cortanaOwnerTitleCtrl.text = _cortanaOwnerTitle;
+    }
+    if (_cortanaPersonaDescCtrl.text != _cortanaPersonaDescription) {
+      _cortanaPersonaDescCtrl.text = _cortanaPersonaDescription;
+    }
+    if (_cortanaWakePhraseCtrl.text != _cortanaWakePhrase) {
+      _cortanaWakePhraseCtrl.text = _cortanaWakePhrase;
+    }
     if (_cortanaVoiceWakeEnabled && _cortanaEnabled) {
       _scheduleCortanaWakeRestart();
     } else {
       unawaited(_pauseCortanaWakeListening(cancel: true));
+    }
+    if (_cortanaEnabled && _cortanaAllowFullAccess) {
+      unawaited(_refreshCortanaDeviceContext(report: true, force: true));
     }
     unawaited(_syncCortanaSettings());
   }
@@ -3153,6 +3442,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _currentGroupId = '';
         _historyByScope.clear();
         _seenMessageIds.clear();
+        _codegenStreamStates.clear();
+        _pendingCodegenStreamIds.clear();
+        _activeCodegenHistoryId = '';
         _consumedCortanaReplyKeys.clear();
         _autoInstallTriggered.clear();
         _groups.clear();
@@ -3162,6 +3454,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _currentGroupId = '';
       _historyByScope.clear();
       _seenMessageIds.clear();
+      _codegenStreamStates.clear();
+      _pendingCodegenStreamIds.clear();
+      _activeCodegenHistoryId = '';
       _consumedCortanaReplyKeys.clear();
       _autoInstallTriggered.clear();
       _groups.clear();
@@ -3170,6 +3465,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     await _refreshGroups();
     await _loadCodegenProjects(silent: true);
     await _syncCortanaSettings(silent: true);
+    await _refreshCortanaDeviceContext(report: true, force: true);
     if (successMessage != null && successMessage.trim().isNotEmpty) {
       _appendSystem(successMessage.trim());
     }
@@ -3198,6 +3494,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _currentGroupId = '';
         _historyByScope.clear();
         _seenMessageIds.clear();
+        _codegenStreamStates.clear();
+        _pendingCodegenStreamIds.clear();
+        _activeCodegenHistoryId = '';
         _consumedCortanaReplyKeys.clear();
         _autoInstallTriggered.clear();
         _groups.clear();
@@ -3217,6 +3516,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _currentGroupId = '';
       _historyByScope.clear();
       _seenMessageIds.clear();
+      _codegenStreamStates.clear();
+      _pendingCodegenStreamIds.clear();
+      _activeCodegenHistoryId = '';
       _consumedCortanaReplyKeys.clear();
       _autoInstallTriggered.clear();
       _groups.clear();
@@ -3568,8 +3870,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         setState(() {
           _codegenHistory = historyList
               .map(
-                (item) =>
-                    CodegenHistoryItem.fromJson(item as Map<String, dynamic>),
+                (item) => _normalizeCodegenHistoryItem(
+                  CodegenHistoryItem.fromJson(item as Map<String, dynamic>),
+                ),
               )
               .toList();
         });
@@ -3579,8 +3882,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _addCodegenHistory(String command, CodegenLaunchMode mode) {
+  String _newCodegenHistoryId() =>
+      'cg_${DateTime.now().microsecondsSinceEpoch.toString()}';
+
+  CodegenHistoryItem _normalizeCodegenHistoryItem(CodegenHistoryItem item) {
+    if (item.id.trim().isNotEmpty) {
+      return item;
+    }
+    return CodegenHistoryItem(
+      id: _newCodegenHistoryId(),
+      timestamp: item.timestamp,
+      command: item.command,
+      mode: item.mode,
+      locked: item.locked,
+      completed: item.completed,
+      processEntries: item.processEntries,
+    );
+  }
+
+  CodegenHistoryItem _addCodegenHistory(
+    String command,
+    CodegenLaunchMode mode,
+  ) {
     final item = CodegenHistoryItem(
+      id: _newCodegenHistoryId(),
       timestamp: DateTime.now(),
       command: command,
       mode: mode,
@@ -3599,7 +3924,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         }
       }
     });
+    _activeCodegenHistoryId = item.id;
     unawaited(_persistCodegenPreferences());
+    return item;
   }
 
   void _applyCodegenHistoryItem(CodegenHistoryItem item) {
@@ -3682,9 +4009,123 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_persistCodegenPreferences());
   }
 
+  CodegenHistoryItem? _findActiveCodegenHistoryItem() {
+    if (_activeCodegenHistoryId.isNotEmpty) {
+      for (final item in _codegenHistory) {
+        if (item.id == _activeCodegenHistoryId) {
+          return item;
+        }
+      }
+    }
+    for (final item in _codegenHistory) {
+      if (!item.completed) {
+        _activeCodegenHistoryId = item.id;
+        return item;
+      }
+    }
+    return null;
+  }
+
+  bool _hasPendingCodegenHistoryExecution() =>
+      _findActiveCodegenHistoryItem() != null;
+
+  bool _isTerminalCodegenProcessMessage(ChatMessage message) {
+    final text = message.content.trim();
+    final meta = message.meta ?? const <String, dynamic>{};
+    if (meta['final'] == true) {
+      return true;
+    }
+    if ((meta['app_process'] == true ||
+            (meta['origin'] ?? '').toString() == 'app-process') &&
+        (text.startsWith('任务完成:') ||
+            text.startsWith('任务取消:') ||
+            text.startsWith('强制总结:') ||
+            text.startsWith('Codegen task completed') ||
+            text.startsWith('Codegen task failed'))) {
+      return true;
+    }
+    return false;
+  }
+
+  void _appendProcessEntryToActiveCodegenHistory(
+    ChatMessage message,
+    String content, {
+    required String origin,
+    String sessionId = '',
+  }) {
+    final normalized = content.trimRight();
+    if (normalized.trim().isEmpty) {
+      return;
+    }
+    final activeItem = _findActiveCodegenHistoryItem();
+    if (activeItem == null) {
+      return;
+    }
+    final entries = List<CodegenProcessEntry>.from(activeItem.processEntries);
+    final last = entries.isNotEmpty ? entries.last : null;
+    if (last != null &&
+        last.content == normalized &&
+        last.origin == origin &&
+        last.sessionId == sessionId) {
+      return;
+    }
+    entries.add(
+      CodegenProcessEntry(
+        timestamp: message.timestamp,
+        content: normalized,
+        origin: origin,
+        sessionId: sessionId,
+      ),
+    );
+    final updatedItem = activeItem.copyWith(
+      processEntries: entries,
+      completed: _isTerminalCodegenProcessMessage(message),
+    );
+    setState(() {
+      final idx = _codegenHistory.indexWhere(
+        (item) => item.id == activeItem.id,
+      );
+      if (idx == -1) {
+        return;
+      }
+      _codegenHistory[idx] = updatedItem;
+    });
+    if (updatedItem.completed) {
+      _activeCodegenHistoryId = '';
+    } else {
+      _activeCodegenHistoryId = updatedItem.id;
+    }
+    unawaited(_persistCodegenPreferences());
+  }
+
+  void _recordIncomingProcessMessage(ChatMessage message) {
+    final meta = message.meta ?? const <String, dynamic>{};
+    final origin = (meta['origin'] ?? '').toString().trim();
+    if (origin != 'app-process') {
+      return;
+    }
+    final sessionId = (meta['session_id'] ?? '').toString().trim();
+    _appendProcessEntryToActiveCodegenHistory(
+      message,
+      message.content,
+      origin: origin,
+      sessionId: sessionId,
+    );
+  }
+
   Future<void> _showCodegenHistoryDetails(CodegenHistoryItem item) async {
     final details = CodegenHistoryCommandDetails.parse(item);
     final palette = _palette;
+    final processTranscript = item.processEntries.isEmpty
+        ? ''
+        : item.processEntries
+              .map((entry) {
+                final hh = entry.timestamp.hour.toString().padLeft(2, '0');
+                final mm = entry.timestamp.minute.toString().padLeft(2, '0');
+                final ss = entry.timestamp.second.toString().padLeft(2, '0');
+                return '[$hh:$mm:$ss] ${entry.content}';
+              })
+              .join('\n\n');
     final exactTime =
         '${item.timestamp.year}-${item.timestamp.month.toString().padLeft(2, '0')}-${item.timestamp.day.toString().padLeft(2, '0')} '
         '${item.timestamp.hour.toString().padLeft(2, '0')}:${item.timestamp.minute.toString().padLeft(2, '0')}:${item.timestamp.second.toString().padLeft(2, '0')}';
@@ -3818,7 +4259,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         '附加参数',
                         details.extraArgs.isEmpty ? '无' : details.extraArgs,
                       ),
+                    _buildHistoryDetailRow(
+                      '执行状态',
+                      item.completed ? '已结束' : '进行中/未确认结束',
+                    ),
+                    _buildHistoryDetailRow(
+                      '过程消息数',
+                      item.processEntries.length.toString(),
+                    ),
                     _buildHistoryDetailRow('完整命令', item.command, mono: true),
+                    if (processTranscript.isNotEmpty)
+                      _buildHistoryDetailRow(
+                        '执行过程',
+                        processTranscript,
+                        mono: true,
+                      ),
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -4335,6 +4790,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               ? Map<String, dynamic>.from(rawActionPlan)
               : null,
           sourceLabel: '聊天页签',
+          fileId: (meta['file_id'] ?? '').toString().trim(),
+          storageProvider: (meta['storage_provider'] ?? '').toString().trim(),
+          objectKey: (meta['object_key'] ?? '').toString().trim(),
         ),
       );
       if (replayItems.length >= 6) {
@@ -4367,6 +4825,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         audioBytes = null;
       }
     }
+
+    addFlutterClientLog('收到播报: $broadcastText');
 
     debugPrint(
       '[Cortana Broadcast] text=$broadcastText expr=$expression motion=$motion audioPath=${audioPath.isEmpty ? "none" : audioPath} audio=${audioBytes != null ? "${audioBytes.length}bytes" : "none"}',
@@ -4470,11 +4930,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final startTime = DateTime.now();
     const replyTimeout = Duration(seconds: 20);
     final requestId = _buildCortanaRequestId();
+    final deviceContext =
+        await _refreshCortanaDeviceContext(report: true) ??
+        _currentCortanaDeviceContext();
+    addFlutterClientLog('Cortana 发送: $message');
     final meta = <String, dynamic>{
       'conversation_mode': 'cortana',
       'input_mode': 'cortana_text',
       'reply_mode': 'audio_preferred',
       'cortana_request_id': requestId,
+      if (deviceContext != null) 'device_context': deviceContext,
     };
     _appendOutgoing(
       message,
@@ -4508,17 +4973,106 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             continue;
           }
           _consumedCortanaReplyKeys.add(replyKey);
+          addFlutterClientLog(
+            'Cortana 回复: ${payload.text.length > 80 ? '${payload.text.substring(0, 80)}...' : payload.text}',
+          );
           return payload;
         }
       }
 
       throw Exception('No response from assistant');
     } catch (err) {
+      addFlutterClientLog('Cortana 失败: $err');
       throw Exception('Failed to send message: $err');
     }
   }
 
+  Future<List<CortanaReplayItem>> _loadCortanaVoiceHistory() {
+    return _runAuthed('Load Cortana history', (client) {
+      return client.listCortanaVoiceHistory();
+    });
+  }
+
+  Future<CortanaReplayItem> _prepareCortanaVoicePlayback(
+    CortanaReplayItem item,
+  ) async {
+    if (item.audioPath.trim().isNotEmpty &&
+        await File(item.audioPath).exists()) {
+      return item;
+    }
+    if (item.audioBytes != null) {
+      return item;
+    }
+    if (item.fileId.trim().isEmpty) {
+      return item;
+    }
+
+    final extension = item.audioFormat.trim().isEmpty
+        ? 'bin'
+        : item.audioFormat;
+    final audioPath = await _attachmentPathForFileID(
+      fileId: item.fileId,
+      subdir: 'cortana_broadcasts',
+      prefix: 'cortana',
+      extension: extension,
+    );
+    final audioFile = File(audioPath);
+    if (!await audioFile.exists()) {
+      await _runAuthed('Download Cortana history audio', (client) {
+        return client.downloadAttachmentToFile(
+          item.fileId,
+          destinationPath: audioPath,
+          attachmentMeta: <String, dynamic>{
+            'file_id': item.fileId,
+            'audio_format': item.audioFormat,
+            'storage_provider': item.storageProvider,
+            'object_key': item.objectKey,
+          },
+          onProgress: (receivedBytes, totalBytes, resumed) {
+            _updateDownloadStatus(
+              label: 'Cortana 播报',
+              receivedBytes: receivedBytes,
+              totalBytes: totalBytes,
+              resumed: resumed,
+            );
+          },
+        );
+      });
+      _clearDownloadStatus(successText: 'Cortana 播报下载完成');
+    }
+
+    return CortanaReplayItem(
+      id: item.id,
+      text: item.text,
+      audioPath: audioPath,
+      audioBytes: item.audioBytes,
+      audioFormat: item.audioFormat,
+      createdAt: item.createdAt,
+      actionPlan: item.actionPlan,
+      sourceLabel: item.sourceLabel,
+      fileId: item.fileId,
+      storageProvider: item.storageProvider,
+      objectKey: item.objectKey,
+    );
+  }
+
+  Future<void> _openCortanaHistoryPage() async {
+    final personaName = _cortanaSettings.personaName.trim().isEmpty
+        ? 'Cortana'
+        : _cortanaSettings.personaName.trim();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CortanaHistoryPage(
+          onLoadHistory: _loadCortanaVoiceHistory,
+          onPreparePlayback: _prepareCortanaVoicePlayback,
+          title: '$personaName 播报历史',
+        ),
+      ),
+    );
+  }
+
   void _reportCortanaUiEvent(String eventKind, {String summary = ''}) {
+    final deviceContext = _currentCortanaDeviceContext();
     unawaited(
       _runAuthed('Report Cortana UI event', (client) {
         return client.sendCortanaEvent(
@@ -4527,6 +5081,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             'summary': summary,
             'root_tab': _rootTab.name,
             'floating_mode': _cortanaFloatingMode.name,
+            if (deviceContext != null) 'device_context': deviceContext,
           },
         );
       }).catchError((Object err, StackTrace _) {
@@ -4764,22 +5319,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     required String messageId,
     required ChatMessage message,
   }) {
-    final history = _historyByScope[scopeKey];
-    final index = history != null
-        ? history.lastIndexWhere(
-            (item) => (item.meta?['_message_id'] ?? '').toString() == messageId,
-          )
-        : -1;
+    final streamState = _codegenStreamStates.putIfAbsent(
+      messageId,
+      () => _CodegenStreamState(
+        scopeKey: scopeKey,
+        streamMessageId: messageId,
+        latestMessage: message,
+      ),
+    );
+    streamState.scopeKey = scopeKey;
+    streamState.latestMessage = message;
+    streamState.finalSeen =
+        streamState.finalSeen || message.meta?['final'] == true;
 
-    if (index < 0) {
-      _appendMessage(message, updateStatus: 'Received message');
+    final nextContent = _normalizeCodegenStreamContent(message.content);
+    final delta = _extractCodegenStreamDelta(
+      streamState.fullContent,
+      nextContent,
+    );
+    streamState.fullContent = nextContent;
+    if (delta.isEmpty && !streamState.finalSeen) {
       return;
     }
-
-    _bufferedStreamUpdates[messageId] = _BufferedStreamUpdate(
-      scopeKey: scopeKey,
-      message: message,
-    );
+    streamState.pendingDelta += delta;
+    _pendingCodegenStreamIds.add(messageId);
 
     _streamFlushTimer ??= Timer.periodic(_streamFlushInterval, (_) {
       _flushCodegenStreamUpdates();
@@ -4787,7 +5350,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _flushCodegenStreamUpdates() {
-    if (_bufferedStreamUpdates.isEmpty) {
+    if (_pendingCodegenStreamIds.isEmpty) {
       _streamFlushTimer?.cancel();
       _streamFlushTimer = null;
       return;
@@ -4796,28 +5359,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
 
-    final updates = Map<String, _BufferedStreamUpdate>.from(
-      _bufferedStreamUpdates,
-    );
-    _bufferedStreamUpdates.clear();
+    final streamIds = List<String>.from(_pendingCodegenStreamIds);
+    _pendingCodegenStreamIds.clear();
 
     bool anyUpdated = false;
     String? lastUpdatedScopeKey;
-    for (final entry in updates.entries) {
-      final u = entry.value;
-      final history = _historyByScope[u.scopeKey];
-      if (history == null) continue;
-      final index = history.lastIndexWhere(
-        (item) => (item.meta?['_message_id'] ?? '').toString() == entry.key,
-      );
-      if (index < 0) continue;
-
-      final updated = List<ChatMessage>.from(history);
-      updated[index] = u.message;
-      _historyByScope[u.scopeKey] = updated;
-      _historyPersistence.schedule(u.scopeKey);
-      anyUpdated = true;
-      lastUpdatedScopeKey = u.scopeKey;
+    for (final streamId in streamIds) {
+      final state = _codegenStreamStates[streamId];
+      if (state == null) {
+        continue;
+      }
+      final delta = state.pendingDelta;
+      state.pendingDelta = '';
+      if (delta.isNotEmpty &&
+          _appendCodegenStreamDeltaToHistory(state, delta)) {
+        anyUpdated = true;
+        lastUpdatedScopeKey = state.scopeKey;
+      }
+      if (state.finalSeen && state.pendingDelta.isEmpty) {
+        _codegenStreamStates.remove(streamId);
+      }
     }
 
     if (anyUpdated) {
@@ -4827,6 +5388,143 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _scrollToBottom(animated: false);
       }
     }
+  }
+
+  String _normalizeCodegenStreamContent(String content) {
+    return content
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .replaceAll('\u00a0', ' ');
+  }
+
+  String _extractCodegenStreamDelta(String previous, String current) {
+    if (current.isEmpty || current == previous) {
+      return '';
+    }
+    if (previous.isEmpty) {
+      return current;
+    }
+    if (current.startsWith(previous)) {
+      return current.substring(previous.length);
+    }
+
+    final overlap = _codegenStreamOverlap(previous, current);
+    if (overlap > 0) {
+      return current.substring(overlap);
+    }
+
+    // 后端异常回退成非累计快照时，另起一行追加，避免覆盖已展示内容。
+    return '\n$current';
+  }
+
+  int _codegenStreamOverlap(String previous, String current) {
+    final max = math.min(math.min(previous.length, current.length), 4096);
+    for (var size = max; size > 0; size--) {
+      if (previous.substring(previous.length - size) ==
+          current.substring(0, size)) {
+        return size;
+      }
+    }
+    return 0;
+  }
+
+  bool _appendCodegenStreamDeltaToHistory(
+    _CodegenStreamState state,
+    String delta,
+  ) {
+    var history = List<ChatMessage>.from(
+      _historyByScope[state.scopeKey] ?? <ChatMessage>[],
+    );
+    var remaining = delta;
+    var changed = false;
+
+    while (remaining.isNotEmpty) {
+      var activeIndex = state.activeSegmentMessageId == null
+          ? -1
+          : history.lastIndexWhere(
+              (item) =>
+                  (item.meta?['_message_id'] ?? '').toString() ==
+                  state.activeSegmentMessageId,
+            );
+      if (activeIndex < 0 ||
+          history[activeIndex].content.length >= _codegenStreamSegmentLimit) {
+        final nextMessage = _newCodegenStreamSegmentMessage(state);
+        history = <ChatMessage>[...history, nextMessage];
+        activeIndex = history.length - 1;
+      }
+
+      final active = history[activeIndex];
+      final available = _codegenStreamSegmentLimit - active.content.length;
+      if (available <= 0) {
+        state.activeSegmentMessageId = null;
+        continue;
+      }
+      final slice = _takeCodegenStreamSlice(remaining, available);
+      final updatedContent = active.content + slice;
+      history[activeIndex] = ChatMessage(
+        content: updatedContent,
+        direction: active.direction,
+        timestamp: active.timestamp,
+        status: active.status,
+        scopeKey: active.scopeKey,
+        authorId: active.authorId,
+        groupId: active.groupId,
+        messageType: active.messageType,
+        meta: active.meta,
+      );
+      _appendProcessEntryToActiveCodegenHistory(
+        history[activeIndex],
+        slice,
+        origin: 'codegen-stream',
+        sessionId: (state.latestMessage.meta?['session_id'] ?? '').toString(),
+      );
+      remaining = remaining.substring(slice.length);
+      changed = true;
+      if (updatedContent.length >= _codegenStreamSegmentLimit) {
+        state.activeSegmentMessageId = null;
+      }
+    }
+
+    if (changed) {
+      _historyByScope[state.scopeKey] = history;
+      _historyPersistence.schedule(state.scopeKey);
+    }
+    return changed;
+  }
+
+  ChatMessage _newCodegenStreamSegmentMessage(_CodegenStreamState state) {
+    state.segmentIndex += 1;
+    final segmentMessageId =
+        '${state.streamMessageId}::segment::${state.segmentIndex}';
+    state.activeSegmentMessageId = segmentMessageId;
+    final meta = <String, dynamic>{
+      ...?state.latestMessage.meta,
+      '_message_id': segmentMessageId,
+      'stream_message_id': state.streamMessageId,
+      'stream_segment_index': state.segmentIndex,
+      'stream_segmented': true,
+    };
+    return ChatMessage(
+      content: '',
+      direction: state.latestMessage.direction,
+      timestamp: state.latestMessage.timestamp,
+      scopeKey: state.scopeKey,
+      authorId: state.latestMessage.authorId,
+      groupId: state.latestMessage.groupId,
+      messageType: state.latestMessage.messageType,
+      meta: meta,
+    );
+  }
+
+  String _takeCodegenStreamSlice(String text, int maxLength) {
+    if (text.length <= maxLength) {
+      return text;
+    }
+    final newlineIndex = text.lastIndexOf('\n', maxLength);
+    if (newlineIndex > maxLength ~/ 2) {
+      return text.substring(0, newlineIndex + 1);
+    }
+    return text.substring(0, maxLength);
   }
 
   bool _isNearBottom(ScrollController controller, {double threshold = 120}) {
@@ -5033,6 +5731,27 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _handleMessageTap(ChatMessage message) async {
+    if (message.messageType == 'video') {
+      final meta = Map<String, dynamic>.from(message.meta ?? const {});
+      var videoPath = (meta['file_path'] ?? '').toString().trim();
+      if (videoPath.isEmpty || !await File(videoPath).exists()) {
+        final hydrated = await _hydrateIncomingMediaMeta(
+          messageType: 'video',
+          meta: meta,
+        );
+        videoPath = (hydrated['file_path'] ?? '').toString().trim();
+        if (videoPath.isNotEmpty) {
+          await _updateMessageMeta(message, <String, dynamic>{
+            'file_path': videoPath,
+          });
+        }
+      }
+      if (videoPath.isEmpty || !await File(videoPath).exists()) {
+        _appendSystem('Video file unavailable for playback.');
+      }
+      return;
+    }
+
     if (message.messageType == 'audio') {
       final meta = Map<String, dynamic>.from(message.meta ?? const {});
       var audioPath = (meta['audio_path'] ?? '').toString().trim();
@@ -5483,12 +6202,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _status = 'WebSocket connected';
         });
       }
+      addFlutterClientLog('WebSocket 已连接');
       unawaited(_syncCortanaSettings(silent: true));
     } catch (err) {
       final errorText = _describeRequestError(
         err,
         operation: 'WebSocket connect',
       );
+      addFlutterClientLog('WebSocket 连接失败: $errorText');
       if (mounted) {
         setState(() {
           _connecting = false;
@@ -5525,6 +6246,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _sendSocketAck(envelope.messageId);
       }
       final meta = envelope.meta ?? <String, dynamic>{};
+      final origin = (meta['origin'] ?? '').toString();
       final groupId = (meta['group_id'] ?? '').toString().trim();
       final isGroupMessage = groupId.isNotEmpty;
       if (!isGroupMessage &&
@@ -5539,6 +6261,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _lastSequence = envelope.sequence;
       }
 
+      if (origin == 'llm-debug' || meta['app_debug'] == true) {
+        _recordLlmDebugEvent(envelope, meta);
+        return;
+      }
+
       if (_shouldFilterIncomingEnvelope(
         envelope: envelope,
         meta: meta,
@@ -5548,7 +6275,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
 
       // 检测 Cortana 播报消息
-      final origin = (meta['origin'] ?? '').toString();
       if (envelope.messageType == 'cortana_broadcast' ||
           origin == 'cortana-agent') {
         _handleCortanaBroadcast(envelope, meta);
@@ -5613,6 +6339,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 ? envelope.content
                 : 'Received message',
           )) {
+        _recordIncomingProcessMessage(chatMessage);
         _seenMessageIds.add(envelope.messageId);
         return;
       }
@@ -5621,6 +6348,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         chatMessage,
         updateStatus: isSystemMessage ? envelope.content : 'Received message',
       );
+      _recordIncomingProcessMessage(chatMessage);
       if (!isSystemMessage &&
           direction == MessageDirection.incoming &&
           envelope.messageType == 'file') {
@@ -5656,6 +6384,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  void _recordLlmDebugEvent(
+    PushEnvelope envelope,
+    Map<String, dynamic> meta,
+  ) {
+    final eventName = (meta['debug_event'] ?? '').toString().trim();
+    final item = LlmDebugEvent(
+      event: eventName.isEmpty ? 'debug' : eventName,
+      content: envelope.content,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(envelope.timestamp),
+      meta: Map<String, dynamic>.from(meta),
+    );
+    if (!mounted) {
+      _llmDebugEvents.add(item);
+      if (_llmDebugEvents.length > 300) {
+        _llmDebugEvents.removeRange(0, _llmDebugEvents.length - 300);
+      }
+      return;
+    }
+    setState(() {
+      _llmDebugEvents.add(item);
+      if (_llmDebugEvents.length > 300) {
+        _llmDebugEvents.removeRange(0, _llmDebugEvents.length - 300);
+      }
+      _status = 'LLM debug: ${item.label}';
+    });
+  }
+
   void _sendSocketAck(String messageId) {
     final socket = _socket;
     if (socket == null || messageId.trim().isEmpty) {
@@ -5671,6 +6426,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _handleSocketClosed(String text) {
     _socketSub = null;
     _socket = null;
+    addFlutterClientLog('WebSocket 断开: $text');
     if (mounted) {
       setState(() {
         _connecting = false;
@@ -5711,16 +6467,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final messageType = envelope.messageType.trim().toLowerCase();
     final origin = (meta['origin'] ?? '').toString().trim().toLowerCase();
     final content = envelope.content.trim();
+    final isAppProcess = meta['app_process'] == true || origin == 'app-process';
 
     if (isGroupMessage) {
       return messageType == 'system';
     }
 
-    if (messageType == 'system') {
+    if (messageType == 'system' && !isAppProcess) {
       return true;
     }
 
-    if (origin == 'llm-agent' && _looksLikeStatusMessage(content)) {
+    if (isAppProcess && !_hasPendingCodegenHistoryExecution()) {
+      return true;
+    }
+
+    if (!isAppProcess &&
+        origin == 'llm-agent' &&
+        _looksLikeStatusMessage(content)) {
       return true;
     }
 
@@ -6678,7 +7441,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     FocusScope.of(context).unfocus();
     _messageController.clear();
+    final deviceContext = await _refreshCortanaDeviceContext(
+      report: true,
+      force: true,
+    );
     final meta = <String, dynamic>{
+      if (deviceContext != null) 'device_context': deviceContext,
       if (_currentGroupId.isEmpty) ...<String, dynamic>{
         'conversation_mode': 'cortana',
         'input_mode': 'cortana_chat',
@@ -6765,6 +7533,381 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCortanaChatSettings() {
+    final palette = _palette;
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceMuted.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border.withValues(alpha: 0.55)),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: _cortanaChatSettingsExpanded,
+        onExpansionChanged: (v) {
+          setState(() => _cortanaChatSettingsExpanded = v);
+        },
+        title: Text(
+          'Cortana 设置',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: palette.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          _cortanaChatSettingsExpanded ? '点击收起' : '默认折叠，点击配置',
+          style: TextStyle(fontSize: 12, color: palette.textMuted),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: _buildCortanaChatSettingsContent(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCortanaChatSettingsContent() {
+    final palette = _palette;
+    final enabled = _cortanaEnabled;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile.adaptive(
+          value: _cortanaEnabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('启用 Cortana'),
+          subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
+          onChanged: (v) =>
+              _applyCortanaSettings(_cortanaSettings.copyWith(enabled: v)),
+        ),
+        SwitchListTile.adaptive(
+          value: _cortanaAllowFullAccess,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('允许全量感知'),
+          subtitle: const Text('开放待办、锻炼、阅读、年度目标等数据'),
+          onChanged: !enabled
+              ? null
+              : (v) => _applyCortanaSettings(
+                  _cortanaSettings.copyWith(allowFullAccess: v),
+                ),
+        ),
+        SwitchListTile.adaptive(
+          value: _cortanaAutoPlay,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('主动播报自动播放'),
+          subtitle: const Text('收到主动互动后直接语音播报'),
+          onChanged: !enabled
+              ? null
+              : (v) => _applyCortanaSettings(
+                  _cortanaSettings.copyWith(autoPlay: v),
+                ),
+        ),
+        SwitchListTile.adaptive(
+          value: _cortanaVoiceWakeEnabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('语音唤醒'),
+          subtitle: Text(
+            '前台持续监听"${_cortanaWakePhrase.trim().isEmpty ? '嗨 Cortana' : _cortanaWakePhrase.trim()}"后进入语音对话',
+          ),
+          onChanged: !enabled
+              ? null
+              : (v) => _applyCortanaSettings(
+                  _cortanaSettings.copyWith(voiceWakeEnabled: v),
+                ),
+        ),
+        if (_cortanaVoiceWakeEnabled)
+          TextField(
+            controller: _cortanaWakePhraseCtrl,
+            decoration: const InputDecoration(
+              labelText: '唤醒词',
+              hintText: '嗨 Cortana',
+              isDense: true,
+            ),
+            onChanged: (v) => _applyCortanaSettings(
+              _cortanaSettings.copyWith(
+                wakePhrase: v.trim().isEmpty ? '嗨 Cortana' : v.trim(),
+              ),
+            ),
+          ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          initialValue: _cortanaProactiveMode,
+          decoration: const InputDecoration(labelText: '主动模式', isDense: true),
+          items: const [
+            DropdownMenuItem(value: 'high', child: Text('High')),
+            DropdownMenuItem(value: 'normal', child: Text('Normal')),
+            DropdownMenuItem(value: 'low', child: Text('Low')),
+          ],
+          onChanged: !enabled
+              ? null
+              : (v) {
+                  if (v == null || v.trim().isEmpty) return;
+                  _applyCortanaSettings(
+                    _cortanaSettings.copyWith(proactiveMode: v.trim()),
+                  );
+                },
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '高频触发时间',
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '在此时间段内 Cortana 主动播报频率更高',
+          style: TextStyle(color: palette.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCortanaTimePicker(
+                label: '开始',
+                hour: _cortanaHighFreqStartHour,
+                minute: _cortanaHighFreqStartMinute,
+                onChanged: (h, m) => _applyCortanaSettings(
+                  _cortanaSettings.copyWith(
+                    highFreqStartHour: h,
+                    highFreqStartMinute: m,
+                  ),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Text('—'),
+            ),
+            Expanded(
+              child: _buildCortanaTimePicker(
+                label: '结束',
+                hour: _cortanaHighFreqEndHour,
+                minute: _cortanaHighFreqEndMinute,
+                onChanged: (h, m) => _applyCortanaSettings(
+                  _cortanaSettings.copyWith(
+                    highFreqEndHour: h,
+                    highFreqEndMinute: m,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '人设配置',
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _cortanaPersonaNameCtrl,
+          decoration: const InputDecoration(
+            labelText: '名称',
+            hintText: 'Cortana',
+            isDense: true,
+          ),
+          onChanged: (v) => _applyCortanaSettings(
+            _cortanaSettings.copyWith(personaName: v.trim()),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _cortanaOwnerTitleCtrl,
+          decoration: const InputDecoration(
+            labelText: '对用户称呼',
+            hintText: '主人',
+            isDense: true,
+          ),
+          onChanged: (v) => _applyCortanaSettings(
+            _cortanaSettings.copyWith(ownerTitle: v.trim()),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _cortanaPersonaDescCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: '人设描述',
+            hintText: '例如：你是一个友好、乐于助人的 AI 助手...',
+            isDense: true,
+            alignLabelWithHint: true,
+          ),
+          onChanged: (v) => _applyCortanaSettings(
+            _cortanaSettings.copyWith(personaDescription: v.trim()),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCortanaChatLogs() {
+    final palette = _palette;
+    final logEntries = List<FlutterClientLogEntry>.from(flutterClientLogs);
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceMuted.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border.withValues(alpha: 0.55)),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: _cortanaChatLogsExpanded,
+        onExpansionChanged: (v) {
+          setState(() => _cortanaChatLogsExpanded = v);
+        },
+        title: Text(
+          'Cortana 运行日志',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: palette.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          logEntries.isEmpty
+              ? '暂无 Flutter 客户端日志'
+              : '共 ${logEntries.length} 条 · 仅限客户端',
+          style: TextStyle(fontSize: 12, color: palette.textMuted),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: _buildCortanaChatLogsContent(logEntries),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCortanaChatLogsContent(List<FlutterClientLogEntry> entries) {
+    final palette = _palette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '客户端日志',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: palette.textPrimary,
+                fontSize: 13,
+              ),
+            ),
+            const Spacer(),
+            if (entries.isNotEmpty)
+              TextButton.icon(
+                onPressed: () {
+                  flutterClientLogs.clear();
+                  if (mounted) setState(() {});
+                },
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('清空'),
+                style: TextButton.styleFrom(foregroundColor: palette.textMuted),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 300, minHeight: 120),
+          decoration: BoxDecoration(
+            color: palette.surfaceMuted.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border.withValues(alpha: 0.55)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: entries.isEmpty
+                ? Center(
+                    child: Text(
+                      '暂无日志 · 操作 Cortana 对话时将自动采集',
+                      style: TextStyle(color: palette.textMuted, fontSize: 13),
+                    ),
+                  )
+                : Scrollbar(
+                    thumbVisibility: true,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(10),
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.timeLabel,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: palette.accent,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SelectableText(
+                                  entry.message,
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 12,
+                                    height: 1.4,
+                                    color: palette.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCortanaTimePicker({
+    required String label,
+    required int hour,
+    required int minute,
+    required void Function(int hour, int minute)? onChanged,
+  }) {
+    final hh = hour.toString().padLeft(2, '0');
+    final mm = minute.toString().padLeft(2, '0');
+    return InkWell(
+      onTap: onChanged == null
+          ? null
+          : () async {
+              final time = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(hour: hour, minute: minute),
+              );
+              if (time != null) {
+                onChanged(time.hour, time.minute);
+              }
+            },
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(labelText: label, isDense: true),
+        child: Text('$hh:$mm', style: Theme.of(context).textTheme.bodyLarge),
       ),
     );
   }
@@ -7280,11 +8423,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildTopPanel() {
+  Widget _buildChatControlsPanel() {
     final palette = _palette;
     final canLogin = !_loggingIn && !_configLoading && _clientConfig != null;
-    final baseUrl = _clientConfig?.baseUrl ?? '';
-    final receiveToken = _clientConfig?.receiveToken ?? '';
     final hasGroups = _groups.isNotEmpty;
     final groupsTabSelected = _currentGroupId.isNotEmpty;
     final showGroupTabs = hasGroups && _groups.length > 1 && _groupTabsExpanded;
@@ -7297,7 +8438,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         : (_sessionToken.isEmpty ? 'Login' : 'Controls');
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -7563,65 +8704,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        _buildConfigItem(
-                          icon: Icons.link_rounded,
-                          label: 'Server URL',
-                          value: baseUrl,
-                          onCopy: baseUrl.isEmpty
-                              ? null
-                              : () => unawaited(_copyText('URL', baseUrl)),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildConfigItem(
-                          icon: Icons.key_rounded,
-                          label: 'Receive Token',
-                          value: receiveToken,
-                          onCopy: receiveToken.isEmpty
-                              ? null
-                              : () =>
-                                    unawaited(_copyText('Token', receiveToken)),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _baseUrlController,
-                                keyboardType: TextInputType.url,
-                                decoration: const InputDecoration(
-                                  labelText: 'Server URL',
-                                  hintText: 'http://127.0.0.1:9002',
-                                  prefixIcon: Icon(Icons.link_rounded),
-                                  isDense: true,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            FilledButton.icon(
-                              onPressed: _configLoading ? null : _saveBaseUrl,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: palette.accent,
-                                foregroundColor: _foregroundForColor(
-                                  palette.accent,
-                                ),
-                                minimumSize: const Size(0, 48),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                              ),
-                              icon: const Icon(Icons.save_outlined),
-                              label: const Text('Save URL'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        _buildVoskModelCard(),
-                        const SizedBox(height: 8),
-                        _buildThemePresetCard(),
                       ],
                     ),
                   ),
@@ -8027,10 +9109,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           child: SafeArea(
             child: Column(
               children: [
-                _buildTopPanel(),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
                     child: Container(
                       decoration: BoxDecoration(
                         color: palette.surface.withValues(alpha: 0.96),
@@ -8170,6 +9251,265 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildSettingsBody() {
+    final palette = _palette;
+    final baseUrl = _clientConfig?.baseUrl ?? '';
+    final receiveToken = _clientConfig?.receiveToken ?? '';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: <Color>[
+            palette.backgroundTop,
+            palette.surfaceMuted,
+            palette.backgroundBottom,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildConfigItem(
+                icon: Icons.link_rounded,
+                label: 'Server URL',
+                value: baseUrl,
+                onCopy: baseUrl.isEmpty
+                    ? null
+                    : () => unawaited(_copyText('URL', baseUrl)),
+              ),
+              const SizedBox(height: 8),
+              _buildConfigItem(
+                icon: Icons.key_rounded,
+                label: 'Receive Token',
+                value: receiveToken,
+                onCopy: receiveToken.isEmpty
+                    ? null
+                    : () => unawaited(_copyText('Token', receiveToken)),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _baseUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Server URL',
+                        hintText: 'http://127.0.0.1:9002',
+                        prefixIcon: Icon(Icons.link_rounded),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    onPressed: _configLoading ? null : _saveBaseUrl,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: palette.accent,
+                      foregroundColor: _foregroundForColor(palette.accent),
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('Save URL'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _buildVoskModelCard(),
+              const SizedBox(height: 8),
+              _buildThemePresetCard(),
+              const SizedBox(height: 8),
+              _buildCortanaChatSettings(),
+              const SizedBox(height: 8),
+              _buildCortanaChatLogs(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectRootTab(RootTab nextTab) {
+    setState(() {
+      _rootTab = nextTab;
+      _sidebarExpanded = false;
+    });
+    if (nextTab == RootTab.cortana) {
+      _reportCortanaUiEvent('cortana_tab_open', summary: '用户切换到了 Cortana 页签');
+    }
+    if (nextTab == RootTab.codegen) {
+      _triggerCortanaContextualExpression('surprised');
+      if (_codingProjects.isEmpty &&
+          _deployProjects.isEmpty &&
+          !_codegenLoading &&
+          _sessionToken.isNotEmpty) {
+        unawaited(_loadCodegenProjects());
+      }
+    }
+  }
+
+  Widget _buildSidebarNavButton({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    final palette = _palette;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Material(
+        color: selected
+            ? palette.accent.withValues(alpha: 0.18)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: selected ? palette.accent : palette.textPrimary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: selected ? palette.accent : palette.textPrimary,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppSidebar() {
+    final palette = _palette;
+    final width = math.min(
+      math.max(MediaQuery.sizeOf(context).width - 24, 240.0),
+      316.0,
+    );
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: <Color>[palette.surface, palette.surfaceRaised],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border(right: BorderSide(color: palette.border)),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: Colors.black.withValues(alpha: 0.18),
+            offset: const Offset(10, 0),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.view_sidebar_outlined, color: palette.textPrimary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Sidebar',
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭侧边栏',
+                    onPressed: () {
+                      setState(() => _sidebarExpanded = false);
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            _buildSidebarNavButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              label: '聊天',
+              selected: _rootTab == RootTab.chat,
+              onPressed: () => _selectRootTab(RootTab.chat),
+            ),
+            _buildSidebarNavButton(
+              icon: Icons.terminal_outlined,
+              label: '编码发布',
+              selected: _rootTab == RootTab.codegen,
+              onPressed: () => _selectRootTab(RootTab.codegen),
+            ),
+            _buildSidebarNavButton(
+              icon: Icons.face_outlined,
+              label: 'Cortana',
+              selected: _rootTab == RootTab.cortana,
+              onPressed: () => _selectRootTab(RootTab.cortana),
+            ),
+            _buildSidebarNavButton(
+              icon: Icons.bug_report_outlined,
+              label: '调试',
+              selected: _rootTab == RootTab.debug,
+              onPressed: () => _selectRootTab(RootTab.debug),
+            ),
+            _buildSidebarNavButton(
+              icon: Icons.settings_outlined,
+              label: '设置',
+              selected: _rootTab == RootTab.settings,
+              onPressed: () => _selectRootTab(RootTab.settings),
+            ),
+            Divider(color: palette.border, height: 18),
+            if (_rootTab == RootTab.chat)
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+                  child: _buildChatControlsPanel(),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                child: Text(
+                  'Direct、Groups 和 Controls 已集中到聊天侧边栏。',
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Timer? _cortanaExpressionTimer;
 
   void _triggerCortanaContextualExpression(String expression) {
@@ -8192,14 +9532,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       key: _cortanaPageKey,
       mode: isFullscreen ? CortanaDisplayMode.fullscreen : _cortanaFloatingMode,
       onSendMessage: _sendCortanaMessage,
-      onListLogSources: () =>
-          _runAuthed('List log sources', (client) => client.listLogSources()),
-      onListLogFiles: (source) =>
-          _runAuthed('List log files', (client) => client.listLogFiles(source)),
-      onReadLogFile: (source, file) => _runAuthed(
-        'Read log file',
-        (client) => client.readLogFile(source, file),
-      ),
       externalVoiceHistory: _buildCortanaReplayHistory(),
       contextualExpression: _cortanaContextualExpression,
       showBadge: _cortanaBadge,
@@ -8242,12 +9574,149 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildDebugBody() {
+    final palette = _palette;
+    final events = _llmDebugEvents.reversed.toList(growable: false);
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 86, 16, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'LLM 调试',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '清空',
+                  onPressed: _llmDebugEvents.isEmpty
+                      ? null
+                      : () => setState(_llmDebugEvents.clear),
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: events.isEmpty
+                ? Center(
+                    child: Text(
+                      '暂无调试事件',
+                      style: TextStyle(color: palette.textSecondary),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    itemCount: events.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) =>
+                        _buildDebugEventTile(events[index]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebugEventTile(LlmDebugEvent event) {
+    final palette = _palette;
+    final payload = event.payload;
+    final summary = _debugEventSummary(event, payload);
+    return Material(
+      color: palette.surfaceRaised.withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(8),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        leading: Icon(_debugEventIcon(event.event), color: palette.accent),
+        title: Text(
+          event.label,
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          '${_formatTime(event.timestamp)}  $summary',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: palette.textSecondary, height: 1.3),
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              event.detailText,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _debugEventSummary(
+    LlmDebugEvent event,
+    Map<String, dynamic> payload,
+  ) {
+    if (event.event == 'debug_prompt') {
+      return 'system ${payload['system_prompt_chars'] ?? 0} chars · tools ${payload['visible_tools_count'] ?? 0}';
+    }
+    if (event.event == 'debug_llm_round') {
+      return '第 ${payload['iteration'] ?? '?'} 轮 · ${payload['duration'] ?? ''} · tool_calls ${payload['tool_calls_count'] ?? 0}';
+    }
+    return event.content.replaceAll('\n', ' ');
+  }
+
+  IconData _debugEventIcon(String event) {
+    switch (event) {
+      case 'debug_prompt':
+        return Icons.article_outlined;
+      case 'debug_llm_round':
+        return Icons.psychology_alt_outlined;
+      case 'tool_call':
+      case 'tool_result':
+      case 'tool_progress':
+        return Icons.build_circle_outlined;
+      case 'task_complete':
+        return Icons.check_circle_outline;
+      default:
+        return Icons.notes_outlined;
+    }
+  }
+
+  String _formatTime(DateTime time) {
+    final hh = time.hour.toString().padLeft(2, '0');
+    final mm = time.minute.toString().padLeft(2, '0');
+    final ss = time.second.toString().padLeft(2, '0');
+    return '$hh:$mm:$ss';
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = _palette;
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: '打开侧边栏',
+          onPressed: () {
+            setState(() => _sidebarExpanded = true);
+          },
+          icon: const Icon(Icons.menu_rounded),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -8283,7 +9752,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         : 'Group ${_currentGroupId.toLowerCase()}')
                   : _rootTab == RootTab.codegen
                   ? 'Fast path for /cg start and /cg deploy'
-                  : 'Live2D Assistant',
+                  : _rootTab == RootTab.cortana
+                  ? 'Live2D Assistant'
+                  : _rootTab == RootTab.debug
+                  ? 'LLM prompt and tool trace'
+                  : 'App Settings',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -8293,6 +9766,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ],
         ),
         actions: [
+          if (_rootTab == RootTab.cortana)
+            IconButton(
+              tooltip: '播报历史',
+              onPressed: _openCortanaHistoryPage,
+              icon: const Icon(Icons.history_rounded),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
@@ -8307,64 +9786,96 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          Offstage(
-            offstage: _rootTab != RootTab.chat,
-            child: TickerMode(
-              enabled: _rootTab == RootTab.chat,
-              child: _buildChatBody(),
-            ),
+          Stack(
+            children: [
+              Offstage(
+                offstage: _rootTab != RootTab.chat,
+                child: TickerMode(
+                  enabled: _rootTab == RootTab.chat,
+                  child: _buildChatBody(),
+                ),
+              ),
+              Offstage(
+                offstage: _rootTab != RootTab.codegen,
+                child: TickerMode(
+                  enabled: _rootTab == RootTab.codegen,
+                  child: _buildCodegenBody(),
+                ),
+              ),
+              Offstage(
+                offstage: _rootTab != RootTab.settings,
+                child: TickerMode(
+                  enabled: _rootTab == RootTab.settings,
+                  child: _buildSettingsBody(),
+                ),
+              ),
+              Offstage(
+                offstage: _rootTab != RootTab.debug,
+                child: TickerMode(
+                  enabled: _rootTab == RootTab.debug,
+                  child: _buildDebugBody(),
+                ),
+              ),
+              _buildCortanaLayer(),
+            ],
           ),
-          Offstage(
-            offstage: _rootTab != RootTab.codegen,
-            child: TickerMode(
-              enabled: _rootTab == RootTab.codegen,
-              child: _buildCodegenBody(),
+          if (_sidebarExpanded) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _sidebarExpanded = false);
+                },
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.28),
+                ),
+              ),
             ),
-          ),
-          _buildCortanaLayer(),
+            Positioned(top: 0, bottom: 0, left: 0, child: _buildAppSidebar()),
+          ],
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _rootTab.index,
-        onDestinationSelected: (index) {
-          final nextTab = RootTab.values[index];
-          setState(() {
-            _rootTab = nextTab;
-          });
-          if (nextTab == RootTab.cortana) {
-            _reportCortanaUiEvent(
-              'cortana_tab_open',
-              summary: '用户切换到了 Cortana 页签',
-            );
-          }
-          if (nextTab == RootTab.codegen) {
-            _triggerCortanaContextualExpression('surprised');
-            if (_codingProjects.isEmpty &&
-                _deployProjects.isEmpty &&
-                !_codegenLoading &&
-                _sessionToken.isNotEmpty) {
-              unawaited(_loadCodegenProjects());
-            }
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
-            label: '聊天',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.terminal_outlined),
-            selectedIcon: Icon(Icons.terminal_rounded),
-            label: '编码发布',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.face_outlined),
-            selectedIcon: Icon(Icons.face_rounded),
-            label: 'Cortana',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _rootTab == RootTab.settings
+          ? null
+          : NavigationBar(
+              selectedIndex: switch (_rootTab) {
+                RootTab.chat => 0,
+                RootTab.codegen => 1,
+                RootTab.cortana => 2,
+                RootTab.debug => 3,
+                RootTab.settings => 0,
+              },
+              onDestinationSelected: (index) {
+                final nextTab = switch (index) {
+                  0 => RootTab.chat,
+                  1 => RootTab.codegen,
+                  2 => RootTab.cortana,
+                  _ => RootTab.debug,
+                };
+                _selectRootTab(nextTab);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline_rounded),
+                  selectedIcon: Icon(Icons.chat_bubble_rounded),
+                  label: '聊天',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.terminal_outlined),
+                  selectedIcon: Icon(Icons.terminal_rounded),
+                  label: '编码发布',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.face_outlined),
+                  selectedIcon: Icon(Icons.face_rounded),
+                  label: 'Cortana',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.bug_report_outlined),
+                  selectedIcon: Icon(Icons.bug_report_rounded),
+                  label: '调试',
+                ),
+              ],
+            ),
     );
   }
 }
@@ -8395,6 +9906,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
   bool _userToggledExpand = false;
 
   ChatMessage get message => widget.message;
+
+  String get _videoPath =>
+      (message.meta?['file_path'] ?? message.meta?['video_path'] ?? '')
+          .toString()
+          .trim();
 
   bool get _shouldAnimateStreamText {
     // 流式 codegen 消息频繁覆盖同一条记录，逐字动画会持续改变气泡高度，
@@ -8512,6 +10028,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
         : palette.textPrimary;
     final isAudio = message.messageType == 'audio';
     final isImage = message.messageType == 'image';
+    final isVideo = message.messageType == 'video';
     final isApk = isApkChatMessage(message);
     final durationMs = message.meta?['duration_ms'];
     final durationText = durationMs is num
@@ -8520,7 +10037,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final imageBase64 = (message.meta?['image_base64'] ?? '').toString().trim();
     final displayText = _displayText;
     final textOverflows =
-        !isAudio && !isImage && displayText.length > _kCollapseThreshold;
+        !isAudio && !isImage && !isVideo && displayText.length > _kCollapseThreshold;
     final collapsedText = textOverflows && !_expanded
         ? '${displayText.substring(0, _kCollapseThreshold)}...'
         : displayText;
@@ -8538,7 +10055,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         child: InkWell(
-          onTap: (isAudio || isApk)
+          onTap: (isAudio || isApk || (isVideo && _videoPath.isEmpty))
               ? () => widget.onTap()
               : textOverflows
               ? () => setState(() {
@@ -8652,7 +10169,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       ),
                     ],
                   ),
-                if (!isAudio && !isImage) ...[
+                if (isVideo)
+                  _VideoMessagePreview(
+                    path: _videoPath,
+                    caption: displayText,
+                    foregroundColor: isSystem ? palette.textSecondary : fgColor,
+                    surfaceColor: isOutgoing
+                        ? accentForeground.withValues(alpha: 0.12)
+                        : palette.surfaceSoft,
+                  ),
+                if (!isAudio && !isImage && !isVideo) ...[
                   Text(
                     collapsedText,
                     style: TextStyle(
@@ -8676,6 +10202,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 Text(
                   isImage
                       ? '${_formatTime(message.timestamp)}  Long press to copy'
+                      : isVideo
+                      ? '${_formatTime(message.timestamp)}  Tap video to play · Long press to copy'
                       : isAudio
                       ? '${_formatTime(message.timestamp)}  Tap to play · Long press to copy'
                       : isApk
@@ -8701,6 +10229,117 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final mm = time.minute.toString().padLeft(2, '0');
     final ss = time.second.toString().padLeft(2, '0');
     return '$hh:$mm:$ss';
+  }
+}
+
+class _VideoMessagePreview extends StatelessWidget {
+  const _VideoMessagePreview({
+    required this.path,
+    required this.caption,
+    required this.foregroundColor,
+    required this.surfaceColor,
+  });
+
+  final String path;
+  final String caption;
+  final Color foregroundColor;
+  final Color surfaceColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final caption = this.caption.trim();
+    final path = this.path.trim();
+    if (path.isEmpty) {
+      return _VideoPlaceholder(
+        text: caption.isEmpty ? 'Video ready to download' : caption,
+        icon: Icons.download_rounded,
+        foregroundColor: foregroundColor,
+        surfaceColor: surfaceColor,
+      );
+    }
+
+    final videoUri = Uri.file(path).toString();
+    final html = '''
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+    video { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
+  </style>
+</head>
+<body>
+  <video controls playsinline preload="metadata" src="$videoUri"></video>
+</body>
+</html>
+''';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: InAppWebView(
+              initialData: InAppWebViewInitialData(data: html),
+              initialSettings: InAppWebViewSettings(
+                allowsInlineMediaPlayback: true,
+                mediaPlaybackRequiresUserGesture: true,
+                allowFileAccessFromFileURLs: true,
+                allowUniversalAccessFromFileURLs: true,
+              ),
+            ),
+          ),
+        ),
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            caption,
+            style: TextStyle(color: foregroundColor, height: 1.35),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _VideoPlaceholder extends StatelessWidget {
+  const _VideoPlaceholder({
+    required this.text,
+    required this.icon,
+    required this.foregroundColor,
+    required this.surfaceColor,
+  });
+
+  final String text;
+  final IconData icon;
+  final Color foregroundColor;
+  final Color surfaceColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 140),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: foregroundColor, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: foregroundColor, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -190,7 +190,7 @@ func (rt *ToolExecutionRuntime) finish(call ToolExecutionCall, originalName, res
 	}
 
 	success := err == nil
-	if err == nil && (call.Source == "app" || call.Source == "wechat") && originalName == "TextToAudio" && result != "" {
+	if err == nil && (call.Source == "app" || call.Source == "wechat") && (originalName == "TextToAudio" || originalName == "TextToMusic") && result != "" {
 		call.Sink.OnEvent("audio_reply", result)
 	}
 	if err == nil && call.Source == "app" && (originalName == "TextToImage" || originalName == "ImageToImage") && result != "" {

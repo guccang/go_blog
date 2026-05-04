@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -368,6 +369,9 @@ func (b *Bridge) pendingForUser(userID string) []AppPushPayload {
 			Meta:        cloneMeta(msg.Meta),
 		})
 	}
+	sort.SliceStable(queue, func(i, j int) bool {
+		return queue[i].Sequence < queue[j].Sequence
+	})
 	return queue
 }
 

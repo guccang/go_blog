@@ -69,6 +69,21 @@ func buildAudioToolDefs() []uap.ToolDef {
 				"required": []string{"text"},
 			}),
 		},
+		{
+			Name:        "TextToMusic",
+			Description: "Generate a playable music audio file from a style or scene prompt",
+			Parameters: agentbase.MustMarshalJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"prompt":           map[string]any{"type": "string", "description": "Music style, mood, scene, instruments, and other generation guidance"},
+					"lyrics":           map[string]any{"type": "string", "description": "Optional lyrics with section tags such as [Verse] and [Chorus]"},
+					"audio_format":     map[string]any{"type": "string", "description": "Optional output format such as mp3"},
+					"is_instrumental":  map[string]any{"type": "boolean", "description": "Generate instrumental music without vocals"},
+					"lyrics_optimizer": map[string]any{"type": "boolean", "description": "Let the provider generate or optimize lyrics from the prompt"},
+				},
+				"required": []string{"prompt"},
+			}),
+		},
 	}
 }
 
@@ -105,6 +120,8 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result, err = c.toolAudioToText(args)
 	case "TextToAudio":
 		result, err = c.toolTextToAudio(args)
+	case "TextToMusic":
+		result, err = c.toolTextToMusic(args)
 	default:
 		log.Printf("[AudioAgent] unknown tool from=%s msgID=%s tool=%s", msg.From, msg.ID, payload.ToolName)
 		c.sendToolError(msg.From, msg.ID, fmt.Sprintf("unknown tool: %s", payload.ToolName))
@@ -166,6 +183,30 @@ func (c *Connection) toolTextToAudio(args map[string]any) (map[string]any, error
 	return result, nil
 }
 
+func (c *Connection) toolTextToMusic(args map[string]any) (map[string]any, error) {
+	prompt, _ := args["prompt"].(string)
+	if strings.TrimSpace(prompt) == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	lyrics, _ := args["lyrics"].(string)
+	audioFormat, _ := args["audio_format"].(string)
+	isInstrumental := optionalBool(args["is_instrumental"])
+	lyricsOptimizer := optionalBool(args["lyrics_optimizer"])
+
+	result, err := c.client.GenerateMusic(context.Background(), GenerateMusicParams{
+		Prompt:          prompt,
+		Lyrics:          lyrics,
+		Format:          audioFormat,
+		IsInstrumental:  isInstrumental,
+		LyricsOptimizer: lyricsOptimizer,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result["provider"] = c.cfg.TextToMusic.Provider
+	return result, nil
+}
+
 func (c *Connection) sendToolResult(target, requestID string, result map[string]any) {
 	data, _ := json.Marshal(result)
 	if err := c.Client.SendTo(target, uap.MsgToolResult, uap.ToolResultPayload{
@@ -199,6 +240,11 @@ func summarizeToolArgs(toolName string, args map[string]any) string {
 		voice, _ := args["voice"].(string)
 		audioFormat, _ := args["audio_format"].(string)
 		return fmt.Sprintf("text_len=%d voice=%s format=%s preview=%q", len(text), strings.TrimSpace(voice), strings.TrimSpace(audioFormat), truncateForLog(text, 48))
+	case "TextToMusic":
+		prompt, _ := args["prompt"].(string)
+		lyrics, _ := args["lyrics"].(string)
+		audioFormat, _ := args["audio_format"].(string)
+		return fmt.Sprintf("prompt_len=%d lyrics_len=%d format=%s preview=%q", len(prompt), len(lyrics), strings.TrimSpace(audioFormat), truncateForLog(prompt, 48))
 	default:
 		raw, _ := json.Marshal(args)
 		return string(raw)
@@ -217,10 +263,24 @@ func summarizeToolResult(toolName string, result map[string]any) string {
 		provider := firstStringField(result, "provider")
 		traceID := firstStringField(result, "trace_id")
 		return fmt.Sprintf("provider=%s format=%s audio_bytes≈%d trace_id=%s", provider, strings.TrimSpace(audioFormat), base64DecodedLen(audioBase64), strings.TrimSpace(traceID))
+	case "TextToMusic":
+		audioBase64, _ := result["audio_base64"].(string)
+		audioFormat, _ := result["audio_format"].(string)
+		provider := firstStringField(result, "provider")
+		traceID := firstStringField(result, "trace_id")
+		return fmt.Sprintf("provider=%s format=%s audio_bytes≈%d trace_id=%s", provider, strings.TrimSpace(audioFormat), base64DecodedLen(audioBase64), strings.TrimSpace(traceID))
 	default:
 		raw, _ := json.Marshal(result)
 		return string(raw)
 	}
+}
+
+func optionalBool(v any) *bool {
+	value, ok := v.(bool)
+	if !ok {
+		return nil
+	}
+	return &value
 }
 
 func firstStringField(data map[string]any, keys ...string) string {

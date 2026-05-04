@@ -262,6 +262,13 @@ func (e *MonitorEngine) AppendInteraction(account string, item map[string]any) {
 	e.registry.AppendInteraction(account, item)
 }
 
+func (e *MonitorEngine) UpdateCurrentContext(account string, context map[string]any) {
+	if e.registry == nil {
+		return
+	}
+	e.registry.UpdateCurrentContext(account, context)
+}
+
 func (e *MonitorEngine) ExecuteBroadcast(decision BroadcastDecision) {
 	e.executeBroadcast(decision)
 }

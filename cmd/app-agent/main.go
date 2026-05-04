@@ -81,6 +81,7 @@ func main() {
 	mux.HandleFunc("/api/app/refresh", handler.HandleRefresh)
 	mux.HandleFunc("/api/app/logout", handler.HandleLogout)
 	mux.HandleFunc("/api/app/cortana/settings", handler.HandleCortanaSettings)
+	mux.HandleFunc("/api/app/cortana/history", handler.HandleCortanaHistory)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
 	mux.HandleFunc("/api/app/logs/sources", handler.HandleLogSources)

@@ -345,7 +345,7 @@ func sanitizeAttachmentSidecarMeta(meta map[string]any) map[string]any {
 	out := make(map[string]any, len(meta))
 	for key, value := range meta {
 		switch key {
-		case "audio_base64", "image_base64", "file_base64", "zip_base64", "inline_base64":
+		case "audio_base64", "image_base64", "video_base64", "file_base64", "zip_base64", "inline_base64":
 			text, _ := value.(string)
 			out[key+"_present"] = strings.TrimSpace(text) != ""
 		default:
@@ -415,6 +415,9 @@ func (b *Bridge) buildPushMetaForUser(baseMeta map[string]any, attachment *AppAt
 			out["audio_format"] = attachment.Format
 		case "image":
 			out["image_format"] = attachment.Format
+		case "video":
+			out["video_format"] = attachment.Format
+			out["file_format"] = attachment.Format
 		default:
 			out["file_format"] = attachment.Format
 		}

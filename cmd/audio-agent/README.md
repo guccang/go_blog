@@ -9,7 +9,7 @@
 
 - 当前仓库已经接入 OpenAI 的语音转文本 HTTP 接口
 - 当前仓库已经接入 MiniMax 的文本转语音同步 HTTP 接口
-- MiniMax 的公开文档里，当前明确可用的是 TTS HTTP；仓库里没有接入独立 STT API
+- 当前仓库已经接入 MiniMax 的音乐生成同步 HTTP 接口
 
 ## 快速开始
 
@@ -26,6 +26,7 @@ cd cmd/audio-agent
 - 填写 `auth_token`
 - 填写 `providers.openai.api_key`
 - 填写 `providers.minimax.api_key`
+- 如需限免模型，可把 `providers.minimax.music_generation_models.default.model` 改成 `music-2.6-free`
 
 3. 启动：
 
@@ -48,7 +49,15 @@ cd cmd/audio-agent
 - voice: `female-tianmei`
 - endpoint: `https://api.minimaxi.com/v1/t2a_v2`
 
+### TextToMusic
+
+- provider: `minimax`
+- model: `music-2.6`
+- endpoint: `https://api.minimaxi.com/v1/music_generation`
+- 默认 `lyrics_optimizer=true`，只传提示词时由 MiniMax 根据提示词生成歌词
+
 ## 工具
 
 - `AudioToText`: 输入 `audio_base64`，返回识别文本
 - `TextToAudio`: 输入 `text`，返回 `audio_base64`
+- `TextToMusic`: 输入 `prompt`，可选 `lyrics` / `is_instrumental`，返回可播放的 `audio_base64`

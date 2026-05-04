@@ -6,11 +6,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 
 	"agentbase"
 	"deploygen"
+	"uap"
 )
 
 var (
@@ -73,9 +75,10 @@ func main() {
 
 	// 构建工具列表
 	tools := mcpMgr.BuildUAPTools()
+	description := generateDescription(tools)
 
 	// 创建连接
-	currentConn = NewConnection(cfg, agentID, mcpMgr, cfgPath)
+	currentConn = NewConnection(cfg, agentID, mcpMgr, cfgPath, description)
 	currentConn.Client.Tools = tools
 	currentConn.ActiveTaskCounter = func() int { return int(atomic.LoadInt32(&currentConn.activeCount)) }
 
@@ -145,7 +148,8 @@ func handleReload() {
 	oldConn := currentConn
 	oldConn.Stop()
 
-	newConn := NewConnection(newCfg, oldConn.AgentID, mcpMgr, cfgPath)
+	description := generateDescription(tools)
+	newConn := NewConnection(newCfg, oldConn.AgentID, mcpMgr, cfgPath, description)
 	newConn.Client.Tools = tools
 	currentConn = newConn
 
@@ -153,4 +157,49 @@ func handleReload() {
 	go currentConn.Run()
 
 	log.Printf("[MCPAgent] reload complete: %d tools registered", len(tools))
+}
+
+// generateDescription 根据已发现的工具动态生成 Agent 描述
+func generateDescription(tools []uap.ToolDef) string {
+	categories := make(map[string]bool)
+	for _, t := range tools {
+		name := strings.ToLower(t.Name)
+		switch {
+		// 天气
+		case strings.Contains(name, "weather"):
+			categories["天气查询"] = true
+		// 路线规划
+		case strings.Contains(name, "cycling"), strings.Contains(name, "walking"),
+			strings.Contains(name, "driving"), strings.Contains(name, "transit"),
+			strings.Contains(name, "direction"), strings.Contains(name, "distance"):
+			categories["路线规划"] = true
+		// 地址解析
+		case strings.Contains(name, "geocode"), strings.Contains(name, "geo"),
+			strings.Contains(name, "regeo"), strings.Contains(name, "ip_location"):
+			categories["地址解析"] = true
+		// 地点搜索
+		case strings.Contains(name, "search"), strings.Contains(name, "poi"),
+			strings.Contains(name, "detail"):
+			categories["地点搜索"] = true
+		// 出行服务（专属地图、导航、打车）
+		case strings.Contains(name, "schema"), strings.Contains(name, "navigate"),
+			strings.Contains(name, "navi"), strings.Contains(name, "ride"),
+			strings.Contains(name, "taxi"), strings.Contains(name, "personal_map"):
+			categories["出行服务"] = true
+		}
+	}
+
+	// 按固定顺序拼接
+	ordered := []string{"天气查询", "路线规划", "地址解析", "地点搜索", "出行服务"}
+	var active []string
+	for _, cat := range ordered {
+		if categories[cat] {
+			active = append(active, cat)
+		}
+	}
+
+	if len(active) == 0 {
+		return fmt.Sprintf("MCP 桥接服务 (%d 个工具)", len(tools))
+	}
+	return fmt.Sprintf("高德地图服务：%s (%d 工具)", strings.Join(active, "、"), len(tools))
 }

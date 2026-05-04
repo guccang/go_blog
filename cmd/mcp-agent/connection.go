@@ -22,13 +22,13 @@ type Connection struct {
 }
 
 // NewConnection 创建连接管理器
-func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath string) *Connection {
+func NewConnection(cfg *Config, agentID string, mcpMgr *MCPManager, cfgPath string, description string) *Connection {
 	baseCfg := &agentbase.Config{
 		ServerURL:   cfg.ServerURL,
 		AgentID:     agentID,
 		AgentType:   "mcp_bridge",
 		AgentName:   cfg.AgentName,
-		Description: "查询天气和导航数据",
+		Description: description,
 		AuthToken:   cfg.AuthToken,
 		Capacity:    10,
 		Tools:       nil, // 启动后由 mcpMgr.BuildUAPTools() 设置

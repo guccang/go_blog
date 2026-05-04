@@ -8,11 +8,13 @@ import (
 )
 
 type CortanaUserSettings struct {
-	Enabled         bool   `json:"enabled"`
-	AllowFullAccess bool   `json:"allow_full_access"`
-	AutoPlay        bool   `json:"auto_play"`
-	ProactiveMode   string `json:"proactive_mode"`
-	UpdatedAt       int64  `json:"updated_at"`
+	Enabled            bool   `json:"enabled"`
+	AllowFullAccess    bool   `json:"allow_full_access"`
+	AutoPlay           bool   `json:"auto_play"`
+	ProactiveMode      string `json:"proactive_mode"`
+	PersonaName        string `json:"persona_name,omitempty"`
+	PersonaDescription string `json:"persona_description,omitempty"`
+	UpdatedAt          int64  `json:"updated_at"`
 }
 
 type CortanaUserSession struct {
@@ -26,6 +28,7 @@ type CortanaUserSession struct {
 	LastSeenAt         int64               `json:"last_seen_at"`
 	UpdatedAt          int64               `json:"updated_at"`
 	Settings           CortanaUserSettings `json:"settings"`
+	CurrentContext     map[string]any      `json:"current_context,omitempty"`
 	RecentInteractions []map[string]any    `json:"recent_interactions,omitempty"`
 }
 
@@ -62,6 +65,7 @@ func defaultCortanaUserSettings() CortanaUserSettings {
 		AllowFullAccess: true,
 		AutoPlay:        true,
 		ProactiveMode:   "high",
+		PersonaName:     "Cortana",
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
 }
@@ -73,6 +77,12 @@ func normalizeCortanaSettings(in CortanaUserSettings) CortanaUserSettings {
 	} else {
 		out.ProactiveMode = strings.ToLower(strings.TrimSpace(out.ProactiveMode))
 	}
+	if strings.TrimSpace(out.PersonaName) == "" {
+		out.PersonaName = "Cortana"
+	} else {
+		out.PersonaName = strings.TrimSpace(out.PersonaName)
+	}
+	out.PersonaDescription = strings.TrimSpace(out.PersonaDescription)
 	if out.UpdatedAt <= 0 {
 		out.UpdatedAt = time.Now().UnixMilli()
 	}
@@ -193,11 +203,35 @@ func (r *AccountRegistry) AppendInteraction(account string, item map[string]any)
 	}
 }
 
+func (r *AccountRegistry) UpdateCurrentContext(account string, context map[string]any) {
+	account = strings.TrimSpace(account)
+	if account == "" || len(context) == 0 {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	session := r.sessions[account]
+	if session == nil {
+		session = &CortanaUserSession{Account: account}
+		r.sessions[account] = session
+	}
+	if session.CurrentContext == nil {
+		session.CurrentContext = make(map[string]any)
+	}
+	for k, v := range context {
+		session.CurrentContext[k] = v
+	}
+	session.CurrentContext["updated_at"] = time.Now().UnixMilli()
+}
+
 func cloneCortanaSession(in *CortanaUserSession) *CortanaUserSession {
 	if in == nil {
 		return nil
 	}
 	out := *in
+	out.CurrentContext = cloneAnyMap(in.CurrentContext)
 	if len(in.RecentInteractions) > 0 {
 		out.RecentInteractions = make([]map[string]any, 0, len(in.RecentInteractions))
 		for _, item := range in.RecentInteractions {

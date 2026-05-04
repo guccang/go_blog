@@ -12,6 +12,10 @@
     "provider": "minimax",
     "model": "default"
   },
+  "text_to_music": {
+    "provider": "minimax",
+    "model": "default"
+  },
   "providers": {
     "openai": {
       "base_url": "https://api.openai.com/v1",
@@ -35,6 +39,7 @@
       "base_url": "https://api.minimaxi.com",
       "api_key": "your-minimax-api-key",
       "text_to_speech_path": "/v1/t2a_v2",
+      "music_generation_path": "/v1/music_generation",
       "text_to_speech_models": {
         "default": {
           "model": "speech-2.8-hd",
@@ -47,6 +52,15 @@
           "sample_rate": 32000,
           "bitrate": 128000,
           "channel": 1
+        }
+      },
+      "music_generation_models": {
+        "default": {
+          "model": "music-2.6",
+          "response_format": "mp3",
+          "sample_rate": 44100,
+          "bitrate": 256000,
+          "lyrics_optimizer": true
         }
       }
     }

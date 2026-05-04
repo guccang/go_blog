@@ -84,6 +84,12 @@ type appLogFileEntry struct {
 	ModifiedText string `json:"modified_text"`
 }
 
+type cortanaVoiceHistoryResponse struct {
+	Success bool                      `json:"success"`
+	Items   []CortanaVoiceHistoryItem `json:"items,omitempty"`
+	Error   string                    `json:"error,omitempty"`
+}
+
 type logAgentConfigSnapshot struct {
 	LogSources map[string]struct {
 		Path        string `json:"path"`
@@ -249,12 +255,20 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) syncCortanaSession(account string) error {
-	if h == nil || h.cortana == nil {
+	if h == nil {
 		return nil
 	}
 	settings := DefaultCortanaSettings()
 	if h.settings != nil {
 		settings = h.settings.Get(account)
+	}
+	if h.cfg != nil {
+		if err := syncCortanaProfileToWorkspace(h.cfg.LLMWorkspaceDir, account, settings); err != nil {
+			log.Printf("[Handler] sync cortana profile failed user=%s err=%v", account, err)
+		}
+	}
+	if h.cortana == nil {
+		return nil
 	}
 	return h.cortana.SyncUserSession(CortanaSyncPayload{
 		Account:    account,
@@ -281,11 +295,14 @@ func (h *Handler) HandleCortanaSettings(w http.ResponseWriter, r *http.Request) 
 	account := strings.TrimSpace(r.URL.Query().Get("user_id"))
 	if r.Method == http.MethodPost {
 		var req struct {
-			UserID      string `json:"user_id"`
-			Enabled     *bool  `json:"enabled"`
-			AllowAccess *bool  `json:"allow_full_access"`
-			AutoPlay    *bool  `json:"auto_play"`
-			Mode        string `json:"proactive_mode"`
+			UserID             string `json:"user_id"`
+			Enabled            *bool  `json:"enabled"`
+			AllowAccess        *bool  `json:"allow_full_access"`
+			AutoPlay           *bool  `json:"auto_play"`
+			Mode               string `json:"proactive_mode"`
+			PersonaName        string `json:"persona_name"`
+			OwnerTitle         string `json:"owner_title"`
+			PersonaDescription string `json:"persona_description"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -314,6 +331,11 @@ func (h *Handler) HandleCortanaSettings(w http.ResponseWriter, r *http.Request) 
 		if strings.TrimSpace(req.Mode) != "" {
 			current.ProactiveMode = strings.TrimSpace(req.Mode)
 		}
+		if strings.TrimSpace(req.PersonaName) != "" {
+			current.PersonaName = strings.TrimSpace(req.PersonaName)
+		}
+		current.OwnerTitle = strings.TrimSpace(req.OwnerTitle)
+		current.PersonaDescription = strings.TrimSpace(req.PersonaDescription)
 		current.UpdatedAt = time.Now().UnixMilli()
 		if h.settings != nil {
 			current = h.settings.Set(account, current)
@@ -973,6 +995,43 @@ func (h *Handler) HandleAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", "inline; filename="+stat.Name())
 	http.ServeFile(w, r, filePath)
+}
+
+func (h *Handler) HandleCortanaHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	if !h.validateAppSession(r, userID) {
+		http.Error(w, "Login required", http.StatusUnauthorized)
+		return
+	}
+
+	limit := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			if parsed > maxCortanaVoiceHistoryItems {
+				parsed = maxCortanaVoiceHistoryItems
+			}
+			limit = parsed
+		}
+	}
+
+	items := h.bridge.cortanaHistory.List(userID, limit)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(cortanaVoiceHistoryResponse{
+		Success: true,
+		Items:   items,
+	})
 }
 
 func (h *Handler) resolveAttachmentRedirectURL(userID, fileID, filePath, fileName string) (string, error) {

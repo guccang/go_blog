@@ -38,6 +38,14 @@ type SynthesizeParams struct {
 	Format string
 }
 
+type GenerateMusicParams struct {
+	Prompt          string
+	Lyrics          string
+	Format          string
+	IsInstrumental  *bool
+	LyricsOptimizer *bool
+}
+
 func (c *AudioClient) Transcribe(ctx context.Context, params TranscribeParams) (map[string]any, error) {
 	provider, model, err := c.cfg.ResolveSTT()
 	if err != nil {
@@ -110,6 +118,24 @@ func (c *AudioClient) Synthesize(ctx context.Context, params SynthesizeParams) (
 		return c.synthesizeMiniMaxHTTP(ctx, provider, model, params, voice, format)
 	}
 	return c.synthesizeStandardHTTP(ctx, provider, model, params, voice, format)
+}
+
+func (c *AudioClient) GenerateMusic(ctx context.Context, params GenerateMusicParams) (map[string]any, error) {
+	provider, model, err := c.cfg.ResolveMusic()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(params.Prompt) == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	if !strings.EqualFold(c.cfg.TextToMusic.Provider, "minimax") {
+		return nil, fmt.Errorf("text_to_music provider is not supported: %s", c.cfg.TextToMusic.Provider)
+	}
+	format := strings.TrimSpace(params.Format)
+	if format == "" {
+		format = defaultString(model.ResponseFormat, "mp3")
+	}
+	return c.generateMiniMaxMusicHTTP(ctx, provider, model, params, format)
 }
 
 func (c *AudioClient) resolveConfiguredTTSVoice(model *TextToSpeechModelConfig, requestedVoice string) (string, error) {
@@ -252,6 +278,96 @@ func (c *AudioClient) synthesizeMiniMaxHTTP(ctx context.Context, provider *Audio
 		"transport":    "http",
 		"trace_id":     result.TraceID,
 		"extra_info":   result.ExtraInfo,
+	}, nil
+}
+
+func (c *AudioClient) generateMiniMaxMusicHTTP(ctx context.Context, provider *AudioProviderConfig, model *MusicGenerationModelConfig, params GenerateMusicParams, format string) (map[string]any, error) {
+	start := time.Now()
+	isInstrumental := model.IsInstrumental
+	if params.IsInstrumental != nil {
+		isInstrumental = *params.IsInstrumental
+	}
+	lyricsOptimizer := model.LyricsOptimizer
+	if params.LyricsOptimizer != nil {
+		lyricsOptimizer = *params.LyricsOptimizer
+	}
+	if strings.TrimSpace(params.Lyrics) == "" && !isInstrumental {
+		lyricsOptimizer = true
+	}
+
+	body := map[string]any{
+		"model":            model.Model,
+		"prompt":           strings.TrimSpace(params.Prompt),
+		"stream":           false,
+		"output_format":    "hex",
+		"lyrics_optimizer": lyricsOptimizer,
+		"is_instrumental":  isInstrumental,
+		"audio_setting": map[string]any{
+			"sample_rate": defaultInt(model.SampleRate, 44100),
+			"bitrate":     defaultInt(model.Bitrate, 256000),
+			"format":      format,
+		},
+	}
+	if lyrics := strings.TrimSpace(params.Lyrics); lyrics != "" {
+		body["lyrics"] = lyrics
+	}
+	if model.AIGCWatermark != nil {
+		body["aigc_watermark"] = *model.AIGCWatermark
+	}
+
+	bodyJSON, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(c.withTimeout(ctx), http.MethodPost, joinURL(provider.BaseURL, provider.MusicGenerationPath), bytes.NewReader(bodyJSON))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	log.Printf("[AudioClient] MiniMax music request model=%s format=%s prompt_len=%d lyrics_len=%d instrumental=%v endpoint=%s auth_len=%d", model.Model, format, len(params.Prompt), len(params.Lyrics), isInstrumental, joinURL(provider.BaseURL, provider.MusicGenerationPath), len(strings.TrimSpace(provider.APIKey)))
+
+	var result struct {
+		Data struct {
+			Audio  string `json:"audio"`
+			Status int    `json:"status"`
+		} `json:"data"`
+		ExtraInfo map[string]any `json:"extra_info"`
+		TraceID   string         `json:"trace_id"`
+		BaseResp  struct {
+			StatusCode int    `json:"status_code"`
+			StatusMsg  string `json:"status_msg"`
+		} `json:"base_resp"`
+	}
+	if err := doJSON(req, &result); err != nil {
+		log.Printf("[AudioClient] MiniMax music request failed model=%s duration=%v err=%v", model.Model, time.Since(start), err)
+		return nil, err
+	}
+	if result.BaseResp.StatusCode != 0 {
+		log.Printf("[AudioClient] MiniMax music api error model=%s duration=%v status_code=%d status_msg=%q trace_id=%s", model.Model, time.Since(start), result.BaseResp.StatusCode, strings.TrimSpace(result.BaseResp.StatusMsg), strings.TrimSpace(result.TraceID))
+		return nil, fmt.Errorf("minimax status_code=%d: %s", result.BaseResp.StatusCode, strings.TrimSpace(result.BaseResp.StatusMsg))
+	}
+	if strings.TrimSpace(result.Data.Audio) == "" {
+		log.Printf("[AudioClient] MiniMax music empty audio model=%s duration=%v status=%d trace_id=%s", model.Model, time.Since(start), result.Data.Status, strings.TrimSpace(result.TraceID))
+		return nil, fmt.Errorf("minimax response missing audio data")
+	}
+
+	audioBytes, err := decodeHexString(strings.TrimSpace(result.Data.Audio))
+	if err != nil {
+		return nil, fmt.Errorf("decode minimax music audio hex: %w", err)
+	}
+	log.Printf("[AudioClient] MiniMax music done model=%s duration=%v audio_bytes=%d trace_id=%s", model.Model, time.Since(start), len(audioBytes), strings.TrimSpace(result.TraceID))
+
+	return map[string]any{
+		"kind":            "music",
+		"content":         "[音乐生成]",
+		"audio_base64":    base64.StdEncoding.EncodeToString(audioBytes),
+		"audio_format":    format,
+		"input_mode":      "music_generation",
+		"prompt":          strings.TrimSpace(params.Prompt),
+		"lyrics":          strings.TrimSpace(params.Lyrics),
+		"is_instrumental": isInstrumental,
+		"model":           model.Model,
+		"transport":       "http",
+		"trace_id":        result.TraceID,
+		"extra_info":      result.ExtraInfo,
 	}, nil
 }
 

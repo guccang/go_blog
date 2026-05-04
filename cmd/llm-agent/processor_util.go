@@ -125,18 +125,55 @@ func parseExecuteCodeResult(resultJSON string) (string, string) {
 		summary = sb.String()
 	}
 
-	return execResult.Stdout, summary
+	// 当 stdout 为空时，将 stderr 或 tool_calls 错误作为结果返回给 LLM
+	stdout := execResult.Stdout
+	if stdout == "" {
+		if execResult.Stderr != "" {
+			stdout = "执行失败:\n" + execResult.Stderr
+		} else {
+			var toolErrors []string
+			for _, tc := range execResult.ToolCalls {
+				if tc.Error != "" {
+					toolErrors = append(toolErrors, fmt.Sprintf("Tool %s failed: %s", tc.Tool, tc.Error))
+				}
+			}
+			if len(toolErrors) > 0 {
+				stdout = "工具调用失败:\n" + strings.Join(toolErrors, "\n")
+			}
+		}
+	}
+
+	return stdout, summary
 }
 
 // extractExecuteCodeStderr 从 ExecuteCode 的结构化结果中提取 stderr 错误详情
 // 用于 ExecuteCode 失败时将具体错误信息传递给 LLM，使其能修正代码
+// 同时提取 tool_calls 中的错误信息（Python 代码正常运行但内部工具调用失败时）
 func extractExecuteCodeStderr(resultJSON string) string {
 	var execResult struct {
 		Stderr    string `json:"stderr"`
 		ErrorType string `json:"error_type"`
+		ToolCalls []struct {
+			Tool  string `json:"tool"`
+			Error string `json:"error"`
+		} `json:"tool_calls"`
 	}
-	if err := json.Unmarshal([]byte(resultJSON), &execResult); err == nil && execResult.Stderr != "" {
+	if err := json.Unmarshal([]byte(resultJSON), &execResult); err != nil {
+		return ""
+	}
+	if execResult.Stderr != "" {
 		return execResult.Stderr
+	}
+
+	// 收集所有 tool_calls 中的错误信息
+	var toolErrors []string
+	for _, tc := range execResult.ToolCalls {
+		if tc.Error != "" {
+			toolErrors = append(toolErrors, fmt.Sprintf("Tool %s failed: %s", tc.Tool, tc.Error))
+		}
+	}
+	if len(toolErrors) > 0 {
+		return strings.Join(toolErrors, "\n")
 	}
 
 	return ""

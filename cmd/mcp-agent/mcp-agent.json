@@ -11,7 +11,9 @@
         "amap": {
             "enabled": true,
             "transport": "http",
-            "url": "https://mcp.amap.com/mcp?key=63acd41bb8f61db0a2ec25829f2ede2a"
+            "url": "https://mcp.amap.com/mcp?key=63acd41bb8f61db0a2ec25829f2ede2a",
+            "retry_count": 3,
+            "health_check_sec": 30
         }
     },
     "server_url": "ws://127.0.0.1:10086/ws/uap",

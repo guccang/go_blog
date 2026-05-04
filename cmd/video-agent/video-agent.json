@@ -1,0 +1,44 @@
+{
+  "server_url": "ws://127.0.0.1:10086/ws/uap",
+  "auth_token": "",
+  "agent_name": "video-agent",
+  "max_concurrent": 1,
+  "request_timeout_sec": 900,
+  "poll_interval_sec": 5,
+  "max_poll_attempts": 120,
+  "max_download_bytes": 209715200,
+  "providers": {
+    "minimax": {
+      "base_url": "https://api.minimaxi.com",
+      "api_key": "",
+      "video_generation_path": "/v1/video_generation",
+      "query_path": "/v1/query/video_generation",
+      "file_retrieve_path": "/v1/files/retrieve",
+      "models": {
+        "default": {
+          "model": "MiniMax-Hailuo-2.3",
+          "duration": 6,
+          "resolution": "768P",
+          "prompt_optimizer": true,
+          "fast_pretreatment": false,
+          "aigc_watermark": false
+        },
+        "fast": {
+          "model": "MiniMax-Hailuo-2.3-Fast",
+          "duration": 6,
+          "resolution": "768P",
+          "prompt_optimizer": true,
+          "fast_pretreatment": false,
+          "aigc_watermark": false
+        }
+      }
+    }
+  },
+  "video_generation": {
+    "provider": "minimax",
+    "model": "default"
+  },
+  "protected_files": [
+    "video-agent.json"
+  ]
+}

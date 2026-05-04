@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"uap"
 )
@@ -96,6 +94,7 @@ type Bridge struct {
 	obsStorage        objectStorage
 	downloadTickets   downloadTicketSigner
 	downloadTicketTTL time.Duration
+	cortanaHistory    *CortanaVoiceHistoryStore
 
 	toolCallMu       sync.Mutex
 	pendingToolCalls map[string]chan uap.ToolResultPayload
@@ -128,7 +127,7 @@ func NewBridge(cfg *Config) *Bridge {
 		},
 		{
 			Name:        "app.SendRichMessage",
-			Description: "Send a structured app message to one user. Use this for image, audio, file, or text-with-metadata payloads; message_type selects the content kind and meta carries attachment-specific fields.",
+			Description: "Send a structured app message to one user. Use this for image, audio, video, file, or text-with-metadata payloads; message_type selects the content kind and meta carries attachment-specific fields.",
 			Parameters: json.RawMessage(`{
 				"type":"object",
 				"properties":{
@@ -188,6 +187,7 @@ func NewBridge(cfg *Config) *Bridge {
 		obsStorage:        newObjectStorage(cfg),
 		downloadTickets:   newDownloadTicketSigner(cfg),
 		downloadTicketTTL: time.Duration(cfg.DownloadTicketTTLSeconds) * time.Second,
+		cortanaHistory:    NewCortanaVoiceHistoryStore(cfg.AttachmentStoreDir),
 		pendingToolCalls:  make(map[string]chan uap.ToolResultPayload),
 	}
 	client.OnMessage = b.handleUAPMessage
@@ -730,6 +730,8 @@ func normalizeAppMessageType(messageType string, meta map[string]any) string {
 		return "audio"
 	case stringMeta(meta, "image_base64") != "":
 		return "image"
+	case stringMeta(meta, "video_base64") != "":
+		return "video"
 	case stringMeta(meta, "zip_base64") != "":
 		return "zip"
 	case stringMeta(meta, "file_base64") != "":
@@ -803,16 +805,18 @@ func (b *Bridge) persistAttachment(msg *AppMessage) (*AppAttachment, error) {
 		FileID:      fileID,
 		FileName:    fileName,
 		// 这里必须传绝对路径，避免 llm-agent 与 app-agent 工作目录不一致时读不到附件。
-		FilePath:     absPath,
-		InlineBase64: base64Text,
-		FileSize:     len(data),
-		Format:       format,
-		MIMEType:     mimeType,
-		DurationMS:   intMeta(msg.Meta, "duration_ms"),
-		Description:  strings.TrimSpace(msg.Content),
-		SpeechText:   stringMeta(msg.Meta, "speech_text"),
-		InputMode:    stringMeta(msg.Meta, "input_mode"),
-		Meta:         sanitizeAppMetaForForward(msg.Meta),
+		FilePath:        absPath,
+		InlineBase64:    base64Text,
+		FileSize:        len(data),
+		Format:          format,
+		MIMEType:        mimeType,
+		DurationMS:      intMeta(msg.Meta, "duration_ms"),
+		Description:     strings.TrimSpace(msg.Content),
+		SpeechText:      stringMeta(msg.Meta, "speech_text"),
+		InputMode:       stringMeta(msg.Meta, "input_mode"),
+		StorageProvider: stringMeta(msg.Meta, "storage_provider"),
+		ObjectKey:       stringMeta(msg.Meta, "object_key"),
+		Meta:            sanitizeAppMetaForForward(msg.Meta),
 	}
 	b.applyAttachmentStorageFromBytes(msg.UserID, attachment, data)
 	return attachment, nil
@@ -891,13 +895,16 @@ func attachmentPayload(messageType string, meta map[string]any) (base64Text stri
 		return stringMeta(meta, "image_base64"), fileName, stringMeta(meta, "image_format")
 	case "zip":
 		return firstNonEmpty(stringMeta(meta, "zip_base64"), stringMeta(meta, "file_base64")), fileName, "zip"
-	case "archive", "file", "video":
+	case "video":
+		return firstNonEmpty(stringMeta(meta, "video_base64"), stringMeta(meta, "file_base64")), fileName, firstNonEmpty(stringMeta(meta, "video_format"), stringMeta(meta, "file_format"), "mp4")
+	case "archive", "file":
 		return stringMeta(meta, "file_base64"), fileName, firstNonEmpty(stringMeta(meta, "file_format"), format)
 	default:
 		return firstNonEmpty(
 			stringMeta(meta, "file_base64"),
 			stringMeta(meta, "image_base64"),
 			stringMeta(meta, "audio_base64"),
+			stringMeta(meta, "video_base64"),
 			stringMeta(meta, "zip_base64"),
 		), fileName, firstNonEmpty(stringMeta(meta, "file_format"), format)
 	}
@@ -967,7 +974,7 @@ func sanitizeAppMetaForForward(meta map[string]any) map[string]any {
 	out := make(map[string]any, len(meta))
 	for k, v := range meta {
 		switch k {
-		case "audio_base64", "image_base64", "file_base64", "zip_base64":
+		case "audio_base64", "image_base64", "video_base64", "file_base64", "zip_base64":
 			out[k+"_present"] = true
 		default:
 			out[k] = v
@@ -983,7 +990,7 @@ func sanitizeAppMetaForPush(meta map[string]any) map[string]any {
 	out := make(map[string]any, len(meta))
 	for k, v := range meta {
 		switch k {
-		case "audio_base64", "image_base64", "file_base64", "zip_base64":
+		case "audio_base64", "image_base64", "video_base64", "file_base64", "zip_base64":
 			continue
 		default:
 			out[k] = v
@@ -1002,6 +1009,8 @@ func buildAttachmentFileName(messageType, format string) string {
 			ext = "png"
 		case "zip", "archive":
 			ext = "zip"
+		case "video":
+			ext = "mp4"
 		default:
 			ext = "bin"
 		}
@@ -1053,6 +1062,55 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func classifyAppProcessMeta(sourceAgent, content string) map[string]any {
+	sourceAgent = strings.TrimSpace(sourceAgent)
+	content = strings.TrimSpace(content)
+	if sourceAgent != "llm-agent" || content == "" {
+		return nil
+	}
+
+	statusPrefixes := []string{
+		"[system]", "[tool]", "[result]", "[error]",
+		"思考:", "工具调用:", "子任务开始:", "子任务完成:", "子任务失败:",
+		"子任务跳过:", "子任务结果:", "子任务思考:", "子任务回复:",
+		"异步子任务:", "延后处理:", "任务完成:", "任务取消:", "强制总结:",
+		"子任务超时:", "模型错误:", "进度:", "重试:", "修改:", "路由:",
+		"部署进度:", "发布进度:", "编码进度:",
+		"技能开始:", "技能工具调用:", "技能完成:",
+		"Codegen task completed", "Codegen task failed",
+	}
+	matched := false
+	for _, prefix := range statusPrefixes {
+		if strings.HasPrefix(content, prefix) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return nil
+	}
+
+	processKind := "task"
+	lower := strings.ToLower(content)
+	switch {
+	case strings.Contains(content, "部署") || strings.Contains(content, "发布") ||
+		strings.Contains(lower, "deploy") || strings.Contains(lower, "release"):
+		processKind = "deploy"
+	case strings.Contains(content, "编码") || strings.Contains(content, "代码") ||
+		strings.Contains(lower, "codegen") || strings.Contains(lower, "/cg") ||
+		strings.Contains(lower, "claude"):
+		processKind = "codegen"
+	}
+
+	return map[string]any{
+		"origin":        "app-process",
+		"source_agent":  sourceAgent,
+		"app_process":   true,
+		"process_kind":  processKind,
+		"process_scope": "history",
+	}
+}
+
 func isZipFileName(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".7z") || strings.HasSuffix(lower, ".rar") || strings.HasSuffix(lower, ".tar") || strings.HasSuffix(lower, ".gz")
@@ -1075,7 +1133,22 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 			if b.handleCortanaBroadcast(payload) {
 				return
 			}
-			b.sendNotification(payload.To, payload.Content)
+			meta := classifyAppProcessMeta(msg.From, payload.Content)
+			if len(payload.Meta) > 0 {
+				if meta == nil {
+					meta = map[string]any{}
+				}
+				for k, v := range payload.Meta {
+					meta[k] = v
+				}
+			}
+			messageType := strings.TrimSpace(payload.MessageType)
+			if messageType == "" {
+				messageType = "text"
+			}
+			if err := b.sendNotificationMessage(payload.To, payload.Content, messageType, meta); err != nil {
+				log.Printf("[Bridge] app push failed for user=%s: %v", payload.To, err)
+			}
 		}
 
 	case uap.MsgToolCall:
@@ -1428,7 +1501,8 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 		sessionPrefix = sessionPrefix[:8]
 	}
 
-	text := strings.TrimSpace(payload.Event.Text)
+	rawText := payload.Event.Text
+	text := strings.TrimSpace(rawText)
 	switch payload.Event.Type {
 	case "system":
 		if text == "" {
@@ -1436,15 +1510,15 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 		}
 		return fmt.Sprintf("[system][%s] %s", sessionPrefix, text)
 	case "assistant":
-		if text == "" {
+		if rawText == "" {
 			return ""
 		}
-		return fmt.Sprintf("[assistant][%s] %s", sessionPrefix, text)
+		return fmt.Sprintf("[assistant][%s] %s", sessionPrefix, rawText)
 	case "thought":
-		if text == "" {
+		if rawText == "" {
 			return ""
 		}
-		return fmt.Sprintf("[thought][%s] %s", sessionPrefix, text)
+		return fmt.Sprintf("[thought][%s] %s", sessionPrefix, rawText)
 	case "tool":
 		if payload.Event.ToolName != "" {
 			return fmt.Sprintf("[tool][%s] %s", sessionPrefix, payload.Event.ToolName)
@@ -1494,8 +1568,7 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, text string) {
 	toUser = strings.TrimSpace(toUser)
 	sessionID = strings.TrimSpace(sessionID)
-	text = strings.TrimSpace(text)
-	if toUser == "" || sessionID == "" || text == "" {
+	if toUser == "" || sessionID == "" || strings.TrimSpace(text) == "" {
 		return
 	}
 
@@ -1570,8 +1643,8 @@ func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, finalLine strin
 }
 
 func mergeCodegenStreamText(existing, next string) string {
-	existing = strings.TrimSpace(existing)
-	next = strings.TrimSpace(next)
+	existing = strings.Trim(existing, "\r\n")
+	next = strings.Trim(next, "\r\n")
 	switch {
 	case existing == "":
 		return next
@@ -1582,7 +1655,7 @@ func mergeCodegenStreamText(existing, next string) string {
 	}
 
 	lines := strings.Split(existing, "\n")
-	lastLine := strings.TrimSpace(lines[len(lines)-1])
+	lastLine := lines[len(lines)-1]
 
 	// 如果最后一行和 next 具有相同的 [type][session] 前缀，
 	// 则只扩展最后一行内容，避免前面已有 system 行时无法合并 assistant/thought chunk。
@@ -1597,40 +1670,13 @@ func mergeCodegenStreamText(existing, next string) string {
 }
 
 func joinCodegenStreamChunks(existing, next string) string {
-	existing = strings.TrimRightFunc(existing, unicode.IsSpace)
-	next = strings.TrimLeftFunc(next, unicode.IsSpace)
 	switch {
 	case existing == "":
 		return next
 	case next == "":
 		return existing
 	}
-
-	lastRune, _ := utf8.DecodeLastRuneInString(existing)
-	firstRune, _ := utf8.DecodeRuneInString(next)
-	if shouldInsertStreamSpace(lastRune, firstRune) {
-		return existing + " " + next
-	}
 	return existing + next
-}
-
-func shouldInsertStreamSpace(lastRune, firstRune rune) bool {
-	if lastRune == utf8.RuneError || firstRune == utf8.RuneError {
-		return false
-	}
-	if unicode.IsSpace(lastRune) || unicode.IsSpace(firstRune) {
-		return false
-	}
-	if unicode.IsLetter(lastRune) && unicode.IsLetter(firstRune) {
-		return true
-	}
-	if unicode.IsDigit(lastRune) && unicode.IsLetter(firstRune) {
-		return true
-	}
-	if unicode.IsLetter(lastRune) && unicode.IsDigit(firstRune) {
-		return true
-	}
-	return false
 }
 
 // splitCodegenPrefix 解析 "[type][session] content" 格式的字符串，
@@ -1649,7 +1695,10 @@ func splitCodegenPrefix(text string) (prefix, content string) {
 	}
 	prefixEnd := close1 + 1 + close2 + 1 // 位置在第二个 ] 之后
 	prefix = text[:prefixEnd]
-	content = strings.TrimSpace(text[prefixEnd:])
+	content = text[prefixEnd:]
+	if strings.HasPrefix(content, " ") {
+		content = content[1:]
+	}
 	return prefix, content
 }
 
@@ -1872,6 +1921,9 @@ func buildPushMeta(baseMeta map[string]any, attachment *AppAttachment) map[strin
 			out["audio_format"] = attachment.Format
 		case "image":
 			out["image_format"] = attachment.Format
+		case "video":
+			out["video_format"] = attachment.Format
+			out["file_format"] = attachment.Format
 		default:
 			out["file_format"] = attachment.Format
 		}
@@ -1976,24 +2028,94 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 	log.Printf("[Bridge] cortana broadcast user=%s text=%q expression=%s motion=%s audio=%dbytes",
 		toUser, broadcastText, broadcast.Expression, broadcast.Motion, len(broadcast.AudioBase64))
 
+	broadcastTS := broadcast.Timestamp
+	if broadcastTS <= 0 {
+		broadcastTS = time.Now().UnixMilli()
+	}
+	broadcastID := strings.TrimSpace(broadcast.BroadcastID)
+	if broadcastID == "" {
+		broadcastID = fmt.Sprintf("cortana_%s_%d", sanitizeFileName(toUser), broadcastTS)
+	}
+
+	var attachment *AppAttachment
+	if strings.TrimSpace(broadcast.AudioBase64) != "" {
+		audioFormat := firstNonEmpty(strings.TrimSpace(broadcast.AudioFormat), "mp3")
+		fileName := fmt.Sprintf("%s.%s", sanitizeFileName(broadcastID), audioFormat)
+		var err error
+		attachment, err = b.persistAttachment(&AppMessage{
+			UserID:      toUser,
+			Content:     broadcastText,
+			MessageType: "audio",
+			Meta: map[string]any{
+				"audio_base64": broadcast.AudioBase64,
+				"audio_format": audioFormat,
+				"speech_text":  broadcastText,
+				"file_name":    fileName,
+				"object_key": buildCortanaBroadcastObjectKey(
+					toUser,
+					broadcastID,
+					fileName,
+					time.UnixMilli(broadcastTS),
+				),
+			},
+		})
+		if err != nil {
+			log.Printf("[Bridge] persist cortana broadcast audio failed user=%s broadcast_id=%s err=%v",
+				toUser, broadcastID, err)
+		} else if attachment != nil && b.cortanaHistory != nil {
+			if err := b.cortanaHistory.Append(toUser, CortanaVoiceHistoryItem{
+				ID:              fmt.Sprintf("%s-%s", broadcastID, attachment.FileID),
+				BroadcastID:     broadcastID,
+				Text:            broadcastText,
+				FileID:          attachment.FileID,
+				FileName:        attachment.FileName,
+				AudioFormat:     attachment.Format,
+				CreatedAt:       broadcastTS,
+				Expression:      strings.TrimSpace(broadcast.Expression),
+				Motion:          strings.TrimSpace(broadcast.Motion),
+				StorageProvider: strings.TrimSpace(attachment.StorageProvider),
+				ObjectKey:       strings.TrimSpace(attachment.ObjectKey),
+				Source:          "cortana_broadcast",
+			}); err != nil {
+				log.Printf("[Bridge] append cortana history failed user=%s broadcast_id=%s err=%v",
+					toUser, broadcastID, err)
+			}
+		}
+	}
+
 	// 构建 cortana 播报推送 meta
 	cortanaMeta := map[string]any{
 		"origin":             "cortana-agent",
-		"broadcast_id":       broadcast.BroadcastID,
+		"broadcast_id":       broadcastID,
 		"cortana_expression": broadcast.Expression,
 		"cortana_motion":     broadcast.Motion,
 		"cortana_text":       broadcastText,
+		"cortana_history_id": fmt.Sprintf("%s-%d", broadcastID, broadcastTS),
 	}
 
-	// 如果有播报时间戳，添加到 meta
-	if broadcast.Timestamp > 0 {
-		cortanaMeta["cortana_broadcast_ts"] = broadcast.Timestamp
-	}
+	cortanaMeta["cortana_broadcast_ts"] = broadcastTS
 
 	// 如果有 TTS 语音数据，添加到 meta
 	if broadcast.AudioBase64 != "" {
 		cortanaMeta["cortana_audio_base64"] = broadcast.AudioBase64
-		cortanaMeta["cortana_audio_format"] = broadcast.AudioFormat
+		cortanaMeta["cortana_audio_format"] = firstNonEmpty(
+			strings.TrimSpace(broadcast.AudioFormat),
+			func() string {
+				if attachment != nil {
+					return strings.TrimSpace(attachment.Format)
+				}
+				return ""
+			}(),
+			"mp3",
+		)
+	}
+	if attachment != nil {
+		cortanaMeta["cortana_audio_file_id"] = attachment.FileID
+		cortanaMeta["cortana_audio_file_name"] = attachment.FileName
+		cortanaMeta["cortana_audio_storage_provider"] = attachment.StorageProvider
+		if strings.TrimSpace(attachment.ObjectKey) != "" {
+			cortanaMeta["cortana_audio_object_key"] = attachment.ObjectKey
+		}
 	}
 
 	return b.sendAppPushWithType(toUser, broadcastText, "cortana_broadcast", cortanaMeta) == nil

@@ -150,6 +150,17 @@ func attachmentMimeType(messageType, fileName, format string) string {
 		}
 	case "zip", "archive":
 		return "application/zip"
+	case "video":
+		switch format {
+		case "webm":
+			return "video/webm"
+		case "mov":
+			return "video/quicktime"
+		case "m4v":
+			return "video/x-m4v"
+		default:
+			return "video/mp4"
+		}
 	default:
 		if ct := mime.TypeByExtension("." + format); ct != "" {
 			return ct

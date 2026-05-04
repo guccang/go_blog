@@ -95,9 +95,35 @@ func buildCortanaOutputPrompt() string {
 - 不要输出 markdown 代码围栏，不要输出多个动作计划块，不要遗漏 ` + "`speech_text`" + `。`
 }
 
+func buildCortanaDeviceContextPrompt(meta map[string]any) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	raw, ok := meta["device_context"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return ""
+	}
+	body, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return "\n## 当前客户端基础上下文\n" +
+		"- 以下数据来自 Flutter 客户端最近一次上报，优先用于判断用户当前位置、天气、通勤、路线和推送时机。\n" +
+		"- 如果 location.available=true，应以该实时位置为准；不要用记忆、猜测或旧对话把用户误判到其它地点。\n" +
+		"- 当用户询问当前位置、我在哪、附近、天气或路线时，必须使用该上报位置；不要把群名、会话名或 jumpgame 等上下文当作地点。\n" +
+		"- 如果位置不可用，明确当作未知位置，不要编造地点；需要天气或路线时先用已有上下文推送保守方案。\n" +
+		"- 作为个人助理，优先给出一个合理方案；只有位置/目的地/时间缺失且会显著影响执行时才追问。\n" +
+		string(body) + "\n"
+}
+
 func (s *AppSink) OnChunk(text string) { s.buf.WriteString(text) }
 
 func (s *AppSink) OnEvent(event, text string) {
+	if s.trySendDebugEvent(event, text) {
+		s.lastEventTime = time.Now()
+		return
+	}
+
 	if event == "audio_reply" {
 		if s.trySendAudioReply(text) {
 			s.audioSent = true
@@ -179,6 +205,85 @@ func (s *AppSink) OnEvent(event, text string) {
 		log.Printf("[AppSink] send progress failed: %v", err)
 	}
 	s.lastEventTime = time.Now()
+}
+
+func (s *AppSink) trySendDebugEvent(event, text string) bool {
+	if !isAppDebugEvent(event) {
+		return false
+	}
+	meta := map[string]any{
+		"origin":          "llm-debug",
+		"app_debug":       true,
+		"debug_event":     event,
+		"cortana_request": s.cortanaRequestID,
+	}
+	if payload := parseDebugPayload(text); payload != nil {
+		meta["debug_payload"] = payload
+	}
+	if err := s.bridge.client.SendTo(s.fromAgent, uap.MsgNotify, uap.NotifyPayload{
+		Channel:     "app",
+		To:          s.appUser,
+		Content:     formatAppDebugContent(event, text),
+		MessageType: "system",
+		Meta:        meta,
+	}); err != nil {
+		log.Printf("[AppSink] send debug event failed: %v", err)
+	}
+	return true
+}
+
+func isAppDebugEvent(event string) bool {
+	switch event {
+	case "debug_prompt", "debug_llm_round", "thinking", "tool_info", "tool_call", "tool_result", "tool_progress", "skill_start", "skill_tool_call", "skill_tool_result", "skill_done", "task_complete", "task_cancelled", "task_forced_summary":
+		return true
+	default:
+		return strings.HasPrefix(event, "subtask_")
+	}
+}
+
+func parseDebugPayload(text string) any {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	var payload any
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		return nil
+	}
+	return payload
+}
+
+func formatAppDebugContent(event, text string) string {
+	if payload := parseDebugPayload(text); payload != nil {
+		switch event {
+		case "debug_prompt":
+			if m, ok := payload.(map[string]any); ok {
+				return fmt.Sprintf("提示词快照: system=%s chars, tools=%s, messages=%s",
+					fmt.Sprint(m["system_prompt_chars"]), fmt.Sprint(m["visible_tools_count"]), fmt.Sprint(m["messages_count"]))
+			}
+		case "debug_llm_round":
+			if m, ok := payload.(map[string]any); ok {
+				return fmt.Sprintf("LLM 第 %s 轮: %s, tool_calls=%s",
+					fmt.Sprint(m["iteration"]), fmt.Sprint(m["duration"]), fmt.Sprint(m["tool_calls_count"]))
+			}
+		}
+	}
+	switch event {
+	case "thinking":
+		return "思考: " + text
+	case "tool_info":
+		return text
+	case "tool_call":
+		return "工具调用: " + text
+	case "tool_result":
+		return "工具结果: " + text
+	case "tool_progress":
+		return "工具进度: " + text
+	case "task_complete":
+		return "任务完成: " + text
+	default:
+		return event + ": " + text
+	}
 }
 
 func (s *AppSink) Streaming() bool { return false }
@@ -293,6 +398,25 @@ func (s *AppSink) trySendAudioReplyWithSpeechText(raw, speechText string, action
 	if audioFormat == "" {
 		audioFormat = "mp3"
 	}
+	content := firstNonEmptyMapString(payload, "content")
+	if content == "" {
+		content = "[语音回复]"
+	}
+	inputMode := firstNonEmptyMapString(payload, "input_mode")
+	if inputMode == "" {
+		inputMode = "tts_reply"
+	}
+	if firstNonEmptyMapString(payload, "kind") == "music" {
+		if content == "[语音回复]" {
+			content = "[音乐生成]"
+		}
+		if inputMode == "tts_reply" {
+			inputMode = "music_generation"
+		}
+		if strings.TrimSpace(speechText) == "" {
+			speechText = firstNonEmptyMapString(payload, "prompt")
+		}
+	}
 	if len(actionPlan) == 0 {
 		if nested, ok := payload["cortana_action_plan"].(map[string]any); ok && len(nested) > 0 {
 			actionPlan = nested
@@ -309,7 +433,7 @@ func (s *AppSink) trySendAudioReplyWithSpeechText(raw, speechText string, action
 			}
 		}
 	}
-	return s.sendAudioRichMessage(audioBase64, audioFormat, speechText, actionPlan)
+	return s.sendAudioRichMessage(audioBase64, audioFormat, speechText, actionPlan, content, inputMode)
 }
 
 func (s *AppSink) trySendAudioReplyFromToolCalls(toolCalls []ToolCall) bool {
@@ -383,7 +507,7 @@ func (s *AppSink) trySendInlineAudioFromText(text string, actionPlan map[string]
 	if audioBase64 == "" {
 		return false
 	}
-	return s.sendAudioRichMessage(audioBase64, audioFormat, text, actionPlan)
+	return s.sendAudioRichMessage(audioBase64, audioFormat, text, actionPlan, "[语音回复]", "tts_reply")
 }
 
 func normalizeAudioFormat(v string) string {
@@ -412,11 +536,19 @@ func firstNonEmptyMapString(data map[string]any, keys ...string) string {
 	return ""
 }
 
-func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText string, actionPlan map[string]any) bool {
+func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText string, actionPlan map[string]any, content, inputMode string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		content = "[语音回复]"
+	}
+	inputMode = strings.TrimSpace(inputMode)
+	if inputMode == "" {
+		inputMode = "tts_reply"
+	}
 	meta := map[string]any{
 		"audio_base64": audioBase64,
 		"audio_format": audioFormat,
-		"input_mode":   "tts_reply",
+		"input_mode":   inputMode,
 		"speech_text":  strings.TrimSpace(speechText),
 	}
 	if strings.TrimSpace(s.cortanaRequestID) != "" {
@@ -427,7 +559,7 @@ func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText stri
 	}
 	args, _ := json.Marshal(map[string]any{
 		"to_user":      s.appUser,
-		"content":      "[语音回复]",
+		"content":      content,
 		"message_type": "audio",
 		"meta":         meta,
 	})
@@ -523,11 +655,13 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	defer cancel()
 
 	preferAudioReply := false
-	cortanaContextMode := false
+	cortanaContextMode := true
 	cortanaRequestID := ""
+	cortanaDeviceContextPrompt := ""
 	if inbound, ok := parseAppInboundMessage(content); ok && inbound != nil {
 		preferAudioReply, cortanaRequestID = resolveAppConversationMode(inbound)
-		cortanaContextMode = inbound.Scope != "group"
+		cortanaContextMode = !strings.EqualFold(strings.TrimSpace(inbound.Scope), "group")
+		cortanaDeviceContextPrompt = buildCortanaDeviceContextPrompt(inbound.Meta)
 	}
 
 	content = b.preprocessAppMessage(goctx, fromAgent, appUser, content)
@@ -576,6 +710,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	if cortanaContextMode && session.CortanaState == nil {
 		session.CortanaState = loadCortanaCompanionState(b.cfg.WorkspaceDir, appUser)
 	}
+	cortanaProfile := loadCortanaProfile(b.cfg.WorkspaceDir, appUser)
 
 	feedbackMsg := "收到消息，开始处理..."
 	if !isNew {
@@ -590,28 +725,51 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	session.LastActiveAt = time.Now()
 
 	if isNew || len(session.Messages) == 0 {
-		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
-		systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 		if cortanaContextMode {
-			systemPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
+			systemPrompt, promptSections := b.buildCortanaAppSystemPrompt(
+				appUser,
+				content,
+				cortanaProfile,
+				session.CortanaState,
+			)
+			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+			systemPrompt += cortanaDeviceContextPrompt
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
+			session.Messages = []Message{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: content},
+			}
+			session.PromptSections = promptSections
+		} else {
+			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
+			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+			session.Messages = []Message{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: content},
+			}
+			session.PromptSections = promptSections
 		}
-		session.Messages = []Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: content},
-		}
-		session.PromptSections = promptSections
 		log.Printf("[App] 新会话 sessionID=%s user=%s", session.SessionID, appUser)
 	} else {
 		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
-			freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 			if cortanaContextMode {
-				freshPrompt += buildCortanaCompanionPrompt(session.CortanaState) + "\n"
+				freshPrompt, promptSections := b.buildCortanaAppSystemPrompt(
+					appUser,
+					content,
+					cortanaProfile,
+					session.CortanaState,
+				)
+				freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+				freshPrompt += cortanaDeviceContextPrompt
 				freshPrompt += buildCortanaOutputPrompt() + "\n"
+				session.Messages[0].Content = freshPrompt
+				session.PromptSections = promptSections
+			} else {
+				freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
+				freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
+				session.Messages[0].Content = freshPrompt
+				session.PromptSections = promptSections
 			}
-			session.Messages[0].Content = freshPrompt
-			session.PromptSections = promptSections
 		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
 		log.Printf("[App] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d", session.SessionID, appUser, session.TurnCount, len(session.Messages))

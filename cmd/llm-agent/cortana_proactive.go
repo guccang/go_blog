@@ -52,7 +52,43 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 		return nil, fmt.Errorf("empty payload")
 	}
 
-	systemPrompt := strings.TrimSpace(`
+	profile := loadCortanaProfile(b.cfg.WorkspaceDir, payload.Account)
+	systemPrompt := buildCortanaProactiveSystemPrompt(profile, payload)
+
+	body, _ := json.Marshal(payload)
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: string(body)},
+	}
+
+	cfg := b.activeLLM.Get()
+	text, _, err := SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, nil, b.cfg.Providers)
+	if err != nil {
+		return nil, err
+	}
+
+	raw := extractJSONObject(text)
+	if raw == "" {
+		raw = strings.TrimSpace(text)
+	}
+	var decision CortanaProactiveDecision
+	if err := json.Unmarshal([]byte(raw), &decision); err != nil {
+		return nil, fmt.Errorf("parse proactive decision: %w", err)
+	}
+	if decision.Expression == "" {
+		decision.Expression = "happy"
+	}
+	if len(decision.Actions) == 0 && decision.ShouldInteract {
+		decision.Actions = []map[string]any{{"motion": "IdleWave", "delay": 0}}
+	}
+	return &decision, nil
+}
+
+func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*CortanaProactivePayload) string {
+	profile = normalizeCortanaProfile(profile)
+
+	var sb strings.Builder
+	sb.WriteString(strings.TrimSpace(`
 你是 Cortana 数字助手的主动陪伴决策器。
 职责：聊天助手、工作秘书、生活助手。目标是帮助用户完成目标，让用户感觉被照顾，但不能无意义打扰。
 你要基于当前在线状态、授权状态、主动模式、生活快照、事件上下文和最近互动历史，判断现在是否值得打扰用户。
@@ -84,35 +120,46 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 10. 如果 event_context 提供了 trigger_source、trigger_reason、content 或 summary，要优先理解“为什么此刻触发”，例如用户刚打开 Cortana 页签、刚点了 Cortana 浮窗、刚发了一句聊天、刚收到 cron 提醒。
 11. 如果 trigger_source 与聊天相关，可以结合 content 判断用户是在求助、表达情绪、还是只是路过，然后决定是安抚、追问、提醒还是轻陪伴。
 12. 即使 recent_interactions 里存在最近消息，也不要把它当作硬性冷却规则；当前目标是先充分观察无冷却下的互动表现。
-13. 陪伴类消息不要空泛鸡汤，尽量具体、像对当前在线的本人说话。`)
+13. 陪伴类消息不要空泛鸡汤，尽量具体、像对当前在线的本人说话。
+14. 如果 snapshot.device_context.location.available=true，必须优先相信客户端当前位置，不能用记忆或猜测把用户放到其它地点；不要出现人在家里却按动物园场景推送的情况。
+15. 如果要处理天气、出门、通勤、路线、到达时间、附近事项，先基于 device_context 的位置、采集时间、精度和当前时间给出一个合理推送方案；只有目的地或关键约束缺失且无法合理默认时才询问用户。
+16. 如果位置不可用或精度过低，不要编造地点；可以推送保守方案，例如提醒用户打开定位、按最近明确地点估算并标注不确定性。
+17. 个人助理默认少问选择题，优先替用户筛选一个可执行方案，并用一句话说明依据。`))
+	sb.WriteString("\n\n")
+	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
+	if profile.OwnerTitle != "" {
+		sb.WriteString(fmt.Sprintf("对用户固定称呼: %s\n", profile.OwnerTitle))
+		sb.WriteString("如果决定主动互动，speech_text 和 summary_text 应优先使用这个称呼，不要退回 account、用户名或泛称。\n")
+	}
+	if profile.Description != "" {
+		sb.WriteString("当前 Cortana 人设描述:\n")
+		sb.WriteString(profile.Description)
+		sb.WriteString("\n")
+	}
+	var payload *CortanaProactivePayload
+	if len(payloads) > 0 {
+		payload = payloads[0]
+	}
+	if deviceContext := cortanaProactiveDeviceContext(payload); len(deviceContext) > 0 {
+		if body, err := json.MarshalIndent(deviceContext, "", "  "); err == nil {
+			sb.WriteString("当前客户端基础上下文:\n")
+			sb.WriteString(string(body))
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("主动互动时，语气、人设和称呼必须与以上 Cortana 设定保持一致。\n")
+	return sb.String()
+}
 
-	body, _ := json.Marshal(payload)
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: string(body)},
+func cortanaProactiveDeviceContext(payload *CortanaProactivePayload) map[string]any {
+	if payload == nil || len(payload.Snapshot) == 0 {
+		return nil
 	}
-
-	cfg := b.activeLLM.Get()
-	text, _, err := SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, nil, b.cfg.Providers)
-	if err != nil {
-		return nil, err
+	raw, ok := payload.Snapshot["device_context"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil
 	}
-
-	raw := extractJSONObject(text)
-	if raw == "" {
-		raw = strings.TrimSpace(text)
-	}
-	var decision CortanaProactiveDecision
-	if err := json.Unmarshal([]byte(raw), &decision); err != nil {
-		return nil, fmt.Errorf("parse proactive decision: %w", err)
-	}
-	if decision.Expression == "" {
-		decision.Expression = "happy"
-	}
-	if len(decision.Actions) == 0 && decision.ShouldInteract {
-		decision.Actions = []map[string]any{{"motion": "IdleWave", "delay": 0}}
-	}
-	return &decision, nil
+	return raw
 }
 
 func extractJSONObject(text string) string {

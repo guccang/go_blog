@@ -35,6 +35,7 @@ type Config struct {
 	AppRefreshTokenTTLHours  int              `json:"app_refresh_token_ttl_hours,omitempty"`
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
 	CortanaSettingsFile      string           `json:"cortana_settings_file,omitempty"`
+	LLMWorkspaceDir          string           `json:"llm_workspace_dir,omitempty"`
 	LogAgentConfigFile       string           `json:"log_agent_config_file,omitempty"`
 	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
 	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
@@ -67,6 +68,7 @@ func DefaultConfig() *Config {
 		AppRefreshTokenTTLHours:  720,
 		GroupStoreFile:           "app-groups.json",
 		CortanaSettingsFile:      "cortana-settings.json",
+		LLMWorkspaceDir:          "../llm-agent/workspace",
 		LogAgentConfigFile:       "../log-agent/log-agent.json",
 		AttachmentStoreDir:       "app-attachments",
 		DownloadTicketTTLSeconds: 300,
@@ -116,6 +118,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.CortanaSettingsFile == "" {
 		cfg.CortanaSettingsFile = "cortana-settings.json"
+	}
+	if cfg.LLMWorkspaceDir == "" {
+		cfg.LLMWorkspaceDir = "../llm-agent/workspace"
 	}
 	if cfg.LogAgentConfigFile == "" {
 		cfg.LogAgentConfigFile = "../log-agent/log-agent.json"

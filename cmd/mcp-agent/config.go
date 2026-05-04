@@ -10,13 +10,15 @@ import (
 
 // MCPServerConfig 单个 MCP Server 配置
 type MCPServerConfig struct {
-	Transport string            `json:"transport"` // "stdio" | "http"
-	Command   string            `json:"command"`   // stdio: 启动命令
-	Args      []string          `json:"args"`      // stdio: 命令参数
-	Env       map[string]string `json:"env"`       // stdio: 环境变量
-	URL       string            `json:"url"`       // http: 服务器 URL
-	Headers   map[string]string `json:"headers"`   // http: 请求头
-	Enabled   bool              `json:"enabled"`
+	Transport     string            `json:"transport"`       // "stdio" | "http"
+	Command       string            `json:"command"`         // stdio: 启动命令
+	Args          []string          `json:"args"`            // stdio: 命令参数
+	Env           map[string]string `json:"env"`             // stdio: 环境变量
+	URL           string            `json:"url"`             // http: 服务器 URL
+	Headers       map[string]string `json:"headers"`         // http: 请求头
+	Enabled       bool              `json:"enabled"`
+	RetryCount    int               `json:"retry_count,omitempty"`     // http: 工具调用最大重试次数(0使用默认值3)
+	HealthCheckSec int              `json:"health_check_sec,omitempty"` // http: 健康检查间隔秒数(0默认30，-1禁用)
 }
 
 // Config mcp-agent 配置
@@ -72,6 +74,25 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// EffectiveRetryCount 返回有效的重试次数（0 或未设置时默认 3）
+func (c MCPServerConfig) EffectiveRetryCount() int {
+	if c.RetryCount <= 0 {
+		return 3
+	}
+	return c.RetryCount
+}
+
+// EffectiveHealthCheckSec 返回有效的健康检查间隔（0 默认 30，负数禁用）
+func (c MCPServerConfig) EffectiveHealthCheckSec() int {
+	if c.HealthCheckSec < 0 {
+		return 0
+	}
+	if c.HealthCheckSec == 0 {
+		return 30
+	}
+	return c.HealthCheckSec
 }
 
 // DiffServers 比较新旧配置，返回需要 added/removed/changed 的 server 名

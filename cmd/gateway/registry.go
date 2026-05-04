@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,14 +32,14 @@ func (r *Registry) SetServer(server *uap.Server, tracker *Tracker) {
 		if tracker != nil {
 			tracker.RecordLifecycle(EventKindAgentOn, agent, fmt.Sprintf("type=%s", agent.AgentType))
 		}
+		r.broadcastAgentLifecycle("agent_online", agent)
 	}
 	server.OnAgentOffline = func(agent *uap.AgentConn) {
 		log.Printf("[Registry] agent offline: %s (type=%s, name=%s)", agent.ID, agent.AgentType, agent.Name)
 		if tracker != nil {
 			tracker.RecordLifecycle(EventKindAgentOff, agent, fmt.Sprintf("type=%s", agent.AgentType))
 		}
-		// 广播 agent_offline 通知给所有其他在线 agent，使其立即移除离线 agent
-		r.broadcastAgentOffline(agent)
+		r.broadcastAgentLifecycle("agent_offline", agent)
 	}
 }
 
@@ -87,21 +88,25 @@ func (r *Registry) StartHealthCheck(timeout time.Duration) {
 	}
 }
 
-// broadcastAgentOffline 向所有其他在线 agent 广播某 agent 离线通知
-func (r *Registry) broadcastAgentOffline(offlineAgent *uap.AgentConn) {
+// broadcastAgentLifecycle 向所有其他在线 agent 广播 agent 生命周期通知。
+func (r *Registry) broadcastAgentLifecycle(event string, agent *uap.AgentConn) {
 	if r.server == nil {
 		return
 	}
+	event = strings.TrimSpace(event)
+	if event == "" || agent == nil {
+		return
+	}
 	payload, _ := json.Marshal(map[string]string{
-		"event":      "agent_offline",
-		"agent_id":   offlineAgent.ID,
-		"agent_type": offlineAgent.AgentType,
-		"agent_name": offlineAgent.Name,
+		"event":      event,
+		"agent_id":   agent.ID,
+		"agent_type": agent.AgentType,
+		"agent_name": agent.Name,
 	})
 	agents := r.server.GetAllAgents()
 	for _, a := range agents {
 		id, _ := a["agent_id"].(string)
-		if id == "" || id == offlineAgent.ID {
+		if id == "" || id == agent.ID {
 			continue
 		}
 		err := r.server.SendToAgent(id, &uap.Message{
@@ -111,7 +116,7 @@ func (r *Registry) broadcastAgentOffline(offlineAgent *uap.AgentConn) {
 			Payload: payload,
 		})
 		if err != nil {
-			log.Printf("[Registry] failed to notify %s about agent_offline: %v", id, err)
+			log.Printf("[Registry] failed to notify %s about %s: %v", id, event, err)
 		}
 	}
 }

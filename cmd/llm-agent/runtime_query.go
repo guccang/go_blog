@@ -236,6 +236,7 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryLoop, error) {
 		"matched_skills": strings.Join(toolView.MatchedSkills, ","),
 	})
 	tools = toolView.Visible()
+	emitRuntimeDebugPrompt(ctx, promptContext, len(messages), toolView)
 	if !ctx.NoTools && len(tools) > 0 {
 		skillCount := 0
 		if b.skillMgr != nil {
@@ -344,6 +345,69 @@ func (b *Bridge) buildRuntimeLocalHandlers(ctx *TaskContext, allTools []LLMTool)
 	return localHandlers
 }
 
+func emitRuntimeDebugPrompt(ctx *TaskContext, promptContext SystemPromptContext, messagesCount int, toolView *ToolRuntimeView) {
+	if ctx == nil || ctx.Sink == nil || ctx.Source != "app" {
+		return
+	}
+	payload := map[string]any{
+		"task_id":             ctx.TaskID,
+		"account":             ctx.Account,
+		"source":              ctx.Source,
+		"query":               ctx.Query,
+		"system_prompt":       promptContext.SystemPrompt,
+		"system_prompt_chars": len([]rune(promptContext.SystemPrompt)),
+		"sections":            promptContext.Sections,
+		"messages_count":      messagesCount,
+	}
+	if toolView != nil {
+		payload["tool_policy"] = toolView.Policy
+		payload["matched_skills"] = toolView.MatchedSkills
+		payload["visible_tools"] = traceToolNames(toolView.VisibleTools)
+		payload["visible_tools_count"] = len(toolView.VisibleTools)
+		payload["all_tools_count"] = len(toolView.AllTools)
+	}
+	ctx.Sink.OnEvent("debug_prompt", mustJSON(payload))
+}
+
+func (rt *QueryLoop) emitDebugLLMRound(iteration int, duration time.Duration, text string, toolCalls []ToolCall, toolNames []string) {
+	if rt == nil || rt.task == nil || rt.task.Sink == nil || rt.task.Source != "app" {
+		return
+	}
+	payload := map[string]any{
+		"task_id":           rt.task.TaskID,
+		"iteration":         iteration,
+		"duration":          fmtDuration(duration),
+		"duration_ms":       duration.Milliseconds(),
+		"text_chars":        len([]rune(text)),
+		"assistant_text":    text,
+		"assistant_preview": truncate(strings.TrimSpace(text), 600),
+		"tool_call_names":   toolNames,
+		"tool_calls_count":  len(toolCalls),
+		"tool_calls":        buildDebugToolCalls(toolCalls),
+	}
+	rt.task.Sink.OnEvent("debug_llm_round", mustJSON(payload))
+}
+
+func buildDebugToolCalls(toolCalls []ToolCall) []map[string]any {
+	items := make([]map[string]any, 0, len(toolCalls))
+	for _, tc := range toolCalls {
+		items = append(items, map[string]any{
+			"id":        tc.ID,
+			"name":      tc.Function.Name,
+			"arguments": tc.Function.Arguments,
+		})
+	}
+	return items
+}
+
+func mustJSON(v any) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
 func (rt *QueryLoop) queryLoop() (string, error) {
 	if rt.state.CompletedDirect {
 		return rt.state.FinalText, rt.state.FinalErr
@@ -404,6 +468,7 @@ func (rt *QueryLoop) queryLoop() (string, error) {
 		}
 		log.Printf("[processTask] ← LLM 响应 duration=%v textLen=%d toolCalls=%d tools=%v",
 			llmDuration, len(text), len(toolCalls), tcNames)
+		rt.emitDebugLLMRound(i+1, llmDuration, text, toolCalls, tcNames)
 
 		var currentRound *TraceRound
 		if rt.trace != nil {

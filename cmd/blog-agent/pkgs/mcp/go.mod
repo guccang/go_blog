@@ -6,6 +6,8 @@ toolchain go1.24.10
 
 require (
 	config v0.0.0
+	delegation v0.0.0
+	goal v0.0.0
 	mylog v0.0.0
 	statistics v0.0.0
 )
@@ -13,5 +15,9 @@ require (
 replace mylog => ../../../common/mylog
 
 replace config => ../config
+
+replace delegation => ../delegation
+
+replace goal => ../goal
 
 replace statistics => ../statistics

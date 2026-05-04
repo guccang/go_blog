@@ -1,11 +1,21 @@
 package com.example.flutter_client_for_appagent
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -26,6 +36,9 @@ class MainActivity : FlutterActivity() {
     private val channelName = "com.example.flutter_client_for_appagent/vosk"
     private val installerChannelName = "com.example.flutter_client_for_appagent/installer"
     private val zipChannelName = "com.example.flutter_client_for_appagent/zip"
+    private val locationChannelName = "com.example.flutter_client_for_appagent/location"
+    private val locationPermissionRequestCode = 40701
+    private var pendingLocationResult: MethodChannel.Result? = null
     private val requiredModelFiles =
         listOf(
             "am/final.mdl",
@@ -67,6 +80,13 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, locationChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getCurrentLocation" -> handleGetCurrentLocation(result)
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onDestroy() {
@@ -74,6 +94,200 @@ class MainActivity : FlutterActivity() {
         executor.shutdownNow()
         voskModel?.close()
         voskModel = null
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != locationPermissionRequestCode) {
+            return
+        }
+        val result = pendingLocationResult ?: return
+        pendingLocationResult = null
+        if (grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
+            resolveCurrentLocation(result)
+        } else {
+            result.success(
+                mapOf(
+                    "available" to false,
+                    "permission" to "denied",
+                    "message" to "Location permission denied",
+                    "timestamp" to System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    private fun handleGetCurrentLocation(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !hasLocationPermission()) {
+            if (pendingLocationResult != null) {
+                result.error("location_busy", "Location permission request is already running", null)
+                return
+            }
+            pendingLocationResult = result
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+                locationPermissionRequestCode,
+            )
+            return
+        }
+        resolveCurrentLocation(result)
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun resolveCurrentLocation(result: MethodChannel.Result) {
+        try {
+            if (!hasLocationPermission()) {
+                result.success(
+                    mapOf(
+                        "available" to false,
+                        "permission" to "denied",
+                        "timestamp" to System.currentTimeMillis(),
+                    ),
+                )
+                return
+            }
+            val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val enabledProviders = locationManager.getProviders(true)
+            if (enabledProviders.isEmpty()) {
+                result.success(
+                    mapOf(
+                        "available" to false,
+                        "permission" to "granted",
+                        "provider_enabled" to false,
+                        "message" to "No location provider enabled",
+                        "timestamp" to System.currentTimeMillis(),
+                    ),
+                )
+                return
+            }
+
+            var bestLocation: Location? = null
+            for (provider in enabledProviders) {
+                val location = try {
+                    locationManager.getLastKnownLocation(provider)
+                } catch (_: SecurityException) {
+                    null
+                }
+                val currentBest = bestLocation
+                if (location != null && (currentBest == null || location.time > currentBest.time)) {
+                    bestLocation = location
+                }
+            }
+
+            val location = bestLocation
+            if (location == null || System.currentTimeMillis() - location.time > 60_000L) {
+                requestFreshLocation(locationManager, enabledProviders, bestLocation, result)
+                return
+            }
+
+            result.success(locationPayload(location))
+        } catch (err: Throwable) {
+            result.success(
+                mapOf(
+                    "available" to false,
+                    "permission" to "unknown",
+                    "message" to (err.message ?: err.javaClass.simpleName),
+                    "timestamp" to System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    private fun requestFreshLocation(
+        locationManager: LocationManager,
+        enabledProviders: List<String>,
+        fallbackLocation: Location?,
+        result: MethodChannel.Result,
+    ) {
+        val provider = when {
+            enabledProviders.contains(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            enabledProviders.contains(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            else -> enabledProviders.first()
+        }
+        val handler = Handler(Looper.getMainLooper())
+        var completed = false
+        lateinit var listener: LocationListener
+        fun finish(payload: Map<String, Any?>) {
+            if (completed) {
+                return
+            }
+            completed = true
+            try {
+                locationManager.removeUpdates(listener)
+            } catch (_: Throwable) {
+            }
+            result.success(payload)
+        }
+        listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                finish(locationPayload(location))
+            }
+        }
+        handler.postDelayed({
+            val fallback = fallbackLocation
+            if (fallback != null) {
+                finish(
+                    locationPayload(
+                        fallback,
+                        "fresh_location_timeout_using_last_known",
+                    ),
+                )
+            } else {
+                finish(
+                    mapOf(
+                        "available" to false,
+                        "permission" to "granted",
+                        "provider_enabled" to true,
+                        "message" to "No recent location fix",
+                        "timestamp" to System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }, 8_000L)
+        try {
+            locationManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        } catch (_: SecurityException) {
+            finish(
+                mapOf(
+                    "available" to false,
+                    "permission" to "denied",
+                    "timestamp" to System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    private fun locationPayload(location: Location, message: String? = null): Map<String, Any?> {
+        return mapOf(
+            "available" to true,
+            "permission" to "granted",
+            "provider_enabled" to true,
+            "latitude" to location.latitude,
+            "longitude" to location.longitude,
+            "accuracy_m" to location.accuracy.toDouble(),
+            "provider" to location.provider.orEmpty(),
+            "location_time" to location.time,
+            "timestamp" to System.currentTimeMillis(),
+            "message" to message,
+        ).filterValues { it != null }
     }
 
     private fun handleInitialize(call: MethodCall, result: MethodChannel.Result) {

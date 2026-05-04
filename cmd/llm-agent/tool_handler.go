@@ -98,7 +98,9 @@ func (b *Bridge) registerBuiltinTools() {
 	// set_persona 工具
 	if b.persona != nil {
 		b.registerTool("set_persona", func(ctx context.Context, args json.RawMessage, sink EventSink) (*ToolCallResult, error) {
-			reply, ok := b.persona.HandleSetPersona(string(args))
+			account := strings.TrimSpace(GetAuthenticatedUser(ctx))
+			profile := loadScopedPersonaProfile(b.cfg.WorkspaceDir, account, b.persona)
+			reply, ok := profile.HandleSetPersona(string(args))
 			log.Printf("[ToolHandler] set_persona: success=%v result=%s", ok, reply)
 			return &ToolCallResult{Result: reply, AgentID: "builtin"}, nil
 		})

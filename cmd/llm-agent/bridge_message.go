@@ -18,6 +18,9 @@ import (
 func (b *Bridge) handleMessage(msg *uap.Message) {
 	switch msg.Type {
 	case uap.MsgNotify:
+		if b.handleGatewayLifecycleNotify(msg) {
+			return
+		}
 		var payload uap.NotifyPayload
 		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 			log.Printf("[Bridge] invalid notify payload: %v", err)
@@ -232,6 +235,38 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 	default:
 		log.Printf("[Bridge] unhandled message type: %s from %s", msg.Type, msg.From)
 	}
+}
+
+func (b *Bridge) handleGatewayLifecycleNotify(msg *uap.Message) bool {
+	if b == nil || msg == nil || msg.Type != uap.MsgNotify || strings.TrimSpace(msg.From) != "gateway" {
+		return false
+	}
+
+	var payload struct {
+		Event     string `json:"event"`
+		AgentID   string `json:"agent_id"`
+		AgentType string `json:"agent_type"`
+		AgentName string `json:"agent_name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return false
+	}
+
+	event := strings.TrimSpace(payload.Event)
+	if event != "agent_online" && event != "agent_offline" {
+		return false
+	}
+
+	log.Printf("[Bridge] gateway lifecycle notify: event=%s agent=%s type=%s name=%s",
+		event, payload.AgentID, payload.AgentType, payload.AgentName)
+
+	if err := b.DiscoverTools(); err != nil {
+		log.Printf("[Bridge] refresh tools after %s failed: %v", event, err)
+	}
+	if err := b.DiscoverAgents(); err != nil {
+		log.Printf("[Bridge] refresh agents after %s failed: %v", event, err)
+	}
+	return true
 }
 
 // ========================= Claude Mode 事件处理 =========================

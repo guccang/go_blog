@@ -62,6 +62,29 @@ var publicToolNames = map[string]struct{}{
 	// YearPlan
 	"RawGetMonthGoal": {},
 	"RawGetYearGoals": {},
+
+	// Goal 统一目标管理
+	"RawGetGoal":         {},
+	"RawGetCurrentGoals": {},
+	"RawSaveGoal":        {},
+	"RawAddGoalTask":     {},
+	"RawUpdateGoalTask":  {},
+	"RawDeleteGoalTask":  {},
+	"RawDeleteGoal":      {},
+	"RawListGoalsByLevel": {},
+	"RawPrevPeriod":      {},
+	"RawNextPeriod":      {},
+
+	// 明确的目标查询 (自动计算周期，LLM友好)
+	"RawGetDailyGoal":   {},
+	"RawGetWeeklyGoal":  {},
+	"RawGetMonthlyGoal": {},
+	"RawGetYearlyGoal":  {},
+
+	// 便捷目标操作 (对标 Todo 的简洁度)
+	"RawAddDailyGoalTask":   {},
+	"RawAddWeeklyGoalTask":  {},
+	"RawAddMonthlyGoalTask": {},
 }
 
 func normalizePublicToolName(toolName string) string {

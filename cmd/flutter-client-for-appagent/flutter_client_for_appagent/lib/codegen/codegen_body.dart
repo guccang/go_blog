@@ -545,6 +545,41 @@ class CodegenBody extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: item.completed
+                                    ? Colors.green.withValues(alpha: 0.15)
+                                    : Colors.orange.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                item.completed ? '已结束' : '进行中',
+                                style: TextStyle(
+                                  color: item.completed
+                                      ? Colors.green
+                                      : Colors.orange,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '过程 ${item.processEntries.length}',
+                              style: TextStyle(
+                                color: palette.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             SizedBox(

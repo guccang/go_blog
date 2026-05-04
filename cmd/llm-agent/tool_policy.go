@@ -19,10 +19,6 @@ func isGreeting(query string) bool {
 				return true
 			}
 		}
-		// 极短消息
-		if runeCount <= 4 {
-			return true
-		}
 	}
 	return false
 }

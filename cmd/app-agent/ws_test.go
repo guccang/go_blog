@@ -116,6 +116,31 @@ func TestRegisterClientAllowsMultipleConnectionsPerUser(t *testing.T) {
 	}
 }
 
+func TestPendingForUserSortsUpdatedMessagesBySequence(t *testing.T) {
+	bridge := NewBridge(DefaultConfig())
+
+	for _, payload := range []AppPushPayload{
+		{MessageID: "codegen_stream:s1", UserID: "demo-user", Content: "first", MessageType: "text"},
+		{MessageID: "normal:1", UserID: "demo-user", Content: "second", MessageType: "text"},
+		{MessageID: "codegen_stream:s1", UserID: "demo-user", Content: "updated", MessageType: "text"},
+	} {
+		if err := bridge.sendAppPushPayload(payload); err != nil {
+			t.Fatalf("sendAppPushPayload() error: %v", err)
+		}
+	}
+
+	queue := bridge.pendingForUser("demo-user")
+	if len(queue) != 2 {
+		t.Fatalf("pending queue len=%d want=2", len(queue))
+	}
+	if queue[0].MessageID != "normal:1" || queue[1].MessageID != "codegen_stream:s1" {
+		t.Fatalf("queue order=%s,%s want normal:1,codegen_stream:s1", queue[0].MessageID, queue[1].MessageID)
+	}
+	if queue[0].Sequence >= queue[1].Sequence {
+		t.Fatalf("queue sequences not ascending: %d >= %d", queue[0].Sequence, queue[1].Sequence)
+	}
+}
+
 func TestPushUploadedAPKQueuesForOfflineUser(t *testing.T) {
 	bridge := newTestBridgeWithAttachmentDir(t)
 

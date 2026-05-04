@@ -5,7 +5,37 @@ import 'dart:math' as math;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+
+class FlutterClientLogEntry {
+  const FlutterClientLogEntry({required this.timestamp, required this.message});
+  final DateTime timestamp;
+  final String message;
+
+  String get timeLabel {
+    final hh = timestamp.hour.toString().padLeft(2, '0');
+    final mm = timestamp.minute.toString().padLeft(2, '0');
+    final ss = timestamp.second.toString().padLeft(2, '0');
+    return '$hh:$mm:$ss';
+  }
+}
+
+final List<FlutterClientLogEntry> flutterClientLogs = <FlutterClientLogEntry>[];
+const int _maxFlutterClientLogs = 200;
+
+void addFlutterClientLog(String message) {
+  final text = message.trim();
+  if (text.isEmpty) return;
+  final entry = FlutterClientLogEntry(timestamp: DateTime.now(), message: text);
+  flutterClientLogs.insert(0, entry);
+  if (flutterClientLogs.length > _maxFlutterClientLogs) {
+    flutterClientLogs.removeRange(
+      _maxFlutterClientLogs,
+      flutterClientLogs.length,
+    );
+  }
+}
 
 enum CortanaDisplayMode { fullscreen, expanded, small, collapsed }
 
@@ -20,6 +50,7 @@ class CortanaSettings {
     this.highFreqEndHour = 22,
     this.highFreqEndMinute = 0,
     this.personaName = 'Cortana',
+    this.ownerTitle = '',
     this.personaDescription = '',
     this.voiceWakeEnabled = false,
     this.wakePhrase = '嗨 Cortana',
@@ -34,6 +65,7 @@ class CortanaSettings {
   final int highFreqEndHour;
   final int highFreqEndMinute;
   final String personaName;
+  final String ownerTitle;
   final String personaDescription;
   final bool voiceWakeEnabled;
   final String wakePhrase;
@@ -48,6 +80,7 @@ class CortanaSettings {
     int? highFreqEndHour,
     int? highFreqEndMinute,
     String? personaName,
+    String? ownerTitle,
     String? personaDescription,
     bool? voiceWakeEnabled,
     String? wakePhrase,
@@ -62,6 +95,7 @@ class CortanaSettings {
       highFreqEndHour: highFreqEndHour ?? this.highFreqEndHour,
       highFreqEndMinute: highFreqEndMinute ?? this.highFreqEndMinute,
       personaName: personaName ?? this.personaName,
+      ownerTitle: ownerTitle ?? this.ownerTitle,
       personaDescription: personaDescription ?? this.personaDescription,
       voiceWakeEnabled: voiceWakeEnabled ?? this.voiceWakeEnabled,
       wakePhrase: wakePhrase ?? this.wakePhrase,
@@ -79,6 +113,7 @@ class CortanaSettings {
       'high_freq_end_hour': highFreqEndHour,
       'high_freq_end_minute': highFreqEndMinute,
       'persona_name': personaName,
+      'owner_title': ownerTitle,
       'persona_description': personaDescription,
       'voice_wake_enabled': voiceWakeEnabled,
       'wake_phrase': wakePhrase,
@@ -98,6 +133,7 @@ class CortanaSettings {
         other.highFreqEndHour == highFreqEndHour &&
         other.highFreqEndMinute == highFreqEndMinute &&
         other.personaName == personaName &&
+        other.ownerTitle == ownerTitle &&
         other.personaDescription == personaDescription &&
         other.voiceWakeEnabled == voiceWakeEnabled &&
         other.wakePhrase == wakePhrase;
@@ -114,6 +150,7 @@ class CortanaSettings {
     highFreqEndHour,
     highFreqEndMinute,
     personaName,
+    ownerTitle,
     personaDescription,
     voiceWakeEnabled,
     wakePhrase,
@@ -150,6 +187,9 @@ class CortanaReplayItem {
     required this.createdAt,
     this.actionPlan,
     this.sourceLabel = '',
+    this.fileId = '',
+    this.storageProvider = '',
+    this.objectKey = '',
   });
 
   final String id;
@@ -160,6 +200,9 @@ class CortanaReplayItem {
   final DateTime createdAt;
   final Map<String, dynamic>? actionPlan;
   final String sourceLabel;
+  final String fileId;
+  final String storageProvider;
+  final String objectKey;
 }
 
 class CortanaLogSource {
@@ -231,9 +274,6 @@ class CortanaPage extends StatefulWidget {
     this.autoCollapseDelay = const Duration(seconds: 8),
     this.floatingBottomInset = 0,
     this.onBroadcast,
-    this.onListLogSources,
-    this.onListLogFiles,
-    this.onReadLogFile,
     this.settings = const CortanaSettings(),
     this.onSettingsChanged,
   });
@@ -249,9 +289,6 @@ class CortanaPage extends StatefulWidget {
   final Duration autoCollapseDelay;
   final double floatingBottomInset;
   final void Function(CortanaReplyPayload payload)? onBroadcast;
-  final Future<List<CortanaLogSource>> Function()? onListLogSources;
-  final Future<List<CortanaLogFile>> Function(String source)? onListLogFiles;
-  final Future<String> Function(String source, String file)? onReadLogFile;
   final CortanaSettings settings;
   final ValueChanged<CortanaSettings>? onSettingsChanged;
 
@@ -265,7 +302,6 @@ class CortanaPageState extends State<CortanaPage> {
   static const _cortanaLocalPath = 'index.html';
   static const _localhostPort = 18080;
   InAppWebViewController? _webCtrl;
-  final TextEditingController _textCtrl = TextEditingController();
   final ListQueue<_QueuedBroadcast> _queuedBroadcasts =
       ListQueue<_QueuedBroadcast>();
   final AudioPlayer _audio = AudioPlayer();
@@ -283,29 +319,16 @@ class CortanaPageState extends State<CortanaPage> {
   double _modelUserScale = 1.0;
   double _modelUserOffsetX = 0.0;
   double _modelUserOffsetY = 0.0;
-  final TextEditingController _personaNameCtrl = TextEditingController();
-  final TextEditingController _personaDescCtrl = TextEditingController();
-  final TextEditingController _wakePhraseCtrl = TextEditingController();
   bool _controlPanelVisible = false;
-  bool _cortanaSettingsExpanded = false;
   bool _live2dSummaryExpanded = false;
   bool _expressionActionsExpanded = false;
   bool _viewControlsExpanded = false;
   bool _replayExpanded = false;
-  bool _logsExpanded = false;
   Map<String, dynamic>? _live2dDebugState;
   final List<String> _logEntries = <String>[];
-  List<CortanaLogSource> _logSources = const <CortanaLogSource>[];
-  List<CortanaLogFile> _logFiles = const <CortanaLogFile>[];
-  String _selectedLogSource = '';
-  String _selectedLogFile = '';
-  String _selectedLogContent = '';
-  String _logViewerError = '';
-  bool _logSourcesLoading = false;
-  bool _logFilesLoading = false;
-  bool _logContentLoading = false;
   Offset? _floatingOffset;
   bool _isDragging = false;
+  bool _webViewReady = false;
   String? _lastContextualExpression;
 
   bool get isSpeaking => _speaking;
@@ -376,9 +399,6 @@ class CortanaPageState extends State<CortanaPage> {
       const Duration(seconds: 3),
       (_) => unawaited(_refreshLive2dDebugState()),
     );
-    _personaNameCtrl.text = widget.settings.personaName;
-    _personaDescCtrl.text = widget.settings.personaDescription;
-    _wakePhraseCtrl.text = widget.settings.wakePhrase;
   }
 
   @override
@@ -391,15 +411,8 @@ class CortanaPageState extends State<CortanaPage> {
       unawaited(_callJS("window.setExpression('$expr')"));
     }
     if (widget.settings != oldWidget.settings) {
-      if (widget.settings.personaName != _personaNameCtrl.text) {
-        _personaNameCtrl.text = widget.settings.personaName;
-      }
-      if (widget.settings.personaDescription != _personaDescCtrl.text) {
-        _personaDescCtrl.text = widget.settings.personaDescription;
-      }
-      if (widget.settings.wakePhrase != _wakePhraseCtrl.text) {
-        _wakePhraseCtrl.text = widget.settings.wakePhrase;
-      }
+      // Settings are now edited in the chat page controls;
+      // CortanaPage only consumes the settings values.
     }
   }
 
@@ -409,10 +422,6 @@ class CortanaPageState extends State<CortanaPage> {
     _debugStateTimer?.cancel();
     _broadcastAutoCollapseTimer?.cancel();
     _audio.dispose();
-    _textCtrl.dispose();
-    _personaNameCtrl.dispose();
-    _personaDescCtrl.dispose();
-    _wakePhraseCtrl.dispose();
     final localhostServer = _localhostServer;
     if (localhostServer != null) {
       unawaited(localhostServer.close());
@@ -425,6 +434,8 @@ class CortanaPageState extends State<CortanaPage> {
     if (text.isEmpty) {
       return;
     }
+    // Forward to shared Flutter client log buffer
+    addFlutterClientLog(text);
     final now = DateTime.now();
     final hh = now.hour.toString().padLeft(2, '0');
     final mm = now.minute.toString().padLeft(2, '0');
@@ -450,161 +461,6 @@ class CortanaPageState extends State<CortanaPage> {
     _appendLog(message);
   }
 
-  Future<void> _ensureLogViewerLoaded() async {
-    if (widget.onListLogSources == null) {
-      return;
-    }
-    if (_logSourcesLoading) {
-      return;
-    }
-    if (_logSources.isNotEmpty && _selectedLogContent.isNotEmpty) {
-      return;
-    }
-    await _loadLogSources();
-  }
-
-  Future<void> _loadLogSources({bool force = false}) async {
-    final loader = widget.onListLogSources;
-    if (loader == null) {
-      return;
-    }
-    if (_logSourcesLoading) {
-      return;
-    }
-    if (!force && _logSources.isNotEmpty) {
-      return;
-    }
-    setState(() {
-      _logSourcesLoading = true;
-      _logViewerError = '';
-    });
-    try {
-      final sources = await loader();
-      if (!mounted) {
-        return;
-      }
-      final selectedSource =
-          sources.any((item) => item.name == _selectedLogSource)
-          ? _selectedLogSource
-          : (sources.isNotEmpty ? sources.first.name : '');
-      setState(() {
-        _logSources = sources;
-        _selectedLogSource = selectedSource;
-        _logFiles = const <CortanaLogFile>[];
-        _selectedLogFile = '';
-        _selectedLogContent = '';
-      });
-      if (selectedSource.isNotEmpty) {
-        await _loadLogFiles(selectedSource);
-      }
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _logViewerError = '加载日志源失败: $error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _logSourcesLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadLogFiles(String source, {bool force = false}) async {
-    final loader = widget.onListLogFiles;
-    if (loader == null || source.trim().isEmpty) {
-      return;
-    }
-    if (_logFilesLoading) {
-      return;
-    }
-    if (!force &&
-        _selectedLogSource == source &&
-        _logFiles.isNotEmpty &&
-        _selectedLogFile.isNotEmpty) {
-      return;
-    }
-    setState(() {
-      _logFilesLoading = true;
-      _logViewerError = '';
-      _selectedLogSource = source;
-      _logFiles = const <CortanaLogFile>[];
-      _selectedLogFile = '';
-      _selectedLogContent = '';
-    });
-    try {
-      final files = await loader(source);
-      if (!mounted) {
-        return;
-      }
-      final selectedFile = files.any((item) => item.name == _selectedLogFile)
-          ? _selectedLogFile
-          : (files.isNotEmpty ? files.first.name : '');
-      setState(() {
-        _logFiles = files;
-        _selectedLogFile = selectedFile;
-      });
-      if (selectedFile.isNotEmpty) {
-        await _loadLogContent(source, selectedFile);
-      }
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _logViewerError = '加载日志文件失败: $error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _logFilesLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadLogContent(String source, String file) async {
-    final loader = widget.onReadLogFile;
-    if (loader == null || source.trim().isEmpty || file.trim().isEmpty) {
-      return;
-    }
-    if (_logContentLoading) {
-      return;
-    }
-    setState(() {
-      _logContentLoading = true;
-      _logViewerError = '';
-      _selectedLogSource = source;
-      _selectedLogFile = file;
-      _selectedLogContent = '';
-    });
-    try {
-      final content = await loader(source, file);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _selectedLogContent = content.trim();
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _logViewerError = '读取日志内容失败: $error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _logContentLoading = false;
-        });
-      }
-    }
-  }
-
   Future<void> _hideDiagnostics() async {
     await _callJS('window.setDiagnosticsVisible(false)');
   }
@@ -622,25 +478,66 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   Future<void> _callJS(String js) async {
+    if (!_webViewReady) return;
+    final ctrl = _webCtrl;
+    if (ctrl == null) {
+      return;
+    }
+    await _evaluateJS(ctrl, js, logPrefix: 'Cortana JS Call');
+  }
+
+  Future<dynamic> _evaluateJS(
+    InAppWebViewController ctrl,
+    String js, {
+    required String logPrefix,
+  }) async {
+    final viewId = ctrl.getViewId();
+    if (viewId == null) {
+      _appendLog('JS 调用跳过: WebView 尚未完成原生绑定');
+      return null;
+    }
     try {
-      final result = await _webCtrl?.evaluateJavascript(source: js);
-      debugPrint('[Cortana JS Call] $js => $result');
+      final result = await ctrl.evaluateJavascript(source: js);
+      debugPrint('[$logPrefix] $js => $result');
+      return result;
+    } on MissingPluginException catch (error, stackTrace) {
+      // Native method channel may not be registered yet — retry once after a
+      // short delay instead of immediately failing.
+      debugPrint(
+        '[$logPrefix Retry] evaluateJavascript threw MissingPluginException, '
+        'retrying in 200ms: $error',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      try {
+        final result = await ctrl.evaluateJavascript(source: js);
+        debugPrint('[$logPrefix Retry OK] $js => $result');
+        return result;
+      } catch (retryError, retryStack) {
+        debugPrint('[$logPrefix Retry Failed] $js => $retryError');
+        debugPrint('$retryStack');
+        _appendLog('JS 调用失败: WebView 原生插件未就绪，请完全重启应用');
+      }
     } catch (error, stackTrace) {
-      debugPrint('[Cortana JS Call Error] $js => $error');
+      debugPrint('[$logPrefix Error] $js => $error');
       debugPrint('$stackTrace');
       _appendLog('JS 调用失败: $error');
     }
+    return null;
   }
 
   Future<void> _refreshLive2dDebugState() async {
+    if (!_webViewReady) {
+      return;
+    }
     final ctrl = _webCtrl;
     if (ctrl == null) {
       return;
     }
     try {
-      final state = await ctrl.evaluateJavascript(
-        source:
-            'JSON.stringify(window.cortanaDebugState ? window.cortanaDebugState() : null);',
+      final state = await _evaluateJS(
+        ctrl,
+        'JSON.stringify(window.cortanaDebugState ? window.cortanaDebugState() : null);',
+        logPrefix: 'Cortana JS Debug',
       );
       final raw = state?.toString().trim() ?? '';
       if (raw.isEmpty || raw == 'null' || raw == 'undefined') {
@@ -692,12 +589,19 @@ class CortanaPageState extends State<CortanaPage> {
         );
       },
       onLoadStart: (ctrl, url) {
+        _webViewReady = false;
         debugPrint('[Cortana] Load start: $url');
         _updateLoadStatus('WebView load start: $url');
       },
       onLoadStop: (ctrl, url) async {
         debugPrint('[Cortana] Load stop: $url');
         _updateLoadStatus('WebView load stop: $url');
+        _webCtrl = ctrl;
+        // Delay to allow the native plugin channel to finish registering
+        // before marking the WebView as ready. Without this, evaluateJavascript
+        // can throw MissingPluginException on Android.
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        _webViewReady = true;
         await _hideDiagnostics();
         await _syncModelViewTransform();
         await _refreshLive2dDebugState();
@@ -1852,420 +1756,6 @@ class CortanaPageState extends State<CortanaPage> {
     );
   }
 
-  Widget _buildLogsContent(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final hasRemoteLogViewer =
-        widget.onListLogSources != null &&
-        widget.onListLogFiles != null &&
-        widget.onReadLogFile != null;
-    if (!hasRemoteLogViewer) {
-      if (_logEntries.isEmpty) {
-        return Text(
-          '暂无日志输出',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-        );
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '最近 ${_logEntries.length} 条',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _logEntries.clear();
-                  });
-                },
-                icon: const Icon(Icons.clear_all, size: 16),
-                label: const Text('清空'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(maxHeight: 220),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: cs.outlineVariant.withValues(alpha: 0.55),
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Scrollbar(
-                thumbVisibility: _logEntries.length > 6,
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: _logEntries.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 6),
-                  itemBuilder: (context, index) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cs.surface.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: SelectableText(
-                        _logEntries[index],
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          height: 1.4,
-                          color: cs.onSurface,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    final sourceItems = _logSources;
-    final fileItems = _logFiles;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              '日志文件',
-              style: Theme.of(
-                context,
-              ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const Spacer(),
-            TextButton.icon(
-              onPressed:
-                  _logSourcesLoading || _logFilesLoading || _logContentLoading
-                  ? null
-                  : () => unawaited(_loadLogSources(force: true)),
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('刷新'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        if (_logViewerError.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              _logViewerError,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.error),
-            ),
-          ),
-        DropdownButtonFormField<String>(
-          initialValue: _selectedLogSource.isEmpty ? null : _selectedLogSource,
-          decoration: const InputDecoration(
-            labelText: '日志源',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-          items: [
-            for (final source in sourceItems)
-              DropdownMenuItem<String>(
-                value: source.name,
-                child: Text(
-                  source.description.isEmpty
-                      ? source.name
-                      : '${source.name} · ${source.description}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: _logSourcesLoading
-              ? null
-              : (value) {
-                  if (value == null || value == _selectedLogSource) {
-                    return;
-                  }
-                  unawaited(_loadLogFiles(value, force: true));
-                },
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _selectedLogFile.isEmpty ? null : _selectedLogFile,
-          decoration: const InputDecoration(
-            labelText: '日志文件',
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-          items: [
-            for (final file in fileItems)
-              DropdownMenuItem<String>(
-                value: file.name,
-                child: Text(
-                  file.modifiedText.isEmpty
-                      ? file.name
-                      : '${file.name} · ${file.modifiedText}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: _logFilesLoading || _selectedLogSource.isEmpty
-              ? null
-              : (value) {
-                  if (value == null || value == _selectedLogFile) {
-                    return;
-                  }
-                  unawaited(_loadLogContent(_selectedLogSource, value));
-                },
-        ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          constraints: const BoxConstraints(maxHeight: 260, minHeight: 120),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.55),
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Scrollbar(
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(10),
-                child: SelectableText(
-                  _logContentLoading
-                      ? '日志加载中...'
-                      : (_selectedLogContent.isEmpty
-                            ? '暂无日志内容'
-                            : _selectedLogContent),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    height: 1.45,
-                    color: cs.onSurface,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCortanaSettingsContent(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final s = widget.settings;
-    final cb = widget.onSettingsChanged;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SwitchListTile.adaptive(
-          value: s.enabled,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('启用 Cortana'),
-          subtitle: const Text('允许服务端为当前账号保持 Cortana 会话'),
-          onChanged: cb == null ? null : (v) => cb(s.copyWith(enabled: v)),
-        ),
-        SwitchListTile.adaptive(
-          value: s.allowFullAccess,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('允许全量感知'),
-          subtitle: const Text('开放待办、锻炼、阅读、年度目标等数据'),
-          onChanged: !s.enabled || cb == null
-              ? null
-              : (v) => cb(s.copyWith(allowFullAccess: v)),
-        ),
-        SwitchListTile.adaptive(
-          value: s.autoPlay,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('主动播报自动播放'),
-          subtitle: const Text('收到主动互动后直接语音播报'),
-          onChanged: !s.enabled || cb == null
-              ? null
-              : (v) => cb(s.copyWith(autoPlay: v)),
-        ),
-        SwitchListTile.adaptive(
-          value: s.voiceWakeEnabled,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('语音唤醒'),
-          subtitle: Text(
-            '前台持续监听“${s.wakePhrase.trim().isEmpty ? '嗨 Cortana' : s.wakePhrase.trim()}”后进入语音对话',
-          ),
-          onChanged: !s.enabled || cb == null
-              ? null
-              : (v) => cb(s.copyWith(voiceWakeEnabled: v)),
-        ),
-        TextField(
-          controller: _wakePhraseCtrl,
-          enabled: s.enabled && s.voiceWakeEnabled && cb != null,
-          decoration: const InputDecoration(
-            labelText: '唤醒词',
-            hintText: '嗨 Cortana',
-            isDense: true,
-          ),
-          onChanged: cb == null
-              ? null
-              : (v) => cb(
-                  s.copyWith(
-                    wakePhrase: v.trim().isEmpty ? '嗨 Cortana' : v.trim(),
-                  ),
-                ),
-        ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          initialValue: s.proactiveMode,
-          decoration: const InputDecoration(labelText: '主动模式', isDense: true),
-          items: const [
-            DropdownMenuItem(value: 'high', child: Text('High')),
-            DropdownMenuItem(value: 'normal', child: Text('Normal')),
-            DropdownMenuItem(value: 'low', child: Text('Low')),
-          ],
-          onChanged: !s.enabled || cb == null
-              ? null
-              : (v) {
-                  if (v == null || v.trim().isEmpty) return;
-                  cb(s.copyWith(proactiveMode: v.trim()));
-                },
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '高频触发时间',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: cs.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '在此时间段内 Cortana 主动播报频率更高',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: cs.onSurface.withValues(alpha: 0.6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTimePicker(
-                context,
-                label: '开始',
-                hour: s.highFreqStartHour,
-                minute: s.highFreqStartMinute,
-                onChanged: cb == null
-                    ? null
-                    : (h, m) => cb(
-                        s.copyWith(
-                          highFreqStartHour: h,
-                          highFreqStartMinute: m,
-                        ),
-                      ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text('—'),
-            ),
-            Expanded(
-              child: _buildTimePicker(
-                context,
-                label: '结束',
-                hour: s.highFreqEndHour,
-                minute: s.highFreqEndMinute,
-                onChanged: cb == null
-                    ? null
-                    : (h, m) => cb(
-                        s.copyWith(highFreqEndHour: h, highFreqEndMinute: m),
-                      ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '人设配置',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: cs.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _personaNameCtrl,
-          decoration: const InputDecoration(
-            labelText: '名称',
-            hintText: 'Cortana',
-            isDense: true,
-          ),
-          onChanged: cb == null
-              ? null
-              : (v) => cb(s.copyWith(personaName: v.trim())),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _personaDescCtrl,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: '人设描述',
-            hintText: '例如：你是一个友好、乐于助人的 AI 助手...',
-            isDense: true,
-            alignLabelWithHint: true,
-          ),
-          onChanged: cb == null
-              ? null
-              : (v) => cb(s.copyWith(personaDescription: v.trim())),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimePicker(
-    BuildContext context, {
-    required String label,
-    required int hour,
-    required int minute,
-    required void Function(int hour, int minute)? onChanged,
-  }) {
-    final hh = hour.toString().padLeft(2, '0');
-    final mm = minute.toString().padLeft(2, '0');
-    return InkWell(
-      onTap: onChanged == null
-          ? null
-          : () async {
-              final time = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay(hour: hour, minute: minute),
-              );
-              if (time != null) {
-                onChanged(time.hour, time.minute);
-              }
-            },
-      borderRadius: BorderRadius.circular(8),
-      child: InputDecorator(
-        decoration: InputDecoration(labelText: label, isDense: true),
-        child: Text('$hh:$mm', style: Theme.of(context).textTheme.bodyLarge),
-      ),
-    );
-  }
-
   Widget _buildControlPanel(
     BuildContext context, {
     required double overlayWidth,
@@ -2287,19 +1777,6 @@ class CortanaPageState extends State<CortanaPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildExpandableSectionCard(
-                  storageKey: 'cortana-settings',
-                  title: 'Cortana 设置',
-                  subtitle: _cortanaSettingsExpanded ? '点击收起' : '默认折叠，点击配置',
-                  expanded: _cortanaSettingsExpanded,
-                  onExpansionChanged: (expanded) {
-                    setState(() {
-                      _cortanaSettingsExpanded = expanded;
-                    });
-                  },
-                  child: _buildCortanaSettingsContent(context),
-                ),
-                const SizedBox(height: 8),
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-live2d-summary',
                   title: 'Live2D 数据',
@@ -2395,28 +1872,6 @@ class CortanaPageState extends State<CortanaPage> {
                     });
                   },
                   child: _buildReplayHistoryContent(context, replayHistory),
-                ),
-                const SizedBox(height: 8),
-                _buildExpandableSectionCard(
-                  storageKey: 'cortana-runtime-logs',
-                  title: '运行日志',
-                  subtitle: widget.onListLogSources == null
-                      ? (_logEntries.isEmpty
-                            ? '暂无日志，默认折叠'
-                            : '共 ${_logEntries.length} 条，默认折叠')
-                      : (_selectedLogFile.isEmpty
-                            ? '支持查看日志文件，默认折叠'
-                            : '当前文件: $_selectedLogFile'),
-                  expanded: _logsExpanded,
-                  onExpansionChanged: (expanded) {
-                    setState(() {
-                      _logsExpanded = expanded;
-                    });
-                    if (expanded) {
-                      unawaited(_ensureLogViewerLoaded());
-                    }
-                  },
-                  child: _buildLogsContent(context),
                 ),
               ],
             ),
@@ -2746,47 +2201,6 @@ class CortanaPageState extends State<CortanaPage> {
                     offsetXText: offsetXText,
                     offsetYText: offsetYText,
                   ),
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: 12,
-                  child: _buildSectionCard(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _textCtrl,
-                            decoration: const InputDecoration(
-                              hintText: '输入让 Cortana 说的话...',
-                              isDense: true,
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          onPressed: _speaking
-                              ? null
-                              : () => _speak(_textCtrl.text.trim()),
-                          icon: _speaking
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.record_voice_over),
-                          label: Text(_speaking ? '说话中' : '说话'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),

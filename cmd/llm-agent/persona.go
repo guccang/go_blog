@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -17,6 +18,14 @@ type PersonaProfile struct {
 	OwnerTitle  string // 对主人的称呼
 	Body        string // Markdown 正文（规则等）
 	FilePath    string // PERSONA.md 文件路径
+}
+
+func (p *PersonaProfile) Clone() *PersonaProfile {
+	if p == nil {
+		return &PersonaProfile{}
+	}
+	out := *p
+	return &out
 }
 
 // ParsePersonaFile 解析 PERSONA.md（YAML frontmatter + body）
@@ -258,6 +267,9 @@ func (p *PersonaProfile) SaveToFile() error {
 	if p.FilePath == "" {
 		return fmt.Errorf("persona file path not set")
 	}
+	if err := os.MkdirAll(filepath.Dir(p.FilePath), 0755); err != nil {
+		return fmt.Errorf("create persona dir: %v", err)
+	}
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
@@ -278,6 +290,27 @@ func (p *PersonaProfile) SaveToFile() error {
 
 	log.Printf("[Persona] 已保存人设到 %s (name=%s)", p.FilePath, p.Name)
 	return nil
+}
+
+func loadScopedPersonaProfile(baseDir, account string, fallback *PersonaProfile) *PersonaProfile {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		if fallback != nil {
+			return fallback.Clone()
+		}
+		return &PersonaProfile{}
+	}
+
+	content := loadAccountWorkspaceFile(baseDir, account, "PERSONA.md", "")
+	profile := ParsePersonaFile(content)
+	if profile == nil {
+		profile = &PersonaProfile{}
+	}
+	if profile.Body == "" && fallback != nil {
+		profile.Body = fallback.Body
+	}
+	profile.FilePath = filepath.Join(GetAccountWorkspace(baseDir, account), "PERSONA.md")
+	return profile
 }
 
 // setPersonaTool 虚拟工具定义（始终注入，由 LLM 判断是否调用）

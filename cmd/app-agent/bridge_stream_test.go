@@ -52,9 +52,20 @@ func TestMergeCodegenStreamTextMergesAgainstLastLine(t *testing.T) {
 func TestMergeCodegenStreamTextSamePrefixWithThought(t *testing.T) {
 	got := mergeCodegenStreamText(
 		"[thought][acp_1777] The user",
-		"[thought][acp_1777] is asking",
+		"[thought][acp_1777]  is asking",
 	)
 	want := "[thought][acp_1777] The user is asking"
+	if got != want {
+		t.Fatalf("mergeCodegenStreamText()=%q want=%q", got, want)
+	}
+}
+
+func TestMergeCodegenStreamTextDoesNotInventSpacesInsideChunk(t *testing.T) {
+	got := mergeCodegenStreamText(
+		"[assistant][acp_1777] Hel",
+		"[assistant][acp_1777] lo",
+	)
+	want := "[assistant][acp_1777] Hello"
 	if got != want {
 		t.Fatalf("mergeCodegenStreamText()=%q want=%q", got, want)
 	}

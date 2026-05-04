@@ -15,6 +15,7 @@ type CortanaUserSnapshot struct {
 	CollectedAt   int64          `json:"collected_at"`
 	TriggerReason string         `json:"trigger_reason"`
 	EventContext  map[string]any `json:"event_context,omitempty"`
+	DeviceContext map[string]any `json:"device_context,omitempty"`
 	Blog          map[string]any `json:"blog,omitempty"`
 	Todo          map[string]any `json:"todo,omitempty"`
 	Exercise      map[string]any `json:"exercise,omitempty"`
@@ -173,6 +174,7 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 			"timestamp":      event.Timestamp,
 			"metadata":       cloneAnyMap(event.Metadata),
 		},
+		DeviceContext: cloneAnyMap(session.CurrentContext),
 		Blog: map[string]any{
 			"blog_count": result.BlogCount,
 			"new_blogs":  result.NewBlogs,
@@ -247,6 +249,7 @@ func (c *Connection) handleProactiveEvent(event CortanaTriggerEventPayload) (Bro
 			event.Account, event.TriggerSource, event.TriggerReason, "invalid proactive event")
 		return BroadcastDecision{SkipReason: "invalid proactive event"}, false, nil
 	}
+	c.updateCurrentContextFromEvent(event)
 	c.recordIncomingInteraction(event)
 
 	session := c.monitor.GetSession(event.Account)
@@ -391,6 +394,17 @@ func (c *Connection) recordIncomingInteraction(event CortanaTriggerEventPayload)
 		"content":        strings.TrimSpace(event.Content),
 		"timestamp":      event.Timestamp,
 	})
+}
+
+func (c *Connection) updateCurrentContextFromEvent(event CortanaTriggerEventPayload) {
+	if c == nil || c.monitor == nil || len(event.Metadata) == 0 {
+		return
+	}
+	raw, ok := event.Metadata["device_context"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return
+	}
+	c.monitor.UpdateCurrentContext(event.Account, raw)
 }
 
 func (c *Connection) recordBroadcastInteraction(decision BroadcastDecision) {

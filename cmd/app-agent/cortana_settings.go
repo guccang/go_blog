@@ -13,14 +13,18 @@ const (
 	DefaultCortanaAllowFullAccess = true
 	DefaultCortanaAutoPlay        = true
 	DefaultCortanaProactiveMode   = "high"
+	DefaultCortanaPersonaName     = "Cortana"
 )
 
 type CortanaSettings struct {
-	Enabled         bool   `json:"enabled"`
-	AllowFullAccess bool   `json:"allow_full_access"`
-	AutoPlay        bool   `json:"auto_play"`
-	ProactiveMode   string `json:"proactive_mode"`
-	UpdatedAt       int64  `json:"updated_at"`
+	Enabled            bool   `json:"enabled"`
+	AllowFullAccess    bool   `json:"allow_full_access"`
+	AutoPlay           bool   `json:"auto_play"`
+	ProactiveMode      string `json:"proactive_mode"`
+	PersonaName        string `json:"persona_name,omitempty"`
+	OwnerTitle         string `json:"owner_title,omitempty"`
+	PersonaDescription string `json:"persona_description,omitempty"`
+	UpdatedAt          int64  `json:"updated_at"`
 }
 
 type CortanaSettingsStore struct {
@@ -44,6 +48,7 @@ func DefaultCortanaSettings() CortanaSettings {
 		AllowFullAccess: DefaultCortanaAllowFullAccess,
 		AutoPlay:        DefaultCortanaAutoPlay,
 		ProactiveMode:   DefaultCortanaProactiveMode,
+		PersonaName:     DefaultCortanaPersonaName,
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
 }
@@ -55,6 +60,13 @@ func NormalizeCortanaSettings(in CortanaSettings) CortanaSettings {
 	} else {
 		out.ProactiveMode = strings.ToLower(strings.TrimSpace(out.ProactiveMode))
 	}
+	if strings.TrimSpace(out.PersonaName) == "" {
+		out.PersonaName = DefaultCortanaPersonaName
+	} else {
+		out.PersonaName = strings.TrimSpace(out.PersonaName)
+	}
+	out.OwnerTitle = strings.TrimSpace(out.OwnerTitle)
+	out.PersonaDescription = strings.TrimSpace(out.PersonaDescription)
 	if out.UpdatedAt <= 0 {
 		out.UpdatedAt = time.Now().UnixMilli()
 	}

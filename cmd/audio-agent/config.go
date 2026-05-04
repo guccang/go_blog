@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type SpeechToTextModelConfig struct {
@@ -25,13 +26,25 @@ type TextToSpeechModelConfig struct {
 	PronunciationTone    []string `json:"pronunciation_tone,omitempty"`
 }
 
+type MusicGenerationModelConfig struct {
+	Model           string `json:"model"`
+	ResponseFormat  string `json:"response_format,omitempty"`
+	SampleRate      int    `json:"sample_rate,omitempty"`
+	Bitrate         int    `json:"bitrate,omitempty"`
+	IsInstrumental  bool   `json:"is_instrumental,omitempty"`
+	LyricsOptimizer bool   `json:"lyrics_optimizer,omitempty"`
+	AIGCWatermark   *bool  `json:"aigc_watermark,omitempty"`
+}
+
 type AudioProviderConfig struct {
-	BaseURL          string                             `json:"base_url"`
-	APIKey           string                             `json:"api_key"`
-	SpeechToTextPath string                             `json:"speech_to_text_path"`
-	TextToSpeechPath string                             `json:"text_to_speech_path"`
-	STTModels        map[string]SpeechToTextModelConfig `json:"speech_to_text_models,omitempty"`
-	TTSModels        map[string]TextToSpeechModelConfig `json:"text_to_speech_models,omitempty"`
+	BaseURL             string                                `json:"base_url"`
+	APIKey              string                                `json:"api_key"`
+	SpeechToTextPath    string                                `json:"speech_to_text_path"`
+	TextToSpeechPath    string                                `json:"text_to_speech_path"`
+	MusicGenerationPath string                                `json:"music_generation_path,omitempty"`
+	STTModels           map[string]SpeechToTextModelConfig    `json:"speech_to_text_models,omitempty"`
+	TTSModels           map[string]TextToSpeechModelConfig    `json:"text_to_speech_models,omitempty"`
+	MusicModels         map[string]MusicGenerationModelConfig `json:"music_generation_models,omitempty"`
 }
 
 type AudioModelRef struct {
@@ -50,6 +63,7 @@ type Config struct {
 	Providers    map[string]AudioProviderConfig `json:"providers"`
 	SpeechToText AudioModelRef                  `json:"speech_to_text"`
 	TextToSpeech AudioModelRef                  `json:"text_to_speech"`
+	TextToMusic  AudioModelRef                  `json:"text_to_music,omitempty"`
 
 	ProtectedFiles []string `json:"protected_files,omitempty"`
 }
@@ -74,9 +88,10 @@ func DefaultConfig() *Config {
 				},
 			},
 			"minimax": {
-				BaseURL:          "https://api.minimaxi.com",
-				APIKey:           "",
-				TextToSpeechPath: "/v1/t2a_v2",
+				BaseURL:             "https://api.minimaxi.com",
+				APIKey:              "",
+				TextToSpeechPath:    "/v1/t2a_v2",
+				MusicGenerationPath: "/v1/music_generation",
 				TTSModels: map[string]TextToSpeechModelConfig{
 					"default": {
 						Model:          "speech-2.8-hd",
@@ -91,10 +106,20 @@ func DefaultConfig() *Config {
 						Channel:        1,
 					},
 				},
+				MusicModels: map[string]MusicGenerationModelConfig{
+					"default": {
+						Model:           "music-2.6",
+						ResponseFormat:  "mp3",
+						SampleRate:      44100,
+						Bitrate:         256000,
+						LyricsOptimizer: true,
+					},
+				},
 			},
 		},
 		SpeechToText:   AudioModelRef{Provider: "openai", Model: "default"},
 		TextToSpeech:   AudioModelRef{Provider: "minimax", Model: "default"},
+		TextToMusic:    AudioModelRef{Provider: "minimax", Model: "default"},
 		ProtectedFiles: []string{"audio-agent.json"},
 	}
 }
@@ -109,6 +134,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %v", err)
 	}
+	applyConfigDefaults(cfg)
 	if cfg.ServerURL == "" {
 		return nil, fmt.Errorf("server_url is required")
 	}
@@ -133,6 +159,66 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
+func applyConfigDefaults(cfg *Config) {
+	defaults := DefaultConfig()
+	if strings.TrimSpace(cfg.TextToMusic.Provider) == "" {
+		cfg.TextToMusic = defaults.TextToMusic
+	} else if strings.TrimSpace(cfg.TextToMusic.Model) == "" {
+		cfg.TextToMusic.Model = defaults.TextToMusic.Model
+	}
+	if cfg.Providers == nil {
+		cfg.Providers = defaults.Providers
+		return
+	}
+	for name, defaultProvider := range defaults.Providers {
+		provider, ok := cfg.Providers[name]
+		if !ok {
+			cfg.Providers[name] = defaultProvider
+			continue
+		}
+		if strings.TrimSpace(provider.BaseURL) == "" {
+			provider.BaseURL = defaultProvider.BaseURL
+		}
+		if strings.TrimSpace(provider.SpeechToTextPath) == "" {
+			provider.SpeechToTextPath = defaultProvider.SpeechToTextPath
+		}
+		if strings.TrimSpace(provider.TextToSpeechPath) == "" {
+			provider.TextToSpeechPath = defaultProvider.TextToSpeechPath
+		}
+		if strings.TrimSpace(provider.MusicGenerationPath) == "" {
+			provider.MusicGenerationPath = defaultProvider.MusicGenerationPath
+		}
+		if provider.STTModels == nil {
+			provider.STTModels = defaultProvider.STTModels
+		} else {
+			for modelName, model := range defaultProvider.STTModels {
+				if _, exists := provider.STTModels[modelName]; !exists {
+					provider.STTModels[modelName] = model
+				}
+			}
+		}
+		if provider.TTSModels == nil {
+			provider.TTSModels = defaultProvider.TTSModels
+		} else {
+			for modelName, model := range defaultProvider.TTSModels {
+				if _, exists := provider.TTSModels[modelName]; !exists {
+					provider.TTSModels[modelName] = model
+				}
+			}
+		}
+		if provider.MusicModels == nil {
+			provider.MusicModels = defaultProvider.MusicModels
+		} else {
+			for modelName, model := range defaultProvider.MusicModels {
+				if _, exists := provider.MusicModels[modelName]; !exists {
+					provider.MusicModels[modelName] = model
+				}
+			}
+		}
+		cfg.Providers[name] = provider
+	}
+}
+
 func (c *Config) ResolveSTT() (*AudioProviderConfig, *SpeechToTextModelConfig, error) {
 	provider, ok := c.Providers[c.SpeechToText.Provider]
 	if !ok {
@@ -153,6 +239,18 @@ func (c *Config) ResolveTTS() (*AudioProviderConfig, *TextToSpeechModelConfig, e
 	model, ok := provider.TTSModels[c.TextToSpeech.Model]
 	if !ok {
 		return nil, nil, fmt.Errorf("text_to_speech model not found: %s/%s", c.TextToSpeech.Provider, c.TextToSpeech.Model)
+	}
+	return &provider, &model, nil
+}
+
+func (c *Config) ResolveMusic() (*AudioProviderConfig, *MusicGenerationModelConfig, error) {
+	provider, ok := c.Providers[c.TextToMusic.Provider]
+	if !ok {
+		return nil, nil, fmt.Errorf("text_to_music provider not found: %s", c.TextToMusic.Provider)
+	}
+	model, ok := provider.MusicModels[c.TextToMusic.Model]
+	if !ok {
+		return nil, nil, fmt.Errorf("text_to_music model not found: %s/%s", c.TextToMusic.Provider, c.TextToMusic.Model)
 	}
 	return &provider, &model, nil
 }

@@ -1,6 +1,6 @@
 ---
 name: blog-data-opt
-description: 博客数据查询与操作技能。覆盖博客、待办、运动、项目、读书 5 个业务域的查询、汇总和写操作。
+description: 博客数据查询与操作技能。覆盖博客、待办、运动、项目、读书 5 个业务域的查询、汇总和写操作。目标管理请使用 goal-management 技能。
 summary: 范围查询优先 Range 接口，批量分析优先 ExecuteCode，修改前先查 id
 tools: RawGetTodosByDate,RawGetTodosRange,RawAddTodo,RawToggleTodo,RawDeleteTodo,RawUpdateTodo,RawGetExerciseByDate,RawGetExerciseRange,RawGetExerciseStats,RawAddExercise,RawToggleExercise,RawDeleteExercise,RawUpdateExercise,RawRecentExerciseRecords,RawAllBlogName,RawAllBlogNameByDate,RawAllBlogNameByDateRange,RawAllBlogNameByDateRangeCount,RawGetBlogData,RawGetBlogDataByDate,RawGetBlogByTitleMatch,RawSearchBlogContent,RawCreateBlog,RawBlogsByAuthType,RawBlogsByTag,RawGetAllBooks,RawGetBooksByStatus,RawGetReadingStats,RawUpdateReadingProgress,RawGetBookNotes,RawAddBook,RawCreateProject,RawGetProject,RawListProjects,RawUpdateProject,RawDeleteProject,RawAddProjectGoal,RawUpdateProjectGoal,RawDeleteProjectGoal,RawAddProjectOKR,RawUpdateProjectOKR,RawDeleteProjectOKR,RawUpdateProjectKeyResult,RawGetProjectSummary
 agents: blog,exec_code
@@ -45,6 +45,7 @@ keywords: 博客,待办,运动,todo,exercise,blog,数据,查询,记录,周报,�
 
 ## 禁止行为
 
+- 将目标管理请求误处理为本域操作（目标查询/添加属于 goal-management 技能域，不是本域）
 - 为了范围查询而循环逐天调单日接口
 - 在需要 `id` 的修改操作前直接猜测或编造 `id`
 - 让用户手动提供当前账号
