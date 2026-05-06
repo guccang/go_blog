@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -188,6 +189,49 @@ func buildACPToolDefs() []uap.ToolDef {
 			}),
 		},
 		{
+			Name:        "AcpListDebugBundles",
+			Description: "列出项目目录下 .debug/flutter 中可用的 Flutter Debug Bundle。仅用于发现用户已导出的调试上下文。",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project": map[string]interface{}{"type": "string", "description": "项目名称"},
+				},
+				"required": []string{"project"},
+			}),
+		},
+		{
+			Name:        "AcpReadDebugBundle",
+			Description: "读取 Flutter Debug Bundle 的 manifest.json、summary.md 和关键日志片段，供编码智能体定位问题。",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project":           map[string]interface{}{"type": "string", "description": "项目名称"},
+					"debug_id":          map[string]interface{}{"type": "string", "description": "Debug Bundle ID，如 dbg_20260505_153000_ab12"},
+					"debug_bundle_path": map[string]interface{}{"type": "string", "description": "Debug Bundle 绝对路径；传入后优先使用"},
+				},
+				"required": []string{"project"},
+			}),
+		},
+		{
+			Name:        "AcpStartDebugSession",
+			Description: "基于 Flutter Debug Bundle 启动 Codex/ClaudeCode 修复会话，自动注入 bundle 路径、摘要和 Flutter 验证约束。",
+			Parameters: mustMarshalJSON(map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"project":           map[string]interface{}{"type": "string", "description": "项目名称"},
+					"debug_id":          map[string]interface{}{"type": "string", "description": "Debug Bundle ID"},
+					"debug_bundle_path": map[string]interface{}{"type": "string", "description": "Debug Bundle 绝对路径；传入后优先使用"},
+					"user_request":      map[string]interface{}{"type": "string", "description": "用户补充的修复要求；由 App 编码调试入口传入"},
+					"tool":              map[string]interface{}{"type": "string", "description": "编码工具（claudecode / codex）；为空时使用 agent 默认后端"},
+					"extra_args":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}},
+					"interactive":       map[string]interface{}{"type": "boolean"},
+					"caller_agent_id":   map[string]interface{}{"type": "string"},
+					"keep_session":      map[string]interface{}{"type": "boolean"},
+				},
+				"required": []string{"project"},
+			}),
+		},
+		{
 			Name:        "AcpStopSession",
 			Description: "停止正在运行的 ACP 编码会话。仅在用户明确要求中断、取消或结束当前会话时使用，不用于启动新任务或查询状态。",
 			Parameters: mustMarshalJSON(map[string]interface{}{
@@ -236,6 +280,12 @@ func (c *Connection) handleToolCall(msg *uap.Message) {
 		result = c.toolListProjects()
 	case "AcpStartSession":
 		result = c.toolStartSession(msg.From, msg.ID, args)
+	case "AcpListDebugBundles":
+		result = c.toolListDebugBundles(args)
+	case "AcpReadDebugBundle":
+		result = c.toolReadDebugBundle(args)
+	case "AcpStartDebugSession":
+		result = c.toolStartDebugSession(msg.From, msg.ID, args)
 	case "AcpStopSession":
 		result = c.toolStopSession(args)
 	default:
@@ -409,6 +459,205 @@ func (c *Connection) toolStartSession(callerAgentID, requestID string, args map[
 	}
 	tr := uap.BuildToolResult("", data, fmt.Sprintf("%s 会话 %s 完成", c.cfg.BackendLabel(), sessionID))
 	return tr.Result
+}
+
+func (c *Connection) toolListDebugBundles(args map[string]interface{}) string {
+	project, _ := args["project"].(string)
+	projectDir := c.agent.resolveProject(project)
+	if project == "" || projectDir == "" {
+		return `{"success":false,"error":"缺少有效的 project 参数"}`
+	}
+	root := filepath.Join(projectDir, ".debug", "flutter")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			tr := uap.BuildToolResult("", map[string]interface{}{
+				"project": project,
+				"bundles": []interface{}{},
+				"count":   0,
+			}, "列出 0 个 Debug Bundle")
+			return tr.Result
+		}
+		return fmt.Sprintf(`{"success":false,"error":"读取 Debug Bundle 目录失败: %s"}`, escapeJSON(err.Error()))
+	}
+	type bundleInfo struct {
+		DebugID    string `json:"debug_id"`
+		Path       string `json:"path"`
+		ModifiedAt int64  `json:"modified_at"`
+	}
+	bundles := make([]bundleInfo, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		bundles = append(bundles, bundleInfo{
+			DebugID:    entry.Name(),
+			Path:       filepath.Join(root, entry.Name()),
+			ModifiedAt: info.ModTime().UnixMilli(),
+		})
+	}
+	sort.Slice(bundles, func(i, j int) bool {
+		return bundles[i].ModifiedAt > bundles[j].ModifiedAt
+	})
+	tr := uap.BuildToolResult("", map[string]interface{}{
+		"project": project,
+		"bundles": bundles,
+		"count":   len(bundles),
+	}, fmt.Sprintf("列出 %d 个 Debug Bundle", len(bundles)))
+	return tr.Result
+}
+
+func (c *Connection) toolReadDebugBundle(args map[string]interface{}) string {
+	project, _ := args["project"].(string)
+	bundlePath, err := c.resolveDebugBundlePath(project, args)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, escapeJSON(err.Error()))
+	}
+	manifest := readTextFile(filepath.Join(bundlePath, "manifest.json"), 20000)
+	summary := readTextFile(filepath.Join(bundlePath, "summary.md"), 20000)
+	clientLog := readTextFile(filepath.Join(bundlePath, "logs", "flutter_client.log"), 16000)
+	serverLogs := readDebugServerLogs(bundlePath, 16000)
+	tr := uap.BuildToolResult("", map[string]interface{}{
+		"project":           project,
+		"debug_bundle_path": bundlePath,
+		"manifest":          manifest,
+		"summary":           summary,
+		"client_log":        clientLog,
+		"server_logs":       serverLogs,
+	}, "读取 Debug Bundle 完成")
+	return tr.Result
+}
+
+func (c *Connection) toolStartDebugSession(callerAgentID, requestID string, args map[string]interface{}) string {
+	project, _ := args["project"].(string)
+	bundlePath, err := c.resolveDebugBundlePath(project, args)
+	if err != nil {
+		return fmt.Sprintf(`{"success":false,"error":"%s"}`, escapeJSON(err.Error()))
+	}
+	projectDir := c.agent.resolveProject(project)
+	summary := readTextFile(filepath.Join(bundlePath, "summary.md"), 12000)
+	manifest := readTextFile(filepath.Join(bundlePath, "manifest.json"), 12000)
+	userRequest, _ := args["user_request"].(string)
+	args["prompt"] = buildDebugSessionPrompt(bundlePath, projectDir, summary, manifest, userRequest)
+	return c.toolStartSession(callerAgentID, requestID, args)
+}
+
+func (c *Connection) resolveDebugBundlePath(project string, args map[string]interface{}) (string, error) {
+	project = strings.TrimSpace(project)
+	projectDir := c.agent.resolveProject(project)
+	if project == "" || projectDir == "" {
+		return "", fmt.Errorf("缺少有效的 project 参数")
+	}
+	if rawPath, _ := args["debug_bundle_path"].(string); strings.TrimSpace(rawPath) != "" {
+		abs, err := filepath.Abs(strings.TrimSpace(rawPath))
+		if err != nil {
+			return "", err
+		}
+		if !isPathInside(abs, projectDir) {
+			return "", fmt.Errorf("debug_bundle_path 必须位于项目目录内")
+		}
+		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("debug_bundle_path 不存在或不是目录")
+		}
+		return abs, nil
+	}
+	debugID, _ := args["debug_id"].(string)
+	debugID = strings.TrimSpace(debugID)
+	if debugID == "" {
+		return "", fmt.Errorf("缺少 debug_id 或 debug_bundle_path 参数")
+	}
+	if !isSafeDebugID(debugID) {
+		return "", fmt.Errorf("debug_id 无效")
+	}
+	path := filepath.Join(projectDir, ".debug", "flutter", debugID)
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("Debug Bundle 不存在: %s", debugID)
+	}
+	return path, nil
+}
+
+func buildDebugSessionPrompt(bundlePath, projectDir, summary, manifest, userRequest string) string {
+	var b strings.Builder
+	b.WriteString("你正在修复 Flutter App 问题。\n\n")
+	b.WriteString("Debug Bundle: " + bundlePath + "\n")
+	b.WriteString("项目目录: " + projectDir + "\n\n")
+	b.WriteString("请先阅读 manifest.json 和 summary.md，再检查相关源码。\n")
+	b.WriteString("必须遵守：\n")
+	b.WriteString("1. 所有文件读写使用 UTF-8 无 BOM。\n")
+	b.WriteString("2. 不得执行 flutter build apk 或任何 APK 打包命令。\n")
+	b.WriteString("3. 验证优先级：dart analyze -> flutter analyze -> dart format --set-exit-if-changed . -> flutter test。\n")
+	b.WriteString("4. 只修改与问题相关的文件，不回滚用户未提交改动。\n\n")
+	if strings.TrimSpace(userRequest) != "" {
+		b.WriteString("用户补充要求:\n")
+		b.WriteString(strings.TrimSpace(userRequest))
+		b.WriteString("\n\n")
+	}
+	if strings.TrimSpace(summary) != "" {
+		b.WriteString("summary.md:\n")
+		b.WriteString(summary)
+		b.WriteString("\n\n")
+	}
+	if strings.TrimSpace(manifest) != "" {
+		b.WriteString("manifest.json:\n")
+		b.WriteString(manifest)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func readDebugServerLogs(bundlePath string, limit int) map[string]string {
+	out := make(map[string]string)
+	entries, err := os.ReadDir(filepath.Join(bundlePath, "logs"))
+	if err != nil {
+		return out
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == "flutter_client.log" {
+			continue
+		}
+		out[entry.Name()] = readTextFile(filepath.Join(bundlePath, "logs", entry.Name()), limit)
+	}
+	return out
+}
+
+func readTextFile(path string, limit int) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if limit > 0 && len(data) > limit {
+		data = data[len(data)-limit:]
+	}
+	return string(data)
+}
+
+func isPathInside(path, root string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	return absPath == absRoot || strings.HasPrefix(absPath, absRoot+string(filepath.Separator))
+}
+
+func isSafeDebugID(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (c *Connection) toolSendMessage(callerAgentID, requestID string, args map[string]interface{}) string {

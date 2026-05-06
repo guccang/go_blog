@@ -1986,6 +1986,7 @@ func getHelpText() string {
 		"/status show service status\n\n" +
 		"/cg list list projects\n" +
 		"/cg start <project> <request> start codegen\n" +
+		"/cg debug <project> --debug-id <id> <request> start Flutter debug codegen\n" +
 		"/cg status show progress\n" +
 		"/cg stop stop codegen\n\n" +
 		"Other messages will be forwarded to llm-agent."

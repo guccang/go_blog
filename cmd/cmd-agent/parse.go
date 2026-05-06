@@ -87,6 +87,7 @@ func getCodegenHelpText() string {
 		"cg start <项目[@agent]> @codex <需求> — 用Codex\n" +
 		"cg start <项目[@agent]> @claudecode --settings <名称> <需求> — 指定 Claude settings\n" +
 		"cg start <项目[@agent]> !deploy <需求> — 编码后自动部署\n" +
+		"cg debug <项目[@agent]> [@工具] [--settings 名称] --debug-id <ID> <需求> — 携带 Flutter Debug Bundle 启动 ACP 调试\n" +
 		"cg deploy <项目[@agent]> [#目标] [!pack] [--version/-v 版本] [--desc/-d 描述] — 部署已配置项目\n" +
 		"cg deploy list — 列出 deploy 项目\n" +
 		"cg deploy adhoc <项目> <目录> <ssh_host> — 一次性部署\n" +

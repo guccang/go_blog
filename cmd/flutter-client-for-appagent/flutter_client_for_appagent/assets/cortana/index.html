@@ -62,7 +62,7 @@ const log = (msg) => {
 
 window.PIXI = window.PIXI || PIXI;
 
-const MODEL_URL = './model/haru/haru_greeter_t03.model3.json';
+const MODEL_URL = window.CORTANA_MODEL_URL || './model/haru/haru_greeter_t03.model3.json';
 const expressionMap = {
   happy: 'f04',
   sad: 'f03',
@@ -79,6 +79,8 @@ const motionMap = {
 let app, model;
 let initStartedAt = Date.now();
 let lastModelConfig = null;
+let lastResourceStatuses = [];
+let lastInitError = null;
 let resolvedModelUrl = null;
 let actionReady = false;
 let motionQueue = Promise.resolve();
@@ -297,19 +299,22 @@ async function verifyRequiredResources() {
   log(`UserAgent: ${navigator.userAgent}`);
   resolvedModelUrl = new URL(MODEL_URL, document.baseURI).toString();
   log(`Resolved model URL: ${resolvedModelUrl}`);
+  lastResourceStatuses = [];
 
   const modelResponse = await fetchStatus(resolvedModelUrl);
+  lastResourceStatuses.push({ kind: 'modelJson', relativePath: MODEL_URL, ...modelResponse });
   if (!modelResponse.ok) {
     throw new Error(`Model JSON cannot be fetched: ${MODEL_URL}`);
   }
 
   lastModelConfig = await fetch(resolvedModelUrl, { cache: 'no-store' }).then((r) => r.json());
   const resources = collectModelResources(lastModelConfig);
-  log(`Model resources discovered: ${resources.length}`);
+  log(`Model resources discovered: ${resources.length}, name=${lastModelConfig.Name || lastModelConfig.name || 'unknown'}`);
 
   const missing = [];
   for (const resource of resources) {
     const result = await fetchStatus(resource.url);
+    lastResourceStatuses.push({ ...resource, ...result });
     if (!result.ok && resource.required) {
       missing.push(`${resource.kind}: ${resource.relativePath}`);
     } else if (!result.ok) {
@@ -322,6 +327,7 @@ async function verifyRequiredResources() {
 
 async function init() {
   try {
+    lastInitError = null;
     log(`Init start, MODEL_URL=${MODEL_URL}`);
     log(`PIXI present=${!!window.PIXI}, version=${window.PIXI && window.PIXI.VERSION ? window.PIXI.VERSION : 'unknown'}`);
     log(`Live2D namespace present=${!!(window.PIXI && window.PIXI.live2d)}`);
@@ -383,6 +389,13 @@ async function init() {
     }
   } catch (e) {
     const message = e && e.message ? e.message : String(e);
+    lastInitError = {
+      message,
+      stack: e && e.stack ? e.stack : '',
+      modelUrl: MODEL_URL,
+      resolvedModelUrl,
+      resourceStatuses: lastResourceStatuses,
+    };
     log('Error: ' + message);
     console.error(e);
     if (e && e.stack) {
@@ -552,7 +565,10 @@ window.cortanaDebugState = () => ({
   modelCreated: !!model,
   actionReady,
   modelUrl: MODEL_URL,
+  resolvedModelUrl,
   elapsedMs: Date.now() - initStartedAt,
+  lastInitError,
+  lastResourceStatuses,
   userViewState: {
     scale: userViewState.scale,
     offsetX: userViewState.offsetX,

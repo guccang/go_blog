@@ -1,9 +1,12 @@
 package com.example.flutter_client_for_appagent
 
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -12,6 +15,7 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
@@ -37,8 +41,11 @@ class MainActivity : FlutterActivity() {
     private val installerChannelName = "com.example.flutter_client_for_appagent/installer"
     private val zipChannelName = "com.example.flutter_client_for_appagent/zip"
     private val locationChannelName = "com.example.flutter_client_for_appagent/location"
+    private val filePickerChannelName = "com.example.flutter_client_for_appagent/file_picker"
     private val locationPermissionRequestCode = 40701
+    private val filePickerRequestCode = 40702
     private var pendingLocationResult: MethodChannel.Result? = null
+    private var pendingFilePickerResult: MethodChannel.Result? = null
     private val requiredModelFiles =
         listOf(
             "am/final.mdl",
@@ -87,6 +94,13 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, filePickerChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "pickFile" -> handlePickFile(result)
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onDestroy() {
@@ -119,6 +133,109 @@ class MainActivity : FlutterActivity() {
                 ),
             )
         }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != filePickerRequestCode) {
+            return
+        }
+        val result = pendingFilePickerResult ?: return
+        pendingFilePickerResult = null
+        if (resultCode != Activity.RESULT_OK) {
+            result.success(null)
+            return
+        }
+        val uri = data?.data
+        if (uri == null) {
+            result.success(null)
+            return
+        }
+        executor.execute {
+            try {
+                val copiedFile = copyPickedFileToCache(uri)
+                runOnUiThread {
+                    result.success(
+                        mapOf(
+                            "path" to copiedFile.absolutePath,
+                            "name" to copiedFile.name,
+                        ),
+                    )
+                }
+            } catch (err: Throwable) {
+                runOnUiThread {
+                    result.error(
+                        "copy_failed",
+                        err.message ?: err.javaClass.simpleName,
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handlePickFile(result: MethodChannel.Result) {
+        if (pendingFilePickerResult != null) {
+            result.error("file_picker_busy", "File picker is already running", null)
+            return
+        }
+        val intent =
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        pendingFilePickerResult = result
+        try {
+            startActivityForResult(intent, filePickerRequestCode)
+        } catch (_: ActivityNotFoundException) {
+            pendingFilePickerResult = null
+            result.error("file_picker_unavailable", "No file manager available", null)
+        }
+    }
+
+    private fun copyPickedFileToCache(uri: Uri): File {
+        val originalName = resolveDisplayName(uri).ifEmpty {
+            "picked_${System.currentTimeMillis()}.bin"
+        }
+        val safeName = originalName.replace(Regex("""[\\/:*?"<>|]"""), "_")
+        val targetDir = File(cacheDir, "picked_uploads/${System.currentTimeMillis()}").apply {
+            mkdirs()
+        }
+        val targetFile = File(targetDir, safeName)
+        val input =
+            contentResolver.openInputStream(uri)
+                ?: throw IOException("Cannot open selected file")
+        input.use { source ->
+            FileOutputStream(targetFile).use { output ->
+                source.copyTo(output)
+            }
+        }
+        return targetFile
+    }
+
+    private fun resolveDisplayName(uri: Uri): String {
+        var cursor: Cursor? = null
+        try {
+            cursor =
+                contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null,
+                )
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    return cursor.getString(index)?.trim().orEmpty()
+                }
+            }
+        } catch (_: Throwable) {
+        } finally {
+            cursor?.close()
+        }
+        return uri.lastPathSegment?.trim().orEmpty()
     }
 
     private fun handleGetCurrentLocation(result: MethodChannel.Result) {

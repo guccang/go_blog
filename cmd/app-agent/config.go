@@ -37,6 +37,7 @@ type Config struct {
 	CortanaSettingsFile      string           `json:"cortana_settings_file,omitempty"`
 	LLMWorkspaceDir          string           `json:"llm_workspace_dir,omitempty"`
 	LogAgentConfigFile       string           `json:"log_agent_config_file,omitempty"`
+	DebugBundleDir           string           `json:"debug_bundle_dir,omitempty"`
 	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
 	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
 	ObsAgentToken            string           `json:"obs_agent_token,omitempty"`
@@ -55,6 +56,8 @@ type Config struct {
 	DelegationSecretKey string `json:"delegation_secret_key,omitempty"`
 }
 
+const defaultFlutterDebugBundleDir = "../flutter-client-for-appagent/flutter_client_for_appagent/.debug/flutter"
+
 func DefaultConfig() *Config {
 	return &Config{
 		HTTPPort:                 9002,
@@ -70,6 +73,7 @@ func DefaultConfig() *Config {
 		CortanaSettingsFile:      "cortana-settings.json",
 		LLMWorkspaceDir:          "../llm-agent/workspace",
 		LogAgentConfigFile:       "../log-agent/log-agent.json",
+		DebugBundleDir:           defaultFlutterDebugBundleDir,
 		AttachmentStoreDir:       "app-attachments",
 		DownloadTicketTTLSeconds: 300,
 		LLMAgentID:               "llm-agent",
@@ -124,6 +128,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.LogAgentConfigFile == "" {
 		cfg.LogAgentConfigFile = "../log-agent/log-agent.json"
+	}
+	if cfg.DebugBundleDir == "" {
+		cfg.DebugBundleDir = defaultFlutterDebugBundleDir
 	}
 	if cfg.AttachmentStoreDir == "" {
 		cfg.AttachmentStoreDir = "app-attachments"

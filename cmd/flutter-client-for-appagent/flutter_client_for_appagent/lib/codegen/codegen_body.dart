@@ -43,8 +43,10 @@ class CodegenBody extends StatelessWidget {
     required this.commandPreview,
     required this.autoDeploy,
     required this.deployPackOnly,
+    required this.debugBundleMode,
     required this.codegenPromptController,
-    required this.codegenSearchController,
+    required this.codegenCodeSearchController,
+    required this.codegenDeploySearchController,
     required this.deployArgsController,
     required this.history,
     required this.onRefresh,
@@ -55,6 +57,7 @@ class CodegenBody extends StatelessWidget {
     required this.onToolSettingsChanged,
     required this.onPromptChanged,
     required this.onAutoDeployChanged,
+    required this.onDebugBundleModeChanged,
     required this.onDeployProjectChanged,
     required this.onDeployTargetChanged,
     required this.onDeployPackOnlyChanged,
@@ -84,8 +87,10 @@ class CodegenBody extends StatelessWidget {
   final String commandPreview;
   final bool autoDeploy;
   final bool deployPackOnly;
+  final bool debugBundleMode;
   final TextEditingController codegenPromptController;
-  final TextEditingController codegenSearchController;
+  final TextEditingController codegenCodeSearchController;
+  final TextEditingController codegenDeploySearchController;
   final TextEditingController deployArgsController;
   final List<CodegenHistoryItem> history;
   final VoidCallback onRefresh;
@@ -96,6 +101,7 @@ class CodegenBody extends StatelessWidget {
   final ValueChanged<String?> onToolSettingsChanged;
   final ValueChanged<String> onPromptChanged;
   final ValueChanged<bool> onAutoDeployChanged;
+  final ValueChanged<bool> onDebugBundleModeChanged;
   final ValueChanged<String?> onDeployProjectChanged;
   final ValueChanged<String?> onDeployTargetChanged;
   final ValueChanged<bool> onDeployPackOnlyChanged;
@@ -204,7 +210,9 @@ class CodegenBody extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           TextField(
-            controller: codegenSearchController,
+            controller: mode == CodegenLaunchMode.code
+                ? codegenCodeSearchController
+                : codegenDeploySearchController,
             onChanged: onSearchChanged,
             decoration: const InputDecoration(
               labelText: '搜索项目',
@@ -345,9 +353,16 @@ class CodegenBody extends StatelessWidget {
         const SizedBox(height: 12),
         SwitchListTile(
           value: autoDeploy,
-          onChanged: onAutoDeployChanged,
+          onChanged: debugBundleMode ? null : onAutoDeployChanged,
           contentPadding: EdgeInsets.zero,
           title: const Text('编码完成后自动部署'),
+        ),
+        SwitchListTile(
+          value: debugBundleMode,
+          onChanged: onDebugBundleModeChanged,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('携带 Debug Bundle'),
+          subtitle: const Text('发送前收集 Flutter 客户端和 agent 日志，交给 ACP debug 会话定位问题'),
         ),
       ],
     );

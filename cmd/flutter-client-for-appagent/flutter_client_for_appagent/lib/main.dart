@@ -9,6 +9,7 @@ import 'dart:convert'
         utf8;
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -45,11 +46,32 @@ import 'version.g.dart';
 import 'vosk_model_locator.dart';
 
 void main() {
+  FlutterError.onError = (FlutterErrorDetails details) {
+    addFlutterClientLog('FlutterError: ${details.exceptionAsString()}');
+    if (details.stack != null) {
+      addFlutterClientLog(details.stack.toString());
+    }
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    addFlutterClientLog('PlatformError: $error\n$stack');
+    return false;
+  };
   runApp(const AppAgentClientApp());
 }
 
 bool get _isAndroidHost => !kIsWeb && Platform.isAndroid;
 bool get _isWindowsHost => !kIsWeb && Platform.isWindows;
+
+String _platformLabel() {
+  if (kIsWeb) return 'web';
+  if (Platform.isAndroid) return 'android';
+  if (Platform.isIOS) return 'ios';
+  if (Platform.isWindows) return 'windows';
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isLinux) return 'linux';
+  return 'unknown';
+}
 
 class UiThemePreset {
   const UiThemePreset({
@@ -865,7 +887,14 @@ int compareApkVersions(String? versionA, String? versionB) {
 
 enum MessageDirection { outgoing, incoming, system }
 
-enum _AttachmentMenuAction { galleryImage, cameraImage }
+enum _AttachmentMenuAction {
+  galleryImage,
+  cameraImage,
+  imageResource,
+  live2dResource,
+  fileResource,
+  browseResources,
+}
 
 enum VoiceGestureAction { sendAudio, cancel, transcribe }
 
@@ -1272,6 +1301,160 @@ class ZipExtractor {
   }
 }
 
+class LocalFilePicker {
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.flutter_client_for_appagent/file_picker',
+  );
+
+  Future<String?> pickFile() async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>('pickFile');
+    if (resp == null) {
+      return null;
+    }
+    final path = (resp['path'] ?? '').toString().trim();
+    return path.isEmpty ? null : path;
+  }
+}
+
+class CortanaLive2dModelInfo {
+  const CortanaLive2dModelInfo({
+    required this.id,
+    required this.name,
+    required this.rootPath,
+    required this.modelJsonPath,
+    required this.sourceUrl,
+    required this.installedAtMs,
+  });
+
+  final String id;
+  final String name;
+  final String rootPath;
+  final String modelJsonPath;
+  final String sourceUrl;
+  final int installedAtMs;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'name': name,
+      'root_path': rootPath,
+      'model_json_path': modelJsonPath,
+      'source_url': sourceUrl,
+      'installed_at_ms': installedAtMs,
+    };
+  }
+
+  static CortanaLive2dModelInfo? fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? '').toString().trim();
+    final name = (json['name'] ?? '').toString().trim();
+    final rootPath = (json['root_path'] ?? '').toString().trim();
+    final modelJsonPath = (json['model_json_path'] ?? '').toString().trim();
+    if (id.isEmpty ||
+        name.isEmpty ||
+        rootPath.isEmpty ||
+        modelJsonPath.isEmpty) {
+      return null;
+    }
+    final installedAtRaw = json['installed_at_ms'];
+    return CortanaLive2dModelInfo(
+      id: id,
+      name: name,
+      rootPath: rootPath,
+      modelJsonPath: modelJsonPath,
+      sourceUrl: (json['source_url'] ?? '').toString().trim(),
+      installedAtMs: installedAtRaw is int
+          ? installedAtRaw
+          : int.tryParse('$installedAtRaw') ?? 0,
+    );
+  }
+}
+
+class Live2dModelLocator {
+  const Live2dModelLocator._();
+
+  static Future<String?> findModelJson(String rootPath) async {
+    final root = Directory(rootPath);
+    if (!await root.exists()) {
+      debugPrint('[Cortana Live2D] model root missing: $rootPath');
+      return null;
+    }
+    var candidateCount = 0;
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.model3.json')) {
+        continue;
+      }
+      candidateCount++;
+      debugPrint('[Cortana Live2D] checking model candidate: ${entity.path}');
+      if (await isUsableModelJson(entity.path)) {
+        debugPrint('[Cortana Live2D] usable model selected: ${entity.path}');
+        return entity.path;
+      }
+      debugPrint('[Cortana Live2D] unusable model candidate: ${entity.path}');
+    }
+    debugPrint(
+      '[Cortana Live2D] no usable .model3.json under $rootPath, candidates=$candidateCount',
+    );
+    return null;
+  }
+
+  static Future<bool> isUsableModelJson(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        debugPrint('[Cortana Live2D] model json missing: $path');
+        return false;
+      }
+      final decoded = jsonDecode(await file.readAsString(encoding: utf8));
+      if (decoded is! Map) {
+        debugPrint('[Cortana Live2D] model json is not an object: $path');
+        return false;
+      }
+      final refs = decoded['FileReferences'];
+      if (refs is! Map) {
+        debugPrint('[Cortana Live2D] FileReferences missing: $path');
+        return false;
+      }
+      final moc = (refs['Moc'] ?? '').toString().trim();
+      final textures = refs['Textures'];
+      if (moc.isEmpty || textures is! List || textures.isEmpty) {
+        final textureSummary = textures is List ? textures.length : 'invalid';
+        debugPrint(
+          '[Cortana Live2D] required references missing: '
+          '$path moc=$moc textures=$textureSummary',
+        );
+        return false;
+      }
+      final baseDir = file.parent.path;
+      if (!await File('$baseDir${Platform.pathSeparator}$moc').exists()) {
+        debugPrint(
+          '[Cortana Live2D] moc file missing: $baseDir${Platform.pathSeparator}$moc',
+        );
+        return false;
+      }
+      for (final texture in textures) {
+        final texturePath = texture.toString().trim();
+        if (texturePath.isEmpty) {
+          debugPrint('[Cortana Live2D] empty texture reference in: $path');
+          return false;
+        }
+        if (!await File(
+          '$baseDir${Platform.pathSeparator}$texturePath',
+        ).exists()) {
+          debugPrint(
+            '[Cortana Live2D] texture file missing: $baseDir${Platform.pathSeparator}$texturePath',
+          );
+          return false;
+        }
+      }
+      return true;
+    } catch (err, stackTrace) {
+      debugPrint('[Cortana Live2D] model json check failed: $path error=$err');
+      debugPrint('$stackTrace');
+      return false;
+    }
+  }
+}
+
 class DeviceLocationProvider {
   static const MethodChannel _channel = MethodChannel(
     'com.example.flutter_client_for_appagent/location',
@@ -1425,8 +1608,60 @@ class ResumableFileDownloader {
   }
 }
 
+class AppResourceItem {
+  const AppResourceItem({
+    required this.category,
+    required this.fileId,
+    required this.fileName,
+    required this.fileSize,
+    required this.fileFormat,
+    required this.mimeType,
+    required this.storageProvider,
+    required this.objectKey,
+    required this.downloadUrl,
+    required this.updatedAt,
+  });
+
+  factory AppResourceItem.fromJson(Map<String, dynamic> json) {
+    final updatedAtValue = json['updated_at'];
+    final updatedAtMs = updatedAtValue is int
+        ? updatedAtValue
+        : int.tryParse('$updatedAtValue') ?? 0;
+    final sizeValue = json['file_size'];
+    final fileSize = sizeValue is int
+        ? sizeValue
+        : int.tryParse('$sizeValue') ?? 0;
+    return AppResourceItem(
+      category: (json['category'] ?? '').toString().trim(),
+      fileId: (json['file_id'] ?? '').toString().trim(),
+      fileName: (json['file_name'] ?? '').toString().trim(),
+      fileSize: fileSize,
+      fileFormat: (json['file_format'] ?? '').toString().trim(),
+      mimeType: (json['mime_type'] ?? '').toString().trim(),
+      storageProvider: (json['storage_provider'] ?? '').toString().trim(),
+      objectKey: (json['object_key'] ?? '').toString().trim(),
+      downloadUrl: (json['download_url'] ?? '').toString().trim(),
+      updatedAt: updatedAtMs > 0
+          ? DateTime.fromMillisecondsSinceEpoch(updatedAtMs)
+          : DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+
+  final String category;
+  final String fileId;
+  final String fileName;
+  final int fileSize;
+  final String fileFormat;
+  final String mimeType;
+  final String storageProvider;
+  final String objectKey;
+  final String downloadUrl;
+  final DateTime updatedAt;
+}
+
 class AppAgentClient {
   static const Duration _httpTimeout = Duration(seconds: 8);
+  static const Duration _uploadTimeout = Duration(minutes: 2);
   static const Duration _wsConnectTimeout = Duration(seconds: 8);
 
   AppAgentClient({
@@ -1591,6 +1826,74 @@ class AppAgentClient {
 
   Future<void> sendMessage(String content) => sendAppMessage(content);
 
+  Future<AppResourceItem> uploadResourceBytes({
+    required String category,
+    required String fileName,
+    required List<int> bytes,
+    String contentType = '',
+    String description = '',
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/resources');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_sessionHeaders())
+      ..fields['user_id'] = userId
+      ..fields['category'] = category
+      ..fields['description'] = description;
+    if (contentType.trim().isNotEmpty) {
+      request.fields['content_type'] = contentType.trim();
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: fileName),
+    );
+    final streamed = await request.send().timeout(_uploadTimeout);
+    final resp = await http.Response.fromStream(streamed);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('upload resource', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final item = data['item'];
+    if (item is! Map<String, dynamic>) {
+      throw const FormatException('upload resource response missing item');
+    }
+    return AppResourceItem.fromJson(item);
+  }
+
+  Future<AppResourceItem> uploadResourceFile({
+    required String category,
+    required String path,
+    String description = '',
+  }) async {
+    final file = File(path);
+    final fileName = path.split(Platform.pathSeparator).last.trim();
+    if (!await file.exists()) {
+      throw FileSystemException('file not found', path);
+    }
+    return uploadResourceBytes(
+      category: category,
+      fileName: fileName.isEmpty
+          ? 'resource_${DateTime.now().millisecondsSinceEpoch}.bin'
+          : fileName,
+      bytes: await file.readAsBytes(),
+      description: description,
+    );
+  }
+
+  Future<List<AppResourceItem>> listResources(String category) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/resources?user_id=$userId&session_token=$sessionToken&category=$category',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list resources', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return (data['items'] as List<dynamic>? ?? const [])
+        .map((item) => AppResourceItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<void> sendCortanaEvent(
     String eventKind, {
     String content = '',
@@ -1735,6 +2038,37 @@ class AppAgentClient {
     return items;
   }
 
+  Future<Map<String, dynamic>> createDebugBundle({
+    required Map<String, dynamic> issue,
+    required Map<String, dynamic> appState,
+    required List<String> clientLogs,
+    List<Map<String, dynamic>> timeline = const <Map<String, dynamic>>[],
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/debug/bundles');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{
+            'user_id': userId,
+            'issue': issue,
+            'app_state': appState,
+            'timeline': timeline,
+            'client_logs': clientLogs,
+            'platform': _platformLabel(),
+            'app_version': appVersion,
+          }),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('create debug bundle', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<WebSocketChannel> connectWebSocket() async {
     final uri = _buildWsUri(baseUrl, userId, sessionToken, receiveToken);
     final channel = WebSocketChannel.connect(uri);
@@ -1854,6 +2188,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _deployProjectKey = 'codegen::last_deploy_project';
   static const String _deployTargetKey = 'codegen::last_deploy_target';
   static const String _deployArgsKey = 'codegen::last_deploy_args';
+  static const String _codeSearchKey = 'codegen::code_search';
+  static const String _deploySearchKey = 'codegen::deploy_search';
+  static const String _debugBundleModeKey = 'codegen::debug_bundle_mode';
   static const String _codegenHistoryKey = 'codegen::history';
   static const String _cortanaEnabledKey = 'cortana::enabled';
   static const String _cortanaAllowFullAccessKey = 'cortana::allow_full_access';
@@ -1874,6 +2211,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _cortanaVoiceWakeEnabledKey =
       'cortana::voice_wake_enabled';
   static const String _cortanaWakePhraseKey = 'cortana::wake_phrase';
+  static const String _cortanaLive2dModelsKey = 'cortana::live2d_models';
+  static const String _cortanaSelectedLive2dModelKey =
+      'cortana::selected_live2d_model';
   static const Duration _sessionRefreshSkew = Duration(minutes: 1);
   static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -1893,7 +2233,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _groupIdController = TextEditingController();
   final _messageController = TextEditingController();
   final _codegenPromptController = TextEditingController();
-  final _codegenSearchController = TextEditingController();
+  final _codegenCodeSearchController = TextEditingController();
+  final _codegenDeploySearchController = TextEditingController();
   final _deployArgsController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
@@ -1901,6 +2242,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   final ImagePicker _imagePicker = ImagePicker();
+  final LocalFilePicker _localFilePicker = LocalFilePicker();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
   final VoskTranscriber _voskTranscriber = VoskTranscriber();
   final ApkInstaller _apkInstaller = ApkInstaller();
@@ -1972,10 +2314,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final TextEditingController _cortanaOwnerTitleCtrl = TextEditingController();
   final TextEditingController _cortanaPersonaDescCtrl = TextEditingController();
   final TextEditingController _cortanaWakePhraseCtrl = TextEditingController();
+  final TextEditingController _cortanaLive2dUrlCtrl = TextEditingController();
   bool _cortanaChatSettingsExpanded = false;
   bool _cortanaChatLogsExpanded = false;
+  bool _cortanaLive2dDownloading = false;
+  double _cortanaLive2dDownloadProgress = 0.0;
+  String _cortanaLive2dDownloadError = '';
+  String _selectedCortanaLive2dModelId = '';
+  List<CortanaLive2dModelInfo> _cortanaLive2dModels =
+      <CortanaLive2dModelInfo>[];
   bool _codegenAutoDeploy = false;
   bool _deployPackOnly = false;
+  bool _codegenDebugBundleMode = false;
   List<CodegenHistoryItem> _codegenHistory = [];
   String _activeCodegenHistoryId = '';
   int _lastSequence = 0;
@@ -2033,6 +2383,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
     unawaited(_restoreVoskDownloadProgress());
+    unawaited(_restoreCortanaLive2dModels());
     _scheduleCortanaLocationRefresh(initial: true);
   }
 
@@ -2102,12 +2453,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _groupIdController.dispose();
     _messageController.dispose();
     _codegenPromptController.dispose();
-    _codegenSearchController.dispose();
+    _codegenCodeSearchController.dispose();
+    _codegenDeploySearchController.dispose();
     _deployArgsController.dispose();
     _cortanaPersonaNameCtrl.dispose();
     _cortanaOwnerTitleCtrl.dispose();
     _cortanaPersonaDescCtrl.dispose();
     _cortanaWakePhraseCtrl.dispose();
+    _cortanaLive2dUrlCtrl.dispose();
     _messageFocusNode.dispose();
     _scrollController.dispose();
     _controlsScrollController.dispose();
@@ -2648,6 +3001,500 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (await file.exists()) {
       await file.delete();
     }
+  }
+
+  Future<Directory> _getCortanaLive2dRootDir() async {
+    final supportDir = await getApplicationSupportDirectory();
+    return Directory(
+      '${supportDir.path}${Platform.pathSeparator}cortana_live2d_models',
+    );
+  }
+
+  Future<File> _getCortanaLive2dArchiveFile() async {
+    final tempDir = await getTemporaryDirectory();
+    return File('${tempDir.path}${Platform.pathSeparator}cortana-live2d.zip');
+  }
+
+  Future<void> _restoreCortanaLive2dModels() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cortanaLive2dModelsKey)?.trim() ?? '';
+      final selected = prefs.getString(_cortanaSelectedLive2dModelKey) ?? '';
+      final restored = <CortanaLive2dModelInfo>[];
+      if (raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is! Map) {
+              continue;
+            }
+            final model = CortanaLive2dModelInfo.fromJson(
+              Map<String, dynamic>.from(item),
+            );
+            if (model == null) {
+              debugPrint('[Cortana Live2D] skip invalid persisted model: $item');
+              continue;
+            }
+            if (await Live2dModelLocator.isUsableModelJson(
+              model.modelJsonPath,
+            )) {
+              restored.add(model);
+            } else {
+              debugPrint(
+                '[Cortana Live2D] persisted model no longer usable: id=${model.id} name=${model.name} path=${model.modelJsonPath}',
+              );
+            }
+          }
+        }
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _cortanaLive2dModels = restored;
+        _selectedCortanaLive2dModelId =
+            restored.any((model) => model.id == selected) ? selected : '';
+      });
+      if (_selectedCortanaLive2dModelId != selected) {
+        await prefs.setString(
+          _cortanaSelectedLive2dModelKey,
+          _selectedCortanaLive2dModelId,
+        );
+      }
+    } catch (err) {
+      debugPrint('Restore Cortana Live2D models failed: $err');
+    }
+  }
+
+  Future<void> _persistCortanaLive2dModels() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _cortanaLive2dModelsKey,
+      jsonEncode(_cortanaLive2dModels.map((model) => model.toJson()).toList()),
+    );
+    await prefs.setString(
+      _cortanaSelectedLive2dModelKey,
+      _selectedCortanaLive2dModelId,
+    );
+  }
+
+  String _selectedCortanaLive2dModelUrl() {
+    final selected = _findCortanaLive2dModel(_selectedCortanaLive2dModelId);
+    if (selected == null) {
+      if (_selectedCortanaLive2dModelId.isNotEmpty) {
+        debugPrint(
+          '[Cortana Live2D] selected model id not found: $_selectedCortanaLive2dModelId',
+        );
+      }
+      return '';
+    }
+    final modelUrl = Uri.file(selected.modelJsonPath).toString();
+    debugPrint(
+      '[Cortana Live2D] selected model url: id=${selected.id} name=${selected.name} url=$modelUrl',
+    );
+    return modelUrl;
+  }
+
+  CortanaLive2dModelInfo? _findCortanaLive2dModel(String id) {
+    for (final model in _cortanaLive2dModels) {
+      if (model.id == id) {
+        return model;
+      }
+    }
+    return null;
+  }
+
+  Uri _normalizeLive2dResourceUri(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('请输入 Live2D 资源 URL 或本机路径');
+    }
+    final localFile = File(trimmed);
+    if (!trimmed.contains('://') && localFile.existsSync()) {
+      return localFile.uri;
+    }
+    final uri = Uri.parse(trimmed);
+    if (!uri.hasScheme) {
+      throw const FormatException('资源地址必须是 http(s)、file URL 或有效本机路径');
+    }
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'https' && scheme != 'http' && scheme != 'file') {
+      throw const FormatException('Live2D 资源仅支持 http(s)、file URL 或本机路径');
+    }
+    return uri;
+  }
+
+  Future<Uri> _resolveLive2dArchiveUri(Uri uri) async {
+    if (uri.scheme.toLowerCase() == 'file') {
+      return uri;
+    }
+    final lowerPath = uri.path.toLowerCase();
+    if (lowerPath.endsWith('.zip')) {
+      return uri;
+    }
+    final host = uri.host.toLowerCase();
+    if (!host.endsWith('aplaybox.com')) {
+      return uri;
+    }
+    final resp = await http.get(
+      uri,
+      headers: <String, String>{
+        HttpHeaders.userAgentHeader:
+            'Mozilla/5.0 CortanaLive2DDownloader/1.0',
+        HttpHeaders.acceptHeader:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    );
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw HttpException('APlayBox 页面读取失败: HTTP ${resp.statusCode}');
+    }
+    final body = utf8.decode(resp.bodyBytes, allowMalformed: true);
+    final match = RegExp(
+      r"""https?:\\?/\\?/[^"'<>\s]+?\.zip(?:\?[^"'<>\s]*)?""",
+      caseSensitive: false,
+    ).firstMatch(body);
+    if (match == null) {
+      throw const FormatException(
+        '未在 APlayBox 页面中找到可直接下载的 zip。请登录 APlayBox 后复制实际 zip 下载链接。',
+      );
+    }
+    final url = match.group(0)!.replaceAll(r'\/', '/');
+    return Uri.parse(url);
+  }
+
+  String _sanitizeLive2dModelName(String raw) {
+    final trimmed = raw.trim();
+    final fallback = 'live2d_${DateTime.now().millisecondsSinceEpoch}';
+    final source = trimmed.isEmpty ? fallback : trimmed;
+    return source
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  Future<CortanaLive2dModelInfo> _extractCortanaLive2dArchive({
+    required File archiveFile,
+    required String sourceUrl,
+  }) async {
+    final root = await _getCortanaLive2dRootDir();
+    await root.create(recursive: true);
+    final installId = DateTime.now().millisecondsSinceEpoch.toString();
+    final tempDir = Directory(
+      '${root.path}${Platform.pathSeparator}.$installId.extracting',
+    );
+    final destDir = Directory('${root.path}${Platform.pathSeparator}$installId');
+    await _deleteDirectoryIfExists(tempDir);
+    await tempDir.create(recursive: true);
+    try {
+      final archiveBytes = await archiveFile.readAsBytes();
+      debugPrint(
+        '[Cortana Live2D] extracting archive: path=${archiveFile.path} bytes=${archiveBytes.length} source=$sourceUrl',
+      );
+      addFlutterClientLog(
+        'Live2D 解压开始: ${archiveFile.path} (${_formatBytes(archiveBytes.length)})',
+      );
+      final archive = ZipDecoder().decodeBytes(archiveBytes);
+      final modelEntries = archive
+          .where((entry) => entry.isFile && entry.name.endsWith('.model3.json'))
+          .map((entry) => entry.name)
+          .toList(growable: false);
+      final modelEntriesText = modelEntries.join(', ');
+      debugPrint(
+        '[Cortana Live2D] archive entries=${archive.length} '
+        'modelEntries=$modelEntriesText',
+      );
+      final modelEntriesSummary = modelEntries.isEmpty
+          ? '未找到'
+          : modelEntriesText;
+      addFlutterClientLog(
+        'Live2D 压缩包条目: ${archive.length}, model3=$modelEntriesSummary',
+      );
+      final canonicalRoot = tempDir.absolute.uri;
+      for (final entry in archive) {
+        final outUri = canonicalRoot.resolve(entry.name);
+        if (!outUri.toFilePath().startsWith(canonicalRoot.toFilePath())) {
+          throw FormatException('压缩包包含不安全路径: ${entry.name}');
+        }
+        final outputPath = outUri.toFilePath();
+        if (entry.isFile) {
+          final file = File(outputPath);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(entry.content as List<int>);
+        } else {
+          await Directory(outputPath).create(recursive: true);
+        }
+      }
+      final modelJsonPath = await Live2dModelLocator.findModelJson(tempDir.path);
+      if (modelJsonPath == null) {
+        throw const FormatException(
+          '压缩包内未找到可用的 Cubism 3+ .model3.json 资源',
+        );
+      }
+      await _deleteDirectoryIfExists(destDir);
+      await tempDir.rename(destDir.path);
+      final finalModelJsonPath = modelJsonPath.replaceFirst(
+        tempDir.path,
+        destDir.path,
+      );
+      final modelName = _sanitizeLive2dModelName(
+        finalModelJsonPath
+            .split(Platform.pathSeparator)
+            .last
+            .replaceFirst('.model3.json', ''),
+      );
+      debugPrint(
+        '[Cortana Live2D] install prepared: id=$installId name=$modelName root=${destDir.path} model=$finalModelJsonPath',
+      );
+      addFlutterClientLog('Live2D 模型定位成功: $finalModelJsonPath');
+      return CortanaLive2dModelInfo(
+        id: installId,
+        name: modelName,
+        rootPath: destDir.path,
+        modelJsonPath: finalModelJsonPath,
+        sourceUrl: sourceUrl,
+        installedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (err, stackTrace) {
+      debugPrint('[Cortana Live2D] extract failed: $err');
+      debugPrint('$stackTrace');
+      addFlutterClientLog('Live2D 解压失败: $err');
+      await _deleteDirectoryIfExists(tempDir);
+      await _deleteDirectoryIfExists(destDir);
+      rethrow;
+    }
+  }
+
+  Future<void> _copyLocalLive2dArchive(Uri uri, File archiveFile) async {
+    final source = File(uri.toFilePath());
+    if (!await source.exists()) {
+      throw FileSystemException('Live2D 资源不存在', source.path);
+    }
+    final length = await source.length();
+    debugPrint(
+      '[Cortana Live2D] copying local archive: ${source.path} bytes=$length -> ${archiveFile.path}',
+    );
+    addFlutterClientLog(
+      'Live2D 读取本机压缩包: ${source.path} (${_formatBytes(length)})',
+    );
+    await archiveFile.parent.create(recursive: true);
+    await _deleteFileIfExists(archiveFile);
+    await source.copy(archiveFile.path);
+  }
+
+  Future<CortanaLive2dModelInfo> _installCortanaLive2dArchive({
+    required File archiveFile,
+    required String sourceUrl,
+  }) async {
+    final model = await _extractCortanaLive2dArchive(
+      archiveFile: archiveFile,
+      sourceUrl: sourceUrl,
+    );
+    await _deleteFileIfExists(archiveFile);
+    if (!mounted) {
+      return model;
+    }
+    setState(() {
+      _cortanaLive2dModels = <CortanaLive2dModelInfo>[
+        model,
+        ..._cortanaLive2dModels.where((item) => item.id != model.id),
+      ];
+      _selectedCortanaLive2dModelId = model.id;
+      _cortanaLive2dDownloadProgress = 1.0;
+      _status = 'Cortana Live2D 形象已切换: ${model.name}';
+    });
+    await _persistCortanaLive2dModels();
+    final modelUrl = Uri.file(model.modelJsonPath).toString();
+    debugPrint(
+      '[Cortana Live2D] installed and selected: id=${model.id} name=${model.name} model=${model.modelJsonPath} url=$modelUrl',
+    );
+    addFlutterClientLog('Live2D 已安装并选中: ${model.name} $modelUrl');
+    _appendSystem('Cortana Live2D 形象已安装并切换: ${model.name}');
+    return model;
+  }
+
+  Future<void> _downloadCortanaLive2dFromResourceUrl() async {
+    if (_cortanaLive2dDownloading) {
+      return;
+    }
+    setState(() {
+      _cortanaLive2dDownloading = true;
+      _cortanaLive2dDownloadProgress = 0.0;
+      _cortanaLive2dDownloadError = '';
+      _status = '正在准备下载 Cortana Live2D 形象...';
+    });
+    try {
+      final inputUri = _normalizeLive2dResourceUri(_cortanaLive2dUrlCtrl.text);
+      final archiveUri = await _resolveLive2dArchiveUri(inputUri);
+      final archiveFile = await _getCortanaLive2dArchiveFile();
+      debugPrint(
+        '[Cortana Live2D] install from input=$inputUri archive=$archiveUri temp=${archiveFile.path}',
+      );
+      addFlutterClientLog('Live2D 安装来源: $archiveUri');
+      if (archiveUri.scheme.toLowerCase() == 'file') {
+        await _copyLocalLive2dArchive(archiveUri, archiveFile);
+        if (mounted) {
+          setState(() {
+            _cortanaLive2dDownloadProgress = 1.0;
+            _status = '已读取本机 Live2D 资源，正在解压...';
+          });
+        }
+      } else {
+        await _fileDownloader.downloadToFile(
+          archiveUri,
+          destinationPath: archiveFile.path,
+          headersBuilder: ({int? rangeStart}) => <String, String>{
+            HttpHeaders.userAgentHeader:
+                'Mozilla/5.0 CortanaLive2DDownloader/1.0',
+            HttpHeaders.refererHeader: inputUri.toString(),
+            if (rangeStart != null && rangeStart > 0)
+              HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
+          },
+          onProgress: (receivedBytes, totalBytes, resumed) {
+            if (!mounted) {
+              return;
+            }
+            final progress = totalBytes != null && totalBytes > 0
+                ? receivedBytes / totalBytes
+                : 0.0;
+            setState(() {
+              _cortanaLive2dDownloadProgress = progress;
+              _status = totalBytes != null && totalBytes > 0
+                  ? '正在下载 Cortana Live2D... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}'
+                  : '正在下载 Cortana Live2D... ${_formatBytes(receivedBytes)}';
+            });
+          },
+        );
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status = '正在解压 Cortana Live2D 资源...';
+      });
+      await _installCortanaLive2dArchive(
+        archiveFile: archiveFile,
+        sourceUrl: inputUri.toString(),
+      );
+    } catch (err) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _cortanaLive2dDownloadError = err.toString();
+        _status = 'Cortana Live2D 下载失败';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _cortanaLive2dDownloading = false);
+      }
+    }
+  }
+
+  Future<void> _installCortanaLive2dResourceItem(AppResourceItem item) async {
+    if (item.fileId.isEmpty || _cortanaLive2dDownloading) {
+      return;
+    }
+    setState(() {
+      _cortanaLive2dDownloading = true;
+      _cortanaLive2dDownloadProgress = 0.0;
+      _cortanaLive2dDownloadError = '';
+      _status = '正在从资源库加载 Live2D...';
+    });
+    try {
+      final archiveFile = await _getCortanaLive2dArchiveFile();
+      debugPrint(
+        '[Cortana Live2D] install resource item: fileId=${item.fileId} name=${item.fileName} size=${item.fileSize} format=${item.fileFormat} provider=${item.storageProvider} objectKey=${item.objectKey}',
+      );
+      addFlutterClientLog(
+        'Live2D 资源库安装: ${item.fileName} fileId=${item.fileId} size=${_formatBytes(item.fileSize)}',
+      );
+      await _runAuthed('Download Live2D resource', (client) {
+        return client.downloadAttachmentToFile(
+          item.fileId,
+          destinationPath: archiveFile.path,
+          attachmentMeta: <String, dynamic>{
+            'file_id': item.fileId,
+            'file_name': item.fileName,
+            'file_size': item.fileSize,
+            'file_format': item.fileFormat,
+            'storage_provider': item.storageProvider,
+            'object_key': item.objectKey,
+          },
+          onProgress: (receivedBytes, totalBytes, resumed) {
+            if (!mounted) {
+              return;
+            }
+            final progress = totalBytes != null && totalBytes > 0
+                ? receivedBytes / totalBytes
+                : 0.0;
+            setState(() {
+              _cortanaLive2dDownloadProgress = progress;
+              _status = totalBytes != null && totalBytes > 0
+                  ? '正在加载 Live2D... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}'
+                  : '正在加载 Live2D... ${_formatBytes(receivedBytes)}';
+            });
+          },
+        );
+      });
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status = '正在解压 Cortana Live2D 资源...';
+      });
+      await _installCortanaLive2dArchive(
+        archiveFile: archiveFile,
+        sourceUrl: item.downloadUrl.isNotEmpty
+            ? item.downloadUrl
+            : 'app-resource://${item.fileId}',
+      );
+    } catch (err) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _cortanaLive2dDownloadError = err.toString();
+        _status = 'Cortana Live2D 资源加载失败';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _cortanaLive2dDownloading = false);
+      }
+    }
+  }
+
+  Future<void> _selectCortanaLive2dModel(String id) async {
+    final model = _findCortanaLive2dModel(id);
+    final modelName = model?.name ?? 'default';
+    final modelPath = model?.modelJsonPath ?? '';
+    debugPrint(
+      '[Cortana Live2D] select model: id=$id name=$modelName path=$modelPath',
+    );
+    addFlutterClientLog(
+      id.isEmpty
+          ? 'Live2D 切换到默认 Haru'
+          : 'Live2D 切换到: ${model?.name ?? id} $modelPath',
+    );
+    setState(() {
+      _selectedCortanaLive2dModelId = id;
+      _status = id.isEmpty ? '已切回默认 Cortana 形象' : '已切换 Cortana 形象';
+    });
+    await _persistCortanaLive2dModels();
+  }
+
+  Future<void> _deleteCortanaLive2dModel(CortanaLive2dModelInfo model) async {
+    await _deleteDirectoryIfExists(Directory(model.rootPath));
+    setState(() {
+      _cortanaLive2dModels = _cortanaLive2dModels
+          .where((item) => item.id != model.id)
+          .toList(growable: false);
+      if (_selectedCortanaLive2dModelId == model.id) {
+        _selectedCortanaLive2dModelId = '';
+      }
+      _status = '已删除 Cortana Live2D 形象: ${model.name}';
+    });
+    await _persistCortanaLive2dModels();
   }
 
   Future<String?> _resolveAvailableVoskModelPath({
@@ -3748,7 +4595,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   List<CodingProjectInfo> get _filteredCodingProjects {
-    final query = _codegenSearchController.text.trim().toLowerCase();
+    final query = _codegenCodeSearchController.text.trim().toLowerCase();
     if (query.isEmpty) {
       return List<CodingProjectInfo>.from(_codingProjects);
     }
@@ -3763,7 +4610,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   List<DeployProjectInfo> get _filteredDeployProjects {
-    final query = _codegenSearchController.text.trim().toLowerCase();
+    final query = _codegenDeploySearchController.text.trim().toLowerCase();
     if (query.isEmpty) {
       return List<DeployProjectInfo>.from(_deployProjects);
     }
@@ -3809,13 +4656,22 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final deployProject = prefs.getString(_deployProjectKey)?.trim() ?? '';
       final deployTarget = prefs.getString(_deployTargetKey)?.trim() ?? '';
       final deployArgs = prefs.getString(_deployArgsKey)?.trim() ?? '';
+      final codeSearch = prefs.getString(_codeSearchKey)?.trim() ?? '';
+      final deploySearch = prefs.getString(_deploySearchKey)?.trim() ?? '';
+      final debugBundleMode = prefs.getBool(_debugBundleModeKey) ?? false;
       if (!mounted) {
         _deployArgsController.text = deployArgs;
+        _codegenCodeSearchController.text = codeSearch;
+        _codegenDeploySearchController.text = deploySearch;
         _selectedCodeProjectQualifiedName = codeProject;
         _selectedCodeTool = codeTool;
         _selectedClaudeSettings = claudeSettings;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
+        _codegenDebugBundleMode = debugBundleMode;
+        if (_codegenDebugBundleMode) {
+          _codegenAutoDeploy = false;
+        }
         _codegenMode = modeName == CodegenLaunchMode.deploy.name
             ? CodegenLaunchMode.deploy
             : CodegenLaunchMode.code;
@@ -3823,11 +4679,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       setState(() {
         _deployArgsController.text = deployArgs;
+        _codegenCodeSearchController.text = codeSearch;
+        _codegenDeploySearchController.text = deploySearch;
         _selectedCodeProjectQualifiedName = codeProject;
         _selectedCodeTool = codeTool;
         _selectedClaudeSettings = claudeSettings;
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
+        _codegenDebugBundleMode = debugBundleMode;
+        if (_codegenDebugBundleMode) {
+          _codegenAutoDeploy = false;
+        }
         _codegenMode = modeName == CodegenLaunchMode.deploy.name
             ? CodegenLaunchMode.deploy
             : CodegenLaunchMode.code;
@@ -3850,6 +4712,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       await prefs.setString(_deployTargetKey, _selectedDeployTarget);
       await prefs.setString(_deployArgsKey, _deployArgsController.text.trim());
+      await prefs.setString(
+        _codeSearchKey,
+        _codegenCodeSearchController.text.trim(),
+      );
+      await prefs.setString(
+        _deploySearchKey,
+        _codegenDeploySearchController.text.trim(),
+      );
+      await prefs.setBool(_debugBundleModeKey, _codegenDebugBundleMode);
 
       // 保存历史记录
       final historyJson = jsonEncode(
@@ -4553,10 +5424,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_codegenMode == CodegenLaunchMode.code) {
       final project = _selectedCodingProject;
       if (project == null) {
-        return '/cg start <project@agent> <request>';
+        return _codegenDebugBundleMode
+            ? '/cg debug <project@agent> --debug-id <debug_id> <request>'
+            : '/cg start <project@agent> <request>';
       }
       final prompt = _codegenPromptController.text.trim();
-      final parts = <String>['/cg', 'start', project.qualifiedName];
+      final parts = <String>[
+        '/cg',
+        _codegenDebugBundleMode ? 'debug' : 'start',
+        project.qualifiedName,
+      ];
       if (_selectedCodeTool.isNotEmpty) {
         parts.add('@$_selectedCodeTool');
       }
@@ -4564,7 +5441,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         parts.add('--settings');
         parts.add(_selectedClaudeSettings);
       }
-      if (_codegenAutoDeploy) {
+      if (_codegenDebugBundleMode) {
+        parts.add('--debug-id');
+        parts.add('<debug_id>');
+      } else if (_codegenAutoDeploy) {
         parts.add('!deploy');
       }
       parts.add(prompt.isEmpty ? '<request>' : prompt);
@@ -4595,7 +5475,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
 
-    final command = _buildCodegenCommandPreview().trim();
+    var command = _buildCodegenCommandPreview().trim();
     if (_codegenMode == CodegenLaunchMode.code) {
       if (_selectedCodingProject == null) {
         _appendSystem('请先选择编码项目。');
@@ -4620,6 +5500,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
 
     FocusScope.of(context).unfocus();
+    if (_codegenMode == CodegenLaunchMode.code && _codegenDebugBundleMode) {
+      final debugID = await _createCodegenDebugBundle();
+      if (debugID.isEmpty) {
+        return;
+      }
+      command = command.replaceFirst('<debug_id>', debugID);
+    }
     _appendOutgoing(command);
     setState(() {
       _codegenSending = true;
@@ -5168,6 +6055,168 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         duration: const Duration(seconds: 1),
       ),
     );
+  }
+
+  List<String> _recentFlutterClientLogLines({int limit = 200}) {
+    final entries = List<FlutterClientLogEntry>.from(flutterClientLogs)
+        .take(limit)
+        .toList(growable: false)
+        .reversed;
+    return entries
+        .map(
+          (entry) =>
+              '${entry.timestamp.toIso8601String()} ${entry.message.trim()}',
+        )
+        .where((line) => line.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _copyRecentFlutterClientLogs() async {
+    final text = _recentFlutterClientLogLines().join('\n');
+    if (text.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('暂无 Flutter 客户端日志'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+    await _copyText('Flutter client logs', text);
+  }
+
+  Future<void> _reportDebugAppState() async {
+    if (_clientConfig == null || _sessionToken.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先登录后再上报调试状态'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+    final timeline = _llmDebugEvents.reversed
+        .take(80)
+        .map(
+          (event) => <String, dynamic>{
+            'time': event.timestamp.toIso8601String(),
+            'category': 'llm',
+            'event': event.event,
+            'label': event.label,
+            'message': event.content,
+            'payload': event.payload,
+          },
+        )
+        .toList(growable: false);
+    final appState = <String, dynamic>{
+      'root_tab': _rootTab.name,
+      'connection': _connectionLabel,
+      'websocket_connected': _connected,
+      'current_group_id': _currentGroupId,
+      'message_count': _messages.length,
+      'llm_debug_event_count': _llmDebugEvents.length,
+      'cortana_mode': _cortanaFloatingMode.name,
+      'cortana_enabled': _cortanaEnabled,
+      'base_url': _clientConfig?.baseUrl ?? '',
+    };
+    try {
+      final resp = await _client.createDebugBundle(
+        issue: <String, dynamic>{
+          'title': 'Flutter App 客户端状态上报',
+          'user_description': '用户从 App 调试页上报当前页面状态和最近客户端日志。',
+          'repro_steps': <String>['打开 App 调试页', '点击上报当前状态'],
+        },
+        appState: appState,
+        timeline: timeline,
+        clientLogs: _recentFlutterClientLogLines(),
+      );
+      final debugId = (resp['debug_id'] ?? '').toString();
+      final bundlePath = (resp['bundle_path'] ?? '').toString();
+      addFlutterClientLog('Debug Bundle 已创建: $debugId $bundlePath');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            debugId.isEmpty ? 'Debug Bundle 已创建' : 'Debug Bundle: $debugId',
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (err) {
+      addFlutterClientLog('Debug Bundle 创建失败: $err');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_describeRequestError(err, operation: 'Debug Bundle')),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<String> _createCodegenDebugBundle() async {
+    if (_clientConfig == null || _sessionToken.trim().isEmpty) {
+      _appendSystem('请先登录后再创建 Debug Bundle。');
+      return '';
+    }
+    final prompt = _codegenPromptController.text.trim();
+    final timeline = _llmDebugEvents.reversed
+        .take(80)
+        .map(
+          (event) => <String, dynamic>{
+            'time': event.timestamp.toIso8601String(),
+            'category': 'llm',
+            'event': event.event,
+            'label': event.label,
+            'message': event.content,
+            'payload': event.payload,
+          },
+        )
+        .toList(growable: false);
+    final appState = <String, dynamic>{
+      'root_tab': _rootTab.name,
+      'connection': _connectionLabel,
+      'websocket_connected': _connected,
+      'current_group_id': _currentGroupId,
+      'message_count': _messages.length,
+      'llm_debug_event_count': _llmDebugEvents.length,
+      'cortana_mode': _cortanaFloatingMode.name,
+      'cortana_enabled': _cortanaEnabled,
+      'base_url': _clientConfig?.baseUrl ?? '',
+      'codegen_project': _selectedCodingProject?.qualifiedName ?? '',
+      'codegen_tool': _selectedCodeTool,
+      'codegen_settings': _selectedClaudeSettings,
+    };
+    try {
+      final resp = await _runAuthed('Create codegen debug bundle', (client) {
+        return client.createDebugBundle(
+          issue: <String, dynamic>{
+            'title': 'Flutter App 编码调试',
+            'user_description': prompt.isEmpty
+                ? '用户从编码发布页发起 ACP debug 会话。'
+                : prompt,
+            'repro_steps': <String>['打开编码发布页', '启用携带 Debug Bundle', '发送编码调试命令'],
+          },
+          appState: appState,
+          timeline: timeline,
+          clientLogs: _recentFlutterClientLogLines(),
+        );
+      });
+      final debugId = (resp['debug_id'] ?? '').toString().trim();
+      final bundlePath = (resp['bundle_path'] ?? '').toString().trim();
+      addFlutterClientLog('Codegen Debug Bundle 已创建: $debugId $bundlePath');
+      if (debugId.isEmpty) {
+        _appendSystem('Debug Bundle 创建成功，但服务端没有返回 debug_id。');
+      } else {
+        _appendSystem('Debug Bundle 已创建: $debugId');
+      }
+      return debugId;
+    } catch (err) {
+      addFlutterClientLog('Codegen Debug Bundle 创建失败: $err');
+      _appendSystem(_describeRequestError(err, operation: 'Debug Bundle'));
+      return '';
+    }
   }
 
   void _appendSystem(String text) {
@@ -7218,6 +8267,386 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return _pickAndSendImage(ImageSource.gallery);
       case _AttachmentMenuAction.cameraImage:
         return _pickAndSendImage(ImageSource.camera);
+      case _AttachmentMenuAction.imageResource:
+        return _pickAndUploadImageResource();
+      case _AttachmentMenuAction.live2dResource:
+        return _promptAndUploadResourcePath('live2d');
+      case _AttachmentMenuAction.fileResource:
+        return _promptAndUploadResourcePath('file');
+      case _AttachmentMenuAction.browseResources:
+        return _openResourceLibrary();
+    }
+  }
+
+  Future<void> _pickAndUploadImageResource() async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    if (_sending || _recording) {
+      return;
+    }
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 96,
+      );
+      if (picked == null) {
+        return;
+      }
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
+        _appendSystem('Selected image is empty.');
+        return;
+      }
+      final fileName = picked.name.trim().isEmpty
+          ? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg'
+          : picked.name.trim();
+      setState(() {
+        _sending = true;
+        _status = 'Uploading image resource...';
+      });
+      try {
+        final imageFormat = _detectImageFormat(fileName, bytes);
+        final item = await _runAuthed('Upload image resource', (client) {
+          return client.uploadResourceBytes(
+            category: 'image',
+            fileName: fileName,
+            bytes: bytes,
+            contentType: imageFormat == 'jpg'
+                ? 'image/jpeg'
+                : 'image/$imageFormat',
+          );
+        });
+        _appendSystem('图片资源已上传：${item.fileName}');
+        if (mounted) {
+          setState(() => _status = 'Image resource uploaded');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _sending = false);
+        }
+      }
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Upload image resource'));
+      if (mounted) {
+        setState(() => _sending = false);
+      }
+    }
+  }
+
+  Future<void> _promptAndUploadResourcePath(String category) async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    if (!_isAndroidHost) {
+      _appendSystem('当前平台暂不支持系统文件选择器，请在 Android 设备上选择文件上传。');
+      return;
+    }
+    if (_sending || _recording) {
+      return;
+    }
+    try {
+      final path = await _localFilePicker.pickFile();
+      if (path == null || path.trim().isEmpty) {
+        return;
+      }
+      final file = File(path.trim());
+      if (!await file.exists()) {
+        _appendSystem('文件不存在：${path.trim()}');
+        return;
+      }
+      final fileLength = await file.length();
+      debugPrint(
+        '[App Resource] upload start: category=$category path=${file.path} bytes=$fileLength',
+      );
+      addFlutterClientLog(
+        '资源上传开始: category=$category path=${file.path} size=${_formatBytes(fileLength)}',
+      );
+      setState(() {
+        _sending = true;
+        _status = 'Uploading resource...';
+      });
+      try {
+        final item = await _runAuthed('Upload resource', (client) {
+          return client.uploadResourceFile(
+            category: category,
+            path: path.trim(),
+          );
+        });
+        _appendSystem(
+          '资源已上传：${item.fileName} (${_resourceCategoryLabel(item.category)})',
+        );
+        debugPrint(
+          '[App Resource] upload done: category=${item.category} fileId=${item.fileId} name=${item.fileName} size=${item.fileSize} format=${item.fileFormat}',
+        );
+        addFlutterClientLog(
+          '资源上传完成: ${item.fileName} fileId=${item.fileId} category=${item.category} size=${_formatBytes(item.fileSize)}',
+        );
+        if (mounted) {
+          setState(() => _status = 'Resource uploaded');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _sending = false);
+        }
+      }
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Upload resource'));
+      if (mounted) {
+        setState(() => _sending = false);
+      }
+    }
+  }
+
+  Future<void> _openResourceLibrary() async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    String selectedCategory = 'live2d';
+    Future<List<AppResourceItem>> load(String category) {
+      return _runAuthed('List resources', (client) {
+        return client.listResources(category);
+      });
+    }
+
+    Future<List<AppResourceItem>> future = load(selectedCategory);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final palette = context.appPalette;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                decoration: BoxDecoration(
+                  color: palette.surface,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
+                  border: Border.all(color: palette.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.inventory_2_outlined, color: palette.accent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '资源库',
+                            style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '刷新',
+                          onPressed: () {
+                            setSheetState(() {
+                              future = load(selectedCategory);
+                            });
+                          },
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: ['live2d', 'image', 'file'].map((category) {
+                        final selected = selectedCategory == category;
+                        return ChoiceChip(
+                          selected: selected,
+                          label: Text(_resourceCategoryLabel(category)),
+                          onSelected: (_) {
+                            setSheetState(() {
+                              selectedCategory = category;
+                              future = load(category);
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: FutureBuilder<List<AppResourceItem>>(
+                        future: future,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState != ConnectionState.done) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text(
+                                _describeRequestError(
+                                  snapshot.error!,
+                                  operation: 'List resources',
+                                ),
+                                style: TextStyle(color: palette.error),
+                              ),
+                            );
+                          }
+                          final items = snapshot.data ?? const <AppResourceItem>[];
+                          if (items.isEmpty) {
+                            return Center(
+                              child: Text(
+                                '暂无${_resourceCategoryLabel(selectedCategory)}资源',
+                                style: TextStyle(color: palette.textSecondary),
+                              ),
+                            );
+                          }
+                          return ListView.separated(
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) => Divider(
+                              height: 1,
+                              color: palette.border,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = items[index];
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  _resourceCategoryIcon(item.category),
+                                  color: palette.accent,
+                                ),
+                                title: Text(
+                                  item.fileName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${_formatBytes(item.fileSize)} · ${item.storageProvider.isEmpty ? 'local' : item.storageProvider}',
+                                  style: TextStyle(
+                                    color: palette.textSecondary,
+                                  ),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (item.category == 'live2d')
+                                      IconButton(
+                                        tooltip: '安装并切换',
+                                        onPressed: _cortanaLive2dDownloading
+                                            ? null
+                                            : () {
+                                                unawaited(
+                                                  _installCortanaLive2dResourceItem(
+                                                    item,
+                                                  ),
+                                                );
+                                              },
+                                        icon: const Icon(
+                                          Icons.face_retouching_natural,
+                                        ),
+                                      ),
+                                    IconButton(
+                                      tooltip: '下载',
+                                      onPressed: () {
+                                        unawaited(_downloadResourceItem(item));
+                                      },
+                                      icon: const Icon(Icons.download_rounded),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _downloadResourceItem(AppResourceItem item) async {
+    if (item.fileId.isEmpty) {
+      return;
+    }
+    try {
+      final filePath = await _attachmentPathForFileID(
+        fileId: item.fileId,
+        subdir: 'resource_downloads',
+        prefix: item.category.isEmpty ? 'resource' : item.category,
+        extension: item.fileFormat.isEmpty ? 'bin' : item.fileFormat,
+      );
+      await _runAuthed('Download attachment', (client) {
+        return client.downloadAttachmentToFile(
+          item.fileId,
+          destinationPath: filePath,
+          attachmentMeta: <String, dynamic>{
+            'file_id': item.fileId,
+            'file_name': item.fileName,
+            'file_size': item.fileSize,
+            'file_format': item.fileFormat,
+          },
+          onProgress: (received, total, resumed) {
+            _updateDownloadStatus(
+              label: item.fileName.isEmpty ? '资源' : item.fileName,
+              receivedBytes: received,
+              totalBytes: total,
+              resumed: resumed,
+            );
+          },
+        );
+      });
+      _clearDownloadStatus(successText: '资源已下载：$filePath');
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Download attachment'));
+    }
+  }
+
+  String _resourceCategoryLabel(String category) {
+    switch (category) {
+      case 'live2d':
+        return 'Live2D';
+      case 'image':
+        return '图片';
+      case 'audio':
+        return '音频';
+      case 'video':
+        return '视频';
+      default:
+        return '文件';
+    }
+  }
+
+  IconData _resourceCategoryIcon(String category) {
+    switch (category) {
+      case 'live2d':
+        return Icons.face_retouching_natural_outlined;
+      case 'image':
+        return Icons.image_outlined;
+      case 'audio':
+        return Icons.graphic_eq_rounded;
+      case 'video':
+        return Icons.movie_outlined;
+      default:
+        return Icons.insert_drive_file_outlined;
     }
   }
 
@@ -7706,6 +9135,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ],
         ),
         const SizedBox(height: 12),
+        _buildCortanaLive2dSettings(),
+        const SizedBox(height: 12),
         Text(
           '人设配置',
           style: TextStyle(
@@ -7752,6 +9183,126 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             _cortanaSettings.copyWith(personaDescription: v.trim()),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildCortanaLive2dSettings() {
+    final palette = _palette;
+    final selectedModel = _findCortanaLive2dModel(
+      _selectedCortanaLive2dModelId,
+    );
+    final selectedLabel = _selectedCortanaLive2dModelId.isEmpty
+        ? '默认 Haru'
+        : selectedModel?.name ?? '已安装形象';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Live2D 形象',
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '当前: $selectedLabel',
+          style: TextStyle(color: palette.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedCortanaLive2dModelId,
+          decoration: const InputDecoration(labelText: '切换形象', isDense: true),
+          items: [
+            const DropdownMenuItem(value: '', child: Text('默认 Haru')),
+            for (final model in _cortanaLive2dModels)
+              DropdownMenuItem(value: model.id, child: Text(model.name)),
+          ],
+          onChanged: (value) {
+            if (value == null) {
+              return;
+            }
+            unawaited(_selectCortanaLive2dModel(value));
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _cortanaLive2dUrlCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Live2D 资源 URL / 本机路径',
+            hintText: 'file:///path/model.zip 或 https://.../model.zip',
+            isDense: true,
+          ),
+          keyboardType: TextInputType.url,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _cortanaLive2dDownloading
+                    ? null
+                    : _downloadCortanaLive2dFromResourceUrl,
+                icon: _cortanaLive2dDownloading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_rounded),
+                label: Text(_cortanaLive2dDownloading ? '下载中' : '下载并切换'),
+              ),
+            ),
+          ],
+        ),
+        if (_cortanaLive2dDownloading ||
+            (_cortanaLive2dDownloadProgress > 0 &&
+                _cortanaLive2dDownloadProgress < 1))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: LinearProgressIndicator(
+              value: _cortanaLive2dDownloadProgress > 0
+                  ? _cortanaLive2dDownloadProgress.clamp(0.0, 1.0)
+                  : null,
+            ),
+          ),
+        if (_cortanaLive2dDownloadError.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _cortanaLive2dDownloadError,
+              style: TextStyle(color: palette.error, fontSize: 12),
+            ),
+          ),
+        if (_cortanaLive2dModels.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          for (final model in _cortanaLive2dModels)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.face_retouching_natural),
+              title: Text(
+                model.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                model.sourceUrl,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: IconButton(
+                tooltip: '删除',
+                onPressed: _cortanaLive2dDownloading
+                    ? null
+                    : () => unawaited(_deleteCortanaLive2dModel(model)),
+                icon: const Icon(Icons.delete_outline),
+              ),
+              onTap: () => unawaited(_selectCortanaLive2dModel(model.id)),
+            ),
+        ],
       ],
     );
   }
@@ -8352,6 +9903,75 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
             subtitle: Text(
               'Capture and send',
+              style: TextStyle(color: palette.textSecondary),
+            ),
+          ),
+        ),
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.imageResource,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.image_outlined, color: palette.textPrimary),
+            title: Text(
+              'Upload Image Asset',
+              style: TextStyle(color: palette.textPrimary),
+            ),
+            subtitle: Text(
+              'Store under image',
+              style: TextStyle(color: palette.textSecondary),
+            ),
+          ),
+        ),
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.live2dResource,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.face_retouching_natural_outlined,
+              color: palette.textPrimary,
+            ),
+            title: Text(
+              'Upload Live2D Asset',
+              style: TextStyle(color: palette.textPrimary),
+            ),
+            subtitle: Text(
+              'Zip or model file path',
+              style: TextStyle(color: palette.textSecondary),
+            ),
+          ),
+        ),
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.fileResource,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.upload_file_outlined,
+              color: palette.textPrimary,
+            ),
+            title: Text(
+              'Upload File Asset',
+              style: TextStyle(color: palette.textPrimary),
+            ),
+            subtitle: Text(
+              'Store under file',
+              style: TextStyle(color: palette.textSecondary),
+            ),
+          ),
+        ),
+        PopupMenuItem<_AttachmentMenuAction>(
+          value: _AttachmentMenuAction.browseResources,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              Icons.inventory_2_outlined,
+              color: palette.textPrimary,
+            ),
+            title: Text(
+              'Browse Assets',
+              style: TextStyle(color: palette.textPrimary),
+            ),
+            subtitle: Text(
+              'Live2D, image, file',
               style: TextStyle(color: palette.textSecondary),
             ),
           ),
@@ -9202,8 +10822,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       commandPreview: _buildCodegenCommandPreview(),
       autoDeploy: _codegenAutoDeploy,
       deployPackOnly: _deployPackOnly,
+      debugBundleMode: _codegenDebugBundleMode,
       codegenPromptController: _codegenPromptController,
-      codegenSearchController: _codegenSearchController,
+      codegenCodeSearchController: _codegenCodeSearchController,
+      codegenDeploySearchController: _codegenDeploySearchController,
       deployArgsController: _deployArgsController,
       history: _codegenHistory,
       onRefresh: () => unawaited(_loadCodegenProjects()),
@@ -9212,6 +10834,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         setState(() {
           _syncFilteredCodegenSelections();
         });
+        unawaited(_persistCodegenPreferences());
       },
       onCodeProjectChanged: _handleCodeProjectChanged,
       onCodeToolChanged: _handleCodeToolChanged,
@@ -9220,6 +10843,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       onAutoDeployChanged: (value) {
         setState(() {
           _codegenAutoDeploy = value;
+        });
+        unawaited(_persistCodegenPreferences());
+      },
+      onDebugBundleModeChanged: (value) {
+        setState(() {
+          _codegenDebugBundleMode = value;
+          if (value) {
+            _codegenAutoDeploy = false;
+          }
         });
         unawaited(_persistCodegenPreferences());
       },
@@ -9571,6 +11203,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       },
       settings: _cortanaSettings,
       onSettingsChanged: _applyCortanaSettings,
+      live2dModelUrl: _selectedCortanaLive2dModelUrl(),
     );
   }
 
@@ -9593,6 +11226,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: '复制客户端日志',
+                  onPressed: () => unawaited(_copyRecentFlutterClientLogs()),
+                  icon: const Icon(Icons.copy_all_outlined),
+                ),
+                IconButton(
+                  tooltip: '上报当前状态',
+                  onPressed: () => unawaited(_reportDebugAppState()),
+                  icon: const Icon(Icons.bug_report_outlined),
                 ),
                 IconButton(
                   tooltip: '清空',

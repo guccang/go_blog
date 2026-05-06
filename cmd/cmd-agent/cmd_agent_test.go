@@ -157,6 +157,34 @@ func TestBuildCodingStartCallForACPAddsSettings(t *testing.T) {
 	}
 }
 
+func TestBuildDebugStartCallAddsBundleAndSettings(t *testing.T) {
+	args := buildDebugStartCall(
+		"cmd-agent",
+		"flutter-client",
+		"dbg_20260506_120000_ab12",
+		"",
+		"修复启动页白屏",
+		"codex",
+		"debug",
+	)
+	if args["debug_id"] != "dbg_20260506_120000_ab12" {
+		t.Fatalf("unexpected debug_id: %#v", args["debug_id"])
+	}
+	if args["user_request"] != "修复启动页白屏" {
+		t.Fatalf("unexpected user_request: %#v", args["user_request"])
+	}
+	if args["tool"] != "codex" {
+		t.Fatalf("unexpected tool: %#v", args["tool"])
+	}
+	extraArgs, ok := args["extra_args"].([]string)
+	if !ok {
+		t.Fatalf("expected []string extra_args, got %#v", args["extra_args"])
+	}
+	if len(extraArgs) != 2 || extraArgs[0] != "--settings" || extraArgs[1] != "debug" {
+		t.Fatalf("unexpected extra_args: %#v", extraArgs)
+	}
+}
+
 func TestCodingToolsForACPAgentFallsBackToBackend(t *testing.T) {
 	agent := gatewayAgentSnapshot{
 		Tools: []string{"AcpStartSession"},

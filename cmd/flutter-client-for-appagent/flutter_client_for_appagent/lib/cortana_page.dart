@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
 
 class FlutterClientLogEntry {
   const FlutterClientLogEntry({required this.timestamp, required this.message});
@@ -260,6 +262,13 @@ class _QueuedBroadcast {
   final VoidCallback? onFinished;
 }
 
+class _CustomCortanaWebRoot {
+  const _CustomCortanaWebRoot({required this.root, required this.modelUrl});
+
+  final Directory root;
+  final String modelUrl;
+}
+
 class CortanaPage extends StatefulWidget {
   const CortanaPage({
     super.key,
@@ -276,6 +285,7 @@ class CortanaPage extends StatefulWidget {
     this.onBroadcast,
     this.settings = const CortanaSettings(),
     this.onSettingsChanged,
+    this.live2dModelUrl = '',
   });
 
   final CortanaDisplayMode mode;
@@ -291,6 +301,7 @@ class CortanaPage extends StatefulWidget {
   final void Function(CortanaReplyPayload payload)? onBroadcast;
   final CortanaSettings settings;
   final ValueChanged<CortanaSettings>? onSettingsChanged;
+  final String live2dModelUrl;
 
   @override
   State<CortanaPage> createState() => CortanaPageState();
@@ -301,6 +312,12 @@ class CortanaPageState extends State<CortanaPage> {
   static const _cortanaHtmlAsset = 'assets/cortana/index.html';
   static const _cortanaLocalPath = 'index.html';
   static const _localhostPort = 18080;
+  static const List<String> _webRuntimeAssets = <String>[
+    'assets/cortana/index.html',
+    'assets/cortana/vendor/pixi.min.js',
+    'assets/cortana/vendor/live2dcubismcore.min.js',
+    'assets/cortana/vendor/cubism4.min.js',
+  ];
   InAppWebViewController? _webCtrl;
   final ListQueue<_QueuedBroadcast> _queuedBroadcasts =
       ListQueue<_QueuedBroadcast>();
@@ -313,6 +330,8 @@ class CortanaPageState extends State<CortanaPage> {
   bool _speaking = false;
   InAppLocalhostServer? _localhostServer;
   Future<void>? _androidLocalhostFuture;
+  HttpServer? _customLocalhostServer;
+  Future<void>? _customLocalhostFuture;
   int _playbackToken = 0;
   final List<_CortanaVoiceHistoryItem> _voiceHistory =
       <_CortanaVoiceHistoryItem>[];
@@ -330,6 +349,8 @@ class CortanaPageState extends State<CortanaPage> {
   bool _isDragging = false;
   bool _webViewReady = false;
   String? _lastContextualExpression;
+  Future<_CustomCortanaWebRoot>? _customWebRootFuture;
+  int _webViewRevision = 0;
 
   bool get isSpeaking => _speaking;
 
@@ -374,31 +395,19 @@ class CortanaPageState extends State<CortanaPage> {
   void initState() {
     super.initState();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      _localhostServer = InAppLocalhostServer(
-        documentRoot: 'assets/cortana',
-        port: _localhostPort,
-      );
-      _appendLog('Starting localhost server on $_localhostPort');
-      _androidLocalhostFuture = _localhostServer!
-          .start()
-          .then((_) {
-            if (mounted) {
-              _updateLoadStatus(
-                'Localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
-              );
-            }
-          })
-          .catchError((Object error) {
-            if (mounted) {
-              _updateLoadStatus('Localhost start failed: $error');
-            }
-            throw error;
-          });
+      if (_usesCustomLive2dModel) {
+        _customWebRootFuture = _prepareCustomWebRoot();
+      } else {
+        _ensureAssetLocalhostServer();
+      }
     }
     _debugStateTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => unawaited(_refreshLive2dDebugState()),
     );
+    if (_usesCustomLive2dModel && _customWebRootFuture == null) {
+      _customWebRootFuture = _prepareCustomWebRoot();
+    }
   }
 
   @override
@@ -414,6 +423,36 @@ class CortanaPageState extends State<CortanaPage> {
       // Settings are now edited in the chat page controls;
       // CortanaPage only consumes the settings values.
     }
+    if (widget.live2dModelUrl != oldWidget.live2dModelUrl) {
+      final oldModelUrl = oldWidget.live2dModelUrl.trim().isEmpty
+          ? 'default'
+          : oldWidget.live2dModelUrl.trim();
+      final newModelUrl = widget.live2dModelUrl.trim().isEmpty
+          ? 'default'
+          : widget.live2dModelUrl.trim();
+      _appendLog(
+        'Live2D model URL changed: old=$oldModelUrl new=$newModelUrl',
+      );
+      _webViewReady = false;
+      _webCtrl = null;
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        if (_usesCustomLive2dModel) {
+          _customWebRootFuture = _prepareCustomWebRootAfterClosingAssetServer();
+        } else {
+          _customWebRootFuture = null;
+          _androidLocalhostFuture =
+              _restartAssetLocalhostServerAfterClosingCustomServer();
+        }
+      } else {
+        _customWebRootFuture = _usesCustomLive2dModel
+            ? _prepareCustomWebRoot()
+            : null;
+      }
+      setState(() {
+        _live2dDebugState = null;
+        _webViewRevision++;
+      });
+    }
   }
 
   @override
@@ -426,7 +465,60 @@ class CortanaPageState extends State<CortanaPage> {
     if (localhostServer != null) {
       unawaited(localhostServer.close());
     }
+    final customLocalhostServer = _customLocalhostServer;
+    if (customLocalhostServer != null) {
+      unawaited(customLocalhostServer.close(force: true));
+    }
     super.dispose();
+  }
+
+  void _ensureAssetLocalhostServer() {
+    if (_localhostServer != null || _androidLocalhostFuture != null) {
+      return;
+    }
+    _localhostServer = InAppLocalhostServer(
+      documentRoot: 'assets/cortana',
+      port: _localhostPort,
+    );
+    _appendLog('Starting localhost server on $_localhostPort');
+    _androidLocalhostFuture = _localhostServer!
+        .start()
+        .then((_) {
+          if (mounted) {
+            _updateLoadStatus(
+              'Localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
+            );
+          }
+        })
+        .catchError((Object error) {
+          if (mounted) {
+            _updateLoadStatus('Localhost start failed: $error');
+          }
+          throw error;
+        });
+  }
+
+  Future<_CustomCortanaWebRoot>
+      _prepareCustomWebRootAfterClosingAssetServer() async {
+    final localhostServer = _localhostServer;
+    _localhostServer = null;
+    _androidLocalhostFuture = null;
+    if (localhostServer != null) {
+      await localhostServer.close();
+    }
+    return _prepareCustomWebRoot();
+  }
+
+  Future<void> _restartAssetLocalhostServerAfterClosingCustomServer() async {
+    final customLocalhostServer = _customLocalhostServer;
+    _customLocalhostServer = null;
+    _customLocalhostFuture = null;
+    if (customLocalhostServer != null) {
+      await customLocalhostServer.close(force: true);
+    }
+    _androidLocalhostFuture = null;
+    _ensureAssetLocalhostServer();
+    await _androidLocalhostFuture;
   }
 
   void _appendLog(String message) {
@@ -459,6 +551,249 @@ class CortanaPageState extends State<CortanaPage> {
 
   void _updateLoadStatus(String message) {
     _appendLog(message);
+  }
+
+  bool _shouldSurfaceCortanaWebLog(String message) {
+    if (message.trim().isEmpty) {
+      return false;
+    }
+    const noisyFragments = <String>[
+      'Model laid out:',
+      'setMotion:',
+      'Motion applied:',
+      'setExpression:',
+      'Expression applied:',
+    ];
+    if (noisyFragments.any(message.contains)) {
+      return false;
+    }
+    const importantFragments = <String>[
+      '[Cortana]',
+      '[Cortana Stack]',
+      'FETCH ',
+      'FETCH ERROR',
+      'MODEL_URL=',
+      'Resolved model URL:',
+      'Model resources discovered:',
+      'Missing Cortana assets:',
+      'Loading Live2D model',
+      'Live2D model loaded',
+      'Error:',
+      'Window error:',
+      'Unhandled rejection:',
+    ];
+    return importantFragments.any(message.contains);
+  }
+
+  bool get _usesCustomLive2dModel => widget.live2dModelUrl.trim().isNotEmpty;
+
+  String get _effectiveLive2dModelUrl => widget.live2dModelUrl.trim();
+
+  String _htmlWithModelOverride(String html, String modelUrl) {
+    if (modelUrl.isEmpty) {
+      return html;
+    }
+    _appendLog('Preparing Cortana custom model override: $modelUrl');
+    final overrideScript =
+        '<script>window.CORTANA_MODEL_URL=${jsonEncode(modelUrl)};</script>';
+    return html.replaceFirst(
+      '<script src="./vendor/pixi.min.js"></script>',
+      '$overrideScript\n<script src="./vendor/pixi.min.js"></script>',
+    );
+  }
+
+  Future<_CustomCortanaWebRoot> _prepareCustomWebRoot() async {
+    final supportDir = await getApplicationSupportDirectory();
+    final root = Directory(
+      '${supportDir.path}${Platform.pathSeparator}cortana_web_runtime',
+    );
+    final modelUrl = await _prepareCustomModelForWebRoot(root);
+    _appendLog(
+      'Preparing Cortana web runtime: root=${root.path}, model=$modelUrl',
+    );
+    await root.create(recursive: true);
+    for (final asset in _webRuntimeAssets) {
+      final relative = asset.replaceFirst('assets/cortana/', '');
+      final outFile = File('${root.path}${Platform.pathSeparator}$relative');
+      await outFile.parent.create(recursive: true);
+      if (asset.endsWith('.html')) {
+        final html = await rootBundle.loadString(asset);
+        await outFile.writeAsString(
+          _htmlWithModelOverride(html, modelUrl),
+          encoding: utf8,
+        );
+        _appendLog('Wrote Cortana runtime html: ${outFile.path}');
+      } else {
+        final data = await rootBundle.load(asset);
+        await outFile.writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        );
+        _appendLog('Wrote Cortana runtime asset: ${outFile.path}');
+      }
+    }
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _ensureCustomLocalhostServer(root);
+      await _customLocalhostFuture;
+    }
+    return _CustomCortanaWebRoot(root: root, modelUrl: modelUrl);
+  }
+
+  Future<String> _prepareCustomModelForWebRoot(Directory root) async {
+    final modelUrl = _effectiveLive2dModelUrl;
+    final uri = Uri.tryParse(modelUrl);
+    if (uri == null || !uri.isScheme('file')) {
+      return modelUrl;
+    }
+
+    final sourceModelJson = File(uri.toFilePath());
+    if (!await sourceModelJson.exists()) {
+      return modelUrl;
+    }
+
+    final outDir = Directory(
+      '${root.path}${Platform.pathSeparator}custom_model',
+    );
+    await _deleteDirectoryIfExists(outDir);
+    await outDir.create(recursive: true);
+    await _copyDirectory(sourceModelJson.parent, outDir);
+    final relativeModelPath = Uri(
+      pathSegments: <String>[
+        'custom_model',
+        sourceModelJson.uri.pathSegments.last,
+      ],
+    ).toString();
+    return './$relativeModelPath';
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await for (final entity in source.list(
+      recursive: false,
+      followLinks: false,
+    )) {
+      final name = entity.uri.pathSegments.isEmpty
+          ? ''
+          : entity.uri.pathSegments.last;
+      if (name.isEmpty) {
+        continue;
+      }
+      final outPath = '${destination.path}${Platform.pathSeparator}$name';
+      if (entity is Directory) {
+        final outDir = Directory(outPath);
+        await outDir.create(recursive: true);
+        await _copyDirectory(entity, outDir);
+      } else if (entity is File) {
+        await File(outPath).writeAsBytes(await entity.readAsBytes());
+      }
+    }
+  }
+
+  Future<void> _deleteDirectoryIfExists(Directory directory) async {
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  }
+
+  void _ensureCustomLocalhostServer(Directory root) {
+    if (_customLocalhostServer != null || _customLocalhostFuture != null) {
+      return;
+    }
+    _customLocalhostFuture = HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      _localhostPort,
+    )
+        .then((server) {
+          _customLocalhostServer = server;
+          server.listen(
+            (request) => unawaited(_serveCustomLocalhostFile(root, request)),
+          );
+          if (mounted) {
+            _updateLoadStatus(
+              'Custom localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
+            );
+          }
+        })
+        .catchError((Object error) {
+          if (mounted) {
+            _updateLoadStatus('Custom localhost start failed: $error');
+          }
+          throw error;
+        });
+  }
+
+  Future<void> _serveCustomLocalhostFile(
+    Directory root,
+    HttpRequest request,
+  ) async {
+    try {
+      if (request.method != 'GET' && request.method != 'HEAD') {
+        request.response.statusCode = HttpStatus.methodNotAllowed;
+        await request.response.close();
+        return;
+      }
+
+      final segments = request.uri.pathSegments;
+      if (segments.any((segment) => segment == '..')) {
+        request.response.statusCode = HttpStatus.forbidden;
+        await request.response.close();
+        return;
+      }
+      final relativeSegments = segments.isEmpty
+          ? <String>['index.html']
+          : segments;
+      final fileUri = root.absolute.uri.resolve(
+        Uri(pathSegments: relativeSegments).toString(),
+      );
+      final rootPath = root.absolute.uri.toFilePath();
+      final filePath = fileUri.toFilePath();
+      if (!filePath.startsWith(rootPath)) {
+        request.response.statusCode = HttpStatus.forbidden;
+        await request.response.close();
+        return;
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+        return;
+      }
+
+      request.response.headers.contentType = _contentTypeForPath(file.path);
+      request.response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+      if (request.method == 'HEAD') {
+        request.response.contentLength = await file.length();
+        await request.response.close();
+        return;
+      }
+      await request.response.addStream(file.openRead());
+      await request.response.close();
+    } catch (error) {
+      request.response.statusCode = HttpStatus.internalServerError;
+      await request.response.close();
+    }
+  }
+
+  ContentType _contentTypeForPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.html')) {
+      return ContentType.html;
+    }
+    if (lower.endsWith('.js')) {
+      return ContentType('application', 'javascript', charset: 'utf-8');
+    }
+    if (lower.endsWith('.json')) {
+      return ContentType.json;
+    }
+    if (lower.endsWith('.png')) {
+      return ContentType('image', 'png');
+    }
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return ContentType('image', 'jpeg');
+    }
+    if (lower.endsWith('.moc3')) {
+      return ContentType('application', 'octet-stream');
+    }
+    return ContentType.binary;
   }
 
   Future<void> _hideDiagnostics() async {
@@ -582,8 +917,10 @@ class CortanaPageState extends State<CortanaPage> {
         ctrl.addJavaScriptHandler(
           handlerName: _jsLogHandlerName,
           callback: (args) {
-            // Agent bridge logs are suppressed;
-            // only Flutter-native logs are displayed.
+            final message = args.isEmpty ? '' : args.first.toString();
+            if (_shouldSurfaceCortanaWebLog(message)) {
+              _appendLog('WebView JS: $message');
+            }
             return {'ok': true};
           },
         );
@@ -607,8 +944,10 @@ class CortanaPageState extends State<CortanaPage> {
         await _refreshLive2dDebugState();
       },
       onConsoleMessage: (ctrl, msg) {
-        // Agent logs from WebView console are suppressed;
-        // only Flutter-native logs are displayed.
+        final message = msg.message;
+        if (_shouldSurfaceCortanaWebLog(message)) {
+          _appendLog('WebView console: $message');
+        }
       },
       onReceivedError: (ctrl, request, error) {
         debugPrint(
@@ -1885,8 +2224,43 @@ class CortanaPageState extends State<CortanaPage> {
     if (kIsWeb) {
       return _buildWebCortanaBackdrop(context);
     }
+    if (_usesCustomLive2dModel) {
+      _customWebRootFuture ??= _prepareCustomWebRoot();
+      return FutureBuilder<_CustomCortanaWebRoot>(
+        key: ValueKey<int>(_webViewRevision),
+        future: _customWebRootFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('Cortana custom model failed: ${snapshot.error}'),
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final webRoot = snapshot.data!;
+          final root = webRoot.root;
+          final htmlFile = File(
+            '${root.path}${Platform.pathSeparator}index.html',
+          );
+          debugPrint(
+            '[Cortana Live2D] loading custom runtime: ${htmlFile.uri} model=${webRoot.modelUrl}',
+          );
+          final url =
+              !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+              ? 'http://localhost:$_localhostPort/$_cortanaLocalPath'
+              : Uri.file(htmlFile.path).toString();
+          return _buildWebView(
+            initialUrlRequest: URLRequest(
+              url: WebUri(url),
+            ),
+          );
+        },
+      );
+    }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return FutureBuilder<void>(
+        key: ValueKey<int>(_webViewRevision),
         future: _androidLocalhostFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -1907,7 +2281,10 @@ class CortanaPageState extends State<CortanaPage> {
         },
       );
     }
-    return _buildWebView(initialFile: _cortanaHtmlAsset);
+    return KeyedSubtree(
+      key: ValueKey<int>(_webViewRevision),
+      child: _buildWebView(initialFile: _cortanaHtmlAsset),
+    );
   }
 
   Widget _buildWebCortanaBackdrop(BuildContext context) {
@@ -2011,6 +2388,7 @@ class CortanaPageState extends State<CortanaPage> {
           width: isFullscreen ? null : floatingSize?.width,
           height: isFullscreen ? null : floatingSize?.height,
           child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
             onTap: isFullscreen
                 ? null
                 : () {
@@ -2089,9 +2467,12 @@ class CortanaPageState extends State<CortanaPage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // WebView (hidden behind avatar in collapsed mode)
+                    // 浮动小窗只展示 Live2D，避免 Android WebView 在播报时抢占输入焦点。
                     if (!isCollapsed)
-                      _buildWebViewForPlatform()
+                      IgnorePointer(
+                        ignoring: isFloating,
+                        child: _buildWebViewForPlatform(),
+                      )
                     else
                       _buildCollapsedAvatar(context),
                     // Drag handle indicator (floating only, non-collapsed)

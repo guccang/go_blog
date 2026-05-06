@@ -234,6 +234,8 @@ func (a *CMDAGent) dispatchCommand(req commandRequest) error {
 		return a.handleCgCreate(req, param)
 	case "start", "run":
 		return a.handleCgStart(req, param)
+	case "debug":
+		return a.handleCgDebug(req, param)
 	case "send", "msg":
 		return a.handleCgSend(req, param)
 	case "status", "st":
@@ -494,6 +496,91 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 		return err
 	}
 	go a.awaitCodingStartResult(route, requestID, toolName, resultCh)
+	return nil
+}
+
+func (a *CMDAGent) handleCgDebug(req commandRequest, param string) error {
+	if strings.TrimSpace(param) == "" {
+		return a.sendClientNotify(req.route(), "⚠️ 请指定项目和 Debug Bundle\n用法: cg debug <项目[@agent]> [@工具] [--settings 名称] --debug-id <ID> <编码需求>")
+	}
+
+	startParts := strings.SplitN(param, " ", 2)
+	project, agentName := parseProjectAgent(startParts[0])
+	rest := ""
+	if len(startParts) > 1 {
+		rest = strings.TrimSpace(startParts[1])
+	}
+	if rest == "" {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供 Debug Bundle 参数\n用法: cg debug <项目[@agent]> [@工具] [--settings 名称] --debug-id <ID> <编码需求>")
+	}
+
+	tool := ""
+	settings := ""
+	debugID := ""
+	debugPath := ""
+	for strings.HasPrefix(rest, "@") ||
+		strings.HasPrefix(rest, "--settings ") ||
+		strings.HasPrefix(rest, "--debug-id ") ||
+		strings.HasPrefix(rest, "--debug-path ") {
+		optParts := strings.SplitN(rest, " ", 2)
+		opt := optParts[0]
+		if len(optParts) < 2 || strings.TrimSpace(optParts[1]) == "" {
+			return a.sendClientNotify(req.route(), fmt.Sprintf("⚠️ %s 后面必须填写参数", opt))
+		}
+		valueParts := strings.SplitN(strings.TrimSpace(optParts[1]), " ", 2)
+		value := strings.TrimSpace(valueParts[0])
+		switch {
+		case strings.HasPrefix(opt, "@"):
+			tool = normalizeTool(strings.TrimPrefix(opt, "@"))
+			rest = strings.TrimSpace(optParts[1])
+			continue
+		case opt == "--settings":
+			settings = value
+		case opt == "--debug-id":
+			debugID = value
+		case opt == "--debug-path":
+			debugPath = value
+		}
+		if len(valueParts) > 1 {
+			rest = strings.TrimSpace(valueParts[1])
+		} else {
+			rest = ""
+			break
+		}
+	}
+	if debugID == "" && debugPath == "" {
+		return a.sendClientNotify(req.route(), "⚠️ 请提供 --debug-id 或 --debug-path")
+	}
+
+	agent, err := a.resolveCodingAgent(project, agentName, false, tool)
+	if err != nil {
+		return a.sendClientNotify(req.route(), "❌ "+err.Error())
+	}
+	if !hasTool(agent, "AcpStartDebugSession") {
+		return a.sendClientNotify(req.route(), fmt.Sprintf("❌ %s 不支持 ACP Debug 会话", agent.Name))
+	}
+
+	requestID := "cmd_debug_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	route := sessionRoute{
+		SourceAgentID: req.SourceAgentID,
+		Channel:       req.Channel,
+		UserID:        req.UserID,
+		TargetAgentID: agent.AgentID,
+		Project:       project,
+		Kind:          "acp",
+	}
+	a.setPendingRoute(requestID, route)
+
+	if err := a.sendClientNotify(route, buildDebugStartInfo(project, agentNameOrDefault(agentName, agent.Name), tool, settings, firstNonEmpty(debugID, debugPath), requestID)); err != nil {
+		return err
+	}
+
+	args := buildDebugStartCall(a.cfg.AgentID, project, debugID, debugPath, rest, tool, settings)
+	resultCh, err := a.callTool(agent.AgentID, requestID, "AcpStartDebugSession", args)
+	if err != nil {
+		return err
+	}
+	go a.awaitCodingStartResult(route, requestID, "AcpStartDebugSession", resultCh)
 	return nil
 }
 
@@ -1121,6 +1208,34 @@ func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, pr
 	return args, "CodegenStartSession"
 }
 
+func buildDebugStartCall(callerAgentID, project, debugID, debugPath, prompt, tool, settings string) map[string]any {
+	args := map[string]any{
+		"project":         project,
+		"caller_agent_id": callerAgentID,
+		"keep_session":    true,
+	}
+	if strings.TrimSpace(debugID) != "" {
+		args["debug_id"] = strings.TrimSpace(debugID)
+	}
+	if strings.TrimSpace(debugPath) != "" {
+		args["debug_bundle_path"] = strings.TrimSpace(debugPath)
+	}
+	if strings.TrimSpace(prompt) != "" {
+		args["user_request"] = strings.TrimSpace(prompt)
+	}
+	if strings.TrimSpace(tool) != "" {
+		args["tool"] = strings.TrimSpace(tool)
+	}
+	var extraArgs []string
+	if strings.TrimSpace(settings) != "" {
+		extraArgs = append(extraArgs, "--settings", strings.TrimSpace(settings))
+	}
+	if len(extraArgs) > 0 {
+		args["extra_args"] = extraArgs
+	}
+	return args
+}
+
 func codingBackendKind(toolName string) string {
 	if strings.HasPrefix(toolName, "Acp") {
 		return "acp"
@@ -1312,6 +1427,24 @@ func buildStartInfo(project, agentName, model, tool, settings string, autoDeploy
 	}
 	if autoDeploy {
 		info += "\n部署: 编码完成后自动部署"
+	}
+	info += fmt.Sprintf("\n请求: %s\n\n进度将通过当前客户端推送", requestID)
+	return info
+}
+
+func buildDebugStartInfo(project, agentName, tool, settings, debugRef, requestID string) string {
+	info := fmt.Sprintf("🐞 ACP Debug 会话已启动\n\n项目: %s", project)
+	if agentName != "" {
+		info += fmt.Sprintf("\nAgent: %s", agentName)
+	}
+	if tool != "" {
+		info += fmt.Sprintf("\n工具: %s", tool)
+	}
+	if settings != "" {
+		info += fmt.Sprintf("\nSettings: %s", settings)
+	}
+	if debugRef != "" {
+		info += fmt.Sprintf("\nDebug Bundle: %s", debugRef)
 	}
 	info += fmt.Sprintf("\n请求: %s\n\n进度将通过当前客户端推送", requestID)
 	return info
