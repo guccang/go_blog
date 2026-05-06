@@ -467,38 +467,48 @@ func (c *Connection) toolListDebugBundles(args map[string]interface{}) string {
 	if project == "" || projectDir == "" {
 		return `{"success":false,"error":"缺少有效的 project 参数"}`
 	}
-	root := filepath.Join(projectDir, ".debug", "flutter")
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			tr := uap.BuildToolResult("", map[string]interface{}{
-				"project": project,
-				"bundles": []interface{}{},
-				"count":   0,
-			}, "列出 0 个 Debug Bundle")
-			return tr.Result
-		}
-		return fmt.Sprintf(`{"success":false,"error":"读取 Debug Bundle 目录失败: %s"}`, escapeJSON(err.Error()))
-	}
 	type bundleInfo struct {
 		DebugID    string `json:"debug_id"`
 		Path       string `json:"path"`
 		ModifiedAt int64  `json:"modified_at"`
 	}
 	bundles := make([]bundleInfo, 0)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
+	seen := make(map[string]bool)
+	for _, root := range debugBundleRoots(projectDir) {
+		entries, err := os.ReadDir(root)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Sprintf(`{"success":false,"error":"读取 Debug Bundle 目录失败: %s"}`, escapeJSON(err.Error()))
 		}
-		bundles = append(bundles, bundleInfo{
-			DebugID:    entry.Name(),
-			Path:       filepath.Join(root, entry.Name()),
-			ModifiedAt: info.ModTime().UnixMilli(),
-		})
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(root, entry.Name())
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			bundles = append(bundles, bundleInfo{
+				DebugID:    entry.Name(),
+				Path:       path,
+				ModifiedAt: info.ModTime().UnixMilli(),
+			})
+		}
+	}
+	if len(bundles) == 0 {
+		tr := uap.BuildToolResult("", map[string]interface{}{
+			"project": project,
+			"bundles": []interface{}{},
+			"count":   0,
+		}, "列出 0 个 Debug Bundle")
+		return tr.Result
 	}
 	sort.Slice(bundles, func(i, j int) bool {
 		return bundles[i].ModifiedAt > bundles[j].ModifiedAt
@@ -509,6 +519,27 @@ func (c *Connection) toolListDebugBundles(args map[string]interface{}) string {
 		"count":   len(bundles),
 	}, fmt.Sprintf("列出 %d 个 Debug Bundle", len(bundles)))
 	return tr.Result
+}
+
+func debugBundleRoots(projectDir string) []string {
+	roots := []string{filepath.Join(projectDir, ".debug", "flutter")}
+	entries, err := os.ReadDir(projectDir)
+	if err != nil {
+		return roots
+	}
+	seen := map[string]bool{roots[0]: true}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		root := filepath.Join(projectDir, entry.Name(), ".debug", "flutter")
+		if seen[root] {
+			continue
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+	return roots
 }
 
 func (c *Connection) toolReadDebugBundle(args map[string]interface{}) string {
@@ -573,11 +604,13 @@ func (c *Connection) resolveDebugBundlePath(project string, args map[string]inte
 	if !isSafeDebugID(debugID) {
 		return "", fmt.Errorf("debug_id 无效")
 	}
-	path := filepath.Join(projectDir, ".debug", "flutter", debugID)
-	if info, err := os.Stat(path); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("Debug Bundle 不存在: %s", debugID)
+	for _, root := range debugBundleRoots(projectDir) {
+		path := filepath.Join(root, debugID)
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path, nil
+		}
 	}
-	return path, nil
+	return "", fmt.Errorf("Debug Bundle 不存在: %s", debugID)
 }
 
 func buildDebugSessionPrompt(bundlePath, projectDir, summary, manifest, userRequest string) string {
