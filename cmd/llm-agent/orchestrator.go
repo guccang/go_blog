@@ -48,7 +48,7 @@ func canonicalToolName(toolName string) string {
 
 func isTerminalSessionTool(toolName string) bool {
 	switch canonicalToolName(toolName) {
-	case "AcpStartSession", "CodegenStartSession", "DeployProject", "DeployAdhoc":
+	case "AcpStartSession", "AcpStartDebugSession", "CodegenStartSession", "DeployProject", "DeployAdhoc":
 		return true
 	default:
 		return false

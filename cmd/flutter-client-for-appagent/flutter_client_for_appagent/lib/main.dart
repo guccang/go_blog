@@ -5444,6 +5444,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       if (_codegenDebugBundleMode) {
         parts.add('--debug-id');
         parts.add('<debug_id>');
+        parts.add('--debug-path');
+        parts.add('<debug_path>');
       } else if (_codegenAutoDeploy) {
         parts.add('!deploy');
       }
@@ -5501,11 +5503,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     FocusScope.of(context).unfocus();
     if (_codegenMode == CodegenLaunchMode.code && _codegenDebugBundleMode) {
-      final debugID = await _createCodegenDebugBundle();
+      final debugBundle = await _createCodegenDebugBundle();
+      final debugID = debugBundle['debug_id'] ?? '';
+      final debugPath = debugBundle['debug_path'] ?? '';
       if (debugID.isEmpty) {
         return;
       }
       command = command.replaceFirst('<debug_id>', debugID);
+      if (debugPath.isEmpty) {
+        command = command.replaceFirst(' --debug-path <debug_path>', '');
+      } else {
+        command = command.replaceFirst('<debug_path>', debugPath);
+      }
     }
     _appendOutgoing(command);
     setState(() {
@@ -6155,10 +6164,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<String> _createCodegenDebugBundle() async {
+  Future<Map<String, String>> _createCodegenDebugBundle() async {
     if (_clientConfig == null || _sessionToken.trim().isEmpty) {
       _appendSystem('请先登录后再创建 Debug Bundle。');
-      return '';
+      return const <String, String>{};
     }
     final prompt = _codegenPromptController.text.trim();
     final timeline = _llmDebugEvents.reversed
@@ -6211,11 +6220,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       } else {
         _appendSystem('Debug Bundle 已创建: $debugId');
       }
-      return debugId;
+      return <String, String>{
+        'debug_id': debugId,
+        'debug_path': bundlePath,
+      };
     } catch (err) {
       addFlutterClientLog('Codegen Debug Bundle 创建失败: $err');
       _appendSystem(_describeRequestError(err, operation: 'Debug Bundle'));
-      return '';
+      return const <String, String>{};
     }
   }
 

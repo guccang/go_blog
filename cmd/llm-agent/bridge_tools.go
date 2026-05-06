@@ -475,13 +475,14 @@ func (b *Bridge) injectVirtualTools(tools []LLMTool, noTools bool) []LLMTool {
 
 // longRunningTools 需要长超时的工具（编码、部署等耗时操作）
 var longRunningTools = map[string]bool{
-	"CodegenStartSession": true,
-	"CodegenSendMessage":  true,
-	"AcpStartSession":     true,
-	"DeployProject":       true,
-	"DeployAdhoc":         true,
-	"DeployPipeline":      true,
-	"ExecuteCode":         true,
+	"CodegenStartSession":  true,
+	"CodegenSendMessage":   true,
+	"AcpStartSession":      true,
+	"AcpStartDebugSession": true,
+	"DeployProject":        true,
+	"DeployAdhoc":          true,
+	"DeployPipeline":       true,
+	"ExecuteCode":          true,
 }
 
 // isLongRunningTool 判断是否为长时间运行的工具

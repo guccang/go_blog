@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -88,5 +89,49 @@ func TestHandleCreateDebugBundleRedactsAndWritesFiles(t *testing.T) {
 	handler.HandleDebugBundleItem(rec, readReq)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("read debug bundle expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var uploadBody bytes.Buffer
+	writer := multipart.NewWriter(&uploadBody)
+	if err := writer.WriteField("kind", "screenshot"); err != nil {
+		t.Fatalf("write kind field failed: %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "screen.png")
+	if err != nil {
+		t.Fatalf("create upload file failed: %v", err)
+	}
+	if _, err := part.Write([]byte("fake png")); err != nil {
+		t.Fatalf("write upload file failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer failed: %v", err)
+	}
+	rec = httptest.NewRecorder()
+	uploadReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/app/debug/bundles/"+debugID+"/upload-resource?user_id=alice&session_token="+url.QueryEscape(issued.Session.Token),
+		&uploadBody,
+	)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	handler.HandleDebugBundleItem(rec, uploadReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload debug resource expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(cfg.DebugBundleDir, debugID, "resources", "screenshot")); err != nil {
+		t.Fatalf("expected screenshot resource dir: %v", err)
+	}
+
+	rec = httptest.NewRecorder()
+	resourcesReq := httptest.NewRequest(
+		http.MethodGet,
+		"/api/app/debug/bundles/"+debugID+"/resources?user_id=alice&session_token="+url.QueryEscape(issued.Session.Token),
+		nil,
+	)
+	handler.HandleDebugBundleItem(rec, resourcesReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list debug resources expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "screen.png") {
+		t.Fatalf("resource list missing uploaded file: %s", rec.Body.String())
 	}
 }

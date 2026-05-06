@@ -269,6 +269,38 @@ class _CustomCortanaWebRoot {
   final String modelUrl;
 }
 
+String cortanaFileSystemEntityName(FileSystemEntity entity) {
+  final normalized = entity.path.replaceAll('\\', '/');
+  final trimmed = normalized.endsWith('/')
+      ? normalized.substring(0, normalized.length - 1)
+      : normalized;
+  final index = trimmed.lastIndexOf('/');
+  return index < 0 ? trimmed : trimmed.substring(index + 1);
+}
+
+Future<void> copyCortanaDirectoryForWebRuntime(
+  Directory source,
+  Directory destination,
+) async {
+  await for (final entity in source.list(
+    recursive: false,
+    followLinks: false,
+  )) {
+    final name = cortanaFileSystemEntityName(entity);
+    if (name.isEmpty) {
+      continue;
+    }
+    final outPath = '${destination.path}${Platform.pathSeparator}$name';
+    if (entity is Directory) {
+      final outDir = Directory(outPath);
+      await outDir.create(recursive: true);
+      await copyCortanaDirectoryForWebRuntime(entity, outDir);
+    } else if (entity is File) {
+      await File(outPath).writeAsBytes(await entity.readAsBytes());
+    }
+  }
+}
+
 class CortanaPage extends StatefulWidget {
   const CortanaPage({
     super.key,
@@ -666,25 +698,7 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   Future<void> _copyDirectory(Directory source, Directory destination) async {
-    await for (final entity in source.list(
-      recursive: false,
-      followLinks: false,
-    )) {
-      final name = entity.uri.pathSegments.isEmpty
-          ? ''
-          : entity.uri.pathSegments.last;
-      if (name.isEmpty) {
-        continue;
-      }
-      final outPath = '${destination.path}${Platform.pathSeparator}$name';
-      if (entity is Directory) {
-        final outDir = Directory(outPath);
-        await outDir.create(recursive: true);
-        await _copyDirectory(entity, outDir);
-      } else if (entity is File) {
-        await File(outPath).writeAsBytes(await entity.readAsBytes());
-      }
-    }
+    await copyCortanaDirectoryForWebRuntime(source, destination);
   }
 
   Future<void> _deleteDirectoryIfExists(Directory directory) async {

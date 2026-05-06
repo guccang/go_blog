@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,13 +39,25 @@ type createDebugBundleRequest struct {
 }
 
 type debugBundleManifest struct {
-	DebugID     string           `json:"debug_id"`
-	Project     string           `json:"project"`
-	ProjectDir  string           `json:"project_dir"`
-	CreatedAt   string           `json:"created_at"`
-	Issue       debugBundleIssue `json:"issue"`
-	Entrypoints map[string]any   `json:"entrypoints"`
-	Constraints map[string]any   `json:"constraints"`
+	DebugID     string                `json:"debug_id"`
+	Project     string                `json:"project"`
+	ProjectDir  string                `json:"project_dir"`
+	CreatedAt   string                `json:"created_at"`
+	UpdatedAt   string                `json:"updated_at,omitempty"`
+	Issue       debugBundleIssue      `json:"issue"`
+	Entrypoints map[string]any        `json:"entrypoints"`
+	Constraints map[string]any        `json:"constraints"`
+	Resources   []debugBundleResource `json:"resources,omitempty"`
+}
+
+type debugBundleResource struct {
+	Path        string `json:"path"`
+	FileName    string `json:"file_name"`
+	Kind        string `json:"kind,omitempty"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mime_type,omitempty"`
+	Size        int64  `json:"size"`
+	CreatedAt   string `json:"created_at"`
 }
 
 func (h *Handler) HandleDebugBundles(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +91,12 @@ func (h *Handler) HandleDebugBundleItem(w http.ResponseWriter, r *http.Request) 
 		h.handleReadDebugBundle(w, r, debugID)
 	case r.Method == http.MethodGet && action == "file":
 		h.handleReadDebugBundleFile(w, r, debugID)
+	case r.Method == http.MethodGet && action == "resources":
+		h.handleListDebugBundleResources(w, r, debugID)
 	case r.Method == http.MethodPost && action == "attach-client-log":
 		h.handleAttachDebugClientLog(w, r, debugID)
+	case r.Method == http.MethodPost && (action == "attach-file" || action == "upload-resource"):
+		h.handleUploadDebugBundleResource(w, r, debugID)
 	case r.Method == http.MethodPost && action == "redact":
 		h.handleRedactDebugBundleFile(w, r, debugID)
 	default:
@@ -138,6 +155,7 @@ func (h *Handler) handleReadDebugBundle(w http.ResponseWriter, r *http.Request, 
 		"debug_id": debugID,
 		"manifest": string(manifest),
 		"summary":  string(summary),
+		"files":    listDebugBundleFiles(dir),
 	})
 }
 
@@ -203,8 +221,110 @@ func (h *Handler) handleAttachDebugClientLog(w http.ResponseWriter, r *http.Requ
 		"category": "client_log",
 		"message":  "attached flutter client log",
 	})
+	_ = touchDebugBundleManifest(dir)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+}
+
+func (h *Handler) handleUploadDebugBundleResource(w http.ResponseWriter, r *http.Request, debugID string) {
+	if !h.authorizeDebugRead(w, r) {
+		return
+	}
+	dir, err := h.resolveDebugBundleDir(debugID)
+	if err != nil {
+		h.writeDebugError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := r.ParseMultipartForm(maxResourceUploadBytes); err != nil {
+		h.writeDebugError(w, http.StatusBadRequest, fmt.Errorf("invalid multipart form: %w", err))
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		file, header, err = r.FormFile("resource")
+	}
+	if err != nil {
+		h.writeDebugError(w, http.StatusBadRequest, fmt.Errorf("file is required"))
+		return
+	}
+	defer file.Close()
+
+	kind := sanitizeDebugFileName(firstNonEmpty(r.FormValue("kind"), r.FormValue("category"), "resource"))
+	if kind == "." || kind == "" {
+		kind = "resource"
+	}
+	description := strings.TrimSpace(r.FormValue("description"))
+	fileName := sanitizeDebugFileName(firstNonEmpty(header.Filename, "resource.bin"))
+	relDir := filepath.ToSlash(filepath.Join("resources", kind))
+	fullDir := filepath.Join(dir, relDir)
+	if err := os.MkdirAll(fullDir, 0755); err != nil {
+		h.writeDebugError(w, http.StatusInternalServerError, err)
+		return
+	}
+	stampedName := fmt.Sprintf("%s_%s", time.Now().Format("20060102_150405_000000000"), fileName)
+	relPath := filepath.ToSlash(filepath.Join(relDir, stampedName))
+	fullPath := filepath.Join(dir, filepath.FromSlash(relPath))
+	out, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		h.writeDebugError(w, http.StatusInternalServerError, err)
+		return
+	}
+	size, copyErr := io.Copy(out, io.LimitReader(file, maxResourceUploadBytes+1))
+	closeErr := out.Close()
+	if copyErr != nil {
+		h.writeDebugError(w, http.StatusInternalServerError, copyErr)
+		return
+	}
+	if closeErr != nil {
+		h.writeDebugError(w, http.StatusInternalServerError, closeErr)
+		return
+	}
+	if size > maxResourceUploadBytes {
+		_ = os.Remove(fullPath)
+		h.writeDebugError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("resource exceeds %d bytes", maxResourceUploadBytes))
+		return
+	}
+
+	resource := debugBundleResource{
+		Path:        relPath,
+		FileName:    fileName,
+		Kind:        kind,
+		Description: description,
+		MIMEType:    header.Header.Get("Content-Type"),
+		Size:        size,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+	}
+	if err := appendDebugBundleResource(dir, resource); err != nil {
+		h.writeDebugError(w, http.StatusInternalServerError, err)
+		return
+	}
+	_ = appendTimeline(dir, map[string]any{
+		"time":     time.Now().Format(time.RFC3339),
+		"category": "resource",
+		"kind":     kind,
+		"path":     relPath,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "resource": resource})
+}
+
+func (h *Handler) handleListDebugBundleResources(w http.ResponseWriter, r *http.Request, debugID string) {
+	if !h.authorizeDebugRead(w, r) {
+		return
+	}
+	dir, err := h.resolveDebugBundleDir(debugID)
+	if err != nil {
+		h.writeDebugError(w, http.StatusBadRequest, err)
+		return
+	}
+	manifest, _ := readDebugBundleManifest(dir)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":   true,
+		"debug_id":  debugID,
+		"resources": manifest.Resources,
+		"files":     listDebugBundleFiles(dir),
+	})
 }
 
 func (h *Handler) handleRedactDebugBundleFile(w http.ResponseWriter, r *http.Request, debugID string) {
@@ -249,7 +369,7 @@ func (h *Handler) createDebugBundle(req createDebugBundleRequest) (string, debug
 		return "", debugBundleManifest{}, err
 	}
 	dir := filepath.Join(root, debugID)
-	for _, sub := range []string{"logs", "screenshots", "traces", "repo", "validation"} {
+	for _, sub := range []string{"logs", "screenshots", "traces", "repo", "validation", "resources"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0755); err != nil {
 			return "", debugBundleManifest{}, fmt.Errorf("create bundle dir failed: %w", err)
 		}
@@ -272,12 +392,14 @@ func (h *Handler) createDebugBundle(req createDebugBundleRequest) (string, debug
 		Project:    "flutter-client-for-appagent",
 		ProjectDir: "cmd/flutter-client-for-appagent/flutter_client_for_appagent",
 		CreatedAt:  now.Format(time.RFC3339),
+		UpdatedAt:  now.Format(time.RFC3339),
 		Issue:      req.Issue,
 		Entrypoints: map[string]any{
 			"summary":     "summary.md",
 			"timeline":    "timeline.jsonl",
 			"client_log":  "logs/flutter_client.log",
 			"server_logs": []string{},
+			"resources":   "resources/",
 		},
 		Constraints: map[string]any{
 			"encoding":           "UTF-8 without BOM",
@@ -497,6 +619,72 @@ func writeJSONLines(path string, items []map[string]any) error {
 		b.WriteByte('\n')
 	}
 	return os.WriteFile(path, b.Bytes(), 0644)
+}
+
+func readDebugBundleManifest(dir string) (debugBundleManifest, error) {
+	var manifest debugBundleManifest
+	data, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return manifest, err
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return manifest, err
+	}
+	return manifest, nil
+}
+
+func appendDebugBundleResource(dir string, resource debugBundleResource) error {
+	manifest, err := readDebugBundleManifest(dir)
+	if err != nil {
+		return err
+	}
+	manifest.Resources = append(manifest.Resources, resource)
+	manifest.UpdatedAt = time.Now().Format(time.RFC3339)
+	if manifest.Entrypoints == nil {
+		manifest.Entrypoints = map[string]any{}
+	}
+	manifest.Entrypoints["resources"] = "resources/"
+	return writeJSONFile(filepath.Join(dir, "manifest.json"), manifest)
+}
+
+func touchDebugBundleManifest(dir string) error {
+	manifest, err := readDebugBundleManifest(dir)
+	if err != nil {
+		return err
+	}
+	manifest.UpdatedAt = time.Now().Format(time.RFC3339)
+	return writeJSONFile(filepath.Join(dir, "manifest.json"), manifest)
+}
+
+func listDebugBundleFiles(dir string) []map[string]any {
+	var files []map[string]any
+	absRoot, err := filepath.Abs(dir)
+	if err != nil {
+		return files
+	}
+	_ = filepath.WalkDir(absRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(absRoot, path)
+		if err != nil {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		files = append(files, map[string]any{
+			"path":        filepath.ToSlash(rel),
+			"size":        info.Size(),
+			"modified_at": info.ModTime().UnixMilli(),
+		})
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool {
+		return fmt.Sprint(files[i]["path"]) < fmt.Sprint(files[j]["path"])
+	})
+	return files
 }
 
 func appendTimeline(dir string, item map[string]any) error {
