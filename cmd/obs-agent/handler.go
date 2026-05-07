@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -222,38 +221,75 @@ func (h *Handler) HandleProxyUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	reader, err := r.MultipartReader()
+	if err != nil {
 		http.Error(w, "invalid multipart form", http.StatusBadRequest)
 		return
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
+
+	start := time.Now()
+	fields := map[string]string{}
+	fileName := ""
+	fileContentType := ""
+	tempPath := ""
+	var fileSize int64
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			http.Error(w, "invalid multipart form", http.StatusBadRequest)
+			return
+		}
+		if part.FileName() == "" {
+			value, err := readProxyUploadField(part)
+			_ = part.Close()
+			if err != nil {
+				http.Error(w, "invalid multipart form", http.StatusBadRequest)
+				return
+			}
+			fields[part.FormName()] = value
+			continue
+		}
+		if part.FormName() != "file" {
+			_ = part.Close()
+			continue
+		}
+		if tempPath != "" {
+			_ = part.Close()
+			http.Error(w, "multiple file fields are not supported", http.StatusBadRequest)
+			return
+		}
+		fileName = strings.TrimSpace(part.FileName())
+		fileContentType = strings.TrimSpace(part.Header.Get("Content-Type"))
+		tempPath, fileSize, err = writeTempUploadFile(part, fileName)
+		_ = part.Close()
+		if err != nil {
+			log.Printf("[obs-agent] proxy upload temp file failed filename=%s err=%v", fileName, err)
+			http.Error(w, "upload to obs failed", http.StatusBadGateway)
+			return
+		}
+		defer os.Remove(tempPath)
+	}
+	if tempPath == "" {
 		http.Error(w, "file field is required", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
 
-	objectKey := strings.TrimSpace(r.FormValue("object_key"))
+	objectKey := strings.TrimSpace(fields["object_key"])
 	if objectKey == "" {
-		objectKey = buildUploadObjectKey(header.Filename)
+		objectKey = buildUploadObjectKey(fileName)
 	}
-	contentType := strings.TrimSpace(r.FormValue("content_type"))
+	contentType := strings.TrimSpace(fields["content_type"])
 	if contentType == "" {
-		contentType = header.Header.Get("Content-Type")
+		contentType = fileContentType
 	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 	log.Printf("[obs-agent] proxy-upload request filename=%s size=%d key=%s content_type=%s remote=%s",
-		header.Filename, header.Size, objectKey, contentType, r.RemoteAddr)
-	start := time.Now()
-	tempPath, err := writeTempUploadFile(file, header.Filename)
-	if err != nil {
-		log.Printf("[obs-agent] proxy upload failed key=%s err=%v", objectKey, err)
-		http.Error(w, "upload to obs failed", http.StatusBadGateway)
-		return
-	}
-	defer os.Remove(tempPath)
+		fileName, fileSize, objectKey, contentType, r.RemoteAddr)
 
 	if h.uploader == nil {
 		log.Printf("[obs-agent] proxy upload failed key=%s err=%v", objectKey, "obsutil uploader is disabled")
@@ -264,24 +300,24 @@ func (h *Handler) HandleProxyUpload(w http.ResponseWriter, r *http.Request) {
 		LocalPath:    tempPath,
 		ObjectKey:    objectKey,
 		ContentType:  contentType,
-		OriginalName: header.Filename,
+		OriginalName: fileName,
 	}); err != nil {
 		log.Printf("[obs-agent] proxy upload failed key=%s duration_ms=%d err=%v", objectKey, time.Since(start).Milliseconds(), err)
 		http.Error(w, "upload to obs failed", http.StatusBadGateway)
 		return
 	}
 
-	log.Printf("[obs-agent] proxy-upload ok key=%s size=%d duration_ms=%d", objectKey, header.Size, time.Since(start).Milliseconds())
+	log.Printf("[obs-agent] proxy-upload ok key=%s size=%d duration_ms=%d", objectKey, fileSize, time.Since(start).Milliseconds())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
 		"object_key": objectKey,
-		"size":       header.Size,
+		"size":       fileSize,
 	})
 }
 
-func writeTempUploadFile(src multipart.File, fileName string) (string, error) {
+func writeTempUploadFile(src io.Reader, fileName string) (string, int64, error) {
 	if src == nil {
-		return "", fmt.Errorf("file stream is required")
+		return "", 0, fmt.Errorf("file stream is required")
 	}
 	pattern := "obs-agent-upload-*"
 	if ext := strings.TrimSpace(filepath.Ext(fileName)); ext != "" {
@@ -289,15 +325,28 @@ func writeTempUploadFile(src multipart.File, fileName string) (string, error) {
 	}
 	tempFile, err := os.CreateTemp("", pattern)
 	if err != nil {
-		return "", fmt.Errorf("create temp upload file: %w", err)
+		return "", 0, fmt.Errorf("create temp upload file: %w", err)
 	}
 	defer tempFile.Close()
 
-	if _, err := io.Copy(tempFile, src); err != nil {
+	written, err := io.Copy(tempFile, src)
+	if err != nil {
 		_ = os.Remove(tempFile.Name())
-		return "", fmt.Errorf("copy upload temp file: %w", err)
+		return "", 0, fmt.Errorf("copy upload temp file: %w", err)
 	}
-	return tempFile.Name(), nil
+	return tempFile.Name(), written, nil
+}
+
+func readProxyUploadField(r io.Reader) (string, error) {
+	const maxProxyUploadFieldBytes int64 = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(r, maxProxyUploadFieldBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if int64(len(data)) > maxProxyUploadFieldBytes {
+		return "", fmt.Errorf("proxy upload field exceeds max size")
+	}
+	return string(data), nil
 }
 
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {

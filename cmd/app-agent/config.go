@@ -39,6 +39,7 @@ type Config struct {
 	LogAgentConfigFile       string           `json:"log_agent_config_file,omitempty"`
 	DebugBundleDir           string           `json:"debug_bundle_dir,omitempty"`
 	AttachmentStoreDir       string           `json:"attachment_store_dir,omitempty"`
+	MaxResourceUploadMB      int64            `json:"max_resource_upload_mb,omitempty"`
 	ObsAgentBaseURL          string           `json:"obs_agent_base_url,omitempty"`
 	ObsAgentToken            string           `json:"obs_agent_token,omitempty"`
 	DownloadTicketSecret     string           `json:"download_ticket_secret,omitempty"`
@@ -75,6 +76,7 @@ func DefaultConfig() *Config {
 		LogAgentConfigFile:       "../log-agent/log-agent.json",
 		DebugBundleDir:           defaultFlutterDebugBundleDir,
 		AttachmentStoreDir:       "app-attachments",
+		MaxResourceUploadMB:      128,
 		DownloadTicketTTLSeconds: 300,
 		LLMAgentID:               "llm-agent",
 		CmdAgentID:               "cmd-agent",
@@ -134,6 +136,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.AttachmentStoreDir == "" {
 		cfg.AttachmentStoreDir = "app-attachments"
+	}
+	if cfg.MaxResourceUploadMB <= 0 {
+		cfg.MaxResourceUploadMB = 128
 	}
 	return cfg, nil
 }

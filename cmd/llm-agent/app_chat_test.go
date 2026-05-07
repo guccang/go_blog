@@ -74,12 +74,14 @@ func TestBuildCortanaOutputPromptContainsProtocol(t *testing.T) {
 	expectedSnippets := []string{
 		"[CORTANA_ACTION_PLAN]",
 		"speech_text",
-		"IdleWave",
-		"IdleAlt",
+		"intent",
+		"thinking",
 		"surprised",
 		"fallback_expression",
 		"expression_hold_ms",
 		"resume_to_idle",
+		"suggested_replies",
+		"kind: custom",
 	}
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(prompt, snippet) {

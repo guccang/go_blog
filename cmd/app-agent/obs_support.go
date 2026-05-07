@@ -23,6 +23,7 @@ type objectStorage interface {
 	Enabled() bool
 	HeadObject(ctx context.Context, key string) (bool, error)
 	PutObject(ctx context.Context, req obsstore.PutObjectRequest) error
+	DeleteObject(ctx context.Context, key string) error
 }
 
 type downloadTicketSigner interface {
@@ -122,30 +123,48 @@ func (s *remoteObjectStorage) PutObject(ctx context.Context, req obsstore.PutObj
 		return fmt.Errorf("object body is required")
 	}
 
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
+	pipeReader, pipeWriter := io.Pipe()
+	writer := multipart.NewWriter(pipeWriter)
+	copyDone := make(chan error, 1)
+	go func() {
+		var writeErr error
+		defer func() {
+			if writeErr != nil {
+				_ = pipeWriter.CloseWithError(writeErr)
+			} else {
+				_ = pipeWriter.Close()
+			}
+			copyDone <- writeErr
+		}()
 
-	part, err := writer.CreateFormFile("file", fileNameFromObjectKey(req.Key))
-	if err != nil {
-		return fmt.Errorf("create multipart file field: %w", err)
-	}
-	if _, err := io.Copy(part, req.Body); err != nil {
-		return fmt.Errorf("copy multipart body: %w", err)
-	}
-	if err := writer.WriteField("object_key", strings.TrimSpace(req.Key)); err != nil {
-		return fmt.Errorf("write object_key field: %w", err)
-	}
-	if strings.TrimSpace(req.ContentType) != "" {
-		if err := writer.WriteField("content_type", strings.TrimSpace(req.ContentType)); err != nil {
-			return fmt.Errorf("write content_type field: %w", err)
+		if writeErr = writer.WriteField("object_key", strings.TrimSpace(req.Key)); writeErr != nil {
+			writeErr = fmt.Errorf("write object_key field: %w", writeErr)
+			return
 		}
-	}
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("close multipart body: %w", err)
-	}
+		if strings.TrimSpace(req.ContentType) != "" {
+			if writeErr = writer.WriteField("content_type", strings.TrimSpace(req.ContentType)); writeErr != nil {
+				writeErr = fmt.Errorf("write content_type field: %w", writeErr)
+				return
+			}
+		}
+		part, err := writer.CreateFormFile("file", fileNameFromObjectKey(req.Key))
+		if err != nil {
+			writeErr = fmt.Errorf("create multipart file field: %w", err)
+			return
+		}
+		if _, err := io.Copy(part, req.Body); err != nil {
+			writeErr = fmt.Errorf("copy multipart body: %w", err)
+			return
+		}
+		if err := writer.Close(); err != nil {
+			writeErr = fmt.Errorf("close multipart body: %w", err)
+			return
+		}
+	}()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/obs/proxy-upload", body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/obs/proxy-upload", pipeReader)
 	if err != nil {
+		_ = pipeReader.CloseWithError(err)
 		return fmt.Errorf("build obs-agent upload request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
@@ -153,12 +172,48 @@ func (s *remoteObjectStorage) PutObject(ctx context.Context, req obsstore.PutObj
 
 	resp, err := s.client.Do(httpReq)
 	if err != nil {
+		_ = pipeReader.CloseWithError(err)
 		return fmt.Errorf("request obs-agent proxy upload: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = pipeReader.CloseWithError(fmt.Errorf("obs-agent proxy upload failed: %s", resp.Status))
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("obs-agent proxy upload failed: %s %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	if err := <-copyDone; err != nil {
+		return fmt.Errorf("stream obs-agent proxy upload body: %w", err)
+	}
+	return nil
+}
+
+func (s *remoteObjectStorage) DeleteObject(ctx context.Context, key string) error {
+	if !s.Enabled() {
+		return fmt.Errorf("obs-agent delete is disabled")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("object key is required")
+	}
+	body, err := json.Marshal(map[string]string{"object_key": key})
+	if err != nil {
+		return fmt.Errorf("encode obs-agent delete request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/obs/delete", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build obs-agent delete request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	s.applyAuth(httpReq)
+
+	resp, err := s.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("request obs-agent delete: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("obs-agent delete failed: %s %s", resp.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }

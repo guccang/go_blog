@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +18,7 @@ import (
 )
 
 const maxResourceUploadBytes int64 = 128 << 20
+const bytesPerMiB int64 = 1 << 20
 
 type appResourceItem struct {
 	Category        string         `json:"category"`
@@ -32,10 +36,18 @@ type appResourceItem struct {
 	UpdatedAt       int64          `json:"updated_at"`
 }
 
+type appResourceUsage struct {
+	TotalSize     int64 `json:"total_size"`
+	TotalCount    int   `json:"total_count"`
+	CategorySize  int64 `json:"category_size"`
+	CategoryCount int   `json:"category_count"`
+}
+
 type appResourceResponse struct {
 	Success bool              `json:"success"`
 	Item    *appResourceItem  `json:"item,omitempty"`
 	Items   []appResourceItem `json:"items,omitempty"`
+	Usage   *appResourceUsage `json:"usage,omitempty"`
 	Error   string            `json:"error,omitempty"`
 }
 
@@ -45,6 +57,8 @@ func (h *Handler) HandleResources(w http.ResponseWriter, r *http.Request) {
 		h.handleListResources(w, r)
 	case http.MethodPost:
 		h.handleUploadResource(w, r)
+	case http.MethodDelete:
+		h.handleDeleteResource(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -70,10 +84,16 @@ func (h *Handler) handleListResources(w http.ResponseWriter, r *http.Request) {
 		logHandlerError(w, "list resources failed", err)
 		return
 	}
+	usage, err := h.bridge.ResourceUsage(userID, category)
+	if err != nil {
+		logHandlerError(w, "resource usage failed", err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(appResourceResponse{
 		Success: true,
 		Items:   items,
+		Usage:   usage,
 	})
 }
 
@@ -82,11 +102,115 @@ func (h *Handler) handleUploadResource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if err := r.ParseMultipartForm(maxResourceUploadBytes); err != nil {
+	reader, err := r.MultipartReader()
+	if err != nil {
 		http.Error(w, "Invalid multipart form", http.StatusBadRequest)
 		return
 	}
-	userID := strings.TrimSpace(r.FormValue("user_id"))
+
+	fields := map[string]string{}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+			return
+		}
+		if part.FileName() == "" {
+			value, err := readResourceUploadField(part)
+			_ = part.Close()
+			if err != nil {
+				http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+				return
+			}
+			fields[part.FormName()] = value
+			continue
+		}
+		if part.FormName() != "file" {
+			_ = part.Close()
+			continue
+		}
+		item, err := h.storeResourceUploadPart(r, fields, part)
+		if err != nil {
+			if err == errResourceLoginRequired {
+				http.Error(w, "Login required", http.StatusUnauthorized)
+				return
+			}
+			if err == errResourceUploadBadRequest {
+				http.Error(w, "Invalid multipart form", http.StatusBadRequest)
+				return
+			}
+			if errors.Is(err, errResourceExceedsMaxSize) {
+				http.Error(w, "resource exceeds max size", http.StatusRequestEntityTooLarge)
+				return
+			}
+			logHandlerError(w, "upload resource failed", err)
+			return
+		}
+		_ = part.Close()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(appResourceResponse{
+			Success: true,
+			Item:    item,
+		})
+		return
+	}
+	http.Error(w, "file is required", http.StatusBadRequest)
+}
+
+var (
+	errResourceLoginRequired    = fmt.Errorf("resource login required")
+	errResourceUploadBadRequest = fmt.Errorf("resource upload bad request")
+	errResourceExceedsMaxSize   = fmt.Errorf("resource exceeds max size")
+)
+
+func (h *Handler) storeResourceUploadPart(r *http.Request, fields map[string]string, part *multipart.Part) (*appResourceItem, error) {
+	userID := strings.TrimSpace(fields["user_id"])
+	if userID == "" {
+		return nil, errResourceUploadBadRequest
+	}
+	if !h.validateAppSession(r, userID) {
+		return nil, errResourceLoginRequired
+	}
+	fileName := strings.TrimSpace(part.FileName())
+	if fileName == "" {
+		return nil, errResourceUploadBadRequest
+	}
+	category := normalizeResourceCategory(fields["category"])
+	if category == "" {
+		category = inferResourceCategory(fileName, part.Header.Get("Content-Type"))
+	}
+	contentType := strings.TrimSpace(firstNonEmpty(
+		fields["content_type"],
+		part.Header.Get("Content-Type"),
+		mime.TypeByExtension(filepath.Ext(fileName)),
+	))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return h.bridge.StoreResource(userID, category, strings.TrimSpace(fields["description"]), fileName, contentType, part)
+}
+
+func readResourceUploadField(r io.Reader) (string, error) {
+	const maxResourceUploadFieldBytes int64 = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(r, maxResourceUploadFieldBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if int64(len(data)) > maxResourceUploadFieldBytes {
+		return "", fmt.Errorf("resource upload field exceeds max size")
+	}
+	return string(data), nil
+}
+
+func (h *Handler) handleDeleteResource(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
@@ -95,41 +219,25 @@ func (h *Handler) handleUploadResource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Login required", http.StatusUnauthorized)
 		return
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "file is required", http.StatusBadRequest)
+	fileID := strings.TrimSpace(r.URL.Query().Get("file_id"))
+	if fileID == "" {
+		http.Error(w, "file_id is required", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
-
-	fileName := strings.TrimSpace(header.Filename)
-	if fileName == "" {
-		http.Error(w, "file name is required", http.StatusBadRequest)
-		return
-	}
-	category := normalizeResourceCategory(r.FormValue("category"))
-	if category == "" {
-		category = inferResourceCategory(fileName, header.Header.Get("Content-Type"))
-	}
-	contentType := strings.TrimSpace(firstNonEmpty(
-		r.FormValue("content_type"),
-		header.Header.Get("Content-Type"),
-		mime.TypeByExtension(filepath.Ext(fileName)),
-	))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	description := strings.TrimSpace(r.FormValue("description"))
-	item, err := h.bridge.StoreResource(userID, category, description, fileName, contentType, file)
-	if err != nil {
-		logHandlerError(w, "upload resource failed", err)
+	if err := h.bridge.DeleteResource(userID, fileID); err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		if strings.Contains(err.Error(), "not an app resource") || strings.Contains(err.Error(), "invalid") {
+			http.Error(w, "Invalid file_id", http.StatusBadRequest)
+			return
+		}
+		logHandlerError(w, "delete resource failed", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(appResourceResponse{
-		Success: true,
-		Item:    item,
-	})
+	_ = json.NewEncoder(w).Encode(appResourceResponse{Success: true})
 }
 
 func logHandlerError(w http.ResponseWriter, message string, err error) {
@@ -162,7 +270,8 @@ func (b *Bridge) StoreResource(owner, category, description, fileName, contentTy
 	if err != nil {
 		return nil, fmt.Errorf("create resource failed: %w", err)
 	}
-	written, copyErr := io.Copy(out, io.LimitReader(src, maxResourceUploadBytes+1))
+	maxUploadBytes := b.cfg.maxResourceUploadBytes()
+	written, copyErr := io.Copy(out, io.LimitReader(src, maxUploadBytes+1))
 	closeErr := out.Close()
 	if copyErr != nil {
 		return nil, fmt.Errorf("write resource failed: %w", copyErr)
@@ -170,9 +279,9 @@ func (b *Bridge) StoreResource(owner, category, description, fileName, contentTy
 	if closeErr != nil {
 		return nil, fmt.Errorf("close resource failed: %w", closeErr)
 	}
-	if written > maxResourceUploadBytes {
+	if written > maxUploadBytes {
 		_ = os.Remove(filePath)
-		return nil, fmt.Errorf("resource exceeds max size")
+		return nil, errResourceExceedsMaxSize
 	}
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
@@ -202,6 +311,13 @@ func (b *Bridge) StoreResource(owner, category, description, fileName, contentTy
 	}
 	b.applyAttachmentStorageFromFile(owner, attachment)
 	return b.resourceItemFromAttachment(owner, category, attachment, time.Now()), nil
+}
+
+func (cfg *Config) maxResourceUploadBytes() int64 {
+	if cfg == nil || cfg.MaxResourceUploadMB <= 0 {
+		return maxResourceUploadBytes
+	}
+	return cfg.MaxResourceUploadMB * bytesPerMiB
 }
 
 func (b *Bridge) ListResources(owner, category string) ([]appResourceItem, error) {
@@ -274,6 +390,102 @@ func (b *Bridge) ListResources(owner, category string) ([]appResourceItem, error
 		return items[i].UpdatedAt > items[j].UpdatedAt
 	})
 	return items, nil
+}
+
+func (b *Bridge) ResourceUsage(owner, category string) (*appResourceUsage, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return nil, fmt.Errorf("empty owner")
+	}
+	category = normalizeResourceCategory(category)
+	root := filepath.Join(attachmentRootDir(b.cfg.AttachmentStoreDir), sanitizeFileName(owner), "resources")
+	usage := &appResourceUsage{}
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return usage, nil
+		}
+		return nil, fmt.Errorf("stat resource root: %w", err)
+	}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".meta.json") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		itemCategory := categoryFromResourcePath(b.cfg.AttachmentStoreDir, owner, path)
+		usage.TotalCount++
+		usage.TotalSize += info.Size()
+		if category == "" || itemCategory == category {
+			usage.CategoryCount++
+			usage.CategorySize += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan resource usage: %w", err)
+	}
+	return usage, nil
+}
+
+func (b *Bridge) DeleteResource(owner, fileID string) error {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return fmt.Errorf("empty owner")
+	}
+	filePath, err := resolveAttachmentPath(b.cfg.AttachmentStoreDir, fileID)
+	if err != nil {
+		return err
+	}
+	absResourceRoot, err := filepath.Abs(filepath.Join(attachmentRootDir(b.cfg.AttachmentStoreDir), sanitizeFileName(owner), "resources"))
+	if err != nil {
+		return fmt.Errorf("resolve resource root: %w", err)
+	}
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("resolve resource path: %w", err)
+	}
+	rootPrefix := absResourceRoot + string(filepath.Separator)
+	if absPath != absResourceRoot && !strings.HasPrefix(absPath, rootPrefix) {
+		return fmt.Errorf("not an app resource")
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() || strings.HasSuffix(info.Name(), ".meta.json") {
+		return fmt.Errorf("invalid resource file")
+	}
+	category := categoryFromResourcePath(b.cfg.AttachmentStoreDir, owner, absPath)
+	objectKey := buildAttachmentObjectKey(category, owner, fileID, info.Name())
+	if b.obsStorage != nil && b.obsStorage.Enabled() && strings.TrimSpace(objectKey) != "" {
+		if err := b.obsStorage.DeleteObject(context.Background(), objectKey); err != nil {
+			log.Printf("[Bridge] delete resource object failed file_id=%s key=%s err=%v", fileID, objectKey, err)
+		}
+	}
+	if err := os.Remove(absPath); err != nil {
+		return fmt.Errorf("delete resource file: %w", err)
+	}
+	if err := os.Remove(absPath + ".meta.json"); err != nil && !os.IsNotExist(err) {
+		log.Printf("[Bridge] delete resource meta failed file=%s err=%v", absPath+".meta.json", err)
+	}
+	cleanupEmptyResourceDirs(absResourceRoot, filepath.Dir(absPath))
+	return nil
+}
+
+func cleanupEmptyResourceDirs(root, dir string) {
+	root = filepath.Clean(root)
+	dir = filepath.Clean(dir)
+	for dir != root {
+		if err := os.Remove(dir); err != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 func (b *Bridge) ensureResourceDir(owner, category string) (string, error) {

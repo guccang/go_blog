@@ -41,6 +41,70 @@ void addFlutterClientLog(String message) {
 
 enum CortanaDisplayMode { fullscreen, expanded, small, collapsed }
 
+class CortanaModelViewTransform {
+  const CortanaModelViewTransform({
+    this.scale = 1.0,
+    this.offsetX = 0.0,
+    this.offsetY = 0.0,
+  });
+
+  final double scale;
+  final double offsetX;
+  final double offsetY;
+
+  static const CortanaModelViewTransform defaults = CortanaModelViewTransform();
+
+  CortanaModelViewTransform normalized() {
+    return CortanaModelViewTransform(
+      scale: scale.clamp(0.8, 1.35).toDouble(),
+      offsetX: offsetX.clamp(-0.35, 0.35).toDouble(),
+      offsetY: offsetY.clamp(-0.28, 0.28).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final value = normalized();
+    return <String, dynamic>{
+      'scale': value.scale,
+      'offset_x': value.offsetX,
+      'offset_y': value.offsetY,
+    };
+  }
+
+  static CortanaModelViewTransform? fromJson(Map<String, dynamic> json) {
+    double? readDouble(String key) {
+      final raw = json[key];
+      if (raw is num) {
+        return raw.toDouble();
+      }
+      return double.tryParse((raw ?? '').toString());
+    }
+
+    final scale = readDouble('scale');
+    final offsetX = readDouble('offset_x') ?? readDouble('offsetX');
+    final offsetY = readDouble('offset_y') ?? readDouble('offsetY');
+    if (scale == null || offsetX == null || offsetY == null) {
+      return null;
+    }
+    return CortanaModelViewTransform(
+      scale: scale,
+      offsetX: offsetX,
+      offsetY: offsetY,
+    ).normalized();
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CortanaModelViewTransform &&
+        other.scale == scale &&
+        other.offsetX == offsetX &&
+        other.offsetY == offsetY;
+  }
+
+  @override
+  int get hashCode => Object.hash(scale, offsetX, offsetY);
+}
+
 class CortanaSettings {
   const CortanaSettings({
     this.enabled = true,
@@ -166,6 +230,7 @@ class CortanaReplyPayload {
     this.audioBytes,
     this.audioFormat = '',
     this.actionPlan,
+    this.suggestedReplies = const <CortanaSuggestedReply>[],
     this.requestId = '',
   });
 
@@ -174,9 +239,38 @@ class CortanaReplyPayload {
   final Uint8List? audioBytes;
   final String audioFormat;
   final Map<String, dynamic>? actionPlan;
+  final List<CortanaSuggestedReply> suggestedReplies;
   final String requestId;
 
   bool get hasAudio => audioPath.trim().isNotEmpty || audioBytes != null;
+}
+
+class CortanaSuggestedReply {
+  const CortanaSuggestedReply({
+    required this.label,
+    required this.message,
+    this.kind = '',
+  });
+
+  final String label;
+  final String message;
+  final String kind;
+
+  bool get isCustom => kind.trim().toLowerCase() == 'custom';
+
+  factory CortanaSuggestedReply.fromMap(Map<String, dynamic> raw) {
+    final label = (raw['label'] ?? raw['title'] ?? raw['text'] ?? '')
+        .toString()
+        .trim();
+    final message = (raw['message'] ?? raw['value'] ?? raw['content'] ?? label)
+        .toString()
+        .trim();
+    return CortanaSuggestedReply(
+      label: label,
+      message: message,
+      kind: (raw['kind'] ?? raw['type'] ?? '').toString().trim(),
+    );
+  }
 }
 
 class CortanaReplayItem {
@@ -301,6 +395,317 @@ Future<void> copyCortanaDirectoryForWebRuntime(
   }
 }
 
+Future<bool> addMissingCortanaModelReferencesForWebRuntime(
+  File modelFile,
+) async {
+  if (!await modelFile.exists()) {
+    return false;
+  }
+
+  final raw = await modelFile.readAsString(encoding: utf8);
+  final decoded = jsonDecode(raw);
+  if (decoded is! Map) {
+    return false;
+  }
+
+  final modelJson = Map<String, dynamic>.from(decoded);
+  final fileReferencesRaw = modelJson['FileReferences'];
+  final fileReferences = fileReferencesRaw is Map
+      ? Map<String, dynamic>.from(fileReferencesRaw)
+      : <String, dynamic>{};
+  var changed = false;
+
+  final expressionFiles = await _listLive2dReferenceFiles(
+    modelFile.parent,
+    '.exp3.json',
+  );
+  if (expressionFiles.isNotEmpty) {
+    final existingExpressions = _normalizeLive2dExpressionRefs(
+      fileReferences['Expressions'],
+    );
+    final seen = existingExpressions
+        .map((item) => (item['File'] ?? '').toString())
+        .where((path) => path.isNotEmpty)
+        .toSet();
+    for (final path in expressionFiles) {
+      if (!seen.add(path)) {
+        continue;
+      }
+      existingExpressions.add(<String, String>{
+        'Name': _live2dReferenceName(path, '.exp3.json'),
+        'File': path,
+      });
+      changed = true;
+    }
+    if (existingExpressions.isNotEmpty) {
+      fileReferences['Expressions'] = existingExpressions;
+    }
+  }
+
+  final motionFiles = await _listLive2dReferenceFiles(
+    modelFile.parent,
+    '.motion3.json',
+  );
+  if (motionFiles.isNotEmpty) {
+    final existingMotions = _normalizeLive2dMotionRefs(
+      fileReferences['Motions'],
+    );
+    final seen = <String>{};
+    for (final items in existingMotions.values) {
+      for (final item in items) {
+        final path = (item['File'] ?? '').toString();
+        if (path.isNotEmpty) {
+          seen.add(path);
+        }
+      }
+    }
+    for (final path in motionFiles) {
+      if (!seen.add(path)) {
+        continue;
+      }
+      final group = _live2dMotionGroupForPath(path);
+      existingMotions.putIfAbsent(group, () => <Map<String, String>>[]).add(
+        <String, String>{'File': path},
+      );
+      changed = true;
+    }
+    if (existingMotions.isNotEmpty) {
+      fileReferences['Motions'] = existingMotions;
+    }
+  }
+
+  if (!changed) {
+    return false;
+  }
+
+  modelJson['FileReferences'] = fileReferences;
+  const encoder = JsonEncoder.withIndent('  ');
+  await modelFile.writeAsString(
+    '${encoder.convert(modelJson)}\n',
+    encoding: utf8,
+  );
+  return true;
+}
+
+Future<int> slowLive2dMotionFilesForWebRuntime(
+  Directory baseDir, {
+  double playbackSpeed = 0.55,
+}) async {
+  final normalizedSpeed = playbackSpeed.clamp(0.25, 1.0).toDouble();
+  final timeScale = 1.0 / normalizedSpeed;
+  var changedCount = 0;
+  final files = await _listLive2dReferenceFiles(baseDir, '.motion3.json');
+  for (final path in files) {
+    final file = _resolveCortanaRelativeFile(baseDir, path);
+    if (await _scaleLive2dMotionFile(file, timeScale)) {
+      changedCount++;
+    }
+  }
+  return changedCount;
+}
+
+Future<bool> _scaleLive2dMotionFile(File file, double timeScale) async {
+  if (!await file.exists()) {
+    return false;
+  }
+  final raw = await file.readAsString(encoding: utf8);
+  final decoded = jsonDecode(raw);
+  if (decoded is! Map) {
+    return false;
+  }
+  final motionJson = Map<String, dynamic>.from(decoded);
+  final metaRaw = motionJson['Meta'];
+  final meta = metaRaw is Map ? Map<String, dynamic>.from(metaRaw) : null;
+  final existingSpeed = meta == null
+      ? null
+      : double.tryParse('${meta['CortanaPlaybackSpeed'] ?? ''}');
+  if (existingSpeed != null) {
+    return false;
+  }
+
+  var changed = false;
+  if (meta != null) {
+    changed = _scaleNumberField(meta, 'Duration', timeScale) || changed;
+    meta['CortanaPlaybackSpeed'] = (1.0 / timeScale).toStringAsFixed(2);
+    motionJson['Meta'] = meta;
+    changed = true;
+  }
+
+  final curves = motionJson['Curves'];
+  if (curves is List) {
+    for (var i = 0; i < curves.length; i++) {
+      final curve = curves[i];
+      if (curve is! Map) {
+        continue;
+      }
+      final curveMap = Map<String, dynamic>.from(curve);
+      if (_scaleMotionSegments(curveMap['Segments'], timeScale)) {
+        curves[i] = curveMap;
+        changed = true;
+      }
+    }
+  }
+
+  final events = motionJson['Events'];
+  if (events is List) {
+    for (var i = 0; i < events.length; i++) {
+      final event = events[i];
+      if (event is! Map) {
+        continue;
+      }
+      final eventMap = Map<String, dynamic>.from(event);
+      if (_scaleNumberField(eventMap, 'Time', timeScale)) {
+        events[i] = eventMap;
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) {
+    return false;
+  }
+  const encoder = JsonEncoder.withIndent('  ');
+  await file.writeAsString('${encoder.convert(motionJson)}\n', encoding: utf8);
+  return true;
+}
+
+bool _scaleMotionSegments(Object? value, double timeScale) {
+  if (value is! List || value.length < 2) {
+    return false;
+  }
+  var changed = false;
+  changed = _scaleNumberAt(value, 0, timeScale) || changed;
+  var index = 2;
+  while (index < value.length) {
+    final segmentType = int.tryParse('${value[index]}');
+    if (segmentType == null) {
+      break;
+    }
+    if (segmentType == 0 || segmentType == 2 || segmentType == 3) {
+      changed = _scaleNumberAt(value, index + 1, timeScale) || changed;
+      index += 3;
+      continue;
+    }
+    if (segmentType == 1) {
+      changed = _scaleNumberAt(value, index + 1, timeScale) || changed;
+      changed = _scaleNumberAt(value, index + 3, timeScale) || changed;
+      changed = _scaleNumberAt(value, index + 5, timeScale) || changed;
+      index += 7;
+      continue;
+    }
+    break;
+  }
+  return changed;
+}
+
+bool _scaleNumberField(Map<String, dynamic> map, String key, double timeScale) {
+  final value = map[key];
+  if (value is! num) {
+    return false;
+  }
+  map[key] = _scaledMotionTime(value, timeScale);
+  return true;
+}
+
+bool _scaleNumberAt(List<dynamic> values, int index, double timeScale) {
+  if (index < 0 || index >= values.length || values[index] is! num) {
+    return false;
+  }
+  values[index] = _scaledMotionTime(values[index] as num, timeScale);
+  return true;
+}
+
+double _scaledMotionTime(num value, double timeScale) {
+  return double.parse((value * timeScale).toStringAsFixed(4));
+}
+
+List<Map<String, String>> _normalizeLive2dExpressionRefs(Object? value) {
+  if (value is! List) {
+    return <Map<String, String>>[];
+  }
+  return value.whereType<Map>().map((item) {
+    return item.map<String, String>(
+      (key, itemValue) => MapEntry('$key', '$itemValue'),
+    );
+  }).toList();
+}
+
+Map<String, List<Map<String, String>>> _normalizeLive2dMotionRefs(
+  Object? value,
+) {
+  if (value is! Map) {
+    return <String, List<Map<String, String>>>{};
+  }
+  return value.map<String, List<Map<String, String>>>((key, rawItems) {
+    final items = rawItems is List
+        ? rawItems.whereType<Map>().map((item) {
+            return item.map<String, String>(
+              (itemKey, itemValue) => MapEntry('$itemKey', '$itemValue'),
+            );
+          }).toList()
+        : <Map<String, String>>[];
+    return MapEntry('$key', items);
+  });
+}
+
+Future<List<String>> _listLive2dReferenceFiles(
+  Directory directory,
+  String suffix,
+) async {
+  final paths = <String>[];
+  await for (final entity in directory.list(
+    recursive: true,
+    followLinks: false,
+  )) {
+    if (entity is! File) {
+      continue;
+    }
+    if (entity.path.toLowerCase().endsWith(suffix)) {
+      paths.add(_cortanaRelativePath(directory, entity));
+    }
+  }
+  paths.sort();
+  return paths;
+}
+
+String _live2dReferenceName(String path, String suffix) {
+  final lower = path.toLowerCase();
+  if (!lower.endsWith(suffix)) {
+    return path;
+  }
+  return path.substring(0, path.length - suffix.length);
+}
+
+String _live2dMotionGroupForPath(String path) {
+  final lower = path.toLowerCase();
+  if (lower.contains('tap') || lower.contains('touch')) {
+    return 'Tap';
+  }
+  if (lower.contains('wave') || lower.contains('greet')) {
+    return 'IdleWave';
+  }
+  return 'Idle';
+}
+
+String _cortanaRelativePath(Directory baseDir, File file) {
+  final baseUri = baseDir.absolute.uri;
+  final fileUri = file.absolute.uri;
+  final baseSegments = baseUri.pathSegments;
+  final fileSegments = fileUri.pathSegments;
+  var index = 0;
+  while (index < baseSegments.length &&
+      index < fileSegments.length &&
+      baseSegments[index] == fileSegments[index]) {
+    index++;
+  }
+  return Uri(pathSegments: fileSegments.skip(index)).toString();
+}
+
+File _resolveCortanaRelativeFile(Directory baseDir, String relativePath) {
+  final segments = Uri.parse(relativePath).pathSegments;
+  return File(<String>[baseDir.path, ...segments].join(Platform.pathSeparator));
+}
+
 class CortanaPage extends StatefulWidget {
   const CortanaPage({
     super.key,
@@ -318,6 +723,8 @@ class CortanaPage extends StatefulWidget {
     this.settings = const CortanaSettings(),
     this.onSettingsChanged,
     this.live2dModelUrl = '',
+    this.viewTransform = CortanaModelViewTransform.defaults,
+    this.onViewTransformChanged,
   });
 
   final CortanaDisplayMode mode;
@@ -334,6 +741,8 @@ class CortanaPage extends StatefulWidget {
   final CortanaSettings settings;
   final ValueChanged<CortanaSettings>? onSettingsChanged;
   final String live2dModelUrl;
+  final CortanaModelViewTransform viewTransform;
+  final ValueChanged<CortanaModelViewTransform>? onViewTransformChanged;
 
   @override
   State<CortanaPage> createState() => CortanaPageState();
@@ -383,6 +792,7 @@ class CortanaPageState extends State<CortanaPage> {
   String? _lastContextualExpression;
   Future<_CustomCortanaWebRoot>? _customWebRootFuture;
   int _webViewRevision = 0;
+  CortanaDisplayMode? _lastSyncedContainerMode;
 
   bool get isSpeaking => _speaking;
 
@@ -426,6 +836,7 @@ class CortanaPageState extends State<CortanaPage> {
   @override
   void initState() {
     super.initState();
+    _applyViewTransform(widget.viewTransform);
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       if (_usesCustomLive2dModel) {
         _customWebRootFuture = _prepareCustomWebRoot();
@@ -456,15 +867,14 @@ class CortanaPageState extends State<CortanaPage> {
       // CortanaPage only consumes the settings values.
     }
     if (widget.live2dModelUrl != oldWidget.live2dModelUrl) {
+      _applyViewTransform(widget.viewTransform);
       final oldModelUrl = oldWidget.live2dModelUrl.trim().isEmpty
           ? 'default'
           : oldWidget.live2dModelUrl.trim();
       final newModelUrl = widget.live2dModelUrl.trim().isEmpty
           ? 'default'
           : widget.live2dModelUrl.trim();
-      _appendLog(
-        'Live2D model URL changed: old=$oldModelUrl new=$newModelUrl',
-      );
+      _appendLog('Live2D model URL changed: old=$oldModelUrl new=$newModelUrl');
       _webViewReady = false;
       _webCtrl = null;
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -484,6 +894,13 @@ class CortanaPageState extends State<CortanaPage> {
         _live2dDebugState = null;
         _webViewRevision++;
       });
+    }
+    if (widget.mode != oldWidget.mode) {
+      unawaited(_syncContainerMode());
+    }
+    if (widget.viewTransform != oldWidget.viewTransform) {
+      _applyViewTransform(widget.viewTransform);
+      unawaited(_syncModelViewTransform());
     }
   }
 
@@ -531,7 +948,7 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   Future<_CustomCortanaWebRoot>
-      _prepareCustomWebRootAfterClosingAssetServer() async {
+  _prepareCustomWebRootAfterClosingAssetServer() async {
     final localhostServer = _localhostServer;
     _localhostServer = null;
     _androidLocalhostFuture = null;
@@ -688,6 +1105,21 @@ class CortanaPageState extends State<CortanaPage> {
     await _deleteDirectoryIfExists(outDir);
     await outDir.create(recursive: true);
     await _copyDirectory(sourceModelJson.parent, outDir);
+    final outModelJson = File(
+      '${outDir.path}${Platform.pathSeparator}'
+      '${sourceModelJson.uri.pathSegments.last}',
+    );
+    if (await addMissingCortanaModelReferencesForWebRuntime(outModelJson)) {
+      _appendLog(
+        'Normalized Cortana custom model references: ${outModelJson.path}',
+      );
+    }
+    final slowedMotionCount = await slowLive2dMotionFilesForWebRuntime(outDir);
+    if (slowedMotionCount > 0) {
+      _appendLog(
+        'Slowed Cortana custom model motions: $slowedMotionCount files',
+      );
+    }
     final relativeModelPath = Uri(
       pathSegments: <String>[
         'custom_model',
@@ -711,27 +1143,26 @@ class CortanaPageState extends State<CortanaPage> {
     if (_customLocalhostServer != null || _customLocalhostFuture != null) {
       return;
     }
-    _customLocalhostFuture = HttpServer.bind(
-      InternetAddress.loopbackIPv4,
-      _localhostPort,
-    )
-        .then((server) {
-          _customLocalhostServer = server;
-          server.listen(
-            (request) => unawaited(_serveCustomLocalhostFile(root, request)),
-          );
-          if (mounted) {
-            _updateLoadStatus(
-              'Custom localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
-            );
-          }
-        })
-        .catchError((Object error) {
-          if (mounted) {
-            _updateLoadStatus('Custom localhost start failed: $error');
-          }
-          throw error;
-        });
+    _customLocalhostFuture =
+        HttpServer.bind(InternetAddress.loopbackIPv4, _localhostPort)
+            .then((server) {
+              _customLocalhostServer = server;
+              server.listen(
+                (request) =>
+                    unawaited(_serveCustomLocalhostFile(root, request)),
+              );
+              if (mounted) {
+                _updateLoadStatus(
+                  'Custom localhost ready: http://localhost:$_localhostPort/$_cortanaLocalPath',
+                );
+              }
+            })
+            .catchError((Object error) {
+              if (mounted) {
+                _updateLoadStatus('Custom localhost start failed: $error');
+              }
+              throw error;
+            });
   }
 
   Future<void> _serveCustomLocalhostFile(
@@ -816,7 +1247,31 @@ class CortanaPageState extends State<CortanaPage> {
 
   String _jsDouble(double value) => value.toStringAsFixed(4);
 
+  CortanaModelViewTransform get _currentViewTransform =>
+      CortanaModelViewTransform(
+        scale: _modelUserScale,
+        offsetX: _modelUserOffsetX,
+        offsetY: _modelUserOffsetY,
+      ).normalized();
+
+  void _applyViewTransform(CortanaModelViewTransform transform) {
+    final value = transform.normalized();
+    _modelUserScale = value.scale;
+    _modelUserOffsetX = value.offsetX;
+    _modelUserOffsetY = value.offsetY;
+  }
+
+  void _updateViewTransform(CortanaModelViewTransform transform) {
+    _applyViewTransform(transform);
+  }
+
+  void _commitViewTransformChange() {
+    widget.onViewTransformChanged?.call(_currentViewTransform);
+    unawaited(_syncModelViewTransform());
+  }
+
   Future<void> _syncModelViewTransform() async {
+    await _syncContainerMode();
     await _callJS(
       'window.setUserViewTransform('
       '${_jsDouble(_modelUserScale)}, '
@@ -824,6 +1279,17 @@ class CortanaPageState extends State<CortanaPage> {
       '${_jsDouble(_modelUserOffsetY)})',
     );
     await _refreshLive2dDebugState();
+  }
+
+  Future<void> _syncContainerMode({bool force = false}) async {
+    final mode = widget.mode == CortanaDisplayMode.fullscreen
+        ? 'fullscreen'
+        : 'floating';
+    if (!force && _lastSyncedContainerMode == widget.mode) {
+      return;
+    }
+    await _callJS('window.setContainerMode(${jsonEncode(mode)})');
+    _lastSyncedContainerMode = widget.mode;
   }
 
   Future<void> _callJS(String js) async {
@@ -849,7 +1315,7 @@ class CortanaPageState extends State<CortanaPage> {
       final result = await ctrl.evaluateJavascript(source: js);
       debugPrint('[$logPrefix] $js => $result');
       return result;
-    } on MissingPluginException catch (error, stackTrace) {
+    } on MissingPluginException catch (error) {
       // Native method channel may not be registered yet — retry once after a
       // short delay instead of immediately failing.
       debugPrint(
@@ -864,7 +1330,8 @@ class CortanaPageState extends State<CortanaPage> {
       } catch (retryError, retryStack) {
         debugPrint('[$logPrefix Retry Failed] $js => $retryError');
         debugPrint('$retryStack');
-        _appendLog('JS 调用失败: WebView 原生插件未就绪，请完全重启应用');
+        _webViewReady = false;
+        _appendLog('JS 调用暂停: WebView 原生插件未就绪，等待页面重新加载');
       }
     } catch (error, stackTrace) {
       debugPrint('[$logPrefix Error] $js => $error');
@@ -953,6 +1420,8 @@ class CortanaPageState extends State<CortanaPage> {
         // can throw MissingPluginException on Android.
         await Future<void>.delayed(const Duration(milliseconds: 300));
         _webViewReady = true;
+        _lastSyncedContainerMode = null;
+        await _syncContainerMode(force: true);
         await _hideDiagnostics();
         await _syncModelViewTransform();
         await _refreshLive2dDebugState();
@@ -1011,6 +1480,57 @@ class CortanaPageState extends State<CortanaPage> {
     return _motionAliases[key] ?? _motionAliases[key.toLowerCase()] ?? key;
   }
 
+  String _normalizeMotionIntent(String raw) {
+    final key = raw.trim().toLowerCase();
+    switch (key) {
+      case 'hello':
+      case 'welcome':
+      case 'wave':
+        return 'greeting';
+      case 'joy':
+      case 'warm':
+      case 'playful':
+      case 'celebrate':
+        return 'happy';
+      case 'think':
+      case 'explain':
+      case 'explaincalm':
+      case 'calm_explain':
+        return 'thinking';
+      case 'ask':
+      case 'curious':
+        return 'question';
+      case 'alert':
+      case 'important':
+      case 'strong':
+      case 'notice':
+        return 'emphasis';
+      case 'sorry':
+      case 'comfort':
+      case 'soothe':
+        return 'apology';
+      case 'regret':
+      case 'low':
+        return 'sad';
+      case 'greeting':
+      case 'idle':
+      case 'happy':
+      case 'thinking':
+      case 'question':
+      case 'emphasis':
+      case 'apology':
+      case 'sad':
+      case 'face_happy':
+      case 'face_sad':
+      case 'face_surprised':
+        return key;
+      default:
+        return key.isEmpty ? 'idle' : key;
+    }
+  }
+
+  String _jsString(String value) => jsonEncode(value);
+
   Map<String, dynamic>? _normalizeRemoteActionPlan(
     Map<String, dynamic>? rawPlan,
   ) {
@@ -1064,16 +1584,75 @@ class CortanaPageState extends State<CortanaPage> {
         final resumeToIdle =
             item['resume_to_idle'] == true ||
             item['resume_to_idle']?.toString().toLowerCase() == 'true';
+        final motion = (item['motion'] ?? '').toString().trim();
+        final intent = (item['intent'] ?? item['gesture'] ?? '').toString();
         return <String, dynamic>{
-          'motion': _normalizeMotion((item['motion'] ?? '').toString()),
+          if (motion.isNotEmpty) 'motion': _normalizeMotion(motion),
+          if (motion.isEmpty) 'intent': _normalizeMotionIntent(intent),
           'delay': delay,
           'index': index,
           if (holdMs > 0) 'hold_ms': holdMs,
           if (resumeToIdle) 'resume_to_idle': true,
         };
       }).toList();
+    } else {
+      final motion = (rawPlan['motion'] ?? '').toString().trim();
+      final intent = (rawPlan['intent'] ?? rawPlan['gesture'] ?? '').toString();
+      if (motion.isNotEmpty || intent.trim().isNotEmpty) {
+        normalized['actions'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            if (motion.isNotEmpty) 'motion': _normalizeMotion(motion),
+            if (motion.isEmpty) 'intent': _normalizeMotionIntent(intent),
+            'delay': 0,
+          },
+        ];
+      }
+    }
+    final suggestedReplies = _normalizeSuggestedReplies(rawPlan);
+    if (suggestedReplies.isNotEmpty) {
+      normalized['suggested_replies'] = suggestedReplies
+          .map(
+            (reply) => <String, dynamic>{
+              'label': reply.label,
+              'message': reply.message,
+              if (reply.kind.trim().isNotEmpty) 'kind': reply.kind,
+            },
+          )
+          .toList();
     }
     return normalized.isEmpty ? null : normalized;
+  }
+
+  List<CortanaSuggestedReply> _normalizeSuggestedReplies(
+    Map<String, dynamic>? actionPlan,
+  ) {
+    if (actionPlan == null || actionPlan.isEmpty) {
+      return const <CortanaSuggestedReply>[];
+    }
+    final raw =
+        actionPlan['suggested_replies'] ??
+        actionPlan['reply_options'] ??
+        actionPlan['options'];
+    if (raw is! List) {
+      return const <CortanaSuggestedReply>[];
+    }
+    final replies = <CortanaSuggestedReply>[];
+    for (final item in raw) {
+      final reply = item is Map
+          ? CortanaSuggestedReply.fromMap(Map<String, dynamic>.from(item))
+          : CortanaSuggestedReply(
+              label: item.toString().trim(),
+              message: item.toString().trim(),
+            );
+      if (reply.label.isEmpty) {
+        continue;
+      }
+      replies.add(reply);
+      if (replies.length >= 4) {
+        break;
+      }
+    }
+    return replies;
   }
 
   Map<String, dynamic> _getActionPlan(
@@ -1101,40 +1680,81 @@ class CortanaPageState extends State<CortanaPage> {
       expression = 'surprised';
     }
 
+    final mood = isApology
+        ? 'apology'
+        : hasEmphasis
+        ? 'alert'
+        : asksQuestion
+        ? 'curious'
+        : 'warm';
     final actions = <Map<String, dynamic>>[];
-    void pushAction(String motion, int delay) {
+    final durationMs = _estimateSpeechDurationMs(replyText);
+    void pushIntent(String intent, int delay, {bool resumeToIdle = false}) {
+      if (delay > durationMs + 900) {
+        return;
+      }
       actions.add(<String, dynamic>{
-        'motion': _normalizeMotion(motion),
+        'intent': _normalizeMotionIntent(intent),
         'delay': delay,
+        if (resumeToIdle) 'resume_to_idle': true,
       });
     }
 
     if (isGreeting) {
-      pushAction('IdleWave', 0);
-      pushAction('Idle', 2200);
+      pushIntent('greeting', 0);
+      pushIntent('happy', 1600);
+      pushIntent('idle', 3200);
     } else if (length < 24) {
-      pushAction(asksQuestion ? 'IdleAlt' : 'Idle', 0);
+      pushIntent(
+        isApology
+            ? 'apology'
+            : hasEmphasis
+            ? 'emphasis'
+            : asksQuestion
+            ? 'question'
+            : 'happy',
+        0,
+      );
       if (hasEmphasis) {
-        pushAction('Tap', 1400);
+        pushIntent('face_surprised', 1100);
       }
+      pushIntent('idle', 2200);
     } else if (length < 80) {
-      pushAction('Idle', 0);
-      pushAction(asksQuestion ? 'IdleAlt' : 'Tap', 1800);
-      pushAction('Idle', 4200);
+      pushIntent('idle', 0);
+      pushIntent(
+        isApology
+            ? 'apology'
+            : asksQuestion
+            ? 'question'
+            : 'thinking',
+        1700,
+      );
+      pushIntent(hasEmphasis ? 'emphasis' : 'happy', 3900);
+      pushIntent('idle', 6300);
     } else {
-      pushAction('Idle', 0);
-      pushAction('Tap', 1800);
-      pushAction('IdleAlt', 4200);
-      pushAction('Idle', 7000);
+      pushIntent('idle', 0);
+      pushIntent('thinking', 1600);
+      pushIntent(
+        isApology
+            ? 'apology'
+            : asksQuestion
+            ? 'question'
+            : 'emphasis',
+        3900,
+      );
+      pushIntent('thinking', 6700);
+      pushIntent(hasEmphasis ? 'happy' : 'idle', 9600);
+      pushIntent('idle', 12600);
     }
 
-    if (hasAudio && actions.every((action) => action['motion'] != 'IdleAlt')) {
-      pushAction('IdleAlt', 5600);
+    if (hasAudio && length >= 40) {
+      pushIntent('thinking', 5600);
     }
 
     return <String, dynamic>{
       'expression': _normalizeExpression(expression),
       'fallback_expression': 'happy',
+      'mood': mood,
       'actions': actions,
     };
   }
@@ -1238,7 +1858,13 @@ class CortanaPageState extends State<CortanaPage> {
           : action is Map
           ? Map<String, dynamic>.from(action)
           : const <String, dynamic>{};
-      final motion = _normalizeMotion((item['motion'] ?? 'Idle').toString());
+      final rawMotion = (item['motion'] ?? '').toString().trim();
+      final intent = _normalizeMotionIntent(
+        (item['intent'] ?? item['gesture'] ?? '').toString(),
+      );
+      final motion = rawMotion.isNotEmpty
+          ? _normalizeMotion(rawMotion)
+          : 'intent:$intent';
       final rawDelay = item['delay'];
       final delay = rawDelay is int ? rawDelay : int.tryParse('$rawDelay') ?? 0;
       final rawIndex = item['index'];
@@ -1251,10 +1877,10 @@ class CortanaPageState extends State<CortanaPage> {
           item['resume_to_idle'] == true ||
           item['resume_to_idle']?.toString().toLowerCase() == 'true';
       final timer = Timer(Duration(milliseconds: delay), () {
-        _callJS("window.setMotion('$motion', $index)");
+        _callJS('window.setMotion(${_jsString(motion)}, $index)');
         if (resumeToIdle && holdMs > 0) {
           final settleTimer = Timer(Duration(milliseconds: holdMs), () {
-            _callJS("window.setMotion('Idle', 0)");
+            _callJS('window.setMotion(${_jsString('intent:idle')}, 0)');
           });
           _motionTimers.add(settleTimer);
         }
@@ -1634,6 +2260,7 @@ class CortanaPageState extends State<CortanaPage> {
       return;
     }
 
+    CortanaReplyPayload? completedReply;
     setState(() => _speaking = true);
 
     try {
@@ -1644,6 +2271,7 @@ class CortanaPageState extends State<CortanaPage> {
         '[Cortana LLM] User: $text, Reply: ${reply.text.trim()}, audio=${reply.audioPath}, request=${reply.requestId}',
       );
       await _playReplyAudio(reply);
+      completedReply = reply;
     } catch (e, stackTrace) {
       debugPrint('[Cortana Error] $e');
       debugPrint('$stackTrace');
@@ -1666,9 +2294,113 @@ class CortanaPageState extends State<CortanaPage> {
         setState(() => _speaking = false);
       }
     }
+    if (completedReply != null && mounted) {
+      await _showSuggestedReplies(completedReply);
+    }
   }
 
   Future<void> speakText(String text) => _speak(text.trim());
+
+  Future<void> _showSuggestedReplies(CortanaReplyPayload reply) async {
+    final actionReplies = _normalizeSuggestedReplies(reply.actionPlan);
+    final replies = reply.suggestedReplies.isNotEmpty
+        ? reply.suggestedReplies
+        : actionReplies;
+    if (replies.isEmpty || widget.onSendMessage == null || !mounted) {
+      return;
+    }
+
+    final selected = await showModalBottomSheet<CortanaSuggestedReply>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '回复 Cortana',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                for (final item in replies)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: FilledButton.tonal(
+                      style: FilledButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        foregroundColor: cs.onSurface,
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                      onPressed: () => Navigator.of(sheetContext).pop(item),
+                      child: Text(item.label, overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    if (selected.isCustom) {
+      final custom = await _askCustomSuggestedReply();
+      if (custom.trim().isNotEmpty && mounted) {
+        unawaited(_speak(custom.trim()));
+      }
+      return;
+    }
+    final message = selected.message.trim().isEmpty
+        ? selected.label.trim()
+        : selected.message.trim();
+    if (message.isNotEmpty) {
+      unawaited(_speak(message));
+    }
+  }
+
+  Future<String> _askCustomSuggestedReply() async {
+    final controller = TextEditingController();
+    try {
+      final value = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('其他回复'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (value) =>
+                  Navigator.of(dialogContext).pop(value.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(controller.text.trim()),
+                child: const Text('发送'),
+              ),
+            ],
+          );
+        },
+      );
+      return value ?? '';
+    } finally {
+      controller.dispose();
+    }
+  }
 
   Size _floatingSizeForMode(CortanaDisplayMode mode) {
     switch (mode) {
@@ -1988,9 +2720,15 @@ class CortanaPageState extends State<CortanaPage> {
                 label: scaleText,
                 onChanged: (value) {
                   setState(() {
-                    _modelUserScale = value;
+                    _updateViewTransform(
+                      CortanaModelViewTransform(
+                        scale: value,
+                        offsetX: _modelUserOffsetX,
+                        offsetY: _modelUserOffsetY,
+                      ),
+                    );
                   });
-                  unawaited(_syncModelViewTransform());
+                  _commitViewTransformChange();
                 },
               ),
             ),
@@ -2012,9 +2750,15 @@ class CortanaPageState extends State<CortanaPage> {
                 label: offsetXText,
                 onChanged: (value) {
                   setState(() {
-                    _modelUserOffsetX = value;
+                    _updateViewTransform(
+                      CortanaModelViewTransform(
+                        scale: _modelUserScale,
+                        offsetX: value,
+                        offsetY: _modelUserOffsetY,
+                      ),
+                    );
                   });
-                  unawaited(_syncModelViewTransform());
+                  _commitViewTransformChange();
                 },
               ),
             ),
@@ -2036,9 +2780,15 @@ class CortanaPageState extends State<CortanaPage> {
                 label: offsetYText,
                 onChanged: (value) {
                   setState(() {
-                    _modelUserOffsetY = value;
+                    _updateViewTransform(
+                      CortanaModelViewTransform(
+                        scale: _modelUserScale,
+                        offsetX: _modelUserOffsetX,
+                        offsetY: value,
+                      ),
+                    );
                   });
-                  unawaited(_syncModelViewTransform());
+                  _commitViewTransformChange();
                 },
               ),
             ),
@@ -2194,11 +2944,11 @@ class CortanaPageState extends State<CortanaPage> {
                       TextButton(
                         onPressed: () {
                           setState(() {
-                            _modelUserScale = 1.0;
-                            _modelUserOffsetX = 0.0;
-                            _modelUserOffsetY = 0.0;
+                            _updateViewTransform(
+                              CortanaModelViewTransform.defaults,
+                            );
                           });
-                          unawaited(_syncModelViewTransform());
+                          _commitViewTransformChange();
                         },
                         child: const Text('重置'),
                       ),
@@ -2260,15 +3010,10 @@ class CortanaPageState extends State<CortanaPage> {
           debugPrint(
             '[Cortana Live2D] loading custom runtime: ${htmlFile.uri} model=${webRoot.modelUrl}',
           );
-          final url =
-              !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          final url = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
               ? 'http://localhost:$_localhostPort/$_cortanaLocalPath'
               : Uri.file(htmlFile.path).toString();
-          return _buildWebView(
-            initialUrlRequest: URLRequest(
-              url: WebUri(url),
-            ),
-          );
+          return _buildWebView(initialUrlRequest: URLRequest(url: WebUri(url)));
         },
       );
     }
@@ -2304,9 +3049,7 @@ class CortanaPageState extends State<CortanaPage> {
   Widget _buildWebCortanaBackdrop(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-      ),
+      decoration: BoxDecoration(color: Colors.transparent),
       child: Center(
         child: Icon(
           Icons.face_rounded,

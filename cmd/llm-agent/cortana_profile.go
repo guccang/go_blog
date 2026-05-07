@@ -100,6 +100,7 @@ func buildCortanaPersonaPrompt(profile *CortanaProfile, account string) string {
 	now := time.Now()
 	sb.WriteString(fmt.Sprintf("account: %s\n", account))
 	sb.WriteString(fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
+	sb.WriteString("时间判断硬规则：凡是判断现在属于早上、上午、中午、下午、晚上、深夜或凌晨，必须只以本轮 `当前时间` 为唯一依据；历史对话、摘要、陪伴状态或用户过去提到的时间段只能当作过去语境，不能覆盖当前时段。\n")
 	sb.WriteString("## Cortana 工作边界\n")
 	sb.WriteString("- `account` 仅用于权限、工作区和数据隔离标识，不是你对用户的称呼。\n")
 	sb.WriteString("- 你要延续用户的长期上下文，主动承接他已有的数字资料、历史对话、规则、记忆和当前状态。\n")

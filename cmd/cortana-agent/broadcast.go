@@ -10,13 +10,14 @@ import (
 
 // BroadcastDecision 播报决策结果
 type BroadcastDecision struct {
-	ShouldBroadcast bool   `json:"should_broadcast"`
-	BroadcastID     string `json:"broadcast_id"`
-	Text            string `json:"text"`
-	Account         string `json:"account"`
-	Expression      string `json:"expression"`
-	Motion          string `json:"motion"`
-	SkipReason      string `json:"skip_reason,omitempty"`
+	ShouldBroadcast bool           `json:"should_broadcast"`
+	BroadcastID     string         `json:"broadcast_id"`
+	Text            string         `json:"text"`
+	Account         string         `json:"account"`
+	Expression      string         `json:"expression"`
+	Motion          string         `json:"motion"`
+	ActionPlan      map[string]any `json:"action_plan,omitempty"`
+	SkipReason      string         `json:"skip_reason,omitempty"`
 }
 
 // broadcastState 单个播报场景的运行时状态

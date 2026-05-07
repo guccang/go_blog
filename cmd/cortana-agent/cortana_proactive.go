@@ -11,19 +11,23 @@ import (
 )
 
 type CortanaUserSnapshot struct {
-	Account       string         `json:"account"`
-	CollectedAt   int64          `json:"collected_at"`
-	TriggerReason string         `json:"trigger_reason"`
-	EventContext  map[string]any `json:"event_context,omitempty"`
-	DeviceContext map[string]any `json:"device_context,omitempty"`
-	Blog          map[string]any `json:"blog,omitempty"`
-	Todo          map[string]any `json:"todo,omitempty"`
-	Exercise      map[string]any `json:"exercise,omitempty"`
-	Reading       map[string]any `json:"reading,omitempty"`
-	YearPlan      map[string]any `json:"year_plan,omitempty"`
-	Goals         map[string]any `json:"goals,omitempty"`
-	Projects      map[string]any `json:"projects,omitempty"`
-	Agents        map[string]any `json:"agents,omitempty"`
+	Account        string         `json:"account"`
+	CollectedAt    int64          `json:"collected_at"`
+	LocalDatetime  string         `json:"local_datetime"`
+	Weekday        string         `json:"weekday"`
+	Timezone       string         `json:"timezone"`
+	TimezoneOffset string         `json:"timezone_offset"`
+	TriggerReason  string         `json:"trigger_reason"`
+	EventContext   map[string]any `json:"event_context,omitempty"`
+	DeviceContext  map[string]any `json:"device_context,omitempty"`
+	Blog           map[string]any `json:"blog,omitempty"`
+	Todo           map[string]any `json:"todo,omitempty"`
+	Exercise       map[string]any `json:"exercise,omitempty"`
+	Reading        map[string]any `json:"reading,omitempty"`
+	YearPlan       map[string]any `json:"year_plan,omitempty"`
+	Goals          map[string]any `json:"goals,omitempty"`
+	Projects       map[string]any `json:"projects,omitempty"`
+	Agents         map[string]any `json:"agents,omitempty"`
 }
 
 type CortanaProactiveTaskPayload struct {
@@ -103,6 +107,7 @@ func (c *Connection) evaluateProactive(account string, result *MonitorResult) (B
 		Account:         account,
 		Expression:      sanitizeExpression(decision.Expression),
 		Motion:          sanitizeMotion(extractPrimaryMotion(decision.Actions)),
+		ActionPlan:      buildCortanaBroadcastActionPlan(decision),
 	}, true
 }
 
@@ -163,9 +168,13 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 
 	triggerReason := defaultString(event.TriggerReason, "monitor_cycle")
 	snapshot := CortanaUserSnapshot{
-		Account:       account,
-		CollectedAt:   now.UnixMilli(),
-		TriggerReason: triggerReason,
+		Account:        account,
+		CollectedAt:    now.UnixMilli(),
+		LocalDatetime:  now.Format("2006-01-02 15:04:05"),
+		Weekday:        chineseWeekday(now.Weekday()),
+		Timezone:       localTimezoneName(now),
+		TimezoneOffset: localTimezoneOffset(now),
+		TriggerReason:  triggerReason,
 		EventContext: map[string]any{
 			"trigger_source": strings.TrimSpace(event.TriggerSource),
 			"trigger_reason": triggerReason,
@@ -235,6 +244,44 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 	return snapshot
 }
 
+func chineseWeekday(w time.Weekday) string {
+	switch w {
+	case time.Monday:
+		return "星期一"
+	case time.Tuesday:
+		return "星期二"
+	case time.Wednesday:
+		return "星期三"
+	case time.Thursday:
+		return "星期四"
+	case time.Friday:
+		return "星期五"
+	case time.Saturday:
+		return "星期六"
+	case time.Sunday:
+		return "星期日"
+	default:
+		return ""
+	}
+}
+
+func localTimezoneName(t time.Time) string {
+	name, _ := t.Zone()
+	return name
+}
+
+func localTimezoneOffset(t time.Time) string {
+	_, offset := t.Zone()
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	hours := offset / 3600
+	minutes := (offset % 3600) / 60
+	return fmt.Sprintf("%s%02d:%02d", sign, hours, minutes)
+}
+
 func (c *Connection) handleProactiveEvent(event CortanaTriggerEventPayload) (BroadcastDecision, bool, error) {
 	event.Account = strings.TrimSpace(event.Account)
 	event.TriggerSource = strings.TrimSpace(event.TriggerSource)
@@ -296,6 +343,7 @@ func (c *Connection) handleProactiveEvent(event CortanaTriggerEventPayload) (Bro
 		Account:         session.Account,
 		Expression:      sanitizeExpression(decision.Expression),
 		Motion:          sanitizeMotion(extractPrimaryMotion(decision.Actions)),
+		ActionPlan:      buildCortanaBroadcastActionPlan(decision),
 	}
 	log.Printf("[CortanaAgent] proactive event trigger account=%s source=%s reason=%s text=%q",
 		session.Account, event.TriggerSource, event.TriggerReason, broadcast.Text)
@@ -337,6 +385,25 @@ func extractPrimaryMotion(actions []map[string]any) string {
 		}
 	}
 	return "IdleWave"
+}
+
+func buildCortanaBroadcastActionPlan(decision *CortanaProactiveDecision) map[string]any {
+	if decision == nil {
+		return nil
+	}
+	out := map[string]any{
+		"speech_text":         strings.TrimSpace(decision.SpeechText),
+		"expression":          sanitizeExpression(decision.Expression),
+		"fallback_expression": "happy",
+		"expression_hold_ms":  1800,
+	}
+	if mood := strings.TrimSpace(decision.Priority); mood != "" {
+		out["mood"] = mood
+	}
+	if len(decision.Actions) > 0 {
+		out["actions"] = decision.Actions
+	}
+	return out
 }
 
 func sanitizeExpression(expression string) string {

@@ -2002,15 +2002,16 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 
 	// 检查是否是 cortana_broadcast JSON 格式
 	var broadcast struct {
-		Kind        string `json:"kind"`
-		Text        string `json:"text"`
-		Expression  string `json:"expression"`
-		Motion      string `json:"motion"`
-		Origin      string `json:"origin"`
-		BroadcastID string `json:"broadcast_id"`
-		Timestamp   int64  `json:"timestamp"`
-		AudioBase64 string `json:"audio_base64"`
-		AudioFormat string `json:"audio_format"`
+		Kind        string         `json:"kind"`
+		Text        string         `json:"text"`
+		Expression  string         `json:"expression"`
+		Motion      string         `json:"motion"`
+		Origin      string         `json:"origin"`
+		BroadcastID string         `json:"broadcast_id"`
+		Timestamp   int64          `json:"timestamp"`
+		AudioBase64 string         `json:"audio_base64"`
+		AudioFormat string         `json:"audio_format"`
+		ActionPlan  map[string]any `json:"action_plan"`
 	}
 	if err := json.Unmarshal([]byte(content), &broadcast); err != nil {
 		return false
@@ -2092,6 +2093,9 @@ func (b *Bridge) handleCortanaBroadcast(payload uap.NotifyPayload) bool {
 		"cortana_motion":     broadcast.Motion,
 		"cortana_text":       broadcastText,
 		"cortana_history_id": fmt.Sprintf("%s-%d", broadcastID, broadcastTS),
+	}
+	if len(broadcast.ActionPlan) > 0 {
+		cortanaMeta["cortana_action_plan"] = broadcast.ActionPlan
 	}
 
 	cortanaMeta["cortana_broadcast_ts"] = broadcastTS

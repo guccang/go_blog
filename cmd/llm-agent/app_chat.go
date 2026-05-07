@@ -73,25 +73,33 @@ func buildCortanaOutputPrompt() string {
   "expression_hold_ms": 1600,
   "mood": "warm",
   "actions": [
-    {"motion": "IdleWave", "delay": 0, "index": 0, "hold_ms": 1800},
-    {"motion": "Tap", "delay": 1800, "index": 0, "hold_ms": 900, "resume_to_idle": true},
-    {"motion": "Idle", "delay": 3600, "index": 0}
+    {"intent": "greeting", "delay": 0, "hold_ms": 1800},
+    {"intent": "emphasis", "delay": 1800, "hold_ms": 900, "resume_to_idle": true},
+    {"intent": "idle", "delay": 3600}
+  ],
+  "suggested_replies": [
+    {"label": "想", "message": "想继续听"},
+    {"label": "不想", "message": "不想继续听"},
+    {"label": "其他", "message": "", "kind": "custom"}
   ]
 }
 - ` + "`speech_text`" + ` 必须与正文口播内容一致或是正文的自然口语化版本。
-- ` + "`expression`" + ` 目前只用这三个值之一：` + "`happy`" + `、` + "`sad`" + `、` + "`surprised`" + `。
+- ` + "`expression`" + ` 优先从客户端上下文 ` + "`device_context.live2d.available_expressions`" + ` 中选择；没有该清单时再使用 ` + "`happy`" + `、` + "`sad`" + `、` + "`surprised`" + `。
 - ` + "`fallback_expression`" + ` 可选，表示短暂表情结束后回落到哪个基础表情；默认 ` + "`happy`" + `。
 - ` + "`expression_hold_ms`" + ` 可选，表示当前表情保持多久后再切回 ` + "`fallback_expression`" + `。
 - ` + "`mood`" + ` 可选，用来描述整体气质，例如 ` + "`warm`" + `、` + "`calm`" + `、` + "`alert`" + `、` + "`playful`" + `。
-- ` + "`motion`" + ` 优先只用这些语义动作名：` + "`Idle`" + `、` + "`IdleAlt`" + `、` + "`IdleWave`" + `、` + "`Tap`" + `。
+- ` + "`intent`" + ` 优先使用语义动作意图，由 Flutter 客户端根据当前 Live2D 模型随机选择具体动作。可选值：` + "`idle`" + `、` + "`greeting`" + `、` + "`happy`" + `、` + "`thinking`" + `、` + "`question`" + `、` + "`emphasis`" + `、` + "`apology`" + `、` + "`sad`" + `、` + "`face_happy`" + `、` + "`face_sad`" + `、` + "`face_surprised`" + `。
+- ` + "`motion`" + ` 可选，仅当客户端上下文明确提供了可用动作名且你有把握时才从 ` + "`device_context.live2d.available_motions`" + ` 中选择；否则不要硬编码具体 Live2D 文件名。
 - ` + "`index`" + ` 可选，表示同一动作组的具体变体序号；不写时默认 0。
 - ` + "`delay`" + ` 单位毫秒，表示从语音开始播放后的触发时间；动作数量控制在 1-4 个。
 - ` + "`hold_ms`" + ` 可选，表示该动作预期持续的时间窗口，便于前端安排回落动作。
 - ` + "`resume_to_idle`" + ` 可选，为 true 时表示该动作结束后可自动回到基础待机。
-- 如果是问候、欢迎、轻松语气，优先用 ` + "`IdleWave`" + ` / ` + "`happy`" + `。
-- 如果是解释说明或长回复，优先用 ` + "`Idle`" + `、` + "`IdleAlt`" + ` 交替，避免频繁 ` + "`Tap`" + `。
-- 如果是道歉、遗憾、安慰，使用 ` + "`sad`" + `，动作以 ` + "`Idle`" + ` / ` + "`IdleAlt`" + ` 为主。
-- 如果有强调、惊讶、兴奋、重大提醒，可以使用 ` + "`surprised`" + ` 并插入一次 ` + "`Tap`" + `。
+- ` + "`suggested_replies`" + ` 可选，用于 Flutter 客户端弹出可点选项；每项包含 ` + "`label`" + ` 和 ` + "`message`" + `，其中 ` + "`kind: custom`" + ` 表示让用户输入其它内容。
+- 当你想追问“是否继续听/是否继续聊/是否要我接着说”时，不要只把选项写在正文里，必须在 ` + "`suggested_replies`" + ` 里给出“想”“不想”“其他”三个选项。
+- 如果是问候、欢迎、轻松语气，优先用 ` + "`intent:greeting`" + ` / ` + "`happy`" + `。
+- 如果是解释说明或长回复，优先用 ` + "`intent:idle`" + `、` + "`intent:thinking`" + ` 交替，避免频繁强调动作。
+- 如果是道歉、遗憾、安慰，使用 ` + "`sad`" + `，动作以 ` + "`intent:apology`" + ` / ` + "`intent:idle`" + ` 为主。
+- 如果有强调、惊讶、兴奋、重大提醒，可以使用 ` + "`surprised`" + ` 并插入一次 ` + "`intent:emphasis`" + `。
 - 不要输出 markdown 代码围栏，不要输出多个动作计划块，不要遗漏 ` + "`speech_text`" + `。`
 }
 
@@ -702,6 +710,11 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		return
 	}
 
+	if cortanaContextMode && isCortanaCurrentTimeQuery(content) {
+		b.sendApp(fromAgent, appUser, buildCortanaCurrentTimeReply(time.Now()))
+		return
+	}
+
 	session, isNew := b.sessionMgr.GetOrCreate("app", appUser, appUser)
 
 	session.processing.Lock()
@@ -891,10 +904,23 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		log.Printf("[App] result truncated: %d -> %d chars", len(result), len(appResult))
 	}
 
+	meta := map[string]any{}
+	if strings.TrimSpace(cortanaRequestID) != "" {
+		meta["cortana_request_id"] = strings.TrimSpace(cortanaRequestID)
+	}
+	if len(cortanaActionPlan) > 0 {
+		meta["cortana_action_plan"] = cortanaActionPlan
+		meta["speech_text"] = strings.TrimSpace(result)
+	}
+	if len(meta) == 0 {
+		meta = nil
+	}
 	if err := b.client.SendTo(fromAgent, uap.MsgNotify, uap.NotifyPayload{
-		Channel: "app",
-		To:      appUser,
-		Content: appResult,
+		Channel:     "app",
+		To:          appUser,
+		Content:     appResult,
+		MessageType: "text",
+		Meta:        meta,
 	}); err != nil {
 		log.Printf("[App] send reply failed: %v", err)
 	} else {
@@ -913,4 +939,39 @@ func (b *Bridge) sendApp(fromAgent, appUser, content string) {
 		To:      appUser,
 		Content: content,
 	})
+}
+
+func isCortanaCurrentTimeQuery(content string) bool {
+	text := strings.TrimSpace(content)
+	if text == "" {
+		return false
+	}
+	if inbound, ok := parseAppInboundMessage(text); ok && inbound != nil {
+		text = strings.TrimSpace(inbound.Content)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	lower := strings.ToLower(text)
+	switch {
+	case strings.Contains(text, "现在几点"),
+		strings.Contains(text, "几点了"),
+		strings.Contains(text, "当前时间"),
+		strings.Contains(text, "现在时间"),
+		strings.Contains(text, "时间错"),
+		strings.Contains(text, "系统时间"),
+		strings.Contains(text, "是不是凌晨"),
+		strings.Contains(text, "还是凌晨"),
+		strings.Contains(text, "时间") && strings.Contains(text, "凌晨"),
+		strings.Contains(lower, "what time is it"),
+		strings.Contains(lower, "current time"):
+		return true
+	default:
+		return false
+	}
+}
+
+func buildCortanaCurrentTimeReply(now time.Time) string {
+	return fmt.Sprintf("现在是 %s %s。", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
 }

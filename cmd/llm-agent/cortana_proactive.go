@@ -33,6 +33,7 @@ func (b *Bridge) handleCortanaProactiveTask(taskID, sourceAgent string, payload 
 		status = "failed"
 		errMsg = err.Error()
 	} else {
+		b.recordCortanaProactiveContext(payload, decision)
 		body, _ := json.Marshal(decision)
 		result = string(body)
 	}
@@ -45,6 +46,83 @@ func (b *Bridge) handleCortanaProactiveTask(taskID, sourceAgent string, payload 
 		Payload: mustMarshal(uap.TaskCompletePayload{TaskID: taskID, Status: status, Error: errMsg, Result: result}),
 		Ts:      time.Now().UnixMilli(),
 	})
+}
+
+func (b *Bridge) recordCortanaProactiveContext(payload *CortanaProactivePayload, decision *CortanaProactiveDecision) {
+	if b == nil || b.sessionMgr == nil || payload == nil || decision == nil || !decision.ShouldInteract {
+		return
+	}
+
+	account := strings.TrimSpace(payload.Account)
+	speechText := strings.TrimSpace(decision.SpeechText)
+	if account == "" || speechText == "" {
+		return
+	}
+
+	workspaceDir := ""
+	if b.cfg != nil {
+		workspaceDir = b.cfg.WorkspaceDir
+	}
+	if workspaceDir != "" {
+		EnsureAccountWorkspace(workspaceDir, account)
+	}
+
+	session, _ := b.sessionMgr.GetOrCreate("app", account, account)
+	session.processing.Lock()
+	defer session.processing.Unlock()
+
+	session.mu.Lock()
+	session.LastActiveAt = time.Now()
+	if session.CortanaState == nil {
+		session.CortanaState = loadCortanaCompanionState(workspaceDir, account)
+	}
+	cortanaProfile := loadCortanaProfile(workspaceDir, account)
+
+	systemPrompt, promptSections := b.buildCortanaAppSystemPrompt(
+		account,
+		speechText,
+		cortanaProfile,
+		session.CortanaState,
+	)
+	systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", account)
+	systemPrompt += buildCortanaOutputPrompt() + "\n"
+	if len(session.Messages) == 0 {
+		session.Messages = []Message{{Role: "system", Content: systemPrompt}}
+	} else if session.Messages[0].Role == "system" {
+		session.Messages[0].Content = systemPrompt
+	} else {
+		session.Messages = append([]Message{{Role: "system", Content: systemPrompt}}, session.Messages...)
+	}
+	session.PromptSections = promptSections
+
+	if !latestAssistantMessageEquals(session.Messages, speechText) {
+		session.Messages = append(session.Messages, Message{Role: "assistant", Content: speechText})
+	}
+	session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
+	session.CortanaState = updateCortanaCompanionState(session.CortanaState, "", speechText)
+	cortanaState := session.CortanaState
+	session.mu.Unlock()
+
+	if err := b.sessionMgr.SaveSession(session); err != nil {
+		log.Printf("[CortanaProactive] save app session failed account=%s err=%v", account, err)
+	}
+	if err := saveCortanaCompanionState(workspaceDir, account, cortanaState); err != nil {
+		log.Printf("[CortanaProactive] save cortana companion state failed account=%s err=%v", account, err)
+	}
+}
+
+func latestAssistantMessageEquals(messages []Message, content string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return false
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		return strings.TrimSpace(messages[i].Content) == content
+	}
+	return false
 }
 
 func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePayload) (*CortanaProactiveDecision, error) {
@@ -79,7 +157,7 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 		decision.Expression = "happy"
 	}
 	if len(decision.Actions) == 0 && decision.ShouldInteract {
-		decision.Actions = []map[string]any{{"motion": "IdleWave", "delay": 0}}
+		decision.Actions = []map[string]any{{"intent": "greeting", "delay": 0}}
 	}
 	return &decision, nil
 }
@@ -102,7 +180,7 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
   "speech_text": "最终播报文本",
   "summary_text": "供客户端展示的摘要",
   "expression": "happy|sad|surprised",
-  "actions": [{"motion":"IdleWave","delay":0}],
+  "actions": [{"intent":"greeting","delay":0}],
   "follow_up_suggested": false,
   "next_cooldown_sec": 1800
 }
@@ -111,7 +189,7 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 1. 如果不该打扰，should_interact=false，speech_text 和 summary_text 留空数组 actions 可为空。
 2. 优先只推送“此刻对用户最有价值的一件事”。
 3. 如果用户未授权全量访问或不在线，通常应该返回 should_interact=false。
-4. 表情只能是 happy/sad/surprised；动作优先 Idle/IdleAlt/IdleWave/Tap。
+4. 表情只能是 happy/sad/surprised；动作优先输出 intent，不要硬编码具体 Live2D 文件名。intent 可选 idle/greeting/happy/thinking/question/emphasis/apology/sad/face_happy/face_sad/face_surprised。
 5. 口播简短、自然、中文。
 6. 当 proactive_mode=high 且用户在线、已授权全量访问时，不要把“没有待办/没有新内容”直接等同于“不该互动”。
 7. 在 high 模式下，如果没有明确任务提醒，也可以主动返回轻量陪伴类消息，例如问候、陪伴式闲聊、温和鼓励、状态确认、轻提醒、生活化寒暄，但仍要自然、克制、像真人助理。
@@ -124,7 +202,8 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 14. 如果 snapshot.device_context.location.available=true，必须优先相信客户端当前位置，不能用记忆或猜测把用户放到其它地点；不要出现人在家里却按动物园场景推送的情况。
 15. 如果要处理天气、出门、通勤、路线、到达时间、附近事项，先基于 device_context 的位置、采集时间、精度和当前时间给出一个合理推送方案；只有目的地或关键约束缺失且无法合理默认时才询问用户。
 16. 如果位置不可用或精度过低，不要编造地点；可以推送保守方案，例如提醒用户打开定位、按最近明确地点估算并标注不确定性。
-17. 个人助理默认少问选择题，优先替用户筛选一个可执行方案，并用一句话说明依据。`))
+17. 个人助理默认少问选择题，优先替用户筛选一个可执行方案，并用一句话说明依据。
+18. 凡是判断当前早晚、上午、下午、晚上、深夜或凌晨，必须只依据本轮明确给出的当前本地时间、星期和时区；recent_interactions、历史摘要、device_context 旧内容里的时间段只当历史语境。`))
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
 	if profile.OwnerTitle != "" {
@@ -140,6 +219,13 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 	if len(payloads) > 0 {
 		payload = payloads[0]
 	}
+	if localTime := cortanaProactiveLocalTimeContext(payload); len(localTime) > 0 {
+		if body, err := json.MarshalIndent(localTime, "", "  "); err == nil {
+			sb.WriteString("当前本地时间上下文（判断当前时段时优先级最高）:\n")
+			sb.WriteString(string(body))
+			sb.WriteString("\n")
+		}
+	}
 	if deviceContext := cortanaProactiveDeviceContext(payload); len(deviceContext) > 0 {
 		if body, err := json.MarshalIndent(deviceContext, "", "  "); err == nil {
 			sb.WriteString("当前客户端基础上下文:\n")
@@ -149,6 +235,22 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 	}
 	sb.WriteString("主动互动时，语气、人设和称呼必须与以上 Cortana 设定保持一致。\n")
 	return sb.String()
+}
+
+func cortanaProactiveLocalTimeContext(payload *CortanaProactivePayload) map[string]any {
+	if payload == nil || len(payload.Snapshot) == 0 {
+		return nil
+	}
+	out := make(map[string]any)
+	for _, key := range []string{"local_datetime", "weekday", "timezone", "timezone_offset", "collected_at"} {
+		if value, ok := payload.Snapshot[key]; ok && value != nil && strings.TrimSpace(fmt.Sprint(value)) != "" {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func cortanaProactiveDeviceContext(payload *CortanaProactivePayload) map[string]any {

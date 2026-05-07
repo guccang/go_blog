@@ -11,6 +11,7 @@
   "obs_agent_token": "your-obs-agent-token",
   "download_ticket_secret": "replace-this-with-a-long-random-secret",
   "download_ticket_ttl_seconds": 300,
+  "max_resource_upload_mb": 256,
   "llm_agent_id": "llm-agent",
   "cmd_agent_id": "cmd-agent",
   "backend_agent_id": "blog-agent",

@@ -438,6 +438,9 @@ func (e *MonitorEngine) executeBroadcast(decision BroadcastDecision) {
 		"audio_base64": audioBase64,
 		"audio_format": audioFormat,
 	}
+	if len(decision.ActionPlan) > 0 {
+		broadcastPayload["action_plan"] = decision.ActionPlan
+	}
 
 	payloadJSON, _ := json.Marshal(broadcastPayload)
 

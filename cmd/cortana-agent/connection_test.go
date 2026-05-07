@@ -49,3 +49,26 @@ func TestToolPushTestVoiceSuccess(t *testing.T) {
 		t.Fatalf("expected kind test_voice, got %#v", payload["kind"])
 	}
 }
+
+func TestCollectSnapshotIncludesReadableLocalTime(t *testing.T) {
+	conn := &Connection{}
+	snapshot := conn.collectSnapshot(&CortanaUserSession{
+		Account:        "ztt",
+		CurrentContext: map[string]any{"client": "flutter"},
+	}, &MonitorResult{}, CortanaTriggerEventPayload{
+		TriggerReason: "monitor_cycle",
+	})
+
+	if snapshot.CollectedAt <= 0 {
+		t.Fatalf("expected collected_at")
+	}
+	if snapshot.LocalDatetime == "" {
+		t.Fatalf("expected local_datetime")
+	}
+	if snapshot.Weekday == "" {
+		t.Fatalf("expected weekday")
+	}
+	if snapshot.TimezoneOffset == "" {
+		t.Fatalf("expected timezone_offset")
+	}
+}

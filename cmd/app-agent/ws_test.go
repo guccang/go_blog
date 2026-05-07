@@ -55,6 +55,13 @@ func (f *fakeOBSStorage) PutObject(_ context.Context, req obsstore.PutObjectRequ
 	return nil
 }
 
+func (f *fakeOBSStorage) DeleteObject(_ context.Context, key string) error {
+	if f.existing != nil {
+		delete(f.existing, key)
+	}
+	return nil
+}
+
 type fakeDownloadTicketSigner struct {
 	token     string
 	expiresAt int64

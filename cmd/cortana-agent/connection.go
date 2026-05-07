@@ -560,6 +560,10 @@ func (c *Connection) toolCheckNow(args map[string]interface{}) (string, bool) {
 
 // sendBroadcast 向 app-agent 推送 Cortana 播报（含 TTS 语音）
 func (c *Connection) sendBroadcast(account, text, expression, motion string) error {
+	return c.sendBroadcastWithActionPlan(account, text, expression, motion, nil)
+}
+
+func (c *Connection) sendBroadcastWithActionPlan(account, text, expression, motion string, actionPlan map[string]any) error {
 	if text == "" {
 		return fmt.Errorf("播报文本为空")
 	}
@@ -582,6 +586,9 @@ func (c *Connection) sendBroadcast(account, text, expression, motion string) err
 		"origin":       "cortana-agent",
 		"audio_base64": audioBase64,
 		"audio_format": audioFormat,
+	}
+	if len(actionPlan) > 0 {
+		broadcastPayload["action_plan"] = actionPlan
 	}
 
 	payloadJSON, err := json.Marshal(broadcastPayload)
@@ -607,7 +614,13 @@ func (c *Connection) executeBroadcastDecision(decision BroadcastDecision) {
 	}
 	c.decider.RecordBroadcast(decision.Account, decision.BroadcastID)
 	c.recordBroadcastInteraction(decision)
-	if err := c.broadcastSender(decision.Account, decision.Text, decision.Expression, decision.Motion); err != nil {
+	var err error
+	if len(decision.ActionPlan) > 0 {
+		err = c.sendBroadcastWithActionPlan(decision.Account, decision.Text, decision.Expression, decision.Motion, decision.ActionPlan)
+	} else {
+		err = c.broadcastSender(decision.Account, decision.Text, decision.Expression, decision.Motion)
+	}
+	if err != nil {
 		log.Printf("[CortanaAgent] 执行播报失败 account=%s broadcast_id=%s err=%v",
 			decision.Account, decision.BroadcastID, err)
 	}
