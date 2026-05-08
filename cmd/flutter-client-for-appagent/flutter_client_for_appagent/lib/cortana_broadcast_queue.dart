@@ -19,6 +19,19 @@ class CortanaBroadcastQueue {
     _tryPlayNext(player);
   }
 
+  void enqueueLatest(
+    CortanaReplyPayload payload,
+    CortanaBroadcastPlayer player,
+  ) {
+    if (_playing) {
+      _pending
+        ..clear()
+        ..addLast(payload);
+      return;
+    }
+    enqueue(payload, player);
+  }
+
   void _tryPlayNext(CortanaBroadcastPlayer player) {
     if (_playing || _pending.isEmpty) {
       return;

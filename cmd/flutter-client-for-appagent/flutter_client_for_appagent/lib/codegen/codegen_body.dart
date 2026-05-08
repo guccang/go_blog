@@ -63,6 +63,7 @@ class CodegenBody extends StatelessWidget {
     required this.onDeployPackOnlyChanged,
     required this.onDeployArgsChanged,
     required this.onSend,
+    required this.onCommitAndPush,
     required this.onClearHistory,
     required this.onShowHistoryDetails,
     required this.onReExecute,
@@ -107,6 +108,7 @@ class CodegenBody extends StatelessWidget {
   final ValueChanged<bool> onDeployPackOnlyChanged;
   final ValueChanged<String> onDeployArgsChanged;
   final VoidCallback onSend;
+  final VoidCallback onCommitAndPush;
   final VoidCallback onClearHistory;
   final ValueChanged<CodegenHistoryItem> onShowHistoryDetails;
   final ValueChanged<CodegenHistoryItem> onReExecute;
@@ -263,17 +265,43 @@ class CodegenBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: sending || loading ? null : onSend,
-              icon: Icon(
-                mode == CodegenLaunchMode.code
-                    ? Icons.terminal_rounded
-                    : Icons.rocket_launch_rounded,
-              ),
-              label: Text(mode == CodegenLaunchMode.code ? '发送编码命令' : '发送发布命令'),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 420;
+              final sendButton = FilledButton.icon(
+                onPressed: sending || loading ? null : onSend,
+                icon: Icon(
+                  mode == CodegenLaunchMode.code
+                      ? Icons.terminal_rounded
+                      : Icons.rocket_launch_rounded,
+                ),
+                label: Text(
+                  mode == CodegenLaunchMode.code ? '发送编码命令' : '发送发布命令',
+                ),
+              );
+              final commitButton = OutlinedButton.icon(
+                onPressed: sending || loading ? null : onCommitAndPush,
+                icon: const Icon(Icons.account_tree_rounded),
+                label: const Text('git提交'),
+              );
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    sendButton,
+                    const SizedBox(height: 8),
+                    commitButton,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: sendButton),
+                  const SizedBox(width: 8),
+                  commitButton,
+                ],
+              );
+            },
           ),
         ],
       ),

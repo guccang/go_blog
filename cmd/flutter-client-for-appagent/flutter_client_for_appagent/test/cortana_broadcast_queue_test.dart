@@ -42,4 +42,27 @@ void main() {
     completions.removeAt(0)();
     expect(queue.isPlaying, false);
   });
+
+  test('latest enqueue drops stale pending broadcasts', () {
+    final queue = CortanaBroadcastQueue();
+    final played = <String>[];
+    final completions = <void Function()>[];
+
+    void player(CortanaReplyPayload payload, void Function() onFinished) {
+      played.add(payload.text);
+      completions.add(onFinished);
+    }
+
+    queue.enqueueLatest(const CortanaReplyPayload(text: 'first'), player);
+    queue.enqueueLatest(const CortanaReplyPayload(text: 'second'), player);
+    queue.enqueueLatest(const CortanaReplyPayload(text: 'third'), player);
+
+    expect(played, <String>['first']);
+    expect(queue.pendingCount, 1);
+
+    completions.removeAt(0)();
+
+    expect(played, <String>['first', 'third']);
+    expect(queue.pendingCount, 0);
+  });
 }

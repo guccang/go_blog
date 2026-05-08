@@ -2944,6 +2944,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _cortanaBadge = false;
   bool _cortanaImmersiveUiHidden = false;
   final CortanaBroadcastQueue _cortanaBroadcastQueue = CortanaBroadcastQueue();
+  bool _appInForeground = true;
+  CortanaReplyPayload? _pendingBackgroundCortanaBroadcast;
   String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
   bool _startupGreetingShown = false;
@@ -2978,14 +2980,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _appInForeground = false;
       _cortanaWakePausedForLifecycle = true;
       unawaited(_pauseCortanaWakeListening(cancel: true));
       unawaited(_flushHistoryToDisk());
     } else if (state == AppLifecycleState.resumed) {
+      _appInForeground = true;
       _cortanaWakePausedForLifecycle = false;
       _resetCortanaImmersiveUi();
       _scheduleCortanaWakeRestart();
       _scheduleCortanaLocationRefresh(initial: false);
+      _playPendingBackgroundCortanaBroadcast();
     }
   }
 
@@ -6153,18 +6158,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_persistCodegenPreferences());
   }
 
-  String _buildCodegenCommandPreview() {
-    if (_codegenMode == CodegenLaunchMode.code) {
+  String _buildCodegenCommandPreview({
+    CodegenLaunchMode? modeOverride,
+    String? promptOverride,
+    bool forceStartCommand = false,
+    bool includeAutoDeploy = true,
+  }) {
+    final mode = modeOverride ?? _codegenMode;
+    if (mode == CodegenLaunchMode.code) {
       final project = _selectedCodingProject;
       if (project == null) {
-        return _codegenDebugBundleMode
+        return _codegenDebugBundleMode && !forceStartCommand
             ? '/cg debug <project@agent> --debug-id <debug_id> <request>'
             : '/cg start <project@agent> <request>';
       }
-      final prompt = _codegenPromptController.text.trim();
+      final prompt = promptOverride ?? _codegenPromptController.text.trim();
       final parts = <String>[
         '/cg',
-        _codegenDebugBundleMode ? 'debug' : 'start',
+        _codegenDebugBundleMode && !forceStartCommand ? 'debug' : 'start',
         project.qualifiedName,
       ];
       if (_selectedCodeTool.isNotEmpty) {
@@ -6174,12 +6185,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         parts.add('--settings');
         parts.add(_selectedClaudeSettings);
       }
-      if (_codegenDebugBundleMode) {
+      if (_codegenDebugBundleMode && !forceStartCommand) {
         parts.add('--debug-id');
         parts.add('<debug_id>');
         parts.add('--debug-path');
         parts.add('<debug_path>');
-      } else if (_codegenAutoDeploy) {
+      } else if (includeAutoDeploy && _codegenAutoDeploy) {
         parts.add('!deploy');
       }
       parts.add(prompt.isEmpty ? '<request>' : prompt);
@@ -6287,6 +6298,62 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _sendCodegenCommitCommand() async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    if (_selectedCodingProject == null) {
+      _appendSystem('请先选择编码项目。');
+      return;
+    }
+    if (_selectedCodeTool.isEmpty) {
+      _appendSystem('请先选择编码工具。');
+      return;
+    }
+    if (_selectedToolSettingsOptions.isNotEmpty &&
+        _selectedClaudeSettings.isEmpty) {
+      _appendSystem('请选择编码工具配置。');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    final command = _buildCodegenCommandPreview(
+      modeOverride: CodegenLaunchMode.code,
+      promptOverride: 'commit and push',
+      forceStartCommand: true,
+      includeAutoDeploy: false,
+    ).trim();
+    _appendOutgoing(command);
+    setState(() {
+      _codegenSending = true;
+    });
+    try {
+      await _runAuthed('Send codegen commit command', (client) {
+        return client.sendMessage(command);
+      });
+      if (mounted) {
+        setState(() {
+          _status = 'Code command sent';
+        });
+      }
+      _triggerCortanaContextualExpression('surprised');
+      _appendSystem('git 提交命令已发送，执行进度会继续在聊天流中返回。');
+      _addCodegenHistory(command, CodegenLaunchMode.code);
+      await _persistCodegenPreferences();
+    } catch (err) {
+      _appendSystem(
+        _describeRequestError(err, operation: 'Send codegen commit command'),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _codegenSending = false;
+        });
+      }
+    }
+  }
+
   bool _isCortanaProgressMessage(ChatMessage msg) {
     if (msg.messageType != 'text') {
       return false;
@@ -6363,6 +6430,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return null;
     }
     final meta = msg.meta ?? const <String, dynamic>{};
+    if (meta['cortana_broadcast'] == true) {
+      return null;
+    }
     if (msg.messageType == 'audio') {
       final audioPath =
           (meta['audio_path'] ?? meta['cortana_audio_path'] ?? '')
@@ -6500,8 +6570,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     return replayItems;
   }
 
-  void _handleCortanaBroadcast(dynamic envelope, Map<String, dynamic> meta) {
-    final broadcastText = (meta['cortana_text'] ?? envelope.content ?? '')
+  void _handleCortanaBroadcast(
+    PushEnvelope envelope,
+    Map<String, dynamic> meta,
+  ) {
+    final broadcastText = (meta['cortana_text'] ?? envelope.content)
         .toString()
         .trim();
     if (broadcastText.isEmpty) return;
@@ -6549,10 +6622,61 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     if (!mounted) return;
 
+    _appendCortanaBroadcastChatMessage(envelope, meta, broadcastText);
+    if (!_appInForeground) {
+      _pendingBackgroundCortanaBroadcast = payload;
+      _markCortanaBroadcastAvailable();
+      return;
+    }
+
     _presentCortanaFloatingBroadcast(payload);
   }
 
-  void _presentCortanaFloatingBroadcast(CortanaReplyPayload payload) {
+  void _appendCortanaBroadcastChatMessage(
+    PushEnvelope envelope,
+    Map<String, dynamic> meta,
+    String broadcastText,
+  ) {
+    final groupId = (meta['group_id'] ?? '').toString().trim();
+    final fromUser = (meta['from_user'] ?? meta['origin'] ?? 'cortana-agent')
+        .toString()
+        .trim();
+    final messageMeta = Map<String, dynamic>.from(meta);
+    messageMeta['cortana_broadcast'] = true;
+    if (envelope.messageId.isNotEmpty) {
+      messageMeta['_message_id'] = envelope.messageId;
+    }
+    final scopeKey = groupId.isEmpty ? 'direct' : _groupScopeKey(groupId);
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(envelope.timestamp);
+    final chatMessage = ChatMessage(
+      content: broadcastText,
+      direction: MessageDirection.incoming,
+      timestamp: timestamp,
+      scopeKey: scopeKey,
+      authorId: fromUser,
+      groupId: groupId,
+      messageType: 'text',
+      meta: messageMeta,
+    );
+
+    if (envelope.messageId.isNotEmpty &&
+        _replaceMessageById(
+          scopeKey: scopeKey,
+          messageId: envelope.messageId,
+          message: chatMessage,
+          updateStatus: 'Received Cortana broadcast',
+        )) {
+      _seenMessageIds.add(envelope.messageId);
+      return;
+    }
+
+    _appendMessage(chatMessage, updateStatus: 'Received Cortana broadcast');
+    if (envelope.messageId.isNotEmpty) {
+      _seenMessageIds.add(envelope.messageId);
+    }
+  }
+
+  void _markCortanaBroadcastAvailable() {
     setState(() {
       _cortanaBadge = true;
       if (_rootTab != RootTab.cortana &&
@@ -6560,6 +6684,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _cortanaFloatingMode = CortanaDisplayMode.small;
       }
     });
+  }
+
+  void _playPendingBackgroundCortanaBroadcast() {
+    final payload = _pendingBackgroundCortanaBroadcast;
+    if (payload == null || !mounted) {
+      return;
+    }
+    _pendingBackgroundCortanaBroadcast = null;
+    _presentCortanaFloatingBroadcast(payload);
+  }
+
+  void _presentCortanaFloatingBroadcast(CortanaReplyPayload payload) {
+    _markCortanaBroadcastAvailable();
 
     debugPrint(
       '[Cortana Broadcast] raise floating cortana mode=$_cortanaFloatingMode text=${payload.text}',
@@ -6569,7 +6706,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
 
-    _cortanaBroadcastQueue.enqueue(payload, (nextPayload, onFinished) {
+    _cortanaBroadcastQueue.enqueueLatest(payload, (nextPayload, onFinished) {
       _playQueuedCortanaBroadcast(nextPayload, onFinished);
     });
   }
@@ -11867,6 +12004,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         unawaited(_persistCodegenPreferences());
       },
       onSend: _sendCodegenCommand,
+      onCommitAndPush: () => unawaited(_sendCodegenCommitCommand()),
       onClearHistory: () {
         setState(() {
           _codegenHistory.removeWhere((item) => !item.locked);

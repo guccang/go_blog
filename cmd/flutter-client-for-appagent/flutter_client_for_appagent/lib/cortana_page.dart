@@ -2333,7 +2333,9 @@ class CortanaPageState extends State<CortanaPage> {
     VoidCallback? onFinished,
   }) async {
     if (_speaking) {
-      _queuedBroadcasts.addLast(_QueuedBroadcast(payload, onFinished));
+      _queuedBroadcasts
+        ..clear()
+        ..addLast(_QueuedBroadcast(payload, onFinished));
       return;
     }
 
