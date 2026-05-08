@@ -2942,6 +2942,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final GlobalKey<CortanaPageState> _cortanaPageKey =
       GlobalKey<CortanaPageState>();
   bool _cortanaBadge = false;
+  bool _cortanaImmersiveUiHidden = false;
   final CortanaBroadcastQueue _cortanaBroadcastQueue = CortanaBroadcastQueue();
   String? _cortanaContextualExpression;
   CodegenLaunchMode _codegenMode = CodegenLaunchMode.code;
@@ -2982,6 +2983,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       unawaited(_flushHistoryToDisk());
     } else if (state == AppLifecycleState.resumed) {
       _cortanaWakePausedForLifecycle = false;
+      _resetCortanaImmersiveUi();
       _scheduleCortanaWakeRestart();
       _scheduleCortanaLocationRefresh(initial: false);
     }
@@ -6362,26 +6364,29 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     final meta = msg.meta ?? const <String, dynamic>{};
     if (msg.messageType == 'audio') {
-      final audioPath = (meta['audio_path'] ?? '').toString().trim();
-      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
-      Uint8List? audioBytes;
-      if (audioBase64.isNotEmpty) {
-        try {
-          audioBytes = base64Decode(audioBase64);
-        } catch (_) {
-          audioBytes = null;
-        }
-      }
+      final audioPath =
+          (meta['audio_path'] ?? meta['cortana_audio_path'] ?? '')
+              .toString()
+              .trim();
+      final audioBytes = _decodeBase64OrNull(
+        meta['audio_base64'] ?? meta['cortana_audio_base64'],
+      );
       if (audioPath.isNotEmpty || audioBytes != null) {
         final rawActionPlan = meta['cortana_action_plan'];
         final actionPlan = rawActionPlan is Map
             ? Map<String, dynamic>.from(rawActionPlan)
             : null;
         return CortanaReplyPayload(
-          text: (meta['speech_text'] ?? msg.content).toString().trim(),
+          text:
+              (meta['speech_text'] ?? meta['cortana_text'] ?? msg.content)
+                  .toString()
+                  .trim(),
           audioPath: audioPath,
           audioBytes: audioBytes,
-          audioFormat: (meta['audio_format'] ?? '').toString().trim(),
+          audioFormat:
+              (meta['audio_format'] ?? meta['cortana_audio_format'] ?? '')
+                  .toString()
+                  .trim(),
           actionPlan: actionPlan,
           suggestedReplies: _extractCortanaSuggestedReplies(actionPlan),
           requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
@@ -6394,13 +6399,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ? Map<String, dynamic>.from(rawActionPlan)
           : null;
       return CortanaReplyPayload(
-        text: (meta['speech_text'] ?? msg.content).toString().trim(),
+        text:
+            (meta['speech_text'] ?? meta['cortana_text'] ?? msg.content)
+                .toString()
+                .trim(),
         actionPlan: actionPlan,
         suggestedReplies: _extractCortanaSuggestedReplies(actionPlan),
         requestId: (meta['cortana_request_id'] ?? '').toString().trim(),
       );
     }
     return null;
+  }
+
+  Uint8List? _decodeBase64OrNull(Object? value) {
+    final raw = (value ?? '').toString().trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _buildCortanaRequestId() {
@@ -6410,8 +6430,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   String _buildCortanaReplyKey(ChatMessage msg) {
-    final audioPath = (msg.meta?['audio_path'] ?? '').toString().trim();
-    final audioBase64 = (msg.meta?['audio_base64'] ?? '').toString().trim();
+    final audioPath =
+        (msg.meta?['audio_path'] ?? msg.meta?['cortana_audio_path'] ?? '')
+            .toString()
+            .trim();
+    final audioBase64 =
+        (msg.meta?['audio_base64'] ?? msg.meta?['cortana_audio_base64'] ?? '')
+            .toString()
+            .trim();
     final requestId = (msg.meta?['cortana_request_id'] ?? '').toString().trim();
     return [
       msg.timestamp.millisecondsSinceEpoch.toString(),
@@ -6431,16 +6457,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         continue;
       }
       final meta = msg.meta ?? const <String, dynamic>{};
-      final audioPath = (meta['audio_path'] ?? '').toString().trim();
-      final audioBase64 = (meta['audio_base64'] ?? '').toString().trim();
-      Uint8List? audioBytes;
-      if (audioBase64.isNotEmpty) {
-        try {
-          audioBytes = base64Decode(audioBase64);
-        } catch (_) {
-          audioBytes = null;
-        }
-      }
+      final audioPath =
+          (meta['audio_path'] ?? meta['cortana_audio_path'] ?? '')
+              .toString()
+              .trim();
+      final audioBase64 =
+          (meta['audio_base64'] ?? meta['cortana_audio_base64'] ?? '')
+              .toString()
+              .trim();
+      final audioBytes = _decodeBase64OrNull(audioBase64);
       if (audioPath.isEmpty && audioBytes == null) {
         continue;
       }
@@ -6448,10 +6473,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       replayItems.add(
         CortanaReplayItem(
           id: _buildCortanaReplyKey(msg),
-          text: (meta['speech_text'] ?? msg.content).toString().trim(),
+          text:
+              (meta['speech_text'] ?? meta['cortana_text'] ?? msg.content)
+                  .toString()
+                  .trim(),
           audioPath: audioPath,
           audioBytes: audioBytes,
-          audioFormat: (meta['audio_format'] ?? '').toString().trim(),
+          audioFormat:
+              (meta['audio_format'] ?? meta['cortana_audio_format'] ?? '')
+                  .toString()
+                  .trim(),
           createdAt: msg.timestamp,
           actionPlan: rawActionPlan is Map
               ? Map<String, dynamic>.from(rawActionPlan)
@@ -6494,14 +6525,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final audioPath = (meta['cortana_audio_path'] ?? '').toString().trim();
     final audioBase64 = (meta['cortana_audio_base64'] ?? '').toString().trim();
     final audioFormat = (meta['cortana_audio_format'] ?? '').toString().trim();
-    Uint8List? audioBytes;
-    if (audioBase64.isNotEmpty) {
-      try {
-        audioBytes = base64Decode(audioBase64);
-      } catch (_) {
-        audioBytes = null;
-      }
-    }
+    final audioBytes = _decodeBase64OrNull(audioBase64);
 
     addFlutterClientLog('收到播报: $broadcastText');
 
@@ -11944,6 +11968,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _selectRootTab(RootTab nextTab) {
+    _resetCortanaImmersiveUi();
     setState(() {
       _rootTab = nextTab;
       _sidebarExpanded = false;
@@ -11960,6 +11985,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         unawaited(_loadCodegenProjects());
       }
     }
+  }
+
+  void _resetCortanaImmersiveUi() {
+    _cortanaPageKey.currentState?.revealChromeAndDismissOverlays();
+    if (!_cortanaImmersiveUiHidden) {
+      return;
+    }
+    setState(() {
+      _cortanaImmersiveUiHidden = false;
+    });
   }
 
   Widget _buildSidebarNavButton({
@@ -12179,6 +12214,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       live2dModelUrl: _selectedCortanaLive2dModelUrl(),
       viewTransform: _selectedCortanaLive2dViewTransform(),
       onViewTransformChanged: _handleCortanaLive2dViewTransformChanged,
+      onImmersiveUiChanged: (hidden) {
+        if (_cortanaImmersiveUiHidden == hidden) {
+          return;
+        }
+        setState(() {
+          _cortanaImmersiveUiHidden = hidden;
+        });
+      },
     );
   }
 
@@ -12322,9 +12365,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final palette = _palette;
+    final hideCortanaChrome =
+        _rootTab == RootTab.cortana && _cortanaImmersiveUiHidden;
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
+      appBar: hideCortanaChrome
+          ? null
+          : AppBar(
         leading: IconButton(
           tooltip: '打开侧边栏',
           onPressed: () {
@@ -12447,7 +12494,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           ],
         ],
       ),
-      bottomNavigationBar: _rootTab == RootTab.settings
+      bottomNavigationBar: hideCortanaChrome || _rootTab == RootTab.settings
           ? null
           : NavigationBar(
               selectedIndex: switch (_rootTab) {

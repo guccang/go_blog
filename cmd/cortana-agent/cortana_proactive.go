@@ -50,6 +50,7 @@ type CortanaProactiveDecision struct {
 	SummaryText       string           `json:"summary_text"`
 	Expression        string           `json:"expression"`
 	Actions           []map[string]any `json:"actions"`
+	SuggestedReplies  []map[string]any `json:"suggested_replies,omitempty"`
 	FollowUpSuggested bool             `json:"follow_up_suggested"`
 	NextCooldownSec   int              `json:"next_cooldown_sec"`
 }
@@ -402,6 +403,9 @@ func buildCortanaBroadcastActionPlan(decision *CortanaProactiveDecision) map[str
 	}
 	if len(decision.Actions) > 0 {
 		out["actions"] = decision.Actions
+	}
+	if len(decision.SuggestedReplies) > 0 {
+		out["suggested_replies"] = decision.SuggestedReplies
 	}
 	return out
 }

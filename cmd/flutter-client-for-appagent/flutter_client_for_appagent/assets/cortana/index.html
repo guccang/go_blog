@@ -193,6 +193,18 @@ const speechFocusState = {
   targetOffsetY: 0.15,
   rafId: 0,
 };
+const idleFocusState = {
+  active: false,
+  progress: 0,
+  from: 0,
+  to: 0,
+  startedAt: 0,
+  durationMs: 1200,
+  targetScale: 1.1,
+  targetOffsetX: 0,
+  targetOffsetY: 0.04,
+  rafId: 0,
+};
 const lipSyncState = {
   current: 0,
   target: 0,
@@ -285,6 +297,35 @@ function animateSpeechFocus(active) {
   speechFocusState.rafId = requestAnimationFrame(step);
 }
 
+function animateIdleFocus(active) {
+  idleFocusState.active = !!active;
+  idleFocusState.from = idleFocusState.progress;
+  idleFocusState.to = active ? 1 : 0;
+  idleFocusState.startedAt = performance.now();
+  if (idleFocusState.rafId) {
+    cancelAnimationFrame(idleFocusState.rafId);
+  }
+
+  const step = (ts) => {
+    const elapsed = ts - idleFocusState.startedAt;
+    const progress = clamp(elapsed / idleFocusState.durationMs, 0, 1);
+    const eased = easeInOutCubic(progress);
+    idleFocusState.progress =
+      idleFocusState.from +
+      (idleFocusState.to - idleFocusState.from) * eased;
+    layoutModel();
+    if (progress < 1) {
+      idleFocusState.rafId = requestAnimationFrame(step);
+      return;
+    }
+    idleFocusState.progress = idleFocusState.to;
+    idleFocusState.rafId = 0;
+    layoutModel();
+  };
+
+  idleFocusState.rafId = requestAnimationFrame(step);
+}
+
 function layoutModel() {
   if (!app || !model) {
     return;
@@ -317,13 +358,18 @@ function layoutModel() {
   const maxHeight = app.screen.height * fitHeightFactor;
   const baseScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
   const speechScale = 1 + (speechFocusState.targetScale - 1) * speechFocusState.progress;
-  const scale = baseScale * effectiveUserScale * speechScale;
+  const idleScale = 1 + (idleFocusState.targetScale - 1) * idleFocusState.progress;
+  const scale = baseScale * effectiveUserScale * speechScale * idleScale;
   const offsetX =
     app.screen.width *
-    (effectiveOffsetX + speechFocusState.targetOffsetX * speechFocusState.progress);
+    (effectiveOffsetX +
+      speechFocusState.targetOffsetX * speechFocusState.progress +
+      idleFocusState.targetOffsetX * idleFocusState.progress);
   const offsetY =
     app.screen.height *
-    (effectiveOffsetY + speechFocusState.targetOffsetY * speechFocusState.progress);
+    (effectiveOffsetY +
+      speechFocusState.targetOffsetY * speechFocusState.progress +
+      idleFocusState.targetOffsetY * idleFocusState.progress);
 
   if (model.anchor && typeof model.anchor.set === 'function') {
     model.anchor.set(0, 0);
@@ -341,6 +387,7 @@ function layoutModel() {
       `screen=${app.screen.width}x${app.screen.height}, scale=${scale.toFixed(4)}, ` +
       `mode=${containerViewState.mode}, userScale=${userViewState.scale.toFixed(3)}, ` +
       `effectiveScale=${effectiveUserScale.toFixed(3)}, focus=${speechFocusState.progress.toFixed(3)}, ` +
+      `idleFocus=${idleFocusState.progress.toFixed(3)}, ` +
       `pos=(${model.x.toFixed(1)}, ${model.y.toFixed(1)}), speechTargetY=${speechFocusState.targetOffsetY.toFixed(3)}`
     );
   }
@@ -1056,6 +1103,40 @@ function resolveMotionTarget(group, index) {
   return [rawGroup || 'Idle', parsedIndex];
 }
 
+function motionTargetFromEntry(entry) {
+  return [entry.group, entry.index, entry.name];
+}
+
+function supportedMotionTargets() {
+  if (availableMotionEntries.length > 0) {
+    return availableMotionEntries.map(motionTargetFromEntry);
+  }
+  return Object.keys(motionMap).map((key) => {
+    const target = motionMap[key];
+    return [target[0], target[1], key];
+  });
+}
+
+window.playAllMotionsOrdered = async function playAllMotionsOrdered() {
+  const targets = supportedMotionTargets();
+  log(`Play all motions ordered: count=${targets.length}`);
+  for (const target of targets) {
+    await window.setMotion(target[0], target[1]);
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+  }
+  return { ok: true, count: targets.length };
+};
+
+window.playRandomMotion = function playRandomMotion() {
+  const targets = supportedMotionTargets();
+  const target = pickRandom(targets);
+  if (!target) {
+    return Promise.resolve({ ok: false, reason: 'no-motion' });
+  }
+  log(`Play random motion: ${target[0]}[${target[1]}]`);
+  return window.setMotion(target[0], target[1]);
+};
+
 window.setMotionIntent = function setMotionIntent(intent, mood, index) {
   const group = `intent:${intent || 'idle'}${mood ? ':' + mood : ''}`;
   return window.setMotion(group, index || 0);
@@ -1109,6 +1190,11 @@ window.endSpeechFocus = function endSpeechFocus() {
   return { ok: true, active: false };
 };
 
+window.setIdleFocus = function setIdleFocus(active) {
+  animateIdleFocus(!!active);
+  return { ok: true, active: !!active };
+};
+
 window.addEventListener('resize', () => {
   if (!app) return;
   app.renderer.resize(window.innerWidth, window.innerHeight);
@@ -1154,6 +1240,10 @@ window.cortanaDebugState = () => ({
   speechFocusState: {
     active: speechFocusState.active,
     progress: speechFocusState.progress,
+  },
+  idleFocusState: {
+    active: idleFocusState.active,
+    progress: idleFocusState.progress,
   },
   lipSyncState: {
     current: lipSyncState.current,

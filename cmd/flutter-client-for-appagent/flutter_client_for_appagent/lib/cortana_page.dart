@@ -258,6 +258,48 @@ class CortanaSuggestedReply {
 
   bool get isCustom => kind.trim().toLowerCase() == 'custom';
 
+  bool get isNegativeAcknowledgement {
+    final normalizedKind = kind.trim().toLowerCase();
+    if (normalizedKind == 'negative' ||
+        normalizedKind == 'decline' ||
+        normalizedKind == 'cancel' ||
+        normalizedKind == 'dismiss') {
+      return true;
+    }
+    final normalizedLabel = label.trim().toLowerCase();
+    final normalizedMessage = message.trim().toLowerCase();
+    const negativeValues = <String>{
+      '不',
+      '否',
+      '不用',
+      '不要',
+      '不想',
+      '不了',
+      '不需要',
+      '先不用',
+      '不用了',
+      '算了',
+      '取消',
+      'no',
+      'nope',
+      'cancel',
+      'decline',
+      'dismiss',
+    };
+    bool isNegativeText(String value) {
+      if (negativeValues.contains(value)) {
+        return true;
+      }
+      return value.startsWith('不想') ||
+          value.startsWith('不用') ||
+          value.startsWith('不要') ||
+          value.startsWith('先不用');
+    }
+
+    return isNegativeText(normalizedLabel) ||
+        isNegativeText(normalizedMessage);
+  }
+
   factory CortanaSuggestedReply.fromMap(Map<String, dynamic> raw) {
     final label = (raw['label'] ?? raw['title'] ?? raw['text'] ?? '')
         .toString()
@@ -725,6 +767,7 @@ class CortanaPage extends StatefulWidget {
     this.live2dModelUrl = '',
     this.viewTransform = CortanaModelViewTransform.defaults,
     this.onViewTransformChanged,
+    this.onImmersiveUiChanged,
   });
 
   final CortanaDisplayMode mode;
@@ -743,6 +786,7 @@ class CortanaPage extends StatefulWidget {
   final String live2dModelUrl;
   final CortanaModelViewTransform viewTransform;
   final ValueChanged<CortanaModelViewTransform>? onViewTransformChanged;
+  final ValueChanged<bool>? onImmersiveUiChanged;
 
   @override
   State<CortanaPage> createState() => CortanaPageState();
@@ -766,6 +810,7 @@ class CortanaPageState extends State<CortanaPage> {
   Timer? _lipTimer;
   Timer? _debugStateTimer;
   Timer? _broadcastAutoCollapseTimer;
+  Timer? _idleUiTimer;
   StreamSubscription<Duration>? _audioPositionSub;
   final List<Timer> _motionTimers = <Timer>[];
   bool _speaking = false;
@@ -780,6 +825,9 @@ class CortanaPageState extends State<CortanaPage> {
   double _modelUserOffsetX = 0.0;
   double _modelUserOffsetY = 0.0;
   bool _controlPanelVisible = false;
+  bool _immersiveUiHidden = false;
+  bool _suggestedRepliesSheetOpen = false;
+  bool _customReplyDialogOpen = false;
   bool _live2dSummaryExpanded = false;
   bool _expressionActionsExpanded = false;
   bool _viewControlsExpanded = false;
@@ -803,8 +851,6 @@ class CortanaPageState extends State<CortanaPage> {
   static const double _floatingExpandedWidth = 240.0;
   static const double _floatingExpandedHeight = 320.0;
 
-  static const _expressions = ['happy', 'sad', 'surprised'];
-  static const _motions = ['Idle', 'IdleAlt', 'IdleWave', 'Tap'];
   static const Map<String, String> _expressionAliases = <String, String>{
     'happy': 'happy',
     'joy': 'happy',
@@ -851,6 +897,7 @@ class CortanaPageState extends State<CortanaPage> {
     if (_usesCustomLive2dModel && _customWebRootFuture == null) {
       _customWebRootFuture = _prepareCustomWebRoot();
     }
+    _scheduleIdleUiHide();
   }
 
   @override
@@ -897,6 +944,14 @@ class CortanaPageState extends State<CortanaPage> {
     }
     if (widget.mode != oldWidget.mode) {
       unawaited(_syncContainerMode());
+      if (widget.mode == CortanaDisplayMode.fullscreen) {
+        _scheduleIdleUiHide();
+      } else {
+        _idleUiTimer?.cancel();
+        if (_immersiveUiHidden) {
+          _setImmersiveUiHidden(false);
+        }
+      }
     }
     if (widget.viewTransform != oldWidget.viewTransform) {
       _applyViewTransform(widget.viewTransform);
@@ -909,6 +964,7 @@ class CortanaPageState extends State<CortanaPage> {
     _resetPlaybackEffects();
     _debugStateTimer?.cancel();
     _broadcastAutoCollapseTimer?.cancel();
+    _idleUiTimer?.cancel();
     _audio.dispose();
     final localhostServer = _localhostServer;
     if (localhostServer != null) {
@@ -996,6 +1052,106 @@ class CortanaPageState extends State<CortanaPage> {
         _logEntries.removeRange(_maxLogEntries, _logEntries.length);
       }
     });
+  }
+
+  void _scheduleIdleUiHide() {
+    _idleUiTimer?.cancel();
+    if (!mounted ||
+        widget.mode != CortanaDisplayMode.fullscreen ||
+        _controlPanelVisible) {
+      return;
+    }
+    final delayMs = 1000 + math.Random().nextInt(2001);
+    _idleUiTimer = Timer(Duration(milliseconds: delayMs), () {
+      if (!mounted ||
+          widget.mode != CortanaDisplayMode.fullscreen ||
+          _controlPanelVisible) {
+        return;
+      }
+      _setImmersiveUiHidden(true);
+    });
+  }
+
+  void _markCortanaInteraction({bool revealUi = false}) {
+    if (!mounted) {
+      return;
+    }
+    if (revealUi && _immersiveUiHidden) {
+      _setImmersiveUiHidden(false);
+      return;
+    }
+    if (!_immersiveUiHidden) {
+      _scheduleIdleUiHide();
+    }
+  }
+
+  void _setImmersiveUiHidden(bool hidden) {
+    if (hidden && _controlPanelVisible) {
+      _idleUiTimer?.cancel();
+      return;
+    }
+    if (_immersiveUiHidden == hidden) {
+      if (!hidden) {
+        _scheduleIdleUiHide();
+      }
+      return;
+    }
+    setState(() {
+      _immersiveUiHidden = hidden;
+    });
+    widget.onImmersiveUiChanged?.call(hidden);
+    unawaited(_callJS('window.setIdleFocus(${jsonEncode(hidden)})'));
+    if (!hidden) {
+      _scheduleIdleUiHide();
+    }
+  }
+
+  void revealChromeAndDismissOverlays() {
+    _idleUiTimer?.cancel();
+    _dismissCortanaModalRoutes();
+    if (!_immersiveUiHidden && !_controlPanelVisible) {
+      _scheduleIdleUiHide();
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _immersiveUiHidden = false;
+        _controlPanelVisible = false;
+      });
+    } else {
+      _immersiveUiHidden = false;
+      _controlPanelVisible = false;
+    }
+    widget.onImmersiveUiChanged?.call(false);
+    unawaited(_callJS('window.setIdleFocus(false)'));
+    _scheduleIdleUiHide();
+  }
+
+  void _dismissCortanaModalRoutes() {
+    if (!_suggestedRepliesSheetOpen && !_customReplyDialogOpen) {
+      return;
+    }
+    final navigator = Navigator.maybeOf(context, rootNavigator: true);
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+    }
+  }
+
+  void _setControlPanelVisible(bool visible) {
+    if (visible) {
+      _dismissCortanaModalRoutes();
+    }
+    setState(() {
+      _controlPanelVisible = visible;
+    });
+    if (visible) {
+      _idleUiTimer?.cancel();
+      if (_immersiveUiHidden) {
+        _setImmersiveUiHidden(false);
+      }
+      return;
+    }
+    _scheduleIdleUiHide();
   }
 
   void _updateLoadStatus(String message) {
@@ -1424,6 +1580,7 @@ class CortanaPageState extends State<CortanaPage> {
         await _syncContainerMode(force: true);
         await _hideDiagnostics();
         await _syncModelViewTransform();
+        await _callJS('window.setIdleFocus(${jsonEncode(_immersiveUiHidden)})');
         await _refreshLive2dDebugState();
       },
       onConsoleMessage: (ctrl, msg) {
@@ -2188,6 +2345,8 @@ class CortanaPageState extends State<CortanaPage> {
     VoidCallback? onFinished,
   }) async {
     var finishNotified = false;
+    var canShowReplies = false;
+    var startedNextBroadcast = false;
 
     void notifyFinished() {
       if (finishNotified) {
@@ -2204,6 +2363,7 @@ class CortanaPageState extends State<CortanaPage> {
       debugPrint('[Cortana Broadcast] Playing: ${payload.text}');
       _appendLog('播报: ${payload.text}');
       await _playReplyAudio(payload);
+      canShowReplies = true;
       notifyFinished();
     } catch (e, stackTrace) {
       debugPrint('[Cortana Broadcast Error] $e');
@@ -2217,12 +2377,17 @@ class CortanaPageState extends State<CortanaPage> {
       if (mounted) {
         setState(() => _speaking = false);
       }
-      if (_queuedBroadcasts.isNotEmpty) {
+      final hasQueuedBroadcast = _queuedBroadcasts.isNotEmpty;
+      if (hasQueuedBroadcast) {
         final next = _queuedBroadcasts.removeFirst();
+        startedNextBroadcast = true;
         unawaited(_playBroadcastNow(next.payload, onFinished: next.onFinished));
       } else if (mounted) {
         _startAutoCollapseTimer();
       }
+    }
+    if (canShowReplies && mounted && !startedNextBroadcast) {
+      await _showSuggestedReplies(payload);
     }
   }
 
@@ -2303,73 +2468,165 @@ class CortanaPageState extends State<CortanaPage> {
 
   Future<void> _showSuggestedReplies(CortanaReplyPayload reply) async {
     final actionReplies = _normalizeSuggestedReplies(reply.actionPlan);
-    final replies = reply.suggestedReplies.isNotEmpty
+    var replies = reply.suggestedReplies.isNotEmpty
         ? reply.suggestedReplies
         : actionReplies;
+    if (replies.isEmpty) {
+      replies = _defaultSuggestedRepliesForText(reply.text);
+    }
     if (replies.isEmpty || widget.onSendMessage == null || !mounted) {
       return;
     }
+    if (widget.mode == CortanaDisplayMode.fullscreen &&
+        (_immersiveUiHidden || _controlPanelVisible)) {
+      return;
+    }
 
-    final selected = await showModalBottomSheet<CortanaSuggestedReply>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final cs = Theme.of(sheetContext).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '回复 Cortana',
-                  style: Theme.of(sheetContext).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                for (final item in replies)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: FilledButton.tonal(
-                      style: FilledButton.styleFrom(
-                        alignment: Alignment.centerLeft,
-                        backgroundColor: cs.surfaceContainerHighest,
-                        foregroundColor: cs.onSurface,
-                        minimumSize: const Size.fromHeight(44),
-                      ),
-                      onPressed: () => Navigator.of(sheetContext).pop(item),
-                      child: Text(item.label, overflow: TextOverflow.ellipsis),
-                    ),
+    Timer? autoDismissTimer;
+    try {
+      _suggestedRepliesSheetOpen = true;
+      final selected = await showModalBottomSheet<CortanaSuggestedReply>(
+        context: context,
+        routeSettings: const RouteSettings(name: 'cortana_suggested_replies'),
+        showDragHandle: true,
+        requestFocus: false,
+        builder: (sheetContext) {
+          autoDismissTimer ??= Timer(const Duration(seconds: 8), () {
+            if (!mounted) return;
+            final navigator = Navigator.of(sheetContext);
+            if (navigator.canPop()) {
+              navigator.pop();
+            }
+          });
+          final cs = Theme.of(sheetContext).colorScheme;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '回复 Cortana',
+                    style: Theme.of(sheetContext).textTheme.titleMedium,
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  for (final item in replies)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: FilledButton.tonal(
+                        style: FilledButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          backgroundColor: cs.surfaceContainerHighest,
+                          foregroundColor: cs.onSurface,
+                          minimumSize: const Size.fromHeight(44),
+                        ),
+                        onPressed: () {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          SystemChannels.textInput.invokeMethod<void>(
+                            'TextInput.hide',
+                          );
+                          Navigator.of(sheetContext).pop(item);
+                        },
+                        child: Text(
+                          item.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        );
-      },
-    );
-    if (selected == null || !mounted) {
-      return;
-    }
-    if (selected.isCustom) {
-      final custom = await _askCustomSuggestedReply();
-      if (custom.trim().isNotEmpty && mounted) {
-        unawaited(_speak(custom.trim()));
+          );
+        },
+      );
+      if (selected == null || !mounted) {
+        return;
       }
-      return;
+      if (selected.isCustom) {
+        final custom = await _askCustomSuggestedReply();
+        if (custom.trim().isNotEmpty && mounted) {
+          unawaited(_speak(custom.trim()));
+        }
+        return;
+      }
+      if (selected.isNegativeAcknowledgement) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+        return;
+      }
+      final message = selected.message.trim().isEmpty
+          ? selected.label.trim()
+          : selected.message.trim();
+      if (message.isNotEmpty) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+        unawaited(_speak(message));
+      }
+    } finally {
+      _suggestedRepliesSheetOpen = false;
+      autoDismissTimer?.cancel();
     }
-    final message = selected.message.trim().isEmpty
-        ? selected.label.trim()
-        : selected.message.trim();
-    if (message.isNotEmpty) {
-      unawaited(_speak(message));
+  }
+
+  List<CortanaSuggestedReply> _defaultSuggestedRepliesForText(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return const <CortanaSuggestedReply>[];
     }
+    final asksChoice = RegExp(
+      r'(要不要|是否|要.*吗|想.*吗|继续.*吗|接着.*吗|去看看吗|做.*吗|需要.*吗|可以.*吗|好吗|行吗|怎么样|还是|哪天|周几|几点|什么时候|大概.*出发)',
+    ).hasMatch(normalized);
+    if (!asksChoice) {
+      return const <CortanaSuggestedReply>[];
+    }
+    if (RegExp(r'(继续|接着).*(听|讲|说|故事|聊)').hasMatch(normalized) ||
+        RegExp(r'(听|故事|聊).*(继续|接着)').hasMatch(normalized)) {
+      return const <CortanaSuggestedReply>[
+        CortanaSuggestedReply(label: '想', message: '想继续听'),
+        CortanaSuggestedReply(label: '不想', message: '不想继续听'),
+        CortanaSuggestedReply(label: '其他', message: '', kind: 'custom'),
+      ];
+    }
+    if (RegExp(r'(去看看|看看|打开|查看)').hasMatch(normalized)) {
+      return const <CortanaSuggestedReply>[
+        CortanaSuggestedReply(label: '去看看', message: '去看看'),
+        CortanaSuggestedReply(label: '先不用', message: '先不用'),
+        CortanaSuggestedReply(label: '其他', message: '', kind: 'custom'),
+      ];
+    }
+    if (RegExp(
+      r'(周六|星期六).*(周日|星期日)|周末.*(哪天|哪一天|什么时候|安排)',
+    ).hasMatch(normalized)) {
+      return const <CortanaSuggestedReply>[
+        CortanaSuggestedReply(label: '周六', message: '周六去'),
+        CortanaSuggestedReply(label: '周日', message: '周日去'),
+        CortanaSuggestedReply(label: '其他', message: '', kind: 'custom'),
+      ];
+    }
+    if (RegExp(
+      r'(几点|什么时候|大概.*出发|出发.*时间)',
+    ).hasMatch(normalized)) {
+      return const <CortanaSuggestedReply>[
+        CortanaSuggestedReply(label: '上午', message: '上午出发'),
+        CortanaSuggestedReply(label: '下午', message: '下午出发'),
+        CortanaSuggestedReply(label: '其他', message: '', kind: 'custom'),
+      ];
+    }
+    return const <CortanaSuggestedReply>[
+      CortanaSuggestedReply(label: '需要', message: '需要'),
+      CortanaSuggestedReply(label: '不用', message: '不用'),
+      CortanaSuggestedReply(label: '其他', message: '', kind: 'custom'),
+    ];
   }
 
   Future<String> _askCustomSuggestedReply() async {
     final controller = TextEditingController();
     try {
+      _customReplyDialogOpen = true;
       final value = await showDialog<String>(
         context: context,
+        routeSettings: const RouteSettings(name: 'cortana_custom_reply'),
         builder: (dialogContext) {
           return AlertDialog(
             title: const Text('其他回复'),
@@ -2398,6 +2655,7 @@ class CortanaPageState extends State<CortanaPage> {
       );
       return value ?? '';
     } finally {
+      _customReplyDialogOpen = false;
       controller.dispose();
     }
   }
@@ -2896,7 +3154,9 @@ class CortanaPageState extends State<CortanaPage> {
                 _buildExpandableSectionCard(
                   storageKey: 'cortana-expression-actions',
                   title: '表情与动作',
-                  subtitle: _expressionActionsExpanded ? '点击收起' : '默认折叠，点击展开控制',
+                  subtitle: _expressionActionsExpanded
+                      ? '按模型支持列表播放'
+                      : '默认折叠，点击展开控制',
                   expanded: _expressionActionsExpanded,
                   onExpansionChanged: (expanded) {
                     setState(() {
@@ -2907,22 +3167,19 @@ class CortanaPageState extends State<CortanaPage> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final e in _expressions)
-                        _buildControlActionChip(
-                          context,
-                          label: e,
-                          onPressed: () =>
-                              _callJS("window.setExpression('$e')"),
-                        ),
-                      for (final m in _motions)
-                        _buildControlActionChip(
-                          context,
-                          label: m,
-                          icon: Icons.directions_run,
-                          onPressed: () => _callJS(
-                            "window.setMotion('${_normalizeMotion(m)}', 0)",
-                          ),
-                        ),
+                      _buildControlActionChip(
+                        context,
+                        label: '按支持顺序播放所有动作',
+                        icon: Icons.playlist_play,
+                        onPressed: () =>
+                            _callJS('window.playAllMotionsOrdered()'),
+                      ),
+                      _buildControlActionChip(
+                        context,
+                        label: '随机播放所有动作',
+                        icon: Icons.shuffle,
+                        onPressed: () => _callJS('window.playRandomMotion()'),
+                      ),
                     ],
                   ),
                 ),
@@ -3130,165 +3387,171 @@ class CortanaPageState extends State<CortanaPage> {
     final offsetYText = _modelUserOffsetY.toStringAsFixed(2);
     final replayHistory = _combinedVoiceHistory();
 
-    return Stack(
-      children: [
-        // WebView - always in AnimatedPositioned, transitions smoothly
-        AnimatedPositioned(
-          duration: _isDragging
-              ? Duration.zero
-              : const Duration(milliseconds: 350),
-          curve: Curves.easeInOut,
-          left: isFullscreen ? 0.0 : clampedOffset.dx,
-          top: isFullscreen ? 0.0 : clampedOffset.dy,
-          right: isFullscreen ? 0.0 : null,
-          bottom: isFullscreen ? 0.0 : null,
-          width: isFullscreen ? null : floatingSize?.width,
-          height: isFullscreen ? null : floatingSize?.height,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: isFullscreen
-                ? null
-                : () {
-                    if (widget.mode == CortanaDisplayMode.collapsed) {
-                      widget.onTapWhenFloating?.call();
-                      return;
-                    }
-                    widget.onModeChanged?.call(_nextFloatingMode(widget.mode));
-                  },
-            onLongPress: isFullscreen
-                ? null
-                : () {
-                    widget.onLongPressWhenFloating?.call();
-                  },
-            onPanStart: isFullscreen
-                ? null
-                : (_) {
-                    _isDragging = true;
-                  },
-            onPanUpdate: isFullscreen
-                ? null
-                : (details) {
-                    if (!mounted) return;
-                    setState(() {
-                      _floatingOffset = _clampFloatingOffset(
-                        (_floatingOffset ?? clampedOffset) + details.delta,
-                        floatingSize!,
-                      );
-                    });
-                  },
-            onPanEnd: isFullscreen
-                ? null
-                : (_) {
-                    if (!mounted) return;
-                    _isDragging = false;
-                    setState(() {
-                      // Snap to nearest horizontal edge, keep vertical position
-                      final size = _floatingSizeForMode(widget.mode);
-                      final screenWidth = MediaQuery.sizeOf(context).width;
-                      final currentOffset =
-                          _floatingOffset ?? _defaultFloatingPosition(size);
-                      final centerX = currentOffset.dx + size.width / 2;
-                      final snapLeft = centerX < screenWidth / 2;
-                      _floatingOffset = Offset(
-                        snapLeft ? 12.0 : screenWidth - size.width - 12.0,
-                        currentOffset.dy,
-                      );
-                    });
-                  },
-            child: Material(
-              color: Colors.transparent,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeInOut,
-                decoration: BoxDecoration(
-                  borderRadius: borderRadius,
-                  border: isFloating && isCollapsed
-                      ? Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 0.6),
-                          width: 1.5,
+    return Listener(
+      onPointerDown: (_) {
+        if (!_immersiveUiHidden) {
+          _markCortanaInteraction();
+        }
+      },
+      child: Stack(
+        children: [
+          // WebView - always in AnimatedPositioned, transitions smoothly
+          AnimatedPositioned(
+            duration: _isDragging
+                ? Duration.zero
+                : const Duration(milliseconds: 350),
+            curve: Curves.easeInOut,
+            left: isFullscreen ? 0.0 : clampedOffset.dx,
+            top: isFullscreen ? 0.0 : clampedOffset.dy,
+            right: isFullscreen ? 0.0 : null,
+            bottom: isFullscreen ? 0.0 : null,
+            width: isFullscreen ? null : floatingSize?.width,
+            height: isFullscreen ? null : floatingSize?.height,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: isFullscreen
+                  ? null
+                  : () {
+                      if (widget.mode == CortanaDisplayMode.collapsed) {
+                        widget.onTapWhenFloating?.call();
+                        return;
+                      }
+                      widget.onModeChanged?.call(_nextFloatingMode(widget.mode));
+                    },
+              onLongPress: isFullscreen
+                  ? null
+                  : () {
+                      widget.onLongPressWhenFloating?.call();
+                    },
+              onPanStart: isFullscreen
+                  ? null
+                  : (_) {
+                      _isDragging = true;
+                    },
+              onPanUpdate: isFullscreen
+                  ? null
+                  : (details) {
+                      if (!mounted) return;
+                      setState(() {
+                        _floatingOffset = _clampFloatingOffset(
+                          (_floatingOffset ?? clampedOffset) + details.delta,
+                          floatingSize!,
+                        );
+                      });
+                    },
+              onPanEnd: isFullscreen
+                  ? null
+                  : (_) {
+                      if (!mounted) return;
+                      _isDragging = false;
+                      setState(() {
+                        // Snap to nearest horizontal edge, keep vertical position
+                        final size = _floatingSizeForMode(widget.mode);
+                        final screenWidth = MediaQuery.sizeOf(context).width;
+                        final currentOffset =
+                            _floatingOffset ?? _defaultFloatingPosition(size);
+                        final centerX = currentOffset.dx + size.width / 2;
+                        final snapLeft = centerX < screenWidth / 2;
+                        _floatingOffset = Offset(
+                          snapLeft ? 12.0 : screenWidth - size.width - 12.0,
+                          currentOffset.dy,
+                        );
+                      });
+                    },
+              child: Material(
+                color: Colors.transparent,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOut,
+                  decoration: BoxDecoration(
+                    borderRadius: borderRadius,
+                    border: isFloating && isCollapsed
+                        ? Border.all(
+                            color: cs.outlineVariant.withValues(alpha: 0.6),
+                            width: 1.5,
+                          )
+                        : null,
+                    boxShadow: isFloating && isCollapsed
+                        ? [
+                            BoxShadow(
+                              color: cs.shadow.withValues(alpha: 0.25),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  clipBehavior: isFloating && !isCollapsed
+                      ? Clip.none
+                      : Clip.antiAlias,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // 浮动小窗只展示 Live2D，避免 Android WebView 在播报时抢占输入焦点。
+                      if (!isCollapsed)
+                        IgnorePointer(
+                          ignoring: isFloating,
+                          child: _buildWebViewForPlatform(),
                         )
-                      : null,
-                  boxShadow: isFloating && isCollapsed
-                      ? [
-                          BoxShadow(
-                            color: cs.shadow.withValues(alpha: 0.25),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                clipBehavior: isFloating && !isCollapsed
-                    ? Clip.none
-                    : Clip.antiAlias,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // 浮动小窗只展示 Live2D，避免 Android WebView 在播报时抢占输入焦点。
-                    if (!isCollapsed)
-                      IgnorePointer(
-                        ignoring: isFloating,
-                        child: _buildWebViewForPlatform(),
-                      )
-                    else
-                      _buildCollapsedAvatar(context),
-                    // Drag handle indicator (floating only, non-collapsed)
-                    if (!isFullscreen && !isCollapsed)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: SizedBox(
-                          height: 20,
-                          child: Center(
-                            child: Container(
-                              width: 24,
-                              height: 3,
-                              margin: const EdgeInsets.only(top: 6),
-                              decoration: BoxDecoration(
-                                color: cs.onSurface.withValues(alpha: 0.22),
-                                borderRadius: BorderRadius.circular(2),
+                      else
+                        _buildCollapsedAvatar(context),
+                      // Drag handle indicator (floating only, non-collapsed)
+                      if (!isFullscreen && !isCollapsed)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: SizedBox(
+                            height: 20,
+                            child: Center(
+                              child: Container(
+                                width: 24,
+                                height: 3,
+                                margin: const EdgeInsets.only(top: 6),
+                                decoration: BoxDecoration(
+                                  color: cs.onSurface.withValues(alpha: 0.22),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    // Close/collapse button (floating only, non-collapsed)
-                    if (!isFullscreen && !isCollapsed)
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () {
-                              widget.onModeChanged?.call(
-                                CortanaDisplayMode.collapsed,
-                              );
-                            },
-                            child: Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: cs.surface.withValues(alpha: 0.36),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.close,
-                                size: 14,
-                                color: cs.onSurface.withValues(alpha: 0.7),
+                      // Close/collapse button (floating only, non-collapsed)
+                      if (!isFullscreen && !isCollapsed)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                widget.onModeChanged?.call(
+                                  CortanaDisplayMode.collapsed,
+                                );
+                              },
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: cs.surface.withValues(alpha: 0.36),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: cs.onSurface.withValues(alpha: 0.7),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         // Fullscreen overlays (only when in fullscreen mode)
         if (isFullscreen)
           SafeArea(
@@ -3304,9 +3567,9 @@ class CortanaPageState extends State<CortanaPage> {
                     ),
                     child: FilledButton.icon(
                       onPressed: () {
-                        setState(() {
-                          _controlPanelVisible = !_controlPanelVisible;
-                        });
+                        final nextVisible =
+                            _immersiveUiHidden || !_controlPanelVisible;
+                        _setControlPanelVisible(nextVisible);
                       },
                       icon: Icon(
                         _controlPanelVisible
@@ -3329,7 +3592,8 @@ class CortanaPageState extends State<CortanaPage> {
               ],
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -18,6 +18,7 @@ type CortanaProactiveDecision struct {
 	SummaryText       string           `json:"summary_text"`
 	Expression        string           `json:"expression"`
 	Actions           []map[string]any `json:"actions"`
+	SuggestedReplies  []map[string]any `json:"suggested_replies,omitempty"`
 	FollowUpSuggested bool             `json:"follow_up_suggested"`
 	NextCooldownSec   int              `json:"next_cooldown_sec"`
 }
@@ -181,6 +182,7 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
   "summary_text": "供客户端展示的摘要",
   "expression": "happy|sad|surprised",
   "actions": [{"intent":"greeting","delay":0}],
+  "suggested_replies": [{"label":"想","message":"想继续听"},{"label":"不想","message":"不想继续听"},{"label":"其他","message":"","kind":"custom"}],
   "follow_up_suggested": false,
   "next_cooldown_sec": 1800
 }
@@ -204,6 +206,7 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 16. 如果位置不可用或精度过低，不要编造地点；可以推送保守方案，例如提醒用户打开定位、按最近明确地点估算并标注不确定性。
 17. 个人助理默认少问选择题，优先替用户筛选一个可执行方案，并用一句话说明依据。
 18. 凡是判断当前早晚、上午、下午、晚上、深夜或凌晨，必须只依据本轮明确给出的当前本地时间、星期和时区；recent_interactions、历史摘要、device_context 旧内容里的时间段只当历史语境。`))
+	sb.WriteString("\n19. 如果 speech_text 里明确追问用户是否继续听、是否继续聊、是否要做某事，必须设置 suggested_replies，至少包含肯定、否定、其他三个选项；不要只把选项写进口播文本。\n")
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
 	if profile.OwnerTitle != "" {

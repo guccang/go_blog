@@ -96,6 +96,7 @@ func buildCortanaOutputPrompt() string {
 - ` + "`resume_to_idle`" + ` 可选，为 true 时表示该动作结束后可自动回到基础待机。
 - ` + "`suggested_replies`" + ` 可选，用于 Flutter 客户端弹出可点选项；每项包含 ` + "`label`" + ` 和 ` + "`message`" + `，其中 ` + "`kind: custom`" + ` 表示让用户输入其它内容。
 - 当你想追问“是否继续听/是否继续聊/是否要我接着说”时，不要只把选项写在正文里，必须在 ` + "`suggested_replies`" + ` 里给出“想”“不想”“其他”三个选项。
+- 当你向用户追问日期、时间、地点、偏好或二选一/多选一信息时，不要只把选项写在正文里，必须在 ` + "`suggested_replies`" + ` 里给出 2-3 个可直接点击的候选项，并保留一个 ` + "`kind: custom`" + ` 的“其他”选项。例如追问周末游泳时间时，可给出“周六”“周日”“其他”，追问出发时间时，可给出“上午”“下午”“其他”。
 - 如果是问候、欢迎、轻松语气，优先用 ` + "`intent:greeting`" + ` / ` + "`happy`" + `。
 - 如果是解释说明或长回复，优先用 ` + "`intent:idle`" + `、` + "`intent:thinking`" + ` 交替，避免频繁强调动作。
 - 如果是道歉、遗憾、安慰，使用 ` + "`sad`" + `，动作以 ` + "`intent:apology`" + ` / ` + "`intent:idle`" + ` 为主。
@@ -414,6 +415,9 @@ func (s *AppSink) trySendAudioReplyWithSpeechText(raw, speechText string, action
 	if inputMode == "" {
 		inputMode = "tts_reply"
 	}
+	if content == "[语音回复]" && strings.TrimSpace(speechText) != "" {
+		content = strings.TrimSpace(speechText)
+	}
 	if firstNonEmptyMapString(payload, "kind") == "music" {
 		if content == "[语音回复]" {
 			content = "[音乐生成]"
@@ -558,6 +562,13 @@ func (s *AppSink) sendAudioRichMessage(audioBase64, audioFormat, speechText stri
 		"audio_format": audioFormat,
 		"input_mode":   inputMode,
 		"speech_text":  strings.TrimSpace(speechText),
+	}
+	if text := strings.TrimSpace(speechText); text != "" {
+		meta["cortana_text"] = text
+	}
+	if strings.TrimSpace(audioBase64) != "" {
+		meta["cortana_audio_base64"] = audioBase64
+		meta["cortana_audio_format"] = audioFormat
 	}
 	if strings.TrimSpace(s.cortanaRequestID) != "" {
 		meta["cortana_request_id"] = strings.TrimSpace(s.cortanaRequestID)
