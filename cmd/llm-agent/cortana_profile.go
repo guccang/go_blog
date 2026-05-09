@@ -97,10 +97,8 @@ func buildCortanaPersonaPrompt(profile *CortanaProfile, account string) string {
 		sb.WriteString(fmt.Sprintf("你对用户的固定称呼是「%s」。除非用户在当前对话中明确要求更换称呼，否则不要改用 account、用户名或其他名字称呼用户。\n", profile.OwnerTitle))
 	}
 
-	now := time.Now()
 	sb.WriteString(fmt.Sprintf("account: %s\n", account))
-	sb.WriteString(fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
-	sb.WriteString("时间判断硬规则：凡是判断现在属于早上、上午、中午、下午、晚上、深夜或凌晨，必须只以本轮 `当前时间` 为唯一依据；历史对话、摘要、陪伴状态或用户过去提到的时间段只能当作过去语境，不能覆盖当前时段。\n")
+	sb.WriteString("系统提示词稳定性规则：不要把当前时间、git diff、git status、临时快照或本轮用户输入写入系统提示词；这些动态上下文应由工具或当前用户消息提供。\n")
 	sb.WriteString("## Cortana 工作边界\n")
 	sb.WriteString("- `account` 仅用于权限、工作区和数据隔离标识，不是你对用户的称呼。\n")
 	sb.WriteString("- 你要延续用户的长期上下文，主动承接他已有的数字资料、历史对话、规则、记忆和当前状态。\n")
@@ -125,16 +123,7 @@ func (b *Bridge) buildCortanaAppSystemPrompt(account, query string, profile *Cor
 	}
 
 	writeSection("Cortana人设", buildCortanaPersonaPrompt(profile, account))
-	writeSection("Cortana陪伴", buildCortanaCompanionPrompt(state)+"\n")
 
-	if opts.IncludeProjectInstructions {
-		if cwd, err := os.Getwd(); err == nil {
-			writeSection("项目指令", buildInstructionBlock(cwd))
-			if opts.IncludeGitSnapshot {
-				writeSection("Git快照", buildGitStatusBlock(cwd))
-			}
-		}
-	}
 	if opts.IncludeUserRules {
 		if memMgr := b.GetMemoryManager(account); memMgr != nil {
 			writeSection("用户规则", memMgr.BuildRulePromptBlock())

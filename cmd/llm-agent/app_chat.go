@@ -757,11 +757,15 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 				session.CortanaState,
 			)
 			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-			systemPrompt += cortanaDeviceContextPrompt
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
+			userContent := content
+			runtimeContext := strings.TrimSpace(buildCortanaCompanionPrompt(session.CortanaState) + cortanaDeviceContextPrompt)
+			if runtimeContext != "" {
+				userContent += "\n\n" + runtimeContext
+			}
 			session.Messages = []Message{
 				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: content},
+				{Role: "user", Content: userContent},
 			}
 			session.PromptSections = promptSections
 		} else {
@@ -775,26 +779,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		}
 		log.Printf("[App] 新会话 sessionID=%s user=%s", session.SessionID, appUser)
 	} else {
-		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			if cortanaContextMode {
-				freshPrompt, promptSections := b.buildCortanaAppSystemPrompt(
-					appUser,
-					content,
-					cortanaProfile,
-					session.CortanaState,
-				)
-				freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-				freshPrompt += cortanaDeviceContextPrompt
-				freshPrompt += buildCortanaOutputPrompt() + "\n"
-				session.Messages[0].Content = freshPrompt
-				session.PromptSections = promptSections
-			} else {
-				freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
-				freshPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-				session.Messages[0].Content = freshPrompt
-				session.PromptSections = promptSections
-			}
-		}
+		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
 		log.Printf("[App] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d", session.SessionID, appUser, session.TurnCount, len(session.Messages))
 	}

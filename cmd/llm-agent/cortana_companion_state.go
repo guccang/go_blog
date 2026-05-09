@@ -83,7 +83,7 @@ func buildCortanaCompanionPrompt(state *CortanaCompanionState) string {
 	sb.WriteString("\n## Cortana 陪伴模式\n")
 	sb.WriteString("- 当前渠道是 Cortana 陪伴对话。你的首要目标是让交流自然、连续、像熟悉用户近况的真人朋友，而不是每轮都像全新客服。\n")
 	sb.WriteString("- 优先承接上轮的目标、情绪、未完成事项和你已经给出的建议；用户只说短句时，默认是在延续刚才的话题。\n")
-	sb.WriteString("- 以下陪伴状态是历史摘要，只用于理解连续话题；如果里面出现早上、上午、中午、下午、晚上、深夜、凌晨、今天、明天、待会等相对时间词，不得用它判断当前时段，当前时段只能看本轮系统提示里的 `当前时间`。\n")
+	sb.WriteString("- 以下陪伴状态是历史摘要，只用于理解连续话题；如果里面出现早上、上午、中午、下午、晚上、深夜、凌晨、今天、明天、待会等相对时间词，不得用它判断当前时段，当前时段只能看本轮明确提供的时间上下文。\n")
 	sb.WriteString("- 少用模板化开场，避免重复自我介绍、重复总结背景、重复说教。\n")
 	sb.WriteString("- 回复要口语化、具体、克制，像身边懂情况的人继续接话。\n")
 	if state == nil {

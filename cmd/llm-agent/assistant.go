@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -79,48 +78,33 @@ type AssistantEventPayload struct {
 }
 
 type AssistantPromptOptions struct {
-	Query                      string
-	EnableTooling              bool
-	IncludeProjectInstructions bool
-	IncludeGitSnapshot         bool
-	IncludeUserRules           bool
-	IncludeAgentCapabilities   bool
-	IncludeToolCatalog         bool
-	IncludeSkillCatalog        bool
-	IncludeMemory              bool
+	EnableTooling            bool
+	IncludeUserRules         bool
+	IncludeAgentCapabilities bool
+	IncludeToolCatalog       bool
+	IncludeSkillCatalog      bool
+	IncludeMemory            bool
 }
 
 func defaultAssistantPromptOptions() AssistantPromptOptions {
 	return AssistantPromptOptions{
-		EnableTooling:              true,
-		IncludeProjectInstructions: true,
-		IncludeGitSnapshot:         true,
-		IncludeUserRules:           true,
-		IncludeAgentCapabilities:   true,
-		IncludeToolCatalog:         true,
-		IncludeSkillCatalog:        true,
-		IncludeMemory:              true,
+		EnableTooling:            true,
+		IncludeUserRules:         false,
+		IncludeAgentCapabilities: true,
+		IncludeToolCatalog:       true,
+		IncludeSkillCatalog:      true,
+		IncludeMemory:            false,
 	}
 }
 
 func (b *Bridge) buildAssistantPromptOptions(query string, enableTools bool) AssistantPromptOptions {
 	opts := defaultAssistantPromptOptions()
-	opts.Query = strings.TrimSpace(query)
 	opts.EnableTooling = enableTools
 
 	if !enableTools {
 		opts.IncludeAgentCapabilities = false
 		opts.IncludeToolCatalog = false
 		opts.IncludeSkillCatalog = false
-	}
-
-	if opts.Query != "" && isGreeting(opts.Query) {
-		opts.IncludeProjectInstructions = false
-		opts.IncludeGitSnapshot = false
-		opts.IncludeAgentCapabilities = false
-		opts.IncludeToolCatalog = false
-		opts.IncludeSkillCatalog = false
-		opts.IncludeMemory = false
 	}
 
 	return opts
@@ -143,12 +127,7 @@ func (b *Bridge) handleAssistantTask(taskID, sourceAgent string, payload *Assist
 		// 新会话：Messages 由 processTask 构建
 		session.Messages = nil
 	} else {
-		// 续接对话：刷新 system prompt + 追加 user 消息
-		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(payload.Account, payload.Query, true)
-			session.Messages[0].Content = freshPrompt
-			session.PromptSections = promptSections
-		}
+		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
 		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
 		session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
 	}
@@ -602,8 +581,8 @@ func (b *Bridge) findAppAgent() string {
 	return ""
 }
 
-// buildAssistantSystemPrompt 构建固定的系统提示词（不随请求内容变化）
-// 结构：人设 → 用户规则 → Agent 目录 → Skill 目录 → 长期记忆 → 时间/账号信息
+// buildAssistantSystemPrompt 构建稳定的系统提示词（不随请求内容变化）
+// 结构：人设 → Agent 目录 → 工具目录 → Skill 目录
 func (b *Bridge) buildAssistantSystemPrompt(account string) (string, []PromptSection) {
 	return b.buildAssistantSystemPromptWithOptions(account, defaultAssistantPromptOptions())
 }
@@ -639,10 +618,8 @@ func (b *Bridge) buildAssistantSystemPromptWithOptions(account string, opts Assi
 	}
 	personaContent += "\n\n"
 
-	now := time.Now()
 	personaContent += fmt.Sprintf("account: %s\n", account)
-	personaContent += fmt.Sprintf("当前时间: %s %s\n", now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday()))
-	personaContent += fmt.Sprintf("当前输出token预算: %d tokens。\n\n", b.activeLLM.Get().MaxTokens)
+	personaContent += "系统提示词稳定性规则：不要把当前时间、git diff、git status、临时快照或本轮用户输入写入系统提示词；这些动态上下文应由工具或当前用户消息提供。\n\n"
 	personaContent += "## Agent 工作方式\n"
 	personaContent += "- 你是一个可执行任务的工程型智能体，不是陪聊助手。\n"
 	personaContent += "- 先理解代码和上下文，再修改；不要对没读过的文件下结论。\n"
@@ -657,17 +634,7 @@ func (b *Bridge) buildAssistantSystemPromptWithOptions(account string, opts Assi
 	personaContent += "- 编码、验证、部署尽量拆成独立阶段，结果中引用真实工具输出，禁止编造。\n\n"
 	writeSection("人设/基础", personaContent)
 
-	// 2. 项目指令（对齐 Claude Code 的 AGENTS.md/CLAUDE.md 注入）
-	if opts.IncludeProjectInstructions {
-		if cwd, err := os.Getwd(); err == nil {
-			writeSection("项目指令", buildInstructionBlock(cwd))
-			if opts.IncludeGitSnapshot {
-				writeSection("Git快照", buildGitStatusBlock(cwd))
-			}
-		}
-	}
-
-	// 3. 用户规则（使用账户特定的 memory manager）
+	// 2. 用户规则默认不进入稳定系统提示词；仅保留兼容开关。
 	if opts.IncludeUserRules {
 		if memMgr := b.GetMemoryManager(account); memMgr != nil {
 			rulesBlock := memMgr.BuildRulePromptBlock()
@@ -675,25 +642,25 @@ func (b *Bridge) buildAssistantSystemPromptWithOptions(account string, opts Assi
 		}
 	}
 
-	// 4. Agent 能力概览（平台、SSH、部署目标、模型等，不含具体工具列表）
+	// 3. Agent 能力概览（平台、SSH、部署目标等，不含具体工具列表）
 	if opts.IncludeAgentCapabilities {
 		agentBlock := b.getAgentDescriptionBlock()
 		writeSection("Agent能力", agentBlock)
 	}
 
-	// 5. Agent 工具目录（LLM 可直接调用这些工具）
+	// 4. Agent 工具目录（LLM 可直接调用这些工具）
 	if opts.IncludeToolCatalog {
 		toolCatalog := b.buildBriefToolCatalog()
 		writeSection("工具目录", toolCatalog)
 	}
 
-	// 6. Skill 目录（可按需通过 execute_skill 调用技能）
+	// 5. Skill 目录（可按需通过 execute_skill 调用技能）
 	if opts.IncludeSkillCatalog && b.skillMgr != nil {
 		catalog := b.skillMgr.BuildCatalogWithToolHint()
 		writeSection("Skill目录", catalog)
 	}
 
-	// 7. 长期记忆（使用账户特定的 memory manager）
+	// 6. 长期记忆默认不进入稳定系统提示词；仅保留兼容开关。
 	if opts.IncludeMemory {
 		if memMgr := b.GetMemoryManager(account); memMgr != nil {
 			memoryBlock := memMgr.BuildPromptBlock()

@@ -357,15 +357,9 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 		session.PromptSections = promptSections
 		log.Printf("[Wechat] 新会话 sessionID=%s user=%s", session.SessionID, wechatUser)
 	} else {
-		// 续接对话：刷新 system prompt（反映最新工具和 agent 状态）+ 追加 user 消息
-		if len(session.Messages) > 0 && session.Messages[0].Role == "system" {
-			freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(wechatUser, content, true)
-			freshPrompt += fmt.Sprintf("\n当前微信用户ID(wechat_user): %s\n", wechatUser)
-			session.Messages[0].Content = freshPrompt
-			session.PromptSections = promptSections
-		}
+		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
-		log.Printf("[Wechat] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d (system prompt已刷新)",
+		log.Printf("[Wechat] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d",
 			session.SessionID, wechatUser, session.TurnCount, len(session.Messages))
 	}
 

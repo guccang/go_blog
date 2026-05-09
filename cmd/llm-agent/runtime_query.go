@@ -174,16 +174,7 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryLoop, error) {
 	if ctx.Messages != nil {
 		messages = make([]Message, len(ctx.Messages))
 		copy(messages, ctx.Messages)
-		if ctx.Source == "web" || ctx.Source == "wechat" || ctx.Source == "app" {
-			if len(messages) > 0 && messages[0].Role == "system" {
-				freshPrompt, promptSections := b.buildAssistantSystemPromptForQuery(ctx.Account, query, enableToolPrompt)
-				messages[0].Content = freshPrompt
-				promptContext.Sections = clonePromptSections(promptSections)
-				log.Printf("[processTask] 多轮续接：已刷新 system prompt promptLen=%d prompt:\n%s", len(freshPrompt), freshPrompt)
-			}
-		} else {
-			log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
-		}
+		log.Printf("[processTask] 使用预构建消息 count=%d", len(messages))
 		if len(messages) > 0 && messages[0].Role == "system" {
 			promptContext.SystemPrompt = messages[0].Content
 		}

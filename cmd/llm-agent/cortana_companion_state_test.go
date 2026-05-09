@@ -41,7 +41,7 @@ func TestBuildCortanaCompanionPromptMarksRelativeTimeAsHistorical(t *testing.T) 
 		LastTopic: "凌晨一点还在聊天",
 		Summary:   "用户刚才说现在是凌晨",
 	})
-	for _, want := range []string{"历史摘要", "相对时间词", "当前时段只能看本轮系统提示里的 `当前时间`"} {
+	for _, want := range []string{"历史摘要", "相对时间词", "当前时段只能看本轮明确提供的时间上下文"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("expected prompt to contain %q, got %q", want, prompt)
 		}

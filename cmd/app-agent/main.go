@@ -84,6 +84,7 @@ func main() {
 	mux.HandleFunc("/api/app/cortana/history", handler.HandleCortanaHistory)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
+	mux.HandleFunc("/api/app/codegen/history-backups", handler.HandleCodegenHistoryBackups)
 	mux.HandleFunc("/api/app/logs/sources", handler.HandleLogSources)
 	mux.HandleFunc("/api/app/logs/files", handler.HandleLogFiles)
 	mux.HandleFunc("/api/app/logs/content", handler.HandleLogContent)

@@ -114,7 +114,14 @@ class CodegenProjectsSnapshot {
   }
 }
 
-enum CodegenLaunchMode { code, deploy }
+enum CodegenLaunchMode { code, deploy, backup }
+
+enum CodegenHistoryBackupType { full, incremental }
+
+extension CodegenHistoryBackupTypeLabel on CodegenHistoryBackupType {
+  String get label =>
+      this == CodegenHistoryBackupType.full ? '全量备份' : '增量备份';
+}
 
 class CodegenProcessEntry {
   const CodegenProcessEntry({
@@ -200,9 +207,7 @@ class CodegenHistoryItem {
       id: (json['id'] ?? '').toString(),
       timestamp: DateTime.parse(json['timestamp'] as String),
       command: (json['command'] ?? '').toString(),
-      mode: json['mode'] == 'deploy'
-          ? CodegenLaunchMode.deploy
-          : CodegenLaunchMode.code,
+      mode: _parseLaunchMode((json['mode'] ?? '').toString()),
       locked: json['locked'] == true,
       completed: json['completed'] == true,
       processEntries: (json['process_entries'] as List<dynamic>? ?? const [])
@@ -212,6 +217,18 @@ class CodegenHistoryItem {
           )
           .toList(),
     );
+  }
+
+  static CodegenLaunchMode _parseLaunchMode(String value) {
+    switch (value.trim().toLowerCase()) {
+      case 'deploy':
+        return CodegenLaunchMode.deploy;
+      case 'backup':
+        return CodegenLaunchMode.backup;
+      case 'code':
+      default:
+        return CodegenLaunchMode.code;
+    }
   }
 }
 
@@ -259,7 +276,28 @@ class CodegenHistoryCommandDetails {
     }
 
     final action = tokens[1];
-    if (action == 'start') {
+    if (action == 'history-backup' || action == 'backup-history') {
+      var backupType = '';
+      for (var i = 2; i < tokens.length; i++) {
+        if (tokens[i] == '--type' && i + 1 < tokens.length) {
+          backupType = tokens[i + 1];
+          break;
+        }
+      }
+      return CodegenHistoryCommandDetails(
+        mode: CodegenLaunchMode.backup,
+        projectQualifiedName: '',
+        requestText: backupType,
+        tool: '',
+        claudeSettings: '',
+        target: '',
+        extraArgs: '',
+        autoDeploy: false,
+        packOnly: false,
+      );
+    }
+
+    if (action == 'start' || action == 'debug') {
       var autoDeploy = false;
       var tool = '';
       var claudeSettings = '';

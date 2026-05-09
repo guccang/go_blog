@@ -811,6 +811,7 @@ class CortanaPageState extends State<CortanaPage> {
   Timer? _debugStateTimer;
   Timer? _broadcastAutoCollapseTimer;
   Timer? _idleUiTimer;
+  Timer? _suggestedRepliesAutoDismissTimer;
   StreamSubscription<Duration>? _audioPositionSub;
   final List<Timer> _motionTimers = <Timer>[];
   bool _speaking = false;
@@ -828,6 +829,8 @@ class CortanaPageState extends State<CortanaPage> {
   bool _immersiveUiHidden = false;
   bool _suggestedRepliesSheetOpen = false;
   bool _customReplyDialogOpen = false;
+  OverlayEntry? _suggestedRepliesOverlayEntry;
+  Completer<CortanaSuggestedReply?>? _suggestedRepliesCompleter;
   bool _live2dSummaryExpanded = false;
   bool _expressionActionsExpanded = false;
   bool _viewControlsExpanded = false;
@@ -965,6 +968,7 @@ class CortanaPageState extends State<CortanaPage> {
     _debugStateTimer?.cancel();
     _broadcastAutoCollapseTimer?.cancel();
     _idleUiTimer?.cancel();
+    _closeSuggestedRepliesOverlay();
     _audio.dispose();
     final localhostServer = _localhostServer;
     if (localhostServer != null) {
@@ -1128,6 +1132,7 @@ class CortanaPageState extends State<CortanaPage> {
   }
 
   void _dismissCortanaModalRoutes() {
+    _closeSuggestedRepliesOverlay();
     if (!_suggestedRepliesSheetOpen && !_customReplyDialogOpen) {
       return;
     }
@@ -2468,6 +2473,19 @@ class CortanaPageState extends State<CortanaPage> {
 
   Future<void> speakText(String text) => _speak(text.trim());
 
+  void _closeSuggestedRepliesOverlay([CortanaSuggestedReply? selected]) {
+    _suggestedRepliesSheetOpen = false;
+    _suggestedRepliesAutoDismissTimer?.cancel();
+    _suggestedRepliesAutoDismissTimer = null;
+    _suggestedRepliesOverlayEntry?.remove();
+    _suggestedRepliesOverlayEntry = null;
+    final completer = _suggestedRepliesCompleter;
+    _suggestedRepliesCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(selected);
+    }
+  }
+
   Future<void> _showSuggestedReplies(CortanaReplyPayload reply) async {
     final actionReplies = _normalizeSuggestedReplies(reply.actionPlan);
     var replies = reply.suggestedReplies.isNotEmpty
@@ -2484,64 +2502,80 @@ class CortanaPageState extends State<CortanaPage> {
       return;
     }
 
-    Timer? autoDismissTimer;
     try {
+      _closeSuggestedRepliesOverlay();
       _suggestedRepliesSheetOpen = true;
-      final selected = await showModalBottomSheet<CortanaSuggestedReply>(
-        context: context,
-        routeSettings: const RouteSettings(name: 'cortana_suggested_replies'),
-        showDragHandle: true,
-        requestFocus: false,
-        builder: (sheetContext) {
-          autoDismissTimer ??= Timer(const Duration(seconds: 8), () {
-            if (!mounted) return;
-            final navigator = Navigator.of(sheetContext);
-            if (navigator.canPop()) {
-              navigator.pop();
-            }
-          });
-          final cs = Theme.of(sheetContext).colorScheme;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '回复 Cortana',
-                    style: Theme.of(sheetContext).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  for (final item in replies)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: FilledButton.tonal(
-                        style: FilledButton.styleFrom(
-                          alignment: Alignment.centerLeft,
-                          backgroundColor: cs.surfaceContainerHighest,
-                          foregroundColor: cs.onSurface,
-                          minimumSize: const Size.fromHeight(44),
-                        ),
-                        onPressed: () {
-                          FocusManager.instance.primaryFocus?.unfocus();
-                          SystemChannels.textInput.invokeMethod<void>(
-                            'TextInput.hide',
-                          );
-                          Navigator.of(sheetContext).pop(item);
-                        },
-                        child: Text(
-                          item.label,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+      final overlay = Overlay.maybeOf(context, rootOverlay: true);
+      if (overlay == null) {
+        return;
+      }
+      final completer = Completer<CortanaSuggestedReply?>();
+      _suggestedRepliesCompleter = completer;
+      _suggestedRepliesOverlayEntry = OverlayEntry(
+        builder: (overlayContext) {
+          final cs = Theme.of(overlayContext).colorScheme;
+          final textTheme = Theme.of(overlayContext).textTheme;
+          final bottomInset = MediaQuery.viewInsetsOf(overlayContext).bottom;
+          return Positioned(
+            left: 12,
+            right: 12,
+            bottom: math.max(12, bottomInset + 12),
+            child: SafeArea(
+              top: false,
+              child: TapRegion(
+                onTapOutside: (_) => _closeSuggestedRepliesOverlay(),
+                child: Material(
+                  color: cs.surface,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(8),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('回复 Cortana', style: textTheme.titleMedium),
+                        const SizedBox(height: 12),
+                        for (final item in replies)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: FilledButton.tonal(
+                              style: FilledButton.styleFrom(
+                                alignment: Alignment.centerLeft,
+                                backgroundColor: cs.surfaceContainerHighest,
+                                foregroundColor: cs.onSurface,
+                                minimumSize: const Size.fromHeight(44),
+                              ),
+                              onPressed: () {
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                SystemChannels.textInput.invokeMethod<void>(
+                                  'TextInput.hide',
+                                );
+                                _closeSuggestedRepliesOverlay(item);
+                              },
+                              child: Text(
+                                item.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
           );
         },
       );
+      overlay.insert(_suggestedRepliesOverlayEntry!);
+      _suggestedRepliesAutoDismissTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted) {
+          _closeSuggestedRepliesOverlay();
+        }
+      });
+      final selected = await completer.future;
       if (selected == null || !mounted) {
         return;
       }
@@ -2567,7 +2601,8 @@ class CortanaPageState extends State<CortanaPage> {
       }
     } finally {
       _suggestedRepliesSheetOpen = false;
-      autoDismissTimer?.cancel();
+      _suggestedRepliesAutoDismissTimer?.cancel();
+      _suggestedRepliesAutoDismissTimer = null;
     }
   }
 

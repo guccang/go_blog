@@ -64,6 +64,7 @@ class CodegenBody extends StatelessWidget {
     required this.onDeployArgsChanged,
     required this.onSend,
     required this.onCommitAndPush,
+    required this.onBackupHistory,
     required this.onClearHistory,
     required this.onShowHistoryDetails,
     required this.onReExecute,
@@ -109,6 +110,7 @@ class CodegenBody extends StatelessWidget {
   final ValueChanged<String> onDeployArgsChanged;
   final VoidCallback onSend;
   final VoidCallback onCommitAndPush;
+  final ValueChanged<CodegenHistoryBackupType> onBackupHistory;
   final VoidCallback onClearHistory;
   final ValueChanged<CodegenHistoryItem> onShowHistoryDetails;
   final ValueChanged<CodegenHistoryItem> onReExecute;
@@ -490,7 +492,9 @@ class CodegenBody extends StatelessWidget {
                     ),
                     children: [
                       TextSpan(
-                        text: ' (${history.length}条)',
+                        text: ' (编码${history.where((e) => e.mode == CodegenLaunchMode.code).length}条, '
+                            '发布${history.where((e) => e.mode == CodegenLaunchMode.deploy).length}条, '
+                            '备份${history.where((e) => e.mode == CodegenLaunchMode.backup).length}条)',
                         style: TextStyle(
                           color: palette.textSecondary,
                           fontSize: 14,
@@ -505,6 +509,24 @@ class CodegenBody extends StatelessWidget {
                 onPressed: onClearHistory,
                 icon: const Icon(Icons.delete_sweep_rounded),
                 label: const Text('清空'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () =>
+                    onBackupHistory(CodegenHistoryBackupType.incremental),
+                icon: const Icon(Icons.backup_table_rounded),
+                label: const Text('增量备份'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => onBackupHistory(CodegenHistoryBackupType.full),
+                icon: const Icon(Icons.cloud_upload_rounded),
+                label: const Text('全量备份'),
               ),
             ],
           ),
@@ -539,19 +561,15 @@ class CodegenBody extends StatelessWidget {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: item.mode == CodegenLaunchMode.code
-                                    ? Colors.blue.withValues(alpha: 0.16)
-                                    : Colors.green.withValues(alpha: 0.16),
+                                color: _modeColor(
+                                  item.mode,
+                                ).withValues(alpha: 0.16),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
-                                item.mode == CodegenLaunchMode.code
-                                    ? '编码'
-                                    : '发布',
+                                _modeLabel(item.mode),
                                 style: TextStyle(
-                                  color: item.mode == CodegenLaunchMode.code
-                                      ? Colors.blue
-                                      : Colors.green,
+                                  color: _modeColor(item.mode),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -680,6 +698,28 @@ class CodegenBody extends StatelessWidget {
       return null;
     }
     return items.contains(selected) ? selected : null;
+  }
+
+  String _modeLabel(CodegenLaunchMode mode) {
+    switch (mode) {
+      case CodegenLaunchMode.code:
+        return '编码';
+      case CodegenLaunchMode.deploy:
+        return '发布';
+      case CodegenLaunchMode.backup:
+        return '备份';
+    }
+  }
+
+  Color _modeColor(CodegenLaunchMode mode) {
+    switch (mode) {
+      case CodegenLaunchMode.code:
+        return Colors.blue;
+      case CodegenLaunchMode.deploy:
+        return Colors.green;
+      case CodegenLaunchMode.backup:
+        return Colors.deepPurple;
+    }
   }
 
   String _formatTime(DateTime timestamp) {

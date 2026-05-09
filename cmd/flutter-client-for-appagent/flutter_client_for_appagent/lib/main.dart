@@ -2580,6 +2580,33 @@ class AppAgentClient {
     );
   }
 
+  Future<Map<String, dynamic>> backupCodegenHistory({
+    required CodegenHistoryBackupType backupType,
+    required List<CodegenHistoryItem> history,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{
+            'user_id': userId,
+            'backup_type': backupType.name,
+            'app_version': appVersion,
+            'platform': _platformLabel(),
+            'history': history.map((item) => item.toJson()).toList(),
+          }),
+        )
+        .timeout(_uploadTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('backup codegen history', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<List<CortanaReplayItem>> listCortanaVoiceHistory({
     int limit = 200,
   }) async {
@@ -2772,6 +2799,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   static const String _deploySearchKey = 'codegen::deploy_search';
   static const String _debugBundleModeKey = 'codegen::debug_bundle_mode';
   static const String _codegenHistoryKey = 'codegen::history';
+  static const String _codegenHistoryLastBackupAtKey =
+      'codegen::history_last_backup_at';
   static const String _cortanaEnabledKey = 'cortana::enabled';
   static const String _cortanaAllowFullAccessKey = 'cortana::allow_full_access';
   static const String _cortanaAutoPlayKey = 'cortana::auto_play';
@@ -2846,6 +2875,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
   final Set<String> _consumedCortanaReplyKeys = <String>{};
+  final Set<String> _presentedCortanaReplyKeys = <String>{};
+  final Set<String> _pendingCortanaRequestIds = <String>{};
 
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSub;
@@ -5540,6 +5571,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _applyCodegenHistoryItem(CodegenHistoryItem item) {
     final details = CodegenHistoryCommandDetails.parse(item);
+    if (details.mode == CodegenLaunchMode.backup) {
+      _appendSystem('备份记录不需要回填表单，可以直接重新执行备份。');
+      return;
+    }
     setState(() {
       _codegenMode = details.mode;
       if (details.mode == CodegenLaunchMode.code) {
@@ -5576,6 +5611,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _reExecuteCodegenHistory(CodegenHistoryItem item) {
+    if (item.mode == CodegenLaunchMode.backup) {
+      final details = CodegenHistoryCommandDetails.parse(item);
+      final backupType = details.requestText.trim() == 'full'
+          ? CodegenHistoryBackupType.full
+          : CodegenHistoryBackupType.incremental;
+      unawaited(_backupCodegenHistory(backupType));
+      return;
+    }
     _appendOutgoing(item.command);
     setState(() {
       _codegenSending = true;
@@ -5607,6 +5650,75 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             });
           }
         });
+  }
+
+  Future<void> _backupCodegenHistory(CodegenHistoryBackupType backupType) async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final lastBackupAt = prefs.getInt(_codegenHistoryLastBackupAtKey) ?? 0;
+    final historyForBackup = backupType == CodegenHistoryBackupType.full
+        ? List<CodegenHistoryItem>.from(_codegenHistory)
+        : _codegenHistory
+              .where(
+                (item) =>
+                    item.mode != CodegenLaunchMode.backup &&
+                    item.timestamp.millisecondsSinceEpoch > lastBackupAt,
+              )
+              .toList();
+    if (backupType == CodegenHistoryBackupType.incremental &&
+        historyForBackup.isEmpty) {
+      _appendSystem('没有需要增量备份的新命令记录。');
+      return;
+    }
+
+    final command = '/cg history-backup --type ${backupType.name} '
+        '--count ${historyForBackup.length}';
+    final item = _addCodegenHistory(command, CodegenLaunchMode.backup);
+    setState(() {
+      _codegenSending = true;
+    });
+    try {
+      final result = await _runAuthed('Backup codegen history', (client) {
+        return client.backupCodegenHistory(
+          backupType: backupType,
+          history: historyForBackup,
+        );
+      });
+      await prefs.setInt(
+        _codegenHistoryLastBackupAtKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      final objectKey = (result['object_key'] ?? '').toString().trim();
+      final storageProvider = (result['storage_provider'] ?? '').toString();
+      _appendSystem(
+        '${backupType.label}完成：${historyForBackup.length} 条，'
+        '存储=${storageProvider.isEmpty ? 'local' : storageProvider}'
+        '${objectKey.isEmpty ? '' : '，OBS=$objectKey'}',
+      );
+      setState(() {
+        final idx = _codegenHistory.indexWhere((entry) => entry.id == item.id);
+        if (idx != -1) {
+          _codegenHistory[idx] = _codegenHistory[idx].copyWith(
+            completed: true,
+          );
+        }
+        _status = 'Codegen history backed up';
+      });
+      unawaited(_persistCodegenPreferences());
+    } catch (err) {
+      _appendSystem(
+        _describeRequestError(err, operation: 'Backup codegen history'),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _codegenSending = false;
+        });
+      }
+    }
   }
 
   void _toggleCodegenHistoryLock(CodegenHistoryItem item) {
@@ -5768,17 +5880,15 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: item.mode == CodegenLaunchMode.code
-                                ? Colors.blue.withValues(alpha: 0.2)
-                                : Colors.green.withValues(alpha: 0.2),
+                            color: _codegenModeColor(
+                              item.mode,
+                            ).withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            item.mode == CodegenLaunchMode.code ? '编码' : '发布',
+                            _codegenModeLabel(item.mode),
                             style: TextStyle(
-                              color: item.mode == CodegenLaunchMode.code
-                                  ? Colors.blue
-                                  : Colors.green,
+                              color: _codegenModeColor(item.mode),
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -5834,7 +5944,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _buildHistoryDetailRow('项目', details.projectQualifiedName),
+                    if (details.mode != CodegenLaunchMode.backup)
+                      _buildHistoryDetailRow('项目', details.projectQualifiedName),
+                    if (details.mode == CodegenLaunchMode.backup)
+                      _buildHistoryDetailRow(
+                        '备份类型',
+                        details.requestText == 'full' ? '全量备份' : '增量备份',
+                      ),
                     if (details.mode == CodegenLaunchMode.code)
                       _buildHistoryDetailRow(
                         '工具',
@@ -5962,6 +6078,28 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  String _codegenModeLabel(CodegenLaunchMode mode) {
+    switch (mode) {
+      case CodegenLaunchMode.code:
+        return '编码';
+      case CodegenLaunchMode.deploy:
+        return '发布';
+      case CodegenLaunchMode.backup:
+        return '备份';
+    }
+  }
+
+  Color _codegenModeColor(CodegenLaunchMode mode) {
+    switch (mode) {
+      case CodegenLaunchMode.code:
+        return Colors.blue;
+      case CodegenLaunchMode.deploy:
+        return Colors.green;
+      case CodegenLaunchMode.backup:
+        return Colors.deepPurple;
+    }
   }
 
   void _syncCodegenSelections() {
@@ -6695,20 +6833,50 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _presentCortanaFloatingBroadcast(payload);
   }
 
-  void _presentCortanaFloatingBroadcast(CortanaReplyPayload payload) {
+  void _presentCortanaFloatingBroadcast(
+    CortanaReplyPayload payload, {
+    bool forceAutoPlay = false,
+  }) {
     _markCortanaBroadcastAvailable();
 
     debugPrint(
       '[Cortana Broadcast] raise floating cortana mode=$_cortanaFloatingMode text=${payload.text}',
     );
 
-    if (!_cortanaAutoPlay) {
+    if (!_cortanaAutoPlay && !forceAutoPlay) {
       return;
     }
 
     _cortanaBroadcastQueue.enqueueLatest(payload, (nextPayload, onFinished) {
       _playQueuedCortanaBroadcast(nextPayload, onFinished);
     });
+  }
+
+  void _maybePresentCortanaReplyFromIncoming(ChatMessage message) {
+    if (message.direction != MessageDirection.incoming) {
+      return;
+    }
+    final payload = _extractCortanaReplyPayload(message);
+    if (payload == null) {
+      return;
+    }
+    if (!payload.hasAudio && payload.suggestedReplies.isEmpty) {
+      return;
+    }
+    if (payload.requestId.isNotEmpty &&
+        _pendingCortanaRequestIds.contains(payload.requestId)) {
+      return;
+    }
+    final replyKey = _buildCortanaReplyKey(message);
+    if (!_presentedCortanaReplyKeys.add(replyKey)) {
+      return;
+    }
+    if (!_appInForeground) {
+      _pendingBackgroundCortanaBroadcast = payload;
+      _markCortanaBroadcastAvailable();
+      return;
+    }
+    _presentCortanaFloatingBroadcast(payload, forceAutoPlay: true);
   }
 
   void _playQueuedCortanaBroadcast(
@@ -6762,6 +6930,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final startTime = DateTime.now();
     const replyTimeout = Duration(seconds: 20);
     final requestId = _buildCortanaRequestId();
+    _pendingCortanaRequestIds.add(requestId);
     final deviceContext =
         await _refreshCortanaDeviceContext(report: true) ??
         _currentCortanaDeviceContext();
@@ -6816,6 +6985,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     } catch (err) {
       addFlutterClientLog('Cortana 失败: $err');
       throw Exception('Failed to send message: $err');
+    } finally {
+      _pendingCortanaRequestIds.remove(requestId);
     }
   }
 
@@ -8333,6 +8504,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 : 'Received message',
           )) {
         _recordIncomingProcessMessage(chatMessage);
+        _maybePresentCortanaReplyFromIncoming(chatMessage);
         _seenMessageIds.add(envelope.messageId);
         return;
       }
@@ -8342,6 +8514,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         updateStatus: isSystemMessage ? envelope.content : 'Received message',
       );
       _recordIncomingProcessMessage(chatMessage);
+      _maybePresentCortanaReplyFromIncoming(chatMessage);
       if (!isSystemMessage &&
           direction == MessageDirection.incoming &&
           envelope.messageType == 'file') {
@@ -12005,6 +12178,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       },
       onSend: _sendCodegenCommand,
       onCommitAndPush: () => unawaited(_sendCodegenCommitCommand()),
+      onBackupHistory: (type) => unawaited(_backupCodegenHistory(type)),
       onClearHistory: () {
         setState(() {
           _codegenHistory.removeWhere((item) => !item.locked);
