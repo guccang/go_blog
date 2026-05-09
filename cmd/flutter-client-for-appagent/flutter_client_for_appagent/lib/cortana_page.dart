@@ -1043,19 +1043,10 @@ class CortanaPageState extends State<CortanaPage> {
     final ss = now.second.toString().padLeft(2, '0');
     final entry = '[$hh:$mm:$ss] $text';
     debugPrint('[Cortana Log] $entry');
-    if (!mounted) {
-      _logEntries.insert(0, entry);
-      if (_logEntries.length > _maxLogEntries) {
-        _logEntries.removeRange(_maxLogEntries, _logEntries.length);
-      }
-      return;
+    _logEntries.insert(0, entry);
+    if (_logEntries.length > _maxLogEntries) {
+      _logEntries.removeRange(_maxLogEntries, _logEntries.length);
     }
-    setState(() {
-      _logEntries.insert(0, entry);
-      if (_logEntries.length > _maxLogEntries) {
-        _logEntries.removeRange(_maxLogEntries, _logEntries.length);
-      }
-    });
   }
 
   void _scheduleIdleUiHide() {
@@ -1526,6 +1517,10 @@ class CortanaPageState extends State<CortanaPage> {
       }
       final normalized = Map<String, dynamic>.from(decoded);
       if (!mounted) {
+        _live2dDebugState = normalized;
+        return;
+      }
+      if (!_controlPanelVisible || !_live2dSummaryExpanded) {
         _live2dDebugState = normalized;
         return;
       }
@@ -2079,6 +2074,13 @@ class CortanaPageState extends State<CortanaPage> {
       }
       return;
     }
+    if (!_controlPanelVisible || !_replayExpanded) {
+      _voiceHistory.insert(0, item);
+      if (_voiceHistory.length > 3) {
+        _voiceHistory.removeRange(3, _voiceHistory.length);
+      }
+      return;
+    }
     setState(() {
       _voiceHistory.insert(0, item);
       if (_voiceHistory.length > 3) {
@@ -2226,13 +2228,13 @@ class CortanaPageState extends State<CortanaPage> {
       }
     } finally {
       _resetPlaybackEffects();
-      await _callJS('window.stopLipSync()');
+      unawaited(_callJS('window.stopLipSync()'));
       if (speechFocusStarted) {
-        await _callJS('window.endSpeechFocus()');
+        unawaited(_callJS('window.endSpeechFocus()'));
       }
     }
 
-    if (showSnackBar && mounted) {
+    if (showSnackBar && mounted && !reply.hasAudio) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Cortana: $replyText'),
@@ -2371,7 +2373,6 @@ class CortanaPageState extends State<CortanaPage> {
       _appendLog('播报: ${payload.text}');
       await _playReplyAudio(payload);
       canShowReplies = true;
-      notifyFinished();
     } catch (e, stackTrace) {
       debugPrint('[Cortana Broadcast Error] $e');
       debugPrint('$stackTrace');
@@ -2380,7 +2381,6 @@ class CortanaPageState extends State<CortanaPage> {
       await _callJS('window.stopLipSync()');
       await _callJS('window.endSpeechFocus()');
     } finally {
-      notifyFinished();
       if (mounted) {
         setState(() => _speaking = false);
       }
@@ -2388,14 +2388,17 @@ class CortanaPageState extends State<CortanaPage> {
       if (hasQueuedBroadcast) {
         final next = _queuedBroadcasts.removeFirst();
         startedNextBroadcast = true;
-        unawaited(_playBroadcastNow(next.payload, onFinished: next.onFinished));
+        unawaited(
+          _playBroadcastNow(next.payload, onFinished: next.onFinished),
+        );
       } else if (mounted) {
         _startAutoCollapseTimer();
       }
     }
     if (canShowReplies && mounted && !startedNextBroadcast) {
-      await _showSuggestedReplies(payload);
+      unawaited(_showSuggestedReplies(payload));
     }
+    notifyFinished();
   }
 
   void _startAutoCollapseTimer() {
@@ -3528,7 +3531,9 @@ class CortanaPageState extends State<CortanaPage> {
                       if (!isCollapsed)
                         IgnorePointer(
                           ignoring: isFloating,
-                          child: _buildWebViewForPlatform(),
+                          child: RepaintBoundary(
+                            child: _buildWebViewForPlatform(),
+                          ),
                         )
                       else
                         _buildCollapsedAvatar(context),

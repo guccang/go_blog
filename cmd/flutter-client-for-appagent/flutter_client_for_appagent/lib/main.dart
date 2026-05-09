@@ -6912,11 +6912,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     cortanaState.playBroadcast(
       payload,
       onFinished: () {
-        if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          final hasPending = _cortanaBroadcastQueue.hasPending;
+          if (_cortanaBadge == hasPending) {
+            return;
+          }
           setState(() {
-            _cortanaBadge = _cortanaBroadcastQueue.hasPending;
+            _cortanaBadge = hasPending;
           });
-        }
+        });
         onFinished();
       },
     );

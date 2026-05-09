@@ -13,6 +13,7 @@ import (
 // TokenUsage 单次 LLM 调用的 token 用量
 type TokenUsage struct {
 	PromptTokens     int
+	CachedTokens     int
 	CompletionTokens int
 	TotalTokens      int
 	Model            string
@@ -24,33 +25,37 @@ type TokenUsage struct {
 // ModelTokenStats 单模型统计
 type ModelTokenStats struct {
 	Prompt     int64 `json:"prompt"`
+	Cached     int64 `json:"cached"`
 	Completion int64 `json:"completion"`
 	Total      int64 `json:"total"`
 	Calls      int64 `json:"calls"`
 	ReqBytes   int64 `json:"req_bytes"`
 	RespBytes  int64 `json:"resp_bytes"`
-	Errors5xx  int64 `json:"errors_5xx"`   // 5xx 错误次数
-	Today5xx   int64 `json:"today_5xx"`    // 当日 5xx 错误次数
+	Errors5xx  int64 `json:"errors_5xx"` // 5xx 错误次数
+	Today5xx   int64 `json:"today_5xx"`  // 当日 5xx 错误次数
 }
 
 // TokenStats 全局 token 统计（线程安全）
 type TokenStats struct {
 	mu              sync.Mutex
-	TotalPrompt     int64                      `json:"total_prompt"`
-	TotalCompletion int64                      `json:"total_completion"`
-	TotalTokens     int64                      `json:"total_tokens"`
-	CallCount       int64                      `json:"call_count"`
-	TotalReqBytes   int64                      `json:"total_req_bytes"`
-	TotalRespBytes  int64                      `json:"total_resp_bytes"`
-	Total5xxErrors  int64                      `json:"total_5xx_errors"`  // 5xx 错误总次数
+	TotalPrompt     int64                       `json:"total_prompt"`
+	TotalCached     int64                       `json:"total_cached"`
+	TotalCompletion int64                       `json:"total_completion"`
+	TotalTokens     int64                       `json:"total_tokens"`
+	CallCount       int64                       `json:"call_count"`
+	TotalReqBytes   int64                       `json:"total_req_bytes"`
+	TotalRespBytes  int64                       `json:"total_resp_bytes"`
+	Total5xxErrors  int64                       `json:"total_5xx_errors"` // 5xx 错误总次数
 	ByModel         map[string]*ModelTokenStats `json:"by_model"`
 	// 当日统计
-	TodayDate      string                     `json:"today_date"`
-	TodayTokens    int64                      `json:"today_tokens"`
-	TodayCallCount int64                      `json:"today_call_count"`
-	TodayReqBytes  int64                      `json:"today_req_bytes"`
-	TodayRespBytes int64                      `json:"today_resp_bytes"`
-	Today5xxErrors int64                       `json:"today_5xx_errors"`   // 当日 5xx 错误次数
+	TodayDate      string                      `json:"today_date"`
+	TodayPrompt    int64                       `json:"today_prompt"`
+	TodayTokens    int64                       `json:"today_tokens"`
+	TodayCached    int64                       `json:"today_cached"`
+	TodayCallCount int64                       `json:"today_call_count"`
+	TodayReqBytes  int64                       `json:"today_req_bytes"`
+	TodayRespBytes int64                       `json:"today_resp_bytes"`
+	Today5xxErrors int64                       `json:"today_5xx_errors"` // 当日 5xx 错误次数
 	TodayByModel   map[string]*ModelTokenStats `json:"today_by_model"`
 
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -77,6 +82,7 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 
 	// 总量累计
 	ts.TotalPrompt += int64(usage.PromptTokens)
+	ts.TotalCached += int64(usage.CachedTokens)
 	ts.TotalCompletion += int64(usage.CompletionTokens)
 	ts.TotalTokens += int64(usage.TotalTokens)
 	ts.TotalReqBytes += usage.RequestBytes
@@ -88,14 +94,18 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 	today := time.Now().Format("2006-01-02")
 	if ts.TodayDate != today {
 		ts.TodayDate = today
+		ts.TodayPrompt = 0
 		ts.TodayTokens = 0
+		ts.TodayCached = 0
 		ts.TodayCallCount = 0
 		ts.TodayReqBytes = 0
 		ts.TodayRespBytes = 0
 		ts.Today5xxErrors = 0
 		ts.TodayByModel = make(map[string]*ModelTokenStats)
 	}
+	ts.TodayPrompt += int64(usage.PromptTokens)
 	ts.TodayTokens += int64(usage.TotalTokens)
+	ts.TodayCached += int64(usage.CachedTokens)
 	ts.TodayReqBytes += usage.RequestBytes
 	ts.TodayRespBytes += usage.ResponseBytes
 	ts.TodayCallCount++
@@ -108,6 +118,7 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 			ts.ByModel[usage.Model] = ms
 		}
 		ms.Prompt += int64(usage.PromptTokens)
+		ms.Cached += int64(usage.CachedTokens)
 		ms.Completion += int64(usage.CompletionTokens)
 		ms.Total += int64(usage.TotalTokens)
 		ms.Calls++
@@ -120,16 +131,18 @@ func (ts *TokenStats) Add(usage TokenUsage) {
 			dms = &ModelTokenStats{}
 			ts.TodayByModel[usage.Model] = dms
 		}
+		dms.Prompt += int64(usage.PromptTokens)
+		dms.Cached += int64(usage.CachedTokens)
 		dms.Total += int64(usage.TotalTokens)
 		dms.Calls++
 		dms.ReqBytes += usage.RequestBytes
 		dms.RespBytes += usage.ResponseBytes
 	}
 
-	log.Printf("[TokenStats] model=%s prompt=%d completion=%d total=%d req=%s resp=%s | 累计: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s",
-		usage.Model, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
+	log.Printf("[TokenStats] model=%s prompt=%d cached=%d completion=%d total=%d req=%s resp=%s | 累计: prompt=%d cached=%d completion=%d total=%d calls=%d req=%s resp=%s",
+		usage.Model, usage.PromptTokens, usage.CachedTokens, usage.CompletionTokens, usage.TotalTokens,
 		formatBytes(usage.RequestBytes), formatBytes(usage.ResponseBytes),
-		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
+		ts.TotalPrompt, ts.TotalCached, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
 		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes))
 
 	// 自动持久化
@@ -183,13 +196,17 @@ func (ts *TokenStats) Summary() string {
 
 	// 检查当日数据是否过期
 	today := time.Now().Format("2006-01-02")
+	todayPrompt := ts.TodayPrompt
 	todayTokens := ts.TodayTokens
+	todayCached := ts.TodayCached
 	todayCallCount := ts.TodayCallCount
 	todayReqBytes := ts.TodayReqBytes
 	todayRespBytes := ts.TodayRespBytes
 	today5xxErrors := ts.Today5xxErrors
 	if ts.TodayDate != today {
+		todayPrompt = 0
 		todayTokens = 0
+		todayCached = 0
 		todayCallCount = 0
 		todayReqBytes = 0
 		todayRespBytes = 0
@@ -202,6 +219,13 @@ func (ts *TokenStats) Summary() string {
 		formatTokenCount(ts.TotalTokens),
 		todayCallCount,
 		ts.CallCount))
+	if ts.TotalCached > 0 {
+		sb.WriteString(fmt.Sprintf("⚡ Prompt cache: %s/%s (%.1f%%/%.1f%%)\n",
+			formatTokenCount(todayCached),
+			formatTokenCount(ts.TotalCached),
+			tokenRatio(todayCached, todayPrompt),
+			tokenRatio(ts.TotalCached, ts.TotalPrompt)))
+	}
 	sb.WriteString(fmt.Sprintf("📡 流量: ↑%s ↓%s / ↑%s ↓%s",
 		formatBytes(todayReqBytes),
 		formatBytes(todayRespBytes),
@@ -216,21 +240,33 @@ func (ts *TokenStats) Summary() string {
 	// 分模型明细
 	if len(ts.ByModel) > 1 {
 		sb.WriteString("\n")
-		for model, ms := range ts.ByModel {
+		models := sortedStringMapKeys(ts.ByModel)
+		for _, model := range models {
+			ms := ts.ByModel[model]
 			var dayTotal int64
 			var dayCalls int64
+			var dayPrompt int64
+			var dayCached int64
 			if ts.TodayDate == today {
 				if dms, ok := ts.TodayByModel[model]; ok {
 					dayTotal = dms.Total
 					dayCalls = dms.Calls
+					dayPrompt = dms.Prompt
+					dayCached = dms.Cached
 				}
 			}
 			err5xxStr := ""
 			if ms.Errors5xx > 0 {
 				err5xxStr = fmt.Sprintf(" ⚠️5xx:%d/%d", ms.Today5xx, ms.Errors5xx)
 			}
-			sb.WriteString(fmt.Sprintf("\n· %s\n  %s/%s (%d/%d次)%s",
-				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls, err5xxStr))
+			cacheStr := ""
+			if ms.Cached > 0 {
+				cacheStr = fmt.Sprintf(" cache:%s/%s %.1f%%/%.1f%%",
+					formatTokenCount(dayCached), formatTokenCount(ms.Cached),
+					tokenRatio(dayCached, dayPrompt), tokenRatio(ms.Cached, ms.Prompt))
+			}
+			sb.WriteString(fmt.Sprintf("\n· %s\n  %s/%s (%d/%d次)%s%s",
+				model, formatTokenCount(dayTotal), formatTokenCount(ms.Total), dayCalls, ms.Calls, cacheStr, err5xxStr))
 		}
 	}
 
@@ -243,6 +279,7 @@ func (ts *TokenStats) Reset() {
 	defer ts.mu.Unlock()
 
 	ts.TotalPrompt = 0
+	ts.TotalCached = 0
 	ts.TotalCompletion = 0
 	ts.TotalTokens = 0
 	ts.CallCount = 0
@@ -251,7 +288,9 @@ func (ts *TokenStats) Reset() {
 	ts.Total5xxErrors = 0
 	ts.ByModel = make(map[string]*ModelTokenStats)
 	ts.TodayDate = ""
+	ts.TodayPrompt = 0
 	ts.TodayTokens = 0
+	ts.TodayCached = 0
 	ts.TodayCallCount = 0
 	ts.TodayReqBytes = 0
 	ts.TodayRespBytes = 0
@@ -306,6 +345,7 @@ func (ts *TokenStats) Load() {
 	}
 
 	ts.TotalPrompt = loaded.TotalPrompt
+	ts.TotalCached = loaded.TotalCached
 	ts.TotalCompletion = loaded.TotalCompletion
 	ts.TotalTokens = loaded.TotalTokens
 	ts.CallCount = loaded.CallCount
@@ -317,7 +357,9 @@ func (ts *TokenStats) Load() {
 		ts.ByModel = loaded.ByModel
 	}
 	ts.TodayDate = loaded.TodayDate
+	ts.TodayPrompt = loaded.TodayPrompt
 	ts.TodayTokens = loaded.TodayTokens
+	ts.TodayCached = loaded.TodayCached
 	ts.TodayCallCount = loaded.TodayCallCount
 	ts.TodayReqBytes = loaded.TodayReqBytes
 	ts.TodayRespBytes = loaded.TodayRespBytes
@@ -326,9 +368,16 @@ func (ts *TokenStats) Load() {
 		ts.TodayByModel = loaded.TodayByModel
 	}
 
-	log.Printf("[TokenStats] loaded: prompt=%d completion=%d total=%d calls=%d req=%s resp=%s 5xx=%d",
-		ts.TotalPrompt, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
+	log.Printf("[TokenStats] loaded: prompt=%d cached=%d completion=%d total=%d calls=%d req=%s resp=%s 5xx=%d",
+		ts.TotalPrompt, ts.TotalCached, ts.TotalCompletion, ts.TotalTokens, ts.CallCount,
 		formatBytes(ts.TotalReqBytes), formatBytes(ts.TotalRespBytes), ts.Total5xxErrors)
+}
+
+func tokenRatio(part, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(part) * 100 / float64(total)
 }
 
 // formatTokenCount 格式化 token 数量（大数字用 M 显示，更易读）

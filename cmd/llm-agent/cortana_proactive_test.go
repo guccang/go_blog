@@ -62,7 +62,7 @@ func TestCortanaCurrentTimeQueryShortCircuitHelpers(t *testing.T) {
 	}
 }
 
-func TestRecordCortanaProactiveContextAppendsAssistantMessage(t *testing.T) {
+func TestRecordCortanaProactiveContextUpdatesStateWithoutChangingHistory(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := DefaultConfig()
 	cfg.WorkspaceDir = filepath.Join(tmp, "workspace")
@@ -84,15 +84,8 @@ func TestRecordCortanaProactiveContextAppendsAssistantMessage(t *testing.T) {
 	if session == nil {
 		t.Fatalf("expected app session to be created")
 	}
-	if len(session.Messages) < 2 {
-		t.Fatalf("expected system and assistant messages, got %#v", session.Messages)
-	}
-	if session.Messages[0].Role != "system" {
-		t.Fatalf("expected first message to be system, got %q", session.Messages[0].Role)
-	}
-	last := session.Messages[len(session.Messages)-1]
-	if last.Role != "assistant" || !strings.Contains(last.Content, "要不要听") {
-		t.Fatalf("expected proactive speech in assistant history, got %#v", last)
+	if len(session.Messages) != 0 {
+		t.Fatalf("proactive context should not write app history, got %#v", session.Messages)
 	}
 	if session.CortanaState == nil || !strings.Contains(session.CortanaState.LastAssistantMsg, "历史") {
 		t.Fatalf("expected cortana state to record proactive speech, got %#v", session.CortanaState)
@@ -102,7 +95,10 @@ func TestRecordCortanaProactiveContextAppendsAssistantMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected persisted app session: %v", err)
 	}
-	if got := loaded.Messages[len(loaded.Messages)-1].Content; !strings.Contains(got, "要不要听") {
-		t.Fatalf("expected persisted proactive speech, got %q", got)
+	if len(loaded.Messages) != 0 {
+		t.Fatalf("expected persisted app history to stay empty, got %#v", loaded.Messages)
+	}
+	if loaded.CortanaState == nil || !strings.Contains(loaded.CortanaState.LastAssistantMsg, "要不要听") {
+		t.Fatalf("expected persisted cortana state, got %#v", loaded.CortanaState)
 	}
 }

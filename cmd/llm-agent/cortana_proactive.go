@@ -77,29 +77,7 @@ func (b *Bridge) recordCortanaProactiveContext(payload *CortanaProactivePayload,
 	if session.CortanaState == nil {
 		session.CortanaState = loadCortanaCompanionState(workspaceDir, account)
 	}
-	cortanaProfile := loadCortanaProfile(workspaceDir, account)
-
-	systemPrompt, promptSections := b.buildCortanaAppSystemPrompt(
-		account,
-		speechText,
-		cortanaProfile,
-		session.CortanaState,
-	)
-	systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", account)
-	systemPrompt += buildCortanaOutputPrompt() + "\n"
-	if len(session.Messages) == 0 {
-		session.Messages = []Message{{Role: "system", Content: systemPrompt}}
-	} else if session.Messages[0].Role == "system" {
-		session.Messages[0].Content = systemPrompt
-	} else {
-		session.Messages = append([]Message{{Role: "system", Content: systemPrompt}}, session.Messages...)
-	}
-	session.PromptSections = promptSections
-
-	if !latestAssistantMessageEquals(session.Messages, speechText) {
-		session.Messages = append(session.Messages, Message{Role: "assistant", Content: speechText})
-	}
-	session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
+	// 主动播报只更新 Cortana 状态，不写入 app 对话历史，避免污染后续用户消息的可缓存前缀。
 	session.CortanaState = updateCortanaCompanionState(session.CortanaState, "", speechText)
 	cortanaState := session.CortanaState
 	session.mu.Unlock()

@@ -93,6 +93,58 @@ func TestBuildAssistantSystemPromptDoesNotDependOnQuery(t *testing.T) {
 	}
 }
 
+func TestBuildAssistantSystemPromptSortsCatalogMaps(t *testing.T) {
+	build := func(reverse bool) *Bridge {
+		bridge := newPromptTestBridge()
+		bridge.agentInfo = map[string]AgentInfo{}
+		bridge.agentTools = map[string][]LLMTool{}
+
+		alpha := AgentInfo{
+			ID:          "alpha-agent",
+			Name:        "Alpha Agent",
+			Description: "A",
+			TargetHosts: map[string]string{
+				"prod":    "root@prod",
+				"staging": "root@staging",
+			},
+			LogSources: map[string]string{
+				"api": "API 日志",
+				"web": "Web 日志",
+			},
+		}
+		beta := AgentInfo{ID: "beta-agent", Name: "Beta Agent", Description: "B"}
+		alphaTools := []LLMTool{
+			{Type: "function", Function: LLMFunction{Name: "ZetaTool", Description: "Z"}},
+			{Type: "function", Function: LLMFunction{Name: "AlphaTool", Description: "A"}},
+		}
+		if reverse {
+			bridge.agentInfo["beta-agent"] = beta
+			bridge.agentInfo["alpha-agent"] = alpha
+			bridge.agentTools["alpha-agent"] = []LLMTool{alphaTools[0], alphaTools[1]}
+		} else {
+			bridge.agentInfo["alpha-agent"] = alpha
+			bridge.agentInfo["beta-agent"] = beta
+			bridge.agentTools["alpha-agent"] = []LLMTool{alphaTools[1], alphaTools[0]}
+		}
+		return bridge
+	}
+
+	first, _ := build(false).buildAssistantSystemPrompt("alice")
+	second, _ := build(true).buildAssistantSystemPrompt("alice")
+	if first != second {
+		t.Fatalf("system prompt should be stable across map insertion order")
+	}
+	if strings.Index(first, "alpha-agent") > strings.Index(first, "beta-agent") {
+		t.Fatalf("expected agent IDs to be sorted: %s", first)
+	}
+	if strings.Index(first, "AlphaTool") > strings.Index(first, "ZetaTool") {
+		t.Fatalf("expected tool names to be sorted: %s", first)
+	}
+	if strings.Index(first, "api: API 日志") > strings.Index(first, "web: Web 日志") {
+		t.Fatalf("expected log sources to be sorted: %s", first)
+	}
+}
+
 func TestBuildAssistantSystemPromptForToolTaskKeepsToolingSections(t *testing.T) {
 	bridge := newPromptTestBridge()
 

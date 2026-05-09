@@ -385,9 +385,14 @@ type llmResponse struct {
 }
 
 type llmUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens        int                    `json:"prompt_tokens"`
+	CompletionTokens    int                    `json:"completion_tokens"`
+	TotalTokens         int                    `json:"total_tokens"`
+	PromptTokensDetails llmPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+}
+
+type llmPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 // 全局 token 统计器
@@ -405,6 +410,7 @@ func recordTokenUsage(usage *llmUsage, model string, reqBytes, respBytes int64) 
 	}
 	globalTokenStats.Add(TokenUsage{
 		PromptTokens:     usage.PromptTokens,
+		CachedTokens:     usage.PromptTokensDetails.CachedTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
 		Model:            model,
@@ -1043,10 +1049,10 @@ func tailStr(s string, n int) string {
 }
 
 var (
-	dsmlToolCallBlockRe  = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+tool_calls>\s*(.*?)\s*</[｜|]+DSML[｜|]+tool_calls>`)
-	dsmlInvokeRe         = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+invoke\s+name="([^"]+)">\s*(.*?)\s*</[｜|]+DSML[｜|]+invoke>`)
-	dsmlParamRe          = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+parameter\s+name="([^"]+)"([^>]*)>\s*(.*?)\s*</[｜|]+DSML[｜|]+parameter>`)
-	dsmlStringAttrRe     = regexp.MustCompile(`\bstring="(true|false)"`)
+	dsmlToolCallBlockRe    = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+tool_calls>\s*(.*?)\s*</[｜|]+DSML[｜|]+tool_calls>`)
+	dsmlInvokeRe           = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+invoke\s+name="([^"]+)">\s*(.*?)\s*</[｜|]+DSML[｜|]+invoke>`)
+	dsmlParamRe            = regexp.MustCompile(`(?s)<[｜|]+DSML[｜|]+parameter\s+name="([^"]+)"([^>]*)>\s*(.*?)\s*</[｜|]+DSML[｜|]+parameter>`)
+	dsmlStringAttrRe       = regexp.MustCompile(`\bstring="(true|false)"`)
 	minimaxToolCallBlockRe = regexp.MustCompile(`(?s)<minimax:tool_call>\s*(.*?)\s*</minimax:tool_call>`)
 	minimaxInvokeRe        = regexp.MustCompile(`(?s)<invoke\s+name="([^"]+)">\s*(.*?)\s*</invoke>`)
 	minimaxParamRe         = regexp.MustCompile(`(?s)<parameter\s+name="([^"]+)">\s*(.*?)\s*</parameter>`)

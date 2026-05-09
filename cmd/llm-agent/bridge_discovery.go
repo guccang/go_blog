@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"strings"
 )
 
@@ -93,13 +94,21 @@ func (b *Bridge) DiscoverTools() error {
 		}
 	}
 
-	var llmTools []LLMTool
-	var toolNames []string
-	agentToolsMap := make(map[string][]LLMTool)
-	for name, entry := range dedupMap {
-		llmTools = append(llmTools, entry.Tool)
+	toolNames := make([]string, 0, len(dedupMap))
+	for name := range dedupMap {
 		toolNames = append(toolNames, name)
+	}
+	sort.Strings(toolNames)
+
+	var llmTools []LLMTool
+	agentToolsMap := make(map[string][]LLMTool)
+	for _, name := range toolNames {
+		entry := dedupMap[name]
+		llmTools = append(llmTools, entry.Tool)
 		agentToolsMap[entry.AgentID] = append(agentToolsMap[entry.AgentID], entry.Tool)
+	}
+	for agentID := range agentToolsMap {
+		sortLLMToolsByName(agentToolsMap[agentID])
 	}
 
 	b.catalogMu.Lock()
@@ -146,6 +155,8 @@ func (b *Bridge) DiscoverTools() error {
 	}
 	if toolsChanged {
 		if len(added) > 0 || len(removed) > 0 {
+			sort.Strings(added)
+			sort.Strings(removed)
 			log.Printf("[Bridge] tools changed: %d→%d (+%d -%d) added=%v removed=%v",
 				len(prevNames), len(llmTools), len(added), len(removed), added, removed)
 		} else {
@@ -173,6 +184,7 @@ func (b *Bridge) DiscoverTools() error {
 				b.llmTools = append(b.llmTools, tool)
 			}
 		}
+		sortLLMToolsByName(b.llmTools)
 		b.catalogMu.Unlock()
 	}
 
@@ -347,7 +359,9 @@ func (b *Bridge) DiscoverAgents() error {
 
 	if len(infoMap) != prevAgentCount {
 		log.Printf("[Bridge] discovered %d agents (was %d)", len(infoMap), prevAgentCount)
-		for id, info := range infoMap {
+		ids := sortedAgentIDs(infoMap)
+		for _, id := range ids {
+			info := infoMap[id]
 			log.Printf("[Bridge]   agent: %s (%s) tools=%v models=%v coding_tools=%v",
 				info.Name, id, info.ToolNames, info.Models, info.CodingTools)
 		}
@@ -446,7 +460,8 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		sb.WriteString(fmt.Sprintf("  - 工作目录: %s\n", b.client.Workspace))
 	}
 
-	for _, info := range b.agentInfo {
+	for _, id := range sortedAgentIDs(b.agentInfo) {
+		info := b.agentInfo[id]
 		// 标题行：有 description 就显示，没有就只显示名称
 		if info.Description != "" {
 			sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", info.Name, info.ID, info.Description))
@@ -478,7 +493,8 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		}
 		if len(info.TargetHosts) > 0 {
 			sb.WriteString("  - 部署目标对应SSH地址(ssh_host参数):\n")
-			for target, host := range info.TargetHosts {
+			for _, target := range sortedStringMapKeys(info.TargetHosts) {
+				host := info.TargetHosts[target]
 				sb.WriteString(fmt.Sprintf("    - %s → %s\n", target, host))
 			}
 		}
@@ -494,7 +510,8 @@ func (b *Bridge) getAgentDescriptionBlock() string {
 		}
 		if len(info.LogSources) > 0 {
 			sb.WriteString("  - 可查日志源(source参数):\n")
-			for name, desc := range info.LogSources {
+			for _, name := range sortedStringMapKeys(info.LogSources) {
+				desc := info.LogSources[name]
 				sb.WriteString(fmt.Sprintf("    - %s: %s\n", name, desc))
 			}
 		}
@@ -567,10 +584,11 @@ func (b *Bridge) getToolsForAgents(agentIDs []string) []LLMTool {
 
 	var tools []LLMTool
 	seen := make(map[string]bool)
-	for agentID, agentToolList := range b.agentTools {
+	for _, agentID := range sortedStringMapKeys(idSet) {
 		if !idSet[agentID] {
 			continue
 		}
+		agentToolList := b.agentTools[agentID]
 		for _, tool := range agentToolList {
 			if !seen[tool.Function.Name] {
 				tools = append(tools, tool)
@@ -578,5 +596,6 @@ func (b *Bridge) getToolsForAgents(agentIDs []string) []LLMTool {
 			}
 		}
 	}
+	sortLLMToolsByName(tools)
 	return tools
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -66,6 +67,28 @@ func (b *Bridge) getLLMTools() []LLMTool {
 	return b.llmTools
 }
 
+func sortedStringMapKeys[V any](m map[string]V) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedAgentIDs(m map[string]AgentInfo) []string {
+	return sortedStringMapKeys(m)
+}
+
+func sortLLMToolsByName(tools []LLMTool) {
+	sort.SliceStable(tools, func(i, j int) bool {
+		return tools[i].Function.Name < tools[j].Function.Name
+	})
+}
+
 // filterToolsByAllowlist 根据系统允许列表过滤工具。
 // allowlist 为空时返回全部工具。
 func (b *Bridge) filterToolsByAllowlist(allowlist []string) []LLMTool {
@@ -120,7 +143,8 @@ func (b *Bridge) buildBriefToolCatalog() string {
 	}
 	sb.WriteString("\n\n")
 
-	for id, info := range b.agentInfo {
+	for _, id := range sortedAgentIDs(b.agentInfo) {
+		info := b.agentInfo[id]
 		agentToolList := b.agentTools[id]
 
 		// Agent 标题行：名称 [ID]: 描述
@@ -156,7 +180,7 @@ func (b *Bridge) buildBriefToolCatalog() string {
 		}
 		if len(info.LogSources) > 0 {
 			var sources []string
-			for k := range info.LogSources {
+			for _, k := range sortedStringMapKeys(info.LogSources) {
 				sources = append(sources, k)
 			}
 			tags = append(tags, "日志: "+strings.Join(sources, ","))
@@ -170,7 +194,7 @@ func (b *Bridge) buildBriefToolCatalog() string {
 		sb.WriteString(line + "\n")
 
 		// 每个工具一行：仅名称+短描述（不含参数摘要）
-		for _, t := range agentToolList {
+		for _, t := range cloneSortedTools(agentToolList) {
 			name := b.resolveToolNameLocked(t.Function.Name)
 			toolDesc := strings.TrimSpace(t.Function.Description)
 			if toolDesc == "" {
@@ -206,7 +230,8 @@ func (b *Bridge) buildFullToolCatalog() string {
 	}
 	sb.WriteString("\n\n")
 
-	for id, info := range b.agentInfo {
+	for _, id := range sortedAgentIDs(b.agentInfo) {
+		info := b.agentInfo[id]
 		agentToolList := b.agentTools[id]
 
 		// Agent 标题行：名称 [ID]: 描述
@@ -242,7 +267,7 @@ func (b *Bridge) buildFullToolCatalog() string {
 		}
 		if len(info.LogSources) > 0 {
 			var sources []string
-			for k := range info.LogSources {
+			for _, k := range sortedStringMapKeys(info.LogSources) {
 				sources = append(sources, k)
 			}
 			tags = append(tags, "日志: "+strings.Join(sources, ","))
@@ -256,7 +281,7 @@ func (b *Bridge) buildFullToolCatalog() string {
 		sb.WriteString(line + "\n")
 
 		// 每个工具一行：紧凑格式
-		for _, t := range agentToolList {
+		for _, t := range cloneSortedTools(agentToolList) {
 			name := b.resolveToolNameLocked(t.Function.Name)
 			toolDesc := strings.TrimSpace(t.Function.Description)
 			if toolDesc == "" {
@@ -284,6 +309,12 @@ func (b *Bridge) resolveToolNameLocked(name string) string {
 		return canonical
 	}
 	return name
+}
+
+func cloneSortedTools(tools []LLMTool) []LLMTool {
+	cloned := cloneTools(tools)
+	sortLLMToolsByName(cloned)
+	return cloned
 }
 
 // getAgentDetailTool 虚拟工具定义（按需获取 Agent 详细信息）
@@ -372,7 +403,7 @@ func (b *Bridge) handleGetAgentDetail(agentID string) *ToolCallResult {
 	if !ok {
 		// 列出可用 agent
 		var ids []string
-		for id := range b.agentInfo {
+		for _, id := range sortedAgentIDs(b.agentInfo) {
 			ids = append(ids, id)
 		}
 		return &ToolCallResult{
@@ -412,7 +443,8 @@ func (b *Bridge) handleGetAgentDetail(agentID string) *ToolCallResult {
 	}
 	if len(info.TargetHosts) > 0 {
 		sb.WriteString("部署目标→SSH地址:\n")
-		for target, host := range info.TargetHosts {
+		for _, target := range sortedStringMapKeys(info.TargetHosts) {
+			host := info.TargetHosts[target]
 			sb.WriteString(fmt.Sprintf("  - %s → %s\n", target, host))
 		}
 	}
@@ -424,7 +456,8 @@ func (b *Bridge) handleGetAgentDetail(agentID string) *ToolCallResult {
 	}
 	if len(info.LogSources) > 0 {
 		sb.WriteString("日志源:\n")
-		for name, desc := range info.LogSources {
+		for _, name := range sortedStringMapKeys(info.LogSources) {
+			desc := info.LogSources[name]
 			sb.WriteString(fmt.Sprintf("  - %s: %s\n", name, desc))
 		}
 	}
@@ -435,7 +468,7 @@ func (b *Bridge) handleGetAgentDetail(agentID string) *ToolCallResult {
 	// 工具列表
 	if tools, ok := b.agentTools[agentID]; ok && len(tools) > 0 {
 		sb.WriteString(fmt.Sprintf("\n### 工具列表 (%d 个)\n", len(tools)))
-		for _, t := range tools {
+		for _, t := range cloneSortedTools(tools) {
 			name := b.resolveToolNameLocked(t.Function.Name)
 			desc := t.Function.Description
 			if len([]rune(desc)) > 80 {
