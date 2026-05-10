@@ -28,6 +28,13 @@ Flutter 客户端改动验证禁止使用 `flutter build apk` 或其他 APK 打�
 ## Coding Style & Naming Conventions
 Follow standard Go formatting with `gofmt`; keep imports grouped as standard library, third-party, then internal modules. Shared mutable state must be guarded with `sync.RWMutex`. New multi-tenant APIs should use the `WithAccount` suffix, for example `GetBlogWithAccount`. Exported names use PascalCase; private helpers use camelCase. Storage types usually end with `Store`, managers with `Manager`, and enum-like constants often use an `E` prefix. Prefer Chinese comments when adding non-obvious logic.
 
+## Implementation Constraints
+Use simple, direct logic to complete tasks. Avoid over-engineering, speculative abstractions, and unnecessary framework layers.
+
+Keep each source code file under 3000 lines. When a file approaches this limit, split it by feature, responsibility, or architecture boundary before adding more logic.
+
+Design with composition instead of inheritance. Prefer small focused types, interfaces, embedded collaborators, and explicit orchestration over deep class hierarchies or inheritance-based reuse.
+
 ## Testing Guidelines
 Use Go's built-in `testing` package. Keep tests next to the package they cover and name them `*_test.go` with functions like `TestXxx`. Run focused tests for a module before broad `go test ./...`. Add regression tests for parsing, storage, routing, and multi-account behavior when touching those paths.
 
