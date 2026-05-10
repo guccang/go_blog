@@ -2747,13 +2747,19 @@ class CortanaPageState extends State<CortanaPage> {
     final topPadding = MediaQuery.paddingOf(context).top + kToolbarHeight;
     final bottomPadding =
         MediaQuery.paddingOf(context).bottom + 80 + widget.floatingBottomInset;
-    return Offset(
-      offset.dx.clamp(0.0, screenSize.width - floatingSize.width),
-      offset.dy.clamp(
-        topPadding,
-        screenSize.height - floatingSize.height - bottomPadding,
-      ),
-    );
+
+    // Guard against NaN which causes double.clamp to throw.
+    final dx = offset.dx.isNaN
+        ? screenSize.width - floatingSize.width - 12
+        : offset.dx.clamp(0.0, screenSize.width - floatingSize.width);
+    final dy = offset.dy.isNaN
+        ? screenSize.height - floatingSize.height - bottomPadding + 80
+        : offset.dy.clamp(
+            topPadding,
+            screenSize.height - floatingSize.height - bottomPadding,
+          );
+
+    return Offset(dx, dy);
   }
 
   String _formatFlag(bool value) => value ? '已就绪' : '未就绪';
