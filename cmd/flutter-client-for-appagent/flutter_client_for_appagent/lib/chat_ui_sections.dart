@@ -1934,38 +1934,45 @@ extension _ChatPageStateUiSections on _ChatPageState {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(24),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                          cacheExtent: 900,
-                          addAutomaticKeepAlives: false,
-                          addSemanticIndexes: false,
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final msg = _messages[index];
-                            return KeyedSubtree(
-                              key: _messageRowKey(msg),
-                              child: _MessageBubble(
-                                message: msg,
-                                isPlaying:
-                                    _playingAudioKey ==
-                                    _messagePlaybackKey(msg),
-                                onTap: () => _handleMessageTap(msg),
-                                onCopy: () async {
-                                  await Clipboard.setData(
-                                    ClipboardData(text: msg.content),
-                                  );
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Message copied'),
-                                      duration: Duration(seconds: 1),
-                                    ),
-                                  );
-                                },
+                        child: ValueListenableBuilder<List<ChatMessage>>(
+                          valueListenable: _activeMessagesNotifier,
+                          builder: (context, messages, _) {
+                            return ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.fromLTRB(
+                                14, 14, 14, 14,
                               ),
+                              cacheExtent: 900,
+                              addAutomaticKeepAlives: false,
+                              addSemanticIndexes: false,
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = messages[index];
+                                return KeyedSubtree(
+                                  key: _messageRowKey(msg),
+                                  child: _MessageBubble(
+                                    message: msg,
+                                    isPlaying:
+                                        _playingAudioKey ==
+                                        _messagePlaybackKey(msg),
+                                    onTap: () => _handleMessageTap(msg),
+                                    onCopy: () async {
+                                      await Clipboard.setData(
+                                        ClipboardData(text: msg.content),
+                                      );
+                                      if (!context.mounted) {
+                                        return;
+                                      }
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Message copied'),
+                                          duration: Duration(seconds: 1),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
                             );
                           },
                         ),

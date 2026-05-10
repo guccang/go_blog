@@ -93,7 +93,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
         }
 
         try {
-          final listenResult = await _speechToText.listen(
+          await _speechToText.listen(
             onResult: (result) {
               if (!mounted) {
                 return;
@@ -120,7 +120,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
               cancelOnError: false,
             ),
           );
-          _appendSystem('Speech listen started: $listenResult');
+          _appendSystem('Speech listen started: ${_speechToText.isListening}');
         } catch (e, stack) {
           _appendSystem('Speech listen failed: $e');
           debugPrint('Speech listen error: $e\n$stack');

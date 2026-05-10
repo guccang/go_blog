@@ -286,15 +286,19 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       }
       return;
     }
+    final isCurrentScope = message.scopeKey == _currentScopeKey;
     setState(() {
       if (updateStatus != null) {
         _status = updateStatus;
       }
     });
+    if (isCurrentScope) {
+      _syncActiveMessages();
+    }
     if (persist) {
       _historyPersistence.schedule(message.scopeKey);
     }
-    if (message.scopeKey == _currentScopeKey) {
+    if (isCurrentScope) {
       _scrollToBottom();
       if (message.direction == MessageDirection.incoming) {
         unawaited(_markScopeAsRead(message.scopeKey));
@@ -333,6 +337,9 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
           _status = updateStatus;
         }
       });
+      if (scopeKey == _currentScopeKey) {
+        _syncActiveMessages();
+      }
     }
     _historyPersistence.schedule(scopeKey);
     if (shouldStickToBottom) {
@@ -410,7 +417,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
 
     final updatedCurrentScope = lastUpdatedScopeKey == _currentScopeKey;
     if (anyUpdated && updatedCurrentScope) {
-      setState(() {});
+      _syncActiveMessages();
       if (_isNearBottom(_scrollController)) {
         _scrollToBottom(animated: false);
       }
@@ -459,7 +466,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     _CodegenStreamState state,
     String delta,
   ) {
-    var history = List<ChatMessage>.from(
+    final history = List<ChatMessage>.from(
       _historyByScope[state.scopeKey] ?? <ChatMessage>[],
     );
     var remaining = delta;
@@ -476,7 +483,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       if (activeIndex < 0 ||
           history[activeIndex].content.length >= _codegenStreamSegmentLimit) {
         final nextMessage = _newCodegenStreamSegmentMessage(state);
-        history = <ChatMessage>[...history, nextMessage];
+        history.add(nextMessage);
         activeIndex = history.length - 1;
       }
 
@@ -851,6 +858,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
             setState(() {
               _playingAudioKey = null;
             });
+            _syncActiveMessages();
           }
           return;
         }
@@ -862,6 +870,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
             _playingAudioKey = key;
             _status = 'Playing voice message';
           });
+          _syncActiveMessages();
         }
         unawaited(
           _audioPlayer.onPlayerComplete.first.then((_) {
@@ -874,6 +883,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
                 _status = 'Voice playback finished';
               }
             });
+            _syncActiveMessages();
           }),
         );
       } catch (err) {
@@ -955,6 +965,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       if (mounted) {
         setState(() {});
         if (scopeKey == _currentScopeKey) {
+          _syncActiveMessages();
           unawaited(_revealScopeEntryPoint(scopeKey));
         }
       }
@@ -968,6 +979,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       if (mounted) {
         setState(() {});
         if (scopeKey == _currentScopeKey) {
+          _syncActiveMessages();
           unawaited(_revealScopeEntryPoint(scopeKey));
         }
       }
@@ -1040,6 +1052,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     _groupTabsExpanded = false;
     await _loadHistory(_currentScopeKey);
     if (mounted) {
+      _syncActiveMessages();
       setState(() {});
     }
   }
@@ -1052,6 +1065,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     _groupTabsExpanded = _groups.length > 1 && keepTabsExpanded;
     await _loadHistory(_currentScopeKey);
     if (mounted) {
+      _syncActiveMessages();
       setState(() {});
     }
   }
@@ -1876,6 +1890,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
 
     if (mounted && target.scopeKey == _currentScopeKey) {
       setState(() {});
+      _syncActiveMessages();
     }
     _historyPersistence.schedule(target.scopeKey);
   }

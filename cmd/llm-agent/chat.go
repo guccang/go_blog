@@ -481,7 +481,7 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	}
 }
 
-// buildContextDebugInfo 构建当前 session 的上下文结构概览
+// buildContextDebugInfo 构建当前 session 的上下文完整数据（debug 用，输出全部内存数据）
 func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 	session := b.sessionMgr.Get(source, userID)
 	if session == nil {
@@ -510,7 +510,7 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 		totalChars += len([]rune(msg.Content))
 	}
 
-	sb.WriteString("📋 Context\n")
+	sb.WriteString("📋 Context (FULL DEBUG)\n")
 	sb.WriteString("━━━━━━━━━━━━━━━━━━━━━━\n")
 	sb.WriteString(fmt.Sprintf("会话: %s/%s\n", source, userID))
 	sb.WriteString(fmt.Sprintf("chat_session: %s\n", sessionID))
@@ -547,22 +547,20 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 		sysChars := len([]rune(msgs[0].Content))
 		sb.WriteString(fmt.Sprintf("\n📝 对话级 System Prompt: %s chars\n", formatTokenCount(int64(sysChars))))
 		if len(promptSections) > 0 {
-			for _, sec := range trimPromptSections(promptSections, 6) {
+			for _, sec := range promptSections {
 				sb.WriteString(fmt.Sprintf("  · %s: %d chars\n", sec.Name, sec.Chars))
-			}
-			if len(promptSections) > 6 {
-				sb.WriteString(fmt.Sprintf("  · 其余: %d sections\n", len(promptSections)-6))
 			}
 		} else {
 			sb.WriteString(fmt.Sprintf("  · 全部: %d chars (无分段数据)\n", sysChars))
 		}
+		sb.WriteString(fmt.Sprintf("\n📄 System Prompt 完整内容:\n%s\n", msgs[0].Content))
 	}
 
 	runtimeInfo := b.loadLatestTaskContextDebug(sessionID)
 	if runtimeInfo != nil {
 		sb.WriteString("\n🧠 最新任务运行时:\n")
 		sb.WriteString(fmt.Sprintf("  root: %s [%s]\n", runtimeInfo.RootID, fallbackText(strings.TrimSpace(runtimeInfo.RootSession.Status), "unknown")))
-		sb.WriteString(fmt.Sprintf("  query: %s\n", truncate(runtimeInfo.Query, 120)))
+		sb.WriteString(fmt.Sprintf("  query: %s\n", runtimeInfo.Query))
 		sb.WriteString(fmt.Sprintf("  transcript: %d msgs | tool_calls: %d | child_sessions: %s\n",
 			len(runtimeInfo.RootSession.Messages),
 			len(runtimeInfo.RootSession.ToolCalls),
@@ -587,28 +585,46 @@ func (b *Bridge) buildContextDebugInfo(source, userID string) string {
 		if promptSummary := summarizeRuntimePrompt(runtimeInfo.PromptContext); promptSummary != "" {
 			sb.WriteString(fmt.Sprintf("  prompt: %s\n", promptSummary))
 		}
-		taskPreviews := previewContextMessages(runtimeInfo.RootSession.Messages, 4)
-		if len(taskPreviews) > 0 {
-			sb.WriteString("\n🧵 最近任务消息:\n")
-			for _, line := range taskPreviews {
-				sb.WriteString("  ")
-				sb.WriteString(line)
-				sb.WriteString("\n")
+		sb.WriteString("\n🧵 任务消息(完整):\n")
+		formatAllMessagesOpt(&sb, runtimeInfo.RootSession.Messages, true)
+
+		if len(runtimeInfo.RootSession.ToolCalls) > 0 {
+			sb.WriteString("\n🔧 工具调用记录(完整):\n")
+			for _, tc := range runtimeInfo.RootSession.ToolCalls {
+				sb.WriteString(fmt.Sprintf("  [%s] %s\n", tc.Timestamp.Format("15:04:05"), tc.ToolName))
+				sb.WriteString(fmt.Sprintf("    参数: %s\n", truncate(tc.Arguments, 2000)))
+				sb.WriteString(fmt.Sprintf("    结果: %s\n", truncate(tc.Result, 4000)))
+				sb.WriteString(fmt.Sprintf("    成功=%v 耗时=%dms iter=%d\n", tc.Success, tc.DurationMs, tc.Iteration))
 			}
+		}
+
+		if len(runtimeInfo.Attachments) > 0 {
+			sb.WriteString("\n📎 附件(完整):\n")
+			for _, att := range runtimeInfo.Attachments {
+				sb.WriteString(fmt.Sprintf("  kind=%s title=%s source=%s\n", att.Kind, att.Title, att.SourceSessionID))
+				if len(att.Meta) > 0 {
+					for k, v := range att.Meta {
+						sb.WriteString(fmt.Sprintf("    meta.%s=%s\n", k, v))
+					}
+				}
+				if att.Content != "" {
+					sb.WriteString(fmt.Sprintf("    content: %s\n", att.Content))
+				}
+			}
+		}
+
+		for _, child := range runtimeInfo.ChildSessions {
+			sb.WriteString(fmt.Sprintf("\n👶 子会话 %s [%s]\n", child.ID, child.Status))
+			sb.WriteString(fmt.Sprintf("  title: %s\n", child.Title))
+			sb.WriteString(fmt.Sprintf("  description: %s\n", fallbackText(child.Description, "(无)")))
+			formatAllMessages(&sb, child.Messages)
 		}
 	} else {
 		sb.WriteString("\n🧠 最新任务运行时: 暂无持久化任务记录\n")
 	}
 
-	chatPreviews := previewContextMessages(msgs, 4)
-	if len(chatPreviews) > 0 {
-		sb.WriteString("\n💬 最近对话消息:\n")
-		for _, line := range chatPreviews {
-			sb.WriteString("  ")
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		}
-	}
+	sb.WriteString("\n💬 对话消息(完整):\n")
+	formatAllMessagesOpt(&sb, msgs, true)
 
 	return sb.String()
 }
@@ -1093,6 +1109,46 @@ func previewContextMessage(msg Message) string {
 		content = "(empty)"
 	}
 	return fmt.Sprintf("[%s] %s", msg.Role, truncate(content, 100))
+}
+
+func formatAllMessages(sb *strings.Builder, messages []Message) {
+	formatAllMessagesOpt(sb, messages, false)
+}
+
+// formatAllMessagesOpt 格式化消息列表，skipSystem 为 true 时跳过 system 消息
+// （因为 system prompt 已在上下文中单独展示）
+func formatAllMessagesOpt(sb *strings.Builder, messages []Message, skipSystem bool) {
+	if len(messages) == 0 {
+		sb.WriteString("  (无消息)\n")
+		return
+	}
+	for _, msg := range messages {
+		role := msg.Role
+		if skipSystem && role == "system" {
+			sb.WriteString(fmt.Sprintf("  [system] (完整内容见上方 System Prompt，%d chars)\n",
+				len([]rune(msg.Content))))
+			continue
+		}
+		if role == "assistant" && len(msg.ToolCalls) > 0 {
+			names := make([]string, 0, len(msg.ToolCalls))
+			for _, tc := range msg.ToolCalls {
+				names = append(names, tc.Function.Name)
+			}
+			sb.WriteString(fmt.Sprintf("  [%s] tool_call: %s\n", role, strings.Join(names, ", ")))
+			if msg.Content != "" {
+				sb.WriteString(fmt.Sprintf("  [%s] content: %s\n", role, msg.Content))
+			}
+			for _, tc := range msg.ToolCalls {
+				sb.WriteString(fmt.Sprintf("    -> %s(%s)\n", tc.Function.Name, tc.Function.Arguments))
+			}
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			content = "(empty)"
+		}
+		sb.WriteString(fmt.Sprintf("  [%s] %s\n", role, content))
+	}
 }
 
 func isRuntimeAttachmentMessage(content string) bool {

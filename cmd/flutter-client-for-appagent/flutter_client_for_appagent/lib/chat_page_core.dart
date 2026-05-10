@@ -67,6 +67,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
+  final ValueNotifier<List<ChatMessage>> _activeMessagesNotifier =
+      ValueNotifier<List<ChatMessage>>(const <ChatMessage>[]);
   final GlobalKey _activeMessageAnchorKey = GlobalKey();
   late final ScopedHistoryPersistenceCoordinator _historyPersistence =
       ScopedHistoryPersistenceCoordinator(_persistHistory);
@@ -267,6 +269,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  void _syncActiveMessages() {
+    if (!mounted) return;
+    _activeMessagesNotifier.value = _messages;
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -276,6 +283,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cortanaWakeRestartTimer?.cancel();
     _cortanaLocationTimer?.cancel();
     _streamFlushTimer?.cancel();
+    _activeMessagesNotifier.dispose();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.sink.close());
     unawaited(_pauseCortanaWakeListening(cancel: true));
@@ -700,7 +708,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         '开始监听，locale=${localeId ?? 'default'}, 唤醒词="$_cortanaWakePhrase"',
       );
       _lastCortanaWakeTranscript = '';
-      final started = await _speechToText.listen(
+      // speech_to_text 7.3.0's listen() has no return statement,
+      // so the Future resolves to null. Use isListening instead.
+      await _speechToText.listen(
         onResult: (result) {
           final transcript = normalizeSpeechTranscript(result.recognizedWords);
           if (transcript.isEmpty ||
@@ -729,23 +739,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           cancelOnError: false,
         ),
       );
-      _cortanaWakeListening = started;
-      if (started && mounted) {
+      _cortanaWakeListening = _speechToText.isListening;
+      if (_cortanaWakeListening && mounted) {
         setState(() {
           _status = '语音唤醒监听中';
         });
       }
-      _appendCortanaWakeLog('listen 返回: started=$started');
+      _appendCortanaWakeLog('listen 返回: started=$_cortanaWakeListening');
     } catch (err, stack) {
       _cortanaWakeListening = false;
       _appendCortanaWakeLog('启动监听失败: $err');
       debugPrint('Cortana wake listen error: $err\n$stack');
-      if (_isSpeechBusyError(err)) {
+      // Always cancel the native recognizer before restarting, even for
+      // non-busy errors (e.g. TypeError), because listen() may have already
+      // started the native session.
+      if (!_isSpeechBusyError(err)) {
         await _stopSpeechRecognition(cancel: true);
-        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
-      } else {
-        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
       }
+      _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
     }
   }
 
@@ -808,7 +819,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     required String? localeId,
     required void Function(String transcript, bool finalResult) onTranscript,
   }) async {
-    return await _speechToText.listen(
+    // speech_to_text 7.3.0's listen() has no return statement,
+    // so the Future resolves to null. Use isListening instead.
+    await _speechToText.listen(
       onResult: (result) {
         onTranscript(
           normalizeSpeechTranscript(result.recognizedWords),
@@ -824,6 +837,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         cancelOnError: false,
       ),
     );
+    return _speechToText.isListening;
   }
 
   Future<void> _handleCortanaWakeDetected(String initialCommand) async {
