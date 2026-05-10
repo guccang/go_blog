@@ -709,7 +709,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       _lastCortanaWakeTranscript = '';
       // speech_to_text 7.3.0's listen() has no return statement,
-      // so the Future resolves to null. Use isListening instead.
+      // so the Future resolves to null. Set optimistic flag before
+      // listen() rather than relying on isListening afterward, because
+      // isListening can be out of sync with the native recognizer.
+      _cortanaWakeListening = true;
       await _speechToText.listen(
         onResult: (result) {
           final transcript = normalizeSpeechTranscript(result.recognizedWords);
@@ -739,13 +742,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           cancelOnError: false,
         ),
       );
-      _cortanaWakeListening = _speechToText.isListening;
-      if (_cortanaWakeListening && mounted) {
+      if (mounted) {
         setState(() {
           _status = '语音唤醒监听中';
         });
       }
-      _appendCortanaWakeLog('listen 返回: started=$_cortanaWakeListening');
+      _appendCortanaWakeLog('listen 返回: isListening=$_speechToText.isListening');
     } catch (err, stack) {
       _cortanaWakeListening = false;
       _appendCortanaWakeLog('启动监听失败: $err');
