@@ -197,7 +197,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     }
   }
 
-  void _appendSystem(String text) {
+  void _appendSystem(String text, {Map<String, dynamic>? meta}) {
     _appendMessage(
       ChatMessage(
         content: text,
@@ -205,6 +205,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         timestamp: DateTime.now(),
         status: 'info',
         scopeKey: _currentScopeKey,
+        meta: meta,
       ),
       updateStatus: text,
     );
@@ -411,6 +412,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         lastUpdatedScopeKey = state.scopeKey;
       }
       if (state.finalSeen && state.pendingDelta.isEmpty) {
+        _completeCodegenHistoryForStream(state);
         _codegenStreamStates.remove(streamId);
       }
     }
@@ -466,88 +468,38 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     _CodegenStreamState state,
     String delta,
   ) {
-    final history = List<ChatMessage>.from(
-      _historyByScope[state.scopeKey] ?? <ChatMessage>[],
-    );
     var remaining = delta;
     var changed = false;
 
     while (remaining.isNotEmpty) {
-      var activeIndex = state.activeSegmentMessageId == null
-          ? -1
-          : history.lastIndexWhere(
-              (item) =>
-                  (item.meta?['_message_id'] ?? '').toString() ==
-                  state.activeSegmentMessageId,
-            );
-      if (activeIndex < 0 ||
-          history[activeIndex].content.length >= _codegenStreamSegmentLimit) {
-        final nextMessage = _newCodegenStreamSegmentMessage(state);
-        history.add(nextMessage);
-        activeIndex = history.length - 1;
-      }
-
-      final active = history[activeIndex];
-      final available = _codegenStreamSegmentLimit - active.content.length;
-      if (available <= 0) {
-        state.activeSegmentMessageId = null;
-        continue;
-      }
-      final slice = _takeCodegenStreamSlice(remaining, available);
-      final updatedContent = active.content + slice;
-      history[activeIndex] = ChatMessage(
-        content: updatedContent,
-        direction: active.direction,
-        timestamp: active.timestamp,
-        status: active.status,
-        scopeKey: active.scopeKey,
-        authorId: active.authorId,
-        groupId: active.groupId,
-        messageType: active.messageType,
-        meta: active.meta,
+      final slice = _takeCodegenStreamSlice(
+        remaining,
+        _codegenStreamSegmentLimit,
+      );
+      final streamMessage = ChatMessage(
+        content: slice,
+        direction: state.latestMessage.direction,
+        timestamp: state.latestMessage.timestamp,
+        scopeKey: state.scopeKey,
+        authorId: state.latestMessage.authorId,
+        groupId: state.latestMessage.groupId,
+        messageType: state.latestMessage.messageType,
+        meta: state.latestMessage.meta,
       );
       _appendProcessEntryToActiveCodegenHistory(
-        history[activeIndex],
+        streamMessage,
         slice,
         origin: 'codegen-stream',
+        historyId: (state.latestMessage.meta?['codegen_history_id'] ?? '')
+            .toString(),
         sessionId: (state.latestMessage.meta?['session_id'] ?? '').toString(),
+        requestId: (state.latestMessage.meta?['request_id'] ?? '').toString(),
+        mode: _codegenHistoryModeForProcessMessage(state.latestMessage),
       );
       remaining = remaining.substring(slice.length);
       changed = true;
-      if (updatedContent.length >= _codegenStreamSegmentLimit) {
-        state.activeSegmentMessageId = null;
-      }
-    }
-
-    if (changed) {
-      _historyByScope[state.scopeKey] = history;
-      _historyPersistence.schedule(state.scopeKey);
     }
     return changed;
-  }
-
-  ChatMessage _newCodegenStreamSegmentMessage(_CodegenStreamState state) {
-    state.segmentIndex += 1;
-    final segmentMessageId =
-        '${state.streamMessageId}::segment::${state.segmentIndex}';
-    state.activeSegmentMessageId = segmentMessageId;
-    final meta = <String, dynamic>{
-      ...?state.latestMessage.meta,
-      '_message_id': segmentMessageId,
-      'stream_message_id': state.streamMessageId,
-      'stream_segment_index': state.segmentIndex,
-      'stream_segmented': true,
-    };
-    return ChatMessage(
-      content: '',
-      direction: state.latestMessage.direction,
-      timestamp: state.latestMessage.timestamp,
-      scopeKey: state.scopeKey,
-      authorId: state.latestMessage.authorId,
-      groupId: state.latestMessage.groupId,
-      messageType: state.latestMessage.messageType,
-      meta: meta,
-    );
   }
 
   String _takeCodegenStreamSlice(String text, int maxLength) {
@@ -804,6 +756,15 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
   }
 
   Future<void> _handleMessageTap(ChatMessage message) async {
+    final codegenTaskId = _codegenHistoryIdForMessage(message);
+    if (codegenTaskId != null) {
+      final item = _findCodegenHistoryItemById(codegenTaskId);
+      if (item != null) {
+        await _showCodegenHistoryDetails(item);
+      }
+      return;
+    }
+
     if (message.messageType == 'video') {
       final meta = Map<String, dynamic>.from(message.meta ?? const {});
       var videoPath = (meta['file_path'] ?? '').toString().trim();
@@ -1398,6 +1359,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         messageType: envelope.messageType,
         meta: messageMeta,
       );
+      _bindCodegenHistoryRequestFromMessage(chatMessage);
       if (envelope.messageId.isNotEmpty) {
         final origin = (meta['origin'] ?? '').toString();
         if (origin == 'codegen-stream') {
@@ -1409,6 +1371,12 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
           _seenMessageIds.add(envelope.messageId);
           return;
         }
+      }
+      if (_routeIncomingCodegenProcessMessage(chatMessage)) {
+        if (envelope.messageId.isNotEmpty) {
+          _seenMessageIds.add(envelope.messageId);
+        }
+        return;
       }
       if (envelope.messageId.isNotEmpty &&
           _replaceMessageById(
@@ -1556,7 +1524,17 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return true;
     }
 
-    if (isAppProcess && !_hasPendingCodegenHistoryExecution()) {
+    if (isAppProcess &&
+        !_hasPendingCodegenHistoryExecution(
+          mode: _codegenHistoryModeForProcessMessage(
+            ChatMessage(
+              content: envelope.content,
+              direction: MessageDirection.incoming,
+              timestamp: DateTime.now(),
+              meta: meta,
+            ),
+          ),
+        )) {
       return true;
     }
 

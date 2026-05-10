@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,8 @@ type objectStorage interface {
 	Enabled() bool
 	HeadObject(ctx context.Context, key string) (bool, error)
 	PutObject(ctx context.Context, req obsstore.PutObjectRequest) error
+	ListObjects(ctx context.Context, prefix string, marker string, maxKeys int) (*obsstore.ListObjectsResult, error)
+	CreateSignedGetURL(ctx context.Context, key string, ttl time.Duration) (*obsstore.SignedURL, error)
 	DeleteObject(ctx context.Context, key string) error
 }
 
@@ -63,6 +66,7 @@ type remoteObjectStorage struct {
 	baseURL string
 	token   string
 	client  *http.Client
+	signer  downloadTicketSigner
 }
 
 func newRemoteObjectStorage(cfg *Config) objectStorage {
@@ -73,6 +77,7 @@ func newRemoteObjectStorage(cfg *Config) objectStorage {
 		baseURL: strings.TrimRight(strings.TrimSpace(cfg.ObsAgentBaseURL), "/"),
 		token:   strings.TrimSpace(firstNonEmpty(cfg.ObsAgentToken, cfg.ReceiveToken)),
 		client:  &http.Client{Timeout: 30 * time.Second},
+		signer:  newDownloadTicketSigner(cfg),
 	}
 }
 
@@ -185,6 +190,115 @@ func (s *remoteObjectStorage) PutObject(ctx context.Context, req obsstore.PutObj
 		return fmt.Errorf("stream obs-agent proxy upload body: %w", err)
 	}
 	return nil
+}
+
+func (s *remoteObjectStorage) ListObjects(ctx context.Context, prefix string, marker string, maxKeys int) (*obsstore.ListObjectsResult, error) {
+	if !s.Enabled() {
+		return nil, fmt.Errorf("obs-agent list is disabled")
+	}
+	u := s.baseURL + "/api/obs/list?prefix=" + url.QueryEscape(strings.TrimSpace(prefix))
+	if strings.TrimSpace(marker) != "" {
+		u += "&marker=" + url.QueryEscape(strings.TrimSpace(marker))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build obs-agent list request: %w", err)
+	}
+	s.applyAuth(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request obs-agent list: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("obs-agent list failed: %s %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+
+	var data struct {
+		Objects []struct {
+			Key          string `json:"key"`
+			Size         int64  `json:"size"`
+			LastModified int64  `json:"last_modified"`
+			ETag         string `json:"etag"`
+		} `json:"objects"`
+		IsTruncated bool   `json:"is_truncated"`
+		NextMarker  string `json:"next_marker"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode obs-agent list response: %w", err)
+	}
+	items := make([]obsstore.ObjectListItem, 0, len(data.Objects))
+	for _, obj := range data.Objects {
+		items = append(items, obsstore.ObjectListItem{
+			Key:          strings.TrimSpace(obj.Key),
+			Size:         obj.Size,
+			LastModified: time.UnixMilli(obj.LastModified),
+			ETag:         obj.ETag,
+		})
+	}
+	return &obsstore.ListObjectsResult{
+		Objects:     items,
+		IsTruncated: data.IsTruncated,
+		NextMarker:  data.NextMarker,
+	}, nil
+}
+
+func (s *remoteObjectStorage) CreateSignedGetURL(ctx context.Context, key string, ttl time.Duration) (*obsstore.SignedURL, error) {
+	if !s.Enabled() {
+		return nil, fmt.Errorf("obs-agent download is disabled")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, fmt.Errorf("object key is required")
+	}
+	if s.signer == nil || !s.signer.Enabled() {
+		return nil, fmt.Errorf("download ticket signer is not configured")
+	}
+	fileID := base64.RawURLEncoding.EncodeToString([]byte(key))
+	ticket, _, err := s.signer.Issue(downloadticket.Input{
+		FileID:          fileID,
+		ObjectKey:       key,
+		StorageProvider: "obs",
+	}, ttl)
+	if err != nil {
+		return nil, fmt.Errorf("issue obs-agent download ticket: %w", err)
+	}
+	reqURL := s.baseURL + "/api/obs/download/" + url.PathEscape(fileID) + "?ticket=" + url.QueryEscape(ticket)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build obs-agent download request: %w", err)
+	}
+	s.applyAuth(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request obs-agent download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("obs-agent download failed: %s %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	var data struct {
+		URL       string            `json:"url"`
+		Method    string            `json:"method"`
+		ExpiresAt int64             `json:"expires_at"`
+		Headers   map[string]string `json:"headers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode obs-agent download response: %w", err)
+	}
+	if strings.TrimSpace(data.URL) == "" {
+		return nil, fmt.Errorf("obs-agent download response missing url")
+	}
+	return &obsstore.SignedURL{
+		URL:       data.URL,
+		Method:    firstNonEmpty(data.Method, "GET"),
+		ExpiresAt: data.ExpiresAt,
+		Headers:   data.Headers,
+	}, nil
 }
 
 func (s *remoteObjectStorage) DeleteObject(ctx context.Context, key string) error {

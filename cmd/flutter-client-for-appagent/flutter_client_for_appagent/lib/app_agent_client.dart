@@ -394,6 +394,54 @@ class AppAgentClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  Future<List<CodegenHistoryBackupItem>> listCodegenHistoryBackups() async {
+    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups').replace(
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list codegen history backups', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return (data['items'] as List<dynamic>? ?? const [])
+        .map(
+          (item) =>
+              CodegenHistoryBackupItem.fromJson(item as Map<String, dynamic>),
+        )
+        .where((item) => item.objectKey.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<CodegenHistoryItem>> loadCodegenHistoryBackup(
+    String objectKey,
+  ) async {
+    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups').replace(
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+        'object_key': objectKey.trim(),
+      },
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_uploadTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('load codegen history backup', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    return (data['history'] as List<dynamic>? ?? const [])
+        .map((item) => CodegenHistoryItem.fromJson(item as Map<String, dynamic>))
+        .where((item) => item.id.trim().isNotEmpty)
+        .toList();
+  }
+
   Future<List<CortanaReplayItem>> listCortanaVoiceHistory({
     int limit = 200,
   }) async {

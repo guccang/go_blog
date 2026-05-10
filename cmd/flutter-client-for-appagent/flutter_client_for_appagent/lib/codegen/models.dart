@@ -123,6 +123,45 @@ extension CodegenHistoryBackupTypeLabel on CodegenHistoryBackupType {
       this == CodegenHistoryBackupType.full ? '全量备份' : '增量备份';
 }
 
+class CodegenHistoryBackupItem {
+  const CodegenHistoryBackupItem({
+    required this.backupType,
+    required this.fileName,
+    required this.fileSize,
+    required this.objectKey,
+    required this.createdAt,
+  });
+
+  final String backupType;
+  final String fileName;
+  final int fileSize;
+  final String objectKey;
+  final DateTime createdAt;
+
+  String get label {
+    final type = backupType == CodegenHistoryBackupType.full.name
+        ? '全量备份'
+        : '增量备份';
+    return '$type ${createdAt.toLocal()}';
+  }
+
+  factory CodegenHistoryBackupItem.fromJson(Map<String, dynamic> json) {
+    final createdAtValue = json['created_at'];
+    final createdAtMillis = createdAtValue is int
+        ? createdAtValue
+        : int.tryParse('$createdAtValue') ?? 0;
+    return CodegenHistoryBackupItem(
+      backupType: (json['backup_type'] ?? '').toString().trim(),
+      fileName: (json['file_name'] ?? '').toString().trim(),
+      fileSize: int.tryParse('${json['file_size'] ?? 0}') ?? 0,
+      objectKey: (json['object_key'] ?? '').toString().trim(),
+      createdAt: createdAtMillis > 0
+          ? DateTime.fromMillisecondsSinceEpoch(createdAtMillis)
+          : DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+}
+
 class CodegenProcessEntry {
   const CodegenProcessEntry({
     required this.timestamp,
@@ -163,6 +202,7 @@ class CodegenHistoryItem {
     required this.mode,
     this.locked = false,
     this.completed = false,
+    this.requestId = '',
     this.processEntries = const <CodegenProcessEntry>[],
   });
 
@@ -172,11 +212,13 @@ class CodegenHistoryItem {
   final CodegenLaunchMode mode;
   final bool locked;
   final bool completed;
+  final String requestId;
   final List<CodegenProcessEntry> processEntries;
 
   CodegenHistoryItem copyWith({
     bool? locked,
     bool? completed,
+    String? requestId,
     List<CodegenProcessEntry>? processEntries,
   }) {
     return CodegenHistoryItem(
@@ -186,6 +228,7 @@ class CodegenHistoryItem {
       mode: mode,
       locked: locked ?? this.locked,
       completed: completed ?? this.completed,
+      requestId: requestId ?? this.requestId,
       processEntries: processEntries ?? this.processEntries,
     );
   }
@@ -198,6 +241,7 @@ class CodegenHistoryItem {
       'mode': mode.name,
       'locked': locked,
       'completed': completed,
+      'request_id': requestId,
       'process_entries': processEntries.map((item) => item.toJson()).toList(),
     };
   }
@@ -210,6 +254,7 @@ class CodegenHistoryItem {
       mode: _parseLaunchMode((json['mode'] ?? '').toString()),
       locked: json['locked'] == true,
       completed: json['completed'] == true,
+      requestId: (json['request_id'] ?? '').toString(),
       processEntries: (json['process_entries'] as List<dynamic>? ?? const [])
           .map(
             (item) =>

@@ -150,6 +150,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final isImage = message.messageType == 'image';
     final isVideo = message.messageType == 'video';
     final isApk = isApkChatMessage(message);
+    final isCodegenTask = (message.meta?['codegen_history_id'] ?? '')
+        .toString()
+        .trim()
+        .isNotEmpty;
     final durationMs = message.meta?['duration_ms'];
     final durationText = durationMs is num
         ? '${(durationMs / 1000).toStringAsFixed(1)}s'
@@ -181,7 +185,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
           child: InkWell(
-            onTap: (isAudio || isApk || (isVideo && _videoPath.isEmpty))
+            onTap:
+                (isAudio ||
+                    isApk ||
+                    isCodegenTask ||
+                    (isVideo && _videoPath.isEmpty))
                 ? () => widget.onTap()
                 : textOverflows
                 ? () => setState(() {
@@ -356,6 +364,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         ? '${_formatTime(message.timestamp)}  Tap to play · Long press to copy'
                         : isApk
                         ? '${_formatTime(message.timestamp)}  ${extractApkVersion(message) != null ? 'v${extractApkVersion(message)} · ' : ''}点击安装 · 长按复制'
+                        : isCodegenTask
+                        ? '${_formatTime(message.timestamp)}  点击查看进度 · 长按复制'
                         : '${_formatTime(message.timestamp)}  Long press to copy',
                     style: TextStyle(
                       fontSize: 11,

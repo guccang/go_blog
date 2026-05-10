@@ -64,3 +64,37 @@ func TestStoreCodegenHistoryBackupUploadsOBS(t *testing.T) {
 		t.Fatalf("expected local backup file %s: %v", localPath, err)
 	}
 }
+
+func TestLoadCodegenHistoryBackupFallsBackToLocalFile(t *testing.T) {
+	dir := t.TempDir()
+	bridge := NewBridge(DefaultConfig())
+	bridge.cfg.AttachmentStoreDir = filepath.Join(dir, "attachments")
+	fakeStore := &fakeOBSStorage{}
+	bridge.obsStorage = fakeStore
+
+	stored, err := bridge.StoreCodegenHistoryBackup(codegenHistoryBackupRequest{
+		UserID:     "alice",
+		BackupType: "full",
+		History: []map[string]any{
+			{
+				"id":      "cg-local",
+				"command": "/cg start demo@app @codex fix",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StoreCodegenHistoryBackup returned error: %v", err)
+	}
+
+	fakeStore.bodies = nil
+	loaded, err := bridge.LoadCodegenHistoryBackup("alice", stored.ObjectKey)
+	if err != nil {
+		t.Fatalf("LoadCodegenHistoryBackup returned error: %v", err)
+	}
+	if !loaded.Success || loaded.BackupType != "full" {
+		t.Fatalf("unexpected load response: %#v", loaded)
+	}
+	if len(loaded.History) != 1 || loaded.History[0]["id"] != "cg-local" {
+		t.Fatalf("unexpected loaded history: %#v", loaded.History)
+	}
+}

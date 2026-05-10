@@ -28,3 +28,12 @@ func TestIsTerminalAsyncToolProgress(t *testing.T) {
 		t.Fatalf("expected intermediate progress to be non-terminal")
 	}
 }
+
+func TestShouldForwardToolProgressToChat(t *testing.T) {
+	if shouldForwardToolProgressToChat("deploy-agent") {
+		t.Fatalf("deploy-agent progress should stay on deploy task page")
+	}
+	if !shouldForwardToolProgressToChat("acp-agent") {
+		t.Fatalf("non-deploy progress should still be forwarded")
+	}
+}

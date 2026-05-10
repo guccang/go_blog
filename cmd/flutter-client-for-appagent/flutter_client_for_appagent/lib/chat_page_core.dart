@@ -26,8 +26,6 @@ class _CodegenStreamState {
   ChatMessage latestMessage;
   String fullContent = '';
   String pendingDelta = '';
-  int segmentIndex = 0;
-  String? activeSegmentMessageId;
   bool finalSeen = false;
 }
 
@@ -75,6 +73,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final List<GroupInfo> _groups = <GroupInfo>[];
   final List<CodingProjectInfo> _codingProjects = <CodingProjectInfo>[];
   final List<DeployProjectInfo> _deployProjects = <DeployProjectInfo>[];
+  final ValueNotifier<List<CodegenHistoryItem>> _codegenHistoryNotifier =
+      ValueNotifier<List<CodegenHistoryItem>>(const <CodegenHistoryItem>[]);
   final List<LlmDebugEvent> _llmDebugEvents = <LlmDebugEvent>[];
   final Set<String> _seenMessageIds = <String>{};
   final Set<String> _autoInstallTriggered = <String>{};
@@ -296,6 +296,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _codegenCodeSearchController.dispose();
     _codegenDeploySearchController.dispose();
     _deployArgsController.dispose();
+    _codegenHistoryNotifier.dispose();
     _cortanaPersonaNameCtrl.dispose();
     _cortanaOwnerTitleCtrl.dispose();
     _cortanaPersonaDescCtrl.dispose();
@@ -904,6 +905,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final palette = _palette;
     final hideCortanaChrome =
         _rootTab == RootTab.cortana && _cortanaImmersiveUiHidden;
+    final runningCodeCount = _runningCodegenCount(CodegenLaunchMode.code);
+    final runningDeployCount = _runningCodegenCount(CodegenLaunchMode.deploy);
+    final runningCodegenTotal = runningCodeCount + runningDeployCount;
+    final codegenNavLabel = runningCodegenTotal > 0
+        ? '编码$runningCodeCount 发布$runningDeployCount'
+        : '编码发布';
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: hideCortanaChrome
@@ -1050,23 +1057,33 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 };
                 _selectRootTab(nextTab);
               },
-              destinations: const [
-                NavigationDestination(
+              destinations: [
+                const NavigationDestination(
                   icon: Icon(Icons.chat_bubble_outline_rounded),
                   selectedIcon: Icon(Icons.chat_bubble_rounded),
                   label: '聊天',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.terminal_outlined),
-                  selectedIcon: Icon(Icons.terminal_rounded),
-                  label: '编码发布',
+                  icon: runningCodegenTotal > 0
+                      ? Badge.count(
+                          count: runningCodegenTotal,
+                          child: const Icon(Icons.terminal_outlined),
+                        )
+                      : const Icon(Icons.terminal_outlined),
+                  selectedIcon: runningCodegenTotal > 0
+                      ? Badge.count(
+                          count: runningCodegenTotal,
+                          child: const Icon(Icons.terminal_rounded),
+                        )
+                      : const Icon(Icons.terminal_rounded),
+                  label: codegenNavLabel,
                 ),
-                NavigationDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.face_outlined),
                   selectedIcon: Icon(Icons.face_rounded),
                   label: 'Cortana',
                 ),
-                NavigationDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.bug_report_outlined),
                   selectedIcon: Icon(Icons.bug_report_rounded),
                   label: '调试',

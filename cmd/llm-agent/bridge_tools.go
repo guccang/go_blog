@@ -686,3 +686,8 @@ func isTerminalAsyncToolProgress(content string) bool {
 	content = strings.TrimSpace(content)
 	return strings.HasPrefix(content, "✅") || strings.HasPrefix(content, "❌")
 }
+
+func shouldForwardToolProgressToChat(fromAgent string) bool {
+	fromAgent = strings.ToLower(strings.TrimSpace(fromAgent))
+	return !strings.HasPrefix(fromAgent, "deploy")
+}

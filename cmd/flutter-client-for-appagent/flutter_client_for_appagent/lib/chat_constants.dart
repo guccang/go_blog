@@ -17,6 +17,7 @@ const String _codeSearchKey = 'codegen::code_search';
 const String _deploySearchKey = 'codegen::deploy_search';
 const String _debugBundleModeKey = 'codegen::debug_bundle_mode';
 const String _codegenHistoryKey = 'codegen::history';
+const String _codegenHistoryBackupKey = 'codegen_secure::history';
 const String _codegenHistoryLastBackupAtKey = 'codegen::history_last_backup_at';
 const String _cortanaEnabledKey = 'cortana::enabled';
 const String _cortanaAllowFullAccessKey = 'cortana::allow_full_access';

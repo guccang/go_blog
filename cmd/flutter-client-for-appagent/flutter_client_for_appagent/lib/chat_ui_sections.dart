@@ -2020,6 +2020,8 @@ extension _ChatPageStateUiSections on _ChatPageState {
       autoDeploy: _codegenAutoDeploy,
       deployPackOnly: _deployPackOnly,
       debugBundleMode: _codegenDebugBundleMode,
+      runningCodeCount: _runningCodegenCount(CodegenLaunchMode.code),
+      runningDeployCount: _runningCodegenCount(CodegenLaunchMode.deploy),
       codegenPromptController: _codegenPromptController,
       codegenCodeSearchController: _codegenCodeSearchController,
       codegenDeploySearchController: _codegenDeploySearchController,
@@ -2069,10 +2071,12 @@ extension _ChatPageStateUiSections on _ChatPageState {
       onSend: _sendCodegenCommand,
       onCommitAndPush: () => unawaited(_sendCodegenCommitCommand()),
       onBackupHistory: (type) => unawaited(_backupCodegenHistory(type)),
+      onLoadHistoryBackup: () => unawaited(_loadCodegenHistoryBackupFromObs()),
       onClearHistory: () {
         setState(() {
           _codegenHistory.removeWhere((item) => !item.locked);
         });
+        _publishCodegenHistory();
         unawaited(_persistCodegenPreferences());
       },
       onShowHistoryDetails: (item) =>

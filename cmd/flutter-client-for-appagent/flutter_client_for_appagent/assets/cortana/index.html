@@ -7,10 +7,10 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
 canvas { display: block; }
-#status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+#status { display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
   color: #aaa; font-size: 12px; font-family: sans-serif; padding: 8px 12px;
   background: rgba(0,0,0,0.7); border-radius: 4px; max-width: 90%; text-align: center; }
-#details { position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 38vh;
+#details { display: none; position: fixed; left: 10px; right: 10px; bottom: 10px; max-height: 38vh;
   overflow: auto; white-space: pre-wrap; color: #d7e3ff; font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   padding: 10px 12px; background: rgba(0,0,0,0.62); border-radius: 6px;
@@ -18,8 +18,8 @@ canvas { display: block; }
 </style>
 </head>
 <body>
-<div id="status">Initializing...</div>
-<div id="details">Booting Cortana diagnostics...</div>
+<div id="status"></div>
+<div id="details"></div>
 <script src="./vendor/pixi.min.js"></script>
 <script src="./vendor/live2dcubismcore.min.js"></script>
 <script src="./vendor/cubism4.min.js"></script>

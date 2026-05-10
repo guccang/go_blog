@@ -988,7 +988,9 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     try {
       final secureValues = await _secureStorage.readAll();
       for (final key in secureValues.keys.where(
-        (key) => key.startsWith(_historyBackupStoragePrefix),
+        (key) =>
+            key.startsWith(_historyBackupStoragePrefix) ||
+            key == _codegenHistoryBackupKey,
       )) {
         await _secureStorage.delete(key: key);
       }
@@ -1025,6 +1027,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     return key.startsWith(_historyStoragePrefix) ||
         key.startsWith(_lastReadAtStoragePrefix) ||
         key == _codegenHistoryKey ||
+        key == _codegenHistoryBackupKey ||
         key == _codegenHistoryLastBackupAtKey;
   }
 

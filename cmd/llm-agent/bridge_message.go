@@ -42,7 +42,9 @@ func (b *Bridge) handleMessage(msg *uap.Message) {
 			}
 			b.toolProgressMu.Unlock()
 			if ok {
-				sink.OnEvent("tool_progress", payload.Content)
+				if shouldForwardToolProgressToChat(msg.From) {
+					sink.OnEvent("tool_progress", payload.Content)
+				}
 			} else {
 				log.Printf("[Bridge] tool_progress for unknown msgID=%s: %s", payload.To, payload.Content)
 			}

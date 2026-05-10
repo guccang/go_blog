@@ -14,6 +14,7 @@ type commandRequest struct {
 	Channel       string
 	UserID        string
 	Content       string
+	HistoryID     string
 }
 
 type deployCommandOptions struct {
@@ -256,6 +257,7 @@ func (r commandRequest) route() sessionRoute {
 		SourceAgentID: r.SourceAgentID,
 		Channel:       r.Channel,
 		UserID:        r.UserID,
+		HistoryID:     r.HistoryID,
 	}
 }
 

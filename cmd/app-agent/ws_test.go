@@ -55,6 +55,27 @@ func (f *fakeOBSStorage) PutObject(_ context.Context, req obsstore.PutObjectRequ
 	return nil
 }
 
+func (f *fakeOBSStorage) ListObjects(_ context.Context, prefix string, _ string, _ int) (*obsstore.ListObjectsResult, error) {
+	items := make([]obsstore.ObjectListItem, 0)
+	for key := range f.existing {
+		if strings.HasPrefix(key, prefix) {
+			items = append(items, obsstore.ObjectListItem{
+				Key:          key,
+				Size:         int64(len(f.bodies[key])),
+				LastModified: time.Now(),
+			})
+		}
+	}
+	return &obsstore.ListObjectsResult{Objects: items}, nil
+}
+
+func (f *fakeOBSStorage) CreateSignedGetURL(_ context.Context, key string, _ time.Duration) (*obsstore.SignedURL, error) {
+	if f.bodies == nil || f.bodies[key] == nil {
+		return nil, os.ErrNotExist
+	}
+	return &obsstore.SignedURL{URL: "memory://" + key, Method: "GET"}, nil
+}
+
 func (f *fakeOBSStorage) DeleteObject(_ context.Context, key string) error {
 	if f.existing != nil {
 		delete(f.existing, key)

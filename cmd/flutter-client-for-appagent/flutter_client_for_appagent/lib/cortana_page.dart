@@ -2723,7 +2723,7 @@ class CortanaPageState extends State<CortanaPage> {
         children: [
           // WebView - always in AnimatedPositioned, transitions smoothly
           AnimatedPositioned(
-            duration: _isDragging
+            duration: isFullscreen || _isDragging
                 ? Duration.zero
                 : const Duration(milliseconds: 350),
             curve: Curves.easeInOut,
@@ -2789,7 +2789,9 @@ class CortanaPageState extends State<CortanaPage> {
               child: Material(
                 color: Colors.transparent,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
+                  duration: isFullscreen
+                      ? Duration.zero
+                      : const Duration(milliseconds: 350),
                   curve: Curves.easeInOut,
                   decoration: BoxDecoration(
                     borderRadius: borderRadius,

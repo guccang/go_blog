@@ -44,6 +44,8 @@ class CodegenBody extends StatelessWidget {
     required this.autoDeploy,
     required this.deployPackOnly,
     required this.debugBundleMode,
+    required this.runningCodeCount,
+    required this.runningDeployCount,
     required this.codegenPromptController,
     required this.codegenCodeSearchController,
     required this.codegenDeploySearchController,
@@ -65,6 +67,7 @@ class CodegenBody extends StatelessWidget {
     required this.onSend,
     required this.onCommitAndPush,
     required this.onBackupHistory,
+    required this.onLoadHistoryBackup,
     required this.onClearHistory,
     required this.onShowHistoryDetails,
     required this.onReExecute,
@@ -90,6 +93,8 @@ class CodegenBody extends StatelessWidget {
   final bool autoDeploy;
   final bool deployPackOnly;
   final bool debugBundleMode;
+  final int runningCodeCount;
+  final int runningDeployCount;
   final TextEditingController codegenPromptController;
   final TextEditingController codegenCodeSearchController;
   final TextEditingController codegenDeploySearchController;
@@ -111,6 +116,7 @@ class CodegenBody extends StatelessWidget {
   final VoidCallback onSend;
   final VoidCallback onCommitAndPush;
   final ValueChanged<CodegenHistoryBackupType> onBackupHistory;
+  final VoidCallback onLoadHistoryBackup;
   final VoidCallback onClearHistory;
   final ValueChanged<CodegenHistoryItem> onShowHistoryDetails;
   final ValueChanged<CodegenHistoryItem> onReExecute;
@@ -202,12 +208,16 @@ class CodegenBody extends StatelessWidget {
             children: [
               ChoiceChip(
                 selected: mode == CodegenLaunchMode.code,
-                label: const Text('编码'),
+                label: Text(
+                  runningCodeCount > 0 ? '编码 $runningCodeCount' : '编码',
+                ),
                 onSelected: (_) => onModeChanged(CodegenLaunchMode.code),
               ),
               ChoiceChip(
                 selected: mode == CodegenLaunchMode.deploy,
-                label: const Text('发布'),
+                label: Text(
+                  runningDeployCount > 0 ? '发布 $runningDeployCount' : '发布',
+                ),
                 onSelected: (_) => onModeChanged(CodegenLaunchMode.deploy),
               ),
             ],
@@ -484,7 +494,7 @@ class CodegenBody extends StatelessWidget {
               Expanded(
                 child: Text.rich(
                   TextSpan(
-                    text: '最近命令',
+                    text: '最近任务',
                     style: TextStyle(
                       color: palette.textPrimary,
                       fontSize: 18,
@@ -524,9 +534,15 @@ class CodegenBody extends StatelessWidget {
                 label: const Text('增量备份'),
               ),
               OutlinedButton.icon(
-                onPressed: () => onBackupHistory(CodegenHistoryBackupType.full),
+                onPressed: () =>
+                    onBackupHistory(CodegenHistoryBackupType.full),
                 icon: const Icon(Icons.cloud_upload_rounded),
                 label: const Text('全量备份'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onLoadHistoryBackup,
+                icon: const Icon(Icons.cloud_download_rounded),
+                label: const Text('加载备份'),
               ),
             ],
           ),

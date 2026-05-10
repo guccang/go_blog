@@ -191,12 +191,12 @@ function renderTasks(tasks) {
         // 简化后的 TaskSummary 格式
         const taskId = task.id;
         const taskTitle = task.title || '未命名任务';
-        const taskStatus = task.status || 'pending';
         const taskProgress = task.progress || 0;
+        const taskStatus = normalizeTaskStatus(task.status || 'pending', taskProgress);
         const taskCreatedAt = task.created_at;
 
         // 检查是否活跃运行中
-        const isActive = currentActiveIds && currentActiveIds.includes(taskId);
+        const isActive = currentActiveIds && currentActiveIds.includes(taskId) && !isTerminalStatus(taskStatus);
 
         let statusHtml = isActive
             ? `<span class="task-status running" style="animation: pulse 1.5s infinite;"><i class="fas fa-sync fa-spin"></i> 执行中</span>`
@@ -235,7 +235,7 @@ function renderTasks(tasks) {
 function updateStats(tasks) {
     const stats = { pending: 0, running: 0, done: 0, failed: 0 };
     tasks.forEach(task => {
-        const status = task.status || 'pending';
+        const status = normalizeTaskStatus(task.status || 'pending', task.progress || 0);
         if (status === 'pending' || status === 'node_pending') stats.pending++;
         else if (status === 'running' || status === 'paused' || status === 'node_running') stats.running++;
         else if (status === 'done' || status === 'node_done') stats.done++;
@@ -1042,6 +1042,7 @@ function handleInputNotification(data) {
 // Utilities
 // ============================================================================
 function getStatusText(status) {
+    status = normalizeStatus(status);
     const statusMap = {
         'pending': '待执行',
         'running': '执行中',
@@ -1062,6 +1063,7 @@ function getStatusText(status) {
 }
 
 function getStatusIcon(status) {
+    status = normalizeStatus(status);
     const icons = {
         'pending': '⏳',
         'running': '🔄',
@@ -1083,7 +1085,7 @@ function getStatusIcon(status) {
 
 function getActionButtons(task) {
     let buttons = '';
-    const status = task.status || '';
+    const status = normalizeStatus(task.status || '');
 
     if (status === 'running' || status === 'node_running') {
         buttons = `
@@ -1127,6 +1129,35 @@ function getActionButtons(task) {
         `;
     }
     return buttons;
+}
+
+function normalizeStatus(status) {
+    const statusMap = {
+        'queued': 'pending',
+        'in_progress': 'running',
+        'async': 'running',
+        'completed': 'done',
+        'success': 'done',
+        'error': 'failed',
+        'cancelled': 'canceled',
+        'stopped': 'canceled',
+        'node_in_progress': 'node_running',
+        'node_completed': 'node_done',
+        'node_error': 'node_failed'
+    };
+    return statusMap[status] || status;
+}
+
+function normalizeTaskStatus(status, progress) {
+    const normalized = normalizeStatus(status);
+    if ((normalized === 'running' || normalized === 'node_running') && Number(progress || 0) >= 100) {
+        return normalized === 'node_running' ? 'node_done' : 'done';
+    }
+    return normalized;
+}
+
+function isTerminalStatus(status) {
+    return ['done', 'failed', 'canceled', 'node_done', 'node_failed', 'node_cancelled'].includes(normalizeStatus(status));
 }
 
 function escapeHtml(str) {

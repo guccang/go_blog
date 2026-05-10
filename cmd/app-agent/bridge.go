@@ -104,6 +104,8 @@ type codegenStreamState struct {
 	UserID    string
 	MessageID string
 	Content   string
+	RequestID string
+	HistoryID string
 }
 
 func NewBridge(cfg *Config) *Bridge {
@@ -384,6 +386,7 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		Channel: "app",
 		To:      msg.UserID,
 		Content: messageContent,
+		Meta:    msg.Meta,
 	}
 	log.Printf("[Bridge] route app notify user=%s target=%s channel=%s len=%d content=%q",
 		msg.UserID, targetAgent, payload.Channel, len(messageContent), shortText(messageContent))
@@ -1366,6 +1369,8 @@ func mustMarshalToolCall(payload uap.ToolCallPayload) json.RawMessage {
 
 type codegenStreamEvent struct {
 	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitempty"`
+	HistoryID string `json:"codegen_history_id,omitempty"`
 	Account   string `json:"account,omitempty"`
 	Event     struct {
 		Type     string  `json:"type"`
@@ -1378,6 +1383,8 @@ type codegenStreamEvent struct {
 
 type codegenTaskComplete struct {
 	SessionID string `json:"session_id"`
+	RequestID string `json:"request_id,omitempty"`
+	HistoryID string `json:"codegen_history_id,omitempty"`
 	Account   string `json:"account,omitempty"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
@@ -1411,7 +1418,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		if text == "" {
 			return
 		}
-		b.upsertCodegenStreamMessage(toUser, payload.SessionID, text)
+		b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text)
 		return
 	}
 
@@ -1435,7 +1442,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 
-	b.upsertCodegenStreamMessage(toUser, payload.SessionID, text)
+	b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text)
 }
 
 func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
@@ -1470,7 +1477,7 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 		text = fmt.Sprintf("Codegen task completed\nSession: %s", payload.SessionID)
 	}
 
-	if !b.finalizeCodegenStreamMessage(toUser, payload.SessionID, text) {
+	if !b.finalizeCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text) {
 		b.sendNotification(toUser, text)
 	}
 }
@@ -1565,9 +1572,11 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 	}
 }
 
-func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, text string) {
+func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, requestID, historyID, text string) {
 	toUser = strings.TrimSpace(toUser)
 	sessionID = strings.TrimSpace(sessionID)
+	requestID = strings.TrimSpace(requestID)
+	historyID = strings.TrimSpace(historyID)
 	if toUser == "" || sessionID == "" || strings.TrimSpace(text) == "" {
 		return
 	}
@@ -1581,13 +1590,23 @@ func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, text string) {
 			UserID:    toUser,
 			MessageID: messageID,
 			Content:   text,
+			RequestID: requestID,
+			HistoryID: historyID,
 		}
 		b.codegenStreams[sessionID] = state
 	} else {
 		state.UserID = toUser
 		state.Content = mergeCodegenStreamText(state.Content, text)
+		if requestID != "" {
+			state.RequestID = requestID
+		}
+		if historyID != "" {
+			state.HistoryID = historyID
+		}
 	}
 	content := state.Content
+	requestID = state.RequestID
+	historyID = state.HistoryID
 	b.codegenMu.Unlock()
 
 	_ = b.sendAppPushPayload(AppPushPayload{
@@ -1598,15 +1617,19 @@ func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, text string) {
 		Channel:     "app",
 		Timestamp:   time.Now().UnixMilli(),
 		Meta: map[string]any{
-			"origin":     "codegen-stream",
-			"session_id": sessionID,
+			"origin":             "codegen-stream",
+			"session_id":         sessionID,
+			"request_id":         requestID,
+			"codegen_history_id": historyID,
 		},
 	})
 }
 
-func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, finalLine string) bool {
+func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, requestID, historyID, finalLine string) bool {
 	toUser = strings.TrimSpace(toUser)
 	sessionID = strings.TrimSpace(sessionID)
+	requestID = strings.TrimSpace(requestID)
+	historyID = strings.TrimSpace(historyID)
 	finalLine = strings.TrimSpace(finalLine)
 	if sessionID == "" {
 		return false
@@ -1621,6 +1644,12 @@ func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, finalLine strin
 	if toUser == "" {
 		toUser = state.UserID
 	}
+	if requestID == "" {
+		requestID = state.RequestID
+	}
+	if historyID == "" {
+		historyID = state.HistoryID
+	}
 	content := mergeCodegenStreamText(state.Content, finalLine)
 	messageID := state.MessageID
 	delete(b.codegenStreams, sessionID)
@@ -1634,9 +1663,11 @@ func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, finalLine strin
 		Channel:     "app",
 		Timestamp:   time.Now().UnixMilli(),
 		Meta: map[string]any{
-			"origin":     "codegen-stream",
-			"session_id": sessionID,
-			"final":      true,
+			"origin":             "codegen-stream",
+			"session_id":         sessionID,
+			"request_id":         requestID,
+			"codegen_history_id": historyID,
+			"final":              true,
 		},
 	})
 	return true

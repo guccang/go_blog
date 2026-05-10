@@ -25,6 +25,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'codegen/codegen_body.dart';
 import 'codegen/models.dart';
+import 'codegen/task_page.dart';
 import 'cortana_broadcast_queue.dart';
 import 'cortana_history_page.dart';
 import 'cortana_page.dart'

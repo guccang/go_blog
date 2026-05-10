@@ -32,6 +32,7 @@ type sessionRoute struct {
 	Project       string
 	Kind          string
 	AutoDeploy    bool
+	HistoryID     string
 }
 
 type userCodegenSession struct {
@@ -55,9 +56,10 @@ type gatewayAgentSnapshot struct {
 }
 
 type inboundNotify struct {
-	Channel string `json:"channel"`
-	To      string `json:"to"`
-	Content string `json:"content"`
+	Channel string         `json:"channel"`
+	To      string         `json:"to"`
+	Content string         `json:"content"`
+	Meta    map[string]any `json:"meta,omitempty"`
 }
 
 type inboundAppEnvelope struct {
@@ -71,6 +73,7 @@ type inboundAppEnvelope struct {
 type codegenStreamEventPayload struct {
 	SessionID string             `json:"session_id"`
 	RequestID string             `json:"request_id,omitempty"`
+	HistoryID string             `json:"codegen_history_id,omitempty"`
 	Account   string             `json:"account,omitempty"`
 	Event     forwardedCodeEvent `json:"event"`
 }
@@ -86,6 +89,7 @@ type forwardedCodeEvent struct {
 type codegenTaskCompletePayload struct {
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id,omitempty"`
+	HistoryID string `json:"codegen_history_id,omitempty"`
 	Account   string `json:"account,omitempty"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`
@@ -267,6 +271,7 @@ func (a *CMDAGent) handleACPStreamNotify(sourceAgentID string, payload inboundNo
 		return
 	}
 	stream.Account = route.UserID
+	stream.HistoryID = route.HistoryID
 	if stream.SessionID != "" {
 		a.associateSessionRoute(stream.SessionID, route)
 	}
@@ -336,6 +341,7 @@ func (a *CMDAGent) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 	payload.Account = route.UserID
+	payload.HistoryID = route.HistoryID
 	if payload.SessionID != "" {
 		a.associateSessionRoute(payload.SessionID, route)
 	}
@@ -357,6 +363,7 @@ func (a *CMDAGent) handleCodegenTaskComplete(msg *uap.Message) {
 		return
 	}
 	payload.Account = route.UserID
+	payload.HistoryID = route.HistoryID
 	if payload.SessionID != "" {
 		a.associateSessionRoute(payload.SessionID, route)
 	}
@@ -380,6 +387,7 @@ func (a *CMDAGent) handleUserCommand(sourceAgentID string, payload inboundNotify
 	if userID == "" {
 		userID = payload.To
 	}
+	historyID := stringMeta(payload.Meta, "codegen_history_id")
 	content = normalizeCodegenCommand(content)
 	log.MessageF(log.ModuleAgent, "cmd-agent inbound command from=%s user=%s channel=%s content=%s",
 		sourceAgentID, userID, payload.Channel, content)
@@ -398,6 +406,7 @@ func (a *CMDAGent) handleUserCommand(sourceAgentID string, payload inboundNotify
 		Channel:       payload.Channel,
 		UserID:        userID,
 		Content:       content,
+		HistoryID:     historyID,
 	}
 	if err := a.dispatchCommand(req); err != nil {
 		_ = a.sendClientNotify(sessionRoute{
@@ -474,6 +483,7 @@ func (a *CMDAGent) sendTaskComplete(route sessionRoute, sessionID, status, errTe
 	}
 	payload := codegenTaskCompletePayload{
 		SessionID: sessionID,
+		HistoryID: route.HistoryID,
 		Account:   route.UserID,
 		Status:    status,
 		Error:     errText,
@@ -531,6 +541,17 @@ func (a *CMDAGent) getUserCodegenSession(userID string) (userCodegenSession, boo
 	defer a.mu.Unlock()
 	sess, ok := a.userCodeSessions[userID]
 	return sess, ok
+}
+
+func stringMeta(meta map[string]any, key string) string {
+	if len(meta) == 0 {
+		return ""
+	}
+	value, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func gatewayHTTPURL(raw string) (string, error) {
