@@ -210,7 +210,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _appendSystem('Loading client config...');
+    _appendSystem('Loading client config...', persist: false);
     unawaited(_restoreCodegenPreferences());
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());

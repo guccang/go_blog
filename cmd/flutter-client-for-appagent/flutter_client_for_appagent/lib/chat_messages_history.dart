@@ -197,7 +197,16 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     }
   }
 
-  void _appendSystem(String text, {Map<String, dynamic>? meta}) {
+  void _appendSystem(
+    String text, {
+    Map<String, dynamic>? meta,
+    bool persist = true,
+  }) {
+    var messageMeta = meta == null ? null : Map<String, dynamic>.from(meta);
+    if (!persist) {
+      messageMeta ??= <String, dynamic>{};
+      messageMeta['_ephemeral'] = true;
+    }
     _appendMessage(
       ChatMessage(
         content: text,
@@ -205,9 +214,10 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         timestamp: DateTime.now(),
         status: 'info',
         scopeKey: _currentScopeKey,
-        meta: meta,
+        meta: messageMeta,
       ),
       updateStatus: text,
+      persist: persist,
     );
   }
 
@@ -236,7 +246,10 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     _startupGreetingShown = true;
-    _appendSystem('欢迎来到 App Agent，可以先登录，也可以先查看当前配置。');
+    _appendSystem(
+      '欢迎来到 App Agent，可以先登录，也可以先查看当前配置。',
+      persist: false,
+    );
     _showGreetingSnackBar('欢迎来到 App Agent');
   }
 
@@ -245,8 +258,10 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     _loginGreetingShown = true;
-    final text = restored ? '欢迎回来，连接已恢复，可以继续对话。' : '登录成功，欢迎回来，可以开始对话。';
-    _appendSystem(text);
+    final text = restored
+        ? '欢迎回来，连接已恢复，可以继续对话。'
+        : '登录成功，欢迎回来，可以开始对话。';
+    _appendSystem(text, persist: false);
     _showGreetingSnackBar(restored ? '欢迎回来' : '登录成功');
   }
 
@@ -896,6 +911,32 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         .toList(growable: false);
   }
 
+  bool _isVolatileSystemHistoryMessage(ChatMessage message) {
+    if (message.meta?['_ephemeral'] == true) {
+      return true;
+    }
+    if (message.direction != MessageDirection.system) {
+      return false;
+    }
+    switch (message.content.trim()) {
+      case 'Loading client config...':
+      case 'Client config loaded.':
+      case '欢迎来到 App Agent，可以先登录，也可以先查看当前配置。':
+      case '已从安全存储恢复登录。':
+      case '欢迎回来，连接已恢复，可以继续对话。':
+      case '登录成功，欢迎回来，可以开始对话。':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  List<ChatMessage> _persistentChatHistory(List<ChatMessage> history) {
+    return history
+        .where((message) => !_isVolatileSystemHistoryMessage(message))
+        .toList(growable: false);
+  }
+
   String _historyMessageIdentity(ChatMessage message) {
     final stableMessageId = (message.meta?['_message_id'] ?? '')
         .toString()
@@ -974,6 +1015,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return _trimChatHistory(
         (jsonDecode(raw) as List<dynamic>)
             .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
+            .where((message) => !_isVolatileSystemHistoryMessage(message))
             .toList(),
       );
     } catch (_) {
@@ -1006,8 +1048,11 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     final prefs = await SharedPreferences.getInstance();
     final list = await _loadPersistedHistoryList(prefs, scopeKey);
     _loadedHistoryScopes.add(scopeKey);
+    final current = _historyByScope[scopeKey] ?? const <ChatMessage>[];
     if (list.isEmpty) {
-      _historyByScope[scopeKey] = <ChatMessage>[];
+      _historyByScope[scopeKey] = _trimChatHistory(
+        List<ChatMessage>.from(current),
+      );
       if (mounted) {
         setState(() {});
         if (scopeKey == _currentScopeKey) {
@@ -1017,7 +1062,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       }
       return;
     }
-    _historyByScope[scopeKey] = list;
+    _historyByScope[scopeKey] = _mergeChatHistory(list, current);
     if (mounted) {
       setState(() {});
       if (scopeKey == _currentScopeKey) {
@@ -1077,6 +1122,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         _historyByScope[scopeKey] ?? const <ChatMessage>[],
       ),
     );
+    history = _persistentChatHistory(history);
     if (!_loadedHistoryScopes.contains(scopeKey)) {
       final persisted = await _loadPersistedHistoryList(prefs, scopeKey);
       if (persisted.isNotEmpty) {

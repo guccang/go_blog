@@ -101,6 +101,7 @@ class ChatMessage {
     sanitizedMeta?.remove('audio_base64');
     sanitizedMeta?.remove('image_base64');
     sanitizedMeta?.remove('video_base64');
+    sanitizedMeta?.remove('_ephemeral');
     return {
       'content': content,
       'direction': direction.name,
@@ -214,6 +215,42 @@ int compareApkVersions(String? versionA, String? versionB) {
 }
 
 enum MessageDirection { outgoing, incoming, system }
+
+String extractCodegenRequestIdFromText(String content) {
+  final requestMatch = RegExp(
+    r'(?:^|\n)请求:\s*(\S+)',
+  ).firstMatch(content.trim());
+  return requestMatch?.group(1)?.trim() ?? '';
+}
+
+bool looksLikeCodegenStartMessage(String content) {
+  final text = content.trim();
+  return text.contains('编码会话已启动') ||
+      text.contains('ACP Debug 会话已启动') ||
+      text.contains('发布已启动') ||
+      text.contains('部署已启动') ||
+      text.contains('自动部署已启动');
+}
+
+bool isCodegenPreviewChatMessage(ChatMessage message) {
+  final meta = message.meta ?? const <String, dynamic>{};
+  if ((meta['codegen_history_id'] ?? '').toString().trim().isNotEmpty ||
+      (meta['request_id'] ?? '').toString().trim().isNotEmpty) {
+    return true;
+  }
+  final origin = (meta['origin'] ?? '').toString().trim();
+  final processKind = (meta['process_kind'] ?? '').toString().trim();
+  if ((meta['app_process'] == true ||
+          origin == 'app-process' ||
+          origin == 'codegen-stream' ||
+          processKind == 'codegen' ||
+          processKind == 'deploy') &&
+      (meta['session_id'] ?? '').toString().trim().isNotEmpty) {
+    return true;
+  }
+  return looksLikeCodegenStartMessage(message.content) &&
+      extractCodegenRequestIdFromText(message.content).isNotEmpty;
+}
 
 enum _AttachmentMenuAction {
   galleryImage,

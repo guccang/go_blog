@@ -150,10 +150,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final isImage = message.messageType == 'image';
     final isVideo = message.messageType == 'video';
     final isApk = isApkChatMessage(message);
-    final isCodegenTask = (message.meta?['codegen_history_id'] ?? '')
-        .toString()
-        .trim()
-        .isNotEmpty;
+    final isCodegenTask = isCodegenPreviewChatMessage(message);
     final durationMs = message.meta?['duration_ms'];
     final durationText = durationMs is num
         ? '${(durationMs / 1000).toStringAsFixed(1)}s'
@@ -365,7 +362,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         : isApk
                         ? '${_formatTime(message.timestamp)}  ${extractApkVersion(message) != null ? 'v${extractApkVersion(message)} · ' : ''}点击安装 · 长按复制'
                         : isCodegenTask
-                        ? '${_formatTime(message.timestamp)}  点击查看进度 · 长按复制'
+                        ? '${_formatTime(message.timestamp)}  点击查看实时预览 · 长按复制'
                         : '${_formatTime(message.timestamp)}  Long press to copy',
                     style: TextStyle(
                       fontSize: 11,

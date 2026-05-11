@@ -466,30 +466,43 @@ extension _ChatPageStateCodegen on _ChatPageState {
     return false;
   }
 
-  String _truncateCodegenProcessContent(String content) {
+  List<String> _splitCodegenProcessContent(
+    String content, {
+    int firstByteLimit = _codegenProcessEntryByteLimit,
+  }) {
     final text = content.trimRight();
-    final bytes = utf8.encode(text);
-    if (bytes.length <= _codegenProcessEntryByteLimit) {
-      return text;
+    if (text.isEmpty) {
+      return const <String>[];
     }
-    final suffix = '\n[已截断，原始 ${bytes.length} bytes]';
-    final suffixBytes = utf8.encode(suffix).length;
-    final targetBytes = math.max(
-      0,
-      _codegenProcessEntryByteLimit - suffixBytes,
-    );
+    final initialLimit = firstByteLimit <= 0
+        ? _codegenProcessEntryByteLimit
+        : firstByteLimit;
+    final bytes = utf8.encode(text);
+    if (bytes.length <= initialLimit) {
+      return <String>[text];
+    }
+
+    final chunks = <String>[];
     var usedBytes = 0;
     final buffer = StringBuffer();
     for (final rune in text.runes) {
       final char = String.fromCharCode(rune);
       final charBytes = utf8.encode(char).length;
-      if (usedBytes + charBytes > targetBytes) {
-        break;
+      final currentLimit = chunks.isEmpty
+          ? initialLimit
+          : _codegenProcessEntryByteLimit;
+      if (usedBytes > 0 && usedBytes + charBytes > currentLimit) {
+        chunks.add(buffer.toString());
+        buffer.clear();
+        usedBytes = 0;
       }
       buffer.write(char);
       usedBytes += charBytes;
     }
-    return '${buffer.toString().trimRight()}$suffix';
+    if (buffer.isNotEmpty) {
+      chunks.add(buffer.toString());
+    }
+    return chunks;
   }
 
   CodegenHistoryItem _addCodegenHistory(
@@ -552,6 +565,15 @@ extension _ChatPageStateCodegen on _ChatPageState {
     if (requestId.isNotEmpty) {
       for (final item in _codegenHistory) {
         if (item.requestId == requestId) {
+          return item;
+        }
+      }
+    }
+
+    final contentRequestId = extractCodegenRequestIdFromText(message.content);
+    if (contentRequestId.isNotEmpty) {
+      for (final item in _codegenHistory) {
+        if (item.requestId == contentRequestId) {
           return item;
         }
       }
@@ -960,8 +982,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
 
   void _bindCodegenHistoryRequestFromMessage(ChatMessage message) {
     final content = message.content.trim();
-    final requestMatch = RegExp(r'(?:^|\n)请求:\s*(\S+)').firstMatch(content);
-    final requestId = requestMatch?.group(1)?.trim() ?? '';
+    final requestId = extractCodegenRequestIdFromText(content);
     if (requestId.isEmpty) {
       return;
     }
@@ -1024,8 +1045,8 @@ extension _ChatPageStateCodegen on _ChatPageState {
     String requestId = '',
     CodegenLaunchMode? mode,
   }) {
-    final normalized = _truncateCodegenProcessContent(content);
-    if (normalized.trim().isEmpty) {
+    final chunks = _splitCodegenProcessContent(content);
+    if (chunks.isEmpty) {
       return;
     }
     final activeItem = _findActiveCodegenHistoryItem(
@@ -1038,29 +1059,65 @@ extension _ChatPageStateCodegen on _ChatPageState {
       return;
     }
     final entries = List<CodegenProcessEntry>.from(activeItem.processEntries);
+    final firstChunk = chunks.first;
     final last = entries.isNotEmpty ? entries.last : null;
-    if (last != null &&
-        last.content == normalized &&
+    if (chunks.length == 1 &&
+        last != null &&
+        last.content == firstChunk &&
         last.origin == origin &&
         last.sessionId == sessionId) {
       return;
     }
-    // 流式消息合并：同一个session的codegen-stream增量更新到同一条目，避免逐字符刷屏
-    if (last != null &&
-        origin == 'codegen-stream' &&
-        last.origin == 'codegen-stream' &&
-        last.sessionId == sessionId) {
-      entries[entries.length - 1] = CodegenProcessEntry(
-        timestamp: message.timestamp,
-        content: last.content + normalized,
-        origin: origin,
-        sessionId: sessionId,
-      );
-    } else {
+    for (final chunk in chunks) {
+      final currentLast = entries.isNotEmpty ? entries.last : null;
+      // 流式消息合并：同一个 session 的短增量合并到同一条目，
+      // 但每条过程记录仍保持在 2048 UTF-8 bytes 以内。
+      if (currentLast != null &&
+          origin == 'codegen-stream' &&
+          currentLast.origin == 'codegen-stream' &&
+          currentLast.sessionId == sessionId) {
+        final currentBytes = utf8.encode(currentLast.content).length;
+        final remainingBytes = _codegenProcessEntryByteLimit - currentBytes;
+        if (remainingBytes <= 0) {
+          entries.add(
+            CodegenProcessEntry(
+              timestamp: message.timestamp,
+              content: chunk,
+              origin: origin,
+              sessionId: sessionId,
+            ),
+          );
+          continue;
+        }
+        final streamChunks = _splitCodegenProcessContent(
+          chunk,
+          firstByteLimit: remainingBytes,
+        );
+        if (streamChunks.isEmpty) {
+          continue;
+        }
+        entries[entries.length - 1] = CodegenProcessEntry(
+          timestamp: message.timestamp,
+          content: currentLast.content + streamChunks.first,
+          origin: origin,
+          sessionId: sessionId,
+        );
+        for (final streamChunk in streamChunks.skip(1)) {
+          entries.add(
+            CodegenProcessEntry(
+              timestamp: message.timestamp,
+              content: streamChunk,
+              origin: origin,
+              sessionId: sessionId,
+            ),
+          );
+        }
+        continue;
+      }
       entries.add(
         CodegenProcessEntry(
           timestamp: message.timestamp,
-          content: normalized,
+          content: chunk,
           origin: origin,
           sessionId: sessionId,
         ),

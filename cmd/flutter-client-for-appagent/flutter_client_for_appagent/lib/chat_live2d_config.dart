@@ -978,7 +978,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
         _configError = '';
         _status = 'Config loaded';
       });
-      _appendSystem('Client config loaded.');
+      _appendSystem('Client config loaded.', persist: false);
       _maybeShowStartupGreeting();
       unawaited(_initVoice());
       unawaited(_restoreSavedLogin());
@@ -1514,7 +1514,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     await _syncCortanaSettings(silent: true);
     await _refreshCortanaDeviceContext(report: true, force: true);
     if (successMessage != null && successMessage.trim().isNotEmpty) {
-      _appendSystem(successMessage.trim());
+      _appendSystem(successMessage.trim(), persist: false);
     }
     _maybeShowLoginGreeting(restored: !clearPassword);
     unawaited(_connectWs());
