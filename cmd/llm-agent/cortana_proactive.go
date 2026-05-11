@@ -184,7 +184,10 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 16. 如果位置不可用或精度过低，不要编造地点；可以推送保守方案，例如提醒用户打开定位、按最近明确地点估算并标注不确定性。
 17. 个人助理默认少问选择题，优先替用户筛选一个可执行方案，并用一句话说明依据。
 18. 凡是判断当前早晚、上午、下午、晚上、深夜或凌晨，必须只依据本轮明确给出的当前本地时间、星期和时区；recent_interactions、历史摘要、device_context 旧内容里的时间段只当历史语境。`))
-	sb.WriteString("\n19. 如果 speech_text 里明确追问用户是否继续听、是否继续聊、是否要做某事，必须设置 suggested_replies，至少包含肯定、否定、其他三个选项；不要只把选项写进口播文本。\n")
+	sb.WriteString("\n19. 不要把历史里提过的待办、提醒或证件事项自动当作当前仍需提醒的任务；只有 snapshot/event_context 明确提供“未完成/待办/cron 提醒触发”的当前证据时，才主动催办。\n")
+	sb.WriteString("20. 如果 recent_interactions、历史摘要或用户反馈显示某事项已经完成、已经办好、已经签注完成、已取消或不用再提醒，必须视为已关闭事项，should_interact=false 或改成简短确认，不能继续提醒。\n")
+	sb.WriteString("21. 不要声称已检查定时任务、提醒列表或记录，除非 event_context/snapshot 明确包含该检查结果。\n")
+	sb.WriteString("22. 如果 speech_text 里明确追问用户是否继续听、是否继续聊、是否要做某事，必须设置 suggested_replies，至少包含肯定、否定、其他三个选项；不要只把选项写进口播文本。\n")
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
 	if profile.OwnerTitle != "" {

@@ -98,3 +98,38 @@ func TestLoadCodegenHistoryBackupFallsBackToLocalFile(t *testing.T) {
 		t.Fatalf("unexpected loaded history: %#v", loaded.History)
 	}
 }
+
+func TestListCodegenHistoryBackupsIncludesLocalFiles(t *testing.T) {
+	dir := t.TempDir()
+	bridge := NewBridge(DefaultConfig())
+	bridge.cfg.AttachmentStoreDir = filepath.Join(dir, "attachments")
+
+	stored, err := bridge.StoreCodegenHistoryBackup(codegenHistoryBackupRequest{
+		UserID:     "alice",
+		BackupType: "incremental",
+		History: []map[string]any{
+			{
+				"id":      "cg-local-list",
+				"command": "/cg deploy demo@app",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StoreCodegenHistoryBackup returned error: %v", err)
+	}
+
+	list, err := bridge.ListCodegenHistoryBackups("alice")
+	if err != nil {
+		t.Fatalf("ListCodegenHistoryBackups returned error: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("expected one local backup, got %#v", list.Items)
+	}
+	item := list.Items[0]
+	if item.ObjectKey == "" || !strings.Contains(item.ObjectKey, stored.FileName) {
+		t.Fatalf("unexpected local object key: %#v", item)
+	}
+	if item.BackupType != "incremental" || item.FileSize <= 0 {
+		t.Fatalf("unexpected local backup item: %#v", item)
+	}
+}

@@ -218,29 +218,93 @@ func (b *Bridge) ListCodegenHistoryBackups(userID string) (*codegenHistoryBackup
 		return nil, fmt.Errorf("empty owner")
 	}
 	items := make([]codegenHistoryBackupListItem, 0)
+	seen := make(map[string]bool)
 	if b.obsStorage != nil && b.obsStorage.Enabled() {
 		prefix := filepath.ToSlash(filepath.Join("app", "codegen-history", sanitizeFileName(owner))) + "/"
 		list, err := b.obsStorage.ListObjects(context.Background(), prefix, "", 100)
 		if err != nil {
-			return nil, fmt.Errorf("list codegen history backups from OBS: %w", err)
+			log.Printf("[Bridge] list codegen history backups from OBS failed owner=%s err=%v", owner, err)
+		} else {
+			for _, obj := range list.Objects {
+				if !strings.HasSuffix(strings.ToLower(obj.Key), ".json") {
+					continue
+				}
+				seen[obj.Key] = true
+				items = append(items, codegenHistoryBackupListItem{
+					BackupType: backupTypeFromCodegenBackupName(filepath.Base(obj.Key)),
+					FileName:   filepath.Base(obj.Key),
+					FileSize:   obj.Size,
+					ObjectKey:  obj.Key,
+					CreatedAt:  obj.LastModified.UnixMilli(),
+				})
+			}
 		}
-		for _, obj := range list.Objects {
-			if !strings.HasSuffix(strings.ToLower(obj.Key), ".json") {
+	}
+	localItems, err := b.listLocalCodegenHistoryBackups(owner)
+	if err != nil {
+		log.Printf("[Bridge] list local codegen history backups failed owner=%s err=%v", owner, err)
+	} else {
+		for _, item := range localItems {
+			if seen[item.ObjectKey] {
 				continue
 			}
-			items = append(items, codegenHistoryBackupListItem{
-				BackupType: backupTypeFromCodegenBackupName(filepath.Base(obj.Key)),
-				FileName:   filepath.Base(obj.Key),
-				FileSize:   obj.Size,
-				ObjectKey:  obj.Key,
-				CreatedAt:  obj.LastModified.UnixMilli(),
-			})
+			seen[item.ObjectKey] = true
+			items = append(items, item)
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].CreatedAt > items[j].CreatedAt
 	})
 	return &codegenHistoryBackupListResponse{Success: true, Items: items}, nil
+}
+
+func (b *Bridge) listLocalCodegenHistoryBackups(owner string) ([]codegenHistoryBackupListItem, error) {
+	owner = sanitizeFileName(strings.TrimSpace(owner))
+	if owner == "" {
+		return nil, fmt.Errorf("empty owner")
+	}
+	root := filepath.Join(attachmentRootDir(b.cfg.AttachmentStoreDir), owner, "codegen-history")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	items := make([]codegenHistoryBackupListItem, 0)
+	for _, dayEntry := range entries {
+		if !dayEntry.IsDir() {
+			continue
+		}
+		day := sanitizeFileName(dayEntry.Name())
+		if day == "" {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(root, day))
+		if err != nil {
+			log.Printf("[Bridge] read local codegen history backup day failed owner=%s day=%s err=%v", owner, day, err)
+			continue
+		}
+		for _, fileEntry := range files {
+			if fileEntry.IsDir() || !strings.HasSuffix(strings.ToLower(fileEntry.Name()), ".json") {
+				continue
+			}
+			info, err := fileEntry.Info()
+			if err != nil {
+				continue
+			}
+			name := sanitizeFileName(fileEntry.Name())
+			objectKey := filepath.ToSlash(filepath.Join("app", "codegen-history", owner, day, name))
+			items = append(items, codegenHistoryBackupListItem{
+				BackupType: backupTypeFromCodegenBackupName(name),
+				FileName:   name,
+				FileSize:   info.Size(),
+				ObjectKey:  objectKey,
+				CreatedAt:  info.ModTime().UnixMilli(),
+			})
+		}
+	}
+	return items, nil
 }
 
 func (b *Bridge) LoadCodegenHistoryBackup(userID, objectKey string) (*codegenHistoryBackupLoadResponse, error) {

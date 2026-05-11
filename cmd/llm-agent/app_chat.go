@@ -118,11 +118,38 @@ func buildCortanaDeviceContextPrompt(meta map[string]any) string {
 	}
 	return "\n## 当前客户端基础上下文\n" +
 		"- 以下数据来自 Flutter 客户端最近一次上报，优先用于判断用户当前位置、天气、通勤、路线和推送时机。\n" +
+		"- `client.captured_at` 是客户端采集时间戳，只能用于判断上报新鲜度；不得把它换算后当作当前时间对用户播报。\n" +
 		"- 如果 location.available=true，应以该实时位置为准；不要用记忆、猜测或旧对话把用户误判到其它地点。\n" +
 		"- 当用户询问当前位置、我在哪、附近、天气或路线时，必须使用该上报位置；不要把群名、会话名或 jumpgame 等上下文当作地点。\n" +
 		"- 如果位置不可用，明确当作未知位置，不要编造地点；需要天气或路线时先用已有上下文推送保守方案。\n" +
 		"- 作为个人助理，优先给出一个合理方案；只有位置/目的地/时间缺失且会显著影响执行时才追问。\n" +
 		string(body) + "\n"
+}
+
+func buildCortanaLocalTimeContextPrompt(now time.Time) string {
+	_, offset := now.Zone()
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	offsetHours := offset / 3600
+	offsetMinutes := (offset % 3600) / 60
+	return fmt.Sprintf("\n## 当前本地时间上下文\n"+
+		"- 判断当前早晚、上午、下午、晚上、深夜、凌晨和星期时，只能以本段为准。\n"+
+		"- 如果历史摘要、recent history 或 device_context.client.captured_at 与本段冲突，以本段为准。\n"+
+		"local_datetime: %s\nweekday: %s\ntimezone: %s\ntimezone_offset: %s%02d:%02d\n",
+		now.Format("2006-01-02 15:04:05"),
+		chineseWeekday(now.Weekday()),
+		now.Location().String(),
+		sign,
+		offsetHours,
+		offsetMinutes,
+	)
+}
+
+func buildCortanaTurnRuntimeContext(state *CortanaCompanionState, deviceContextPrompt string, now time.Time) string {
+	return strings.TrimSpace(buildCortanaCompanionPrompt(state) + buildCortanaLocalTimeContextPrompt(now) + deviceContextPrompt)
 }
 
 func (s *AppSink) OnChunk(text string) { s.buf.WriteString(text) }
@@ -721,8 +748,9 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		return
 	}
 
+	now := time.Now()
 	if cortanaContextMode && isCortanaCurrentTimeQuery(content) {
-		b.sendApp(fromAgent, appUser, buildCortanaCurrentTimeReply(time.Now()))
+		b.sendApp(fromAgent, appUser, buildCortanaCurrentTimeReply(now))
 		return
 	}
 
@@ -746,7 +774,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 	b.sendApp(fromAgent, appUser, feedbackMsg)
 
 	session.mu.Lock()
-	session.LastActiveAt = time.Now()
+	session.LastActiveAt = now
 
 	if isNew || len(session.Messages) == 0 {
 		if cortanaContextMode {
@@ -759,7 +787,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
 			userContent := content
-			runtimeContext := strings.TrimSpace(buildCortanaCompanionPrompt(session.CortanaState) + cortanaDeviceContextPrompt)
+			runtimeContext := buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now)
 			if runtimeContext != "" {
 				userContent += "\n\n" + runtimeContext
 			}
@@ -780,7 +808,14 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		log.Printf("[App] 新会话 sessionID=%s user=%s", session.SessionID, appUser)
 	} else {
 		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
-		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
+		userContent := content
+		if cortanaContextMode {
+			runtimeContext := buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now)
+			if runtimeContext != "" {
+				userContent += "\n\n" + runtimeContext
+			}
+		}
+		session.Messages = append(session.Messages, Message{Role: "user", Content: userContent})
 		log.Printf("[App] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d", session.SessionID, appUser, session.TurnCount, len(session.Messages))
 	}
 

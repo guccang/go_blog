@@ -253,9 +253,10 @@ extension _ChatPageStateCodegen on _ChatPageState {
       if (historyJson.isEmpty) {
         try {
           historyJson =
-              (await _secureStorage.read(key: _codegenHistoryBackupKey))
-                      ?.trim() ??
-                  '';
+              (await _secureStorage.read(
+                key: _codegenHistoryBackupKey,
+              ))?.trim() ??
+              '';
         } catch (_) {
           historyJson = '';
         }
@@ -334,10 +335,14 @@ extension _ChatPageStateCodegen on _ChatPageState {
     }
     migrated.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     final seen = <String>{};
-    return migrated.where((item) {
-      final key = '${item.timestamp.microsecondsSinceEpoch}|${item.command}';
-      return seen.add(key);
-    }).take(1000).toList();
+    return migrated
+        .where((item) {
+          final key =
+              '${item.timestamp.microsecondsSinceEpoch}|${item.command}';
+          return seen.add(key);
+        })
+        .take(1000)
+        .toList();
   }
 
   void _publishCodegenHistory() {
@@ -353,9 +358,83 @@ extension _ChatPageStateCodegen on _ChatPageState {
   String _newCodegenHistoryId() =>
       'cg_${DateTime.now().microsecondsSinceEpoch.toString()}';
 
+  void _startCodegenTimeoutSweepTimer() {
+    _codegenTimeoutSweepTimer?.cancel();
+    _codegenTimeoutSweepTimer = Timer.periodic(
+      _codegenHistoryTimeoutSweepInterval,
+      (_) => _markTimedOutCodegenHistoryItems(),
+    );
+    unawaited(
+      Future<void>.delayed(Duration.zero, () {
+        if (mounted) {
+          _markTimedOutCodegenHistoryItems();
+        }
+      }),
+    );
+  }
+
+  bool _isCodegenHistoryTimedOut(CodegenHistoryItem item) {
+    return !item.completed &&
+        DateTime.now().difference(item.timestamp) >= _codegenHistoryTimeout;
+  }
+
+  CodegenHistoryItem _markCodegenHistoryItemTimedOut(CodegenHistoryItem item) {
+    final hasTimeoutEntry = item.processEntries.any(
+      (entry) => entry.origin == 'client-timeout',
+    );
+    return item.copyWith(
+      completed: true,
+      processEntries: hasTimeoutEntry
+          ? item.processEntries
+          : <CodegenProcessEntry>[
+              ...item.processEntries,
+              CodegenProcessEntry(
+                timestamp: DateTime.now(),
+                content: '任务超时: 超过 1 小时未收到结束消息，客户端已自动结束统计。',
+                origin: 'client-timeout',
+              ),
+            ],
+    );
+  }
+
+  void _markTimedOutCodegenHistoryItems() {
+    if (!mounted) {
+      return;
+    }
+    if (_codegenHistory.isEmpty) {
+      return;
+    }
+    var changed = false;
+    final updated = _codegenHistory
+        .map((item) {
+          if (!_isCodegenHistoryTimedOut(item)) {
+            return item;
+          }
+          changed = true;
+          return _markCodegenHistoryItemTimedOut(item);
+        })
+        .toList(growable: false);
+    if (!changed) {
+      return;
+    }
+    setState(() {
+      _codegenHistory = updated;
+      if (_activeCodegenHistoryId.isNotEmpty &&
+          _codegenHistory.any(
+            (item) => item.id == _activeCodegenHistoryId && item.completed,
+          )) {
+        _activeCodegenHistoryId = '';
+      }
+    });
+    _publishCodegenHistory();
+    unawaited(_persistCodegenPreferences());
+  }
+
   CodegenHistoryItem _normalizeCodegenHistoryItem(CodegenHistoryItem item) {
-    final completed =
-        item.completed || _codegenHistoryItemLooksCompleted(item);
+    final completed = item.completed || _codegenHistoryItemLooksCompleted(item);
+    if (!completed && _isCodegenHistoryTimedOut(item)) {
+      return _markCodegenHistoryItemTimedOut(item);
+    }
     if (item.id.trim().isNotEmpty) {
       return completed == item.completed
           ? item
@@ -385,6 +464,32 @@ extension _ChatPageStateCodegen on _ChatPageState {
       }
     }
     return false;
+  }
+
+  String _truncateCodegenProcessContent(String content) {
+    final text = content.trimRight();
+    final bytes = utf8.encode(text);
+    if (bytes.length <= _codegenProcessEntryByteLimit) {
+      return text;
+    }
+    final suffix = '\n[已截断，原始 ${bytes.length} bytes]';
+    final suffixBytes = utf8.encode(suffix).length;
+    final targetBytes = math.max(
+      0,
+      _codegenProcessEntryByteLimit - suffixBytes,
+    );
+    var usedBytes = 0;
+    final buffer = StringBuffer();
+    for (final rune in text.runes) {
+      final char = String.fromCharCode(rune);
+      final charBytes = utf8.encode(char).length;
+      if (usedBytes + charBytes > targetBytes) {
+        break;
+      }
+      buffer.write(char);
+      usedBytes += charBytes;
+    }
+    return '${buffer.toString().trimRight()}$suffix';
   }
 
   CodegenHistoryItem _addCodegenHistory(
@@ -455,9 +560,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
     final sessionId = (meta['session_id'] ?? '').toString().trim();
     if (sessionId.isNotEmpty) {
       for (final item in _codegenHistory) {
-        if (item.processEntries.any(
-          (entry) => entry.sessionId == sessionId,
-        )) {
+        if (item.processEntries.any((entry) => entry.sessionId == sessionId)) {
           return item;
         }
       }
@@ -516,10 +619,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
       return;
     }
     final historyItem = _addCodegenHistory(item.command, item.mode);
-    _appendOutgoing(
-      item.command,
-      meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-    );
     setState(() {
       _codegenSending = true;
     });
@@ -538,10 +637,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
             });
           }
           _triggerCortanaContextualExpression('surprised');
-          _appendSystem(
-            '命令已重新发送，点击本条或命令气泡查看实时进度。',
-            meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-          );
         })
         .catchError((err) {
           _markCodegenHistoryFailed(historyItem.id, err);
@@ -610,9 +705,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       setState(() {
         final idx = _codegenHistory.indexWhere((entry) => entry.id == item.id);
         if (idx != -1) {
-          _codegenHistory[idx] = _codegenHistory[idx].copyWith(
-            completed: true,
-          );
+          _codegenHistory[idx] = _codegenHistory[idx].copyWith(completed: true);
         }
         _status = 'Codegen history backed up';
       });
@@ -649,11 +742,24 @@ extension _ChatPageStateCodegen on _ChatPageState {
         return;
       }
       backups.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      final selected = backups.first;
-      final restored = await _runAuthed(
-        'Load codegen history backup',
-        (client) => client.loadCodegenHistoryBackup(selected.objectKey),
-      );
+      List<CodegenHistoryItem> restored = const <CodegenHistoryItem>[];
+      CodegenHistoryBackupItem? selected;
+      Object? lastLoadError;
+      for (final backup in backups) {
+        try {
+          restored = await _runAuthed(
+            'Load codegen history backup',
+            (client) => client.loadCodegenHistoryBackup(backup.objectKey),
+          );
+          selected = backup;
+          break;
+        } catch (err) {
+          lastLoadError = err;
+        }
+      }
+      if (selected == null) {
+        throw lastLoadError ?? StateError('No codegen history backup loaded');
+      }
       if (restored.isEmpty) {
         _appendSystem('备份文件没有可恢复的编码发布记录。');
         return;
@@ -793,9 +899,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
     return null;
   }
 
-  CodegenLaunchMode? _codegenHistoryModeForProcessMessage(
-    ChatMessage message,
-  ) {
+  CodegenLaunchMode? _codegenHistoryModeForProcessMessage(ChatMessage message) {
     final meta = message.meta ?? const <String, dynamic>{};
     final historyItem = _codegenHistoryItemForProcessMessage(message);
     if (historyItem != null) {
@@ -843,6 +947,17 @@ extension _ChatPageStateCodegen on _ChatPageState {
   bool _hasPendingCodegenHistoryExecution({CodegenLaunchMode? mode}) =>
       _findActiveCodegenHistoryItem(mode: mode) != null;
 
+  bool _isCodegenProcessMessage(ChatMessage message) {
+    final meta = message.meta ?? const <String, dynamic>{};
+    final origin = (meta['origin'] ?? '').toString().trim();
+    final processKind = (meta['process_kind'] ?? '').toString().trim();
+    return meta['app_process'] == true ||
+        origin == 'app-process' ||
+        origin == 'codegen-stream' ||
+        processKind == 'codegen' ||
+        processKind == 'deploy';
+  }
+
   void _bindCodegenHistoryRequestFromMessage(ChatMessage message) {
     final content = message.content.trim();
     final requestMatch = RegExp(r'(?:^|\n)请求:\s*(\S+)').firstMatch(content);
@@ -871,8 +986,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
   }
 
   CodegenLaunchMode? _codegenHistoryModeForStartMessage(String content) {
-    if (content.contains('编码会话已启动') ||
-        content.contains('ACP Debug 会话已启动')) {
+    if (content.contains('编码会话已启动') || content.contains('ACP Debug 会话已启动')) {
       return CodegenLaunchMode.code;
     }
     if (content.contains('发布已启动') ||
@@ -910,7 +1024,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
     String requestId = '',
     CodegenLaunchMode? mode,
   }) {
-    final normalized = content.trimRight();
+    final normalized = _truncateCodegenProcessContent(content);
     if (normalized.trim().isEmpty) {
       return;
     }
@@ -978,11 +1092,13 @@ extension _ChatPageStateCodegen on _ChatPageState {
   bool _routeIncomingCodegenProcessMessage(ChatMessage message) {
     final meta = message.meta ?? const <String, dynamic>{};
     var origin = (meta['origin'] ?? '').toString().trim();
-    if (origin != 'app-process' && meta['app_process'] != true) {
+    if (!_isCodegenProcessMessage(message)) {
       return false;
     }
     if (origin.isEmpty) {
-      origin = 'app-process';
+      origin = (meta['process_kind'] ?? '').toString().trim().isEmpty
+          ? 'app-process'
+          : 'app-process';
     }
     final mode = _codegenHistoryModeForProcessMessage(message);
     final hasActiveTask = _hasPendingCodegenHistoryExecution(mode: mode);
@@ -1037,7 +1153,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
   void _recordIncomingProcessMessage(ChatMessage message) {
     final meta = message.meta ?? const <String, dynamic>{};
     var origin = (meta['origin'] ?? '').toString().trim();
-    if (origin != 'app-process' && meta['app_process'] != true) {
+    if (!_isCodegenProcessMessage(message)) {
       return;
     }
     if (origin.isEmpty) {
@@ -1368,10 +1484,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
       }
     }
     final historyItem = _addCodegenHistory(command, _codegenMode);
-    _appendOutgoing(
-      command,
-      meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-    );
     setState(() {
       _codegenSending = true;
     });
@@ -1390,10 +1502,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
         });
       }
       _triggerCortanaContextualExpression('surprised');
-      _appendSystem(
-        '命令已发送，点击本条或命令气泡查看实时进度。',
-        meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-      );
 
       if (_codegenMode == CodegenLaunchMode.code) {
         _codegenPromptController.clear();
@@ -1440,10 +1548,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
       includeAutoDeploy: false,
     ).trim();
     final historyItem = _addCodegenHistory(command, CodegenLaunchMode.code);
-    _appendOutgoing(
-      command,
-      meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-    );
     setState(() {
       _codegenSending = true;
     });
@@ -1460,10 +1564,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
         });
       }
       _triggerCortanaContextualExpression('surprised');
-      _appendSystem(
-        'git 提交命令已发送，点击本条或命令气泡查看实时进度。',
-        meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-      );
       await _persistCodegenPreferences();
     } catch (err) {
       _markCodegenHistoryFailed(historyItem.id, err);

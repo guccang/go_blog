@@ -5,6 +5,7 @@ const String _lastLoginUserIdKey = 'auth::last_user_id';
 const String _refreshTokenStorageKey = 'auth::refresh_token';
 const String _historyStoragePrefix = 'chat_history::';
 const String _historyBackupStoragePrefix = 'chat_history_secure::';
+const int _chatHistoryRetainLimit = 520;
 const String _lastReadAtStoragePrefix = 'chat_last_read_at';
 const String _codegenModeKey = 'codegen::last_mode';
 const String _codeProjectKey = 'codegen::last_code_project';
@@ -50,7 +51,10 @@ const List<Duration> _voskDownloadRetryDelays = <Duration>[
 ];
 
 const Duration _streamFlushInterval = Duration(milliseconds: 80);
-const int _codegenStreamSegmentLimit = 2200;
+const int _codegenStreamSegmentLimit = 2048;
+const int _codegenProcessEntryByteLimit = 2048;
+const Duration _codegenHistoryTimeout = Duration(hours: 1);
+const Duration _codegenHistoryTimeoutSweepInterval = Duration(minutes: 5);
 
 const String _voskModelUrl =
     'https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip';

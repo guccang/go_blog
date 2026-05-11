@@ -1486,6 +1486,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
         _lastSequence = 0;
         _currentGroupId = '';
         _historyByScope.clear();
+        _loadedHistoryScopes.clear();
         _seenMessageIds.clear();
         _codegenStreamStates.clear();
         _pendingCodegenStreamIds.clear();
@@ -1498,6 +1499,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
       _lastSequence = 0;
       _currentGroupId = '';
       _historyByScope.clear();
+      _loadedHistoryScopes.clear();
       _seenMessageIds.clear();
       _codegenStreamStates.clear();
       _pendingCodegenStreamIds.clear();
@@ -1538,6 +1540,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
         _lastSequence = 0;
         _currentGroupId = '';
         _historyByScope.clear();
+        _loadedHistoryScopes.clear();
         _seenMessageIds.clear();
         _codegenStreamStates.clear();
         _pendingCodegenStreamIds.clear();
@@ -1560,6 +1563,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
       _lastSequence = 0;
       _currentGroupId = '';
       _historyByScope.clear();
+      _loadedHistoryScopes.clear();
       _seenMessageIds.clear();
       _codegenStreamStates.clear();
       _pendingCodegenStreamIds.clear();

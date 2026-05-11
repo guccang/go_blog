@@ -280,7 +280,10 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     bool persist = true,
   }) {
     final existing = _historyByScope[message.scopeKey] ?? <ChatMessage>[];
-    _historyByScope[message.scopeKey] = <ChatMessage>[...existing, message];
+    _historyByScope[message.scopeKey] = _trimChatHistory(<ChatMessage>[
+      ...existing,
+      message,
+    ]);
     if (!mounted) {
       if (persist) {
         _historyPersistence.schedule(message.scopeKey);
@@ -884,6 +887,54 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
   String _historyBackupStorageKey(String scopeKey) =>
       '$_historyBackupStoragePrefix${_userIdController.text.trim()}::$scopeKey';
 
+  List<ChatMessage> _trimChatHistory(List<ChatMessage> history) {
+    if (history.length <= _chatHistoryRetainLimit) {
+      return history;
+    }
+    return history
+        .sublist(history.length - _chatHistoryRetainLimit)
+        .toList(growable: false);
+  }
+
+  String _historyMessageIdentity(ChatMessage message) {
+    final stableMessageId = (message.meta?['_message_id'] ?? '')
+        .toString()
+        .trim();
+    if (stableMessageId.isNotEmpty) {
+      return '${message.scopeKey}|id|$stableMessageId';
+    }
+    return [
+      message.scopeKey,
+      message.timestamp.millisecondsSinceEpoch.toString(),
+      message.direction.name,
+      message.authorId,
+      message.groupId,
+      message.messageType,
+      message.content,
+    ].join('|');
+  }
+
+  List<ChatMessage> _mergeChatHistory(
+    List<ChatMessage> persisted,
+    List<ChatMessage> current,
+  ) {
+    if (persisted.isEmpty) {
+      return _trimChatHistory(List<ChatMessage>.from(current));
+    }
+    if (current.isEmpty) {
+      return _trimChatHistory(List<ChatMessage>.from(persisted));
+    }
+    final merged = <ChatMessage>[];
+    final seen = <String>{};
+    for (final message in <ChatMessage>[...persisted, ...current]) {
+      if (seen.add(_historyMessageIdentity(message))) {
+        merged.add(message);
+      }
+    }
+    merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return _trimChatHistory(merged);
+  }
+
   String? _extractScopeKey(String key, String userId, String prefix) {
     final normalizedUserId = userId.trim();
     final normalizedPrefix = '$prefix$normalizedUserId::';
@@ -894,24 +945,57 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     return scopeKey.isEmpty ? null : scopeKey;
   }
 
-  Future<String> _readPersistedHistoryRaw(
+  Future<List<String>> _readPersistedHistoryRawCandidates(
     SharedPreferences prefs,
     String scopeKey,
   ) async {
-    final primary = prefs.getString(_historyStorageKey(scopeKey)) ?? '';
+    final candidates = <String>[];
+    final primary = (prefs.getString(_historyStorageKey(scopeKey)) ?? '')
+        .trim();
     if (primary.isNotEmpty) {
-      return primary;
+      candidates.add(primary);
     }
     try {
-      return (await _secureStorage.read(
-                key: _historyBackupStorageKey(scopeKey),
-              ) ??
-              '')
-          .trim();
+      final backup =
+          (await _secureStorage.read(key: _historyBackupStorageKey(scopeKey)) ??
+                  '')
+              .trim();
+      if (backup.isNotEmpty && backup != primary) {
+        candidates.add(backup);
+      }
     } catch (err) {
       debugPrint('Read history backup failed for $scopeKey: $err');
-      return '';
     }
+    return candidates;
+  }
+
+  List<ChatMessage>? _decodeHistoryRaw(String raw) {
+    try {
+      return _trimChatHistory(
+        (jsonDecode(raw) as List<dynamic>)
+            .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
+            .toList(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<ChatMessage>> _loadPersistedHistoryList(
+    SharedPreferences prefs,
+    String scopeKey,
+  ) async {
+    final candidates = await _readPersistedHistoryRawCandidates(
+      prefs,
+      scopeKey,
+    );
+    for (final raw in candidates) {
+      final decoded = _decodeHistoryRaw(raw);
+      if (decoded != null) {
+        return decoded;
+      }
+    }
+    return const <ChatMessage>[];
   }
 
   Future<void> _loadHistory(String scopeKey) async {
@@ -920,8 +1004,9 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    final raw = await _readPersistedHistoryRaw(prefs, scopeKey);
-    if (raw.isEmpty) {
+    final list = await _loadPersistedHistoryList(prefs, scopeKey);
+    _loadedHistoryScopes.add(scopeKey);
+    if (list.isEmpty) {
       _historyByScope[scopeKey] = <ChatMessage>[];
       if (mounted) {
         setState(() {});
@@ -932,20 +1017,13 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       }
       return;
     }
-    try {
-      final list = (jsonDecode(raw) as List<dynamic>)
-          .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
-          .toList();
-      _historyByScope[scopeKey] = list;
-      if (mounted) {
-        setState(() {});
-        if (scopeKey == _currentScopeKey) {
-          _syncActiveMessages();
-          unawaited(_revealScopeEntryPoint(scopeKey));
-        }
+    _historyByScope[scopeKey] = list;
+    if (mounted) {
+      setState(() {});
+      if (scopeKey == _currentScopeKey) {
+        _syncActiveMessages();
+        unawaited(_revealScopeEntryPoint(scopeKey));
       }
-    } catch (_) {
-      _historyByScope[scopeKey] = <ChatMessage>[];
     }
   }
 
@@ -994,7 +1072,20 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     final prefs = await SharedPreferences.getInstance();
-    final history = _historyByScope[scopeKey] ?? const <ChatMessage>[];
+    var history = _trimChatHistory(
+      List<ChatMessage>.from(
+        _historyByScope[scopeKey] ?? const <ChatMessage>[],
+      ),
+    );
+    if (!_loadedHistoryScopes.contains(scopeKey)) {
+      final persisted = await _loadPersistedHistoryList(prefs, scopeKey);
+      if (persisted.isNotEmpty) {
+        history = _mergeChatHistory(persisted, history);
+        _historyByScope[scopeKey] = history;
+      }
+    } else {
+      _historyByScope[scopeKey] = history;
+    }
     final data = history.map((msg) => msg.toJson()).toList();
     final encoded = jsonEncode(data);
     await prefs.setString(_historyStorageKey(scopeKey), encoded);

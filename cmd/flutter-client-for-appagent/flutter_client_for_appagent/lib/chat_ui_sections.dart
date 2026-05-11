@@ -370,30 +370,50 @@ extension _ChatPageStateUiSections on _ChatPageState {
           ),
         if (_cortanaLive2dModels.isNotEmpty) ...[
           const SizedBox(height: 8),
-          for (final model in _cortanaLive2dModels)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.face_retouching_natural),
-              title: Text(
-                model.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                model.sourceUrl,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                tooltip: '删除',
-                onPressed: _cortanaLive2dDownloading
-                    ? null
-                    : () => unawaited(_deleteCortanaLive2dModel(model)),
-                icon: const Icon(Icons.delete_outline),
-              ),
-              onTap: () => unawaited(_selectCortanaLive2dModel(model.id)),
+          Container(
+            decoration: BoxDecoration(
+              color: palette.surfaceMuted.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: palette.border.withValues(alpha: 0.5)),
             ),
+            child: ExpansionTile(
+              key: const PageStorageKey<String>('cortana-live2d-model-list'),
+              initiallyExpanded: false,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+              childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              title: Text('已下载形象 (${_cortanaLive2dModels.length})'),
+              subtitle: Text(
+                '默认折叠，点击展开管理',
+                style: TextStyle(color: palette.textMuted, fontSize: 12),
+              ),
+              children: [
+                for (final model in _cortanaLive2dModels)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.face_retouching_natural),
+                    title: Text(
+                      model.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      model.sourceUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      tooltip: '删除',
+                      onPressed: _cortanaLive2dDownloading
+                          ? null
+                          : () => unawaited(_deleteCortanaLive2dModel(model)),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                    onTap: () => unawaited(_selectCortanaLive2dModel(model.id)),
+                  ),
+              ],
+            ),
+          ),
         ],
       ],
     );
@@ -1940,7 +1960,10 @@ extension _ChatPageStateUiSections on _ChatPageState {
                             return ListView.builder(
                               controller: _scrollController,
                               padding: const EdgeInsets.fromLTRB(
-                                14, 14, 14, 14,
+                                14,
+                                14,
+                                14,
+                                14,
                               ),
                               cacheExtent: 900,
                               addAutomaticKeepAlives: false,
@@ -1963,7 +1986,9 @@ extension _ChatPageStateUiSections on _ChatPageState {
                                       if (!context.mounted) {
                                         return;
                                       }
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
                                           content: Text('Message copied'),
                                           duration: Duration(seconds: 1),
@@ -2166,8 +2191,6 @@ extension _ChatPageStateUiSections on _ChatPageState {
               _buildThemePresetCard(),
               const SizedBox(height: 8),
               _buildCortanaChatSettings(),
-              const SizedBox(height: 8),
-              _buildCortanaChatLogs(),
             ],
           ),
         ),
@@ -2473,6 +2496,10 @@ extension _ChatPageStateUiSections on _ChatPageState {
                 ),
               ],
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: _buildCortanaChatLogs(),
           ),
           Expanded(
             child: events.isEmpty

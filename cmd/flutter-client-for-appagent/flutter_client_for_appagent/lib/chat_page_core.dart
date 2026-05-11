@@ -65,6 +65,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   final Map<String, List<ChatMessage>> _historyByScope =
       <String, List<ChatMessage>>{};
+  final Set<String> _loadedHistoryScopes = <String>{};
   final ValueNotifier<List<ChatMessage>> _activeMessagesNotifier =
       ValueNotifier<List<ChatMessage>>(const <ChatMessage>[]);
   final GlobalKey _activeMessageAnchorKey = GlobalKey();
@@ -88,6 +89,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _cortanaWakeRestartTimer;
   Timer? _cortanaLocationTimer;
   Timer? _streamFlushTimer;
+  Timer? _codegenTimeoutSweepTimer;
   final Map<String, _CodegenStreamState> _codegenStreamStates =
       <String, _CodegenStreamState>{};
   final Set<String> _pendingCodegenStreamIds = <String>{};
@@ -214,6 +216,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_loadClientConfig());
     unawaited(_restoreVoskDownloadProgress());
     unawaited(_restoreCortanaLive2dModels());
+    _startCodegenTimeoutSweepTimer();
     _scheduleCortanaLocationRefresh(initial: true);
   }
 
@@ -283,6 +286,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cortanaWakeRestartTimer?.cancel();
     _cortanaLocationTimer?.cancel();
     _streamFlushTimer?.cancel();
+    _codegenTimeoutSweepTimer?.cancel();
     _activeMessagesNotifier.dispose();
     unawaited(_socketSub?.cancel());
     unawaited(_socket?.sink.close());
@@ -748,7 +752,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _status = '语音唤醒监听中';
         });
       }
-      _appendCortanaWakeLog('listen 返回: isListening=$_speechToText.isListening');
+      _appendCortanaWakeLog(
+        'listen 返回: isListening=$_speechToText.isListening',
+      );
     } catch (err, stack) {
       _cortanaWakeListening = false;
       _appendCortanaWakeLog('启动监听失败: $err');

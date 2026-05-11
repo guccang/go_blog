@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractCortanaActionPlanFromTaggedBlock(t *testing.T) {
@@ -86,6 +87,40 @@ func TestBuildCortanaOutputPromptContainsProtocol(t *testing.T) {
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(prompt, snippet) {
 			t.Fatalf("prompt missing %q: %s", snippet, prompt)
+		}
+	}
+}
+
+func TestBuildCortanaDeviceContextPromptTreatsCapturedAtAsTelemetry(t *testing.T) {
+	prompt := buildCortanaDeviceContextPrompt(map[string]any{
+		"device_context": map[string]any{
+			"client": map[string]any{
+				"captured_at": int64(1778461200000),
+			},
+		},
+	})
+
+	for _, want := range []string{"captured_at", "采集时间戳", "不得把它换算后当作当前时间"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("expected prompt to contain %q, got: %s", want, prompt)
+		}
+	}
+}
+
+func TestBuildCortanaTurnRuntimeContextIncludesAuthoritativeLocalTime(t *testing.T) {
+	loc := time.FixedZone("Asia/Shanghai", 8*3600)
+	now := time.Date(2026, 5, 11, 9, 0, 0, 0, loc)
+	context := buildCortanaTurnRuntimeContext(nil, "device_context.client.captured_at=1778461200000", now)
+
+	for _, want := range []string{
+		"当前本地时间上下文",
+		"2026-05-11 09:00:00",
+		"星期一",
+		"timezone_offset: +08:00",
+		"captured_at 与本段冲突，以本段为准",
+	} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("expected context to contain %q, got: %s", want, context)
 		}
 	}
 }

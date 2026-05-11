@@ -49,6 +49,12 @@ func TestBuildCortanaAppSystemPromptUsesCortanaPersona(t *testing.T) {
 	if !strings.Contains(prompt, "`account` 仅用于权限、工作区和数据隔离标识") {
 		t.Fatalf("expected account boundary in prompt, got: %s", prompt)
 	}
+	if !strings.Contains(prompt, "已经签注完成") {
+		t.Fatalf("expected completed residence permit instruction in prompt, got: %s", prompt)
+	}
+	if !strings.Contains(prompt, "除非本轮确实调用工具并拿到结果") {
+		t.Fatalf("expected anti-hallucinated-task-check instruction in prompt, got: %s", prompt)
+	}
 	if strings.Contains(prompt, "你是一个可执行任务的工程型智能体，不是陪聊助手") {
 		t.Fatalf("unexpected legacy engineering persona in prompt: %s", prompt)
 	}

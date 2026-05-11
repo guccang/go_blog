@@ -1068,7 +1068,9 @@ func firstNonEmpty(values ...string) string {
 func classifyAppProcessMeta(sourceAgent, content string) map[string]any {
 	sourceAgent = strings.TrimSpace(sourceAgent)
 	content = strings.TrimSpace(content)
-	if sourceAgent != "llm-agent" || content == "" {
+	isLLMAgent := sourceAgent == "llm-agent"
+	isDeployAgent := strings.HasPrefix(sourceAgent, "deploy") || strings.Contains(sourceAgent, "deploy-agent")
+	if (!isLLMAgent && !isDeployAgent) || content == "" {
 		return nil
 	}
 
@@ -1081,6 +1083,7 @@ func classifyAppProcessMeta(sourceAgent, content string) map[string]any {
 		"部署进度:", "发布进度:", "编码进度:",
 		"技能开始:", "技能工具调用:", "技能完成:",
 		"Codegen task completed", "Codegen task failed",
+		"build-flutter-apk 打包完成",
 	}
 	matched := false
 	for _, prefix := range statusPrefixes {
@@ -1097,7 +1100,9 @@ func classifyAppProcessMeta(sourceAgent, content string) map[string]any {
 	lower := strings.ToLower(content)
 	switch {
 	case strings.Contains(content, "部署") || strings.Contains(content, "发布") ||
-		strings.Contains(lower, "deploy") || strings.Contains(lower, "release"):
+		strings.Contains(content, "打包") ||
+		strings.Contains(lower, "deploy") || strings.Contains(lower, "release") ||
+		strings.Contains(lower, "pack"):
 		processKind = "deploy"
 	case strings.Contains(content, "编码") || strings.Contains(content, "代码") ||
 		strings.Contains(lower, "codegen") || strings.Contains(lower, "/cg") ||

@@ -18,6 +18,8 @@ func TestBuildCortanaProactiveSystemPromptIncludesProfile(t *testing.T) {
 		"对用户固定称呼: 主人",
 		"冷静、主动、会接住用户情绪",
 		"语气、人设和称呼必须与以上 Cortana 设定保持一致",
+		"已经签注完成",
+		"不要声称已检查定时任务",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("expected prompt to contain %q, got: %s", want, prompt)
