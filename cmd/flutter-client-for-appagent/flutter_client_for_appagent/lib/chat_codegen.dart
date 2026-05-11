@@ -351,6 +351,14 @@ extension _ChatPageStateCodegen on _ChatPageState {
     );
   }
 
+  void _mutateCodegenHistory(VoidCallback mutation) {
+    if (!mounted || _rootTab != RootTab.codegen) {
+      mutation();
+      return;
+    }
+    setState(mutation);
+  }
+
   int _runningCodegenCount(CodegenLaunchMode mode) => _codegenHistory
       .where((item) => item.mode == mode && !item.completed)
       .length;
@@ -997,7 +1005,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
     if (idx == -1) {
       return;
     }
-    setState(() {
+    _mutateCodegenHistory(() {
       _codegenHistory[idx] = _codegenHistory[idx].copyWith(
         requestId: requestId,
       );
@@ -1128,7 +1136,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       requestId: activeItem.requestId.isEmpty ? requestId.trim() : null,
       completed: _isTerminalCodegenProcessMessage(message),
     );
-    setState(() {
+    _mutateCodegenHistory(() {
       final idx = _codegenHistory.indexWhere(
         (item) => item.id == activeItem.id,
       );
@@ -1191,7 +1199,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
     if (activeItem == null || activeItem.completed) {
       return;
     }
-    setState(() {
+    _mutateCodegenHistory(() {
       final idx = _codegenHistory.indexWhere(
         (item) => item.id == activeItem.id,
       );
