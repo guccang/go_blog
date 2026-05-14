@@ -163,10 +163,8 @@ func (b *Bridge) handleAssistantTask(taskID, sourceAgent string, payload *Assist
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
 			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(payload.Account, payload.Query, true)
-			session.Messages = []Message{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: payload.Query},
-			}
+			runtimeContext := buildAccountRuntimeContext(payload.Account, "web", nil)
+			session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, payload.Query)
 			session.PromptSections = promptSections
 		}
 		session.Messages = append(session.Messages, Message{Role: "assistant", Content: assistantContent})
@@ -618,7 +616,6 @@ func (b *Bridge) buildAssistantSystemPromptWithOptions(account string, opts Assi
 	}
 	personaContent += "\n\n"
 
-	personaContent += fmt.Sprintf("account: %s\n", account)
 	personaContent += "系统提示词稳定性规则：不要把当前时间、git diff、git status、临时快照或本轮用户输入写入系统提示词；这些动态上下文应由工具或当前用户消息提供。\n\n"
 	personaContent += "## Agent 工作方式\n"
 	personaContent += "- 你是一个可执行任务的工程型智能体，不是陪聊助手。\n"

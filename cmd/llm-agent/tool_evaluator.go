@@ -25,11 +25,11 @@ const (
 type EvalCategory string
 
 const (
-	CategoryDuplicateTool    EvalCategory = "duplicate_tool"
-	CategoryCoverageGap      EvalCategory = "coverage_gap"
+	CategoryDuplicateTool     EvalCategory = "duplicate_tool"
+	CategoryCoverageGap       EvalCategory = "coverage_gap"
 	CategorySemanticAmbiguity EvalCategory = "semantic_ambiguity"
-	CategoryKeywordConflict  EvalCategory = "keyword_conflict"
-	CategoryDescriptionWeak  EvalCategory = "description_weak"
+	CategoryKeywordConflict   EvalCategory = "keyword_conflict"
+	CategoryDescriptionWeak   EvalCategory = "description_weak"
 )
 
 // EvalIssue 单条评估问题
@@ -283,14 +283,14 @@ func (te *ToolEvaluator) checkSkillToolCoverage(tools []LLMTool, skills []SkillE
 
 // ambiguityCandidate 语义模糊候选对
 type ambiguityCandidate struct {
-	IndexA    int
-	IndexB    int
-	NameA     string
-	NameB     string
-	DescA     string
-	DescB     string
-	ParamsA   string
-	ParamsB   string
+	IndexA     int
+	IndexB     int
+	NameA      string
+	NameB      string
+	DescA      string
+	DescB      string
+	ParamsA    string
+	ParamsB    string
 	Similarity float64
 }
 
@@ -364,6 +364,7 @@ func (te *ToolEvaluator) llmEvaluateAmbiguity(candidates []ambiguityCandidate) [
 	sb.WriteString("\n\n只输出 JSON，不要其他内容。")
 
 	messages := []Message{
+		{Role: "system", Content: "你是一个技能工具评估专家。只根据用户消息中的候选工具对进行语义评估，并按要求输出 JSON。"},
 		{Role: "user", Content: sb.String()},
 	}
 

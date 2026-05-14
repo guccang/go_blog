@@ -110,13 +110,10 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 	}
 
 	profile := loadCortanaProfile(b.cfg.WorkspaceDir, payload.Account)
-	systemPrompt := buildCortanaProactiveSystemPrompt(profile, payload)
+	systemPrompt := buildCortanaProactiveSystemPrompt(profile)
 
 	body, _ := json.Marshal(payload)
-	messages := []Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: string(body)},
-	}
+	messages := messagesWithRuntimeContext(systemPrompt, buildCortanaProactiveRuntimeContext(payload), string(body))
 
 	cfg := b.activeLLM.Get()
 	text, _, err := SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, nil, b.cfg.Providers)
@@ -141,7 +138,7 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 	return &decision, nil
 }
 
-func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*CortanaProactivePayload) string {
+func buildCortanaProactiveSystemPrompt(profile *CortanaProfile) string {
 	profile = normalizeCortanaProfile(profile)
 
 	var sb strings.Builder
@@ -199,26 +196,32 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile, payloads ...*Cor
 		sb.WriteString(profile.Description)
 		sb.WriteString("\n")
 	}
-	var payload *CortanaProactivePayload
-	if len(payloads) > 0 {
-		payload = payloads[0]
+	sb.WriteString("主动互动时，语气、人设和称呼必须与以上 Cortana 设定保持一致。\n")
+	return sb.String()
+}
+
+func buildCortanaProactiveRuntimeContext(payload *CortanaProactivePayload) string {
+	if payload == nil {
+		return ""
 	}
+	var blocks []string
 	if localTime := cortanaProactiveLocalTimeContext(payload); len(localTime) > 0 {
 		if body, err := json.MarshalIndent(localTime, "", "  "); err == nil {
-			sb.WriteString("当前本地时间上下文（判断当前时段时优先级最高）:\n")
-			sb.WriteString(string(body))
-			sb.WriteString("\n")
+			blocks = append(blocks, "### 当前本地时间上下文\n判断当前时段时只使用本段。\n"+string(body))
 		}
 	}
 	if deviceContext := cortanaProactiveDeviceContext(payload); len(deviceContext) > 0 {
 		if body, err := json.MarshalIndent(deviceContext, "", "  "); err == nil {
-			sb.WriteString("当前客户端基础上下文:\n")
-			sb.WriteString(string(body))
-			sb.WriteString("\n")
+			blocks = append(blocks, "### 当前客户端基础上下文\n位置、天气、通勤和路线判断优先使用本段。\n"+string(body))
 		}
 	}
-	sb.WriteString("主动互动时，语气、人设和称呼必须与以上 Cortana 设定保持一致。\n")
-	return sb.String()
+	return buildPromptRuntimeContext(PromptRuntimeContext{
+		Title: "Cortana 主动决策运行时上下文",
+		Fields: map[string]string{
+			"account": payload.Account,
+		},
+		Blocks: blocks,
+	})
 }
 
 func cortanaProactiveLocalTimeContext(payload *CortanaProactivePayload) map[string]any {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"uap"
 )
 
 func TestLoadCortanaProfileDefaults(t *testing.T) {
@@ -57,6 +59,39 @@ func TestBuildCortanaAppSystemPromptUsesCortanaPersona(t *testing.T) {
 	}
 	if strings.Contains(prompt, "你是一个可执行任务的工程型智能体，不是陪聊助手") {
 		t.Fatalf("unexpected legacy engineering persona in prompt: %s", prompt)
+	}
+}
+
+func TestBuildCortanaAppSystemPromptSkipsToolsForCompanionContinuation(t *testing.T) {
+	bridge := &Bridge{
+		cfg:        &Config{AgentName: "LLM Agent", AgentID: "llm-agent"},
+		client:     &uap.Client{},
+		activeLLM:  NewActiveLLMState(LLMConfig{ModelID: "test", MaxTokens: 2048}),
+		memoryMgrs: make(map[string]*MemoryManager),
+		agentInfo: map[string]AgentInfo{
+			"blog-agent": {ID: "blog-agent", Name: "Go Blog Server", Description: "博客CRUD"},
+		},
+		agentTools: map[string][]LLMTool{
+			"blog-agent": {
+				{Type: "function", Function: LLMFunction{Name: "RawAddTodo", Description: "添加待办"}},
+			},
+		},
+	}
+
+	prompt, sections := bridge.buildCortanaAppSystemPrompt("alice", "已完成了", defaultCortanaProfile(), nil)
+	if hasPromptSection(sections, "Agent能力") || hasPromptSection(sections, "工具目录") {
+		t.Fatalf("companion continuation should skip tooling sections: %+v", sections)
+	}
+	if strings.Contains(prompt, "RawAddTodo") {
+		t.Fatalf("tool catalog leaked into companion prompt: %s", prompt)
+	}
+
+	toolPrompt, toolSections := bridge.buildCortanaAppSystemPrompt("alice", "添加一个待办", defaultCortanaProfile(), nil)
+	if !hasPromptSection(toolSections, "Agent能力") || !hasPromptSection(toolSections, "工具目录") {
+		t.Fatalf("actionable query should keep tooling sections: %+v", toolSections)
+	}
+	if !strings.Contains(toolPrompt, "RawAddTodo") {
+		t.Fatalf("tool catalog missing from actionable prompt: %s", toolPrompt)
 	}
 }
 

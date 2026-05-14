@@ -507,8 +507,6 @@ func (o *Orchestrator) executeSubTask(
 		basePrompt, _ := o.bridge.buildAssistantSystemPrompt(session.Account)
 		systemContent.WriteString(basePrompt)
 		systemContent.WriteString("\n\n")
-		systemContent.WriteString(fmt.Sprintf("## 当前子任务: %s\n", subtask.Title))
-		systemContent.WriteString(fmt.Sprintf("%s\n", subtask.Description))
 
 		if o.bridge.skillMgr != nil && len(subtask.ToolsHint) > 0 {
 			matched := o.bridge.skillMgr.MatchByTools(subtask.ToolsHint)
@@ -525,18 +523,28 @@ func (o *Orchestrator) executeSubTask(
 		systemContent.WriteString("- 调用工具前，参考上方工具参数参考中的参数定义\n")
 	}
 
-	messages := []Message{
-		{Role: "system", Content: systemContent.String()},
-		{Role: "user", Content: subtask.Description},
-	}
+	runtimeContext := combineRuntimeBlocks(
+		buildAccountRuntimeContext(session.Account, session.Source, nil),
+		buildLocalTimeRuntimeContext(time.Now()),
+		buildPromptRuntimeContext(PromptRuntimeContext{
+			Title: "当前子任务上下文",
+			Fields: map[string]string{
+				"context_mode": subtask.EffectiveContextMode(),
+				"subtask_id":   subtask.ID,
+				"title":        subtask.Title,
+			},
+		}),
+	)
+	messages := messagesWithRuntimeContext(systemContent.String(), runtimeContext, subtask.Description)
 	promptCtx := PromptContext{
 		Account:      session.Account,
 		Source:       session.Source,
 		SystemPrompt: systemContent.String(),
 	}
 
-	session.AppendMessage(messages[0])
-	session.AppendMessage(messages[1])
+	for _, msg := range messages {
+		session.AppendMessage(msg)
+	}
 	if trace != nil {
 		trace.RecordPath("subtask_prompt_ready", fmt.Sprintf("messages=%d prompt_len=%d", len(messages), len(systemContent.String())), nil)
 	}

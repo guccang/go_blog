@@ -27,8 +27,9 @@ func TestBuildCortanaProactiveSystemPromptIncludesProfile(t *testing.T) {
 	}
 }
 
-func TestBuildCortanaProactiveSystemPromptIncludesLocalTimeContext(t *testing.T) {
-	prompt := buildCortanaProactiveSystemPrompt(&CortanaProfile{Name: "Cortana"}, &CortanaProactivePayload{
+func TestBuildCortanaProactiveRuntimeContextIncludesLocalTimeContext(t *testing.T) {
+	payload := &CortanaProactivePayload{
+		Account: "alice",
 		Snapshot: map[string]any{
 			"local_datetime":  "2026-05-07 21:30:00",
 			"weekday":         "星期四",
@@ -39,16 +40,23 @@ func TestBuildCortanaProactiveSystemPromptIncludesLocalTimeContext(t *testing.T)
 				"location": map[string]any{"available": true},
 			},
 		},
-	})
+	}
+	prompt := buildCortanaProactiveSystemPrompt(&CortanaProfile{Name: "Cortana"})
+	runtimeContext := buildCortanaProactiveRuntimeContext(payload)
+
+	if strings.Contains(prompt, "2026-05-07 21:30:00") || strings.Contains(prompt, "当前本地时间上下文") {
+		t.Fatalf("proactive system prompt should not contain dynamic time context: %s", prompt)
+	}
 
 	for _, want := range []string{
 		"当前本地时间上下文",
 		"2026-05-07 21:30:00",
 		"+08:00",
-		"判断当前时段时优先级最高",
+		"判断当前时段时只使用本段",
+		"account: alice",
 	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("expected prompt to contain %q, got: %s", want, prompt)
+		if !strings.Contains(runtimeContext, want) {
+			t.Fatalf("expected runtime context to contain %q, got: %s", want, runtimeContext)
 		}
 	}
 }

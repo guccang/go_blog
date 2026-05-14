@@ -93,6 +93,24 @@ func TestBuildAssistantSystemPromptDoesNotDependOnQuery(t *testing.T) {
 	}
 }
 
+func TestBuildAssistantSystemPromptDoesNotEmbedAccount(t *testing.T) {
+	bridge := newPromptTestBridge()
+
+	alicePrompt, _ := bridge.buildAssistantSystemPromptForQuery("alice", "帮我查部署", true)
+	bobPrompt, _ := bridge.buildAssistantSystemPromptForQuery("bob", "帮我查部署", true)
+	if alicePrompt != bobPrompt {
+		t.Fatalf("system prompt should be stable across accounts")
+	}
+	if strings.Contains(alicePrompt, "account: alice") || strings.Contains(bobPrompt, "account: bob") {
+		t.Fatalf("system prompt should not embed dynamic account: %s", alicePrompt)
+	}
+
+	runtimeContext := buildAccountRuntimeContext("alice", "web", nil)
+	if !strings.Contains(runtimeContext, "account: alice") || !strings.Contains(runtimeContext, "source: web") {
+		t.Fatalf("runtime context should carry account/source: %s", runtimeContext)
+	}
+}
+
 func TestBuildAssistantSystemPromptSortsCatalogMaps(t *testing.T) {
 	build := func(reverse bool) *Bridge {
 		bridge := newPromptTestBridge()

@@ -112,7 +112,8 @@ func buildCortanaDeviceContextPrompt(meta map[string]any) string {
 	if !ok || len(raw) == 0 {
 		return ""
 	}
-	body, err := json.MarshalIndent(raw, "", "  ")
+	compact := compactCortanaDeviceContext(raw)
+	body, err := json.MarshalIndent(compact, "", "  ")
 	if err != nil {
 		return ""
 	}
@@ -126,30 +127,74 @@ func buildCortanaDeviceContextPrompt(meta map[string]any) string {
 		string(body) + "\n"
 }
 
-func buildCortanaLocalTimeContextPrompt(now time.Time) string {
-	_, offset := now.Zone()
-	sign := "+"
-	if offset < 0 {
-		sign = "-"
-		offset = -offset
+func compactCortanaDeviceContext(raw map[string]any) map[string]any {
+	out := make(map[string]any)
+	if client, ok := raw["client"].(map[string]any); ok {
+		out["client"] = pickMapFields(client, "app_version", "captured_at", "platform", "timezone", "timezone_offset_minutes")
 	}
-	offsetHours := offset / 3600
-	offsetMinutes := (offset % 3600) / 60
-	return fmt.Sprintf("\n## 当前本地时间上下文\n"+
-		"- 判断当前早晚、上午、下午、晚上、深夜、凌晨和星期时，只能以本段为准。\n"+
-		"- 如果历史摘要、recent history 或 device_context.client.captured_at 与本段冲突，以本段为准。\n"+
-		"local_datetime: %s\nweekday: %s\ntimezone: %s\ntimezone_offset: %s%02d:%02d\n",
-		now.Format("2006-01-02 15:04:05"),
-		chineseWeekday(now.Weekday()),
-		now.Location().String(),
-		sign,
-		offsetHours,
-		offsetMinutes,
-	)
+	if location, ok := raw["location"].(map[string]any); ok {
+		out["location"] = pickMapFields(location, "available", "permission", "provider_enabled", "provider", "accuracy_m", "latitude", "longitude", "location_time", "timestamp")
+	}
+	if live2d, ok := raw["live2d"].(map[string]any); ok {
+		summary := pickMapFields(live2d, "model_id", "model_name", "available_expressions")
+		if motions, ok := live2d["available_motions"].(map[string]any); ok {
+			summary["available_motion_count"] = len(motions)
+			summary["motion_usage"] = "优先输出语义 intent；除非确有必要，不要硬编码 motion 文件名。"
+		}
+		if len(summary) > 0 {
+			out["live2d"] = summary
+		}
+	}
+	for _, key := range []string{"battery", "network"} {
+		if value, ok := raw[key]; ok {
+			out[key] = value
+		}
+	}
+	if len(out) == 0 {
+		return map[string]any{"summary": "客户端已上报上下文，但无可用于本轮决策的稳定字段。"}
+	}
+	return out
+}
+
+func pickMapFields(src map[string]any, keys ...string) map[string]any {
+	out := make(map[string]any)
+	for _, key := range keys {
+		if value, ok := src[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func buildCortanaLocalTimeContextPrompt(now time.Time) string {
+	return buildLocalTimeRuntimeContext(now)
 }
 
 func buildCortanaTurnRuntimeContext(state *CortanaCompanionState, deviceContextPrompt string, now time.Time) string {
 	return strings.TrimSpace(buildCortanaCompanionPrompt(state) + buildCortanaLocalTimeContextPrompt(now) + deviceContextPrompt)
+}
+
+func cortanaShouldUseTools(query string) bool {
+	q := strings.TrimSpace(strings.ToLower(query))
+	if q == "" {
+		return false
+	}
+	if strings.HasPrefix(q, "/") {
+		return true
+	}
+	markers := []string{
+		"查", "查询", "搜索", "天气", "路线", "导航", "附近", "位置", "在哪",
+		"提醒", "定时", "待办", "todo", "博客", "blog", "运动", "阅读", "项目",
+		"创建", "新增", "删除", "更新", "修改", "保存", "记录", "统计", "部署",
+		"代码", "文件", "日志", "执行", "运行", "工具", "agent", "mcp",
+		"图片", "画", "生成", "语音", "音频",
+	}
+	for _, marker := range markers {
+		if strings.Contains(q, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AppSink) OnChunk(text string) { s.buf.WriteString(text) }
@@ -784,38 +829,34 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 				cortanaProfile,
 				session.CortanaState,
 			)
-			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
 			systemPrompt += buildCortanaOutputPrompt() + "\n"
-			userContent := content
-			runtimeContext := buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now)
-			if runtimeContext != "" {
-				userContent += "\n\n" + runtimeContext
-			}
-			session.Messages = []Message{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: userContent},
-			}
+			runtimeContext := combineRuntimeBlocks(
+				buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}),
+				buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now),
+			)
+			session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, content)
 			session.PromptSections = promptSections
 		} else {
 			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
-			systemPrompt += fmt.Sprintf("\n当前App用户ID(app_user): %s\n", appUser)
-			session.Messages = []Message{
-				{Role: "system", Content: systemPrompt},
-				{Role: "user", Content: content},
-			}
+			runtimeContext := buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser})
+			session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, content)
 			session.PromptSections = promptSections
 		}
 		log.Printf("[App] 新会话 sessionID=%s user=%s", session.SessionID, appUser)
 	} else {
 		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
-		userContent := content
 		if cortanaContextMode {
-			runtimeContext := buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now)
+			runtimeContext := combineRuntimeBlocks(
+				buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}),
+				buildCortanaTurnRuntimeContext(session.CortanaState, cortanaDeviceContextPrompt, now),
+			)
 			if runtimeContext != "" {
-				userContent += "\n\n" + runtimeContext
+				session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
 			}
+		} else if runtimeContext := buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}); runtimeContext != "" {
+			session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
 		}
-		session.Messages = append(session.Messages, Message{Role: "user", Content: userContent})
+		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
 		log.Printf("[App] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d", session.SessionID, appUser, session.TurnCount, len(session.Messages))
 	}
 
@@ -846,6 +887,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 		Source:           "app",
 		PreferAudioReply: preferAudioReply,
 		Messages:         messagesCopy,
+		NoTools:          cortanaContextMode && !cortanaShouldUseTools(content),
 		Sink:             sink,
 	}
 

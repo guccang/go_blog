@@ -90,9 +90,8 @@ func (b *Bridge) runSkillSubtask(ctx *TaskContext, skillName, query string, pare
 
 	// 2. 构建子任务 system prompt
 	var sb strings.Builder
-	now := time.Now()
-	sb.WriteString(fmt.Sprintf("account: %s\n当前时间: %s %s\n\n",
-		ctx.Account, now.Format("2006-01-02 15:04"), chineseWeekday(now.Weekday())))
+	sb.WriteString("## Skill 子任务系统指令\n")
+	sb.WriteString("本提示词只包含稳定的 skill 执行规则。账号、当前时间、用户任务描述和运行时状态由后续 runtime context/user message 提供。\n\n")
 
 	// 注入 agent 能力描述
 	agentBlock := b.getAgentDescriptionBlock()

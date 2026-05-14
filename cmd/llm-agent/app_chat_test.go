@@ -107,6 +107,31 @@ func TestBuildCortanaDeviceContextPromptTreatsCapturedAtAsTelemetry(t *testing.T
 	}
 }
 
+func TestBuildCortanaDeviceContextPromptCompactsLive2DMotions(t *testing.T) {
+	prompt := buildCortanaDeviceContextPrompt(map[string]any{
+		"device_context": map[string]any{
+			"live2d": map[string]any{
+				"model_id":   "model-1",
+				"model_name": "demo",
+				"available_motions": map[string]any{
+					"face_smile_01": []any{"motions/face_smile_01.motion3.json"},
+					"face_sad_01":   []any{"motions/face_sad_01.motion3.json"},
+				},
+			},
+		},
+	})
+
+	if !strings.Contains(prompt, "available_motion_count") {
+		t.Fatalf("expected compact motion count, got: %s", prompt)
+	}
+	if strings.Contains(prompt, "motions/face_smile_01.motion3.json") {
+		t.Fatalf("full motion file list should not be injected: %s", prompt)
+	}
+	if strings.Contains(prompt, "face_smile_01") {
+		t.Fatalf("motion names should stay out of runtime context: %s", prompt)
+	}
+}
+
 func TestBuildCortanaTurnRuntimeContextIncludesAuthoritativeLocalTime(t *testing.T) {
 	loc := time.FixedZone("Asia/Shanghai", 8*3600)
 	now := time.Date(2026, 5, 11, 9, 0, 0, 0, loc)
@@ -114,10 +139,10 @@ func TestBuildCortanaTurnRuntimeContextIncludesAuthoritativeLocalTime(t *testing
 
 	for _, want := range []string{
 		"当前本地时间上下文",
-		"2026-05-11 09:00:00",
+		"2026-05-11 09:00",
 		"星期一",
 		"timezone_offset: +08:00",
-		"captured_at 与本段冲突，以本段为准",
+		"time_precision: minute",
 	} {
 		if !strings.Contains(context, want) {
 			t.Fatalf("expected context to contain %q, got: %s", want, context)
@@ -156,6 +181,18 @@ func TestResolveAppConversationModeSplitsAudioReplyFromCortanaText(t *testing.T)
 	}
 	if requestID != "" {
 		t.Fatalf("unexpected request id: %q", requestID)
+	}
+}
+
+func TestCortanaShouldUseToolsOnlyForActionableQueries(t *testing.T) {
+	if cortanaShouldUseTools("已完成了") {
+		t.Fatalf("short companion continuation should not load tools")
+	}
+	if !cortanaShouldUseTools("帮我查一下今天的天气") {
+		t.Fatalf("weather query should load tools")
+	}
+	if !cortanaShouldUseTools("添加一个待办") {
+		t.Fatalf("todo mutation should load tools")
 	}
 }
 

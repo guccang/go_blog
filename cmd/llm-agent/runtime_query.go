@@ -182,10 +182,8 @@ func (b *Bridge) prepareQueryRuntime(ctx *TaskContext) (*QueryLoop, error) {
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(ctx.Account, query, enableToolPrompt)
 		promptContext.SystemPrompt = systemPrompt
 		promptContext.Sections = clonePromptSections(promptSections)
-		messages = []Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: ctx.Query},
-		}
+		runtimeContext := buildAccountRuntimeContext(ctx.Account, ctx.Source, nil)
+		messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, ctx.Query)
 		log.Printf("[processTask] 构建系统提示 promptLen=%d prompt:\n%s", len(systemPrompt), systemPrompt)
 	}
 

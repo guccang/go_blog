@@ -348,12 +348,8 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(wechatUser, content, true)
-		// 注入微信用户 ID（用于 LLM 创建定时任务时传入正确的 wechat_user）
-		systemPrompt += fmt.Sprintf("\n当前微信用户ID(wechat_user): %s\n", wechatUser)
-		session.Messages = []Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: content},
-		}
+		runtimeContext := buildAccountRuntimeContext(wechatUser, "wechat", map[string]string{"wechat_user": wechatUser})
+		session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, content)
 		session.PromptSections = promptSections
 		log.Printf("[Wechat] 新会话 sessionID=%s user=%s", session.SessionID, wechatUser)
 	} else {

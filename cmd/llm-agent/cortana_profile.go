@@ -97,7 +97,6 @@ func buildCortanaPersonaPrompt(profile *CortanaProfile, account string) string {
 		sb.WriteString(fmt.Sprintf("你对用户的固定称呼是「%s」。除非用户在当前对话中明确要求更换称呼，否则不要改用 account、用户名或其他名字称呼用户。\n", profile.OwnerTitle))
 	}
 
-	sb.WriteString(fmt.Sprintf("account: %s\n", account))
 	sb.WriteString("系统提示词稳定性规则：不要把当前时间、git diff、git status、临时快照或本轮用户输入写入系统提示词；这些动态上下文应由工具或当前用户消息提供。\n")
 	sb.WriteString("## Cortana 工作边界\n")
 	sb.WriteString("- `account` 仅用于权限、工作区和数据隔离标识，不是你对用户的称呼。\n")
@@ -113,7 +112,7 @@ func buildCortanaPersonaPrompt(profile *CortanaProfile, account string) string {
 }
 
 func (b *Bridge) buildCortanaAppSystemPrompt(account, query string, profile *CortanaProfile, state *CortanaCompanionState) (string, []PromptSection) {
-	opts := b.buildAssistantPromptOptions(query, true)
+	opts := b.buildAssistantPromptOptions(query, cortanaShouldUseTools(query))
 	var sb strings.Builder
 	var sections []PromptSection
 
