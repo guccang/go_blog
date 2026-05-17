@@ -8,8 +8,15 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
   }
 
   Future<File> _getVoskArchiveFile() async {
-    final tempDir = await getTemporaryDirectory();
-    return File('${tempDir.path}${Platform.pathSeparator}vosk-model-cn.zip');
+    // 下载完成但尚未解压时也要跨重启保留，不能放在系统随时可能清理的临时目录。
+    final supportDir = await getApplicationSupportDirectory();
+    final archiveDir = Directory(
+      '${supportDir.path}${Platform.pathSeparator}vosk_downloads',
+    );
+    if (!await archiveDir.exists()) {
+      await archiveDir.create(recursive: true);
+    }
+    return File('${archiveDir.path}${Platform.pathSeparator}vosk-model-cn.zip');
   }
 
   Future<File> _getVoskArchivePartFile() async {
@@ -686,8 +693,37 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     }
   }
 
+  List<String> _resolveVoskDownloadUrls() {
+    final manualUrl = _voskDownloadUrlController.text.trim();
+    if (manualUrl.isEmpty) {
+      return _voskModelUrls;
+    }
+
+    final uri = Uri.tryParse(manualUrl);
+    if (uri == null ||
+        !uri.hasScheme ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw const FormatException('请输入有效的 HTTP/HTTPS 下载地址');
+    }
+    return <String>[uri.toString()];
+  }
+
   Future<void> _downloadAndExtractVoskModel() async {
     if (_voskModelDownloading) {
+      return;
+    }
+
+    late final List<String> downloadUrls;
+    try {
+      downloadUrls = _resolveVoskDownloadUrls();
+    } catch (err) {
+      if (mounted) {
+        setState(() {
+          _voskModelDownloadError = err.toString();
+          _status = 'Vosk 模型下载地址无效: $err';
+        });
+      }
       return;
     }
 
@@ -696,8 +732,19 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     final archiveFile = await _getVoskArchiveFile();
     final partFile = await _getVoskArchivePartFile();
     final tempModelDir = await _getVoskExtractionTempDir();
+    final preferredDownloadUrl = downloadUrls.first;
 
     await _migrateLegacyVoskPartialArchive(prefs);
+    final previousDownloadUrl =
+        prefs.getString(_voskActiveDownloadUrlKey)?.trim() ?? '';
+    if (previousDownloadUrl.isNotEmpty &&
+        previousDownloadUrl != preferredDownloadUrl) {
+      await _deleteFileIfExists(archiveFile);
+      await _deleteFileIfExists(partFile);
+      await prefs.remove(_voskDownloadProgressKey);
+      await prefs.remove(_voskDownloadBytesKey);
+    }
+    await prefs.setString(_voskActiveDownloadUrlKey, preferredDownloadUrl);
     final savedProgress = await _getVoskDownloadProgress();
     final savedBytes = prefs.getInt(_voskDownloadBytesKey) ?? 0;
 
@@ -725,44 +772,72 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
           _voskModelDownloadProgress = 1.0;
         });
       } else {
-        await _fileDownloader.downloadToFile(
-          Uri.parse(_voskModelUrl),
-          destinationPath: archiveFile.path,
-          headersBuilder: ({int? rangeStart}) => <String, String>{
-            if (rangeStart != null && rangeStart > 0)
-              HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
-          },
-          onProgress: (receivedBytes, totalBytes, resumed) {
-            final progress = totalBytes != null && totalBytes > 0
-                ? receivedBytes / totalBytes
-                : 0.0;
-            if (!mounted) {
-              return;
+        Object? lastDownloadError;
+        for (var index = 0; index < downloadUrls.length; index++) {
+          final modelUrl = downloadUrls[index];
+          if (index > 0) {
+            await _deleteFileIfExists(partFile);
+            await prefs.remove(_voskDownloadBytesKey);
+            await prefs.remove(_voskDownloadProgressKey);
+            if (mounted) {
+              setState(() {
+                _voskModelDownloadProgress = 0.0;
+                _status = '当前下载源不可用，正在切换备用下载源...';
+              });
             }
-            setState(() {
-              _voskModelDownloadProgress = progress;
-              if (totalBytes != null && totalBytes > 0) {
-                _status =
-                    '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${(progress * 100).toStringAsFixed(1)}%)';
-              } else {
-                _status = '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)}';
-              }
-            });
-            unawaited(prefs.setInt(_voskDownloadBytesKey, receivedBytes));
-            if (totalBytes != null && totalBytes > 0) {
-              unawaited(prefs.setDouble(_voskDownloadProgressKey, progress));
+          }
+
+          try {
+            await _fileDownloader.downloadToFile(
+              Uri.parse(modelUrl),
+              destinationPath: archiveFile.path,
+              headersBuilder: ({int? rangeStart}) => <String, String>{
+                if (rangeStart != null && rangeStart > 0)
+                  HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
+              },
+              onProgress: (receivedBytes, totalBytes, resumed) {
+                final progress = totalBytes != null && totalBytes > 0
+                    ? receivedBytes / totalBytes
+                    : 0.0;
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _voskModelDownloadProgress = progress;
+                  if (totalBytes != null && totalBytes > 0) {
+                    _status =
+                        '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${(progress * 100).toStringAsFixed(1)}%)';
+                  } else {
+                    _status = '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)}';
+                  }
+                });
+                unawaited(prefs.setInt(_voskDownloadBytesKey, receivedBytes));
+                if (totalBytes != null && totalBytes > 0) {
+                  unawaited(prefs.setDouble(_voskDownloadProgressKey, progress));
+                }
+              },
+              onRetry: (error, attempt, delay) {
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _status =
+                      '下载中断，${delay.inSeconds} 秒后重试 ($attempt/${_voskDownloadRetryDelays.length})...';
+                });
+              },
+            );
+            lastDownloadError = null;
+            break;
+          } catch (err) {
+            lastDownloadError = err;
+            if (index == downloadUrls.length - 1) {
+              rethrow;
             }
-          },
-          onRetry: (error, attempt, delay) {
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _status =
-                  '下载中断，${delay.inSeconds} 秒后重试 ($attempt/${_voskDownloadRetryDelays.length})...';
-            });
-          },
-        );
+          }
+        }
+        if (lastDownloadError != null) {
+          throw lastDownloadError;
+        }
         final archiveBytes = await archiveFile.length();
         await prefs.setInt(_voskDownloadBytesKey, archiveBytes);
         await prefs.setDouble(_voskDownloadProgressKey, 1.0);
@@ -892,6 +967,8 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
       final savedUserId = prefs.getString(_lastLoginUserIdKey)?.trim() ?? '';
       // Use saved model path if available (from downloaded model), otherwise use asset config
       final savedModelPath = prefs.getString('vosk_model_path')?.trim() ?? '';
+      final savedVoskManualDownloadUrl =
+          prefs.getString(_voskManualDownloadUrlKey)?.trim() ?? '';
       final config = ClientConfig(
         baseUrl: savedBaseUrl.isEmpty ? assetConfig.baseUrl : savedBaseUrl,
         receiveToken: assetConfig.receiveToken,
@@ -971,6 +1048,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
         _cortanaPersonaDescCtrl.text = _cortanaPersonaDescription;
         _cortanaWakePhraseCtrl.text = _cortanaWakePhrase;
         _baseUrlController.text = config.baseUrl;
+        _voskDownloadUrlController.text = savedVoskManualDownloadUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
         }
@@ -1361,7 +1439,14 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     if (_cortanaEnabled && _cortanaAllowFullAccess) {
       unawaited(_refreshCortanaDeviceContext(report: true, force: true));
     }
-    unawaited(_syncCortanaSettings());
+    _scheduleCortanaSettingsSync();
+  }
+
+  void _scheduleCortanaSettingsSync() {
+    _cortanaSettingsPersistTimer?.cancel();
+    _cortanaSettingsPersistTimer = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_syncCortanaSettings());
+    });
   }
 
   bool get _sessionExpired {

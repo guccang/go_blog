@@ -246,10 +246,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     _startupGreetingShown = true;
-    _appendSystem(
-      '欢迎来到 App Agent，可以先登录，也可以先查看当前配置。',
-      persist: false,
-    );
+    _appendSystem('欢迎来到 App Agent，可以先登录，也可以先查看当前配置。', persist: false);
     _showGreetingSnackBar('欢迎来到 App Agent');
   }
 
@@ -258,9 +255,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       return;
     }
     _loginGreetingShown = true;
-    final text = restored
-        ? '欢迎回来，连接已恢复，可以继续对话。'
-        : '登录成功，欢迎回来，可以开始对话。';
+    final text = restored ? '欢迎回来，连接已恢复，可以继续对话。' : '登录成功，欢迎回来，可以开始对话。';
     _appendSystem(text, persist: false);
     _showGreetingSnackBar(restored ? '欢迎回来' : '登录成功');
   }
@@ -1010,6 +1005,17 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     return candidates;
   }
 
+  String _stripEmbeddedBase64FromHistoryRaw(String raw) {
+    // 旧版本会把 Cortana TTS 音频直接写进历史；先在 JSON 字符串层剥离，
+    // 再反序列化，避免启动恢复时为大块 base64 额外制造内存峰值。
+    return raw.replaceAllMapped(
+      RegExp(
+        r'("(?:audio_base64|cortana_audio_base64|image_base64|video_base64)"\s*:\s*")[^"]*(")',
+      ),
+      (match) => '${match.group(1)}${match.group(2)}',
+    );
+  }
+
   List<ChatMessage>? _decodeHistoryRaw(String raw) {
     try {
       return _trimChatHistory(
@@ -1032,8 +1038,24 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       scopeKey,
     );
     for (final raw in candidates) {
-      final decoded = _decodeHistoryRaw(raw);
+      final sanitizedRaw = _stripEmbeddedBase64FromHistoryRaw(raw);
+      final decoded = _decodeHistoryRaw(sanitizedRaw);
       if (decoded != null) {
+        if (sanitizedRaw != raw) {
+          // 读取旧历史时顺手回写瘦身后的版本，下一次冷启动不再重复背负旧包袱。
+          final encoded = jsonEncode(
+            decoded.map((message) => message.toJson()).toList(),
+          );
+          await prefs.setString(_historyStorageKey(scopeKey), encoded);
+          try {
+            await _secureStorage.write(
+              key: _historyBackupStorageKey(scopeKey),
+              value: encoded,
+            );
+          } catch (err) {
+            debugPrint('Persist sanitized history failed for $scopeKey: $err');
+          }
+        }
         return decoded;
       }
     }

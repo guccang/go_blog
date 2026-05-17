@@ -47,6 +47,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _codegenCodeSearchController = TextEditingController();
   final _codegenDeploySearchController = TextEditingController();
   final _deployArgsController = TextEditingController();
+  final _voskDownloadUrlController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _controlsScrollController = ScrollController();
@@ -86,6 +87,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _socketSub;
   Timer? _reconnectTimer;
+  Timer? _cortanaSettingsPersistTimer;
   Timer? _cortanaWakeRestartTimer;
   Timer? _cortanaLocationTimer;
   Timer? _streamFlushTimer;
@@ -103,6 +105,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _speechReady = false;
   bool _systemSpeechReady = false;
   bool _useLocalVosk = false;
+  bool _persistentVoskWakeListening = false;
   bool _sending = false;
   bool _transcribingVoice = false;
   bool _voiceInputMode = false;
@@ -170,6 +173,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String _selectedCodeProjectQualifiedName = '';
   String _selectedCodeTool = '';
   String _selectedClaudeSettings = '';
+  bool _codegenResumeLastSession = false;
   String _selectedDeployProjectQualifiedName = '';
   String _selectedDeployTarget = '';
   DateTime? _recordStartedAt;
@@ -195,6 +199,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _loginGreetingShown = false;
   bool _cortanaWakeListening = false;
   bool _cortanaWakeHandling = false;
+  bool _cortanaWakeAwaitingCommand = false;
   bool _cortanaWakePausedForLifecycle = false;
   bool _speechTransitioning = false;
   Future<void> _speechStopTail = Future<void>.value();
@@ -245,6 +250,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       await _migrateLegacyVoskPartialArchive(prefs);
       final partFile = await _getVoskArchivePartFile();
+      final archiveFile = await _getVoskArchiveFile();
       if (await partFile.exists()) {
         final partialBytes = await partFile.length();
         if (partialBytes <= 0) {
@@ -263,6 +269,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _status = 'Vosk 模型下载未完成（已下载 ${_formatBytes(savedBytes)}），点击继续下载按钮可继续';
         });
         _appendSystem('检测到未完成的 Vosk 模型下载，可点击继续下载');
+      } else if (await archiveFile.exists() && await archiveFile.length() > 0) {
+        if (!mounted) return;
+        setState(() {
+          _voskModelDownloadProgress = 1.0;
+          _status = '检测到已下载完成的 Vosk 模型压缩包，正在继续安装';
+        });
+        _appendSystem('检测到已下载完成的 Vosk 模型压缩包，继续安装。');
+        unawaited(_downloadAndExtractVoskModel());
       } else {
         await prefs.remove(_voskDownloadProgressKey);
         await prefs.remove(_voskDownloadBytesKey);
@@ -282,6 +296,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_flushHistoryToDisk());
     _reconnectTimer?.cancel();
+    _cortanaSettingsPersistTimer?.cancel();
     _cortanaExpressionTimer?.cancel();
     _cortanaWakeRestartTimer?.cancel();
     _cortanaLocationTimer?.cancel();
@@ -300,6 +315,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _codegenCodeSearchController.dispose();
     _codegenDeploySearchController.dispose();
     _deployArgsController.dispose();
+    _voskDownloadUrlController.dispose();
     _codegenHistoryNotifier.dispose();
     _cortanaPersonaNameCtrl.dispose();
     _cortanaOwnerTitleCtrl.dispose();
@@ -352,6 +368,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _appendCortanaWakeLog(text);
   }
 
+  void _setCortanaWakeListening(bool value, {required String reason}) {
+    if (_cortanaWakeListening == value) {
+      return;
+    }
+    _cortanaWakeListening = value;
+    _appendCortanaWakeLog(value ? '进入等待唤醒词状态: $reason' : '退出等待唤醒词状态: $reason');
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _setCortanaWakeAwaitingCommand(bool value, {required String reason}) {
+    if (_cortanaWakeAwaitingCommand == value) {
+      return;
+    }
+    _cortanaWakeAwaitingCommand = value;
+    _appendCortanaWakeLog(
+      value ? '进入等待用户说话状态: $reason' : '退出等待用户说话状态: $reason',
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   String _cortanaWakeBlockedReason() {
     if (!mounted) return '页面未挂载';
     if (!_cortanaEnabled) return 'Cortana 未启用';
@@ -363,6 +403,43 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (_cortanaWakeHandling) return '正在处理上一次唤醒';
     if (_speechTransitioning) return '语音识别正在切换状态';
     return '';
+  }
+
+  String get _cortanaWakeStatusLabel {
+    if (!_cortanaEnabled) {
+      return 'Cortana 未启用';
+    }
+    if (!_cortanaVoiceWakeEnabled) {
+      return '语音唤醒未开启';
+    }
+    if (_cortanaWakeAwaitingCommand) {
+      return '等待用户说话';
+    }
+    if (_cortanaWakeListening) {
+      return '正在监听唤醒词';
+    }
+    final blockedReason = _cortanaWakeBlockedReason();
+    if (blockedReason.isNotEmpty) {
+      return '未监听：$blockedReason';
+    }
+    return '等待启动监听';
+  }
+
+  String get _cortanaWakeStatusDetail {
+    if (!_cortanaVoiceWakeEnabled) {
+      return '开启后，前台会持续监听“$_cortanaWakePhrase”。';
+    }
+    if (_cortanaWakeAwaitingCommand) {
+      return '已听到唤醒词，5 秒内等待你的指令。';
+    }
+    if (_cortanaWakeListening) {
+      return '说“$_cortanaWakePhrase”即可唤醒。';
+    }
+    final blockedReason = _cortanaWakeBlockedReason();
+    if (blockedReason.isNotEmpty) {
+      return '当前无法监听：$blockedReason。';
+    }
+    return '监听任务已排队，稍后会自动启动。';
   }
 
   void _showCortanaWakeGreeting(String text) {
@@ -380,7 +457,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _handleSpeechRecognitionStatus(String status) {
     if (_lastSpeechStatusLog != status) {
       _lastSpeechStatusLog = status;
-      _appendSystem('Speech recognition status: $status');
       if (_cortanaVoiceWakeEnabled ||
           _cortanaWakeListening ||
           _cortanaWakeHandling) {
@@ -391,7 +467,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     }
     if (_isSpeechDoneStatus(status) && _cortanaWakeListening) {
-      _cortanaWakeListening = false;
+      _setCortanaWakeListening(false, reason: '识别状态=$status');
       unawaited(_handleCortanaWakeSessionEnded());
     }
   }
@@ -404,7 +480,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     if (_cortanaWakeListening) {
-      _cortanaWakeListening = false;
+      _setCortanaWakeListening(false, reason: '语音识别错误');
       if (!_cortanaWakeHandling) {
         _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
       }
@@ -417,7 +493,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _resetBusySpeechRecognition() async {
-    _cortanaWakeListening = false;
+    _setCortanaWakeListening(false, reason: '系统语音识别忙');
     _appendCortanaWakeLog('系统语音识别忙，重置后重启监听');
     await _stopSpeechRecognition(cancel: true);
     if (!_cortanaWakeHandling) {
@@ -449,10 +525,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _handleCortanaWakeSessionEnded() async {
-    _appendCortanaWakeLog('监听会话结束，准备重启');
-    await _stopSpeechRecognition(cancel: true);
+    // Android 的普通语音识别会在静音后自行结束；此时再主动 cancel
+    // 只会额外制造 done/notListening 状态抖动，直接排队重启即可。
+    _appendCortanaWakeLog('监听会话自然结束，准备重启');
     if (!_cortanaWakeHandling) {
-      _scheduleCortanaWakeRestart(delay: const Duration(milliseconds: 1200));
+      _scheduleCortanaWakeRestart(delay: const Duration(milliseconds: 800));
     }
   }
 
@@ -608,8 +685,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _pauseCortanaWakeListening({required bool cancel}) async {
     _cortanaWakeRestartTimer?.cancel();
-    _cortanaWakeListening = false;
+    _setCortanaWakeListening(false, reason: '暂停监听');
     _appendCortanaWakeLog('暂停监听: cancel=$cancel');
+    if (_persistentVoskWakeListening) {
+      await _voskTranscriber.stopWakeWordListening();
+      _persistentVoskWakeListening = false;
+      _appendCortanaWakeLog('已停止 Vosk 常驻唤醒监听');
+      // 原生 SpeechService 关闭 AudioRecord 需要一点尾部时间；
+      // 立刻切系统听写容易触发 recognizer_busy / error_busy。
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+    }
     await _stopSpeechRecognition(cancel: cancel);
   }
 
@@ -690,6 +775,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       return;
     }
+    if (_useLocalVosk && _isAndroidHost) {
+      await _startPersistentVoskWakeListening();
+      return;
+    }
     if (_speechToText.isListening) {
       _appendCortanaWakeStateLog('监听未启动: 系统语音识别已在监听');
       return;
@@ -717,7 +806,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       // so the Future resolves to null. Set optimistic flag before
       // listen() rather than relying on isListening afterward, because
       // isListening can be out of sync with the native recognizer.
-      _cortanaWakeListening = true;
+      _setCortanaWakeListening(true, reason: 'listen 启动');
       await _speechToText.listen(
         onResult: (result) {
           final transcript = normalizeSpeechTranscript(result.recognizedWords);
@@ -739,7 +828,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           }
         },
         listenFor: const Duration(minutes: 5),
-        pauseFor: const Duration(seconds: 3),
+        // 唤醒词等待期需要尽量容忍静音，减少 Android 会话因短暂停顿而频繁重启。
+        // 该值是上限，底层平台仍可能更早结束会话。
+        pauseFor: const Duration(seconds: 30),
         localeId: localeId,
         listenOptions: stt.SpeechListenOptions(
           listenMode: stt.ListenMode.dictation,
@@ -753,10 +844,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
       }
       _appendCortanaWakeLog(
-        'listen 返回: isListening=$_speechToText.isListening',
+        'listen 返回: isListening=${_speechToText.isListening}',
       );
     } catch (err, stack) {
-      _cortanaWakeListening = false;
+      _setCortanaWakeListening(false, reason: '启动监听失败');
       _appendCortanaWakeLog('启动监听失败: $err');
       debugPrint('Cortana wake listen error: $err\n$stack');
       // Always cancel the native recognizer before restarting, even for
@@ -769,12 +860,87 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _startPersistentVoskWakeListening() async {
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      _appendSystem('语音唤醒需要麦克风权限。');
+      _appendCortanaWakeLog('Vosk 常驻监听未启动: 缺少麦克风权限');
+      return;
+    }
+    try {
+      _voskTranscriber.setWakeWordEventHandler(_handlePersistentVoskWakeEvent);
+      final started = await _voskTranscriber.startWakeWordListening();
+      if (!started) {
+        _appendCortanaWakeLog('Vosk 常驻监听未启动: native 返回 started=false');
+        _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+        return;
+      }
+      _persistentVoskWakeListening = true;
+      _setCortanaWakeListening(true, reason: 'Vosk 常驻监听启动');
+      _appendCortanaWakeLog('Vosk 常驻唤醒监听已启动');
+      if (mounted) {
+        setState(() {
+          _status = 'Vosk 常驻语音唤醒监听中';
+        });
+      }
+    } catch (err, stack) {
+      _persistentVoskWakeListening = false;
+      _appendCortanaWakeLog('Vosk 常驻监听启动失败: $err');
+      debugPrint('Vosk wake listen error: $err\n$stack');
+      _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+    }
+  }
+
+  Future<void> _handlePersistentVoskWakeEvent(
+    Map<String, dynamic> event,
+  ) async {
+    if (!_persistentVoskWakeListening || _cortanaWakeHandling) {
+      return;
+    }
+    final type = (event['type'] ?? '').toString().trim();
+    final payload = (event['payload'] ?? '').toString().trim();
+    if (type == 'error') {
+      _appendCortanaWakeLog('Vosk 常驻监听错误: $payload');
+      _persistentVoskWakeListening = false;
+      _setCortanaWakeListening(false, reason: 'Vosk 常驻监听错误');
+      _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
+      return;
+    }
+    final transcript = _extractVoskText(payload);
+    if (transcript.isEmpty) {
+      return;
+    }
+    _appendCortanaWakeLog('Vosk 常驻监听识别到: "$transcript", type=$type');
+    final command = _extractCortanaWakeCommand(transcript);
+    if (command == null) {
+      return;
+    }
+    _appendCortanaWakeLog('Vosk 常驻监听命中唤醒词，初始指令="$command"');
+    await _handleCortanaWakeDetected(command);
+  }
+
+  String _extractVoskText(String rawJson) {
+    if (rawJson.isEmpty) {
+      return '';
+    }
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is Map) {
+        return normalizeSpeechTranscript(
+          (decoded['text'] ?? decoded['partial'] ?? '').toString(),
+        );
+      }
+    } catch (_) {}
+    return normalizeSpeechTranscript(rawJson);
+  }
+
   Future<String> _listenForCortanaWakeCommand() async {
     if (!await _ensureSystemSpeechRecognitionReady(silent: true)) {
       return '';
     }
     final completer = Completer<String>();
     var transcript = '';
+    var lastLoggedTranscript = '';
     try {
       await _speechStopTail.catchError((_) {});
       final localeId = await _resolveSpeechLocaleId();
@@ -782,6 +948,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         localeId: localeId,
         onTranscript: (text, finalResult) {
           transcript = text;
+          if (text.isNotEmpty && text != lastLoggedTranscript) {
+            lastLoggedTranscript = text;
+            _appendCortanaWakeLog('等待用户说话识别到: "$text", final=$finalResult');
+          }
           if (finalResult && text.isNotEmpty && !completer.isCompleted) {
             completer.complete(text);
           }
@@ -793,6 +963,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           localeId: localeId,
           onTranscript: (text, finalResult) {
             transcript = text;
+            if (text.isNotEmpty && text != lastLoggedTranscript) {
+              lastLoggedTranscript = text;
+              _appendCortanaWakeLog('等待用户说话识别到: "$text", final=$finalResult');
+            }
             if (finalResult && text.isNotEmpty && !completer.isCompleted) {
               completer.complete(text);
             }
@@ -807,10 +981,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           _status = 'Cortana 已唤醒，正在聆听...';
         });
       }
-      _appendCortanaWakeLog('唤醒后继续聆听指令');
+      _setCortanaWakeAwaitingCommand(true, reason: '唤醒词已命中');
+      _appendCortanaWakeLog('唤醒后继续聆听指令，最长等待 5 秒');
       return await Future.any<String>([
         completer.future,
-        Future<String>.delayed(const Duration(seconds: 10), () => transcript),
+        Future<String>.delayed(const Duration(seconds: 5), () => transcript),
       ]);
     } catch (err, stack) {
       _appendCortanaWakeLog('唤醒后聆听指令失败: $err');
@@ -820,6 +995,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       return transcript;
     } finally {
+      _setCortanaWakeAwaitingCommand(false, reason: '指令监听结束');
       await _stopSpeechRecognition(cancel: false);
     }
   }
@@ -837,7 +1013,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           result.finalResult,
         );
       },
-      listenFor: const Duration(seconds: 10),
+      listenFor: const Duration(seconds: 5),
       pauseFor: const Duration(seconds: 2),
       localeId: localeId,
       listenOptions: stt.SpeechListenOptions(
@@ -861,7 +1037,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         return;
       }
       setState(() {
-        _rootTab = RootTab.cortana;
         _cortanaFloatingMode = CortanaDisplayMode.collapsed;
         _cortanaBadge = false;
         _status = 'Cortana 已唤醒';
@@ -882,7 +1057,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       if (command.isEmpty) {
         _appendSystem('已唤醒 Cortana，但未识别到有效语音内容。');
-        _appendCortanaWakeLog('唤醒成功，但后续指令为空');
+        _appendCortanaWakeLog('等待用户说话 5 秒超时，未识别到有效指令，回到等待唤醒词状态');
         return;
       }
       await _speakCortanaWakeCommand(command);

@@ -287,6 +287,7 @@ class CodegenHistoryCommandDetails {
     required this.target,
     required this.extraArgs,
     required this.autoDeploy,
+    required this.resumeLastSession,
     required this.packOnly,
   });
 
@@ -298,6 +299,7 @@ class CodegenHistoryCommandDetails {
   final String target;
   final String extraArgs;
   final bool autoDeploy;
+  final bool resumeLastSession;
   final bool packOnly;
 
   factory CodegenHistoryCommandDetails.parse(CodegenHistoryItem item) {
@@ -316,6 +318,7 @@ class CodegenHistoryCommandDetails {
         target: '',
         extraArgs: '',
         autoDeploy: false,
+        resumeLastSession: false,
         packOnly: false,
       );
     }
@@ -338,12 +341,14 @@ class CodegenHistoryCommandDetails {
         target: '',
         extraArgs: '',
         autoDeploy: false,
+        resumeLastSession: false,
         packOnly: false,
       );
     }
 
     if (action == 'start' || action == 'debug') {
       var autoDeploy = false;
+      var resumeLastSession = false;
       var tool = '';
       var claudeSettings = '';
       final projectQualifiedName = tokens[2];
@@ -352,6 +357,11 @@ class CodegenHistoryCommandDetails {
         final token = tokens[requestStart];
         if (token == '!deploy') {
           autoDeploy = true;
+          requestStart++;
+          continue;
+        }
+        if (token == '!resume') {
+          resumeLastSession = true;
           requestStart++;
           continue;
         }
@@ -379,6 +389,7 @@ class CodegenHistoryCommandDetails {
         target: '',
         extraArgs: '',
         autoDeploy: autoDeploy,
+        resumeLastSession: resumeLastSession,
         packOnly: false,
       );
     }
@@ -408,6 +419,7 @@ class CodegenHistoryCommandDetails {
         target: target,
         extraArgs: args.join(' '),
         autoDeploy: false,
+        resumeLastSession: false,
         packOnly: packOnly,
       );
     }
@@ -421,6 +433,7 @@ class CodegenHistoryCommandDetails {
       target: '',
       extraArgs: '',
       autoDeploy: false,
+      resumeLastSession: false,
       packOnly: false,
     );
   }

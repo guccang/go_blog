@@ -303,6 +303,8 @@ func (h *Handler) HandleCortanaSettings(w http.ResponseWriter, r *http.Request) 
 			PersonaName        string `json:"persona_name"`
 			OwnerTitle         string `json:"owner_title"`
 			PersonaDescription string `json:"persona_description"`
+			VoiceWakeEnabled   *bool  `json:"voice_wake_enabled"`
+			WakePhrase         string `json:"wake_phrase"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -336,6 +338,12 @@ func (h *Handler) HandleCortanaSettings(w http.ResponseWriter, r *http.Request) 
 		}
 		current.OwnerTitle = strings.TrimSpace(req.OwnerTitle)
 		current.PersonaDescription = strings.TrimSpace(req.PersonaDescription)
+		if req.VoiceWakeEnabled != nil {
+			current.VoiceWakeEnabled = *req.VoiceWakeEnabled
+		}
+		if strings.TrimSpace(req.WakePhrase) != "" {
+			current.WakePhrase = strings.TrimSpace(req.WakePhrase)
+		}
 		current.UpdatedAt = time.Now().UnixMilli()
 		if h.settings != nil {
 			current = h.settings.Set(account, current)

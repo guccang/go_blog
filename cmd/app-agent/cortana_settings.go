@@ -24,6 +24,8 @@ type CortanaSettings struct {
 	PersonaName        string `json:"persona_name,omitempty"`
 	OwnerTitle         string `json:"owner_title,omitempty"`
 	PersonaDescription string `json:"persona_description,omitempty"`
+	VoiceWakeEnabled   bool   `json:"voice_wake_enabled,omitempty"`
+	WakePhrase         string `json:"wake_phrase,omitempty"`
 	UpdatedAt          int64  `json:"updated_at"`
 }
 
@@ -67,6 +69,7 @@ func NormalizeCortanaSettings(in CortanaSettings) CortanaSettings {
 	}
 	out.OwnerTitle = strings.TrimSpace(out.OwnerTitle)
 	out.PersonaDescription = strings.TrimSpace(out.PersonaDescription)
+	out.WakePhrase = strings.TrimSpace(out.WakePhrase)
 	if out.UpdatedAt <= 0 {
 		out.UpdatedAt = time.Now().UnixMilli()
 	}

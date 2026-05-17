@@ -99,6 +99,7 @@ class ChatMessage {
         ? null
         : Map<String, dynamic>.from(meta!);
     sanitizedMeta?.remove('audio_base64');
+    sanitizedMeta?.remove('cortana_audio_base64');
     sanitizedMeta?.remove('image_base64');
     sanitizedMeta?.remove('video_base64');
     sanitizedMeta?.remove('_ephemeral');

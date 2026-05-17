@@ -14,6 +14,8 @@ type CortanaUserSettings struct {
 	ProactiveMode      string `json:"proactive_mode"`
 	PersonaName        string `json:"persona_name,omitempty"`
 	PersonaDescription string `json:"persona_description,omitempty"`
+	VoiceWakeEnabled   bool   `json:"voice_wake_enabled,omitempty"`
+	WakePhrase         string `json:"wake_phrase,omitempty"`
 	UpdatedAt          int64  `json:"updated_at"`
 }
 
@@ -66,6 +68,7 @@ func defaultCortanaUserSettings() CortanaUserSettings {
 		AutoPlay:        true,
 		ProactiveMode:   "high",
 		PersonaName:     "Cortana",
+		WakePhrase:      "嗨 Cortana",
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
 }
@@ -83,6 +86,7 @@ func normalizeCortanaSettings(in CortanaUserSettings) CortanaUserSettings {
 		out.PersonaName = strings.TrimSpace(out.PersonaName)
 	}
 	out.PersonaDescription = strings.TrimSpace(out.PersonaDescription)
+	out.WakePhrase = strings.TrimSpace(out.WakePhrase)
 	if out.UpdatedAt <= 0 {
 		out.UpdatedAt = time.Now().UnixMilli()
 	}

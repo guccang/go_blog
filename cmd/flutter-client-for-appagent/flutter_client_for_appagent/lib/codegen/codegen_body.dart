@@ -37,6 +37,8 @@ class CodegenBody extends StatelessWidget {
     required this.selectedDeployProject,
     required this.selectedCodeTool,
     required this.selectedToolSettings,
+    required this.resumeLastSession,
+    required this.resumeLastSessionEnabled,
     required this.selectedCodeToolOptions,
     required this.selectedToolSettingsOptions,
     required this.selectedDeployTarget,
@@ -57,6 +59,7 @@ class CodegenBody extends StatelessWidget {
     required this.onCodeProjectChanged,
     required this.onCodeToolChanged,
     required this.onToolSettingsChanged,
+    required this.onResumeLastSessionChanged,
     required this.onPromptChanged,
     required this.onAutoDeployChanged,
     required this.onDebugBundleModeChanged,
@@ -86,6 +89,8 @@ class CodegenBody extends StatelessWidget {
   final DeployProjectInfo? selectedDeployProject;
   final String selectedCodeTool;
   final String selectedToolSettings;
+  final bool resumeLastSession;
+  final bool resumeLastSessionEnabled;
   final List<String> selectedCodeToolOptions;
   final List<String> selectedToolSettingsOptions;
   final String selectedDeployTarget;
@@ -106,6 +111,7 @@ class CodegenBody extends StatelessWidget {
   final ValueChanged<String?> onCodeProjectChanged;
   final ValueChanged<String?> onCodeToolChanged;
   final ValueChanged<String?> onToolSettingsChanged;
+  final ValueChanged<bool> onResumeLastSessionChanged;
   final ValueChanged<String> onPromptChanged;
   final ValueChanged<bool> onAutoDeployChanged;
   final ValueChanged<bool> onDebugBundleModeChanged;
@@ -391,6 +397,15 @@ class CodegenBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        SwitchListTile(
+          value: resumeLastSession,
+          onChanged:
+              resumeLastSessionEnabled ? onResumeLastSessionChanged : null,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('继续上次会话'),
+          subtitle: const Text('Codex 使用 resume，Claude Code 使用 -c'),
+        ),
+        const SizedBox(height: 4),
         SwitchListTile(
           value: autoDeploy,
           onChanged: debugBundleMode ? null : onAutoDeployChanged,

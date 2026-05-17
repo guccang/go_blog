@@ -36,6 +36,9 @@ extension _ChatPageStateCodegen on _ChatPageState {
     return List<String>.from(project.claudeCodeSettings);
   }
 
+  bool get _selectedCodeToolSupportsResume =>
+      _selectedCodeTool == 'codex' || _selectedCodeTool == 'claudecode';
+
   DeployProjectInfo? get _selectedDeployProject {
     for (final project in _deployProjects) {
       if (project.qualifiedName == _selectedDeployProjectQualifiedName) {
@@ -169,6 +172,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       final codeSearch = prefs.getString(_codeSearchKey)?.trim() ?? '';
       final deploySearch = prefs.getString(_deploySearchKey)?.trim() ?? '';
       final debugBundleMode = prefs.getBool(_debugBundleModeKey) ?? false;
+      final resumeLastSession = prefs.getBool(_resumeLastSessionKey) ?? false;
       if (!mounted) {
         _deployArgsController.text = deployArgs;
         _codegenCodeSearchController.text = codeSearch;
@@ -179,6 +183,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
         _codegenDebugBundleMode = debugBundleMode;
+        _codegenResumeLastSession = resumeLastSession;
         if (_codegenDebugBundleMode) {
           _codegenAutoDeploy = false;
         }
@@ -197,6 +202,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
         _selectedDeployProjectQualifiedName = deployProject;
         _selectedDeployTarget = deployTarget;
         _codegenDebugBundleMode = debugBundleMode;
+        _codegenResumeLastSession = resumeLastSession;
         if (_codegenDebugBundleMode) {
           _codegenAutoDeploy = false;
         }
@@ -216,6 +222,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       await prefs.setString(_codeProjectKey, _selectedCodeProjectQualifiedName);
       await prefs.setString(_codeToolKey, _selectedCodeTool);
       await prefs.setString(_claudeSettingsKey, _selectedClaudeSettings);
+      await prefs.setBool(_resumeLastSessionKey, _codegenResumeLastSession);
       await prefs.setString(
         _deployProjectKey,
         _selectedDeployProjectQualifiedName,
@@ -616,6 +623,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
         }
         _selectedCodeTool = details.tool;
         _selectedClaudeSettings = details.claudeSettings;
+        _codegenResumeLastSession = details.resumeLastSession;
         _codegenAutoDeploy = details.autoDeploy;
         _codegenPromptController.text = details.requestText;
       } else {
@@ -1419,6 +1427,16 @@ extension _ChatPageStateCodegen on _ChatPageState {
     unawaited(_persistCodegenPreferences());
   }
 
+  void _handleResumeLastSessionChanged(bool value) {
+    if (value == _codegenResumeLastSession) {
+      return;
+    }
+    setState(() {
+      _codegenResumeLastSession = value;
+    });
+    unawaited(_persistCodegenPreferences());
+  }
+
   void _handleDeployProjectChanged(String? qualifiedName) {
     final value = qualifiedName?.trim() ?? '';
     if (value.isEmpty) {
@@ -1472,6 +1490,9 @@ extension _ChatPageStateCodegen on _ChatPageState {
       if (_selectedClaudeSettings.isNotEmpty) {
         parts.add('--settings');
         parts.add(_selectedClaudeSettings);
+      }
+      if (_codegenResumeLastSession && _selectedCodeToolSupportsResume) {
+        parts.add('!resume');
       }
       if (_codegenDebugBundleMode && !forceStartCommand) {
         parts.add('--debug-id');

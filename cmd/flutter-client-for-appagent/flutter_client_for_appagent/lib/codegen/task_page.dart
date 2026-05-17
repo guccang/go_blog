@@ -170,6 +170,11 @@ class _CodegenTaskDetailsState extends State<_CodegenTaskDetails> {
                   value: details.autoDeploy ? '是' : '否',
                 ),
               if (details.mode == CodegenLaunchMode.code)
+                _DetailBlock(
+                  label: '继续上次会话',
+                  value: details.resumeLastSession ? '是' : '否',
+                ),
+              if (details.mode == CodegenLaunchMode.code)
                 _DetailBlock(label: '需求', value: details.requestText),
               if (details.mode == CodegenLaunchMode.deploy)
                 _DetailBlock(

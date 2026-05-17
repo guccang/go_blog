@@ -419,7 +419,7 @@ func (a *CMDAGent) handleCgCreate(req commandRequest, param string) error {
 
 func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 	if strings.TrimSpace(param) == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请指定项目和需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>")
+		return a.sendClientNotify(req.route(), "⚠️ 请指定项目和需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!resume] [!deploy] <编码需求>")
 	}
 
 	startParts := strings.SplitN(param, " ", 2)
@@ -429,12 +429,13 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 		rest = strings.TrimSpace(startParts[1])
 	}
 	if rest == "" {
-		return a.sendClientNotify(req.route(), "⚠️ 请提供编码需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!deploy] <编码需求>")
+		return a.sendClientNotify(req.route(), "⚠️ 请提供编码需求\n用法: cg start <项目[@agent]> [#模型] [@工具] [!resume] [!deploy] <编码需求>")
 	}
 
 	model := ""
 	tool := ""
 	settings := ""
+	resumeLast := false
 	autoDeploy := false
 	for strings.HasPrefix(rest, "#") ||
 		strings.HasPrefix(rest, "@") ||
@@ -446,6 +447,8 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 			model = strings.TrimPrefix(opt, "#")
 		} else if strings.HasPrefix(opt, "@") {
 			tool = normalizeTool(strings.TrimPrefix(opt, "@"))
+		} else if strings.EqualFold(opt, "!resume") {
+			resumeLast = true
 		} else if strings.EqualFold(opt, "!deploy") {
 			autoDeploy = true
 		} else if opt == "--settings" {
@@ -487,11 +490,11 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 	}
 	a.setPendingRoute(requestID, route)
 
-	if err := a.sendClientNotify(route, buildStartInfo(project, agentNameOrDefault(agentName, agent.Name), model, tool, settings, autoDeploy, requestID)); err != nil {
+	if err := a.sendClientNotify(route, buildStartInfo(project, agentNameOrDefault(agentName, agent.Name), model, tool, settings, resumeLast, autoDeploy, requestID)); err != nil {
 		return err
 	}
 
-	args, toolName := buildCodingStartCall(agent, a.cfg.AgentID, project, rest, model, tool, settings)
+	args, toolName := buildCodingStartCall(agent, a.cfg.AgentID, project, rest, model, tool, settings, resumeLast)
 	route.Kind = codingBackendKind(toolName)
 	resultCh, err := a.callTool(agent.AgentID, requestID, toolName, args)
 	if err != nil {
@@ -1177,7 +1180,7 @@ func (a *CMDAGent) resolveCodegenCreateAgent(project, preferredAgent string) (ga
 	return gatewayAgentSnapshot{}, fmt.Errorf("多个 acp-agent 在线，请用 %s@<agent> 指定，可选: %s", project, strings.Join(uniqueSorted(names), ", "))
 }
 
-func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, prompt, model, tool, settings string) (map[string]any, string) {
+func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, prompt, model, tool, settings string, resumeLast bool) (map[string]any, string) {
 	if hasTool(agent, "AcpStartSession") && !hasTool(agent, "CodegenStartSession") {
 		args := map[string]any{
 			"project":         project,
@@ -1191,6 +1194,14 @@ func buildCodingStartCall(agent gatewayAgentSnapshot, callerAgentID, project, pr
 		var extraArgs []string
 		if settings != "" {
 			extraArgs = append(extraArgs, "--settings", settings)
+		}
+		if resumeLast {
+			switch normalizeTool(tool) {
+			case "codex":
+				extraArgs = append(extraArgs, "resume")
+			case "", "claudecode":
+				extraArgs = append(extraArgs, "-c")
+			}
 		}
 		if len(extraArgs) > 0 {
 			args["extra_args"] = extraArgs
@@ -1413,7 +1424,7 @@ func (a *CMDAGent) resolvePipelineAgent(pipeline, preferredAgent string) (gatewa
 	return gatewayAgentSnapshot{}, fmt.Errorf("多个 deploy-agent 都有 pipeline %s，请用 %s@<agent> 指定，可选: %s", pipeline, pipeline, strings.Join(uniqueSorted(names), ", "))
 }
 
-func buildStartInfo(project, agentName, model, tool, settings string, autoDeploy bool, requestID string) string {
+func buildStartInfo(project, agentName, model, tool, settings string, resumeLast, autoDeploy bool, requestID string) string {
 	info := fmt.Sprintf("🚀 编码会话已启动\n\n项目: %s", project)
 	if agentName != "" {
 		info += fmt.Sprintf("\nAgent: %s", agentName)
@@ -1426,6 +1437,9 @@ func buildStartInfo(project, agentName, model, tool, settings string, autoDeploy
 	}
 	if settings != "" {
 		info += fmt.Sprintf("\nSettings: %s", settings)
+	}
+	if resumeLast {
+		info += "\n会话: 继续上次会话"
 	}
 	if autoDeploy {
 		info += "\n部署: 编码完成后自动部署"

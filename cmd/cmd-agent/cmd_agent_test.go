@@ -144,6 +144,7 @@ func TestBuildCodingStartCallForACPAddsSettings(t *testing.T) {
 		"",
 		"claudecode",
 		"minimax",
+		false,
 	)
 	if toolName != "AcpStartSession" {
 		t.Fatalf("unexpected tool name: %q", toolName)
@@ -154,6 +155,22 @@ func TestBuildCodingStartCallForACPAddsSettings(t *testing.T) {
 	}
 	if len(extraArgs) != 2 || extraArgs[0] != "--settings" || extraArgs[1] != "minimax" {
 		t.Fatalf("unexpected extra_args: %#v", extraArgs)
+	}
+}
+
+func TestBuildCodingStartCallAddsResumeArgsByTool(t *testing.T) {
+	agent := gatewayAgentSnapshot{Tools: []string{"AcpStartSession"}}
+
+	codexArgs, _ := buildCodingStartCall(agent, "cmd-agent", "demo", "继续", "", "codex", "", true)
+	codexExtra, ok := codexArgs["extra_args"].([]string)
+	if !ok || len(codexExtra) != 1 || codexExtra[0] != "resume" {
+		t.Fatalf("unexpected codex extra_args: %#v", codexArgs["extra_args"])
+	}
+
+	claudeArgs, _ := buildCodingStartCall(agent, "cmd-agent", "demo", "继续", "", "claudecode", "minimax", true)
+	claudeExtra, ok := claudeArgs["extra_args"].([]string)
+	if !ok || len(claudeExtra) != 3 || claudeExtra[0] != "--settings" || claudeExtra[1] != "minimax" || claudeExtra[2] != "-c" {
+		t.Fatalf("unexpected claudecode extra_args: %#v", claudeArgs["extra_args"])
 	}
 }
 

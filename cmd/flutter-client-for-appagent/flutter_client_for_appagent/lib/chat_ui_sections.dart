@@ -145,6 +145,39 @@ extension _ChatPageStateUiSections on _ChatPageState {
                   _cortanaSettings.copyWith(voiceWakeEnabled: v),
                 ),
         ),
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: palette.surfaceSoft,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _cortanaWakeStatusLabel,
+                style: TextStyle(
+                  color: _cortanaWakeListening || _cortanaWakeAwaitingCommand
+                      ? palette.accent
+                      : palette.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _cortanaWakeStatusDetail,
+                style: TextStyle(
+                  color: palette.textMuted,
+                  fontSize: 12,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
         if (_cortanaVoiceWakeEnabled)
           TextField(
             controller: _cortanaWakePhraseCtrl,
@@ -154,6 +187,11 @@ extension _ChatPageStateUiSections on _ChatPageState {
               isDense: true,
             ),
             onChanged: (v) => _applyCortanaSettings(
+              _cortanaSettings.copyWith(
+                wakePhrase: v.trim().isEmpty ? '嗨 Cortana' : v.trim(),
+              ),
+            ),
+            onSubmitted: (v) => _applyCortanaSettings(
               _cortanaSettings.copyWith(
                 wakePhrase: v.trim().isEmpty ? '嗨 Cortana' : v.trim(),
               ),
@@ -889,6 +927,34 @@ extension _ChatPageStateUiSections on _ChatPageState {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _voskDownloadUrlController,
+            enabled: !_voskModelDownloading,
+            decoration: const InputDecoration(
+              labelText: '手动下载地址（可选）',
+              hintText: 'https://.../vosk-model.zip',
+              isDense: true,
+            ),
+            keyboardType: TextInputType.url,
+            onChanged: (value) {
+              unawaited(
+                SharedPreferences.getInstance().then((prefs) async {
+                  final url = value.trim();
+                  if (url.isEmpty) {
+                    await prefs.remove(_voskManualDownloadUrlKey);
+                  } else {
+                    await prefs.setString(_voskManualDownloadUrlKey, url);
+                  }
+                }),
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '留空时使用内置下载源；填写后优先使用该地址。',
+            style: TextStyle(fontSize: 11, color: palette.textSecondary),
+          ),
           if (_voskModelDownloadError != null) ...[
             const SizedBox(height: 8),
             Container(
@@ -1048,6 +1114,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_voskDownloadProgressKey);
       await prefs.remove(_voskDownloadBytesKey);
+      await prefs.remove(_voskActiveDownloadUrlKey);
 
       final archiveFile = await _getVoskArchiveFile();
       final partFile = await _getVoskArchivePartFile();
@@ -2038,6 +2105,8 @@ extension _ChatPageStateUiSections on _ChatPageState {
       selectedDeployProject: _selectedDeployProject,
       selectedCodeTool: _selectedCodeTool,
       selectedToolSettings: _selectedClaudeSettings,
+      resumeLastSession: _codegenResumeLastSession,
+      resumeLastSessionEnabled: _selectedCodeToolSupportsResume,
       selectedCodeToolOptions: _selectedCodingProjectTools,
       selectedToolSettingsOptions: _selectedToolSettingsOptions,
       selectedDeployTarget: _selectedDeployTarget,
@@ -2063,6 +2132,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
       onCodeProjectChanged: _handleCodeProjectChanged,
       onCodeToolChanged: _handleCodeToolChanged,
       onToolSettingsChanged: _handleClaudeSettingsChanged,
+      onResumeLastSessionChanged: _handleResumeLastSessionChanged,
       onPromptChanged: (_) => setState(() {}),
       onAutoDeployChanged: (value) {
         setState(() {
@@ -2407,6 +2477,8 @@ extension _ChatPageStateUiSections on _ChatPageState {
       externalVoiceHistory: _buildCortanaReplayHistory(),
       contextualExpression: _cortanaContextualExpression,
       showBadge: _cortanaBadge,
+      voiceWakeListening: _cortanaWakeListening,
+      awaitingVoiceCommand: _cortanaWakeAwaitingCommand,
       autoCollapseDelay: const Duration(seconds: 8),
       floatingBottomInset: floatingBottomInset,
       onTapWhenFloating: () {

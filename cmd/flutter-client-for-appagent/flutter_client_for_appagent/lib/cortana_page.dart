@@ -23,6 +23,8 @@ class CortanaPage extends StatefulWidget {
     this.onModeChanged,
     this.contextualExpression,
     this.showBadge = false,
+    this.voiceWakeListening = false,
+    this.awaitingVoiceCommand = false,
     this.autoCollapseDelay = const Duration(seconds: 8),
     this.floatingBottomInset = 0,
     this.onBroadcast,
@@ -42,6 +44,8 @@ class CortanaPage extends StatefulWidget {
   final ValueChanged<CortanaDisplayMode>? onModeChanged;
   final String? contextualExpression;
   final bool showBadge;
+  final bool voiceWakeListening;
+  final bool awaitingVoiceCommand;
   final Duration autoCollapseDelay;
   final double floatingBottomInset;
   final void Function(CortanaReplyPayload payload)? onBroadcast;
@@ -56,7 +60,8 @@ class CortanaPage extends StatefulWidget {
   State<CortanaPage> createState() => CortanaPageState();
 }
 
-class CortanaPageState extends State<CortanaPage> {
+class CortanaPageState extends State<CortanaPage>
+    with SingleTickerProviderStateMixin {
   static const _jsLogHandlerName = 'cortanaLog';
   static const _cortanaHtmlAsset = 'assets/cortana/index.html';
   static const _cortanaLocalPath = 'index.html';
@@ -108,6 +113,7 @@ class CortanaPageState extends State<CortanaPage> {
   Future<_CustomCortanaWebRoot>? _customWebRootFuture;
   int _webViewRevision = 0;
   CortanaDisplayMode? _lastSyncedContainerMode;
+  late final AnimationController _voiceWakePulseController;
 
   bool get isSpeaking => _speaking;
 
@@ -149,6 +155,11 @@ class CortanaPageState extends State<CortanaPage> {
   @override
   void initState() {
     super.initState();
+    _voiceWakePulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _syncVoiceWakePulseAnimation();
     _applyViewTransform(widget.viewTransform);
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       if (_usesCustomLive2dModel) {
@@ -225,11 +236,16 @@ class CortanaPageState extends State<CortanaPage> {
       _applyViewTransform(widget.viewTransform);
       unawaited(_syncModelViewTransform());
     }
+    if (widget.voiceWakeListening != oldWidget.voiceWakeListening ||
+        widget.awaitingVoiceCommand != oldWidget.awaitingVoiceCommand) {
+      _syncVoiceWakePulseAnimation();
+    }
   }
 
   @override
   void dispose() {
     _resetPlaybackEffects();
+    _voiceWakePulseController.dispose();
     _debugStateTimer?.cancel();
     _broadcastAutoCollapseTimer?.cancel();
     _idleUiTimer?.cancel();
@@ -244,6 +260,18 @@ class CortanaPageState extends State<CortanaPage> {
       unawaited(customLocalhostServer.close(force: true));
     }
     super.dispose();
+  }
+
+  void _syncVoiceWakePulseAnimation() {
+    if (widget.voiceWakeListening || widget.awaitingVoiceCommand) {
+      if (!_voiceWakePulseController.isAnimating) {
+        _voiceWakePulseController.repeat();
+      }
+      return;
+    }
+    _voiceWakePulseController
+      ..stop()
+      ..value = 0;
   }
 
   void _ensureAssetLocalhostServer() {
@@ -2645,40 +2673,79 @@ class CortanaPageState extends State<CortanaPage> {
 
   Widget _buildCollapsedAvatar(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Stack(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [cs.primaryContainer, cs.tertiaryContainer],
-            ),
-          ),
-          child: Center(
-            child: Icon(
-              Icons.face_rounded,
-              size: 28,
-              color: cs.onPrimaryContainer,
-            ),
-          ),
-        ),
-        if (widget.showBadge)
-          Positioned(
-            right: 2,
-            top: 2,
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: cs.error,
-                border: Border.all(color: cs.surface, width: 2),
+    return AnimatedBuilder(
+      animation: _voiceWakePulseController,
+      builder: (context, child) {
+        final phase = math.sin(_voiceWakePulseController.value * math.pi * 2);
+        final waitingForCommand = widget.awaitingVoiceCommand;
+        final wakeListening = widget.voiceWakeListening;
+        final haloScale = waitingForCommand
+            ? 1.0 + 0.18 * ((phase + 1) / 2)
+            : wakeListening
+            ? 1.0 + 0.08 * ((phase + 1) / 2)
+            : 1.0;
+        final iconScale = waitingForCommand
+            ? 1.0 + 0.10 * ((phase + 1) / 2)
+            : wakeListening
+            ? 1.0 + 0.04 * ((phase + 1) / 2)
+            : 1.0;
+        final haloAlpha = waitingForCommand
+            ? 0.32 + 0.20 * ((phase + 1) / 2)
+            : wakeListening
+            ? 0.18 + 0.12 * ((phase + 1) / 2)
+            : 0.0;
+        final haloColor = waitingForCommand ? cs.tertiary : cs.primary;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            if (wakeListening || waitingForCommand)
+              Transform.scale(
+                scale: haloScale,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: haloColor.withValues(alpha: haloAlpha),
+                  ),
+                ),
+              ),
+            Transform.scale(
+              scale: iconScale,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [cs.primaryContainer, cs.tertiaryContainer],
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    waitingForCommand ? Icons.mic_rounded : Icons.face_rounded,
+                    size: waitingForCommand ? 30 : 28,
+                    color: cs.onPrimaryContainer,
+                  ),
+                ),
               ),
             ),
-          ),
-      ],
+            if (widget.showBadge)
+              Positioned(
+                right: 2,
+                top: 2,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: cs.error,
+                    border: Border.all(color: cs.surface, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -2811,7 +2878,11 @@ class CortanaPageState extends State<CortanaPage> {
                           ]
                         : null,
                   ),
-                  clipBehavior: isFloating && !isCollapsed
+                  clipBehavior:
+                      isFloating &&
+                          (!isCollapsed ||
+                              widget.voiceWakeListening ||
+                              widget.awaitingVoiceCommand)
                       ? Clip.none
                       : Clip.antiAlias,
                   child: Stack(

@@ -249,6 +249,21 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
         _appendSystem('未识别到有效语音内容，请重试。');
         return;
       }
+      final wakeCommand = _extractCortanaWakeCommand(transcript);
+      if (wakeCommand != null) {
+        _appendSystem('语音输入命中唤醒词，切换到 Cortana。');
+        _appendCortanaWakeLog(
+          '手动语音输入命中唤醒词，原始文本="$transcript", 初始指令="$wakeCommand"',
+        );
+        if (mounted) {
+          setState(() {
+            _voiceInputMode = false;
+            _status = 'Cortana 已唤醒';
+          });
+        }
+        unawaited(_handleCortanaWakeDetected(wakeCommand));
+        return;
+      }
 
       final existing = _messageController.text.trim();
       final merged = existing.isEmpty ? transcript : '$existing\n$transcript';

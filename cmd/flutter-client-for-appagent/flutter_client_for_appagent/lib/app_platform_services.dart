@@ -27,6 +27,31 @@ class VoskTranscriber {
     );
     return (resp?['text'] ?? '').toString().trim();
   }
+
+  void setWakeWordEventHandler(
+    Future<void> Function(Map<String, dynamic> event)? handler,
+  ) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'wakeWordEvent' || handler == null) {
+        return;
+      }
+      final args = call.arguments;
+      if (args is Map) {
+        await handler(Map<String, dynamic>.from(args));
+      }
+    });
+  }
+
+  Future<bool> startWakeWordListening() async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>(
+      'startWakeWordListening',
+    );
+    return resp?['started'] == true;
+  }
+
+  Future<void> stopWakeWordListening() async {
+    await _channel.invokeMethod<void>('stopWakeWordListening');
+  }
 }
 
 class ApkInstaller {

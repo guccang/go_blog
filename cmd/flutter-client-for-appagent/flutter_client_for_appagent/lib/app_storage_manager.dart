@@ -189,14 +189,17 @@ extension _ChatPageStateStorageManager on _ChatPageState {
   Widget _buildAppStorageUsageTile(AppStorageUsage usage) {
     final palette = _palette;
     final deleting = _appStorageDeletingCategory == usage.id;
+    final categoryBusy = switch (usage.id) {
+      'vosk' => _voskModelDownloading,
+      'live2d' => _cortanaLive2dDownloading,
+      'voice_audio' => _recording || _transcribingVoice,
+      'downloads' => _sending,
+      _ => false,
+    };
     final busy =
         _appStorageScanning ||
         _appStorageDeletingCategory.isNotEmpty ||
-        _recording ||
-        _sending ||
-        _transcribingVoice ||
-        _voskModelDownloading ||
-        _cortanaLive2dDownloading;
+        categoryBusy;
     final deleteEnabled = usage.canDelete && usage.hasData && !busy;
     return Container(
       width: double.infinity,
@@ -404,7 +407,9 @@ extension _ChatPageStateStorageManager on _ChatPageState {
 
     final supportPath = supportDir.path;
     final tempPath = tempDir.path;
-    final voskArchive = _joinStoragePath(tempPath, 'vosk-model-cn.zip');
+    final voskArchiveFile = await _getVoskArchiveFile();
+    final voskArchive = _normalizeStoragePath(voskArchiveFile.path);
+    final voskArchiveDir = _normalizeStoragePath(voskArchiveFile.parent.path);
     final live2dArchive = _joinStoragePath(tempPath, 'cortana-live2d.zip');
     final voiceTempTargets = await _topLevelStorageTargets(
       tempDir,
@@ -423,6 +428,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     final knownSupportPaths = <String>{
       _joinStoragePath(supportPath, 'vosk-model-cn'),
       _joinStoragePath(supportPath, 'vosk-model-cn.__extracting__'),
+      voskArchiveDir,
       _joinStoragePath(supportPath, 'cortana_live2d_models'),
       _joinStoragePath(supportPath, 'cortana_web_runtime'),
       _joinStoragePath(supportPath, 'voice_messages'),
@@ -880,6 +886,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     await prefs.remove('vosk_model_path');
     await prefs.remove(_voskDownloadProgressKey);
     await prefs.remove(_voskDownloadBytesKey);
+    await prefs.remove(_voskActiveDownloadUrlKey);
     if (mounted) {
       setState(() {
         _speechReady = _systemSpeechReady;

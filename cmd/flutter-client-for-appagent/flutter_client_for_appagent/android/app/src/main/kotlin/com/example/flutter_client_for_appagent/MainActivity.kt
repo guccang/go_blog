@@ -24,6 +24,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import org.vosk.android.RecognitionListener
+import org.vosk.android.SpeechService
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -58,6 +60,9 @@ class MainActivity : FlutterActivity() {
         listOf("ivector/final.ie", "ivector/final.mat", "ivector/online_cmvn.conf")
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     @Volatile private var voskModel: Model? = null
+    @Volatile private var wakeRecognizer: Recognizer? = null
+    @Volatile private var wakeSpeechService: SpeechService? = null
+    private lateinit var voskChannel: MethodChannel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,11 +70,13 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-            .setMethodCallHandler { call, result ->
+        voskChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        voskChannel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "initialize" -> handleInitialize(call, result)
                     "transcribeFile" -> handleTranscribeFile(call, result)
+                    "startWakeWordListening" -> handleStartWakeWordListening(result)
+                    "stopWakeWordListening" -> handleStopWakeWordListening(result)
                     else -> result.notImplemented()
                 }
             }
@@ -105,9 +112,91 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopWakeWordListening()
         executor.shutdownNow()
         voskModel?.close()
         voskModel = null
+    }
+
+    private fun handleStartWakeWordListening(result: MethodChannel.Result) {
+        val model = voskModel
+        if (model == null) {
+            result.error("vosk_not_ready", "Vosk model is not initialized", null)
+            return
+        }
+        if (wakeSpeechService != null) {
+            result.success(mapOf("started" to true, "alreadyListening" to true))
+            return
+        }
+        try {
+            val recognizer = Recognizer(model, 16000.0f)
+            val speechService = SpeechService(recognizer, 16000.0f)
+            wakeRecognizer = recognizer
+            wakeSpeechService = speechService
+            val started =
+                speechService.startListening(
+                    object : RecognitionListener {
+                        override fun onPartialResult(hypothesis: String?) {
+                            emitWakeEvent("partial", hypothesis)
+                        }
+
+                        override fun onResult(hypothesis: String?) {
+                            emitWakeEvent("result", hypothesis)
+                        }
+
+                        override fun onFinalResult(hypothesis: String?) {
+                            emitWakeEvent("final", hypothesis)
+                        }
+
+                        override fun onError(exception: Exception?) {
+                            emitWakeEvent("error", exception?.message ?: "unknown error")
+                        }
+
+                        override fun onTimeout() {
+                            emitWakeEvent("timeout", "")
+                        }
+                    },
+                )
+            if (!started) {
+                stopWakeWordListening()
+            }
+            result.success(mapOf("started" to started))
+        } catch (err: Throwable) {
+            stopWakeWordListening()
+            result.error("wake_start_failed", err.message ?: err.javaClass.simpleName, null)
+        }
+    }
+
+    private fun handleStopWakeWordListening(result: MethodChannel.Result) {
+        stopWakeWordListening()
+        result.success(mapOf("stopped" to true))
+    }
+
+    private fun stopWakeWordListening() {
+        try {
+            wakeSpeechService?.shutdown()
+        } catch (_: Throwable) {
+        }
+        wakeSpeechService = null
+        try {
+            wakeRecognizer?.close()
+        } catch (_: Throwable) {
+        }
+        wakeRecognizer = null
+    }
+
+    private fun emitWakeEvent(type: String, payload: String?) {
+        val raw = payload ?: ""
+        runOnUiThread {
+            voskChannel.invokeMethod(
+                "wakeWordEvent",
+                mapOf(
+                    "type" to type,
+                    "payload" to raw,
+                    "timestamp" to System.currentTimeMillis(),
+                ),
+            )
+        }
     }
 
     override fun onRequestPermissionsResult(
