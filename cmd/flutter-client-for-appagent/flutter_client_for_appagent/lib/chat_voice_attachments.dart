@@ -261,7 +261,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
             _status = 'Cortana 已唤醒';
           });
         }
-        unawaited(_handleCortanaWakeDetected(wakeCommand));
+        unawaited(_handleCortanaWakeDetectedSafely(wakeCommand));
         return;
       }
 

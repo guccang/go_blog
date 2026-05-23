@@ -2550,6 +2550,11 @@ extension _ChatPageStateUiSections on _ChatPageState {
                   ),
                 ),
                 IconButton(
+                  tooltip: '复制完整调试上下文',
+                  onPressed: () => unawaited(_copyFullDebugContext()),
+                  icon: const Icon(Icons.integration_instructions_outlined),
+                ),
+                IconButton(
                   tooltip: '复制客户端日志',
                   onPressed: () => unawaited(_copyRecentFlutterClientLogs()),
                   icon: const Icon(Icons.copy_all_outlined),

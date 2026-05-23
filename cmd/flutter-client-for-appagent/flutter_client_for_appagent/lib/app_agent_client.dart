@@ -437,7 +437,9 @@ class AppAgentClient {
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     return (data['history'] as List<dynamic>? ?? const [])
-        .map((item) => CodegenHistoryItem.fromJson(item as Map<String, dynamic>))
+        .map(
+          (item) => CodegenHistoryItem.fromJson(item as Map<String, dynamic>),
+        )
         .where((item) => item.id.trim().isNotEmpty)
         .toList();
   }
@@ -511,6 +513,80 @@ class AppAgentClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  Future<List<AppLogSource>> listLogSources() async {
+    final uri = Uri.parse('$baseUrl/api/app/logs/sources').replace(
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('list log sources', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final sources = data['sources'];
+    if (sources is! List) {
+      return const <AppLogSource>[];
+    }
+    return sources
+        .whereType<Map>()
+        .map((item) => AppLogSource.fromJson(Map<String, dynamic>.from(item)))
+        .where((item) => item.name.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<AppLogContent> readLogContent({
+    required String source,
+    String file = '',
+    int lines = 100,
+  }) async {
+    final query = <String, String>{
+      'user_id': userId,
+      'source': source,
+      'lines': '${lines <= 0 ? 100 : lines}',
+      if (file.trim().isNotEmpty) 'file': file.trim(),
+      if (sessionToken.trim().isNotEmpty) 'session_token': sessionToken.trim(),
+    };
+    final uri = Uri.parse(
+      '$baseUrl/api/app/logs/content',
+    ).replace(queryParameters: query);
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('read log content', resp);
+    }
+    return AppLogContent.fromJson(
+      jsonDecode(resp.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<String> readDebugBundleFile({
+    required String debugID,
+    required String path,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/debug/bundles/$debugID/file')
+        .replace(
+          queryParameters: <String, String>{
+            'user_id': userId,
+            'path': path,
+            if (sessionToken.trim().isNotEmpty)
+              'session_token': sessionToken.trim(),
+          },
+        );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('read debug bundle file', resp);
+    }
+    return resp.body;
+  }
+
   Future<WebSocketChannel> connectWebSocket() async {
     final uri = _buildWsUri(baseUrl, userId, sessionToken, receiveToken);
     final channel = WebSocketChannel.connect(uri);
@@ -573,6 +649,60 @@ class AppAgentClient {
         if (sessionToken.trim().isNotEmpty)
           'session_token': sessionToken.trim(),
       },
+    );
+  }
+}
+
+class AppLogSource {
+  const AppLogSource({
+    required this.name,
+    this.path = '',
+    this.description = '',
+  });
+
+  final String name;
+  final String path;
+  final String description;
+
+  factory AppLogSource.fromJson(Map<String, dynamic> json) {
+    return AppLogSource(
+      name: (json['name'] ?? '').toString().trim(),
+      path: (json['path'] ?? '').toString().trim(),
+      description: (json['description'] ?? '').toString().trim(),
+    );
+  }
+}
+
+class AppLogContent {
+  const AppLogContent({
+    required this.source,
+    required this.file,
+    required this.content,
+    this.logPath = '',
+    this.matchedLines = 0,
+    this.truncated = false,
+  });
+
+  final AppLogSource source;
+  final String file;
+  final String logPath;
+  final String content;
+  final int matchedLines;
+  final bool truncated;
+
+  factory AppLogContent.fromJson(Map<String, dynamic> json) {
+    final source = json['source'];
+    return AppLogContent(
+      source: source is Map
+          ? AppLogSource.fromJson(Map<String, dynamic>.from(source))
+          : const AppLogSource(name: ''),
+      file: (json['file'] ?? '').toString().trim(),
+      logPath: (json['log_path'] ?? '').toString().trim(),
+      content: (json['content'] ?? '').toString(),
+      matchedLines: json['matched_lines'] is int
+          ? json['matched_lines'] as int
+          : int.tryParse('${json['matched_lines'] ?? 0}') ?? 0,
+      truncated: json['truncated'] == true,
     );
   }
 }

@@ -26,7 +26,9 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
 
   Future<Directory> _getVoskExtractionTempDir() async {
     final modelPath = await _getLocalVoskModelPath();
-    return Directory('$modelPath.__extracting__');
+    // Android 原生解压器固定使用 "$destPath.extracting"，这里必须保持一致，
+    // 否则清理逻辑和真实解压目录会各走各的路径。
+    return Directory('$modelPath.extracting');
   }
 
   Future<void> _migrateLegacyVoskPartialArchive(SharedPreferences prefs) async {

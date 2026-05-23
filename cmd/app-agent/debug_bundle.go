@@ -445,7 +445,7 @@ func (h *Handler) collectServerLogs(dir string) []string {
 		if source.Name == "" || source.Path == "" {
 			continue
 		}
-		logPath, content, _, _, err := readLogContent(source.Path, "", 300)
+		logPath, content, _, _, err := readLogContent(source.Path, "", 100)
 		if err != nil {
 			continue
 		}

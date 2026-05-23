@@ -115,5 +115,74 @@ void main() {
       expect(observedPaths, <String>['/api/app/refresh', '/api/app/logout']);
       expect(observedRefreshTokens, <String>['refresh-1', 'refresh-2']);
     });
+
+    test('log APIs fetch configured source and latest 100 lines', () async {
+      final observed = <Uri>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        observed.add(request.uri);
+        expect(request.headers.value('X-App-Agent-Session'), 'access-1');
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/api/app/logs/sources':
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'sources': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'name': 'app-agent',
+                    'path': '/logs/app',
+                    'description': 'app logs',
+                  },
+                ],
+              }),
+            );
+            break;
+          case '/api/app/logs/content':
+            expect(request.uri.queryParameters['source'], 'app-agent');
+            expect(request.uri.queryParameters['lines'], '100');
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'source': <String, dynamic>{'name': 'app-agent'},
+                'file': 'app.log',
+                'content': 'line 1\nline 2',
+                'matched_lines': 2,
+                'truncated': false,
+              }),
+            );
+            break;
+          default:
+            request.response.statusCode = HttpStatus.notFound;
+            request.response.write('missing');
+        }
+        await request.response.close();
+      });
+
+      final host = server.address.address;
+      final client = AppAgentClient(
+        baseUrl: 'http://$host:${server.port}',
+        userId: 'demo-user',
+        password: '',
+        receiveToken: 'receive-token',
+        sessionToken: 'access-1',
+      );
+
+      final sources = await client.listLogSources();
+      expect(sources.single.name, 'app-agent');
+
+      final content = await client.readLogContent(
+        source: sources.single.name,
+        lines: 100,
+      );
+      expect(content.file, 'app.log');
+      expect(content.content, contains('line 2'));
+      expect(observed.map((uri) => uri.path).toList(), <String>[
+        '/api/app/logs/sources',
+        '/api/app/logs/content',
+      ]);
+    });
   });
 }

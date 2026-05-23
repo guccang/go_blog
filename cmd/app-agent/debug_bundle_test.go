@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,12 @@ func TestHandleCreateDebugBundleRedactsAndWritesFiles(t *testing.T) {
 	handler := NewHandler(cfg, bridge, auth, syncer, settings)
 
 	logDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(logDir, "app.log"), []byte("Authorization: Bearer secret-token\nnormal\n"), 0644); err != nil {
+	var logBody strings.Builder
+	for i := 0; i < 105; i++ {
+		fmt.Fprintf(&logBody, "line-%03d\n", i)
+	}
+	logBody.WriteString("Authorization: Bearer secret-token\n")
+	if err := os.WriteFile(filepath.Join(logDir, "app.log"), []byte(logBody.String()), 0644); err != nil {
 		t.Fatalf("write test log failed: %v", err)
 	}
 	configPath := filepath.Join(t.TempDir(), "log-agent.json")
@@ -78,6 +84,13 @@ func TestHandleCreateDebugBundleRedactsAndWritesFiles(t *testing.T) {
 	}
 	if strings.Contains(string(serverLog), "secret-token") {
 		t.Fatalf("server log was not redacted: %s", serverLog)
+	}
+	serverLines := strings.Split(strings.TrimSpace(string(serverLog)), "\n")
+	if len(serverLines) != 100 {
+		t.Fatalf("server log lines=%d want 100", len(serverLines))
+	}
+	if strings.Contains(string(serverLog), "line-000") {
+		t.Fatalf("server log should only include latest 100 lines: %s", serverLog)
 	}
 
 	rec = httptest.NewRecorder()

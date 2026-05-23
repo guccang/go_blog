@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
@@ -36,7 +37,9 @@ import java.io.IOException
 import java.io.RandomAccessFile
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
+import kotlin.system.exitProcess
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.example.flutter_client_for_appagent/vosk"
@@ -62,10 +65,13 @@ class MainActivity : FlutterActivity() {
     @Volatile private var voskModel: Model? = null
     @Volatile private var wakeRecognizer: Recognizer? = null
     @Volatile private var wakeSpeechService: SpeechService? = null
+    @Volatile private var wakeShuttingDown = false
     private lateinit var voskChannel: MethodChannel
+    private var previousUncaughtExceptionHandler: Thread.UncaughtExceptionHandler? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installNativeCrashHandler()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -77,6 +83,7 @@ class MainActivity : FlutterActivity() {
                     "transcribeFile" -> handleTranscribeFile(call, result)
                     "startWakeWordListening" -> handleStartWakeWordListening(result)
                     "stopWakeWordListening" -> handleStopWakeWordListening(result)
+                    "readNativeDebugTrace" -> handleReadNativeDebugTrace(call, result)
                     else -> result.notImplemented()
                 }
             }
@@ -113,9 +120,77 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopWakeWordListening()
-        executor.shutdownNow()
+        executor.shutdown()
+        try {
+            executor.awaitTermination(500, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+        }
         voskModel?.close()
         voskModel = null
+    }
+
+    private fun installNativeCrashHandler() {
+        val current = Thread.getDefaultUncaughtExceptionHandler()
+        if (current === previousUncaughtExceptionHandler) {
+            return
+        }
+        previousUncaughtExceptionHandler = current
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            appendNativeDebugTrace(
+                "crash",
+                mapOf(
+                    "time" to System.currentTimeMillis(),
+                    "level" to "fatal",
+                    "source" to "android_native",
+                    "thread" to thread.name,
+                    "message" to (throwable.message ?: throwable.javaClass.name),
+                    "stack" to Log.getStackTraceString(throwable),
+                ),
+            )
+            val previous = previousUncaughtExceptionHandler
+            if (previous != null) {
+                previous.uncaughtException(thread, throwable)
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid())
+                exitProcess(10)
+            }
+        }
+    }
+
+    private fun handleReadNativeDebugTrace(call: MethodCall, result: MethodChannel.Result) {
+        val category = safeDebugTraceCategory(call.argument<String>("category") ?: "crash")
+        try {
+            val file = nativeDebugTraceFile(category)
+            if (!file.exists()) {
+                result.success(mapOf("content" to ""))
+                return
+            }
+            val lines =
+                file.readLines(Charsets.UTF_8)
+                    .filter { it.trim().isNotEmpty() }
+                    .takeLast(100)
+            result.success(mapOf("content" to lines.joinToString("\n")))
+        } catch (err: Throwable) {
+            result.error("native_trace_read_failed", err.message ?: err.javaClass.simpleName, null)
+        }
+    }
+
+    private fun appendNativeDebugTrace(category: String, data: Map<String, Any?>) {
+        try {
+            val file = nativeDebugTraceFile(category)
+            file.parentFile?.mkdirs()
+            file.appendText(JSONObject(data).toString() + "\n", Charsets.UTF_8)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun nativeDebugTraceFile(category: String): File {
+        return File(File(filesDir, "debug_traces"), "${safeDebugTraceCategory(category)}_native.jsonl")
+    }
+
+    private fun safeDebugTraceCategory(category: String): String {
+        val safe = category.lowercase().replace(Regex("[^a-z0-9_-]"), "_").trim('_')
+        return safe.ifEmpty { "crash" }
     }
 
     private fun handleStartWakeWordListening(result: MethodChannel.Result) {
@@ -129,7 +204,11 @@ class MainActivity : FlutterActivity() {
             return
         }
         try {
+            wakeShuttingDown = false
             val recognizer = Recognizer(model, 16000.0f)
+            recognizer.setWords(true)
+            recognizer.setPartialWords(true)
+            recognizer.setMaxAlternatives(3)
             val speechService = SpeechService(recognizer, 16000.0f)
             wakeRecognizer = recognizer
             wakeSpeechService = speechService
@@ -173,21 +252,41 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun stopWakeWordListening() {
-        try {
-            wakeSpeechService?.shutdown()
-        } catch (_: Throwable) {
-        }
+        wakeShuttingDown = true
+        val speechService = wakeSpeechService
+        val recognizer = wakeRecognizer
         wakeSpeechService = null
-        try {
-            wakeRecognizer?.close()
-        } catch (_: Throwable) {
-        }
         wakeRecognizer = null
+        if (speechService == null && recognizer == null) {
+            return
+        }
+        executor.execute {
+            try {
+                speechService?.shutdown()
+            } catch (_: Throwable) {
+            }
+            // 给 Vosk 内部音频线程留出停止时间，避免 Recognizer.close()
+            // 时内部线程仍在访问 Recognizer 导致 native crash。
+            try {
+                Thread.sleep(200)
+            } catch (_: InterruptedException) {
+            }
+            try {
+                recognizer?.close()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     private fun emitWakeEvent(type: String, payload: String?) {
+        if (wakeShuttingDown) {
+            return
+        }
         val raw = payload ?: ""
         runOnUiThread {
+            if (wakeShuttingDown) {
+                return@runOnUiThread
+            }
             voskChannel.invokeMethod(
                 "wakeWordEvent",
                 mapOf(

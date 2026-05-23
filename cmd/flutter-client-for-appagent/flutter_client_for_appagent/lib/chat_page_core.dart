@@ -820,9 +820,24 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             '识别到: "$transcript", final=${result.finalResult}',
           );
           final command = _extractCortanaWakeCommand(transcript);
+          AppDebugRecorder.instance.recordVoiceWakeDecision(
+            engine: 'system_speech',
+            eventType: result.finalResult ? 'final' : 'partial',
+            rawPayload: result.recognizedWords,
+            transcript: transcript,
+            wakePhrase: _cortanaWakePhrase,
+            compactText: _compactWakeText(transcript),
+            matched: command != null,
+            matchReason: command == null
+                ? 'no_alias_matched'
+                : 'system_alias_matched',
+            listening: _cortanaWakeListening,
+            handling: _cortanaWakeHandling,
+            command: command ?? '',
+          );
           if (command != null) {
             _appendCortanaWakeLog('匹配唤醒词，初始指令="$command"');
-            unawaited(_handleCortanaWakeDetected(command));
+            unawaited(_handleCortanaWakeDetectedSafely(command));
           } else if (result.finalResult) {
             _appendCortanaWakeLog('最终结果未命中唤醒词: "$transcript"');
           }
@@ -911,12 +926,42 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
     _appendCortanaWakeLog('Vosk 常驻监听识别到: "$transcript", type=$type');
-    final command = _extractCortanaWakeCommand(transcript);
+    var command = _extractCortanaWakeCommand(transcript);
+    var matchReason = command == null
+        ? 'no_alias_matched'
+        : 'main_alias_matched';
+    final alternatives = _extractVoskAlternatives(payload);
+    if (command == null) {
+      // 主结果未匹配，尝试检查替代假设（setMaxAlternatives 提供）
+      for (final alt in alternatives) {
+        _appendCortanaWakeLog('Vosk 替代假设: "$alt"');
+        command = _extractCortanaWakeCommand(alt);
+        if (command != null) {
+          matchReason = 'alternative_alias_matched';
+          _appendCortanaWakeLog('Vosk 替代假设命中唤醒词，初始指令="$command"');
+          break;
+        }
+      }
+    }
+    AppDebugRecorder.instance.recordVoiceWakeDecision(
+      engine: 'vosk',
+      eventType: type,
+      rawPayload: payload,
+      transcript: transcript,
+      wakePhrase: _cortanaWakePhrase,
+      compactText: _compactWakeText(transcript),
+      matched: command != null,
+      matchReason: matchReason,
+      listening: _cortanaWakeListening,
+      handling: _cortanaWakeHandling,
+      alternatives: alternatives,
+      command: command ?? '',
+    );
     if (command == null) {
       return;
     }
     _appendCortanaWakeLog('Vosk 常驻监听命中唤醒词，初始指令="$command"');
-    await _handleCortanaWakeDetected(command);
+    await _handleCortanaWakeDetectedSafely(command);
   }
 
   String _extractVoskText(String rawJson) {
@@ -932,6 +977,30 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
     } catch (_) {}
     return normalizeSpeechTranscript(rawJson);
+  }
+
+  List<String> _extractVoskAlternatives(String rawJson) {
+    if (rawJson.isEmpty) {
+      return <String>[];
+    }
+    try {
+      final decoded = jsonDecode(rawJson);
+      if (decoded is! Map) {
+        return <String>[];
+      }
+      final alternatives = decoded['alternatives'];
+      if (alternatives is! List || alternatives.isEmpty) {
+        return <String>[];
+      }
+      return alternatives
+          .whereType<Map>()
+          .map(
+            (alt) => normalizeSpeechTranscript((alt['text'] ?? '').toString()),
+          )
+          .where((text) => text.isNotEmpty)
+          .toList();
+    } catch (_) {}
+    return <String>[];
   }
 
   Future<String> _listenForCortanaWakeCommand() async {
@@ -1060,10 +1129,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         _appendCortanaWakeLog('等待用户说话 5 秒超时，未识别到有效指令，回到等待唤醒词状态');
         return;
       }
-      await _speakCortanaWakeCommand(command);
+      try {
+        await _speakCortanaWakeCommand(command);
+      } catch (err, stack) {
+        _appendSystem('Cortana voice wake command failed: $err');
+        _appendCortanaWakeLog('发送唤醒语音指令失败: $err');
+        debugPrint('Cortana wake command error: $err\n$stack');
+      }
     } finally {
       _cortanaWakeHandling = false;
       _scheduleCortanaWakeRestart(delay: const Duration(seconds: 1));
+    }
+  }
+
+  Future<void> _handleCortanaWakeDetectedSafely(String initialCommand) async {
+    try {
+      await _handleCortanaWakeDetected(initialCommand);
+    } catch (err, stack) {
+      _appendSystem('Cortana voice wake failed: $err');
+      _appendCortanaWakeLog('唤醒处理失败: $err');
+      debugPrint('Cortana wake handling error: $err\n$stack');
     }
   }
 

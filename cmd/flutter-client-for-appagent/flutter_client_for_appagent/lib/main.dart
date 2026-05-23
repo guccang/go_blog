@@ -50,6 +50,8 @@ part 'app_models.dart';
 part 'app_platform_services.dart';
 part 'app_storage_manager.dart';
 part 'app_agent_client.dart';
+part 'app_debug_recorder.dart';
+part 'app_debug_copy.dart';
 part 'chat_constants.dart';
 part 'chat_page_core.dart';
 part 'chat_live2d_config.dart';
@@ -62,6 +64,7 @@ part 'message_widgets.dart';
 
 void main() {
   FlutterError.onError = (FlutterErrorDetails details) {
+    AppDebugRecorder.instance.recordFlutterError(details);
     addFlutterClientLog('FlutterError: ${details.exceptionAsString()}');
     if (details.stack != null) {
       addFlutterClientLog(details.stack.toString());
@@ -69,6 +72,7 @@ void main() {
     FlutterError.presentError(details);
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    AppDebugRecorder.instance.recordPlatformError(error, stack);
     addFlutterClientLog('PlatformError: $error\n$stack');
     return false;
   };

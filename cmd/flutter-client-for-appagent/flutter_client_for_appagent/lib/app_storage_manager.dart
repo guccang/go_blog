@@ -427,7 +427,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
 
     final knownSupportPaths = <String>{
       _joinStoragePath(supportPath, 'vosk-model-cn'),
-      _joinStoragePath(supportPath, 'vosk-model-cn.__extracting__'),
+      _joinStoragePath(supportPath, 'vosk-model-cn.extracting'),
       voskArchiveDir,
       _joinStoragePath(supportPath, 'cortana_live2d_models'),
       _joinStoragePath(supportPath, 'cortana_web_runtime'),
@@ -450,7 +450,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
           ),
           _AppStorageTarget(
             label: '解压中',
-            path: _joinStoragePath(supportPath, 'vosk-model-cn.__extracting__'),
+            path: _joinStoragePath(supportPath, 'vosk-model-cn.extracting'),
           ),
           _AppStorageTarget(label: '压缩包', path: voskArchive),
           _AppStorageTarget(label: '未完成', path: '$voskArchive.part'),

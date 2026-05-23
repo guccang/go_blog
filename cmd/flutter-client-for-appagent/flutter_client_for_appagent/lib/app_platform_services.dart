@@ -37,7 +37,21 @@ class VoskTranscriber {
       }
       final args = call.arguments;
       if (args is Map) {
-        await handler(Map<String, dynamic>.from(args));
+        AppDebugRecorder.instance.recordVoskNativeEvent(
+          Map<String, dynamic>.from(args),
+        );
+        try {
+          await handler(Map<String, dynamic>.from(args));
+        } catch (err, stack) {
+          addFlutterClientLog('Vosk wakeWordEvent handler failed: $err');
+          AppDebugRecorder.instance.recordMethodChannelError(
+            _channel.name,
+            call.method,
+            err,
+            stack,
+          );
+          debugPrint('Vosk wakeWordEvent handler failed: $err\n$stack');
+        }
       }
     });
   }
@@ -51,6 +65,14 @@ class VoskTranscriber {
 
   Future<void> stopWakeWordListening() async {
     await _channel.invokeMethod<void>('stopWakeWordListening');
+  }
+
+  Future<String> readNativeDebugTrace(String category) async {
+    final resp = await _channel.invokeMapMethod<String, dynamic>(
+      'readNativeDebugTrace',
+      {'category': category},
+    );
+    return (resp?['content'] ?? '').toString();
   }
 }
 
