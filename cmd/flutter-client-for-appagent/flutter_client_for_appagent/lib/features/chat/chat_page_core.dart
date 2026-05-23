@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -89,6 +89,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Timer? _reconnectTimer;
   Timer? _cortanaSettingsPersistTimer;
   Timer? _cortanaWakeRestartTimer;
+  Timer? _cortanaInitialLocationTimer;
   Timer? _cortanaLocationTimer;
   Timer? _streamFlushTimer;
   Timer? _codegenTimeoutSweepTimer;
@@ -299,6 +300,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cortanaSettingsPersistTimer?.cancel();
     _cortanaExpressionTimer?.cancel();
     _cortanaWakeRestartTimer?.cancel();
+    _cortanaInitialLocationTimer?.cancel();
     _cortanaLocationTimer?.cancel();
     _streamFlushTimer?.cancel();
     _codegenTimeoutSweepTimer?.cancel();

@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class LlmDebugEvent {
   const LlmDebugEvent({
@@ -73,16 +73,17 @@ class LlmDebugEvent {
 
 class ChatMessage {
   ChatMessage({
-    required this.content,
+    required String content,
     required this.direction,
     required this.timestamp,
-    this.status = 'sent',
+    String status = 'sent',
     this.scopeKey = 'direct',
     this.authorId = '',
     this.groupId = '',
     this.messageType = 'text',
     this.meta,
-  });
+  }) : content = sanitizeWellFormedUtf16(content),
+       status = sanitizeWellFormedUtf16(status);
 
   final String content;
   final MessageDirection direction;
@@ -359,6 +360,7 @@ class ScopedHistoryPersistenceCoordinator {
   final ScopedHistoryPersistCallback _persist;
   final Map<String, Future<void>> _tails = <String, Future<void>>{};
   final Map<String, int> _revisions = <String, int>{};
+  final Map<String, int> _scopeEpochs = <String, int>{};
   int _epoch = 0;
 
   void schedule(String scopeKey) {
@@ -369,29 +371,64 @@ class ScopedHistoryPersistenceCoordinator {
     final scheduledEpoch = _epoch;
     final revision = (_revisions[normalizedScopeKey] ?? 0) + 1;
     _revisions[normalizedScopeKey] = revision;
+    _scopeEpochs[normalizedScopeKey] = scheduledEpoch;
 
-    final previous = _tails[normalizedScopeKey] ?? Future<void>.value();
-    late final Future<void> future;
-    future = previous.catchError((_) {}).then((_) async {
-      // 同一 scope 的并发写只落最后一次，避免旧快照覆盖新消息。
-      if (_epoch != scheduledEpoch) {
-        return;
+    if (_tails.containsKey(normalizedScopeKey)) {
+      return;
+    }
+    late final Future<void> tail;
+    tail = _runScope(normalizedScopeKey, scheduledEpoch, revision).whenComplete(
+      () {
+        if (identical(_tails[normalizedScopeKey], tail)) {
+          _tails.remove(normalizedScopeKey);
+        }
+      },
+    );
+    _tails[normalizedScopeKey] = tail;
+  }
+
+  Future<void> _runScope(
+    String scopeKey,
+    int scheduledEpoch,
+    int revision,
+  ) async {
+    var currentEpoch = scheduledEpoch;
+    var currentRevision = revision;
+    Object? firstError;
+    StackTrace? firstStack;
+    while (true) {
+      try {
+        await _persist(scopeKey);
+      } catch (error, stack) {
+        firstError ??= error;
+        firstStack ??= stack;
       }
-      if (_revisions[normalizedScopeKey] != revision) {
-        return;
+
+      final latestEpoch = _scopeEpochs[scopeKey];
+      final latestRevision = _revisions[scopeKey];
+      if (latestEpoch == null || latestRevision == null) {
+        break;
       }
-      await _persist(normalizedScopeKey);
-    });
-    _tails[normalizedScopeKey] = future.whenComplete(() {
-      if (identical(_tails[normalizedScopeKey], future)) {
-        _tails.remove(normalizedScopeKey);
+      if (latestEpoch == currentEpoch && latestRevision == currentRevision) {
+        _scopeEpochs.remove(scopeKey);
+        _revisions.remove(scopeKey);
+        break;
       }
-    });
+
+      // 同一 scope 的并发写只补最新一次，避免旧快照覆盖新消息。
+      currentEpoch = latestEpoch;
+      currentRevision = latestRevision;
+    }
+
+    if (firstError != null && firstStack != null) {
+      Error.throwWithStackTrace(firstError, firstStack);
+    }
   }
 
   void invalidate() {
     _epoch++;
     _revisions.clear();
+    _scopeEpochs.clear();
   }
 
   Future<void> flushScope(String scopeKey) async {

@@ -17,12 +17,15 @@ void main() {
       );
     });
 
-    test('uses strong left swipe to cancel even without enough upward drag', () {
-      expect(
-        resolveVoiceGestureAction(const Offset(-84, -8)),
-        VoiceGestureAction.cancel,
-      );
-    });
+    test(
+      'uses strong left swipe to cancel even without enough upward drag',
+      () {
+        expect(
+          resolveVoiceGestureAction(const Offset(-84, -8)),
+          VoiceGestureAction.cancel,
+        );
+      },
+    );
 
     test(
       'uses strong right swipe to transcribe even without enough upward drag',

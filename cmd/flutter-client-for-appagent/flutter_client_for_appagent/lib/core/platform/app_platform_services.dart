@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class VoskTranscriber {
   static const MethodChannel _channel = MethodChannel(

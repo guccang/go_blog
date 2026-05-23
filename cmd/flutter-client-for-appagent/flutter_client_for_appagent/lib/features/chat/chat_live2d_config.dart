@@ -1,5 +1,5 @@
 // ignore_for_file: invalid_use_of_protected_member
-part of 'main.dart';
+part of '../../main.dart';
 
 extension _ChatPageStateLive2dConfig on _ChatPageState {
   Future<String> _getLocalVoskModelPath() async {
@@ -810,12 +810,15 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
                     _status =
                         '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${(progress * 100).toStringAsFixed(1)}%)';
                   } else {
-                    _status = '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)}';
+                    _status =
+                        '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)}';
                   }
                 });
                 unawaited(prefs.setInt(_voskDownloadBytesKey, receivedBytes));
                 if (totalBytes != null && totalBytes > 0) {
-                  unawaited(prefs.setDouble(_voskDownloadProgressKey, progress));
+                  unawaited(
+                    prefs.setDouble(_voskDownloadProgressKey, progress),
+                  );
                 }
               },
               onRetry: (error, attempt, delay) {
@@ -1387,9 +1390,10 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
   }
 
   void _scheduleCortanaLocationRefresh({required bool initial}) {
+    _cortanaInitialLocationTimer?.cancel();
     _cortanaLocationTimer?.cancel();
     final delay = initial ? const Duration(seconds: 2) : Duration.zero;
-    Future<void>.delayed(delay, () {
+    _cortanaInitialLocationTimer = Timer(delay, () {
       if (!mounted) {
         return;
       }

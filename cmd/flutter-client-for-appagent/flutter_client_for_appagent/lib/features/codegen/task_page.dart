@@ -182,10 +182,7 @@ class _CodegenTaskDetailsState extends State<_CodegenTaskDetails> {
                   value: details.target.isEmpty ? '未指定' : details.target,
                 ),
               if (details.mode == CodegenLaunchMode.deploy)
-                _DetailBlock(
-                  label: '仅打包',
-                  value: details.packOnly ? '是' : '否',
-                ),
+                _DetailBlock(label: '仅打包', value: details.packOnly ? '是' : '否'),
               if (details.mode == CodegenLaunchMode.deploy)
                 _DetailBlock(
                   label: '附加参数',

@@ -11,24 +11,27 @@ void main() {
     });
 
     test('removes spaces around Chinese punctuation', () {
-      expect(
-        normalizeSpeechTranscript('你好 ， 小 元宝 ！'),
-        '你好，小元宝！',
-      );
+      expect(normalizeSpeechTranscript('你好 ， 小 元宝 ！'), '你好，小元宝！');
     });
 
     test('keeps spaces in non-Chinese phrases', () {
-      expect(
-        normalizeSpeechTranscript('openai gpt 5'),
-        'openai gpt 5',
-      );
+      expect(normalizeSpeechTranscript('openai gpt 5'), 'openai gpt 5');
     });
 
     test('collapses repeated whitespace before formatting', () {
-      expect(
-        normalizeSpeechTranscript('  你好   小   元宝  '),
-        '你好小元宝',
-      );
+      expect(normalizeSpeechTranscript('  你好   小   元宝  '), '你好小元宝');
+    });
+
+    test('removes isolated utf16 surrogates from native speech text', () {
+      final malformed = String.fromCharCodes(<int>[
+        0xD800,
+        0x4F60,
+        0xDC00,
+        0x597D,
+      ]);
+
+      expect(sanitizeWellFormedUtf16(malformed), '你好');
+      expect(normalizeSpeechTranscript(malformed), '你好');
     });
   });
 }

@@ -1,5 +1,5 @@
 // ignore_for_file: invalid_use_of_protected_member
-part of 'main.dart';
+part of '../../main.dart';
 
 extension _ChatPageStateMessagesHistory on _ChatPageState {
   String get _currentScopeKey =>
@@ -289,6 +289,9 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     String? updateStatus,
     bool persist = true,
   }) {
+    final safeUpdateStatus = updateStatus == null
+        ? null
+        : sanitizeWellFormedUtf16(updateStatus);
     final existing = _historyByScope[message.scopeKey] ?? <ChatMessage>[];
     _historyByScope[message.scopeKey] = _trimChatHistory(<ChatMessage>[
       ...existing,
@@ -302,8 +305,8 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     }
     final isCurrentScope = message.scopeKey == _currentScopeKey;
     setState(() {
-      if (updateStatus != null) {
-        _status = updateStatus;
+      if (safeUpdateStatus != null) {
+        _status = safeUpdateStatus;
       }
     });
     if (isCurrentScope) {
@@ -327,6 +330,9 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     required ChatMessage message,
     String? updateStatus,
   }) {
+    final safeUpdateStatus = updateStatus == null
+        ? null
+        : sanitizeWellFormedUtf16(updateStatus);
     if (messageId.trim().isEmpty) {
       return false;
     }
@@ -347,8 +353,8 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
     _historyByScope[scopeKey] = updated;
     if (mounted) {
       setState(() {
-        if (updateStatus != null) {
-          _status = updateStatus;
+        if (safeUpdateStatus != null) {
+          _status = safeUpdateStatus;
         }
       });
       if (scopeKey == _currentScopeKey) {

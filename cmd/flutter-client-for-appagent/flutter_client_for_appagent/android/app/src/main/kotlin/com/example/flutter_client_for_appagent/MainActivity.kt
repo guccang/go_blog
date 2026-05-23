@@ -37,6 +37,7 @@ import java.io.IOException
 import java.io.RandomAccessFile
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
@@ -62,10 +63,12 @@ class MainActivity : FlutterActivity() {
     private val optionalIvectorFiles =
         listOf("ivector/final.ie", "ivector/final.mat", "ivector/online_cmvn.conf")
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val voskLock = Any()
     @Volatile private var voskModel: Model? = null
     @Volatile private var wakeRecognizer: Recognizer? = null
     @Volatile private var wakeSpeechService: SpeechService? = null
     @Volatile private var wakeShuttingDown = false
+    @Volatile private var wakeSessionId = 0L
     private lateinit var voskChannel: MethodChannel
     private var previousUncaughtExceptionHandler: Thread.UncaughtExceptionHandler? = null
 
@@ -118,15 +121,66 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        stopWakeWordListeningBlocking()
         super.onDestroy()
-        stopWakeWordListening()
         executor.shutdown()
-        try {
+        val terminated = try {
             executor.awaitTermination(500, TimeUnit.MILLISECONDS)
         } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
         }
-        voskModel?.close()
-        voskModel = null
+        if (!terminated) {
+            appendNativeDebugTrace(
+                "crash",
+                mapOf(
+                    "time" to System.currentTimeMillis(),
+                    "level" to "warning",
+                    "source" to "android_native",
+                    "message" to "Skip Vosk model close because executor is still running",
+                ),
+            )
+            return
+        }
+        synchronized(voskLock) {
+            voskModel?.close()
+            voskModel = null
+        }
+    }
+
+    private fun runOnVoskExecutor(
+        result: MethodChannel.Result,
+        failureCode: String,
+        task: () -> Unit,
+    ) {
+        try {
+            executor.execute(task)
+        } catch (_: RejectedExecutionException) {
+            result.error(failureCode, "Vosk executor is shutting down", null)
+        }
+    }
+
+    private fun runOnVoskExecutor(task: () -> Unit) {
+        try {
+            executor.execute(task)
+        } catch (_: RejectedExecutionException) {
+        }
+    }
+
+    private fun completeSuccess(result: MethodChannel.Result, payload: Any?) {
+        runOnUiThread {
+            result.success(payload)
+        }
+    }
+
+    private fun completeError(
+        result: MethodChannel.Result,
+        code: String,
+        message: String,
+    ) {
+        runOnUiThread {
+            result.error(code, message, null)
+        }
     }
 
     private fun installNativeCrashHandler() {
@@ -194,65 +248,122 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleStartWakeWordListening(result: MethodChannel.Result) {
-        val model = voskModel
-        if (model == null) {
-            result.error("vosk_not_ready", "Vosk model is not initialized", null)
-            return
-        }
-        if (wakeSpeechService != null) {
-            result.success(mapOf("started" to true, "alreadyListening" to true))
-            return
-        }
-        try {
-            wakeShuttingDown = false
-            val recognizer = Recognizer(model, 16000.0f)
-            recognizer.setWords(true)
-            recognizer.setPartialWords(true)
-            recognizer.setMaxAlternatives(3)
-            val speechService = SpeechService(recognizer, 16000.0f)
-            wakeRecognizer = recognizer
-            wakeSpeechService = speechService
-            val started =
-                speechService.startListening(
-                    object : RecognitionListener {
-                        override fun onPartialResult(hypothesis: String?) {
-                            emitWakeEvent("partial", hypothesis)
+        runOnVoskExecutor(result, "wake_start_failed") {
+            var recognizerToClose: Recognizer? = null
+            try {
+                val response =
+                    synchronized(voskLock) {
+                        val model = voskModel
+                        if (model == null) {
+                            return@synchronized mapOf(
+                                "errorCode" to "vosk_not_ready",
+                                "errorMessage" to "Vosk model is not initialized",
+                            )
                         }
+                        if (wakeSpeechService != null) {
+                            return@synchronized mapOf(
+                                "started" to true,
+                                "alreadyListening" to true,
+                            )
+                        }
+                        wakeSessionId += 1
+                        val sessionId = wakeSessionId
+                        wakeShuttingDown = false
+                        val recognizer = Recognizer(model, 16000.0f)
+                        recognizerToClose = recognizer
+                        recognizer.setWords(true)
+                        recognizer.setPartialWords(true)
+                        recognizer.setMaxAlternatives(3)
+                        val speechService = SpeechService(recognizer, 16000.0f)
+                        wakeRecognizer = recognizer
+                        wakeSpeechService = speechService
+                        recognizerToClose = null
+                        val started =
+                            speechService.startListening(
+                                object : RecognitionListener {
+                                    override fun onPartialResult(hypothesis: String?) {
+                                        emitWakeEvent(sessionId, "partial", hypothesis)
+                                    }
 
-                        override fun onResult(hypothesis: String?) {
-                            emitWakeEvent("result", hypothesis)
-                        }
+                                    override fun onResult(hypothesis: String?) {
+                                        emitWakeEvent(sessionId, "result", hypothesis)
+                                    }
 
-                        override fun onFinalResult(hypothesis: String?) {
-                            emitWakeEvent("final", hypothesis)
-                        }
+                                    override fun onFinalResult(hypothesis: String?) {
+                                        emitWakeEvent(sessionId, "final", hypothesis)
+                                    }
 
-                        override fun onError(exception: Exception?) {
-                            emitWakeEvent("error", exception?.message ?: "unknown error")
-                        }
+                                    override fun onError(exception: Exception?) {
+                                        emitWakeEvent(
+                                            sessionId,
+                                            "error",
+                                            exception?.message ?: "unknown error",
+                                        )
+                                    }
 
-                        override fun onTimeout() {
-                            emitWakeEvent("timeout", "")
+                                    override fun onTimeout() {
+                                        emitWakeEvent(sessionId, "timeout", "")
+                                    }
+                                },
+                            )
+                        if (!started) {
+                            stopWakeWordListeningLocked()
                         }
-                    },
+                        mapOf("started" to started)
+                    }
+                val errorCode = response["errorCode"] as? String
+                if (errorCode != null) {
+                    completeError(
+                        result,
+                        errorCode,
+                        response["errorMessage"] as? String ?: "Vosk wake start failed",
+                    )
+                } else {
+                    completeSuccess(result, response)
+                }
+            } catch (err: Throwable) {
+                try {
+                    recognizerToClose?.close()
+                } catch (_: Throwable) {
+                }
+                synchronized(voskLock) {
+                    stopWakeWordListeningLocked()
+                }
+                completeError(
+                    result,
+                    "wake_start_failed",
+                    err.message ?: err.javaClass.simpleName,
                 )
-            if (!started) {
-                stopWakeWordListening()
             }
-            result.success(mapOf("started" to started))
-        } catch (err: Throwable) {
-            stopWakeWordListening()
-            result.error("wake_start_failed", err.message ?: err.javaClass.simpleName, null)
         }
     }
 
     private fun handleStopWakeWordListening(result: MethodChannel.Result) {
-        stopWakeWordListening()
-        result.success(mapOf("stopped" to true))
+        runOnVoskExecutor(result, "wake_stop_failed") {
+            synchronized(voskLock) {
+                stopWakeWordListeningLocked()
+            }
+            completeSuccess(result, mapOf("stopped" to true))
+        }
     }
 
     private fun stopWakeWordListening() {
+        runOnVoskExecutor {
+            synchronized(voskLock) {
+                stopWakeWordListeningLocked()
+            }
+        }
+    }
+
+    private fun stopWakeWordListeningBlocking() {
+        synchronized(voskLock) {
+            stopWakeWordListeningLocked()
+        }
+    }
+
+    private fun stopWakeWordListeningLocked() {
         wakeShuttingDown = true
+        wakeSessionId += 1
         val speechService = wakeSpeechService
         val recognizer = wakeRecognizer
         wakeSpeechService = null
@@ -260,31 +371,39 @@ class MainActivity : FlutterActivity() {
         if (speechService == null && recognizer == null) {
             return
         }
-        executor.execute {
-            try {
-                speechService?.shutdown()
-            } catch (_: Throwable) {
-            }
-            // 给 Vosk 内部音频线程留出停止时间，避免 Recognizer.close()
-            // 时内部线程仍在访问 Recognizer 导致 native crash。
-            try {
-                Thread.sleep(200)
-            } catch (_: InterruptedException) {
-            }
-            try {
-                recognizer?.close()
-            } catch (_: Throwable) {
-            }
+        try {
+            speechService?.stop()
+        } catch (err: Throwable) {
+            appendNativeDebugTrace(
+                "crash",
+                mapOf(
+                    "time" to System.currentTimeMillis(),
+                    "level" to "warning",
+                    "source" to "android_native",
+                    "message" to (
+                        "Vosk SpeechService.stop failed: ${err.message ?: err.javaClass.simpleName}"
+                    ),
+                    "stack" to Log.getStackTraceString(err),
+                ),
+            )
+        }
+        try {
+            speechService?.shutdown()
+        } catch (_: Throwable) {
+        }
+        try {
+            recognizer?.close()
+        } catch (_: Throwable) {
         }
     }
 
-    private fun emitWakeEvent(type: String, payload: String?) {
-        if (wakeShuttingDown) {
+    private fun emitWakeEvent(sessionId: Long, type: String, payload: String?) {
+        if (wakeShuttingDown || sessionId != wakeSessionId) {
             return
         }
         val raw = payload ?: ""
         runOnUiThread {
-            if (wakeShuttingDown) {
+            if (wakeShuttingDown || sessionId != wakeSessionId) {
                 return@runOnUiThread
             }
             voskChannel.invokeMethod(
@@ -606,41 +725,43 @@ class MainActivity : FlutterActivity() {
             )
             return
         }
-        executor.execute {
+        runOnVoskExecutor(result, "initialize_failed") {
             try {
                 val modelDir = resolveModelDir(modelPath)
                 if (modelDir == null) {
-                    runOnUiThread {
-                        result.success(
-                            mapOf(
-                                "ready" to false,
-                                "message" to "Vosk model directory is incomplete: $modelPath",
-                            ),
-                        )
-                    }
-                    return@execute
-                }
-                val newModel = Model(modelDir.absolutePath)
-                val oldModel = voskModel
-                voskModel = newModel
-                oldModel?.close()
-                runOnUiThread {
-                    result.success(
-                        mapOf(
-                            "ready" to true,
-                            "message" to "Vosk model loaded: ${modelDir.absolutePath}",
-                        ),
-                    )
-                }
-            } catch (err: Throwable) {
-                runOnUiThread {
-                    result.success(
+                    completeSuccess(
+                        result,
                         mapOf(
                             "ready" to false,
-                            "message" to "Load Vosk model failed: ${err.message ?: err.javaClass.simpleName}",
+                            "message" to "Vosk model directory is incomplete: $modelPath",
                         ),
                     )
+                    return@runOnVoskExecutor
                 }
+                val newModel = Model(modelDir.absolutePath)
+                synchronized(voskLock) {
+                    stopWakeWordListeningLocked()
+                    val oldModel = voskModel
+                    voskModel = newModel
+                    oldModel?.close()
+                }
+                completeSuccess(
+                    result,
+                    mapOf(
+                        "ready" to true,
+                        "message" to "Vosk model loaded: ${modelDir.absolutePath}",
+                    ),
+                )
+            } catch (err: Throwable) {
+                completeSuccess(
+                    result,
+                    mapOf(
+                        "ready" to false,
+                        "message" to (
+                            "Load Vosk model failed: ${err.message ?: err.javaClass.simpleName}"
+                        ),
+                    ),
+                )
             }
         }
     }
@@ -675,41 +796,42 @@ class MainActivity : FlutterActivity() {
 
     private fun handleTranscribeFile(call: MethodCall, result: MethodChannel.Result) {
         val audioPath = call.argument<String>("audioPath")?.trim().orEmpty()
-        val model = voskModel
-        if (model == null) {
-            result.error("vosk_not_ready", "Vosk model is not initialized", null)
-            return
-        }
         if (audioPath.isEmpty()) {
             result.error("invalid_audio", "Audio path is empty", null)
             return
         }
-        executor.execute {
+        runOnVoskExecutor(result, "transcribe_failed") {
             try {
                 val wavFile = File(audioPath)
                 if (!wavFile.exists() || !wavFile.isFile) {
-                    runOnUiThread {
-                        result.error("invalid_audio", "Audio file not found: $audioPath", null)
-                    }
-                    return@execute
+                    completeError(result, "invalid_audio", "Audio file not found: $audioPath")
+                    return@runOnVoskExecutor
                 }
                 val sampleRate = readWavSampleRate(wavFile)
-                val text = transcribeWavFile(model, wavFile, sampleRate)
-                runOnUiThread {
-                    result.success(
-                        mapOf(
-                            "text" to text,
-                        ),
-                    )
-                }
+                val text =
+                    synchronized(voskLock) {
+                        val model = voskModel
+                            ?: throw IllegalStateException("Vosk model is not initialized")
+                        transcribeWavFile(model, wavFile, sampleRate)
+                    }
+                completeSuccess(
+                    result,
+                    mapOf(
+                        "text" to text,
+                    ),
+                )
+            } catch (err: IllegalStateException) {
+                completeError(
+                    result,
+                    "vosk_not_ready",
+                    err.message ?: "Vosk model is not initialized",
+                )
             } catch (err: Exception) {
-                runOnUiThread {
-                    result.error(
-                        "transcribe_failed",
-                        err.message ?: err.javaClass.simpleName,
-                        null,
-                    )
-                }
+                completeError(
+                    result,
+                    "transcribe_failed",
+                    err.message ?: err.javaClass.simpleName,
+                )
             }
         }
     }

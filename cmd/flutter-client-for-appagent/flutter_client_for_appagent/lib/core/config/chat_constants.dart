@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 const String _baseUrlOverrideKey = 'client_config::base_url_override';
 const String _lastLoginUserIdKey = 'auth::last_user_id';

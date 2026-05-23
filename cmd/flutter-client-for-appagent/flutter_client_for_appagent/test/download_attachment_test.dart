@@ -201,34 +201,40 @@ void main() {
       expect(appRequestCount, 1);
     });
 
-    test('downloads directly from app-agent when no redirect is returned', () async {
-      final payload = List<int>.generate(18 * 1024, (index) => index % 233);
-      var appRequestCount = 0;
+    test(
+      'downloads directly from app-agent when no redirect is returned',
+      () async {
+        final payload = List<int>.generate(18 * 1024, (index) => index % 233);
+        var appRequestCount = 0;
 
-      final appServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => appServer.close(force: true));
-      appServer.listen((request) async {
-        appRequestCount++;
-        request.response.statusCode = HttpStatus.ok;
-        request.response.headers.contentLength = payload.length;
-        request.response.add(payload);
-        await request.response.close();
-      });
+        final appServer = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(() => appServer.close(force: true));
+        appServer.listen((request) async {
+          appRequestCount++;
+          request.response.statusCode = HttpStatus.ok;
+          request.response.headers.contentLength = payload.length;
+          request.response.add(payload);
+          await request.response.close();
+        });
 
-      final tempDir = await Directory.systemTemp.createTemp(
-        'download_attachment_obs_fallback_',
-      );
-      addTearDown(() => tempDir.delete(recursive: true));
-      final destinationPath = '${tempDir.path}/attachment.bin';
+        final tempDir = await Directory.systemTemp.createTemp(
+          'download_attachment_obs_fallback_',
+        );
+        addTearDown(() => tempDir.delete(recursive: true));
+        final destinationPath = '${tempDir.path}/attachment.bin';
 
-      final client = await createClient(appServer);
-      await client.downloadAttachmentToFile(
-        'test-file',
-        destinationPath: destinationPath,
-      );
+        final client = await createClient(appServer);
+        await client.downloadAttachmentToFile(
+          'test-file',
+          destinationPath: destinationPath,
+        );
 
-      expect(await File(destinationPath).readAsBytes(), payload);
-      expect(appRequestCount, 1);
-    });
+        expect(await File(destinationPath).readAsBytes(), payload);
+        expect(appRequestCount, 1);
+      },
+    );
   });
 }

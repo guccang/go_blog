@@ -1,5 +1,5 @@
 // ignore_for_file: invalid_use_of_protected_member
-part of 'main.dart';
+part of '../../main.dart';
 
 extension _ChatPageStateUiSections on _ChatPageState {
   AppPalette get _palette => context.appPalette;

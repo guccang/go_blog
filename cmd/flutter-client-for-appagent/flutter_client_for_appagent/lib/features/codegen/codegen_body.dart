@@ -399,8 +399,9 @@ class CodegenBody extends StatelessWidget {
         const SizedBox(height: 12),
         SwitchListTile(
           value: resumeLastSession,
-          onChanged:
-              resumeLastSessionEnabled ? onResumeLastSessionChanged : null,
+          onChanged: resumeLastSessionEnabled
+              ? onResumeLastSessionChanged
+              : null,
           contentPadding: EdgeInsets.zero,
           title: const Text('继续上次会话'),
           subtitle: const Text('Codex 使用 resume，Claude Code 使用 -c'),
@@ -417,7 +418,9 @@ class CodegenBody extends StatelessWidget {
           onChanged: onDebugBundleModeChanged,
           contentPadding: EdgeInsets.zero,
           title: const Text('携带 Debug Bundle'),
-          subtitle: const Text('发送前收集 Flutter 客户端和 agent 日志，交给 ACP debug 会话定位问题'),
+          subtitle: const Text(
+            '发送前收集 Flutter 客户端和 agent 日志，交给 ACP debug 会话定位问题',
+          ),
         ),
       ],
     );
@@ -517,7 +520,8 @@ class CodegenBody extends StatelessWidget {
                     ),
                     children: [
                       TextSpan(
-                        text: ' (编码${history.where((e) => e.mode == CodegenLaunchMode.code).length}条, '
+                        text:
+                            ' (编码${history.where((e) => e.mode == CodegenLaunchMode.code).length}条, '
                             '发布${history.where((e) => e.mode == CodegenLaunchMode.deploy).length}条, '
                             '备份${history.where((e) => e.mode == CodegenLaunchMode.backup).length}条)',
                         style: TextStyle(
@@ -549,8 +553,7 @@ class CodegenBody extends StatelessWidget {
                 label: const Text('增量备份'),
               ),
               OutlinedButton.icon(
-                onPressed: () =>
-                    onBackupHistory(CodegenHistoryBackupType.full),
+                onPressed: () => onBackupHistory(CodegenHistoryBackupType.full),
                 icon: const Icon(Icons.cloud_upload_rounded),
                 label: const Text('全量备份'),
               ),

@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class AppAgentClient {
   static const Duration _httpTimeout = Duration(seconds: 8);

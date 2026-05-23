@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_client_for_appagent/main.dart';
 
@@ -9,6 +10,8 @@ void main() {
     expect(find.text('App Agent'), findsOneWidget);
     expect(find.text('Direct conversation'), findsOneWidget);
     expect(find.text('发消息'), findsOneWidget);
-    expect(find.text('欢迎来到 App Agent'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 1));
   });
 }

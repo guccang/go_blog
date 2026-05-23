@@ -23,12 +23,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'codegen/codegen_body.dart';
-import 'codegen/models.dart';
-import 'codegen/task_page.dart';
-import 'cortana_broadcast_queue.dart';
-import 'cortana_history_page.dart';
-import 'cortana_page.dart'
+import 'core/platform/vosk_model_locator.dart';
+import 'features/codegen/codegen_body.dart';
+import 'features/codegen/models.dart';
+import 'features/codegen/task_page.dart';
+import 'features/cortana/domain/cortana_broadcast_queue.dart';
+import 'features/cortana/history/cortana_history_page.dart';
+import 'features/cortana/presentation/cortana_page.dart'
     show
         CortanaDisplayMode,
         CortanaModelViewTransform,
@@ -41,42 +42,50 @@ import 'cortana_page.dart'
         FlutterClientLogEntry,
         addFlutterClientLog,
         flutterClientLogs;
-import 'speech_transcript_formatter.dart';
+import 'shared/utils/speech_transcript_formatter.dart';
 import 'version.g.dart';
-import 'vosk_model_locator.dart';
 
-part 'app_theme.dart';
-part 'app_models.dart';
-part 'app_platform_services.dart';
-part 'app_storage_manager.dart';
-part 'app_agent_client.dart';
-part 'app_debug_recorder.dart';
-part 'app_debug_copy.dart';
-part 'chat_constants.dart';
-part 'chat_page_core.dart';
-part 'chat_live2d_config.dart';
-part 'chat_codegen.dart';
-part 'chat_cortana.dart';
-part 'chat_messages_history.dart';
-part 'chat_voice_attachments.dart';
-part 'chat_ui_sections.dart';
-part 'message_widgets.dart';
+part 'core/client/app_agent_client.dart';
+part 'core/config/chat_constants.dart';
+part 'core/debug/app_debug_copy.dart';
+part 'core/debug/app_debug_recorder.dart';
+part 'core/models/app_models.dart';
+part 'core/platform/app_platform_services.dart';
+part 'features/chat/chat_codegen.dart';
+part 'features/chat/chat_cortana.dart';
+part 'features/chat/chat_live2d_config.dart';
+part 'features/chat/chat_messages_history.dart';
+part 'features/chat/chat_page_core.dart';
+part 'features/chat/chat_ui_sections.dart';
+part 'features/chat/chat_voice_attachments.dart';
+part 'features/settings/app_storage_manager.dart';
+part 'shared/theme/app_theme.dart';
+part 'shared/widgets/message_widgets.dart';
 
 void main() {
-  FlutterError.onError = (FlutterErrorDetails details) {
-    AppDebugRecorder.instance.recordFlutterError(details);
-    addFlutterClientLog('FlutterError: ${details.exceptionAsString()}');
-    if (details.stack != null) {
-      addFlutterClientLog(details.stack.toString());
-    }
-    FlutterError.presentError(details);
-  };
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    AppDebugRecorder.instance.recordPlatformError(error, stack);
-    addFlutterClientLog('PlatformError: $error\n$stack');
-    return false;
-  };
-  runApp(const AppAgentClientApp());
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      FlutterError.onError = (FlutterErrorDetails details) {
+        AppDebugRecorder.instance.recordFlutterError(details);
+        addFlutterClientLog('FlutterError: ${details.exceptionAsString()}');
+        if (details.stack != null) {
+          addFlutterClientLog(details.stack.toString());
+        }
+        FlutterError.presentError(details);
+      };
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        AppDebugRecorder.instance.recordPlatformError(error, stack);
+        addFlutterClientLog('PlatformError: $error\n$stack');
+        return true;
+      };
+      runApp(const AppAgentClientApp());
+    },
+    (Object error, StackTrace stack) {
+      AppDebugRecorder.instance.recordPlatformError(error, stack);
+      addFlutterClientLog('ZoneError: $error\n$stack');
+    },
+  );
 }
 
 bool get _isAndroidHost => !kIsWeb && Platform.isAndroid;

@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class DebugCopyLogSection {
   const DebugCopyLogSection({
@@ -68,10 +68,10 @@ class AppDebugCopyBuilder {
     out
       ..writeln('## Suggested Entry Files')
       ..writeln(
-        '- cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/chat_page_core.dart',
+        '- cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/features/chat/chat_page_core.dart',
       )
       ..writeln(
-        '- cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/app_platform_services.dart',
+        '- cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/core/platform/app_platform_services.dart',
       )
       ..writeln(
         '- cmd/flutter-client-for-appagent/flutter_client_for_appagent/android/app/src/main/kotlin/com/example/flutter_client_for_appagent/MainActivity.kt',

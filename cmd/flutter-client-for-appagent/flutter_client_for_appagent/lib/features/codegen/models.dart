@@ -119,8 +119,7 @@ enum CodegenLaunchMode { code, deploy, backup }
 enum CodegenHistoryBackupType { full, incremental }
 
 extension CodegenHistoryBackupTypeLabel on CodegenHistoryBackupType {
-  String get label =>
-      this == CodegenHistoryBackupType.full ? '全量备份' : '增量备份';
+  String get label => this == CodegenHistoryBackupType.full ? '全量备份' : '增量备份';
 }
 
 class CodegenHistoryBackupItem {

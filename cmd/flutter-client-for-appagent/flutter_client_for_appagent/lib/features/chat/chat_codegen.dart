@@ -1,5 +1,5 @@
 // ignore_for_file: invalid_use_of_protected_member
-part of 'main.dart';
+part of '../../main.dart';
 
 extension _ChatPageStateCodegen on _ChatPageState {
   CodingProjectInfo? get _selectedCodingProject {
@@ -379,13 +379,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       _codegenHistoryTimeoutSweepInterval,
       (_) => _markTimedOutCodegenHistoryItems(),
     );
-    unawaited(
-      Future<void>.delayed(Duration.zero, () {
-        if (mounted) {
-          _markTimedOutCodegenHistoryItems();
-        }
-      }),
-    );
+    _markTimedOutCodegenHistoryItems();
   }
 
   bool _isCodegenHistoryTimedOut(CodegenHistoryItem item) {

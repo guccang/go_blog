@@ -93,7 +93,9 @@ void main() {
       'graph/Gr.fst',
     ];
     for (final relativePath in baseRequiredFiles) {
-      final file = File('${tempDir.path}${Platform.pathSeparator}$relativePath');
+      final file = File(
+        '${tempDir.path}${Platform.pathSeparator}$relativePath',
+      );
       await file.create(recursive: true);
       await file.writeAsString('ok');
     }
@@ -109,27 +111,30 @@ void main() {
     expect(modelRoot, isNull);
   });
 
-  test('accepts official small-cn model layout without tree or phones txt', () async {
-    final tempDir = await Directory.systemTemp.createTemp(
-      'vosk-model-official-small-cn-',
-    );
-    addTearDown(() async {
-      if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
-      }
-    });
+  test(
+    'accepts official small-cn model layout without tree or phones txt',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'vosk-model-official-small-cn-',
+      );
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
 
-    final extractedRoot = Directory(
-      '${tempDir.path}${Platform.pathSeparator}vosk-model-small-cn-0.22',
-    );
-    await extractedRoot.create(recursive: true);
-    await createModelFiles(extractedRoot);
-    await File(
-      '${extractedRoot.path}${Platform.pathSeparator}graph${Platform.pathSeparator}disambig_tid.int',
-    ).writeAsString('ok');
+      final extractedRoot = Directory(
+        '${tempDir.path}${Platform.pathSeparator}vosk-model-small-cn-0.22',
+      );
+      await extractedRoot.create(recursive: true);
+      await createModelFiles(extractedRoot);
+      await File(
+        '${extractedRoot.path}${Platform.pathSeparator}graph${Platform.pathSeparator}disambig_tid.int',
+      ).writeAsString('ok');
 
-    final modelRoot = await VoskModelLocator.findModelRoot(tempDir.path);
+      final modelRoot = await VoskModelLocator.findModelRoot(tempDir.path);
 
-    expect(modelRoot, extractedRoot.path);
-  });
+      expect(modelRoot, extractedRoot.path);
+    },
+  );
 }

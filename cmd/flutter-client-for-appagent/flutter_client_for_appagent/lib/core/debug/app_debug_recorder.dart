@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of '../../main.dart';
 
 class AppDebugRecorder {
   AppDebugRecorder._();
@@ -41,16 +41,19 @@ class AppDebugRecorder {
     final normalizedCategory = _safeFileName(
       category.trim().isEmpty ? 'general' : category.trim().toLowerCase(),
     );
+    final safePage = sanitizeWellFormedUtf16(page).trim();
+    final safeAction = sanitizeWellFormedUtf16(action).trim();
+    final safeMessage = sanitizeWellFormedUtf16(message).trim();
     final event = <String, dynamic>{
       'time': DateTime.now().toIso8601String(),
       'level': level,
       'category': normalizedCategory,
       'source': source,
-      if (page.trim().isNotEmpty) 'page': page.trim(),
-      if (action.trim().isNotEmpty) 'action': action.trim(),
-      if (message.trim().isNotEmpty) 'message': message.trim(),
+      if (safePage.isNotEmpty) 'page': safePage,
+      if (safeAction.isNotEmpty) 'action': safeAction,
+      if (safeMessage.isNotEmpty) 'message': safeMessage,
       if (data != null && data.isNotEmpty) 'data': _jsonSafeMap(data),
-      if (error != null) 'error': error.toString(),
+      if (error != null) 'error': sanitizeWellFormedUtf16(error.toString()),
       if (stack != null) 'stack': _shortStack(stack),
     };
     final buffer = _buffers.putIfAbsent(
@@ -249,21 +252,26 @@ class AppDebugRecorder {
 
   static dynamic _jsonSafeValue(dynamic value) {
     if (value == null || value is num || value is bool || value is String) {
-      return value;
+      return value is String ? sanitizeWellFormedUtf16(value) : value;
     }
     if (value is Iterable) {
       return value.map(_jsonSafeValue).toList(growable: false);
     }
     if (value is Map) {
       return value.map(
-        (key, nested) => MapEntry(key.toString(), _jsonSafeValue(nested)),
+        (key, nested) => MapEntry(
+          sanitizeWellFormedUtf16(key.toString()),
+          _jsonSafeValue(nested),
+        ),
       );
     }
-    return value.toString();
+    return sanitizeWellFormedUtf16(value.toString());
   }
 
   static String _shortStack(StackTrace stack) {
-    return stack.toString().split('\n').take(20).join('\n');
+    return sanitizeWellFormedUtf16(
+      stack.toString().split('\n').take(20).join('\n'),
+    );
   }
 
   static _ParsedVoskPayload _parseVoskPayload(String raw) {

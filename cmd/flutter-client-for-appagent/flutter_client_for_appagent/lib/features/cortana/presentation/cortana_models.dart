@@ -17,7 +17,7 @@ final List<FlutterClientLogEntry> flutterClientLogs = <FlutterClientLogEntry>[];
 const int _maxFlutterClientLogs = 200;
 
 void addFlutterClientLog(String message) {
-  final text = message.trim();
+  final text = sanitizeWellFormedUtf16(message).trim();
   if (text.isEmpty) return;
   final entry = FlutterClientLogEntry(timestamp: DateTime.now(), message: text);
   flutterClientLogs.insert(0, entry);
