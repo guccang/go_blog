@@ -12,7 +12,7 @@ void main() {
         'app_version': '1.0.0+1',
       },
       issue: <String, dynamic>{
-        'title': 'Vosk issue',
+        'title': 'Sherpa issue',
         'user_description': '说嗨返回还',
       },
       appState: <String, dynamic>{

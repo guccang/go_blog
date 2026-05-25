@@ -64,7 +64,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final useWaveFile = _isWindowsHost || _useLocalVosk;
+      final useWaveFile = _isWindowsHost || _useLocalSherpa;
       final fileExt = useWaveFile ? 'wav' : 'm4a';
       final path =
           '${tempDir.path}${Platform.pathSeparator}app_voice_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
@@ -77,7 +77,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
         ),
         path: path,
       );
-      if (_speechReady && !_useLocalVosk) {
+      if (_speechReady && !_useLocalSherpa) {
         try {
           // Check if locale is available
           final locales = await _speechToText.locales();
@@ -240,8 +240,8 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
       }
 
       var transcript = _speechDraft.trim();
-      if (_useLocalVosk) {
-        transcript = await _voskTranscriber.transcribeFile(recorded.path);
+      if (_useLocalSherpa) {
+        transcript = await _sherpaSpeechEngine.transcribeFile(recorded.path);
       }
       transcript = normalizeSpeechTranscript(transcript);
 
@@ -318,7 +318,7 @@ extension _ChatPageStateVoiceAttachments on _ChatPageState {
 
       final seconds = recorded.duration.inMilliseconds / 1000;
       final label = '[Voice ${seconds.toStringAsFixed(1)}s]';
-      final audioFormat = (_isWindowsHost || _useLocalVosk) ? 'wav' : 'm4a';
+      final audioFormat = (_isWindowsHost || _useLocalSherpa) ? 'wav' : 'm4a';
       final savedAudioPath = await _persistVoiceMessage(
         bytes: bytes,
         extension: audioFormat,

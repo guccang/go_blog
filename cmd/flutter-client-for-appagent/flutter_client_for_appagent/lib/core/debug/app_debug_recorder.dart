@@ -93,26 +93,6 @@ class AppDebugRecorder {
     );
   }
 
-  void recordVoskNativeEvent(Map<String, dynamic> event) {
-    final type = (event['type'] ?? '').toString().trim();
-    final payload = (event['payload'] ?? '').toString().trim();
-    final parsed = _parseVoskPayload(payload);
-    record(
-      'voice_wake',
-      source: 'vosk_method_channel',
-      action: type.isEmpty ? 'wakeWordEvent' : type,
-      message: parsed.text,
-      data: <String, dynamic>{
-        'engine': 'vosk',
-        'event_type': type,
-        'raw_payload': payload,
-        'timestamp_native': event['timestamp'],
-        'text': parsed.text,
-        'alternatives': parsed.alternatives,
-      },
-    );
-  }
-
   void recordVoiceWakeDecision({
     required String engine,
     required String eventType,
@@ -273,44 +253,4 @@ class AppDebugRecorder {
       stack.toString().split('\n').take(20).join('\n'),
     );
   }
-
-  static _ParsedVoskPayload _parseVoskPayload(String raw) {
-    if (raw.trim().isEmpty) {
-      return const _ParsedVoskPayload(text: '', alternatives: <String>[]);
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) {
-        final text = normalizeSpeechTranscript(
-          (decoded['text'] ?? decoded['partial'] ?? '').toString(),
-        );
-        final alternatives = decoded['alternatives'];
-        return _ParsedVoskPayload(
-          text: text,
-          alternatives: alternatives is List
-              ? alternatives
-                    .whereType<Map>()
-                    .map(
-                      (item) => normalizeSpeechTranscript(
-                        (item['text'] ?? '').toString(),
-                      ),
-                    )
-                    .where((item) => item.isNotEmpty)
-                    .toList(growable: false)
-              : const <String>[],
-        );
-      }
-    } catch (_) {}
-    return _ParsedVoskPayload(
-      text: normalizeSpeechTranscript(raw),
-      alternatives: const <String>[],
-    );
-  }
-}
-
-class _ParsedVoskPayload {
-  const _ParsedVoskPayload({required this.text, required this.alternatives});
-
-  final String text;
-  final List<String> alternatives;
 }

@@ -766,7 +766,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
     );
   }
 
-  Widget _buildVoskModelCard() {
+  Widget _buildSherpaModelCard() {
     final palette = _palette;
     return Container(
       width: double.infinity,
@@ -792,7 +792,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Vosk 语音模型',
+                      'Sherpa-onnx 语音模型',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -801,7 +801,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '中文语音识别小模型（约 40MB）',
+                      'SenseVoice 转写 + Zipformer 中文唤醒模型',
                       style: TextStyle(
                         fontSize: 12,
                         color: palette.textSecondary,
@@ -811,11 +811,11 @@ extension _ChatPageStateUiSections on _ChatPageState {
                 ),
               ),
               FutureBuilder<bool>(
-                key: const ValueKey('vosk_model_check'),
-                future: _isVoskModelDownloaded(),
+                key: const ValueKey('sherpa_model_check'),
+                future: _isSherpaModelDownloaded(),
                 builder: (context, snapshot) {
                   final isDownloaded = snapshot.data ?? false;
-                  if (_voskModelDownloading) {
+                  if (_sherpaModelDownloading) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -834,13 +834,13 @@ extension _ChatPageStateUiSections on _ChatPageState {
                             height: 14,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              value: _voskModelDownloadProgress,
+                              value: _sherpaModelDownloadProgress,
                               backgroundColor: palette.surfaceMuted,
                             ),
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '${(_voskModelDownloadProgress * 100).toStringAsFixed(0)}%',
+                            '${(_sherpaModelDownloadProgress * 100).toStringAsFixed(0)}%',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -886,14 +886,14 @@ extension _ChatPageStateUiSections on _ChatPageState {
                     );
                   }
                   return FutureBuilder<bool>(
-                    key: const ValueKey('vosk_partial_check'),
-                    future: _hasPartialVoskDownload(),
+                    key: const ValueKey('sherpa_partial_check'),
+                    future: _hasPartialSherpaDownload(),
                     builder: (context, partialSnapshot) {
                       final hasPartial = partialSnapshot.data ?? false;
                       return FilledButton.tonal(
-                        onPressed: _voskModelDownloading
+                        onPressed: _sherpaModelDownloading
                             ? null
-                            : _downloadAndExtractVoskModel,
+                            : _downloadAndExtractSherpaModels,
                         style: FilledButton.styleFrom(
                           backgroundColor: hasPartial
                               ? palette.warning
@@ -929,11 +929,11 @@ extension _ChatPageStateUiSections on _ChatPageState {
           ),
           const SizedBox(height: 8),
           TextField(
-            controller: _voskDownloadUrlController,
-            enabled: !_voskModelDownloading,
+            controller: _sherpaDownloadUrlController,
+            enabled: !_sherpaModelDownloading,
             decoration: const InputDecoration(
-              labelText: '手动下载地址（可选）',
-              hintText: 'https://.../vosk-model.zip',
+              labelText: 'ASR 手动下载地址（可选）',
+              hintText: 'https://.../sherpa-onnx-sense-voice.tar.bz2',
               isDense: true,
             ),
             keyboardType: TextInputType.url,
@@ -942,9 +942,9 @@ extension _ChatPageStateUiSections on _ChatPageState {
                 SharedPreferences.getInstance().then((prefs) async {
                   final url = value.trim();
                   if (url.isEmpty) {
-                    await prefs.remove(_voskManualDownloadUrlKey);
+                    await prefs.remove(_sherpaManualDownloadUrlKey);
                   } else {
-                    await prefs.setString(_voskManualDownloadUrlKey, url);
+                    await prefs.setString(_sherpaManualDownloadUrlKey, url);
                   }
                 }),
               );
@@ -955,7 +955,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
             '留空时使用内置下载源；填写后优先使用该地址。',
             style: TextStyle(fontSize: 11, color: palette.textSecondary),
           ),
-          if (_voskModelDownloadError != null) ...[
+          if (_sherpaModelDownloadError != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),
@@ -974,14 +974,14 @@ extension _ChatPageStateUiSections on _ChatPageState {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      _voskModelDownloadError!,
+                      _sherpaModelDownloadError!,
                       style: TextStyle(fontSize: 11, color: palette.error),
                     ),
                   ),
                   IconButton(
                     onPressed: () {
                       setState(() {
-                        _voskModelDownloadError = null;
+                        _sherpaModelDownloadError = null;
                       });
                     },
                     tooltip: '关闭',
@@ -997,16 +997,16 @@ extension _ChatPageStateUiSections on _ChatPageState {
               ),
             ),
           ],
-          if (_voskModelDownloadError != null ||
-              _hasPartialVoskDownloadSync()) ...[
+          if (_sherpaModelDownloadError != null ||
+              _hasPartialSherpaDownloadSync()) ...[
             const SizedBox(height: 4),
             FutureBuilder<bool>(
-              future: _hasPartialVoskDownload(),
+              future: _hasPartialSherpaDownload(),
               builder: (context, snapshot) {
                 final hasPartial = snapshot.data ?? false;
                 if (!hasPartial) return const SizedBox.shrink();
                 return TextButton.icon(
-                  onPressed: _clearVoskDownloadCache,
+                  onPressed: _clearSherpaDownloadCache,
                   style: TextButton.styleFrom(
                     foregroundColor: palette.textSecondary,
                     padding: const EdgeInsets.symmetric(
@@ -1104,33 +1104,38 @@ extension _ChatPageStateUiSections on _ChatPageState {
     );
   }
 
-  bool _hasPartialVoskDownloadSync() {
+  bool _hasPartialSherpaDownloadSync() {
     // Quick sync check for UI rendering
-    return _voskModelDownloadProgress > 0 && _voskModelDownloadProgress < 1.0;
+    return _sherpaModelDownloadProgress > 0 &&
+        _sherpaModelDownloadProgress < 1.0;
   }
 
-  Future<void> _clearVoskDownloadCache() async {
+  Future<void> _clearSherpaDownloadCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_voskDownloadProgressKey);
-      await prefs.remove(_voskDownloadBytesKey);
-      await prefs.remove(_voskActiveDownloadUrlKey);
+      await prefs.remove(_sherpaDownloadProgressKey);
+      await prefs.remove(_sherpaDownloadBytesKey);
+      await prefs.remove(_sherpaActiveDownloadUrlKey);
 
-      final archiveFile = await _getVoskArchiveFile();
-      final partFile = await _getVoskArchivePartFile();
-      final tempModelDir = await _getVoskExtractionTempDir();
-      await _deleteFileIfExists(archiveFile);
-      await _deleteFileIfExists(partFile);
-      await _deleteDirectoryIfExists(tempModelDir);
+      for (final id in const <String>['asr', 'kws']) {
+        final archiveFile = await _getSherpaArchiveFile(id);
+        final partFile = await _getSherpaArchivePartFile(id);
+        final tempModelDir = await _getSherpaExtractionTempDir(id);
+        await _deleteFileIfExists(archiveFile);
+        await _deleteFileIfExists(partFile);
+        await _deleteDirectoryIfExists(tempModelDir);
+        await prefs.remove('$_sherpaActiveDownloadUrlKey::$id');
+        await prefs.remove('$_sherpaDownloadBytesKey::$id');
+      }
 
       if (!mounted) {
         return;
       }
       setState(() {
-        _voskModelDownloadProgress = 0.0;
-        _voskModelDownloadError = null;
+        _sherpaModelDownloadProgress = 0.0;
+        _sherpaModelDownloadError = null;
       });
-      _appendSystem('已清除 Vosk 模型下载缓存');
+      _appendSystem('已清除 Sherpa 模型下载缓存');
     } catch (err) {
       _appendSystem('清除缓存失败: $err');
     }
@@ -2254,7 +2259,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
                 ],
               ),
               const SizedBox(height: 8),
-              _buildVoskModelCard(),
+              _buildSherpaModelCard(),
               const SizedBox(height: 8),
               _buildAppStorageManagerCard(),
               const SizedBox(height: 8),

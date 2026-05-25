@@ -45,7 +45,7 @@ final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
     accessibility: KeychainAccessibility.first_unlock_this_device,
   ),
 );
-const List<Duration> _voskDownloadRetryDelays = <Duration>[
+const List<Duration> _sherpaDownloadRetryDelays = <Duration>[
   Duration(seconds: 1),
   Duration(seconds: 2),
   Duration(seconds: 4),
@@ -57,12 +57,14 @@ const int _codegenProcessEntryByteLimit = 2048;
 const Duration _codegenHistoryTimeout = Duration(hours: 1);
 const Duration _codegenHistoryTimeoutSweepInterval = Duration(minutes: 5);
 
-const List<String> _voskModelUrls = <String>[
-  // 官方站点偶发证书异常时，先走可用镜像，避免首次安装被下载链路卡死。
-  'https://huggingface.co/localstack/vosk-models/resolve/main/vosk-model-small-cn-0.22.zip?download=true',
-  'https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip',
+const List<String> _sherpaAsrModelUrls = <String>[
+  'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2',
 ];
-const String _voskDownloadProgressKey = 'vosk_download_progress';
-const String _voskDownloadBytesKey = 'vosk_download_bytes';
-const String _voskManualDownloadUrlKey = 'vosk_manual_download_url';
-const String _voskActiveDownloadUrlKey = 'vosk_active_download_url';
+const List<String> _sherpaKwsModelUrls = <String>[
+  'https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2',
+  'https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2',
+];
+const String _sherpaDownloadProgressKey = 'sherpa_download_progress';
+const String _sherpaDownloadBytesKey = 'sherpa_download_bytes';
+const String _sherpaManualDownloadUrlKey = 'sherpa_manual_download_url';
+const String _sherpaActiveDownloadUrlKey = 'sherpa_active_download_url';

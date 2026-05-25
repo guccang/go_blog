@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('normalizeSpeechTranscript', () {
-    test('removes spaces between Chinese words from Vosk output', () {
+    test('removes spaces between Chinese words from local ASR output', () {
       expect(
         normalizeSpeechTranscript('你好 小 元宝 你 现在 在 做 什么 呢'),
         '你好小元宝你现在在做什么呢',

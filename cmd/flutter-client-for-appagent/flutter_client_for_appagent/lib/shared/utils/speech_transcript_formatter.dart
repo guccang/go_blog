@@ -50,7 +50,7 @@ String sanitizeWellFormedUtf16(String raw) {
   return buffer.toString();
 }
 
-/// Vosk 和部分系统语音识别会把中文按词切开返回，这里补一层中文去空格。
+/// 本地 ASR 和部分系统语音识别会把中文按词切开返回，这里补一层中文去空格。
 String normalizeSpeechTranscript(String raw) {
   final normalizedWhitespace = sanitizeWellFormedUtf16(
     raw,

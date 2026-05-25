@@ -2,53 +2,40 @@
 part of '../../main.dart';
 
 extension _ChatPageStateLive2dConfig on _ChatPageState {
-  Future<String> _getLocalVoskModelPath() async {
+  Future<String> _getLocalSherpaAsrModelPath() async {
     final supportDir = await getApplicationSupportDirectory();
-    return '${supportDir.path}${Platform.pathSeparator}vosk-model-cn';
+    return '${supportDir.path}${Platform.pathSeparator}sherpa-asr-sense-voice';
   }
 
-  Future<File> _getVoskArchiveFile() async {
+  Future<String> _getLocalSherpaKwsModelPath() async {
+    final supportDir = await getApplicationSupportDirectory();
+    return '${supportDir.path}${Platform.pathSeparator}sherpa-kws-wenetspeech';
+  }
+
+  Future<File> _getSherpaArchiveFile(String id) async {
     // 下载完成但尚未解压时也要跨重启保留，不能放在系统随时可能清理的临时目录。
     final supportDir = await getApplicationSupportDirectory();
     final archiveDir = Directory(
-      '${supportDir.path}${Platform.pathSeparator}vosk_downloads',
+      '${supportDir.path}${Platform.pathSeparator}sherpa_downloads',
     );
     if (!await archiveDir.exists()) {
       await archiveDir.create(recursive: true);
     }
-    return File('${archiveDir.path}${Platform.pathSeparator}vosk-model-cn.zip');
+    return File(
+      '${archiveDir.path}${Platform.pathSeparator}sherpa-$id.tar.bz2',
+    );
   }
 
-  Future<File> _getVoskArchivePartFile() async {
-    final archiveFile = await _getVoskArchiveFile();
+  Future<File> _getSherpaArchivePartFile(String id) async {
+    final archiveFile = await _getSherpaArchiveFile(id);
     return File('${archiveFile.path}.part');
   }
 
-  Future<Directory> _getVoskExtractionTempDir() async {
-    final modelPath = await _getLocalVoskModelPath();
-    // Android 原生解压器固定使用 "$destPath.extracting"，这里必须保持一致，
-    // 否则清理逻辑和真实解压目录会各走各的路径。
+  Future<Directory> _getSherpaExtractionTempDir(String id) async {
+    final modelPath = id == 'kws'
+        ? await _getLocalSherpaKwsModelPath()
+        : await _getLocalSherpaAsrModelPath();
     return Directory('$modelPath.extracting');
-  }
-
-  Future<void> _migrateLegacyVoskPartialArchive(SharedPreferences prefs) async {
-    final savedProgress = await _getVoskDownloadProgress();
-    if (savedProgress <= 0 || savedProgress >= 1.0) {
-      return;
-    }
-    final archiveFile = await _getVoskArchiveFile();
-    final partFile = await _getVoskArchivePartFile();
-    if (!await archiveFile.exists() || await partFile.exists()) {
-      return;
-    }
-    try {
-      await archiveFile.rename(partFile.path);
-    } catch (_) {
-      await archiveFile.copy(partFile.path);
-      await archiveFile.delete();
-    }
-    final partialBytes = await partFile.length();
-    await prefs.setInt(_voskDownloadBytesKey, partialBytes);
   }
 
   Future<void> _deleteDirectoryIfExists(Directory dir) async {
@@ -641,64 +628,75 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     await _persistCortanaLive2dViewTransforms();
   }
 
-  Future<String?> _resolveAvailableVoskModelPath({
-    String? preferredPath,
+  Future<SherpaModelBundle?> _resolveAvailableSherpaModelBundle({
+    String? preferredAsrPath,
+    String? preferredKwsPath,
   }) async {
-    final localModelPath = await _getLocalVoskModelPath();
-    final candidatePaths = <String>[
-      if (preferredPath != null && preferredPath.trim().isNotEmpty)
-        preferredPath.trim(),
-      localModelPath,
+    final localAsrPath = await _getLocalSherpaAsrModelPath();
+    final localKwsPath = await _getLocalSherpaKwsModelPath();
+    final asrCandidates = <String>[
+      if (preferredAsrPath != null && preferredAsrPath.trim().isNotEmpty)
+        preferredAsrPath.trim(),
+      localAsrPath,
+    ];
+    final kwsCandidates = <String>[
+      if (preferredKwsPath != null && preferredKwsPath.trim().isNotEmpty)
+        preferredKwsPath.trim(),
+      localKwsPath,
     ];
 
-    String? lastCandidate;
-    for (final candidatePath in candidatePaths) {
-      if (candidatePath == lastCandidate) {
-        continue;
-      }
-      lastCandidate = candidatePath;
-      final resolvedPath = await VoskModelLocator.findModelRoot(candidatePath);
-      if (resolvedPath != null) {
-        return resolvedPath;
+    SherpaAsrModelFiles? asr;
+    SherpaKwsModelFiles? kws;
+    for (final candidatePath in asrCandidates.toSet()) {
+      asr = await SherpaModelLocator.findAsrModel(candidatePath);
+      if (asr != null) {
+        break;
       }
     }
-
-    return null;
+    for (final candidatePath in kwsCandidates.toSet()) {
+      kws = await SherpaModelLocator.findKwsModel(candidatePath);
+      if (kws != null) {
+        break;
+      }
+    }
+    if (asr == null || kws == null) {
+      return null;
+    }
+    return SherpaModelBundle(asr: asr, kws: kws);
   }
 
-  Future<bool> _isVoskModelDownloaded() async {
+  Future<bool> _isSherpaModelDownloaded() async {
     try {
-      final modelPath = await _resolveAvailableVoskModelPath();
-      return modelPath != null && await VoskModelLocator.isModelRoot(modelPath);
+      return await _resolveAvailableSherpaModelBundle() != null;
     } catch (_) {
       return false;
     }
   }
 
-  Future<bool> _hasPartialVoskDownload() async {
+  Future<bool> _hasPartialSherpaDownload() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await _migrateLegacyVoskPartialArchive(prefs);
-      final partFile = await _getVoskArchivePartFile();
-      return await partFile.exists() && await partFile.length() > 0;
+      final asrPart = await _getSherpaArchivePartFile('asr');
+      final kwsPart = await _getSherpaArchivePartFile('kws');
+      return (await asrPart.exists() && await asrPart.length() > 0) ||
+          (await kwsPart.exists() && await kwsPart.length() > 0);
     } catch (_) {
       return false;
     }
   }
 
-  Future<double> _getVoskDownloadProgress() async {
+  Future<double> _getSherpaDownloadProgress() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getDouble(_voskDownloadProgressKey) ?? 0.0;
+      return prefs.getDouble(_sherpaDownloadProgressKey) ?? 0.0;
     } catch (_) {
       return 0.0;
     }
   }
 
-  List<String> _resolveVoskDownloadUrls() {
-    final manualUrl = _voskDownloadUrlController.text.trim();
+  List<String> _resolveSherpaAsrDownloadUrls() {
+    final manualUrl = _sherpaDownloadUrlController.text.trim();
     if (manualUrl.isEmpty) {
-      return _voskModelUrls;
+      return _sherpaAsrModelUrls;
     }
 
     final uri = Uri.tryParse(manualUrl);
@@ -711,254 +709,298 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     return <String>[uri.toString()];
   }
 
-  Future<void> _downloadAndExtractVoskModel() async {
-    if (_voskModelDownloading) {
+  Future<void> _downloadAndExtractSherpaModels() async {
+    if (_sherpaModelDownloading) {
       return;
     }
 
-    late final List<String> downloadUrls;
+    late final List<String> asrDownloadUrls;
     try {
-      downloadUrls = _resolveVoskDownloadUrls();
+      asrDownloadUrls = _resolveSherpaAsrDownloadUrls();
     } catch (err) {
       if (mounted) {
         setState(() {
-          _voskModelDownloadError = err.toString();
-          _status = 'Vosk 模型下载地址无效: $err';
+          _sherpaModelDownloadError = err.toString();
+          _status = 'Sherpa 模型下载地址无效: $err';
         });
       }
       return;
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final modelPath = await _getLocalVoskModelPath();
-    final archiveFile = await _getVoskArchiveFile();
-    final partFile = await _getVoskArchivePartFile();
-    final tempModelDir = await _getVoskExtractionTempDir();
-    final preferredDownloadUrl = downloadUrls.first;
+    setState(() {
+      _sherpaModelDownloading = true;
+      _sherpaModelDownloadProgress = 0.0;
+      _sherpaModelDownloadError = null;
+      _status = '正在准备下载 Sherpa 语音模型...';
+    });
 
-    await _migrateLegacyVoskPartialArchive(prefs);
-    final previousDownloadUrl =
-        prefs.getString(_voskActiveDownloadUrlKey)?.trim() ?? '';
+    try {
+      final asrRootPath = await _getLocalSherpaAsrModelPath();
+      final kwsRootPath = await _getLocalSherpaKwsModelPath();
+
+      var asr = await SherpaModelLocator.findAsrModel(asrRootPath);
+      if (asr == null) {
+        final asrRoot = await _downloadAndInstallSherpaArchive(
+          id: 'asr',
+          label: 'Sherpa ASR',
+          downloadUrls: asrDownloadUrls,
+          modelPath: asrRootPath,
+          kind: SherpaModelKind.asr,
+          progressStart: 0.0,
+          progressEnd: 0.5,
+        );
+        asr = await SherpaModelLocator.findAsrModel(asrRoot);
+      } else if (mounted) {
+        setState(() {
+          _sherpaModelDownloadProgress = 0.5;
+          _status = '已检测到 Sherpa ASR 模型，继续检查唤醒模型...';
+        });
+      }
+
+      var kws = await SherpaModelLocator.findKwsModel(kwsRootPath);
+      if (kws == null) {
+        final kwsRoot = await _downloadAndInstallSherpaArchive(
+          id: 'kws',
+          label: 'Sherpa KWS',
+          downloadUrls: _sherpaKwsModelUrls,
+          modelPath: kwsRootPath,
+          kind: SherpaModelKind.kws,
+          progressStart: 0.5,
+          progressEnd: 1.0,
+        );
+        kws = await SherpaModelLocator.findKwsModel(kwsRoot);
+      }
+      if (asr == null || kws == null) {
+        throw const FormatException('Sherpa 模型安装完成后仍缺少必要文件。');
+      }
+
+      await prefs.setString('sherpa_asr_model_path', asr.rootPath);
+      await prefs.setString('sherpa_kws_model_path', kws.rootPath);
+      await prefs.remove(_sherpaDownloadProgressKey);
+      await prefs.remove(_sherpaDownloadBytesKey);
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sherpaModelDownloadProgress = 1.0;
+        _status = 'Sherpa 语音模型下载完成';
+      });
+      _appendSystem('Sherpa 语音模型已下载完成，正在初始化...');
+      await _loadClientConfig();
+    } catch (err, stack) {
+      debugPrint('Download Sherpa model error: $err\n$stack');
+      await prefs.remove('sherpa_asr_model_path');
+      await prefs.remove('sherpa_kws_model_path');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _sherpaModelDownloadError = err.toString();
+        _status = 'Sherpa 模型下载失败: $err';
+      });
+      _appendSystem('Sherpa 模型下载失败: $err。点击下载按钮可继续下载。');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sherpaModelDownloading = false;
+        });
+      }
+    }
+  }
+
+  Future<String> _downloadAndInstallSherpaArchive({
+    required String id,
+    required String label,
+    required List<String> downloadUrls,
+    required String modelPath,
+    required SherpaModelKind kind,
+    required double progressStart,
+    required double progressEnd,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final archiveFile = await _getSherpaArchiveFile(id);
+    final partFile = await _getSherpaArchivePartFile(id);
+    final tempModelDir = await _getSherpaExtractionTempDir(id);
+    final preferredDownloadUrl = downloadUrls.first;
+    final activeUrlKey = '$_sherpaActiveDownloadUrlKey::$id';
+    final bytesKey = '$_sherpaDownloadBytesKey::$id';
+    final previousDownloadUrl = prefs.getString(activeUrlKey)?.trim() ?? '';
     if (previousDownloadUrl.isNotEmpty &&
         previousDownloadUrl != preferredDownloadUrl) {
       await _deleteFileIfExists(archiveFile);
       await _deleteFileIfExists(partFile);
-      await prefs.remove(_voskDownloadProgressKey);
-      await prefs.remove(_voskDownloadBytesKey);
+      await prefs.remove(bytesKey);
     }
-    await prefs.setString(_voskActiveDownloadUrlKey, preferredDownloadUrl);
-    final savedProgress = await _getVoskDownloadProgress();
-    final savedBytes = prefs.getInt(_voskDownloadBytesKey) ?? 0;
+    await prefs.setString(activeUrlKey, preferredDownloadUrl);
 
-    setState(() {
-      _voskModelDownloading = true;
-      _voskModelDownloadProgress = savedProgress;
-      _voskModelDownloadError = null;
-      if (savedBytes > 0) {
-        _status = '继续下载 Vosk 语音模型... 已下载 ${_formatBytes(savedBytes)}';
-      } else {
-        _status = '正在下载 Vosk 语音模型...';
-      }
-    });
-
-    var extractionStarted = false;
-    try {
-      final hasPendingPart = await partFile.exists();
-      final hasCompleteArchive = await archiveFile.exists() && !hasPendingPart;
-      if (hasCompleteArchive) {
-        if (!mounted) {
-          return;
+    final hasPendingPart = await partFile.exists();
+    final hasCompleteArchive = await archiveFile.exists() && !hasPendingPart;
+    if (!hasCompleteArchive) {
+      Object? lastDownloadError;
+      for (var index = 0; index < downloadUrls.length; index++) {
+        final modelUrl = downloadUrls[index];
+        if (index > 0) {
+          await _deleteFileIfExists(partFile);
+          await prefs.remove(bytesKey);
+          if (mounted) {
+            setState(() {
+              _status = '$label 当前下载源不可用，正在切换备用下载源...';
+            });
+          }
         }
-        setState(() {
-          _status = '检测到已下载完成的 Vosk 压缩包，正在继续解压...';
-          _voskModelDownloadProgress = 1.0;
-        });
-      } else {
-        Object? lastDownloadError;
-        for (var index = 0; index < downloadUrls.length; index++) {
-          final modelUrl = downloadUrls[index];
-          if (index > 0) {
-            await _deleteFileIfExists(partFile);
-            await prefs.remove(_voskDownloadBytesKey);
-            await prefs.remove(_voskDownloadProgressKey);
-            if (mounted) {
+        try {
+          await _fileDownloader.downloadToFile(
+            Uri.parse(modelUrl),
+            destinationPath: archiveFile.path,
+            headersBuilder: ({int? rangeStart}) => <String, String>{
+              if (rangeStart != null && rangeStart > 0)
+                HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
+            },
+            onProgress: (receivedBytes, totalBytes, resumed) {
+              final phaseProgress = totalBytes != null && totalBytes > 0
+                  ? receivedBytes / totalBytes
+                  : 0.0;
+              final totalProgress =
+                  progressStart + (progressEnd - progressStart) * phaseProgress;
+              if (!mounted) {
+                return;
+              }
               setState(() {
-                _voskModelDownloadProgress = 0.0;
-                _status = '当前下载源不可用，正在切换备用下载源...';
+                _sherpaModelDownloadProgress = totalProgress.clamp(0.0, 1.0);
+                _status = totalBytes != null && totalBytes > 0
+                    ? '正在下载 $label... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${(phaseProgress * 100).toStringAsFixed(1)}%)'
+                    : '正在下载 $label... ${_formatBytes(receivedBytes)}';
               });
-            }
-          }
-
-          try {
-            await _fileDownloader.downloadToFile(
-              Uri.parse(modelUrl),
-              destinationPath: archiveFile.path,
-              headersBuilder: ({int? rangeStart}) => <String, String>{
-                if (rangeStart != null && rangeStart > 0)
-                  HttpHeaders.rangeHeader: 'bytes=$rangeStart-',
-              },
-              onProgress: (receivedBytes, totalBytes, resumed) {
-                final progress = totalBytes != null && totalBytes > 0
-                    ? receivedBytes / totalBytes
-                    : 0.0;
-                if (!mounted) {
-                  return;
-                }
-                setState(() {
-                  _voskModelDownloadProgress = progress;
-                  if (totalBytes != null && totalBytes > 0) {
-                    _status =
-                        '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)} (${(progress * 100).toStringAsFixed(1)}%)';
-                  } else {
-                    _status =
-                        '正在下载 Vosk 语音模型... ${_formatBytes(receivedBytes)}';
-                  }
-                });
-                unawaited(prefs.setInt(_voskDownloadBytesKey, receivedBytes));
-                if (totalBytes != null && totalBytes > 0) {
-                  unawaited(
-                    prefs.setDouble(_voskDownloadProgressKey, progress),
-                  );
-                }
-              },
-              onRetry: (error, attempt, delay) {
-                if (!mounted) {
-                  return;
-                }
-                setState(() {
-                  _status =
-                      '下载中断，${delay.inSeconds} 秒后重试 ($attempt/${_voskDownloadRetryDelays.length})...';
-                });
-              },
-            );
-            lastDownloadError = null;
-            break;
-          } catch (err) {
-            lastDownloadError = err;
-            if (index == downloadUrls.length - 1) {
-              rethrow;
-            }
-          }
-        }
-        if (lastDownloadError != null) {
-          throw lastDownloadError;
-        }
-        final archiveBytes = await archiveFile.length();
-        await prefs.setInt(_voskDownloadBytesKey, archiveBytes);
-        await prefs.setDouble(_voskDownloadProgressKey, 1.0);
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _status = '正在解压 Vosk 语音模型...';
-      });
-
-      extractionStarted = true;
-      await _deleteDirectoryIfExists(tempModelDir);
-
-      String? resolvedModelPath;
-      if (_isAndroidHost) {
-        final extractResp = await _zipExtractor.extractZip(
-          archiveFile.path,
-          modelPath,
-        );
-        final extractedModelPath = (extractResp['modelPath'] ?? '')
-            .toString()
-            .trim();
-        if (extractedModelPath.isNotEmpty) {
-          resolvedModelPath = extractedModelPath;
-        }
-      } else {
-        final bytes = await archiveFile.readAsBytes();
-        final archive = ZipDecoder().decodeBytes(bytes);
-        await tempModelDir.create(recursive: true);
-        for (final file in archive) {
-          final filePath =
-              '${tempModelDir.path}${Platform.pathSeparator}${file.name}';
-          if (file.isFile) {
-            final outputFile = File(filePath);
-            await outputFile.create(recursive: true);
-            await outputFile.writeAsBytes(file.content as List<int>);
-          } else {
-            await Directory(filePath).create(recursive: true);
-          }
-        }
-        final extractedTempRoot = await _resolveAvailableVoskModelPath(
-          preferredPath: tempModelDir.path,
-        );
-        if (extractedTempRoot == null) {
-          throw const FormatException(
-            'Extracted Vosk model is incomplete. Missing required files.',
+              unawaited(prefs.setInt(bytesKey, receivedBytes));
+              unawaited(
+                prefs.setDouble(
+                  _sherpaDownloadProgressKey,
+                  totalProgress.clamp(0.0, 1.0),
+                ),
+              );
+            },
+            onRetry: (error, attempt, delay) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _status =
+                    '$label 下载中断，${delay.inSeconds} 秒后重试 ($attempt/${_sherpaDownloadRetryDelays.length})...';
+              });
+            },
           );
-        }
-        await _deleteDirectoryIfExists(Directory(modelPath));
-        await tempModelDir.rename(modelPath);
-        resolvedModelPath = await _resolveAvailableVoskModelPath(
-          preferredPath: modelPath,
-        );
-      }
-
-      resolvedModelPath ??= await _resolveAvailableVoskModelPath(
-        preferredPath: modelPath,
-      );
-      if (resolvedModelPath == null) {
-        throw const FormatException(
-          'Extracted Vosk model is incomplete. Missing required files.',
-        );
-      }
-
-      await _deleteFileIfExists(archiveFile);
-      await prefs.remove(_voskDownloadProgressKey);
-      await prefs.remove(_voskDownloadBytesKey);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _voskModelDownloadProgress = 1.0;
-        _status = 'Vosk 语音模型下载完成';
-      });
-
-      await prefs.setString('vosk_model_path', resolvedModelPath);
-
-      _appendSystem('Vosk 语音模型已下载完成，正在初始化...');
-
-      await _loadClientConfig();
-    } catch (err, stack) {
-      if (extractionStarted) {
-        await prefs.remove('vosk_model_path');
-        await prefs.remove(_voskDownloadProgressKey);
-        await prefs.remove(_voskDownloadBytesKey);
-        await _deleteFileIfExists(archiveFile);
-        await _deleteFileIfExists(partFile);
-        await _deleteDirectoryIfExists(tempModelDir);
-        final currentModelRoot = await _resolveAvailableVoskModelPath(
-          preferredPath: modelPath,
-        );
-        if (currentModelRoot == null) {
-          await _deleteDirectoryIfExists(Directory(modelPath));
+          lastDownloadError = null;
+          break;
+        } catch (err) {
+          lastDownloadError = err;
+          if (index == downloadUrls.length - 1) {
+            rethrow;
+          }
         }
       }
-      if (!mounted) {
-        return;
-      }
-      debugPrint('Download Vosk model error: $err\n$stack');
-      setState(() {
-        _voskModelDownloadError = err.toString();
-        _status = 'Vosk 模型下载失败: $err';
-      });
-      _appendSystem('Vosk 模型下载失败: $err。点击下载按钮可继续下载。');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _voskModelDownloading = false;
-        });
+      if (lastDownloadError != null) {
+        throw lastDownloadError;
       }
     }
+
+    if (mounted) {
+      setState(() {
+        _status = '正在解压 $label 模型...';
+      });
+    }
+    final resolvedRoot = await _extractSherpaArchiveToModelDir(
+      archiveFile: archiveFile,
+      tempModelDir: tempModelDir,
+      modelPath: modelPath,
+      kind: kind,
+    );
+    await _deleteFileIfExists(archiveFile);
+    await _deleteFileIfExists(partFile);
+    await prefs.remove(bytesKey);
+    return resolvedRoot;
+  }
+
+  Future<String> _extractSherpaArchiveToModelDir({
+    required File archiveFile,
+    required Directory tempModelDir,
+    required String modelPath,
+    required SherpaModelKind kind,
+  }) async {
+    await _deleteDirectoryIfExists(tempModelDir);
+    await tempModelDir.create(recursive: true);
+    try {
+      final archive = await _decodeSherpaArchive(archiveFile);
+      final canonicalRoot = tempModelDir.absolute.uri;
+      for (final entry in archive) {
+        if (entry.isSymbolicLink) {
+          continue;
+        }
+        final outUri = canonicalRoot.resolve(entry.name);
+        if (!outUri.toFilePath().startsWith(canonicalRoot.toFilePath())) {
+          throw FormatException('压缩包包含不安全路径: ${entry.name}');
+        }
+        final outputPath = outUri.toFilePath();
+        if (entry.isFile) {
+          final outputFile = File(outputPath);
+          await outputFile.parent.create(recursive: true);
+          await outputFile.writeAsBytes(entry.content as List<int>);
+        } else {
+          await Directory(outputPath).create(recursive: true);
+        }
+      }
+      final extractedRoot = await SherpaModelLocator.findModelRoot(
+        tempModelDir.path,
+        kind,
+      );
+      if (extractedRoot == null) {
+        throw const FormatException('解压后的 Sherpa 模型缺少必要文件。');
+      }
+      await _deleteDirectoryIfExists(Directory(modelPath));
+      await tempModelDir.rename(modelPath);
+      final resolvedRoot = await SherpaModelLocator.findModelRoot(
+        modelPath,
+        kind,
+      );
+      if (resolvedRoot == null) {
+        throw const FormatException('移动后的 Sherpa 模型缺少必要文件。');
+      }
+      return resolvedRoot;
+    } catch (_) {
+      await _deleteDirectoryIfExists(tempModelDir);
+      rethrow;
+    }
+  }
+
+  Future<Archive> _decodeSherpaArchive(File archiveFile) async {
+    final bytes = await archiveFile.readAsBytes();
+    final lowerPath = archiveFile.path.toLowerCase();
+    if (bytes.length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
+      return ZipDecoder().decodeBytes(bytes);
+    }
+    if (bytes.length >= 3 &&
+        bytes[0] == 0x42 &&
+        bytes[1] == 0x5A &&
+        bytes[2] == 0x68) {
+      return TarDecoder().decodeBytes(BZip2Decoder().decodeBytes(bytes));
+    }
+    if (bytes.length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B) {
+      return TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes));
+    }
+    if (lowerPath.endsWith('.zip')) {
+      return ZipDecoder().decodeBytes(bytes);
+    }
+    if (lowerPath.endsWith('.tar.bz2') || lowerPath.endsWith('.tar.bz')) {
+      return TarDecoder().decodeBytes(BZip2Decoder().decodeBytes(bytes));
+    }
+    if (lowerPath.endsWith('.tar.gz') || lowerPath.endsWith('.tgz')) {
+      return TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes));
+    }
+    if (lowerPath.endsWith('.tar')) {
+      return TarDecoder().decodeBytes(bytes);
+    }
+    throw const FormatException('Sherpa 模型压缩包仅支持 zip、tar、tar.gz、tar.bz2');
   }
 
   Future<void> _loadClientConfig() async {
@@ -970,17 +1012,22 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
       );
       final savedBaseUrl = prefs.getString(_baseUrlOverrideKey)?.trim() ?? '';
       final savedUserId = prefs.getString(_lastLoginUserIdKey)?.trim() ?? '';
-      // Use saved model path if available (from downloaded model), otherwise use asset config
-      final savedModelPath = prefs.getString('vosk_model_path')?.trim() ?? '';
-      final savedVoskManualDownloadUrl =
-          prefs.getString(_voskManualDownloadUrlKey)?.trim() ?? '';
+      final savedAsrModelPath =
+          prefs.getString('sherpa_asr_model_path')?.trim() ?? '';
+      final savedKwsModelPath =
+          prefs.getString('sherpa_kws_model_path')?.trim() ?? '';
+      final savedSherpaManualDownloadUrl =
+          prefs.getString(_sherpaManualDownloadUrlKey)?.trim() ?? '';
       final config = ClientConfig(
         baseUrl: savedBaseUrl.isEmpty ? assetConfig.baseUrl : savedBaseUrl,
         receiveToken: assetConfig.receiveToken,
-        enableLocalVosk: assetConfig.enableLocalVosk,
-        voskModelPath: savedModelPath.isNotEmpty
-            ? savedModelPath
-            : assetConfig.voskModelPath,
+        enableLocalSherpa: assetConfig.enableLocalSherpa,
+        sherpaAsrModelPath: savedAsrModelPath.isNotEmpty
+            ? savedAsrModelPath
+            : assetConfig.sherpaAsrModelPath,
+        sherpaKwsModelPath: savedKwsModelPath.isNotEmpty
+            ? savedKwsModelPath
+            : assetConfig.sherpaKwsModelPath,
         cortanaEnabledDefault: assetConfig.cortanaEnabledDefault,
         cortanaAllowFullAccessDefault:
             assetConfig.cortanaAllowFullAccessDefault,
@@ -1053,7 +1100,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
         _cortanaPersonaDescCtrl.text = _cortanaPersonaDescription;
         _cortanaWakePhraseCtrl.text = _cortanaWakePhrase;
         _baseUrlController.text = config.baseUrl;
-        _voskDownloadUrlController.text = savedVoskManualDownloadUrl;
+        _sherpaDownloadUrlController.text = savedSherpaManualDownloadUrl;
         if (savedUserId.isNotEmpty) {
           _userIdController.text = savedUserId;
         }
@@ -1108,8 +1155,9 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
       _clientConfig = ClientConfig(
         baseUrl: baseUrl,
         receiveToken: _clientConfig?.receiveToken ?? '',
-        enableLocalVosk: _clientConfig?.enableLocalVosk ?? false,
-        voskModelPath: _clientConfig?.voskModelPath ?? '',
+        enableLocalSherpa: _clientConfig?.enableLocalSherpa ?? false,
+        sherpaAsrModelPath: _clientConfig?.sherpaAsrModelPath ?? '',
+        sherpaKwsModelPath: _clientConfig?.sherpaKwsModelPath ?? '',
         cortanaEnabledDefault: _clientConfig?.cortanaEnabledDefault ?? true,
         cortanaAllowFullAccessDefault:
             _clientConfig?.cortanaAllowFullAccessDefault ?? true,
@@ -1609,7 +1657,7 @@ extension _ChatPageStateLive2dConfig on _ChatPageState {
     }
     _maybeShowLoginGreeting(restored: !clearPassword);
     unawaited(_connectWs());
-    unawaited(_restoreVoskDownloadProgress());
+    unawaited(_restoreSherpaDownloadProgress());
   }
 
   Future<void> _clearLocalAuthState({

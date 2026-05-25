@@ -270,17 +270,17 @@ extension _ChatPageStateDebugCopy on _ChatPageState {
 
   Map<String, dynamic> _defaultDebugCopyIssue() {
     return <String, dynamic>{
-      'title': 'Flutter App Vosk 语音唤醒调试',
+      'title': 'Flutter App Sherpa 语音唤醒调试',
       'user_description':
-          '1. 40M Vosk 模型识别不准：说“嗨”返回“还”，说“元宝”返回“院报”等。\n'
-          '2. 如果命中“嗨”，App 直接崩溃退出。',
+          '1. Sherpa 本地模型识别或唤醒不符合预期。\n'
+          '2. 如果命中唤醒词，App 直接崩溃退出。',
       'expected': '识别结果可解释，命中唤醒词后 App 不崩溃。',
       'actual': _lastCortanaWakeTranscript.isEmpty
           ? '等待最近语音唤醒日志定位。'
           : '最近语音识别: $_lastCortanaWakeTranscript',
       'repro_steps': <String>[
         '打开 App 并启用 Cortana 语音唤醒。',
-        '使用本地 Vosk 模型说“嗨”或“元宝”。',
+        '使用本地 Sherpa 模型说唤醒词。',
         '如果 App 崩溃，重启后进入调试页执行复制完整调试上下文。',
       ],
     };
@@ -301,10 +301,10 @@ extension _ChatPageStateDebugCopy on _ChatPageState {
       'cortana_enabled': _cortanaEnabled,
       'voice_wake_enabled': _cortanaVoiceWakeEnabled,
       'wake_phrase': _cortanaWakePhrase,
-      'use_local_vosk': _useLocalVosk,
+      'use_local_sherpa': _useLocalSherpa,
       'speech_ready': _speechReady,
       'system_speech_ready': _systemSpeechReady,
-      'persistent_vosk_wake_listening': _persistentVoskWakeListening,
+      'persistent_sherpa_wake_listening': _persistentSherpaWakeListening,
       'cortana_wake_listening': _cortanaWakeListening,
       'cortana_wake_handling': _cortanaWakeHandling,
       'cortana_wake_awaiting_command': _cortanaWakeAwaitingCommand,
@@ -386,7 +386,7 @@ extension _ChatPageStateDebugCopy on _ChatPageState {
       return '';
     }
     try {
-      return await _voskTranscriber.readNativeDebugTrace('crash');
+      return await _sherpaSpeechEngine.readNativeDebugTrace('crash');
     } catch (err) {
       debugPrint('Read native crash trace failed: $err');
       return '';

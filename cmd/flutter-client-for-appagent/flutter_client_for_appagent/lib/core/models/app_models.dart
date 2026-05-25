@@ -502,8 +502,9 @@ class ClientConfig {
   const ClientConfig({
     required this.baseUrl,
     required this.receiveToken,
-    required this.enableLocalVosk,
-    required this.voskModelPath,
+    required this.enableLocalSherpa,
+    required this.sherpaAsrModelPath,
+    required this.sherpaKwsModelPath,
     required this.cortanaEnabledDefault,
     required this.cortanaAllowFullAccessDefault,
     required this.cortanaAutoPlayDefault,
@@ -518,8 +519,9 @@ class ClientConfig {
 
   final String baseUrl;
   final String receiveToken;
-  final bool enableLocalVosk;
-  final String voskModelPath;
+  final bool enableLocalSherpa;
+  final String sherpaAsrModelPath;
+  final String sherpaKwsModelPath;
   final bool cortanaEnabledDefault;
   final bool cortanaAllowFullAccessDefault;
   final bool cortanaAutoPlayDefault;
@@ -535,8 +537,15 @@ class ClientConfig {
     return ClientConfig(
       baseUrl: (json['base_url'] ?? '').toString().trim(),
       receiveToken: (json['receive_token'] ?? '').toString().trim(),
-      enableLocalVosk: json['enable_local_vosk'] == true,
-      voskModelPath: (json['vosk_model_path'] ?? '').toString().trim(),
+      enableLocalSherpa:
+          json['enable_local_sherpa'] == true ||
+          json['enable_local_vosk'] == true,
+      sherpaAsrModelPath: (json['sherpa_asr_model_path'] ?? '')
+          .toString()
+          .trim(),
+      sherpaKwsModelPath: (json['sherpa_kws_model_path'] ?? '')
+          .toString()
+          .trim(),
       cortanaEnabledDefault: json['cortana_enabled_default'] != false,
       cortanaAllowFullAccessDefault:
           json['cortana_allow_full_access_default'] != false,

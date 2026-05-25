@@ -73,7 +73,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
         : _appStorageScanError.isNotEmpty
         ? '扫描失败: $_appStorageScanError'
         : _appStorageUsages.isEmpty
-        ? '点击刷新，查看 Vosk、Live2D、语音、下载和缓存占用'
+        ? '点击刷新，查看 Sherpa、Live2D、语音、下载和缓存占用'
         : '已统计 ${_formatBytes(diskBytes)}'
               '${scannedAt == null ? '' : ' · ${_formatTime(scannedAt)}'}';
 
@@ -190,7 +190,7 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     final palette = _palette;
     final deleting = _appStorageDeletingCategory == usage.id;
     final categoryBusy = switch (usage.id) {
-      'vosk' => _voskModelDownloading,
+      'sherpa' => _sherpaModelDownloading,
       'live2d' => _cortanaLive2dDownloading,
       'voice_audio' => _recording || _transcribingVoice,
       'downloads' => _sending,
@@ -407,9 +407,13 @@ extension _ChatPageStateStorageManager on _ChatPageState {
 
     final supportPath = supportDir.path;
     final tempPath = tempDir.path;
-    final voskArchiveFile = await _getVoskArchiveFile();
-    final voskArchive = _normalizeStoragePath(voskArchiveFile.path);
-    final voskArchiveDir = _normalizeStoragePath(voskArchiveFile.parent.path);
+    final sherpaAsrArchiveFile = await _getSherpaArchiveFile('asr');
+    final sherpaKwsArchiveFile = await _getSherpaArchiveFile('kws');
+    final sherpaAsrArchive = _normalizeStoragePath(sherpaAsrArchiveFile.path);
+    final sherpaKwsArchive = _normalizeStoragePath(sherpaKwsArchiveFile.path);
+    final sherpaArchiveDir = _normalizeStoragePath(
+      sherpaAsrArchiveFile.parent.path,
+    );
     final live2dArchive = _joinStoragePath(tempPath, 'cortana-live2d.zip');
     final voiceTempTargets = await _topLevelStorageTargets(
       tempDir,
@@ -418,17 +422,21 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     );
 
     final knownTempPaths = <String>{
-      voskArchive,
-      '$voskArchive.part',
+      sherpaAsrArchive,
+      '$sherpaAsrArchive.part',
+      sherpaKwsArchive,
+      '$sherpaKwsArchive.part',
       live2dArchive,
       '$live2dArchive.part',
       ...voiceTempTargets.map((target) => target.path),
     };
 
     final knownSupportPaths = <String>{
-      _joinStoragePath(supportPath, 'vosk-model-cn'),
-      _joinStoragePath(supportPath, 'vosk-model-cn.extracting'),
-      voskArchiveDir,
+      _joinStoragePath(supportPath, 'sherpa-asr-sense-voice'),
+      _joinStoragePath(supportPath, 'sherpa-asr-sense-voice.extracting'),
+      _joinStoragePath(supportPath, 'sherpa-kws-wenetspeech'),
+      _joinStoragePath(supportPath, 'sherpa-kws-wenetspeech.extracting'),
+      sherpaArchiveDir,
       _joinStoragePath(supportPath, 'cortana_live2d_models'),
       _joinStoragePath(supportPath, 'cortana_web_runtime'),
       _joinStoragePath(supportPath, 'voice_messages'),
@@ -439,23 +447,39 @@ extension _ChatPageStateStorageManager on _ChatPageState {
 
     final usages = <AppStorageUsage>[
       await _collectFileStorageUsage(
-        id: 'vosk',
-        label: 'Vosk 语音模型',
-        description: '离线语音识别模型、未完成解压目录和下载临时包。',
+        id: 'sherpa',
+        label: 'Sherpa 语音模型',
+        description: '离线语音转文字、唤醒模型、未完成解压目录和下载临时包。',
         icon: Icons.record_voice_over_outlined,
         targets: <_AppStorageTarget>[
           _AppStorageTarget(
             label: '模型',
-            path: _joinStoragePath(supportPath, 'vosk-model-cn'),
+            path: _joinStoragePath(supportPath, 'sherpa-asr-sense-voice'),
           ),
           _AppStorageTarget(
-            label: '解压中',
-            path: _joinStoragePath(supportPath, 'vosk-model-cn.extracting'),
+            label: '唤醒模型',
+            path: _joinStoragePath(supportPath, 'sherpa-kws-wenetspeech'),
           ),
-          _AppStorageTarget(label: '压缩包', path: voskArchive),
-          _AppStorageTarget(label: '未完成', path: '$voskArchive.part'),
+          _AppStorageTarget(
+            label: 'ASR 解压中',
+            path: _joinStoragePath(
+              supportPath,
+              'sherpa-asr-sense-voice.extracting',
+            ),
+          ),
+          _AppStorageTarget(
+            label: 'KWS 解压中',
+            path: _joinStoragePath(
+              supportPath,
+              'sherpa-kws-wenetspeech.extracting',
+            ),
+          ),
+          _AppStorageTarget(label: 'ASR 压缩包', path: sherpaAsrArchive),
+          _AppStorageTarget(label: 'ASR 未完成', path: '$sherpaAsrArchive.part'),
+          _AppStorageTarget(label: 'KWS 压缩包', path: sherpaKwsArchive),
+          _AppStorageTarget(label: 'KWS 未完成', path: '$sherpaKwsArchive.part'),
         ],
-        deleteHint: '删除 Vosk 模型和下载缓存',
+        deleteHint: '删除 Sherpa 模型和下载缓存',
       ),
       await _collectFileStorageUsage(
         id: 'live2d',
@@ -829,8 +853,8 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     });
     try {
       switch (usage.id) {
-        case 'vosk':
-          await _deleteVoskStorage();
+        case 'sherpa':
+          await _deleteSherpaStorage();
           break;
         case 'live2d':
           await _deleteLive2dStorage();
@@ -873,26 +897,37 @@ extension _ChatPageStateStorageManager on _ChatPageState {
     }
   }
 
-  Future<void> _deleteVoskStorage() async {
+  Future<void> _deleteSherpaStorage() async {
     final prefs = await SharedPreferences.getInstance();
-    final modelPath = await _getLocalVoskModelPath();
-    final archiveFile = await _getVoskArchiveFile();
-    final partFile = await _getVoskArchivePartFile();
-    final tempModelDir = await _getVoskExtractionTempDir();
-    await _deleteDirectoryIfExists(Directory(modelPath));
-    await _deleteDirectoryIfExists(tempModelDir);
-    await _deleteFileIfExists(archiveFile);
-    await _deleteFileIfExists(partFile);
-    await prefs.remove('vosk_model_path');
-    await prefs.remove(_voskDownloadProgressKey);
-    await prefs.remove(_voskDownloadBytesKey);
-    await prefs.remove(_voskActiveDownloadUrlKey);
+    await _sherpaSpeechEngine.stopWakeListening();
+    await _deleteDirectoryIfExists(
+      Directory(await _getLocalSherpaAsrModelPath()),
+    );
+    await _deleteDirectoryIfExists(
+      Directory(await _getLocalSherpaKwsModelPath()),
+    );
+    for (final id in const <String>['asr', 'kws']) {
+      final archiveFile = await _getSherpaArchiveFile(id);
+      final partFile = await _getSherpaArchivePartFile(id);
+      final tempModelDir = await _getSherpaExtractionTempDir(id);
+      await _deleteDirectoryIfExists(tempModelDir);
+      await _deleteFileIfExists(archiveFile);
+      await _deleteFileIfExists(partFile);
+      await prefs.remove('$_sherpaActiveDownloadUrlKey::$id');
+      await prefs.remove('$_sherpaDownloadBytesKey::$id');
+    }
+    await prefs.remove('sherpa_asr_model_path');
+    await prefs.remove('sherpa_kws_model_path');
+    await prefs.remove(_sherpaDownloadProgressKey);
+    await prefs.remove(_sherpaDownloadBytesKey);
+    await prefs.remove(_sherpaActiveDownloadUrlKey);
     if (mounted) {
       setState(() {
         _speechReady = _systemSpeechReady;
-        _useLocalVosk = false;
-        _voskModelDownloadProgress = 0.0;
-        _voskModelDownloadError = null;
+        _useLocalSherpa = false;
+        _persistentSherpaWakeListening = false;
+        _sherpaModelDownloadProgress = 0.0;
+        _sherpaModelDownloadError = null;
       });
     }
   }
@@ -955,7 +990,6 @@ extension _ChatPageStateStorageManager on _ChatPageState {
   Future<void> _deleteCacheTempStorage() async {
     final tempDir = await getTemporaryDirectory();
     final cacheDir = await _tryGetApplicationCacheDirectory();
-    final voskArchive = _joinStoragePath(tempDir.path, 'vosk-model-cn.zip');
     final live2dArchive = _joinStoragePath(tempDir.path, 'cortana-live2d.zip');
     final tempVoiceTargets = await _topLevelStorageTargets(
       tempDir,
@@ -963,8 +997,6 @@ extension _ChatPageStateStorageManager on _ChatPageState {
       include: (name) => name.startsWith('app_voice_'),
     );
     final excludedTempPaths = <String>{
-      voskArchive,
-      '$voskArchive.part',
       live2dArchive,
       '$live2dArchive.part',
       ...tempVoiceTargets.map((target) => target.path),

@@ -47,7 +47,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final _codegenCodeSearchController = TextEditingController();
   final _codegenDeploySearchController = TextEditingController();
   final _deployArgsController = TextEditingController();
-  final _voskDownloadUrlController = TextEditingController();
+  final _sherpaDownloadUrlController = TextEditingController();
   final FocusNode _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _controlsScrollController = ScrollController();
@@ -56,12 +56,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final ImagePicker _imagePicker = ImagePicker();
   final LocalFilePicker _localFilePicker = LocalFilePicker();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
-  final VoskTranscriber _voskTranscriber = VoskTranscriber();
+  final SherpaSpeechEngine _sherpaSpeechEngine = SherpaSpeechEngine();
   final ApkInstaller _apkInstaller = ApkInstaller();
-  final ZipExtractor _zipExtractor = ZipExtractor();
   final DeviceLocationProvider _locationProvider = DeviceLocationProvider();
   final ResumableFileDownloader _fileDownloader = const ResumableFileDownloader(
-    retryDelays: _voskDownloadRetryDelays,
+    retryDelays: _sherpaDownloadRetryDelays,
   );
 
   final Map<String, List<ChatMessage>> _historyByScope =
@@ -105,8 +104,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool _recording = false;
   bool _speechReady = false;
   bool _systemSpeechReady = false;
-  bool _useLocalVosk = false;
-  bool _persistentVoskWakeListening = false;
+  bool _useLocalSherpa = false;
+  bool _persistentSherpaWakeListening = false;
   bool _sending = false;
   bool _transcribingVoice = false;
   bool _voiceInputMode = false;
@@ -181,9 +180,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   ClientConfig? _clientConfig;
   String? _downloadStatusLabel;
   int _downloadStatusPercent = -1;
-  bool _voskModelDownloading = false;
-  double _voskModelDownloadProgress = 0.0;
-  String? _voskModelDownloadError;
+  bool _sherpaModelDownloading = false;
+  double _sherpaModelDownloadProgress = 0.0;
+  String? _sherpaModelDownloadError;
   Future<bool>? _sessionRefreshFuture;
   RootTab _rootTab = RootTab.chat;
   CortanaDisplayMode _cortanaFloatingMode = CortanaDisplayMode.collapsed;
@@ -220,7 +219,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     unawaited(_restoreCodegenPreferences());
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
-    unawaited(_restoreVoskDownloadProgress());
+    unawaited(_restoreSherpaDownloadProgress());
     unawaited(_restoreCortanaLive2dModels());
     _startCodegenTimeoutSweepTimer();
     _scheduleCortanaLocationRefresh(initial: true);
@@ -246,41 +245,47 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _restoreVoskDownloadProgress() async {
+  Future<void> _restoreSherpaDownloadProgress() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await _migrateLegacyVoskPartialArchive(prefs);
-      final partFile = await _getVoskArchivePartFile();
-      final archiveFile = await _getVoskArchiveFile();
+      final asrPartFile = await _getSherpaArchivePartFile('asr');
+      final kwsPartFile = await _getSherpaArchivePartFile('kws');
+      final asrArchiveFile = await _getSherpaArchiveFile('asr');
+      final kwsArchiveFile = await _getSherpaArchiveFile('kws');
+      final partFile = await asrPartFile.exists() ? asrPartFile : kwsPartFile;
+      final archiveFile = await asrArchiveFile.exists()
+          ? asrArchiveFile
+          : kwsArchiveFile;
       if (await partFile.exists()) {
         final partialBytes = await partFile.length();
         if (partialBytes <= 0) {
           await partFile.delete();
-          await prefs.remove(_voskDownloadProgressKey);
-          await prefs.remove(_voskDownloadBytesKey);
+          await prefs.remove(_sherpaDownloadProgressKey);
+          await prefs.remove(_sherpaDownloadBytesKey);
           return;
         }
-        final savedProgress = await _getVoskDownloadProgress();
-        final savedBytes = prefs.getInt(_voskDownloadBytesKey) ?? partialBytes;
+        final savedProgress = await _getSherpaDownloadProgress();
+        final savedBytes =
+            prefs.getInt(_sherpaDownloadBytesKey) ?? partialBytes;
         if (!mounted) return;
         setState(() {
-          _voskModelDownloadProgress = savedProgress > 0 && savedProgress < 1.0
-              ? savedProgress
-              : 0.0;
-          _status = 'Vosk 模型下载未完成（已下载 ${_formatBytes(savedBytes)}），点击继续下载按钮可继续';
+          _sherpaModelDownloadProgress =
+              savedProgress > 0 && savedProgress < 1.0 ? savedProgress : 0.0;
+          _status =
+              'Sherpa 模型下载未完成（已下载 ${_formatBytes(savedBytes)}），点击继续下载按钮可继续';
         });
-        _appendSystem('检测到未完成的 Vosk 模型下载，可点击继续下载');
+        _appendSystem('检测到未完成的 Sherpa 模型下载，可点击继续下载');
       } else if (await archiveFile.exists() && await archiveFile.length() > 0) {
         if (!mounted) return;
         setState(() {
-          _voskModelDownloadProgress = 1.0;
-          _status = '检测到已下载完成的 Vosk 模型压缩包，正在继续安装';
+          _sherpaModelDownloadProgress = 0.5;
+          _status = '检测到已下载完成的 Sherpa ASR 压缩包，正在继续安装';
         });
-        _appendSystem('检测到已下载完成的 Vosk 模型压缩包，继续安装。');
-        unawaited(_downloadAndExtractVoskModel());
+        _appendSystem('检测到已下载完成的 Sherpa 模型压缩包，继续安装。');
+        unawaited(_downloadAndExtractSherpaModels());
       } else {
-        await prefs.remove(_voskDownloadProgressKey);
-        await prefs.remove(_voskDownloadBytesKey);
+        await prefs.remove(_sherpaDownloadProgressKey);
+        await prefs.remove(_sherpaDownloadBytesKey);
       }
     } catch (_) {
       // Ignore errors during progress restoration
@@ -317,7 +322,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _codegenCodeSearchController.dispose();
     _codegenDeploySearchController.dispose();
     _deployArgsController.dispose();
-    _voskDownloadUrlController.dispose();
+    _sherpaDownloadUrlController.dispose();
+    unawaited(_sherpaSpeechEngine.dispose());
     _codegenHistoryNotifier.dispose();
     _cortanaPersonaNameCtrl.dispose();
     _cortanaOwnerTitleCtrl.dispose();
@@ -577,62 +583,73 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Future<void> _initVoice() async {
     final config = _clientConfig;
     final prefs = await SharedPreferences.getInstance();
-    if (_isAndroidHost && config != null && config.enableLocalVosk) {
-      final modelPath = await _resolveAvailableVoskModelPath(
-        preferredPath: config.voskModelPath,
+    if (_isAndroidHost && config != null && config.enableLocalSherpa) {
+      final bundle = await _resolveAvailableSherpaModelBundle(
+        preferredAsrPath: config.sherpaAsrModelPath,
+        preferredKwsPath: config.sherpaKwsModelPath,
       );
-      if (modelPath != null) {
-        final localModelPath = await _getLocalVoskModelPath();
-        final savedModelPath = prefs.getString('vosk_model_path')?.trim() ?? '';
-        final localModelPrefix = '$localModelPath${Platform.pathSeparator}';
-        if ((modelPath == localModelPath ||
-                modelPath.startsWith(localModelPrefix)) &&
-            savedModelPath != modelPath) {
-          await prefs.setString('vosk_model_path', modelPath);
+      if (bundle != null) {
+        final localAsrPath = await _getLocalSherpaAsrModelPath();
+        final localKwsPath = await _getLocalSherpaKwsModelPath();
+        final savedAsrPath =
+            prefs.getString('sherpa_asr_model_path')?.trim() ?? '';
+        final savedKwsPath =
+            prefs.getString('sherpa_kws_model_path')?.trim() ?? '';
+        if (bundle.asr.rootPath.startsWith(localAsrPath) &&
+            savedAsrPath != bundle.asr.rootPath) {
+          await prefs.setString('sherpa_asr_model_path', bundle.asr.rootPath);
+        }
+        if (bundle.kws.rootPath.startsWith(localKwsPath) &&
+            savedKwsPath != bundle.kws.rootPath) {
+          await prefs.setString('sherpa_kws_model_path', bundle.kws.rootPath);
         }
         try {
-          final error = await _voskTranscriber.initialize(modelPath);
+          final error = await _sherpaSpeechEngine.initialize(bundle);
           if (!mounted) {
             return;
           }
           if (error == null) {
             setState(() {
               _speechReady = true;
-              _useLocalVosk = true;
+              _useLocalSherpa = true;
             });
-            _appendSystem('Vosk local speech recognition is ready.');
+            _appendSystem('Sherpa local speech recognition is ready.');
             await _ensureSystemSpeechRecognitionReady(silent: true);
             _scheduleCortanaWakeRestart();
             return;
           }
-          await prefs.remove('vosk_model_path');
+          await prefs.remove('sherpa_asr_model_path');
+          await prefs.remove('sherpa_kws_model_path');
           if (!mounted) {
             return;
           }
           setState(() {
             _speechReady = false;
-            _useLocalVosk = false;
+            _useLocalSherpa = false;
           });
           _appendSystem(
-            'Vosk model invalid, cleared model path. Please re-download: $error',
+            'Sherpa model invalid, cleared model path. Please re-download: $error',
           );
         } catch (err) {
-          await prefs.remove('vosk_model_path');
+          await prefs.remove('sherpa_asr_model_path');
+          await prefs.remove('sherpa_kws_model_path');
           if (!mounted) {
             return;
           }
           setState(() {
             _speechReady = false;
-            _useLocalVosk = false;
+            _useLocalSherpa = false;
           });
           _appendSystem(
-            'Initialize Vosk failed, cleared model path. Please re-download: $err',
+            'Initialize Sherpa failed, cleared model path. Please re-download: $err',
           );
         }
-      } else if ((config.voskModelPath).trim().isNotEmpty) {
-        await prefs.remove('vosk_model_path');
+      } else if (config.sherpaAsrModelPath.trim().isNotEmpty ||
+          config.sherpaKwsModelPath.trim().isNotEmpty) {
+        await prefs.remove('sherpa_asr_model_path');
+        await prefs.remove('sherpa_kws_model_path');
         _appendSystem(
-          'Vosk model directory is incomplete, fallback to system speech recognition.',
+          'Sherpa model directory is incomplete, fallback to system speech recognition.',
         );
       }
     }
@@ -643,7 +660,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
     setState(() {
       _speechReady = available;
-      _useLocalVosk = false;
+      _useLocalSherpa = false;
     });
     _scheduleCortanaWakeRestart();
   }
@@ -689,12 +706,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     _cortanaWakeRestartTimer?.cancel();
     _setCortanaWakeListening(false, reason: '暂停监听');
     _appendCortanaWakeLog('暂停监听: cancel=$cancel');
-    if (_persistentVoskWakeListening) {
-      await _voskTranscriber.stopWakeWordListening();
-      _persistentVoskWakeListening = false;
-      _appendCortanaWakeLog('已停止 Vosk 常驻唤醒监听');
-      // 原生 SpeechService 关闭 AudioRecord 需要一点尾部时间；
-      // 立刻切系统听写容易触发 recognizer_busy / error_busy。
+    if (_persistentSherpaWakeListening) {
+      await _sherpaSpeechEngine.stopWakeListening();
+      _persistentSherpaWakeListening = false;
+      _appendCortanaWakeLog('已停止 Sherpa 常驻唤醒监听');
+      // 释放 AudioRecord 后稍等片刻，避免立刻切系统听写触发 busy。
       await Future<void>.delayed(const Duration(milliseconds: 450));
     }
     await _stopSpeechRecognition(cancel: cancel);
@@ -777,8 +793,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       }
       return;
     }
-    if (_useLocalVosk && _isAndroidHost) {
-      await _startPersistentVoskWakeListening();
+    if (_useLocalSherpa && _isAndroidHost) {
+      await _startPersistentSherpaWakeListening();
       return;
     }
     if (_speechToText.isListening) {
@@ -877,78 +893,64 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startPersistentVoskWakeListening() async {
+  Future<void> _startPersistentSherpaWakeListening() async {
     final hasPermission = await _audioRecorder.hasPermission();
     if (!hasPermission) {
       _appendSystem('语音唤醒需要麦克风权限。');
-      _appendCortanaWakeLog('Vosk 常驻监听未启动: 缺少麦克风权限');
+      _appendCortanaWakeLog('Sherpa 常驻监听未启动: 缺少麦克风权限');
       return;
     }
     try {
-      _voskTranscriber.setWakeWordEventHandler(_handlePersistentVoskWakeEvent);
-      final started = await _voskTranscriber.startWakeWordListening();
+      final started = await _sherpaSpeechEngine.startWakeListening(
+        wakePhrases: <String>{_cortanaWakePhrase, _defaultCortanaWakePhrase},
+        onEvent: _handlePersistentSherpaWakeEvent,
+      );
       if (!started) {
-        _appendCortanaWakeLog('Vosk 常驻监听未启动: native 返回 started=false');
+        _appendCortanaWakeLog('Sherpa 常驻监听未启动: started=false');
         _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
         return;
       }
-      _persistentVoskWakeListening = true;
-      _setCortanaWakeListening(true, reason: 'Vosk 常驻监听启动');
-      _appendCortanaWakeLog('Vosk 常驻唤醒监听已启动');
+      _persistentSherpaWakeListening = true;
+      _setCortanaWakeListening(true, reason: 'Sherpa 常驻监听启动');
+      _appendCortanaWakeLog('Sherpa 常驻唤醒监听已启动');
       if (mounted) {
         setState(() {
-          _status = 'Vosk 常驻语音唤醒监听中';
+          _status = 'Sherpa 常驻语音唤醒监听中';
         });
       }
     } catch (err, stack) {
-      _persistentVoskWakeListening = false;
-      _appendCortanaWakeLog('Vosk 常驻监听启动失败: $err');
-      debugPrint('Vosk wake listen error: $err\n$stack');
+      _persistentSherpaWakeListening = false;
+      _appendCortanaWakeLog('Sherpa 常驻监听启动失败: $err');
+      debugPrint('Sherpa wake listen error: $err\n$stack');
       _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
     }
   }
 
-  Future<void> _handlePersistentVoskWakeEvent(
-    Map<String, dynamic> event,
-  ) async {
-    if (!_persistentVoskWakeListening || _cortanaWakeHandling) {
+  Future<void> _handlePersistentSherpaWakeEvent(SherpaWakeEvent event) async {
+    if (!_persistentSherpaWakeListening || _cortanaWakeHandling) {
       return;
     }
-    final type = (event['type'] ?? '').toString().trim();
-    final payload = (event['payload'] ?? '').toString().trim();
+    final type = event.type.trim();
     if (type == 'error') {
-      _appendCortanaWakeLog('Vosk 常驻监听错误: $payload');
-      _persistentVoskWakeListening = false;
-      _setCortanaWakeListening(false, reason: 'Vosk 常驻监听错误');
+      _appendCortanaWakeLog('Sherpa 常驻监听错误: ${event.message}');
+      _persistentSherpaWakeListening = false;
+      _setCortanaWakeListening(false, reason: 'Sherpa 常驻监听错误');
       _scheduleCortanaWakeRestart(delay: const Duration(seconds: 2));
       return;
     }
-    final transcript = _extractVoskText(payload);
+    final transcript = normalizeSpeechTranscript(event.keyword);
     if (transcript.isEmpty) {
       return;
     }
-    _appendCortanaWakeLog('Vosk 常驻监听识别到: "$transcript", type=$type');
-    var command = _extractCortanaWakeCommand(transcript);
-    var matchReason = command == null
+    _appendCortanaWakeLog('Sherpa 常驻监听命中: "$transcript", type=$type');
+    final command = _extractCortanaWakeCommand(transcript);
+    final matchReason = command == null
         ? 'no_alias_matched'
-        : 'main_alias_matched';
-    final alternatives = _extractVoskAlternatives(payload);
-    if (command == null) {
-      // 主结果未匹配，尝试检查替代假设（setMaxAlternatives 提供）
-      for (final alt in alternatives) {
-        _appendCortanaWakeLog('Vosk 替代假设: "$alt"');
-        command = _extractCortanaWakeCommand(alt);
-        if (command != null) {
-          matchReason = 'alternative_alias_matched';
-          _appendCortanaWakeLog('Vosk 替代假设命中唤醒词，初始指令="$command"');
-          break;
-        }
-      }
-    }
+        : 'kws_keyword_matched';
     AppDebugRecorder.instance.recordVoiceWakeDecision(
-      engine: 'vosk',
+      engine: 'sherpa_kws',
       eventType: type,
-      rawPayload: payload,
+      rawPayload: jsonEncode(event.toJson()),
       transcript: transcript,
       wakePhrase: _cortanaWakePhrase,
       compactText: _compactWakeText(transcript),
@@ -956,56 +958,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       matchReason: matchReason,
       listening: _cortanaWakeListening,
       handling: _cortanaWakeHandling,
-      alternatives: alternatives,
       command: command ?? '',
     );
     if (command == null) {
       return;
     }
-    _appendCortanaWakeLog('Vosk 常驻监听命中唤醒词，初始指令="$command"');
+    _appendCortanaWakeLog('Sherpa 常驻监听命中唤醒词，初始指令="$command"');
     await _handleCortanaWakeDetectedSafely(command);
   }
 
-  String _extractVoskText(String rawJson) {
-    if (rawJson.isEmpty) {
-      return '';
-    }
-    try {
-      final decoded = jsonDecode(rawJson);
-      if (decoded is Map) {
-        return normalizeSpeechTranscript(
-          (decoded['text'] ?? decoded['partial'] ?? '').toString(),
-        );
-      }
-    } catch (_) {}
-    return normalizeSpeechTranscript(rawJson);
-  }
-
-  List<String> _extractVoskAlternatives(String rawJson) {
-    if (rawJson.isEmpty) {
-      return <String>[];
-    }
-    try {
-      final decoded = jsonDecode(rawJson);
-      if (decoded is! Map) {
-        return <String>[];
-      }
-      final alternatives = decoded['alternatives'];
-      if (alternatives is! List || alternatives.isEmpty) {
-        return <String>[];
-      }
-      return alternatives
-          .whereType<Map>()
-          .map(
-            (alt) => normalizeSpeechTranscript((alt['text'] ?? '').toString()),
-          )
-          .where((text) => text.isNotEmpty)
-          .toList();
-    } catch (_) {}
-    return <String>[];
-  }
-
   Future<String> _listenForCortanaWakeCommand() async {
+    if (_useLocalSherpa && _isAndroidHost) {
+      return _recordSherpaWakeCommand();
+    }
     if (!await _ensureSystemSpeechRecognitionReady(silent: true)) {
       return '';
     }
@@ -1094,6 +1059,68 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
     );
     return _speechToText.isListening;
+  }
+
+  Future<String> _recordSherpaWakeCommand() async {
+    if (!_sherpaSpeechEngine.isReady) {
+      return '';
+    }
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      _appendSystem('语音唤醒需要麦克风权限。');
+      return '';
+    }
+
+    String? path;
+    try {
+      final tempDir = await getTemporaryDirectory();
+      path =
+          '${tempDir.path}${Platform.pathSeparator}sherpa_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+          bitRate: 256000,
+        ),
+        path: path,
+      );
+      if (mounted) {
+        setState(() {
+          _status = 'Cortana 已唤醒，正在聆听...';
+        });
+      }
+      _setCortanaWakeAwaitingCommand(true, reason: 'Sherpa 唤醒词已命中');
+      _appendCortanaWakeLog('Sherpa 唤醒后录制 5 秒指令');
+      await Future<void>.delayed(const Duration(seconds: 5));
+      final recordedPath = await _audioRecorder.stop();
+      path = recordedPath?.trim().isNotEmpty == true ? recordedPath : path;
+      final audioPath = path;
+      if (audioPath == null || audioPath.isEmpty) {
+        return '';
+      }
+      final transcript = normalizeSpeechTranscript(
+        await _sherpaSpeechEngine.transcribeFile(audioPath),
+      );
+      if (transcript.isNotEmpty) {
+        _appendCortanaWakeLog('Sherpa 指令识别到: "$transcript"');
+      }
+      return transcript;
+    } catch (err, stack) {
+      _appendCortanaWakeLog('Sherpa 唤醒后聆听指令失败: $err');
+      debugPrint('Sherpa command listen error: $err\n$stack');
+      try {
+        await _audioRecorder.stop();
+      } catch (_) {}
+      return '';
+    } finally {
+      _setCortanaWakeAwaitingCommand(false, reason: 'Sherpa 指令监听结束');
+      if (path != null && path.isNotEmpty) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _handleCortanaWakeDetected(String initialCommand) async {

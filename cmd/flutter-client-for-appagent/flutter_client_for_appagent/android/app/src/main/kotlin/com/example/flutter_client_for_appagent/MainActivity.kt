@@ -25,25 +25,18 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import org.vosk.android.RecognitionListener
-import org.vosk.android.SpeechService
 import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.RandomAccessFile
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "com.example.flutter_client_for_appagent/vosk"
     private val installerChannelName = "com.example.flutter_client_for_appagent/installer"
     private val zipChannelName = "com.example.flutter_client_for_appagent/zip"
     private val locationChannelName = "com.example.flutter_client_for_appagent/location"
@@ -52,24 +45,7 @@ class MainActivity : FlutterActivity() {
     private val filePickerRequestCode = 40702
     private var pendingLocationResult: MethodChannel.Result? = null
     private var pendingFilePickerResult: MethodChannel.Result? = null
-    private val requiredModelFiles =
-        listOf(
-            "am/final.mdl",
-            "conf/mfcc.conf",
-            "conf/model.conf",
-            "graph/HCLr.fst",
-            "graph/Gr.fst",
-        )
-    private val optionalIvectorFiles =
-        listOf("ivector/final.ie", "ivector/final.mat", "ivector/online_cmvn.conf")
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val voskLock = Any()
-    @Volatile private var voskModel: Model? = null
-    @Volatile private var wakeRecognizer: Recognizer? = null
-    @Volatile private var wakeSpeechService: SpeechService? = null
-    @Volatile private var wakeShuttingDown = false
-    @Volatile private var wakeSessionId = 0L
-    private lateinit var voskChannel: MethodChannel
     private var previousUncaughtExceptionHandler: Thread.UncaughtExceptionHandler? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,17 +55,6 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        voskChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-        voskChannel.setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "initialize" -> handleInitialize(call, result)
-                    "transcribeFile" -> handleTranscribeFile(call, result)
-                    "startWakeWordListening" -> handleStartWakeWordListening(result)
-                    "stopWakeWordListening" -> handleStopWakeWordListening(result)
-                    "readNativeDebugTrace" -> handleReadNativeDebugTrace(call, result)
-                    else -> result.notImplemented()
-                }
-            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, installerChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -121,7 +86,6 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        stopWakeWordListeningBlocking()
         super.onDestroy()
         executor.shutdown()
         val terminated = try {
@@ -137,49 +101,10 @@ class MainActivity : FlutterActivity() {
                     "time" to System.currentTimeMillis(),
                     "level" to "warning",
                     "source" to "android_native",
-                    "message" to "Skip Vosk model close because executor is still running",
+                    "message" to "Skip native executor shutdown wait because executor is still running",
                 ),
             )
             return
-        }
-        synchronized(voskLock) {
-            voskModel?.close()
-            voskModel = null
-        }
-    }
-
-    private fun runOnVoskExecutor(
-        result: MethodChannel.Result,
-        failureCode: String,
-        task: () -> Unit,
-    ) {
-        try {
-            executor.execute(task)
-        } catch (_: RejectedExecutionException) {
-            result.error(failureCode, "Vosk executor is shutting down", null)
-        }
-    }
-
-    private fun runOnVoskExecutor(task: () -> Unit) {
-        try {
-            executor.execute(task)
-        } catch (_: RejectedExecutionException) {
-        }
-    }
-
-    private fun completeSuccess(result: MethodChannel.Result, payload: Any?) {
-        runOnUiThread {
-            result.success(payload)
-        }
-    }
-
-    private fun completeError(
-        result: MethodChannel.Result,
-        code: String,
-        message: String,
-    ) {
-        runOnUiThread {
-            result.error(code, message, null)
         }
     }
 
@@ -245,176 +170,6 @@ class MainActivity : FlutterActivity() {
     private fun safeDebugTraceCategory(category: String): String {
         val safe = category.lowercase().replace(Regex("[^a-z0-9_-]"), "_").trim('_')
         return safe.ifEmpty { "crash" }
-    }
-
-    private fun handleStartWakeWordListening(result: MethodChannel.Result) {
-        runOnVoskExecutor(result, "wake_start_failed") {
-            var recognizerToClose: Recognizer? = null
-            try {
-                val response =
-                    synchronized(voskLock) {
-                        val model = voskModel
-                        if (model == null) {
-                            return@synchronized mapOf(
-                                "errorCode" to "vosk_not_ready",
-                                "errorMessage" to "Vosk model is not initialized",
-                            )
-                        }
-                        if (wakeSpeechService != null) {
-                            return@synchronized mapOf(
-                                "started" to true,
-                                "alreadyListening" to true,
-                            )
-                        }
-                        wakeSessionId += 1
-                        val sessionId = wakeSessionId
-                        wakeShuttingDown = false
-                        val recognizer = Recognizer(model, 16000.0f)
-                        recognizerToClose = recognizer
-                        recognizer.setWords(true)
-                        recognizer.setPartialWords(true)
-                        recognizer.setMaxAlternatives(3)
-                        val speechService = SpeechService(recognizer, 16000.0f)
-                        wakeRecognizer = recognizer
-                        wakeSpeechService = speechService
-                        recognizerToClose = null
-                        val started =
-                            speechService.startListening(
-                                object : RecognitionListener {
-                                    override fun onPartialResult(hypothesis: String?) {
-                                        emitWakeEvent(sessionId, "partial", hypothesis)
-                                    }
-
-                                    override fun onResult(hypothesis: String?) {
-                                        emitWakeEvent(sessionId, "result", hypothesis)
-                                    }
-
-                                    override fun onFinalResult(hypothesis: String?) {
-                                        emitWakeEvent(sessionId, "final", hypothesis)
-                                    }
-
-                                    override fun onError(exception: Exception?) {
-                                        emitWakeEvent(
-                                            sessionId,
-                                            "error",
-                                            exception?.message ?: "unknown error",
-                                        )
-                                    }
-
-                                    override fun onTimeout() {
-                                        emitWakeEvent(sessionId, "timeout", "")
-                                    }
-                                },
-                            )
-                        if (!started) {
-                            stopWakeWordListeningLocked()
-                        }
-                        mapOf("started" to started)
-                    }
-                val errorCode = response["errorCode"] as? String
-                if (errorCode != null) {
-                    completeError(
-                        result,
-                        errorCode,
-                        response["errorMessage"] as? String ?: "Vosk wake start failed",
-                    )
-                } else {
-                    completeSuccess(result, response)
-                }
-            } catch (err: Throwable) {
-                try {
-                    recognizerToClose?.close()
-                } catch (_: Throwable) {
-                }
-                synchronized(voskLock) {
-                    stopWakeWordListeningLocked()
-                }
-                completeError(
-                    result,
-                    "wake_start_failed",
-                    err.message ?: err.javaClass.simpleName,
-                )
-            }
-        }
-    }
-
-    private fun handleStopWakeWordListening(result: MethodChannel.Result) {
-        runOnVoskExecutor(result, "wake_stop_failed") {
-            synchronized(voskLock) {
-                stopWakeWordListeningLocked()
-            }
-            completeSuccess(result, mapOf("stopped" to true))
-        }
-    }
-
-    private fun stopWakeWordListening() {
-        runOnVoskExecutor {
-            synchronized(voskLock) {
-                stopWakeWordListeningLocked()
-            }
-        }
-    }
-
-    private fun stopWakeWordListeningBlocking() {
-        synchronized(voskLock) {
-            stopWakeWordListeningLocked()
-        }
-    }
-
-    private fun stopWakeWordListeningLocked() {
-        wakeShuttingDown = true
-        wakeSessionId += 1
-        val speechService = wakeSpeechService
-        val recognizer = wakeRecognizer
-        wakeSpeechService = null
-        wakeRecognizer = null
-        if (speechService == null && recognizer == null) {
-            return
-        }
-        try {
-            speechService?.stop()
-        } catch (err: Throwable) {
-            appendNativeDebugTrace(
-                "crash",
-                mapOf(
-                    "time" to System.currentTimeMillis(),
-                    "level" to "warning",
-                    "source" to "android_native",
-                    "message" to (
-                        "Vosk SpeechService.stop failed: ${err.message ?: err.javaClass.simpleName}"
-                    ),
-                    "stack" to Log.getStackTraceString(err),
-                ),
-            )
-        }
-        try {
-            speechService?.shutdown()
-        } catch (_: Throwable) {
-        }
-        try {
-            recognizer?.close()
-        } catch (_: Throwable) {
-        }
-    }
-
-    private fun emitWakeEvent(sessionId: Long, type: String, payload: String?) {
-        if (wakeShuttingDown || sessionId != wakeSessionId) {
-            return
-        }
-        val raw = payload ?: ""
-        runOnUiThread {
-            if (wakeShuttingDown || sessionId != wakeSessionId) {
-                return@runOnUiThread
-            }
-            voskChannel.invokeMethod(
-                "wakeWordEvent",
-                mapOf(
-                    "type" to type,
-                    "payload" to raw,
-                    "timestamp" to System.currentTimeMillis(),
-                ),
-            )
-        }
     }
 
     override fun onRequestPermissionsResult(
@@ -714,128 +469,6 @@ class MainActivity : FlutterActivity() {
         ).filterValues { it != null }
     }
 
-    private fun handleInitialize(call: MethodCall, result: MethodChannel.Result) {
-        val modelPath = call.argument<String>("modelPath")?.trim().orEmpty()
-        if (modelPath.isEmpty()) {
-            result.success(
-                mapOf(
-                    "ready" to false,
-                    "message" to "Vosk model path is empty",
-                ),
-            )
-            return
-        }
-        runOnVoskExecutor(result, "initialize_failed") {
-            try {
-                val modelDir = resolveModelDir(modelPath)
-                if (modelDir == null) {
-                    completeSuccess(
-                        result,
-                        mapOf(
-                            "ready" to false,
-                            "message" to "Vosk model directory is incomplete: $modelPath",
-                        ),
-                    )
-                    return@runOnVoskExecutor
-                }
-                val newModel = Model(modelDir.absolutePath)
-                synchronized(voskLock) {
-                    stopWakeWordListeningLocked()
-                    val oldModel = voskModel
-                    voskModel = newModel
-                    oldModel?.close()
-                }
-                completeSuccess(
-                    result,
-                    mapOf(
-                        "ready" to true,
-                        "message" to "Vosk model loaded: ${modelDir.absolutePath}",
-                    ),
-                )
-            } catch (err: Throwable) {
-                completeSuccess(
-                    result,
-                    mapOf(
-                        "ready" to false,
-                        "message" to (
-                            "Load Vosk model failed: ${err.message ?: err.javaClass.simpleName}"
-                        ),
-                    ),
-                )
-            }
-        }
-    }
-
-    private fun resolveModelDir(modelPath: String): File? {
-        val modelDir = File(modelPath)
-        if (!modelDir.exists() || !modelDir.isDirectory) {
-            return null
-        }
-        if (isValidModelDir(modelDir)) {
-            return modelDir
-        }
-        val childDirs = modelDir.listFiles()?.filter { it.isDirectory } ?: return null
-        for (childDir in childDirs) {
-            if (isValidModelDir(childDir)) {
-                return childDir
-            }
-        }
-        return null
-    }
-
-    private fun isValidModelDir(modelDir: File): Boolean {
-        if (!requiredModelFiles.all { relativePath -> File(modelDir, relativePath).isFile }) {
-            return false
-        }
-        val ivectorDir = File(modelDir, "ivector")
-        if (ivectorDir.isDirectory) {
-            return optionalIvectorFiles.all { relativePath -> File(modelDir, relativePath).isFile }
-        }
-        return true
-    }
-
-    private fun handleTranscribeFile(call: MethodCall, result: MethodChannel.Result) {
-        val audioPath = call.argument<String>("audioPath")?.trim().orEmpty()
-        if (audioPath.isEmpty()) {
-            result.error("invalid_audio", "Audio path is empty", null)
-            return
-        }
-        runOnVoskExecutor(result, "transcribe_failed") {
-            try {
-                val wavFile = File(audioPath)
-                if (!wavFile.exists() || !wavFile.isFile) {
-                    completeError(result, "invalid_audio", "Audio file not found: $audioPath")
-                    return@runOnVoskExecutor
-                }
-                val sampleRate = readWavSampleRate(wavFile)
-                val text =
-                    synchronized(voskLock) {
-                        val model = voskModel
-                            ?: throw IllegalStateException("Vosk model is not initialized")
-                        transcribeWavFile(model, wavFile, sampleRate)
-                    }
-                completeSuccess(
-                    result,
-                    mapOf(
-                        "text" to text,
-                    ),
-                )
-            } catch (err: IllegalStateException) {
-                completeError(
-                    result,
-                    "vosk_not_ready",
-                    err.message ?: "Vosk model is not initialized",
-                )
-            } catch (err: Exception) {
-                completeError(
-                    result,
-                    "transcribe_failed",
-                    err.message ?: err.javaClass.simpleName,
-                )
-            }
-        }
-    }
-
     private fun handleInstallApk(call: MethodCall, result: MethodChannel.Result) {
         val apkPath = call.argument<String>("apkPath")?.trim().orEmpty()
         if (apkPath.isEmpty()) {
@@ -892,44 +525,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun transcribeWavFile(model: Model, wavFile: File, sampleRate: Float): String {
-        RandomAccessFile(wavFile, "r").use { raf ->
-            if (raf.length() <= 44) {
-                return ""
-            }
-            raf.seek(44)
-            Recognizer(model, sampleRate).use { recognizer ->
-                val buffer = ByteArray(4096)
-                while (true) {
-                    val read = raf.read(buffer)
-                    if (read <= 0) {
-                        break
-                    }
-                    recognizer.acceptWaveForm(buffer, read)
-                }
-                val finalJson = JSONObject(recognizer.finalResult)
-                return finalJson.optString("text", "").trim()
-            }
-        }
-    }
-
-    private fun readWavSampleRate(wavFile: File): Float {
-        RandomAccessFile(wavFile, "r").use { raf ->
-            if (raf.length() < 28) {
-                return 16000f
-            }
-            raf.seek(24)
-            val bytes = ByteArray(4)
-            raf.readFully(bytes)
-            val value =
-                (bytes[0].toInt() and 0xFF) or
-                    ((bytes[1].toInt() and 0xFF) shl 8) or
-                    ((bytes[2].toInt() and 0xFF) shl 16) or
-                    ((bytes[3].toInt() and 0xFF) shl 24)
-            return if (value > 0) value.toFloat() else 16000f
-        }
-    }
-
     private fun handleExtractZip(call: MethodCall, result: MethodChannel.Result) {
         val zipPath = call.argument<String>("zipPath")?.trim().orEmpty()
         val destPath = call.argument<String>("destPath")?.trim().orEmpty()
@@ -962,19 +557,13 @@ class MainActivity : FlutterActivity() {
                 }
                 prepareEmptyDirectory(tempDir)
                 unzipToDirectory(zipFile, tempDir)
-                if (resolveModelDir(tempDir.absolutePath) == null) {
-                    throw IOException("Extracted Vosk model is incomplete")
-                }
                 moveDirectory(tempDir, destDir)
-                val finalModelDir =
-                    resolveModelDir(destDir.absolutePath)
-                        ?: throw IOException("Moved Vosk model is incomplete")
                 runOnUiThread {
                     result.success(
                         mapOf(
                             "success" to true,
                             "error" to "",
-                            "modelPath" to finalModelDir.absolutePath,
+                            "modelPath" to destDir.absolutePath,
                         ),
                     )
                 }
