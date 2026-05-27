@@ -276,6 +276,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         });
         _appendSystem('检测到未完成的 Sherpa 模型下载，可点击继续下载');
       } else if (await archiveFile.exists() && await archiveFile.length() > 0) {
+        final archiveBytes = await archiveFile.length();
+        if (archiveBytes > _sherpaStartupAutoWorkMaxBytes) {
+          if (!mounted) return;
+          setState(() {
+            _sherpaModelDownloadProgress = 0.5;
+            _status =
+                '检测到 ${_formatBytes(archiveBytes)} 的 Sherpa 压缩包，已暂停启动自动解压';
+          });
+          _appendSystem('Sherpa 模型压缩包较大，请在设置中手动继续安装，避免启动卡死。');
+          return;
+        }
         if (!mounted) return;
         setState(() {
           _sherpaModelDownloadProgress = 0.5;
@@ -603,46 +614,62 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             savedKwsPath != bundle.kws.rootPath) {
           await prefs.setString('sherpa_kws_model_path', bundle.kws.rootPath);
         }
-        try {
-          final error = await _sherpaSpeechEngine.initialize(bundle);
+        final asrModelBytes = await File(bundle.asr.modelPath).length();
+        if (asrModelBytes > _sherpaStartupAutoWorkMaxBytes) {
           if (!mounted) {
             return;
           }
-          if (error == null) {
+          setState(() {
+            _speechReady = false;
+            _useLocalSherpa = false;
+            _status =
+                'Sherpa ASR 模型过大，已跳过启动自动加载: ${_formatBytes(asrModelBytes)}';
+          });
+          _appendSystem(
+            'Sherpa ASR 模型过大（${_formatBytes(asrModelBytes)}），已跳过启动自动加载并改用系统语音识别，避免 App 卡死。',
+          );
+        } else {
+          try {
+            final error = await _sherpaSpeechEngine.initialize(bundle);
+            if (!mounted) {
+              return;
+            }
+            if (error == null) {
+              setState(() {
+                _speechReady = true;
+                _useLocalSherpa = true;
+              });
+              _appendSystem('Sherpa local speech recognition is ready.');
+              await _ensureSystemSpeechRecognitionReady(silent: true);
+              _scheduleCortanaWakeRestart();
+              return;
+            }
+            await prefs.remove('sherpa_asr_model_path');
+            await prefs.remove('sherpa_kws_model_path');
+            if (!mounted) {
+              return;
+            }
             setState(() {
-              _speechReady = true;
-              _useLocalSherpa = true;
+              _speechReady = false;
+              _useLocalSherpa = false;
             });
-            _appendSystem('Sherpa local speech recognition is ready.');
-            await _ensureSystemSpeechRecognitionReady(silent: true);
-            _scheduleCortanaWakeRestart();
-            return;
+            _appendSystem(
+              'Sherpa model invalid, cleared model path. Please re-download: $error',
+            );
+          } catch (err) {
+            await prefs.remove('sherpa_asr_model_path');
+            await prefs.remove('sherpa_kws_model_path');
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _speechReady = false;
+              _useLocalSherpa = false;
+            });
+            _appendSystem(
+              'Initialize Sherpa failed, cleared model path. Please re-download: $err',
+            );
           }
-          await prefs.remove('sherpa_asr_model_path');
-          await prefs.remove('sherpa_kws_model_path');
-          if (!mounted) {
-            return;
-          }
-          setState(() {
-            _speechReady = false;
-            _useLocalSherpa = false;
-          });
-          _appendSystem(
-            'Sherpa model invalid, cleared model path. Please re-download: $error',
-          );
-        } catch (err) {
-          await prefs.remove('sherpa_asr_model_path');
-          await prefs.remove('sherpa_kws_model_path');
-          if (!mounted) {
-            return;
-          }
-          setState(() {
-            _speechReady = false;
-            _useLocalSherpa = false;
-          });
-          _appendSystem(
-            'Initialize Sherpa failed, cleared model path. Please re-download: $err',
-          );
         }
       } else if (config.sherpaAsrModelPath.trim().isNotEmpty ||
           config.sherpaKwsModelPath.trim().isNotEmpty) {

@@ -68,3 +68,4 @@ const String _sherpaDownloadProgressKey = 'sherpa_download_progress';
 const String _sherpaDownloadBytesKey = 'sherpa_download_bytes';
 const String _sherpaManualDownloadUrlKey = 'sherpa_manual_download_url';
 const String _sherpaActiveDownloadUrlKey = 'sherpa_active_download_url';
+const int _sherpaStartupAutoWorkMaxBytes = 512 * 1024 * 1024;
