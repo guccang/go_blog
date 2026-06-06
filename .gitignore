@@ -68,3 +68,11 @@ cmd/deploy-agent/settings/projects/
 cmd/flutter-client-for-appagent/flutter_client_for_appagent/lib/version.g.dart
 cmd/flutter-client-for-appagent/flutter_client_for_appagent/pubspec.yaml
 cmd/cortana-agent/cortana-agent
+cmd/app-agent/app-agent.test
+cmd/llm-agent/.cache/
+state/
+node_modules/
+package.json
+package-lock.json
+build_ppt.js
+neural_network_video/
