@@ -3,9 +3,14 @@
   "auth_token": "",
   "agent_id": "hermes-agent",
   "agent_name": "Hermes Agent",
+  "runtime_mode": "embedded",
+  "embedded_source": "vendor/hermes_runtime",
   "hermes_source": "~/.hermes/hermes-agent",
+  "hermes_home": "cmd/hermes-agent/state/hermes",
   "workspace_dir": "../..",
   "session_dir": "cmd/hermes-agent/sessions",
+  "app_agent_id": "app-app-agent",
+  "cron_tick_seconds": 60,
   "model": "",
   "provider": "",
   "base_url": "",
@@ -15,5 +20,6 @@
   "max_concurrent": 3,
   "task_queue_size": 20,
   "enabled_toolsets": [],
-  "disabled_toolsets": []
+  "disabled_toolsets": [],
+  "native_config": {}
 }

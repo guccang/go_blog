@@ -10,13 +10,15 @@ import os
 from pathlib import Path
 
 from config import Config
+from native_runtime import runtime_status
 from runtime import HermesRuntime
 from uap_client import UAPClient
 
 
 async def run(config: Config) -> None:
     config.validate()
-    os.chdir(Path(config.workspace_dir).expanduser().resolve())
+    config.resolve_paths()
+    os.chdir(config.workspace_dir)
     runtime = HermesRuntime(config)
     client = UAPClient(
         config.gateway_url,
@@ -40,6 +42,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Hermes UAP Agent")
     parser.add_argument("--config", default="hermes-agent.json")
     parser.add_argument("--genconf", action="store_true")
+    parser.add_argument("--check-runtime", action="store_true")
     args = parser.parse_args()
 
     if args.genconf:
@@ -51,6 +54,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = Config.load(args.config)
+    config.validate()
+    config.resolve_paths()
+    if args.check_runtime:
+        print(runtime_status(config))
+        return
     try:
         asyncio.run(run(config))
     except KeyboardInterrupt:

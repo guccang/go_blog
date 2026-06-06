@@ -7,28 +7,24 @@ import json
 import logging
 import os
 import re
-import sys
 import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
 from config import Config
+from cron_bridge import CronBridge
+from native_runtime import load_agent_class
 from uap_client import UAPClient
 
 logger = logging.getLogger(__name__)
 APP_MESSAGE_PREFIX = "APP_MESSAGE_JSON:"
 DELEGATION_PREFIX = re.compile(r"^\[delegation:[^\]]+\]")
+HIDDEN_PROGRESS_VALUES = {"lifecycle"}
 
 
 def load_hermes_agent(config: Config) -> type:
-    source = Path(config.hermes_source).expanduser().resolve()
-    if not (source / "run_agent.py").exists():
-        raise FileNotFoundError(f"Hermes source not found: {source}")
-    sys.path.insert(0, str(source))
-    from run_agent import AIAgent
-
-    return AIAgent
+    return load_agent_class(config)
 
 
 def normalize_app_content(content: str) -> str:
@@ -85,6 +81,38 @@ def extract_task_account(payload: dict[str, Any], task_id: str) -> str:
     return account or f"task:{task_id}"
 
 
+def normalize_progress_text(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.lower() in HIDDEN_PROGRESS_VALUES:
+        return ""
+    return text
+
+
+def extract_final_response(result: dict[str, Any]) -> str:
+    response = str(result.get("final_response") or "").strip()
+    if response:
+        return response
+
+    messages = result.get("messages")
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, str):
+                    parts.append(block.strip())
+                elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                    parts.append(block["text"].strip())
+            return "\n".join(part for part in parts if part).strip()
+    return ""
+
+
 class SessionStore:
     def __init__(self, directory: str) -> None:
         self.directory = Path(directory)
@@ -120,6 +148,7 @@ class SessionStore:
 class HermesRuntime:
     def __init__(self, config: Config, agent_class: type | None = None) -> None:
         self.config = config
+        self._native_runtime_enabled = agent_class is None
         self.agent_class = agent_class or load_hermes_agent(config)
         self.sessions = SessionStore(config.session_dir)
         self.loop = asyncio.get_running_loop()
@@ -131,6 +160,7 @@ class HermesRuntime:
         self._active_agents: dict[str, Any] = {}
         self._stopped_tasks: set[str] = set()
         self._active_guard = threading.Lock()
+        self.cron: CronBridge | None = None
 
     def bind(self, client: UAPClient) -> None:
         self.client = client
@@ -140,8 +170,15 @@ class HermesRuntime:
             asyncio.create_task(self._worker(index))
             for index in range(self.config.max_concurrent)
         ]
+        if self.client is None:
+            raise RuntimeError("UAP client must be bound before runtime start")
+        if self._native_runtime_enabled:
+            self.cron = CronBridge(self.config, self.client, self.loop)
+            await self.cron.start()
 
     async def stop(self) -> None:
+        if self.cron is not None:
+            await self.cron.stop()
         for worker in self.workers:
             worker.cancel()
         await asyncio.gather(*self.workers, return_exceptions=True)
@@ -200,9 +237,24 @@ class HermesRuntime:
     def _run_sync(self, source: str, session_key: str, query: str, task_id: str) -> str:
         with self.sessions.lock(session_key):
             history = self.sessions.load(session_key)
+            session_tokens: list[Any] = []
+            clear_session_vars = None
+            try:
+                from gateway.session_context import clear_session_vars, set_session_vars
+
+                session_tokens = set_session_vars(
+                    platform="app" if not task_id else "uap",
+                    chat_id=session_key,
+                    chat_name=source or self.config.app_agent_id,
+                    user_id=session_key,
+                    session_key=session_key,
+                    cwd=self.config.workspace_dir,
+                )
+            except Exception:
+                logger.exception("failed to initialize native Hermes session context")
 
             def progress(text: Any, *_: Any, **__: Any) -> None:
-                value = str(text or "").strip()
+                value = normalize_progress_text(text)
                 if value:
                     self._schedule(self._send_progress(source, session_key, task_id, value))
 
@@ -232,10 +284,12 @@ class HermesRuntime:
                 if task_id:
                     with self._active_guard:
                         self._active_agents.pop(task_id, None)
+                if clear_session_vars is not None:
+                    clear_session_vars(session_tokens)
             messages = result.get("messages")
             if isinstance(messages, list):
                 self.sessions.save(session_key, messages)
-            response = str(result.get("final_response") or "").strip()
+            response = extract_final_response(result)
             return response or "Hermes 已完成处理，但没有返回文本结果。"
 
     def _schedule(self, coroutine: Any) -> None:

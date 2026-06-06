@@ -33,6 +33,9 @@ Use simple, direct logic to complete tasks. Avoid over-engineering, speculative 
 
 Keep each source code file under 3000 lines. When a file approaches this limit, split it by feature, responsibility, or architecture boundary before adding more logic.
 
+Exception: Python files under `cmd/hermes-agent/` may exceed 3000 lines because this
+directory vendors upstream Hermes source while preserving its original module layout.
+
 Design with composition instead of inheritance. Prefer small focused types, interfaces, embedded collaborators, and explicit orchestration over deep class hierarchies or inheritance-based reuse.
 
 ## Testing Guidelines

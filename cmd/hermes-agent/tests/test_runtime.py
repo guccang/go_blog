@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import tempfile
 import unittest
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 from config import Config
+from cron_bridge import CronBridge
+from native_runtime import runtime_source
 from runtime import (
     HermesRuntime,
+    extract_final_response,
     extract_task_account,
     extract_task_query,
     normalize_app_content,
+    normalize_progress_text,
 )
 
 
@@ -44,6 +50,48 @@ class FakeClient:
 
 
 class ParsingTests(unittest.TestCase):
+    def test_config_excludes_internal_fields_when_loading(self) -> None:
+        init_fields = {item.name for item in fields(Config) if item.init}
+        self.assertNotIn("_config_dir", init_fields)
+
+    def test_config_resolves_embedded_and_state_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "config" / "hermes-agent.json"
+            config_path.parent.mkdir()
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "workspace_dir": "..",
+                        "embedded_source": "vendor/hermes_runtime",
+                        "hermes_home": "state/hermes",
+                        "session_dir": "sessions",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = Config.load(config_path)
+            config.resolve_paths()
+            self.assertEqual(root.resolve(), Path(config.workspace_dir))
+            self.assertEqual(
+                (config_path.parent / "vendor/hermes_runtime").resolve(),
+                Path(config.embedded_source),
+            )
+            self.assertEqual((root / "state/hermes").resolve(), Path(config.hermes_home))
+            self.assertEqual((root / "sessions").resolve(), Path(config.session_dir))
+
+    def test_embedded_runtime_does_not_require_external_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            embedded = Path(directory) / "embedded"
+            embedded.mkdir()
+            (embedded / "run_agent.py").write_text("class AIAgent: pass\n", encoding="utf-8")
+            config = Config(
+                runtime_mode="embedded",
+                embedded_source=str(embedded),
+                hermes_source=str(Path(directory) / "missing-external"),
+            )
+            self.assertEqual(embedded.resolve(), runtime_source(config))
+
     def test_normalize_app_json(self) -> None:
         content = "APP_MESSAGE_JSON:" + json.dumps(
             {
@@ -71,6 +119,27 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual("t1", task_id)
         self.assertEqual("finish it", query)
         self.assertEqual("alice", extract_task_account(payload, task_id))
+
+    def test_lifecycle_progress_is_hidden(self) -> None:
+        self.assertEqual("", normalize_progress_text("lifecycle"))
+        self.assertEqual("", normalize_progress_text(" LIFECYCLE "))
+        self.assertEqual("正在调用工具", normalize_progress_text("正在调用工具"))
+
+    def test_extract_final_response_falls_back_to_last_assistant_message(self) -> None:
+        result = {
+            "final_response": "",
+            "messages": [
+                {"role": "user", "content": "你好"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "你好，"},
+                        {"type": "text", "text": "有什么可以帮你？"},
+                    ],
+                },
+            ],
+        }
+        self.assertEqual("你好，\n有什么可以帮你？", extract_final_response(result))
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -142,6 +211,38 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         await self.runtime.queue.join()
         self.assertEqual("cancelled", self.client.messages[-1][2]["status"])
+
+
+class CronBridgeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_app_origin_result_returns_to_original_user(self) -> None:
+        client = FakeClient()
+        bridge = CronBridge(Config(app_agent_id="app-app-agent"), client, asyncio.get_running_loop())
+        bridge._original_deliver = lambda *_args, **_kwargs: "native"
+
+        result = await asyncio.to_thread(
+            bridge._deliver_result,
+            {
+                "deliver": "origin",
+                "origin": {
+                    "platform": "app",
+                    "chat_id": "alice",
+                    "chat_name": "custom-app-agent",
+                },
+            },
+            "cron completed",
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(
+            [
+                (
+                    "notify",
+                    "custom-app-agent",
+                    {"channel": "app", "to": "alice", "content": "cron completed"},
+                )
+            ],
+            client.messages,
+        )
 
 
 if __name__ == "__main__":

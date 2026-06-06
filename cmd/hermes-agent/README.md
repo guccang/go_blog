@@ -1,45 +1,85 @@
 # hermes-agent
 
-`hermes-agent` 将原版 Nous Research Hermes `AIAgent` 接入 go_blog 的 UAP
-网络，使 Flutter App 可以通过现有 `app-agent` 自动执行 Hermes 任务。
+`hermes-agent` 将 Nous Research Hermes 的原生 `AIAgent`、工具、技能、记忆、
+上下文压缩、子 Agent 和 cron 能力接入 go_blog UAP 网络。
 
-核心执行逻辑直接使用本机 Hermes 源码，不维护一份容易落后的分叉：
+默认使用仓库内锁定的 `vendor/hermes_runtime`，运行机器不需要安装 Hermes。
+本目录只维护 UAP 适配、运行时选择、配置隔离和 cron 回推，Hermes 核心源码保持
+可同步的独立模块。
 
-- Hermes 提供模型调用、工具循环、技能、记忆、上下文压缩和子 Agent。
-- 本目录提供 UAP 注册/重连、Flutter 消息适配、并发队列、会话续接和结果回推。
-- 支持 `notify(channel=app)`、`task_assign(assistant_chat/llm_request)`、
-  `task_event` 和 `task_complete`。
+## 运行方式
 
-## 启动
+首次启动会在 `.runtime/venv` 自动创建 Python 3.11 虚拟环境，并根据
+`requirements.lock` 下载依赖。机器需要满足以下任一条件：
 
-先确保 Hermes 已安装在 `~/.hermes/hermes-agent`，并完成模型配置：
+- 已安装 `uv`，启动器会自动准备 Python 3.11。
+- 已安装 Python 3.11+，并可通过 `PYTHON_BOOTSTRAP` 指定命令。
 
 ```bash
 cd cmd/hermes-agent
 cp hermes-agent.json.example hermes-agent.json
+./hermes-agent --config hermes-agent.json --check-runtime
 ./hermes-agent --config hermes-agent.json
 ```
 
-启动脚本会使用 Hermes 自带的 Python 虚拟环境，并强制启用 UTF-8。
-也可通过 `HERMES_AGENT_SOURCE` 指定另一份 Hermes 主源码。
+`--check-runtime` 会真实导入内置 `AIAgent` 并检查原生工具集。正常输出应包含
+`'mode': 'embedded'`、`'ready': True` 和 `'cronjob': True`。
 
 让 Flutter 消息进入 Hermes 时，把 `app-agent` 配置中的 `llm_agent_id`
-改为 `hermes-agent`。Flutter 仍使用原有接口：
+改为 `hermes-agent`。Flutter 继续使用原有 `POST /api/app/message` 和
+`GET /ws/app` 接口。
 
-- `POST /api/app/message`
-- `GET /ws/app`
+## 模块边界
 
-## 配置说明
+- `vendor/hermes_runtime/`：锁定的 Hermes 原生运行时源码和许可证。
+- `native_runtime.py`：选择、初始化并检查 embedded/external 运行时。
+- `runtime.py`：UAP 消息适配、任务队列、会话续接和执行结果回推。
+- `cron_bridge.py`：运行 Hermes 原生 cron scheduler，并将 App 来源任务结果
+  回推给原始 App 用户。
+- `config.py`：配置解析、路径解析和独立 `HERMES_HOME` 初始化。
 
+示例配置将 Hermes 运行数据写入 `cmd/hermes-agent/state/hermes/`，对话记录写入
+配置的 `session_dir`，不会依赖或修改用户目录下的 `~/.hermes`。
+
+## 配置
+
+- `runtime_mode`：默认 `embedded`；显式设为 `external` 才使用外部 Hermes。
+- `embedded_source`：仓库内 Hermes 运行时路径。
+- `hermes_source`：`external` 模式的 Hermes 源码路径。
+- `hermes_home`：独立的 Hermes 配置、记忆、技能和 cron 数据目录。
 - `workspace_dir`：Hermes 执行任务的工作目录。
 - `session_dir`：按 Flutter 用户或 UAP task 保存的对话历史。
-- `model/provider/base_url/api_key`：为空时沿用 Hermes 自身配置。
-- `enabled_toolsets/disabled_toolsets`：限制 Hermes 本轮可使用的工具集。
-- `max_concurrent/task_queue_size`：并发任务数和等待队列容量。
+- `model/provider/base_url/api_key`：模型连接配置。
+- `native_config`：透传并合并到 Hermes 原生配置的扩展字段。
+- `enabled_toolsets/disabled_toolsets`：限制本轮可使用的工具集。
+
+## 外部运行时
+
+外部 Hermes 仅用于开发对比或同步前验证：
+
+```json
+{
+  "runtime_mode": "external",
+  "hermes_source": "/path/to/hermes-agent"
+}
+```
+
+## 更新内置 Hermes
+
+从一份已下载的 Hermes 源码同步允许的原生模块，并重新生成校验清单：
+
+```bash
+./sync-hermes-runtime.sh /path/to/hermes-agent
+```
+
+同步信息记录在 `vendor/hermes_runtime/VENDOR_INFO.json`，文件校验值记录在
+`vendor/hermes_runtime/SHA256SUMS`。同步后应重新生成 `requirements.lock`
+并运行全部验证。
 
 ## 验证
 
 ```bash
 ./hermes-agent --genconf --config /tmp/hermes-agent.json
-~/.hermes/hermes-agent/venv/bin/python -m unittest discover -s tests -v
+./.runtime/venv/bin/python -m unittest discover -s tests -v
+./hermes-agent --config hermes-agent.json.example --check-runtime
 ```

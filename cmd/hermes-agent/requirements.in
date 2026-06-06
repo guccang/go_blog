@@ -1,0 +1,2 @@
+./vendor/hermes_runtime
+aiohttp==3.13.3
