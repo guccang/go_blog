@@ -1,0 +1,19 @@
+{
+  "gateway_url": "ws://127.0.0.1:9000/ws/uap",
+  "auth_token": "",
+  "agent_id": "hermes-agent",
+  "agent_name": "Hermes Agent",
+  "hermes_source": "~/.hermes/hermes-agent",
+  "workspace_dir": "../..",
+  "session_dir": "cmd/hermes-agent/sessions",
+  "model": "",
+  "provider": "",
+  "base_url": "",
+  "api_key": "",
+  "system_prompt": "你是通过 Flutter App 使用的 Hermes Agent。收到明确任务后直接执行，持续调用必要工具直到任务真实完成，并简洁汇报结果。",
+  "max_iterations": 90,
+  "max_concurrent": 3,
+  "task_queue_size": 20,
+  "enabled_toolsets": [],
+  "disabled_toolsets": []
+}

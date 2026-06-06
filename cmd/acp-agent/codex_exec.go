@@ -289,7 +289,7 @@ func buildCodexStartInfo(sessionID, project, projectPath string, prompt string, 
 	}
 	sb.WriteString(fmt.Sprintf("保留会话: %v\n", keepSession))
 	sb.WriteString(fmt.Sprintf("Prompt长度: %d\n", len(prompt)))
-	sb.WriteString(fmt.Sprintf("命令: %s %s", cfg.CodexCmd, strings.Join(cmdArgs, " ")))
+	sb.WriteString(fmt.Sprintf("命令: %s", formatCommandLine(cfg.CodexCmd, cmdArgs)))
 	return sb.String()
 }
 
@@ -435,6 +435,8 @@ func translateCodexExtraArgs(args []string) ([]string, []string) {
 				i++
 			}
 			warnings = append(warnings, "Codex backend ignores --max-turns")
+		case "resume":
+			translated = append(translated, "resume", "--last")
 		default:
 			translated = append(translated, arg)
 		}

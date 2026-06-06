@@ -54,8 +54,9 @@ type Agent struct {
 	cfg *AgentConfig
 
 	// ACP 会话记录（支持多轮）
-	sessions   map[string]*sessionRecord
-	sessionsMu sync.Mutex
+	sessions        map[string]*sessionRecord
+	lastACPSessions map[string]acp.SessionId
+	sessionsMu      sync.Mutex
 
 	// 完成通知（用于 tool_call 同步等待）
 	completionChs map[string]chan taskResult
@@ -74,6 +75,7 @@ func NewAgent(id string, cfg *AgentConfig) *Agent {
 		ID:                id,
 		cfg:               cfg,
 		sessions:          make(map[string]*sessionRecord),
+		lastACPSessions:   make(map[string]acp.SessionId),
 		completionChs:     make(map[string]chan taskResult),
 		permissionWaiters: make(map[string]*ACPClientImpl),
 	}
@@ -280,11 +282,40 @@ func (a *Agent) executeClaudeACP(conn *Connection, sessionID, requestID, project
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.AnalysisTimeout)*time.Second)
 	defer cancel()
 
-	acpSession, acpClient, err := StartACPSession(ctx, a.cfg, projectPath, extraArgs)
+	commandArgs, err := buildACPCommandArgs(a.cfg, extraArgs)
+	if err != nil {
+		a.completeSession(sessionID, "failed", "")
+		return taskResult{Status: "error"}, fmt.Errorf("build acp command: %v", err)
+	}
+	commandLine := formatCommandLine(a.cfg.ACPAgentCmd, commandArgs)
+	log.Printf("[ACP][%s][启动命令] %s", sessionID, commandLine)
+	a.sendStreamEvent(conn, callerAgentID, StreamEventPayload{
+		SessionID: sessionID,
+		RequestID: requestID,
+		Event: StreamEvent{
+			Type: "system",
+			Text: "命令: " + commandLine,
+		},
+	})
+
+	var resumeSessionID acp.SessionId
+	if hasAnyArg(extraArgs, "-c", "--continue") {
+		a.sessionsMu.Lock()
+		resumeSessionID = a.lastACPSessions[projectPath]
+		a.sessionsMu.Unlock()
+		if resumeSessionID == "" {
+			a.completeSession(sessionID, "failed", "")
+			return taskResult{Status: "error"}, fmt.Errorf("当前项目没有可继续的 Claude Code 会话")
+		}
+	}
+	acpSession, acpClient, err := StartACPSession(ctx, a.cfg, projectPath, extraArgs, resumeSessionID)
 	if err != nil {
 		a.completeSession(sessionID, "failed", "")
 		return taskResult{Status: "error"}, fmt.Errorf("start acp session: %v", err)
 	}
+	a.sessionsMu.Lock()
+	a.lastACPSessions[projectPath] = acpSession.sessionID
+	a.sessionsMu.Unlock()
 
 	// 交互模式：配置权限回调 + channel
 	if interactive {

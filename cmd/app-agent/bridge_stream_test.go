@@ -105,6 +105,19 @@ func TestFormatEventForAppThinkingMapsToThought(t *testing.T) {
 	}
 }
 
+func TestCodegenEventMetaPreservesStructuredEvent(t *testing.T) {
+	payload := codegenStreamEvent{SessionID: "acp_1777"}
+	payload.Event.Type = "tool"
+	payload.Event.Text = "running"
+	payload.Event.ToolName = "go test"
+	payload.Event.Done = true
+
+	meta := codegenEventMeta(payload)
+	if meta["type"] != "tool" || meta["text"] != "running" || meta["tool_name"] != "go test" || meta["done"] != true {
+		t.Fatalf("codegenEventMeta() = %#v", meta)
+	}
+}
+
 func TestSplitCodegenPrefix(t *testing.T) {
 	prefix, content := splitCodegenPrefix("[assistant][acp_1777] 你好世界")
 	if prefix != "[assistant][acp_1777]" {

@@ -1423,7 +1423,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		if text == "" {
 			return
 		}
-		b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text)
+		b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text, codegenEventMeta(payload))
 		return
 	}
 
@@ -1447,7 +1447,7 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		return
 	}
 
-	b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text)
+	b.upsertCodegenStreamMessage(toUser, payload.SessionID, payload.RequestID, payload.HistoryID, text, codegenEventMeta(payload))
 }
 
 func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
@@ -1577,7 +1577,16 @@ func formatEventForApp(payload *codegenStreamEvent) string {
 	}
 }
 
-func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, requestID, historyID, text string) {
+func codegenEventMeta(payload codegenStreamEvent) map[string]any {
+	return map[string]any{
+		"type":      payload.Event.Type,
+		"text":      payload.Event.Text,
+		"tool_name": payload.Event.ToolName,
+		"done":      payload.Event.Done,
+	}
+}
+
+func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, requestID, historyID, text string, event map[string]any) {
 	toUser = strings.TrimSpace(toUser)
 	sessionID = strings.TrimSpace(sessionID)
 	requestID = strings.TrimSpace(requestID)
@@ -1622,10 +1631,12 @@ func (b *Bridge) upsertCodegenStreamMessage(toUser, sessionID, requestID, histor
 		Channel:     "app",
 		Timestamp:   time.Now().UnixMilli(),
 		Meta: map[string]any{
-			"origin":             "codegen-stream",
-			"session_id":         sessionID,
-			"request_id":         requestID,
-			"codegen_history_id": historyID,
+			"origin":                   "codegen-stream",
+			"codegen_protocol_version": codegenActionProtocolVersion,
+			"session_id":               sessionID,
+			"request_id":               requestID,
+			"codegen_history_id":       historyID,
+			"codegen_event":            event,
 		},
 	})
 }
@@ -1668,11 +1679,17 @@ func (b *Bridge) finalizeCodegenStreamMessage(toUser, sessionID, requestID, hist
 		Channel:     "app",
 		Timestamp:   time.Now().UnixMilli(),
 		Meta: map[string]any{
-			"origin":             "codegen-stream",
-			"session_id":         sessionID,
-			"request_id":         requestID,
-			"codegen_history_id": historyID,
-			"final":              true,
+			"origin":                   "codegen-stream",
+			"codegen_protocol_version": codegenActionProtocolVersion,
+			"session_id":               sessionID,
+			"request_id":               requestID,
+			"codegen_history_id":       historyID,
+			"final":                    true,
+			"codegen_event": map[string]any{
+				"type": "complete",
+				"text": finalLine,
+				"done": true,
+			},
 		},
 	})
 	return true

@@ -116,6 +116,61 @@ class CodegenProjectsSnapshot {
 
 enum CodegenLaunchMode { code, deploy, backup }
 
+class CodegenActionRequest {
+  const CodegenActionRequest({
+    required this.kind,
+    required this.project,
+    this.agent = '',
+    this.historyId = '',
+    this.tool = '',
+    this.settings = '',
+    this.prompt = '',
+    this.resume = false,
+    this.autoDeploy = false,
+    this.debugId = '',
+    this.debugPath = '',
+    this.deployTarget = '',
+    this.packOnly = false,
+    this.extraArgs = const <String>[],
+  });
+
+  final String kind;
+  final String project;
+  final String agent;
+  final String historyId;
+  final String tool;
+  final String settings;
+  final String prompt;
+  final bool resume;
+  final bool autoDeploy;
+  final String debugId;
+  final String debugPath;
+  final String deployTarget;
+  final bool packOnly;
+  final List<String> extraArgs;
+
+  Map<String, dynamic> toJson(String userId) {
+    return <String, dynamic>{
+      'version': 1,
+      'kind': kind,
+      'user_id': userId,
+      'history_id': historyId,
+      'project': project,
+      'agent': agent,
+      'tool': tool,
+      'settings': settings,
+      'prompt': prompt,
+      'resume': resume,
+      'auto_deploy': autoDeploy,
+      'debug_id': debugId,
+      'debug_path': debugPath,
+      'deploy_target': deployTarget,
+      'pack_only': packOnly,
+      'extra_args': extraArgs,
+    };
+  }
+}
+
 enum CodegenHistoryBackupType { full, incremental }
 
 extension CodegenHistoryBackupTypeLabel on CodegenHistoryBackupType {

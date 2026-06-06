@@ -453,30 +453,14 @@ func (c *ACPClientImpl) WaitForTerminalExit(ctx context.Context, params acp.Wait
 
 // StartACPSession 启动 ACP 会话（WriteTextFile 始终启用）
 // extraArgs 追加到 cfg.ACPAgentArgs 后面，用于传递动态 CLI 参数
-func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, extraArgs []string) (*ACPSession, *ACPClientImpl, error) {
+func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, extraArgs []string, resumeSessionID acp.SessionId) (*ACPSession, *ACPClientImpl, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
-	// 拼接基础参数 + 动态参数
-	allArgs := append([]string{}, cfg.ACPAgentArgs...)
-
-	// 解析 --settings <name>: 转为绝对路径 settings/claudecode/<name>.json
-	resolvedExtra := resolveSettingsArgs(extraArgs, cfg.ClaudeCodeSettingsDir)
-
-	// 如果 extraArgs 中没有 --settings，且配置了 default_settings，自动补充
-	if cfg.DefaultSettings != "" && !hasSettingsArg(resolvedExtra) {
-		name := cfg.DefaultSettings
-		if !strings.HasSuffix(name, ".json") {
-			name = name + ".json"
-		}
-		settingsFile := filepath.Join(cfg.ClaudeCodeSettingsDir, name)
-		if _, err := os.Stat(settingsFile); err != nil {
-			cancel()
-			return nil, nil, fmt.Errorf("default settings file not found: %s", settingsFile)
-		}
-		resolvedExtra = append(resolvedExtra, "--settings", settingsFile)
+	allArgs, err := buildACPCommandArgs(cfg, extraArgs)
+	if err != nil {
+		cancel()
+		return nil, nil, err
 	}
-
-	allArgs = append(allArgs, resolvedExtra...)
 
 	// 启动 claude-agent-acp 子进程
 	cmd := exec.CommandContext(ctx, cfg.ACPAgentCmd, allArgs...)
@@ -512,7 +496,7 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 		return nil, nil, fmt.Errorf("start acp agent: %v", err)
 	}
 
-	log.Printf("[ACP] started %s %s (pid=%d, dir=%s)", cfg.ACPAgentCmd, strings.Join(allArgs, " "), cmd.Process.Pid, projectPath)
+	log.Printf("[ACP] started %s (pid=%d, dir=%s)", formatCommandLine(cfg.ACPAgentCmd, allArgs), cmd.Process.Pid, projectPath)
 
 	// 创建 ACP Client 实现
 	client := NewACPClientImpl(projectPath)
@@ -545,48 +529,110 @@ func StartACPSession(ctx context.Context, cfg *AgentConfig, projectPath string, 
 	log.Printf("[ACP] initialized: agent=%s version=%s protocol=%d",
 		initResp.AgentInfo.Name, initResp.AgentInfo.Version, initResp.ProtocolVersion)
 
-	// 创建会话
-	sessResp, err := conn.NewSession(ctx, acp.NewSessionRequest{
-		Cwd:        projectPath,
-		McpServers: []acp.McpServer{},
-	})
-	if err != nil {
-		cancel()
-		_ = killProcessTree(cmd)
-		cmd.Wait()
-		return nil, nil, fmt.Errorf("acp new session: %v", err)
+	sessionID := resumeSessionID
+	var modes *acp.SessionModeState
+	var models *acp.SessionModelState
+	if resumeSessionID != "" {
+		if !initResp.AgentCapabilities.LoadSession {
+			cancel()
+			_ = killProcessTree(cmd)
+			cmd.Wait()
+			return nil, nil, fmt.Errorf("acp agent does not support loading sessions")
+		}
+		loadResp, loadErr := conn.LoadSession(ctx, acp.LoadSessionRequest{
+			Cwd:        projectPath,
+			McpServers: []acp.McpServer{},
+			SessionId:  resumeSessionID,
+		})
+		if loadErr != nil {
+			cancel()
+			_ = killProcessTree(cmd)
+			cmd.Wait()
+			return nil, nil, fmt.Errorf("acp load session %s: %v", resumeSessionID, loadErr)
+		}
+		modes = loadResp.Modes
+		models = loadResp.Models
+		log.Printf("[ACP] session loaded: id=%s", resumeSessionID)
+	} else {
+		sessResp, newErr := conn.NewSession(ctx, acp.NewSessionRequest{
+			Cwd:        projectPath,
+			McpServers: []acp.McpServer{},
+		})
+		if newErr != nil {
+			cancel()
+			_ = killProcessTree(cmd)
+			cmd.Wait()
+			return nil, nil, fmt.Errorf("acp new session: %v", newErr)
+		}
+		sessionID = sessResp.SessionId
+		modes = sessResp.Modes
+		models = sessResp.Models
+		log.Printf("[ACP] session created: id=%s", sessionID)
 	}
 
-	log.Printf("[ACP] session created: id=%s", sessResp.SessionId)
-
 	// 保存可用模式列表 + 当前模式/模型
-	if sessResp.Modes != nil {
+	if modes != nil {
 		client.mu.Lock()
-		client.availableModes = sessResp.Modes.AvailableModes
-		if sessResp.Modes.CurrentModeId != "" {
-			client.currentModeID = string(sessResp.Modes.CurrentModeId)
+		client.availableModes = modes.AvailableModes
+		if modes.CurrentModeId != "" {
+			client.currentModeID = string(modes.CurrentModeId)
 		}
 		client.mu.Unlock()
-		log.Printf("[ACP] available modes: %d, current mode: %s", len(sessResp.Modes.AvailableModes), sessResp.Modes.CurrentModeId)
-		for _, m := range sessResp.Modes.AvailableModes {
+		log.Printf("[ACP] available modes: %d, current mode: %s", len(modes.AvailableModes), modes.CurrentModeId)
+		for _, m := range modes.AvailableModes {
 			log.Printf("[ACP]   mode: id=%s name=%s", m.Id, m.Name)
 		}
 	}
-	if sessResp.Models != nil && sessResp.Models.CurrentModelId != "" {
+	if models != nil && models.CurrentModelId != "" {
 		client.mu.Lock()
-		client.modelID = string(sessResp.Models.CurrentModelId)
+		client.modelID = string(models.CurrentModelId)
 		client.mu.Unlock()
-		log.Printf("[ACP] current model: %s", sessResp.Models.CurrentModelId)
+		log.Printf("[ACP] current model: %s", models.CurrentModelId)
 	}
 
 	session := &ACPSession{
 		cmd:       cmd,
 		conn:      conn,
-		sessionID: sessResp.SessionId,
+		sessionID: sessionID,
 		cancel:    cancel,
 	}
 
 	return session, client, nil
+}
+
+func buildACPCommandArgs(cfg *AgentConfig, extraArgs []string) ([]string, error) {
+	allArgs := append([]string{}, cfg.ACPAgentArgs...)
+	resolvedExtra := resolveSettingsArgs(extraArgs, cfg.ClaudeCodeSettingsDir)
+
+	if cfg.DefaultSettings != "" && !hasSettingsArg(resolvedExtra) {
+		name := cfg.DefaultSettings
+		if !strings.HasSuffix(name, ".json") {
+			name += ".json"
+		}
+		settingsFile := filepath.Join(cfg.ClaudeCodeSettingsDir, name)
+		if _, err := os.Stat(settingsFile); err != nil {
+			return nil, fmt.Errorf("default settings file not found: %s", settingsFile)
+		}
+		resolvedExtra = append(resolvedExtra, "--settings", settingsFile)
+	}
+
+	return append(allArgs, resolvedExtra...), nil
+}
+
+func formatCommandLine(command string, args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, quoteCommandArg(command))
+	for _, arg := range args {
+		parts = append(parts, quoteCommandArg(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func quoteCommandArg(arg string) string {
+	if arg != "" && !strings.ContainsAny(arg, " \t\r\n\"'\\") {
+		return arg
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", `\r`, "\n", `\n`, "\t", `\t`).Replace(arg) + `"`
 }
 
 func previewText(text string, limit int) string {

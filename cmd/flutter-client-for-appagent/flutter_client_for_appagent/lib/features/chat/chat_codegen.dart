@@ -651,14 +651,16 @@ extension _ChatPageStateCodegen on _ChatPageState {
       return;
     }
     final historyItem = _addCodegenHistory(item.command, item.mode);
+    final action = _buildCodegenActionFromDetails(
+      CodegenHistoryCommandDetails.parse(item),
+      historyItem.id,
+      sourceCommand: item.command,
+    );
     setState(() {
       _codegenSending = true;
     });
     _runAuthed('Re-execute codegen command', (client) {
-          return client.sendAppMessage(
-            item.command,
-            meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-          );
+          return client.submitCodegenAction(action);
         })
         .then((_) {
           if (mounted) {
@@ -1518,6 +1520,94 @@ extension _ChatPageStateCodegen on _ChatPageState {
     return parts.join(' ');
   }
 
+  CodegenActionRequest _buildCodegenActionFromDetails(
+    CodegenHistoryCommandDetails details,
+    String historyId, {
+    String sourceCommand = '',
+  }) {
+    final qualified = details.projectQualifiedName.split('@');
+    final project = qualified.isEmpty ? '' : qualified.first;
+    final agent = qualified.length > 1 ? qualified.sublist(1).join('@') : '';
+    final isDebug = sourceCommand.trim().startsWith('/cg debug ');
+    final debugId = RegExp(
+      r'--debug-id\s+(\S+)',
+    ).firstMatch(sourceCommand)?.group(1) ?? '';
+    final debugPath = RegExp(
+      r'--debug-path\s+(\S+)',
+    ).firstMatch(sourceCommand)?.group(1) ?? '';
+    var prompt = details.requestText;
+    if (isDebug) {
+      final lastDebugOption = debugPath.isNotEmpty
+          ? '--debug-path $debugPath'
+          : '--debug-id $debugId';
+      final optionIndex = sourceCommand.indexOf(lastDebugOption);
+      if (optionIndex >= 0) {
+        prompt = sourceCommand
+            .substring(optionIndex + lastDebugOption.length)
+            .trim();
+      }
+    }
+    return CodegenActionRequest(
+      kind: details.mode == CodegenLaunchMode.deploy
+          ? 'deploy'
+          : (isDebug ? 'debug' : 'start'),
+      project: project,
+      agent: agent,
+      historyId: historyId,
+      tool: details.tool,
+      settings: details.claudeSettings,
+      prompt: prompt,
+      resume: details.resumeLastSession,
+      autoDeploy: details.autoDeploy,
+      debugId: debugId,
+      debugPath: debugPath,
+      deployTarget: details.target,
+      packOnly: details.packOnly,
+      extraArgs: details.extraArgs.trim().isEmpty
+          ? const <String>[]
+          : <String>[details.extraArgs.trim()],
+    );
+  }
+
+  CodegenActionRequest _buildCurrentCodegenAction(
+    String historyId, {
+    String promptOverride = '',
+    String debugId = '',
+    String debugPath = '',
+    bool forceStart = false,
+    bool includeAutoDeploy = true,
+  }) {
+    if (_codegenMode == CodegenLaunchMode.deploy && !forceStart) {
+      final project = _selectedDeployProject!;
+      final args = _deployArgsController.text.trim();
+      return CodegenActionRequest(
+        kind: 'deploy',
+        project: project.name,
+        agent: project.agent,
+        historyId: historyId,
+        deployTarget: _selectedDeployTarget,
+        packOnly: _deployPackOnly || project.buildOnly,
+        extraArgs: args.isEmpty ? const <String>[] : <String>[args],
+      );
+    }
+    final project = _selectedCodingProject!;
+    return CodegenActionRequest(
+      kind: _codegenDebugBundleMode && !forceStart ? 'debug' : 'start',
+      project: project.name,
+      agent: project.agent,
+      historyId: historyId,
+      tool: _selectedCodeTool,
+      settings: _selectedClaudeSettings,
+      prompt: promptOverride.isEmpty
+          ? _codegenPromptController.text.trim()
+          : promptOverride,
+      resume: _codegenResumeLastSession,
+      autoDeploy: includeAutoDeploy && _codegenAutoDeploy,
+      debugId: debugId,
+      debugPath: debugPath,
+    );
+  }
+
   Future<void> _sendCodegenCommand() async {
     if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
       _appendSystem('Please login first.');
@@ -1549,14 +1639,16 @@ extension _ChatPageStateCodegen on _ChatPageState {
     }
 
     FocusScope.of(context).unfocus();
+    var debugId = '';
+    var debugPath = '';
     if (_codegenMode == CodegenLaunchMode.code && _codegenDebugBundleMode) {
       final debugBundle = await _createCodegenDebugBundle();
-      final debugID = debugBundle['debug_id'] ?? '';
-      final debugPath = debugBundle['debug_path'] ?? '';
-      if (debugID.isEmpty) {
+      debugId = debugBundle['debug_id'] ?? '';
+      debugPath = debugBundle['debug_path'] ?? '';
+      if (debugId.isEmpty) {
         return;
       }
-      command = command.replaceFirst('<debug_id>', debugID);
+      command = command.replaceFirst('<debug_id>', debugId);
       if (debugPath.isEmpty) {
         command = command.replaceFirst(' --debug-path <debug_path>', '');
       } else {
@@ -1564,15 +1656,17 @@ extension _ChatPageStateCodegen on _ChatPageState {
       }
     }
     final historyItem = _addCodegenHistory(command, _codegenMode);
+    final action = _buildCurrentCodegenAction(
+      historyItem.id,
+      debugId: debugId,
+      debugPath: debugPath,
+    );
     setState(() {
       _codegenSending = true;
     });
     try {
       await _runAuthed('Send codegen command', (client) {
-        return client.sendAppMessage(
-          command,
-          meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-        );
+        return client.submitCodegenAction(action);
       });
       if (mounted) {
         setState(() {
@@ -1628,15 +1722,18 @@ extension _ChatPageStateCodegen on _ChatPageState {
       includeAutoDeploy: false,
     ).trim();
     final historyItem = _addCodegenHistory(command, CodegenLaunchMode.code);
+    final action = _buildCurrentCodegenAction(
+      historyItem.id,
+      promptOverride: 'commit and push',
+      forceStart: true,
+      includeAutoDeploy: false,
+    );
     setState(() {
       _codegenSending = true;
     });
     try {
       await _runAuthed('Send codegen commit command', (client) {
-        return client.sendAppMessage(
-          command,
-          meta: <String, dynamic>{'codegen_history_id': historyItem.id},
-        );
+        return client.submitCodegenAction(action);
       });
       if (mounted) {
         setState(() {

@@ -167,6 +167,23 @@ class AppAgentClient {
 
   Future<void> sendMessage(String content) => sendAppMessage(content);
 
+  Future<void> submitCodegenAction(CodegenActionRequest action) async {
+    final uri = Uri.parse('$baseUrl/api/app/codegen/actions');
+    final resp = await http
+        .post(
+          uri,
+          headers: <String, String>{
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(action.toJson(userId)),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('submit codegen action', resp);
+    }
+  }
+
   Future<AppResourceItem> uploadResourceBytes({
     required String category,
     required String fileName,

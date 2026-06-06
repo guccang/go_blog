@@ -85,6 +85,19 @@ func TestBuildCodexExecutionPlanSkipsMissingDefaultSettings(t *testing.T) {
 	}
 }
 
+func TestBuildCodexExecutionPlanResumesLastSession(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CodingBackend = BackendCodexExec
+
+	plan, err := buildCodexExecutionPlan(cfg, []string{"resume"})
+	if err != nil {
+		t.Fatalf("buildCodexExecutionPlan failed: %v", err)
+	}
+	if !hasOrderedArgs(plan.Args, "resume", "--last") {
+		t.Fatalf("expected resume --last in args: %#v", plan.Args)
+	}
+}
+
 func TestBuildCodexStartInfoContainsCoreFields(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.CodingBackend = BackendCodexExec
@@ -113,6 +126,26 @@ func TestBuildCodexStartInfoContainsCoreFields(t *testing.T) {
 		if !strings.Contains(info, want) {
 			t.Fatalf("expected start info to contain %q, got:\n%s", want, info)
 		}
+	}
+}
+
+func TestFormatCommandLineQuotesArguments(t *testing.T) {
+	got := formatCommandLine("codex", []string{"exec", "--model", "model name", "-"})
+	want := `codex exec --model "model name" -`
+	if got != want {
+		t.Fatalf("formatCommandLine() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildACPCommandArgsKeepsClaudeContinueFlag(t *testing.T) {
+	cfg := DefaultConfig()
+
+	args, err := buildACPCommandArgs(cfg, []string{"-c"})
+	if err != nil {
+		t.Fatalf("buildACPCommandArgs failed: %v", err)
+	}
+	if !containsArg(args, "-c") {
+		t.Fatalf("expected Claude continue flag in args: %#v", args)
 	}
 }
 
