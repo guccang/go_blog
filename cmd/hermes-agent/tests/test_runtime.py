@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 from dataclasses import fields
@@ -91,6 +92,41 @@ class ParsingTests(unittest.TestCase):
                 hermes_source=str(Path(directory) / "missing-external"),
             )
             self.assertEqual(embedded.resolve(), runtime_source(config))
+
+    def test_prepare_native_home_writes_model_env_for_cron(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "hermes"
+            config = Config(
+                hermes_home=str(home),
+                workspace_dir=directory,
+                model="deepseek-v4-flash",
+                provider="deepseek",
+                base_url="https://api.deepseek.com/v1",
+                api_key="sk-test",
+                native_config={"model": {"provider": "auto"}},
+            )
+            previous_key = os.environ.get("DEEPSEEK_API_KEY")
+            previous_base = os.environ.get("DEEPSEEK_BASE_URL")
+            try:
+                config.prepare_native_home()
+                native = json.loads((home / "config.yaml").read_text(encoding="utf-8"))
+                self.assertEqual("deepseek", native["model"]["provider"])
+                self.assertEqual("deepseek-v4-flash", native["model"]["default"])
+                self.assertEqual("https://api.deepseek.com/v1", native["model"]["base_url"])
+                self.assertEqual("sk-test", native["model"]["api_key"])
+                env_text = (home / ".env").read_text(encoding="utf-8")
+                self.assertIn("DEEPSEEK_API_KEY=sk-test", env_text)
+                self.assertIn("DEEPSEEK_BASE_URL=https://api.deepseek.com/v1", env_text)
+                self.assertEqual("sk-test", os.environ.get("DEEPSEEK_API_KEY"))
+            finally:
+                if previous_key is None:
+                    os.environ.pop("DEEPSEEK_API_KEY", None)
+                else:
+                    os.environ["DEEPSEEK_API_KEY"] = previous_key
+                if previous_base is None:
+                    os.environ.pop("DEEPSEEK_BASE_URL", None)
+                else:
+                    os.environ["DEEPSEEK_BASE_URL"] = previous_base
 
     def test_normalize_app_json(self) -> None:
         content = "APP_MESSAGE_JSON:" + json.dumps(

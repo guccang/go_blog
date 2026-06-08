@@ -37,7 +37,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
   }
 
   bool get _selectedCodeToolSupportsResume =>
-      _selectedCodeTool == 'codex' || _selectedCodeTool == 'claudecode';
+      codegenResumeIdentifierForTool(_selectedCodeTool).isNotEmpty;
 
   DeployProjectInfo? get _selectedDeployProject {
     for (final project in _deployProjects) {
@@ -1529,12 +1529,11 @@ extension _ChatPageStateCodegen on _ChatPageState {
     final project = qualified.isEmpty ? '' : qualified.first;
     final agent = qualified.length > 1 ? qualified.sublist(1).join('@') : '';
     final isDebug = sourceCommand.trim().startsWith('/cg debug ');
-    final debugId = RegExp(
-      r'--debug-id\s+(\S+)',
-    ).firstMatch(sourceCommand)?.group(1) ?? '';
-    final debugPath = RegExp(
-      r'--debug-path\s+(\S+)',
-    ).firstMatch(sourceCommand)?.group(1) ?? '';
+    final debugId =
+        RegExp(r'--debug-id\s+(\S+)').firstMatch(sourceCommand)?.group(1) ?? '';
+    final debugPath =
+        RegExp(r'--debug-path\s+(\S+)').firstMatch(sourceCommand)?.group(1) ??
+        '';
     var prompt = details.requestText;
     if (isDebug) {
       final lastDebugOption = debugPath.isNotEmpty
@@ -1601,7 +1600,7 @@ extension _ChatPageStateCodegen on _ChatPageState {
       prompt: promptOverride.isEmpty
           ? _codegenPromptController.text.trim()
           : promptOverride,
-      resume: _codegenResumeLastSession,
+      resume: _codegenResumeLastSession && _selectedCodeToolSupportsResume,
       autoDeploy: includeAutoDeploy && _codegenAutoDeploy,
       debugId: debugId,
       debugPath: debugPath,

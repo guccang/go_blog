@@ -9,6 +9,23 @@ from pathlib import Path
 from typing import Any
 
 
+_PROVIDER_ENV_VARS = {
+    "deepseek": ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"),
+    "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL"),
+    "openrouter": ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"),
+    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
+    "gemini": ("GEMINI_API_KEY", "GEMINI_BASE_URL"),
+    "google": ("GOOGLE_API_KEY", "GOOGLE_BASE_URL"),
+    "xai": ("XAI_API_KEY", "XAI_BASE_URL"),
+    "zai": ("ZAI_API_KEY", "ZAI_BASE_URL"),
+    "kimi": ("KIMI_API_KEY", "KIMI_BASE_URL"),
+    "minimax": ("MINIMAX_API_KEY", "MINIMAX_BASE_URL"),
+}
+
+_ENV_BEGIN = "# BEGIN go_blog hermes-agent managed model env"
+_ENV_END = "# END go_blog hermes-agent managed model env"
+
+
 @dataclass
 class Config:
     gateway_url: str = "ws://127.0.0.1:9000/ws/uap"
@@ -91,19 +108,25 @@ class Config:
 
         native = _deep_merge(
             {
-                "model": {
-                    "default": self.model,
-                    "provider": self.provider or "auto",
-                    "base_url": self.base_url,
-                    "api_key": self.api_key,
-                },
                 "terminal": {"backend": "local", "cwd": self.workspace_dir},
             },
             self.native_config,
         )
         model = native.get("model")
-        if isinstance(model, dict):
-            native["model"] = {key: value for key, value in model.items() if value}
+        if not isinstance(model, dict):
+            model = {}
+        for key, value in {
+            "default": self.model,
+            "provider": self.provider,
+            "base_url": self.base_url,
+            "api_key": self.api_key,
+        }.items():
+            if value:
+                model[key] = value
+        if not model.get("provider"):
+            model["provider"] = "auto"
+        native["model"] = {key: value for key, value in model.items() if value}
+        self._sync_provider_env(home)
         target = home / "config.yaml"
         with target.open("w", encoding="utf-8", newline="\n") as handle:
             json.dump(native, handle, ensure_ascii=False, indent=2)
@@ -140,6 +163,22 @@ class Config:
         kwargs.update({key: value for key, value in optional.items() if value})
         return kwargs
 
+    def _sync_provider_env(self, home: Path) -> None:
+        provider = self.provider.strip().lower()
+        api_key = self.api_key.strip()
+        base_url = self.base_url.strip()
+        if not provider or (not api_key and not base_url):
+            return
+        key_env, base_url_env = _provider_env_names(provider)
+        values: dict[str, str] = {}
+        if api_key:
+            values[key_env] = api_key
+        if base_url:
+            values[base_url_env] = base_url
+        for key, value in values.items():
+            os.environ[key] = value
+        _write_managed_env_block(home / ".env", values)
+
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     result = dict(base)
@@ -149,3 +188,52 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
         else:
             result[key] = value
     return result
+
+
+def _provider_env_names(provider: str) -> tuple[str, str]:
+    names = _PROVIDER_ENV_VARS.get(provider)
+    if names:
+        return names
+    normalized = "".join(ch if ch.isalnum() else "_" for ch in provider.upper())
+    normalized = "_".join(part for part in normalized.split("_") if part)
+    if not normalized:
+        normalized = "HERMES_MODEL"
+    return f"{normalized}_API_KEY", f"{normalized}_BASE_URL"
+
+
+def _write_managed_env_block(path: Path, values: dict[str, str]) -> None:
+    existing = ""
+    if path.exists():
+        existing = path.read_text(encoding="utf-8")
+    kept_lines: list[str] = []
+    in_block = False
+    for line in existing.splitlines():
+        if line == _ENV_BEGIN:
+            in_block = True
+            continue
+        if line == _ENV_END:
+            in_block = False
+            continue
+        if not in_block:
+            kept_lines.append(line)
+
+    block = [_ENV_BEGIN]
+    for key in sorted(values):
+        block.append(f"{key}={_env_value(values[key])}")
+    block.append(_ENV_END)
+
+    output_lines = [line for line in kept_lines if line.strip()]
+    if output_lines:
+        output_lines.append("")
+    output_lines.extend(block)
+    path.write_text("\n".join(output_lines) + "\n", encoding="utf-8", newline="\n")
+    os.chmod(path, 0o600)
+
+
+def _env_value(value: str) -> str:
+    if any(ch in value for ch in "\r\n"):
+        raise ValueError("environment value must not contain newlines")
+    if not value or any(ch.isspace() or ch in "'\"#\\" for ch in value):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return value

@@ -116,6 +116,17 @@ class CodegenProjectsSnapshot {
 
 enum CodegenLaunchMode { code, deploy, backup }
 
+String codegenResumeIdentifierForTool(String tool) {
+  switch (tool.trim().toLowerCase()) {
+    case 'codex':
+      return 'resume';
+    case 'claudecode':
+      return '-c';
+    default:
+      return '';
+  }
+}
+
 class CodegenActionRequest {
   const CodegenActionRequest({
     required this.kind,

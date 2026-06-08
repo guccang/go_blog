@@ -327,6 +327,7 @@ class CodegenBody extends StatelessWidget {
   }
 
   Widget _buildCodeModeFields() {
+    final resumeIdentifier = codegenResumeIdentifierForTool(selectedCodeTool);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -404,7 +405,11 @@ class CodegenBody extends StatelessWidget {
               : null,
           contentPadding: EdgeInsets.zero,
           title: const Text('继续上次会话'),
-          subtitle: const Text('Codex 使用 resume，Claude Code 使用 -c'),
+          subtitle: Text(
+            resumeIdentifier.isEmpty
+                ? '当前工具不支持继续上次会话'
+                : '启用后将使用继续标识符：$resumeIdentifier',
+          ),
         ),
         const SizedBox(height: 4),
         SwitchListTile(

@@ -171,8 +171,8 @@ class _CodegenTaskDetailsState extends State<_CodegenTaskDetails> {
                 ),
               if (details.mode == CodegenLaunchMode.code)
                 _DetailBlock(
-                  label: '继续上次会话',
-                  value: details.resumeLastSession ? '是' : '否',
+                  label: '继续标识符',
+                  value: _resumeIdentifierDescription(details),
                 ),
               if (details.mode == CodegenLaunchMode.code)
                 _DetailBlock(label: '需求', value: details.requestText),
@@ -236,6 +236,14 @@ class _CodegenTaskDetailsState extends State<_CodegenTaskDetails> {
       case CodegenLaunchMode.backup:
         return Colors.deepPurple;
     }
+  }
+
+  String _resumeIdentifierDescription(CodegenHistoryCommandDetails details) {
+    if (!details.resumeLastSession) {
+      return '未使用';
+    }
+    final identifier = codegenResumeIdentifierForTool(details.tool);
+    return identifier.isEmpty ? '已请求继续，但未识别工具标识符' : '已使用 $identifier';
   }
 }
 
