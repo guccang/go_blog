@@ -83,3 +83,32 @@ cp hermes-agent.json.example hermes-agent.json
 ./.runtime/venv/bin/python -m unittest discover -s tests -v
 ./hermes-agent --config hermes-agent.json.example --check-runtime
 ```
+
+## 常见问题
+
+### DeepSeek API Key 缺失错误
+
+如果遇到 `Provider deepseek is set in config.yaml but no API key was found` 错误：
+
+**原因**：Hermes Runtime 配置中使用了 deepseek provider，但未设置 `DEEPSEEK_API_KEY` 环境变量。
+
+**解决方案**：
+
+1. **使用 openrouter provider（推荐）** - 在 `hermes-agent.json` 中配置：
+   ```json
+   {
+     "provider": "openrouter",
+     "model": "stepfun"
+   }
+   ```
+
+2. **或者添加 DeepSeek API Key** - 在 `state/hermes/.env` 中添加：
+   ```
+   DEEPSEEK_API_KEY=your-api-key-here
+   ```
+
+3. **检查配置** - 确保 `hermes-agent.json` 存在且配置正确：
+   ```bash
+   cp hermes-agent.json.example hermes-agent.json
+   # 编辑 hermes-agent.json，设置 provider 和 model
+   ```
