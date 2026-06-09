@@ -11,6 +11,10 @@ ENV_DIR="$(dirname "$ENV_FILE")"
 
 echo "=== Hermes Agent DeepSeek 环境变量修复工具 ==="
 echo ""
+echo "工作目录: $SCRIPT_DIR"
+echo "配置文件: $CONFIG_FILE"
+echo "环境变量文件: $ENV_FILE"
+echo ""
 
 # 检查配置文件是否存在
 if [ ! -f "$CONFIG_FILE" ]; then
