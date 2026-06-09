@@ -90,25 +90,64 @@ cp hermes-agent.json.example hermes-agent.json
 
 如果遇到 `Provider deepseek is set in config.yaml but no API key was found` 错误：
 
-**原因**：Hermes Runtime 配置中使用了 deepseek provider，但未设置 `DEEPSEEK_API_KEY` 环境变量。
+**原因**：Hermes Runtime 在执行 Cron job 时从 `state/hermes/.env` 加载环境变量，但该文件中没有 `DEEPSEEK_API_KEY`。
 
 **解决方案**：
 
-1. **使用 openrouter provider（推荐）** - 在 `hermes-agent.json` 中配置：
+#### 方案一：自动修复（推荐）
+
+运行修复脚本，它会从 `hermes-agent.json` 读取 API key 并写入 `state/hermes/.env`：
+
+```bash
+cd cmd/hermes-agent
+./fix-deepseek-env.sh
+```
+
+脚本会：
+- 检查 `hermes-agent.json` 配置
+- 创建 `state/hermes/.env` 文件
+- 写入 `DEEPSEEK_API_KEY` 环境变量
+- 验证配置正确性
+
+#### 方案二：手动修复
+
+1. **确保 `hermes-agent.json` 中配置了 API key**：
    ```json
    {
-     "provider": "openrouter",
-     "model": "stepfun"
+     "provider": "deepseek",
+     "model": "deepseek-v4-flash",
+     "api_key": "your-deepseek-api-key-here"
    }
    ```
 
-2. **或者添加 DeepSeek API Key** - 在 `state/hermes/.env` 中添加：
-   ```
-   DEEPSEEK_API_KEY=your-api-key-here
+2. **手动创建 `state/hermes/.env` 文件**：
+   ```bash
+   mkdir -p state/hermes
+   echo 'DEEPSEEK_API_KEY="your-api-key-here"' > state/hermes/.env
+   chmod 600 state/hermes/.env
    ```
 
-3. **检查配置** - 确保 `hermes-agent.json` 存在且配置正确：
+3. **重启 hermes-agent 服务**
+
+#### 方案三：切换到其他 provider
+
+如果不想使用 deepseek，可以切换到 openrouter：
+
+```json
+{
+  "provider": "openrouter",
+  "model": "stepfun",
+  "api_key": "your-openrouter-api-key"
+}
+```
+
+然后运行 `./fix-deepseek-env.sh` 或重启服务（它会自动同步环境变量）。
+
+#### 验证修复
+
+1. 检查环境变量文件：
    ```bash
-   cp hermes-agent.json.example hermes-agent.json
-   # 编辑 hermes-agent.json，设置 provider 和 model
+   cat state/hermes/.env
    ```
+
+2. 重启服务并查看日志，确认 Cron job 不再报错
