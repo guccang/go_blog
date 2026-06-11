@@ -43,6 +43,8 @@ class Config:
     gateway_http_url: str = ""
     tool_bridge_enabled: bool = True
     tool_call_timeout: float = 30.0
+    butler_enabled: bool = True
+    butler_accounts: list[str] = field(default_factory=list)
     cron_tick_seconds: int = 60
     model: str = ""
     provider: str = ""
@@ -176,6 +178,15 @@ class Config:
             }
             json.dump(value, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
+
+    def effective_system_prompt(self) -> str:
+        """系统提示词；启用管家模式时追加记忆/目标/提醒行为规范。"""
+        prompt = self.system_prompt or ""
+        if self.butler_enabled and self.tool_bridge_enabled:
+            from butler import BUTLER_RULES
+
+            prompt = prompt + BUTLER_RULES
+        return prompt
 
     def agent_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {

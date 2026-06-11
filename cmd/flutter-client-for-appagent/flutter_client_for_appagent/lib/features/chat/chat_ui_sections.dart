@@ -2021,6 +2021,175 @@ extension _ChatPageStateUiSections on _ChatPageState {
     } catch (_) {}
   }
 
+  Widget _buildButlerBody() {
+    final palette = _palette;
+    return ButlerBody(
+      palette: ButlerBodyPalette(
+        backgroundTop: palette.backgroundTop,
+        backgroundBottom: palette.backgroundBottom,
+        surface: palette.surface,
+        surfaceSoft: palette.surfaceSoft,
+        border: palette.border,
+        accent: palette.accent,
+        textPrimary: palette.textPrimary,
+        textSecondary: palette.textSecondary,
+        textMuted: palette.textMuted,
+        success: palette.success,
+        error: palette.error,
+      ),
+      loading: _butlerLoading,
+      errorText: _butlerError,
+      affinityScore: _butlerAffinityScore,
+      goals: _butlerGoals,
+      checkpoint: _butlerCheckpoint,
+      memoryFiles: _butlerMemoryFiles,
+      selectedMemoryFile: _butlerSelectedMemoryFile,
+      memoryEditorController: _butlerMemoryController,
+      memoryDirty: _butlerMemoryDirty,
+      onRefresh: () => unawaited(_loadButlerData()),
+      onOpenMemoryFile: (file) => unawaited(_openButlerMemoryFile(file)),
+      onSaveMemoryFile: () => unawaited(_saveButlerMemoryFile()),
+      onMemoryChanged: () {
+        if (!_butlerMemoryDirty) {
+          setState(() => _butlerMemoryDirty = true);
+        }
+      },
+    );
+  }
+
+  Future<void> _loadButlerData() async {
+    if (_butlerLoading) {
+      return;
+    }
+    setState(() {
+      _butlerLoading = true;
+      _butlerError = '';
+    });
+    try {
+      final goalsResp = await _runAuthed('Load butler goals', (client) {
+        return client.callButlerTool('RawGetCurrentGoals');
+      });
+      final checkpointResp = await _runAuthed('Load butler checkpoint', (
+        client,
+      ) {
+        return client.callButlerTool(
+          'RawMemoryRead',
+          arguments: {'file': 'checkpoint'},
+        );
+      });
+      final filesResp = await _runAuthed('List butler memory files', (client) {
+        return client.callButlerTool('RawMemoryListFiles');
+      });
+
+      final goals = <ButlerGoalSummary>[];
+      final goalsResult = goalsResp['result'];
+      if (goalsResult is Map<String, dynamic>) {
+        for (final level in const ['daily', 'weekly', 'monthly', 'yearly']) {
+          final item = goalsResult[level];
+          if (item is Map<String, dynamic>) {
+            goals.add(
+              ButlerGoalSummary(
+                level: (item['level'] ?? level).toString(),
+                period: (item['period'] ?? '').toString(),
+                overview: (item['overview'] ?? '').toString(),
+                progress: (item['progress'] as num?)?.toInt() ?? 0,
+                status: (item['status'] ?? '').toString(),
+                taskCount: (item['total_tasks'] as num?)?.toInt() ?? 0,
+              ),
+            );
+          }
+        }
+      }
+
+      var checkpoint = '';
+      final checkpointResult = checkpointResp['result'];
+      if (checkpointResult is Map<String, dynamic>) {
+        checkpoint = (checkpointResult['content'] ?? '').toString();
+      }
+
+      final files = <String>[];
+      final filesResult = filesResp['result'];
+      if (filesResult is List) {
+        files.addAll(filesResult.map((item) => item.toString()));
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _butlerGoals = goals;
+        _butlerCheckpoint = checkpoint;
+        _butlerMemoryFiles = files;
+        _butlerLoaded = true;
+        if (_butlerSelectedMemoryFile.isEmpty && files.isNotEmpty) {
+          _butlerSelectedMemoryFile = files.contains('MEMORY')
+              ? 'MEMORY'
+              : files.first;
+        }
+      });
+      if (_butlerSelectedMemoryFile.isNotEmpty && !_butlerMemoryDirty) {
+        await _openButlerMemoryFile(_butlerSelectedMemoryFile);
+      }
+    } catch (err) {
+      if (mounted) {
+        setState(() {
+          _butlerError = _describeRequestError(
+            err,
+            operation: 'Load butler data',
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _butlerLoading = false);
+      }
+    }
+  }
+
+  Future<void> _openButlerMemoryFile(String file) async {
+    try {
+      final resp = await _runAuthed('Read butler memory', (client) {
+        return client.callButlerTool('RawMemoryRead', arguments: {'file': file});
+      });
+      var content = '';
+      final result = resp['result'];
+      if (result is Map<String, dynamic>) {
+        content = (result['content'] ?? '').toString();
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _butlerSelectedMemoryFile = file;
+        _butlerMemoryController.text = content;
+        _butlerMemoryDirty = false;
+      });
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Read butler memory'));
+    }
+  }
+
+  Future<void> _saveButlerMemoryFile() async {
+    final file = _butlerSelectedMemoryFile;
+    if (file.isEmpty) {
+      return;
+    }
+    try {
+      await _runAuthed('Save butler memory', (client) {
+        return client.callButlerTool(
+          'RawMemoryWrite',
+          arguments: {'file': file, 'content': _butlerMemoryController.text},
+        );
+      });
+      if (mounted) {
+        setState(() => _butlerMemoryDirty = false);
+        _appendSystem('记忆文件 $file 已保存', persist: false);
+      }
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Save butler memory'));
+    }
+  }
+
   Widget _buildVoiceGestureOverlay() {
     final palette = _palette;
     final activeAction = _currentVoiceGestureAction;
@@ -2521,6 +2690,12 @@ extension _ChatPageStateUiSections on _ChatPageState {
     }
     if (nextTab == RootTab.settings) {
       unawaited(_refreshChatAgentPreferenceFromServer());
+    }
+    if (nextTab == RootTab.butler &&
+        !_butlerLoaded &&
+        !_butlerLoading &&
+        _sessionToken.isNotEmpty) {
+      unawaited(_loadButlerData());
     }
   }
 

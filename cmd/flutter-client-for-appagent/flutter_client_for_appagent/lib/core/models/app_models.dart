@@ -496,7 +496,7 @@ class GroupInfo {
   }
 }
 
-enum RootTab { chat, codegen, cortana, debug, settings }
+enum RootTab { chat, codegen, cortana, butler, debug, settings }
 
 class ClientConfig {
   const ClientConfig({

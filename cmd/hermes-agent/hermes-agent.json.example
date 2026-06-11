@@ -14,6 +14,8 @@
   "gateway_http_url": "",
   "tool_bridge_enabled": true,
   "tool_call_timeout": 30.0,
+  "butler_enabled": true,
+  "butler_accounts": [],
   "cron_tick_seconds": 60,
   "model": "",
   "provider": "",

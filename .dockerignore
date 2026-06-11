@@ -1,0 +1,109 @@
+# ============================================================
+# .dockerignore — 排除不需要进入构建上下文的文件
+# ============================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.gitmodules
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Go build artifacts (各 cmd 下的二进制)
+cmd/*/go_blog
+cmd/*/go_blog.exe
+cmd/*/gateway
+cmd/*/gateway.exe
+*.exe
+*.test
+*.out
+
+# Go module cache 占位（由 Docker 层独立管理）
+vendor/
+
+# 运行时数据（通过 volume 挂载）
+cmd/blog-agent/blogs_txt/
+cmd/blog-agent/logs/
+
+# Redis 运行时文件
+redis/*.rdb
+redis/*.aof
+redis/dump.rdb
+redis/appendonly.aof
+redis/redis_log.log
+
+# 日志文件
+logs/
+*.log
+
+# 文档 & 报告（构建时不需要）
+docs/
+*.md
+!AGENTS.md
+
+# 第三方代码（非 blog-agent 依赖）
+third_party/
+
+# 非 blog-agent 的 cmd 目录（大幅减小构建上下文）
+cmd/acp-agent/
+cmd/app-agent/
+cmd/app-agent-tui/
+cmd/audio-agent/
+cmd/cmd-agent/
+cmd/codegen-agent/
+cmd/cortana-agent/
+cmd/cron-agent/
+cmd/db-agent/
+cmd/deploy-agent/
+cmd/deploy-bridge-server/
+cmd/env-agent/
+cmd/execute-code-agent/
+cmd/flutter-client-for-appagent/
+cmd/gateway/
+cmd/hermes-agent/
+cmd/image-agent/
+cmd/init-agent/
+cmd/llm-agent/
+cmd/log-agent/
+cmd/mcp-agent/
+cmd/metagpt-agent/
+cmd/obs-agent/
+cmd/test-agent/
+cmd/video-agent/
+cmd/voice-companion-agent/
+cmd/voice-input/
+cmd/wechat-agent/
+cmd/welcome-page/
+
+# 脚本（构建时不需要）
+scripts/
+cmd/blog-agent/scripts/
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.bak
+
+# 压缩包
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# Docker 自身
+Dockerfile*
+docker-compose*
+.dockerignore

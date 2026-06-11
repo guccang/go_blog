@@ -185,6 +185,9 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile) string {
 	sb.WriteString("20. 如果 recent_interactions、历史摘要或用户反馈显示某事项已经完成、已经办好、已经签注完成、已取消或不用再提醒，必须视为已关闭事项，should_interact=false 或改成简短确认，不能继续提醒。\n")
 	sb.WriteString("21. 不要声称已检查定时任务、提醒列表或记录，除非 event_context/snapshot 明确包含该检查结果。\n")
 	sb.WriteString("22. 如果 speech_text 里明确追问用户是否继续听、是否继续聊、是否要做某事，必须设置 suggested_replies，至少包含肯定、否定、其他三个选项；不要只把选项写进口播文本。\n")
+	sb.WriteString("23. 运行时上下文若提供“用户记忆库”，要把它当作了解用户的长期依据：long_term 中的称呼、喜好、忌讳、重要的人和纪念日要自然融入口播，让用户感到被记住；但只把它当背景，不要逐条复述记忆，也不要凭记忆编造未经证实的当前事实。\n")
+	sb.WriteString("24. 记忆查重：如果 today_journal 或记忆检索显示同一件事今天已经播报/提醒过，除非用户明确追问或情况有实质更新，否则不要再次提醒（should_interact=false 或改成简短跟进确认），这是“管家”区别于“闹钟”的关键。\n")
+	sb.WriteString("25. 如果 long_term/记忆检索表明用户曾反馈某类提醒太频繁、不喜欢在某时段被打扰，要据此收敛主动性，宁可少说。\n")
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
 	if profile.OwnerTitle != "" {
@@ -213,6 +216,11 @@ func buildCortanaProactiveRuntimeContext(payload *CortanaProactivePayload) strin
 	if deviceContext := cortanaProactiveDeviceContext(payload); len(deviceContext) > 0 {
 		if body, err := json.MarshalIndent(deviceContext, "", "  "); err == nil {
 			blocks = append(blocks, "### 当前客户端基础上下文\n位置、天气、通勤和路线判断优先使用本段。\n"+string(body))
+		}
+	}
+	if memoryContext := cortanaProactiveMemoryContext(payload); len(memoryContext) > 0 {
+		if body, err := json.MarshalIndent(memoryContext, "", "  "); err == nil {
+			blocks = append(blocks, "### 用户记忆库\nlong_term=长期事实(喜好/习惯/忌讳/重要的人/纪念日)，checkpoint=当前关注点，search=与本轮相关的记忆检索命中，today_journal=今日已发生的交互与已播报记录。\n个性化称呼/喜好优先参考 long_term；today_journal 用于查重(同一提醒今日已播报过则不要重复)。\n"+string(body))
 		}
 	}
 	return buildPromptRuntimeContext(PromptRuntimeContext{
@@ -245,6 +253,17 @@ func cortanaProactiveDeviceContext(payload *CortanaProactivePayload) map[string]
 		return nil
 	}
 	raw, ok := payload.Snapshot["device_context"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	return raw
+}
+
+func cortanaProactiveMemoryContext(payload *CortanaProactivePayload) map[string]any {
+	if payload == nil || len(payload.Snapshot) == 0 {
+		return nil
+	}
+	raw, ok := payload.Snapshot["memory"].(map[string]any)
 	if !ok || len(raw) == 0 {
 		return nil
 	}

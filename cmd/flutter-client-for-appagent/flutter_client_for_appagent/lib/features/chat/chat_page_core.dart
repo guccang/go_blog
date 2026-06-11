@@ -161,6 +161,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   int _lastSequence = 0;
   String _preferredChatAgent = 'llm';
   bool _chatAgentSyncing = false;
+  bool _butlerLoading = false;
+  bool _butlerLoaded = false;
+  String _butlerError = '';
+  List<ButlerGoalSummary> _butlerGoals = <ButlerGoalSummary>[];
+  String _butlerCheckpoint = '';
+  List<String> _butlerMemoryFiles = <String>[];
+  String _butlerSelectedMemoryFile = '';
+  final _butlerMemoryController = TextEditingController();
+  bool _butlerMemoryDirty = false;
+  int _butlerAffinityScore = 0;
   String _status = 'Idle';
   String _sessionToken = '';
   String _refreshToken = '';
@@ -1285,6 +1295,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         ? 'Fast path for /cg start and /cg deploy'
                         : _rootTab == RootTab.cortana
                         ? 'Live2D Assistant'
+                        : _rootTab == RootTab.butler
+                        ? '私人管家：记忆 · 目标 · 提醒'
                         : _rootTab == RootTab.debug
                         ? 'LLM prompt and tool trace'
                         : 'App Settings',
@@ -1341,6 +1353,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 ),
               ),
               Offstage(
+                offstage: _rootTab != RootTab.butler,
+                child: TickerMode(
+                  enabled: _rootTab == RootTab.butler,
+                  child: _buildButlerBody(),
+                ),
+              ),
+              Offstage(
                 offstage: _rootTab != RootTab.debug,
                 child: TickerMode(
                   enabled: _rootTab == RootTab.debug,
@@ -1370,7 +1389,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 RootTab.chat => 0,
                 RootTab.codegen => 1,
                 RootTab.cortana => 2,
-                RootTab.debug => 3,
+                RootTab.butler => 3,
+                RootTab.debug => 4,
                 RootTab.settings => 0,
               },
               onDestinationSelected: (index) {
@@ -1378,6 +1398,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   0 => RootTab.chat,
                   1 => RootTab.codegen,
                   2 => RootTab.cortana,
+                  3 => RootTab.butler,
                   _ => RootTab.debug,
                 };
                 _selectRootTab(nextTab);
@@ -1407,6 +1428,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   icon: Icon(Icons.face_outlined),
                   selectedIcon: Icon(Icons.face_rounded),
                   label: 'Cortana',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.workspace_premium_outlined),
+                  selectedIcon: Icon(Icons.workspace_premium_rounded),
+                  label: '管家',
                 ),
                 const NavigationDestination(
                   icon: Icon(Icons.bug_report_outlined),

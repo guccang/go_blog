@@ -28,6 +28,7 @@ type CortanaUserSnapshot struct {
 	Goals          map[string]any `json:"goals,omitempty"`
 	Projects       map[string]any `json:"projects,omitempty"`
 	Agents         map[string]any `json:"agents,omitempty"`
+	Memory         map[string]any `json:"memory,omitempty"`
 }
 
 type CortanaProactiveTaskPayload struct {
@@ -242,7 +243,98 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 			"account": account,
 		}),
 	}
+	snapshot.Memory = c.collectMemory(account, event, result)
 	return snapshot
+}
+
+// collectMemory 注入用户记忆库（借鉴 MiMo：可审阅 Markdown + 关键词检索）。
+// 控制 token 预算：checkpoint 全文截断、MEMORY 截断、检索 top-5、今日 journal 用于查重。
+func (c *Connection) collectMemory(account string, event CortanaTriggerEventPayload, result *MonitorResult) map[string]any {
+	mem := map[string]any{}
+
+	checkpoint := c.safeCallMemoryFile(account, "checkpoint")
+	if checkpoint != "" {
+		mem["checkpoint"] = truncateRunes(checkpoint, 800)
+	}
+	longTerm := c.safeCallMemoryFile(account, "MEMORY")
+	if longTerm != "" {
+		mem["long_term"] = truncateRunes(longTerm, 1200)
+	}
+
+	query := buildMemoryQuery(event, result)
+	if query != "" {
+		hits := c.safeCallValue("RawMemorySearch", map[string]any{
+			"account":             account,
+			"query":               query,
+			"limit":               5,
+			"recent_journal_days": 7,
+		})
+		if hits != nil {
+			mem["search"] = map[string]any{"query": query, "hits": hits}
+		}
+	}
+
+	// 今日 journal：供决策器查重，避免同一件事重复播报（“管家”与“闹钟”的区别）。
+	todayJournal := c.safeCallMemoryFile(account, "journal_"+time.Now().Format("2006-01-02"))
+	if todayJournal != "" {
+		mem["today_journal"] = truncateRunes(todayJournal, 1000)
+	}
+
+	if len(mem) == 0 {
+		return nil
+	}
+	return mem
+}
+
+// safeCallMemoryFile 读取单个记忆文件内容，失败返回空串。
+func (c *Connection) safeCallMemoryFile(account, file string) string {
+	val := c.safeCallValue("RawMemoryRead", map[string]any{"account": account, "file": file})
+	if m, ok := val.(map[string]any); ok {
+		if content, ok := m["content"].(string); ok {
+			return strings.TrimSpace(content)
+		}
+	}
+	return ""
+}
+
+// buildMemoryQuery 根据触发事件与监控信号拼检索关键词。
+func buildMemoryQuery(event CortanaTriggerEventPayload, result *MonitorResult) string {
+	var terms []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		for _, t := range strings.Fields(strings.TrimSpace(s)) {
+			t = strings.Trim(t, "。，,.！!？?；;：:\"'")
+			if len([]rune(t)) < 2 || seen[t] {
+				continue
+			}
+			seen[t] = true
+			terms = append(terms, t)
+		}
+	}
+	add(event.Summary)
+	add(event.Content)
+	add(event.TriggerReason)
+	if result != nil {
+		if result.OverdueTodo > 0 {
+			add("待办 逾期 提醒")
+		}
+		if result.ExerciseCnt == 0 {
+			add("锻炼 运动")
+		}
+	}
+	if len(terms) > 12 {
+		terms = terms[:12]
+	}
+	return strings.Join(terms, " ")
+}
+
+// truncateRunes 按字符数截断，超出加省略标记。
+func truncateRunes(s string, max int) string {
+	rs := []rune(s)
+	if len(rs) <= max {
+		return s
+	}
+	return string(rs[:max]) + "…(已截断)"
 }
 
 func chineseWeekday(w time.Weekday) string {
@@ -492,6 +584,33 @@ func (c *Connection) recordBroadcastInteraction(decision BroadcastDecision) {
 		"motion":       strings.TrimSpace(decision.Motion),
 		"timestamp":    time.Now().UnixMilli(),
 	})
+	c.writeBroadcastJournal(decision)
+}
+
+// writeBroadcastJournal 把本次播报写入当日 journal，作为后续“提醒查重”的依据。
+// 异步执行，避免阻塞播报链路；测试语音不入库以免污染记忆。
+func (c *Connection) writeBroadcastJournal(decision BroadcastDecision) {
+	account := strings.TrimSpace(decision.Account)
+	text := strings.TrimSpace(decision.Text)
+	broadcastID := strings.TrimSpace(decision.BroadcastID)
+	if account == "" || text == "" || broadcastID == "test_voice" {
+		return
+	}
+	entry := fmt.Sprintf("[播报] %s", text)
+	if broadcastID != "" {
+		entry = fmt.Sprintf("[播报:%s] %s", broadcastID, text)
+	}
+	go func() {
+		val := c.safeCallValue("RawMemoryJournal", map[string]any{
+			"account": account,
+			"content": entry,
+		})
+		if m, ok := val.(map[string]any); ok {
+			if errMsg, ok := m["error"].(string); ok && errMsg != "" {
+				log.Printf("[CortanaAgent] 写播报 journal 失败 account=%s err=%s", account, errMsg)
+			}
+		}
+	}()
 }
 
 func shortInteractionText(summary, content string) string {

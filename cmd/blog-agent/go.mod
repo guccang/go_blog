@@ -88,6 +88,8 @@ replace projectmgmt => ./pkgs/projectmgmt
 
 replace goal => ./pkgs/goal
 
+replace memory => ./pkgs/memory
+
 replace uap => ../common/uap
 
 replace agentbase => ../common/agentbase
@@ -102,6 +104,7 @@ require (
 	delegation v0.0.0
 	exercise v0.0.0
 	goal v0.0.0
+	memory v0.0.0
 	http v0.0.0
 	ioutils v0.0.0
 	llm v0.0.0

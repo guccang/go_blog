@@ -85,6 +85,14 @@ var publicToolNames = map[string]struct{}{
 	"RawAddDailyGoalTask":   {},
 	"RawAddWeeklyGoalTask":  {},
 	"RawAddMonthlyGoalTask": {},
+
+	// Memory 私人管家记忆库
+	"RawMemoryRead":      {},
+	"RawMemoryWrite":     {},
+	"RawMemoryAppend":    {},
+	"RawMemoryJournal":   {},
+	"RawMemorySearch":    {},
+	"RawMemoryListFiles": {},
 }
 
 func normalizePublicToolName(toolName string) string {

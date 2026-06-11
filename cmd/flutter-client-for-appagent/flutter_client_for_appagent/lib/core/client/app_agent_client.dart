@@ -293,6 +293,38 @@ class AppAgentClient {
     );
   }
 
+  /// 调用管家代理工具（记忆/目标），返回 blog-agent 的 {success,result,error} 响应。
+  Future<Map<String, dynamic>> callButlerTool(
+    String name, {
+    Map<String, dynamic>? arguments,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/butler/tool');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{
+            'user_id': userId,
+            'name': name,
+            'arguments': arguments ?? <String, dynamic>{},
+          }),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('butler tool $name', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data['success'] != true) {
+      throw Exception(
+        'butler tool $name failed: ${data['error'] ?? 'unknown error'}',
+      );
+    }
+    return data;
+  }
+
   Future<Map<String, dynamic>> fetchAppPreferences() async {
     final uri = Uri.parse(
       '$baseUrl/api/app/preferences?user_id=$userId&session_token=$sessionToken',

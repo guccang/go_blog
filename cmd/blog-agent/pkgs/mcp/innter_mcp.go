@@ -341,6 +341,14 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawAddWeeklyGoalTask", Inner_blog_RawAddWeeklyGoalTask)
 	RegisterCallBack("RawAddMonthlyGoalTask", Inner_blog_RawAddMonthlyGoalTask)
 
+	// 新增模块工具 - Memory (私人管家共享记忆库)
+	RegisterCallBack("RawMemoryRead", Inner_blog_RawMemoryRead)
+	RegisterCallBack("RawMemoryWrite", Inner_blog_RawMemoryWrite)
+	RegisterCallBack("RawMemoryAppend", Inner_blog_RawMemoryAppend)
+	RegisterCallBack("RawMemoryJournal", Inner_blog_RawMemoryJournal)
+	RegisterCallBack("RawMemorySearch", Inner_blog_RawMemorySearch)
+	RegisterCallBack("RawMemoryListFiles", Inner_blog_RawMemoryListFiles)
+
 }
 
 func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
@@ -983,6 +991,14 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddDailyGoalTask", Description: "为今日目标添加任务。自动计算当前日期，只需传account+title，目标不存在则自动创建。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述(可选)"}, "priority": map[string]string{"type": "string", "description": "优先级:low/medium/high(可选,默认medium)"}}, "required": []string{"account", "title"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddWeeklyGoalTask", Description: "为本周目标添加任务。自动计算当前周，只需传account+title。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述(可选)"}, "priority": map[string]string{"type": "string", "description": "优先级(可选)"}}, "required": []string{"account", "title"}}}},
 		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawAddMonthlyGoalTask", Description: "为本月目标添加任务。自动计算当前月，只需传account+title。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "title": map[string]string{"type": "string", "description": "任务标题"}, "description": map[string]string{"type": "string", "description": "任务描述(可选)"}, "priority": map[string]string{"type": "string", "description": "优先级(可选)"}}, "required": []string{"account", "title"}}}},
+
+		// =================================== Memory 模块工具 (私人管家共享记忆库) =========================================
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemoryRead", Description: "读取用户记忆文件全文。file取值: MEMORY(长期事实:喜好/习惯/忌讳/重要的人/纪念日), checkpoint(当前关注点与下一步), goals(目标树视图), journal_YYYY-MM-DD(某日日志)。返回JSON({file,content})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "file": map[string]string{"type": "string", "description": "记忆文件名:MEMORY/checkpoint/goals/journal_YYYY-MM-DD"}}, "required": []string{"account", "file"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemoryWrite", Description: "整体重写用户记忆文件(用于记忆整理/checkpoint更新)。慎用:会覆盖原内容,建议先RawMemoryRead。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "file": map[string]string{"type": "string", "description": "记忆文件名:MEMORY/checkpoint/goals/journal_YYYY-MM-DD"}, "content": map[string]string{"type": "string", "description": "完整的新内容(Markdown)"}}, "required": []string{"account", "file", "content"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemoryAppend", Description: "向记忆文件末尾追加一条带时间戳的条目。记录值得长期记住的事实(用户偏好/承诺/重要事件)用file=MEMORY。返回JSON({success:true})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "file": map[string]string{"type": "string", "description": "记忆文件名:MEMORY/checkpoint/goals"}, "content": map[string]string{"type": "string", "description": "要追加的记忆内容(一条简洁事实)"}}, "required": []string{"account", "file", "content"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemoryJournal", Description: "向当日日志(journal)追加一条记录:交互摘要/情绪观察/完成事项/播报记录。返回JSON({success:true,file})", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "content": map[string]string{"type": "string", "description": "日志内容"}}, "required": []string{"account", "content"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemorySearch", Description: "关键词检索用户记忆(MEMORY/checkpoint/goals+最近journal)。返回JSON(list[{file,line,score}])", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}, "query": map[string]string{"type": "string", "description": "检索关键词(空格分隔多个词)"}, "limit": map[string]interface{}{"type": "number", "description": "返回条数上限(默认5)"}, "recent_journal_days": map[string]interface{}{"type": "number", "description": "检索最近几天的journal(默认14)"}}, "required": []string{"account", "query"}}}},
+		{Type: "function", Function: LLMFunction{Name: "Inner_blog.RawMemoryListFiles", Description: "列出用户全部记忆文件名。返回JSON(list[string])", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"account": map[string]string{"type": "string", "description": "账号"}}, "required": []string{"account"}}}},
 	}
 	// 移除原来在此处的工具名称处理逻辑，保持完整的工具名称（包含Inner_blog前缀）
 	// 这样前端可以正确识别服务器名称，而LLM层会在GetAvailableLLMTools中处理名称简化和映射

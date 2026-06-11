@@ -61,6 +61,40 @@ func TestBuildCortanaProactiveRuntimeContextIncludesLocalTimeContext(t *testing.
 	}
 }
 
+func TestBuildCortanaProactiveRuntimeContextIncludesMemory(t *testing.T) {
+	payload := &CortanaProactivePayload{
+		Account: "alice",
+		Snapshot: map[string]any{
+			"memory": map[string]any{
+				"long_term":     "- 喜欢被称呼为主人\n- 对花生过敏",
+				"checkpoint":    "本周重点：完成博客重构",
+				"today_journal": "- [09:00] [播报:morning] 早安提醒已发送",
+			},
+		},
+	}
+	runtimeContext := buildCortanaProactiveRuntimeContext(payload)
+	for _, want := range []string{
+		"用户记忆库",
+		"对花生过敏",
+		"本周重点：完成博客重构",
+		"早安提醒已发送",
+		"用于查重",
+	} {
+		if !strings.Contains(runtimeContext, want) {
+			t.Fatalf("expected runtime context to contain %q, got: %s", want, runtimeContext)
+		}
+	}
+}
+
+func TestBuildCortanaProactiveSystemPromptIncludesMemoryRules(t *testing.T) {
+	prompt := buildCortanaProactiveSystemPrompt(&CortanaProfile{Name: "Cortana"})
+	for _, want := range []string{"用户记忆库", "记忆查重", "today_journal"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("expected prompt to contain memory rule %q", want)
+		}
+	}
+}
+
 func TestCortanaCurrentTimeQueryShortCircuitHelpers(t *testing.T) {
 	for _, input := range []string{"现在几点了", "你是不是又把时间当成凌晨了", "what time is it"} {
 		if !isCortanaCurrentTimeQuery(input) {

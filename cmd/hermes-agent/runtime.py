@@ -179,6 +179,15 @@ class HermesRuntime:
         if self._native_runtime_enabled:
             self.cron = CronBridge(self.config, self.client, self.loop)
             await self.cron.start()
+            if self.config.butler_enabled:
+                try:
+                    from butler import ensure_butler_jobs
+
+                    created = await asyncio.to_thread(ensure_butler_jobs, self.config)
+                    if created:
+                        logger.info("butler: %d scheduled jobs created", created)
+                except Exception:
+                    logger.exception("butler job bootstrap failed")
 
     async def stop(self) -> None:
         if self.cron is not None:
@@ -283,7 +292,7 @@ class HermesRuntime:
             try:
                 result = agent.run_conversation(
                     query,
-                    system_message=self.config.system_prompt,
+                    system_message=self.config.effective_system_prompt(),
                     conversation_history=history,
                     task_id=task_id or session_key,
                 )

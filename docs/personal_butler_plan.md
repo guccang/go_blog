@@ -180,7 +180,7 @@ hermes cron 周期 job（每周日晚）：
 | 阶段 | 内容 | 改动点 | 工作量 |
 |------|------|--------|--------|
 | **P1 记忆基建** | blog-agent memory MCP 工具 + HTTP API；hermes 系统提示词加记忆规范 | blog-agent 新增 1 文件；hermes 配置 | 小 |
-| **P2 cortana 接记忆** | 快照注入记忆检索结果；播报后写 journal；提醒查重 | cortana-agent + llm-agent 的 cortana_proactive | 中 |
+| **P2 cortana 接记忆** | 快照注入记忆检索结果；播报后写 journal；提醒查重 | cortana-agent + llm-agent 的 cortana_proactive | 中 ✅ |
 | **P3 目标树+判官** | goal 判据字段；hermes 周评审 cron job；对话式目标拆解 | blog-agent goal 工具 + hermes job 模板 | 中 |
 | **P4 提醒统一** | 显式/习惯/情境三类提醒走统一链路 + 打扰控制 | hermes cronjob 工具暴露 + cortana | 中 |
 | **P5 Flutter 管家面板** | 目标树/记忆审阅/提醒/反馈按钮/养成度 | Flutter 新 Tab + blog-agent API | 大 |

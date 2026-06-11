@@ -8,6 +8,7 @@ require (
 	config v0.0.0
 	delegation v0.0.0
 	goal v0.0.0
+	memory v0.0.0
 	mylog v0.0.0
 	statistics v0.0.0
 )
@@ -19,5 +20,7 @@ replace config => ../config
 replace delegation => ../delegation
 
 replace goal => ../goal
+
+replace memory => ../memory
 
 replace statistics => ../statistics

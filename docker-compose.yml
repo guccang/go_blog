@@ -1,0 +1,67 @@
+version: "3.8"
+
+# ============================================================
+# docker-compose.yml — Go Blog Agent + Redis
+#
+# 使用方式:
+#   docker-compose up -d              # 后台启动
+#   docker-compose up --build         # 重新构建并启动
+#   docker-compose logs -f blog-agent # 查看日志
+#   docker-compose down               # 停止并清理
+# ============================================================
+
+services:
+  # Redis 缓存 & 持久化
+  redis:
+    image: redis:7-alpine
+    container_name: go_blog_redis
+    restart: unless-stopped
+    ports:
+      - "6666:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - blog_net
+
+  # Go Blog Agent 主服务
+  blog-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: go-blog-agent:latest
+    container_name: go_blog_agent
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    volumes:
+      # 挂载博客数据目录（Markdown 文件持久化）
+      - ./cmd/blog-agent/blogs_txt:/app/blogs_txt
+      # 挂载日志目录
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - blog_net
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  blog_net:
+    driver: bridge
