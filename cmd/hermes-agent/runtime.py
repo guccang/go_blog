@@ -172,6 +172,10 @@ class HermesRuntime:
         ]
         if self.client is None:
             raise RuntimeError("UAP client must be bound before runtime start")
+        if self.config.tool_bridge_enabled:
+            from tool_bridge import bridge as go_blog_bridge
+
+            go_blog_bridge.configure(self.config, self.client, self.loop)
         if self._native_runtime_enabled:
             self.cron = CronBridge(self.config, self.client, self.loop)
             await self.cron.start()
@@ -204,6 +208,9 @@ class HermesRuntime:
             task_id = str(payload.get("task_id") or "")
             if task_id:
                 self._stop_task(task_id)
+        elif message_type == "tool_result":
+            if self.client is not None and not self.client.handle_tool_result(message):
+                logger.debug("unmatched tool_result from %s", source)
 
     async def _enqueue(self, source: str, session_key: str, query: str, task_id: str) -> None:
         if not query:

@@ -1460,6 +1460,10 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
           envelope.userId != _userIdController.text.trim()) {
         return;
       }
+      if (envelope.messageId.isNotEmpty &&
+          _seenMessageIds.contains(envelope.messageId)) {
+        return;
+      }
       if (envelope.sequence > 0 && envelope.sequence <= _lastSequence) {
         return;
       }

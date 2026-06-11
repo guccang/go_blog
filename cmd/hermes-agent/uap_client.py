@@ -56,6 +56,7 @@ class UAPClient:
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._send_lock = asyncio.Lock()
         self._stopping = asyncio.Event()
+        self._pending_tool_calls: dict[str, asyncio.Future] = {}
 
     async def run(self) -> None:
         backoff = 1
@@ -115,6 +116,44 @@ class UAPClient:
         )
         async with self._send_lock:
             await ws.send_json(message, dumps=lambda value: json.dumps(value, ensure_ascii=False))
+
+    async def call_tool(
+        self,
+        to: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        authenticated_user: str = "",
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """Send a tool_call to a remote agent and wait for the matching tool_result."""
+        msg_id = uuid.uuid4().hex
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending_tool_calls[msg_id] = future
+        try:
+            await self.send(
+                "tool_call",
+                to=to,
+                payload={
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                    "authenticated_user": authenticated_user,
+                },
+                message_id=msg_id,
+            )
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self._pending_tool_calls.pop(msg_id, None)
+
+    def handle_tool_result(self, message: dict[str, Any]) -> bool:
+        """Complete a pending call_tool future. Returns True when matched."""
+        payload = message.get("payload") or {}
+        request_id = str(payload.get("request_id") or message.get("id") or "")
+        future = self._pending_tool_calls.pop(request_id, None)
+        if future is None or future.done():
+            return False
+        future.set_result(payload)
+        return True
 
     async def _register(self) -> None:
         await self.send(

@@ -35,6 +35,7 @@ type Config struct {
 	AppRefreshTokenTTLHours  int              `json:"app_refresh_token_ttl_hours,omitempty"`
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
 	CortanaSettingsFile      string           `json:"cortana_settings_file,omitempty"`
+	PreferencesFile          string           `json:"preferences_file,omitempty"`
 	LLMWorkspaceDir          string           `json:"llm_workspace_dir,omitempty"`
 	LogAgentConfigFile       string           `json:"log_agent_config_file,omitempty"`
 	DebugBundleDir           string           `json:"debug_bundle_dir,omitempty"`
@@ -47,6 +48,7 @@ type Config struct {
 	OBS                      OBSStorageConfig `json:"obs,omitempty"`
 
 	LLMAgentID     string `json:"llm_agent_id"`
+	HermesAgentID  string `json:"hermes_agent_id,omitempty"`
 	CmdAgentID     string `json:"cmd_agent_id,omitempty"`
 	BackendAgentID string `json:"backend_agent_id"`
 	CortanaAgentID string `json:"cortana_agent_id,omitempty"`
@@ -72,6 +74,7 @@ func DefaultConfig() *Config {
 		AppRefreshTokenTTLHours:  720,
 		GroupStoreFile:           "app-groups.json",
 		CortanaSettingsFile:      "cortana-settings.json",
+		PreferencesFile:          "app-preferences.json",
 		LLMWorkspaceDir:          "../llm-agent/workspace",
 		LogAgentConfigFile:       "../log-agent/log-agent.json",
 		DebugBundleDir:           defaultFlutterDebugBundleDir,
@@ -79,6 +82,7 @@ func DefaultConfig() *Config {
 		MaxResourceUploadMB:      128,
 		DownloadTicketTTLSeconds: 300,
 		LLMAgentID:               "llm-agent",
+		HermesAgentID:            "hermes-agent",
 		CmdAgentID:               "cmd-agent",
 		BackendAgentID:           "blog-agent",
 		CortanaAgentID:           "cortana-agent",
@@ -124,6 +128,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.CortanaSettingsFile == "" {
 		cfg.CortanaSettingsFile = "cortana-settings.json"
+	}
+	if cfg.PreferencesFile == "" {
+		cfg.PreferencesFile = "app-preferences.json"
+	}
+	if cfg.HermesAgentID == "" {
+		cfg.HermesAgentID = "hermes-agent"
 	}
 	if cfg.LLMWorkspaceDir == "" {
 		cfg.LLMWorkspaceDir = "../llm-agent/workspace"

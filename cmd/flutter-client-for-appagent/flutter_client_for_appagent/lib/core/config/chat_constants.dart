@@ -8,6 +8,7 @@ const String _historyBackupStoragePrefix = 'chat_history_secure::';
 const int _chatHistoryRetainLimit = 520;
 const String _lastReadAtStoragePrefix = 'chat_last_read_at';
 const String _codegenModeKey = 'codegen::last_mode';
+const String _preferredChatAgentKey = 'chat::preferred_chat_agent';
 const String _codeProjectKey = 'codegen::last_code_project';
 const String _codeToolKey = 'codegen::last_code_tool';
 const String _claudeSettingsKey = 'codegen::last_claude_settings';

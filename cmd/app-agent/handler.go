@@ -18,22 +18,24 @@ import (
 
 // Handler handles app inbound HTTP and WebSocket requests.
 type Handler struct {
-	cfg      *Config
-	bridge   *Bridge
-	auth     *authManager
-	client   *http.Client
-	cortana  cortanaAccountSync
-	settings *CortanaSettingsStore
+	cfg         *Config
+	bridge      *Bridge
+	auth        *authManager
+	client      *http.Client
+	cortana     cortanaAccountSync
+	settings    *CortanaSettingsStore
+	preferences *AppPreferencesStore
 }
 
-func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync, settings *CortanaSettingsStore) *Handler {
+func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync, settings *CortanaSettingsStore, preferences *AppPreferencesStore) *Handler {
 	return &Handler{
-		cfg:      cfg,
-		bridge:   bridge,
-		auth:     auth,
-		client:   &http.Client{Timeout: 10 * time.Second},
-		cortana:  cortana,
-		settings: settings,
+		cfg:         cfg,
+		bridge:      bridge,
+		auth:        auth,
+		client:      &http.Client{Timeout: 10 * time.Second},
+		cortana:     cortana,
+		settings:    settings,
+		preferences: preferences,
 	}
 }
 

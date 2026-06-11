@@ -69,6 +69,8 @@ class CodegenBody extends StatelessWidget {
     required this.onDeployArgsChanged,
     required this.onSend,
     required this.onCommitAndPush,
+    required this.onSessionStatus,
+    required this.onSessionStop,
     required this.onBackupHistory,
     required this.onLoadHistoryBackup,
     required this.onClearHistory,
@@ -121,6 +123,8 @@ class CodegenBody extends StatelessWidget {
   final ValueChanged<String> onDeployArgsChanged;
   final VoidCallback onSend;
   final VoidCallback onCommitAndPush;
+  final VoidCallback onSessionStatus;
+  final VoidCallback onSessionStop;
   final ValueChanged<CodegenHistoryBackupType> onBackupHistory;
   final VoidCallback onLoadHistoryBackup;
   final VoidCallback onClearHistory;
@@ -302,6 +306,19 @@ class CodegenBody extends StatelessWidget {
                 icon: const Icon(Icons.account_tree_rounded),
                 label: const Text('git提交'),
               );
+              final statusButton = OutlinedButton.icon(
+                onPressed: sending || loading ? null : onSessionStatus,
+                icon: const Icon(Icons.timelapse_rounded),
+                label: const Text('进度'),
+              );
+              final stopButton = OutlinedButton.icon(
+                onPressed: sending || loading ? null : onSessionStop,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: palette.error,
+                ),
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('停止'),
+              );
               if (stacked) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -309,6 +326,14 @@ class CodegenBody extends StatelessWidget {
                     sendButton,
                     const SizedBox(height: 8),
                     commitButton,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: statusButton),
+                        const SizedBox(width: 8),
+                        Expanded(child: stopButton),
+                      ],
+                    ),
                   ],
                 );
               }
@@ -317,6 +342,10 @@ class CodegenBody extends StatelessWidget {
                   Expanded(child: sendButton),
                   const SizedBox(width: 8),
                   commitButton,
+                  const SizedBox(width: 8),
+                  statusButton,
+                  const SizedBox(width: 8),
+                  stopButton,
                 ],
               );
             },

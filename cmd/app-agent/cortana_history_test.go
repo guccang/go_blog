@@ -74,7 +74,7 @@ func TestHandleCortanaHistoryReturnsItems(t *testing.T) {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	settings := NewCortanaSettingsStore(filepath.Join(t.TempDir(), "cortana-settings.json"))
-	handler := NewHandler(cfg, bridge, auth, nil, settings)
+	handler := NewHandler(cfg, bridge, auth, nil, settings, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/app/cortana/history?user_id=alice&session_token=session-1", nil)
 	req.Header.Set("X-App-Agent-Token", "app-token")

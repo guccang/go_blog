@@ -1622,9 +1622,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
   Widget _buildComposer() {
     final palette = _palette;
     final canInteract = !(_sending || _recording || _transcribingVoice);
-    final showSendButton = !_voiceInputMode && _composerHasText;
-
-    return Container(
+    final showSendButton = !_voiceInputMode && _composerHasText;    return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: BoxDecoration(
@@ -1659,6 +1657,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
               ),
             ),
           ),
+          if (_commandSuggestionsVisible) _buildCommandSuggestions(),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -1798,6 +1797,228 @@ extension _ChatPageStateUiSections on _ChatPageState {
         ],
       ),
     );
+  }
+
+  static const List<({String label, String insert, String hint})>
+  _chatCommandTemplates = [
+    (label: '/cg start', insert: '/cg start ', hint: '启动编码：/cg start <项目> <需求>'),
+    (label: '/cg status', insert: '/cg status', hint: '查看编码会话进度'),
+    (label: '/cg stop', insert: '/cg stop', hint: '停止当前编码会话'),
+    (label: '/cg deploy', insert: '/cg deploy ', hint: '部署：/cg deploy <项目>'),
+    (label: '/cg list', insert: '/cg list', hint: '列出可用项目'),
+    (label: '/help', insert: '/help', hint: '查看全部命令'),
+  ];
+
+  bool get _commandSuggestionsVisible {
+    if (_voiceInputMode) {
+      return false;
+    }
+    final text = _messageController.text.trimLeft();
+    return text.startsWith('/') && _filteredCommandTemplates(text).isNotEmpty;
+  }
+
+  List<({String label, String insert, String hint})> _filteredCommandTemplates(
+    String input,
+  ) {
+    return _chatCommandTemplates
+        .where(
+          (cmd) =>
+              cmd.insert.startsWith(input) ||
+              (input.length > 1 && cmd.label.startsWith(input)),
+        )
+        .toList();
+  }
+
+  Widget _buildCommandSuggestions() {
+    final palette = _palette;
+    final input = _messageController.text.trimLeft();
+    final commands = _filteredCommandTemplates(input);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.surfaceSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final cmd in commands)
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                _messageController.text = cmd.insert;
+                _messageController.selection = TextSelection.collapsed(
+                  offset: cmd.insert.length,
+                );
+                _messageFocusNode.requestFocus();
+                setState(() {});
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      cmd.label,
+                      style: TextStyle(
+                        color: palette.accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        cmd.hint,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatAgentCard() {
+    final palette = _palette;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.surfaceMuted.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '对话 Agent',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: palette.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '聊天消息的默认处理方：LLM Agent（工具中枢）或 Hermes Agent（自主推理 + 博客工具）',
+            style: TextStyle(fontSize: 12, color: palette.textMuted),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'llm',
+                label: Text('LLM'),
+                icon: Icon(Icons.hub_outlined),
+              ),
+              ButtonSegment(
+                value: 'hermes',
+                label: Text('Hermes'),
+                icon: Icon(Icons.auto_awesome_outlined),
+              ),
+            ],
+            selected: {_preferredChatAgent},
+            onSelectionChanged: _chatAgentSyncing
+                ? null
+                : (selection) {
+                    if (selection.isNotEmpty) {
+                      unawaited(_applyPreferredChatAgent(selection.first));
+                    }
+                  },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _restorePreferredChatAgent() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_preferredChatAgentKey)?.trim() ?? '';
+      if (stored == 'llm' || stored == 'hermes') {
+        if (!mounted) {
+          _preferredChatAgent = stored;
+          return;
+        }
+        setState(() => _preferredChatAgent = stored);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _applyPreferredChatAgent(String value) async {
+    final normalized = value == 'hermes' ? 'hermes' : 'llm';
+    setState(() {
+      _preferredChatAgent = normalized;
+      _chatAgentSyncing = true;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_preferredChatAgentKey, normalized);
+      await _runAuthed('Save chat agent preference', (client) {
+        return client.saveAppPreferences(<String, dynamic>{
+          'preferred_chat_agent': normalized,
+        });
+      });
+      _appendSystem(
+        normalized == 'hermes' ? '对话已切换至 Hermes Agent' : '对话已切换至 LLM Agent',
+        persist: false,
+      );
+    } catch (err) {
+      _appendSystem(
+        _describeRequestError(err, operation: 'Save chat agent preference'),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _chatAgentSyncing = false);
+      } else {
+        _chatAgentSyncing = false;
+      }
+    }
+  }
+
+  Future<void> _refreshChatAgentPreferenceFromServer() async {
+    if (_sessionToken.isEmpty) {
+      return;
+    }
+    try {
+      final data = await _runAuthed('Load chat agent preference', (client) {
+        return client.fetchAppPreferences();
+      });
+      final preferences = data['preferences'];
+      if (preferences is! Map<String, dynamic>) {
+        return;
+      }
+      final remote =
+          (preferences['preferred_chat_agent'] ?? '').toString().trim();
+      if (remote != 'llm' && remote != 'hermes') {
+        return;
+      }
+      if (remote == _preferredChatAgent) {
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_preferredChatAgentKey, remote);
+      if (!mounted) {
+        _preferredChatAgent = remote;
+        return;
+      }
+      setState(() => _preferredChatAgent = remote);
+    } catch (_) {}
   }
 
   Widget _buildVoiceGestureOverlay() {
@@ -2170,6 +2391,8 @@ extension _ChatPageStateUiSections on _ChatPageState {
       },
       onSend: _sendCodegenCommand,
       onCommitAndPush: () => unawaited(_sendCodegenCommitCommand()),
+      onSessionStatus: () => unawaited(_sendCodegenControlCommand('status')),
+      onSessionStop: () => unawaited(_sendCodegenControlCommand('stop')),
       onBackupHistory: (type) => unawaited(_backupCodegenHistory(type)),
       onLoadHistoryBackup: () => unawaited(_loadCodegenHistoryBackupFromObs()),
       onClearHistory: () {
@@ -2265,6 +2488,8 @@ extension _ChatPageStateUiSections on _ChatPageState {
               const SizedBox(height: 8),
               _buildThemePresetCard(),
               const SizedBox(height: 8),
+              _buildChatAgentCard(),
+              const SizedBox(height: 8),
               _buildCortanaChatSettings(),
             ],
           ),
@@ -2293,6 +2518,9 @@ extension _ChatPageStateUiSections on _ChatPageState {
     }
     if (nextTab == RootTab.settings && _appStorageUsages.isEmpty) {
       unawaited(_refreshAppStorageUsage(silent: true));
+    }
+    if (nextTab == RootTab.settings) {
+      unawaited(_refreshChatAgentPreferenceFromServer());
     }
   }
 

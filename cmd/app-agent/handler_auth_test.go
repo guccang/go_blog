@@ -54,7 +54,7 @@ func newTestHandler(t *testing.T, syncer cortanaAccountSync) (*Handler, *authMan
 	bridge := NewBridge(cfg)
 	settings := NewCortanaSettingsStore(filepath.Join(t.TempDir(), "cortana-settings.json"))
 	bridge.SetCortanaSync(syncer, settings)
-	return NewHandler(cfg, bridge, auth, syncer, settings), auth
+	return NewHandler(cfg, bridge, auth, syncer, settings, nil), auth
 }
 
 func TestHandleLoginRegistersCortanaAccount(t *testing.T) {

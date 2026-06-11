@@ -39,6 +39,10 @@ class Config:
     workspace_dir: str = "."
     session_dir: str = "sessions"
     app_agent_id: str = "app-app-agent"
+    blog_agent_id: str = "blog-agent"
+    gateway_http_url: str = ""
+    tool_bridge_enabled: bool = True
+    tool_call_timeout: float = 30.0
     cron_tick_seconds: int = 60
     model: str = ""
     provider: str = ""
@@ -105,6 +109,7 @@ class Config:
         home.mkdir(parents=True, exist_ok=True)
         for name in ("cron", "logs", "memories", "scripts", "skills"):
             (home / name).mkdir(exist_ok=True)
+        self._install_go_blog_plugin(home)
 
         native = _deep_merge(
             {
@@ -112,6 +117,17 @@ class Config:
             },
             self.native_config,
         )
+        if self.tool_bridge_enabled:
+            plugins_cfg = native.get("plugins")
+            if not isinstance(plugins_cfg, dict):
+                plugins_cfg = {}
+            enabled = plugins_cfg.get("enabled")
+            if not isinstance(enabled, list):
+                enabled = []
+            if "go_blog" not in enabled:
+                enabled = [*enabled, "go_blog"]
+            plugins_cfg["enabled"] = enabled
+            native["plugins"] = plugins_cfg
         model = native.get("model")
         if not isinstance(model, dict):
             model = {}
@@ -132,6 +148,22 @@ class Config:
             json.dump(native, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
         os.chmod(target, 0o600)
+
+    def _install_go_blog_plugin(self, home: Path) -> None:
+        """把仓库内的 go_blog 插件同步到 hermes_home/plugins（用户插件目录）。"""
+        if not self.tool_bridge_enabled:
+            return
+        source = Path(__file__).resolve().parent / "plugins" / "go_blog"
+        if not source.is_dir():
+            return
+        target = home / "plugins" / "go_blog"
+        target.mkdir(parents=True, exist_ok=True)
+        for item in source.iterdir():
+            if item.is_file():
+                data = item.read_bytes()
+                dest = target / item.name
+                if not dest.exists() or dest.read_bytes() != data:
+                    dest.write_bytes(data)
 
     def write(self, path: str | Path) -> None:
         target = Path(path)

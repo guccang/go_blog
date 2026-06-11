@@ -1754,4 +1754,35 @@ extension _ChatPageStateCodegen on _ChatPageState {
       }
     }
   }
+
+  Future<void> _sendCodegenControlCommand(String kind) async {
+    if (_sessionToken.isEmpty && _refreshToken.isEmpty) {
+      _appendSystem('Please login first.');
+      return;
+    }
+    final action = CodegenActionRequest(kind: kind, project: '');
+    setState(() {
+      _codegenSending = true;
+    });
+    try {
+      await _runAuthed('Send codegen $kind command', (client) {
+        return client.submitCodegenAction(action);
+      });
+      if (mounted) {
+        setState(() {
+          _status = kind == 'stop' ? '已请求停止编码会话' : '已请求查询编码进度';
+        });
+      }
+    } catch (err) {
+      _appendSystem(
+        _describeRequestError(err, operation: 'Send codegen $kind command'),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _codegenSending = false;
+        });
+      }
+    }
+  }
 }

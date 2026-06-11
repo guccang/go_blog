@@ -58,6 +58,18 @@ func TestBuildCodegenActionCommandDeploy(t *testing.T) {
 	}
 }
 
+func TestBuildCodegenActionCommandStopAndStatus(t *testing.T) {
+	for kind, want := range map[string]string{"stop": "/cg stop", "status": "/cg status"} {
+		command, err := buildCodegenActionCommand(codegenActionRequest{Kind: kind})
+		if err != nil {
+			t.Fatalf("buildCodegenActionCommand(%s) error = %v", kind, err)
+		}
+		if command != want {
+			t.Fatalf("command = %q, want %q", command, want)
+		}
+	}
+}
+
 func TestBuildCodegenActionCommandRejectsInvalidRequest(t *testing.T) {
 	for _, req := range []codegenActionRequest{
 		{Version: 2, Kind: "start", Project: "app", Prompt: "x"},

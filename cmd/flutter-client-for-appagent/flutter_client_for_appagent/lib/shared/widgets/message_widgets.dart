@@ -56,6 +56,32 @@ class _MessageBubbleState extends State<_MessageBubble> {
     return '${message.content}$versionLine\n点击安装 APK';
   }
 
+  String get _sourceAgentLabel {
+    final meta = message.meta;
+    if (meta == null) {
+      return '';
+    }
+    final origin = (meta['origin'] ?? '').toString().trim();
+    if (origin == 'codegen-stream') {
+      return 'Codegen';
+    }
+    final source = (meta['source_agent'] ?? '').toString().trim();
+    switch (source) {
+      case '':
+        return '';
+      case 'hermes-agent':
+        return 'Hermes';
+      case 'llm-agent':
+        return 'LLM';
+      case 'cmd-agent':
+        return 'Cmd';
+      case 'blog-agent':
+        return 'Blog';
+      default:
+        return source;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -223,6 +249,19 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       ),
                     ),
                     const SizedBox(height: 6),
+                  ],
+                  if (!isSystem && !isOutgoing &&
+                      _sourceAgentLabel.isNotEmpty) ...[
+                    Text(
+                      _sourceAgentLabel,
+                      style: TextStyle(
+                        color: palette.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                   ],
                   if (isImage)
                     Column(

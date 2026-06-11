@@ -90,6 +90,7 @@ type Bridge struct {
 
 	cortanaSync     cortanaAccountSync
 	cortanaSettings *CortanaSettingsStore
+	preferences     *AppPreferencesStore
 
 	obsStorage        objectStorage
 	downloadTickets   downloadTicketSigner
@@ -241,6 +242,25 @@ func (b *Bridge) SetCortanaSync(syncer cortanaAccountSync, settingsStore *Cortan
 	b.delegationMu.Unlock()
 }
 
+func (b *Bridge) SetPreferences(store *AppPreferencesStore) {
+	b.delegationMu.Lock()
+	b.preferences = store
+	b.delegationMu.Unlock()
+}
+
+// chatAgentFor 返回该用户自然语言消息的目标 agent（llm-agent 或 hermes-agent）。
+func (b *Bridge) chatAgentFor(userID string) string {
+	target := b.cfg.LLMAgentID
+	b.delegationMu.Lock()
+	preferences := b.preferences
+	b.delegationMu.Unlock()
+	if preferences != nil && b.cfg.HermesAgentID != "" &&
+		preferences.Get(userID).PreferredChatAgent == ChatAgentHermes {
+		target = b.cfg.HermesAgentID
+	}
+	return target
+}
+
 func (b *Bridge) HasOnlineClient(userID string) bool {
 	b.deliveryMu.Lock()
 	defer b.deliveryMu.Unlock()
@@ -365,7 +385,7 @@ func (b *Bridge) HandleAppMessage(msg *AppMessage) {
 		return
 	}
 
-	targetAgent := b.cfg.LLMAgentID
+	targetAgent := b.chatAgentFor(msg.UserID)
 	if isCmdCommand(content) && b.cfg.CmdAgentID != "" {
 		targetAgent = b.cfg.CmdAgentID
 	} else if isBackendCommand(content) && b.cfg.BackendAgentID != "" {
@@ -1148,6 +1168,14 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 				}
 				for k, v := range payload.Meta {
 					meta[k] = v
+				}
+			}
+			if strings.TrimSpace(msg.From) != "" {
+				if meta == nil {
+					meta = map[string]any{}
+				}
+				if _, ok := meta["source_agent"]; !ok {
+					meta["source_agent"] = msg.From
 				}
 			}
 			messageType := strings.TrimSpace(payload.MessageType)

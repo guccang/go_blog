@@ -293,6 +293,39 @@ class AppAgentClient {
     );
   }
 
+  Future<Map<String, dynamic>> fetchAppPreferences() async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/preferences?user_id=$userId&session_token=$sessionToken',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('get app preferences', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> saveAppPreferences(
+    Map<String, dynamic> preferences,
+  ) async {
+    final uri = Uri.parse('$baseUrl/api/app/preferences');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{'user_id': userId, ...preferences}),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('save app preferences', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> fetchCortanaSettings() async {
     final uri = Uri.parse(
       '$baseUrl/api/app/cortana/settings?user_id=$userId&session_token=$sessionToken',

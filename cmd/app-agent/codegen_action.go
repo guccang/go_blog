@@ -86,6 +86,12 @@ func buildCodegenActionCommand(req codegenActionRequest) (string, error) {
 		return "", fmt.Errorf("unsupported codegen action version: %d", req.Version)
 	}
 	kind := strings.ToLower(strings.TrimSpace(req.Kind))
+	switch kind {
+	case "stop":
+		return "/cg stop", nil
+	case "status":
+		return "/cg status", nil
+	}
 	project := strings.TrimSpace(req.Project)
 	if project == "" {
 		return "", fmt.Errorf("project is required")

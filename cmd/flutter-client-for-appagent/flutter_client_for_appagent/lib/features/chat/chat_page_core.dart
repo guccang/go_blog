@@ -159,6 +159,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   List<CodegenHistoryItem> _codegenHistory = [];
   String _activeCodegenHistoryId = '';
   int _lastSequence = 0;
+  String _preferredChatAgent = 'llm';
+  bool _chatAgentSyncing = false;
   String _status = 'Idle';
   String _sessionToken = '';
   String _refreshToken = '';
@@ -217,6 +219,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _appendSystem('Loading client config...', persist: false);
     unawaited(_restoreCodegenPreferences());
+    unawaited(_restorePreferredChatAgent());
     unawaited(_loadCodegenHistory());
     unawaited(_loadClientConfig());
     unawaited(_restoreSherpaDownloadProgress());

@@ -19,7 +19,7 @@ func TestHandleLogEndpoints(t *testing.T) {
 	bridge := NewBridge(cfg)
 	settings := NewCortanaSettingsStore(filepath.Join(t.TempDir(), "cortana-settings.json"))
 	bridge.SetCortanaSync(syncer, settings)
-	handler := NewHandler(cfg, bridge, auth, syncer, settings)
+	handler := NewHandler(cfg, bridge, auth, syncer, settings, nil)
 
 	logDir := t.TempDir()
 	if err := os.WriteFile(

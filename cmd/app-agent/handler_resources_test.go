@@ -22,7 +22,7 @@ func TestHandleResourcesUploadsAndListsByCategory(t *testing.T) {
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth, nil, NewCortanaSettingsStore(filepath.Join(t.TempDir(), "settings.json")))
+	handler := NewHandler(cfg, bridge, auth, nil, NewCortanaSettingsStore(filepath.Join(t.TempDir(), "settings.json")), nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -135,7 +135,7 @@ func TestHandleResourcesRejectsOversizedUploadWith413(t *testing.T) {
 		Token:     "session-1",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	handler := NewHandler(cfg, bridge, auth, nil, NewCortanaSettingsStore(filepath.Join(t.TempDir(), "settings.json")))
+	handler := NewHandler(cfg, bridge, auth, nil, NewCortanaSettingsStore(filepath.Join(t.TempDir(), "settings.json")), nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
