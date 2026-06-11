@@ -28,6 +28,7 @@ var butlerAllowedTools = map[string]struct{}{
 	"RawAddGoalTask":      {},
 	"RawUpdateGoalTask":   {},
 	"RawDeleteGoalTask":   {},
+	"RawDeleteGoal":       {},
 }
 
 type butlerToolRequest struct {

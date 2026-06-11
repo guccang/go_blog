@@ -2056,6 +2056,9 @@ extension _ChatPageStateUiSections on _ChatPageState {
         }
       },
       onFeedback: (kind) => unawaited(_sendButlerFeedback(kind)),
+      onCreateGoal: () => unawaited(_showGoalDialog(null)),
+      onEditGoal: (goal) => unawaited(_showGoalDialog(goal)),
+      onDeleteGoal: (goal) => unawaited(_deleteGoal(goal)),
     );
   }
 
@@ -2089,6 +2092,104 @@ extension _ChatPageStateUiSections on _ChatPageState {
       _appendSystem('已记录反馈，管家会据此调整。');
     } catch (err) {
       _appendSystem(_describeRequestError(err, operation: 'Butler feedback'));
+    }
+  }
+
+  Future<void> _showGoalDialog(ButlerGoalSummary? existing) async {
+    final levelCtrl = TextEditingController(text: existing?.level ?? 'daily');
+    final periodCtrl = TextEditingController(text: existing?.period ?? '');
+    final overviewCtrl = TextEditingController(text: existing?.overview ?? '');
+    final judgeCtrl = TextEditingController(text: existing?.judge ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? '新建目标' : '编辑目标'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: levelCtrl,
+                decoration: const InputDecoration(labelText: '周期 (daily/weekly/monthly/yearly)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: periodCtrl,
+                decoration: const InputDecoration(labelText: '期间描述（如"2025年6月"）'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: overviewCtrl,
+                decoration: const InputDecoration(labelText: '目标概述'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: judgeCtrl,
+                decoration: const InputDecoration(labelText: '判据（如何算完成）'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        await _runAuthed('Save goal', (client) {
+          return client.callButlerTool('RawSaveGoal', arguments: {
+            'level': levelCtrl.text.trim(),
+            'period': periodCtrl.text.trim(),
+            'overview': overviewCtrl.text.trim(),
+            'judge': judgeCtrl.text.trim(),
+          });
+        });
+        _appendSystem('目标已保存。');
+        unawaited(_loadButlerData());
+      } catch (err) {
+        _appendSystem(_describeRequestError(err, operation: 'Save goal'));
+      }
+    }
+  }
+
+  Future<void> _deleteGoal(ButlerGoalSummary goal) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除目标'),
+        content: Text('确定删除「${goal.overview}」？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await _runAuthed('Delete goal', (client) {
+          return client.callButlerTool('RawDeleteGoal', arguments: {
+            'level': goal.level,
+            'period': goal.period,
+          });
+        });
+        _appendSystem('目标已删除。');
+        unawaited(_loadButlerData());
+      } catch (err) {
+        _appendSystem(_describeRequestError(err, operation: 'Delete goal'));
+      }
     }
   }
 

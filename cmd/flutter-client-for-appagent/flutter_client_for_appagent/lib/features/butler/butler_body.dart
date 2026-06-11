@@ -70,6 +70,9 @@ class ButlerBody extends StatelessWidget {
     required this.onSaveMemoryFile,
     required this.onMemoryChanged,
     required this.onFeedback,
+    this.onCreateGoal,
+    this.onEditGoal,
+    this.onDeleteGoal,
   });
 
   final ButlerBodyPalette palette;
@@ -90,6 +93,11 @@ class ButlerBody extends StatelessWidget {
 
   /// 播报反馈回调，kind ∈ {helpful, too_frequent, bad_timing}。
   final ValueChanged<String> onFeedback;
+
+  /// 目标 CRUD 回调（§5.3 Flutter 目标树直接增删改）。
+  final VoidCallback? onCreateGoal;
+  final ValueChanged<ButlerGoalSummary>? onEditGoal;
+  final ValueChanged<ButlerGoalSummary>? onDeleteGoal;
 
   @override
   Widget build(BuildContext context) {
@@ -237,7 +245,34 @@ class ButlerBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('目标概览'),
+          Row(
+            children: [
+              Expanded(child: _sectionTitle('目标概览')),
+              if (onCreateGoal != null)
+                InkWell(
+                  onTap: onCreateGoal,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, size: 14, color: palette.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          '新建',
+                          style: TextStyle(
+                            color: palette.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 10),
           if (goals.isEmpty)
             Text(
@@ -289,6 +324,31 @@ class ButlerBody extends StatelessWidget {
                           : palette.accent,
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => onEditGoal?.call(goal),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 16,
+                        color: palette.textMuted,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => onDeleteGoal?.call(goal),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.delete_outline,
+                        size: 16,
+                        color: palette.textMuted,
+                      ),
                     ),
                   ),
                 ],
