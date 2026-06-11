@@ -35,6 +35,7 @@ class ButlerGoalSummary {
     required this.level,
     required this.period,
     required this.overview,
+    required this.judge,
     required this.progress,
     required this.status,
     required this.taskCount,
@@ -43,6 +44,7 @@ class ButlerGoalSummary {
   final String level;
   final String period;
   final String overview;
+  final String judge;
   final int progress;
   final String status;
   final int taskCount;
@@ -300,6 +302,32 @@ class ButlerBody extends StatelessWidget {
                   backgroundColor: palette.surfaceSoft,
                 ),
               ),
+              if (goal.judge.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1, right: 4),
+                      child: Icon(
+                        Icons.rule_rounded,
+                        size: 13,
+                        color: palette.textMuted,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '判据：${goal.judge.trim()}',
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 11.5,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
             ],
         ],

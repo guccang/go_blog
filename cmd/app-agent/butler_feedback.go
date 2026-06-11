@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -213,6 +214,7 @@ func (h *Handler) HandleButlerFeedback(w http.ResponseWriter, r *http.Request) {
 
 	affinity := h.affinity.Apply(account, kind)
 	h.writeFeedbackMemory(account, kind, label, req.BroadcastID, req.Text)
+	h.syncAffinityToCompanionState(account, affinity.Score)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -279,4 +281,32 @@ func defaultButlerText(s string) string {
 		return "未知"
 	}
 	return s
+}
+
+// syncAffinityToCompanionState 把养成度写入 llm-agent 工作区的 companion_state（plan §7.3：养成度存 companion_state）。
+// 读-改-写，只更新 affinity 字段，保留 llm-agent 写入的其它字段；best-effort，失败不影响反馈。
+func (h *Handler) syncAffinityToCompanionState(account string, score int) {
+	baseDir := strings.TrimSpace(h.cfg.LLMWorkspaceDir)
+	account = strings.TrimSpace(account)
+	if baseDir == "" || account == "" {
+		return
+	}
+	path := filepath.Join(baseDir, "users", account, "memory", "cortana_companion_state.json")
+	state := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+		_ = json.Unmarshal(data, &state)
+	}
+	state["affinity"] = score
+	state["updated_at"] = time.Now().Format(time.RFC3339)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		log.Printf("[Butler] companion_state 目录创建失败 account=%s err=%v", account, err)
+		return
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
+		log.Printf("[Butler] 写 companion_state 养成度失败 account=%s err=%v", account, err)
+	}
 }

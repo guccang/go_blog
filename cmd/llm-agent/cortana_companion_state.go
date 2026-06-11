@@ -18,6 +18,7 @@ type CortanaCompanionState struct {
 	LastAssistantMsg string    `json:"last_assistant_msg,omitempty"`
 	NextFocus        string    `json:"next_focus,omitempty"`
 	Summary          string    `json:"summary,omitempty"`
+	Affinity         int       `json:"affinity,omitempty"` // 养成度/亲密度 0-100（plan §7.3，影响语气与主动频率）
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 

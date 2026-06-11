@@ -95,6 +95,33 @@ func TestBuildCortanaProactiveSystemPromptIncludesMemoryRules(t *testing.T) {
 	}
 }
 
+func TestBuildCortanaAffinityContextBands(t *testing.T) {
+	high := buildCortanaAffinityContext(85)
+	if !strings.Contains(high, "85/100") || !strings.Contains(high, "亲密") {
+		t.Fatalf("高养成度文案错误: %s", high)
+	}
+	low := buildCortanaAffinityContext(20)
+	if !strings.Contains(low, "克制") || !strings.Contains(low, "降低主动频率") {
+		t.Fatalf("低养成度文案错误: %s", low)
+	}
+	mid := buildCortanaAffinityContext(55)
+	if !strings.Contains(mid, "55/100") {
+		t.Fatalf("中养成度文案错误: %s", mid)
+	}
+	// 钳制越界
+	if !strings.Contains(buildCortanaAffinityContext(150), "100/100") {
+		t.Fatalf("上界未钳制")
+	}
+}
+
+func TestCortanaCompanionStateAffinityPreserved(t *testing.T) {
+	prev := &CortanaCompanionState{Affinity: 73, LastTopic: "减重"}
+	next := updateCortanaCompanionState(prev, "今天有点累", "")
+	if next.Affinity != 73 {
+		t.Fatalf("养成度应被保留, got %d", next.Affinity)
+	}
+}
+
 func TestCortanaCurrentTimeQueryShortCircuitHelpers(t *testing.T) {
 	for _, input := range []string{"现在几点了", "你是不是又把时间当成凌晨了", "what time is it"} {
 		if !isCortanaCurrentTimeQuery(input) {

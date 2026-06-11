@@ -113,7 +113,11 @@ func (b *Bridge) generateCortanaProactiveDecision(payload *CortanaProactivePaylo
 	systemPrompt := buildCortanaProactiveSystemPrompt(profile)
 
 	body, _ := json.Marshal(payload)
-	messages := messagesWithRuntimeContext(systemPrompt, buildCortanaProactiveRuntimeContext(payload), string(body))
+	runtimeCtx := buildCortanaProactiveRuntimeContext(payload)
+	if state := loadCortanaCompanionState(b.cfg.WorkspaceDir, payload.Account); state != nil && state.Affinity > 0 {
+		runtimeCtx = runtimeCtx + "\n\n" + buildCortanaAffinityContext(state.Affinity)
+	}
+	messages := messagesWithRuntimeContext(systemPrompt, runtimeCtx, string(body))
 
 	cfg := b.activeLLM.Get()
 	text, _, err := SendLLMRequestWithFallback(&cfg, b.cfg.Fallbacks, b.fallbackCooldown(), messages, nil, b.cfg.Providers)
@@ -188,6 +192,7 @@ func buildCortanaProactiveSystemPrompt(profile *CortanaProfile) string {
 	sb.WriteString("23. 运行时上下文若提供“用户记忆库”，要把它当作了解用户的长期依据：long_term 中的称呼、喜好、忌讳、重要的人和纪念日要自然融入口播，让用户感到被记住；但只把它当背景，不要逐条复述记忆，也不要凭记忆编造未经证实的当前事实。\n")
 	sb.WriteString("24. 记忆查重：如果 today_journal 或记忆检索显示同一件事今天已经播报/提醒过，除非用户明确追问或情况有实质更新，否则不要再次提醒（should_interact=false 或改成简短跟进确认），这是“管家”区别于“闹钟”的关键。\n")
 	sb.WriteString("25. 如果 long_term/记忆检索表明用户曾反馈某类提醒太频繁、不喜欢在某时段被打扰，要据此收敛主动性，宁可少说。\n")
+	sb.WriteString("26. 如果运行时上下文提供「养成度」，要据此调节语气亲密度与主动频率：高→更亲密熟稔、可略主动；低→更克制、降低主动频率。养成度只影响语气和主动性，不改变是否打扰的硬规则与事实判断。\n")
 	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("当前 Cortana 名称: %s\n", profile.Name))
 	if profile.OwnerTitle != "" {
@@ -257,6 +262,26 @@ func cortanaProactiveDeviceContext(payload *CortanaProactivePayload) map[string]
 		return nil
 	}
 	return raw
+}
+
+// buildCortanaAffinityContext 把养成度(亲密度)转成决策运行时上下文块（plan §7.3：影响语气与主动频率）。
+func buildCortanaAffinityContext(affinity int) string {
+	if affinity < 0 {
+		affinity = 0
+	}
+	if affinity > 100 {
+		affinity = 100
+	}
+	var band string
+	switch {
+	case affinity >= 70:
+		band = "高：可用更亲密、熟稔、略主动的语气，像相处久了的老朋友；但仍克制，不腻歪。"
+	case affinity >= 40:
+		band = "中：自然、礼貌、有温度，主动性适中。"
+	default:
+		band = "低：更克制收敛，降低主动频率，宁可少说，先把分寸做好再谈亲密。"
+	}
+	return fmt.Sprintf("### 养成度（亲密度 0-100）\n当前 %d/100 —— %s\n养成度只影响语气亲密度和主动频率阈值，不改变事实判断与是否打扰的硬规则。", affinity, band)
 }
 
 func cortanaProactiveMemoryContext(payload *CortanaProactivePayload) map[string]any {

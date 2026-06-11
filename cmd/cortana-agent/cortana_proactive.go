@@ -248,17 +248,23 @@ func (c *Connection) collectSnapshot(session *CortanaUserSession, result *Monito
 }
 
 // collectMemory 注入用户记忆库（借鉴 MiMo：可审阅 Markdown + 关键词检索）。
-// 控制 token 预算：checkpoint 全文截断、MEMORY 截断、检索 top-5、今日 journal 用于查重。
+// 严格控制 token 预算（plan §4.3 ≤1500 tokens）：各片段按字符截断，总注入约束在 ~1500 字以内。
 func (c *Connection) collectMemory(account string, event CortanaTriggerEventPayload, result *MonitorResult) map[string]any {
+	// §4.3 token 预算（按字符近似，中文约 1 char≈1 token）：checkpoint+long_term+today_journal 合计 ≤1500。
+	const (
+		budgetCheckpoint = 600
+		budgetLongTerm   = 600
+		budgetJournal    = 300
+	)
 	mem := map[string]any{}
 
 	checkpoint := c.safeCallMemoryFile(account, "checkpoint")
 	if checkpoint != "" {
-		mem["checkpoint"] = truncateRunes(checkpoint, 800)
+		mem["checkpoint"] = truncateRunes(checkpoint, budgetCheckpoint)
 	}
 	longTerm := c.safeCallMemoryFile(account, "MEMORY")
 	if longTerm != "" {
-		mem["long_term"] = truncateRunes(longTerm, 1200)
+		mem["long_term"] = truncateRunes(longTerm, budgetLongTerm)
 	}
 
 	query := buildMemoryQuery(event, result)
@@ -277,7 +283,7 @@ func (c *Connection) collectMemory(account string, event CortanaTriggerEventPayl
 	// 今日 journal：供决策器查重，避免同一件事重复播报（“管家”与“闹钟”的区别）。
 	todayJournal := c.safeCallMemoryFile(account, "journal_"+time.Now().Format("2006-01-02"))
 	if todayJournal != "" {
-		mem["today_journal"] = truncateRunes(todayJournal, 1000)
+		mem["today_journal"] = truncateRunes(todayJournal, budgetJournal)
 	}
 
 	if len(mem) == 0 {

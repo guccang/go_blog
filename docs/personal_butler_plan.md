@@ -194,6 +194,14 @@ hermes cron 周期 job（每周日晚）：
 > - **P4**：显式提醒走 cron（BUTLER_RULES 第 3 条）；习惯提醒 `HABIT_REMINDER_JOB`（每日检查 + 记忆查重）；情境提醒走 P2 cortana 链路。**三类 cron 提醒现统一投递到 cortana-agent**（butler.py origin.chat_name=cortana_agent_id）→ cortana `handleInboundReminder` 经打扰控制（注册/启用/在线 + 冷却 + 记忆查重）后由主动决策链路定语气表情播报；cortana 未托管账号时回退直推 app，避免提醒丢失。
 > - **P5**：`app-agent/butler.go` 代理记忆/目标工具，`butler_feedback.go` 反馈与养成度端点；Flutter 管家 Tab 含目标环、checkpoint、**近期提醒列表**（从当日 journal 提取）、养成度与反馈按钮。反馈按钮置于管家面板而非播报卡片——cortana 播报是 8s 自动消失的悬浮层，按钮放面板更稳更可用（对 §7.4 的实现适配）。
 > - **P6**：反馈闭环「写记忆驱动收敛」——负反馈写入 MEMORY，经 cortana 快照注入（rule 25）与每周判官长期收敛主动性（比直接改冷却参数更可审阅，贴合 MiMo 透明化）；记忆周整理 `MEMORY_CONSOLIDATION_JOB`（优先 `RawMemoryRewriteSection` 局部整理）；多候选决策为文档标注的可选项，暂缓。
+> - **养成度驱动（§7.3）**：反馈更新养成度后写入 `companion_state`（`app-agent` 经 `LLMWorkspaceDir` 读改写 `cortana_companion_state.json`）；`llm-agent` 决策时加载并注入「养成度」运行时上下文块 + 规则 26，按高/中/低调节语气亲密度与主动频率（有单测 `buildCortanaAffinityContext`）。养成度同时在管家面板显示。
+> - **记忆预算（§4.3）**：cortana `collectMemory` 严格限额 checkpoint 600 + long_term 600 + today_journal 300 字符 + 检索 top-5，约束在 ~1500 token 内。
+>
+> 已知差距（诚实标注，未完全对齐文档）：
+> - **§8 形象增强**（表情扩充 comfort/cheer/proud/sleepy、按养成度换装饰）：需 Live2D 美术资产，当前表情集仍为 happy/sad/surprised，**受资产阻塞**，未实现。
+> - **§5.3/§8 Flutter 目标树「直接增删改」**：面板目前为只读展示（目标环 + 判据 + 进度），后端 `RawSaveGoal/RawAddGoalTask/...` 工具已在代理白名单内，CRUD 交互 UI 暂未实现。
+> - **§5.1 目标树 G1/G1.1 嵌套 + 每子节点判据**：goal 为两层（目标→扁平 tasks），判据落在目标级 `judge` 字段；子任务级 judge 与多层嵌套未实现。
+> - **§7.1 情绪观察落 journal**：hermes 侧由 BUTLER_RULES 提示写入；llm-agent 闲聊路径的情绪观察自动落 journal 未单独实现。
 
 ## 10. 风险与边界
 

@@ -2163,6 +2163,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
                 level: (item['level'] ?? level).toString(),
                 period: (item['period'] ?? '').toString(),
                 overview: (item['overview'] ?? '').toString(),
+                judge: (item['judge'] ?? '').toString(),
                 progress: (item['progress'] as num?)?.toInt() ?? 0,
                 status: (item['status'] ?? '').toString(),
                 taskCount: (item['total_tasks'] as num?)?.toInt() ?? 0,
