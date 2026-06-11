@@ -58,6 +58,7 @@ class ButlerBody extends StatelessWidget {
     required this.affinityScore,
     required this.goals,
     required this.checkpoint,
+    required this.reminders,
     required this.memoryFiles,
     required this.selectedMemoryFile,
     required this.memoryEditorController,
@@ -75,6 +76,7 @@ class ButlerBody extends StatelessWidget {
   final int affinityScore;
   final List<ButlerGoalSummary> goals;
   final String checkpoint;
+  final List<String> reminders;
   final List<String> memoryFiles;
   final String selectedMemoryFile;
   final TextEditingController memoryEditorController;
@@ -118,6 +120,8 @@ class ButlerBody extends StatelessWidget {
               _buildGoalsCard(),
               const SizedBox(height: 12),
               _buildCheckpointCard(),
+              const SizedBox(height: 12),
+              _buildRemindersCard(),
               const SizedBox(height: 12),
               _buildFeedbackCard(),
               const SizedBox(height: 12),
@@ -318,6 +322,50 @@ class ButlerBody extends StatelessWidget {
               height: 1.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemindersCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('近期提醒'),
+          const SizedBox(height: 8),
+          if (reminders.isEmpty)
+            Text(
+              '今天还没有提醒记录。管家会在合适的时机提醒你，并把每次提醒记进记忆。',
+              style: TextStyle(color: palette.textMuted, fontSize: 13),
+            )
+          else
+            for (final item in reminders) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3, right: 8),
+                    child: Icon(
+                      Icons.notifications_active_outlined,
+                      size: 15,
+                      color: palette.accent,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
         ],
       ),
     );

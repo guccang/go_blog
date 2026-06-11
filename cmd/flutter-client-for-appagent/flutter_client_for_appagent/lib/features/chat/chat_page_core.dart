@@ -166,6 +166,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String _butlerError = '';
   List<ButlerGoalSummary> _butlerGoals = <ButlerGoalSummary>[];
   String _butlerCheckpoint = '';
+  List<String> _butlerReminders = <String>[];
   List<String> _butlerMemoryFiles = <String>[];
   String _butlerSelectedMemoryFile = '';
   final _butlerMemoryController = TextEditingController();

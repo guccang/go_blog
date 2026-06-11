@@ -113,6 +113,33 @@ func Inner_blog_RawMemorySearch(arguments map[string]interface{}) string {
 	return wrapResult(memory.SearchJSON(account, query, limit, days))
 }
 
+func Inner_blog_RawMemoryRewriteSection(arguments map[string]interface{}) string {
+	requestedAccount, err := getStringParam(arguments, "account")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	account, err := ValidateAccountParam(requestedAccount)
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	file, err := getStringParam(arguments, "file")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	section, err := getStringParam(arguments, "section")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	content, err := getStringParam(arguments, "content")
+	if err != nil {
+		return errorJSON(err.Error())
+	}
+	if err := memory.RewriteSection(account, file, section, content); err != nil {
+		return errorJSON(err.Error())
+	}
+	return wrapResult(`{"success":true}`)
+}
+
 func Inner_blog_RawMemoryListFiles(arguments map[string]interface{}) string {
 	requestedAccount, err := getStringParam(arguments, "account")
 	if err != nil {

@@ -25,6 +25,7 @@ type Goal struct {
 	Level     string `json:"level"`      // daily, weekly, monthly, yearly
 	Period    string `json:"period"`     // 2026-05-02, 2026-W18, 2026-05, 2026
 	Overview  string `json:"overview"`   // main goal description
+	Judge     string `json:"judge,omitempty"` // 客观完成判据（独立判官评审依据，防"乐观停止"）
 	Tasks     []Task `json:"tasks"`      // sub-tasks
 	Progress  int    `json:"progress"`   // 0-100, auto-calculated from tasks
 	Status    string `json:"status"`     // active, completed, archived
@@ -48,6 +49,7 @@ type GoalSummary struct {
 	Level      string `json:"level"`
 	Period     string `json:"period"`
 	Overview   string `json:"overview"`
+	Judge      string `json:"judge,omitempty"`
 	Progress   int    `json:"progress"`
 	TotalTasks int    `json:"total_tasks"`
 	DoneTasks  int    `json:"done_tasks"`
@@ -386,6 +388,7 @@ func (g *Goal) Summary() *GoalSummary {
 		Level:        g.Level,
 		Period:       g.Period,
 		Overview:     g.Overview,
+		Judge:        g.Judge,
 		Progress:     g.Progress,
 		TotalTasks:   len(g.Tasks),
 		DoneTasks:    done,

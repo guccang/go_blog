@@ -94,6 +94,7 @@ func NewConnection(cfg *Config, agentID string) *Connection {
 	// 注册消息处理器
 	c.RegisterToolCallHandler(c.handleToolCall)
 	c.RegisterHandler(uap.MsgTaskComplete, c.handleTaskComplete)
+	c.RegisterHandler(uap.MsgNotify, c.handleInboundReminder)
 
 	log.Printf("[CortanaAgent] ✓ 连接管理器创建完成")
 

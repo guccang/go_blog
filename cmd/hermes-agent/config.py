@@ -40,6 +40,7 @@ class Config:
     session_dir: str = "sessions"
     app_agent_id: str = "app-app-agent"
     blog_agent_id: str = "blog-agent"
+    cortana_agent_id: str = "cortana-agent"
     gateway_http_url: str = ""
     tool_bridge_enabled: bool = True
     tool_call_timeout: float = 30.0

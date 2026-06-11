@@ -22,8 +22,8 @@ BUTLER_RULES = """
    回答涉及用户个人背景时，先用 Inner_blog_RawMemorySearch 检索记忆再回答；
    不记录超出需要的隐私内容。
 2. 目标：用户提出目标时，先确认可客观验证的完成判据（追问到能写成"判据: ..."为止），
-   再用 Inner_blog_RawSaveGoal / Inner_blog_RawAddGoalTask 写入（判据放 overview/description），
-   并用 Inner_blog_RawMemoryWrite 更新 checkpoint 中的当前关注点。
+   再用 Inner_blog_RawSaveGoal 写入（overview 写目标描述，judge 字段写客观判据），
+   子任务用 Inner_blog_RawAddGoalTask，并用 Inner_blog_RawMemoryWrite 更新 checkpoint 中的当前关注点。
 3. 提醒：用户要求提醒时，用 cronjob 工具创建定时任务（一次性提醒 repeat=1），
    提醒文案应具体、友好；提醒创建成功后向用户复述时间和内容。
 4. 风格：像可靠的管家——简洁、温和、主动汇报结果；用户情绪低落时先共情再办事。
@@ -35,7 +35,7 @@ GOAL_REVIEW_JOB = (
     "40 21 * * 0",
     """你是严格的目标评审判官，为账号 {account} 做每周目标评审：
 1. 调用 Inner_blog_RawGetCurrentGoals、Inner_blog_RawGetWeeklyGoal、Inner_blog_RawGetMonthlyGoal 获取目标与任务（account="{account}"）。
-2. 对每个目标，依据 overview/description 中"判据:"后的客观标准逐条核对；需要事实数据时调用
+2. 对每个目标，依据其 judge 字段（客观完成判据）逐条核对；judge 为空时退回 overview 描述判断。需要事实数据时调用
    Inner_blog_RawGetTodosByDate、Inner_blog_RawGetExerciseStats 等工具核实。
    只回答判据是否客观达成，禁止"差不多就算完成"。
 3. 用 Inner_blog_RawMemoryJournal 记录评审结论；读取 checkpoint（Inner_blog_RawMemoryRead file="checkpoint"）
@@ -49,8 +49,9 @@ MEMORY_CONSOLIDATION_JOB = (
     "10 22 * * 0",
     """为账号 {account} 做每周记忆整理：
 1. Inner_blog_RawMemoryListFiles(account="{account}") 列出记忆文件，读取最近 7 天的 journal_* 文件。
-2. 提炼值得长期保留的事实（偏好、习惯、重要事件、情绪模式），读取 MEMORY 文件后用
-   Inner_blog_RawMemoryWrite 整理重写：合并重复条目、删除过期信息、保持分节清晰。
+2. 提炼值得长期保留的事实（偏好、习惯、重要事件、情绪模式），读取 MEMORY 文件后整理：
+   局部更新某一小节用 Inner_blog_RawMemoryRewriteSection(section="健康状况" 等)；需要整体重排时才用 Inner_blog_RawMemoryWrite。
+   合并重复条目、删除过期信息、保持分节清晰。
 3. 同步更新 checkpoint 文件。
 4. 输出 ≤100 字的"本周回顾"给用户：本周完成了什么、情绪如何、下周建议关注什么。""",
 )
@@ -94,7 +95,9 @@ def ensure_butler_jobs(config: Any) -> int:
         origin = {
             "platform": "app",
             "chat_id": account,
-            "chat_name": config.app_agent_id,
+            # 投递到 cortana-agent：先过其打扰控制（冷却/免打扰/在线）+ 记忆查重，
+            # 再由 cortana 决定语气表情播报（plan §6）。cortana 未托管时会回退直推 app。
+            "chat_name": config.cortana_agent_id,
         }
         for name_tpl, schedule, prompt_tpl in BUTLER_JOBS:
             name = name_tpl.format(account=account)

@@ -76,6 +76,7 @@ func Inner_blog_RawSaveGoal(arguments map[string]interface{}) string {
 	}
 	overview, _ := getStringParam(arguments, "overview")
 	status, _ := getStringParam(arguments, "status")
+	judge, _ := getStringParam(arguments, "judge")
 
 	g, err := goal.GetGoal(account, level, period)
 	if err != nil {
@@ -86,6 +87,9 @@ func Inner_blog_RawSaveGoal(arguments map[string]interface{}) string {
 	}
 	if status != "" {
 		g.Status = status
+	}
+	if judge != "" {
+		g.Judge = judge
 	}
 	if err := goal.SaveGoal(account, g); err != nil {
 		return errorJSON(err.Error())

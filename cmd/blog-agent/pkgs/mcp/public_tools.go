@@ -92,6 +92,7 @@ var publicToolNames = map[string]struct{}{
 	"RawMemoryAppend":    {},
 	"RawMemoryJournal":   {},
 	"RawMemorySearch":    {},
+	"RawMemoryRewriteSection": {},
 	"RawMemoryListFiles": {},
 }
 

@@ -16,6 +16,7 @@ var butlerAllowedTools = map[string]struct{}{
 	"RawMemoryAppend":     {},
 	"RawMemoryJournal":    {},
 	"RawMemorySearch":     {},
+	"RawMemoryRewriteSection": {},
 	"RawMemoryListFiles":  {},
 	"RawGetCurrentGoals":  {},
 	"RawGetDailyGoal":     {},

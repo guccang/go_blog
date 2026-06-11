@@ -2042,6 +2042,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
       affinityScore: _butlerAffinityScore,
       goals: _butlerGoals,
       checkpoint: _butlerCheckpoint,
+      reminders: _butlerReminders,
       memoryFiles: _butlerMemoryFiles,
       selectedMemoryFile: _butlerSelectedMemoryFile,
       memoryEditorController: _butlerMemoryController,
@@ -2056,6 +2057,21 @@ extension _ChatPageStateUiSections on _ChatPageState {
       },
       onFeedback: (kind) => unawaited(_sendButlerFeedback(kind)),
     );
+  }
+
+  List<String> _parseButlerReminders(String journal) {
+    final out = <String>[];
+    for (final raw in journal.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      if (!line.contains('播报') && !line.contains('提醒')) continue;
+      if (line.contains('播报反馈')) continue;
+      out.add(line.replaceFirst(RegExp(r'^[-*]\s*'), ''));
+    }
+    if (out.length > 12) {
+      return out.sublist(out.length - 12);
+    }
+    return out;
   }
 
   Future<void> _sendButlerFeedback(String kind) async {
@@ -2113,6 +2129,29 @@ extension _ChatPageStateUiSections on _ChatPageState {
         // 养成度获取失败不应阻断面板加载。
       }
 
+      final reminders = <String>[];
+      try {
+        final now = DateTime.now();
+        final journalFile =
+            'journal_${now.year.toString().padLeft(4, '0')}-'
+            '${now.month.toString().padLeft(2, '0')}-'
+            '${now.day.toString().padLeft(2, '0')}';
+        final journalResp = await _runAuthed('Load butler reminders', (client) {
+          return client.callButlerTool(
+            'RawMemoryRead',
+            arguments: {'file': journalFile},
+          );
+        });
+        final journalResult = journalResp['result'];
+        if (journalResult is Map<String, dynamic>) {
+          reminders.addAll(_parseButlerReminders(
+            (journalResult['content'] ?? '').toString(),
+          ));
+        }
+      } catch (_) {
+        // 提醒记录获取失败不应阻断面板加载。
+      }
+
       final goals = <ButlerGoalSummary>[];
       final goalsResult = goalsResp['result'];
       if (goalsResult is Map<String, dynamic>) {
@@ -2151,6 +2190,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
       setState(() {
         _butlerGoals = goals;
         _butlerCheckpoint = checkpoint;
+        _butlerReminders = reminders;
         _butlerMemoryFiles = files;
         _butlerAffinityScore = affinityScore;
         _butlerLoaded = true;

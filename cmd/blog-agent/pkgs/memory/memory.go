@@ -126,6 +126,65 @@ func AppendJournal(account, content string) (string, error) {
 	return file, nil
 }
 
+// RewriteSection 重写记忆文件中某个 Markdown 小节（## 标题 段），用于记忆整理。
+// 小节不存在则追加到文件末尾。section 传不含 # 的标题文本。
+func RewriteSection(account, file, section, content string) error {
+	section = strings.TrimSpace(section)
+	if section == "" {
+		return fmt.Errorf("小节标题为空")
+	}
+	existing, err := ReadFile(account, file)
+	if err != nil {
+		return err
+	}
+	merged := replaceMarkdownSection(existing, section, content)
+	if len(merged) > maxFileBytes {
+		return fmt.Errorf("记忆文件过大（%d 字节，上限 %d）", len(merged), maxFileBytes)
+	}
+	return WriteFile(account, file, merged)
+}
+
+// replaceMarkdownSection 纯函数：把 `## section` 到下一个 `## ` 之间的内容替换为 body。
+// 小节不存在则在末尾新建。便于单测，不触碰存储。
+func replaceMarkdownSection(doc, section, body string) string {
+	heading := "## " + strings.TrimSpace(section)
+	body = strings.TrimRight(body, "\n")
+	newBlock := heading + "\n" + body + "\n"
+
+	lines := strings.Split(doc, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == heading {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		trimmed := strings.TrimRight(doc, "\n")
+		if trimmed == "" {
+			return newBlock
+		}
+		return trimmed + "\n\n" + newBlock
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
+			end = i
+			break
+		}
+	}
+	var sb strings.Builder
+	if start > 0 {
+		sb.WriteString(strings.Join(lines[:start], "\n"))
+		sb.WriteString("\n")
+	}
+	sb.WriteString(newBlock)
+	if end < len(lines) {
+		sb.WriteString(strings.Join(lines[end:], "\n"))
+	}
+	return sb.String()
+}
+
 // ListFiles 返回该账号全部记忆文件名（核心文件 + 现存 journal，按名称倒序，journal 新日期在前）。
 func ListFiles(account string) []string {
 	all := blog.GetBlogsWithAccount(account)

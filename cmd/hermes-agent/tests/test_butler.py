@@ -50,6 +50,7 @@ class ButlerJobsTests(unittest.TestCase):
             self.assertEqual(job["deliver"], "origin")
             self.assertEqual(job["origin"]["platform"], "app")
             self.assertEqual(job["origin"]["chat_id"], "alice")
+            self.assertEqual(job["origin"]["chat_name"], "cortana-agent")
             self.assertIn("alice", job["prompt"])
 
     def test_idempotent_when_jobs_exist(self) -> None:
