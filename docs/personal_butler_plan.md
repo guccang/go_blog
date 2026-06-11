@@ -199,9 +199,9 @@ hermes cron 周期 job（每周日晚）：
 >
 > 已知差距（诚实标注，未完全对齐文档）：
 > - **§8 形象增强**（表情扩充 comfort/cheer/proud/sleepy、按养成度换装饰）：需 Live2D 美术资产，当前表情集仍为 happy/sad/surprised，**受资产阻塞**，未实现。
-> - **§5.3/§8 Flutter 目标树「直接增删改」**：面板目前为只读展示（目标环 + 判据 + 进度），后端 `RawSaveGoal/RawAddGoalTask/...` 工具已在代理白名单内，CRUD 交互 UI 暂未实现。
-> - **§5.1 目标树 G1/G1.1 嵌套 + 每子节点判据**：goal 为两层（目标→扁平 tasks），判据落在目标级 `judge` 字段；子任务级 judge 与多层嵌套未实现。
-> - **§7.1 情绪观察落 journal**：hermes 侧由 BUTLER_RULES 提示写入；llm-agent 闲聊路径的情绪观察自动落 journal 未单独实现。
+> - **§5.1 目标树 G1/G1.1 嵌套 + 子任务级判据**：goal 为两层（目标→扁平 tasks），判据落目标级 `judge` 字段；多层嵌套与子任务级 judge 未实现（文档 §5.1 示例为 G1/G1.1，当前为 Goal→Task 扁平）。
+> - **§7.1 情绪观察落 journal**（llm 闲聊路径）：hermes 侧由 BUTLER_RULES 提示词覆盖；llm-agent 闲聊路径自动写 journal 未单独实现。
+> - **P6 多候选决策**：文档明示"可选"，暂缓。
 
 ## 10. 风险与边界
 
