@@ -179,14 +179,20 @@ hermes cron 周期 job（每周日晚）：
 
 | 阶段 | 内容 | 改动点 | 工作量 |
 |------|------|--------|--------|
-| **P1 记忆基建** | blog-agent memory MCP 工具 + HTTP API；hermes 系统提示词加记忆规范 | blog-agent 新增 1 文件；hermes 配置 | 小 |
+| **P1 记忆基建** | blog-agent memory MCP 工具 + HTTP API；hermes 系统提示词加记忆规范 | blog-agent 新增 1 文件；hermes 配置 | 小 ✅ |
 | **P2 cortana 接记忆** | 快照注入记忆检索结果；播报后写 journal；提醒查重 | cortana-agent + llm-agent 的 cortana_proactive | 中 ✅ |
-| **P3 目标树+判官** | goal 判据字段；hermes 周评审 cron job；对话式目标拆解 | blog-agent goal 工具 + hermes job 模板 | 中 |
-| **P4 提醒统一** | 显式/习惯/情境三类提醒走统一链路 + 打扰控制 | hermes cronjob 工具暴露 + cortana | 中 |
-| **P5 Flutter 管家面板** | 目标树/记忆审阅/提醒/反馈按钮/养成度 | Flutter 新 Tab + blog-agent API | 大 |
-| **P6 进化优化** | 反馈调参、记忆周整理 job、多候选决策（可选） | 各组件小改 | 持续 |
+| **P3 目标树+判官** | goal 判据字段；hermes 周评审 cron job；对话式目标拆解 | blog-agent goal 工具 + hermes job 模板 | 中 ✅ |
+| **P4 提醒统一** | 显式/习惯/情境三类提醒走统一链路 + 打扰控制 | hermes cronjob 工具暴露 + cortana | 中 ✅ |
+| **P5 Flutter 管家面板** | 目标树/记忆审阅/提醒/反馈按钮/养成度 | Flutter 新 Tab + blog-agent API | 大 ✅（提醒列表视图暂缓） |
+| **P6 进化优化** | 反馈调参、记忆周整理 job、多候选决策（可选） | 各组件小改 | ✅（多候选可选，暂缓） |
 
 每阶段独立可用：P1+P2 完成后管家就"有记性"了；P3 后目标管理闭环；P5 后体验完整。
+
+> 实现备注（P3–P6）：
+> - **P3**：goal 判据采用约定写法（overview/description 的「判据:」段，不改数据 schema）；`hermes-agent/butler.py` 含独立判官 `GOAL_REVIEW_JOB`（周日评审）与对话式拆解规范（BUTLER_RULES 第 2 条）。
+> - **P4**：显式提醒走 cron（BUTLER_RULES 第 3 条）；习惯提醒新增 `HABIT_REMINDER_JOB`（每日检查 + 记忆查重，落下才提醒）；情境提醒走 P2 的 cortana 链路。三类均经 deliver=origin → cortana 表达层做打扰控制。
+> - **P5**：`app-agent/butler.go` 代理记忆/目标工具，`butler_feedback.go` 新增反馈与养成度端点；Flutter 管家 Tab 含目标环、checkpoint、记忆审阅、养成度与反馈按钮。
+> - **P6**：反馈闭环采用「写记忆驱动收敛」——负反馈写入 MEMORY，经 cortana 快照注入（rule 25）与每周判官长期收敛主动性，比直接改冷却参数更可审阅（贴合 MiMo 透明化）；记忆周整理见 `MEMORY_CONSOLIDATION_JOB`；多候选决策为可选项，暂缓。
 
 ## 10. 风险与边界
 

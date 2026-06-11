@@ -25,6 +25,7 @@ type Handler struct {
 	cortana     cortanaAccountSync
 	settings    *CortanaSettingsStore
 	preferences *AppPreferencesStore
+	affinity    *ButlerAffinityStore
 }
 
 func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaAccountSync, settings *CortanaSettingsStore, preferences *AppPreferencesStore) *Handler {
@@ -36,6 +37,7 @@ func NewHandler(cfg *Config, bridge *Bridge, auth *authManager, cortana cortanaA
 		cortana:     cortana,
 		settings:    settings,
 		preferences: preferences,
+		affinity:    NewButlerAffinityStore(cfg.ButlerAffinityFile),
 	}
 }
 

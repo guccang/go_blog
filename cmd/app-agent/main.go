@@ -85,6 +85,8 @@ func main() {
 	mux.HandleFunc("/api/app/cortana/settings", handler.HandleCortanaSettings)
 	mux.HandleFunc("/api/app/preferences", handler.HandlePreferences)
 	mux.HandleFunc("/api/app/butler/tool", handler.HandleButlerTool)
+	mux.HandleFunc("/api/app/butler/feedback", handler.HandleButlerFeedback)
+	mux.HandleFunc("/api/app/butler/affinity", handler.HandleButlerAffinity)
 	mux.HandleFunc("/api/app/cortana/history", handler.HandleCortanaHistory)
 	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
 	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)

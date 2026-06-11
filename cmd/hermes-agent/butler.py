@@ -55,7 +55,21 @@ MEMORY_CONSOLIDATION_JOB = (
 4. 输出 ≤100 字的"本周回顾"给用户：本周完成了什么、情绪如何、下周建议关注什么。""",
 )
 
-BUTLER_JOBS = (GOAL_REVIEW_JOB, MEMORY_CONSOLIDATION_JOB)
+# 每天 20:50 习惯提醒（有条件触发，过记忆查重）
+HABIT_REMINDER_JOB = (
+    "butler-habit-reminder-{account}",
+    "50 20 * * *",
+    """为账号 {account} 做每日习惯检查，只在确有必要时提醒一句，否则保持沉默：
+1. 调用 Inner_blog_RawGetCurrentGoals、Inner_blog_RawGetWeeklyGoal（account="{account}"）找出习惯类目标
+   （overview/description 标注 habit/每天/每周/坚持 的节点）。
+2. 用 Inner_blog_RawGetExerciseStats、Inner_blog_RawGetExerciseByDate、Inner_blog_RawGetTodosByDate 等核实
+   今天/本周这些习惯是否已完成。
+3. 查重：先 Inner_blog_RawMemoryRead 读今日 journal，如果今天已经就同一习惯提醒过，则不要再提醒（直接结束）。
+4. 仅当某习惯今天确实落下且尚未提醒时，输出一句具体、友好、鼓励而非指责的提醒（≤60字），并 Inner_blog_RawMemoryJournal 记录已提醒；
+   没有需要提醒的习惯时，输出空字符串或"今日习惯正常，无需打扰"，不要硬凑提醒。""",
+)
+
+BUTLER_JOBS = (GOAL_REVIEW_JOB, MEMORY_CONSOLIDATION_JOB, HABIT_REMINDER_JOB)
 
 
 def ensure_butler_jobs(config: Any) -> int:

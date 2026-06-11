@@ -36,6 +36,7 @@ type Config struct {
 	GroupStoreFile           string           `json:"group_store_file,omitempty"`
 	CortanaSettingsFile      string           `json:"cortana_settings_file,omitempty"`
 	PreferencesFile          string           `json:"preferences_file,omitempty"`
+	ButlerAffinityFile       string           `json:"butler_affinity_file,omitempty"`
 	LLMWorkspaceDir          string           `json:"llm_workspace_dir,omitempty"`
 	LogAgentConfigFile       string           `json:"log_agent_config_file,omitempty"`
 	DebugBundleDir           string           `json:"debug_bundle_dir,omitempty"`
@@ -75,6 +76,7 @@ func DefaultConfig() *Config {
 		GroupStoreFile:           "app-groups.json",
 		CortanaSettingsFile:      "cortana-settings.json",
 		PreferencesFile:          "app-preferences.json",
+		ButlerAffinityFile:       "app-butler-affinity.json",
 		LLMWorkspaceDir:          "../llm-agent/workspace",
 		LogAgentConfigFile:       "../log-agent/log-agent.json",
 		DebugBundleDir:           defaultFlutterDebugBundleDir,
@@ -131,6 +133,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.PreferencesFile == "" {
 		cfg.PreferencesFile = "app-preferences.json"
+	}
+	if cfg.ButlerAffinityFile == "" {
+		cfg.ButlerAffinityFile = "app-butler-affinity.json"
 	}
 	if cfg.HermesAgentID == "" {
 		cfg.HermesAgentID = "hermes-agent"

@@ -45,6 +45,7 @@ class ButlerJobsTests(unittest.TestCase):
         names = {job["name"] for job in fake.created}
         self.assertIn("butler-goal-review-alice", names)
         self.assertIn("butler-memory-consolidation-alice", names)
+        self.assertIn("butler-habit-reminder-alice", names)
         for job in fake.created:
             self.assertEqual(job["deliver"], "origin")
             self.assertEqual(job["origin"]["platform"], "app")
@@ -53,7 +54,11 @@ class ButlerJobsTests(unittest.TestCase):
 
     def test_idempotent_when_jobs_exist(self) -> None:
         fake = FakeCronJobs(
-            ["butler-goal-review-alice", "butler-memory-consolidation-alice"]
+            [
+                "butler-goal-review-alice",
+                "butler-memory-consolidation-alice",
+                "butler-habit-reminder-alice",
+            ]
         )
         install_fake_cron(fake)
         config = Config(butler_accounts=["alice"])

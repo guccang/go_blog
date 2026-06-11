@@ -325,6 +325,54 @@ class AppAgentClient {
     return data;
   }
 
+  /// 提交播报反馈（有帮助/太频繁/时机不对），返回最新养成度。
+  Future<Map<String, dynamic>> callButlerFeedback(
+    String kind, {
+    String broadcastId = '',
+    String text = '',
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/app/butler/feedback');
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            HttpHeaders.contentTypeHeader: 'application/json',
+            ..._sessionHeaders(),
+          },
+          body: jsonEncode(<String, dynamic>{
+            'user_id': userId,
+            'kind': kind,
+            'broadcast_id': broadcastId,
+            'text': text,
+          }),
+        )
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('butler feedback $kind', resp);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data['success'] != true) {
+      throw Exception(
+        'butler feedback $kind failed: ${data['error'] ?? 'unknown error'}',
+      );
+    }
+    return data;
+  }
+
+  /// 查询当前养成度（亲密度）。
+  Future<Map<String, dynamic>> fetchButlerAffinity() async {
+    final uri = Uri.parse(
+      '$baseUrl/api/app/butler/affinity?user_id=$userId&session_token=$sessionToken',
+    );
+    final resp = await http
+        .get(uri, headers: _sessionHeaders())
+        .timeout(_httpTimeout);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _throwRequestError('butler affinity', resp);
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> fetchAppPreferences() async {
     final uri = Uri.parse(
       '$baseUrl/api/app/preferences?user_id=$userId&session_token=$sessionToken',

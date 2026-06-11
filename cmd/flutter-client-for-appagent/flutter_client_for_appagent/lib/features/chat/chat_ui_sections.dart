@@ -2054,7 +2054,26 @@ extension _ChatPageStateUiSections on _ChatPageState {
           setState(() => _butlerMemoryDirty = true);
         }
       },
+      onFeedback: (kind) => unawaited(_sendButlerFeedback(kind)),
     );
+  }
+
+  Future<void> _sendButlerFeedback(String kind) async {
+    try {
+      final resp = await _runAuthed('Butler feedback', (client) {
+        return client.callButlerFeedback(kind);
+      });
+      final affinity = resp['affinity'];
+      if (mounted && affinity is Map<String, dynamic>) {
+        final score = (affinity['score'] as num?)?.toInt();
+        if (score != null) {
+          setState(() => _butlerAffinityScore = score);
+        }
+      }
+      _appendSystem('已记录反馈，管家会据此调整。');
+    } catch (err) {
+      _appendSystem(_describeRequestError(err, operation: 'Butler feedback'));
+    }
   }
 
   Future<void> _loadButlerData() async {
@@ -2080,6 +2099,19 @@ extension _ChatPageStateUiSections on _ChatPageState {
       final filesResp = await _runAuthed('List butler memory files', (client) {
         return client.callButlerTool('RawMemoryListFiles');
       });
+
+      var affinityScore = _butlerAffinityScore;
+      try {
+        final affinityResp = await _runAuthed('Load butler affinity', (client) {
+          return client.fetchButlerAffinity();
+        });
+        final affinity = affinityResp['affinity'];
+        if (affinity is Map<String, dynamic>) {
+          affinityScore = (affinity['score'] as num?)?.toInt() ?? affinityScore;
+        }
+      } catch (_) {
+        // 养成度获取失败不应阻断面板加载。
+      }
 
       final goals = <ButlerGoalSummary>[];
       final goalsResult = goalsResp['result'];
@@ -2120,6 +2152,7 @@ extension _ChatPageStateUiSections on _ChatPageState {
         _butlerGoals = goals;
         _butlerCheckpoint = checkpoint;
         _butlerMemoryFiles = files;
+        _butlerAffinityScore = affinityScore;
         _butlerLoaded = true;
         if (_butlerSelectedMemoryFile.isEmpty && files.isNotEmpty) {
           _butlerSelectedMemoryFile = files.contains('MEMORY')

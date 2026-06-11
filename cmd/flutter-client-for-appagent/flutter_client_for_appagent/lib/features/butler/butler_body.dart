@@ -66,6 +66,7 @@ class ButlerBody extends StatelessWidget {
     required this.onOpenMemoryFile,
     required this.onSaveMemoryFile,
     required this.onMemoryChanged,
+    required this.onFeedback,
   });
 
   final ButlerBodyPalette palette;
@@ -82,6 +83,9 @@ class ButlerBody extends StatelessWidget {
   final ValueChanged<String> onOpenMemoryFile;
   final VoidCallback onSaveMemoryFile;
   final VoidCallback onMemoryChanged;
+
+  /// 播报反馈回调，kind ∈ {helpful, too_frequent, bad_timing}。
+  final ValueChanged<String> onFeedback;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +118,8 @@ class ButlerBody extends StatelessWidget {
               _buildGoalsCard(),
               const SizedBox(height: 12),
               _buildCheckpointCard(),
+              const SizedBox(height: 12),
+              _buildFeedbackCard(),
               const SizedBox(height: 12),
               _buildMemoryCard(),
             ],
@@ -317,14 +323,71 @@ class ButlerBody extends StatelessWidget {
     );
   }
 
+  Widget _buildFeedbackCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('管家反馈'),
+          const SizedBox(height: 4),
+          Text(
+            '主动播报合不合适？反馈会写进记忆并调整养成度，让管家更懂分寸。',
+            style: TextStyle(color: palette.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _feedbackButton(
+                '有帮助',
+                'helpful',
+                palette.success,
+                Icons.thumb_up_alt_outlined,
+              ),
+              _feedbackButton(
+                '太频繁',
+                'too_frequent',
+                palette.accent,
+                Icons.notifications_off_outlined,
+              ),
+              _feedbackButton(
+                '时机不对',
+                'bad_timing',
+                palette.error,
+                Icons.schedule_outlined,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackButton(
+    String label,
+    String kind,
+    Color color,
+    IconData icon,
+  ) {
+    return OutlinedButton.icon(
+      onPressed: () => onFeedback(kind),
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label, style: TextStyle(color: color)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color.withValues(alpha: 0.6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   Widget _buildMemoryCard() {
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionTitle(
-            '记忆审阅',
-            trailing: memoryDirty
+            '记忆审阅',            trailing: memoryDirty
                 ? FilledButton.icon(
                     onPressed: onSaveMemoryFile,
                     icon: const Icon(Icons.save_outlined, size: 18),
