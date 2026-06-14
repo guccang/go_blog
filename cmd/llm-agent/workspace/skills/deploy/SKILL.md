@@ -43,6 +43,7 @@ keywords: 部署,deploy,发布,上线
 - `DeployAdhoc`：用于未配置项目或一次性部署，必须传 `project_dir` 和 `ssh_host`
 - `DeployListPipelines` / `DeployPipeline`：用于预配置的多步骤流水线
 - `ssh_host` 必须来自 agent 能力信息或用户明确指定的真实地址，例如 `deploy@prod-host`
+- Flutter 客户端代码修改后，如果用户要求“上传到 app-agent”“推送到 Flutter app”或下发安装包，必须选择 `build-flutter-apk` 并设置 `pack_only=true`。`app-agent` 只部署服务端，不会构建或推送 Flutter APK。
 
 ## 禁止行为
 

@@ -1,4 +1,10 @@
 {
+    "aliases": [
+        "flutter-apk",
+        "flutter-app",
+        "flutter客户端",
+        "推送flutter-app"
+    ],
     "pack_pattern": "build/app/outputs/flutter-apk/app-release-*.apk",
     "build_only": true,
     "build": {

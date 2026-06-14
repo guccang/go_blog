@@ -18,6 +18,7 @@ func TestLoadConfigIncludesBuildOnlyProjectWithoutTargets(t *testing.T) {
 	}
 
 	projectJSON := mustJSONString(map[string]any{
+		"aliases":      []string{"flutter-apk", "flutter-app", "flutter客户端", "推送flutter-app"},
 		"build_only":   true,
 		"pack_pattern": "build/app/outputs/flutter-apk/app-release-*.apk",
 		"build": map[string]any{
@@ -54,6 +55,12 @@ func TestLoadConfigIncludesBuildOnlyProjectWithoutTargets(t *testing.T) {
 	}
 	if len(proj.Targets) != 0 {
 		t.Fatalf("expected build-flutter-apk to have no deploy targets, got %d", len(proj.Targets))
+	}
+	for _, alias := range []string{"flutter-apk", "flutter-app", "flutter客户端", "推送flutter-app"} {
+		resolved := cfg.GetProject(alias)
+		if resolved == nil || resolved.Name != "build-flutter-apk" {
+			t.Fatalf("expected alias %q to resolve build-flutter-apk, got %#v", alias, resolved)
+		}
 	}
 }
 
