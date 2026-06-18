@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port         int    `json:"port"`           // 网关监听端口
 	GoBackendURL string `json:"go_backend_url"` // blog-agent 后端地址（反向代理）
+	AppAgentURL  string `json:"app_agent_url"`  // app-agent 后端地址（Flutter App API）
 	AuthToken    string `json:"auth_token"`     // agent 认证 token
 
 	// 事件追踪配置
@@ -28,6 +29,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Port:            9000,
 		GoBackendURL:    "http://127.0.0.1:8080",
+		AppAgentURL:     "http://127.0.0.1:9002",
 		AuthToken:       "",
 		EventTracking:   true,
 		EventBufferSize: 10000,

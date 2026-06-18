@@ -343,17 +343,21 @@ func (b *Bridge) handleWechatMessage(fromAgent, wechatUser, content string) {
 
 	// 4. 构建/追加消息
 	session.mu.Lock()
-	session.LastActiveAt = time.Now()
+	now := time.Now()
+	session.LastActiveAt = now
 
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：构建 system prompt + 第一条 user 消息
 		systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(wechatUser, content, true)
-		runtimeContext := buildAccountRuntimeContext(wechatUser, "wechat", map[string]string{"wechat_user": wechatUser})
+		runtimeContext := buildTurnRuntimeContext(wechatUser, "wechat", map[string]string{"wechat_user": wechatUser}, now)
 		session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, content)
 		session.PromptSections = promptSections
 		log.Printf("[Wechat] 新会话 sessionID=%s user=%s", session.SessionID, wechatUser)
 	} else {
-		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
+		if runtimeContext := buildTurnRuntimeContext(wechatUser, "wechat", map[string]string{"wechat_user": wechatUser}, now); runtimeContext != "" {
+			session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
+		}
+		// 续接对话追加当轮时间上下文和当前用户消息，避免相对日期沿用历史上下文。
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})
 		log.Printf("[Wechat] 续接会话 sessionID=%s user=%s turn=%d msgCount=%d",
 			session.SessionID, wechatUser, session.TurnCount, len(session.Messages))

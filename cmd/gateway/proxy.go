@@ -7,7 +7,7 @@ import (
 	"net/url"
 )
 
-// NewProxy 创建 HTTP 反向代理到 blog-agent 后端
+// NewProxy 创建 HTTP 反向代理到指定后端。
 func NewProxy(backendURL string) http.Handler {
 	target, err := url.Parse(backendURL)
 	if err != nil {

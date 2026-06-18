@@ -78,43 +78,9 @@ func main() {
 	bridge.SetPreferences(preferences)
 	handler := NewHandler(cfg, bridge, auth, cortanaSync, cortanaSettings, preferences)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/app/login", handler.HandleLogin)
-	mux.HandleFunc("/api/app/refresh", handler.HandleRefresh)
-	mux.HandleFunc("/api/app/logout", handler.HandleLogout)
-	mux.HandleFunc("/api/app/cortana/settings", handler.HandleCortanaSettings)
-	mux.HandleFunc("/api/app/preferences", handler.HandlePreferences)
-	mux.HandleFunc("/api/app/butler/tool", handler.HandleButlerTool)
-	mux.HandleFunc("/api/app/butler/feedback", handler.HandleButlerFeedback)
-	mux.HandleFunc("/api/app/butler/affinity", handler.HandleButlerAffinity)
-	mux.HandleFunc("/api/app/cortana/history", handler.HandleCortanaHistory)
-	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
-	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
-	mux.HandleFunc("/api/app/codegen/actions", handler.HandleCodegenAction)
-	mux.HandleFunc("/api/app/codegen/history-backups", handler.HandleCodegenHistoryBackups)
-	mux.HandleFunc("/api/app/logs/sources", handler.HandleLogSources)
-	mux.HandleFunc("/api/app/logs/files", handler.HandleLogFiles)
-	mux.HandleFunc("/api/app/logs/content", handler.HandleLogContent)
-	mux.HandleFunc("/api/app/debug/bundles", handler.HandleDebugBundles)
-	mux.HandleFunc("/api/app/debug/bundles/", handler.HandleDebugBundleItem)
-	mux.HandleFunc("/api/app/message", handler.HandleMessage)
-	mux.HandleFunc("/api/app/resources", handler.HandleResources)
-	mux.HandleFunc("/api/app/upload-apk", handler.HandleUploadAPK)
-	mux.HandleFunc("/api/app/attachments/", handler.HandleAttachment)
-	mux.HandleFunc("/ws/app", handler.HandleWebSocket)
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":           "ok",
-			"connected":        bridge.IsConnected(),
-			"online_clients":   bridge.OnlineClientCount(),
-			"pending_messages": bridge.PendingMessageCount(),
-		})
-	})
-
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
-		Handler: corsMiddleware(mux),
+		Handler: corsMiddleware(newHTTPHandler(handler, bridge)),
 	}
 
 	go bridge.Run()
@@ -141,4 +107,44 @@ func main() {
 		log.Fatalf("[App-Agent] server error: %v", err)
 	}
 	log.Println("[App-Agent] stopped")
+}
+
+func newHTTPHandler(handler *Handler, bridge *Bridge) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/app/login", handler.HandleLogin)
+	mux.HandleFunc("/api/app/refresh", handler.HandleRefresh)
+	mux.HandleFunc("/api/app/logout", handler.HandleLogout)
+	mux.HandleFunc("/api/app/cortana/settings", handler.HandleCortanaSettings)
+	mux.HandleFunc("/api/app/preferences", handler.HandlePreferences)
+	mux.HandleFunc("/api/app/butler/tool", handler.HandleButlerTool)
+	mux.HandleFunc("/api/app/butler/feedback", handler.HandleButlerFeedback)
+	mux.HandleFunc("/api/app/butler/affinity", handler.HandleButlerAffinity)
+	mux.HandleFunc("/butler/tool", handler.HandleButlerTool)
+	mux.HandleFunc("/butler/feedback", handler.HandleButlerFeedback)
+	mux.HandleFunc("/butler/affinity", handler.HandleButlerAffinity)
+	mux.HandleFunc("/api/app/cortana/history", handler.HandleCortanaHistory)
+	mux.HandleFunc("/api/app/groups", handler.HandleGroups)
+	mux.HandleFunc("/api/app/codegen/projects", handler.HandleCodegenProjects)
+	mux.HandleFunc("/api/app/codegen/actions", handler.HandleCodegenAction)
+	mux.HandleFunc("/api/app/codegen/history-backups", handler.HandleCodegenHistoryBackups)
+	mux.HandleFunc("/api/app/logs/sources", handler.HandleLogSources)
+	mux.HandleFunc("/api/app/logs/files", handler.HandleLogFiles)
+	mux.HandleFunc("/api/app/logs/content", handler.HandleLogContent)
+	mux.HandleFunc("/api/app/debug/bundles", handler.HandleDebugBundles)
+	mux.HandleFunc("/api/app/debug/bundles/", handler.HandleDebugBundleItem)
+	mux.HandleFunc("/api/app/message", handler.HandleMessage)
+	mux.HandleFunc("/api/app/resources", handler.HandleResources)
+	mux.HandleFunc("/api/app/upload-apk", handler.HandleUploadAPK)
+	mux.HandleFunc("/api/app/attachments/", handler.HandleAttachment)
+	mux.HandleFunc("/ws/app", handler.HandleWebSocket)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":           "ok",
+			"connected":        bridge.IsConnected(),
+			"online_clients":   bridge.OnlineClientCount(),
+			"pending_messages": bridge.PendingMessageCount(),
+		})
+	})
+	return mux
 }

@@ -41,21 +41,36 @@ class AppAgentClient {
   }
 
   Uri _buildAttachmentUri(String fileId) {
-    final base = Uri.parse(baseUrl);
-    final pathSegments = <String>[
-      ...base.pathSegments.where((segment) => segment.isNotEmpty),
-      'api',
-      'app',
-      'attachments',
-      fileId,
-    ];
-    return base.replace(
-      pathSegments: pathSegments,
+    return _buildAppApiUri(
+      <String>['attachments', fileId],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
           'session_token': sessionToken.trim(),
       },
+    );
+  }
+
+  Uri _buildAppApiUri(
+    List<String> segments, {
+    Map<String, String>? queryParameters,
+  }) {
+    final base = Uri.parse(baseUrl.trim());
+    final baseSegments = base.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    final alreadyAtAppApi =
+        baseSegments.length >= 2 &&
+        baseSegments[baseSegments.length - 2] == 'api' &&
+        baseSegments.last == 'app';
+    final pathSegments = <String>[
+      ...baseSegments,
+      if (!alreadyAtAppApi) ...const <String>['api', 'app'],
+      ...segments.where((segment) => segment.isNotEmpty),
+    ];
+    return base.replace(
+      pathSegments: pathSegments,
+      queryParameters: queryParameters,
     );
   }
 
@@ -71,7 +86,7 @@ class AppAgentClient {
   }
 
   Future<AppAuthSession> login() async {
-    final uri = Uri.parse('$baseUrl/api/app/login');
+    final uri = _buildAppApiUri(const <String>['login']);
     final resp = await http
         .post(
           uri,
@@ -93,7 +108,7 @@ class AppAgentClient {
   }
 
   Future<AppAuthSession> refreshSession(String refreshToken) async {
-    final uri = Uri.parse('$baseUrl/api/app/refresh');
+    final uri = _buildAppApiUri(const <String>['refresh']);
     final resp = await http
         .post(
           uri,
@@ -119,7 +134,7 @@ class AppAgentClient {
   }
 
   Future<void> logout({String refreshToken = ''}) async {
-    final uri = Uri.parse('$baseUrl/api/app/logout');
+    final uri = _buildAppApiUri(const <String>['logout']);
     final resp = await http
         .post(
           uri,
@@ -144,7 +159,7 @@ class AppAgentClient {
     String messageType = 'text',
     Map<String, dynamic>? meta,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/message');
+    final uri = _buildAppApiUri(const <String>['message']);
     final resp = await http
         .post(
           uri,
@@ -168,7 +183,7 @@ class AppAgentClient {
   Future<void> sendMessage(String content) => sendAppMessage(content);
 
   Future<void> submitCodegenAction(CodegenActionRequest action) async {
-    final uri = Uri.parse('$baseUrl/api/app/codegen/actions');
+    final uri = _buildAppApiUri(const <String>['codegen', 'actions']);
     final resp = await http
         .post(
           uri,
@@ -191,7 +206,7 @@ class AppAgentClient {
     String contentType = '',
     String description = '',
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/resources');
+    final uri = _buildAppApiUri(const <String>['resources']);
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll(_sessionHeaders())
       ..fields['user_id'] = userId
@@ -237,7 +252,8 @@ class AppAgentClient {
   }
 
   Future<AppResourceListResult> listResources(String category) async {
-    final uri = Uri.parse('$baseUrl/api/app/resources').replace(
+    final uri = _buildAppApiUri(
+      const <String>['resources'],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
@@ -262,7 +278,8 @@ class AppAgentClient {
   }
 
   Future<void> deleteResource(String fileId) async {
-    final uri = Uri.parse('$baseUrl/api/app/resources').replace(
+    final uri = _buildAppApiUri(
+      const <String>['resources'],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
@@ -298,7 +315,7 @@ class AppAgentClient {
     String name, {
     Map<String, dynamic>? arguments,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/butler/tool');
+    final uri = _buildAppApiUri(const <String>['butler', 'tool']);
     final resp = await http
         .post(
           uri,
@@ -331,7 +348,7 @@ class AppAgentClient {
     String broadcastId = '',
     String text = '',
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/butler/feedback');
+    final uri = _buildAppApiUri(const <String>['butler', 'feedback']);
     final resp = await http
         .post(
           uri,
@@ -361,8 +378,13 @@ class AppAgentClient {
 
   /// 查询当前养成度（亲密度）。
   Future<Map<String, dynamic>> fetchButlerAffinity() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/butler/affinity?user_id=$userId&session_token=$sessionToken',
+    final uri = _buildAppApiUri(
+      const <String>['butler', 'affinity'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -374,8 +396,13 @@ class AppAgentClient {
   }
 
   Future<Map<String, dynamic>> fetchAppPreferences() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/preferences?user_id=$userId&session_token=$sessionToken',
+    final uri = _buildAppApiUri(
+      const <String>['preferences'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -389,7 +416,7 @@ class AppAgentClient {
   Future<Map<String, dynamic>> saveAppPreferences(
     Map<String, dynamic> preferences,
   ) async {
-    final uri = Uri.parse('$baseUrl/api/app/preferences');
+    final uri = _buildAppApiUri(const <String>['preferences']);
     final resp = await http
         .post(
           uri,
@@ -407,8 +434,13 @@ class AppAgentClient {
   }
 
   Future<Map<String, dynamic>> fetchCortanaSettings() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/cortana/settings?user_id=$userId&session_token=$sessionToken',
+    final uri = _buildAppApiUri(
+      const <String>['cortana', 'settings'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -422,7 +454,7 @@ class AppAgentClient {
   Future<Map<String, dynamic>> saveCortanaSettings(
     Map<String, dynamic> settings,
   ) async {
-    final uri = Uri.parse('$baseUrl/api/app/cortana/settings');
+    final uri = _buildAppApiUri(const <String>['cortana', 'settings']);
     final resp = await http
         .post(
           uri,
@@ -440,8 +472,13 @@ class AppAgentClient {
   }
 
   Future<List<GroupInfo>> listGroups() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/groups?user_id=$userId&session_token=$sessionToken',
+    final uri = _buildAppApiUri(
+      const <String>['groups'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -457,7 +494,7 @@ class AppAgentClient {
   }
 
   Future<List<GroupInfo>> mutateGroup(String action, String groupId) async {
-    final uri = Uri.parse('$baseUrl/api/app/groups');
+    final uri = _buildAppApiUri(const <String>['groups']);
     final resp = await http
         .post(
           uri,
@@ -483,8 +520,13 @@ class AppAgentClient {
   }
 
   Future<CodegenProjectsSnapshot> listCodegenProjects() async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/codegen/projects?user_id=$userId&session_token=$sessionToken',
+    final uri = _buildAppApiUri(
+      const <String>['codegen', 'projects'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -501,7 +543,9 @@ class AppAgentClient {
     required CodegenHistoryBackupType backupType,
     required List<CodegenHistoryItem> history,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups');
+    final uri = _buildAppApiUri(
+      const <String>['codegen', 'history-backups'],
+    );
     final resp = await http
         .post(
           uri,
@@ -525,7 +569,8 @@ class AppAgentClient {
   }
 
   Future<List<CodegenHistoryBackupItem>> listCodegenHistoryBackups() async {
-    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups').replace(
+    final uri = _buildAppApiUri(
+      const <String>['codegen', 'history-backups'],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
@@ -551,7 +596,8 @@ class AppAgentClient {
   Future<List<CodegenHistoryItem>> loadCodegenHistoryBackup(
     String objectKey,
   ) async {
-    final uri = Uri.parse('$baseUrl/api/app/codegen/history-backups').replace(
+    final uri = _buildAppApiUri(
+      const <String>['codegen', 'history-backups'],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
@@ -577,8 +623,14 @@ class AppAgentClient {
   Future<List<CortanaReplayItem>> listCortanaVoiceHistory({
     int limit = 200,
   }) async {
-    final uri = Uri.parse(
-      '$baseUrl/api/app/cortana/history?user_id=$userId&session_token=$sessionToken&limit=$limit',
+    final uri = _buildAppApiUri(
+      const <String>['cortana', 'history'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+        'limit': '$limit',
+      },
     );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
@@ -618,7 +670,7 @@ class AppAgentClient {
     required List<String> clientLogs,
     List<Map<String, dynamic>> timeline = const <Map<String, dynamic>>[],
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/debug/bundles');
+    final uri = _buildAppApiUri(const <String>['debug', 'bundles']);
     final resp = await http
         .post(
           uri,
@@ -644,7 +696,8 @@ class AppAgentClient {
   }
 
   Future<List<AppLogSource>> listLogSources() async {
-    final uri = Uri.parse('$baseUrl/api/app/logs/sources').replace(
+    final uri = _buildAppApiUri(
+      const <String>['logs', 'sources'],
       queryParameters: <String, String>{
         'user_id': userId,
         if (sessionToken.trim().isNotEmpty)
@@ -681,9 +734,10 @@ class AppAgentClient {
       if (file.trim().isNotEmpty) 'file': file.trim(),
       if (sessionToken.trim().isNotEmpty) 'session_token': sessionToken.trim(),
     };
-    final uri = Uri.parse(
-      '$baseUrl/api/app/logs/content',
-    ).replace(queryParameters: query);
+    final uri = _buildAppApiUri(
+      const <String>['logs', 'content'],
+      queryParameters: query,
+    );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
         .timeout(_httpTimeout);
@@ -699,15 +753,15 @@ class AppAgentClient {
     required String debugID,
     required String path,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/app/debug/bundles/$debugID/file')
-        .replace(
-          queryParameters: <String, String>{
-            'user_id': userId,
-            'path': path,
-            if (sessionToken.trim().isNotEmpty)
-              'session_token': sessionToken.trim(),
-          },
-        );
+    final uri = _buildAppApiUri(
+      <String>['debug', 'bundles', debugID, 'file'],
+      queryParameters: <String, String>{
+        'user_id': userId,
+        'path': path,
+        if (sessionToken.trim().isNotEmpty)
+          'session_token': sessionToken.trim(),
+      },
+    );
     final resp = await http
         .get(uri, headers: _sessionHeaders())
         .timeout(_httpTimeout);
@@ -765,11 +819,16 @@ class AppAgentClient {
   ) {
     final base = Uri.parse(baseUrl);
     final scheme = base.scheme == 'https' ? 'wss' : 'ws';
-    final pathSegments = <String>[
-      ...base.pathSegments.where((segment) => segment.isNotEmpty),
-      'ws',
-      'app',
-    ];
+    final baseSegments = base.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    final prefixSegments =
+        baseSegments.length >= 2 &&
+            baseSegments[baseSegments.length - 2] == 'api' &&
+            baseSegments.last == 'app'
+        ? baseSegments.sublist(0, baseSegments.length - 2)
+        : baseSegments;
+    final pathSegments = <String>[...prefixSegments, 'ws', 'app'];
     return base.replace(
       scheme: scheme,
       pathSegments: pathSegments,

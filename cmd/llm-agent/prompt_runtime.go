@@ -87,6 +87,13 @@ func buildAccountRuntimeContext(account, source string, extra map[string]string)
 	})
 }
 
+func buildTurnRuntimeContext(account, source string, extra map[string]string, now time.Time) string {
+	return combineRuntimeBlocks(
+		buildAccountRuntimeContext(account, source, extra),
+		buildLocalTimeRuntimeContext(now),
+	)
+}
+
 func buildLocalTimeRuntimeContext(now time.Time) string {
 	if now.IsZero() {
 		return ""

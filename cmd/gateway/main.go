@@ -51,6 +51,7 @@ func main() {
 
 	log.Printf("[Gateway] starting on port %d", cfg.Port)
 	log.Printf("[Gateway] blog-agent upstream: %s", cfg.GoBackendURL)
+	log.Printf("[Gateway] app-agent upstream: %s", cfg.AppAgentURL)
 
 	// 初始化注册表
 	registry := NewRegistry()
@@ -209,6 +210,8 @@ func main() {
 		})
 	}
 
+	registerAppAgentProxyRoutes(mux, cfg)
+
 	// HTTP 反向代理 — 将其余请求转发到 blog-agent
 	proxy := NewProxy(cfg.GoBackendURL)
 	mux.Handle("/", proxy)
@@ -239,4 +242,11 @@ func main() {
 		log.Fatalf("[Gateway] server error: %v", err)
 	}
 	log.Println("[Gateway] stopped")
+}
+
+func registerAppAgentProxyRoutes(mux *http.ServeMux, cfg *Config) {
+	proxy := NewProxy(cfg.AppAgentURL)
+	mux.Handle("/api/app/", proxy)
+	mux.Handle("/butler/", proxy)
+	mux.Handle("/ws/app", proxy)
 }

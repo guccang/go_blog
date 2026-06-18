@@ -838,7 +838,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 			session.PromptSections = promptSections
 		} else {
 			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(appUser, content, true)
-			runtimeContext := buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser})
+			runtimeContext := buildTurnRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}, now)
 			session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, content)
 			session.PromptSections = promptSections
 		}
@@ -853,7 +853,7 @@ func (b *Bridge) handleAppMessage(fromAgent, appUser, content string) {
 			if runtimeContext != "" {
 				session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
 			}
-		} else if runtimeContext := buildAccountRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}); runtimeContext != "" {
+		} else if runtimeContext := buildTurnRuntimeContext(appUser, "app", map[string]string{"app_user": appUser}, now); runtimeContext != "" {
 			session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
 		}
 		session.Messages = append(session.Messages, Message{Role: "user", Content: content})

@@ -184,5 +184,125 @@ void main() {
         '/api/app/logs/content',
       ]);
     });
+
+    test('butler APIs do not duplicate api app base path', () async {
+      final observed = <Uri>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        observed.add(request.uri);
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/api/app/butler/feedback':
+            request.response.statusCode = HttpStatus.ok;
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'affinity': <String, dynamic>{'score': 53},
+              }),
+            );
+            break;
+          case '/api/app/butler/affinity':
+            request.response.statusCode = HttpStatus.ok;
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'affinity': <String, dynamic>{'score': 53},
+              }),
+            );
+            break;
+          default:
+            request.response.statusCode = HttpStatus.notFound;
+            request.response.write('missing');
+        }
+        await request.response.close();
+      });
+
+      final host = server.address.address;
+      final client = AppAgentClient(
+        baseUrl: 'http://$host:${server.port}/api/app/',
+        userId: 'demo-user',
+        password: '',
+        receiveToken: 'receive-token',
+        sessionToken: 'access-1',
+      );
+
+      await client.callButlerFeedback('helpful');
+      await client.fetchButlerAffinity();
+
+      expect(observed.map((uri) => uri.path).toList(), <String>[
+        '/api/app/butler/feedback',
+        '/api/app/butler/affinity',
+      ]);
+      expect(
+        observed.last.queryParameters['session_token'],
+        'access-1',
+      );
+    });
+
+    test('app APIs do not duplicate api app base path', () async {
+      final observed = <Uri>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        observed.add(request.uri);
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/api/app/login':
+            request.response.statusCode = HttpStatus.ok;
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'access_token': 'access-1',
+                'refresh_token': 'refresh-1',
+                'user_id': 'demo-user',
+                'expires_at': 1,
+              }),
+            );
+            break;
+          case '/api/app/logs/sources':
+            request.response.statusCode = HttpStatus.ok;
+            request.response.write(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'sources': <Map<String, dynamic>>[
+                  <String, dynamic>{'name': 'app-agent'},
+                ],
+              }),
+            );
+            break;
+          case '/api/app/attachments/test-file':
+            expect(request.uri.queryParameters['user_id'], 'demo-user');
+            request.response.statusCode = HttpStatus.ok;
+            request.response.headers.contentType = ContentType.binary;
+            request.response.add(<int>[1, 2, 3]);
+            break;
+          default:
+            request.response.statusCode = HttpStatus.notFound;
+            request.response.write('missing');
+        }
+        await request.response.close();
+      });
+
+      final host = server.address.address;
+      final client = AppAgentClient(
+        baseUrl: 'http://$host:${server.port}/api/app/',
+        userId: 'demo-user',
+        password: 'demo-password',
+        receiveToken: 'receive-token',
+        sessionToken: 'access-1',
+      );
+
+      await client.login();
+      await client.listLogSources();
+      final bytes = await client.downloadAttachment('test-file');
+
+      expect(bytes, <int>[1, 2, 3]);
+      expect(observed.map((uri) => uri.path).toList(), <String>[
+        '/api/app/login',
+        '/api/app/logs/sources',
+        '/api/app/attachments/test-file',
+      ]);
+    });
   });
 }

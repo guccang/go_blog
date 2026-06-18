@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"uap"
 )
@@ -108,6 +109,26 @@ func TestBuildAssistantSystemPromptDoesNotEmbedAccount(t *testing.T) {
 	runtimeContext := buildAccountRuntimeContext("alice", "web", nil)
 	if !strings.Contains(runtimeContext, "account: alice") || !strings.Contains(runtimeContext, "source: web") {
 		t.Fatalf("runtime context should carry account/source: %s", runtimeContext)
+	}
+}
+
+func TestBuildTurnRuntimeContextIncludesLocalTimeForRelativeDates(t *testing.T) {
+	loc := time.FixedZone("Asia/Shanghai", 8*3600)
+	now := time.Date(2026, 6, 16, 10, 0, 0, 0, loc)
+	runtimeContext := buildTurnRuntimeContext("alice", "app", map[string]string{"app_user": "alice"}, now)
+
+	for _, want := range []string{
+		"account: alice",
+		"source: app",
+		"app_user: alice",
+		"当前本地时间上下文",
+		"local_datetime: 2026-06-16 10:00",
+		"weekday: 星期二",
+		"timezone_offset: +08:00",
+	} {
+		if !strings.Contains(runtimeContext, want) {
+			t.Fatalf("expected runtime context to contain %q, got: %s", want, runtimeContext)
+		}
 	}
 }
 

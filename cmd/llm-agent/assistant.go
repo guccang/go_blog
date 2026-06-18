@@ -122,12 +122,16 @@ func (b *Bridge) handleAssistantTask(taskID, sourceAgent string, payload *Assist
 	session, isNew := b.sessionMgr.GetOrCreate("web", payload.Account, payload.Account)
 
 	session.mu.Lock()
-	session.LastActiveAt = time.Now()
+	now := time.Now()
+	session.LastActiveAt = now
 	if isNew || len(session.Messages) == 0 {
 		// 新会话：Messages 由 processTask 构建
 		session.Messages = nil
 	} else {
-		// 续接对话只追加当前轮消息，避免改写历史前缀影响 LLM prompt cache。
+		if runtimeContext := buildTurnRuntimeContext(payload.Account, "web", nil, now); runtimeContext != "" {
+			session.Messages = append(session.Messages, Message{Role: "user", Content: runtimeContext})
+		}
+		// 续接对话追加当轮时间上下文和当前用户消息，避免相对日期沿用历史上下文。
 		session.Messages = append(session.Messages, Message{Role: "user", Content: payload.Query})
 		session.Messages = CompactMessages(session.Messages, b.sessionMgr.maxMessages)
 	}
@@ -163,7 +167,7 @@ func (b *Bridge) handleAssistantTask(taskID, sourceAgent string, payload *Assist
 		// 如果是新会话，需要先补上 system + user 消息
 		if isNew || len(session.Messages) == 0 {
 			systemPrompt, promptSections := b.buildAssistantSystemPromptForQuery(payload.Account, payload.Query, true)
-			runtimeContext := buildAccountRuntimeContext(payload.Account, "web", nil)
+			runtimeContext := buildTurnRuntimeContext(payload.Account, "web", nil, now)
 			session.Messages = messagesWithRuntimeContext(systemPrompt, runtimeContext, payload.Query)
 			session.PromptSections = promptSections
 		}
