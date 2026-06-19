@@ -78,6 +78,9 @@ class ButlerJobsTests(unittest.TestCase):
         disabled = Config(system_prompt="基础提示", butler_enabled=False)
         self.assertEqual(disabled.effective_system_prompt(), "基础提示")
         self.assertIn("RawMemoryAppend", BUTLER_RULES)
+        self.assertIn("next_run_at/next_run", BUTLER_RULES)
+        self.assertIn("绝对 ISO 时间", BUTLER_RULES)
+        self.assertIn("禁止自己口算或改写日期", BUTLER_RULES)
 
 
 if __name__ == "__main__":

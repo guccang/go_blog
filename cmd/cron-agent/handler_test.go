@@ -93,6 +93,40 @@ func TestToolDeleteTaskRejectsAmbiguousTaskName(t *testing.T) {
 	}
 }
 
+func TestToolCreateTaskReturnsTimezoneAndNextRun(t *testing.T) {
+	conn := newTestConnection(t)
+	defer conn.engine.Stop()
+
+	result, ok := conn.toolCreateTask("ztt", map[string]interface{}{
+		"name":      "drink-water",
+		"task_type": "cron_reminder",
+		"schedule":  "@every 1h",
+		"account":   "ztt",
+		"message":   "喝水",
+	})
+	if !ok {
+		t.Fatalf("expected create task to succeed, got %s", result)
+	}
+
+	var payload struct {
+		TaskID   string `json:"task_id"`
+		Timezone string `json:"timezone"`
+		NextRun  string `json:"next_run"`
+	}
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("unmarshal create result: %v", err)
+	}
+	if payload.TaskID == "" {
+		t.Fatalf("expected task_id in create result: %s", result)
+	}
+	if payload.Timezone != "Asia/Shanghai" {
+		t.Fatalf("expected Asia/Shanghai timezone, got %q", payload.Timezone)
+	}
+	if payload.NextRun == "" {
+		t.Fatalf("expected next_run in create result: %s", result)
+	}
+}
+
 func newTestConnection(t *testing.T) *Connection {
 	t.Helper()
 

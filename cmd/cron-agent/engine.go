@@ -19,19 +19,20 @@ import (
 
 // CronTask 定时任务
 type CronTask struct {
-	ID          string `json:"id"`           // 短 UUID
-	Name        string `json:"name"`         // 任务名称
-	TaskType    string `json:"task_type"`    // "cron_reminder" | "cron_query"
-	Schedule    string `json:"schedule"`     // cron 表达式或 "@every 20m"，空=延迟任务
-	DelaySec    int    `json:"delay_sec"`    // 延迟秒数（Schedule 为空时生效）
-	Account     string `json:"account"`      // 用户账号
-	CreatedBy   string `json:"created_by"`   // 创建者账号，用于权限隔离
-	WechatUser  string `json:"wechat_user"`  // 微信用户标识
-	Message     string `json:"message"`      // cron_reminder 提醒内容
-	Query       string `json:"query"`        // cron_query 查询问题
-	OneShot     bool   `json:"one_shot"`     // 执行后自动删除
-	IgnoreQuiet bool   `json:"ignore_quiet"` // true=忽略免打扰（如服务器监控），默认 false
-	CreatedAt   string `json:"created_at"`   // RFC3339 创建时间
+	ID          string `json:"id"`                 // 短 UUID
+	Name        string `json:"name"`               // 任务名称
+	TaskType    string `json:"task_type"`          // "cron_reminder" | "cron_query"
+	Schedule    string `json:"schedule"`           // cron 表达式或 "@every 20m"，空=延迟任务
+	DelaySec    int    `json:"delay_sec"`          // 延迟秒数（Schedule 为空时生效）
+	Account     string `json:"account"`            // 用户账号
+	CreatedBy   string `json:"created_by"`         // 创建者账号，用于权限隔离
+	WechatUser  string `json:"wechat_user"`        // 微信用户标识
+	Message     string `json:"message"`            // cron_reminder 提醒内容
+	Query       string `json:"query"`              // cron_query 查询问题
+	OneShot     bool   `json:"one_shot"`           // 执行后自动删除
+	IgnoreQuiet bool   `json:"ignore_quiet"`       // true=忽略免打扰（如服务器监控），默认 false
+	CreatedAt   string `json:"created_at"`         // RFC3339 创建时间
+	NextRun     string `json:"next_run,omitempty"` // 下次触发时间，仅列表/创建响应返回
 }
 
 // CronEngine 定时任务引擎：调度 + 存储 + 执行
@@ -41,6 +42,7 @@ type CronEngine struct {
 	entries    map[string]cron.EntryID       // taskID → cron entryID
 	timers     map[string]context.CancelFunc // taskID → 延迟任务取消函数
 	cron       *cron.Cron
+	location   *time.Location
 	ab         *agentbase.AgentBase
 	cfg        *Config
 	pending    sync.Map // executionID → cronTaskID
@@ -51,14 +53,17 @@ type CronEngine struct {
 // NewCronEngine 创建引擎，加载持久化任务，启动调度器
 func NewCronEngine(cfg *Config, ab *agentbase.AgentBase) *CronEngine {
 	log.Printf("[CronEngine] 初始化引擎 task_file=%s llm_agent=%s", cfg.TaskFile, cfg.LLMAgentID)
+	loc := loadCronLocation(cfg.Timezone)
+	log.Printf("[CronEngine] 调度时区: %s", loc.String())
 
 	e := &CronEngine{
-		tasks:   make(map[string]*CronTask),
-		entries: make(map[string]cron.EntryID),
-		timers:  make(map[string]context.CancelFunc),
-		cron:    cron.New(),
-		ab:      ab,
-		cfg:     cfg,
+		tasks:    make(map[string]*CronTask),
+		entries:  make(map[string]cron.EntryID),
+		timers:   make(map[string]context.CancelFunc),
+		cron:     cron.New(cron.WithLocation(loc)),
+		location: loc,
+		ab:       ab,
+		cfg:      cfg,
 	}
 
 	e.quietStart, e.quietEnd = parseQuietHours(cfg.QuietHoursStart, cfg.QuietHoursEnd)
@@ -167,7 +172,7 @@ func (e *CronEngine) ListTasks() []*CronTask {
 	tasks := make([]*CronTask, 0, len(e.tasks))
 	for _, t := range e.tasks {
 		e.normalizeTaskOwnership(t)
-		tasks = append(tasks, t)
+		tasks = append(tasks, e.snapshotTaskLocked(t))
 	}
 	return tasks
 }
@@ -180,10 +185,24 @@ func (e *CronEngine) ListTasksByOwner(owner string) []*CronTask {
 	for _, t := range e.tasks {
 		e.normalizeTaskOwnership(t)
 		if t.CreatedBy == owner {
-			tasks = append(tasks, t)
+			tasks = append(tasks, e.snapshotTaskLocked(t))
 		}
 	}
 	return tasks
+}
+
+func (e *CronEngine) NextRun(id string) (time.Time, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	entryID, ok := e.entries[id]
+	if !ok {
+		return time.Time{}, false
+	}
+	next := e.cron.Entry(entryID).Next
+	if next.IsZero() {
+		return time.Time{}, false
+	}
+	return next.In(e.location), true
 }
 
 func (e *CronEngine) FindTasksByOwnerAndName(owner, name string) []*CronTask {
@@ -502,7 +521,7 @@ func (e *CronEngine) isInQuietHours() bool {
 	if e.quietStart < 0 {
 		return false
 	}
-	now := time.Now()
+	now := time.Now().In(e.location)
 	cur := now.Hour()*60 + now.Minute()
 	if e.quietStart <= e.quietEnd {
 		// 不跨午夜，如 01:00→06:00
@@ -544,7 +563,9 @@ func (e *CronEngine) saveToFile() {
 	for _, t := range e.tasks {
 		e.normalizeTaskOwnership(t)
 		if t.Schedule != "" {
-			tasks = append(tasks, t)
+			snapshot := *t
+			snapshot.NextRun = ""
+			tasks = append(tasks, &snapshot)
 		}
 	}
 
@@ -574,4 +595,35 @@ func (e *CronEngine) normalizeTaskOwnership(task *CronTask) {
 	if strings.TrimSpace(task.CreatedBy) == "" {
 		task.CreatedBy = strings.TrimSpace(task.Account)
 	}
+}
+
+func (e *CronEngine) snapshotTaskLocked(task *CronTask) *CronTask {
+	if task == nil {
+		return nil
+	}
+	snapshot := *task
+	if entryID, ok := e.entries[task.ID]; ok {
+		if next := e.cron.Entry(entryID).Next; !next.IsZero() {
+			snapshot.NextRun = next.In(e.location).Format(time.RFC3339)
+		}
+	}
+	return &snapshot
+}
+
+func loadCronLocation(name string) *time.Location {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "Asia/Shanghai"
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		log.Printf("[CronEngine] 加载时区失败 timezone=%q err=%v，回退到 Asia/Shanghai", name, err)
+		loc, err = time.LoadLocation("Asia/Shanghai")
+		if err == nil {
+			return loc
+		}
+		log.Printf("[CronEngine] 加载 Asia/Shanghai 失败: %v，回退到 time.Local", err)
+		return time.Local
+	}
+	return loc
 }

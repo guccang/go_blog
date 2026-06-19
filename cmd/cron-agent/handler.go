@@ -183,7 +183,7 @@ func buildToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "cronCreateTask",
-			Description: "创建定时任务。支持三种调度模式：(1) delay_sec=N 延迟 N 秒后执行一次；(2) schedule 使用 cron 表达式如 '0 20 * * *' 每天20点执行，或间隔如 '@every 20m' 每20分钟执行；(3) schedule + one_shot=true 在下一个匹配时间执行一次后自动删除。task_type 为 'cron_reminder'（提醒通知，需要 message）或 'cron_query'（LLM 查询执行，需要 query）",
+			Description: "创建定时任务。支持三种调度模式：(1) delay_sec=N 延迟 N 秒后执行一次；(2) schedule 使用 cron 表达式如 '0 20 * * *' 每天20点执行，或间隔如 '@every 20m' 每20分钟执行；(3) schedule + one_shot=true 在下一个匹配时间执行一次后自动删除。task_type 为 'cron_reminder'（提醒通知，需要 message）或 'cron_query'（LLM 查询执行，需要 query）。创建成功会返回 timezone 和 next_run；向用户确认提醒时间时必须以 next_run 为准。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -387,7 +387,7 @@ func (c *Connection) toolCreateTask(authenticatedUser string, args map[string]in
 		Query:       query,
 		OneShot:     oneShot || (schedule == "" && delaySec > 0), // 纯延迟任务默认 one_shot
 		IgnoreQuiet: ignoreQuiet,
-		CreatedAt:   time.Now().Format(time.RFC3339),
+		CreatedAt:   time.Now().In(c.engine.location).Format(time.RFC3339),
 	}
 
 	if err := c.engine.AddTask(task); err != nil {
@@ -397,13 +397,18 @@ func (c *Connection) toolCreateTask(authenticatedUser string, args map[string]in
 
 	log.Printf("[CronAgent] ✓ toolCreateTask 成功 ID=%s", task.ID)
 
-	resp, _ := json.Marshal(map[string]interface{}{
+	resp := map[string]interface{}{
 		"task_id":    task.ID,
 		"name":       task.Name,
 		"created_by": task.CreatedBy,
+		"timezone":   c.engine.location.String(),
 		"message":    "任务创建成功",
-	})
-	return string(resp), true
+	}
+	if nextRun, ok := c.engine.NextRun(task.ID); ok {
+		resp["next_run"] = nextRun.Format(time.RFC3339)
+	}
+	body, _ := json.Marshal(resp)
+	return string(body), true
 }
 
 func (c *Connection) toolListTasks(authenticatedUser string, args map[string]interface{}) (string, bool) {
