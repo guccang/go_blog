@@ -183,13 +183,13 @@ func buildToolDefs() []uap.ToolDef {
 	return []uap.ToolDef{
 		{
 			Name:        "cronCreateTask",
-			Description: "创建定时任务。支持三种调度模式：(1) delay_sec=N 延迟 N 秒后执行一次；(2) schedule 使用 cron 表达式如 '0 20 * * *' 每天20点执行，或间隔如 '@every 20m' 每20分钟执行；(3) schedule + one_shot=true 在下一个匹配时间执行一次后自动删除。task_type 为 'cron_reminder'（提醒通知，需要 message）或 'cron_query'（LLM 查询执行，需要 query）。创建成功会返回 timezone 和 next_run；向用户确认提醒时间时必须以 next_run 为准。",
+			Description: "创建定时任务。支持四种调度模式：(1) delay_sec=N 延迟 N 秒后执行一次；(2) schedule 使用绝对时间如 '2026-06-16T10:00:00+08:00' 或 '2026-06-16 10:00' 创建一次性任务；(3) schedule 使用 cron 表达式如 '0 20 * * *' 每天20点执行；(4) schedule 使用间隔如 '@every 20m' 每20分钟执行。task_type 为 'cron_reminder'（提醒通知，需要 message）或 'cron_query'（LLM 查询执行，需要 query）。创建成功会返回 timezone 和 next_run；向用户确认提醒时间时必须以 next_run 为准。",
 			Parameters: agentbase.MustMarshalJSON(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name":         map[string]interface{}{"type": "string", "description": "任务名称"},
 					"task_type":    map[string]interface{}{"type": "string", "enum": []string{"cron_reminder", "cron_query"}, "description": "任务类型"},
-					"schedule":     map[string]interface{}{"type": "string", "description": "cron 表达式或间隔，如 '0 20 * * *' 或 '@every 20m'"},
+					"schedule":     map[string]interface{}{"type": "string", "description": "绝对时间、cron 表达式或间隔，如 '2026-06-16T10:00:00+08:00'、'2026-06-16 10:00'、'0 20 * * *' 或 '@every 20m'"},
 					"delay_sec":    map[string]interface{}{"type": "integer", "description": "延迟秒数（一次性延迟任务，与 schedule 互斥）"},
 					"account":      map[string]interface{}{"type": "string", "description": "用户账号"},
 					"wechat_user":  map[string]interface{}{"type": "string", "description": "微信用户标识；仅微信场景需要，app/group 场景可留空"},

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"uap"
 )
@@ -124,6 +125,37 @@ func TestToolCreateTaskReturnsTimezoneAndNextRun(t *testing.T) {
 	}
 	if payload.NextRun == "" {
 		t.Fatalf("expected next_run in create result: %s", result)
+	}
+}
+
+func TestToolCreateTaskAcceptsAbsoluteSchedule(t *testing.T) {
+	conn := newTestConnection(t)
+	defer conn.engine.Stop()
+
+	result, ok := conn.toolCreateTask("ztt", map[string]interface{}{
+		"name":      "hukou-info",
+		"task_type": "cron_reminder",
+		"schedule":  "2099-06-16T10:00:00+08:00",
+		"account":   "ztt",
+		"message":   "补充户籍信息",
+	})
+	if !ok {
+		t.Fatalf("expected create task to succeed, got %s", result)
+	}
+
+	var payload struct {
+		NextRun string `json:"next_run"`
+	}
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("unmarshal create result: %v", err)
+	}
+	got, err := time.Parse(time.RFC3339, payload.NextRun)
+	if err != nil {
+		t.Fatalf("expected RFC3339 next_run, got %q: %v", payload.NextRun, err)
+	}
+	want := time.Date(2099, 6, 16, 10, 0, 0, 0, time.FixedZone("", 8*3600))
+	if !got.Equal(want) {
+		t.Fatalf("expected next_run %s, got %s", want.Format(time.RFC3339), got.Format(time.RFC3339))
 	}
 }
 

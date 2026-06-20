@@ -469,10 +469,16 @@ func (a *CMDAGent) sendClientNotify(route sessionRoute, content string) error {
 	if strings.TrimSpace(route.SourceAgentID) == "" || strings.TrimSpace(route.Channel) == "" || strings.TrimSpace(route.UserID) == "" {
 		return fmt.Errorf("invalid notify route")
 	}
+	var meta map[string]any
+	if strings.TrimSpace(route.HistoryID) != "" {
+		meta = map[string]any{}
+		meta["codegen_history_id"] = strings.TrimSpace(route.HistoryID)
+	}
 	return a.client.SendTo(route.SourceAgentID, uap.MsgNotify, uap.NotifyPayload{
 		Channel: route.Channel,
 		To:      route.UserID,
 		Content: content,
+		Meta:    meta,
 	})
 }
 

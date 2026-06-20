@@ -487,6 +487,7 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 		TargetAgentID: agent.AgentID,
 		Project:       project,
 		AutoDeploy:    autoDeploy,
+		HistoryID:     req.HistoryID,
 	}
 	a.setPendingRoute(requestID, route)
 
@@ -494,7 +495,7 @@ func (a *CMDAGent) handleCgStart(req commandRequest, param string) error {
 		return err
 	}
 
-	args, toolName := buildCodingStartCall(agent, a.cfg.AgentID, project, rest, model, tool, settings, resumeLast)
+	args, toolName := buildCodingStartCall(agent, route.SourceAgentID, project, rest, model, tool, settings, resumeLast)
 	route.Kind = codingBackendKind(toolName)
 	resultCh, err := a.callTool(agent.AgentID, requestID, toolName, args)
 	if err != nil {
@@ -573,6 +574,7 @@ func (a *CMDAGent) handleCgDebug(req commandRequest, param string) error {
 		TargetAgentID: agent.AgentID,
 		Project:       project,
 		Kind:          "acp",
+		HistoryID:     req.HistoryID,
 	}
 	a.setPendingRoute(requestID, route)
 
@@ -580,7 +582,7 @@ func (a *CMDAGent) handleCgDebug(req commandRequest, param string) error {
 		return err
 	}
 
-	args := buildDebugStartCall(a.cfg.AgentID, project, debugID, debugPath, rest, tool, settings)
+	args := buildDebugStartCall(route.SourceAgentID, project, debugID, debugPath, rest, tool, settings)
 	resultCh, err := a.callTool(agent.AgentID, requestID, "AcpStartDebugSession", args)
 	if err != nil {
 		return err

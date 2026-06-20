@@ -599,6 +599,83 @@ extension _ChatPageStateCodegen on _ChatPageState {
     return null;
   }
 
+  CodegenHistoryItem? _ensureCodegenHistoryForProcessMessage(
+    ChatMessage message, {
+    String historyId = '',
+    String sessionId = '',
+    String requestId = '',
+    CodegenLaunchMode? mode,
+  }) {
+    final resolvedMode =
+        mode ??
+        _codegenHistoryModeForProcessMessage(message) ??
+        _codegenHistoryModeForStartMessage(message.content);
+    if (resolvedMode == null) {
+      return null;
+    }
+
+    final existing = _findActiveCodegenHistoryItem(
+      historyId: historyId,
+      sessionId: sessionId,
+      requestId: requestId,
+      mode: resolvedMode,
+    );
+    if (existing != null) {
+      return existing;
+    }
+
+    final id = historyId.trim().isNotEmpty
+        ? historyId.trim()
+        : _newCodegenHistoryId();
+    final command = _fallbackCodegenHistoryCommand(
+      message,
+      sessionId: sessionId,
+      requestId: requestId,
+    );
+    final item = CodegenHistoryItem(
+      id: id,
+      timestamp: message.timestamp,
+      command: command,
+      mode: resolvedMode,
+      requestId: requestId.trim(),
+    );
+    _mutateCodegenHistory(() {
+      _codegenHistory.insert(0, item);
+      if (_codegenHistory.length > 1000) {
+        _codegenHistory = _codegenHistory.take(1000).toList();
+      }
+    });
+    _publishCodegenHistory();
+    _activeCodegenHistoryId = item.id;
+    addFlutterClientLog(
+      'CodegenHistory auto_create id=${item.id} mode=${item.mode.name} '
+      'session=${sessionId.trim()} request=${requestId.trim()}',
+    );
+    unawaited(_persistCodegenPreferences());
+    return item;
+  }
+
+  String _fallbackCodegenHistoryCommand(
+    ChatMessage message, {
+    required String sessionId,
+    required String requestId,
+  }) {
+    final content = message.content.trim();
+    if (looksLikeCodegenStartMessage(content)) {
+      return content;
+    }
+    final parts = <String>['远端编码任务'];
+    final normalizedRequestId = requestId.trim();
+    final normalizedSessionId = sessionId.trim();
+    if (normalizedRequestId.isNotEmpty) {
+      parts.add('请求: $normalizedRequestId');
+    }
+    if (normalizedSessionId.isNotEmpty) {
+      parts.add('会话: $normalizedSessionId');
+    }
+    return parts.join('\n');
+  }
+
   void _applyCodegenHistoryItem(CodegenHistoryItem item) {
     final details = CodegenHistoryCommandDetails.parse(item);
     if (details.mode == CodegenLaunchMode.backup) {
@@ -1007,6 +1084,11 @@ extension _ChatPageStateCodegen on _ChatPageState {
           !item.completed && item.mode == mode && item.requestId.trim().isEmpty,
     );
     if (idx == -1) {
+      _ensureCodegenHistoryForProcessMessage(
+        message,
+        requestId: requestId,
+        mode: mode,
+      );
       return;
     }
     _mutateCodegenHistory(() {
@@ -1061,13 +1143,25 @@ extension _ChatPageStateCodegen on _ChatPageState {
     if (chunks.isEmpty) {
       return;
     }
-    final activeItem = _findActiveCodegenHistoryItem(
-      historyId: historyId,
-      sessionId: sessionId,
-      requestId: requestId,
-      mode: mode,
-    );
+    final activeItem =
+        _findActiveCodegenHistoryItem(
+          historyId: historyId,
+          sessionId: sessionId,
+          requestId: requestId,
+          mode: mode,
+        ) ??
+        _ensureCodegenHistoryForProcessMessage(
+          message,
+          historyId: historyId,
+          sessionId: sessionId,
+          requestId: requestId,
+          mode: mode,
+        );
     if (activeItem == null) {
+      addFlutterClientLog(
+        'CodegenHistory drop_no_active_item origin=$origin '
+        'session=${sessionId.trim()} request=${requestId.trim()} history=${historyId.trim()}',
+      );
       return;
     }
     final entries = List<CodegenProcessEntry>.from(activeItem.processEntries);
@@ -1150,6 +1244,11 @@ extension _ChatPageStateCodegen on _ChatPageState {
       _codegenHistory[idx] = updatedItem;
     });
     _publishCodegenHistory();
+    addFlutterClientLog(
+      'CodegenHistory append id=${updatedItem.id} origin=$origin '
+      'entries=${updatedItem.processEntries.length} completed=${updatedItem.completed} '
+      'session=${sessionId.trim()} request=${requestId.trim()}',
+    );
     if (updatedItem.completed) {
       _activeCodegenHistoryId = '';
     } else {
@@ -1172,7 +1271,16 @@ extension _ChatPageStateCodegen on _ChatPageState {
     final mode = _codegenHistoryModeForProcessMessage(message);
     final hasActiveTask = _hasPendingCodegenHistoryExecution(mode: mode);
     if (!hasActiveTask) {
-      return false;
+      final created = _ensureCodegenHistoryForProcessMessage(
+        message,
+        historyId: (meta['codegen_history_id'] ?? '').toString().trim(),
+        sessionId: (meta['session_id'] ?? '').toString().trim(),
+        requestId: (meta['request_id'] ?? '').toString().trim(),
+        mode: mode,
+      );
+      if (created == null) {
+        return false;
+      }
     }
     final sessionId = (meta['session_id'] ?? '').toString().trim();
     final requestId = (meta['request_id'] ?? '').toString().trim();

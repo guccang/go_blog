@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"uap"
+)
 
 func TestCodegenThrottleKeyIncludesToolName(t *testing.T) {
 	key1 := codegenThrottleKey("sess_1", "tool", "", "rg")
@@ -115,6 +120,69 @@ func TestCodegenEventMetaPreservesStructuredEvent(t *testing.T) {
 	meta := codegenEventMeta(payload)
 	if meta["type"] != "tool" || meta["text"] != "running" || meta["tool_name"] != "go test" || meta["done"] != true {
 		t.Fatalf("codegenEventMeta() = %#v", meta)
+	}
+}
+
+func TestDirectACPStreamNotifyUsesRememberedRoute(t *testing.T) {
+	bridge := NewBridge(DefaultConfig())
+
+	startNotify := uap.NotifyPayload{
+		Channel: "app",
+		To:      "demo-user",
+		Content: "🚀 编码会话已启动\n\n项目: demo\n请求: cmd_start_123\n\n进度将通过当前客户端推送",
+		Meta: map[string]any{
+			"codegen_history_id": "history-1",
+		},
+	}
+	startRaw, err := json.Marshal(startNotify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge.handleUAPMessage(&uap.Message{
+		Type:    uap.MsgNotify,
+		From:    "cmd-agent",
+		Payload: startRaw,
+	})
+
+	stream := codegenStreamEvent{
+		SessionID: "acp_123",
+		RequestID: "cmd_start_123",
+	}
+	stream.Event.Type = "assistant"
+	stream.Event.Text = "执行中"
+	streamRaw, err := json.Marshal(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamNotify := uap.NotifyPayload{
+		Channel: "acp_stream",
+		To:      "cmd_start_123",
+		Content: string(streamRaw),
+	}
+	notifyRaw, err := json.Marshal(streamNotify)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge.handleUAPMessage(&uap.Message{
+		Type:    uap.MsgNotify,
+		From:    "acp-agent",
+		Payload: notifyRaw,
+	})
+
+	bridge.deliveryMu.Lock()
+	pending := bridge.pendingMessages["codegen_stream:acp_123"]
+	bridge.deliveryMu.Unlock()
+	if pending == nil {
+		t.Fatalf("expected codegen stream pending message")
+	}
+	if _, ok := pending.Deliveries["demo-user"]; !ok {
+		t.Fatalf("expected delivery for demo-user, got %#v", pending.Deliveries)
+	}
+	if pending.Meta["request_id"] != "cmd_start_123" {
+		t.Fatalf("request_id meta=%#v", pending.Meta["request_id"])
+	}
+	if pending.Meta["codegen_history_id"] != "history-1" {
+		t.Fatalf("codegen_history_id meta=%#v", pending.Meta["codegen_history_id"])
 	}
 }
 

@@ -41,6 +41,7 @@ type CronEngine struct {
 	tasks      map[string]*CronTask          // taskID → task
 	entries    map[string]cron.EntryID       // taskID → cron entryID
 	timers     map[string]context.CancelFunc // taskID → 延迟任务取消函数
+	timerRuns  map[string]time.Time          // taskID → 延迟/绝对时间任务的下次触发时间
 	cron       *cron.Cron
 	location   *time.Location
 	ab         *agentbase.AgentBase
@@ -57,13 +58,14 @@ func NewCronEngine(cfg *Config, ab *agentbase.AgentBase) *CronEngine {
 	log.Printf("[CronEngine] 调度时区: %s", loc.String())
 
 	e := &CronEngine{
-		tasks:    make(map[string]*CronTask),
-		entries:  make(map[string]cron.EntryID),
-		timers:   make(map[string]context.CancelFunc),
-		cron:     cron.New(cron.WithLocation(loc)),
-		location: loc,
-		ab:       ab,
-		cfg:      cfg,
+		tasks:     make(map[string]*CronTask),
+		entries:   make(map[string]cron.EntryID),
+		timers:    make(map[string]context.CancelFunc),
+		timerRuns: make(map[string]time.Time),
+		cron:      cron.New(cron.WithLocation(loc)),
+		location:  loc,
+		ab:        ab,
+		cfg:       cfg,
 	}
 
 	e.quietStart, e.quietEnd = parseQuietHours(cfg.QuietHoursStart, cfg.QuietHoursEnd)
@@ -142,6 +144,7 @@ func (e *CronEngine) RemoveTask(id string) error {
 	if cancel, ok := e.timers[id]; ok {
 		cancel()
 		delete(e.timers, id)
+		delete(e.timerRuns, id)
 		log.Printf("[CronEngine]   ├─ 延迟 timer 已取消")
 	}
 
@@ -194,15 +197,17 @@ func (e *CronEngine) ListTasksByOwner(owner string) []*CronTask {
 func (e *CronEngine) NextRun(id string) (time.Time, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	entryID, ok := e.entries[id]
-	if !ok {
-		return time.Time{}, false
+	if entryID, ok := e.entries[id]; ok {
+		next := e.cron.Entry(entryID).Next
+		if next.IsZero() {
+			return time.Time{}, false
+		}
+		return next.In(e.location), true
 	}
-	next := e.cron.Entry(entryID).Next
-	if next.IsZero() {
-		return time.Time{}, false
+	if next, ok := e.timerRuns[id]; ok && !next.IsZero() {
+		return next.In(e.location), true
 	}
-	return next.In(e.location), true
+	return time.Time{}, false
 }
 
 func (e *CronEngine) FindTasksByOwnerAndName(owner, name string) []*CronTask {
@@ -252,6 +257,7 @@ func (e *CronEngine) Stop() {
 	for id, cancel := range e.timers {
 		cancel()
 		delete(e.timers, id)
+		delete(e.timerRuns, id)
 	}
 	e.mu.Unlock()
 
@@ -353,11 +359,74 @@ func (e *CronEngine) HandleTaskComplete(executionID, status, errMsg, result stri
 
 // ========================= 内部方法 =========================
 
+func (e *CronEngine) parseAbsoluteSchedule(schedule string) (time.Time, bool, error) {
+	schedule = strings.TrimSpace(schedule)
+	if schedule == "" {
+		return time.Time{}, false, nil
+	}
+	if t, err := time.Parse(time.RFC3339, schedule); err == nil {
+		return t.In(e.location), true, nil
+	}
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, schedule, e.location); err == nil {
+			return t, true, nil
+		}
+	}
+	if strings.Contains(schedule, "-") && strings.Contains(schedule, ":") {
+		return time.Time{}, true, fmt.Errorf("无效的绝对时间 %q，请使用 RFC3339 或 YYYY-MM-DD HH:mm", schedule)
+	}
+	return time.Time{}, false, nil
+}
+
+func (e *CronEngine) scheduleTimerTask(task *CronTask, runAt time.Time) error {
+	taskID := task.ID
+	runAt = runAt.In(e.location)
+	delay := time.Until(runAt)
+	if delay <= 0 {
+		return fmt.Errorf("一次性任务时间已过期: %s", runAt.Format(time.RFC3339))
+	}
+	log.Printf("[CronEngine] scheduleTask ID=%s 注册一次性任务 runAt=%s",
+		taskID, runAt.Format(time.RFC3339))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	e.timers[taskID] = cancel
+	e.timerRuns[taskID] = runAt
+	go func() {
+		log.Printf("[CronEngine] 一次性定时器启动 ID=%s 将在 %s 执行", taskID, runAt.Format(time.RFC3339))
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			log.Printf("[CronEngine] ⏰ 一次性触发 ID=%s name=%s runAt=%s",
+				taskID, task.Name, runAt.Format(time.RFC3339))
+			e.executeTask(task)
+			e.RemoveTask(taskID)
+		case <-ctx.Done():
+			log.Printf("[CronEngine] 一次性任务已取消 ID=%s", taskID)
+		}
+	}()
+	return nil
+}
+
 // scheduleTask 将任务注册到调度系统（调用前需持有 mu 锁）
 func (e *CronEngine) scheduleTask(task *CronTask) error {
 	taskID := task.ID // 捕获闭包变量
 
 	if task.Schedule != "" {
+		if runAt, absolute, err := e.parseAbsoluteSchedule(task.Schedule); absolute {
+			if err != nil {
+				return err
+			}
+			task.OneShot = true
+			return e.scheduleTimerTask(task, runAt)
+		}
+
 		log.Printf("[CronEngine] scheduleTask ID=%s 注册 cron/interval schedule=%q oneShot=%v",
 			taskID, task.Schedule, task.OneShot)
 
@@ -388,25 +457,8 @@ func (e *CronEngine) scheduleTask(task *CronTask) error {
 	}
 
 	if task.DelaySec > 0 {
-		log.Printf("[CronEngine] scheduleTask ID=%s 注册延迟任务 delay=%ds",
-			taskID, task.DelaySec)
-
-		// 延迟一次性任务
-		ctx, cancel := context.WithCancel(context.Background())
-		e.timers[taskID] = cancel
-		go func() {
-			log.Printf("[CronEngine] 延迟定时器启动 ID=%s 将在 %ds 后执行", taskID, task.DelaySec)
-			select {
-			case <-time.After(time.Duration(task.DelaySec) * time.Second):
-				log.Printf("[CronEngine] ⏰ 延迟触发 ID=%s name=%s delay=%ds 已到期",
-					taskID, task.Name, task.DelaySec)
-				e.executeTask(task)
-				e.RemoveTask(taskID)
-			case <-ctx.Done():
-				log.Printf("[CronEngine] 延迟任务已取消 ID=%s", taskID)
-			}
-		}()
-		return nil
+		runAt := time.Now().In(e.location).Add(time.Duration(task.DelaySec) * time.Second)
+		return e.scheduleTimerTask(task, runAt)
 	}
 
 	return fmt.Errorf("任务必须指定 schedule 或 delay_sec")
@@ -558,7 +610,7 @@ func (e *CronEngine) loadFromFile() error {
 
 // saveToFile 持久化任务到 JSON 文件（调用前需持有 mu 锁）
 func (e *CronEngine) saveToFile() {
-	// 只持久化周期性任务，纯延迟一次性任务不持久化
+	// 只持久化 schedule 任务；纯 delay_sec 一次性任务不持久化。
 	tasks := make([]*CronTask, 0)
 	for _, t := range e.tasks {
 		e.normalizeTaskOwnership(t)
@@ -606,6 +658,9 @@ func (e *CronEngine) snapshotTaskLocked(task *CronTask) *CronTask {
 		if next := e.cron.Entry(entryID).Next; !next.IsZero() {
 			snapshot.NextRun = next.In(e.location).Format(time.RFC3339)
 		}
+	}
+	if next, ok := e.timerRuns[task.ID]; ok && !next.IsZero() {
+		snapshot.NextRun = next.In(e.location).Format(time.RFC3339)
 	}
 	return &snapshot
 }

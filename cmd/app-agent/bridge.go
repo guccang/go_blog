@@ -68,8 +68,9 @@ type Bridge struct {
 	lastEventTime map[string]time.Time // session_id:event_type → 上次推送时间
 	eventMu       sync.Mutex
 
-	sessionUsers map[string]string
-	sessionMu    sync.Mutex
+	sessionUsers  map[string]string
+	requestRoutes map[string]codegenRequestRoute
+	sessionMu     sync.Mutex
 
 	codegenMu      sync.Mutex
 	codegenStreams map[string]*codegenStreamState
@@ -106,6 +107,11 @@ type codegenStreamState struct {
 	MessageID string
 	Content   string
 	RequestID string
+	HistoryID string
+}
+
+type codegenRequestRoute struct {
+	UserID    string
 	HistoryID string
 }
 
@@ -181,6 +187,7 @@ func NewBridge(cfg *Config) *Bridge {
 		groups:            newGroupManager(cfg.GroupStoreFile),
 		lastEventTime:     make(map[string]time.Time),
 		sessionUsers:      make(map[string]string),
+		requestRoutes:     make(map[string]codegenRequestRoute),
 		codegenStreams:    make(map[string]*codegenStreamState),
 		pendingMessages:   make(map[string]*pendingMessage),
 		pendingByUser:     make(map[string][]string),
@@ -1085,6 +1092,41 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func extractCodegenRequestID(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	re := regexp.MustCompile(`请求:\s*([A-Za-z0-9_\-:.]+)`)
+	matches := re.FindStringSubmatch(content)
+	if len(matches) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(matches[1])
+}
+
+func looksLikeCodegenStartNotification(content string) bool {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return false
+	}
+	return strings.Contains(content, "编码会话已启动") ||
+		strings.Contains(content, "ACP Debug 会话已启动") ||
+		strings.Contains(content, "进度将通过当前客户端推送")
+}
+
+func (b *Bridge) rememberCodegenRequestRoute(requestID, userID, historyID string) {
+	requestID = strings.TrimSpace(requestID)
+	userID = strings.TrimSpace(userID)
+	historyID = strings.TrimSpace(historyID)
+	if requestID == "" || userID == "" {
+		return
+	}
+	b.sessionMu.Lock()
+	b.requestRoutes[requestID] = codegenRequestRoute{UserID: userID, HistoryID: historyID}
+	b.sessionMu.Unlock()
+}
+
 func classifyAppProcessMeta(sourceAgent, content string) map[string]any {
 	sourceAgent = strings.TrimSpace(sourceAgent)
 	content = strings.TrimSpace(content)
@@ -1178,6 +1220,14 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 					meta["source_agent"] = msg.From
 				}
 			}
+			if requestID := firstNonEmpty(stringMeta(meta, "request_id"), extractCodegenRequestID(payload.Content)); requestID != "" {
+				historyID := firstNonEmpty(stringMeta(meta, "codegen_history_id"), stringMeta(meta, "history_id"))
+				if looksLikeCodegenStartNotification(payload.Content) || historyID != "" {
+					b.rememberCodegenRequestRoute(requestID, payload.To, historyID)
+					log.Printf("[Bridge] remember codegen route request_id=%s user=%s history=%s source=%s",
+						requestID, payload.To, historyID, msg.From)
+				}
+			}
 			messageType := strings.TrimSpace(payload.MessageType)
 			if messageType == "" {
 				messageType = "text"
@@ -1185,6 +1235,18 @@ func (b *Bridge) handleUAPMessage(msg *uap.Message) {
 			if err := b.sendNotificationMessage(payload.To, payload.Content, messageType, meta); err != nil {
 				log.Printf("[Bridge] app push failed for user=%s: %v", payload.To, err)
 			}
+		} else if payload.Channel == "acp_stream" {
+			var stream codegenStreamEvent
+			if err := json.Unmarshal([]byte(payload.Content), &stream); err != nil {
+				log.Printf("[Bridge] invalid acp_stream notify payload from=%s to=%s: %v", msg.From, payload.To, err)
+				return
+			}
+			if stream.RequestID == "" {
+				stream.RequestID = payload.To
+			}
+			log.Printf("[Bridge] direct acp_stream from=%s request_id=%s session_id=%s event=%s",
+				msg.From, stream.RequestID, stream.SessionID, stream.Event.Type)
+			b.handleCodegenStreamEventPayload(stream, msg.From)
 		}
 
 	case uap.MsgToolCall:
@@ -1429,7 +1491,10 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		log.Printf("[Bridge] invalid stream_event payload: %v", err)
 		return
 	}
+	b.handleCodegenStreamEventPayload(payload, msg.From)
+}
 
+func (b *Bridge) handleCodegenStreamEventPayload(payload codegenStreamEvent, sourceAgent string) {
 	if payload.Event.Type == "thinking" {
 		payload.Event.Type = "thought"
 	}
@@ -1441,8 +1506,26 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 		toUser = payload.Account
 	} else {
 		toUser = b.sessionUsers[payload.SessionID]
+		if toUser == "" {
+			if route, ok := b.requestRoutes[payload.RequestID]; ok {
+				toUser = route.UserID
+				if payload.HistoryID == "" {
+					payload.HistoryID = route.HistoryID
+				}
+			}
+		}
+	}
+	if toUser != "" && payload.SessionID != "" {
+		b.sessionUsers[payload.SessionID] = toUser
 	}
 	b.sessionMu.Unlock()
+	if toUser == "" {
+		log.Printf("[Bridge] drop codegen stream without route source=%s request_id=%s session_id=%s event=%s",
+			sourceAgent, payload.RequestID, payload.SessionID, payload.Event.Type)
+		return
+	}
+	log.Printf("[Bridge] codegen stream route source=%s user=%s request_id=%s session_id=%s history=%s event=%s",
+		sourceAgent, toUser, payload.RequestID, payload.SessionID, payload.HistoryID, payload.Event.Type)
 
 	// assistant/thought 是流式 chunk，必须逐块合并，否则容易只留下残缺句子。
 	// 其他类型仍保留节流，避免重复系统/工具事件刷屏。
@@ -1499,8 +1582,19 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 		toUser = payload.Account
 	} else {
 		toUser = b.sessionUsers[payload.SessionID]
+		if toUser == "" {
+			if route, ok := b.requestRoutes[payload.RequestID]; ok {
+				toUser = route.UserID
+				if payload.HistoryID == "" {
+					payload.HistoryID = route.HistoryID
+				}
+			}
+		}
 	}
 	delete(b.sessionUsers, payload.SessionID)
+	if payload.RequestID != "" {
+		delete(b.requestRoutes, payload.RequestID)
+	}
 	b.sessionMu.Unlock()
 
 	var text string

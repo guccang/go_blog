@@ -1453,22 +1453,50 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       }
       final meta = envelope.meta ?? <String, dynamic>{};
       final origin = (meta['origin'] ?? '').toString();
+      final isCodegenStream = origin == 'codegen-stream';
+      if (isCodegenStream) {
+        addFlutterClientLog(
+          'CodegenStream recv id=${envelope.messageId} seq=${envelope.sequence} '
+          'session=${meta['session_id'] ?? ''} request=${meta['request_id'] ?? ''} '
+          'history=${meta['codegen_history_id'] ?? ''} len=${envelope.content.length}',
+        );
+      }
       final groupId = (meta['group_id'] ?? '').toString().trim();
       final isGroupMessage = groupId.isNotEmpty;
       if (!isGroupMessage &&
           envelope.userId.isNotEmpty &&
           envelope.userId != _userIdController.text.trim()) {
-        return;
-      }
-      if (envelope.messageId.isNotEmpty &&
-          _seenMessageIds.contains(envelope.messageId)) {
+        if (isCodegenStream) {
+          addFlutterClientLog(
+            'CodegenStream drop_user_mismatch id=${envelope.messageId} '
+            'payload_user=${envelope.userId} current_user=${_userIdController.text.trim()}',
+          );
+        }
         return;
       }
       if (envelope.sequence > 0 && envelope.sequence <= _lastSequence) {
+        if (isCodegenStream) {
+          addFlutterClientLog(
+            'CodegenStream drop_stale id=${envelope.messageId} '
+            'seq=${envelope.sequence} last=$_lastSequence',
+          );
+        }
         return;
       }
       if (envelope.sequence > 0) {
         _lastSequence = envelope.sequence;
+      }
+      if (shouldDedupeIncomingMessageId(
+        origin: origin,
+        messageId: envelope.messageId,
+        seenMessageIds: _seenMessageIds,
+      )) {
+        if (isCodegenStream) {
+          addFlutterClientLog(
+            'CodegenStream drop_duplicate id=${envelope.messageId} seq=${envelope.sequence}',
+          );
+        }
+        return;
       }
 
       if (origin == 'llm-debug' || meta['app_debug'] == true) {
@@ -1481,6 +1509,11 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
         meta: meta,
         isGroupMessage: isGroupMessage,
       )) {
+        if (isCodegenStream) {
+          addFlutterClientLog(
+            'CodegenStream drop_filter id=${envelope.messageId} seq=${envelope.sequence}',
+          );
+        }
         return;
       }
 
@@ -1530,14 +1563,12 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       );
       _bindCodegenHistoryRequestFromMessage(chatMessage);
       if (envelope.messageId.isNotEmpty) {
-        final origin = (meta['origin'] ?? '').toString();
-        if (origin == 'codegen-stream') {
+        if (isCodegenStream) {
           _bufferCodegenStreamUpdate(
             scopeKey: scopeKey,
             messageId: envelope.messageId,
             message: chatMessage,
           );
-          _seenMessageIds.add(envelope.messageId);
           return;
         }
       }
