@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"module"
 	log "mylog"
-	"sms"
 	"sync"
 )
 
@@ -106,21 +105,6 @@ func LoginSMS(account string, verfycode string) (string, int) {
 func Logout(account string) int {
 	auth.RemoveSession(account)
 	return 0
-}
-
-// GenerateSMSCode 生成短信验证码
-func GenerateSMSCode(account string) (string, int) {
-	code, err := sms.SendSMS()
-	if err != nil {
-		log.InfoF(log.ModuleLogin, "GenerateSMSCode err=%s", err.Error())
-		return "", 1
-	}
-
-	loginMu.Lock()
-	sms_codes[account] = code
-	loginMu.Unlock()
-
-	return code, 0
 }
 
 // Register 用户注册

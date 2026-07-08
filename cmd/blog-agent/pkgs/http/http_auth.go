@@ -15,46 +15,10 @@ import (
 	"view"
 )
 
-// HandleLoginSMSAPI handles SMS login code generation API
+// HandleLoginSMSAPI handles SMS login code generation API (disabled)
 func HandleLoginSMSAPI(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleLoginSMSAPI", r)
-
 	h.Error(w, "短信功能暂时关闭", h.StatusBadRequest)
-	return
-
-	device_id := r.FormValue("device_id")
-	if device_id == "" {
-		h.Error(w, "device_id parameter is missing", h.StatusBadRequest)
-		return
-	}
-
-	// Check if device_id exists in config or validate format (starts with SK)
-	if !strings.HasPrefix(device_id, "SK") || len(device_id) != 34 {
-		h.Error(w, "invalid device_id format", h.StatusBadRequest)
-		return
-	}
-
-	account := r.FormValue("account")
-	if account == "" {
-		h.Error(w, "account parameter is missing", h.StatusBadRequest)
-		return
-	}
-
-	pwd := login.GetPwd(account)
-	if pwd == "" {
-		h.Error(w, "account not found", h.StatusBadRequest)
-		return
-	}
-
-	code, ret := login.GenerateSMSCode(account)
-	log.InfoF(log.ModuleAuth, "SMS Generate code=%s for device_id=%s", code, device_id)
-	if ret != 0 {
-		h.Error(w, "SMS generation failed", h.StatusBadRequest)
-		return
-	}
-
-	// 提示 短信已发送
-	w.Write([]byte("短信已发送 请注意查收"))
 }
 
 // HandleLoginSMS handles SMS login functionality
