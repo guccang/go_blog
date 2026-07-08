@@ -313,22 +313,9 @@ async function sendStreamingRequest(aiMessageElement) {
                     }
 
                     try {
-                        // 先将+替换为%20，再进行URL解码
                         const processedData = data.replace(/\+/g, '%20');
-                        console.log('🟨 原始data:', data);
-                        console.log('🟨 processedData:', processedData);
-
                         const decodedContent = decodeURIComponent(processedData);
-                        console.log('🟨 decodedContent:', JSON.stringify(decodedContent));
-                        console.log('🟨 包含\\n:', decodedContent.includes('\n'));
-                        console.log('🟨 包含\\r\\n:', decodedContent.includes('\r\n'));
 
-                        // 检查是否包含markdown标题标记
-                        if (decodedContent.includes('#')) {
-                            console.log('🔍 检测到标题标记，内容:', JSON.stringify(decodedContent));
-                        }
-
-                        // 检测工具调用相关的内容，只过滤明确的工具调用标识
                         const isToolCallContent = decodedContent.includes('[Calling tool ') && decodedContent.includes(' with args ');
 
                         if (isToolCallContent) {
@@ -343,28 +330,15 @@ async function sendStreamingRequest(aiMessageElement) {
                                 };
                                 showToolCallStatus(aiMessageElement, currentToolCall);
                             }
-                            console.log('🔧 检测到工具调用:', JSON.stringify(decodedContent));
                         } else if (decodedContent) {
-                            // 开始接收实际响应内容，隐藏工具调用状态
                             if (currentToolCall) {
                                 hideToolCallStatus(aiMessageElement);
                                 currentToolCall = null;
                             }
-                            // 只添加非工具调用相关的内容到响应中
                             aiResponse += decodedContent;
 
-                            console.log('✅ 实时添加到aiResponse:', JSON.stringify(decodedContent), '累计长度:', aiResponse.length);
-
-                            // 特别检查包含标题标记的内容
-                            if (decodedContent.includes('#')) {
-                                console.log('🚨 标题相关内容块:', JSON.stringify(decodedContent));
-                                console.log('🚨 当前累计aiResponse末尾20字符:', JSON.stringify(aiResponse.substring(Math.max(0, aiResponse.length - 20))));
-                            }
-
-                            // 使用打字机效果更新消息内容 - 立即显示每个内容块
                             const messageText = aiMessageElement.querySelector('.message-text');
                             if (messageText) {
-                                console.log('🔄 更新界面显示, 当前内容:', aiResponse.substring(Math.max(0, aiResponse.length - 20)));
                                 updateTypingEffect(messageText, aiResponse);
                             }
                         }
@@ -605,124 +579,17 @@ function addMessage(sender, content) {
     // });
 }
 
-// 使用与博客系统相同的Markdown渲染函数
 function formatMessage(content) {
     if (!content) return '';
-
-    console.log('🔵 formatMessage - 原始内容:');
-    console.log(content);
-    console.log('🔵 内容长度:', content.length);
-
-    // 检查是否包含markdown标题
-    if (content.includes('#')) {
-        console.log('🔍 formatMessage - 检测到标题内容:', JSON.stringify(content));
-        // 检查标题格式
-        const titleMatches = content.match(/#{1,6}\s+[^\n]*/g);
-        if (titleMatches) {
-            console.log('🔍 标题匹配结果:', titleMatches);
-        }
-    }
-
-    // 预处理：移除LLM返回内容中的代码块包裹
-    let processedContent = preprocessLLMContent(content);
-
-    console.log('🟡 formatMessage - 预处理后内容:');
-    console.log(processedContent);
-    console.log('🟡 处理后长度:', processedContent.length);
-
-    // 检查marked库是否已加载
-    if (typeof marked === 'undefined') {
-        console.error('❌ marked.js library not loaded!');
-        return processedContent.replace(/\n/g, '<br>');
-    }
+    if (typeof marked === 'undefined') return content.replace(/\n/g, '<br>');
 
     try {
-        // 初始化marked配置
         initializeMarkdown();
-
-        // 使用marked渲染markdown
-        let rendered;
-        if (typeof marked.parse === 'function') {
-            rendered = marked.parse(processedContent);
-        } else if (typeof marked === 'function') {
-            rendered = marked(processedContent);
-        } else {
-            throw new Error('No valid marked parsing method found');
-        }
-
-        console.log('🟢 formatMessage - 渲染后的HTML:');
-        console.log(rendered);
-        console.log('🟢 HTML长度:', rendered.length);
-
-        return rendered;
-
+        return typeof marked.parse === 'function' ? marked.parse(content) : marked(content);
     } catch (error) {
-        console.error('❌ Error rendering markdown:', error);
-        return processedContent.replace(/\n/g, '<br>');
+        console.error('Markdown render error:', error);
+        return content.replace(/\n/g, '<br>');
     }
-}
-
-// 预处理LLM返回内容，移除代码块包裹
-function preprocessLLMContent(content) {
-    if (!content) return content;
-
-    console.log('🔴 preprocessLLMContent - 开始预处理:');
-    console.log(content);
-
-    // 检查标题格式
-    if (content.includes('#')) {
-        console.log('🔍 preprocessLLMContent - 输入包含标题:', JSON.stringify(content));
-        const titleMatches = content.match(/#{1,6}\s+[^\n]*/g);
-        if (titleMatches) {
-            console.log('🔍 输入标题匹配:', titleMatches);
-        }
-    }
-
-    let processed = content;
-
-    // 1. 匹配并移除 ```markdown ... ``` 或 ```md ... ``` (支持换行和不换行格式)
-    const markdownBlockPattern = /```(?:markdown|md)\s*([\s\S]*?)\s*```/gi;
-    let matches = processed.match(markdownBlockPattern);
-
-    if (matches) {
-        console.log('🟠 发现markdown代码块:', matches.length, '个');
-        processed = processed.replace(markdownBlockPattern, (match, innerContent) => {
-            console.log('🟠 移除markdown代码块包裹，内容:', innerContent.substring(0, 100) + '...');
-            return innerContent; // 保留原始格式，不使用trim()
-        });
-    }
-
-    // 2. 匹配并移除普通的 ``` ... ``` 代码块（当整个内容被包裹时）
-    const genericCodeBlockPattern = /```\s*([\s\S]*?)\s*```/g;
-    matches = processed.match(genericCodeBlockPattern);
-
-    if (matches) {
-        console.log('🟣 发现普通代码块包裹:', matches.length, '个');
-        processed = processed.replace(genericCodeBlockPattern, (match, innerContent) => {
-            console.log('🟣 移除普通代码块包裹，内容:', innerContent.substring(0, 100) + '...');
-            return innerContent; // 保留原始格式，不使用trim()
-        });
-    }
-
-    // 3. 只移除明确的工具调用标识，保留markdown格式
-    //processed = processed.replace(/^\[Calling tool.*?\]\s*\n?/i, '');
-
-    // 4. 只移除开头和结尾的多余空行，但保留必要的换行
-    //processed = processed.replace(/^\n+/, '').replace(/\n+$/, '');
-
-    console.log('🟢 preprocessLLMContent - 预处理完成:');
-    console.log(processed);
-
-    // 检查处理后的标题格式
-    if (processed.includes('#')) {
-        console.log('🔍 preprocessLLMContent - 输出包含标题:', JSON.stringify(processed));
-        const titleMatches = processed.match(/#{1,6}\s+[^\n]*/g);
-        if (titleMatches) {
-            console.log('🔍 输出标题匹配:', titleMatches);
-        }
-    }
-
-    return processed;
 }
 
 // 初始化Markdown配置（仅在需要时调用一次）
