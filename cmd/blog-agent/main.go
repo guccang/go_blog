@@ -24,7 +24,6 @@ import (
 	"reading"
 	"search"
 	"share"
-	"sms"
 	"statistics"
 	"strings"
 	"syscall"
@@ -173,7 +172,6 @@ func main() {
 	}
 
 	llm.Init()
-	sms.Init()
 	exercise.Init()
 	goal.InitGoalModule()
 	share.Init()

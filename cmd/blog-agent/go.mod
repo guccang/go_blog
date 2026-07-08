@@ -32,8 +32,6 @@ replace blog => ./pkgs/blog
 
 replace email => ./pkgs/email
 
-replace encryption => ./pkgs/encryption
-
 replace search => ./pkgs/search
 
 replace share => ./pkgs/share
@@ -48,33 +46,13 @@ replace exercise => ./pkgs/exercise
 
 replace reading => ./pkgs/reading
 
-replace lifecountdown => ./pkgs/lifecountdown
-
 replace mcp => ./pkgs/mcp
 
 replace llm => ./pkgs/llm
 
-replace sms => ./pkgs/sms
-
-replace constellation => ./pkgs/constellation
-
 replace tools => ./pkgs/tools
 
-replace skill => ./pkgs/skill
-
 replace account => ./pkgs/account
-
-replace gomoku => ./pkgs/gomoku
-
-replace linkup => ./pkgs/linkup
-
-replace finance => ./pkgs/finance
-
-replace tetris => ./pkgs/tetris
-
-replace minesweeper => ./pkgs/minesweeper
-
-replace fruitcrush => ./pkgs/fruitcrush
 
 replace taskbreakdown => ./pkgs/taskbreakdown
 
@@ -104,7 +82,6 @@ require (
 	delegation v0.0.0
 	exercise v0.0.0
 	goal v0.0.0
-	memory v0.0.0
 	http v0.0.0
 	ioutils v0.0.0
 	llm v0.0.0
@@ -113,11 +90,9 @@ require (
 	module v0.0.0
 	mylog v0.0.0
 	persistence v0.0.0
-	projectmgmt v0.0.0
 	reading v0.0.0
 	search v0.0.0
 	share v0.0.0
-	sms v0.0.0
 	statistics v0.0.0
 	tools v0.0.0
 	view v0.0.0
@@ -126,9 +101,6 @@ require (
 require (
 	account v0.0.0 // indirect
 	agentbase v0.0.0 // indirect
-	constellation v0.0.0 // indirect
-	finance v0.0.0 // indirect
-	fruitcrush v0.0.0 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -137,13 +109,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	gomoku v0.0.0 // indirect
-	lifecountdown v0.0.0 // indirect
-	linkup v0.0.0 // indirect
-	minesweeper v0.0.0 // indirect
-	skill v0.0.0 // indirect
+	memory v0.0.0 // indirect
+	projectmgmt v0.0.0 // indirect
 	taskbreakdown v0.0.0 // indirect
-	tetris v0.0.0 // indirect
 	todolist v0.0.0 // indirect
 	uap v0.0.0 // indirect
 	yearplan v0.0.0 // indirect
