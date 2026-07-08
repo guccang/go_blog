@@ -236,15 +236,44 @@ func getBookInternal(account, bookID string) *module.Book {
 
 // ========== Reading Progress ==========
 
+// ensureRecord returns the in-memory record for a book, loading or creating it if needed.
+// Must be called with readingMu held.
+func ensureRecord(account, bookID string, book *module.Book) *module.ReadingRecord {
+	ensureAccountData(account)
+	if record, exists := readingRecords[account][bookID]; exists {
+		return record
+	}
+	// Try loading from blog storage (e.g. after server restart)
+	for title, b := range blog.GetBlogsWithAccount(account) {
+		if strings.HasPrefix(title, "reading_book_") {
+			var data struct {
+				ReadingRecord *module.ReadingRecord `json:"reading_record"`
+			}
+			if json.Unmarshal([]byte(b.Content), &data) == nil && data.ReadingRecord != nil && data.ReadingRecord.BookID == bookID {
+				readingRecords[account][bookID] = data.ReadingRecord
+				return data.ReadingRecord
+			}
+		}
+	}
+	// Create fresh record
+	record := &module.ReadingRecord{
+		BookID: bookID, Status: book.Status, CurrentPage: book.CurrentPage,
+		LastUpdateTime: strTime(), ReadingSessions: []module.ReadingSession{},
+	}
+	readingRecords[account][bookID] = record
+	return record
+}
+
 func StartReadingWithAccount(account, bookID string) error {
 	readingMu.Lock()
 	defer readingMu.Unlock()
 
 	ensureAccountData(account)
-	record, exists := readingRecords[account][bookID]
-	if !exists {
-		return errors.New("阅读记录不存在")
+	book := getBookInternal(account, bookID)
+	if book == nil {
+		return errors.New("书籍不存在")
 	}
+	record := ensureRecord(account, bookID, book)
 	if record.Status == "reading" {
 		return errors.New("已在阅读中")
 	}
@@ -255,10 +284,9 @@ func StartReadingWithAccount(account, bookID string) error {
 	}
 	record.LastUpdateTime = strTime()
 
-	if book, exists := books[account][bookID]; exists {
-		book.Status = "reading"
-		saveBookToBlog(account, book)
-	}
+	book.Status = "reading"
+	books[account][bookID] = book
+	saveBookToBlog(account, book)
 	return nil
 }
 
@@ -267,15 +295,11 @@ func UpdateReadingProgressWithAccount(account, bookID string, currentPage int, n
 	defer readingMu.Unlock()
 
 	ensureAccountData(account)
-	record, exists := readingRecords[account][bookID]
-	if !exists {
-		return errors.New("阅读记录不存在")
-	}
-
 	book := getBookInternal(account, bookID)
 	if book == nil {
 		return errors.New("书籍不存在")
 	}
+	record := ensureRecord(account, bookID, book)
 
 	oldPage := record.CurrentPage
 	record.CurrentPage = currentPage
