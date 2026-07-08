@@ -157,17 +157,6 @@ func HandleTools(w h.ResponseWriter, r *h.Request) {
 	view.PageTools(w)
 }
 
-// HandleSkill renders the skill learning page
-func HandleSkill(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleSkill", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-
-	view.PageSkill(w)
-}
-
 // HandleEnglishLearning renders the English learning tracker page
 func HandleEnglishLearning(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleEnglishLearning", r)

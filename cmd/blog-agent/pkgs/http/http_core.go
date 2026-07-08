@@ -3,21 +3,14 @@ package http
 import (
 	"auth"
 	"config"
-	"constellation"
 	"exercise"
-	"finance"
 	"fmt"
-	"fruitcrush"
-	"gomoku"
-	"linkup"
-	"minesweeper"
 	"module"
 	log "mylog"
 	h "net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"tetris"
 	"todolist"
 	"tools"
 	"view"
@@ -335,11 +328,6 @@ func Init() int {
 	h.HandleFunc("/api/advanced-reading-statistics", HandleAdvancedReadingStatisticsAPI)
 	h.HandleFunc("/api/export-reading-data", HandleExportReadingDataAPI)
 
-	// Life countdown routes
-	h.HandleFunc("/lifecountdown", HandleLifeCountdown)
-	h.HandleFunc("/api/lifecountdown", HandleLifeCountdownAPI)
-	h.HandleFunc("/api/lifecountdown/config", HandleLifeCountdownConfigAPI)
-
 	// Assistant routes
 	h.HandleFunc("/assistant", HandleAssistant)
 	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
@@ -372,19 +360,6 @@ func Init() int {
 	// MCP internal tools API
 	h.HandleFunc("/api/mcp/tools", HandleMCPToolsAPI)
 
-	// Constellation divination routes
-	h.HandleFunc("/constellation", constellation.HandleConstellation)
-	h.HandleFunc("/api/constellation/horoscope", constellation.HandleDailyHoroscope)
-	h.HandleFunc("/api/constellation/birthchart", constellation.HandleBirthChart)
-	h.HandleFunc("/api/constellation/divination", constellation.HandleDivination)
-	h.HandleFunc("/api/constellation/compatibility", constellation.HandleCompatibility)
-	h.HandleFunc("/api/constellation/history", constellation.HandleDivinationHistory)
-	h.HandleFunc("/api/constellation/statistics", constellation.HandleDivinationStats)
-	h.HandleFunc("/api/constellation/info", constellation.HandleConstellationInfo)
-	h.HandleFunc("/api/constellation/date", constellation.HandleGetConstellationByDate)
-	h.HandleFunc("/api/constellation/accuracy", constellation.HandleUpdateAccuracy)
-	h.HandleFunc("/api/constellation/batch-horoscope", constellation.HandleBatchHoroscope)
-
 	// Tools routes
 	h.HandleFunc("/tools", HandleTools)
 	h.HandleFunc("/api/tools/time", tools.TimeToolHandler)
@@ -395,71 +370,13 @@ func Init() int {
 	h.HandleFunc("/api/tools/weather", tools.WeatherHandler)
 	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
 
-	// Gomoku routes
-	h.HandleFunc("/gomoku", gomoku.HandleGomoku)
-	h.HandleFunc("/api/gomoku/ai-move", gomoku.HandleAIMove)
-	// Gomoku room routes
-	h.HandleFunc("/api/gomoku/room/create", gomoku.HandleCreateRoom)
-	h.HandleFunc("/api/gomoku/room/join", gomoku.HandleJoinRoom)
-	h.HandleFunc("/api/gomoku/room/state", gomoku.HandleRoomState)
-	h.HandleFunc("/api/gomoku/room/move", gomoku.HandleMakeMove)
-	h.HandleFunc("/api/gomoku/room/list", gomoku.HandleRoomList)
-
-	// Linkup routes
-	h.HandleFunc("/linkup", linkup.HandleLinkup)
-	h.HandleFunc("/api/linkup/new-game", linkup.HandleNewGame)
-	h.HandleFunc("/api/linkup/select", linkup.HandleSelectCell)
-	h.HandleFunc("/api/linkup/ai-move", linkup.HandleAIMove)
-	h.HandleFunc("/api/linkup/hint", linkup.HandleHint)
-	h.HandleFunc("/api/linkup/pvp/create", linkup.HandleCreatePvP)
-	h.HandleFunc("/api/linkup/pvp/join", linkup.HandleJoinPvP)
-	h.HandleFunc("/api/linkup/pvp/state", linkup.HandlePvPState)
-	h.HandleFunc("/api/linkup/pvp/ready", linkup.HandlePvPReady)
-	h.HandleFunc("/api/linkup/race/create", linkup.HandleCreateRace)
-	h.HandleFunc("/api/linkup/race/join", linkup.HandleJoinRace)
-	h.HandleFunc("/api/linkup/race/state", linkup.HandleRaceState)
-	h.HandleFunc("/api/linkup/race/list", linkup.HandleRaceList)
-
 	// English Learning Tracker route
 	h.HandleFunc("/english", HandleEnglishLearning)
-
-	// Skill routes
-	h.HandleFunc("/skill", HandleSkill)
-	RegisterSkillRoutes()
 
 	// Migration routes
 	h.HandleFunc("/migration", HandleMigration)
 	h.HandleFunc("/migration/export", HandleMigrationExport)
 	h.HandleFunc("/migration/import", HandleMigrationImport)
-
-	// Finance routes
-	h.HandleFunc("/finance", finance.HandleFinancePage)
-	h.HandleFunc("/api/finance/calculate", finance.HandleCalculateAssets)
-	h.HandleFunc("/api/finance/defaults", finance.HandleGetDefaultValues)
-
-	// Tetris routes
-	h.HandleFunc("/tetris", tetris.HandleTetris)
-	h.HandleFunc("/api/tetris/room/create", tetris.HandleCreateRoom)
-	h.HandleFunc("/api/tetris/room/join", tetris.HandleJoinRoom)
-	h.HandleFunc("/api/tetris/room/list", tetris.HandleRoomList)
-	h.HandleFunc("/api/tetris/room/state", tetris.HandleRoomState)
-	h.HandleFunc("/api/tetris/room/update", tetris.HandleUpdateState)
-
-	// Minesweeper routes
-	h.HandleFunc("/minesweeper", minesweeper.HandleMinesweeper)
-	h.HandleFunc("/api/minesweeper/room/create", minesweeper.HandleCreateRoom)
-	h.HandleFunc("/api/minesweeper/room/join", minesweeper.HandleJoinRoom)
-	h.HandleFunc("/api/minesweeper/room/list", minesweeper.HandleRoomList)
-	h.HandleFunc("/api/minesweeper/room/state", minesweeper.HandleRoomState)
-	h.HandleFunc("/api/minesweeper/room/update", minesweeper.HandleUpdateState)
-
-	// Fruit Crush routes
-	h.HandleFunc("/fruitcrush", fruitcrush.HandleFruitCrush)
-	h.HandleFunc("/api/fruitcrush/room/create", fruitcrush.HandleCreateRoom)
-	h.HandleFunc("/api/fruitcrush/room/join", fruitcrush.HandleJoinRoom)
-	h.HandleFunc("/api/fruitcrush/room/list", fruitcrush.HandleRoomList)
-	h.HandleFunc("/api/fruitcrush/room/state", fruitcrush.HandleRoomState)
-	h.HandleFunc("/api/fruitcrush/room/update", fruitcrush.HandleUpdateState)
 
 	// account
 	h.HandleFunc("/account", HandleAccount)
