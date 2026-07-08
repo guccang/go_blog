@@ -1,6 +1,11 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../main.dart';
 
+final _apkVersionRegExp = RegExp(
+  r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$',
+  caseSensitive: false,
+);
+
 extension _ChatPageStateMessagesHistory on _ChatPageState {
   String get _currentScopeKey =>
       _currentGroupId.isEmpty ? 'direct' : _groupScopeKey(_currentGroupId);
@@ -2004,10 +2009,7 @@ extension _ChatPageStateMessagesHistory on _ChatPageState {
       });
       // Try to extract version from filename (e.g., app-release-1.0.0.apk -> 1.0.0)
       String versionLabel = '';
-      final versionMatch = RegExp(
-        r'[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$',
-        caseSensitive: false,
-      ).firstMatch(fileName);
+      final versionMatch = _apkVersionRegExp.firstMatch(fileName);
       if (versionMatch != null) {
         versionLabel = ' v${versionMatch.group(1)}';
       }

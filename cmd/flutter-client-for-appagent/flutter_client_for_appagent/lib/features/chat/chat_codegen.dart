@@ -601,11 +601,16 @@ extension _ChatPageStateCodegen on _ChatPageState {
 
   CodegenHistoryItem? _ensureCodegenHistoryForProcessMessage(
     ChatMessage message, {
-    String historyId = '',
-    String sessionId = '',
-    String requestId = '',
+    String? historyId,
+    String? sessionId,
+    String? requestId,
     CodegenLaunchMode? mode,
   }) {
+    final meta = message.meta ?? const <String, dynamic>{};
+    final effectiveHistoryId = (historyId ?? (meta['codegen_history_id'] ?? '').toString()).trim();
+    final effectiveSessionId = (sessionId ?? (meta['session_id'] ?? '').toString()).trim();
+    final effectiveRequestId = (requestId ?? (meta['request_id'] ?? '').toString()).trim();
+
     final resolvedMode =
         mode ??
         _codegenHistoryModeForProcessMessage(message) ??
@@ -615,41 +620,48 @@ extension _ChatPageStateCodegen on _ChatPageState {
     }
 
     final existing = _findActiveCodegenHistoryItem(
-      historyId: historyId,
-      sessionId: sessionId,
-      requestId: requestId,
+      historyId: effectiveHistoryId,
+      sessionId: effectiveSessionId,
+      requestId: effectiveRequestId,
       mode: resolvedMode,
     );
     if (existing != null) {
       return existing;
     }
 
-    final id = historyId.trim().isNotEmpty
-        ? historyId.trim()
+    final id = effectiveHistoryId.isNotEmpty
+        ? effectiveHistoryId
         : _newCodegenHistoryId();
     final command = _fallbackCodegenHistoryCommand(
       message,
-      sessionId: sessionId,
-      requestId: requestId,
+      sessionId: effectiveSessionId,
+      requestId: effectiveRequestId,
     );
     final item = CodegenHistoryItem(
       id: id,
       timestamp: message.timestamp,
       command: command,
       mode: resolvedMode,
-      requestId: requestId.trim(),
+      requestId: effectiveRequestId,
     );
     _mutateCodegenHistory(() {
       _codegenHistory.insert(0, item);
       if (_codegenHistory.length > 1000) {
-        _codegenHistory = _codegenHistory.take(1000).toList();
+        final locked = _codegenHistory.where((e) => e.locked).toList();
+        final unlocked = _codegenHistory.where((e) => !e.locked).toList();
+        if (unlocked.length > 1000 - locked.length) {
+          _codegenHistory = [
+            ...locked,
+            ...unlocked.sublist(0, 1000 - locked.length),
+          ];
+        }
       }
     });
     _publishCodegenHistory();
     _activeCodegenHistoryId = item.id;
     addFlutterClientLog(
       'CodegenHistory auto_create id=${item.id} mode=${item.mode.name} '
-      'session=${sessionId.trim()} request=${requestId.trim()}',
+      'session=$effectiveSessionId request=$effectiveRequestId',
     );
     unawaited(_persistCodegenPreferences());
     return item;
@@ -1273,9 +1285,6 @@ extension _ChatPageStateCodegen on _ChatPageState {
     if (!hasActiveTask) {
       final created = _ensureCodegenHistoryForProcessMessage(
         message,
-        historyId: (meta['codegen_history_id'] ?? '').toString().trim(),
-        sessionId: (meta['session_id'] ?? '').toString().trim(),
-        requestId: (meta['request_id'] ?? '').toString().trim(),
         mode: mode,
       );
       if (created == null) {

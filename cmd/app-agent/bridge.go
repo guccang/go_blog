@@ -18,6 +18,11 @@ import (
 	"uap"
 )
 
+var (
+	apkVersionRe      = regexp.MustCompile(`(?i)[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$`)
+	codegenRequestIDRe = regexp.MustCompile(`请求:\s*([A-Za-z0-9_\-:.]+)`)
+)
+
 // AppMessage is the message pushed from the app side to app-agent.
 type AppMessage struct {
 	UserID          string         `json:"user_id"`
@@ -463,8 +468,7 @@ func (b *Bridge) handleCortanaClientEvent(msg *AppMessage, content string) bool 
 func extractApkVersion(fileName string) string {
 	// Pattern: match version numbers like 1.0.0 or 2.3.4+5 before .apk extension
 	// (?i) makes the regex case-insensitive
-	re := regexp.MustCompile(`(?i)[-_](\d+\.\d+\.\d+(?:\+\d+)?)[^.]*\.apk$`)
-	matches := re.FindStringSubmatch(fileName)
+	matches := apkVersionRe.FindStringSubmatch(fileName)
 	if len(matches) >= 2 {
 		return matches[1]
 	}
@@ -1097,8 +1101,7 @@ func extractCodegenRequestID(content string) string {
 	if content == "" {
 		return ""
 	}
-	re := regexp.MustCompile(`请求:\s*([A-Za-z0-9_\-:.]+)`)
-	matches := re.FindStringSubmatch(content)
+	matches := codegenRequestIDRe.FindStringSubmatch(content)
 	if len(matches) < 2 {
 		return ""
 	}
@@ -1494,31 +1497,39 @@ func (b *Bridge) handleCodegenStreamEvent(msg *uap.Message) {
 	b.handleCodegenStreamEventPayload(payload, msg.From)
 }
 
+func (b *Bridge) resolveCodegenUser(account, sessionID, requestID string) (toUser string, routeHistoryID string) {
+	b.sessionMu.Lock()
+	defer b.sessionMu.Unlock()
+
+	if account != "" {
+		if sessionID != "" {
+			b.sessionUsers[sessionID] = account
+		}
+		return account, ""
+	}
+
+	toUser = b.sessionUsers[sessionID]
+	if toUser == "" {
+		if route, ok := b.requestRoutes[requestID]; ok {
+			toUser = route.UserID
+			routeHistoryID = route.HistoryID
+		}
+	}
+	if toUser != "" && sessionID != "" {
+		b.sessionUsers[sessionID] = toUser
+	}
+	return toUser, routeHistoryID
+}
+
 func (b *Bridge) handleCodegenStreamEventPayload(payload codegenStreamEvent, sourceAgent string) {
 	if payload.Event.Type == "thinking" {
 		payload.Event.Type = "thought"
 	}
 
-	toUser := ""
-	b.sessionMu.Lock()
-	if payload.Account != "" {
-		b.sessionUsers[payload.SessionID] = payload.Account
-		toUser = payload.Account
-	} else {
-		toUser = b.sessionUsers[payload.SessionID]
-		if toUser == "" {
-			if route, ok := b.requestRoutes[payload.RequestID]; ok {
-				toUser = route.UserID
-				if payload.HistoryID == "" {
-					payload.HistoryID = route.HistoryID
-				}
-			}
-		}
+	toUser, routeHistoryID := b.resolveCodegenUser(payload.Account, payload.SessionID, payload.RequestID)
+	if payload.HistoryID == "" && routeHistoryID != "" {
+		payload.HistoryID = routeHistoryID
 	}
-	if toUser != "" && payload.SessionID != "" {
-		b.sessionUsers[payload.SessionID] = toUser
-	}
-	b.sessionMu.Unlock()
 	if toUser == "" {
 		log.Printf("[Bridge] drop codegen stream without route source=%s request_id=%s session_id=%s event=%s",
 			sourceAgent, payload.RequestID, payload.SessionID, payload.Event.Type)
@@ -1576,21 +1587,11 @@ func (b *Bridge) handleCodegenTaskComplete(msg *uap.Message) {
 	}
 	b.eventMu.Unlock()
 
-	toUser := ""
-	b.sessionMu.Lock()
-	if payload.Account != "" {
-		toUser = payload.Account
-	} else {
-		toUser = b.sessionUsers[payload.SessionID]
-		if toUser == "" {
-			if route, ok := b.requestRoutes[payload.RequestID]; ok {
-				toUser = route.UserID
-				if payload.HistoryID == "" {
-					payload.HistoryID = route.HistoryID
-				}
-			}
-		}
+	toUser, routeHistoryID := b.resolveCodegenUser(payload.Account, payload.SessionID, payload.RequestID)
+	if payload.HistoryID == "" && routeHistoryID != "" {
+		payload.HistoryID = routeHistoryID
 	}
+	b.sessionMu.Lock()
 	delete(b.sessionUsers, payload.SessionID)
 	if payload.RequestID != "" {
 		delete(b.requestRoutes, payload.RequestID)
