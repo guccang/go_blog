@@ -373,10 +373,6 @@ func Init() int {
 	// English Learning Tracker route
 	h.HandleFunc("/english", HandleEnglishLearning)
 
-	// Skill routes
-	h.HandleFunc("/skill", HandleSkill)
-	RegisterSkillRoutes()
-
 	// Migration routes
 	h.HandleFunc("/migration", HandleMigration)
 	h.HandleFunc("/migration/export", HandleMigrationExport)
