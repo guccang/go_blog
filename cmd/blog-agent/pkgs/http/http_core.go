@@ -335,11 +335,6 @@ func Init() int {
 	h.HandleFunc("/api/advanced-reading-statistics", HandleAdvancedReadingStatisticsAPI)
 	h.HandleFunc("/api/export-reading-data", HandleExportReadingDataAPI)
 
-	// Life countdown routes
-	h.HandleFunc("/lifecountdown", HandleLifeCountdown)
-	h.HandleFunc("/api/lifecountdown", HandleLifeCountdownAPI)
-	h.HandleFunc("/api/lifecountdown/config", HandleLifeCountdownConfigAPI)
-
 	// Assistant routes
 	h.HandleFunc("/assistant", HandleAssistant)
 	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
