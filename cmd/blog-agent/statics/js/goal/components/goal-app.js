@@ -23,10 +23,26 @@ class GoalApp extends HTMLElement {
       </div>
     `;
 
+    // Toast 容器
+    const toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    this.appendChild(toastContainer);
+
     this.unsubs.push(
       store.on('level:changed', () => this.loadGoal()),
       store.on('period:changed', () => this.loadGoal()),
       store.on('view:changed', () => this.renderView()),
+      store.on('toast:show', ({ message, type }) => {
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        requestAnimationFrame(() => toast.classList.add('show'));
+        setTimeout(() => {
+          toast.classList.remove('show');
+          setTimeout(() => toast.remove(), 300);
+        }, 2500);
+      }),
     );
 
     // 初始化

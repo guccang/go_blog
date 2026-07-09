@@ -34,6 +34,10 @@ const store = {
     Object.assign(this.state, partial);
     this.dispatch('state:changed', this.state);
   },
+
+  showToast(message, type = 'info') {
+    this.dispatch('toast:show', { message, type });
+  },
 };
 
 export { store };

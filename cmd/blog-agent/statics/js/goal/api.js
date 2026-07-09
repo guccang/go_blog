@@ -1,9 +1,20 @@
 // statics/js/goal/api.js
+import { store } from './store.js';
+
 const api = {
   async _fetch(url, options = {}) {
-    const res = await fetch(url, options);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.success && data.message) {
+        store.showToast(data.message, 'error');
+      }
+      return data;
+    } catch (e) {
+      store.showToast(e.message, 'error');
+      throw e;
+    }
   },
 
   _post(url, body) {
