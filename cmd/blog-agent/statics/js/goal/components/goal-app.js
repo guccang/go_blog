@@ -48,6 +48,7 @@ class GoalApp extends HTMLElement {
     // 初始化
     const period = currentPeriod(store.state.level);
     store.setState({ period });
+    this.renderView();
     this.loadGoal();
   }
 
