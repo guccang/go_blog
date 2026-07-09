@@ -30,14 +30,6 @@
                 <i class="fas fa-flag-checkered"></i>
                 <span>目标管理</span>
             </a>
-            <a href="/monthgoal" class="nav-item">
-                <i class="fas fa-calendar-alt"></i>
-                <span>月度计划</span>
-            </a>
-            <a href="/yearplan" class="nav-item">
-                <i class="fas fa-calendar"></i>
-                <span>年度计划</span>
-            </a>
             <a href="/exercise" class="nav-item">
                 <i class="fas fa-dumbbell"></i>
                 <span>锻炼管理</span>
@@ -46,38 +38,14 @@
                 <i class="fas fa-book-open"></i>
                 <span>读书记录</span>
             </a>
-            <a href="/skill" class="nav-item">
-                <i class="fas fa-bullseye"></i>
-                <span>技能学习</span>
-            </a>
-            <a href="/taskbreakdown" class="nav-item">
-                <i class="fas fa-list-check"></i>
-                <span>任务拆解</span>
-            </a>
         </nav>
 
         <div class="sidebar-divider"></div>
 
         <nav class="sidebar-nav">
-            <a href="/statistics" class="nav-item">
-                <i class="fas fa-chart-bar"></i>
-                <span>访问统计</span>
-            </a>
             <a href="/tools" class="nav-item">
                 <i class="fas fa-toolbox"></i>
                 <span>实用工具</span>
-            </a>
-            <a href="/lifecountdown" class="nav-item">
-                <i class="fas fa-hourglass-half"></i>
-                <span>人生倒计时</span>
-            </a>
-            <a href="/agent" class="nav-item">
-                <i class="fas fa-robot"></i>
-                <span>Agent</span>
-            </a>
-            <a href="/codegen" class="nav-item">
-                <i class="fas fa-code"></i>
-                <span>编码助手</span>
             </a>
             <a href="/config" class="nav-item">
                 <i class="fas fa-gear"></i>
