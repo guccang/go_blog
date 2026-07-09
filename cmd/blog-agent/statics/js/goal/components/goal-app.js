@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { currentPeriod, PARENT_LEVEL } from '../utils.js';
 import './goal-tabs.js';
 import './period-nav.js';
+import './goal-detail.js';
 
 class GoalApp extends HTMLElement {
   constructor() {

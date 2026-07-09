@@ -47,4 +47,10 @@ function periodLabel(level, period) {
   }
 }
 
-export { LEVELS, LEVEL_LABELS, PRIORITY_LABELS, STATUS_LABELS, PARENT_LEVEL, today, currentPeriod, periodLabel };
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+export { LEVELS, LEVEL_LABELS, PRIORITY_LABELS, STATUS_LABELS, PARENT_LEVEL, escapeHtml, today, currentPeriod, periodLabel };
