@@ -27,8 +27,18 @@ class GoalOverview extends HTMLElement {
           <div class="parent-breadcrumb">
             <i class="fas fa-link"></i>
             <span>对齐到: ${escapeHtml(parentGoal.overview || parentGoal.period)}</span>
+            <button class="btn-icon-sm" data-action="clear-parent">✕</button>
           </div>
-        ` : ''}
+        ` : (store.state.level !== 'yearly' ? `
+          <div class="parent-selector">
+            <button class="btn-sm" data-action="show-parents">
+              <i class="fas fa-link"></i> 对齐上层目标
+            </button>
+            <div class="parent-dropdown hidden" id="parentDropdown">
+              <div class="parent-list"></div>
+            </div>
+          </div>
+        ` : '')}
         <div class="goal-header">
           <span class="goal-status ${statusClass}">${statusText}</span>
           <button class="btn-sm btn-toggle" data-action="toggle">${goal.status === 'completed' ? '重新开始' : '标记完成'}</button>
@@ -54,6 +64,36 @@ class GoalOverview extends HTMLElement {
     this.querySelector('[data-action="save"]')?.addEventListener('click', () => {
       const textarea = this.querySelector('.overview-input');
       api.saveGoal(goal.level, goal.period, textarea.value).then(() => {
+        store.dispatch('level:changed', goal.level);
+      });
+    });
+
+    this.querySelector('[data-action="show-parents"]')?.addEventListener('click', async () => {
+      const dropdown = this.querySelector('#parentDropdown');
+      dropdown.classList.toggle('hidden');
+      if (!dropdown.classList.contains('hidden')) {
+        const res = await api.getParentGoals(goal.level, goal.period);
+        if (res.success && res.data) {
+          const list = dropdown.querySelector('.parent-list');
+          list.innerHTML = res.data.map(g => `
+            <div class="parent-option" data-id="${g.level}|${g.period}">
+              <span class="parent-level">${g.level}</span>
+              <span>${g.overview || g.period}</span>
+            </div>
+          `).join('');
+          list.querySelectorAll('.parent-option').forEach(opt =>
+            opt.addEventListener('click', () => {
+              api.saveGoal(goal.level, goal.period, undefined, undefined, opt.dataset.id).then(() => {
+                store.dispatch('level:changed', goal.level);
+              });
+            })
+          );
+        }
+      }
+    });
+
+    this.querySelector('[data-action="clear-parent"]')?.addEventListener('click', () => {
+      api.saveGoal(goal.level, goal.period, undefined, undefined, '').then(() => {
         store.dispatch('level:changed', goal.level);
       });
     });

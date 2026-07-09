@@ -380,6 +380,38 @@ body {
 }
 
 /* 响应式 */
+/* Parent selector */
+.parent-selector { margin-bottom: 12px; position: relative; }
+.parent-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--goal-card);
+  border: 1px solid var(--goal-border);
+  border-radius: var(--goal-radius);
+  margin-top: 4px;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.parent-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+.parent-option:hover { background: var(--goal-card-hover); }
+.parent-level {
+  font-size: 10px;
+  background: var(--goal-accent);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.hidden { display: none; }
+
 @media (max-width: 640px) {
   .goal-container { padding: 16px 12px; }
   .goal-tabs { flex-direction: column; }
