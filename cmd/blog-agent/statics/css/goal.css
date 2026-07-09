@@ -459,6 +459,50 @@ body {
 .empty-state { text-align: center; padding: 40px; color: var(--goal-text-muted); }
 .loading { text-align: center; padding: 40px; color: var(--goal-text-muted); }
 
+/* Review */
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.review-header h3 { font-size: 16px; }
+.review-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--goal-text-muted);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--goal-border);
+}
+.review-content {
+  font-size: 14px;
+  line-height: 1.8;
+}
+.review-content h2, .review-content h3, .review-content h4 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.review-content li {
+  margin-left: 16px;
+  list-style: none;
+}
+.review-textarea {
+  width: 100%;
+  background: var(--goal-bg);
+  border: 1px solid var(--goal-border);
+  color: var(--goal-text);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  resize: vertical;
+  line-height: 1.6;
+}
+.review-textarea:focus { outline: none; border-color: var(--goal-accent); }
+.review-modal { max-width: 640px; }
+
 @media (max-width: 640px) {
   .goal-container { padding: 16px 12px; }
   .goal-tabs { flex-direction: column; }

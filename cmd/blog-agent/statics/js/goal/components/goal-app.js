@@ -6,6 +6,7 @@ import './goal-tabs.js';
 import './period-nav.js';
 import './goal-detail.js';
 import './goal-list.js';
+import './review-panel.js';
 
 class GoalApp extends HTMLElement {
   constructor() {
