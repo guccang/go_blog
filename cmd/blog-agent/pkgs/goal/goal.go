@@ -22,26 +22,45 @@ const (
 // Goal represents a unified goal at any level (daily/weekly/monthly/yearly)
 type Goal struct {
 	ID        string `json:"id"`
-	Level     string `json:"level"`      // daily, weekly, monthly, yearly
-	Period    string `json:"period"`     // 2026-05-02, 2026-W18, 2026-05, 2026
-	Overview  string `json:"overview"`   // main goal description
-	Judge     string `json:"judge,omitempty"` // 客观完成判据（独立判官评审依据，防"乐观停止"）
-	Tasks     []Task `json:"tasks"`      // sub-tasks
-	Progress  int    `json:"progress"`   // 0-100, auto-calculated from tasks
-	Status    string `json:"status"`     // active, completed, archived
+	Level     string `json:"level"`
+	Period    string `json:"period"`
+	ParentID  string `json:"parent_id,omitempty"` // OKR 对齐
+	Overview  string `json:"overview"`
+	Judge     string `json:"judge,omitempty"`
+	Tasks     []Task `json:"tasks"`
+	Progress  int    `json:"progress"`
+	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
 // Task represents a sub-task within a goal
 type Task struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Status      string `json:"status"`   // pending, in_progress, completed, cancelled
-	Priority    string `json:"priority"` // low, medium, high
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID            string     `json:"id"`
+	Title         string     `json:"title"`
+	Description   string     `json:"description,omitempty"`
+	Status        string     `json:"status"`   // pending, in_progress, completed, cancelled
+	Priority      string     `json:"priority"` // low, medium, high
+	Deadline      string     `json:"deadline,omitempty"`       // YYYY-MM-DD
+	EstimateHours float64    `json:"estimate_hours,omitempty"`
+	Subtasks      []Subtask  `json:"subtasks,omitempty"`
+	Notes         []TaskNote `json:"notes,omitempty"`
+	CreatedAt     string     `json:"created_at"`
+	UpdatedAt     string     `json:"updated_at"`
+}
+
+// Subtask represents a checkable sub-item within a Task
+type Subtask struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"` // pending, completed
+}
+
+// TaskNote represents a note attached to a Task
+type TaskNote struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
 }
 
 // GoalSummary provides a lightweight summary for cortana-friendly access
@@ -55,6 +74,18 @@ type GoalSummary struct {
 	DoneTasks  int    `json:"done_tasks"`
 	PendingTasks int  `json:"pending_tasks"`
 	Status     string `json:"status"`
+}
+
+// Review represents a periodic review of goals at a given level
+type Review struct {
+	ID        string `json:"id"`
+	Level     string `json:"level"`     // weekly, monthly
+	Period    string `json:"period"`
+	Content   string `json:"content"`   // markdown
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // CurrentPeriods returns current period identifiers for all levels
@@ -81,6 +112,14 @@ func goalTitle(level, period string) string {
 
 func tagForLevel(level string) string {
 	return "目标_" + level
+}
+
+func parentGoalTitle(level, period string) string {
+	return fmt.Sprintf("目标_%s_%s", level, period)
+}
+
+func reviewTitle(level, period string) string {
+	return fmt.Sprintf("回顾_%s_%s", level, period)
 }
 
 // ============================================================================
@@ -409,6 +448,156 @@ func newGoal(level, period string) *Goal {
 		CreatedAt: time.Now().Format("2006-01-02 15:04:05"),
 		UpdatedAt: time.Now().Format("2006-01-02 15:04:05"),
 	}
+}
+
+// GetParentGoals returns goals from the parent level for OKR alignment
+func GetParentGoals(account, level, period string) ([]*GoalSummary, error) {
+	if level == LevelYearly {
+		return nil, nil // 年目标没有父级
+	}
+
+	parentLevels := map[string]string{
+		LevelDaily:   LevelWeekly,
+		LevelWeekly:  LevelMonthly,
+		LevelMonthly: LevelYearly,
+	}
+
+	parentLevel := parentLevels[level]
+	var candidates []*GoalSummary
+
+	for _, b := range blog.GetBlogsWithAccount(account) {
+		if !strings.Contains(b.Title, "目标_"+parentLevel) {
+			continue
+		}
+		var goal Goal
+		if err := json.Unmarshal([]byte(b.Content), &goal); err != nil {
+			continue
+		}
+		if goal.Status == "archived" {
+			continue
+		}
+		candidates = append(candidates, goal.Summary())
+	}
+	return candidates, nil
+}
+
+// AddTaskNote adds a note to a specific task within a goal
+func AddTaskNote(account, level, period, taskID, content string) error {
+	goal, err := GetGoal(account, level, period)
+	if err != nil {
+		return err
+	}
+
+	for i, t := range goal.Tasks {
+		if t.ID == taskID {
+			note := TaskNote{
+				ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+				Content:   content,
+				CreatedAt: time.Now().Format("2006-01-02 15:04:05"),
+			}
+			goal.Tasks[i].Notes = append(goal.Tasks[i].Notes, note)
+			return SaveGoal(account, goal)
+		}
+	}
+	return fmt.Errorf("task %s not found", taskID)
+}
+
+// GetReview retrieves a review blog entry
+func GetReview(account, level, period string) (*Review, error) {
+	title := reviewTitle(level, period)
+	b := blog.GetBlogWithAccount(account, title)
+	if b == nil {
+		return nil, nil
+	}
+	var review Review
+	if err := json.Unmarshal([]byte(b.Content), &review); err != nil {
+		return nil, fmt.Errorf("failed to parse review: %w", err)
+	}
+	return &review, nil
+}
+
+// SaveReview persists a review to the blog system
+func SaveReview(account string, review *Review) error {
+	review.UpdatedAt = time.Now().Format("2006-01-02 15:04:05")
+	if review.CreatedAt == "" {
+		review.CreatedAt = review.UpdatedAt
+	}
+
+	title := reviewTitle(review.Level, review.Period)
+	content, err := json.MarshalIndent(review, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal review: %w", err)
+	}
+
+	udb := &module.UploadedBlogData{
+		Title:    title,
+		Content:  string(content),
+		AuthType: module.EAuthType_private,
+		Tags:     "回顾_" + review.Level,
+		Encrypt:  0,
+		Account:  account,
+	}
+
+	existing := blog.GetBlogWithAccount(account, title)
+	if existing != nil {
+		blog.ModifyBlogWithAccount(account, udb)
+	} else {
+		blog.AddBlogWithAccount(account, udb)
+	}
+	return nil
+}
+
+// GenerateReview creates a review draft from a goal's task status
+func GenerateReview(account, level, period string) (*Review, error) {
+	goal, err := GetGoal(account, level, period)
+	if err != nil {
+		return nil, err
+	}
+
+	completed := 0
+	for _, t := range goal.Tasks {
+		if t.Status == "completed" {
+			completed++
+		}
+	}
+
+	total := len(goal.Tasks)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# %s 回顾\n\n", periodLabel(level, period)))
+	sb.WriteString(fmt.Sprintf("## 完成情况\n\n"))
+	sb.WriteString(fmt.Sprintf("- 总任务: %d\n", total))
+	sb.WriteString(fmt.Sprintf("- 已完成: %d\n", completed))
+	sb.WriteString(fmt.Sprintf("- 完成率: %d%%\n\n", goal.Progress))
+	sb.WriteString("## 任务详情\n\n")
+	for _, t := range goal.Tasks {
+		icon := "[ ]"
+		if t.Status == "completed" {
+			icon = "[x]"
+		}
+		sb.WriteString(fmt.Sprintf("- %s %s\n", icon, t.Title))
+	}
+	sb.WriteString("\n## 总结反思\n\n")
+
+	review := &Review{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Level:     level,
+		Period:    period,
+		Content:   sb.String(),
+		Completed: completed,
+		Total:     total,
+	}
+	return review, nil
+}
+
+func periodLabel(level, period string) string {
+	switch level {
+	case LevelWeekly:
+		year, week, _ := parseISOWeek(period)
+		return fmt.Sprintf("%d年第%d周", year, week)
+	case LevelMonthly:
+		return period + "月"
+	}
+	return period
 }
 
 // Info prints module info
