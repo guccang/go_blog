@@ -59,9 +59,6 @@ var publicToolNames = map[string]struct{}{
 	"RawUpdateProjectKeyResult": {},
 	"RawGetProjectSummary":      {},
 
-	// YearPlan
-	"RawGetMonthGoal": {},
-	"RawGetYearGoals": {},
 
 	// Goal 统一目标管理
 	"RawGetGoal":         {},

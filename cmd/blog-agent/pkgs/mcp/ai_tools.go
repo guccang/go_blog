@@ -53,17 +53,6 @@ func Inner_blog_RawSmartDailySummary(arguments map[string]interface{}) string {
 		sections = append(sections, fmt.Sprintf("## 📖 正在阅读\n%s", readingResult))
 	}
 
-	// 4. 年度目标（当月）
-	year := time.Now().Year()
-	month := int(time.Now().Month())
-	monthGoalResult := CallInnerTools("RawGetMonthGoal", map[string]interface{}{
-		"account": account,
-		"year":    year,
-		"month":   month,
-	})
-	if monthGoalResult != "" && !strings.Contains(monthGoalResult, "error") {
-		sections = append(sections, fmt.Sprintf("## 🎯 本月目标 (%d年%d月)\n%s", year, month, monthGoalResult))
-	}
 
 	if len(sections) == 0 {
 		return fmt.Sprintf(`{"date":"%s","summary":"暂无数据"}`, date)
@@ -131,20 +120,11 @@ func Inner_blog_RawTodoGoalAlignment(arguments map[string]interface{}) string {
 		"date":    date,
 	})
 
-	// 获取本月目标
-	year := time.Now().Year()
-	month := int(time.Now().Month())
-	monthGoals := CallInnerTools("RawGetMonthGoal", map[string]interface{}{
-		"account": account,
-		"year":    year,
-		"month":   month,
-	})
 
 	result := map[string]interface{}{
-		"date":        date,
-		"todos":       todos,
-		"month_goals": monthGoals,
-		"instruction": "请对比今日待办与本月目标，分析对齐度。指出哪些待办直接支持月度目标，哪些待办与目标无关，以及有没有被忽略的目标。",
+		"date":  date,
+		"todos": todos,
+		"instruction": "请分析今日待办事项。",
 	}
 	jsonBytes, _ := json.Marshal(result)
 	return string(jsonBytes)
