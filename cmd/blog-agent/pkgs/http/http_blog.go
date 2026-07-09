@@ -318,11 +318,9 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 检查是否是 yearplan 博客，如果是则重定向到 yearplan 页面
+	// 检查是否是 yearplan 博客，如果是则重定向到 goal 页面
 	if strings.HasPrefix(blogname, "年计划_") {
-		// 重定向到yearplan页面，并传递date参数
-		date := strings.TrimPrefix(blogname, "年计划_")
-		h.Redirect(w, r, fmt.Sprintf("/yearplan?year=%s", date), 302)
+		h.Redirect(w, r, "/goal", 302)
 		return
 	}
 
@@ -341,21 +339,9 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 检查是否是 月度目标 博客，如果是则重定向到 monthgoal 页面
+	// 检查是否是 月度目标 博客，如果是则重定向到 goal 页面
 	if strings.HasPrefix(blogname, "月度目标_") {
-		// 从blogname中解析出年月，格式为月度目标_YYYY-MM
-		yearMonth := strings.TrimPrefix(blogname, "月度目标_")
-		// 验证年月格式是否正确
-		if len(yearMonth) == 7 && yearMonth[4] == '-' {
-			// 解析年份和月份
-			year := yearMonth[:4]
-			month := yearMonth[5:]
-			// 重定向到monthgoal页面，并传递year和month参数
-			h.Redirect(w, r, fmt.Sprintf("/monthgoal?year=%s&month=%s", year, month), 302)
-			return
-		}
-		// 如果格式不正确，则使用默认重定向
-		h.Redirect(w, r, "/monthgoal", 302)
+		h.Redirect(w, r, "/goal", 302)
 		return
 	}
 

@@ -35,7 +35,7 @@ class TaskItem extends HTMLElement {
       const updated = { ...this._task, status: e.target.checked ? 'completed' : 'pending' };
       api.updateTask(goal.level, goal.period, this._task.id, updated).then(() => {
         store.dispatch('level:changed', goal.level);
-      });
+      }).catch(err => console.error('Operation failed:', err));
     });
 
     this.querySelector('[data-action="edit-title"]')?.addEventListener('dblclick', () => this._inlineEdit());
@@ -51,7 +51,7 @@ class TaskItem extends HTMLElement {
       if (confirm('确定删除该任务？')) {
         api.deleteTask(goal.level, goal.period, this._task.id).then(() => {
           store.dispatch('level:changed', goal.level);
-        });
+        }).catch(err => console.error('Operation failed:', err));
       }
     });
 
@@ -114,7 +114,7 @@ class TaskItem extends HTMLElement {
         const updated = { ...this._task, title: val };
         api.updateTask(goal.level, goal.period, this._task.id, updated).then(() => {
           store.dispatch('level:changed', goal.level);
-        });
+        }).catch(err => console.error('Operation failed:', err));
       } else {
         this.render();
       }
@@ -124,38 +124,50 @@ class TaskItem extends HTMLElement {
   }
 
   async _toggleSubtask(e) {
-    const { goal } = store.state;
-    const sid = e.target.dataset.id;
-    const subtasks = (this._task.subtasks || []).map(s =>
-      s.id === sid ? { ...s, status: e.target.checked ? 'completed' : 'pending' } : s
-    );
-    const updated = { ...this._task, subtasks };
-    await api.updateTask(goal.level, goal.period, this._task.id, updated);
-    store.dispatch('level:changed', goal.level);
+    try {
+      const { goal } = store.state;
+      const sid = e.target.dataset.id;
+      const subtasks = (this._task.subtasks || []).map(s =>
+        s.id === sid ? { ...s, status: e.target.checked ? 'completed' : 'pending' } : s
+      );
+      const updated = { ...this._task, subtasks };
+      await api.updateTask(goal.level, goal.period, this._task.id, updated);
+      store.dispatch('level:changed', goal.level);
+    } catch (err) {
+      console.error('Operation failed:', err);
+    }
   }
 
   async _addSubtask() {
-    const input = this.querySelector('.subtask-input');
-    const val = input.value.trim();
-    if (!val) return;
-    const { goal } = store.state;
-    const subtasks = [...(this._task.subtasks || []), {
-      id: Date.now().toString(),
-      title: val,
-      status: 'pending',
-    }];
-    const updated = { ...this._task, subtasks };
-    await api.updateTask(goal.level, goal.period, this._task.id, updated);
-    store.dispatch('level:changed', goal.level);
+    try {
+      const input = this.querySelector('.subtask-input');
+      const val = input.value.trim();
+      if (!val) return;
+      const { goal } = store.state;
+      const subtasks = [...(this._task.subtasks || []), {
+        id: Date.now().toString(),
+        title: val,
+        status: 'pending',
+      }];
+      const updated = { ...this._task, subtasks };
+      await api.updateTask(goal.level, goal.period, this._task.id, updated);
+      store.dispatch('level:changed', goal.level);
+    } catch (err) {
+      console.error('Operation failed:', err);
+    }
   }
 
   async _addNote() {
-    const input = this.querySelector('.note-input');
-    const val = input.value.trim();
-    if (!val) return;
-    const { goal } = store.state;
-    await api.addTaskNote(goal.level, goal.period, this._task.id, val);
-    store.dispatch('level:changed', goal.level);
+    try {
+      const input = this.querySelector('.note-input');
+      const val = input.value.trim();
+      if (!val) return;
+      const { goal } = store.state;
+      await api.addTaskNote(goal.level, goal.period, this._task.id, val);
+      store.dispatch('level:changed', goal.level);
+    } catch (err) {
+      console.error('Operation failed:', err);
+    }
   }
 }
 

@@ -34,10 +34,16 @@ class ReviewEditor extends HTMLElement {
     this.querySelector('[data-action="save"]')?.addEventListener('click', async () => {
       const content = this.querySelector('.review-textarea').value;
       store.setState({ loading: true });
-      await api.saveReview(level, period, content);
-      const res = await api.getReview(level, period);
-      store.setState({ review: res.data, loading: false });
-      this.hide();
+      try {
+        const currentReview = store.state.review;
+        await api.saveReview(level, period, content, currentReview?.completed, currentReview?.total);
+        const res = await api.getReview(level, period);
+        store.setState({ review: res.data, loading: false });
+        this.hide();
+      } catch (err) {
+        console.error('Operation failed:', err);
+        store.setState({ loading: false });
+      }
     });
   }
 }

@@ -50,7 +50,7 @@ class TaskList extends HTMLElement {
       if (confirm(`确定删除该目标及其所有任务？此操作不可恢复。`)) {
         api.deleteGoal(goal.level, goal.period).then(() => {
           store.dispatch('level:changed', goal.level);
-        });
+        }).catch(err => console.error('Operation failed:', err));
       }
     });
   }
@@ -61,15 +61,19 @@ class TaskList extends HTMLElement {
     if (!title) return;
     const priority = this.querySelector('#newTaskPriority').value;
     const { goal } = store.state;
-    await api.addTask(goal.level, goal.period, {
-      title,
-      priority,
-      status: 'pending',
-      subtasks: [],
-      notes: [],
-    });
-    input.value = '';
-    store.dispatch('level:changed', goal.level);
+    try {
+      await api.addTask(goal.level, goal.period, {
+        title,
+        priority,
+        status: 'pending',
+        subtasks: [],
+        notes: [],
+      });
+      input.value = '';
+      store.dispatch('level:changed', goal.level);
+    } catch (err) {
+      console.error('Operation failed:', err);
+    }
   }
 }
 

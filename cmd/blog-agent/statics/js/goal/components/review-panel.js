@@ -1,7 +1,7 @@
 // statics/js/goal/components/review-panel.js
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { periodLabel } from '../utils.js';
+import { periodLabel, escapeHtml } from '../utils.js';
 import './review-editor.js';
 
 class ReviewPanel extends HTMLElement {
@@ -56,10 +56,15 @@ class ReviewPanel extends HTMLElement {
 
     this.querySelector('[data-action="generate"]')?.addEventListener('click', async () => {
       store.setState({ loading: true });
-      const res = await api.generateReview(level, period);
-      if (res.success && res.data) {
-        store.setState({ review: res.data, loading: false });
-      } else {
+      try {
+        const res = await api.generateReview(level, period);
+        if (res.success && res.data) {
+          store.setState({ review: res.data, loading: false });
+        } else {
+          store.setState({ loading: false });
+        }
+      } catch (err) {
+        console.error('Operation failed:', err);
         store.setState({ loading: false });
       }
     });
@@ -71,7 +76,7 @@ class ReviewPanel extends HTMLElement {
   }
 
   _renderMarkdown(text) {
-    return text
+    return escapeHtml(text)
       .replace(/^### (.*$)/gm, '<h4>$1</h4>')
       .replace(/^## (.*$)/gm, '<h3>$1</h3>')
       .replace(/^# (.*$)/gm, '<h2>$1</h2>')

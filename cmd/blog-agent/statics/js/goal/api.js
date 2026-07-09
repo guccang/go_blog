@@ -65,8 +65,11 @@ const api = {
     return this._fetch(`/api/goal/review?level=${level}&period=${period}`);
   },
 
-  saveReview(level, period, content) {
-    return this._post('/api/goal/review/save', { level, period, content });
+  saveReview(level, period, content, completed, total) {
+    const body = { level, period, content };
+    if (completed !== undefined) body.completed = completed;
+    if (total !== undefined) body.total = total;
+    return this._post('/api/goal/review/save', body);
   },
 
   generateReview(level, period) {

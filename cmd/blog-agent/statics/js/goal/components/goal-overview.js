@@ -26,7 +26,7 @@ class GoalOverview extends HTMLElement {
         ${parentGoal ? `
           <div class="parent-breadcrumb">
             <i class="fas fa-link"></i>
-            <span>对齐到: ${escapeHtml(parentGoal.overview || parentGoal.period)}</span>
+            <span style="cursor:pointer">对齐到: ${escapeHtml(parentGoal.overview || parentGoal.period)}</span>
             <button class="btn-icon-sm" data-action="clear-parent">✕</button>
           </div>
         ` : (store.state.level !== 'yearly' ? `
@@ -58,36 +58,40 @@ class GoalOverview extends HTMLElement {
       const newStatus = goal.status === 'completed' ? 'active' : 'completed';
       api.saveGoal(goal.level, goal.period, undefined, newStatus).then(() => {
         store.dispatch('level:changed', goal.level);
-      });
+      }).catch(err => console.error('Operation failed:', err));
     });
 
     this.querySelector('[data-action="save"]')?.addEventListener('click', () => {
       const textarea = this.querySelector('.overview-input');
       api.saveGoal(goal.level, goal.period, textarea.value).then(() => {
         store.dispatch('level:changed', goal.level);
-      });
+      }).catch(err => console.error('Operation failed:', err));
     });
 
     this.querySelector('[data-action="show-parents"]')?.addEventListener('click', async () => {
       const dropdown = this.querySelector('#parentDropdown');
       dropdown.classList.toggle('hidden');
       if (!dropdown.classList.contains('hidden')) {
-        const res = await api.getParentGoals(goal.level, goal.period);
-        if (res.success && res.data) {
-          const list = dropdown.querySelector('.parent-list');
-          list.innerHTML = res.data.map(g => `
-            <div class="parent-option" data-id="${g.level}|${g.period}">
-              <span class="parent-level">${g.level}</span>
-              <span>${g.overview || g.period}</span>
-            </div>
-          `).join('');
-          list.querySelectorAll('.parent-option').forEach(opt =>
-            opt.addEventListener('click', () => {
-              api.saveGoal(goal.level, goal.period, undefined, undefined, opt.dataset.id).then(() => {
-                store.dispatch('level:changed', goal.level);
-              });
-            })
-          );
+        try {
+          const res = await api.getParentGoals(goal.level, goal.period);
+          if (res.success && res.data) {
+            const list = dropdown.querySelector('.parent-list');
+            list.innerHTML = res.data.map(g => `
+              <div class="parent-option" data-id="${g.level}|${g.period}">
+                <span class="parent-level">${g.level}</span>
+                <span>${g.overview || g.period}</span>
+              </div>
+            `).join('');
+            list.querySelectorAll('.parent-option').forEach(opt =>
+              opt.addEventListener('click', () => {
+                api.saveGoal(goal.level, goal.period, undefined, undefined, opt.dataset.id).then(() => {
+                  store.dispatch('level:changed', goal.level);
+                }).catch(err => console.error('Operation failed:', err));
+              })
+            );
+          }
+        } catch (err) {
+          console.error('Operation failed:', err);
         }
       }
     });
@@ -95,7 +99,14 @@ class GoalOverview extends HTMLElement {
     this.querySelector('[data-action="clear-parent"]')?.addEventListener('click', () => {
       api.saveGoal(goal.level, goal.period, undefined, undefined, '').then(() => {
         store.dispatch('level:changed', goal.level);
-      });
+      }).catch(err => console.error('Operation failed:', err));
+    });
+
+    this.querySelector('.parent-breadcrumb span')?.addEventListener('click', () => {
+      if (parentGoal) {
+        store.setState({ level: parentGoal.level, period: parentGoal.period, view: 'detail' });
+        store.dispatch('level:changed', parentGoal.level);
+      }
     });
   }
 }

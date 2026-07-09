@@ -486,7 +486,12 @@ func HandleAddTaskNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to read request body"})
+		return
+	}
 	var req struct {
 		Level   string `json:"level"`
 		Period  string `json:"period"`
@@ -537,28 +542,52 @@ func HandleSaveReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to read request body"})
+		return
+	}
 	var req struct {
-		Level   string `json:"level"`
-		Period  string `json:"period"`
-		Content string `json:"content"`
+		Level     string `json:"level"`
+		Period    string `json:"period"`
+		Content   string `json:"content"`
+		Completed int    `json:"completed"`
+		Total     int    `json:"total"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid JSON"})
 		return
 	}
 
 	account := getAccount(r)
-	review, _ := GetReview(account, req.Level, req.Period)
-	if review == nil {
-		review = &Review{
-			ID:    fmt.Sprintf("%d", time.Now().UnixNano()),
-			Level: req.Level, Period: req.Period,
-		}
+	existing, err := GetReview(account, req.Level, req.Period)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": err.Error()})
+		return
 	}
-	review.Content = req.Content
+	if existing == nil {
+		review := &Review{
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			Level:     req.Level,
+			Period:    req.Period,
+			Content:   req.Content,
+			Completed: req.Completed,
+			Total:     req.Total,
+		}
+		if err := SaveReview(account, review); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		return
+	}
 
-	if err := SaveReview(account, review); err != nil {
+	existing.Content = req.Content
+	if err := SaveReview(account, existing); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": err.Error()})
 		return
@@ -574,12 +603,21 @@ func HandleGenerateReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Failed to read request body"})
+		return
+	}
 	var req struct {
 		Level  string `json:"level"`
 		Period string `json:"period"`
 	}
-	json.Unmarshal(body, &req)
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid JSON"})
+		return
+	}
 
 	account := getAccount(r)
 	review, err := GenerateReview(account, req.Level, req.Period)
