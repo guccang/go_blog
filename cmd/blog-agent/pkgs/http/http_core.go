@@ -266,30 +266,6 @@ func Init() int {
 	h.HandleFunc("/api/goals/current", goalpkg.HandleGetCurrentGoals)
 	h.HandleFunc("/api/goals", goalpkg.HandleListGoals)
 
-	// [Phase 3] Legacy year plan / month goal routes 已屏蔽，统一使用 goal
-	// h.HandleFunc("/yearplan", HandleYearPlan)
-	// h.HandleFunc("/monthgoal", HandleMonthGoal)
-	// h.HandleFunc("/api/getplan", yearplan.HandleGetPlan)
-	// h.HandleFunc("/api/saveplan", yearplan.HandleSavePlan)
-	// h.HandleFunc("/api/monthgoal", yearplan.HandleGetMonthGoal)
-	// h.HandleFunc("/api/savemonthgoal", yearplan.HandleSaveMonthGoal)
-	// h.HandleFunc("/api/weekgoal", yearplan.HandleGetWeekGoal)
-	// h.HandleFunc("/api/saveweekgoal", yearplan.HandleSaveWeekGoal)
-	// h.HandleFunc("/api/addtask", yearplan.HandleAddTask)
-	// h.HandleFunc("/api/updatetask", yearplan.HandleUpdateTask)
-	// h.HandleFunc("/api/deletetask", yearplan.HandleDeleteTask)
-	// h.HandleFunc("/api/monthgoals", yearplan.HandleGetMonthGoals)
-
-	// [Phase 3] Statistics routes 已屏蔽
-	// h.HandleFunc("/statistics", HandleStatistics)
-	// h.HandleFunc("/api/statistics", HandleStatisticsAPI)
-
-	// [Phase 3] Project management routes 已屏蔽
-	// h.HandleFunc("/api/projects", projectmgmt.HandleProjects)
-	// h.HandleFunc("/api/projects/summary", projectmgmt.HandleProjectSummary)
-	// h.HandleFunc("/api/projects/goals", projectmgmt.HandleProjectGoals)
-	// h.HandleFunc("/api/projects/okrs", projectmgmt.HandleProjectOKRs)
-	// h.HandleFunc("/api/projects/key-results", projectmgmt.HandleProjectKeyResults)
 
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)

@@ -113,19 +113,6 @@ type TodolistData struct {
 	DATE string
 }
 
-// YearPlanData contains data for rendering the year plan template
-type YearPlanData struct {
-	YEAR          int
-	YEAR_OVERVIEW string
-	MONTH_PLANS   []string
-}
-
-// MonthGoalData contains data for rendering the month goal template
-type MonthGoalData struct {
-	CURRENT_YEAR  int
-	CURRENT_MONTH int
-}
-
 func Notify(msg string, w h.ResponseWriter) {
 	tmpDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "notify.template"))
@@ -694,30 +681,6 @@ func PageSkill(w h.ResponseWriter) {
 	}
 }
 
-// PageYearPlan renders the year plan page
-func PageYearPlan(w h.ResponseWriter, year int) {
-	tmpDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "yearplan.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse yearplan template", h.StatusInternalServerError)
-		return
-	}
-
-	// Initialize data with just the year
-	data := YearPlanData{
-		YEAR:        year,
-		MONTH_PLANS: make([]string, 12), // Initialize with 12 empty strings for months
-	}
-
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render yearplan template", h.StatusInternalServerError)
-		return
-	}
-}
-
 // PageGoal renders the unified goal management page
 func PageGoal(w h.ResponseWriter) {
 	tmpDir := config.GetHttpTemplatePath()
@@ -732,30 +695,6 @@ func PageGoal(w h.ResponseWriter) {
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render goal template", h.StatusInternalServerError)
-		return
-	}
-}
-
-// PageMonthGoal renders the month goal page
-func PageMonthGoal(w h.ResponseWriter, year int, month int) {
-	tmpDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "monthgoal.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse monthgoal template", h.StatusInternalServerError)
-		return
-	}
-
-	// Initialize data with current year and month
-	data := MonthGoalData{
-		CURRENT_YEAR:  year,
-		CURRENT_MONTH: month,
-	}
-
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render monthgoal template", h.StatusInternalServerError)
 		return
 	}
 }

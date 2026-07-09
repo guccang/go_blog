@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	log "mylog"
 	h "net/http"
-	"strconv"
 	"time"
 	"view"
 )
@@ -30,52 +29,6 @@ func HandleTodolist(w h.ResponseWriter, r *h.Request) {
 	}
 
 	view.PageTodolist(w, date)
-}
-
-// HandleYearPlan renders the year plan page
-func HandleYearPlan(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleYearPlan", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-
-	// Get the current year
-	year := r.URL.Query().Get("year")
-	// string to int
-	yearInt, err := strconv.Atoi(year)
-	if err != nil {
-		yearInt = time.Now().Year()
-	}
-
-	// Render the yearplan template
-	view.PageYearPlan(w, yearInt)
-}
-
-// HandleMonthGoal renders the month goal page
-func HandleMonthGoal(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleMonthGoal", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-
-	// Get the current year and month
-	year := r.URL.Query().Get("year")
-	month := r.URL.Query().Get("month")
-
-	yearInt, err := strconv.Atoi(year)
-	if err != nil {
-		yearInt = time.Now().Year()
-	}
-
-	monthInt, err := strconv.Atoi(month)
-	if err != nil {
-		monthInt = int(time.Now().Month())
-	}
-
-	// Render the monthgoal template
-	view.PageMonthGoal(w, yearInt, monthInt)
 }
 
 // HandleGoal renders the unified goal management page

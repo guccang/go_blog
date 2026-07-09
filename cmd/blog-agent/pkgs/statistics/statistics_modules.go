@@ -10,7 +10,6 @@ import (
 	"taskbreakdown"
 	"time"
 	"todolist"
-	"yearplan"
 )
 
 // =================================== TodoList Raw 接口 =========================================
@@ -345,76 +344,6 @@ func RawGetBookNotes(account, bookID string) string {
 	}
 	data, _ := json.Marshal(result)
 	return string(data)
-}
-
-// =================================== YearPlan Raw 接口 =========================================
-
-// RawGetMonthGoal 获取月度目标
-func RawGetMonthGoal(account string, year, month int) string {
-	goal, err := yearplan.GetMonthGoalWithAccount(account, year, month)
-	if err != nil {
-		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
-	}
-	data, _ := json.Marshal(goal)
-	return string(data)
-}
-
-// RawGetYearGoals 获取年度所有月目标
-func RawGetYearGoals(account string, year int) string {
-	goals, err := yearplan.GetMonthGoalsWithAccount(account, year)
-	if err != nil {
-		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
-	}
-	data, _ := json.Marshal(goals)
-	return string(data)
-}
-
-// RawAddYearTask 添加计划任务
-func RawAddYearTask(account string, year, month int, title, description, priority, dueDate string) string {
-	task := yearplan.Task{
-		Title:       title,
-		Description: description,
-		Status:      "planning",
-		Priority:    priority,
-		DueDate:     dueDate,
-		CreatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-		UpdatedAt:   time.Now().Format("2006-01-02 15:04:05"),
-	}
-	err := yearplan.AddTaskWithAccount(account, year, month, task)
-	if err != nil {
-		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
-	}
-	return `{"success": true}`
-}
-
-// RawUpdateYearTask 更新任务状态
-func RawUpdateYearTask(account string, year, month int, taskID, status string) string {
-	goal, err := yearplan.GetMonthGoalWithAccount(account, year, month)
-	if err != nil {
-		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
-	}
-
-	var updatedTask yearplan.Task
-	found := false
-	for _, t := range goal.Tasks {
-		if t.ID == taskID {
-			updatedTask = t
-			updatedTask.Status = status
-			updatedTask.UpdatedAt = time.Now().Format("2006-01-02 15:04:05")
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return fmt.Sprintf(`{"error": "任务不存在: %s"}`, taskID)
-	}
-
-	err = yearplan.UpdateTaskWithAccount(account, year, month, taskID, updatedTask)
-	if err != nil {
-		return fmt.Sprintf(`{"error": "%s"}`, err.Error())
-	}
-	return `{"success": true}`
 }
 
 // =================================== ProjectMgmt Raw 接口 =========================================

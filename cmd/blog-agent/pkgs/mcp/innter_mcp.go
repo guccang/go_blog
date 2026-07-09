@@ -162,7 +162,6 @@ func wrapResult(raw string) string {
 //   inner_todo_tools.go      - TodoList module
 //   inner_exercise_tools.go  - Exercise module
 //   inner_reading_tools.go   - Reading module
-//   inner_yearplan_tasks_tools.go - YearPlan and TaskBreakdown modules
 // ============================================================================
 
 func RegisterCallBack(name string, callback func(arguments map[string]interface{}) string) {
@@ -305,18 +304,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawDeleteProjectOKR", Inner_blog_RawDeleteProjectOKR)
 	RegisterCallBack("RawUpdateProjectKeyResult", Inner_blog_RawUpdateProjectKeyResult)
 	RegisterCallBack("RawGetProjectSummary", Inner_blog_RawGetProjectSummary)
-
-	// 新增模块工具 - YearPlan (之前定义但未注册)
-	RegisterCallBack("RawGetMonthGoal", Inner_blog_RawGetMonthGoal)
-	RegisterCallBack("RawGetYearGoals", Inner_blog_RawGetYearGoals)
-	RegisterCallBack("RawAddYearTask", Inner_blog_RawAddYearTask)
-	RegisterCallBack("RawUpdateYearTask", Inner_blog_RawUpdateYearTask)
-
-	// 新增模块工具 - TaskBreakdown
-	RegisterCallBack("RawGetAllComplexTasks", Inner_blog_RawGetAllComplexTasks)
-	RegisterCallBack("RawGetComplexTasksByStatus", Inner_blog_RawGetComplexTasksByStatus)
-	RegisterCallBack("RawGetComplexTaskStats", Inner_blog_RawGetComplexTaskStats)
-	RegisterCallBack("RawCreateComplexTask", Inner_blog_RawCreateComplexTask)
 
 	// 新增模块工具 - Goal (统一目标管理)
 	RegisterCallBack("RawGetGoal", Inner_blog_RawGetGoal)
