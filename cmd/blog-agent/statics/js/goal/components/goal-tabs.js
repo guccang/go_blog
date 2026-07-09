@@ -1,6 +1,6 @@
 // statics/js/goal/components/goal-tabs.js
 import { store } from '../store.js';
-import { LEVELS, LEVEL_LABELS } from '../utils.js';
+import { LEVELS, LEVEL_LABELS, currentPeriod } from '../utils.js';
 
 class GoalTabs extends HTMLElement {
   connectedCallback() {
@@ -31,8 +31,9 @@ class GoalTabs extends HTMLElement {
 
     this.querySelectorAll('.goal-tab').forEach(btn =>
       btn.addEventListener('click', () => {
-        store.setState({ level: btn.dataset.level });
-        store.dispatch('level:changed', btn.dataset.level);
+        const newLevel = btn.dataset.level;
+        store.setState({ level: newLevel, period: currentPeriod(newLevel) });
+        store.dispatch('level:changed', newLevel);
       })
     );
 
