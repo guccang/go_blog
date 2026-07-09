@@ -265,6 +265,11 @@ func Init() int {
 	h.HandleFunc("/api/goal/delete", goalpkg.HandleDeleteGoal)
 	h.HandleFunc("/api/goals/current", goalpkg.HandleGetCurrentGoals)
 	h.HandleFunc("/api/goals", goalpkg.HandleListGoals)
+	h.HandleFunc("/api/goal/parent", goalpkg.HandleGetParentGoals)
+	h.HandleFunc("/api/goal/task/note", goalpkg.HandleAddTaskNote)
+	h.HandleFunc("/api/goal/review", goalpkg.HandleGetReview)
+	h.HandleFunc("/api/goal/review/save", goalpkg.HandleSaveReview)
+	h.HandleFunc("/api/goal/review/generate", goalpkg.HandleGenerateReview)
 
 
 	// Exercise routes

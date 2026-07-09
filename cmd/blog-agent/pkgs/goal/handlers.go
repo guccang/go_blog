@@ -107,6 +107,7 @@ func HandleSaveGoal(w http.ResponseWriter, r *http.Request) {
 		Period   string  `json:"period"`
 		Overview *string `json:"overview"`
 		Status   *string `json:"status"`
+		ParentID *string `json:"parent_id"`
 	}
 
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -143,6 +144,9 @@ func HandleSaveGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != nil {
 		goal.Status = *req.Status
+	}
+	if req.ParentID != nil {
+		goal.ParentID = *req.ParentID
 	}
 
 	if err := SaveGoal(account, goal); err != nil {
@@ -445,4 +449,145 @@ func HandleListGoals(w http.ResponseWriter, r *http.Request) {
 		"data":    goals,
 		"level":   level,
 	})
+}
+
+// ============================================================================
+// New Task 3 handlers: Parent Goals, Task Notes, Reviews
+// ============================================================================
+
+// HandleGetParentGoals returns parent-level goals for OKR alignment
+func HandleGetParentGoals(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	level := r.URL.Query().Get("level")
+	period := r.URL.Query().Get("period")
+	account := getAccount(r)
+
+	parents, err := GetParentGoals(account, level, period)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false, "message": err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true, "data": parents,
+	})
+}
+
+// HandleAddTaskNote adds a note to a specific task
+func HandleAddTaskNote(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Method not allowed"})
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Level   string `json:"level"`
+		Period  string `json:"period"`
+		TaskID  string `json:"task_id"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": "Invalid JSON"})
+		return
+	}
+
+	account := getAccount(r)
+	if err := AddTaskNote(account, req.Level, req.Period, req.TaskID, req.Content); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// HandleGetReview returns a review for the given level/period
+func HandleGetReview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	level := r.URL.Query().Get("level")
+	period := r.URL.Query().Get("period")
+	account := getAccount(r)
+
+	review, err := GetReview(account, level, period)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    review,
+	})
+}
+
+// HandleSaveReview saves a review for the given level/period
+func HandleSaveReview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Level   string `json:"level"`
+		Period  string `json:"period"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	account := getAccount(r)
+	review, _ := GetReview(account, req.Level, req.Period)
+	if review == nil {
+		review = &Review{
+			ID:    fmt.Sprintf("%d", time.Now().UnixNano()),
+			Level: req.Level, Period: req.Period,
+		}
+	}
+	review.Content = req.Content
+
+	if err := SaveReview(account, review); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// HandleGenerateReview generates a review draft from goal task status
+func HandleGenerateReview(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		Level  string `json:"level"`
+		Period string `json:"period"`
+	}
+	json.Unmarshal(body, &req)
+
+	account := getAccount(r)
+	review, err := GenerateReview(account, req.Level, req.Period)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": review})
 }
