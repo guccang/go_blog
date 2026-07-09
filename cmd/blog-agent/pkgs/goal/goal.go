@@ -114,10 +114,6 @@ func tagForLevel(level string) string {
 	return "目标_" + level
 }
 
-func parentGoalTitle(level, period string) string {
-	return fmt.Sprintf("目标_%s_%s", level, period)
-}
-
 func reviewTitle(level, period string) string {
 	return fmt.Sprintf("回顾_%s_%s", level, period)
 }
@@ -540,9 +536,13 @@ func SaveReview(account string, review *Review) error {
 
 	existing := blog.GetBlogWithAccount(account, title)
 	if existing != nil {
-		blog.ModifyBlogWithAccount(account, udb)
+		if ret := blog.ModifyBlogWithAccount(account, udb); ret != 0 {
+			return fmt.Errorf("failed to update review")
+		}
 	} else {
-		blog.AddBlogWithAccount(account, udb)
+		if ret := blog.AddBlogWithAccount(account, udb); ret != 0 {
+			return fmt.Errorf("failed to create review")
+		}
 	}
 	return nil
 }
@@ -592,7 +592,10 @@ func GenerateReview(account, level, period string) (*Review, error) {
 func periodLabel(level, period string) string {
 	switch level {
 	case LevelWeekly:
-		year, week, _ := parseISOWeek(period)
+		year, week, err := parseISOWeek(period)
+		if err != nil {
+			return period
+		}
 		return fmt.Sprintf("%d年第%d周", year, week)
 	case LevelMonthly:
 		return period + "月"
