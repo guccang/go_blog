@@ -1,17 +1,23 @@
 /* statics/css/goal.css */
 :root {
-  --goal-bg: #0f0f1a;
-  --goal-card: #1e1e2e;
-  --goal-card-hover: #252538;
-  --goal-accent: #4f46e5;
-  --goal-accent-hover: #4338ca;
-  --goal-text: #e4e4ed;
-  --goal-text-muted: #8b8ba0;
-  --goal-border: #2a2a3e;
-  --goal-success: #22c55e;
-  --goal-warning: #f59e0b;
-  --goal-danger: #ef4444;
-  --goal-radius: 8px;
+  --goal-bg: #f8f7f4;
+  --goal-card: #ffffff;
+  --goal-card-hover: #f3f1ed;
+  --goal-accent: #d4734a;
+  --goal-accent-hover: #c0623e;
+  --goal-accent-light: #fdf0ea;
+  --goal-text: #1e1b18;
+  --goal-text-secondary: #6b6560;
+  --goal-text-muted: #9c9690;
+  --goal-border: #e8e4df;
+  --goal-border-light: #f0ede8;
+  --goal-success: #16a34a;
+  --goal-warning: #d97706;
+  --goal-danger: #dc2626;
+  --goal-radius: 10px;
+  --goal-radius-sm: 6px;
+  --goal-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --goal-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --goal-transition: 0.2s ease;
 }
 
@@ -20,9 +26,10 @@
 body {
   background: var(--goal-bg);
   color: var(--goal-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   line-height: 1.6;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 .goal-container {
@@ -44,7 +51,7 @@ body {
 .goal-tabs-nav {
   display: flex;
   gap: 4px;
-  background: var(--goal-card);
+  background: var(--goal-bg);
   border-radius: var(--goal-radius);
   padding: 4px;
 }
@@ -68,7 +75,7 @@ body {
 .goal-view-toggle {
   display: flex;
   gap: 4px;
-  background: var(--goal-card);
+  background: var(--goal-bg);
   border-radius: var(--goal-radius);
   padding: 4px;
 }
@@ -82,7 +89,7 @@ body {
   font-size: 13px;
   transition: all var(--goal-transition);
 }
-.view-btn.active { background: var(--goal-border); color: var(--goal-text); }
+.view-btn.active { background: var(--goal-card); color: var(--goal-text); box-shadow: var(--goal-shadow-sm); }
 
 /* Period Nav */
 .period-nav {
@@ -135,6 +142,7 @@ body {
   padding: 20px;
   margin-bottom: 16px;
   border: 1px solid var(--goal-border);
+  box-shadow: var(--goal-shadow-sm);
 }
 
 /* Goal Overview */
@@ -149,12 +157,14 @@ body {
 .status-done { background: var(--goal-success); color: #fff; }
 .parent-breadcrumb {
   font-size: 13px;
-  color: var(--goal-text-muted);
+  color: var(--goal-text-secondary);
   margin-bottom: 8px;
   padding: 6px 10px;
-  background: var(--goal-border);
-  border-radius: 4px;
+  background: var(--goal-accent-light);
+  border-radius: var(--goal-radius-sm);
+  cursor: pointer;
 }
+.parent-breadcrumb:hover { background: var(--goal-card-hover); }
 .overview-input {
   width: 100%;
   background: var(--goal-bg);
@@ -202,7 +212,7 @@ body {
 .btn-primary { background: var(--goal-accent); border-color: var(--goal-accent); color: #fff; }
 .btn-primary:hover { background: var(--goal-accent-hover); }
 .btn-danger { color: var(--goal-danger); border-color: transparent; }
-.btn-danger:hover { background: rgba(239,68,68,0.1); }
+.btn-danger:hover { background: rgba(220,38,38,0.08); }
 .btn-icon-sm {
   background: none;
   border: none;
@@ -245,9 +255,9 @@ body {
   padding: 1px 6px;
   border-radius: 10px;
 }
-.priority-high { background: rgba(239,68,68,0.15); color: var(--goal-danger); }
-.priority-medium { background: rgba(245,158,11,0.15); color: var(--goal-warning); }
-.priority-low { background: rgba(139,139,160,0.15); color: var(--goal-text-muted); }
+.priority-high { background: rgba(220,38,38,0.08); color: var(--goal-danger); }
+.priority-medium { background: rgba(217,119,6,0.08); color: var(--goal-warning); }
+.priority-low { background: rgba(107,101,96,0.08); color: var(--goal-text-secondary); }
 .task-status-label {
   font-size: 10px;
   color: var(--goal-text-muted);
@@ -425,10 +435,12 @@ body {
   padding: 16px;
   cursor: pointer;
   transition: all var(--goal-transition);
+  box-shadow: var(--goal-shadow-sm);
 }
 .goal-summary-card:hover {
   border-color: var(--goal-accent);
   background: var(--goal-card-hover);
+  box-shadow: var(--goal-shadow);
 }
 .card-header {
   display: flex;
