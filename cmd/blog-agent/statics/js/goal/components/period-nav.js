@@ -1,6 +1,6 @@
 // statics/js/goal/components/period-nav.js
 import { store } from '../store.js';
-import { today, currentPeriod, periodLabel } from '../utils.js';
+import { currentPeriod, periodLabel } from '../utils.js';
 
 class PeriodNav extends HTMLElement {
   connectedCallback() {

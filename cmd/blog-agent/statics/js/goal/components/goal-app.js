@@ -1,7 +1,7 @@
 // statics/js/goal/components/goal-app.js
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { currentPeriod } from '../utils.js';
+import { currentPeriod, PARENT_LEVEL } from '../utils.js';
 import './goal-tabs.js';
 import './period-nav.js';
 
@@ -61,7 +61,8 @@ class GoalApp extends HTMLElement {
     // parentId 是 "level|period" 格式或直接的 goal ID
     // 遍历查找
     try {
-      const res = await api.listGoals(store.state.parentLevel || 'monthly', '');
+      const parentLevel = PARENT_LEVEL[store.state.level] || 'monthly';
+      const res = await api.listGoals(parentLevel, '');
       if (res.success && res.data) {
         const parent = res.data.find(g =>
           `${g.level}|${g.period}` === parentId || g.period === parentId
