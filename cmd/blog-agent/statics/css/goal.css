@@ -1,0 +1,144 @@
+/* statics/css/goal.css */
+:root {
+  --goal-bg: #0f0f1a;
+  --goal-card: #1e1e2e;
+  --goal-card-hover: #252538;
+  --goal-accent: #4f46e5;
+  --goal-accent-hover: #4338ca;
+  --goal-text: #e4e4ed;
+  --goal-text-muted: #8b8ba0;
+  --goal-border: #2a2a3e;
+  --goal-success: #22c55e;
+  --goal-warning: #f59e0b;
+  --goal-danger: #ef4444;
+  --goal-radius: 8px;
+  --goal-transition: 0.2s ease;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--goal-bg);
+  color: var(--goal-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.goal-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+/* Tabs */
+.goal-tabs {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.goal-tabs-nav {
+  display: flex;
+  gap: 4px;
+  background: var(--goal-card);
+  border-radius: var(--goal-radius);
+  padding: 4px;
+}
+
+.goal-tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--goal-text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--goal-transition);
+}
+.goal-tab:hover { color: var(--goal-text); }
+.goal-tab.active {
+  background: var(--goal-accent);
+  color: #fff;
+}
+
+.goal-view-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--goal-card);
+  border-radius: var(--goal-radius);
+  padding: 4px;
+}
+.view-btn {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--goal-text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--goal-transition);
+}
+.view-btn.active { background: var(--goal-border); color: var(--goal-text); }
+
+/* Period Nav */
+.period-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.period-label {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 150px;
+  text-align: center;
+}
+.period-btn {
+  width: 36px; height: 36px;
+  border: 1px solid var(--goal-border);
+  background: var(--goal-card);
+  color: var(--goal-text);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--goal-transition);
+}
+.period-btn:hover:not(:disabled) { background: var(--goal-card-hover); }
+.period-btn:disabled { opacity: 0.3; cursor: default; }
+.period-today {
+  width: auto;
+  border-radius: 20px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.period-loading {
+  font-size: 12px;
+  color: var(--goal-text-muted);
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Card */
+.goal-card {
+  background: var(--goal-card);
+  border-radius: var(--goal-radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--goal-border);
+}
+
+/* 响应式 */
+@media (max-width: 640px) {
+  .goal-container { padding: 16px 12px; }
+  .goal-tabs { flex-direction: column; }
+}
