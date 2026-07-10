@@ -45,11 +45,14 @@ class GoalApp extends HTMLElement {
       }),
     );
 
-    // 初始化
-    const period = currentPeriod(store.state.level);
-    store.setState({ period });
+    // 初始化：先渲染视图让组件挂载并订阅事件，再加载数据
     this.renderView();
-    this.loadGoal();
+    // 等待组件完成挂载后再设置状态和加载数据
+    requestAnimationFrame(() => {
+      const period = currentPeriod(store.state.level);
+      store.setState({ period });
+      this.loadGoal();
+    });
   }
 
   disconnectedCallback() {
