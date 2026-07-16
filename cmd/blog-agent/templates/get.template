@@ -83,10 +83,17 @@
         <div class="bubble" id="bubble">&#9776;</div>
 	</div>
 
-    <!-- Main Content -->
+	<!-- Main Content -->
 	<div class="container">
 		<div class="buttons-container">
-		<button id="toggle-button" class="right-button" type="button" onclick="onEditor()">编辑</button>
+			<button id="back-button" class="back-button" type="button" onclick="window.history.back()">&larr; 返回</button>
+			<div class="get-view-switcher" aria-label="编辑器显示模式">
+				<button class="view-mode-btn" data-view="editor-only" type="button">编辑</button>
+				<button class="view-mode-btn" data-view="split" type="button">编辑+预览</button>
+				<button class="view-mode-btn active" data-view="preview-only" type="button">预览</button>
+			</div>
+			<button id="toggle-button" class="right-button mobile-view-toggle" type="button" onclick="onEditor()">编辑</button>
+			<button id="editor-button" class="right-button save-button" type="button" onclick="submitFirst()">保存修改</button>
 		</div>
         
 		<div class="editor-container">
@@ -103,7 +110,6 @@
 				<small style="display: block; margin-top: 5px; font-size: 11px; color: #888;">输入正确的解密密码来查看博客内容</small>
 			</div>
 		{{end}}
-			<button id="editor-button" class="bottom-button" onclick="submitFirst()">保存修改</button>
 		</div>
 
 		<div class="comments-section">

@@ -246,8 +246,42 @@
 
         .buttons-container {
             display: flex;
-            justify-content: space-between;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
             margin-bottom: 20px;
+            padding: 10px 0;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background-color: var(--bg-color);
+            box-shadow: 0 4px 8px -8px var(--text-color);
+        }
+
+        .get-view-switcher {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        .view-mode-btn {
+            padding: 8px 12px;
+            color: var(--text-color);
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .view-mode-btn.active {
+            color: white;
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .mobile-view-toggle {
+            display: none;
         }
 
         .left-button,
@@ -929,8 +963,7 @@
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             transition: all 0.3s ease;
-            display: none;
-            /* 默认隐藏，当侧边栏隐藏时显示 */
+            display: inline-block;
             margin-right: 15px;
         }
 
@@ -938,11 +971,6 @@
             background-color: var(--accent-hover);
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        /* 当侧边栏隐藏时显示返回按钮 */
-        .hide-sidebar~.container .back-button {
-            display: inline-block;
         }
 
         /* 针对移动设备优化样式 */
@@ -994,6 +1022,15 @@
             .right-button {
                 padding: 8px 12px;
                 font-size: 14px;
+            }
+
+            .get-view-switcher {
+                display: none;
+            }
+
+            .mobile-view-toggle {
+                display: inline-block;
+                margin-left: auto;
             }
 
             /* 侧边栏优化 - 移动端自动折叠 */

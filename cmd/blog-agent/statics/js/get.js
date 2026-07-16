@@ -10,10 +10,38 @@ const container = document.querySelector('.container');
 const editor = document.getElementById('editor-inner');
 const md = document.getElementById('md');
 const toastContainer = document.getElementById('toast-container');
+const viewModeButtons = document.querySelectorAll('.view-mode-btn');
 
 // 检测是否为移动设备
 const isMobile = window.innerWidth <= 768;
 let isEditMode = false; // 移动端编辑模式状态
+let getViewState = 'preview-only';
+
+function applyGetViewState() {
+	if (isMobile) return;
+
+	const editorVisible = getViewState !== 'preview-only';
+	const previewVisible = getViewState !== 'editor-only';
+	editor.classList.toggle('hide', !editorVisible);
+	md.classList.toggle('hide', !previewVisible);
+	md.classList.toggle('mdEditor', getViewState === 'split');
+	md.classList.toggle('md', getViewState !== 'split');
+
+	viewModeButtons.forEach(button => {
+		button.classList.toggle('active', button.dataset.view === getViewState);
+	});
+
+	if (previewVisible) {
+		mdRender(editor.value);
+	}
+}
+
+viewModeButtons.forEach(button => {
+	button.addEventListener('click', function() {
+		getViewState = this.dataset.view;
+		applyGetViewState();
+	});
+});
 
 // 初始化编辑页面权限控制
 document.addEventListener('DOMContentLoaded', function() {
@@ -359,19 +387,6 @@ function onEditor() {
 			toggleBtn.innerHTML = '👁️ 预览';
 			toggleBtn.title = '切换到预览模式';
 		}
-	} else {
-		// PC端版本 - 保持原有的切换逻辑
-		if (toggleBtn.innerText === '编辑') {
-			md.className = 'mdEditor';
-			editor.className = 'editor th_black';
-			document.getElementById('editor-button').className = 'left-button';
-			toggleBtn.innerText = '预览';
-			editor.style.height = md.clientHeight + 'px';
-		} else {
-			md.className = 'md';
-			editor.className = 'hide th_black';
-			toggleBtn.innerText = '编辑';
-		}
 	}
 }
 
@@ -554,38 +569,16 @@ window.onload = function() {
 		editor.classList.add('editorfullscreen');
 		
 		// 预览区域：不要固定高度，否则长内容会看起来“截断”
-		if (md) {
-			md.style.height = 'auto';
-		}
+	if (md) {
+		md.style.height = 'auto';
+	}
+	applyGetViewState();
 
-	
-	// 添加返回按钮
-	addBackButton();
-	
 	// 初始化评论功能
 	initCommentFeatures();
 	
 	// 清理过期的评论会话
 	cleanupExpiredSessions();
-}
-
-// 添加返回按钮
-function addBackButton() {
-	// 创建返回按钮
-	const backButton = document.createElement('button');
-	backButton.id = 'back-button';
-	backButton.className = 'back-button';
-	backButton.innerHTML = '&larr; 返回';
-	backButton.title = '返回上一页';
-	
-	// 添加点击事件
-	backButton.addEventListener('click', function() {
-		window.history.back();
-	});
-	
-	// 添加到按钮容器内，而不是编辑器容器内
-	const buttonsContainer = document.querySelector('.buttons-container');
-	buttonsContainer.insertBefore(backButton, buttonsContainer.firstChild);
 }
 
 // 字符计数功能
@@ -1265,4 +1258,3 @@ function fallbackCopyTextToClipboard(text) {
 
 	document.body.removeChild(textArea);
 }
-		
