@@ -13,7 +13,7 @@
     const md = document.getElementById('md');
     const editorWrapper = document.getElementById('editor-wrapper');
     const previewWrapper = document.getElementById('preview-wrapper');
-    const btnToggleView = document.getElementById('btn-toggle-view');
+    const viewModeButtons = document.querySelectorAll('.view-mode-btn');
     
     // Initialize view state
     let viewState = 'split'; // split, editor-only, preview-only
@@ -24,10 +24,8 @@
     // 如果是移动设备，自动切换到纯编辑模式并折叠sidebar
     if (isMobile) {
         viewState = 'editor-only';
-        editorWrapper.classList.add('fullscreen');
-        previewWrapper.classList.add('hidden');
-        btnToggleView.innerHTML = '👁️';
-        btnToggleView.style.display = 'none'; // 移动端隐藏切换按钮
+        applyViewState();
+        document.getElementById('view-switcher').style.display = 'none';
         
         // 移动端自动折叠sidebar
         sidebar.classList.remove('show-sidebar');
@@ -47,30 +45,30 @@
         }
     });
     
-    // Toggle view (split, editor-only, preview-only)
-    btnToggleView.addEventListener('click', function() {
-        switch(viewState) {
-            case 'split':
-                viewState = 'editor-only';
-                editorWrapper.classList.add('fullscreen');
-                previewWrapper.classList.add('hidden');
-                btnToggleView.innerHTML = '👁️';
-                break;
-            case 'editor-only':
-                viewState = 'preview-only';
-                editorWrapper.classList.add('hidden');
-                editorWrapper.classList.remove('fullscreen');
-                previewWrapper.classList.remove('hidden');
-                previewWrapper.classList.add('fullscreen');
-                btnToggleView.innerHTML = '📝';
-                break;
-            case 'preview-only':
-                viewState = 'split';
-                editorWrapper.classList.remove('hidden');
-                previewWrapper.classList.remove('fullscreen');
-                btnToggleView.innerHTML = '📑';
-                break;
+    function applyViewState() {
+        const editorVisible = viewState !== 'preview-only';
+        const previewVisible = viewState !== 'editor-only';
+
+        editorWrapper.classList.toggle('hidden', !editorVisible);
+        previewWrapper.classList.toggle('hidden', !previewVisible);
+        editorWrapper.classList.toggle('fullscreen', editorVisible && !previewVisible);
+        previewWrapper.classList.toggle('fullscreen', previewVisible && !editorVisible);
+
+        viewModeButtons.forEach(button => {
+            button.classList.toggle('active', button.dataset.view === viewState);
+        });
+
+        if (previewVisible) {
+            mdRender(editor.value);
         }
+        adjustEditorHeight();
+    }
+
+    viewModeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            viewState = this.dataset.view;
+            applyViewState();
+        });
     });
     
     // Toolbar buttons functionality

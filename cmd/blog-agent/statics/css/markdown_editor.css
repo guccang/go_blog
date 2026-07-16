@@ -248,12 +248,40 @@
             align-items: center;
             justify-content: space-between;
             box-shadow: 0 2px 5px var(--shadow-color);
-            z-index: 5;
+            position: sticky;
+            top: 0;
+            z-index: 50;
         }
 
         .toolbar-group {
             display: flex;
+            align-items: center;
             gap: 10px;
+        }
+
+        .toolbar-home {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 12px;
+            border-radius: 4px;
+            color: var(--text-color);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            text-decoration: none;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .view-switcher {
+            display: flex;
+            gap: 4px;
+        }
+
+        .view-mode-btn.active {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: white;
         }
 
         .toolbar-btn {
@@ -326,8 +354,7 @@
 
         .editor-wrapper.hidden,
         .preview-wrapper.hidden {
-            flex: 0;
-            overflow: hidden;
+            display: none;
         }
 
         .editor {

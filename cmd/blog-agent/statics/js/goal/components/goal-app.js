@@ -17,6 +17,9 @@ class GoalApp extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
       <div class="goal-container">
+        <div class="goal-page-header">
+          <a class="goal-home-link" href="/main"><i class="fas fa-home"></i> 返回主页</a>
+        </div>
         <goal-tabs></goal-tabs>
         <period-nav></period-nav>
         <div id="goal-view" class="goal-view"></div>

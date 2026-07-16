@@ -86,6 +86,7 @@
         <!-- Toolbar -->
         <div class="editor-toolbar">
             <div class="toolbar-group">
+                <a class="toolbar-home" href="/main" title="返回主页"><i class="fas fa-home"></i> 主页</a>
                 <button class="toolbar-btn" id="btn-bold" title="粗体 (Ctrl+B)">B</button>
                 <button class="toolbar-btn" id="btn-italic" title="斜体 (Ctrl+I)">I</button>
                 <button class="toolbar-btn" id="btn-heading" title="标题">H</button>
@@ -94,10 +95,14 @@
                 <button class="toolbar-btn" id="btn-code" title="代码块">{"}</button>
                 <button class="toolbar-btn" id="btn-list" title="列表">📋</button>
                 <button class="toolbar-btn" id="btn-quote" title="引用">❝</button>
-	</div>
+            </div>
 
             <div class="toolbar-group">
-                <button class="toolbar-btn" id="btn-toggle-view" title="切换视图">📑</button>
+                <div class="view-switcher" id="view-switcher" aria-label="编辑器显示模式">
+                    <button class="toolbar-btn view-mode-btn" data-view="editor-only" title="仅显示编辑器">编辑</button>
+                    <button class="toolbar-btn view-mode-btn active" data-view="split" title="同时显示编辑器和预览">编辑+预览</button>
+                    <button class="toolbar-btn view-mode-btn" data-view="preview-only" title="仅显示预览">预览</button>
+                </div>
                 <button class="btn-primary" id="btn-save" onclick="submitContent()">保存</button>
             </div>
 		</div>

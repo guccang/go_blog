@@ -38,6 +38,36 @@ body {
   padding: 24px 16px;
 }
 
+.goal-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  background: var(--goal-bg);
+}
+
+.goal-home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--goal-border);
+  border-radius: var(--goal-radius-sm);
+  color: var(--goal-text);
+  background: var(--goal-card);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--goal-shadow-sm);
+}
+
+.goal-home-link:hover {
+  color: var(--goal-accent);
+  border-color: var(--goal-accent);
+}
+
 /* Tabs */
 .goal-tabs {
   display: flex;
