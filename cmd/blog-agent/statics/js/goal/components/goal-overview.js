@@ -1,7 +1,7 @@
 // statics/js/goal/components/goal-overview.js
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { escapeHtml } from '../utils.js';
+import { escapeHtml, LEVEL_LABELS, periodLabel } from '../utils.js';
 
 class GoalOverview extends HTMLElement {
   connectedCallback() {
@@ -78,8 +78,9 @@ class GoalOverview extends HTMLElement {
             const list = dropdown.querySelector('.parent-list');
             list.innerHTML = res.data.map(g => `
               <div class="parent-option" data-id="${g.level}|${g.period}">
-                <span class="parent-level">${g.level}</span>
-                <span>${g.overview || g.period}</span>
+                <span class="parent-level">${LEVEL_LABELS[g.level] || g.level}</span>
+                <span>${periodLabel(g.level, g.period)}</span>
+                ${g.overview ? `<span>${escapeHtml(g.overview)}</span>` : ''}
               </div>
             `).join('');
             list.querySelectorAll('.parent-option').forEach(opt =>

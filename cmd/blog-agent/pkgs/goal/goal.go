@@ -39,9 +39,9 @@ type Task struct {
 	ID            string     `json:"id"`
 	Title         string     `json:"title"`
 	Description   string     `json:"description,omitempty"`
-	Status        string     `json:"status"`   // pending, in_progress, completed, cancelled
-	Priority      string     `json:"priority"` // low, medium, high
-	Deadline      string     `json:"deadline,omitempty"`       // YYYY-MM-DD
+	Status        string     `json:"status"`             // pending, in_progress, completed, cancelled
+	Priority      string     `json:"priority"`           // low, medium, high
+	Deadline      string     `json:"deadline,omitempty"` // YYYY-MM-DD
 	EstimateHours float64    `json:"estimate_hours,omitempty"`
 	Subtasks      []Subtask  `json:"subtasks,omitempty"`
 	Notes         []TaskNote `json:"notes,omitempty"`
@@ -65,23 +65,23 @@ type TaskNote struct {
 
 // GoalSummary provides a lightweight summary for cortana-friendly access
 type GoalSummary struct {
-	Level      string `json:"level"`
-	Period     string `json:"period"`
-	Overview   string `json:"overview"`
-	Judge      string `json:"judge,omitempty"`
-	Progress   int    `json:"progress"`
-	TotalTasks int    `json:"total_tasks"`
-	DoneTasks  int    `json:"done_tasks"`
-	PendingTasks int  `json:"pending_tasks"`
-	Status     string `json:"status"`
+	Level        string `json:"level"`
+	Period       string `json:"period"`
+	Overview     string `json:"overview"`
+	Judge        string `json:"judge,omitempty"`
+	Progress     int    `json:"progress"`
+	TotalTasks   int    `json:"total_tasks"`
+	DoneTasks    int    `json:"done_tasks"`
+	PendingTasks int    `json:"pending_tasks"`
+	Status       string `json:"status"`
 }
 
 // Review represents a periodic review of goals at a given level
 type Review struct {
 	ID        string `json:"id"`
-	Level     string `json:"level"`     // weekly, monthly
+	Level     string `json:"level"` // weekly, monthly
 	Period    string `json:"period"`
-	Content   string `json:"content"`   // markdown
+	Content   string `json:"content"` // markdown
 	Completed int    `json:"completed"`
 	Total     int    `json:"total"`
 	CreatedAt string `json:"created_at"`
@@ -448,33 +448,55 @@ func newGoal(level, period string) *Goal {
 
 // GetParentGoals returns goals from the parent level for OKR alignment
 func GetParentGoals(account, level, period string) ([]*GoalSummary, error) {
-	if level == LevelYearly {
+	parentLevel, parentPeriod, err := resolveParentPeriod(level, period)
+	if err != nil {
+		return nil, err
+	}
+	if parentLevel == "" {
 		return nil, nil // 年目标没有父级
 	}
 
-	parentLevels := map[string]string{
-		LevelDaily:   LevelWeekly,
-		LevelWeekly:  LevelMonthly,
-		LevelMonthly: LevelYearly,
+	// 对齐只允许选择当前周期直属的上层目标，避免把所有历史目标都列出来。
+	b := blog.GetBlogWithAccount(account, goalTitle(parentLevel, parentPeriod))
+	if b == nil {
+		return []*GoalSummary{}, nil
 	}
-
-	parentLevel := parentLevels[level]
-	var candidates []*GoalSummary
-
-	for _, b := range blog.GetBlogsWithAccount(account) {
-		if !strings.Contains(b.Title, "目标_"+parentLevel) {
-			continue
-		}
-		var goal Goal
-		if err := json.Unmarshal([]byte(b.Content), &goal); err != nil {
-			continue
-		}
-		if goal.Status == "archived" {
-			continue
-		}
-		candidates = append(candidates, goal.Summary())
+	var parent Goal
+	if err := json.Unmarshal([]byte(b.Content), &parent); err != nil {
+		return nil, fmt.Errorf("failed to parse parent goal: %w", err)
 	}
-	return candidates, nil
+	if parent.Status == "archived" {
+		return []*GoalSummary{}, nil
+	}
+	return []*GoalSummary{parent.Summary()}, nil
+}
+
+func resolveParentPeriod(level, period string) (string, string, error) {
+	switch level {
+	case LevelDaily:
+		t, err := time.Parse("2006-01-02", period)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid daily period: %s", period)
+		}
+		year, week := t.ISOWeek()
+		return LevelWeekly, fmt.Sprintf("%d-W%02d", year, week), nil
+	case LevelWeekly:
+		year, week, err := parseISOWeek(period)
+		if err != nil {
+			return "", "", err
+		}
+		return LevelMonthly, isoWeekStart(year, week).Format("2006-01"), nil
+	case LevelMonthly:
+		t, err := time.Parse("2006-01", period)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid monthly period: %s", period)
+		}
+		return LevelYearly, t.Format("2006"), nil
+	case LevelYearly:
+		return "", "", nil
+	default:
+		return "", "", fmt.Errorf("unknown level: %s", level)
+	}
 }
 
 // AddTaskNote adds a note to a specific task within a goal
