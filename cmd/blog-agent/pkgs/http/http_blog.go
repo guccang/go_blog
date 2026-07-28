@@ -1,20 +1,17 @@
 package http
 
 import (
-	"auth"
-	"comment"
 	"config"
-	"control"
 	"encoding/json"
 	"fmt"
 	"module"
 	log "mylog"
 	h "net/http"
 	"regexp"
+	control "service"
 	"share"
 	"strconv"
 	"strings"
-	"view"
 )
 
 // sanitizeBlogTitle 强制格式化博客标题，将不符合规范的字符替换为下划线
@@ -129,20 +126,6 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 	} else {
 		h.Error(w, "save failed! has same title blog", h.StatusBadRequest)
 	}
-}
-
-// HandleD3 handles D3 visualization page
-func HandleD3(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleHelp", r)
-	// 权限检测成功使用private模板,可修改数据
-	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-
-	view.PageD3(w)
-
 }
 
 // HandleHelp handles help page requests
@@ -359,29 +342,6 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 检查是否是 taskbreakdown 博客，如果是则重定向到 taskbreakdown 页面
-	if strings.HasPrefix(blogname, "taskbreakdown-") {
-		// 从blogname中解析出任务ID，格式为taskbreakdown-<task-id>
-		// 支持两种格式：taskbreakdown-task-xxxx 和 taskbreakdown-tbd-xxxx
-		taskID := strings.TrimPrefix(blogname, "taskbreakdown-")
-		if taskID == "" {
-			// 如果taskID为空，重定向到默认taskbreakdown页面
-			h.Redirect(w, r, "/taskbreakdown", 302)
-			return
-		}
-
-		// 查找根任务ID
-		rootTaskID := findRootTaskID(account, taskID, blog.Content)
-		if rootTaskID == "" {
-			// 如果找不到根任务，使用当前任务ID
-			rootTaskID = taskID
-		}
-
-		// 重定向到taskbreakdown页面，并传递root参数
-		h.Redirect(w, r, fmt.Sprintf("/taskbreakdown?root=%s", rootTaskID), 302)
-		return
-	}
-
 	usepublic := 0
 	// 权限检测成功使用private模板,可修改数据
 	// 权限检测失败,并且为公开blog，使用public模板，只能查看数据
@@ -410,156 +370,11 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 			remoteAddr = xForwardedFor
 		}
 		userAgent := r.Header.Get("User-Agent")
-		control.RecordBlogAccess(blogname, remoteAddr, userAgent)
+		_ = remoteAddr
+		_ = userAgent
 	}
 
 	view.PageGetBlog(blogname, w, usepublic, account)
-}
-
-// HandleComment handles blog comment functionality
-func HandleComment(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleComment", r)
-	if r.Method != h.MethodPost {
-		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
-		return
-	}
-
-	// 设置请求体大小限制
-	r.ParseMultipartForm(1 << 20) // 1MB
-
-	// 获取单个字段值
-	title := r.FormValue("title")
-	pattern := `^[\p{Han}a-zA-Z0-9\._-]+$`
-	reg := regexp.MustCompile(pattern)
-	match := reg.MatchString(title)
-	account := auth.GetAccountFromRequest(r)
-	if !match {
-		h.Error(w, "save failed! title is invalied!", h.StatusBadRequest)
-		return
-	}
-
-	log.DebugF(log.ModuleComment, "comment title:%s", title)
-
-	owner := r.FormValue("owner")
-	mail := r.FormValue("mail")
-	comment := r.FormValue("comment")
-	sessionID := r.FormValue("session_id") // 新增会话ID参数
-
-	if comment == "" {
-		h.Error(w, "save failed! comment is invalied!", h.StatusBadRequest)
-		return
-	}
-
-	// 获取用户IP和UserAgent
-	ip := r.RemoteAddr
-	xForwardedFor := r.Header.Get("X-Forwarded-For")
-	if xForwardedFor != "" {
-		ip = xForwardedFor
-	}
-	userAgent := r.Header.Get("User-Agent")
-
-	// 优先使用身份验证的评论系统
-	if sessionID != "" {
-		// 使用已有会话发表评论
-		ret, msg := control.AddCommentWithAuth(account, title, comment, sessionID, ip, userAgent)
-		if ret == 0 {
-			w.WriteHeader(h.StatusOK)
-			w.Write([]byte(msg))
-		} else {
-			h.Error(w, msg, h.StatusBadRequest)
-		}
-		return
-	}
-
-	// 如果没有会话ID且提供了用户名，使用密码验证机制
-	if owner != "" {
-		password := r.FormValue("pwd") // 获取密码
-
-		if password != "" {
-			// 使用密码验证创建会话
-			ret, msg, newSessionID := control.AddCommentWithPassword(account, title, comment, owner, mail, password, ip, userAgent)
-			if ret == 0 {
-				// 构造包含会话ID的响应
-				response := map[string]interface{}{
-					"success":    true,
-					"message":    msg,
-					"session_id": newSessionID,
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(h.StatusOK)
-				json.NewEncoder(w).Encode(response)
-			} else {
-				h.Error(w, msg, h.StatusBadRequest)
-			}
-		} else {
-			// 没有密码，创建匿名用户会话
-			ret, msg := control.AddAnonymousComment(account, title, comment, owner, mail, ip, userAgent)
-			if ret == 0 {
-				w.WriteHeader(h.StatusOK)
-				w.Write([]byte(msg))
-			} else {
-				h.Error(w, msg, h.StatusBadRequest)
-			}
-		}
-		return
-	}
-
-	// 兜底：使用原有的简单评论系统（保持向后兼容）
-	if owner == "" {
-		owner = ip // 使用IP作为默认用户名
-	}
-
-	pwd := r.FormValue("pwd")
-	if pwd == "" {
-		pwd = ip // 使用IP作为默认密码
-	}
-
-	control.AddComment(account, title, comment, owner, pwd, mail)
-	w.WriteHeader(h.StatusOK)
-	w.Write([]byte("评论提交成功" + title + " " + owner + " " + pwd + " " + mail))
-}
-
-// HandleCheckUsername checks username availability for comments
-// 检查用户名信息的API（返回使用该用户名的用户数量）
-func HandleCheckUsername(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleCheckUsername", r)
-	account := auth.GetAccountFromRequest(r)
-	if r.Method != h.MethodGet {
-		h.Error(w, "Method not allowed", h.StatusMethodNotAllowed)
-		return
-	}
-
-	username := r.URL.Query().Get("username")
-	if username == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(h.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"message": "用户名参数缺失",
-		})
-		return
-	}
-
-	// 获取使用该用户名的用户列表
-	users := comment.GetUsersByUsername(account, username)
-	userCount := len(users)
-
-	response := map[string]interface{}{
-		"success":    true,
-		"available":  userCount == 0,
-		"username":   username,
-		"user_count": userCount,
-	}
-
-	if userCount == 0 {
-		response["message"] = "新用户名，可直接使用"
-	} else {
-		response["message"] = "该用户名已被注册，请输入密码进行身份验证"
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(h.StatusOK)
-	json.NewEncoder(w).Encode(response)
 }
 
 // HandleDelete handles blog deletion
@@ -717,12 +532,6 @@ func HandlePublic(w h.ResponseWriter, r *h.Request) {
 		account = config.GetAdminAccount()
 	}
 	view.PagePublic(w, account)
-}
-
-// HandleGames renders the games center page
-func HandleGames(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleGames", r)
-	view.PageGames(w)
 }
 
 // HandleCreateShare creates a share link for a blog

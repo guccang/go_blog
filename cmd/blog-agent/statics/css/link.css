@@ -703,6 +703,29 @@ button {
     display: block;
 }
 
+.blog-ask {
+    background: linear-gradient(135deg, #fff8f4, var(--surface));
+    border: 1px solid #f1d7c9;
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    margin: 0 0 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.blog-ask-heading { display: flex; gap: 12px; align-items: center; }
+.blog-ask-heading h2 { font-size: 1rem; }
+.blog-ask-heading p, .blog-ask-status { color: var(--text-secondary); font-size: .84rem; }
+.blog-ask-icon { color: var(--accent); font-size: 1.15rem; }
+.blog-ask-form { display: flex; gap: 8px; margin-top: 14px; }
+.blog-ask-form input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: #fff; }
+.blog-ask-form button { border-radius: var(--radius-sm); padding: 0 15px; color: #fff; background: var(--accent); font-weight: 600; }
+.blog-ask-status { min-height: 20px; margin-top: 9px; }
+.blog-ask-results { display: grid; gap: 8px; margin-top: 8px; }
+.blog-ask-result { display: block; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(255,255,255,.8); border: 1px solid var(--border-light); }
+.blog-ask-result:hover { border-color: #e6b9a4; }
+.blog-ask-result strong { display: block; font-size: .9rem; }
+.blog-ask-result p { margin-top: 3px; color: var(--text-secondary); font-size: .82rem; }
+
 /* 宽屏留白不是空区域：它是工作台的低干扰“书签”。 */
 .quote-rail {
     position: fixed;

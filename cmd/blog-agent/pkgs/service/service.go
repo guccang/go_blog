@@ -1,18 +1,16 @@
-package control
+package service
 
 import (
 	"blog"
-	"comment"
 	"errors"
 	"module"
 	log "mylog"
 	"reading"
 	"search"
-	"statistics"
 )
 
 func Info() {
-	log.InfoF(log.ModuleControl, "info control v1.0")
+	log.InfoF(log.ModuleCommon, "info service v1.0")
 }
 
 func Init() {
@@ -56,26 +54,6 @@ func UpdateAccessTime(account string, b *module.Blog) {
 
 func GetBlogAuthType(account, blogname string) int {
 	return blog.GetBlogAuthTypeWithAccount(account, blogname)
-}
-
-func GetBlogComments(account, blogname string) *module.BlogComments {
-	return comment.GetComments(account, blogname)
-}
-
-func AddComment(account, title string, msg string, owner string, pwd string, mail string) {
-	comment.AddComment(account, title, msg, owner, pwd, mail)
-}
-
-func AddCommentWithAuth(account, title, msg, sessionID, ip, userAgent string) (int, string) {
-	return comment.AddCommentWithAuth(account, title, msg, sessionID, ip, userAgent)
-}
-
-func AddAnonymousComment(account, title, msg, username, email, ip, userAgent string) (int, string) {
-	return comment.AddAnonymousComment(account, title, msg, username, email, ip, userAgent)
-}
-
-func AddCommentWithPassword(account, title, msg, username, email, password, ip, userAgent string) (int, string, string) {
-	return comment.AddCommentWithPassword(account, title, msg, username, email, password, ip, userAgent)
 }
 
 // 读书功能控制层接口
@@ -254,21 +232,4 @@ func GetRecentlyTimedBlog(account, title string) *module.Blog {
 
 func TagReplace(account, from string, to string) {
 	blog.TagReplaceWithAccount(account, from, to)
-}
-
-// 统计相关功能
-func GetStatistics(account string) *statistics.Statistics {
-	return statistics.GetStatistics(account)
-}
-
-func RecordBlogAccess(blogTitle, ip, userAgent string) {
-	statistics.RecordBlogAccess(blogTitle, ip, userAgent)
-}
-
-func RecordUserLogin(account, ip string, success bool) {
-	statistics.RecordUserLogin(account, ip, success)
-}
-
-func ClearStatisticsCache() {
-	statistics.ClearCache()
 }

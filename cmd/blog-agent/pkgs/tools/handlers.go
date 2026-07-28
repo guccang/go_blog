@@ -4,13 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"view"
 )
-
-// ToolsHandler 工具页面处理器
-func ToolsHandler(w http.ResponseWriter, r *http.Request) {
-	view.PageTools(w)
-}
 
 // TimeToolHandler 时间工具API
 func TimeToolHandler(w http.ResponseWriter, r *http.Request) {

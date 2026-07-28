@@ -2,7 +2,6 @@ package http
 
 import (
 	"config"
-	"control"
 	"crypto/md5"
 	"encoding/hex"
 	"login"
@@ -10,7 +9,6 @@ import (
 	h "net/http"
 	"strings"
 	"time"
-	"view"
 )
 
 // HandleLoginSMSAPI handles SMS login code generation API (disabled)
@@ -71,14 +69,6 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	}
 	log.InfoF(log.ModuleAuth, "LoginSMS add session=%s code=%s device_id=%s", session, code, device_id)
 
-	// 获取用户IP
-	remoteAddr := r.RemoteAddr
-	xForwardedFor := r.Header.Get("X-Forwarded-For")
-	if xForwardedFor != "" {
-		remoteAddr = xForwardedFor
-	}
-	control.RecordUserLogin(account, remoteAddr, true)
-
 	// config
 	sys_conf_path := config.GetSysConfigPath(account)
 	config.ReloadConfigWithAccount(account, sys_conf_path)
@@ -117,23 +107,14 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	device_id := r.FormValue("device_id")
 	log.DebugF(log.ModuleAuth, "account=%s pwd=%s device_id=%s", account, pwd, device_id)
 
-	// 获取用户IP
-	remoteAddr := r.RemoteAddr
-	xForwardedFor := r.Header.Get("X-Forwarded-For")
-	if xForwardedFor != "" {
-		remoteAddr = xForwardedFor
-	}
-
 	session, ret := login.Login(account, pwd)
 	if ret != 0 {
 		// 记录失败的登录
-		control.RecordUserLogin(account, remoteAddr, false)
 		h.Error(w, "Error account or pwd", h.StatusBadRequest)
 		return
 	}
 
 	// 记录成功的登录
-	control.RecordUserLogin(account, remoteAddr, true)
 
 	// config
 	sys_conf_path := config.GetSysConfigPath(account)

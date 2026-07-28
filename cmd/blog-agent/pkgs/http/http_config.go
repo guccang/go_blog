@@ -2,13 +2,13 @@ package http
 
 import (
 	"config"
-	"control"
 	"encoding/json"
 	t "html/template"
 	"module"
 	log "mylog"
 	h "net/http"
 	"path/filepath"
+	control "service"
 	"strings"
 )
 

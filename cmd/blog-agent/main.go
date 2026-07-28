@@ -3,18 +3,13 @@ package main
 import (
 	"auth"
 	"blog"
-	"codegen"
 	"config"
-	"control"
-	"delegation"
 	"exercise"
 	"fmt"
 	"goal"
 	"http"
 	"ioutils"
-	"llm"
 	"login"
-	"mcp"
 	"module"
 	log "mylog"
 	"os"
@@ -24,12 +19,8 @@ import (
 	"reading"
 	"search"
 	"share"
-	"statistics"
-	"strings"
 	"syscall"
-	"time"
 	"tools"
-	"view"
 )
 
 func clearup() {
@@ -71,8 +62,6 @@ func main() {
 	// versions
 	log.Debug(log.ModuleCommon, "blog-agent starting")
 	module.Info()
-	view.Info()
-	control.Info()
 	http.Info()
 	persistence.Info()
 	config.Info()
@@ -80,8 +69,6 @@ func main() {
 	blog.Info()
 	search.Info()
 	share.Info()
-	statistics.Info()
-	mcp.Info()
 	tools.Info()
 	exercise.Info()
 	reading.Info()
@@ -89,17 +76,6 @@ func main() {
 
 	// Init
 	config.Init(args[1])
-
-	// 初始化 delegation manager 并注册可信代理
-	mcp.InitDelegationManager()
-	trustedAgents := config.GetTrustedAgents()
-	for i := range trustedAgents {
-		mcp.GetDelegationManager().RegisterAgent(&delegation.TrustedAgent{
-			AgentID:   trustedAgents[i].AgentID,
-			SecretKey: trustedAgents[i].SecretKey,
-		})
-	}
-	mcp.GetDelegationManager().StartCleanupRoutine(1 * time.Minute)
 
 	account := config.GetAdminAccount()
 	// Initialize logging system with logs directory
@@ -112,107 +88,12 @@ func main() {
 
 	persistence.Init()
 	blog.Init()
-	control.Init()
 	reading.Init()
-	statistics.Init()
 	auth.Init()
 	login.Init()
-	mcp.Init()
-
-	// 初始化编码助手模块
-	codegen.Init()
-
-	// 注入 MCP 桥接函数到 codegen，避免 codegen 直接依赖 mcp 的重量级传递依赖链
-	codegen.MCPCallInnerTools = mcp.CallInnerTools
-	codegen.MCPGetToolInfos = func() []codegen.MCPToolInfo {
-		tools := mcp.GetInnerMCPTools(nil)
-		infos := make([]codegen.MCPToolInfo, 0, len(tools))
-		for _, t := range tools {
-			name := t.Function.Name
-			// 提取回调名（去掉 Inner_blog. 前缀）
-			if idx := len("Inner_blog."); len(name) > idx && name[:idx] == "Inner_blog." {
-				name = name[idx:]
-			}
-			// 跳过 Codegen*/Deploy* 工具（由各自的 agent 自注册）
-			if strings.HasPrefix(name, "Codegen") || strings.HasPrefix(name, "Deploy") {
-				continue
-			}
-			infos = append(infos, codegen.MCPToolInfo{
-				Name:        name,
-				Description: t.Function.Description,
-				Parameters:  t.Function.Parameters,
-			})
-		}
-		return infos
-	}
-
-	// 注入 delegation 函数到 codegen（用于 gateway 路由时的 token 验证）
-	// 注意：SetDelegationToken 和 GetDelegationToken 由 codegen 本地存储（initDelegationTokenStore）
-	// 这里只注入需要调用 mcp 包的函数
-	codegen.ParseDelegationTokenFromHeader = func(header string) (codegen.DelegationTokenHolder, error) {
-		return mcp.ParseDelegationTokenFromHeader(header)
-	}
-	codegen.VerifyDelegationToken = func(token codegen.DelegationTokenHolder) (string, error) {
-		// 通过类型断言将接口转换为具体类型
-		if delegateToken, ok := token.(*delegation.DelegationToken); ok {
-			return mcp.VerifyDelegationToken(delegateToken)
-		}
-		return "", delegation.ErrInvalidToken
-	}
-	// PrepareMCPContext 在调用 tool 前设置 mcp 包的上下文
-	codegen.PrepareMCPContext = func(requestID string, account string) {
-		// 设置当前请求 ID
-		mcp.SetCurrentRequestID(requestID)
-		// 设置 delegation token 到 mcp 包（如果有）
-		token := codegen.GetDelegationToken(account)
-		if token != nil {
-			if delegateToken, ok := token.(*delegation.DelegationToken); ok {
-				mcp.SetDelegationToken(requestID, delegateToken)
-			}
-		}
-	}
-
-	// 如果配置了 gateway_url，连接 gateway 注册为 blog-agent agent
-	gatewayURL := config.GetConfigWithAccount(account, "gateway_url")
-	if gatewayURL != "" {
-		gatewayToken := config.GetConfigWithAccount(account, "gateway_token")
-		codegen.InitGatewayBridge(gatewayURL, gatewayToken, "workspace")
-		log.MessageF(log.ModuleAgent, "Gateway bridge initialized: %s", gatewayURL)
-	}
-
-	llm.Init()
 	exercise.Init()
 	goal.InitGoalModule()
 	share.Init()
-
-	// 注入 AI 路由处理器到 codegen（处理非 cg 命令的微信消息）
-	codegen.AIRouteHandler = func(wechatUser, acct, message string) string {
-		// 拦截"刷新提示词"命令
-		if message == "刷新提示词" || strings.EqualFold(message, "reload prompts") {
-			config.ReloadPrompts(acct)
-			return "✅ 提示词配置已重新加载"
-		}
-
-		// 发送即时确认
-		codegen.SendWechatNotify(wechatUser, "⏳ 收到指令，正在处理...")
-
-		messages := []llm.Message{
-			{Role: "system", Content: config.SafeSprintf(config.GetPrompt(acct, "wechat_system"), acct)},
-			{Role: "user", Content: message},
-		}
-
-		result, err := llm.SendSyncLLMRequestWithProgress(messages, acct, func(eventType string, detail string) {})
-		if err != nil {
-			return fmt.Sprintf("⚠️ AI 处理出错: %v", err)
-		}
-		if len(result) > 2000 {
-			result = result[:2000] + "\n..."
-		}
-		return result
-	}
-
-	// 设置微信命令处理器
-	codegen.SetWechatHandler(codegen.HandleWechatCommand)
 
 	log.Debug(log.ModuleCommon, "blog-agent started")
 

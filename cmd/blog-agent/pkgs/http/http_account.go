@@ -41,15 +41,15 @@ func HandleAccount(w h.ResponseWriter, r *h.Request) {
 
 	// 准备模板数据
 	data := struct {
-		UserAccount         string
-		AccountInfo         *account.AccountInfo
-		BMI                 float64
-		BMIStatus           string
-		Age                 int
-		HobbiesStr          string
-		WHOStandardWeight   float64
-		WHOStandardWeightM  float64
-		WHOStandardWeightF  float64
+		UserAccount        string
+		AccountInfo        *account.AccountInfo
+		BMI                float64
+		BMIStatus          string
+		Age                int
+		HobbiesStr         string
+		WHOStandardWeight  float64
+		WHOStandardWeightM float64
+		WHOStandardWeightF float64
 	}{
 		UserAccount:        userAccount,
 		AccountInfo:        accountInfo,
@@ -141,7 +141,7 @@ func handleUpdateAccountInfo(w h.ResponseWriter, r *h.Request, userAccount strin
 			return
 		}
 	}
-	
+
 	// 调试日志：记录接收到的表单数据
 	log.DebugF(log.ModuleAccount, "Received form data for account %s: %+v", userAccount, r.Form)
 
@@ -174,31 +174,31 @@ func handleUpdateAccountInfo(w h.ResponseWriter, r *h.Request, userAccount strin
 	if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 		updatedInfo.Name = name
 	}
-	
+
 	if phone := strings.TrimSpace(r.FormValue("phone")); phone != "" {
 		updatedInfo.Phone = phone
 	}
-	
+
 	if email := strings.TrimSpace(r.FormValue("email")); email != "" {
 		updatedInfo.Email = email
 	}
-	
+
 	if bio := strings.TrimSpace(r.FormValue("bio")); bio != "" {
 		updatedInfo.Bio = bio
 	}
-	
+
 	if location := strings.TrimSpace(r.FormValue("location")); location != "" {
 		updatedInfo.Location = location
 	}
-	
+
 	if website := strings.TrimSpace(r.FormValue("website")); website != "" {
 		updatedInfo.Website = website
 	}
-	
+
 	if birthday := strings.TrimSpace(r.FormValue("birthday")); birthday != "" {
 		updatedInfo.Birthday = birthday
 	}
-	
+
 	if avatar := strings.TrimSpace(r.FormValue("avatar")); avatar != "" {
 		updatedInfo.Avatar = avatar
 	}
@@ -324,7 +324,7 @@ func HandleAccountAvatar(w h.ResponseWriter, r *h.Request) {
 			return
 		}
 	}
-	
+
 	// 调试日志：记录接收到的头像数据
 	log.DebugF(log.ModuleAccount, "Received avatar form data: %+v", r.Form)
 

@@ -1,10 +1,9 @@
-package view
+package http
 
 import (
 	"auth"
 	"blog"
 	"config"
-	"control"
 	"fmt"
 	t "html/template"
 	"module"
@@ -12,13 +11,54 @@ import (
 	h "net/http"
 	"path/filepath"
 	"search"
+	control "service"
 	"share"
 	"sort"
 	"strings"
 	"time"
 )
 
-func Info() {
+// viewGroups template helpers with the former view package's call shape while
+// keeping rendering in the HTTP package.
+var view = struct {
+	PageBookDetail         func(h.ResponseWriter, *module.Book)
+	PageDiaryPasswordError func(h.ResponseWriter, string)
+	PageDiaryPasswordInput func(h.ResponseWriter, string)
+	PageEditor             func(h.ResponseWriter, string, string)
+	PageExercise           func(h.ResponseWriter)
+	PageGetBlog            func(string, h.ResponseWriter, int, string)
+	PageGoal               func(h.ResponseWriter)
+	PageIndex              func(h.ResponseWriter)
+	PageLink               func(h.ResponseWriter, int, string)
+	PageMigration          func(h.ResponseWriter)
+	PagePublic             func(h.ResponseWriter, string)
+	PageReading            func(h.ResponseWriter)
+	PageReadingDashboard   func(h.ResponseWriter)
+	PageSearch             func(string, h.ResponseWriter, string)
+	PageSearchNormal       func(string, h.ResponseWriter, *h.Request) int
+	PageTags               func(h.ResponseWriter, string, string)
+	PageTools              func(h.ResponseWriter)
+}{
+	PageBookDetail:         PageBookDetail,
+	PageDiaryPasswordError: PageDiaryPasswordError,
+	PageDiaryPasswordInput: PageDiaryPasswordInput,
+	PageEditor:             PageEditor,
+	PageExercise:           PageExercise,
+	PageGetBlog:            PageGetBlog,
+	PageGoal:               PageGoal,
+	PageIndex:              PageIndex,
+	PageLink:               PageLink,
+	PageMigration:          PageMigration,
+	PagePublic:             PagePublic,
+	PageReading:            PageReading,
+	PageReadingDashboard:   PageReadingDashboard,
+	PageSearch:             PageSearch,
+	PageSearchNormal:       PageSearchNormal,
+	PageTags:               PageTags,
+	PageTools:              PageTools,
+}
+
+func templateInfo() {
 	log.InfoF(log.ModuleView, "info view v1.0")
 }
 
@@ -481,42 +521,6 @@ func PageIndex(w h.ResponseWriter) {
 
 }
 
-func PageDemo(w h.ResponseWriter, template_name string) {
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, template_name))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse demo template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
-		return
-	}
-}
-
-func PageD3(w h.ResponseWriter) {
-
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "d3.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse get.template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render template get.template", h.StatusInternalServerError)
-		return
-	}
-
-}
-
 // 将blogname设置为分享
 func PageShareBlog(w h.ResponseWriter, account, blogname string) {
 	blog := control.GetBlog(account, blogname)
@@ -553,7 +557,7 @@ func PageShowAllShare(w h.ResponseWriter) {
 	}
 }
 
-func getsession(r *h.Request) string {
+func templateSession(r *h.Request) string {
 	session, err := r.Cookie("session")
 	if err != nil {
 		return ""
@@ -583,7 +587,7 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 		}
 		title := tokens[1]
 		content := ""
-		session := getsession(r)
+		session := templateSession(r)
 		account := blog.GetAccountFromSession(session)
 		b := control.GetRecentlyTimedBlog(account, title)
 		if b != nil {
@@ -613,23 +617,6 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 
 	// 继续其他search
 	return 1
-}
-
-// timestamp
-func PageTimeStamp(w h.ResponseWriter) {
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "timestamp.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse timestamp.template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		h.Error(w, "Failed to render template timestamp.template", h.StatusInternalServerError)
-		return
-	}
 }
 
 func PageTodolist(w h.ResponseWriter, date string) {
@@ -834,32 +821,6 @@ func PagePublic(w h.ResponseWriter, account string) {
 	}
 }
 
-// PageGames renders the games center page
-func PageGames(w h.ResponseWriter) {
-	// 创建游戏数据
-	data := struct {
-		GAMES []GameData
-	}{
-		GAMES: getGamesList(),
-	}
-
-	// 渲染模板
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "games.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse games.template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render template games.template", h.StatusInternalServerError)
-		return
-	}
-}
-
 // PageExercise renders the exercise page
 func PageExercise(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
@@ -874,24 +835,6 @@ func PageExercise(w h.ResponseWriter) {
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render exercise template", h.StatusInternalServerError)
-		return
-	}
-}
-
-// PageLifeCountdown renders the life countdown page
-func PageLifeCountdown(w h.ResponseWriter) {
-	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "lifecountdown.template"))
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to parse lifecountdown template", h.StatusInternalServerError)
-		return
-	}
-
-	err = tmpl.Execute(w, nil)
-	if err != nil {
-		log.Debug(log.ModuleView, err.Error())
-		h.Error(w, "Failed to render lifecountdown template", h.StatusInternalServerError)
 		return
 	}
 }

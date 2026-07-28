@@ -6,6 +6,7 @@ import (
 	"module"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"config"
@@ -139,6 +140,48 @@ func CountBlogs(account string) int {
 	var n int
 	_ = requireSQLite().QueryRow("SELECT COUNT(*) FROM blogs WHERE account=?", account).Scan(&n)
 	return n
+}
+
+// BlogSearchResult is the minimal, display-safe result returned by SQLite FTS.
+// Content is represented by a short highlighted excerpt instead of the full body.
+type BlogSearchResult struct {
+	Title   string
+	Snippet string
+}
+
+// SearchBlogsFTS searches one account's non-sensitive blogs through SQLite FTS5.
+// It does not load the whole blog library into memory and intentionally excludes
+// diary and encrypted entries from the first AI-oriented retrieval surface.
+func SearchBlogsFTS(account, query string, limit int) ([]BlogSearchResult, error) {
+	terms := strings.Fields(query)
+	if account == "" || len(terms) == 0 {
+		return []BlogSearchResult{}, nil
+	}
+	if limit < 1 || limit > 10 {
+		limit = 5
+	}
+	quoted := make([]string, 0, len(terms))
+	for _, term := range terms {
+		quoted = append(quoted, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
+	}
+	rows, err := requireSQLite().Query(`SELECT b.title,
+		COALESCE(snippet(blogs_fts, 2, '<mark>', '</mark>', '…', 18), '')
+		FROM blogs_fts JOIN blogs b ON b.rowid=blogs_fts.rowid
+		WHERE blogs_fts MATCH ? AND b.account=? AND b.encrypt=0 AND (b.auth_type & ?) = 0
+		ORDER BY bm25(blogs_fts) LIMIT ?`, strings.Join(quoted, " AND "), account, module.EAuthType_diary, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]BlogSearchResult, 0, limit)
+	for rows.Next() {
+		var result BlogSearchResult
+		if err := rows.Scan(&result.Title, &result.Snippet); err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	return results, rows.Err()
 }
 
 func sqliteDeleteBlog(account, title string) error {

@@ -4,7 +4,6 @@ import (
 	"auth"
 	"blog"
 	"config"
-	"control"
 	"encoding/json"
 	"exercise"
 	"fmt"
@@ -14,10 +13,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	control "service"
 	"strconv"
 	"strings"
 	"tools"
-	"view"
 	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
 	// [Phase 3] 以下模块已屏蔽，统一使用 goal + todolist
 	// "projectmgmt"
@@ -124,17 +123,6 @@ func HandleEditor(w h.ResponseWriter, r *h.Request) {
 	view.PageEditor(w, "", "")
 }
 
-// HandleDemo handles the demo page
-func HandleDemo(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleDemo", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-	tmp_name := r.URL.Query().Get("tmp_name")
-	view.PageDemo(w, tmp_name)
-}
-
 // HandleLink handles the main link/dashboard page
 func HandleLink(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleLink", r)
@@ -223,21 +211,14 @@ func Init() int {
 	// Core routes
 	h.HandleFunc("/main", HandleLink)
 	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
+	h.HandleFunc("/api/blogs/fts", HandleBlogFTSSearch)
 	h.HandleFunc("/link", HandleLink)
 	h.HandleFunc("/editor", HandleEditor)
 	h.HandleFunc("/statics", HandleStatics)
-	h.HandleFunc("/demo", HandleDemo)
-	h.HandleFunc("/timestamp", HandleTimeStamp)
 	h.HandleFunc("/index", HandleIndex)
-	h.HandleFunc("/help", HandleHelp)
-	h.HandleFunc("/d3", HandleD3)
 
 	// Authentication routes
 	h.HandleFunc("/login", HandleLogin)
-	h.HandleFunc("/loginsms", HandleLoginSMS)
-	h.HandleFunc("/api/logingensms", HandleLoginSMSAPI)
-	h.HandleFunc("/api/app-auth/login", HandleAppAuthLogin)
-	h.HandleFunc("/api/app-auth/register", HandleAppAuthRegister)
 	h.HandleFunc("/register", HandleRegister)
 
 	// Blog routes
@@ -249,7 +230,6 @@ func Init() int {
 	h.HandleFunc("/tag", HandleTag)
 	h.HandleFunc("/getshare", HandleGetShare)
 	h.HandleFunc("/public", HandlePublic)
-	h.HandleFunc("/games", HandleGames)
 
 	// Share routes
 	h.HandleFunc("/api/createshare", HandleCreateShare)
@@ -325,37 +305,9 @@ func Init() int {
 	h.HandleFunc("/api/advanced-reading-statistics", HandleAdvancedReadingStatisticsAPI)
 	h.HandleFunc("/api/export-reading-data", HandleExportReadingDataAPI)
 
-	// Assistant routes
-	h.HandleFunc("/assistant", HandleAssistant)
-	h.HandleFunc("/api/assistant/chat", HandleAssistantChat)
-	h.HandleFunc("/api/assistant/chat/history", HandleAssistantChatHistory)
-	h.HandleFunc("/api/assistant/stats", HandleAssistantStats)
-	h.HandleFunc("/api/assistant/suggestions", HandleAssistantSuggestions)
-	h.HandleFunc("/api/assistant/trends", HandleAssistantTrends)
-	h.HandleFunc("/api/assistant/health-comprehensive", HandleAssistantHealthComprehensive)
-
-	// [Phase 1] WeChat callback 已迁移至独立 wechat-agent
-	// h.HandleFunc("/api/wechat/callback", wechat.HandleCallback)
-
-	// CodeGen routes
-	h.HandleFunc("/codegen", HandleCodeGen)
-	h.HandleFunc("/api/codegen/projects", HandleCodeGenProjects)
-	h.HandleFunc("/api/codegen/run", HandleCodeGenRun)
-	h.HandleFunc("/api/codegen/message", HandleCodeGenMessage)
-	h.HandleFunc("/api/codegen/sessions", HandleCodeGenSessions)
-	h.HandleFunc("/api/codegen/stop", HandleCodeGenStop)
-	h.HandleFunc("/api/codegen/tree", HandleCodeGenTree)
-	h.HandleFunc("/api/codegen/file", HandleCodeGenFile)
-	h.HandleFunc("/api/codegen/agents", HandleCodeGenAgents)
-	h.HandleFunc("/ws/codegen", HandleCodeGenWS)
-	// [Phase 2] /ws/codegen/agent 已移除，agent 通过 gateway 连接
-
 	// System configuration routes
 	h.HandleFunc("/config", HandleConfig)
 	h.HandleFunc("/api/config", HandleConfigAPI)
-
-	// MCP internal tools API
-	h.HandleFunc("/api/mcp/tools", HandleMCPToolsAPI)
 
 	// Tools routes
 	h.HandleFunc("/tools", HandleTools)
@@ -365,14 +317,6 @@ func Init() int {
 	h.HandleFunc("/api/tools/bmi", tools.BMIHandler)
 	h.HandleFunc("/api/tools/text", tools.TextToolHandler)
 	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
-
-	// English Learning Tracker route
-	h.HandleFunc("/english", HandleEnglishLearning)
-
-	// Migration routes
-	h.HandleFunc("/migration", HandleMigration)
-	h.HandleFunc("/migration/export", HandleMigrationExport)
-	h.HandleFunc("/migration/import", HandleMigrationImport)
 
 	// account
 	h.HandleFunc("/account", HandleAccount)

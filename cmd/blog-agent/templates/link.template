@@ -190,6 +190,22 @@
             </div>
             {{end}}
         </section>
+
+        <section class="blog-ask" aria-labelledby="blogAskTitle">
+            <div class="blog-ask-heading">
+                <span class="blog-ask-icon"><i class="fas fa-sparkles"></i></span>
+                <div>
+                    <h2 id="blogAskTitle">问我的博客</h2>
+                    <p>用本地检索找回笔记，不会发送内容给外部 AI。</p>
+                </div>
+            </div>
+            <form id="blogAskForm" class="blog-ask-form">
+                <input id="blogAskInput" type="search" maxlength="120" placeholder="例如：我上次关于 SQLite 迁移做了哪些决定？" autocomplete="off">
+                <button type="submit">查找</button>
+            </form>
+            <div id="blogAskStatus" class="blog-ask-status" aria-live="polite"></div>
+            <div id="blogAskResults" class="blog-ask-results" hidden></div>
+        </section>
     </main>
 
     <aside class="quote-rail" aria-label="今日格言">
@@ -204,9 +220,6 @@
     <a href="/editor" class="fab fab-create" title="创建新博客">
         <i class="fas fa-plus"></i>
     </a>
-    <a href="/assistant" class="fab fab-assistant" title="智能助手">
-        <i class="fas fa-robot"></i>
-    </a>
 
     <!-- 底部状态栏 -->
     <footer class="status-bar">
@@ -214,7 +227,6 @@
         <span>版本: {{.VERSION}}</span>
     </footer>
 
-    <script src="/js/move_assistant.js"></script>
     <script src="/js/utils.js"></script>
     <script src="/js/link.js"></script>
 

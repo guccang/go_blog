@@ -315,6 +315,11 @@ func ListSummariesWithAccount(account string, limit, offset, flag int) []*module
 	return blogs
 }
 
+// SearchFTSWithAccount performs SQLite full-text retrieval without loading all blogs.
+func SearchFTSWithAccount(account, query string, limit int) ([]db.BlogSearchResult, error) {
+	return db.SearchBlogsFTS(account, query, limit)
+}
+
 // UpdateAccessTimeWithAccount 更新访问时间
 func UpdateAccessTimeWithAccount(account string, b *module.Blog) {
 	store := getBlogStore(account)

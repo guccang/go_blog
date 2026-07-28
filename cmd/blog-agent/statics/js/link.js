@@ -50,6 +50,45 @@ document.addEventListener('keydown', function(event) {
 
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', function() {
+	var blogAskForm = document.getElementById('blogAskForm');
+	if (blogAskForm) {
+		var blogAskInput = document.getElementById('blogAskInput');
+		var blogAskStatus = document.getElementById('blogAskStatus');
+		var blogAskResults = document.getElementById('blogAskResults');
+		blogAskForm.addEventListener('submit', function(event) {
+			event.preventDefault();
+			var query = (blogAskInput.value || '').trim();
+			if (!query) return;
+			blogAskStatus.textContent = '正在检索你的博客…';
+			blogAskResults.hidden = true;
+			fetch('/api/blogs/fts?q=' + encodeURIComponent(query), { credentials: 'same-origin' })
+				.then(function(response) { if (!response.ok) throw new Error('search failed'); return response.json(); })
+				.then(function(payload) {
+					var items = payload.items || [];
+					blogAskResults.textContent = '';
+					if (!items.length) {
+						blogAskStatus.textContent = '没有找到匹配的非加密、非日记内容。';
+						return;
+					}
+					blogAskStatus.textContent = '找到 ' + items.length + ' 篇相关笔记';
+					items.forEach(function(item) {
+						var link = document.createElement('a');
+						link.className = 'blog-ask-result';
+						link.href = item.url;
+						var title = document.createElement('strong');
+						title.textContent = item.title;
+						var snippet = document.createElement('p');
+						appendHighlightedSnippet(snippet, item.snippet);
+						link.appendChild(title);
+						link.appendChild(snippet);
+						blogAskResults.appendChild(link);
+					});
+					blogAskResults.hidden = false;
+				})
+				.catch(function() { blogAskStatus.textContent = '检索失败，请稍后重试。'; });
+		});
+	}
+
     var quotes = [
         ['把今天能完成的一件小事，做到确实完成。', '给正在行动的自己'],
         ['生活不是等待风暴过去，而是学会在雨中跳舞。', '维维安·格林'],
@@ -189,6 +228,28 @@ function escapeHtml(value) {
     var node = document.createElement('span');
     node.textContent = value;
     return node.innerHTML;
+}
+
+function appendHighlightedSnippet(target, snippet) {
+    var remaining = String(snippet || '');
+    while (remaining.length) {
+        var start = remaining.indexOf('<mark>');
+        if (start < 0) {
+            target.appendChild(document.createTextNode(remaining));
+            return;
+        }
+        if (start > 0) target.appendChild(document.createTextNode(remaining.slice(0, start)));
+        remaining = remaining.slice(start + 6);
+        var end = remaining.indexOf('</mark>');
+        if (end < 0) {
+            target.appendChild(document.createTextNode(remaining));
+            return;
+        }
+        var mark = document.createElement('mark');
+        mark.textContent = remaining.slice(0, end);
+        target.appendChild(mark);
+        remaining = remaining.slice(end + 7);
+    }
 }
 
 // ===== History Back =====

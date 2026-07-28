@@ -1,17 +1,16 @@
 package http
 
 import (
-	"control"
 	"encoding/json"
 	"fmt"
 	"module"
 	log "mylog"
 	h "net/http"
+	control "service"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"view"
 )
 
 // HandleReading handles the reading page
