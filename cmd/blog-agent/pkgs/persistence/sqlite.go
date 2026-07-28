@@ -58,6 +58,12 @@ func initSQLite() error {
 			id TEXT PRIMARY KEY, account TEXT NOT NULL, storage_name TEXT NOT NULL,
 			mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, created_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS pi_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, provider TEXT NOT NULL,
+			model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0,
+			completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0,
+			duration_ms INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at TEXT NOT NULL
+		)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS blog_chunks_fts USING fts5(
 			account UNINDEXED, blog_title UNINDEXED, chunk_index UNINDEXED, heading, content
 		)`,
@@ -65,6 +71,7 @@ func initSQLite() error {
 		"CREATE INDEX IF NOT EXISTS idx_blog_hooks_account_created ON blog_hooks(account, created_at DESC, id DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_blogs_account_modify ON blogs(account, modify_time DESC, title DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_media_assets_account ON media_assets(account, created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_pi_usage_account_created ON pi_usage(account, created_at DESC, id DESC)",
 		`CREATE VIRTUAL TABLE IF NOT EXISTS blogs_fts USING fts5(account UNINDEXED, title, content,
 			content='blogs', content_rowid='rowid')`,
 		`CREATE TRIGGER IF NOT EXISTS blogs_ai AFTER INSERT ON blogs BEGIN
@@ -259,16 +266,132 @@ func SearchBlogsFTS(account, query string, limit int) ([]BlogSearchResult, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	results := make([]BlogSearchResult, 0, max(limit, 0))
+	seen := make(map[string]bool)
 	for rows.Next() {
 		var result BlogSearchResult
 		if err := rows.Scan(&result.Title, &result.Snippet); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		results = append(results, result)
+		seen[result.Title] = true
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(results) >= limit {
+		return results, nil
+	}
+
+	// FTS5 的 unicode61 tokenizer 会把连续中文当成一个长 token。
+	// 例如“灵妖养成”无法由精确词“灵妖”召回，因此用 instr 做子串补召回。
+	whereParts := make([]string, 0, len(terms))
+	args := []any{account, module.EAuthType_diary}
+	for _, term := range terms {
+		whereParts = append(whereParts, `(instr(lower(title), lower(?)) > 0 OR instr(lower(content), lower(?)) > 0)`)
+		args = append(args, term, term)
+	}
+	fallbackLimit := -1
+	if limit > 0 {
+		fallbackLimit = limit - len(results) + len(seen)
+	}
+	args = append(args, fallbackLimit)
+	fallbackRows, err := requireSQLite().Query(`SELECT title, content FROM blogs
+		WHERE account=? AND encrypt=0 AND (auth_type & ?) = 0 AND `+
+		strings.Join(whereParts, " AND ")+`
+		ORDER BY modify_time DESC, title DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer fallbackRows.Close()
+	for fallbackRows.Next() {
+		var title, content string
+		if err := fallbackRows.Scan(&title, &content); err != nil {
+			return nil, err
+		}
+		if seen[title] {
+			continue
+		}
+		results = append(results, BlogSearchResult{
+			Title:   title,
+			Snippet: substringSearchSnippet(title, content, terms),
+		})
+		seen[title] = true
+		if limit > 0 && len(results) >= limit {
+			break
+		}
+	}
+	return results, fallbackRows.Err()
+}
+
+func substringSearchSnippet(title, content string, terms []string) string {
+	source := strings.Join(strings.Fields(content), " ")
+	if source == "" {
+		source = title
+	}
+	sourceRunes := []rune(source)
+	lowerRunes := []rune(strings.ToLower(source))
+	matchStart, matchLength := -1, 0
+	for _, term := range terms {
+		termRunes := []rune(strings.ToLower(term))
+		if len(termRunes) == 0 {
+			continue
+		}
+		if index := indexRunes(lowerRunes, termRunes); index >= 0 && (matchStart < 0 || index < matchStart) {
+			matchStart, matchLength = index, len(termRunes)
+		}
+	}
+	if matchStart < 0 {
+		sourceRunes = []rune(title)
+		lowerRunes = []rune(strings.ToLower(title))
+		for _, term := range terms {
+			termRunes := []rune(strings.ToLower(term))
+			if index := indexRunes(lowerRunes, termRunes); index >= 0 {
+				matchStart, matchLength = index, len(termRunes)
+				break
+			}
+		}
+	}
+	if matchStart < 0 {
+		return string(sourceRunes[:min(len(sourceRunes), 80)])
+	}
+	start := max(0, matchStart-32)
+	end := min(len(sourceRunes), matchStart+matchLength+32)
+	prefix, suffix := "", ""
+	if start > 0 {
+		prefix = "…"
+	}
+	if end < len(sourceRunes) {
+		suffix = "…"
+	}
+	before := strings.ReplaceAll(string(sourceRunes[start:matchStart]), "<mark>", "")
+	match := strings.ReplaceAll(string(sourceRunes[matchStart:matchStart+matchLength]), "<mark>", "")
+	after := strings.ReplaceAll(string(sourceRunes[matchStart+matchLength:end]), "<mark>", "")
+	return prefix + before + "<mark>" + match + "</mark>" + after + suffix
+}
+
+func indexRunes(source, target []rune) int {
+	if len(target) == 0 || len(target) > len(source) {
+		return -1
+	}
+	for start := 0; start <= len(source)-len(target); start++ {
+		matched := true
+		for offset := range target {
+			if source[start+offset] != target[offset] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return start
+		}
+	}
+	return -1
 }
 
 func sqliteDeleteBlog(account, title string) error {

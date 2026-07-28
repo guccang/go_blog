@@ -60,6 +60,28 @@ func GetBlogWithAccount(account, title string) *module.Blog {
 	return sqliteGetBlog(account, title)
 }
 
+// ListBlogAccounts returns every account that owns blog content. It is used by
+// one-time, idempotent data migrations that must preserve multi-account data.
+func ListBlogAccounts() ([]string, error) {
+	persistence.Lock()
+	defer persistence.Unlock()
+	rows, err := requireSQLite().Query("SELECT DISTINCT account FROM blogs ORDER BY account")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	accounts := []string{}
+	for rows.Next() {
+		var account string
+		if err := rows.Scan(&account); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
+}
+
 func DeleteBlogWithAccount(account, title string) int {
 	persistence.Lock()
 	defer persistence.Unlock()

@@ -768,3 +768,9 @@
         font-size: 13px;
     }
 }
+/* PI 用量：用仪表式数字替代表格。 */
+.pi-usage-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 20px; }
+.pi-usage-summary div { padding:18px; border:1px solid var(--border-color, #e6ded3); border-radius:12px; background:rgba(255,255,255,.72); }
+.pi-usage-summary strong,.pi-usage-summary span { display:block; }.pi-usage-summary strong { font-size:1.5rem; color:var(--primary-color,#d96c45); }.pi-usage-summary span { margin-top:5px; color:#7b736b; font-size:.85rem; }
+.pi-usage-row { display:grid; grid-template-columns:1fr auto auto; gap:16px; padding:12px 0; border-bottom:1px solid #eee5dc; font-size:.9rem; }.pi-usage-row time { color:#958b80; }
+@media (max-width:700px) { .pi-usage-summary { grid-template-columns:repeat(2,1fr); }.pi-usage-row { grid-template-columns:1fr; gap:4px; } }

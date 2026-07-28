@@ -633,5 +633,8 @@ func Info() {
 // InitGoalModule initializes the goal module
 func InitGoalModule() error {
 	log.Debug(log.ModuleYearPlan, "Initializing goal module")
+	if err := MigrateLegacyGoals(); err != nil {
+		return err
+	}
 	return nil
 }

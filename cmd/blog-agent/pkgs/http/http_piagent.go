@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	log "mylog"
 	h "net/http"
+	"persistence"
 	"piagent"
 	"strings"
 )
@@ -44,7 +45,28 @@ func HandlePIAsk(w h.ResponseWriter, r *h.Request) {
 		h.Error(w, err.Error(), h.StatusBadGateway)
 		return
 	}
+	if err := persistence.RecordPIUsage(account, answer.Provider, answer.Model, answer.Usage.PromptTokens, answer.Usage.CompletionTokens, answer.Usage.TotalTokens, answer.DurationMs, "success"); err != nil {
+		log.ErrorF(log.ModuleBlog, "record PI usage failed account=%s: %v", account, err)
+	}
 	emitUsageHook(r, account, blog.HookAIAnswered, "pi_agent", "question", "", "", request.Question, map[string]any{"provider": answer.Provider, "model": answer.Model}, map[string]any{"status": "success", "source_count": len(answer.Sources)})
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(answer)
+}
+
+func HandlePIUsage(w h.ResponseWriter, r *h.Request) {
+	if r.Method != h.MethodGet {
+		h.Error(w, "method not allowed", h.StatusMethodNotAllowed)
+		return
+	}
+	if checkLogin(r) != 0 {
+		h.Error(w, "unauthorized", h.StatusUnauthorized)
+		return
+	}
+	stats, records, err := persistence.GetPIUsage(getAccountFromRequest(r), 30)
+	if err != nil {
+		h.Error(w, "load PI usage failed", h.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"stats": stats, "records": records})
 }

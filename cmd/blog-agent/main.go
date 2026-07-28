@@ -19,12 +19,68 @@ import (
 	"reading"
 	"search"
 	"share"
+	"strconv"
 	"syscall"
 	"tools"
+
+	"golang.org/x/term"
 )
 
 func clearup() {
 	log.Debug(log.ModuleCommon, "blog-agent clearup")
+}
+
+func parsePortOverride(args []string) ([]string, string, error) {
+	filtered := make([]string, 0, len(args))
+	filtered = append(filtered, args[0])
+	port := ""
+	for i := 1; i < len(args); i++ {
+		if args[i] != "-port" && args[i] != "--port" {
+			filtered = append(filtered, args[i])
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, "", fmt.Errorf("%s requires a port value", args[i])
+		}
+		port = args[i+1]
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 {
+			return nil, "", fmt.Errorf("invalid port: %s", port)
+		}
+		i++
+	}
+	return filtered, port, nil
+}
+
+func resetPassword(account, configPath string) error {
+	config.Init(configPath)
+	persistence.Init()
+
+	fmt.Printf("Enter a new password for %s: ", account)
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("read password: %w", err)
+	}
+	fmt.Println()
+	if len(password) == 0 {
+		return fmt.Errorf("password cannot be empty")
+	}
+
+	fmt.Print("Confirm the new password: ")
+	confirmedPassword, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("read password confirmation: %w", err)
+	}
+	fmt.Println()
+	if string(password) != string(confirmedPassword) {
+		return fmt.Errorf("password confirmation does not match")
+	}
+
+	if err := persistence.SaveUser(account, string(password)); err != nil {
+		return fmt.Errorf("save SQLite credential: %w", err)
+	}
+	fmt.Printf("Password reset completed for account %s.\n", account)
+	return nil
 }
 
 func main() {
@@ -38,7 +94,11 @@ func main() {
 		os.Exit(0)
 	}()
 
-	args := os.Args
+	args, portOverride, err := parsePortOverride(os.Args)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 	if len(args) >= 3 && args[1] == "migrate-sqlite" {
 		config.Init(args[2])
 		persistence.Init()
@@ -48,6 +108,16 @@ func main() {
 			return
 		}
 		fmt.Printf("SQLite migration complete: %d Markdown files, %d blogs written. Source files were kept unchanged.\n", report.Files, report.Blogs)
+		return
+	}
+	if len(args) >= 2 && args[1] == "reset-password" {
+		if len(args) != 4 {
+			fmt.Println("usage: blog-agent reset-password <account> <sys_conf_path>")
+			return
+		}
+		if err := resetPassword(args[2], args[3]); err != nil {
+			fmt.Printf("Password reset failed: %v\n", err)
+		}
 		return
 	}
 	for _, arg := range args {
@@ -100,7 +170,9 @@ func main() {
 	auth.Init()
 	login.Init()
 	exercise.Init()
-	goal.InitGoalModule()
+	if err := goal.InitGoalModule(); err != nil {
+		log.ErrorF(log.ModuleYearPlan, "legacy goal migration failed: %v", err)
+	}
 	share.Init()
 
 	log.Debug(log.ModuleCommon, "blog-agent started")
@@ -111,7 +183,7 @@ func main() {
 		certFile = args[2]
 		keyFile = args[3]
 	}
-	err := http.Run(certFile, keyFile)
+	err = http.Run(certFile, keyFile, portOverride)
 
 	log.Debug(log.ModuleCommon, fmt.Sprintf("blog-agent exit %s", err.Error()))
 	log.FlushLogs()

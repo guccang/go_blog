@@ -215,6 +215,7 @@ func Init() int {
 	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
 	h.HandleFunc("/api/blogs/fts", HandleBlogFTSSearch)
 	h.HandleFunc("/api/pi/ask", HandlePIAsk)
+	h.HandleFunc("/api/pi/usage", HandlePIUsage)
 	h.HandleFunc("/api/media/upload", HandleMediaUpload)
 	h.HandleFunc("/api/blog/content", HandleBlogContentChunk)
 	h.HandleFunc("/media/", HandleMediaGet)
@@ -341,9 +342,12 @@ func Init() int {
 }
 
 // Run starts the HTTP server
-func Run(certFile string, keyFile string) error {
+func Run(certFile string, keyFile string, portOverride string) error {
 	Init()
 	port := config.GetConfigWithAccount(config.GetAdminAccount(), "port")
+	if portOverride != "" {
+		port = portOverride
+	}
 	var err error
 	//h.ListenAndServe(fmt.Sprintf(":%s",port),nil)
 	if len(certFile) <= 0 || len(keyFile) <= 0 {

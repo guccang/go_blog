@@ -6,7 +6,19 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeBackToTop();
     updateUnitOptions();
     getCurrentTime(); // 自动获取当前时间
+    loadPIUsage();
 });
+
+function loadPIUsage() {
+    const summary = document.getElementById('pi-usage-summary');
+    const records = document.getElementById('pi-usage-records');
+    if (!summary || !records) return;
+    fetch('/api/pi/usage', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
+        const s = data.stats;
+        summary.innerHTML = `<div><strong>${s.total_tokens}</strong><span>累计 Token</span></div><div><strong>${s.prompt_tokens}</strong><span>上传</span></div><div><strong>${s.completion_tokens}</strong><span>下载</span></div><div><strong>${(s.duration_ms / 1000).toFixed(1)}s</strong><span>模型耗时</span></div>`;
+        records.innerHTML = data.records.length ? data.records.map(r => `<div class="pi-usage-row"><span>${r.provider} / ${r.model}</span><span>↑${r.prompt_tokens} ↓${r.completion_tokens} · ${(r.duration_ms / 1000).toFixed(1)}s</span><time>${r.created_at}</time></div>`).join('') : '尚无 PI 调用记录。';
+    }).catch(() => { summary.textContent = '无法加载 PI 用量。'; });
+}
 
 // 工具导航初始化
 function initializeToolNavigation() {

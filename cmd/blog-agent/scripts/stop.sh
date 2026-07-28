@@ -1,13 +1,23 @@
 
 
-p=$(dirname $0)
-p=$(realpath "$p")
-base_path=$p
+#!/usr/bin/env sh
+set -eu
 
-num=$(ps aux | grep "$base_path" | grep "$base_path/go_blog" | awk '{print $2}'|wc -l)
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+APP_DIR=$(dirname "$SCRIPT_DIR")
+PID_FILE="$APP_DIR/blog-agent.pid"
 
-if [ $num -gt 0 ];then
-	ps aux | grep "$base_path" | grep "$base_path/go_blog" | awk '{print $2}' | xargs kill -9
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    kill "$(cat "$PID_FILE")"
+    rm -f "$PID_FILE"
+    echo "blog-agent stopped."
+    exit 0
 fi
 
-sh $p/show.sh
+PIDS=$(pgrep -f "^$APP_DIR/blog-agent" || true)
+if [ -n "$PIDS" ]; then
+    kill $PIDS
+    echo "blog-agent stopped."
+else
+    echo "blog-agent is not running."
+fi

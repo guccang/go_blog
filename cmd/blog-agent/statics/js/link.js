@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
 					blogAskCollapse.setAttribute('aria-expanded', String(!blogAskCollapsed));
 					blogAskStatus.textContent = blogAskCollapsed
 						? 'PI 回答已生成，查询结果仍处于收起状态。'
-						: 'PI 已通过 ' + payload.provider + ' / ' + payload.model + ' 回答。';
+						: 'PI 已通过 ' + payload.provider + ' / ' + payload.model + ' 回答。' + (payload.usage && payload.usage.reported ? ' 本次：上传 ' + payload.usage.prompt_tokens + '，下载 ' + payload.usage.completion_tokens + '，合计 ' + payload.usage.total_tokens + ' Token；' + (payload.duration_ms / 1000).toFixed(1) + ' 秒。' : ' Provider 未返回 Token 用量。');
 				})
 				.catch(function(error) { blogAskStatus.textContent = 'PI 回答失败：' + (error.message || '请检查 Provider 配置。'); });
 		});

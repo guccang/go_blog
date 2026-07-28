@@ -1,9 +1,7 @@
 
-p=$(dirname $0)
+#!/usr/bin/env sh
+set -eu
 
-p=$(realpath "$p")
-echo $p
-
-sh $p/stop.sh
-
-sh $p/run.sh
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+"$SCRIPT_DIR/stop.sh" || true
+"$SCRIPT_DIR/start.sh"

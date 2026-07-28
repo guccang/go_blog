@@ -3,7 +3,10 @@ package persistence
 import (
 	"database/sql"
 	"module"
+	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -12,9 +15,10 @@ const (
 )
 
 type BlogChunkSearchResult struct {
-	Title   string
-	Heading string
-	Content string
+	Title      string
+	ChunkIndex int
+	Heading    string
+	Content    string
 }
 
 func rebuildBlogChunksTx(tx *sql.Tx, account, title, content string) error {
@@ -142,29 +146,231 @@ func EnsureBlogChunks() error {
 }
 
 func SearchBlogChunks(account, query string, limit int) ([]BlogChunkSearchResult, error) {
-	terms := strings.Fields(query)
+	terms := chunkSearchTerms(query)
 	if account == "" || len(terms) == 0 {
 		return []BlogChunkSearchResult{}, nil
 	}
+	if limit <= 0 {
+		limit = 24
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	candidateLimit := limit * 8
+	if candidateLimit > 400 {
+		candidateLimit = 400
+	}
+
 	quoted := make([]string, 0, len(terms))
 	for _, term := range terms {
 		quoted = append(quoted, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
 	}
-	rows, err := requireSQLite().Query(`SELECT f.blog_title,f.heading,f.content
+	rows, err := requireSQLite().Query(`SELECT f.blog_title,f.chunk_index,f.heading,f.content
 		FROM blog_chunks_fts f JOIN blogs b ON b.account=f.account AND b.title=f.blog_title
 		WHERE f.account=? AND blog_chunks_fts MATCH ? AND b.encrypt=0 AND (b.auth_type & ?) = 0
-		ORDER BY bm25(blog_chunks_fts) LIMIT ?`, account, strings.Join(quoted, " AND "), module.EAuthType_diary, limit)
+		ORDER BY bm25(blog_chunks_fts) LIMIT ?`, account, strings.Join(quoted, " OR "), module.EAuthType_diary, candidateLimit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := []BlogChunkSearchResult{}
+	candidates := make([]chunkSearchCandidate, 0, candidateLimit)
+	seen := map[string]struct{}{}
 	for rows.Next() {
 		var item BlogChunkSearchResult
-		if err := rows.Scan(&item.Title, &item.Heading, &item.Content); err != nil {
+		if err := rows.Scan(&item.Title, &item.ChunkIndex, &item.Heading, &item.Content); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		result = append(result, item)
+		key := chunkSearchKey(item)
+		seen[key] = struct{}{}
+		candidates = append(candidates, chunkSearchCandidate{item: item, fts: true, order: len(candidates)})
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	conditions := make([]string, 0, len(terms))
+	args := make([]any, 0, 3+len(terms)*3)
+	args = append(args, account, module.EAuthType_diary)
+	for _, term := range terms {
+		conditions = append(conditions, `(instr(lower(c.blog_title),lower(?))>0 OR instr(lower(c.heading),lower(?))>0 OR instr(lower(c.content),lower(?))>0)`)
+		args = append(args, term, term, term)
+	}
+	args = append(args, candidateLimit)
+	fallbackRows, err := requireSQLite().Query(`SELECT c.blog_title,c.chunk_index,c.heading,c.content
+		FROM blog_chunks c JOIN blogs b ON b.account=c.account AND b.title=c.blog_title
+		WHERE c.account=? AND b.encrypt=0 AND (b.auth_type & ?) = 0
+		  AND (`+strings.Join(conditions, " OR ")+`)
+		ORDER BY b.modify_time DESC,c.blog_title,c.chunk_index LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	for fallbackRows.Next() {
+		var item BlogChunkSearchResult
+		if err := fallbackRows.Scan(&item.Title, &item.ChunkIndex, &item.Heading, &item.Content); err != nil {
+			fallbackRows.Close()
+			return nil, err
+		}
+		key := chunkSearchKey(item)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		candidates = append(candidates, chunkSearchCandidate{item: item, order: len(candidates)})
+	}
+	if err := fallbackRows.Err(); err != nil {
+		fallbackRows.Close()
+		return nil, err
+	}
+	if err := fallbackRows.Close(); err != nil {
+		return nil, err
+	}
+	return rankChunkSearchCandidates(query, terms, candidates, limit), nil
+}
+
+type chunkSearchCandidate struct {
+	item  BlogChunkSearchResult
+	fts   bool
+	order int
+	score int
+}
+
+func chunkSearchKey(item BlogChunkSearchResult) string {
+	return item.Title + "\x00" + strconv.Itoa(item.ChunkIndex)
+}
+
+func rankChunkSearchCandidates(query string, terms []string, candidates []chunkSearchCandidate, limit int) []BlogChunkSearchResult {
+	for index := range candidates {
+		candidates[index].score = chunkSearchScore(query, terms, candidates[index].item)
+		if candidates[index].fts {
+			candidates[index].score += 8
+		}
+	}
+	sort.SliceStable(candidates, func(left, right int) bool {
+		if candidates[left].score != candidates[right].score {
+			return candidates[left].score > candidates[right].score
+		}
+		return candidates[left].order < candidates[right].order
+	})
+
+	result := make([]BlogChunkSearchResult, 0, limit)
+	perBlog := map[string]int{}
+	for _, candidate := range candidates {
+		if perBlog[candidate.item.Title] >= 2 {
+			continue
+		}
+		result = append(result, candidate.item)
+		perBlog[candidate.item.Title]++
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func chunkSearchScore(query string, terms []string, item BlogChunkSearchResult) int {
+	title := strings.ToLower(item.Title)
+	heading := strings.ToLower(item.Heading)
+	content := strings.ToLower(item.Content)
+	fullQuery := strings.ToLower(strings.TrimSpace(query))
+	score := 0
+	if fullQuery != "" {
+		if strings.Contains(title, fullQuery) {
+			score += 40
+		}
+		if strings.Contains(heading, fullQuery) {
+			score += 30
+		}
+		if strings.Contains(content, fullQuery) {
+			score += 20
+		}
+	}
+	for _, term := range terms {
+		matched := false
+		if strings.Contains(title, term) {
+			score += 16
+			matched = true
+		}
+		if strings.Contains(heading, term) {
+			score += 10
+			matched = true
+		}
+		if count := strings.Count(content, term); count > 0 {
+			if count > 4 {
+				count = 4
+			}
+			score += count * 2
+			matched = true
+		}
+		if matched {
+			score += 6
+		}
+	}
+	return score
+}
+
+func chunkSearchTerms(query string) []string {
+	const chineseQuestionRunes = "的吗呢啊"
+	seen := map[string]struct{}{}
+	terms := make([]string, 0, 16)
+	add := func(term string) {
+		term = strings.ToLower(strings.TrimSpace(term))
+		if term == "" {
+			return
+		}
+		if _, exists := seen[term]; exists {
+			return
+		}
+		seen[term] = struct{}{}
+		terms = append(terms, term)
+	}
+	addBlock := func(block []rune, chinese bool) {
+		if chinese {
+			text := string(block)
+			for _, prefix := range []string{"请问", "关于", "有关"} {
+				text = strings.TrimPrefix(text, prefix)
+			}
+			for _, suffix := range []string{"是什么", "怎么样", "有哪些", "怎么做", "如何", "为何"} {
+				text = strings.TrimSuffix(text, suffix)
+			}
+			block = []rune(text)
+		}
+		if len(block) == 0 {
+			return
+		}
+		add(string(block))
+		if chinese && len(block) > 2 {
+			for index := 0; index+2 <= len(block) && len(terms) < 16; index += 2 {
+				add(string(block[index : index+2]))
+			}
+		}
+	}
+
+	var block []rune
+	blockIsChinese := false
+	flush := func() {
+		addBlock(block, blockIsChinese)
+		block = nil
+	}
+	for _, current := range []rune(query) {
+		isChinese := unicode.Is(unicode.Han, current)
+		if isChinese && strings.ContainsRune(chineseQuestionRunes, current) {
+			flush()
+			continue
+		}
+		if !unicode.IsLetter(current) && !unicode.IsDigit(current) {
+			flush()
+			continue
+		}
+		if len(block) > 0 && isChinese != blockIsChinese {
+			flush()
+		}
+		blockIsChinese = isChinese
+		block = append(block, current)
+	}
+	flush()
+	return terms
 }

@@ -8,6 +8,6 @@
         <section id="goalMap" class="goal-map" aria-label="当前目标地图"></section>
         <section class="focus-section"><div><p class="eyebrow">NEXT STEP</p><h2>今天先做什么</h2></div><div id="nextTasks" class="next-tasks"></div></section>
     </main>
-    <script src="/js/goal_map.js?v=1"></script>
+    <script src="/js/goal_map.js?v=2"></script>
 </body>
 </html>

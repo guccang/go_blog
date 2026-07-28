@@ -89,6 +89,10 @@
                     <p>家庭资产计算</p>
                 </div>
             </div>
+            <div class="tool-nav-card" data-tool="pi-usage">
+                <div class="nav-card-icon">🤖</div>
+                <div class="nav-card-content"><h3>PI 用量</h3><p>模型 Token 与响应耗时</p></div>
+            </div>
         </div>
 
         <!-- 工具内容区域 -->
@@ -475,6 +479,11 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="tool-section" id="pi-usage-tools">
+                <div class="section-header"><h2><i class="fas fa-chart-line"></i> PI 用量</h2><p>仅统计当前博客账户的 PI 模型调用。</p></div>
+                <div id="pi-usage-summary" class="pi-usage-summary">加载用量数据…</div>
+                <div class="tool-card gradient-border full-width"><div class="card-header"><div class="card-icon">🧾</div><h3>最近调用</h3></div><div class="card-body"><div id="pi-usage-records" class="pi-usage-records"></div></div></div>
             </div>
         </main>
     </div>
