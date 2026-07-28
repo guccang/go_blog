@@ -47,6 +47,7 @@ cmd/app-agent/app-agent.json
 cmd/obs-agent/obs-agent.json
 cmd/blog-agent/blog-agent.json
 cmd/blog-agent/blog-agent
+cmd/blog-agent/data/
 cmd/deploy-agent/deploy-agent
 cmd/deploy-agent/deploy-agent-test
 cmd/env-agent/env-agent
