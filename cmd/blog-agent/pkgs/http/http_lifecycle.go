@@ -14,23 +14,6 @@ func HandleTimeStamp(w h.ResponseWriter, r *h.Request) {
 	view.PageTimeStamp(w)
 }
 
-// HandleTodolist handles todolist page
-func HandleTodolist(w h.ResponseWriter, r *h.Request) {
-	LogRemoteAddr("HandleTodolist", r)
-	if checkLogin(r) != 0 {
-		h.Redirect(w, r, "/index", 302)
-		return
-	}
-
-	date := r.URL.Query().Get("date")
-	if date == "" {
-		// If no date provided, use today's date
-		date = time.Now().Format("2006-01-02")
-	}
-
-	view.PageTodolist(w, date)
-}
-
 // HandleGoal renders the unified goal management page
 func HandleGoal(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleGoal", r)

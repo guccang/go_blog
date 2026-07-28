@@ -180,6 +180,16 @@ main.go
 
 ## 快速开始
 
+### SQLite 首次迁移
+
+博客启动不再自动扫描 `blogs_txt`。首次切换时，请在确认 Markdown 备份可用后显式执行一次：
+
+```bash
+./go_blog migrate-sqlite ../blogs_txt/sys_conf.md
+```
+
+该命令把 `blogs_txt/<account>/**/*.md` 写入 `data/go_blog.db`，不会修改或删除源 Markdown；可安全重复执行。
+
 ### 环境要求
 
 - Go 1.24.0+
@@ -336,7 +346,7 @@ redis_port=6379
 | `/exercise` | 锻炼管理 | 记录与统计 |
 | `/reading` | 读书管理 | 书籍与笔记 |
 | `/reading_dashboard` | 阅读仪表盘 | 阅读数据分析 |
-| `/todolist` | 待办事项 | 任务管理 |
+| `/goal` | 目标管理 | 日、周、月、年目标及任务管理 |
 | `/yearplan` | 年度计划 | 目标追踪 |
 | `/taskbreakdown` | 任务拆解 | 分层管理 |
 | `/lifecountdown` | 人生倒计时 | 日期提醒 |

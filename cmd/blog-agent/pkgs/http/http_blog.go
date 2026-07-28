@@ -153,7 +153,7 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 		blogname = "help"
 	}
 
-	log.DebugF(log.ModuleBlog, "help blogname=", blogname)
+	log.DebugF(log.ModuleBlog, "help blogname=%s", blogname)
 
 	account := getAccountFromRequest(r)
 	usepublic := 0
@@ -303,18 +303,16 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		log.DebugF(log.ModuleBlog, "传统日记博客密码验证成功: %s", blogname)
 	}
 
-	// 检查是否是 todolist 博客，如果是则重定向到 todolist 页面
+	// 保留旧待办博客的访问兼容性，统一跳转到同一天的日目标。
 	if strings.HasPrefix(blogname, "todolist-") {
 		// 从blogname中解析出日期，格式为todolist-YYYY-MM-DD
 		date := strings.TrimPrefix(blogname, "todolist-")
 		// 验证日期格式是否正确
 		if len(date) == 10 && date[4] == '-' && date[7] == '-' {
-			// 重定向到todolist页面，并传递date参数
-			h.Redirect(w, r, fmt.Sprintf("/todolist?date=%s", date), 302)
+			h.Redirect(w, r, fmt.Sprintf("/goal?level=daily&period=%s", date), 302)
 			return
 		}
-		// 如果日期格式不正确，则使用默认重定向
-		h.Redirect(w, r, "/todolist", 302)
+		h.Redirect(w, r, "/goal", 302)
 		return
 	}
 
@@ -818,29 +816,6 @@ func HandleMigrationExport(w h.ResponseWriter, r *h.Request) {
 	exportData := make([]map[string]interface{}, 0)
 
 	for _, blog := range blogs {
-		// 获取评论信息
-		comments := comment.GetComments(account, blog.Title)
-		var commentData []map[string]interface{}
-		if comments != nil && comments.Comments != nil {
-			for _, c := range comments.Comments {
-				commentInfo := map[string]interface{}{
-					"owner":        c.Owner,
-					"message":      c.Msg,
-					"create_time":  c.CreateTime,
-					"modify_time":  c.ModifyTime,
-					"idx":          c.Idx,
-					"mail":         c.Mail,
-					"user_id":      c.UserID,
-					"session_id":   c.SessionID,
-					"ip":           c.IP,
-					"user_agent":   c.UserAgent,
-					"is_anonymous": c.IsAnonymous,
-					"is_verified":  c.IsVerified,
-				}
-				commentData = append(commentData, commentInfo)
-			}
-		}
-
 		blogData := map[string]interface{}{
 			"title":       blog.Title,
 			"create_time": blog.CreateTime,
@@ -852,7 +827,6 @@ func HandleMigrationExport(w h.ResponseWriter, r *h.Request) {
 			"tags":        blog.Tags,
 			"encrypt":     blog.Encrypt,
 			"account":     blog.Account,
-			"comments":    commentData,
 		}
 		exportData = append(exportData, blogData)
 	}

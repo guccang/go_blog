@@ -28,3 +28,14 @@ func TestCallToolForAPIRejectsHiddenTools(t *testing.T) {
 		t.Fatalf("expected error for hidden tool")
 	}
 }
+
+func TestDailyTodoToolsAreNotPublic(t *testing.T) {
+	for _, name := range []string{"RawGetTodosByDate", "RawAddTodo", "RawToggleTodo", "RawDeleteTodo", "RawGetCurrentTask"} {
+		if isPublicToolName(name) {
+			t.Fatalf("daily todo tool should not be public: %s", name)
+		}
+	}
+	if !isPublicToolName("RawAddDailyGoalTask") {
+		t.Fatal("daily goal task tool should remain public")
+	}
+}

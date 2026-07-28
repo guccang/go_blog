@@ -252,11 +252,6 @@ func RegisterInnerTools() {
 	RegisterCallBack("RawExerciseDetailedStats", Inner_blog_RawExerciseDetailedStats)
 	RegisterCallBack("RawRecentExerciseRecords", Inner_blog_RawRecentExerciseRecords)
 
-	// 新增接口 - 获取每日任务
-	RegisterCallBack("RawGetCurrentTask", Inner_blog_RawGetCurrentTask)
-	RegisterCallBack("RawGetCurrentTaskByDate", Inner_blog_RawGetCurrentTaskByDate)
-	RegisterCallBack("RawGetCurrentTaskByRageDate", Inner_blog_RawGetCurrentTaskByRageDate)
-
 	// 新增接口 - 创建博客
 	RegisterCallBack("RawCreateBlog", Inner_blog_RawCreateBlog)
 	RegisterCallBackPrompt("RawCreateBlog", "完成创建后返回博客链接格式为[title](/get?blogname=title)")
@@ -264,14 +259,6 @@ func RegisterInnerTools() {
 	// 新增模块工具 - Web 搜索与抓取
 	RegisterCallBack("WebSearch", Inner_blog_WebSearch)
 	RegisterCallBack("WebFetch", Inner_blog_WebFetch)
-
-	// 新增模块工具 - TodoList
-	RegisterCallBack("RawGetTodosByDate", Inner_blog_RawGetTodosByDate)
-	RegisterCallBack("RawGetTodosRange", Inner_blog_RawGetTodosRange)
-	RegisterCallBack("RawAddTodo", Inner_blog_RawAddTodo)
-	RegisterCallBack("RawToggleTodo", Inner_blog_RawToggleTodo)
-	RegisterCallBack("RawDeleteTodo", Inner_blog_RawDeleteTodo)
-	RegisterCallBack("RawUpdateTodo", Inner_blog_RawUpdateTodo)
 
 	// 新增模块工具 - Exercise
 	RegisterCallBack("RawGetExerciseByDate", Inner_blog_RawGetExerciseByDate)
@@ -373,51 +360,6 @@ func GetInnerMCPTools(toolNameMapping map[string]string) []LLMTool {
 						"account": map[string]string{"type": "string", "description": "账号"},
 					},
 					"required": []string{"account"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.RawGetCurrentTask",
-				Description: "获取当天todolist数据。返回JSON(list,每项含id/content/done字段)",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"account": map[string]string{"type": "string", "description": "账号"},
-					},
-					"required": []string{"account"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.RawGetCurrentTaskByDate",
-				Description: "获取指定日期的todolist数据。返回JSON(list)",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"account": map[string]string{"type": "string", "description": "账号"},
-						"date":    map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
-					},
-					"required": []string{"account", "date"},
-				},
-			},
-		},
-		{
-			Type: "function",
-			Function: LLMFunction{
-				Name:        "Inner_blog.RawGetCurrentTaskByRageDate",
-				Description: "获取指定日期范围的todolist数据。返回JSON(dict,key为日期)",
-				Parameters: map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"account":   map[string]string{"type": "string", "description": "账号"},
-						"startDate": map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
-						"endDate":   map[string]string{"type": "string", "description": "日期格式为2025-01-01"},
-					},
-					"required": []string{"account", "startDate", "endDate"},
 				},
 			},
 		},

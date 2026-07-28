@@ -2,8 +2,7 @@ package mcp
 
 import "strings"
 
-// blog-agent 对外公开的工具只保留 5 个业务域：
-// 博客、锻炼、待办、项目、读书。其余工具即使内部仍保留回调，也不再对外暴露。
+// blog-agent 对外公开的工具覆盖博客、目标、锻炼、项目和读书业务域。
 var publicToolNames = map[string]struct{}{
 	// 博客
 	"RawAllBlogName":                 {},
@@ -17,14 +16,6 @@ var publicToolNames = map[string]struct{}{
 	"RawSearchBlogContent":           {},
 	"RawBlogsByAuthType":             {},
 	"RawBlogsByTag":                  {},
-
-	// TodoList
-	"RawGetTodosByDate": {},
-	"RawGetTodosRange":  {},
-	"RawAddTodo":        {},
-	"RawToggleTodo":     {},
-	"RawDeleteTodo":     {},
-	"RawUpdateTodo":     {},
 
 	// Exercise
 	"RawGetExerciseByDate":     {},
@@ -59,18 +50,17 @@ var publicToolNames = map[string]struct{}{
 	"RawUpdateProjectKeyResult": {},
 	"RawGetProjectSummary":      {},
 
-
 	// Goal 统一目标管理
-	"RawGetGoal":         {},
-	"RawGetCurrentGoals": {},
-	"RawSaveGoal":        {},
-	"RawAddGoalTask":     {},
-	"RawUpdateGoalTask":  {},
-	"RawDeleteGoalTask":  {},
-	"RawDeleteGoal":      {},
+	"RawGetGoal":          {},
+	"RawGetCurrentGoals":  {},
+	"RawSaveGoal":         {},
+	"RawAddGoalTask":      {},
+	"RawUpdateGoalTask":   {},
+	"RawDeleteGoalTask":   {},
+	"RawDeleteGoal":       {},
 	"RawListGoalsByLevel": {},
-	"RawPrevPeriod":      {},
-	"RawNextPeriod":      {},
+	"RawPrevPeriod":       {},
+	"RawNextPeriod":       {},
 
 	// 明确的目标查询 (自动计算周期，LLM友好)
 	"RawGetDailyGoal":   {},
@@ -84,13 +74,13 @@ var publicToolNames = map[string]struct{}{
 	"RawAddMonthlyGoalTask": {},
 
 	// Memory 私人管家记忆库
-	"RawMemoryRead":      {},
-	"RawMemoryWrite":     {},
-	"RawMemoryAppend":    {},
-	"RawMemoryJournal":   {},
-	"RawMemorySearch":    {},
+	"RawMemoryRead":           {},
+	"RawMemoryWrite":          {},
+	"RawMemoryAppend":         {},
+	"RawMemoryJournal":        {},
+	"RawMemorySearch":         {},
 	"RawMemoryRewriteSection": {},
-	"RawMemoryListFiles": {},
+	"RawMemoryListFiles":      {},
 }
 
 func normalizePublicToolName(toolName string) string {

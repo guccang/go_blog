@@ -340,11 +340,15 @@ func PageTags(w h.ResponseWriter, tag, session string) {
 func PageLink(w h.ResponseWriter, flag int, session string) {
 
 	blog_num := config.GetMainBlogNum()
+	if blog_num <= 0 || blog_num > 20 {
+		blog_num = 20
+	}
 	account := blog.GetAccountFromSession(session)
 	blogs := control.GetAll(account, blog_num, flag)
 	log.DebugF(log.ModuleView, "blogs cnt=%d", len(blogs))
 
 	datas := getLinks(blogs, flag, account)
+	datas.BLOGS_NUMBER = control.GetBlogsNum(account)
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
@@ -447,20 +451,6 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account str
 		IS_PUBLIC:    isPublic,
 		IS_DIARY:     isDiary,
 		IS_ENCRYPTED: isEncrypted,
-	}
-
-	bc := control.GetBlogComments(account, blogname)
-	if bc != nil {
-		for _, c := range bc.Comments {
-			cd := CommentDatas{
-				IDX:   c.Idx,
-				OWNER: c.Owner,
-				MSG:   c.Msg,
-				CTIME: c.CreateTime,
-				MAIL:  c.Mail,
-			}
-			data.COMMENTS = append(data.COMMENTS, cd)
-		}
 	}
 
 	err = tmpl.Execute(w, data)

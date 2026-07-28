@@ -1,7 +1,7 @@
 // statics/js/goal/components/goal-app.js
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { currentPeriod, PARENT_LEVEL } from '../utils.js';
+import { currentPeriod, LEVELS, PARENT_LEVEL } from '../utils.js';
 import './goal-tabs.js';
 import './period-nav.js';
 import './goal-detail.js';
@@ -52,8 +52,12 @@ class GoalApp extends HTMLElement {
     this.renderView();
     // 等待组件完成挂载后再设置状态和加载数据
     requestAnimationFrame(() => {
-      const period = currentPeriod(store.state.level);
-      store.setState({ period });
+      const params = new URLSearchParams(window.location.search);
+      const requestedLevel = params.get('level');
+      const level = LEVELS.includes(requestedLevel) ? requestedLevel : store.state.level;
+      const requestedPeriod = params.get('period');
+      const period = requestedPeriod || currentPeriod(level);
+      store.setState({ level, period });
       this.loadGoal();
     });
   }

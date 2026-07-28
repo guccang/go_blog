@@ -22,10 +22,6 @@
                 <i class="fas fa-pen-to-square"></i>
                 <span>写博客</span>
             </a>
-            <a href="/todolist" class="nav-item" onclick="navigateToTodolist(event)">
-                <i class="fas fa-check-square"></i>
-                <span>每日任务</span>
-            </a>
             <a href="/goal" class="nav-item">
                 <i class="fas fa-flag-checkered"></i>
                 <span>目标管理</span>
@@ -100,8 +96,8 @@
         <!-- 欢迎区域 & 统计 -->
         <section class="welcome-section">
             <div class="welcome-text">
-                <h1>欢迎回来</h1>
-                <p>你共有 <strong>{{.BLOGS_NUMBER}}</strong> 篇博客</p>
+                <h1>内容工作台</h1>
+                <p>在这里继续阅读、整理和创作你的 <strong>{{.BLOGS_NUMBER}}</strong> 篇内容</p>
             </div>
             <div class="quick-stats">
                 <div class="stat-item">
@@ -140,9 +136,18 @@
         <section class="section">
             <div class="section-header">
                 <h2 class="section-title">
-                    <i class="fas fa-newspaper"></i> 全部博客
+                    <i class="fas fa-layer-group"></i> 内容库
                 </h2>
                 <span class="section-badge">{{.BLOGS_NUMBER}}</span>
+            </div>
+
+            <div class="blog-filter-bar" id="blogFilterBar" role="group" aria-label="内容分类筛选"></div>
+            <div class="blog-filter-empty" id="blogFilterEmpty" hidden>
+                <i class="fas fa-filter-circle-xmark"></i>
+                <div>
+                    <strong>这个分类暂时没有内容</strong>
+                    <button type="button" id="showAllBlogs">显示全部内容</button>
+                </div>
             </div>
 
             <div class="blog-grid" id="blogContainer">
@@ -169,6 +174,12 @@
                 {{end}}
             </div>
 
+            <div class="load-more-wrap" id="loadMoreWrap" {{if lt (len .LINKS) 1}}hidden{{end}}>
+                <button type="button" class="load-more-btn" id="loadMoreBlogs" data-offset="{{len .LINKS}}">
+                    加载更多内容
+                </button>
+            </div>
+
             {{if not .LINKS}}
             <div class="empty-state">
                 <div class="empty-icon">
@@ -180,6 +191,14 @@
             {{end}}
         </section>
     </main>
+
+    <aside class="quote-rail" aria-label="今日格言">
+        <div class="quote-rail-rule"></div>
+        <p class="quote-rail-kicker"><i class="fas fa-feather-pointed"></i> 今日格言</p>
+        <blockquote id="dailyQuote" class="quote-rail-text">把今天能完成的一件小事，做到确实完成。</blockquote>
+        <p id="dailyQuoteSource" class="quote-rail-source">— 给正在行动的自己</p>
+        <div class="quote-rail-mark">“</div>
+    </aside>
 
     <!-- 浮动按钮 -->
     <a href="/editor" class="fab fab-create" title="创建新博客">
@@ -226,13 +245,6 @@
             setTimeout(() => { if (searchInput.value === text) onSearch(); }, 100);
         }
         select.selectedIndex = 0;
-    }
-
-    // 导航到当日todolist
-    function navigateToTodolist(event) {
-        event.preventDefault();
-        const today = new Date().toISOString().split('T')[0];
-        window.location.href = `/todolist?date=${today}`;
     }
 
     // 初始化

@@ -38,6 +38,10 @@ func GetAll(account string, cnt int, flag int) []*module.Blog {
 	return blog.GetAllWithAccount(account, cnt, flag)
 }
 
+func ListBlogSummaries(account string, limit, offset, flag int) []*module.Blog {
+	return blog.ListSummariesWithAccount(account, limit, offset, flag)
+}
+
 func GetBlogs(account string) map[string]*module.Blog {
 	return blog.GetBlogsWithAccount(account)
 }

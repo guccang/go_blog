@@ -32,11 +32,10 @@ func Info() {
 func Init() {
 	persistence.Lock()
 	defer persistence.Unlock()
-
-	ip := config.GetConfigWithAccount(config.GetAdminAccount(), "redis_ip")
-	port, _ := strconv.Atoi(config.GetConfigWithAccount(config.GetAdminAccount(), "redis_port"))
-	pwd := config.GetConfigWithAccount(config.GetAdminAccount(), "redis_pwd")
-	connect(ip, port, pwd)
+	if err := initSQLite(); err != nil {
+		panic(fmt.Sprintf("initialize SQLite blog storage failed: %v", err))
+	}
+	log.InfoF(log.ModulePersistence, "SQLite storage initialized; Redis is not used at runtime")
 }
 
 func strTime() string {
@@ -65,7 +64,9 @@ func connect(ip string, port int, password string) int {
 func SaveBlog(account string, blog *module.Blog) {
 	persistence.Lock()
 	defer persistence.Unlock()
-	saveBlogInternal(account, blog)
+	if err := sqliteSaveBlog(account, blog); err != nil {
+		log.ErrorF(log.ModulePersistence, "sqlite save blog title=%s err=%s", blog.Title, err.Error())
+	}
 }
 
 func saveBlogInternal(account string, blog *module.Blog) {
@@ -99,57 +100,31 @@ func SaveBlogs(account string, blogs map[string]*module.Blog) {
 	persistence.Lock()
 	defer persistence.Unlock()
 	for _, b := range blogs {
-		saveBlogInternal(account, b)
+		if err := sqliteSaveBlog(account, b); err != nil {
+			log.ErrorF(log.ModulePersistence, "sqlite save blog title=%s err=%s", b.Title, err.Error())
+		}
 	}
 }
 
 func GetBlogsByAccount(account string) map[string]*module.Blog {
 	persistence.Lock()
 	defer persistence.Unlock()
-
-	pattern := fmt.Sprintf("%s:blog@*", account)
-	keys, err := client.Keys(pattern).Result()
-	if err != nil {
-		log.ErrorF(log.ModulePersistence, "getblogsbyaccount error pattern=%s err=%s", pattern, err.Error())
-		return nil
-	}
-
-	if account == config.GetAdminAccount() {
-		legacy, _ := client.Keys("blog@*").Result()
-		keys = append(keys, legacy...)
-	}
-
-	blogs := make(map[string]*module.Blog)
-	for _, key := range keys {
-		m, err := client.HGetAll(key).Result()
-		if err != nil {
-			continue
-		}
-		b := toBlog(m)
-		blogs[b.Title] = b
-	}
-	return blogs
+	return sqliteGetAll(account)
 }
 
 func GetBlogWithAccount(account, name string) *module.Blog {
 	persistence.Lock()
 	defer persistence.Unlock()
-
-	key := fmt.Sprintf("%s:blog@%s", account, name)
-	m, err := client.HGetAll(key).Result()
-	if err != nil || len(m) == 0 {
-		return nil
-	}
-	return toBlog(m)
+	return sqliteGetBlog(account, name)
 }
 
 func DeleteBlogWithAccount(account, title string) int {
 	persistence.Lock()
 	defer persistence.Unlock()
-
-	key := fmt.Sprintf("%s:blog@%s", account, title)
-	client.Del(key)
-	deleteFile(account, title)
+	if err := sqliteDeleteBlog(account, title); err != nil {
+		log.ErrorF(log.ModulePersistence, "sqlite delete blog title=%s err=%s", title, err.Error())
+		return 1
+	}
 	return 0
 }
 
@@ -225,7 +200,7 @@ func SaveBlogComments(account string, bc *module.BlogComments) {
 	values := make(map[string]interface{})
 	s := "\x01"
 	for _, c := range bc.Comments {
-		value := fmt.Sprintf("Idx=%d%sowner=%s%sct=%s%smt=%s%smsg=%s%smail=%s%sPwd=%s",
+		value := fmt.Sprintf("Idx=%d%sowner=%s%sct=%s%smt=%s%smsg=%s%smail=%s%sPwd=%s%s",
 			c.Idx, s, c.Owner, s, c.CreateTime, s, c.ModifyTime, s, c.Msg, s, c.Mail, s, s, c.Pwd)
 		values[fmt.Sprintf("%d", c.Idx)] = value
 	}

@@ -55,6 +55,23 @@
     gap: 12px;
 }
 
+.header-subtitle {
+    margin: 8px 0 0;
+    color: var(--text-color);
+    opacity: 0.65;
+    font-size: 14px;
+}
+
+.config-notice {
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    color: var(--text-color);
+    background: var(--lighter-bg);
+    border-left: 4px solid var(--accent-color);
+    border-radius: 8px;
+    font-size: 14px;
+}
+
 .header h1::before {
     content: '⚙️';
     font-size: 2rem;
@@ -352,7 +369,7 @@
 
 .config-item {
     display: grid;
-    grid-template-columns: minmax(200px, 1fr) minmax(250px, 2fr) minmax(200px, 1.5fr) auto;
+    grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr) auto;
     gap: 24px;
     align-items: start;
     padding: 24px;
@@ -363,6 +380,15 @@
     transition: var(--transition);
     position: relative;
     overflow: hidden;
+}
+
+.config-key-code {
+    width: fit-content;
+    padding: 3px 8px;
+    border-radius: 6px;
+    color: var(--text-color);
+    background: var(--code-bg);
+    font-size: 12px;
 }
 
 .config-item::before {
@@ -525,7 +551,7 @@
     flex-direction: column;
     gap: 12px;
     align-self: start;
-    padding-top: 24px;
+    padding-top: 0;
 }
 
 .config-actions .btn {
@@ -773,7 +799,7 @@
     }
     
     .config-item {
-        grid-template-columns: minmax(250px, 1fr) minmax(300px, 2fr) minmax(250px, 1.5fr) auto;
+        grid-template-columns: minmax(250px, 1fr) minmax(320px, 2fr) auto;
         gap: 32px;
         padding: 32px;
     }
@@ -787,7 +813,7 @@
     }
     
     .config-item {
-        grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) minmax(180px, 1.5fr) auto;
+        grid-template-columns: minmax(200px, 1fr) minmax(260px, 2fr) auto;
         gap: 20px;
         padding: 20px;
     }
@@ -803,7 +829,7 @@
         grid-template-columns: 1fr 1fr;
         grid-template-areas: 
             "key value"
-            "comment actions";
+            "key actions";
         gap: 16px;
         padding: 20px;
     }
@@ -814,10 +840,6 @@
     
     .config-value {
         grid-area: value;
-    }
-    
-    .config-comment {
-        grid-area: comment;
     }
     
     .config-actions {
@@ -871,7 +893,6 @@
         grid-template-areas: 
             "key"
             "value"
-            "comment"
             "actions";
         gap: 16px;
         padding: 20px;

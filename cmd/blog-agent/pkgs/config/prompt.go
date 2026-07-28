@@ -406,5 +406,5 @@ func registerDefaultPrompts() {
 2. 有明确的完成标准
 3. 不与已有待办重复
 
-拆解后，询问用户是否同意添加这些子任务。如果用户同意，使用 RawAddTodo 工具逐一添加。`
+拆解后，询问用户是否同意添加这些子任务。如果用户同意，使用 RawAddDailyGoalTask 工具逐一添加。`
 }

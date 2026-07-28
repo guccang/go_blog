@@ -3,7 +3,8 @@ package auth
 import (
 	log "mylog"
 	"net/http"
-	"sync"
+	db "persistence"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -11,20 +12,13 @@ import (
 // ========== Simple Auth 模块 ==========
 // 无 Actor、无 Channel，使用 sync.RWMutex
 
-var (
-	sessions map[string]string // account -> session
-	authMu   sync.RWMutex
-)
-
 func Info() {
 	log.Debug(log.ModuleAuth, "info auth v2.0 (simple)")
 }
 
 // Init 初始化 Auth 模块
 func Init() {
-	authMu.Lock()
-	defer authMu.Unlock()
-	sessions = make(map[string]string)
+	db.CleanupExpiredLoginSessions()
 }
 
 // genSession 生成新 session
@@ -34,54 +28,31 @@ func genSession() string {
 
 // AddSession 添加 session
 func AddSession(account string) string {
-	authMu.Lock()
-	defer authMu.Unlock()
-
-	// 先移除旧 session
-	if len(sessions) > 1 {
-		delete(sessions, account)
-	}
-
 	s := genSession()
-	sessions[account] = s
+	if err := db.CreateLoginSession(s, account, time.Now().Add(48*time.Hour)); err != nil {
+		log.ErrorF(log.ModuleAuth, "create SQLite session failed: %v", err)
+		return ""
+	}
 	return s
 }
 
 // RemoveSession 移除 session
 func RemoveSession(account string) int {
-	authMu.Lock()
-	defer authMu.Unlock()
-
-	if len(sessions) > 1 {
-		delete(sessions, account)
-	}
+	_ = db.DeleteLoginSessions(account)
 	return 0
 }
 
 // CheckLoginSession 检查登录 session
 func CheckLoginSession(session string) int {
-	authMu.RLock()
-	defer authMu.RUnlock()
-
-	for _, s := range sessions {
-		if s == session {
-			return 0
-		}
+	if db.GetLoginSessionAccount(session) == "" {
+		return 1
 	}
-	return 1
+	return 0
 }
 
 // GetAccountBySession 根据 session 获取账户
 func GetAccountBySession(session string) string {
-	authMu.RLock()
-	defer authMu.RUnlock()
-
-	for account, s := range sessions {
-		if s == session {
-			return account
-		}
-	}
-	return ""
+	return db.GetLoginSessionAccount(session)
 }
 
 // GetSessionFromRequest 从请求获取 session

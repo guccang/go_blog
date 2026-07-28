@@ -1,7 +1,0 @@
-name: go_blog
-version: 1.0.0
-description: "go_blog 融合插件：把 blog-agent 的 MCP 工具（博客/待办/锻炼/目标/阅读等）经 UAP gateway 注入 Hermes 工具集，推理时通过 tool_call 调用。"
-author: go_blog
-kind: standalone
-provides_tools:
-  - go_blog

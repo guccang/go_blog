@@ -2,16 +2,20 @@ package http
 
 import (
 	"auth"
+	"blog"
 	"config"
+	"control"
+	"encoding/json"
 	"exercise"
 	"fmt"
 	"module"
 	log "mylog"
 	h "net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"todolist"
 	"tools"
 	"view"
 	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
@@ -144,6 +148,33 @@ func HandleLink(w h.ResponseWriter, r *h.Request) {
 	view.PageLink(w, flag, session)
 }
 
+// HandleBlogSummaries 为首页“加载更多”提供分页摘要，正文仅在打开文章时读取。
+func HandleBlogSummaries(w h.ResponseWriter, r *h.Request) {
+	if checkLogin(r) != 0 {
+		h.Error(w, "unauthorized", h.StatusUnauthorized)
+		return
+	}
+	limit, offset := 20, 0
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 100 {
+		limit = n
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && n >= 0 {
+		offset = n
+	}
+	account := blog.GetAccountFromSession(getsession(r))
+	blogs := control.ListBlogSummaries(account, limit+1, offset, module.EAuthType_all)
+	hasMore := len(blogs) > limit
+	if hasMore {
+		blogs = blogs[:limit]
+	}
+	items := make([]map[string]interface{}, 0, len(blogs))
+	for _, b := range blogs {
+		items = append(items, map[string]interface{}{"title": b.Title, "url": "/get?blogname=" + url.QueryEscape(b.Title), "access_time": b.AccessTime, "diary": (b.AuthType & module.EAuthType_diary) != 0, "encrypted": b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0})
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(map[string]interface{}{"items": items, "has_more": hasMore})
+}
+
 // HandleStatics handles static file serving
 func HandleStatics(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleStatics", r)
@@ -184,11 +215,6 @@ func HandleStatics(w h.ResponseWriter, r *h.Request) {
 
 // Init initializes all HTTP routes and handlers
 func Init() int {
-	// Initialize todolist before registering handlers
-	if err := todolist.InitTodoList(); err != nil {
-		log.ErrorF(log.ModuleHandler, "Failed to initialize todolist: %v", err)
-	}
-
 	// [Phase 3] taskbreakdown 已屏蔽，统一使用 goal
 	// if err := taskbreakdown.InitTaskBreakdown(); err != nil {
 	// 	log.ErrorF(log.ModuleHandler, "Failed to initialize task breakdown: %v", err)
@@ -196,6 +222,7 @@ func Init() int {
 
 	// Core routes
 	h.HandleFunc("/main", HandleLink)
+	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
 	h.HandleFunc("/link", HandleLink)
 	h.HandleFunc("/editor", HandleEditor)
 	h.HandleFunc("/statics", HandleStatics)
@@ -219,8 +246,6 @@ func Init() int {
 	h.HandleFunc("/modify", HandleModify)
 	h.HandleFunc("/delete", HandleDelete)
 	h.HandleFunc("/search", HandleSearch)
-	h.HandleFunc("/comment", HandleComment)
-	h.HandleFunc("/api/check-username", HandleCheckUsername)
 	h.HandleFunc("/tag", HandleTag)
 	h.HandleFunc("/getshare", HandleGetShare)
 	h.HandleFunc("/public", HandlePublic)
@@ -228,14 +253,6 @@ func Init() int {
 
 	// Share routes
 	h.HandleFunc("/api/createshare", HandleCreateShare)
-
-	// Todolist routes
-	h.HandleFunc("/todolist", HandleTodolist)
-	h.HandleFunc("/api/todos", todolist.HandleTodos)
-	h.HandleFunc("/api/todos/toggle", todolist.HandleToggleTodo)
-	h.HandleFunc("/api/todos/time", todolist.HandleUpdateTodoTime)
-	h.HandleFunc("/api/todos/history", todolist.HandleHistoricalTodos)
-	h.HandleFunc("/api/todos/order", todolist.HandleUpdateTodoOrder)
 
 	// [Phase 3] Task breakdown routes 已屏蔽，统一使用 goal
 	// h.HandleFunc("/taskbreakdown", taskbreakdown.HandleTaskBreakdown)
@@ -270,7 +287,6 @@ func Init() int {
 	h.HandleFunc("/api/goal/review", goalpkg.HandleGetReview)
 	h.HandleFunc("/api/goal/review/save", goalpkg.HandleSaveReview)
 	h.HandleFunc("/api/goal/review/generate", goalpkg.HandleGenerateReview)
-
 
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)
@@ -348,7 +364,6 @@ func Init() int {
 	h.HandleFunc("/api/tools/calculator", tools.CalculatorHandler)
 	h.HandleFunc("/api/tools/bmi", tools.BMIHandler)
 	h.HandleFunc("/api/tools/text", tools.TextToolHandler)
-	h.HandleFunc("/api/tools/weather", tools.WeatherHandler)
 	h.HandleFunc("/api/tools/unit-convert", tools.UnitConvertHandler)
 
 	// English Learning Tracker route

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"comment"
 	"config"
 	"control"
 	"crypto/md5"
@@ -9,7 +8,6 @@ import (
 	"login"
 	log "mylog"
 	h "net/http"
-	db "persistence"
 	"strings"
 	"time"
 	"view"
@@ -81,14 +79,6 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	}
 	control.RecordUserLogin(account, remoteAddr, true)
 
-	// 加载数据
-	blogs_txt_dir := config.GetBlogsPath(account)
-	control.ImportBlogsFromPath(account, blogs_txt_dir)
-	db.SaveBlogs(account, control.GetBlogs(account))
-
-	// 加载comment
-	comment.LoadComments(account)
-
 	// config
 	sys_conf_path := config.GetSysConfigPath(account)
 	config.ReloadConfigWithAccount(account, sys_conf_path)
@@ -144,14 +134,6 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 
 	// 记录成功的登录
 	control.RecordUserLogin(account, remoteAddr, true)
-
-	// 加载数据
-	blogs_txt_dir := config.GetBlogsPath(account)
-	control.ImportBlogsFromPath(account, blogs_txt_dir)
-	db.SaveBlogs(account, control.GetBlogs(account))
-
-	// 加载comment
-	comment.LoadComments(account)
 
 	// config
 	sys_conf_path := config.GetSysConfigPath(account)

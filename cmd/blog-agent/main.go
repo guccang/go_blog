@@ -4,7 +4,6 @@ import (
 	"auth"
 	"blog"
 	"codegen"
-	"comment"
 	"config"
 	"control"
 	"delegation"
@@ -20,6 +19,7 @@ import (
 	log "mylog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"persistence"
 	"reading"
 	"search"
@@ -48,6 +48,17 @@ func main() {
 	}()
 
 	args := os.Args
+	if len(args) >= 3 && args[1] == "migrate-sqlite" {
+		config.Init(args[2])
+		persistence.Init()
+		report, err := persistence.MigrateMarkdownBlogs(filepath.Join(config.GetExePath(), "blogs_txt"))
+		if err != nil {
+			fmt.Printf("SQLite migration failed: %v\n", err)
+			return
+		}
+		fmt.Printf("SQLite migration complete: %d Markdown files, %d blogs written. Source files were kept unchanged.\n", report.Files, report.Blogs)
+		return
+	}
 	for _, arg := range args {
 		fmt.Println(arg)
 	}
@@ -67,7 +78,6 @@ func main() {
 	config.Info()
 	ioutils.Info()
 	blog.Info()
-	comment.Info()
 	search.Info()
 	share.Info()
 	statistics.Info()
@@ -103,7 +113,6 @@ func main() {
 	persistence.Init()
 	blog.Init()
 	control.Init()
-	comment.Init()
 	reading.Init()
 	statistics.Init()
 	auth.Init()

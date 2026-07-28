@@ -50,6 +50,21 @@ document.addEventListener('keydown', function(event) {
 
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', function() {
+    var quotes = [
+        ['把今天能完成的一件小事，做到确实完成。', '给正在行动的自己'],
+        ['生活不是等待风暴过去，而是学会在雨中跳舞。', '维维安·格林'],
+        ['慢一点没关系，方向对了就仍在抵达。', '给长期主义者'],
+        ['你不必很厉害才开始，但要开始才会很厉害。', '给今天的第一步'],
+        ['真正重要的事，往往安静地发生在重复里。', '给持续练习的人']
+    ];
+    var quote = quotes[(new Date().getDate() - 1) % quotes.length];
+    var quoteText = document.getElementById('dailyQuote');
+    var quoteSource = document.getElementById('dailyQuoteSource');
+    if (quoteText && quoteSource) {
+        quoteText.textContent = quote[0];
+        quoteSource.textContent = '— ' + quote[1];
+    }
+
     // Restore view preference
     var savedView = localStorage.getItem('blogViewPreference');
     if (savedView === 'list') {
@@ -68,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ===== Blog Category Fold =====
+    // ===== Blog Category Filters =====
     var container = document.getElementById('blogContainer');
     if (!container) return;
 
@@ -76,12 +91,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (cards.length === 0) return;
 
     var categories = [
-        { key: 'blog',     label: '📝 日常博客', color: '#d4734a' },
-        { key: 'diary',    label: '📔 日记文件', color: '#e67e22' },
-        { key: 'exercise', label: '💪 锻炼文件', color: '#27ae60' },
-        { key: 'memory',   label: '🧠 记忆文件', color: '#3498db' },
-        { key: 'ai',       label: '🤖 AI 生成', color: '#9b59b6' },
-        { key: 'system',   label: '⚙ 系统文件', color: '#6c757d' },
+        { key: 'all',      label: '全部内容' },
+        { key: 'blog',     label: '日常博客' },
+        { key: 'diary',    label: '日记' },
+        { key: 'exercise', label: '锻炼' },
+        { key: 'memory',   label: '记忆' },
+        { key: 'ai',       label: 'AI 生成' },
+        { key: 'system',   label: '系统' },
     ];
 
     function classifyCard(card) {
@@ -95,77 +111,85 @@ document.addEventListener('DOMContentLoaded', function() {
         return 'blog';
     }
 
-    var groups = {};
-    categories.forEach(function(c) { groups[c.key] = []; });
-    cards.forEach(function(card) { groups[classifyCard(card)].push(card); });
-
-    function getCollapseState(key) {
-        try {
-            var saved = localStorage.getItem('blog_category_state');
-            if (saved) { var s = JSON.parse(saved); if (s[key] !== undefined) return s[key]; }
-        } catch(e) {}
-        return key !== 'blog';
-    }
-
-    function saveCollapseState(key, collapsed) {
-        try {
-            var s = {};
-            var saved = localStorage.getItem('blog_category_state');
-            if (saved) s = JSON.parse(saved);
-            s[key] = collapsed;
-            localStorage.setItem('blog_category_state', JSON.stringify(s));
-        } catch(e) {}
-    }
-
-    container.innerHTML = '';
-    container.classList.add('categorized');
-
-    categories.forEach(function(cat) {
-        var items = groups[cat.key];
-        if (items.length === 0) return;
-
-        var collapsed = getCollapseState(cat.key);
-
-        var section = document.createElement('div');
-        section.className = 'category-section';
-
-        var header = document.createElement('div');
-        header.className = 'category-header';
-        header.style.borderLeftColor = cat.color;
-
-        var left = document.createElement('div');
-        left.className = 'category-header-left';
-        left.innerHTML = '<span class="category-label">' + cat.label + '</span><span class="category-count">' + items.length + '</span>';
-
-        var toggle = document.createElement('span');
-        toggle.className = 'category-toggle';
-        toggle.innerHTML = '<i class="fas fa-chevron-' + (collapsed ? 'right' : 'down') + '"></i>';
-
-        header.appendChild(left);
-        header.appendChild(toggle);
-
-        var body = document.createElement('div');
-        body.className = 'category-body' + (collapsed ? ' collapsed' : '');
-        items.forEach(function(card) { body.appendChild(card); });
-
-        header.addEventListener('click', function() {
-            var isC = body.classList.toggle('collapsed');
-            toggle.innerHTML = '<i class="fas fa-chevron-' + (isC ? 'right' : 'down') + '"></i>';
-            saveCollapseState(cat.key, isC);
-        });
-
-        section.appendChild(header);
-        section.appendChild(body);
-        container.appendChild(section);
+    var counts = { all: cards.length };
+    cards.forEach(function(card) {
+        var category = classifyCard(card);
+        card.dataset.category = category;
+        counts[category] = (counts[category] || 0) + 1;
     });
 
-    // Adjust category body grid for list view
-    if (savedView === 'list') {
-        document.querySelectorAll('.category-body').forEach(function(b) {
-            b.style.gridTemplateColumns = '1fr';
+    var filterBar = document.getElementById('blogFilterBar');
+    var emptyState = document.getElementById('blogFilterEmpty');
+    var activeFilter = 'all';
+
+    function applyFilter(category) {
+        activeFilter = category;
+        var visibleCount = 0;
+        cards.forEach(function(card) {
+            var visible = category === 'all' || card.dataset.category === category;
+            card.classList.toggle('is-hidden', !visible);
+            if (visible) visibleCount++;
+        });
+        emptyState.hidden = visibleCount > 0;
+        filterBar.querySelectorAll('.blog-filter-chip').forEach(function(chip) {
+            chip.classList.toggle('active', chip.dataset.category === category);
+        });
+    }
+
+    categories.forEach(function(category) {
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'blog-filter-chip' + (category.key === activeFilter ? ' active' : '');
+        chip.dataset.category = category.key;
+        chip.textContent = category.label;
+        var count = document.createElement('span');
+        count.className = 'blog-filter-chip-count';
+        count.textContent = counts[category.key] || 0;
+        chip.appendChild(count);
+        chip.addEventListener('click', function() { applyFilter(category.key); });
+        filterBar.appendChild(chip);
+    });
+
+    document.getElementById('showAllBlogs').addEventListener('click', function() {
+        applyFilter('all');
+    });
+
+    var loadMore = document.getElementById('loadMoreBlogs');
+    if (loadMore) {
+        loadMore.addEventListener('click', function() {
+            var offset = Number(loadMore.dataset.offset || 0);
+            loadMore.disabled = true;
+            loadMore.textContent = '正在加载…';
+            fetch('/api/blogs/page?offset=' + offset + '&limit=20', { credentials: 'same-origin' })
+                .then(function(response) { if (!response.ok) throw new Error('load failed'); return response.json(); })
+                .then(function(payload) {
+                    (payload.items || []).forEach(function(item) {
+                        var card = document.createElement('article');
+                        card.className = 'blog-card';
+                        card.dataset.title = item.title;
+                        card.dataset.diary = item.diary ? 'true' : 'false';
+                        card.dataset.encrypted = item.encrypted ? 'true' : 'false';
+                        card.innerHTML = '<a href="' + item.url + '" class="blog-card-link"><div class="blog-card-body"><h3 class="blog-card-title">' + (item.encrypted ? '<i class="fas fa-lock lock-icon"></i>' : '') + (item.diary ? '<i class="fas fa-book diary-icon"></i>' : '') + escapeHtml(item.title) + '</h3><div class="blog-card-meta"><span class="blog-date"><i class="far fa-clock"></i> ' + escapeHtml(item.access_time || '') + '</span></div></div><div class="blog-card-arrow"><i class="fas fa-chevron-right"></i></div></a>';
+                        container.appendChild(card);
+                    });
+                    loadMore.dataset.offset = String(offset + (payload.items || []).length);
+                    if (!payload.has_more || (payload.items || []).length === 0) {
+                        document.getElementById('loadMoreWrap').hidden = true;
+                    } else {
+                        loadMore.disabled = false;
+                        loadMore.textContent = '加载更多内容';
+                    }
+                })
+                .catch(function() { loadMore.disabled = false; loadMore.textContent = '加载失败，点击重试'; });
         });
     }
 });
+
+function escapeHtml(value) {
+    var node = document.createElement('span');
+    node.textContent = value;
+    return node.innerHTML;
+}
 
 // ===== History Back =====
 function PageHistoryBack() {

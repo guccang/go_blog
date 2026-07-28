@@ -24,7 +24,7 @@
                     <i class="fas fa-tools"></i>
                     <h1>实用工具集合</h1>
                 </div>
-                <p class="header-subtitle">一站式工具平台，提升工作效率</p>
+                <p class="header-subtitle">清晰、可靠的日常计算与数据处理</p>
             </div>
             <nav class="header-nav">
                 <a href="/main" class="nav-link">
@@ -72,7 +72,7 @@
                 <div class="nav-card-icon">🌐</div>
                 <div class="nav-card-content">
                     <h3>系统工具</h3>
-                    <p>天气查询、颜色工具</p>
+                    <p>颜色信息、密码生成</p>
                 </div>
             </div>
             <div class="tool-nav-card" data-tool="games">
@@ -244,10 +244,10 @@
                     <div class="tool-card gradient-border">
                         <div class="card-header">
                             <div class="card-icon">🔢</div>
-                            <h3>科学计算器</h3>
+                            <h3>四则运算</h3>
                         </div>
                         <div class="card-body">
-                            <input type="text" id="calc-input" class="form-input" placeholder="输入数学表达式 (如: 2+3*4)">
+                            <input type="text" id="calc-input" class="form-input" placeholder="如：(2+3)×4，支持 + - * / 和括号">
                             <button class="btn btn-primary" onclick="calculate()">
                                 <i class="fas fa-equals"></i>
                                 计算结果
@@ -368,21 +368,6 @@
                 </div>
                 
                 <div class="tools-grid">
-                    <div class="tool-card gradient-border">
-                        <div class="card-header">
-                            <div class="card-icon">🌤️</div>
-                            <h3>天气查询</h3>
-                        </div>
-                        <div class="card-body">
-                            <input type="text" id="weather-city" class="form-input" placeholder="输入城市名称 (如: 北京)">
-                            <button class="btn btn-primary" onclick="getWeather()">
-                                <i class="fas fa-cloud-sun"></i>
-                                查询天气
-                            </button>
-                            <div id="weather-result" class="result-box weather-result"></div>
-                        </div>
-                    </div>
-
                     <div class="tool-card gradient-border">
                         <div class="card-header">
                             <div class="card-icon">🎨</div>

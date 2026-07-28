@@ -794,7 +794,7 @@ function sendQuickMessage(message, type) {
 // 处理快速操作
 function handleQuickOperation(action) {
     const operations = {
-        'new-task': '/todolist',
+        'new-task': '/goal',
         'record-exercise': '/exercise',
         'write-blog': '/editor',
         'add-reading': '/reading'

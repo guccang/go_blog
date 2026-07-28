@@ -449,3 +449,5 @@
             from { opacity: 1; }
             to { opacity: 0; }
         }
+/* 评论功能已下线：隐藏旧模板中的评论区域。 */
+#comments, #div-comment, #comment-show { display: none !important; }

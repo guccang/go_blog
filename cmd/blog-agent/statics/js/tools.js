@@ -238,142 +238,34 @@ function generateHash() {
     processData(hashType, input, resultDiv);
 }
 
-// =============== 本地数据处理函数 ===============
-
-// JSON格式化（本地）
-function formatJsonLocal(input) {
-    if (!input.trim()) return '';
-    try {
-        const jsonObj = JSON.parse(input);
-        return JSON.stringify(jsonObj, null, 2);
-    } catch (error) {
-        throw new Error('无效的JSON格式');
-    }
-}
-
-// 异步哈希函数生成器
-async function generateHashAsync(algorithm, input) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    const hashBuffer = await crypto.subtle.digest(algorithm, data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// 生成MD5哈希
-async function generateMD5(input) {
-    try {
-        // 注意：Web Crypto API 不支持MD5，这里使用替代方案
-        // 在实际项目中可以考虑使用crypto-js库
-        const encoder = new TextEncoder();
-        const data = encoder.encode(input);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-    } catch (error) {
-        throw new Error('MD5计算失败');
-    }
-}
-
-// 生成SHA1哈希
-async function generateSHA1(input) {
-    try {
-        return await generateHashAsync('SHA-1', input);
-    } catch (error) {
-        throw new Error('SHA1计算失败');
-    }
-}
-
-// 生成SHA256哈希
-async function generateSHA256(input) {
-    try {
-        return await generateHashAsync('SHA-256', input);
-    } catch (error) {
-        throw new Error('SHA256计算失败');
-    }
-}
-
-// 通用数据处理函数
+// 通用数据处理函数：统一调用后端，保证页面显示的 MD5、编码和 JSON 结果一致。
 function processData(action, input, resultDiv) {
-    if (!input && action !== 'json_format') {
+    if (!input.trim()) {
         resultDiv.className = 'result-box error';
         resultDiv.textContent = '请输入要处理的数据';
         return;
     }
-    
+
     resultDiv.innerHTML = '<div class="loading"></div> 处理中...';
-    
-    // 处理哈希函数（异步）
-    if (['md5', 'sha1', 'sha256'].includes(action)) {
-        handleHashAction(action, input, resultDiv);
-        return;
-    }
-    
-    // 处理其他同步操作
-    setTimeout(() => {
-        try {
-            let output;
-            let isValid = true;
-            let errorMessage = '';
-            
-            switch (action) {
-                case 'json_format':
-                    output = formatJsonLocal(input);
-                    break;
-                case 'base64_encode':
-                    output = btoa(unescape(encodeURIComponent(input)));
-                    break;
-                case 'base64_decode':
-                    output = decodeURIComponent(escape(atob(input)));
-                    break;
-                case 'url_encode':
-                    output = encodeURIComponent(input);
-                    break;
-                case 'url_decode':
-                    output = decodeURIComponent(input);
-                    break;
-                default:
-                    isValid = false;
-                    errorMessage = '无效的操作';
-            }
-            
-            if (isValid) {
-                resultDiv.className = 'result-box success';
-                resultDiv.textContent = output;
-            } else {
+
+    const formData = new FormData();
+    formData.append('action', action);
+    formData.append('input', input);
+    fetch('/api/tools/data', { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.valid) {
                 resultDiv.className = 'result-box error';
-                resultDiv.textContent = errorMessage;
+                resultDiv.textContent = data.error || '处理失败';
+                return;
             }
-        } catch (error) {
+            resultDiv.className = 'result-box success';
+            resultDiv.textContent = data.output;
+        })
+        .catch(error => {
             resultDiv.className = 'result-box error';
             resultDiv.textContent = '处理失败: ' + error.message;
-        }
-    }, 100);
-}
-
-// 处理异步哈希操作
-async function handleHashAction(action, input, resultDiv) {
-    try {
-        let hashResult;
-        
-        switch (action) {
-            case 'md5':
-                hashResult = await generateMD5(input);
-                break;
-            case 'sha1':
-                hashResult = await generateSHA1(input);
-                break;
-            case 'sha256':
-                hashResult = await generateSHA256(input);
-                break;
-        }
-        
-        resultDiv.className = 'result-box success';
-        resultDiv.textContent = hashResult;
-    } catch (error) {
-        resultDiv.className = 'result-box error';
-        resultDiv.textContent = '哈希计算失败: ' + error.message;
-    }
+        });
 }
 
 // =============== 计算工具 ===============
@@ -625,46 +517,6 @@ function testRegex() {
 }
 
 // =============== 系统工具 ===============
-
-// 天气查询
-function getWeather() {
-    const city = document.getElementById('weather-city').value;
-    const resultDiv = document.getElementById('weather-result');
-    
-    if (!city) {
-        resultDiv.className = 'result-box error';
-        resultDiv.textContent = '请输入城市名称';
-        return;
-    }
-    
-    resultDiv.innerHTML = '<div class="loading"></div> 查询中...';
-    
-    fetch(`/api/tools/weather?city=${encodeURIComponent(city)}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                resultDiv.className = 'result-box error';
-                resultDiv.textContent = data.error;
-            } else {
-                resultDiv.className = 'result-box success';
-                resultDiv.innerHTML = `
-                    <div class="weather-info">
-                        <div class="weather-icon">🌤️</div>
-                        <div>
-                            <strong>城市:</strong> ${data.city}<br>
-                            <strong>温度:</strong> ${data.temperature}°C<br>
-                            <strong>天气:</strong> ${data.description}<br>
-                            <strong>湿度:</strong> ${data.humidity}%
-                        </div>
-                    </div>
-                `;
-            }
-        })
-        .catch(error => {
-            resultDiv.className = 'result-box error';
-            resultDiv.textContent = '查询失败: ' + error.message;
-        });
-}
 
 // 获取颜色信息
 function getColorInfo() {

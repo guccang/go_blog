@@ -55,15 +55,6 @@ type TextResult struct {
 	CharactersNoSpaces int `json:"characters_no_spaces"`
 }
 
-// WeatherResult 天气结果
-type WeatherResult struct {
-	City        string  `json:"city"`
-	Temperature float64 `json:"temperature"`
-	Description string  `json:"description"`
-	Humidity    int     `json:"humidity"`
-	Error       string  `json:"error,omitempty"`
-}
-
 // GetCurrentTime 获取当前时间
 func GetCurrentTime(timezone string) TimeResult {
 	now := time.Now()
@@ -218,59 +209,115 @@ func GenerateHash(input, hashType string) DataProcessResult {
 	}
 }
 
-// Calculate 计算器
+// Calculate 计算器，支持括号、正负数与四则运算。
 func Calculate(expression string) CalculatorResult {
-	// 简单的四则运算计算器实现
 	expression = strings.ReplaceAll(expression, " ", "")
-
-	// 基本的表达式验证
+	if expression == "" {
+		return CalculatorResult{Expression: expression, Error: "请输入计算表达式"}
+	}
 	if matched, _ := regexp.MatchString(`^[0-9+\-*/.()]+$`, expression); !matched {
-		return CalculatorResult{
-			Expression: expression,
-			Error:      "表达式包含无效字符",
-		}
+		return CalculatorResult{Expression: expression, Error: "表达式包含无效字符"}
 	}
 
-	// 这里简化处理，实际项目中可以使用更完善的表达式解析库
-	result, err := evaluateExpression(expression)
+	parser := expressionParser{input: expression}
+	result, err := parser.parseExpression()
+	if err == nil && parser.pos != len(parser.input) {
+		err = fmt.Errorf("表达式格式错误")
+	}
 	if err != nil {
-		return CalculatorResult{
-			Expression: expression,
-			Error:      err.Error(),
-		}
+		return CalculatorResult{Expression: expression, Error: err.Error()}
 	}
-
-	return CalculatorResult{
-		Expression: expression,
-		Result:     result,
-	}
+	return CalculatorResult{Expression: expression, Result: result}
 }
 
-// evaluateExpression 简单的表达式计算（仅支持基本四则运算）
-func evaluateExpression(expr string) (float64, error) {
-	// 移除空格
-	expr = strings.ReplaceAll(expr, " ", "")
+type expressionParser struct {
+	input string
+	pos   int
+}
 
-	// 简单的计算逻辑，实际使用中建议使用专门的表达式解析库
-	// 这里只做基本演示
-	if strings.Contains(expr, "+") {
-		parts := strings.Split(expr, "+")
-		if len(parts) == 2 {
-			a, err1 := strconv.ParseFloat(parts[0], 64)
-			b, err2 := strconv.ParseFloat(parts[1], 64)
-			if err1 != nil || err2 != nil {
-				return 0, fmt.Errorf("无效的数字")
-			}
-			return a + b, nil
+func (p *expressionParser) parseExpression() (float64, error) {
+	value, err := p.parseTerm()
+	if err != nil {
+		return 0, err
+	}
+	for p.pos < len(p.input) && (p.input[p.pos] == '+' || p.input[p.pos] == '-') {
+		op := p.input[p.pos]
+		p.pos++
+		right, err := p.parseTerm()
+		if err != nil {
+			return 0, err
+		}
+		if op == '+' {
+			value += right
+		} else {
+			value -= right
 		}
 	}
+	return value, nil
+}
 
-	// 单个数字
-	if result, err := strconv.ParseFloat(expr, 64); err == nil {
-		return result, nil
+func (p *expressionParser) parseTerm() (float64, error) {
+	value, err := p.parseFactor()
+	if err != nil {
+		return 0, err
+	}
+	for p.pos < len(p.input) && (p.input[p.pos] == '*' || p.input[p.pos] == '/') {
+		op := p.input[p.pos]
+		p.pos++
+		right, err := p.parseFactor()
+		if err != nil {
+			return 0, err
+		}
+		if op == '*' {
+			value *= right
+		} else {
+			if right == 0 {
+				return 0, fmt.Errorf("除数不能为 0")
+			}
+			value /= right
+		}
+	}
+	return value, nil
+}
+
+func (p *expressionParser) parseFactor() (float64, error) {
+	if p.pos >= len(p.input) {
+		return 0, fmt.Errorf("表达式格式错误")
+	}
+	if p.input[p.pos] == '+' || p.input[p.pos] == '-' {
+		op := p.input[p.pos]
+		p.pos++
+		value, err := p.parseFactor()
+		if err != nil {
+			return 0, err
+		}
+		if op == '-' {
+			return -value, nil
+		}
+		return value, nil
+	}
+	if p.input[p.pos] == '(' {
+		p.pos++
+		value, err := p.parseExpression()
+		if err != nil || p.pos >= len(p.input) || p.input[p.pos] != ')' {
+			return 0, fmt.Errorf("括号不匹配")
+		}
+		p.pos++
+		return value, nil
 	}
 
-	return 0, fmt.Errorf("表达式格式错误")
+	start := p.pos
+	for p.pos < len(p.input) && ((p.input[p.pos] >= '0' && p.input[p.pos] <= '9') || p.input[p.pos] == '.') {
+		p.pos++
+	}
+	if start == p.pos {
+		return 0, fmt.Errorf("表达式格式错误")
+	}
+	value, err := strconv.ParseFloat(p.input[start:p.pos], 64)
+	if err != nil {
+		return 0, fmt.Errorf("无效的数字")
+	}
+	return value, nil
 }
 
 // CalculateBMI BMI计算
@@ -336,40 +383,6 @@ func TestRegex(pattern, text string) DataProcessResult {
 		Input:  pattern,
 		Output: matchResult,
 		Valid:  true,
-	}
-}
-
-// GetWeather 获取天气信息（模拟实现）
-func GetWeather(city string) WeatherResult {
-	// 这里是模拟数据，实际项目中需要调用真实的天气API
-	temperatures := map[string]float64{
-		"北京": 25.5,
-		"上海": 28.2,
-		"广州": 32.1,
-		"深圳": 31.8,
-		"杭州": 26.9,
-	}
-
-	descriptions := map[string]string{
-		"北京": "晴转多云",
-		"上海": "多云",
-		"广州": "雷阵雨",
-		"深圳": "晴",
-		"杭州": "小雨",
-	}
-
-	if temp, exists := temperatures[city]; exists {
-		return WeatherResult{
-			City:        city,
-			Temperature: temp,
-			Description: descriptions[city],
-			Humidity:    65,
-		}
-	}
-
-	return WeatherResult{
-		City:  city,
-		Error: "暂不支持该城市的天气查询",
 	}
 }
 

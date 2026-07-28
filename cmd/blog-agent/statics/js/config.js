@@ -6,6 +6,14 @@ let originalConfigs = {};
 let originalComments = {};
 let filteredConfigs = {};
 
+// 系统配置页只暴露日常需要调整的参数。其他已有参数保留在 allConfigs 中，保存时不会丢失。
+const CORE_CONFIG_KEYS = [
+    'port', 'pwd',
+    'redis_ip', 'redis_port', 'redis_pwd',
+    'publictags', 'main_show_blogs',
+    'title_auto_add_date_suffix', 'diary_keywords', 'diary_password'
+];
+
 // 配置项元数据：分类、描述、排序
 const CONFIG_METADATA = {
     // ─── 基础设置 ───
@@ -89,16 +97,6 @@ function initializeEventListeners() {
             e.preventDefault();
             saveAllConfigs();
         }
-        if (e.key === 'Escape') {
-            closeAddModal();
-        }
-    });
-
-    // 点击模态窗口外部关闭
-    document.getElementById('addConfigModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeAddModal();
-        }
     });
 }
 
@@ -125,10 +123,9 @@ async function loadConfigs() {
             configComments = data.comments || {};
             originalConfigs = JSON.parse(JSON.stringify(allConfigs)); // 深拷贝
             originalComments = JSON.parse(JSON.stringify(configComments)); // 深拷贝
-            filteredConfigs = JSON.parse(JSON.stringify(allConfigs));
+            filteredConfigs = getCoreConfigs(allConfigs);
             
             renderConfigs();
-            updateRawPreview();
             updateConfigCount();
             
             if (data.is_default) {
@@ -145,6 +142,16 @@ async function loadConfigs() {
     }
 }
 
+function getCoreConfigs(configs) {
+    const coreConfigs = {};
+    CORE_CONFIG_KEYS.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(configs, key)) {
+            coreConfigs[key] = configs[key];
+        }
+    });
+    return coreConfigs;
+}
+
 // 渲染配置列表（按分类分组）
 function renderConfigs() {
     const configList = document.getElementById('configList');
@@ -155,9 +162,8 @@ function renderConfigs() {
     if (keys.length === 0) {
         configList.innerHTML = `
             <div class="empty-state">
-                <h3>没有找到配置项</h3>
-                <p>您可以添加新的配置项或检查搜索条件</p>
-                <button class="btn btn-primary" onclick="addNewConfig()">添加配置</button>
+                <h3>暂无可编辑的核心配置</h3>
+                <p>当前账户尚未初始化常用参数。</p>
             </div>
         `;
         return;
@@ -258,40 +264,41 @@ function createConfigItem(key, value) {
         item.classList.add('modified');
     }
 
-    const comment = configComments[key] || '';
     const meta = CONFIG_METADATA[key];
     const description = meta ? meta.desc : '';
 
     item.innerHTML = `
         <div class="config-key">
-            <div class="config-key-label">配置项名称</div>
-            <input type="text" class="config-key-input" value="${escapeHtml(key)}"
-                   onchange="updateConfigKey('${escapeHtml(key)}', this.value)"
-                   title="${escapeHtml(description || key)}">
+            <div class="config-key-label">${escapeHtml(getConfigLabel(key))}</div>
+            <code class="config-key-code">${escapeHtml(key)}</code>
             ${description ? `<div class="config-desc">${escapeHtml(description)}</div>` : ''}
         </div>
         <div class="config-value">
-            <div class="config-value-label">配置值</div>
-            <input type="text" class="config-value-input" value="${escapeHtml(value)}"
+            <input type="${isSecretConfig(key) ? 'password' : 'text'}" class="config-value-input" value="${escapeHtml(value)}"
                    onchange="updateConfigValue('${escapeHtml(key)}', this.value)"
-                   title="配置项的值">
+                   autocomplete="off" title="${escapeHtml(description || key)}">
             <div class="config-type-hint">${getConfigTypeHint(value)}</div>
-        </div>
-        <div class="config-comment">
-            <div class="config-comment-label">注释说明</div>
-            <textarea class="config-comment-input"
-                      onchange="updateConfigComment('${escapeHtml(key)}', this.value)"
-                      placeholder="配置项注释说明">${escapeHtml(comment)}</textarea>
         </div>
         <div class="config-actions">
             <button class="btn btn-warning" onclick="resetConfig('${escapeHtml(key)}')"
                     title="重置为原始值">重置</button>
-            <button class="btn btn-danger" onclick="deleteConfig('${escapeHtml(key)}')"
-                    title="删除此配置项">删除</button>
         </div>
     `;
 
     return item;
+}
+
+function getConfigLabel(key) {
+    const labels = {
+        port: '服务端口', pwd: '登录密码', redis_ip: 'Redis 地址', redis_port: 'Redis 端口',
+        redis_pwd: 'Redis 密码', publictags: '公开标签', main_show_blogs: '首页文章数',
+        title_auto_add_date_suffix: '自动日期标题', diary_keywords: '日记关键字', diary_password: '日记密码'
+    };
+    return labels[key] || key;
+}
+
+function isSecretConfig(key) {
+    return key === 'pwd' || key === 'redis_pwd' || key === 'diary_password';
 }
 
 // 获取配置值类型提示
@@ -364,7 +371,6 @@ function updateConfigValue(key, value) {
         filteredConfigs[key] = value;
     }
     
-    updateRawPreview();
     updateConfigItemStatus(key);
 }
 
@@ -452,20 +458,15 @@ function filterConfigs() {
 
 // 更新配置项计数
 function updateConfigCount() {
-    const total = Object.keys(allConfigs).length;
-    const filtered = Object.keys(filteredConfigs).length;
-    const countElement = document.getElementById('configCount');
-    
-    if (total === filtered) {
-        countElement.textContent = `配置项: ${total}`;
-    } else {
-        countElement.textContent = `配置项: ${filtered} / ${total}`;
-    }
+    // 保留函数以兼容现有加载流程，精简后不再显示计数。
 }
 
 // 更新原始配置预览
 function updateRawPreview() {
     const preview = document.getElementById('rawConfigPreview');
+    if (!preview) {
+        return;
+    }
     const lines = [];
     
     lines.push('# 系统配置文件');
@@ -664,4 +665,4 @@ function applySavedTheme() {
 }
 
 // 页面加载时应用主题
-document.addEventListener('DOMContentLoaded', applySavedTheme); 
+document.addEventListener('DOMContentLoaded', applySavedTheme);

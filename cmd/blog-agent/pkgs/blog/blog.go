@@ -67,19 +67,8 @@ func getBlogStore(account string) *BlogStore {
 		blogs: make(map[string]*module.Blog),
 	}
 
-	// 从数据库加载
-	blogs := db.GetBlogsByAccount(account)
-	if blogs != nil {
-		for _, b := range blogs {
-			if b.Encrypt == 1 {
-				b.AuthType = module.EAuthType_encrypt
-			}
-			store.blogs[b.Title] = b
-		}
-	}
-	restorePublicStateFromSystemBlog(store.blogs)
-	syncPublicStateSystemBlog(account, store.blogs)
-	log.DebugF(log.ModuleBlog, "BlogStore loaded account=%s, count=%d", account, len(store.blogs))
+	// SQLite 是唯一事实来源。这里不预加载博客；正文仅在具体文章被访问时读取。
+	log.DebugF(log.ModuleBlog, "BlogStore ready account=%s (lazy)", account)
 
 	blogManager.stores[account] = store
 	return store
@@ -93,18 +82,14 @@ func strTime() string {
 
 // GetBlogsNumWithAccount 获取博客数量
 func GetBlogsNumWithAccount(account string) int {
-	store := getBlogStore(account)
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	return len(store.blogs)
+	getBlogStore(account)
+	return db.CountBlogs(account)
 }
 
 // GetBlogsWithAccount 获取所有博客
 func GetBlogsWithAccount(account string) map[string]*module.Blog {
-	store := getBlogStore(account)
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	return store.blogs
+	// 此接口给统计、批量维护等显式全量操作使用；首页不调用它。
+	return db.GetBlogsByAccount(account)
 }
 
 // GetBlogWithAccount 获取单个博客
@@ -116,7 +101,15 @@ func GetBlogWithAccount(account, title string) *module.Blog {
 	if b, ok := store.blogs[title]; ok {
 		return b
 	}
-	return db.GetBlogWithAccount(account, title)
+	b := db.GetBlogWithAccount(account, title)
+	if b != nil {
+		store.mu.RUnlock()
+		store.mu.Lock()
+		store.blogs[title] = b
+		store.mu.Unlock()
+		store.mu.RLock()
+	}
+	return b
 }
 
 // ImportBlogsFromPathWithAccount 从路径导入博客（支持子目录递归导入）
@@ -189,7 +182,7 @@ func AddBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 		title = fmt.Sprintf("%s_%s", title, time.Now().Format("2006-01-02"))
 	}
 
-	if _, ok := store.blogs[title]; ok {
+	if _, ok := store.blogs[title]; ok || db.GetBlogWithAccount(account, title) != nil {
 		return 1 // 已存在
 	}
 
@@ -230,6 +223,9 @@ func ModifyBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 
 	b, ok := store.blogs[udb.Title]
 	if !ok {
+		b = db.GetBlogWithAccount(account, udb.Title)
+	}
+	if b == nil {
 		return 1
 	}
 
@@ -259,7 +255,7 @@ func DeleteBlogWithAccount(account, title string) int {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
-	if _, ok := store.blogs[title]; !ok {
+	if _, ok := store.blogs[title]; !ok && db.GetBlogWithAccount(account, title) == nil {
 		return 1
 	}
 	if title == publicStateBlogTitle || config.IsSysFile(title) == 1 {
@@ -292,28 +288,31 @@ func GetRecentlyTimedBlogWithAccount(account, title string) *module.Blog {
 
 // GetAllWithAccount 获取指定权限的博客列表
 func GetAllWithAccount(account string, num int, flag int) []*module.Blog {
-	store := getBlogStore(account)
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-
-	s := make([]*module.Blog, 0)
-	for _, b := range store.blogs {
-		if (flag & b.AuthType) != 0 {
-			s = append(s, b)
+	if num <= 0 {
+		all := db.GetBlogsByAccount(account)
+		blogs := make([]*module.Blog, 0, len(all))
+		for _, b := range all {
+			if (flag & b.AuthType) != 0 {
+				blogs = append(blogs, b)
+			}
 		}
+		sort.Slice(blogs, func(i, j int) bool { return blogs[i].ModifyTime > blogs[j].ModifyTime })
+		return blogs
 	}
-	sort.Slice(s, func(i, j int) bool {
-		ti, _ := time.Parse("2006-01-02 15:04:05", s[i].ModifyTime)
-		tj, _ := time.Parse("2006-01-02 15:04:05", s[j].ModifyTime)
-		return ti.Unix() > tj.Unix()
-	})
-	if num > 0 {
-		num = num - 1
+	blogs, err := db.ListBlogSummaries(account, num, 0, flag)
+	if err != nil {
+		return []*module.Blog{}
 	}
-	if num > 0 && len(s) > num {
-		return s[:num]
+	return blogs
+}
+
+// ListSummariesWithAccount 返回不含正文的分页博客元数据，避免列表页加载整库内容。
+func ListSummariesWithAccount(account string, limit, offset, flag int) []*module.Blog {
+	blogs, err := db.ListBlogSummaries(account, limit, offset, flag)
+	if err != nil {
+		return []*module.Blog{}
 	}
-	return s
+	return blogs
 }
 
 // UpdateAccessTimeWithAccount 更新访问时间
@@ -331,12 +330,16 @@ func UpdateAccessTimeWithAccount(account string, b *module.Blog) {
 func GetBlogAuthTypeWithAccount(account, blogname string) int {
 	store := getBlogStore(account)
 	store.mu.RLock()
-	defer store.mu.RUnlock()
-
 	if b, ok := store.blogs[blogname]; ok {
+		store.mu.RUnlock()
 		return b.AuthType
 	}
-	return 0
+	store.mu.RUnlock()
+	b := db.GetBlogWithAccount(account, blogname)
+	if b == nil {
+		return 0
+	}
+	return b.AuthType
 }
 
 // IsPublicTag 检查是否公开标签

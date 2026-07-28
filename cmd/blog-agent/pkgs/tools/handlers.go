@@ -16,9 +16,9 @@ func ToolsHandler(w http.ResponseWriter, r *http.Request) {
 func TimeToolHandler(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	timezone := r.URL.Query().Get("timezone")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch action {
 	case "current":
 		result := GetCurrentTime(timezone)
@@ -45,15 +45,15 @@ func DataProcessHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	r.ParseForm()
 	action := r.PostForm.Get("action")
 	input := r.PostForm.Get("input")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	var result DataProcessResult
-	
+
 	switch action {
 	case "json_format":
 		result = FormatJSON(input)
@@ -79,7 +79,7 @@ func DataProcessHandler(w http.ResponseWriter, r *http.Request) {
 			Error:  "无效的操作",
 		}
 	}
-	
+
 	json.NewEncoder(w).Encode(result)
 }
 
@@ -89,12 +89,12 @@ func CalculatorHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	r.ParseForm()
 	expression := r.PostForm.Get("expression")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	result := Calculate(expression)
 	json.NewEncoder(w).Encode(result)
 }
@@ -105,22 +105,22 @@ func BMIHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	r.ParseForm()
 	heightStr := r.PostForm.Get("height")
 	weightStr := r.PostForm.Get("weight")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	height, err1 := strconv.ParseFloat(heightStr, 64)
 	weight, err2 := strconv.ParseFloat(weightStr, 64)
-	
+
 	if err1 != nil || err2 != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "请输入有效的身高和体重"})
 		return
 	}
-	
+
 	bmi, category := CalculateBMI(height, weight)
 	result := map[string]interface{}{
 		"bmi":      bmi,
@@ -137,13 +137,13 @@ func TextToolHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	r.ParseForm()
 	action := r.PostForm.Get("action")
 	text := r.PostForm.Get("text")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	switch action {
 	case "count":
 		result := CountText(text)
@@ -158,57 +158,41 @@ func TextToolHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// WeatherHandler 天气查询API
-func WeatherHandler(w http.ResponseWriter, r *http.Request) {
-	city := r.URL.Query().Get("city")
-	
-	w.Header().Set("Content-Type", "application/json")
-	
-	if city == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "请提供城市名称"})
-		return
-	}
-	
-	result := GetWeather(city)
-	json.NewEncoder(w).Encode(result)
-}
-
 // UnitConvertHandler 单位转换API
 func UnitConvertHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	r.ParseForm()
 	valueStr := r.PostForm.Get("value")
 	fromUnit := r.PostForm.Get("from_unit")
 	toUnit := r.PostForm.Get("to_unit")
 	unitType := r.PostForm.Get("unit_type")
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	value, err := strconv.ParseFloat(valueStr, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "请输入有效的数值"})
 		return
 	}
-	
+
 	result, err := ConvertUnit(value, fromUnit, toUnit, unitType)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	
+
 	response := map[string]interface{}{
-		"original_value": value,
-		"from_unit":      fromUnit,
-		"to_unit":        toUnit,
+		"original_value":  value,
+		"from_unit":       fromUnit,
+		"to_unit":         toUnit,
 		"converted_value": result,
-		"unit_type":      unitType,
+		"unit_type":       unitType,
 	}
 	json.NewEncoder(w).Encode(response)
 }

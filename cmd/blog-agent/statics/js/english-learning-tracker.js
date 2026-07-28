@@ -863,8 +863,8 @@
         });
     }
 
-    window.syncWithTodolist = function () {
-        // Create a todolist task for today's English learning
+    window.syncWithDailyGoal = function () {
+        // 将未完成的英语学习项写入当天的日目标。
         var tasks = [];
         var items = [
             { key: 'vocab', label: '词汇学习', goal: state.dailyGoals.vocab, unit: '词' },
@@ -886,14 +886,24 @@
             return;
         }
 
-        fetch('/api/todolist/add', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tasks: tasks, category: 'english-learning' })
-        })
-        .then(function () { showToast('已同步到待办任务', 'success'); })
-        .catch(function () { showToast('同步失败，请手动添加到待办', 'warning'); });
+        var period = getDateStr(new Date());
+        Promise.all(tasks.map(function (title) {
+            return fetch('/api/goal/task', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    level: 'daily',
+                    period: period,
+                    task: { title: title, priority: 'medium', status: 'pending' }
+                })
+            }).then(function (response) {
+                if (!response.ok) throw new Error('保存失败');
+                return response.json();
+            });
+        }))
+        .then(function () { showToast('已同步到日目标', 'success'); })
+        .catch(function () { showToast('同步失败，请在日目标中手动添加', 'warning'); });
     };
 
     // ==================== Data Export ====================

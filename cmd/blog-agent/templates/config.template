@@ -11,23 +11,19 @@
 <body>
     <div class="container">
         <header class="header">
-            <h1>🔧 系统配置管理</h1>
+            <div>
+                <h1>系统配置</h1>
+                <p class="header-subtitle">仅展示日常运行所需的核心参数</p>
+            </div>
             <div class="header-actions">
                 <button class="btn btn-secondary" onclick="goBack()">返回</button>
                 <button class="btn btn-success" onclick="saveAllConfigs()">保存配置</button>
-                <button class="btn btn-primary" onclick="addNewConfig()">添加配置</button>
             </div>
         </header>
 
         <div class="content">
-            <!-- 配置搜索和过滤 -->
-            <div class="search-section">
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="搜索配置项..." onkeyup="filterConfigs()">
-                </div>
-                <div class="config-stats">
-                    <span id="configCount">配置项: 0</span>
-                </div>
+            <div class="config-notice">
+                <span>修改后点击“保存配置”生效，端口和 Redis 连接信息需重启服务。</span>
             </div>
 
             <!-- 配置列表 -->
@@ -35,39 +31,6 @@
                 <!-- 配置项将通过JavaScript动态加载 -->
             </div>
 
-            <!-- 原始配置预览 -->
-            <div class="raw-config-section">
-                <h3>原始配置内容预览</h3>
-                <textarea id="rawConfigPreview" readonly></textarea>
-            </div>
-        </div>
-    </div>
-
-    <!-- 添加配置弹窗 -->
-    <div id="addConfigModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>添加新配置</h3>
-                <span class="close" onclick="closeAddModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="newConfigKey">配置项名称：</label>
-                    <input type="text" id="newConfigKey" placeholder="例如: new_feature_enabled">
-                </div>
-                <div class="form-group">
-                    <label for="newConfigValue">配置值：</label>
-                    <input type="text" id="newConfigValue" placeholder="例如: true">
-                </div>
-                <div class="form-group">
-                    <label for="newConfigComment">注释说明（可选）：</label>
-                    <textarea id="newConfigComment" placeholder="配置项的注释说明，将显示在配置文件中"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
-                <button class="btn btn-primary" onclick="confirmAddConfig()">添加</button>
-            </div>
         </div>
     </div>
 
@@ -82,4 +45,4 @@
     <script src="/js/move_assistant.js"></script>
     <script src="/js/config.js"></script>
 </body>
-</html> 
+</html>

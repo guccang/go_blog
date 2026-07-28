@@ -1494,3 +1494,5 @@
         .highlight-navigation:hover::after {
             opacity: 1;
         }
+/* 评论功能已下线：历史模板保留仅为兼容旧页面，页面不再展示或提交评论。 */
+.comments-section, #comments, #div-comment, #comment-show { display: none !important; }

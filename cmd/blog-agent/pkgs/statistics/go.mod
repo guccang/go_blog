@@ -14,7 +14,6 @@ require (
 	reading v0.0.0
 	taskbreakdown v0.0.0
 	todolist v0.0.0
-	yearplan v0.0.0
 )
 
 require (
@@ -45,7 +44,6 @@ replace todolist => ../todolist
 
 replace reading => ../reading
 
-replace yearplan => ../yearplan
 
 replace taskbreakdown => ../taskbreakdown
 
