@@ -2,7 +2,6 @@ package http
 
 import (
 	"auth"
-	"blog"
 	"config"
 	"fmt"
 	t "html/template"
@@ -26,13 +25,16 @@ var view = struct {
 	PageDiaryPasswordInput func(h.ResponseWriter, string)
 	PageEditor             func(h.ResponseWriter, string, string)
 	PageExercise           func(h.ResponseWriter)
+	PageExerciseManage     func(h.ResponseWriter)
 	PageGetBlog            func(string, h.ResponseWriter, int, string)
 	PageGoal               func(h.ResponseWriter)
+	PageGoalManage         func(h.ResponseWriter)
 	PageIndex              func(h.ResponseWriter)
 	PageLink               func(h.ResponseWriter, int, string)
 	PageMigration          func(h.ResponseWriter)
 	PagePublic             func(h.ResponseWriter, string)
 	PageReading            func(h.ResponseWriter)
+	PageReadingManage      func(h.ResponseWriter)
 	PageReadingDashboard   func(h.ResponseWriter)
 	PageSearch             func(string, h.ResponseWriter, string)
 	PageSearchNormal       func(string, h.ResponseWriter, *h.Request) int
@@ -44,13 +46,16 @@ var view = struct {
 	PageDiaryPasswordInput: PageDiaryPasswordInput,
 	PageEditor:             PageEditor,
 	PageExercise:           PageExercise,
+	PageExerciseManage:     PageExerciseManage,
 	PageGetBlog:            PageGetBlog,
 	PageGoal:               PageGoal,
+	PageGoalManage:         PageGoalManage,
 	PageIndex:              PageIndex,
 	PageLink:               PageLink,
 	PageMigration:          PageMigration,
 	PagePublic:             PagePublic,
 	PageReading:            PageReading,
+	PageReadingManage:      PageReadingManage,
 	PageReadingDashboard:   PageReadingDashboard,
 	PageSearch:             PageSearch,
 	PageSearchNormal:       PageSearchNormal,
@@ -96,13 +101,7 @@ type LinkData struct {
 	TAGS         []string
 	IS_ENCRYPTED bool
 	IS_DIARY     bool
-}
-
-type GameData struct {
-	Name        string
-	Path        string
-	Icon        string
-	Description string
+	IS_TECH_DOC  bool
 }
 
 type LinkDatas struct {
@@ -112,7 +111,6 @@ type LinkDatas struct {
 	BLOGS_NUMBER    int
 	USER_ACCOUNT    string
 	USER_AVATAR     string
-	GAMES           []GameData
 	SEARCH_COMMANDS []SearchCommandInfo
 }
 
@@ -135,13 +133,16 @@ type CommentDatas struct {
 }
 
 type EditorData struct {
-	TITLE    string
-	CONTENT  string
-	CTIME    string
-	AUTHTYPE string
-	TAGS     string
-	COMMENTS []CommentDatas
-	ENCRYPT  string
+	TITLE        string
+	CONTENT      string
+	CTIME        string
+	AUTHTYPE     string
+	TAGS         string
+	COMMENTS     []CommentDatas
+	ENCRYPT      string
+	ACCOUNT      string
+	IS_LARGE     bool
+	CONTENT_SIZE int
 	// 权限状态字段
 	IS_PRIVATE   bool
 	IS_PUBLIC    bool
@@ -233,6 +234,7 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 			ACCESS_TIME:  b.AccessTime,
 			IS_ENCRYPTED: b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0,
 			IS_DIARY:     (b.AuthType & module.EAuthType_diary) != 0,
+			IS_TECH_DOC:  strings.Contains(b.Tags, "blog实现技术文档"),
 		}
 		datas.LINKS = append(datas.LINKS, ld)
 
@@ -317,9 +319,7 @@ func parseAuthTypeToEditorData(authType int, encrypt int) (string, bool, bool, b
 	return authTypeString, isPrivate, isPublic, isDiary, isEncrypted
 }
 
-func PageSearch(match string, w h.ResponseWriter, session string) {
-
-	account := blog.GetAccountFromSession(session)
+func PageSearch(match string, w h.ResponseWriter, account string) {
 	blogs := control.GetMatch(account, match)
 	flag := module.EAuthType_all
 	datas := getLinks(blogs, flag, account)
@@ -351,9 +351,7 @@ func PageSearch(match string, w h.ResponseWriter, session string) {
 	}
 }
 
-func PageTags(w h.ResponseWriter, tag, session string) {
-
-	account := blog.GetAccountFromSession(session)
+func PageTags(w h.ResponseWriter, tag, account string) {
 	blogs := control.GetMatch(account, "@tag match"+tag)
 
 	flag := module.EAuthType_public
@@ -377,13 +375,12 @@ func PageTags(w h.ResponseWriter, tag, session string) {
 
 }
 
-func PageLink(w h.ResponseWriter, flag int, session string) {
+func PageLink(w h.ResponseWriter, flag int, account string) {
 
 	blog_num := config.GetMainBlogNum()
 	if blog_num <= 0 || blog_num > 20 {
 		blog_num = 20
 	}
-	account := blog.GetAccountFromSession(session)
 	blogs := control.GetAll(account, blog_num, flag)
 	log.DebugF(log.ModuleView, "blogs cnt=%d", len(blogs))
 
@@ -449,6 +446,19 @@ func PageEditor(w h.ResponseWriter, init_title string, init_content string) {
 	}
 }
 
+// PageImagePasteDemo renders an isolated interaction prototype, without storage side effects.
+func PageImagePasteDemo(w h.ResponseWriter) {
+	exeDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "image_paste_demo.template"))
+	if err != nil {
+		h.Error(w, "Failed to parse image_paste_demo.template", h.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		h.Error(w, "Failed to render image_paste_demo.template", h.StatusInternalServerError)
+	}
+}
+
 func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account string) {
 	blogObj := control.GetBlog(account, blogname)
 	if blogObj == nil {
@@ -480,13 +490,22 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account str
 	// 解析博客权限状态
 	authTypeString, isPrivate, isPublic, isDiary, isEncrypted := parseAuthTypeToEditorData(blogObj.AuthType, blogObj.Encrypt)
 
+	const largeBlogThreshold = 256 * 1024
+	isLarge := len(blogObj.Content) > largeBlogThreshold && blogObj.Encrypt == 0 && (blogObj.AuthType&module.EAuthType_diary) == 0
+	content := blogObj.Content
+	if isLarge {
+		content = ""
+	}
 	data := EditorData{
 		TITLE:        blogObj.Title,
-		CONTENT:      blogObj.Content,
+		CONTENT:      content,
 		CTIME:        blogObj.CreateTime,
 		AUTHTYPE:     authTypeString,
 		TAGS:         blogObj.Tags,
 		ENCRYPT:      encrypt_str,
+		ACCOUNT:      account,
+		IS_LARGE:     isLarge,
+		CONTENT_SIZE: len(blogObj.Content),
 		IS_PRIVATE:   isPrivate,
 		IS_PUBLIC:    isPublic,
 		IS_DIARY:     isDiary,
@@ -587,8 +606,7 @@ func PageSearchNormal(match string, w h.ResponseWriter, r *h.Request) int {
 		}
 		title := tokens[1]
 		content := ""
-		session := templateSession(r)
-		account := blog.GetAccountFromSession(session)
+		account := auth.GetAccountFromRequest(r)
 		b := control.GetRecentlyTimedBlog(account, title)
 		if b != nil {
 			content = b.Content
@@ -661,7 +679,7 @@ func PageSkill(w h.ResponseWriter) {
 // PageGoal renders the unified goal management page
 func PageGoal(w h.ResponseWriter) {
 	tmpDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "goal.template"))
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "goal_map.template"))
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse goal template", h.StatusInternalServerError)
@@ -673,6 +691,18 @@ func PageGoal(w h.ResponseWriter) {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render goal template", h.StatusInternalServerError)
 		return
+	}
+}
+
+func PageGoalManage(w h.ResponseWriter) {
+	tmpDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tmpDir, "goal.template"))
+	if err != nil {
+		h.Error(w, "Failed to parse goal manage template", h.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		h.Error(w, "Failed to render goal manage template", h.StatusInternalServerError)
 	}
 }
 
@@ -697,7 +727,7 @@ func PageStatistics(w h.ResponseWriter) {
 // PageReading renders the reading page
 func PageReading(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading.template"))
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading_shelf.template"))
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse reading template", h.StatusInternalServerError)
@@ -712,10 +742,22 @@ func PageReading(w h.ResponseWriter) {
 	}
 }
 
+func PageReadingManage(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "reading.template"))
+	if err != nil {
+		h.Error(w, "Failed to parse reading manage template", h.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		h.Error(w, "Failed to render reading manage template", h.StatusInternalServerError)
+	}
+}
+
 // PageBookDetail renders the book detail page
 func PageBookDetail(w h.ResponseWriter, book *module.Book) {
 	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "book_detail.template"))
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "book_detail_focus.template"))
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse book detail template", h.StatusInternalServerError)
@@ -754,42 +796,6 @@ func PageReadingDashboard(w h.ResponseWriter) {
 	}
 }
 
-// getGamesList returns the list of all available games
-func getGamesList() []GameData {
-	return []GameData{
-		{
-			Name:        "五子棋",
-			Path:        "/gomoku",
-			Icon:        "⚫",
-			Description: "经典五子棋游戏，支持人机对战和在线对战",
-		},
-		{
-			Name:        "连连看",
-			Path:        "/linkup",
-			Icon:        "🔄",
-			Description: "休闲益智游戏，寻找相同图案进行消除",
-		},
-		{
-			Name:        "俄罗斯方块",
-			Path:        "/tetris",
-			Icon:        "🧱",
-			Description: "经典方块游戏，考验反应速度和策略规划",
-		},
-		{
-			Name:        "扫雷",
-			Path:        "/minesweeper",
-			Icon:        "💣",
-			Description: "经典扫雷游戏，考验逻辑推理能力",
-		},
-		{
-			Name:        "水果消消乐",
-			Path:        "/fruitcrush",
-			Icon:        "🟥",
-			Description: "三消休闲游戏，匹配相同水果获得高分",
-		},
-	}
-}
-
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter, account string) {
 	// 获取所有public标签的博客
@@ -800,9 +806,6 @@ func PagePublic(w h.ResponseWriter, account string) {
 
 	// 获取链接数据
 	datas := getLinks(blogs, flag, account)
-
-	// 添加小游戏列表
-	datas.GAMES = getGamesList()
 
 	// 渲染模板
 	exeDir := config.GetHttpTemplatePath()
@@ -824,7 +827,7 @@ func PagePublic(w h.ResponseWriter, account string) {
 // PageExercise renders the exercise page
 func PageExercise(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise.template"))
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise_dashboard.template"))
 	if err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to parse exercise template", h.StatusInternalServerError)
@@ -836,6 +839,18 @@ func PageExercise(w h.ResponseWriter) {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render exercise template", h.StatusInternalServerError)
 		return
+	}
+}
+
+func PageExerciseManage(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise.template"))
+	if err != nil {
+		h.Error(w, "Failed to parse exercise manage template", h.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		h.Error(w, "Failed to render exercise manage template", h.StatusInternalServerError)
 	}
 }
 

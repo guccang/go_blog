@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>截图粘贴试验 · GUCCANG</title>
+    <link rel="stylesheet" href="/css/image_paste_demo.css?v=2">
+</head>
+<body>
+    <main class="demo-shell">
+        <header class="demo-header">
+            <a class="back-link" href="/editor">← 返回编辑器</a>
+            <span class="eyebrow">交互试验</span>
+        </header>
+        <section class="intro">
+            <p class="kicker">截图直接进入文章</p>
+            <h1>粘贴一张图片，看看感觉是否自然。</h1>
+            <p>先截屏后按 <kbd>Ctrl</kbd> + <kbd>V</kbd>，或把本地图片直接拖入编辑区。本页不会保存任何图片或博客。</p>
+        </section>
+        <section class="workspace" aria-label="截图粘贴试验区">
+            <div class="editor-panel">
+                <div class="panel-label"><span class="signal"></span> Markdown 编辑区 <span id="paste-state" class="state">等待粘贴</span></div>
+                <textarea id="demo-editor" spellcheck="false" aria-label="Markdown 编辑区"># 我的记录
+
+把截图粘贴到这里。</textarea>
+                <p class="hint">支持截图粘贴和本地图片拖入。普通文字仍按原方式粘贴。</p>
+            </div>
+            <div class="preview-panel">
+                <div class="panel-label">实时预览 <span class="preview-note">仅本次页面有效</span></div>
+                <div id="preview" class="preview" aria-live="polite">等待截图粘贴</div>
+            </div>
+        </section>
+        <section class="markdown-card">
+            <div>
+                <p class="card-title">将来写入文章的内容</p>
+                <p class="card-copy">正式接入后，上传成功会自动把 Markdown 图片引用插入到光标位置。</p>
+            </div>
+            <code id="markdown-output">等待粘贴图片…</code>
+        </section>
+    </main>
+    <script src="/js/image_paste_demo.js?v=2"></script>
+</body>
+</html>

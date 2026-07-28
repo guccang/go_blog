@@ -211,9 +211,8 @@ func tagMatch(account string, tokens []string) []*module.Blog {
 }
 
 func reloadCfg(account string, tokens []string) []*module.Blog {
-	config_path := config.GetConfigPathWithAccount(account)
-	config.ReloadConfig(account, config_path)
-	log.InfoF(log.ModuleSearch, "reload cfg %s", config_path)
+	config.ReloadConfigFromSQLite(account)
+	log.InfoF(log.ModuleSearch, "reload SQLite config account=%s", account)
 	return []*module.Blog{}
 }
 

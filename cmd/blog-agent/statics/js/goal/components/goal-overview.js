@@ -40,7 +40,8 @@ class GoalOverview extends HTMLElement {
           </div>
         ` : '')}
         <div class="goal-header">
-          <span class="goal-status ${statusClass}">${statusText}</span>
+          <div><span class="goal-status ${statusClass}">${statusText}</span><p class="goal-period-caption">${periodLabel(goal.level, goal.period)}</p></div>
+          <div class="goal-orb" style="--goal-progress:${goal.progress || 0}%"><strong>${goal.progress || 0}%</strong><span>完成</span></div>
           <button class="btn-sm btn-toggle" data-action="toggle">${goal.status === 'completed' ? '重新开始' : '标记完成'}</button>
         </div>
         <textarea class="overview-input" placeholder="写一下你的目标概述..." rows="3">${escapeHtml(goal.overview || '')}</textarea>

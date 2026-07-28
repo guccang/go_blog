@@ -1,6 +1,7 @@
 package http
 
 import (
+	"blog"
 	"config"
 	"encoding/json"
 	"fmt"
@@ -122,6 +123,11 @@ func HandleSave(w h.ResponseWriter, r *h.Request) {
 
 	// 响应客户端
 	if ret == 0 {
+		hookType := blog.HookBlogCreated
+		if (auth_type&module.EAuthType_diary) != 0 || config.IsDiaryBlogWithAccount(account, title) {
+			hookType = blog.HookDiaryWritten
+		}
+		emitUsageHook(r, account, hookType, "blog_editor", "blog", title, title, "", nil, map[string]any{"status": "success"})
 		w.Write([]byte(fmt.Sprintf("save successfully! ret=%d", ret)))
 	} else {
 		h.Error(w, "save failed! has same title blog", h.StatusBadRequest)
@@ -153,6 +159,8 @@ func HandleHelp(w h.ResponseWriter, r *h.Request) {
 		}
 	}
 
+	emitUsageHook(r, account, blog.HookPageOpened, "help", "page", blogname, blogname, "", nil, map[string]any{"status": "success"})
+	emitUsageHook(r, account, blog.HookPageOpened, "blog_reader", "blog", blogname, blogname, "", map[string]any{"public": usepublic != 0}, map[string]any{"status": "success"})
 	view.PageGetBlog(blogname, w, usepublic, account)
 }
 
@@ -399,8 +407,12 @@ func HandleDelete(w h.ResponseWriter, r *h.Request) {
 
 	account := getAccountFromRequest(r)
 
+	current := control.GetBlog(account, title)
 	ret := control.DeleteBlog(account, title)
 	if ret == 0 {
+		if current != nil && ((current.AuthType&module.EAuthType_diary) != 0 || config.IsDiaryBlogWithAccount(account, title)) {
+			emitUsageHook(r, account, blog.HookDiaryDeleted, "blog_editor", "diary", title, title, "", nil, map[string]any{"status": "success"})
+		}
 		w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
 	} else {
 		w.Write([]byte(fmt.Sprintf("Content received failed! ret=%d", ret)))
@@ -448,7 +460,7 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 	// 加密
 	encryptionKey := r.FormValue("encrypt")
 	encrypt := 0
-	log.DebugF(log.ModuleBlog, "Received title=%s encrypt:%s session:%s", title, encryptionKey, getsession(r))
+	log.DebugF(log.ModuleBlog, "Received title=%s encrypt:%t", title, encryptionKey != "")
 
 	if encryptionKey != "" {
 		encrypt = 1
@@ -480,6 +492,9 @@ func HandleModify(w h.ResponseWriter, r *h.Request) {
 	}
 
 	ret := control.ModifyBlog(account, &ubd)
+	if ret == 0 && ((auth_type&module.EAuthType_diary) != 0 || config.IsDiaryBlogWithAccount(account, title)) {
+		emitUsageHook(r, account, blog.HookDiaryWritten, "blog_editor", "diary", title, title, "", nil, map[string]any{"status": "success"})
+	}
 
 	// 响应客户端
 	w.Write([]byte(fmt.Sprintf("Content received successfully! ret=%d", ret)))
@@ -494,11 +509,13 @@ func HandleSearch(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	match := r.URL.Query().Get("match")
+	if match != "" {
+		emitUsageHook(r, getAccountFromRequest(r), blog.HookFeatureUsed, "blog_search", "search_query", "", "", match, nil, nil)
+	}
 	ret := view.PageSearchNormal(match, w, r)
 	if ret != 0 {
 		// 通用搜索逻辑
-		session := getsession(r)
-		view.PageSearch(match, w, session)
+		view.PageSearch(match, w, getAccountFromRequest(r))
 	}
 }
 
@@ -520,8 +537,7 @@ func HandleTag(w h.ResponseWriter, r *h.Request) {
 	}
 
 	// 展示所有public tag
-	session := getsession(r)
-	view.PageTags(w, tag, session)
+	view.PageTags(w, tag, getAccountFromRequest(r))
 }
 
 // HandlePublic renders the public blogs page

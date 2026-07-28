@@ -5,6 +5,7 @@ import (
 	"config"
 	log "mylog"
 	db "persistence"
+	"strings"
 	"sync"
 )
 
@@ -32,6 +33,11 @@ func Init() {
 	admin_pwd := config.GetConfigWithAccount(admin_account, "pwd")
 	if admin_pwd != "" && db.GetUser(admin_account) == nil {
 		_ = db.SaveUser(admin_account, admin_pwd)
+	}
+	if missing, err := db.ListBlogAccountsWithoutCredentials(); err != nil {
+		log.ErrorF(log.ModuleLogin, "check SQLite account credentials failed: %v", err)
+	} else if len(missing) > 0 {
+		log.WarnF(log.ModuleLogin, "SQLite blog accounts without login credentials: %s; register each account with its intended password before use", strings.Join(missing, ", "))
 	}
 	sms_codes[admin_account] = "901124"
 }

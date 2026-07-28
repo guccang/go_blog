@@ -1,7 +1,7 @@
 package goal
 
 import (
-	"blog"
+	"auth"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,13 +9,9 @@ import (
 	"time"
 )
 
-// getAccount extracts account from session cookie
+// getAccount uses the canonical SQLite-backed request resolver.
 func getAccount(r *http.Request) string {
-	cookie, err := r.Cookie("session")
-	if err != nil {
-		return ""
-	}
-	return blog.GetAccountFromSession(cookie.Value)
+	return auth.GetAccountFromRequest(r)
 }
 
 // ============================================================================

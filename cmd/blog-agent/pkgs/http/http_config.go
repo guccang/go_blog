@@ -81,12 +81,14 @@ func handleGetConfig(w h.ResponseWriter, account string, isAdmin bool) {
 
 	// 解析现有配置内容和注释
 	configs, comments := parseConfigContentWithComments(blog.Content)
+	ensurePIAgentConfig(configs, comments)
 
+	safeConfigs := maskConfigSecrets(configs)
 	response := map[string]interface{}{
 		"success":     true,
-		"configs":     configs,
+		"configs":     safeConfigs,
 		"comments":    comments,
-		"raw_content": blog.Content,
+		"raw_content": buildConfigContentWithComments(safeConfigs, comments),
 		"is_default":  false,
 		"is_admin":    isAdmin,
 		"account":     account,
@@ -106,9 +108,7 @@ func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmi
 		// 管理员获得完整的系统配置
 		defaultConfigs = map[string]string{
 			"port":                       "8888",
-			"redis_ip":                   "127.0.0.1",
-			"redis_port":                 "6666",
-			"redis_pwd":                  "",
+			"pi_providers":               `{"default":"deepseek","providers":[{"name":"deepseek","api_key":"","api_url":"https://api.deepseek.com/chat/completions","model":"deepseek-chat"}]}`,
 			"publictags":                 "public|share|demo",
 			"sysfiles":                   configTitle,
 			"title_auto_add_date_suffix": "日记",
@@ -119,9 +119,7 @@ func createDefaultConfig(w h.ResponseWriter, account, configTitle string, isAdmi
 
 		defaultComments = map[string]string{
 			"port":                       "HTTP服务监听端口",
-			"redis_ip":                   "Redis服务器IP地址",
-			"redis_port":                 "Redis服务器端口",
-			"redis_pwd":                  "Redis密码（留空表示无密码）",
+			"pi_providers":               "Provider JSON，包含 default 与 providers 数组",
 			"publictags":                 "公开标签列表（用|分隔）",
 			"sysfiles":                   "系统文件列表（用|分隔）",
 			"title_auto_add_date_suffix": "自动添加日期后缀的标题前缀（用|分隔）",
@@ -198,6 +196,10 @@ func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmi
 		h.Error(w, "无效的JSON数据", h.StatusBadRequest)
 		return
 	}
+	if current := control.GetBlog(account, configTitle); current != nil {
+		previous := parseConfigContent(current.Content)
+		requestData.Configs["pi_providers"] = restoreMaskedPIProviders(requestData.Configs["pi_providers"], previous["pi_providers"])
+	}
 
 	// 构建新的配置内容
 	newContent := buildConfigContentWithComments(requestData.Configs, requestData.Comments)
@@ -230,6 +232,134 @@ func handleUpdateConfig(w h.ResponseWriter, r *h.Request, account string, isAdmi
 		"account":  account,
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+const configSecretMask = "********"
+
+func ensurePIAgentConfig(configs map[string]string, comments map[string]string) {
+	legacyAPIKey := configs["deepseek_api_key"]
+	legacyURL := configs["deepseek_api_url"]
+	legacyModel := configs["deepseek_model"]
+	if legacyURL == "" {
+		legacyURL = "https://api.deepseek.com/chat/completions"
+	}
+	if legacyModel == "" {
+		legacyModel = "deepseek-chat"
+	}
+	if legacyAPIKey != "" {
+		configs["pi_providers"] = mergeLegacyDeepSeekProvider(configs["pi_providers"], legacyAPIKey, legacyURL, legacyModel)
+		comments["pi_providers"] = "Provider JSON，已从原 DeepSeek 配置迁移"
+	}
+	for key := range configs {
+		if key == "pi_default_provider" || strings.HasPrefix(key, "pi_provider_") || key == "deepseek_api_key" || key == "deepseek_api_url" || key == "deepseek_model" {
+			delete(configs, key)
+			delete(comments, key)
+		}
+	}
+	if _, exists := configs["pi_providers"]; !exists {
+		configs["pi_providers"] = `{"default":"deepseek","providers":[{"name":"deepseek","api_key":"","api_url":"https://api.deepseek.com/chat/completions","model":"deepseek-chat"}]}`
+		comments["pi_providers"] = "Provider JSON，包含 default 与 providers 数组"
+	}
+}
+
+func mergeLegacyDeepSeekProvider(raw, apiKey, apiURL, model string) string {
+	if raw == "" {
+		return buildPIProvidersJSON(apiKey, apiURL, model)
+	}
+	var document piProvidersDocument
+	if json.Unmarshal([]byte(raw), &document) != nil {
+		return buildPIProvidersJSON(apiKey, apiURL, model)
+	}
+	for index := range document.Providers {
+		if document.Providers[index].Name == "deepseek" && document.Providers[index].APIKey == "" {
+			document.Providers[index].APIKey = apiKey
+			if document.Providers[index].URL == "" {
+				document.Providers[index].URL = apiURL
+			}
+			if document.Providers[index].Model == "" {
+				document.Providers[index].Model = model
+			}
+			encoded, err := json.Marshal(document)
+			if err == nil {
+				return string(encoded)
+			}
+		}
+	}
+	return raw
+}
+
+func buildPIProvidersJSON(apiKey, apiURL, model string) string {
+	document := piProvidersDocument{Default: "deepseek", Providers: []struct {
+		Name   string `json:"name"`
+		APIKey string `json:"api_key"`
+		URL    string `json:"api_url"`
+		Model  string `json:"model"`
+	}{{Name: "deepseek", APIKey: apiKey, URL: apiURL, Model: model}}}
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func maskConfigSecrets(configs map[string]string) map[string]string {
+	masked := make(map[string]string, len(configs))
+	for key, value := range configs {
+		if key == "pi_providers" {
+			masked[key] = maskPIProviders(value)
+			continue
+		}
+		masked[key] = value
+	}
+	return masked
+}
+
+type piProvidersDocument struct {
+	Default   string `json:"default"`
+	Providers []struct {
+		Name   string `json:"name"`
+		APIKey string `json:"api_key"`
+		URL    string `json:"api_url"`
+		Model  string `json:"model"`
+	} `json:"providers"`
+}
+
+func maskPIProviders(raw string) string {
+	var document piProvidersDocument
+	if json.Unmarshal([]byte(raw), &document) != nil {
+		return raw
+	}
+	for index := range document.Providers {
+		if document.Providers[index].APIKey != "" {
+			document.Providers[index].APIKey = configSecretMask
+		}
+	}
+	masked, err := json.Marshal(document)
+	if err != nil {
+		return raw
+	}
+	return string(masked)
+}
+
+func restoreMaskedPIProviders(incoming, previous string) string {
+	var next, old piProvidersDocument
+	if json.Unmarshal([]byte(incoming), &next) != nil || json.Unmarshal([]byte(previous), &old) != nil {
+		return incoming
+	}
+	previousKeys := map[string]string{}
+	for _, provider := range old.Providers {
+		previousKeys[provider.Name] = provider.APIKey
+	}
+	for index := range next.Providers {
+		if next.Providers[index].APIKey == configSecretMask {
+			next.Providers[index].APIKey = previousKeys[next.Providers[index].Name]
+		}
+	}
+	result, err := json.Marshal(next)
+	if err != nil {
+		return incoming
+	}
+	return string(result)
 }
 
 // isAdminUser 检查用户是否为管理员
@@ -349,15 +479,12 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 	configOrder := []string{
 		// 基础设置
 		"port", "pwd", "admin", "logs_dir", "statics_path", "templates_path", "download_path", "recycle_path",
-		// Redis 缓存
-		"redis_ip", "redis_port", "redis_pwd",
 		// 博客设置
 		"publictags", "sysfiles", "main_show_blogs", "max_blog_comments", "share_days", "help_blog_name",
 		// 日记设置
 		"title_auto_add_date_suffix", "diary_keywords", "diary_password",
-		// AI / LLM
-		"openai_api_key", "openai_api_url", "deepseek_api_key", "deepseek_api_url",
-		"qwen_api_key", "qwen_api_url", "llm_fallback_models", "assistant_save_mcp_result",
+		// PI Agent / LLM
+		"pi_providers",
 		// CodeGen 编码
 		"codegen_workspace", "codegen_max_turns", "codegen_agent_token",
 		// 企业微信

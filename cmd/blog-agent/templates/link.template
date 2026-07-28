@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG - 博客</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/link.css">
+    <link rel="stylesheet" href="/css/link.css?v=chunk-fts-1">
 </head>
 <body>
     <!-- 侧边栏导航 -->
@@ -107,6 +107,30 @@
             </div>
         </section>
 
+        <section class="blog-ask" aria-labelledby="blogAskTitle">
+            <div class="blog-ask-heading">
+                <span class="blog-ask-icon"><i class="fas fa-sparkles"></i></span>
+                <div>
+                    <h2 id="blogAskTitle">问我的博客</h2>
+                    <p>默认仅本地检索；使用 PI 回答时，召回的资料会发送给你配置的模型。</p>
+                </div>
+            </div>
+            <form id="blogAskForm" class="blog-ask-form">
+                <input id="blogAskInput" type="search" maxlength="120" placeholder="例如：我上次关于 SQLite 迁移做了哪些决定？" autocomplete="off">
+                <button type="submit">查找</button>
+                <button id="blogAskPI" type="button" class="blog-ask-pi">PI 回答</button>
+            </form>
+            <div id="blogAskStatus" class="blog-ask-status" aria-live="polite"></div>
+			<div id="blogAskToolbar" class="blog-ask-toolbar" hidden>
+				<button id="blogAskCollapse" class="blog-ask-collapse" type="button">收起查询结果</button>
+			</div>
+			<div id="blogPIAnswer" class="blog-pi-answer" hidden></div>
+			<div id="blogAskResults" class="blog-ask-results" hidden></div>
+			<div id="blogAskActions" class="blog-ask-actions" hidden>
+				<button id="blogAskShowAll" class="blog-ask-show-all" type="button" hidden>查看全部搜索结果</button>
+			</div>
+        </section>
+
         <!-- 最近查看 -->
         {{if .RECENT_LINKS}}
         <section class="section">
@@ -152,7 +176,7 @@
 
             <div class="blog-grid" id="blogContainer">
                 {{range .LINKS}}
-                <article class="blog-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}">
+                <article class="blog-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}" data-tech-doc="{{.IS_TECH_DOC}}">
                     <a href="{{.URL}}" class="blog-card-link">
                         <div class="blog-card-body">
                             <h3 class="blog-card-title">
@@ -191,21 +215,6 @@
             {{end}}
         </section>
 
-        <section class="blog-ask" aria-labelledby="blogAskTitle">
-            <div class="blog-ask-heading">
-                <span class="blog-ask-icon"><i class="fas fa-sparkles"></i></span>
-                <div>
-                    <h2 id="blogAskTitle">问我的博客</h2>
-                    <p>用本地检索找回笔记，不会发送内容给外部 AI。</p>
-                </div>
-            </div>
-            <form id="blogAskForm" class="blog-ask-form">
-                <input id="blogAskInput" type="search" maxlength="120" placeholder="例如：我上次关于 SQLite 迁移做了哪些决定？" autocomplete="off">
-                <button type="submit">查找</button>
-            </form>
-            <div id="blogAskStatus" class="blog-ask-status" aria-live="polite"></div>
-            <div id="blogAskResults" class="blog-ask-results" hidden></div>
-        </section>
     </main>
 
     <aside class="quote-rail" aria-label="今日格言">
@@ -228,7 +237,7 @@
     </footer>
 
     <script src="/js/utils.js"></script>
-    <script src="/js/link.js"></script>
+    <script src="/js/link.js?v=chunk-fts-1"></script>
 
 
     <script>

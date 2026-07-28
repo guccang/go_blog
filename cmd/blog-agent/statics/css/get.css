@@ -1496,3 +1496,10 @@
         }
 /* 评论功能已下线：历史模板保留仅为兼容旧页面，页面不再展示或提交评论。 */
 .comments-section, #comments, #div-comment, #comment-show { display: none !important; }
+.large-blog-readonly { margin-left: auto; color: #b7791f; font-size: 14px; font-weight: 600; }
+.large-blog-controls { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; align-items: center; gap: 12px; max-width: min(520px, calc(100vw - 48px)); padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg); color: var(--text-color); box-shadow: 0 8px 24px var(--shadow-color); font-size: 13px; }
+.large-blog-controls span { flex: 1 1 260px; }
+.large-blog-controls button { padding: 8px 14px; border: none; border-radius: 4px; background: var(--accent-color); color: white; cursor: pointer; font-weight: 600; white-space: nowrap; transition: background-color .2s, transform .2s; }
+.large-blog-controls button:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
+.large-blog-controls button:disabled { opacity: .55; cursor: wait; }
+.large-blog-chunk { margin: 0; padding: 14px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.55 Consolas, "Courier New", monospace; }

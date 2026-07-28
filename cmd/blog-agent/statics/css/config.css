@@ -1335,6 +1335,17 @@
     z-index: 999;
 }
 
+.config-json-editor {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    font-family: Consolas, "SFMono-Regular", monospace;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.config-json-invalid { border-color: #d9534f !important; }
+
 .assistant-floating-btn:hover {
     transform: scale(1.15) translateY(-3px);
     box-shadow: 0 6px 20px rgba(0, 212, 170, 0.4);

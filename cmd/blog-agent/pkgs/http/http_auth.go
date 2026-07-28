@@ -5,8 +5,10 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"login"
+	"module"
 	log "mylog"
 	h "net/http"
+	control "service"
 	"strings"
 	"time"
 )
@@ -69,9 +71,8 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 	}
 	log.InfoF(log.ModuleAuth, "LoginSMS add session=%s code=%s device_id=%s", session, code, device_id)
 
-	// config
-	sys_conf_path := config.GetSysConfigPath(account)
-	config.ReloadConfigWithAccount(account, sys_conf_path)
+	config.ReloadConfigFromSQLite(account)
+	migratePIProvidersToJSON(account)
 
 	// set cookie
 	cookie := &h.Cookie{
@@ -105,7 +106,7 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 
 	device_id := r.FormValue("device_id")
-	log.DebugF(log.ModuleAuth, "account=%s pwd=%s device_id=%s", account, pwd, device_id)
+	log.DebugF(log.ModuleAuth, "login request account=%s device_id_present=%t", account, device_id != "")
 
 	session, ret := login.Login(account, pwd)
 	if ret != 0 {
@@ -116,9 +117,8 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 
 	// 记录成功的登录
 
-	// config
-	sys_conf_path := config.GetSysConfigPath(account)
-	config.ReloadConfigWithAccount(account, sys_conf_path)
+	config.ReloadConfigFromSQLite(account)
+	migratePIProvidersToJSON(account)
 
 	// 重新加载提示词配置
 	config.ReloadPrompts(account)
@@ -133,6 +133,27 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	h.SetCookie(w, cookie)
 
 	h.Redirect(w, r, "/main", 302)
+}
+
+// migratePIProvidersToJSON performs the one-time SQLite data migration from
+// legacy provider keys to the sole pi_providers JSON setting.
+func migratePIProvidersToJSON(account string) {
+	item := control.GetBlog(account, config.GetSysConfigTitle())
+	if item == nil {
+		return
+	}
+	configs, comments := parseConfigContentWithComments(item.Content)
+	ensurePIAgentConfig(configs, comments)
+	content := buildConfigContentWithComments(configs, comments)
+	if content == item.Content {
+		return
+	}
+	result := control.ModifyBlog(account, &module.UploadedBlogData{Title: item.Title, Content: content, AuthType: item.AuthType, Tags: item.Tags, Encrypt: item.Encrypt})
+	if result != 0 {
+		log.ErrorF(log.ModuleConfig, "migrate PI provider JSON failed account=%s result=%d", account, result)
+		return
+	}
+	config.UpdateConfigFromBlog(account, content)
 }
 
 // HandleRegister handles user registration

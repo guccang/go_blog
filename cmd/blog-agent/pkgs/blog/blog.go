@@ -1,7 +1,6 @@
 package blog
 
 import (
-	"auth"
 	"config"
 	"encoding/json"
 	"fmt"
@@ -318,6 +317,10 @@ func ListSummariesWithAccount(account string, limit, offset, flag int) []*module
 // SearchFTSWithAccount performs SQLite full-text retrieval without loading all blogs.
 func SearchFTSWithAccount(account, query string, limit int) ([]db.BlogSearchResult, error) {
 	return db.SearchBlogsFTS(account, query, limit)
+}
+
+func SearchChunksWithAccount(account, query string, limit int) ([]db.BlogChunkSearchResult, error) {
+	return db.SearchBlogChunks(account, query, limit)
 }
 
 // UpdateAccessTimeWithAccount 更新访问时间
@@ -680,14 +683,4 @@ func SaveYearPlanWithAccount(account string, planData *YearPlanData) error {
 		return fmt.Errorf("保存计划失败，错误码: %d", ret)
 	}
 	return nil
-}
-
-// ========== 向后兼容 ==========
-
-// GetAccountFromSession 从 session 获取账户
-func GetAccountFromSession(session string) string {
-	if session == "" {
-		return ""
-	}
-	return auth.GetAccountBySession(session)
 }

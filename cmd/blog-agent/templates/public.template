@@ -82,25 +82,6 @@
         {{end}}
     </main>
 
-    <!-- 小游戏 -->
-    {{if .GAMES}}
-    <section class="games-section">
-        <div class="games-inner">
-            <h2 class="games-title">
-                <i class="fas fa-gamepad"></i> 小游戏
-            </h2>
-            <div class="games-grid">
-                {{range .GAMES}}
-                <a class="game-card" href="{{.Path}}">
-                    <span class="game-icon">{{.Icon}}</span>
-                    <span class="game-name">{{.Name}}</span>
-                </a>
-                {{end}}
-            </div>
-        </div>
-    </section>
-    {{end}}
-
     <!-- 底部 -->
     <footer class="page-footer">
         <div class="footer-inner">

@@ -23,7 +23,7 @@
 
         <div class="content">
             <div class="config-notice">
-                <span>修改后点击“保存配置”生效，端口和 Redis 连接信息需重启服务。</span>
+                <span>修改后点击“保存配置”生效；端口与 PI Agent Provider 配置需重启服务。</span>
             </div>
 
             <!-- 配置列表 -->
@@ -43,6 +43,6 @@
     </a>
 
     <script src="/js/move_assistant.js"></script>
-    <script src="/js/config.js"></script>
+    <script src="/js/config.js?v=pi-agent-json-2"></script>
 </body>
 </html>

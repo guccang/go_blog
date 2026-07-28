@@ -719,12 +719,26 @@ button {
 .blog-ask-form { display: flex; gap: 8px; margin-top: 14px; }
 .blog-ask-form input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: #fff; }
 .blog-ask-form button { border-radius: var(--radius-sm); padding: 0 15px; color: #fff; background: var(--accent); font-weight: 600; }
+.blog-ask-form .blog-ask-pi { background: #244656; }
+.blog-ask-form .blog-ask-pi:hover { background: #183541; }
 .blog-ask-status { min-height: 20px; margin-top: 9px; }
 .blog-ask-results { display: grid; gap: 8px; margin-top: 8px; }
+.blog-pi-answer { margin-top: 12px; padding: 14px; border: 1px solid #d9e6e3; border-radius: var(--radius-sm); background: #f6fbfa; color: var(--text-primary); white-space: pre-wrap; line-height: 1.7; }
+.blog-pi-sources { margin-top: 12px; padding-top: 10px; border-top: 1px solid #d9e6e3; color: var(--text-secondary); font-size: .88rem; }
+.blog-pi-sources a { color: var(--accent); text-decoration: none; }
+.blog-pi-sources a:hover { text-decoration: underline; }
+.blog-pi-brief { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #d9e6e3; color: var(--text-secondary); }
+.blog-pi-summary { font-weight: 500; }
+.blog-pi-advice { margin-top: 12px; padding-top: 12px; border-top: 1px solid #d9e6e3; color: #31515a; }
 .blog-ask-result { display: block; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(255,255,255,.8); border: 1px solid var(--border-light); }
 .blog-ask-result:hover { border-color: #e6b9a4; }
 .blog-ask-result strong { display: block; font-size: .9rem; }
 .blog-ask-result p { margin-top: 3px; color: var(--text-secondary); font-size: .82rem; }
+.blog-ask-toolbar { position: sticky; top: 68px; z-index: 4; display: flex; justify-content: flex-end; margin-top: 6px; padding: 6px 0; background: linear-gradient(90deg, transparent, #fff8f4 28%, #fff8f4); }
+.blog-ask-actions { display: flex; gap: 8px; margin-top: 10px; }
+.blog-ask-show-all, .blog-ask-collapse { border: 1px solid #e6b9a4; border-radius: var(--radius-sm); padding: 8px 12px; color: var(--accent); background: #fff; font-size: .84rem; }
+.blog-ask-show-all:hover, .blog-ask-collapse:hover { background: #fff4ee; }
+.blog-ask-results[hidden], .blog-ask-toolbar[hidden], .blog-ask-actions[hidden], .blog-ask-show-all[hidden] { display: none !important; }
 
 /* 宽屏留白不是空区域：它是工作台的低干扰“书签”。 */
 .quote-rail {

@@ -55,37 +55,133 @@ document.addEventListener('DOMContentLoaded', function() {
 		var blogAskInput = document.getElementById('blogAskInput');
 		var blogAskStatus = document.getElementById('blogAskStatus');
 		var blogAskResults = document.getElementById('blogAskResults');
+		var blogAskToolbar = document.getElementById('blogAskToolbar');
+		var blogAskActions = document.getElementById('blogAskActions');
+		var blogAskShowAll = document.getElementById('blogAskShowAll');
+		var blogAskCollapse = document.getElementById('blogAskCollapse');
+		var blogAskPI = document.getElementById('blogAskPI');
+		var blogPIAnswer = document.getElementById('blogPIAnswer');
+		var blogAskQuery = '';
+		var blogAskCollapsed = false;
+		function setBlogAskCollapsed(collapsed) {
+			blogAskCollapsed = collapsed;
+			blogAskResults.hidden = collapsed;
+			blogPIAnswer.hidden = collapsed || blogPIAnswer.dataset.hasAnswer !== 'true';
+			blogAskActions.hidden = collapsed || blogAskShowAll.hidden;
+			blogAskCollapse.textContent = collapsed ? '展开查询结果' : '收起查询结果';
+			blogAskCollapse.setAttribute('aria-expanded', String(!collapsed));
+			if (collapsed) blogAskStatus.textContent = '查询结果已收起。';
+		}
+		function renderBlogAskResults(payload, showingAll) {
+			var items = payload.items || [];
+			blogAskResults.textContent = '';
+			if (!items.length) {
+				blogAskStatus.textContent = '没有找到匹配的非加密、非日记内容。';
+				blogAskToolbar.hidden = true;
+				blogAskActions.hidden = true;
+				blogAskShowAll.hidden = true;
+				return;
+			}
+			blogAskStatus.textContent = showingAll ? '共找到 ' + items.length + ' 篇相关笔记' : '展示前 ' + items.length + ' 篇相关笔记';
+			items.forEach(function(item) {
+				var link = document.createElement('a');
+				link.className = 'blog-ask-result';
+				link.href = item.url;
+				var title = document.createElement('strong');
+				title.textContent = item.title;
+				var snippet = document.createElement('p');
+				appendHighlightedSnippet(snippet, item.snippet);
+				link.appendChild(title);
+				link.appendChild(snippet);
+				blogAskResults.appendChild(link);
+			});
+			blogAskResults.hidden = false;
+			blogPIAnswer.hidden = blogPIAnswer.dataset.hasAnswer !== 'true';
+			blogAskToolbar.hidden = false;
+			blogAskActions.hidden = showingAll || !payload.has_more;
+			blogAskShowAll.hidden = showingAll || !payload.has_more;
+			blogAskCollapsed = false;
+			blogAskCollapse.textContent = '收起查询结果';
+			blogAskCollapse.setAttribute('aria-expanded', 'true');
+		}
+		function searchBlogAsk(query, all) {
+			blogAskStatus.textContent = all ? '正在加载全部搜索结果…' : '正在检索你的博客…';
+			blogAskResults.hidden = true;
+			blogAskToolbar.hidden = true;
+			blogAskActions.hidden = true;
+			blogAskShowAll.hidden = true;
+			var suffix = all ? '&all=1' : '';
+			fetch('/api/blogs/fts?q=' + encodeURIComponent(query) + suffix, { credentials: 'same-origin' })
+				.then(function(response) { if (!response.ok) throw new Error('search failed'); return response.json(); })
+				.then(function(payload) { renderBlogAskResults(payload, all); })
+				.catch(function() { blogAskStatus.textContent = '检索失败，请稍后重试。'; });
+		}
 		blogAskForm.addEventListener('submit', function(event) {
 			event.preventDefault();
 			var query = (blogAskInput.value || '').trim();
 			if (!query) return;
-			blogAskStatus.textContent = '正在检索你的博客…';
-			blogAskResults.hidden = true;
-			fetch('/api/blogs/fts?q=' + encodeURIComponent(query), { credentials: 'same-origin' })
-				.then(function(response) { if (!response.ok) throw new Error('search failed'); return response.json(); })
-				.then(function(payload) {
-					var items = payload.items || [];
-					blogAskResults.textContent = '';
-					if (!items.length) {
-						blogAskStatus.textContent = '没有找到匹配的非加密、非日记内容。';
-						return;
-					}
-					blogAskStatus.textContent = '找到 ' + items.length + ' 篇相关笔记';
-					items.forEach(function(item) {
-						var link = document.createElement('a');
-						link.className = 'blog-ask-result';
-						link.href = item.url;
-						var title = document.createElement('strong');
-						title.textContent = item.title;
-						var snippet = document.createElement('p');
-						appendHighlightedSnippet(snippet, item.snippet);
-						link.appendChild(title);
-						link.appendChild(snippet);
-						blogAskResults.appendChild(link);
-					});
-					blogAskResults.hidden = false;
+			blogAskQuery = query;
+			searchBlogAsk(query, false);
+		});
+		blogAskPI.addEventListener('click', function() {
+			var query = (blogAskInput.value || '').trim();
+			if (!query) return;
+			blogAskStatus.textContent = 'PI 正在检索并生成回答…';
+			blogPIAnswer.hidden = true;
+			fetch('/api/pi/ask', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: query }) })
+				.then(function(response) {
+					if (!response.ok) return response.text().then(function(message) { throw new Error(message); });
+					return response.json();
 				})
-				.catch(function() { blogAskStatus.textContent = '检索失败，请稍后重试。'; });
+				.then(function(payload) {
+					blogPIAnswer.textContent = '';
+					if (payload.brief) {
+						var brief = document.createElement('div');
+						brief.className = 'blog-pi-brief';
+						brief.textContent = '初步回答（300字内）\n' + payload.brief;
+						blogPIAnswer.appendChild(brief);
+					}
+					var summary = document.createElement('div');
+					summary.className = 'blog-pi-summary';
+					summary.textContent = '站内资料总结\n' + payload.text;
+					blogPIAnswer.appendChild(summary);
+					if (payload.advice) {
+						var advice = document.createElement('div');
+						advice.className = 'blog-pi-advice';
+						advice.textContent = '意图探索与建议\n' + payload.advice;
+						blogPIAnswer.appendChild(advice);
+					}
+					if (payload.sources && payload.sources.length) {
+						var sourceBlock = document.createElement('div');
+						sourceBlock.className = 'blog-pi-sources';
+						var sourceLabel = document.createElement('strong');
+						sourceLabel.textContent = '参考博客：';
+						sourceBlock.appendChild(sourceLabel);
+						payload.sources.forEach(function(source, index) {
+							var link = document.createElement('a');
+							link.href = '/get?blogname=' + encodeURIComponent(source);
+							link.textContent = source;
+							sourceBlock.appendChild(link);
+							if (index < payload.sources.length - 1) sourceBlock.appendChild(document.createTextNode('、'));
+						});
+						blogPIAnswer.appendChild(sourceBlock);
+					}
+					blogPIAnswer.dataset.hasAnswer = 'true';
+					blogPIAnswer.hidden = blogAskCollapsed;
+					blogAskToolbar.hidden = false;
+					blogAskCollapse.textContent = blogAskCollapsed ? '展开查询结果' : '收起查询结果';
+					blogAskCollapse.setAttribute('aria-expanded', String(!blogAskCollapsed));
+					blogAskStatus.textContent = blogAskCollapsed
+						? 'PI 回答已生成，查询结果仍处于收起状态。'
+						: 'PI 已通过 ' + payload.provider + ' / ' + payload.model + ' 回答。';
+				})
+				.catch(function(error) { blogAskStatus.textContent = 'PI 回答失败：' + (error.message || '请检查 Provider 配置。'); });
+		});
+		blogAskShowAll.addEventListener('click', function() {
+			if (blogAskQuery) searchBlogAsk(blogAskQuery, true);
+		});
+		blogAskCollapse.addEventListener('click', function() {
+			setBlogAskCollapsed(!blogAskCollapsed);
 		});
 	}
 
@@ -136,12 +232,14 @@ document.addEventListener('DOMContentLoaded', function() {
         { key: 'exercise', label: '锻炼' },
         { key: 'memory',   label: '记忆' },
         { key: 'ai',       label: 'AI 生成' },
+        { key: 'tech',     label: 'blog实现技术文档' },
         { key: 'system',   label: '系统' },
     ];
 
     function classifyCard(card) {
         var title = (card.getAttribute('data-title') || '').toLowerCase();
         var isDiary = card.getAttribute('data-diary') === 'true';
+        if (card.getAttribute('data-tech-doc') === 'true') return 'tech';
         if (title.startsWith('sys_') || title.startsWith('mcp_') || title === 'sys_accounts') return 'system';
         if (title.startsWith('agent_')) return 'ai';
         if (title.includes('memory') || title.includes('\u8bb0\u5fc6')) return 'memory';
@@ -208,6 +306,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         card.dataset.title = item.title;
                         card.dataset.diary = item.diary ? 'true' : 'false';
                         card.dataset.encrypted = item.encrypted ? 'true' : 'false';
+                        card.dataset.techDoc = item.tech_doc ? 'true' : 'false';
                         card.innerHTML = '<a href="' + item.url + '" class="blog-card-link"><div class="blog-card-body"><h3 class="blog-card-title">' + (item.encrypted ? '<i class="fas fa-lock lock-icon"></i>' : '') + (item.diary ? '<i class="fas fa-book diary-icon"></i>' : '') + escapeHtml(item.title) + '</h3><div class="blog-card-meta"><span class="blog-date"><i class="far fa-clock"></i> ' + escapeHtml(item.access_time || '') + '</span></div></div><div class="blog-card-arrow"><i class="fas fa-chevron-right"></i></div></a>';
                         container.appendChild(card);
                     });

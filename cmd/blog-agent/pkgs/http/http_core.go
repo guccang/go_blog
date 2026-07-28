@@ -79,38 +79,29 @@ func LogRemoteAddr(msg string, r *h.Request) {
 	log.DebugF(log.ModuleHandler, "RemoteAddr %s %s", remoteAddr, msg)
 }
 
-// getsession extracts session from request cookie
-func getsession(r *h.Request) string {
-	session, err := r.Cookie("session")
-	if err != nil {
-		return ""
-	}
-	return session.Value
-}
-
-// getAccountFromRequest extracts account by resolving the session cookie
+// getAccountFromRequest uses the canonical SQLite-backed account resolver.
 func getAccountFromRequest(r *h.Request) string {
-	s := getsession(r)
-	if s == "" {
-		return ""
-	}
-	return auth.GetAccountBySession(s)
+	return auth.GetAccountFromRequest(r)
 }
 
 // checkLogin validates user login session
 func checkLogin(r *h.Request) int {
-	session, err := r.Cookie("session")
-	if err != nil {
-		log.ErrorF(log.ModuleHandler, "not find cookie session err=%s", err.Error())
-		return 1
-	}
-
-	log.DebugF(log.ModuleHandler, "checkLogin session=%s", session.Value)
-	if auth.CheckLoginSession(session.Value) != 0 {
-		log.InfoF(log.ModuleHandler, "checkLogin session=%s not find", session.Value)
+	if getAccountFromRequest(r) == "" {
 		return 1
 	}
 	return 0
+}
+
+// requireAPIAuth protects JSON APIs and prevents any handler from operating
+// with an empty account when a session is absent or expired.
+func requireAPIAuth(next h.HandlerFunc) h.HandlerFunc {
+	return func(w h.ResponseWriter, r *h.Request) {
+		if getAccountFromRequest(r) == "" {
+			h.Error(w, "unauthorized", h.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }
 
 // HandleEditor handles the editor page
@@ -131,9 +122,20 @@ func HandleLink(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session := getsession(r)
 	flag := module.EAuthType_all
-	view.PageLink(w, flag, session)
+	account := getAccountFromRequest(r)
+	emitUsageHook(r, account, blog.HookPageOpened, "content_workspace", "page", "main", "main", "", nil, map[string]any{"status": "success"})
+	view.PageLink(w, flag, account)
+}
+
+// HandleImagePasteDemo provides a browser-only usability test for screenshot pasting.
+// It deliberately does not persist images or modify blog content.
+func HandleImagePasteDemo(w h.ResponseWriter, r *h.Request) {
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", h.StatusFound)
+		return
+	}
+	PageImagePasteDemo(w)
 }
 
 // HandleBlogSummaries 为首页“加载更多”提供分页摘要，正文仅在打开文章时读取。
@@ -149,7 +151,7 @@ func HandleBlogSummaries(w h.ResponseWriter, r *h.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && n >= 0 {
 		offset = n
 	}
-	account := blog.GetAccountFromSession(getsession(r))
+	account := getAccountFromRequest(r)
 	blogs := control.ListBlogSummaries(account, limit+1, offset, module.EAuthType_all)
 	hasMore := len(blogs) > limit
 	if hasMore {
@@ -157,7 +159,7 @@ func HandleBlogSummaries(w h.ResponseWriter, r *h.Request) {
 	}
 	items := make([]map[string]interface{}, 0, len(blogs))
 	for _, b := range blogs {
-		items = append(items, map[string]interface{}{"title": b.Title, "url": "/get?blogname=" + url.QueryEscape(b.Title), "access_time": b.AccessTime, "diary": (b.AuthType & module.EAuthType_diary) != 0, "encrypted": b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0})
+		items = append(items, map[string]interface{}{"title": b.Title, "url": "/get?blogname=" + url.QueryEscape(b.Title), "access_time": b.AccessTime, "diary": (b.AuthType & module.EAuthType_diary) != 0, "encrypted": b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0, "tech_doc": strings.Contains(b.Tags, "blog实现技术文档")})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(map[string]interface{}{"items": items, "has_more": hasMore})
@@ -212,8 +214,13 @@ func Init() int {
 	h.HandleFunc("/main", HandleLink)
 	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
 	h.HandleFunc("/api/blogs/fts", HandleBlogFTSSearch)
+	h.HandleFunc("/api/pi/ask", HandlePIAsk)
+	h.HandleFunc("/api/media/upload", HandleMediaUpload)
+	h.HandleFunc("/api/blog/content", HandleBlogContentChunk)
+	h.HandleFunc("/media/", HandleMediaGet)
 	h.HandleFunc("/link", HandleLink)
 	h.HandleFunc("/editor", HandleEditor)
+	h.HandleFunc("/image-paste-demo", HandleImagePasteDemo)
 	h.HandleFunc("/statics", HandleStatics)
 	h.HandleFunc("/index", HandleIndex)
 
@@ -254,38 +261,41 @@ func Init() int {
 
 	// Goal management routes (unified daily/weekly/monthly/yearly)
 	h.HandleFunc("/goal", HandleGoal)
-	h.HandleFunc("/api/goal", goalpkg.HandleGetGoal)
-	h.HandleFunc("/api/goal/save", goalpkg.HandleSaveGoal)
-	h.HandleFunc("/api/goal/task", goalpkg.HandleAddGoalTask)
-	h.HandleFunc("/api/goal/task/update", goalpkg.HandleUpdateGoalTask)
-	h.HandleFunc("/api/goal/task/delete", goalpkg.HandleDeleteGoalTask)
-	h.HandleFunc("/api/goal/delete", goalpkg.HandleDeleteGoal)
-	h.HandleFunc("/api/goals/current", goalpkg.HandleGetCurrentGoals)
-	h.HandleFunc("/api/goals", goalpkg.HandleListGoals)
-	h.HandleFunc("/api/goal/parent", goalpkg.HandleGetParentGoals)
-	h.HandleFunc("/api/goal/task/note", goalpkg.HandleAddTaskNote)
-	h.HandleFunc("/api/goal/review", goalpkg.HandleGetReview)
-	h.HandleFunc("/api/goal/review/save", goalpkg.HandleSaveReview)
-	h.HandleFunc("/api/goal/review/generate", goalpkg.HandleGenerateReview)
+	h.HandleFunc("/goal/manage", HandleGoalManage)
+	h.HandleFunc("/api/goal", requireAPIAuth(goalpkg.HandleGetGoal))
+	h.HandleFunc("/api/goal/save", requireAPIAuth(goalpkg.HandleSaveGoal))
+	h.HandleFunc("/api/goal/task", requireAPIAuth(goalpkg.HandleAddGoalTask))
+	h.HandleFunc("/api/goal/task/update", requireAPIAuth(goalpkg.HandleUpdateGoalTask))
+	h.HandleFunc("/api/goal/task/delete", requireAPIAuth(goalpkg.HandleDeleteGoalTask))
+	h.HandleFunc("/api/goal/delete", requireAPIAuth(goalpkg.HandleDeleteGoal))
+	h.HandleFunc("/api/goals/current", requireAPIAuth(goalpkg.HandleGetCurrentGoals))
+	h.HandleFunc("/api/goals", requireAPIAuth(goalpkg.HandleListGoals))
+	h.HandleFunc("/api/goal/parent", requireAPIAuth(goalpkg.HandleGetParentGoals))
+	h.HandleFunc("/api/goal/task/note", requireAPIAuth(goalpkg.HandleAddTaskNote))
+	h.HandleFunc("/api/goal/review", requireAPIAuth(goalpkg.HandleGetReview))
+	h.HandleFunc("/api/goal/review/save", requireAPIAuth(goalpkg.HandleSaveReview))
+	h.HandleFunc("/api/goal/review/generate", requireAPIAuth(goalpkg.HandleGenerateReview))
 
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)
-	h.HandleFunc("/api/exercises", exercise.HandleExercises)
-	h.HandleFunc("/api/exercises/toggle", exercise.HandleToggleExercise)
-	h.HandleFunc("/api/exercise-templates", exercise.HandleTemplates)
-	h.HandleFunc("/api/exercise-stats", exercise.HandleExerciseStats)
-	h.HandleFunc("/api/exercise-collections", exercise.HandleCollections)
-	h.HandleFunc("/api/exercise-collections/add", exercise.HandleAddFromCollection)
-	h.HandleFunc("/api/exercise-collections/details", exercise.HandleGetCollectionDetails)
-	h.HandleFunc("/api/exercise-profile", exercise.HandleUserProfile)
-	h.HandleFunc("/api/exercise-calculate-calories", exercise.HandleCalculateCalories)
-	h.HandleFunc("/api/exercise-met-values", exercise.HandleMETValues)
-	h.HandleFunc("/api/exercise-get-met-value", exercise.HandleGetMETValue)
-	h.HandleFunc("/api/exercise-update-template-calories", exercise.HandleUpdateTemplateCalories)
-	h.HandleFunc("/api/exercise-update-exercise-calories", exercise.HandleUpdateExerciseCalories)
+	h.HandleFunc("/exercise/manage", HandleExerciseManage)
+	h.HandleFunc("/api/exercises", requireAPIAuth(exercise.HandleExercises))
+	h.HandleFunc("/api/exercises/toggle", requireAPIAuth(exercise.HandleToggleExercise))
+	h.HandleFunc("/api/exercise-templates", requireAPIAuth(exercise.HandleTemplates))
+	h.HandleFunc("/api/exercise-stats", requireAPIAuth(exercise.HandleExerciseStats))
+	h.HandleFunc("/api/exercise-collections", requireAPIAuth(exercise.HandleCollections))
+	h.HandleFunc("/api/exercise-collections/add", requireAPIAuth(exercise.HandleAddFromCollection))
+	h.HandleFunc("/api/exercise-collections/details", requireAPIAuth(exercise.HandleGetCollectionDetails))
+	h.HandleFunc("/api/exercise-profile", requireAPIAuth(exercise.HandleUserProfile))
+	h.HandleFunc("/api/exercise-calculate-calories", requireAPIAuth(exercise.HandleCalculateCalories))
+	h.HandleFunc("/api/exercise-met-values", requireAPIAuth(exercise.HandleMETValues))
+	h.HandleFunc("/api/exercise-get-met-value", requireAPIAuth(exercise.HandleGetMETValue))
+	h.HandleFunc("/api/exercise-update-template-calories", requireAPIAuth(exercise.HandleUpdateTemplateCalories))
+	h.HandleFunc("/api/exercise-update-exercise-calories", requireAPIAuth(exercise.HandleUpdateExerciseCalories))
 
 	// Reading routes
 	h.HandleFunc("/reading", HandleReading)
+	h.HandleFunc("/reading/manage", HandleReadingManage)
 	h.HandleFunc("/reading-dashboard", HandleReadingDashboard)
 	h.HandleFunc("/reading/book/", HandleBookDetail)
 	h.HandleFunc("/api/books", HandleBooksAPI)

@@ -34,8 +34,10 @@ type ConfigManager struct {
 }
 
 var (
-	configManager *ConfigManager
-	adminAccount  string
+	configManager  *ConfigManager
+	adminAccount   string
+	sqliteReader   func(account string) string
+	sqliteReaderMu sync.RWMutex
 )
 
 func Info() {
@@ -98,17 +100,60 @@ func getConfigStore(account string) *ConfigStore {
 		blog_version:   "Version14.0",
 	}
 
-	// 加载默认配置
-	isAdmin := true
+	// 新账户默认只获得自己的配置；管理员拥有服务级配置。
+	isAdmin := account == adminAccount
 	defaultConfigs := getDefaultConfigForAccountSimple(account, isAdmin)
 	for key, value := range defaultConfigs {
 		newStore.datas[key] = value
 	}
 	newStore.parseConfigArrays()
+	if content := readSQLiteConfig(account); content != "" {
+		for key, value := range parseConfigFromBlogContent(content) {
+			newStore.datas[key] = value
+		}
+		newStore.parseConfigArraysInternal()
+	}
 
 	configManager.stores[account] = newStore
 	log.InfoF(log.ModuleConfig, "Created new config store for account: %s", account)
 	return newStore
+}
+
+// SetSQLiteConfigReader installs the sole runtime configuration source. The
+// callback keeps config independent of the persistence package and avoids an
+// import cycle while allowing all accounts to load their sys_conf from SQLite.
+func SetSQLiteConfigReader(reader func(account string) string) {
+	sqliteReaderMu.Lock()
+	sqliteReader = reader
+	sqliteReaderMu.Unlock()
+}
+
+func readSQLiteConfig(account string) string {
+	sqliteReaderMu.RLock()
+	reader := sqliteReader
+	sqliteReaderMu.RUnlock()
+	if reader == nil {
+		return ""
+	}
+	return reader(account)
+}
+
+// ReloadConfigFromSQLite replaces an account's runtime configuration with its
+// SQLite sys_conf document. It never reads a Markdown file.
+func ReloadConfigFromSQLite(account string) bool {
+	content := readSQLiteConfig(account)
+	if content == "" {
+		return false
+	}
+	store := getConfigStore(account)
+	store.mu.Lock()
+	store.datas = getDefaultConfigForAccountSimple(account, account == adminAccount)
+	for key, value := range parseConfigFromBlogContent(content) {
+		store.datas[key] = value
+	}
+	store.parseConfigArraysInternal()
+	store.mu.Unlock()
+	return true
 }
 
 // loadConfigInternal 加载配置文件
@@ -125,6 +170,9 @@ func (store *ConfigStore) loadConfigInternal(account string, filePath string) er
 	store.config_path = filePath
 
 	for k, v := range store.datas {
+		if isSecretConfigKey(k) {
+			v = "********"
+		}
 		log.DebugF(log.ModuleConfig, "CONFIG %s=%s", k, v)
 	}
 
@@ -136,6 +184,10 @@ func (store *ConfigStore) loadConfigInternal(account string, filePath string) er
 	}
 	store.loadDiaryKeywordsFromSysConf(account)
 	return nil
+}
+
+func isSecretConfigKey(key string) bool {
+	return strings.HasSuffix(key, "_api_key") || strings.Contains(key, "password") || key == "pwd" || strings.HasSuffix(key, "_token")
 }
 
 // parseConfigArraysInternal 解析配置数组（内部版本，不加锁）
@@ -232,17 +284,6 @@ func GetConfigPathWithAccount(account string) string {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	return store.config_path
-}
-
-// ReloadConfig 重新加载配置
-func ReloadConfig(account, filePath string) {
-	ReloadConfigWithAccount(account, filePath)
-}
-
-// ReloadConfigWithAccount 重新加载配置
-func ReloadConfigWithAccount(account, filePath string) {
-	store := getConfigStore(account)
-	store.loadConfigInternal(account, filePath)
 }
 
 // GetDiaryKeywordsWithAccount 获取日记关键字
@@ -409,9 +450,7 @@ func getDefaultConfigForAccountSimple(account string, isAdmin bool) map[string]s
 	if isAdmin {
 		return map[string]string{
 			"port":                       "8888",
-			"redis_ip":                   "127.0.0.1",
-			"redis_port":                 "6666",
-			"redis_pwd":                  "",
+			"pi_providers":               `{"default":"deepseek","providers":[{"name":"deepseek","api_key":"","api_url":"https://api.deepseek.com/chat/completions","model":"deepseek-chat"}]}`,
 			"publictags":                 "public|share|demo",
 			"sysfiles":                   GetSysConfigs(),
 			"title_auto_add_date_suffix": "日记",

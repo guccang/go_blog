@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"bufio"
-	"config"
 	"crypto/sha256"
 	"fmt"
 	"module"
@@ -52,11 +51,7 @@ func MigrateMarkdownBlogs(root string) (MigrationReport, error) {
 				return err
 			}
 			stamp := info.ModTime().Format("2006-01-02 15:04:05")
-			b := legacyBlogMetadata(account, title)
-			if b == nil {
-				b = &module.Blog{Title: title, CreateTime: stamp, ModifyTime: stamp, AccessTime: stamp, AuthType: module.EAuthType_private}
-			}
-			// Markdown 是用户可审计的原始正文，迁移时优先保留它；Redis 仅补充元数据。
+			b := &module.Blog{Title: title, CreateTime: stamp, ModifyTime: stamp, AccessTime: stamp, AuthType: module.EAuthType_private}
 			b.Title, b.Content, b.Account = title, string(content), account
 			if err := sqliteSaveBlog(account, b); err != nil {
 				return err
@@ -111,23 +106,6 @@ func migrateAccountCredential(account, accountRoot string) error {
 			if err := SaveUser(username, password); err != nil {
 				return err
 			}
-		}
-	}
-	return nil
-}
-
-func legacyBlogMetadata(account, title string) *module.Blog {
-	if client == nil {
-		return nil
-	}
-	keys := []string{fmt.Sprintf("%s:blog@%s", account, title)}
-	if account == config.GetAdminAccount() {
-		keys = append(keys, fmt.Sprintf("blog@%s", title))
-	}
-	for _, key := range keys {
-		values, err := client.HGetAll(key).Result()
-		if err == nil && len(values) > 0 {
-			return toBlog(values)
 		}
 	}
 	return nil

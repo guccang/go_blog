@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/GET</title>
-    <link rel="stylesheet" href="/css/get.css">
+    <link rel="stylesheet" href="/css/get.css?v=readonly-bottom-load-3">
+    <link rel="stylesheet" href="/css/get_workspace.css?v=3">
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
@@ -87,6 +88,9 @@
 	<div class="container">
 		<div class="buttons-container">
 			<button id="back-button" class="back-button" type="button" onclick="window.history.back()">&larr; 返回</button>
+			{{if .IS_LARGE}}
+			<span class="large-blog-readonly">大文档只读模式</span>
+			{{else}}
 			<div class="get-view-switcher" aria-label="编辑器显示模式">
 				<button class="view-mode-btn" data-view="editor-only" type="button">编辑</button>
 				<button class="view-mode-btn" data-view="split" type="button">编辑+预览</button>
@@ -94,12 +98,19 @@
 			</div>
 			<button id="toggle-button" class="right-button mobile-view-toggle" type="button" onclick="onEditor()">编辑</button>
 			<button id="editor-button" class="right-button save-button" type="button" onclick="submitFirst()">保存修改</button>
+			{{end}}
 		</div>
         
 		<div class="editor-container">
-			<textarea id="editor-inner" class="hide editor editor-inner th_black" name="content" wrap="hard">{{.CONTENT}}</textarea>
+			<textarea id="editor-inner" class="hide editor editor-inner th_black" name="content" wrap="hard" data-large-blog="{{.IS_LARGE}}" data-blogname="{{.TITLE}}" data-account="{{.ACCOUNT}}">{{.CONTENT}}</textarea>
 			<div id="md" class="md"></div>
 		</div>
+		{{if .IS_LARGE}}
+		<div id="largeBlogControls" class="large-blog-controls">
+			<span id="largeBlogStatus">准备加载大文档…</span>
+			<button id="largeBlogLoadMore" type="button">加载更多</button>
+		</div>
+		{{end}}
         
 		<div class="bottom-container">
 		{{ if or (eq "aes" .ENCRYPT) .IS_ENCRYPTED }}
@@ -213,6 +224,8 @@
 	<script src="/js/utils.js"></script>
 	<script src="/js/permissions.js"></script>
 	<script src="/js/get.js"></script>
+	<script src="/js/image_upload.js?v=1"></script>
+	<script src="/js/large_blog.js?v=readonly-bottom-load-2"></script>
 
 	
 

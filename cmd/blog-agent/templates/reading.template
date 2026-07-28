@@ -6,6 +6,7 @@
     <title>📚 我的读书空间 - GUCCANG</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/reading.css">
+    <link rel="stylesheet" href="/css/reading_manage.css?v=1">
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
@@ -44,6 +45,8 @@
             
             <div class="separator"></div>
             
+            <details class="manage-filter-drawer">
+            <summary>筛选与排序</summary>
             <!-- 筛选面板 -->
             <div class="filter-panel">
                 <h3>🔍 筛选</h3>
@@ -100,12 +103,17 @@
                 
                 <button id="clear-filters" class="btn-secondary">清除筛选</button>
             </div>
+            </details>
         </div>
         <div class="bubble" id="bubble">&#9776;</div>
     </div>
 
     <!-- Main Content -->
     <div class="container">
+        <section class="manage-heading">
+            <div><p>BOOK LIBRARY</p><h1>书架管理</h1><span>用封面和进度管理每一本书。</span></div>
+            <a href="/reading">返回阅读书架</a>
+        </section>
         <!-- 顶部操作栏 -->
         <div class="top-bar">
             <div class="search-section">
@@ -246,4 +254,4 @@
     <script src="/js/move_assistant.js"></script>
     <script src="/js/reading.js"></script>
 </body>
-</html> 
+</html>

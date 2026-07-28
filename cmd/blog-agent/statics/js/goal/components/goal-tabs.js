@@ -14,8 +14,9 @@ class GoalTabs extends HTMLElement {
 
   render() {
     const { level, view } = store.state;
+    const icons = { daily: '☀️', weekly: '🧭', monthly: '🌙', yearly: '🏔️' };
     const tabsHtml = LEVELS.map(l =>
-      `<button class="goal-tab ${l === level ? 'active' : ''}" data-level="${l}">${LEVEL_LABELS[l]}</button>`
+      `<button class="goal-tab ${l === level ? 'active' : ''}" data-level="${l}"><span>${icons[l] || '•'}</span>${LEVEL_LABELS[l]}</button>`
     ).join('');
 
     this.innerHTML = `

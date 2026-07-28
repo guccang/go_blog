@@ -18,7 +18,9 @@ class GoalApp extends HTMLElement {
     this.innerHTML = `
       <div class="goal-container">
         <div class="goal-page-header">
-          <a class="goal-home-link" href="/main"><i class="fas fa-home"></i> 返回主页</a>
+          <a class="goal-home-link" href="/goal">← 目标地图</a>
+          <span class="goal-workspace-title">目标工作区</span>
+          <a class="goal-main-link" href="/main">主页</a>
         </div>
         <goal-tabs></goal-tabs>
         <period-nav></period-nav>

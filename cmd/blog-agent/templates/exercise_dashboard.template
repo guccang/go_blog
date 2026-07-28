@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>锻炼 · GUCCANG</title>
+    <link rel="stylesheet" href="/css/exercise_dashboard.css?v=1">
+</head>
+<body>
+    <main class="fitness-shell">
+        <header class="fitness-header">
+            <a class="brand" href="/main"><span>G</span> GUCCANG</a>
+            <div class="header-tools">
+                <input id="datePicker" type="date" aria-label="选择日期">
+                <button id="todayButton" type="button">今天</button>
+                <a href="/exercise/manage">详细管理</a>
+            </div>
+        </header>
+
+        <section class="hero">
+            <div>
+                <p id="dateLabel" class="eyebrow"></p>
+                <h1>先完成今天的一点运动。</h1>
+                <p class="hero-copy">记录、完成、回看趋势。其余设置放在详细管理中。</p>
+            </div>
+            <div class="completion-ring" id="completionRing"><strong id="completionValue">0%</strong><span>今日完成</span></div>
+        </section>
+
+        <section class="summary-grid" aria-label="今日概览">
+            <article><span>完成时长</span><strong id="todayDuration">0</strong><small>分钟</small></article>
+            <article><span>消耗热量</span><strong id="todayCalories">0</strong><small>千卡</small></article>
+            <article><span>已完成项目</span><strong id="todayCount">0</strong><small id="todayTotal">/ 0 项</small></article>
+        </section>
+
+        <section class="today-layout">
+            <div class="today-card">
+                <div class="section-title"><div><p class="eyebrow">TODAY</p><h2>今日计划</h2></div><button id="showAdd" type="button">+ 添加</button></div>
+                <form id="quickForm" class="quick-form" hidden>
+                    <input id="exerciseName" required placeholder="运动名称，例如慢跑">
+                    <input id="exerciseDuration" required type="number" min="1" placeholder="分钟">
+                    <select id="exerciseType"><option value="cardio">有氧</option><option value="strength">力量</option><option value="flexibility">柔韧</option><option value="sports">运动项目</option><option value="other">其他</option></select>
+                    <select id="exerciseIntensity"><option value="medium">中等强度</option><option value="low">低强度</option><option value="high">高强度</option></select>
+                    <button type="submit">添加到今天</button>
+                </form>
+                <div id="exerciseItems" class="exercise-items"></div>
+                <div id="exerciseEmpty" class="empty-state">今天还没有安排。添加一个最小的运动开始吧。</div>
+            </div>
+            <aside class="trend-card">
+                <div class="section-title"><div><p class="eyebrow">LAST 7 DAYS</p><h2>本周节奏</h2></div><strong id="weekDays">0/7</strong></div>
+                <div id="weekChart" class="week-chart" aria-label="近七日运动时长"></div>
+                <p id="weekNote" class="trend-note">正在加载本周数据…</p>
+            </aside>
+        </section>
+    </main>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/js/exercise_dashboard.js?v=2"></script>
+</body>
+</html>

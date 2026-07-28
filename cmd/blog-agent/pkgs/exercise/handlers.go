@@ -1,7 +1,7 @@
 package exercise
 
 import (
-	"blog"
+	"auth"
 	"encoding/json"
 	"fmt"
 	log "mylog"
@@ -11,13 +11,7 @@ import (
 )
 
 func getAccountFromRequest(r *http.Request) string {
-	sessionCookie, err := r.Cookie("session")
-	if err != nil {
-		log.DebugF(log.ModuleExercise, "No session cookie found: %v", err)
-		return ""
-	}
-
-	return blog.GetAccountFromSession(sessionCookie.Value)
+	return auth.GetAccountFromRequest(r)
 }
 
 // HandleExercises handles CRUD operations for exercises

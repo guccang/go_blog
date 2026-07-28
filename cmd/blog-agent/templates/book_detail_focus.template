@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Book.Title}} · 阅读</title>
+    <link rel="stylesheet" href="/css/book_detail_focus.css?v=1">
+</head>
+<body data-book-id="{{.Book.ID}}" data-current-page="{{.Book.CurrentPage}}" data-total-pages="{{.Book.TotalPages}}" data-status="{{.Book.Status}}">
+    <main class="book-shell">
+        <header class="book-topbar">
+            <a class="back-link" href="/reading">← 书架</a>
+            <a class="manage-link" href="/reading/manage">详细管理</a>
+        </header>
+
+        <section class="book-hero">
+            <div class="book-cover">
+                {{if .Book.CoverUrl}}<img src="{{.Book.CoverUrl}}" alt="{{.Book.Title}}">{{else}}<span>{{slice .Book.Title 0 1}}</span>{{end}}
+            </div>
+            <div class="book-intro">
+                <p class="eyebrow" id="statusLabel">正在阅读</p>
+                <h1>{{.Book.Title}}</h1>
+                <p class="author">{{.Book.Author}}</p>
+                <p class="description">{{.Book.Description}}</p>
+                <div class="book-tags">{{range .Book.Category}}<span>{{.}}</span>{{end}}</div>
+            </div>
+            <div id="progressRing" class="progress-ring"><strong id="progressPercent">0%</strong><span>阅读进度</span></div>
+        </section>
+
+        <section class="reading-board">
+            <div class="progress-card">
+                <div class="board-title"><div><p class="eyebrow">CURRENT PAGE</p><h2>读到哪里了？</h2></div><span id="pageSummary"></span></div>
+                <div class="page-control">
+                    <button class="page-step" data-step="-10" type="button">−10</button>
+                    <input id="pageInput" type="number" min="0" value="{{.Book.CurrentPage}}" aria-label="当前页码">
+                    <span>/ {{.Book.TotalPages}} 页</span>
+                    <button class="page-step" data-step="10" type="button">+10</button>
+                    <button class="page-step" data-step="25" type="button">+25</button>
+                </div>
+                <div class="progress-track"><i id="progressBar"></i></div>
+                <div class="progress-actions"><button id="saveProgress" type="button">保存进度</button><button id="finishBook" type="button">读完这本书</button></div>
+            </div>
+            <aside class="book-facts">
+                <div><span>总页数</span><strong>{{.Book.TotalPages}}</strong></div>
+                <div><span>当前状态</span><strong id="statusFact">—</strong></div>
+                <div><span>评分</span><strong>{{.Book.Rating}}</strong></div>
+            </aside>
+        </section>
+
+        <section class="notes-section">
+            <div class="board-title"><div><p class="eyebrow">READING NOTES</p><h2>随手记下</h2></div></div>
+            <form id="noteForm" class="note-form">
+                <input id="noteChapter" placeholder="章节（可选）">
+                <textarea id="noteContent" required placeholder="这一页有什么值得留下？"></textarea>
+                <button type="submit">保存笔记</button>
+            </form>
+            <div id="notesList" class="notes-list"></div>
+        </section>
+
+        <details class="book-details">
+            <summary>更多书籍信息</summary>
+            <div class="details-grid">
+                <span>出版社 <strong>{{.Book.Publisher}}</strong></span>
+                <span>出版日期 <strong>{{.Book.PublishDate}}</strong></span>
+                <span>ISBN <strong>{{.Book.ISBN}}</strong></span>
+                <span>来源 <strong>{{.Book.SourceUrl}}</strong></span>
+            </div>
+        </details>
+    </main>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/js/book_detail_focus.js?v=1"></script>
+</body>
+</html>

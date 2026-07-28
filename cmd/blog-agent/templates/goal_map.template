@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>目标 · GUCCANG</title><link rel="stylesheet" href="/css/goal_map.css?v=1"></head>
+<body>
+    <main class="goal-shell">
+        <header class="goal-header"><a class="brand" href="/main"><span>G</span> GUCCANG</a><a class="manage-link" href="/goal/manage">详细管理</a></header>
+        <section class="goal-hero"><div><p class="eyebrow">GOAL MAP</p><h1>看清方向，然后完成下一步。</h1><p>四层目标在同一张地图上；细节和复盘留在详细管理中。</p></div><div class="today-mark"><span>今天</span><strong id="todayLabel">—</strong></div></section>
+        <section id="goalMap" class="goal-map" aria-label="当前目标地图"></section>
+        <section class="focus-section"><div><p class="eyebrow">NEXT STEP</p><h2>今天先做什么</h2></div><div id="nextTasks" class="next-tasks"></div></section>
+    </main>
+    <script src="/js/goal_map.js?v=1"></script>
+</body>
+</html>

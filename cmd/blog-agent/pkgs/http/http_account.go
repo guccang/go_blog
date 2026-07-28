@@ -2,7 +2,6 @@ package http
 
 import (
 	"account"
-	"blog"
 	"config"
 	"encoding/json"
 	log "mylog"
@@ -23,8 +22,7 @@ func HandleAccount(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session := getsession(r)
-	userAccount := blog.GetAccountFromSession(session)
+	userAccount := getAccountFromRequest(r)
 
 	if userAccount == "" {
 		h.Error(w, "获取用户信息失败", h.StatusUnauthorized)
@@ -88,8 +86,7 @@ func HandleAccountAPI(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session := getsession(r)
-	userAccount := blog.GetAccountFromSession(session)
+	userAccount := getAccountFromRequest(r)
 
 	if userAccount == "" {
 		sendJSONError(w, "获取用户信息失败", 401)
@@ -304,8 +301,7 @@ func HandleAccountAvatar(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	session := getsession(r)
-	userAccount := blog.GetAccountFromSession(session)
+	userAccount := getAccountFromRequest(r)
 
 	if userAccount == "" {
 		sendJSONError(w, "获取用户信息失败", 401)

@@ -40,6 +40,8 @@ replace account => ./pkgs/account
 
 replace goal => ./pkgs/goal
 
+replace piagent => ./pkgs/piagent
+
 require (
 	auth v0.0.0
 	blog v0.0.0
@@ -56,13 +58,11 @@ require (
 	search v0.0.0
 	share v0.0.0
 	tools v0.0.0
-	service v0.0.0
 )
 
 require (
 	account v0.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
@@ -73,4 +73,6 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.40.0 // indirect
+	piagent v0.0.0 // indirect
+	service v0.0.0 // indirect
 )

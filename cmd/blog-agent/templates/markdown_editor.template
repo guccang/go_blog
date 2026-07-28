@@ -1,139 +1,85 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GUCCANG/MarkdownEditor</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/markdown_editor.css">
+    <title>写博客 · GUCCANG</title>
+    <link rel="stylesheet" href="/css/markdown_editor.css?v=workspace-1">
+    <link rel="stylesheet" href="/css/editor_workspace.css?v=1">
 </head>
-<body class="th_black" id="body">
-    <!-- Sidebar -->
-    <div id="sidebar-container" class="sidebar-container">
-        <div id="sidebar" class="sidebar">
-        <div class="top-sidebar-cotainer">
-            <div class="top-sidebar">
-                <a href="/main">
-                    <div class="img-cycle">G</div>
-                </a>
+<body class="workspace-page">
+    <main class="writing-shell">
+        <header class="writing-header">
+            <a class="brand-back" href="/main"><span>G</span> 内容工作台</a>
+            <div class="header-actions">
+                <a class="quiet-action" href="/image-paste-demo">试用图片粘贴</a>
+                <button class="save-action" id="btn-save" type="button" onclick="submitContent()">保存博客</button>
             </div>
-        </div>
-        <a href="/main" style="font-size: 24px;">主页</a>
-        <div class="separator"></div>
-        <label for="title">文章标题</label>
-        <input id="title" type="text" name="title" value="{{.TITLE}}" placeholder="输入文章标题...">
-        <label for="tags">标签</label>
-        <input id="tags" type="text" name="tags" value="{{.TAGS}}" placeholder="用|分隔多个标签...">
-        
-        <div class="separator"></div>
-        <label>📋 博客权限设置 
-            <button type="button" onclick="PermissionManager.showHelp()" style="margin-left: 5px; font-size: 12px; padding: 2px 6px; background: #444; color: #fff; border: 1px solid #666; border-radius: 3px; cursor: pointer;">?</button>
-        </label>
-        
-        <!-- 基础权限类型 -->
-        <div class="permission-section">
-            <label class="section-title">基础权限</label>
-            <label class="custom-radio">
-                <input class="radio-left" type="radio" name="base_auth_type" value="private" 
-                    {{ if .IS_PRIVATE }}checked{{ end }}>
-                <span class="radio-btn"><i class="checkmark"></i></span>
-                <span class="radio-label">🔒 私有</span>
-            </label>
-            <label class="custom-radio">
-                <input class="radio-left" type="radio" name="base_auth_type" value="public"
-                    {{ if .IS_PUBLIC }}checked{{ end }}>
-                <span class="radio-btn"><i class="checkmark"></i></span>
-                <span class="radio-label">🌐 公开</span>
-            </label>
-        </div>
+        </header>
 
-        <!-- 特殊权限选项 -->
-        <div class="permission-section">
-            <label class="section-title">特殊权限</label>
-            
-            <label class="custom-checkbox">
-                <input type="checkbox" name="diary_permission" id="diary_permission" 
-                    {{ if .IS_DIARY }}checked{{ end }}>
-                <span class="checkbox-btn"><i class="checkmark"></i></span>
-                <span class="checkbox-label">📔 日记权限</span>
-            </label>
-            <small class="permission-hint">需要额外密码验证</small>
-            
-            <small class="permission-hint">允许协作用户访问</small>
-            
-            <label class="custom-checkbox">
-                <input type="checkbox" name="encrypt_permission" id="encrypt_permission"
-                    {{ if .IS_ENCRYPTED }}checked{{ end }}>
-                <span class="checkbox-btn"><i class="checkmark"></i></span>
-                <span class="checkbox-label">🔐 内容加密</span>
-            </label>
-            <small class="permission-hint">使用AES加密保护内容</small>
-        </div>
+        <section class="article-meta">
+            <p class="section-kicker">新建博客</p>
+            <input id="title" name="title" value="{{.TITLE}}" placeholder="给这篇内容起个标题" aria-label="博客标题">
+            <input id="tags" name="tags" value="{{.TAGS}}" placeholder="添加标签，用 | 分隔" aria-label="博客标签">
+        </section>
 
-        <div class="separator"></div>
-        <div style="margin-top: auto;" id="encrypt-section">
-            <label for="encrypt" id="encrypt-label">🔐 加密密码</label>
-            <input id="encrypt" type="password" name="encrypt" placeholder="输入加密密码..." 
-                value="{{.ENCRYPT}}">
-            <small class="encrypt-hint" id="encrypt-hint">💡 启用"内容加密"权限时必须设置密码</small>
-        </div>
-        </div>
-        <div class="bubble" id="bubble">&#9776;</div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="container" id="container">
-        <!-- Toolbar -->
-        <div class="editor-toolbar">
-            <div class="toolbar-group">
-                <a class="toolbar-home" href="/main" title="返回主页"><i class="fas fa-home"></i> 主页</a>
-                <button class="toolbar-btn" id="btn-bold" title="粗体 (Ctrl+B)">B</button>
-                <button class="toolbar-btn" id="btn-italic" title="斜体 (Ctrl+I)">I</button>
-                <button class="toolbar-btn" id="btn-heading" title="标题">H</button>
-                <button class="toolbar-btn" id="btn-link" title="链接 (Ctrl+L)">🔗</button>
-                <button class="toolbar-btn" id="btn-image" title="图片">📷</button>
-                <button class="toolbar-btn" id="btn-code" title="代码块">{"}</button>
-                <button class="toolbar-btn" id="btn-list" title="列表">📋</button>
-                <button class="toolbar-btn" id="btn-quote" title="引用">❝</button>
-            </div>
-
-            <div class="toolbar-group">
-                <div class="view-switcher" id="view-switcher" aria-label="编辑器显示模式">
-                    <button class="toolbar-btn view-mode-btn" data-view="editor-only" title="仅显示编辑器">编辑</button>
-                    <button class="toolbar-btn view-mode-btn active" data-view="split" title="同时显示编辑器和预览">编辑+预览</button>
-                    <button class="toolbar-btn view-mode-btn" data-view="preview-only" title="仅显示预览">预览</button>
+        <details class="access-panel">
+            <summary><span>访问设置</span><small>私有、公开、日记和加密</small></summary>
+            <div class="access-grid">
+                <fieldset>
+                    <legend>可见范围</legend>
+                    <label class="choice"><input type="radio" name="base_auth_type" value="private" {{if .IS_PRIVATE}}checked{{end}}><span>私有</span><small>登录后可见</small></label>
+                    <label class="choice"><input type="radio" name="base_auth_type" value="public" {{if .IS_PUBLIC}}checked{{end}}><span>公开</span><small>任何人可访问</small></label>
+                </fieldset>
+                <fieldset>
+                    <legend>额外保护</legend>
+                    <label class="choice"><input id="diary_permission" type="checkbox" name="diary_permission" {{if .IS_DIARY}}checked{{end}}><span>日记验证</span><small>访问时需要日记密码</small></label>
+                    <label class="choice"><input id="encrypt_permission" type="checkbox" name="encrypt_permission" {{if .IS_ENCRYPTED}}checked{{end}}><span>内容加密</span><small>正文将以 AES 保存</small></label>
+                </fieldset>
+                <div class="password-field" id="encrypt-section">
+                    <label for="encrypt" id="encrypt-label">加密密码</label>
+                    <input id="encrypt" type="password" name="encrypt" value="{{.ENCRYPT}}" placeholder="启用加密后填写">
+                    <small id="encrypt-hint">启用内容加密时必须设置密码</small>
                 </div>
-                <button class="btn-primary" id="btn-save" onclick="submitContent()">保存</button>
             </div>
-		</div>
-        
-        <!-- Editor and Preview -->
-        <div class="editor-content" id="editor-content">
+        </details>
+
+        <nav class="writing-toolbar" aria-label="Markdown 工具栏">
+            <div class="format-tools">
+                <button id="btn-bold" type="button" title="粗体"><b>B</b></button>
+                <button id="btn-italic" type="button" title="斜体"><i>I</i></button>
+                <button id="btn-heading" type="button" title="标题">H</button>
+                <button id="btn-link" type="button" title="链接">链接</button>
+                <button id="btn-image" type="button" title="图片 Markdown">图片</button>
+                <button id="btn-code" type="button" title="代码块">&lt;/&gt;</button>
+                <button id="btn-list" type="button" title="列表">列表</button>
+                <button id="btn-quote" type="button" title="引用">引用</button>
+            </div>
+            <div class="view-switcher" id="view-switcher" aria-label="显示模式">
+                <button class="view-mode-btn" data-view="editor-only" type="button">编辑</button>
+                <button class="view-mode-btn active" data-view="split" type="button">双栏</button>
+                <button class="view-mode-btn" data-view="preview-only" type="button">预览</button>
+            </div>
+        </nav>
+
+        <section class="editor-content" id="editor-content">
             <div class="editor-wrapper" id="editor-wrapper">
-                <textarea class="editor th_black" id="editor" name="content" spellcheck="false">{{.CONTENT}}</textarea>
+                <div class="pane-title"><span class="pane-dot"></span> Markdown <span id="word-count"></span></div>
+                <textarea class="editor" id="editor" name="content" spellcheck="false" aria-label="博客正文">{{.CONTENT}}</textarea>
+                <p class="paste-hint">可直接粘贴文本；图片粘贴体验可先在试验页验证。</p>
             </div>
             <div class="preview-wrapper" id="preview-wrapper">
-			<div class="mdEditor" id="md"></div>
-		</div>
-        </div>
-    </div>
-    
-    <!-- Toast Container -->
+                <div class="pane-title">阅读预览 <span class="preview-badge">实时</span></div>
+                <div class="mdEditor" id="md"></div>
+            </div>
+        </section>
+    </main>
     <div class="toast-container" id="toast-container"></div>
-
     <script src="/js/crypto/crypto-js.min.js"></script>
-	<script src="/js/vim/vim.min.js"></script>
-	<script src="/js/marked/marked.min.js"></script>
-	<script src="/js/editor.js"></script>
-	<script src="/js/utils.js"></script>
-	<script src="/js/permissions.js"></script>
-	<script src="/js/markdown_editor.js"></script>
-
-    <!-- 智能助手悬浮图标 -->
-    <a href="/assistant" class="assistant-floating-btn" title="智能助手">
-        <i class="fas fa-robot"></i>
-    </a>
-
-    <script src="/js/move_assistant.js"></script>
+    <script src="/js/marked/marked.min.js"></script>
+    <script src="/js/editor.js"></script>
+    <script src="/js/permissions.js"></script>
+    <script src="/js/markdown_editor.js?v=workspace-1"></script>
+    <script src="/js/image_upload.js?v=1"></script>
 </body>
 </html>

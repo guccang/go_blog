@@ -87,6 +87,14 @@ func main() {
 	log.Debug(log.ModuleCommon, "Logging system initialized")
 
 	persistence.Init()
+	config.SetSQLiteConfigReader(func(account string) string {
+		item := persistence.GetBlogWithAccount(account, config.GetSysConfigTitle())
+		if item == nil {
+			return ""
+		}
+		return item.Content
+	})
+	config.ReloadConfigFromSQLite(config.GetAdminAccount())
 	blog.Init()
 	reading.Init()
 	auth.Init()

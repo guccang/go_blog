@@ -9,7 +9,7 @@ let filteredConfigs = {};
 // 系统配置页只暴露日常需要调整的参数。其他已有参数保留在 allConfigs 中，保存时不会丢失。
 const CORE_CONFIG_KEYS = [
     'port', 'pwd',
-    'redis_ip', 'redis_port', 'redis_pwd',
+    'pi_providers',
     'publictags', 'main_show_blogs',
     'title_auto_add_date_suffix', 'diary_keywords', 'diary_password'
 ];
@@ -26,11 +26,6 @@ const CONFIG_METADATA = {
     download_path:  { category: '基础设置', icon: '🌐', order: 7, desc: '文件下载保存目录路径' },
     recycle_path:   { category: '基础设置', icon: '🌐', order: 8, desc: '删除博客的回收站目录路径' },
 
-    // ─── Redis 配置 ───
-    redis_ip:   { category: 'Redis 缓存', icon: '🗄️', order: 1, desc: 'Redis 服务器 IP 地址，默认 127.0.0.1' },
-    redis_port: { category: 'Redis 缓存', icon: '🗄️', order: 2, desc: 'Redis 服务器端口号，默认 6666' },
-    redis_pwd:  { category: 'Redis 缓存', icon: '🗄️', order: 3, desc: 'Redis 连接密码，留空表示无密码' },
-
     // ─── 博客设置 ───
     publictags:       { category: '博客设置', icon: '📝', order: 1, desc: '公开可见的标签列表，多个用 | 分隔（如 public|share|demo）' },
     sysfiles:         { category: '博客设置', icon: '📝', order: 2, desc: '系统文件名列表，这些文件不会在博客列表中显示' },
@@ -44,15 +39,8 @@ const CONFIG_METADATA = {
     diary_keywords:             { category: '日记设置', icon: '📔', order: 2, desc: '日记识别关键字，标题含此前缀会被标记为日记，多个用 | 分隔' },
     diary_password:             { category: '日记设置', icon: '📔', order: 3, desc: '日记加密密码，设置后日记内容需输入密码才能查看' },
 
-    // ─── AI / LLM 配置 ───
-    openai_api_key:           { category: 'AI / LLM', icon: '🤖', order: 1, desc: 'OpenAI API 密钥（用于智能助手和 Agent）' },
-    openai_api_url:           { category: 'AI / LLM', icon: '🤖', order: 2, desc: 'OpenAI API 请求地址，可配置代理或自部署端点' },
-    deepseek_api_key:         { category: 'AI / LLM', icon: '🤖', order: 3, desc: 'DeepSeek API 密钥' },
-    deepseek_api_url:         { category: 'AI / LLM', icon: '🤖', order: 4, desc: 'DeepSeek API 请求地址' },
-    qwen_api_key:             { category: 'AI / LLM', icon: '🤖', order: 5, desc: '通义千问(Qwen) API 密钥' },
-    qwen_api_url:             { category: 'AI / LLM', icon: '🤖', order: 6, desc: '通义千问(Qwen) API 请求地址' },
-    llm_fallback_models:      { category: 'AI / LLM', icon: '🤖', order: 7, desc: 'LLM 备用模型配置（JSON 格式），主模型失败时自动切换' },
-    assistant_save_mcp_result: { category: 'AI / LLM', icon: '🤖', order: 8, desc: '是否保存 MCP 工具调用结果到博客（true/false）' },
+    // ─── PI Agent 配置 ───
+    pi_providers: { category: 'PI Agent', icon: '🤖', order: 1, desc: 'Provider JSON：default 为默认名称，providers 可配置多个模型。API Key 保存后会掩码显示。' },
 
     // ─── CodeGen 编码助手 ───
     codegen_workspace:    { category: 'CodeGen 编码', icon: '💻', order: 1, desc: '编码项目工作区目录，多个用逗号分隔，默认 ./codegen' },
@@ -79,8 +67,8 @@ const CONFIG_METADATA = {
 
 // 分类显示顺序
 const CATEGORY_ORDER = [
-    '基础设置', 'Redis 缓存', '博客设置', '日记设置',
-    'AI / LLM', 'CodeGen 编码', '企业微信', '邮件通知'
+    '基础设置', '博客设置', '日记设置',
+    'PI Agent', 'CodeGen 编码', '企业微信', '邮件通知'
 ];
 
 // 页面加载完成后初始化
@@ -274,9 +262,11 @@ function createConfigItem(key, value) {
             ${description ? `<div class="config-desc">${escapeHtml(description)}</div>` : ''}
         </div>
         <div class="config-value">
-            <input type="${isSecretConfig(key) ? 'password' : 'text'}" class="config-value-input" value="${escapeHtml(value)}"
+            ${key === 'pi_providers'
+                ? `<textarea class="config-value-input config-json-editor" rows="11" onchange="updatePIProviders(this)" spellcheck="false" title="${escapeHtml(description || key)}">${escapeHtml(formatPIProviders(value))}</textarea>`
+                : `<input type="${isSecretConfig(key) ? 'password' : 'text'}" class="config-value-input" value="${escapeHtml(value)}"
                    onchange="updateConfigValue('${escapeHtml(key)}', this.value)"
-                   autocomplete="off" title="${escapeHtml(description || key)}">
+                   autocomplete="off" title="${escapeHtml(description || key)}">`}
             <div class="config-type-hint">${getConfigTypeHint(value)}</div>
         </div>
         <div class="config-actions">
@@ -290,15 +280,30 @@ function createConfigItem(key, value) {
 
 function getConfigLabel(key) {
     const labels = {
-        port: '服务端口', pwd: '登录密码', redis_ip: 'Redis 地址', redis_port: 'Redis 端口',
-        redis_pwd: 'Redis 密码', publictags: '公开标签', main_show_blogs: '首页文章数',
-        title_auto_add_date_suffix: '自动日期标题', diary_keywords: '日记关键字', diary_password: '日记密码'
+        port: '服务端口', pwd: '登录密码', publictags: '公开标签', main_show_blogs: '首页文章数',
+        title_auto_add_date_suffix: '自动日期标题', diary_keywords: '日记关键字', diary_password: '日记密码',
+        pi_providers: 'Provider JSON'
     };
     return labels[key] || key;
 }
 
 function isSecretConfig(key) {
-    return key === 'pwd' || key === 'redis_pwd' || key === 'diary_password';
+    return key === 'pwd' || key === 'diary_password';
+}
+
+function formatPIProviders(value) {
+    try { return JSON.stringify(JSON.parse(value), null, 2); } catch (_) { return value; }
+}
+
+function updatePIProviders(editor) {
+    try {
+        const parsed = JSON.parse(editor.value);
+        updateConfigValue('pi_providers', JSON.stringify(parsed));
+        editor.classList.remove('config-json-invalid');
+    } catch (_) {
+        editor.classList.add('config-json-invalid');
+        showToast('Provider JSON 格式无效，未保存该修改。', 'error');
+    }
 }
 
 // 获取配置值类型提示
@@ -402,6 +407,23 @@ function updateConfigItemStatus(key) {
 
 // 重置配置项
 function resetConfig(key) {
+    if (key === 'pi_providers') {
+        const defaultProviders = {
+            default: 'deepseek',
+            providers: [{
+                name: 'deepseek',
+                api_key: '',
+                api_url: 'https://api.deepseek.com/chat/completions',
+                model: 'deepseek-chat'
+            }]
+        };
+        allConfigs[key] = JSON.stringify(defaultProviders);
+        filteredConfigs[key] = allConfigs[key];
+        renderConfigs();
+        updateRawPreview();
+        showToast('Provider JSON 已重置为默认模板', 'success');
+        return;
+    }
     if (originalConfigs.hasOwnProperty(key)) {
         allConfigs[key] = originalConfigs[key];
         configComments[key] = originalComments[key] || '';
