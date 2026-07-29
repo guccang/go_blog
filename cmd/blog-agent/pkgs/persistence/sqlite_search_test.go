@@ -55,3 +55,16 @@ func TestRankChunkSearchCandidatesLimitsEachBlog(t *testing.T) {
 		t.Fatalf("long article returned %d chunks, want 2", longArticleChunks)
 	}
 }
+
+func TestSliceBlogSearchResultsPagesWithoutReturningEverything(t *testing.T) {
+	results := []BlogSearchResult{
+		{Title: "1"}, {Title: "2"}, {Title: "3"}, {Title: "4"}, {Title: "5"},
+	}
+	page := sliceBlogSearchResults(results, 2, 2)
+	if len(page) != 2 || page[0].Title != "3" || page[1].Title != "4" {
+		t.Fatalf("unexpected page: %+v", page)
+	}
+	if page := sliceBlogSearchResults(results, 2, 8); len(page) != 0 {
+		t.Fatalf("out-of-range page = %+v, want empty", page)
+	}
+}

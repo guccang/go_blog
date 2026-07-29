@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搜索博客 - GUCCANG</title>
+    <link rel="stylesheet" href="/css/query_page.css?v=continue-1">
+</head>
+<body>
+    <header class="query-header">
+        <a class="query-brand" href="/main"><span>G</span><strong>搜索博客</strong></a>
+        <nav><a href="/link">BLOG</a><a class="query-account" href="/account">{{.USER_AVATAR}}</a></nav>
+    </header>
+    <main id="searchPage" class="query-shell" data-query="{{.QUERY}}">
+        <a class="back-link" href="/main">← 返回主页</a>
+        <h1>搜索你的博客</h1>
+        <form id="searchPageForm" class="standalone-query">
+            <input id="searchPageInput" type="search" maxlength="120" value="{{.QUERY}}"
+                   placeholder="输入标题、关键词或一句话" autocomplete="off">
+            <button type="submit">搜索</button>
+        </form>
+        <p id="searchPageStatus" class="query-status" aria-live="polite"></p>
+        <section id="searchResults" class="search-results" aria-label="搜索结果"></section>
+        <div class="load-more-area">
+            <button id="searchLoadMore" class="secondary-button" type="button" hidden>加载更多结果</button>
+        </div>
+    </main>
+    <script src="/js/search_results.js?v=continue-1"></script>
+</body>
+</html>

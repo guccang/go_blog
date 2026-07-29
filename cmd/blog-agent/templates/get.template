@@ -6,6 +6,7 @@
     <title>GUCCANG/GET</title>
     <link rel="stylesheet" href="/css/get.css?v=readonly-bottom-load-3">
     <link rel="stylesheet" href="/css/get_workspace.css?v=3">
+    <link rel="stylesheet" href="/css/article_assistant.css?v=1">
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
@@ -96,6 +97,8 @@
 				<button class="view-mode-btn" data-view="split" type="button">编辑+预览</button>
 				<button class="view-mode-btn active" data-view="preview-only" type="button">预览</button>
 			</div>
+			<button id="btn-upload-image" class="right-button upload-image-button" type="button">上传图片</button>
+			<input id="image-file-input" type="file" accept="image/*" multiple hidden>
 			<button id="toggle-button" class="right-button mobile-view-toggle" type="button" onclick="onEditor()">编辑</button>
 			<button id="editor-button" class="right-button save-button" type="button" onclick="submitFirst()">保存修改</button>
 			{{end}}
@@ -214,6 +217,45 @@
 		</div>
 	</div>
 
+	{{if .PI_ENABLED}}
+	<button id="articleAssistantToggle" class="article-assistant-toggle" type="button" aria-controls="articleAssistantPanel" aria-expanded="false">
+		<span class="article-assistant-toggle-mark" aria-hidden="true">✦</span>
+		<span>阅读助手</span>
+	</button>
+	<div id="articleAssistantOverlay" class="article-assistant-overlay" hidden></div>
+	<aside id="articleAssistantPanel" class="article-assistant-panel" data-title="{{.TITLE}}" aria-hidden="true" aria-label="当前文章阅读助手">
+		<header class="article-assistant-header">
+			<div>
+				<span class="article-assistant-eyebrow">PI · 当前文章</span>
+				<h2>阅读助手</h2>
+			</div>
+			<button id="articleAssistantClose" class="article-assistant-close" type="button" aria-label="关闭阅读助手">×</button>
+		</header>
+		<p class="article-assistant-intro">围绕正在阅读的文章提问，不需要再次复制内容。</p>
+		<div class="article-assistant-actions" aria-label="快捷阅读动作">
+			<button type="button" data-article-action="summary"><span>概</span>总结本文</button>
+			<button type="button" data-article-action="key_points"><span>摘</span>提取关键结论</button>
+			<button type="button" data-article-action="related"><span>联</span>关联站内博客</button>
+			<button type="button" data-article-action="next_steps"><span>行</span>下一步做什么</button>
+		</div>
+		<div id="articleAssistantStatus" class="article-assistant-status">选择一个动作，或直接针对本文提问。</div>
+		<section id="articleAssistantAnswer" class="article-assistant-answer" hidden aria-live="polite">
+			<div class="article-assistant-answer-label" id="articleAssistantAnswerLabel">PI 回答</div>
+			<div id="articleAssistantAnswerText" class="article-assistant-answer-text"></div>
+			<div id="articleAssistantSources" class="article-assistant-sources"></div>
+			<div id="articleAssistantUsage" class="article-assistant-usage"></div>
+		</section>
+		<form id="articleAssistantForm" class="article-assistant-form">
+			<label for="articleAssistantQuestion">针对本文提问</label>
+			<div class="article-assistant-question-row">
+				<textarea id="articleAssistantQuestion" rows="2" maxlength="1000" placeholder="例如：这篇文章最重要的结论是什么？"></textarea>
+				<button type="submit">提问</button>
+			</div>
+			<small>仅在点击后发送文章节选和关联资料给已配置的模型；加密文章与日记不会启用。</small>
+		</form>
+	</aside>
+	{{end}}
+
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
 
@@ -226,6 +268,7 @@
 	<script src="/js/get.js"></script>
 	<script src="/js/image_upload.js?v=1"></script>
 	<script src="/js/large_blog.js?v=readonly-bottom-load-2"></script>
+	<script src="/js/article_assistant.js?v=1"></script>
 
 	
 

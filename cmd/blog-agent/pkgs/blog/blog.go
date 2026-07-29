@@ -33,13 +33,6 @@ type BlogManager struct {
 
 var blogManager *BlogManager
 
-const publicStateBlogTitle = "sys_blog_public_state"
-
-type publicStateBlogData struct {
-	UpdatedAt   string   `json:"updated_at"`
-	PublicBlogs []string `json:"public_blogs"`
-}
-
 func Info() {
 	log.InfoF(log.ModuleBlog, "info blog v4.0 (simple)")
 }
@@ -162,8 +155,6 @@ func ImportBlogsFromPathWithAccount(account, dir string) {
 			}
 		}
 	}
-	restorePublicStateFromSystemBlog(store.blogs)
-	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlogs(account, store.blogs)
 }
 
@@ -209,7 +200,6 @@ func AddBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 
 	log.DebugF(log.ModuleBlog, "add blog %s", title)
 	store.blogs[title] = b
-	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlog(account, b)
 	return 0
 }
@@ -243,7 +233,6 @@ func ModifyBlogWithAccount(account string, udb *module.UploadedBlogData) int {
 		b.Account = udb.Account
 	}
 
-	syncPublicStateSystemBlog(account, store.blogs)
 	db.SaveBlog(account, b)
 	return 0
 }
@@ -257,14 +246,13 @@ func DeleteBlogWithAccount(account, title string) int {
 	if _, ok := store.blogs[title]; !ok && db.GetBlogWithAccount(account, title) == nil {
 		return 1
 	}
-	if title == publicStateBlogTitle || config.IsSysFile(title) == 1 {
+	if config.IsSysFile(title) == 1 {
 		return 2
 	}
 	if db.DeleteBlogWithAccount(account, title) == 1 {
 		return 3
 	}
 	delete(store.blogs, title)
-	syncPublicStateSystemBlog(account, store.blogs)
 	return 0
 }
 
@@ -314,9 +302,22 @@ func ListSummariesWithAccount(account string, limit, offset, flag int) []*module
 	return blogs
 }
 
+// ListRecentSummariesWithAccount 返回最近访问的正式博客及轻量正文前缀。
+func ListRecentSummariesWithAccount(account string, limit, flag int) []*module.Blog {
+	blogs, err := db.ListRecentBlogSummaries(account, limit, flag)
+	if err != nil {
+		return []*module.Blog{}
+	}
+	return blogs
+}
+
 // SearchFTSWithAccount performs SQLite full-text retrieval without loading all blogs.
 func SearchFTSWithAccount(account, query string, limit int) ([]db.BlogSearchResult, error) {
 	return db.SearchBlogsFTS(account, query, limit)
+}
+
+func SearchFTSPageWithAccount(account, query string, limit, offset int) ([]db.BlogSearchResult, error) {
+	return db.SearchBlogsFTSPage(account, query, limit, offset)
 }
 
 func SearchChunksWithAccount(account, query string, limit int) ([]db.BlogChunkSearchResult, error) {
@@ -469,7 +470,6 @@ func SetSameAuthWithAccount(account, blogname string) {
 			db.SaveBlog(account, b)
 		}
 	}
-	syncPublicStateSystemBlog(account, store.blogs)
 }
 
 // getURLBlogNames 获取博客内链接的博客名
@@ -495,7 +495,6 @@ func AddAuthTypeWithAccount(account, blogname string, flag int) {
 
 	if b, ok := store.blogs[blogname]; ok {
 		b.AuthType |= flag
-		syncPublicStateSystemBlog(account, store.blogs)
 		db.SaveBlog(account, b)
 	}
 }
@@ -511,84 +510,8 @@ func DelAuthTypeWithAccount(account, blogname string, flag int) {
 		if b.AuthType == 0 {
 			b.AuthType = module.EAuthType_private
 		}
-		syncPublicStateSystemBlog(account, store.blogs)
 		db.SaveBlog(account, b)
 	}
-}
-
-func collectPublicBlogTitles(blogs map[string]*module.Blog) []string {
-	publicBlogs := make([]string, 0)
-	for title, b := range blogs {
-		if title == publicStateBlogTitle || b == nil {
-			continue
-		}
-		if (b.AuthType & module.EAuthType_public) != 0 {
-			publicBlogs = append(publicBlogs, title)
-		}
-	}
-	sort.Strings(publicBlogs)
-	return publicBlogs
-}
-
-func applyPublicBlogTitles(blogs map[string]*module.Blog, publicBlogs []string) {
-	for _, title := range publicBlogs {
-		if b, ok := blogs[title]; ok && b != nil {
-			b.AuthType |= module.EAuthType_public
-		}
-	}
-}
-
-func restorePublicStateFromSystemBlog(blogs map[string]*module.Blog) {
-	stateBlog, ok := blogs[publicStateBlogTitle]
-	if !ok || stateBlog == nil || stateBlog.Content == "" {
-		return
-	}
-
-	var data publicStateBlogData
-	if err := json.Unmarshal([]byte(stateBlog.Content), &data); err != nil {
-		log.ErrorF(log.ModuleBlog, "parse %s failed err=%v", publicStateBlogTitle, err)
-		return
-	}
-	applyPublicBlogTitles(blogs, data.PublicBlogs)
-}
-
-func syncPublicStateSystemBlog(account string, blogs map[string]*module.Blog) {
-	now := strTime()
-	data := publicStateBlogData{
-		UpdatedAt:   now,
-		PublicBlogs: collectPublicBlogTitles(blogs),
-	}
-
-	content, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		log.ErrorF(log.ModuleBlog, "marshal %s failed err=%v", publicStateBlogTitle, err)
-		return
-	}
-
-	stateBlog, ok := blogs[publicStateBlogTitle]
-	if !ok || stateBlog == nil {
-		stateBlog = &module.Blog{
-			Title:      publicStateBlogTitle,
-			CreateTime: now,
-			AccessTime: now,
-			Account:    account,
-		}
-		blogs[publicStateBlogTitle] = stateBlog
-	}
-
-	stateBlog.Content = string(content)
-	stateBlog.ModifyTime = now
-	stateBlog.AccessTime = now
-	stateBlog.AuthType = module.EAuthType_private
-	stateBlog.Tags = "sys,public-state"
-	stateBlog.Encrypt = 0
-	stateBlog.Account = account
-	stateBlog.ModifyNum++
-	if stateBlog.CreateTime == "" {
-		stateBlog.CreateTime = now
-	}
-
-	db.SaveBlog(account, stateBlog)
 }
 
 // GetURLBlogNamesWithAccount 获取博客内链接的博客名

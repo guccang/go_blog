@@ -1,0 +1,118 @@
+:root {
+    --bg: #f8f7f4;
+    --surface: #fff;
+    --text: #1e1b18;
+    --secondary: #6b6560;
+    --muted: #9c9690;
+    --accent: #d4734a;
+    --accent-soft: #fdf0ea;
+    --navy: #244656;
+    --border: #e8e4df;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font); }
+a { color: inherit; text-decoration: none; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+.query-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: min(920px, calc(100% - 40px));
+    height: 72px;
+    margin: 0 auto;
+    border-bottom: 1px solid var(--border);
+}
+.query-brand { display: flex; align-items: center; gap: 10px; }
+.query-brand span, .query-account {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+}
+.query-brand strong { font-size: 14px; }
+.query-header nav { display: flex; align-items: center; gap: 16px; color: var(--secondary); font-size: 13px; }
+.query-account { background: var(--navy); font-size: 12px; }
+
+.query-shell { width: min(760px, calc(100% - 40px)); margin: 0 auto; padding: 54px 0 80px; }
+.back-link { color: var(--secondary); font-size: 12px; font-weight: 700; }
+h1 { margin: 26px 0 8px; font-size: clamp(30px, 5vw, 42px); letter-spacing: -.04em; }
+.page-description { margin: 0 0 25px; color: var(--secondary); font-size: 13px; line-height: 1.7; }
+.standalone-query {
+    display: flex;
+    gap: 8px;
+    margin-top: 24px;
+    padding: 7px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface);
+}
+.standalone-query:focus-within { border-color: #d8a18a; box-shadow: 0 0 0 3px var(--accent-soft); }
+.standalone-query input { min-width: 0; flex: 1; height: 42px; padding: 0 11px; border: 0; outline: 0; background: transparent; }
+.standalone-query button {
+    padding: 0 18px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+}
+.query-status { min-height: 21px; margin: 12px 2px; color: var(--muted); font-size: 12px; }
+
+.search-results { display: grid; border-top: 1px solid var(--border); }
+.search-result {
+    display: block;
+    padding: 20px 2px;
+    border-bottom: 1px solid var(--border);
+}
+.search-result strong { display: block; margin-bottom: 7px; font-size: 15px; }
+.search-result p { margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.7; }
+.search-result mark { padding: 0 2px; background: #fae0d4; color: var(--text); }
+.search-result:hover strong { color: var(--accent); }
+.load-more-area { display: flex; justify-content: center; padding-top: 24px; }
+.secondary-button {
+    padding: 10px 18px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--accent);
+    font-weight: 700;
+}
+.empty-query {
+    padding: 38px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    color: var(--secondary);
+    text-align: center;
+}
+
+.answer-toolbar { display: flex; align-items: center; justify-content: space-between; }
+.text-button { border: 0; background: transparent; color: var(--accent); font-size: 12px; font-weight: 700; }
+.pi-answer { margin-top: 10px; border-top: 1px solid var(--border); }
+.answer-block { padding: 24px 2px; border-bottom: 1px solid var(--border); white-space: pre-wrap; }
+.answer-block h2 { margin: 0 0 10px; font-size: 13px; color: var(--accent); }
+.answer-block p { margin: 0; font-size: 14px; line-height: 1.85; }
+.answer-sources { padding: 20px 2px 8px; color: var(--secondary); font-size: 12px; line-height: 1.8; }
+.answer-sources strong { color: var(--text); }
+.answer-sources a { color: var(--accent); }
+.answer-usage { margin: 10px 2px 0; color: var(--muted); font-size: 11px; }
+
+button:focus-visible, a:focus-visible, input:focus-visible {
+    outline: 3px solid rgba(212, 115, 74, .25);
+    outline-offset: 2px;
+}
+@media (max-width: 560px) {
+    .query-header, .query-shell { width: calc(100% - 28px); }
+    .query-header { height: 64px; }
+    .query-shell { padding-top: 40px; }
+    .standalone-query { display: block; }
+    .standalone-query input { width: 100%; }
+    .standalone-query button { width: 100%; height: 40px; margin-top: 6px; }
+}

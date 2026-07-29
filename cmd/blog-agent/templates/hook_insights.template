@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使用洞察 - GUCCANG</title>
+    <link rel="stylesheet" href="/css/hook_insights.css?v=1">
+</head>
+<body>
+    <main class="insights-shell">
+        <header class="insights-header">
+            <a href="/main" class="insights-back">← 返回内容工作台</a>
+            <span class="insights-kicker">HOOK · BEHAVIOR PULSE</span>
+            <button id="insightsRefresh" class="insights-refresh" type="button">刷新数据</button>
+        </header>
+
+        <section class="insights-hero">
+            <div>
+                <p>使用洞察</p>
+                <h1>看见自己的使用节奏</h1>
+                <span>所有统计仅来自当前账户的 Hook 元数据，不读取博客正文。</span>
+            </div>
+            <div class="insights-period">最近 <strong id="periodDays">7</strong> 天</div>
+        </section>
+
+        <section class="insights-filters" aria-label="洞察筛选">
+            <label>功能
+                <select id="featureFilter"><option value="">全部功能</option></select>
+            </label>
+            <label>事件
+                <select id="eventFilter"><option value="">全部事件</option></select>
+            </label>
+            <label>结果
+                <select id="statusFilter">
+                    <option value="">全部结果</option>
+                    <option value="success">成功</option>
+                    <option value="error">失败</option>
+                    <option value="unknown">未标记</option>
+                </select>
+            </label>
+            <button id="clearFilters" type="button">清除筛选</button>
+            <span id="insightsUpdated" class="insights-updated" aria-live="polite">正在读取 Hook…</span>
+        </section>
+
+        <section class="summary-strip" aria-label="行为摘要">
+            <article><span>今日动作</span><strong id="todayEvents">—</strong></article>
+            <article><span>7 天动作</span><strong id="totalEvents">—</strong></article>
+            <article><span>活跃天数</span><strong id="activeDays">—</strong></article>
+            <article><span>明确成功率</span><strong id="successRate">—</strong></article>
+        </section>
+
+        <section class="insight-card heatmap-card">
+            <div class="card-heading">
+                <div><span>一周节奏</span><h2>每小时活动热力图</h2></div>
+                <div class="heat-legend"><i></i><i></i><i></i><i></i><span>少 → 多</span></div>
+            </div>
+            <div class="heatmap-scroll">
+                <div id="hookHeatmap" class="hook-heatmap"></div>
+            </div>
+        </section>
+
+        <div class="insights-grid">
+            <section class="insight-card timeline-card">
+                <div class="card-heading">
+                    <div><span>今天发生了什么</span><h2>行为时间线</h2></div>
+                    <strong id="timelineCount" class="card-count">0</strong>
+                </div>
+                <div id="hookTimeline" class="hook-timeline"></div>
+            </section>
+
+            <div class="insights-side">
+                <section class="insight-card">
+                    <div class="card-heading">
+                        <div><span>使用频率</span><h2>功能排行</h2></div>
+                    </div>
+                    <div id="featureRanking" class="feature-ranking"></div>
+                </section>
+
+                <section class="insight-card">
+                    <div class="card-heading">
+                        <div><span>连续操作</span><h2>常见路径 Top 5</h2></div>
+                    </div>
+                    <div id="commonPaths" class="common-paths"></div>
+                </section>
+            </div>
+        </div>
+    </main>
+    <script src="/js/hook_insights.js?v=1"></script>
+</body>
+</html>

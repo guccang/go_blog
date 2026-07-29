@@ -40,6 +40,11 @@ func ListBlogSummaries(account string, limit, offset, flag int) []*module.Blog {
 	return blog.ListSummariesWithAccount(account, limit, offset, flag)
 }
 
+// ListRecentBlogSummaries 返回主页使用的正式博客轻量预览数据。
+func ListRecentBlogSummaries(account string, limit, flag int) []*module.Blog {
+	return blog.ListRecentSummariesWithAccount(account, limit, flag)
+}
+
 func GetBlogs(account string) map[string]*module.Blog {
 	return blog.GetBlogsWithAccount(account)
 }

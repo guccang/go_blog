@@ -70,6 +70,7 @@ func initSQLite() error {
 		"CREATE INDEX IF NOT EXISTS idx_login_sessions_expiry ON login_sessions(expires_at)",
 		"CREATE INDEX IF NOT EXISTS idx_blog_hooks_account_created ON blog_hooks(account, created_at DESC, id DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_blogs_account_modify ON blogs(account, modify_time DESC, title DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_blogs_account_access ON blogs(account, access_time DESC, modify_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_media_assets_account ON media_assets(account, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_pi_usage_account_created ON pi_usage(account, created_at DESC, id DESC)",
 		`CREATE VIRTUAL TABLE IF NOT EXISTS blogs_fts USING fts5(account UNINDEXED, title, content,
@@ -90,6 +91,17 @@ func initSQLite() error {
 	if err := ensureBlogHookColumns(db); err != nil {
 		db.Close()
 		return err
+	}
+	// SQLite auth_type 已是公开权限的唯一事实来源，清理旧文件时代的公开状态伪博客。
+	for _, stmt := range []string{
+		"DELETE FROM blog_chunks_fts WHERE blog_title='sys_blog_public_state'",
+		"DELETE FROM blog_chunks WHERE blog_title='sys_blog_public_state'",
+		"DELETE FROM blogs WHERE title='sys_blog_public_state'",
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			db.Close()
+			return fmt.Errorf("remove legacy public state blog: %w", err)
+		}
 	}
 	sqliteDB = db
 	return nil
@@ -200,10 +212,14 @@ func sqliteGetAll(account string) map[string]*module.Blog {
 	return blogs
 }
 
-// ListBlogSummaries 分页取元数据，正文保持空字符串，供首页等列表页惰性展示。
+// ListBlogSummaries 分页返回博客元数据和安全的正文前缀，供内容库生成轻量卡片。
+// 日记和加密博客的正文始终返回空字符串。
 func ListBlogSummaries(account string, limit, offset, authFlag int) ([]*module.Blog, error) {
-	query := `SELECT account,title,'' as content,create_time,modify_time,access_time,modify_num,access_num,auth_type,tags,encrypt FROM blogs WHERE account=?`
-	args := []any{account}
+	query := `SELECT account,title,
+		CASE WHEN encrypt=0 AND (auth_type & ?)=0 THEN substr(content,1,100) ELSE '' END,
+		create_time,modify_time,access_time,modify_num,access_num,auth_type,tags,encrypt
+		FROM blogs WHERE account=?`
+	args := []any{module.EAuthType_diary | module.EAuthType_encrypt, account}
 	if authFlag != 0 {
 		query += " AND (auth_type & ?) != 0"
 		args = append(args, authFlag)
@@ -222,6 +238,46 @@ func ListBlogSummaries(account string, limit, offset, authFlag int) ([]*module.B
 		} else {
 			return nil, err
 		}
+	}
+	return result, rows.Err()
+}
+
+// ListRecentBlogSummaries 返回最近访问的正式博客及正文前缀，供主页生成轻量预览。
+// 系统、管理、日记和加密内容不会进入“继续阅读”。
+func ListRecentBlogSummaries(account string, limit, authFlag int) ([]*module.Blog, error) {
+	if account == "" || limit <= 0 {
+		return []*module.Blog{}, nil
+	}
+	query := `SELECT account,title,substr(content,1,100),create_time,modify_time,access_time,modify_num,access_num,auth_type,tags,encrypt
+		FROM blogs WHERE account=? AND encrypt=0 AND (auth_type & ?)=0
+		AND title NOT LIKE 'sys\_%' ESCAPE '\'
+		AND title NOT LIKE 'todolist-%'
+		AND title NOT LIKE 'exercise-%'
+		AND title NOT LIKE 'reading\_book\_%' ESCAPE '\'
+		AND title NOT LIKE '目标\_%' ESCAPE '\'
+		AND title NOT LIKE '月度目标\_%' ESCAPE '\'
+		AND title NOT LIKE '年计划\_%' ESCAPE '\'`
+	args := []any{account, module.EAuthType_diary | module.EAuthType_encrypt}
+	if authFlag != 0 {
+		query += " AND (auth_type & ?) != 0"
+		args = append(args, authFlag)
+	}
+	query += ` ORDER BY
+		CASE WHEN trim(access_time)='' THEN 1 ELSE 0 END,
+		access_time DESC, modify_time DESC, title DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := requireSQLite().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]*module.Blog, 0, limit)
+	for rows.Next() {
+		b, scanErr := scanBlog(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		result = append(result, b)
 	}
 	return result, rows.Err()
 }
@@ -327,6 +383,35 @@ func SearchBlogsFTS(account, query string, limit int) ([]BlogSearchResult, error
 		}
 	}
 	return results, fallbackRows.Err()
+}
+
+// SearchBlogsFTSPage 在完整召回顺序上按页返回结果，避免页面一次读取全部匹配项。
+func SearchBlogsFTSPage(account, query string, limit, offset int) ([]BlogSearchResult, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	results, err := SearchBlogsFTS(account, query, offset+limit)
+	if err != nil {
+		return nil, err
+	}
+	return sliceBlogSearchResults(results, limit, offset), nil
+}
+
+func sliceBlogSearchResults(results []BlogSearchResult, limit, offset int) []BlogSearchResult {
+	if limit <= 0 {
+		return []BlogSearchResult{}
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(results) {
+		return []BlogSearchResult{}
+	}
+	end := min(len(results), offset+limit)
+	return results[offset:end]
 }
 
 func substringSearchSnippet(title, content string, terms []string) string {

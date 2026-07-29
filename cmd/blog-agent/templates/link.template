@@ -3,168 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GUCCANG - 博客</title>
+    <title>BLOG - GUCCANG</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/link.css?v=chunk-fts-1">
+    <link rel="stylesheet" href="/css/link.css?v=library-cards-1">
 </head>
-<body>
-    <!-- 侧边栏导航 -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <a href="/main" class="logo">
-                <div class="logo-icon">G</div>
-                <span class="logo-text">GUCCANG</span>
-            </a>
-        </div>
-
-        <nav class="sidebar-nav">
-            <a href="/editor" class="nav-item">
-                <i class="fas fa-pen-to-square"></i>
-                <span>写博客</span>
-            </a>
-            <a href="/goal" class="nav-item">
-                <i class="fas fa-flag-checkered"></i>
-                <span>目标管理</span>
-            </a>
-            <a href="/exercise" class="nav-item">
-                <i class="fas fa-dumbbell"></i>
-                <span>锻炼管理</span>
-            </a>
-            <a href="/reading" class="nav-item">
-                <i class="fas fa-book-open"></i>
-                <span>读书记录</span>
-            </a>
+<body class="library-page">
+    <header class="library-header">
+        <a class="library-brand" href="/main"><span>G</span><strong>BLOG</strong></a>
+        <nav>
+            <a href="/editor" class="library-write">写博客</a>
+            <a href="/main">返回主页</a>
+            <a class="library-account" href="/account">{{.USER_AVATAR}}</a>
         </nav>
+    </header>
 
-        <div class="sidebar-divider"></div>
+    <main class="library-shell">
+        <section class="library-intro">
+            <div>
+                <p>所有内容</p>
+                <h1>BLOG</h1>
+            </div>
+            <span>{{.BLOGS_NUMBER}} 篇</span>
+        </section>
 
-        <nav class="sidebar-nav">
-            <a href="/tools" class="nav-item">
-                <i class="fas fa-toolbox"></i>
-                <span>实用工具</span>
-            </a>
-            <a href="/config" class="nav-item">
-                <i class="fas fa-gear"></i>
-                <span>系统配置</span>
-            </a>
-        </nav>
-
-        <div class="sidebar-footer">
-            <a href="/public?account={{.USER_ACCOUNT}}" class="nav-item">
-                <i class="fas fa-globe"></i>
-                <span>公开博客</span>
-            </a>
-            <a href="/account" class="user-profile">
-                <div class="user-avatar">{{.USER_AVATAR}}</div>
-                <div class="user-info-text">
-                    <span class="user-name">{{.USER_ACCOUNT}}</span>
-                    <span class="user-role">Blogger</span>
-                </div>
-            </a>
-        </div>
-    </aside>
-
-    <!-- 移动端遮罩 -->
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-
-    <!-- 主内容区域 -->
-    <main class="main-content">
-        <!-- 顶部栏 -->
-        <header class="top-bar">
-            <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">
-                <i class="fas fa-bars"></i>
-            </button>
-
+        <header class="library-toolbar">
             <div class="search-wrapper">
                 <i class="fas fa-search search-icon"></i>
-                <input id="search" type="text" placeholder="搜索博客..." class="search-input">
-                <select id="search-command-select" class="search-command" title="搜索命令" onchange="handleSearchCommand(this)">
+                <input id="search" type="text" placeholder="搜索博客或输入高级命令…" class="search-input">
+                <select id="search-command-select" class="search-command" title="高级命令" onchange="handleSearchCommand(this)">
                     <option value="">命令</option>
                     {{range .SEARCH_COMMANDS}}
                     <option value="{{.Name}}" data-hasparam="{{.HasParam}}" data-paramhint="{{.ParamHint}}">{{.DisplayName}}</option>
                     {{end}}
                 </select>
             </div>
-
-            <div class="header-actions">
-                <button class="btn-icon" onclick="toggleView()" title="切换视图">
-                    <i id="view-icon" class="fas fa-th-large"></i>
-                </button>
-            </div>
+            <button class="btn-icon" onclick="toggleView()" title="切换视图" aria-label="切换内容视图">
+                <i id="view-icon" class="fas fa-th-large"></i>
+            </button>
         </header>
 
-        <!-- 欢迎区域 & 统计 -->
-        <section class="welcome-section">
-            <div class="welcome-text">
-                <h1>内容工作台</h1>
-                <p>在这里继续阅读、整理和创作你的 <strong>{{.BLOGS_NUMBER}}</strong> 篇内容</p>
-            </div>
-            <div class="quick-stats">
-                <div class="stat-item">
-                    <span class="stat-value">{{len .RECENT_LINKS}}</span>
-                    <span class="stat-label">最近更新</span>
-                </div>
-            </div>
-        </section>
-
-        <section class="blog-ask" aria-labelledby="blogAskTitle">
-            <div class="blog-ask-heading">
-                <span class="blog-ask-icon"><i class="fas fa-sparkles"></i></span>
-                <div>
-                    <h2 id="blogAskTitle">问我的博客</h2>
-                    <p>默认仅本地检索；使用 PI 回答时，召回的资料会发送给你配置的模型。</p>
-                </div>
-            </div>
-            <form id="blogAskForm" class="blog-ask-form">
-                <input id="blogAskInput" type="search" maxlength="120" placeholder="例如：我上次关于 SQLite 迁移做了哪些决定？" autocomplete="off">
-                <button type="submit">查找</button>
-                <button id="blogAskPI" type="button" class="blog-ask-pi">PI 回答</button>
-            </form>
-            <div id="blogAskStatus" class="blog-ask-status" aria-live="polite"></div>
-			<div id="blogAskToolbar" class="blog-ask-toolbar" hidden>
-				<button id="blogAskCollapse" class="blog-ask-collapse" type="button">收起查询结果</button>
-			</div>
-			<div id="blogPIAnswer" class="blog-pi-answer" hidden></div>
-			<div id="blogAskResults" class="blog-ask-results" hidden></div>
-			<div id="blogAskActions" class="blog-ask-actions" hidden>
-				<button id="blogAskShowAll" class="blog-ask-show-all" type="button" hidden>查看全部搜索结果</button>
-			</div>
-        </section>
-
-        <!-- 最近查看 -->
-        {{if .RECENT_LINKS}}
         <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <i class="fas fa-clock"></i> 最近查看
-                </h2>
-            </div>
-            <div class="recent-scroll">
-                {{range .RECENT_LINKS}}
-                <a href="{{.URL}}" class="recent-card">
-                    <div class="recent-avatar">
-                        <span class="recent-char">{{.DESC}}</span>
-                    </div>
-                    <span class="recent-title">
-                        {{if .IS_ENCRYPTED}}<i class="fas fa-lock"></i>{{end}}
-                        {{if .IS_DIARY}}<i class="fas fa-book"></i>{{end}}
-                        {{.DESC}}
-                    </span>
-                </a>
-                {{end}}
-            </div>
-        </section>
-        {{end}}
-
-        <!-- 博客列表 -->
-        <section class="section">
-            <div class="section-header">
-                <h2 class="section-title">
-                    <i class="fas fa-layer-group"></i> 内容库
-                </h2>
-                <span class="section-badge">{{.BLOGS_NUMBER}}</span>
-            </div>
-
             <div class="blog-filter-bar" id="blogFilterBar" role="group" aria-label="内容分类筛选"></div>
             <div class="blog-filter-empty" id="blogFilterEmpty" hidden>
                 <i class="fas fa-filter-circle-xmark"></i>
@@ -176,107 +54,51 @@
 
             <div class="blog-grid" id="blogContainer">
                 {{range .LINKS}}
-                <article class="blog-card" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}" data-encrypted="{{.IS_ENCRYPTED}}" data-tech-doc="{{.IS_TECH_DOC}}">
+                <article class="blog-card{{if .IMAGE_URL}} has-media{{end}}" data-title="{{.DESC}}" data-diary="{{.IS_DIARY}}"
+                         data-encrypted="{{.IS_ENCRYPTED}}" data-tech-doc="{{.IS_TECH_DOC}}">
                     <a href="{{.URL}}" class="blog-card-link">
+                        {{if .IMAGE_URL}}
+                        <img class="blog-card-image" src="{{.IMAGE_URL}}" alt="" loading="lazy" decoding="async">
+                        {{end}}
                         <div class="blog-card-body">
-                            <h3 class="blog-card-title">
-                                {{if .IS_ENCRYPTED}}<i class="fas fa-lock lock-icon"></i>{{end}}
-                                {{if .IS_DIARY}}<i class="fas fa-book diary-icon"></i>{{end}}
-                                {{.DESC}}
-                            </h3>
+                            {{if or .ACCESS_TIME .IS_ENCRYPTED .IS_DIARY}}
                             <div class="blog-card-meta">
                                 {{if .ACCESS_TIME}}
-                                <span class="blog-date"><i class="far fa-clock"></i> {{.ACCESS_TIME}}</span>
+                                <span class="blog-date">{{.ACCESS_TIME}}</span>
                                 {{end}}
+                                {{if .IS_ENCRYPTED}}<span class="protected-label"><i class="fas fa-lock"></i> 加密</span>{{end}}
+                                {{if .IS_DIARY}}<span class="protected-label diary"><i class="fas fa-book"></i> 日记</span>{{end}}
                             </div>
-                        </div>
-                        <div class="blog-card-arrow">
-                            <i class="fas fa-chevron-right"></i>
+                            {{end}}
+                            <h2 class="blog-card-title">
+                                {{.DESC}}
+                            </h2>
+                            <p class="blog-card-preview">{{.PREVIEW}}</p>
                         </div>
                     </a>
                 </article>
                 {{end}}
             </div>
 
+            {{if .SHOW_LOAD_MORE}}
             <div class="load-more-wrap" id="loadMoreWrap" {{if lt (len .LINKS) 1}}hidden{{end}}>
                 <button type="button" class="load-more-btn" id="loadMoreBlogs" data-offset="{{len .LINKS}}">
                     加载更多内容
                 </button>
             </div>
+            {{end}}
 
             {{if not .LINKS}}
             <div class="empty-state">
-                <div class="empty-icon">
-                    <i class="fas fa-inbox"></i>
-                </div>
+                <div class="empty-icon"><i class="fas fa-inbox"></i></div>
                 <h3>还没有博客</h3>
-                <p>点击右下角的 + 按钮开始写你的第一篇博客吧</p>
+                <p><a href="/editor">写下第一篇博客</a></p>
             </div>
             {{end}}
         </section>
-
     </main>
 
-    <aside class="quote-rail" aria-label="今日格言">
-        <div class="quote-rail-rule"></div>
-        <p class="quote-rail-kicker"><i class="fas fa-feather-pointed"></i> 今日格言</p>
-        <blockquote id="dailyQuote" class="quote-rail-text">把今天能完成的一件小事，做到确实完成。</blockquote>
-        <p id="dailyQuoteSource" class="quote-rail-source">— 给正在行动的自己</p>
-        <div class="quote-rail-mark">“</div>
-    </aside>
-
-    <!-- 浮动按钮 -->
-    <a href="/editor" class="fab fab-create" title="创建新博客">
-        <i class="fas fa-plus"></i>
-    </a>
-
-    <!-- 底部状态栏 -->
-    <footer class="status-bar">
-        <span>博客数量: {{.BLOGS_NUMBER}}</span>
-        <span>版本: {{.VERSION}}</span>
-    </footer>
-
     <script src="/js/utils.js"></script>
-    <script src="/js/link.js?v=chunk-fts-1"></script>
-
-
-    <script>
-    // 侧边栏切换
-    function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('open');
-        document.getElementById('sidebarOverlay').classList.toggle('show');
-    }
-
-    // 处理搜索命令选择
-    function handleSearchCommand(select) {
-        const option = select.options[select.selectedIndex];
-        if (!option || !option.value) return;
-        const command = option.value;
-        const hasParam = option.getAttribute('data-hasparam') === 'true';
-        const paramHint = option.getAttribute('data-paramhint') || '';
-        const searchInput = document.getElementById('search');
-        if (!searchInput) return;
-        let text = command;
-        if (hasParam) text += ' ';
-        searchInput.value = text;
-        searchInput.focus();
-        if (hasParam) {
-            searchInput.setSelectionRange(text.length, text.length);
-        } else {
-            setTimeout(() => { if (searchInput.value === text) onSearch(); }, 100);
-        }
-        select.selectedIndex = 0;
-    }
-
-    // 初始化
-    document.addEventListener('DOMContentLoaded', function() {
-        // 设置最近查看的首字符
-        document.querySelectorAll('.recent-char').forEach(function(el) {
-            var title = el.textContent;
-            if (title && title.length > 0) el.textContent = title.charAt(0);
-        });
-
-    });
-    </script>
+    <script src="/js/link.js?v=library-cards-1"></script>
 </body>
 </html>

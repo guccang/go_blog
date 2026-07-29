@@ -8,6 +8,7 @@ import (
 	"module"
 	log "mylog"
 	h "net/http"
+	"net/url"
 	"path/filepath"
 	"search"
 	control "service"
@@ -98,6 +99,8 @@ type LinkData struct {
 	URL          string
 	DESC         string
 	ACCESS_TIME  string
+	PREVIEW      string
+	IMAGE_URL    string
 	TAGS         []string
 	IS_ENCRYPTED bool
 	IS_DIARY     bool
@@ -112,6 +115,7 @@ type LinkDatas struct {
 	USER_ACCOUNT    string
 	USER_AVATAR     string
 	SEARCH_COMMANDS []SearchCommandInfo
+	SHOW_LOAD_MORE  bool
 }
 
 // SearchCommandInfo 搜索命令信息
@@ -148,6 +152,7 @@ type EditorData struct {
 	IS_PUBLIC    bool
 	IS_DIARY     bool
 	IS_ENCRYPTED bool
+	PI_ENABLED   bool
 }
 
 type TodolistData struct {
@@ -223,17 +228,30 @@ func getLinks(blogs []*module.Blog, flag int, account string) *LinkDatas {
 		}
 
 		// Include account parameter in URL for public blogs to ensure correct blog retrieval
-		url := fmt.Sprintf("/get?blogname=%s", b.Title)
+		linkURL := fmt.Sprintf("/get?blogname=%s", url.QueryEscape(b.Title))
 		if (flag&module.EAuthType_public) != 0 && account != "" {
-			url = fmt.Sprintf("/get?blogname=%s&account=%s", b.Title, account)
+			linkURL = fmt.Sprintf("/get?blogname=%s&account=%s", url.QueryEscape(b.Title), url.QueryEscape(account))
 		}
 
+		isEncrypted := b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0
+		isDiary := (b.AuthType & module.EAuthType_diary) != 0
+		preview, imageURL := "", ""
+		switch {
+		case isEncrypted:
+			preview = "加密内容，打开后验证访问权限"
+		case isDiary:
+			preview = "日记内容，打开后验证访问权限"
+		default:
+			preview, imageURL = buildMainBlogPreview(b.Title, b.Content)
+		}
 		ld := LinkData{
-			URL:          url,
+			URL:          linkURL,
 			DESC:         b.Title,
-			ACCESS_TIME:  b.AccessTime,
-			IS_ENCRYPTED: b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0,
-			IS_DIARY:     (b.AuthType & module.EAuthType_diary) != 0,
+			ACCESS_TIME:  recentTimeLabel(b.AccessTime, b.ModifyTime, time.Now()),
+			PREVIEW:      preview,
+			IMAGE_URL:    imageURL,
+			IS_ENCRYPTED: isEncrypted,
+			IS_DIARY:     isDiary,
 			IS_TECH_DOC:  strings.Contains(b.Tags, "blog实现技术文档"),
 		}
 		datas.LINKS = append(datas.LINKS, ld)
@@ -381,11 +399,12 @@ func PageLink(w h.ResponseWriter, flag int, account string) {
 	if blog_num <= 0 || blog_num > 20 {
 		blog_num = 20
 	}
-	blogs := control.GetAll(account, blog_num, flag)
+	blogs := control.ListBlogSummaries(account, blog_num, 0, flag)
 	log.DebugF(log.ModuleView, "blogs cnt=%d", len(blogs))
 
 	datas := getLinks(blogs, flag, account)
 	datas.BLOGS_NUMBER = control.GetBlogsNum(account)
+	datas.SHOW_LOAD_MORE = len(blogs) < datas.BLOGS_NUMBER
 
 	exeDir := config.GetHttpTemplatePath()
 	tmpl, err := t.ParseFiles(filepath.Join(exeDir, "link.template"))
@@ -510,6 +529,7 @@ func PageGetBlog(blogname string, w h.ResponseWriter, usepublic int, account str
 		IS_PUBLIC:    isPublic,
 		IS_DIARY:     isDiary,
 		IS_ENCRYPTED: isEncrypted,
+		PI_ENABLED:   !isDiary && !isEncrypted,
 	}
 
 	err = tmpl.Execute(w, data)
@@ -798,11 +818,9 @@ func PageReadingDashboard(w h.ResponseWriter) {
 
 // PagePublic renders the public blogs page
 func PagePublic(w h.ResponseWriter, account string) {
-	// 获取所有public标签的博客
-	blogs := control.GetMatch(account, "@auth match public")
-
-	// 只展示public权限的博客
+	// 公开权限直接读取 SQLite auth_type，不再依赖系统博客或内存缓存。
 	flag := module.EAuthType_public
+	blogs := control.ListBlogSummaries(account, control.GetBlogsNum(account), 0, flag)
 
 	// 获取链接数据
 	datas := getLinks(blogs, flag, account)

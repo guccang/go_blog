@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GUCCANG</title>
+    <link rel="stylesheet" href="/css/main.css?v=quote-1">
+</head>
+<body>
+    <header class="main-header">
+        <a class="brand" href="/main" aria-label="GUCCANG 主页"><span>G</span><strong>GUCCANG</strong></a>
+        <nav class="main-nav" aria-label="主页导航">
+            <a href="/link">BLOG</a>
+            <div class="more-menu">
+                <button id="moreMenuButton" type="button" aria-expanded="false" aria-controls="moreMenu">更多</button>
+                <div id="moreMenu" class="more-panel" hidden>
+                    <a href="/tools">实用工具</a>
+                    <a href="/insights">使用洞察</a>
+                    <a href="/public?account={{.USER_ACCOUNT}}">公开博客</a>
+                    <a href="/config">系统配置</a>
+                </div>
+            </div>
+            <a class="account-link" href="/account" aria-label="账户 {{.USER_ACCOUNT}}">{{.USER_AVATAR}}</a>
+        </nav>
+    </header>
+
+    <main class="main-shell">
+        <section class="query-hero" aria-labelledby="mainTitle">
+            <p class="eyebrow">继续你的内容</p>
+            <h1 id="mainTitle">今天想继续什么？</h1>
+            <form id="workspaceQueryForm" class="query-form">
+                <label class="sr-only" for="workspaceQuery">搜索博客或向 PI 提问</label>
+                <input id="workspaceQuery" type="search" maxlength="120" autocomplete="off"
+                       placeholder="搜索博客，或输入一个想问 PI 的问题">
+                <div class="query-actions">
+                    <button class="search-button" type="submit">搜索博客</button>
+                    <button class="pi-button" id="askPIButton" type="button">问 PI</button>
+                </div>
+            </form>
+            <p id="queryHint" class="query-hint" aria-live="polite">按 Enter 默认搜索本地博客。</p>
+        </section>
+
+        <section class="continue-section" aria-labelledby="continueTitle">
+            <div class="section-heading">
+                <h2 id="continueTitle">继续阅读</h2>
+                <a href="/link">查看全部</a>
+            </div>
+            {{if .RECENT_LINKS}}
+            <div class="recent-grid">
+                {{range .RECENT_LINKS}}
+                <a class="recent-card{{if .IMAGE_URL}} has-media{{end}}" href="{{.URL}}">
+                    {{if .IMAGE_URL}}
+                    <img class="recent-card-image" src="{{.IMAGE_URL}}" alt="" loading="lazy" decoding="async">
+                    {{end}}
+                    <span class="recent-card-body">
+                        <time>{{.ACCESS_TIME}}</time>
+                        <strong>{{.DESC}}</strong>
+                        <span class="recent-preview">{{.PREVIEW}}</span>
+                    </span>
+                </a>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="recent-empty">
+                <p>还没有阅读记录。</p>
+                <a href="/link">去 BLOG 看看</a>
+            </div>
+            {{end}}
+        </section>
+
+        <section class="quick-section" aria-labelledby="quickTitle">
+            <div class="section-heading"><h2 id="quickTitle">快速开始</h2></div>
+            <div class="quick-grid">
+                <a class="quick-item primary" href="/editor"><span>＋</span><strong>写博客</strong><small>记录现在的想法</small></a>
+                <a class="quick-item" href="/goal"><span>⚑</span><strong>目标</strong><small>查看下一步</small></a>
+                <a class="quick-item" href="/exercise"><span>↗</span><strong>锻炼</strong><small>记录一次运动</small></a>
+                <a class="quick-item" href="/reading"><span>▤</span><strong>读书</strong><small>继续阅读计划</small></a>
+            </div>
+        </section>
+    </main>
+
+    <aside class="daily-quote" aria-label="今日格言">
+        <div class="daily-quote-rule"></div>
+        <p class="daily-quote-kicker">今日格言</p>
+        <blockquote id="dailyQuote">把今天能完成的一件小事，做到确实完成。</blockquote>
+        <p id="dailyQuoteSource" class="daily-quote-source">— 给正在行动的自己</p>
+        <span class="daily-quote-mark" aria-hidden="true">“</span>
+    </aside>
+
+    <script src="/js/main.js?v=quote-1"></script>
+</body>
+</html>

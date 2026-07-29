@@ -509,14 +509,15 @@ func HandleSearch(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	match := r.URL.Query().Get("match")
-	if match != "" {
-		emitUsageHook(r, getAccountFromRequest(r), blog.HookFeatureUsed, "blog_search", "search_query", "", "", match, nil, nil)
+	account := getAccountFromRequest(r)
+	if strings.HasPrefix(strings.TrimSpace(match), "@") {
+		ret := view.PageSearchNormal(match, w, r)
+		if ret != 0 {
+			view.PageSearch(match, w, account)
+		}
+		return
 	}
-	ret := view.PageSearchNormal(match, w, r)
-	if ret != 0 {
-		// 通用搜索逻辑
-		view.PageSearch(match, w, getAccountFromRequest(r))
-	}
+	PageSearchResults(w, account, match)
 }
 
 // HandleTag handles tag-based blog listing
@@ -544,6 +545,9 @@ func HandleTag(w h.ResponseWriter, r *h.Request) {
 func HandlePublic(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandlePublic", r)
 	account := r.URL.Query().Get("account")
+	if account == "" {
+		account = getAccountFromRequest(r)
+	}
 	if account == "" {
 		account = config.GetAdminAccount()
 	}

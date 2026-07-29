@@ -16,6 +16,7 @@ import (
 	control "service"
 	"strconv"
 	"strings"
+	"time"
 	"tools"
 	// [Phase 1] wechat 模块已迁移至独立 wechat-agent
 	// [Phase 3] 以下模块已屏蔽，统一使用 goal + todolist
@@ -124,7 +125,7 @@ func HandleLink(w h.ResponseWriter, r *h.Request) {
 
 	flag := module.EAuthType_all
 	account := getAccountFromRequest(r)
-	emitUsageHook(r, account, blog.HookPageOpened, "content_workspace", "page", "main", "main", "", nil, map[string]any{"status": "success"})
+	emitUsageHook(r, account, blog.HookPageOpened, "content_library", "page", "link", "BLOG", "", nil, map[string]any{"status": "success"})
 	view.PageLink(w, flag, account)
 }
 
@@ -159,7 +160,24 @@ func HandleBlogSummaries(w h.ResponseWriter, r *h.Request) {
 	}
 	items := make([]map[string]interface{}, 0, len(blogs))
 	for _, b := range blogs {
-		items = append(items, map[string]interface{}{"title": b.Title, "url": "/get?blogname=" + url.QueryEscape(b.Title), "access_time": b.AccessTime, "diary": (b.AuthType & module.EAuthType_diary) != 0, "encrypted": b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0, "tech_doc": strings.Contains(b.Tags, "blog实现技术文档")})
+		isDiary := (b.AuthType & module.EAuthType_diary) != 0
+		isEncrypted := b.Encrypt == 1 || (b.AuthType&module.EAuthType_encrypt) != 0
+		preview, imageURL := "", ""
+		switch {
+		case isEncrypted:
+			preview = "加密内容，打开后验证访问权限"
+		case isDiary:
+			preview = "日记内容，打开后验证访问权限"
+		default:
+			preview, imageURL = buildMainBlogPreview(b.Title, b.Content)
+		}
+		items = append(items, map[string]interface{}{
+			"title": b.Title, "url": "/get?blogname=" + url.QueryEscape(b.Title),
+			"access_time": recentTimeLabel(b.AccessTime, b.ModifyTime, time.Now()),
+			"preview":     preview, "image_url": imageURL,
+			"diary": isDiary, "encrypted": isEncrypted,
+			"tech_doc": strings.Contains(b.Tags, "blog实现技术文档"),
+		})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(map[string]interface{}{"items": items, "has_more": hasMore})
@@ -211,11 +229,15 @@ func Init() int {
 	// }
 
 	// Core routes
-	h.HandleFunc("/main", HandleLink)
+	h.HandleFunc("/main", HandleMain)
 	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
 	h.HandleFunc("/api/blogs/fts", HandleBlogFTSSearch)
 	h.HandleFunc("/api/pi/ask", HandlePIAsk)
+	h.HandleFunc("/api/pi/article", HandlePIArticle)
 	h.HandleFunc("/api/pi/usage", HandlePIUsage)
+	h.HandleFunc("/ask", HandleAskPage)
+	h.HandleFunc("/insights", HandleHookInsights)
+	h.HandleFunc("/api/hooks/insights", HandleHookInsightsAPI)
 	h.HandleFunc("/api/media/upload", HandleMediaUpload)
 	h.HandleFunc("/api/blog/content", HandleBlogContentChunk)
 	h.HandleFunc("/media/", HandleMediaGet)

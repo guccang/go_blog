@@ -1,0 +1,371 @@
+:root {
+    --ink: #172637;
+    --navy: #1d3850;
+    --muted: #737982;
+    --paper: #fffdf9;
+    --canvas: #f4f1eb;
+    --line: #e2ddd4;
+    --coral: #dc704b;
+    --teal: #3f9c91;
+    --danger: #bd554c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: radial-gradient(circle at 92% 0, #dcefe8 0, transparent 30rem), var(--canvas);
+    color: var(--ink);
+    font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+button, select { font: inherit; }
+
+.insights-shell {
+    width: min(1180px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 24px 0 70px;
+}
+
+.insights-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+}
+
+.insights-back, .insights-refresh {
+    width: max-content;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,.72);
+    color: var(--navy);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.insights-refresh {
+    justify-self: end;
+    cursor: pointer;
+}
+
+.insights-kicker {
+    color: var(--teal);
+    font: 800 10px/1 "Cascadia Mono", Consolas, monospace;
+    letter-spacing: .16em;
+}
+
+.insights-hero {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    padding: 58px 0 30px;
+}
+
+.insights-hero p {
+    margin: 0 0 7px;
+    color: var(--coral);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.insights-hero h1 {
+    margin: 0;
+    color: var(--navy);
+    font-size: clamp(34px, 5vw, 58px);
+    letter-spacing: -.055em;
+}
+
+.insights-hero span {
+    display: block;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.insights-period {
+    padding: 13px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.insights-period strong {
+    margin: 0 4px;
+    color: var(--coral);
+    font-size: 25px;
+}
+
+.insights-filters {
+    display: flex;
+    gap: 10px;
+    align-items: end;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: rgba(255,253,249,.82);
+}
+
+.insights-filters label {
+    display: grid;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.insights-filters select, #clearFilters {
+    min-width: 150px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 12px;
+}
+
+#clearFilters {
+    min-width: auto;
+    cursor: pointer;
+}
+
+.insights-updated {
+    margin-left: auto;
+    padding-bottom: 9px;
+    color: var(--muted);
+    font: 11px/1 "Cascadia Mono", Consolas, monospace;
+}
+
+.summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin: 18px 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+}
+
+.summary-strip article {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 19px 20px;
+    border-right: 1px solid var(--line);
+}
+
+.summary-strip article:last-child { border: 0; }
+.summary-strip span { color: var(--muted); font-size: 11px; }
+.summary-strip strong { color: var(--navy); font-size: 25px; letter-spacing: -.04em; }
+
+.insight-card {
+    min-width: 0;
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    background: var(--paper);
+    box-shadow: 0 13px 32px rgba(23,38,55,.055);
+}
+
+.card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.card-heading span {
+    color: var(--teal);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .1em;
+}
+
+.card-heading h2 {
+    margin: 4px 0 0;
+    color: var(--navy);
+    font-size: 19px;
+    letter-spacing: -.025em;
+}
+
+.card-count {
+    display: grid;
+    place-items: center;
+    min-width: 35px;
+    height: 28px;
+    border-radius: 99px;
+    background: #f2eee7;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.heatmap-card { margin-bottom: 18px; }
+.heatmap-scroll { overflow-x: auto; padding-bottom: 5px; }
+
+.hook-heatmap {
+    display: grid;
+    grid-template-columns: 66px repeat(24, minmax(22px, 1fr));
+    gap: 5px;
+    min-width: 770px;
+    align-items: center;
+}
+
+.heat-hour {
+    color: #969a9f;
+    font: 9px/1 "Cascadia Mono", Consolas, monospace;
+    text-align: center;
+}
+
+.heat-day {
+    color: var(--muted);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.heat-cell {
+    position: relative;
+    height: 22px;
+    border-radius: 5px;
+    background: #eeeae3;
+}
+
+.heat-cell[data-level="1"] { background: #cfe5df; }
+.heat-cell[data-level="2"] { background: #84beb4; }
+.heat-cell[data-level="3"] { background: #3f9c91; }
+.heat-cell[data-level="4"] { background: #1d5e5b; }
+
+.heat-cell:hover::after {
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 50%;
+    z-index: 2;
+    width: max-content;
+    padding: 5px 7px;
+    border-radius: 6px;
+    background: var(--navy);
+    color: #fff;
+    content: attr(aria-label);
+    font-size: 10px;
+    transform: translateX(-50%);
+}
+
+.heat-legend { display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: 9px; }
+.heat-legend i { width: 12px; height: 12px; border-radius: 3px; background: #cfe5df; }
+.heat-legend i:nth-child(2) { background: #84beb4; }
+.heat-legend i:nth-child(3) { background: #3f9c91; }
+.heat-legend i:nth-child(4) { background: #1d5e5b; }
+
+.insights-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, .75fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.insights-side { display: grid; gap: 18px; }
+
+.hook-timeline {
+    position: relative;
+    display: grid;
+    gap: 0;
+    padding-left: 28px;
+}
+
+.hook-timeline::before {
+    position: absolute;
+    top: 7px;
+    bottom: 8px;
+    left: 8px;
+    width: 1px;
+    background: var(--line);
+    content: "";
+}
+
+.timeline-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 0 0 18px;
+}
+
+.timeline-item::before {
+    position: absolute;
+    top: 5px;
+    left: -24px;
+    width: 7px;
+    height: 7px;
+    border: 3px solid var(--paper);
+    border-radius: 50%;
+    background: var(--teal);
+    box-shadow: 0 0 0 1px var(--teal);
+    content: "";
+}
+
+.timeline-item.error::before { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.timeline-time { color: #92979d; font: 10px/1.5 "Cascadia Mono", Consolas, monospace; }
+.timeline-content strong { display: block; color: var(--navy); font-size: 13px; }
+.timeline-content span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; word-break: break-word; }
+.timeline-status { padding: 3px 7px; border-radius: 99px; background: #edf6f3; color: #337d75; font-size: 9px; }
+.timeline-status.error { background: #fff0ee; color: var(--danger); }
+.timeline-status.unknown { background: #f1eee8; color: var(--muted); }
+
+.feature-ranking { display: grid; gap: 13px; }
+.feature-row-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; color: var(--navy); font-size: 11px; }
+.feature-row-head strong { color: var(--coral); }
+.feature-track { height: 7px; overflow: hidden; border-radius: 99px; background: #ece8e1; }
+.feature-fill { height: 100%; border-radius: inherit; background: var(--teal); }
+
+.common-paths { display: grid; gap: 10px; }
+.path-row { padding: 11px; border: 1px solid #ece7df; border-radius: 10px; background: #fff; }
+.path-steps { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.path-step { padding: 4px 7px; border-radius: 6px; background: #f2eee7; color: var(--navy); font-size: 10px; }
+.path-arrow { color: var(--coral); font-size: 10px; }
+.path-count { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; }
+
+.empty-state {
+    padding: 28px 14px;
+    border: 1px dashed var(--line);
+    border-radius: 11px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+button:focus-visible, select:focus-visible, a:focus-visible {
+    outline: 3px solid rgba(63,156,145,.25);
+    outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+    .insights-grid { grid-template-columns: 1fr; }
+    .summary-strip { grid-template-columns: 1fr 1fr; }
+    .summary-strip article:nth-child(2) { border-right: 0; }
+    .summary-strip article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .insights-filters { flex-wrap: wrap; }
+    .insights-updated { width: 100%; margin-left: 0; }
+}
+
+@media (max-width: 600px) {
+    .insights-shell { width: min(100% - 28px, 1180px); padding-top: 15px; }
+    .insights-header { grid-template-columns: 1fr auto; }
+    .insights-kicker { display: none; }
+    .insights-hero { align-items: start; flex-direction: column; gap: 18px; padding-top: 38px; }
+    .insights-filters label { flex: 1 1 130px; }
+    .insights-filters select { width: 100%; min-width: 0; }
+    .summary-strip article { padding: 15px; }
+    .summary-strip article:nth-child(even) { border-right: 0; }
+    .summary-strip strong { font-size: 20px; }
+    .insight-card { padding: 17px; }
+    .timeline-item { grid-template-columns: 44px 1fr; }
+    .timeline-status { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+}

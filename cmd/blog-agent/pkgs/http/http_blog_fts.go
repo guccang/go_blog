@@ -6,6 +6,7 @@ import (
 	log "mylog"
 	h "net/http"
 	"net/url"
+	"persistence"
 	"strconv"
 	"strings"
 )
@@ -27,6 +28,7 @@ func HandleBlogFTSSearch(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 	limit := 5
+	offset := 0
 	all := r.URL.Query().Get("all") == "1"
 	if all {
 		limit = 0
@@ -35,12 +37,23 @@ func HandleBlogFTSSearch(w h.ResponseWriter, r *h.Request) {
 			limit = parsed
 		}
 	}
+	if rawOffset := r.URL.Query().Get("offset"); rawOffset != "" {
+		if parsed, parseErr := strconv.Atoi(rawOffset); parseErr == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
 	searchLimit := limit
 	if limit > 0 {
 		searchLimit++ // Fetch one extra row to decide whether to show "view all".
 	}
 	account := getAccountFromRequest(r)
-	results, err := blog.SearchFTSWithAccount(account, query, searchLimit)
+	var results []persistence.BlogSearchResult
+	var err error
+	if all {
+		results, err = blog.SearchFTSWithAccount(account, query, 0)
+	} else {
+		results, err = blog.SearchFTSPageWithAccount(account, query, searchLimit, offset)
+	}
 	if err != nil {
 		log.ErrorF(log.ModuleBlog, "FTS search failed: %v", err)
 		h.Error(w, "search failed", h.StatusInternalServerError)
@@ -50,7 +63,7 @@ func HandleBlogFTSSearch(w h.ResponseWriter, r *h.Request) {
 	if hasMore {
 		results = results[:limit]
 	}
-	emitUsageHook(r, account, blog.HookFeatureUsed, "fts_search", "search_query", "", "", query, map[string]any{"all": all}, map[string]any{"result_count": len(results), "has_more": hasMore})
+	emitUsageHook(r, account, blog.HookFeatureUsed, "fts_search", "search_query", "", "", query, map[string]any{"all": all, "offset": offset}, map[string]any{"result_count": len(results), "has_more": hasMore})
 	items := make([]map[string]string, 0, len(results))
 	for _, result := range results {
 		items = append(items, map[string]string{
@@ -60,5 +73,6 @@ func HandleBlogFTSSearch(w h.ResponseWriter, r *h.Request) {
 		})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "has_more": hasMore})
+	nextOffset := offset + len(items)
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items, "has_more": hasMore, "next_offset": nextOffset})
 }
