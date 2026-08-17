@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>目标 · GUCCANG</title><link rel="stylesheet" href="/css/goal_map.css?v=1"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>目标 · GUCCANG</title><link rel="stylesheet" href="/css/goal_map.css?v=1">    <script src="/js/theme.js?v=1"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=1">
+</head>
 <body>
     <main class="goal-shell">
         <header class="goal-header"><a class="brand" href="/main"><span>G</span> GUCCANG</a><a class="manage-link" href="/goal/manage">详细管理</a></header>
