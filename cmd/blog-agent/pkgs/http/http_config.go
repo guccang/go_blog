@@ -9,6 +9,7 @@ import (
 	h "net/http"
 	"path/filepath"
 	control "service"
+	"sort"
 	"strings"
 )
 
@@ -505,23 +506,23 @@ func buildConfigContentWithComments(configs map[string]string, comments map[stri
 		}
 	}
 
-	// 输出其他配置项（不在预定义顺序中的）
-	for key, value := range configs {
-		found := false
-		for _, orderedKey := range configOrder {
-			if key == orderedKey {
-				found = true
-				break
-			}
+	// 其他配置项按 key 排序，避免相同配置因 map 遍历顺序不同而被误判为修改。
+	orderedSet := make(map[string]struct{}, len(configOrder))
+	for _, key := range configOrder {
+		orderedSet[key] = struct{}{}
+	}
+	extraKeys := make([]string, 0, len(configs))
+	for key := range configs {
+		if _, found := orderedSet[key]; !found {
+			extraKeys = append(extraKeys, key)
 		}
-		if !found {
-			// 写入注释
-			if comment, hasComment := comments[key]; hasComment {
-				content.WriteString("# " + comment + "\n")
-			}
-			// 写入配置项
-			content.WriteString(key + "=" + value + "\n\n")
+	}
+	sort.Strings(extraKeys)
+	for _, key := range extraKeys {
+		if comment, hasComment := comments[key]; hasComment {
+			content.WriteString("# " + comment + "\n")
 		}
+		content.WriteString(key + "=" + configs[key] + "\n\n")
 	}
 
 	return content.String()

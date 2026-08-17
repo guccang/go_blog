@@ -3,7 +3,7 @@ const store = {
   state: {
     level: 'daily',
     period: '',
-    view: 'detail',       // detail | list | review
+    view: 'map',          // map | detail | list | review
     goal: null,
     goals: [],
     parentGoal: null,

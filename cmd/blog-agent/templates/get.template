@@ -265,7 +265,7 @@
 	<script src="/js/editor.js"></script>
 	<script src="/js/utils.js"></script>
 	<script src="/js/permissions.js"></script>
-	<script src="/js/get.js"></script>
+	<script src="/js/get.js?v=public-share-account-1"></script>
 	<script src="/js/image_upload.js?v=2"></script>
 	<script src="/js/large_blog.js?v=readonly-bottom-load-2"></script>
 	<script src="/js/article_assistant.js?v=1"></script>

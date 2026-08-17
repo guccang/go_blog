@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品星图 · GUCCANG</title>
+    <link rel="stylesheet" href="/css/products.css?v=3">
+</head>
+<body>
+    <header class="product-header">
+        <a class="brand" href="/main" aria-label="返回 GUCCANG 主页"><span>G</span><strong>GUCCANG</strong></a>
+        <nav aria-label="产品库导航">
+            <a href="/main">返回主页</a>
+            <span class="account-avatar" aria-label="账户 {{.USER_ACCOUNT}}">{{.USER_AVATAR}}</span>
+        </nav>
+    </header>
+
+    <main class="product-shell">
+        <section class="product-hero" aria-labelledby="pageTitle">
+            <div class="hero-copy">
+                <p class="eyebrow">PRODUCT CONSTELLATION</p>
+                <h1 id="pageTitle">把好产品，拆成<br>可以复用的机制。</h1>
+                <p class="hero-description">收藏只是原料。记录它解决什么问题、如何让人惊喜，以及哪些机制能迁移到你的下一个点子。</p>
+                <button id="manualAddButton" class="manual-button" type="button"><span>＋</span> 手动录入产品</button>
+            </div>
+
+            <div class="scan-console" id="scanConsole">
+                <div class="constellation" aria-hidden="true">
+                    <i class="star star-a"></i><i class="star star-b"></i><i class="star star-c"></i><i class="star star-d"></i>
+                    <span class="orbit orbit-a"></span><span class="orbit orbit-b"></span><span class="orbit orbit-c"></span>
+                </div>
+                <div class="scan-content">
+                    <p class="scan-kicker"><span></span> AI SCANNER</p>
+                    <h2>给我一个产品网址</h2>
+                    <p>提交后转入后台研究队列，完成时自动保存为产品卡；你可以继续添加下一个游戏。</p>
+                    <form id="scanForm" class="scan-form">
+                        <label class="sr-only" for="scanURL">产品官网或介绍页网址</label>
+                        <input id="scanURL" name="url" type="url" required autocomplete="url" placeholder="https://example.com/product">
+                        <button id="scanButton" type="submit"><span class="button-label">开始扫描</span><span class="scan-loader" aria-hidden="true"></span></button>
+                    </form>
+                    <p id="scanStatus" class="scan-status" aria-live="polite">最多并行研究 2 个产品，同域名仍保持低频访问。</p>
+                    <section id="scanJobs" class="scan-jobs" aria-label="后台扫描任务" hidden>
+                        <div class="scan-jobs-heading"><strong>后台任务</strong><span id="activeScanCount"></span></div>
+                        <div id="scanJobList" class="scan-job-list"></div>
+                    </section>
+                </div>
+            </div>
+        </section>
+
+        <section class="library" aria-labelledby="libraryTitle">
+            <div class="library-heading">
+                <div>
+                    <p class="eyebrow">YOUR LIBRARY</p>
+                    <h2 id="libraryTitle">灵感原料</h2>
+                </div>
+                <p><strong id="productCount">0</strong> 个产品</p>
+            </div>
+            <div class="library-tools">
+                <label class="search-field" for="productSearch"><span aria-hidden="true">⌕</span><input id="productSearch" type="search" placeholder="搜索产品、机制或标签"></label>
+                <label class="type-field" for="typeFilter"><span>类型</span><select id="typeFilter"><option value="">全部产品</option></select></label>
+            </div>
+            <div id="tagFilters" class="tag-filters" aria-label="机制标签筛选"></div>
+            <div id="productGrid" class="product-grid" aria-live="polite"></div>
+            <div id="productEmpty" class="empty-state" hidden>
+                <span class="empty-star" aria-hidden="true">✦</span>
+                <h3>星图上还没有产品</h3>
+                <p>手动记下一款让你眼前一亮的产品，或让 AI 从网址开始拆解。</p>
+                <button id="emptyAddButton" type="button">录入第一个产品</button>
+            </div>
+            <div id="filterEmpty" class="empty-state compact" hidden>
+                <h3>没有找到匹配的产品</h3>
+                <p>换个关键词，或清除当前筛选。</p>
+                <button id="clearFiltersButton" type="button">清除筛选</button>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="productDialog" class="product-dialog">
+        <form id="productForm" method="dialog">
+            <div class="dialog-header">
+                <div><p id="dialogEyebrow" class="eyebrow">MANUAL ENTRY</p><h2 id="dialogTitle">录入产品</h2></div>
+                <button id="closeDialogButton" class="icon-button" type="button" aria-label="关闭">×</button>
+            </div>
+            <p id="draftNotice" class="draft-notice" hidden><span>AI 草稿</span> 请核对页面资料，并补充属于你的判断。</p>
+            <div class="dialog-mode-bar">
+                <div class="dialog-mode-switch" role="tablist" aria-label="产品卡展示方式">
+                    <button id="previewModeButton" type="button" role="tab" aria-selected="true" aria-controls="productPreview">阅读预览</button>
+                    <button id="editModeButton" type="button" role="tab" aria-selected="false" aria-controls="productEditor">编辑内容</button>
+                </div>
+                <p id="dialogModeHint">以研究报告形式阅读产品卡。</p>
+            </div>
+            <section id="productPreview" class="product-preview" role="tabpanel" aria-labelledby="previewModeButton"></section>
+            <div id="productEditor" class="product-editor" role="tabpanel" aria-labelledby="editModeButton" hidden>
+              <div class="form-grid">
+                <label class="field span-2"><span>产品名称 *</span><input name="name" maxlength="120" required placeholder="例如：Figma"></label>
+                <label class="field"><span>产品类型</span><input name="product_type" maxlength="40" list="productTypes" placeholder="软件"></label>
+                <label class="field"><span>来源链接</span><input name="source_url" type="url" maxlength="1000" placeholder="https://"></label>
+                <label class="field span-2"><span>封面图片链接</span><input name="cover_url" type="url" maxlength="1000" placeholder="https://"></label>
+                <label class="field span-2"><span>一句话介绍</span><textarea name="summary" rows="2" maxlength="600" placeholder="它是什么，以及最值得关注的地方"></textarea></label>
+                <label class="field span-2"><span>产品定位</span><textarea name="positioning" rows="3" maxlength="800" placeholder="它在什么市场中，以什么差异化价值服务谁"></textarea></label>
+                <label class="field"><span>目标用户</span><textarea name="target_users" rows="3" maxlength="800" placeholder="谁在什么场景下使用它"></textarea></label>
+                <label class="field"><span>解决的问题</span><textarea name="problem" rows="3" maxlength="1000" placeholder="用户为什么需要它"></textarea></label>
+                <label class="field span-2"><span>核心循环 / 核心工作流</span><textarea name="core_loop" rows="5" maxlength="1600" placeholder="触发目标 → 核心操作 → 即时反馈 → 长期成长或再次进入"></textarea></label>
+                <label class="field span-2"><span>核心机制拆解</span><textarea name="core_mechanism" rows="7" maxlength="2400" placeholder="规则如何相互作用，如何产生决策、反馈和体验"></textarea></label>
+                <label class="field span-2"><span>关键规则与玩法机制</span><textarea name="key_mechanics" rows="5" placeholder="每行一条关键规则或机制"></textarea><small>每行一条，最多 8 条</small></label>
+                <label class="field"><span>反馈与奖励</span><textarea name="feedback_rewards" rows="4" maxlength="1200" placeholder="即时反馈、数值反馈、奖励与成就感如何形成"></textarea></label>
+                <label class="field"><span>社交 / 竞争 / 协作</span><textarea name="social_mechanism" rows="4" maxlength="1000" placeholder="没有相关机制时可以留空"></textarea></label>
+                <label class="field"><span>惊喜点</span><textarea name="surprise" rows="3" maxlength="1000" placeholder="第一次体验哪里让人眼前一亮"></textarea></label>
+                <label class="field"><span>留存点</span><textarea name="retention" rows="3" maxlength="1200" placeholder="用户为什么持续回来"></textarea></label>
+                <label class="field span-2"><span>商业模式</span><textarea name="business_model" rows="2" maxlength="1000" placeholder="订阅、买断、广告、内购或抽成"></textarea></label>
+                <label class="field"><span>用户认可点</span><textarea name="strengths" rows="5" placeholder="每行一条被认可的优点"></textarea><small>每行一条，最多 8 条</small></label>
+                <label class="field"><span>论坛与用户吐槽</span><textarea name="user_complaints" rows="5" placeholder="每行一条有公开讨论依据的问题"></textarea><small>无社区证据时留空</small></label>
+                <label class="field span-2"><span>竞品差异</span><textarea name="competitive_edge" rows="3" maxlength="1000" placeholder="相较于替代方案，它的关键差异是什么"></textarea></label>
+                <label class="field"><span>可迁移灵感</span><textarea name="transferable_ideas" rows="5" placeholder="每行一条可迁移的设计原则"></textarea><small>每行一条，最多 8 条</small></label>
+                <label class="field"><span>缺点与机会</span><textarea name="opportunities" rows="5" placeholder="每行一条可以改进或重做的机会"></textarea><small>每行一条，最多 8 条</small></label>
+                <label class="field span-2"><span>机制标签</span><input name="tags" placeholder="多人协作、游戏化、创作、订阅"><small>使用逗号分隔，最多 12 个</small></label>
+              </div>
+              <section id="researchEvidence" class="research-evidence" hidden>
+                <div class="evidence-heading"><div><p class="eyebrow">RESEARCH EVIDENCE</p><h3>研究来源与可信度</h3></div><span id="researchTime"></span></div>
+                <div id="confidenceSummary" class="confidence-summary"></div>
+                <div id="researchSources" class="research-sources"></div>
+                <p class="evidence-note">官方事实、媒体评测和社区观点会分别标记；未完整抓取的来源只使用搜索摘要。</p>
+              </section>
+            </div>
+            <datalist id="productTypes"><option value="游戏"><option value="软件"><option value="硬件"><option value="内容"><option value="商业服务"></datalist>
+            <div class="dialog-actions">
+                <button id="deleteProductButton" class="danger-button" type="button" hidden>删除产品</button>
+                <span></span>
+                <button id="cancelProductButton" class="secondary-button" type="button">关闭</button>
+                <button id="previewEditButton" class="save-button" type="button">修改产品卡</button>
+                <button id="saveProductButton" class="save-button" type="submit">保存到产品库</button>
+            </div>
+            <p id="formStatus" class="form-status" aria-live="polite"></p>
+        </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/js/products.js?v=3"></script>
+</body>
+</html>

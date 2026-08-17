@@ -4,9 +4,10 @@ import { api } from '../api.js';
 import { currentPeriod, LEVELS, PARENT_LEVEL } from '../utils.js';
 import './goal-tabs.js';
 import './period-nav.js';
-import './goal-detail.js';
+import './goal-detail.js?v=goal-parent-fix-1';
 import './goal-list.js';
 import './review-panel.js';
+import './goal-map.js?v=goal-wheel-1';
 
 class GoalApp extends HTMLElement {
   constructor() {
@@ -59,7 +60,10 @@ class GoalApp extends HTMLElement {
       const level = LEVELS.includes(requestedLevel) ? requestedLevel : store.state.level;
       const requestedPeriod = params.get('period');
       const period = requestedPeriod || currentPeriod(level);
-      store.setState({ level, period });
+	  const requestedView = params.get('view');
+	  const view = ['map', 'detail', 'list', 'review'].includes(requestedView) ? requestedView : (LEVELS.includes(requestedLevel) ? 'detail' : store.state.view);
+	  store.setState({ level, period, view });
+	  this.renderView();
       this.loadGoal();
     });
   }
@@ -91,16 +95,14 @@ class GoalApp extends HTMLElement {
 
   async loadParentGoal(parentId) {
     // parentId 是 "level|period" 格式或直接的 goal ID
-    // 遍历查找
     try {
-      const parentLevel = PARENT_LEVEL[store.state.level] || 'monthly';
-      const res = await api.listGoals(parentLevel, '');
-      if (res.success && res.data) {
-        const parent = res.data.find(g =>
-          `${g.level}|${g.period}` === parentId || g.period === parentId
-        );
-        store.setState({ parentGoal: parent || null });
-      }
+      const [savedLevel] = parentId.split('|');
+      const parentLevel = LEVELS.includes(savedLevel)
+        ? savedLevel
+        : (PARENT_LEVEL[store.state.level] || 'monthly');
+	  const [, savedPeriod] = parentId.split('|');
+	  const res = await api.getGoal(parentLevel, savedPeriod || parentId);
+	  if (res.success) store.setState({ parentGoal: res.data || null });
     } catch (e) {
       store.setState({ parentGoal: null });
     }
@@ -110,6 +112,9 @@ class GoalApp extends HTMLElement {
     const viewEl = this.querySelector('#goal-view');
     if (!viewEl) return;
     switch (store.state.view) {
+	  case 'map':
+		viewEl.innerHTML = '<goal-map></goal-map>';
+		break;
       case 'detail':
         viewEl.innerHTML = '<goal-detail></goal-detail>';
         break;

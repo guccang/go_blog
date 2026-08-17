@@ -1,7 +1,10 @@
 // statics/js/goal/components/task-item.js
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { PRIORITY_LABELS, escapeHtml } from '../utils.js';
+import { escapeHtml } from '../utils.js';
+
+const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const TIME_SLOTS = { morning: '上午', afternoon: '下午' };
 
 class TaskItem extends HTMLElement {
   set task(value) { this._task = value; this.render(); }
@@ -12,15 +15,20 @@ class TaskItem extends HTMLElement {
     if (!t) return;
     const checked = t.status === 'completed' ? 'checked' : '';
     const doneClass = t.status === 'completed' ? 'task-done' : '';
+	const schedules = t.schedules || [];
+	const scheduleLabel = schedules.map(schedule => [schedule.weekday ? WEEKDAYS[schedule.weekday - 1] : '', TIME_SLOTS[schedule.time_slot] || ''].filter(Boolean).join(' ')).join(' · ');
+	const showsSchedule = ['daily', 'weekly'].includes(store.state.goal?.level);
+	const importance = t.importance || 3;
 
     this.innerHTML = `
       <div class="task-item ${doneClass}">
         <div class="task-main">
           <input type="checkbox" class="task-check" ${checked} data-action="toggle">
           <span class="task-title" data-action="edit-title">${escapeHtml(t.title)}</span>
+		  <span class="task-importance importance-${importance}" title="用户定义的重要性">重要性 ${importance}</span>
+		  ${showsSchedule ? (scheduleLabel ? `<span class="task-schedule" title="${escapeHtml(scheduleLabel)}">${schedules.length} 个时段</span>` : '<span class="task-schedule task-unscheduled">未排期</span>') : ''}
           ${t.deadline ? `<span class="task-deadline">📅${t.deadline}</span>` : ''}
           ${t.estimate_hours ? `<span class="task-estimate">⏱${t.estimate_hours}h</span>` : ''}
-          <span class="task-priority priority-${t.priority}">${PRIORITY_LABELS[t.priority] || ''}</span>
           <span class="task-status-label">${t.status === 'in_progress' ? '进行中' : ''}${t.status === 'cancelled' ? '已取消' : ''}</span>
           <button class="btn-icon-sm" data-action="expand">${this._expanded ? '▲' : '▼'}</button>
           <button class="btn-icon-sm" data-action="edit">✏</button>
@@ -66,8 +74,10 @@ class TaskItem extends HTMLElement {
   _renderExpanded() {
     const subtasks = this._task.subtasks || [];
     const notes = this._task.notes || [];
+	const schedules = this._task.schedules || [];
     return `
       <div class="task-expanded">
+		${schedules.length ? `<div class="task-plan-strip">${schedules.map(schedule => `<span>${schedule.weekday ? WEEKDAYS[schedule.weekday - 1] : ''}${TIME_SLOTS[schedule.time_slot] || ''}</span>`).join('')}</div>` : ''}
         <div class="subtask-section">
           <div class="subtask-list">
             ${subtasks.map(s => `

@@ -34,15 +34,23 @@ func HandleExercise(w h.ResponseWriter, r *h.Request) {
 	view.PageExercise(w)
 }
 
-// HandleExerciseManage keeps the detailed template, collection and profile tools
-// available without making the daily exercise page carry all of their complexity.
 func HandleExerciseManage(w h.ResponseWriter, r *h.Request) {
 	LogRemoteAddr("HandleExerciseManage", r)
 	if checkLogin(r) != 0 {
 		h.Redirect(w, r, "/index", h.StatusFound)
 		return
 	}
-	view.PageExerciseManage(w)
+	h.Redirect(w, r, "/exercise", h.StatusFound)
+}
+
+func HandleExercisePro(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleExercisePro", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", h.StatusFound)
+		return
+	}
+	emitUsageHook(r, getAccountFromRequest(r), blog.HookPageOpened, "exercise_professional", "page", "exercise_pro", "专业训练", "", nil, map[string]any{"status": "success"})
+	view.PageExercisePro(w)
 }
 
 func HandleReadingManage(w h.ResponseWriter, r *h.Request) {

@@ -64,6 +64,33 @@ func initSQLite() error {
 			completion_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0,
 			duration_ms INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS clipboard_items (
+			id TEXT PRIMARY KEY, account TEXT NOT NULL, text_content TEXT NOT NULL DEFAULT '',
+			image_ids_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_cards (
+			id TEXT PRIMARY KEY, account TEXT NOT NULL, name TEXT NOT NULL,
+			is_new INTEGER NOT NULL DEFAULT 0,
+			source_url TEXT NOT NULL DEFAULT '', cover_url TEXT NOT NULL DEFAULT '',
+			product_type TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '',
+			positioning TEXT NOT NULL DEFAULT '',
+			target_users TEXT NOT NULL DEFAULT '', problem TEXT NOT NULL DEFAULT '',
+			core_loop TEXT NOT NULL DEFAULT '', core_mechanism TEXT NOT NULL DEFAULT '',
+			key_mechanics_json TEXT NOT NULL DEFAULT '[]', feedback_rewards TEXT NOT NULL DEFAULT '',
+			social_mechanism TEXT NOT NULL DEFAULT '', surprise TEXT NOT NULL DEFAULT '',
+			retention TEXT NOT NULL DEFAULT '', business_model TEXT NOT NULL DEFAULT '',
+			strengths_json TEXT NOT NULL DEFAULT '[]', user_complaints_json TEXT NOT NULL DEFAULT '[]',
+			competitive_edge TEXT NOT NULL DEFAULT '',
+			transferable_ideas_json TEXT NOT NULL DEFAULT '[]', opportunities_json TEXT NOT NULL DEFAULT '[]',
+			tags_json TEXT NOT NULL DEFAULT '[]', research_sources_json TEXT NOT NULL DEFAULT '[]',
+			confidence_json TEXT NOT NULL DEFAULT '{}', evidence_json TEXT NOT NULL DEFAULT '{}',
+			last_researched_at TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_scan_jobs (
+			id TEXT PRIMARY KEY, account TEXT NOT NULL, source_url TEXT NOT NULL, provider TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL, product_id TEXT NOT NULL DEFAULT '', error_message TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT '', finished_at TEXT NOT NULL DEFAULT ''
+		)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS blog_chunks_fts USING fts5(
 			account UNINDEXED, blog_title UNINDEXED, chunk_index UNINDEXED, heading, content
 		)`,
@@ -71,8 +98,14 @@ func initSQLite() error {
 		"CREATE INDEX IF NOT EXISTS idx_blog_hooks_account_created ON blog_hooks(account, created_at DESC, id DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_blogs_account_modify ON blogs(account, modify_time DESC, title DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_blogs_account_access ON blogs(account, access_time DESC, modify_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_blogs_account_access_v2 ON blogs(account, access_time DESC, modify_time DESC, title DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_media_assets_account ON media_assets(account, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_pi_usage_account_created ON pi_usage(account, created_at DESC, id DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_clipboard_items_account_created ON clipboard_items(account, created_at DESC, id DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_product_cards_account_updated ON product_cards(account, updated_at DESC, id DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_product_scan_jobs_account_created ON product_scan_jobs(account, created_at DESC, id DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_product_scan_jobs_status_created ON product_scan_jobs(status, created_at, id)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_product_scan_jobs_active_url ON product_scan_jobs(account,source_url) WHERE status IN ('queued','running')",
 		`CREATE VIRTUAL TABLE IF NOT EXISTS blogs_fts USING fts5(account UNINDEXED, title, content,
 			content='blogs', content_rowid='rowid')`,
 		`CREATE TRIGGER IF NOT EXISTS blogs_ai AFTER INSERT ON blogs BEGIN
@@ -93,6 +126,10 @@ func initSQLite() error {
 		return err
 	}
 	if err := ensureMediaAssetColumns(db); err != nil {
+		db.Close()
+		return err
+	}
+	if err := ensureProductCardColumns(db); err != nil {
 		db.Close()
 		return err
 	}
@@ -174,6 +211,53 @@ func ensureBlogHookColumns(db *sql.DB) error {
 		}
 		if _, err := db.Exec("ALTER TABLE blog_hooks ADD COLUMN " + name + " " + definition); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// ensureProductCardColumns 兼容已经创建过产品库表的本地数据库。
+func ensureProductCardColumns(db *sql.DB) error {
+	columns := map[string]string{
+		"positioning":           "TEXT NOT NULL DEFAULT ''",
+		"core_loop":             "TEXT NOT NULL DEFAULT ''",
+		"key_mechanics_json":    "TEXT NOT NULL DEFAULT '[]'",
+		"feedback_rewards":      "TEXT NOT NULL DEFAULT ''",
+		"social_mechanism":      "TEXT NOT NULL DEFAULT ''",
+		"strengths_json":        "TEXT NOT NULL DEFAULT '[]'",
+		"user_complaints_json":  "TEXT NOT NULL DEFAULT '[]'",
+		"competitive_edge":      "TEXT NOT NULL DEFAULT ''",
+		"research_sources_json": "TEXT NOT NULL DEFAULT '[]'",
+		"confidence_json":       "TEXT NOT NULL DEFAULT '{}'",
+		"evidence_json":         "TEXT NOT NULL DEFAULT '{}'",
+		"last_researched_at":    "TEXT NOT NULL DEFAULT ''",
+		"is_new":                "INTEGER NOT NULL DEFAULT 0",
+	}
+	rows, err := db.Query("PRAGMA table_info(product_cards)")
+	if err != nil {
+		return err
+	}
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for name, definition := range columns {
+		if existing[name] {
+			continue
+		}
+		if _, err := db.Exec("ALTER TABLE product_cards ADD COLUMN " + name + " " + definition); err != nil {
+			return fmt.Errorf("add product_cards.%s: %w", name, err)
 		}
 	}
 	return nil
@@ -275,6 +359,29 @@ func ListBlogSummaries(account string, limit, offset, authFlag int) ([]*module.B
 	return result, rows.Err()
 }
 
+// ListBlogsByTitlePrefix 只读取指定前缀的博客，避免业务模块加载整个账户的正文。
+func ListBlogsByTitlePrefix(account, prefix string) ([]*module.Blog, error) {
+	if account == "" || prefix == "" {
+		return []*module.Blog{}, nil
+	}
+	rows, err := requireSQLite().Query(`SELECT account,title,content,create_time,modify_time,access_time,
+		modify_num,access_num,auth_type,tags,encrypt FROM blogs
+		WHERE account=? AND instr(title,?)=1 ORDER BY modify_time DESC, title DESC`, account, prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]*module.Blog, 0)
+	for rows.Next() {
+		item, scanErr := scanBlog(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
 // ListRecentBlogSummaries 返回最近访问的正式博客及正文前缀，供主页生成轻量预览。
 // 系统、管理、日记和加密内容不会进入“继续阅读”。
 func ListRecentBlogSummaries(account string, limit, authFlag int) ([]*module.Blog, error) {
@@ -295,9 +402,7 @@ func ListRecentBlogSummaries(account string, limit, authFlag int) ([]*module.Blo
 		query += " AND (auth_type & ?) != 0"
 		args = append(args, authFlag)
 	}
-	query += ` ORDER BY
-		CASE WHEN trim(access_time)='' THEN 1 ELSE 0 END,
-		access_time DESC, modify_time DESC, title DESC LIMIT ?`
+	query += " ORDER BY access_time DESC, modify_time DESC, title DESC LIMIT ?"
 	args = append(args, limit)
 	rows, err := requireSQLite().Query(query, args...)
 	if err != nil {
@@ -566,12 +671,24 @@ func ListBlogAccountsWithoutCredentials() ([]string, error) {
 }
 
 func CreateLoginSession(sessionID, account string, expiresAt time.Time) error {
-	_, err := requireSQLite().Exec("DELETE FROM login_sessions WHERE account=?", account)
+	tx, err := requireSQLite().Begin()
 	if err != nil {
 		return err
 	}
-	_, err = requireSQLite().Exec("INSERT INTO login_sessions(session_id,account,expires_at,created_at) VALUES(?,?,?,?)", sessionID, account, expiresAt.Format("2006-01-02 15:04:05"), sqliteNow())
-	return err
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM login_sessions WHERE account=? AND expires_at<=?", account, sqliteNow()); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("INSERT INTO login_sessions(session_id,account,expires_at,created_at) VALUES(?,?,?,?)", sessionID, account, expiresAt.Format("2006-01-02 15:04:05"), sqliteNow()); err != nil {
+		return err
+	}
+	// 同一账号允许最近两个设备同时在线；第三次登录只淘汰最旧会话。
+	if _, err := tx.Exec(`DELETE FROM login_sessions WHERE account=? AND rowid NOT IN (
+		SELECT rowid FROM login_sessions WHERE account=? ORDER BY created_at DESC,rowid DESC LIMIT 2
+	)`, account, account); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func DeleteLoginSessions(account string) error {

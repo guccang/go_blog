@@ -8,6 +8,8 @@ import (
 	"module"
 	log "mylog"
 	h "net/http"
+	"net/url"
+	"persistence"
 	"regexp"
 	control "service"
 	"share"
@@ -230,15 +232,30 @@ func HandleGet(w h.ResponseWriter, r *h.Request) {
 		account = urlAccount
 	}
 
-	// If still no account, use admin account as fallback for public blogs
-	if account == "" {
-		account = config.GetAdminAccount()
-	}
-
 	// 首先获取博客信息以检查权限
-	blog := control.GetBlog(account, blogname)
+	var blog *module.Blog
+	if account != "" {
+		blog = control.GetBlog(account, blogname)
+	}
+	// 兼容未携带 account 的公开链接：当前账号找不到时，只跨账号查找可公开访问的同名文章。
+	if blog == nil && urlAccount == "" {
+		accounts, err := persistence.FindPublicBlogAccountsByTitle(blogname)
+		if err != nil {
+			log.ErrorF(log.ModuleBlog, "resolve public blog account failed title=%s: %v", blogname, err)
+			h.Error(w, "failed to resolve public blog", h.StatusInternalServerError)
+			return
+		}
+		if len(accounts) > 1 {
+			h.Error(w, "multiple public blogs use this title; add the account parameter", h.StatusConflict)
+			return
+		}
+		if len(accounts) == 1 {
+			account = accounts[0]
+			blog = control.GetBlog(account, blogname)
+		}
+	}
 	if blog == nil {
-		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusBadRequest)
+		h.Error(w, fmt.Sprintf("blogname=%s not find", blogname), h.StatusNotFound)
 		return
 	}
 
@@ -585,16 +602,30 @@ func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 		return
 	}
 
-	// 创建分享链接
-	url, pwd := share.AddSharedBlog(blogname)
-
 	// 构建完整的URL（包含域名和协议）
 	host := r.Host
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	fullURL := fmt.Sprintf("%s://%s%s", scheme, host, url)
+	if forwardedProto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); forwardedProto == "http" || forwardedProto == "https" {
+		scheme = forwardedProto
+	}
+
+	// 公开、未加密、非日记博客直接生成带账号的永久访问链接。
+	if blog.Encrypt == 0 && (blog.AuthType&module.EAuthType_public) != 0 && (blog.AuthType&(module.EAuthType_diary|module.EAuthType_encrypt)) == 0 {
+		fullURL := publicBlogShareURL(scheme, host, blogname, account)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(h.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true, "url": fullURL, "pwd": "", "blogname": blogname, "account": account, "mode": "public",
+		})
+		return
+	}
+
+	// 非公开内容沿用有密码和次数限制的临时分享链接。
+	shareURL, pwd := share.AddSharedBlog(blogname)
+	fullURL := fmt.Sprintf("%s://%s%s", scheme, host, shareURL)
 
 	// 返回JSON响应
 	response := map[string]interface{}{
@@ -602,11 +633,17 @@ func HandleCreateShare(w h.ResponseWriter, r *h.Request) {
 		"url":      fullURL,
 		"pwd":      pwd,
 		"blogname": blogname,
+		"account":  account,
+		"mode":     "protected",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(h.StatusOK)
 	json.NewEncoder(w).Encode(response)
+}
+
+func publicBlogShareURL(scheme, host, blogname, account string) string {
+	return fmt.Sprintf("%s://%s/get?blogname=%s&account=%s", scheme, host, url.QueryEscape(blogname), url.QueryEscape(account))
 }
 
 // HandleMigration handles migration page display

@@ -20,18 +20,27 @@ var exerciseMu sync.RWMutex
 // ========== 数据结构 ==========
 
 type ExerciseItem struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Type        string     `json:"type"`
-	Duration    int        `json:"duration"`
-	Intensity   string     `json:"intensity"`
-	Calories    int        `json:"calories"`
-	Notes       string     `json:"notes"`
-	Completed   bool       `json:"completed"`
-	Weight      float64    `json:"weight"`
-	CreatedAt   time.Time  `json:"created_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	BodyParts   []string   `json:"body_parts"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Type             string     `json:"type"`
+	Duration         int        `json:"duration"`
+	Intensity        string     `json:"intensity"`
+	Calories         int        `json:"calories"`
+	Notes            string     `json:"notes"`
+	Completed        bool       `json:"completed"`
+	Weight           float64    `json:"weight"`
+	CreatedAt        time.Time  `json:"created_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	BodyParts        []string   `json:"body_parts"`
+	Source           string     `json:"source,omitempty"`
+	PlanID           string     `json:"plan_id,omitempty"`
+	MovementID       string     `json:"movement_id,omitempty"`
+	ProgressionLevel int        `json:"progression_level,omitempty"`
+	Sets             int        `json:"sets,omitempty"`
+	Reps             int        `json:"reps,omitempty"`
+	HoldSeconds      int        `json:"hold_seconds,omitempty"`
+	RestSeconds      int        `json:"rest_seconds,omitempty"`
+	Tempo            string     `json:"tempo,omitempty"`
 }
 
 type ExerciseTemplate struct {
@@ -91,6 +100,21 @@ type ExerciseStats struct {
 	Consistency   float64        `json:"consistency"`
 }
 
+type ExerciseDayStat struct {
+	Date     string `json:"date"`
+	Duration int    `json:"duration"`
+	Count    int    `json:"count"`
+}
+
+type ExerciseOverview struct {
+	StartDate     string            `json:"start_date"`
+	EndDate       string            `json:"end_date"`
+	ExerciseDays  int               `json:"exercise_days"`
+	TotalDuration int               `json:"total_duration"`
+	CurrentStreak int               `json:"current_streak"`
+	Days          []ExerciseDayStat `json:"days"`
+}
+
 func Info() {
 	log.Debug(log.ModuleExercise, "info exercise v2.0 (simple)")
 }
@@ -108,10 +132,11 @@ func generateUserProfileBlogTitle() string { return "exercise-user-profile" }
 func generateMETValuesBlogTitle() string   { return "exercise-met-values" }
 
 func getDateFromTitle(title string) string {
-	if strings.HasPrefix(title, "exercise-") && title != "exercise-templates" {
-		return strings.TrimPrefix(title, "exercise-")
+	value := strings.TrimSuffix(strings.TrimPrefix(title, "exercise-"), ".md")
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return ""
 	}
-	return ""
+	return value
 }
 
 func getDefaultMETValues() []METValue {
@@ -150,10 +175,17 @@ func calculateCaloriesInternal(exerciseType, intensity string, duration int, wei
 
 // ========== 对外接口 ==========
 
-func AddExercise(acc, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string) (*ExerciseItem, error) {
+func AddExercise(acc, date, name, exerciseType string, duration int, intensity string, calories int, notes string, weight float64, bodyParts []string, completed bool) (*ExerciseItem, error) {
 	exerciseMu.Lock()
 	defer exerciseMu.Unlock()
 
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, fmt.Errorf("invalid exercise date")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || duration < 1 {
+		return nil, fmt.Errorf("exercise name and duration are required")
+	}
 	exerciseList, _ := getExercisesByDateInternal(acc, date)
 	if exerciseList.Date == "" {
 		exerciseList = ExerciseList{Date: date, Items: []ExerciseItem{}}
@@ -165,10 +197,14 @@ func AddExercise(acc, date, name, exerciseType string, duration int, intensity s
 		}
 	}
 
+	now := time.Now()
 	item := ExerciseItem{
-		ID: fmt.Sprintf("%d", time.Now().UnixNano()), Name: name, Type: exerciseType,
+		ID: fmt.Sprintf("%d", now.UnixNano()), Name: name, Type: exerciseType,
 		Duration: duration, Intensity: intensity, Calories: calories, Notes: notes,
-		Completed: false, Weight: weight, CreatedAt: time.Now(), BodyParts: bodyParts,
+		Completed: completed, Weight: weight, CreatedAt: now, BodyParts: bodyParts,
+	}
+	if completed {
+		item.CompletedAt = &now
 	}
 	exerciseList.Items = append(exerciseList.Items, item)
 
@@ -294,7 +330,7 @@ func GetAllExercises(acc string) (map[string]ExerciseList, error) {
 
 func getAllExercisesInternal(acc string) (map[string]ExerciseList, error) {
 	result := make(map[string]ExerciseList)
-	for _, b := range blog.GetBlogsWithAccount(acc) {
+	for _, b := range blog.ListByTitlePrefixWithAccount(acc, "exercise-") {
 		date := getDateFromTitle(b.Title)
 		if date != "" {
 			var exerciseList ExerciseList
@@ -304,6 +340,69 @@ func getAllExercisesInternal(acc string) (map[string]ExerciseList, error) {
 		}
 	}
 	return result, nil
+}
+
+func GetExerciseOverview(acc, endDate string, days int) (*ExerciseOverview, error) {
+	exerciseMu.RLock()
+	defer exerciseMu.RUnlock()
+
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end date")
+	}
+	if days != 7 && days != 30 {
+		return nil, fmt.Errorf("days must be 7 or 30")
+	}
+	allExercises, err := getAllExercisesInternal(acc)
+	if err != nil {
+		return nil, err
+	}
+	return calculateExerciseOverview(allExercises, end, days), nil
+}
+
+func calculateExerciseOverview(allExercises map[string]ExerciseList, end time.Time, days int) *ExerciseOverview {
+	start := end.AddDate(0, 0, -days+1)
+	overview := &ExerciseOverview{
+		StartDate: start.Format("2006-01-02"),
+		EndDate:   end.Format("2006-01-02"),
+		Days:      make([]ExerciseDayStat, 0, days),
+	}
+	completedDates := make(map[string]bool)
+	for date, exerciseList := range allExercises {
+		for _, item := range exerciseList.Items {
+			if item.Completed {
+				completedDates[date] = true
+				break
+			}
+		}
+	}
+	for offset := 0; offset < days; offset++ {
+		date := start.AddDate(0, 0, offset).Format("2006-01-02")
+		day := ExerciseDayStat{Date: date}
+		for _, item := range allExercises[date].Items {
+			if !item.Completed {
+				continue
+			}
+			day.Duration += item.Duration
+			day.Count++
+		}
+		if day.Count > 0 {
+			overview.ExerciseDays++
+			overview.TotalDuration += day.Duration
+		}
+		overview.Days = append(overview.Days, day)
+	}
+
+	// 今天尚未锻炼时允许从昨天开始计算，避免白天过早打断连续记录。
+	cursor := end
+	if !completedDates[cursor.Format("2006-01-02")] {
+		cursor = cursor.AddDate(0, 0, -1)
+	}
+	for completedDates[cursor.Format("2006-01-02")] {
+		overview.CurrentStreak++
+		cursor = cursor.AddDate(0, 0, -1)
+	}
+	return overview
 }
 
 func saveExercisesToBlog(acc string, exerciseList ExerciseList) error {

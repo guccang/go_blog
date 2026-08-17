@@ -254,10 +254,14 @@
                     // Success - redirect
                     loginButton.textContent = '登录成功';
                     loginButton.style.backgroundColor = 'var(--success-color)';
-                    
-                    setTimeout(() => {
-                        window.location.href = xhr.responseURL;
-                    }, 500);
+
+                    let response = {};
+                    try {
+                        response = JSON.parse(xhr.responseText);
+                    } catch (error) {
+                        console.warn('登录响应解析失败，使用默认跳转地址', error);
+                    }
+                    window.location.replace(response.redirect || '/main');
                 } else {
                     // Error
                     loginButton.textContent = '登 录';
@@ -274,6 +278,7 @@
         formData.append('password', pwd);
         formData.append('device_id', deviceId);
         xhr.open('POST', '/login', true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         xhr.send(formData);
     }
     
@@ -371,10 +376,14 @@
                     // Success - redirect
                     loginButton.textContent = '登录成功';
                     loginButton.style.backgroundColor = 'var(--success-color)';
-                    
-                    setTimeout(() => {
-                        window.location.href = xhr.responseURL;
-                    }, 500);
+
+                    let response = {};
+                    try {
+                        response = JSON.parse(xhr.responseText);
+                    } catch (error) {
+                        console.warn('登录响应解析失败，使用默认跳转地址', error);
+                    }
+                    window.location.replace(response.redirect || '/main');
                 } else {
                     // Error
                     loginButton.textContent = '短信登录';
@@ -389,6 +398,7 @@
         formData.append('code', smsCode);
         formData.append('device_id', deviceId);
         xhr.open('POST', '/loginsms', true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         xhr.send(formData);
     }
 

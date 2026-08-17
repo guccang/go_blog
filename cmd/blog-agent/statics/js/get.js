@@ -1202,19 +1202,24 @@ function onShare() {
 	.then(data => {
 		if (data.success) {
 			// 复制分享链接到剪贴板
-			const shareText = `📝 博客分享\n标题：${data.blogname}\n链接：${data.url}\n访问密码：${data.pwd}\n\n💡 点击链接并输入密码即可查看博客内容`;
+			const shareText = data.mode === 'public'
+				? data.url
+				: `📝 博客分享\n标题：${data.blogname}\n链接：${data.url}\n访问密码：${data.pwd}\n\n💡 点击链接并输入密码即可查看博客内容`;
+			const successMessage = data.mode === 'public'
+				? '公开访问链接已复制到剪贴板！'
+				: '🎉 分享链接已复制到剪贴板！';
 			
 			if (navigator.clipboard && window.isSecureContext) {
 				// 使用现代 Clipboard API
 				navigator.clipboard.writeText(shareText).then(() => {
-					showToast('🎉 分享链接已复制到剪贴板！', 'success');
+					showToast(successMessage, 'success');
 				}).catch(err => {
 					console.error('复制失败:', err);
-					fallbackCopyTextToClipboard(shareText);
+					fallbackCopyTextToClipboard(shareText, successMessage);
 				});
 			} else {
 				// 降级到传统方法
-				fallbackCopyTextToClipboard(shareText);
+				fallbackCopyTextToClipboard(shareText, successMessage);
 			}
 		} else {
 			showToast('生成分享链接失败', 'error');
@@ -1232,7 +1237,7 @@ function onShare() {
 }
 
 // 降级复制方法（适用于旧浏览器或非HTTPS环境）
-function fallbackCopyTextToClipboard(text) {
+function fallbackCopyTextToClipboard(text, successMessage = '🎉 分享链接已复制到剪贴板！') {
 	const textArea = document.createElement("textarea");
 	textArea.value = text;
 	textArea.style.top = "0";
@@ -1247,7 +1252,7 @@ function fallbackCopyTextToClipboard(text) {
 	try {
 		const successful = document.execCommand('copy');
 		if (successful) {
-			showToast('🎉 分享链接已复制到剪贴板！', 'success');
+			showToast(successMessage, 'success');
 		} else {
 			showToast('复制失败，请手动复制分享信息', 'error');
 		}

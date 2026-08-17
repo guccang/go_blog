@@ -38,6 +38,9 @@ func Init() {
 	bookNotes = make(map[string]map[string][]*module.BookNote)
 	bookInsights = make(map[string]map[string]*module.BookInsight)
 	readingPlans = make(map[string]map[string]*module.ReadingPlan)
+	if err := MigrateLegacyReadingBooks(); err != nil {
+		log.ErrorF(log.ModuleReading, "legacy reading migration failed: %v", err)
+	}
 }
 
 // ========== 辅助函数 ==========

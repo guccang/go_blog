@@ -99,6 +99,7 @@ button { cursor: pointer; }
 .more-panel a:hover { background: var(--bg); color: var(--text); }
 
 .main-shell { width: min(920px, calc(100% - 40px)); margin: 0 auto; padding: 74px 0 80px; }
+.quick-section { margin-bottom: 58px; }
 .query-hero { width: min(760px, 100%); margin: 0 auto 62px; }
 .eyebrow {
     margin: 0 0 10px;
@@ -217,7 +218,7 @@ h1 { margin: 0; font-size: clamp(32px, 6vw, 48px); line-height: 1.15; letter-spa
 .recent-empty p { margin: 0; }
 .recent-empty a { color: var(--accent); font-weight: 700; }
 
-.quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .quick-item {
     display: grid;
     gap: 5px;
@@ -284,6 +285,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
     .main-header { width: calc(100% - 28px); height: 64px; }
     .brand strong { display: none; }
     .main-shell { width: calc(100% - 28px); padding-top: 48px; }
+    .quick-section { margin-bottom: 46px; }
     .query-hero { margin-bottom: 48px; }
     .query-form { display: block; padding: 8px; }
     .query-form input { width: 100%; }

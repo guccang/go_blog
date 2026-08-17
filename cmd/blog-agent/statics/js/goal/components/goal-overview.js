@@ -11,6 +11,20 @@ class GoalOverview extends HTMLElement {
 
   disconnectedCallback() { if (this._unsub) this._unsub(); }
 
+  updateProgress(progress) {
+    const value = Number.isFinite(progress) ? progress : 0;
+    const orb = this.querySelector('.goal-orb');
+    if (orb) {
+      orb.style.setProperty('--goal-progress', `${value}%`);
+      const label = orb.querySelector('strong');
+      if (label) label.textContent = `${value}%`;
+    }
+    const progressText = this.querySelector('.progress-text');
+    if (progressText) progressText.textContent = `进度 ${value}%`;
+    const progressFill = this.querySelector('.progress-fill');
+    if (progressFill) progressFill.style.width = `${value}%`;
+  }
+
   render() {
     const { goal, parentGoal } = store.state;
     if (!goal) {

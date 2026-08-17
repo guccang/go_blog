@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>内贴板 · GUCCANG</title>
+    <link rel="stylesheet" href="/css/clipboard.css?v=1">
+</head>
+<body>
+    <header class="clipboard-header">
+        <a class="clipboard-brand" href="/main"><span>G</span><strong>GUCCANG</strong></a>
+        <p><i></i>账号内同步</p>
+        <a class="clipboard-home" href="/main">返回主页</a>
+    </header>
+
+    <main class="clipboard-shell">
+        <section class="clipboard-hero" aria-labelledby="clipboardTitle">
+            <p class="clipboard-kicker">PRIVATE TRANSFER TRAY</p>
+            <h1 id="clipboardTitle">在这里粘贴，<br>在另一台机器带走。</h1>
+            <p class="clipboard-intro">文字和图片可以放在同一条记录里，仅当前账号可见。</p>
+        </section>
+
+        <section class="clipboard-composer" aria-labelledby="composerTitle">
+            <div class="transfer-line" aria-hidden="true"><span></span><b></b><span></span></div>
+            <div class="composer-heading">
+                <div><p>新传输</p><h2 id="composerTitle">粘贴内容</h2></div>
+                <span>Ctrl / ⌘ + V</span>
+            </div>
+            <textarea id="clipboardText" maxlength="200000" placeholder="在这里粘贴文字或截图，也可以手动输入……"></textarea>
+            <div id="draftImages" class="draft-images" hidden></div>
+            <div class="composer-actions">
+                <label class="image-picker" for="clipboardImages">选择图片</label>
+                <input id="clipboardImages" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+                <p id="composerHint" aria-live="polite">每条最多 8 张图片，单张不超过 10MB。</p>
+                <button id="saveClipboard" type="button">保存到内贴板</button>
+            </div>
+        </section>
+
+        <section class="clipboard-feed" aria-labelledby="feedTitle">
+            <div class="feed-heading">
+                <div><p>最近传输</p><h2 id="feedTitle">内贴板记录</h2></div>
+                <button id="refreshClipboard" type="button">刷新</button>
+            </div>
+            <div id="clipboardItems" class="clipboard-items" aria-live="polite"></div>
+        </section>
+    </main>
+
+    <div id="clipboardToast" class="clipboard-toast" role="status" aria-live="polite"></div>
+    <script src="/js/clipboard.js?v=1"></script>
+</body>
+</html>

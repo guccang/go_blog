@@ -138,6 +138,34 @@ func HandleExerciseStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+func HandleExerciseOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	endDate := r.URL.Query().Get("end_date")
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+	days := 7
+	if rawDays := r.URL.Query().Get("days"); rawDays != "" {
+		value, err := strconv.Atoi(rawDays)
+		if err != nil {
+			http.Error(w, "days must be 7 or 30", http.StatusBadRequest)
+			return
+		}
+		days = value
+	}
+	overview, err := GetExerciseOverview(getAccountFromRequest(r), endDate, days)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	json.NewEncoder(w).Encode(overview)
+}
+
 func handleGetExercises(w http.ResponseWriter, r *http.Request) {
 	date := r.URL.Query().Get("date")
 	if date == "" {
@@ -166,6 +194,7 @@ func handleAddExercise(w http.ResponseWriter, r *http.Request) {
 		Notes     string   `json:"notes"`
 		Weight    float64  `json:"weight"`
 		BodyParts []string `json:"body_parts"` // 新增
+		Completed bool     `json:"completed"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -178,7 +207,7 @@ func handleAddExercise(w http.ResponseWriter, r *http.Request) {
 	}
 
 	account := getAccountFromRequest(r)
-	item, err := AddExercise(account, req.Date, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts)
+	item, err := AddExercise(account, req.Date, req.Name, req.Type, req.Duration, req.Intensity, req.Calories, req.Notes, req.Weight, req.BodyParts, req.Completed)
 	if err != nil {
 		log.ErrorF(log.ModuleExercise, "Failed to add exercise: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

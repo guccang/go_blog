@@ -114,19 +114,23 @@ func HandleMediaUpload(w h.ResponseWriter, r *h.Request) {
 }
 
 func HandleMediaGet(w h.ResponseWriter, r *h.Request) {
-	if checkLogin(r) != 0 {
-		h.Error(w, "unauthorized", h.StatusUnauthorized)
-		return
-	}
 	id := strings.TrimPrefix(r.URL.Path, "/media/")
 	if id == "" || strings.ContainsAny(id, `/\\`) {
 		h.Error(w, "invalid media id", h.StatusBadRequest)
 		return
 	}
-	asset, err := persistence.GetMediaAsset(getAccountFromRequest(r), id)
-	if err != nil {
-		h.NotFound(w, r)
-		return
+	var asset *persistence.MediaAsset
+	account := getAccountFromRequest(r)
+	if account != "" {
+		asset, _ = persistence.GetMediaAsset(account, id)
+	}
+	if asset == nil {
+		// 匿名用户或其他账号只能读取被安全公开博客实际引用的图片。
+		asset, _ = persistence.GetPublicBlogMediaAsset(id)
+		if asset == nil {
+			h.NotFound(w, r)
+			return
+		}
 	}
 	if isEditorTextAsset(*asset) && r.URL.Query().Get("download") != "1" {
 		h.Redirect(w, r, "/media/view/"+id, h.StatusSeeOther)

@@ -5,8 +5,20 @@ const api = {
   async _fetch(url, options = {}) {
     try {
       const res = await fetch(url, options);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const raw = await res.text();
+      let data = null;
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = null;
+        }
+      }
+      if (!res.ok) {
+        const message = data?.message || raw.trim() || `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+      if (!data) throw new Error('服务器返回了无效响应');
       if (!data.success && data.message) {
         store.showToast(data.message, 'error');
       }
@@ -57,6 +69,10 @@ const api = {
     return this._fetch(`/api/goal/parent?level=${level}&period=${period}`);
   },
 
+  generateTaskDrafts(level, period, instruction = '') {
+    return this._post('/api/goal/ai/task-drafts', { level, period, instruction });
+  },
+
   addTaskNote(level, period, taskId, content) {
     return this._post('/api/goal/task/note', { level, period, task_id: taskId, content });
   },
@@ -83,6 +99,10 @@ const api = {
   listGoals(level, year = '') {
     return this._fetch(`/api/goals?level=${level}&year=${year}`);
   },
+
+	getGoalGraph(year = new Date().getFullYear()) {
+		return this._fetch(`/api/goals/graph?year=${year}`);
+	},
 };
 
 export { api };

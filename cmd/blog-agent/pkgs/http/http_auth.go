@@ -4,6 +4,7 @@ import (
 	"config"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"login"
 	"module"
 	log "mylog"
@@ -84,7 +85,7 @@ func HandleLoginSMS(w h.ResponseWriter, r *h.Request) {
 
 	h.SetCookie(w, cookie)
 
-	h.Redirect(w, r, "/main", 302)
+	respondLoginSuccess(w, r)
 }
 
 // HandleLogin handles standard login functionality
@@ -132,7 +133,16 @@ func HandleLogin(w h.ResponseWriter, r *h.Request) {
 	}
 	h.SetCookie(w, cookie)
 
-	h.Redirect(w, r, "/main", 302)
+	respondLoginSuccess(w, r)
+}
+
+func respondLoginSuccess(w h.ResponseWriter, r *h.Request) {
+	if strings.EqualFold(r.Header.Get("X-Requested-With"), "XMLHttpRequest") || strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{"redirect": "/main"})
+		return
+	}
+	h.Redirect(w, r, "/main", h.StatusFound)
 }
 
 // migratePIProvidersToJSON performs the one-time SQLite data migration from
@@ -143,6 +153,9 @@ func migratePIProvidersToJSON(account string) {
 		return
 	}
 	configs, comments := parseConfigContentWithComments(item.Content)
+	if !needsPIProviderMigration(configs) {
+		return
+	}
 	ensurePIAgentConfig(configs, comments)
 	content := buildConfigContentWithComments(configs, comments)
 	if content == item.Content {
@@ -154,6 +167,18 @@ func migratePIProvidersToJSON(account string) {
 		return
 	}
 	config.UpdateConfigFromBlog(account, content)
+}
+
+func needsPIProviderMigration(configs map[string]string) bool {
+	if _, exists := configs["pi_providers"]; !exists {
+		return true
+	}
+	for key := range configs {
+		if key == "pi_default_provider" || strings.HasPrefix(key, "pi_provider_") || key == "deepseek_api_key" || key == "deepseek_api_url" || key == "deepseek_model" {
+			return true
+		}
+	}
+	return false
 }
 
 // HandleRegister handles user registration

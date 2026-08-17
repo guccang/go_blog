@@ -311,6 +311,15 @@ func ListRecentSummariesWithAccount(account string, limit, flag int) []*module.B
 	return blogs
 }
 
+// ListByTitlePrefixWithAccount 读取指定业务前缀的数据，避免全量加载博客正文。
+func ListByTitlePrefixWithAccount(account, prefix string) []*module.Blog {
+	blogs, err := db.ListBlogsByTitlePrefixWithAccount(account, prefix)
+	if err != nil {
+		return []*module.Blog{}
+	}
+	return blogs
+}
+
 // SearchFTSWithAccount performs SQLite full-text retrieval without loading all blogs.
 func SearchFTSWithAccount(account, query string, limit int) ([]db.BlogSearchResult, error) {
 	return db.SearchBlogsFTS(account, query, limit)

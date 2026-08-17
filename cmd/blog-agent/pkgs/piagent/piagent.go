@@ -5,6 +5,7 @@ import (
 	"blog"
 	"bytes"
 	"config"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +161,12 @@ func buildContext(account string, results []persistence.BlogChunkSearchResult) (
 }
 
 func chat(cfg providerConfig, prompt string) (chatResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	return chatWithContext(ctx, cfg, prompt)
+}
+
+func chatWithContext(ctx context.Context, cfg providerConfig, prompt string) (chatResult, error) {
 	body, err := json.Marshal(map[string]any{
 		"model": cfg.Model,
 		"messages": []map[string]string{
@@ -171,13 +178,13 @@ func chat(cfg providerConfig, prompt string) (chatResult, error) {
 	if err != nil {
 		return chatResult{}, err
 	}
-	req, err := stdhttp.NewRequest(stdhttp.MethodPost, cfg.URL, bytes.NewReader(body))
+	req, err := stdhttp.NewRequestWithContext(ctx, stdhttp.MethodPost, cfg.URL, bytes.NewReader(body))
 	if err != nil {
 		return chatResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	req.Header.Set("Content-Type", "application/json")
-	client := &stdhttp.Client{Timeout: 45 * time.Second}
+	client := &stdhttp.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return chatResult{}, fmt.Errorf("call provider %q: %w", cfg.Name, err)

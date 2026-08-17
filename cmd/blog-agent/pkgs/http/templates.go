@@ -26,7 +26,7 @@ var view = struct {
 	PageDiaryPasswordInput func(h.ResponseWriter, string)
 	PageEditor             func(h.ResponseWriter, string, string)
 	PageExercise           func(h.ResponseWriter)
-	PageExerciseManage     func(h.ResponseWriter)
+	PageExercisePro        func(h.ResponseWriter)
 	PageGetBlog            func(string, h.ResponseWriter, int, string)
 	PageGoal               func(h.ResponseWriter)
 	PageGoalManage         func(h.ResponseWriter)
@@ -47,7 +47,7 @@ var view = struct {
 	PageDiaryPasswordInput: PageDiaryPasswordInput,
 	PageEditor:             PageEditor,
 	PageExercise:           PageExercise,
-	PageExerciseManage:     PageExerciseManage,
+	PageExercisePro:        PageExercisePro,
 	PageGetBlog:            PageGetBlog,
 	PageGoal:               PageGoal,
 	PageGoalManage:         PageGoalManage,
@@ -726,6 +726,20 @@ func PageGoalManage(w h.ResponseWriter) {
 	}
 }
 
+func PageClipboard(w h.ResponseWriter) {
+	if err := RenderTemplate(w, GetTemplatePath("clipboard.template"), nil); err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render clipboard template", h.StatusInternalServerError)
+	}
+}
+
+func PageProducts(w h.ResponseWriter, data ProductsPageData) {
+	if err := RenderTemplate(w, GetTemplatePath("products.template"), data); err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render products template", h.StatusInternalServerError)
+	}
+}
+
 // PageStatistics renders the statistics page
 func PageStatistics(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
@@ -860,15 +874,18 @@ func PageExercise(w h.ResponseWriter) {
 	}
 }
 
-func PageExerciseManage(w h.ResponseWriter) {
+// PageExercisePro renders the professional bodyweight training page.
+func PageExercisePro(w h.ResponseWriter) {
 	tempDir := config.GetHttpTemplatePath()
-	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise.template"))
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "exercise_professional.template"))
 	if err != nil {
-		h.Error(w, "Failed to parse exercise manage template", h.StatusInternalServerError)
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse professional exercise template", h.StatusInternalServerError)
 		return
 	}
 	if err := tmpl.Execute(w, nil); err != nil {
-		h.Error(w, "Failed to render exercise manage template", h.StatusInternalServerError)
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render professional exercise template", h.StatusInternalServerError)
 	}
 }
 

@@ -13,7 +13,8 @@ class PeriodNav extends HTMLElement {
   }
 
   render() {
-    const { level, period, nav, loading } = store.state;
+	const { level, period, nav, loading, view } = store.state;
+	if (view === 'map') { this.innerHTML = ''; return; }
     const label = periodLabel(level, period);
 
     this.innerHTML = `

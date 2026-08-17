@@ -374,6 +374,20 @@
                 <div class="tools-grid">
                     <div class="tool-card gradient-border">
                         <div class="card-header">
+                            <div class="card-icon">✏️</div>
+                            <h3>Excalidraw</h3>
+                        </div>
+                        <div class="card-body">
+                            <p>在线白板、流程图与手绘风格草图工具，适合快速表达目标和关系。</p>
+                            <a href="https://excalidraw.com/" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: block; text-align: center; margin-top: 15px; text-decoration: none;">
+                                <i class="fas fa-up-right-from-square"></i>
+                                打开 Excalidraw
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="tool-card gradient-border">
+                        <div class="card-header">
                             <div class="card-icon">🎨</div>
                             <h3>颜色选择器</h3>
                         </div>

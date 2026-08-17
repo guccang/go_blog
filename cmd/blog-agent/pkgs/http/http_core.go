@@ -223,6 +223,7 @@ func HandleStatics(w h.ResponseWriter, r *h.Request) {
 
 // Init initializes all HTTP routes and handlers
 func Init() int {
+	startProductScanWorkers()
 	// [Phase 3] taskbreakdown 已屏蔽，统一使用 goal
 	// if err := taskbreakdown.InitTaskBreakdown(); err != nil {
 	// 	log.ErrorF(log.ModuleHandler, "Failed to initialize task breakdown: %v", err)
@@ -230,6 +231,11 @@ func Init() int {
 
 	// Core routes
 	h.HandleFunc("/main", HandleMain)
+	h.HandleFunc("/clipboard", HandleClipboard)
+	h.HandleFunc("/api/clipboard", requireAPIAuth(HandleClipboardAPI))
+	h.HandleFunc("/products", HandleProducts)
+	h.HandleFunc("/api/products", requireAPIAuth(HandleProductsAPI))
+	h.HandleFunc("/api/products/scan", requireAPIAuth(HandleProductScan))
 	h.HandleFunc("/api/blogs/page", HandleBlogSummaries)
 	h.HandleFunc("/api/blogs/fts", HandleBlogFTSSearch)
 	h.HandleFunc("/api/pi/ask", HandlePIAsk)
@@ -295,7 +301,9 @@ func Init() int {
 	h.HandleFunc("/api/goal/delete", requireAPIAuth(goalpkg.HandleDeleteGoal))
 	h.HandleFunc("/api/goals/current", requireAPIAuth(goalpkg.HandleGetCurrentGoals))
 	h.HandleFunc("/api/goals", requireAPIAuth(goalpkg.HandleListGoals))
+	h.HandleFunc("/api/goals/graph", requireAPIAuth(goalpkg.HandleGetGoalGraph))
 	h.HandleFunc("/api/goal/parent", requireAPIAuth(goalpkg.HandleGetParentGoals))
+	h.HandleFunc("/api/goal/ai/task-drafts", requireAPIAuth(HandleGoalTaskDrafts))
 	h.HandleFunc("/api/goal/task/note", requireAPIAuth(goalpkg.HandleAddTaskNote))
 	h.HandleFunc("/api/goal/review", requireAPIAuth(goalpkg.HandleGetReview))
 	h.HandleFunc("/api/goal/review/save", requireAPIAuth(goalpkg.HandleSaveReview))
@@ -304,8 +312,14 @@ func Init() int {
 	// Exercise routes
 	h.HandleFunc("/exercise", HandleExercise)
 	h.HandleFunc("/exercise/manage", HandleExerciseManage)
+	h.HandleFunc("/exercise/pro", HandleExercisePro)
 	h.HandleFunc("/api/exercises", requireAPIAuth(exercise.HandleExercises))
 	h.HandleFunc("/api/exercises/toggle", requireAPIAuth(exercise.HandleToggleExercise))
+	h.HandleFunc("/api/exercise-overview", requireAPIAuth(exercise.HandleExerciseOverview))
+	h.HandleFunc("/api/exercise/pro/catalog", requireAPIAuth(exercise.HandleProfessionalCatalog))
+	h.HandleFunc("/api/exercise/pro/profile", requireAPIAuth(exercise.HandleProfessionalProfile))
+	h.HandleFunc("/api/exercise/pro/plan/preview", requireAPIAuth(exercise.HandleProfessionalPlanPreview))
+	h.HandleFunc("/api/exercise/pro/plan/apply", requireAPIAuth(exercise.HandleProfessionalPlanApply))
 	h.HandleFunc("/api/exercise-templates", requireAPIAuth(exercise.HandleTemplates))
 	h.HandleFunc("/api/exercise-stats", requireAPIAuth(exercise.HandleExerciseStats))
 	h.HandleFunc("/api/exercise-collections", requireAPIAuth(exercise.HandleCollections))

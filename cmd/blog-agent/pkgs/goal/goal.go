@@ -3,6 +3,7 @@ package goal
 import (
 	"blog"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"module"
 	log "mylog"
@@ -36,17 +37,28 @@ type Goal struct {
 
 // Task represents a sub-task within a goal
 type Task struct {
-	ID            string     `json:"id"`
-	Title         string     `json:"title"`
-	Description   string     `json:"description,omitempty"`
-	Status        string     `json:"status"`             // pending, in_progress, completed, cancelled
-	Priority      string     `json:"priority"`           // low, medium, high
-	Deadline      string     `json:"deadline,omitempty"` // YYYY-MM-DD
-	EstimateHours float64    `json:"estimate_hours,omitempty"`
-	Subtasks      []Subtask  `json:"subtasks,omitempty"`
-	Notes         []TaskNote `json:"notes,omitempty"`
-	CreatedAt     string     `json:"created_at"`
-	UpdatedAt     string     `json:"updated_at"`
+	ID               string          `json:"id"`
+	Title            string          `json:"title"`
+	Description      string          `json:"description,omitempty"`
+	Status           string          `json:"status"`     // pending, in_progress, completed, cancelled
+	Priority         string          `json:"priority"`   // low, medium, high
+	Importance       int             `json:"importance"` // 1=可选，5=核心
+	SourceTaskID     string          `json:"source_task_id,omitempty"`
+	Deadline         string          `json:"deadline,omitempty"` // YYYY-MM-DD
+	EstimateHours    float64         `json:"estimate_hours,omitempty"`
+	ScheduledWeekday int             `json:"scheduled_weekday,omitempty"` // 1=周一，7=周日
+	TimeSlot         string          `json:"time_slot,omitempty"`         // morning, afternoon
+	Schedules        []ExecutionSlot `json:"schedules,omitempty"`
+	Subtasks         []Subtask       `json:"subtasks,omitempty"`
+	Notes            []TaskNote      `json:"notes,omitempty"`
+	CreatedAt        string          `json:"created_at"`
+	UpdatedAt        string          `json:"updated_at"`
+}
+
+// ExecutionSlot represents one focused half-day reserved for a task.
+type ExecutionSlot struct {
+	Weekday  int    `json:"weekday,omitempty"` // 周任务使用1到7；日任务省略
+	TimeSlot string `json:"time_slot"`         // morning, afternoon
 }
 
 // Subtask represents a checkable sub-item within a Task
@@ -124,11 +136,22 @@ func reviewTitle(level, period string) string {
 
 // GetGoal retrieves a goal, auto-creating if it doesn't exist
 func GetGoal(account, level, period string) (*Goal, error) {
+	goal, err := FindGoal(account, level, period)
+	if err != nil {
+		return nil, err
+	}
+	if goal == nil {
+		return newGoal(level, period), nil
+	}
+	return goal, nil
+}
+
+// FindGoal retrieves an existing goal without creating an in-memory default.
+func FindGoal(account, level, period string) (*Goal, error) {
 	title := goalTitle(level, period)
 	b := blog.GetBlogWithAccount(account, title)
-
 	if b == nil {
-		return newGoal(level, period), nil
+		return nil, nil
 	}
 
 	var goal Goal
@@ -142,6 +165,9 @@ func GetGoal(account, level, period string) (*Goal, error) {
 	}
 	if goal.Status == "" {
 		goal.Status = "active"
+	}
+	for i := range goal.Tasks {
+		normalizeTaskPlanning(&goal.Tasks[i])
 	}
 	goal.recalcProgress()
 	return &goal, nil
@@ -187,10 +213,10 @@ func SaveGoal(account string, goal *Goal) error {
 }
 
 // AddTask adds a task to a goal
-func AddTask(account, level, period string, task Task) error {
+func AddTask(account, level, period string, task Task) (*Task, error) {
 	goal, err := GetGoal(account, level, period)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if task.CreatedAt == "" {
@@ -200,15 +226,23 @@ func AddTask(account, level, period string, task Task) error {
 	if task.Status == "" {
 		task.Status = "pending"
 	}
-	if task.Priority == "" {
-		task.Priority = "medium"
-	}
+	normalizeTaskPlanning(&task)
 	if task.ID == "" {
 		task.ID = strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
+	assignImportanceSchedules(goal, &task)
+	if err := validateTaskSource(account, goal, task.SourceTaskID); err != nil {
+		return nil, err
+	}
+	if err := validateTaskSchedule(goal, task, "", true); err != nil {
+		return nil, err
+	}
 
 	goal.Tasks = append(goal.Tasks, task)
-	return SaveGoal(account, goal)
+	if err := SaveGoal(account, goal); err != nil {
+		return nil, err
+	}
+	return &task, nil
 }
 
 // UpdateTask updates a task within a goal
@@ -224,11 +258,169 @@ func UpdateTask(account, level, period, taskID string, updated Task) error {
 			if updated.ID == "" {
 				updated.ID = taskID
 			}
+			normalizeTaskPlanning(&updated)
+			if updated.SourceTaskID != t.SourceTaskID {
+				if err := validateTaskSource(account, goal, updated.SourceTaskID); err != nil {
+					return err
+				}
+			}
+			// 兼容历史上尚未排期的任务；一旦设置排期，就严格保证每天只有上午、下午两个槽位。
+			requireSchedule := len(t.EffectiveSchedules()) > 0
+			if err := validateTaskSchedule(goal, updated, taskID, requireSchedule); err != nil {
+				return err
+			}
 			goal.Tasks[i] = updated
 			return SaveGoal(account, goal)
 		}
 	}
 	return fmt.Errorf("task %s not found", taskID)
+}
+
+func validateTaskSource(account string, current *Goal, sourceTaskID string) error {
+	if sourceTaskID == "" {
+		return nil
+	}
+	parts := strings.SplitN(current.ParentID, "|", 2)
+	if len(parts) != 2 {
+		return errors.New("请先对齐上层目标，再选择承接任务")
+	}
+	parent, err := FindGoal(account, parts[0], parts[1])
+	if err != nil {
+		return err
+	}
+	if parent == nil {
+		return errors.New("对齐的上层目标不存在")
+	}
+	for _, task := range parent.Tasks {
+		if task.ID == sourceTaskID && task.Status != "cancelled" {
+			return nil
+		}
+	}
+	return errors.New("承接的上层任务不存在")
+}
+
+// EffectiveSchedules returns the new multi-slot schedule or the legacy single slot.
+func (task Task) EffectiveSchedules() []ExecutionSlot {
+	if len(task.Schedules) > 0 {
+		return task.Schedules
+	}
+	if task.TimeSlot != "" {
+		return []ExecutionSlot{{Weekday: task.ScheduledWeekday, TimeSlot: task.TimeSlot}}
+	}
+	return nil
+}
+
+func normalizeTaskPlanning(task *Task) {
+	if task.Importance < 1 || task.Importance > 5 {
+		switch task.Priority {
+		case "high":
+			task.Importance = 5
+		case "low":
+			task.Importance = 2
+		default:
+			task.Importance = 3
+		}
+	}
+	task.Priority = priorityForImportance(task.Importance)
+	if len(task.Schedules) == 0 && task.TimeSlot != "" {
+		task.Schedules = []ExecutionSlot{{Weekday: task.ScheduledWeekday, TimeSlot: task.TimeSlot}}
+	}
+	if len(task.Schedules) > 0 {
+		task.ScheduledWeekday = task.Schedules[0].Weekday
+		task.TimeSlot = task.Schedules[0].TimeSlot
+	}
+}
+
+func priorityForImportance(importance int) string {
+	if importance >= 4 {
+		return "high"
+	}
+	if importance <= 2 {
+		return "low"
+	}
+	return "medium"
+}
+
+func assignImportanceSchedules(goal *Goal, task *Task) {
+	if goal.Level != LevelDaily && goal.Level != LevelWeekly {
+		return
+	}
+	if len(task.EffectiveSchedules()) > 0 {
+		return
+	}
+	desired := 1
+	if goal.Level == LevelWeekly {
+		desired = task.Importance
+	}
+	preferredSlots := []string{"afternoon", "morning"}
+	if task.Importance >= 4 {
+		preferredSlots = []string{"morning", "afternoon"}
+	}
+	weekdays := []int{0}
+	if goal.Level == LevelWeekly {
+		weekdays = []int{1, 2, 3, 4, 5, 6, 7}
+	}
+	for _, slot := range preferredSlots {
+		for _, weekday := range weekdays {
+			candidate := *task
+			candidate.Schedules = append(append([]ExecutionSlot{}, task.Schedules...), ExecutionSlot{Weekday: weekday, TimeSlot: slot})
+			if validateTaskSchedule(goal, candidate, "", true) == nil {
+				task.Schedules = candidate.Schedules
+				if len(task.Schedules) == desired {
+					normalizeTaskPlanning(task)
+					return
+				}
+			}
+		}
+	}
+	normalizeTaskPlanning(task)
+}
+
+func validateTaskSchedule(goal *Goal, task Task, excludeTaskID string, required bool) error {
+	if goal.Level != LevelDaily && goal.Level != LevelWeekly {
+		return nil
+	}
+	schedules := task.EffectiveSchedules()
+	if len(schedules) == 0 {
+		if required {
+			return errors.New("没有可用的执行时段")
+		}
+		return nil
+	}
+	occupied := make(map[string]struct{})
+	for _, existing := range goal.Tasks {
+		if existing.ID == excludeTaskID || existing.Status == "cancelled" {
+			continue
+		}
+		for _, schedule := range existing.EffectiveSchedules() {
+			occupied[executionSlotKey(goal.Level, schedule)] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{}, len(schedules))
+	for _, schedule := range schedules {
+		if schedule.TimeSlot != "morning" && schedule.TimeSlot != "afternoon" {
+			return errors.New("执行时段只能选择上午或下午")
+		}
+		if goal.Level == LevelWeekly && (schedule.Weekday < 1 || schedule.Weekday > 7) {
+			return errors.New("周任务必须选择周一到周日")
+		}
+		key := executionSlotKey(goal.Level, schedule)
+		if _, exists := seen[key]; exists {
+			return errors.New("同一任务不能重复占用同一时段")
+		}
+		seen[key] = struct{}{}
+		if _, exists := occupied[key]; exists {
+			return errors.New("该时段已有任务；每天上午、下午最多各安排一件事")
+		}
+	}
+	return nil
+}
+
+func executionSlotKey(level string, schedule ExecutionSlot) string {
+	if level == LevelDaily {
+		return schedule.TimeSlot
+	}
+	return fmt.Sprintf("%d:%s", schedule.Weekday, schedule.TimeSlot)
 }
 
 // DeleteGoal removes an entire goal (blog entry) for the given level and period
@@ -374,7 +566,7 @@ func ListGoalsByLevel(account, level string, year int) ([]*GoalSummary, error) {
 	yearStr := fmt.Sprintf("%d", year)
 	var summaries []*GoalSummary
 
-	for _, b := range blog.GetBlogsWithAccount(account) {
+	for _, b := range blog.ListByTitlePrefixWithAccount(account, "目标_"+level+"_") {
 		if !strings.Contains(b.Title, "目标_"+level) {
 			continue
 		}
@@ -448,27 +640,51 @@ func newGoal(level, period string) *Goal {
 
 // GetParentGoals returns goals from the parent level for OKR alignment
 func GetParentGoals(account, level, period string) ([]*GoalSummary, error) {
-	parentLevel, parentPeriod, err := resolveParentPeriod(level, period)
+	parentPeriods, err := resolveParentPeriods(level, period)
+	if err != nil {
+		return nil, err
+	}
+	if len(parentPeriods) == 0 {
+		return nil, nil // 年目标没有父级
+	}
+
+	// 优先对齐直属上层；日目标没有可用周目标时，回退到当天所在月的月目标。
+	for _, candidate := range parentPeriods {
+		b := blog.GetBlogWithAccount(account, goalTitle(candidate.level, candidate.period))
+		if b == nil {
+			continue
+		}
+		var parent Goal
+		if err := json.Unmarshal([]byte(b.Content), &parent); err != nil {
+			return nil, fmt.Errorf("failed to parse parent goal: %w", err)
+		}
+		if parent.Status != "archived" {
+			return []*GoalSummary{parent.Summary()}, nil
+		}
+	}
+	return []*GoalSummary{}, nil
+}
+
+type parentPeriod struct {
+	level  string
+	period string
+}
+
+func resolveParentPeriods(level, period string) ([]parentPeriod, error) {
+	parentLevel, resolvedPeriod, err := resolveParentPeriod(level, period)
 	if err != nil {
 		return nil, err
 	}
 	if parentLevel == "" {
-		return nil, nil // 年目标没有父级
+		return nil, nil
 	}
 
-	// 对齐只允许选择当前周期直属的上层目标，避免把所有历史目标都列出来。
-	b := blog.GetBlogWithAccount(account, goalTitle(parentLevel, parentPeriod))
-	if b == nil {
-		return []*GoalSummary{}, nil
+	parents := []parentPeriod{{level: parentLevel, period: resolvedPeriod}}
+	if level == LevelDaily {
+		t, _ := time.Parse("2006-01-02", period) // resolveParentPeriod 已校验
+		parents = append(parents, parentPeriod{level: LevelMonthly, period: t.Format("2006-01")})
 	}
-	var parent Goal
-	if err := json.Unmarshal([]byte(b.Content), &parent); err != nil {
-		return nil, fmt.Errorf("failed to parse parent goal: %w", err)
-	}
-	if parent.Status == "archived" {
-		return []*GoalSummary{}, nil
-	}
-	return []*GoalSummary{parent.Summary()}, nil
+	return parents, nil
 }
 
 func resolveParentPeriod(level, period string) (string, string, error) {

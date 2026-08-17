@@ -35,3 +35,32 @@ func TestResolveParentPeriodRejectsInvalidPeriod(t *testing.T) {
 		t.Fatal("无效日周期应返回错误")
 	}
 }
+
+func TestResolveParentPeriodsDailyFallsBackToMonthly(t *testing.T) {
+	got, err := resolveParentPeriods(LevelDaily, "2026-08-04")
+	if err != nil {
+		t.Fatalf("resolveParentPeriods() error = %v", err)
+	}
+	want := []parentPeriod{
+		{level: LevelWeekly, period: "2026-W32"},
+		{level: LevelMonthly, period: "2026-08"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("resolveParentPeriods() length = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("resolveParentPeriods()[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveParentPeriodsWeeklyDoesNotSkipMonthly(t *testing.T) {
+	got, err := resolveParentPeriods(LevelWeekly, "2026-W32")
+	if err != nil {
+		t.Fatalf("resolveParentPeriods() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != (parentPeriod{level: LevelMonthly, period: "2026-08"}) {
+		t.Fatalf("resolveParentPeriods() = %#v", got)
+	}
+}

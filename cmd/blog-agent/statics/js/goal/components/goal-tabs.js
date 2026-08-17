@@ -21,8 +21,9 @@ class GoalTabs extends HTMLElement {
 
     this.innerHTML = `
       <div class="goal-tabs">
-        <div class="goal-tabs-nav">${tabsHtml}</div>
+		<div class="goal-tabs-nav">${view === 'map' ? '<span class="goal-map-mode-label">年度 → 月度 → 周度 → 今日</span>' : tabsHtml}</div>
         <div class="goal-view-toggle">
+		  <button class="view-btn ${view === 'map' ? 'active' : ''}" data-view="map">全景</button>
           <button class="view-btn ${view === 'detail' ? 'active' : ''}" data-view="detail">详情</button>
           <button class="view-btn ${view === 'list' ? 'active' : ''}" data-view="list">列表</button>
           <button class="view-btn ${view === 'review' ? 'active' : ''}" data-view="review">回顾</button>

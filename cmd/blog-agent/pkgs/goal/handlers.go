@@ -203,7 +203,8 @@ func HandleAddGoalTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	account := getAccount(r)
-	if err := AddTask(account, req.Level, req.Period, req.Task); err != nil {
+	addedTask, err := AddTask(account, req.Level, req.Period, req.Task)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
 			"status":  "error",
@@ -215,7 +216,8 @@ func HandleAddGoalTask(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Task added successfully",
-		"task_id": req.Task.ID,
+		"task_id": addedTask.ID,
+		"data":    addedTask,
 	})
 }
 
@@ -445,6 +447,22 @@ func HandleListGoals(w http.ResponseWriter, r *http.Request) {
 		"data":    goals,
 		"level":   level,
 	})
+}
+
+// HandleGetGoalGraph returns recent goals with task-level alignment data.
+func HandleGetGoalGraph(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	year := time.Now().Year()
+	if value := r.URL.Query().Get("year"); value != "" {
+		_, _ = fmt.Sscanf(value, "%d", &year)
+	}
+	graph, err := GetGoalGraph(getAccount(r), year)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": graph})
 }
 
 // ============================================================================

@@ -60,6 +60,35 @@ func GetBlogWithAccount(account, title string) *module.Blog {
 	return sqliteGetBlog(account, title)
 }
 
+// FindPublicBlogAccountsByTitle returns owners of an unencrypted, non-diary public blog.
+// It is used to resolve legacy public links that do not contain an account parameter.
+func FindPublicBlogAccountsByTitle(title string) ([]string, error) {
+	persistence.Lock()
+	defer persistence.Unlock()
+	rows, err := requireSQLite().Query(`SELECT account FROM blogs
+		WHERE title=? AND encrypt=0 AND (auth_type & ?) != 0 AND (auth_type & ?) = 0
+		ORDER BY account`, title, module.EAuthType_public, module.EAuthType_diary|module.EAuthType_encrypt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	accounts := make([]string, 0, 1)
+	for rows.Next() {
+		var account string
+		if err := rows.Scan(&account); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
+}
+
+func ListBlogsByTitlePrefixWithAccount(account, prefix string) ([]*module.Blog, error) {
+	persistence.Lock()
+	defer persistence.Unlock()
+	return ListBlogsByTitlePrefix(account, prefix)
+}
+
 // ListBlogAccounts returns every account that owns blog content. It is used by
 // one-time, idempotent data migrations that must preserve multi-account data.
 func ListBlogAccounts() ([]string, error) {

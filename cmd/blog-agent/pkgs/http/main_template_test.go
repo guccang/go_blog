@@ -30,6 +30,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 	page := output.String()
 	for _, expected := range []string{
 		`id="workspaceQueryForm"`, `id="askPIButton"`, "继续阅读", "快速开始", `href="/link"`,
+		`href="/products"`, "产品库",
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 	} {
@@ -43,6 +44,12 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		if strings.Contains(page, removed) {
 			t.Fatalf("main page still contains removed module %q", removed)
 		}
+	}
+	quickIndex := strings.Index(page, `class="quick-section"`)
+	queryIndex := strings.Index(page, `class="query-hero"`)
+	continueIndex := strings.Index(page, `class="continue-section"`)
+	if quickIndex < 0 || queryIndex < 0 || continueIndex < 0 || !(quickIndex < queryIndex && queryIndex < continueIndex) {
+		t.Fatalf("main sections are not ordered quick start, query, continue reading")
 	}
 }
 

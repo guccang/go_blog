@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG</title>
-    <link rel="stylesheet" href="/css/main.css?v=quote-1">
+    <link rel="stylesheet" href="/css/main.css?v=clipboard-1">
 </head>
 <body>
     <header class="main-header">
@@ -25,6 +25,18 @@
     </header>
 
     <main class="main-shell">
+        <section class="quick-section" aria-labelledby="quickTitle">
+            <div class="section-heading"><h2 id="quickTitle">快速开始</h2></div>
+            <div class="quick-grid">
+                <a class="quick-item primary" href="/editor"><span>＋</span><strong>写博客</strong><small>记录现在的想法</small></a>
+                <a class="quick-item" href="/goal"><span>⚑</span><strong>目标</strong><small>查看下一步</small></a>
+                <a class="quick-item" href="/exercise"><span>↗</span><strong>锻炼</strong><small>记录一次运动</small></a>
+                <a class="quick-item" href="/reading"><span>▤</span><strong>读书</strong><small>继续阅读计划</small></a>
+                <a class="quick-item" href="/products"><span>✦</span><strong>产品库</strong><small>拆解并积累灵感</small></a>
+                <a class="quick-item" href="/clipboard"><span>⌘</span><strong>内贴板</strong><small>跨设备传递内容</small></a>
+            </div>
+        </section>
+
         <section class="query-hero" aria-labelledby="mainTitle">
             <p class="eyebrow">继续你的内容</p>
             <h1 id="mainTitle">今天想继续什么？</h1>
@@ -68,15 +80,6 @@
             {{end}}
         </section>
 
-        <section class="quick-section" aria-labelledby="quickTitle">
-            <div class="section-heading"><h2 id="quickTitle">快速开始</h2></div>
-            <div class="quick-grid">
-                <a class="quick-item primary" href="/editor"><span>＋</span><strong>写博客</strong><small>记录现在的想法</small></a>
-                <a class="quick-item" href="/goal"><span>⚑</span><strong>目标</strong><small>查看下一步</small></a>
-                <a class="quick-item" href="/exercise"><span>↗</span><strong>锻炼</strong><small>记录一次运动</small></a>
-                <a class="quick-item" href="/reading"><span>▤</span><strong>读书</strong><small>继续阅读计划</small></a>
-            </div>
-        </section>
     </main>
 
     <aside class="daily-quote" aria-label="今日格言">

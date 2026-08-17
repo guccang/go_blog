@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Change Approval
+
+Before modifying code, configuration, schemas, tests, documentation, or any other implementation file, first tell the user the brief implementation steps and wait for explicit approval. Reading files, inspecting database state, diagnosing behavior, and preparing a proposed implementation plan are allowed before approval.
+
 强约束：所有文件读写一律使用 UTF‑8 （无 BOM ）。禁止使用默认编码、GBK 、ANSI 。
 执行任何写文件命令前，必须检查并确认控制台编码为 UTF‑8 （ chcp 65001 ），并在读写时显式指定 UTF‑8 。
 如发现中文乱码（例如“绔炶禌 Service 涓氬姟灞傚鐞?”），不得直接修乱码文本，必须先确定原文（从正确源文件/历史版本/上下文）再替换。
