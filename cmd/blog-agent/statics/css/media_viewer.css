@@ -1,0 +1,119 @@
+:root {
+    --ink: #172637;
+    --muted: #737982;
+    --paper: #fffdf9;
+    --canvas: #edf0ef;
+    --line: #d9dfdf;
+    --coral: #dc704b;
+    --coral-dark: #c65735;
+    --teal: #3f9c91;
+    --navy: #1d3850;
+}
+
+* { box-sizing: border-box; }
+
+body.media-viewer-page {
+    margin: 0;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(135deg, #e8eeed 0, var(--canvas) 46%, #e9edf1 100%);
+    color: var(--ink);
+    font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+.viewer-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: min(1520px, calc(100% - 40px));
+    height: 100vh;
+    margin: 0 auto;
+    padding: 18px 0 22px;
+}
+
+.viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-width: 0;
+    padding: 0 4px 16px;
+}
+
+.file-identity { display: flex; align-items: center; min-width: 0; gap: 15px; }
+
+.file-type {
+    display: grid;
+    place-items: center;
+    flex: 0 0 54px;
+    min-height: 66px;
+    border-radius: 4px 4px 14px 4px;
+    background: var(--navy);
+    color: #fff;
+    font: 700 10px/1.1 "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .08em;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+}
+
+body[data-view-mode="markdown"] .file-type { background: var(--teal); }
+body[data-view-mode="html"] .file-type { background: var(--coral); }
+body[data-view-mode="json"] .file-type { background: #6f62a6; }
+
+.file-heading { min-width: 0; }
+.file-heading p { margin: 0 0 3px; color: var(--teal); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+.file-heading h1 { max-width: min(780px, 58vw); margin: 0; overflow: hidden; color: var(--navy); font-size: clamp(19px, 2.2vw, 28px); letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+.file-heading span { display: block; margin-top: 5px; color: var(--muted); font: 11px/1.4 "Cascadia Mono", "SFMono-Regular", Consolas, monospace; }
+
+.viewer-actions { display: flex; flex: 0 0 auto; gap: 9px; }
+.viewer-actions a, .viewer-actions button { min-height: 40px; border-radius: 8px; padding: 9px 14px; font: 700 13px/1.4 inherit; cursor: pointer; text-decoration: none; }
+.quiet-action { border: 1px solid var(--line); background: rgba(255, 255, 255, .72); color: var(--navy); }
+.download-action { border: 1px solid var(--coral); background: var(--coral); color: #fff; }
+.quiet-action:hover { border-color: #aebaba; background: #fff; }
+.download-action:hover { border-color: var(--coral-dark); background: var(--coral-dark); }
+.viewer-actions a:focus-visible, .viewer-actions button:focus-visible { outline: 3px solid rgba(63, 156, 145, .28); outline-offset: 2px; }
+
+.viewer-stage {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+    box-shadow: 0 18px 55px rgba(23, 38, 55, .12);
+}
+
+#viewer-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--paper); }
+
+.viewer-status {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-content: center;
+    gap: 12px;
+    color: var(--muted);
+    background: var(--paper);
+    font-size: 13px;
+    transition: opacity .18s ease, visibility .18s ease;
+}
+
+.viewer-status span { width: 28px; height: 28px; margin: auto; border: 3px solid #d9e3e1; border-top-color: var(--teal); border-radius: 50%; animation: viewer-spin .8s linear infinite; }
+.viewer-status.is-ready { visibility: hidden; opacity: 0; }
+
+@keyframes viewer-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .viewer-status, .viewer-status span { transition: none; animation: none; }
+}
+
+@media (max-width: 700px) {
+    body.media-viewer-page { overflow: auto; }
+    .viewer-shell { width: min(100% - 22px, 1520px); min-height: 100vh; height: auto; padding: 11px 0; }
+    .viewer-header { align-items: flex-start; gap: 12px; }
+    .file-type { flex-basis: 38px; min-height: 58px; }
+    .file-heading h1 { max-width: 52vw; font-size: 18px; }
+    .file-heading span { max-width: 48vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .viewer-actions { flex-direction: column-reverse; }
+    .viewer-actions a, .viewer-actions button { min-height: 34px; padding: 6px 10px; font-size: 12px; text-align: center; }
+    .viewer-stage { min-height: calc(100vh - 102px); border-radius: 10px; }
+}

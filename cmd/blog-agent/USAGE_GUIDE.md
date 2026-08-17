@@ -75,7 +75,7 @@ pwd=your_password
 ### Markdown编辑器功能
 - 实时预览模式
 - 语法高亮支持
-- 图片上传和插入
+- 图片与小文件上传和插入（支持 TXT、Markdown、HTML、CSV、JSON、XML、YAML、ZIP、PDF，单文件最大 10MB；文本文件可安全预览）
 - 表格创建工具
 - 代码块支持
 

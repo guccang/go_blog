@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Name}} · 文件预览</title>
+    <link rel="stylesheet" href="/css/media_viewer.css?v=1">
+</head>
+<body class="media-viewer-page" data-view-mode="{{.Mode}}">
+    <main class="viewer-shell">
+        <header class="viewer-header">
+            <div class="file-identity">
+                <span class="file-type" aria-hidden="true">{{.TypeLabel}}</span>
+                <div class="file-heading">
+                    <p>附件预览</p>
+                    <h1>{{.Name}}</h1>
+                    <span>{{.MIMEType}} · {{.SizeLabel}}</span>
+                </div>
+            </div>
+            <nav class="viewer-actions" aria-label="文件操作">
+                <button id="viewer-back" class="quiet-action" type="button">返回正文</button>
+                <a class="download-action" href="{{.DownloadURL}}">下载原文件</a>
+            </nav>
+        </header>
+
+        <section class="viewer-stage" aria-label="文件内容">
+            <div class="viewer-status" id="viewer-status" role="status">
+                <span></span>正在准备预览
+            </div>
+            <iframe id="viewer-frame" title="{{.Name}} 的渲染内容" data-render-url="{{.RenderURL}}" sandbox="allow-scripts allow-popups"></iframe>
+        </section>
+    </main>
+    <textarea id="media-source" hidden>{{.Content}}</textarea>
+    <script src="/js/marked/marked.min.js"></script>
+    <script src="/js/media_viewer.js?v=4"></script>
+</body>
+</html>

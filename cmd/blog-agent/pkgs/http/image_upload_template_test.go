@@ -21,13 +21,14 @@ func renderEditorTemplateForTest(t *testing.T, name string, data EditorData) str
 	return output.String()
 }
 
-func TestCreateEditorOffersLocalImageUpload(t *testing.T) {
+func TestCreateEditorOffersLocalFileUpload(t *testing.T) {
 	page := renderEditorTemplateForTest(t, "markdown_editor.template", EditorData{})
 	for _, expected := range []string{
 		`id="btn-upload-image"`,
 		`id="image-file-input"`,
-		`accept="image/*"`,
+		`accept="image/*,.txt,.md,.html,.htm,.csv,.json,.xml,.yaml,.yml,.zip,.pdf"`,
 		`multiple`,
+		`上传文件`,
 		`/js/image_upload.js`,
 	} {
 		if !strings.Contains(page, expected) {
@@ -36,14 +37,14 @@ func TestCreateEditorOffersLocalImageUpload(t *testing.T) {
 	}
 }
 
-func TestEditableBlogOffersLocalImageUpload(t *testing.T) {
+func TestEditableBlogOffersLocalFileUpload(t *testing.T) {
 	page := renderEditorTemplateForTest(t, "get.template", EditorData{TITLE: "测试"})
 	if !strings.Contains(page, `id="btn-upload-image"`) || !strings.Contains(page, `id="image-file-input"`) {
-		t.Fatalf("editable blog does not offer local image upload")
+		t.Fatalf("editable blog does not offer local file upload")
 	}
 }
 
-func TestLargeBlogDoesNotOfferImageUpload(t *testing.T) {
+func TestLargeBlogDoesNotOfferFileUpload(t *testing.T) {
 	page := renderEditorTemplateForTest(t, "get.template", EditorData{TITLE: "大文档", IS_LARGE: true})
 	if strings.Contains(page, `id="btn-upload-image"`) || strings.Contains(page, `id="image-file-input"`) {
 		t.Fatalf("large read-only blog exposes image upload")

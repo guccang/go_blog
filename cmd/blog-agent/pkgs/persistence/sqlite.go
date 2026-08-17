@@ -55,7 +55,7 @@ func initSQLite() error {
 			PRIMARY KEY (account, blog_title, chunk_index)
 		)`,
 		`CREATE TABLE IF NOT EXISTS media_assets (
-			id TEXT PRIMARY KEY, account TEXT NOT NULL, storage_name TEXT NOT NULL,
+			id TEXT PRIMARY KEY, account TEXT NOT NULL, storage_name TEXT NOT NULL, original_name TEXT NOT NULL DEFAULT '',
 			mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, created_at TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS pi_usage (
@@ -92,6 +92,10 @@ func initSQLite() error {
 		db.Close()
 		return err
 	}
+	if err := ensureMediaAssetColumns(db); err != nil {
+		db.Close()
+		return err
+	}
 	// SQLite auth_type 已是公开权限的唯一事实来源，清理旧文件时代的公开状态伪博客。
 	for _, stmt := range []string{
 		"DELETE FROM blog_chunks_fts WHERE blog_title='sys_blog_public_state'",
@@ -105,6 +109,35 @@ func initSQLite() error {
 	}
 	sqliteDB = db
 	return nil
+}
+
+func ensureMediaAssetColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(media_assets)")
+	if err != nil {
+		return err
+	}
+	hasOriginalName := false
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "original_name" {
+			hasOriginalName = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasOriginalName {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE media_assets ADD COLUMN original_name TEXT NOT NULL DEFAULT ''")
+	return err
 }
 
 func ensureBlogHookColumns(db *sql.DB) error {

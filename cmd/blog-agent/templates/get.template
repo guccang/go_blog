@@ -97,8 +97,8 @@
 				<button class="view-mode-btn" data-view="split" type="button">编辑+预览</button>
 				<button class="view-mode-btn active" data-view="preview-only" type="button">预览</button>
 			</div>
-			<button id="btn-upload-image" class="right-button upload-image-button" type="button">上传图片</button>
-			<input id="image-file-input" type="file" accept="image/*" multiple hidden>
+			<button id="btn-upload-image" class="right-button upload-image-button" type="button" title="支持图片、文本、HTML、ZIP、PDF 等 10MB 内小文件">上传文件</button>
+			<input id="image-file-input" type="file" accept="image/*,.txt,.md,.html,.htm,.csv,.json,.xml,.yaml,.yml,.zip,.pdf" multiple hidden>
 			<button id="toggle-button" class="right-button mobile-view-toggle" type="button" onclick="onEditor()">编辑</button>
 			<button id="editor-button" class="right-button save-button" type="button" onclick="submitFirst()">保存修改</button>
 			{{end}}
@@ -266,7 +266,7 @@
 	<script src="/js/utils.js"></script>
 	<script src="/js/permissions.js"></script>
 	<script src="/js/get.js"></script>
-	<script src="/js/image_upload.js?v=1"></script>
+	<script src="/js/image_upload.js?v=2"></script>
 	<script src="/js/large_blog.js?v=readonly-bottom-load-2"></script>
 	<script src="/js/article_assistant.js?v=1"></script>
 

@@ -51,8 +51,8 @@
                 <button id="btn-heading" type="button" title="标题">H</button>
                 <button id="btn-link" type="button" title="链接">链接</button>
                 <button id="btn-image" type="button" title="插入网络图片地址">图片链接</button>
-                <button id="btn-upload-image" class="upload-image-action" type="button" title="从电脑选择图片">上传图片</button>
-                <input id="image-file-input" type="file" accept="image/*" multiple hidden>
+                <button id="btn-upload-image" class="upload-image-action" type="button" title="上传图片或小文件">上传文件</button>
+                <input id="image-file-input" type="file" accept="image/*,.txt,.md,.html,.htm,.csv,.json,.xml,.yaml,.yml,.zip,.pdf" multiple hidden>
                 <button id="btn-code" type="button" title="代码块">&lt;/&gt;</button>
                 <button id="btn-list" type="button" title="列表">列表</button>
                 <button id="btn-quote" type="button" title="引用">引用</button>
@@ -68,7 +68,7 @@
             <div class="editor-wrapper" id="editor-wrapper">
                 <div class="pane-title"><span class="pane-dot"></span> Markdown <span id="word-count"></span></div>
                 <textarea class="editor" id="editor" name="content" spellcheck="false" aria-label="博客正文">{{.CONTENT}}</textarea>
-                <p class="paste-hint">支持选择本地图片、粘贴截图或拖入图片，上传后会自动插入 Markdown。</p>
+                <p class="paste-hint">支持图片、TXT、Markdown、HTML、CSV、JSON、XML、YAML、ZIP、PDF（最大 10MB）；也可粘贴截图或拖入文件，上传后会自动插入 Markdown。</p>
             </div>
             <div class="preview-wrapper" id="preview-wrapper">
                 <div class="pane-title">阅读预览 <span class="preview-badge">实时</span></div>
@@ -82,6 +82,6 @@
     <script src="/js/editor.js"></script>
     <script src="/js/permissions.js"></script>
     <script src="/js/markdown_editor.js?v=workspace-1"></script>
-    <script src="/js/image_upload.js?v=1"></script>
+    <script src="/js/image_upload.js?v=2"></script>
 </body>
 </html>

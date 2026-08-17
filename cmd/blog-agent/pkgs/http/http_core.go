@@ -240,6 +240,8 @@ func Init() int {
 	h.HandleFunc("/api/hooks/insights", HandleHookInsightsAPI)
 	h.HandleFunc("/api/media/upload", HandleMediaUpload)
 	h.HandleFunc("/api/blog/content", HandleBlogContentChunk)
+	h.HandleFunc("/media/render/", HandleMediaRender)
+	h.HandleFunc("/media/view/", HandleMediaView)
 	h.HandleFunc("/media/", HandleMediaGet)
 	h.HandleFunc("/link", HandleLink)
 	h.HandleFunc("/editor", HandleEditor)
