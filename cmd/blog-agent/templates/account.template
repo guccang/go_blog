@@ -274,6 +274,8 @@
             }
         }
     </style>
+    <script src="/js/theme.js?v=1"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=1">
 </head>
 <body>
     <div class="top-sidebar-cotainer">

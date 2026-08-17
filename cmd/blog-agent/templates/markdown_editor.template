@@ -6,6 +6,8 @@
     <title>写博客 · GUCCANG</title>
     <link rel="stylesheet" href="/css/markdown_editor.css?v=workspace-1">
     <link rel="stylesheet" href="/css/editor_workspace.css?v=1">
+    <script src="/js/theme.js?v=1"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=1">
 </head>
 <body class="workspace-page">
     <main class="writing-shell">

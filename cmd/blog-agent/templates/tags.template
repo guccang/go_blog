@@ -11,7 +11,9 @@
 			margin-right:10px;	
 		 }
 		</style>
-	</head>
+	    <script src="/js/theme.js?v=1"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=1">
+</head>
 
 	<body class="th_black">
 		<div class="top-fix-div">

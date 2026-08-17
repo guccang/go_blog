@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>产品星图 · GUCCANG</title>
     <link rel="stylesheet" href="/css/products.css?v=3">
+    <script src="/js/theme.js?v=1"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=1">
 </head>
 <body>
     <header class="product-header">
