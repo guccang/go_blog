@@ -1,4 +1,4 @@
-:root,
+:root[data-theme="terminal"],
 :root[data-theme="watercolor"] {
     --ui-canvas: #fbf7ec;
     --ui-surface: #fffdf6;
@@ -623,6 +623,21 @@ html[data-theme] body :where(.btn-success) {
     color: #fff8e9 !important;
 }
 
+html:not([data-theme]) .ui-theme-picker {
+    /* 经典原版不注入全站主题变量，仅在选择器内部提供中性配色。 */
+    --ui-surface: var(--theme-picker-surface, #ffffff);
+    --ui-text: var(--theme-picker-text, #24272d);
+    --ui-text-soft: var(--theme-picker-text-soft, #59616d);
+    --ui-text-muted: var(--theme-picker-text-muted, #77808c);
+    --ui-line: var(--theme-picker-line, #343a43);
+    --ui-line-soft: var(--theme-picker-line-soft, #cbd1d8);
+    --ui-coral: var(--theme-picker-accent, #d85c36);
+    --ui-coral-soft: var(--theme-picker-accent-soft, #f6d8ce);
+    --ui-shadow: var(--theme-picker-shadow, rgba(31, 36, 43, .28));
+    --ui-font-sans: var(--theme-picker-font-sans, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+    --ui-font-mono: var(--theme-picker-font-mono, "Cascadia Mono", Consolas, "SFMono-Regular", monospace);
+}
+
 .ui-theme-picker {
     position: fixed;
     top: max(16px, env(safe-area-inset-top));
@@ -729,6 +744,18 @@ html[data-theme] body :where(.btn-success) {
 .ui-theme-picker__preview i:nth-child(1) { width: 33%; height: 70%; }
 .ui-theme-picker__preview i:nth-child(2) { width: 42%; height: 100%; }
 .ui-theme-picker__preview i:nth-child(3) { width: 25%; height: 52%; }
+
+.ui-theme-picker__preview--classic {
+    border-color: #b7bec8;
+    border-radius: 6px;
+    background: #f7f8fa;
+    color: #334155;
+    box-shadow: 0 2px 5px rgba(31, 41, 55, .14);
+}
+
+.ui-theme-picker__preview--classic i:nth-child(1) { background: #e8edf3; }
+.ui-theme-picker__preview--classic i:nth-child(2) { background: #5b78c7; }
+.ui-theme-picker__preview--classic i:nth-child(3) { background: #e39a3b; }
 
 .ui-theme-picker__preview--terminal {
     border-radius: 7px;

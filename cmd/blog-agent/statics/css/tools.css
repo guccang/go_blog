@@ -223,6 +223,33 @@
     opacity: 0.9;
 }
 
+.tool-nav-card-link {
+    position: relative;
+    color: inherit;
+    text-decoration: none;
+    background:
+        linear-gradient(#fff, #fff) padding-box,
+        linear-gradient(118deg, #3156a3, #b58a44, #c94b36) border-box;
+    border-color: transparent;
+}
+
+.tool-nav-card-link .nav-card-icon {
+    color: #3156a3;
+    font-family: Georgia, serif;
+}
+
+.nav-card-arrow {
+    margin-left: auto;
+    color: var(--text-light);
+    font-size: 18px;
+    transition: transform .2s ease, color .2s ease;
+}
+
+.tool-nav-card-link:hover .nav-card-arrow {
+    color: #c94b36;
+    transform: translate(3px, -3px);
+}
+
 /* 主要工具内容区域 */
 .tools-main {
     position: relative;

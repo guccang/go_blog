@@ -71,3 +71,13 @@ func HandleTools(w h.ResponseWriter, r *h.Request) {
 	emitUsageHook(r, getAccountFromRequest(r), blog.HookPageOpened, "tools", "page", "tools", "tools", "", nil, map[string]any{"status": "success"})
 	view.PageTools(w)
 }
+
+func HandleVisualThemes(w h.ResponseWriter, r *h.Request) {
+	LogRemoteAddr("HandleVisualThemes", r)
+	if checkLogin(r) != 0 {
+		h.Redirect(w, r, "/index", h.StatusFound)
+		return
+	}
+	emitUsageHook(r, getAccountFromRequest(r), blog.HookPageOpened, "visual_themes", "page", "visual_themes", "视觉主题图鉴", "", nil, map[string]any{"status": "success"})
+	view.PageVisualThemes(w)
+}

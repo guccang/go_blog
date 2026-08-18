@@ -41,6 +41,7 @@ var view = struct {
 	PageSearchNormal       func(string, h.ResponseWriter, *h.Request) int
 	PageTags               func(h.ResponseWriter, string, string)
 	PageTools              func(h.ResponseWriter)
+	PageVisualThemes       func(h.ResponseWriter)
 }{
 	PageBookDetail:         PageBookDetail,
 	PageDiaryPasswordError: PageDiaryPasswordError,
@@ -62,6 +63,7 @@ var view = struct {
 	PageSearchNormal:       PageSearchNormal,
 	PageTags:               PageTags,
 	PageTools:              PageTools,
+	PageVisualThemes:       PageVisualThemes,
 }
 
 func templateInfo() {
@@ -1004,6 +1006,22 @@ func PageTools(w h.ResponseWriter) {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render tools template", h.StatusInternalServerError)
 		return
+	}
+}
+
+// PageVisualThemes renders the visual theme atlas.
+func PageVisualThemes(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "visual_themes.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse visual themes template", h.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render visual themes template", h.StatusInternalServerError)
 	}
 }
 

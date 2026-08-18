@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="/css/public.css">
     <link rel="stylesheet" href="/css/tools.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="/js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=2">
+    <script src="/js/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=3">
 </head>
 <body class="tools-body">
     <!-- 背景装饰 -->
@@ -95,6 +95,14 @@
                 <div class="nav-card-icon">🤖</div>
                 <div class="nav-card-content"><h3>PI 用量</h3><p>模型 Token 与响应耗时</p></div>
             </div>
+            <a class="tool-nav-card tool-nav-card-link" href="/tools/visual-themes">
+                <div class="nav-card-icon">◉</div>
+                <div class="nav-card-content">
+                    <h3>视觉主题图鉴</h3>
+                    <p>100 款美术风格与配色</p>
+                </div>
+                <span class="nav-card-arrow" aria-hidden="true">↗</span>
+            </a>
         </div>
 
         <!-- 工具内容区域 -->

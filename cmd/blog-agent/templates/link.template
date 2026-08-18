@@ -6,8 +6,8 @@
     <title>BLOG - GUCCANG</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/link.css?v=library-cards-1">
-    <script src="/js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=2">
+    <script src="/js/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=3">
 </head>
 <body class="library-page">
     <header class="library-header">

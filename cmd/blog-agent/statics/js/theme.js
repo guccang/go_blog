@@ -5,6 +5,7 @@
     var root = document.documentElement;
     var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
     var themes = {
+        classic: { name: '经典原版', shortName: '原版', colorScheme: '' },
         terminal: { name: '夜间终端', shortName: '终端', colorScheme: 'dark' },
         watercolor: { name: '水彩小馆', shortName: '水彩', colorScheme: 'light' }
     };
@@ -27,7 +28,7 @@
     }
 
     function preferredTheme() {
-        return savedTheme() || (systemTheme.matches ? 'terminal' : 'watercolor');
+        return savedTheme() || 'classic';
     }
 
     function updatePicker(theme) {
@@ -48,8 +49,13 @@
 
     function applyTheme(theme, persist) {
         var normalized = normalizeTheme(theme) || preferredTheme();
-        root.dataset.theme = normalized;
-        root.style.colorScheme = themes[normalized].colorScheme;
+        if (normalized === 'classic') {
+            root.removeAttribute('data-theme');
+            root.style.removeProperty('color-scheme');
+        } else {
+            root.dataset.theme = normalized;
+            root.style.colorScheme = themes[normalized].colorScheme;
+        }
         updatePicker(normalized);
 
         if (persist) {
@@ -86,6 +92,10 @@
             '<div class="ui-theme-picker__panel" id="guccangThemePanel" data-theme-picker-panel hidden>' +
                 '<p class="ui-theme-picker__title">选择画风</p>' +
                 '<div class="ui-theme-picker__options" role="radiogroup" aria-label="网站主题">' +
+                    '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="classic">' +
+                        '<span class="ui-theme-picker__preview ui-theme-picker__preview--classic" aria-hidden="true"><i></i><i></i><i></i></span>' +
+                        '<span><strong>经典原版</strong><small>页面原貌 · 熟悉布局</small></span>' +
+                    '</button>' +
                     '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="terminal">' +
                         '<span class="ui-theme-picker__preview ui-theme-picker__preview--terminal" aria-hidden="true"><i></i><i></i><i></i></span>' +
                         '<span><strong>夜间终端</strong><small>硬边票据 · 点阵</small></span>' +
@@ -133,7 +143,7 @@
     }
 
     systemTheme.addEventListener('change', function (event) {
-        if (!savedTheme()) applyTheme(event.matches ? 'terminal' : 'watercolor', false);
+        if (!savedTheme()) applyTheme('classic', false);
     });
 
     window.addEventListener('storage', function (event) {

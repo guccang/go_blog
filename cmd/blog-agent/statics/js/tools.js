@@ -22,7 +22,7 @@ function loadPIUsage() {
 
 // 工具导航初始化
 function initializeToolNavigation() {
-    const navCards = document.querySelectorAll('.tool-nav-card');
+    const navCards = document.querySelectorAll('.tool-nav-card[data-tool]');
     const toolSections = document.querySelectorAll('.tool-section');
     
     navCards.forEach(card => {

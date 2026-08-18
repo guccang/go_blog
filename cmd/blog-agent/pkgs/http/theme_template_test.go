@@ -31,7 +31,7 @@ func TestAllHTMLTemplatesLoadSharedTheme(t *testing.T) {
 		}
 		checked++
 
-		for _, asset := range []string{`/js/theme.js?v=2`, `/css/theme.css?v=2`} {
+		for _, asset := range []string{`/js/theme.js?v=3`, `/css/theme.css?v=3`} {
 			if count := strings.Count(page, asset); count != 1 {
 				t.Errorf("模板 %s 应恰好加载一次 %s，实际为 %d 次", entry.Name(), asset, count)
 			}
@@ -57,10 +57,14 @@ func TestThemeRuntimeIncludesPersistenceAndAccessibility(t *testing.T) {
 		"prefers-color-scheme: dark",
 		"localStorage.setItem",
 		"data-theme-picker",
+		"data-theme-option=\"classic\"",
 		"data-theme-option=\"terminal\"",
 		"data-theme-option=\"watercolor\"",
 		"if (value === 'dark') return 'terminal'",
 		"if (value === 'light') return 'watercolor'",
+		"return savedTheme() || 'classic'",
+		"root.removeAttribute('data-theme')",
+		"经典原版",
 		"夜间终端",
 		"水彩小馆",
 		"aria-label",
@@ -71,13 +75,14 @@ func TestThemeRuntimeIncludesPersistenceAndAccessibility(t *testing.T) {
 	}
 }
 
-func TestThemeStylesMatchBothVisualContracts(t *testing.T) {
+func TestThemeStylesMatchAllVisualContracts(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join("..", "..", "statics", "css", "theme.css"))
 	if err != nil {
 		t.Fatalf("读取主题样式失败: %v", err)
 	}
 	styles := strings.ToLower(string(content))
 	for _, expected := range []string{
+		`.ui-theme-picker__preview--classic`,
 		`data-theme="terminal"`,
 		`#14100c`,
 		`#e1a82f`,
@@ -95,6 +100,9 @@ func TestThemeStylesMatchBothVisualContracts(t *testing.T) {
 		if !strings.Contains(styles, expected) {
 			t.Errorf("主题样式缺少设计契约 %q", expected)
 		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(styles), `:root,`) {
+		t.Error("经典原版不应继承新主题的全站变量")
 	}
 
 	assetPath := filepath.Join("..", "..", "statics", "images", "theme", "watercolor-studio.png")

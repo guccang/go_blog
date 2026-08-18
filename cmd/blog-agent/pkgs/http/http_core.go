@@ -360,6 +360,7 @@ func Init() int {
 
 	// Tools routes
 	h.HandleFunc("/tools", HandleTools)
+	h.HandleFunc("/tools/visual-themes", HandleVisualThemes)
 	h.HandleFunc("/api/tools/time", tools.TimeToolHandler)
 	h.HandleFunc("/api/tools/data", tools.DataProcessHandler)
 	h.HandleFunc("/api/tools/calculator", tools.CalculatorHandler)
