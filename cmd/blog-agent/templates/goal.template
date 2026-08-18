@@ -1,17 +1,28 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="goal-manage">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>目标管理 - GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/goal.css?v=goal-pan-1">
     <link rel="stylesheet" href="/css/goal_manage.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/goal_manage_unified.css?v=1">
 </head>
 <body>
-    <goal-app></goal-app>
+    <main class="goal-manage-shell site-shell">
+        <section class="site-page-hero" aria-labelledby="goalManageTitle">
+            <div class="site-page-hero__copy">
+                <p class="site-kicker">GOAL · WORKSPACE</p>
+                <h1 id="goalManageTitle" class="site-page-title">把方向拆成今天能完成的动作。</h1>
+                <p class="site-page-description">在同一工作台中维护目标层级、任务进度和周期复盘。</p>
+            </div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="goal"></span></div>
+        </section>
+        <goal-app></goal-app>
+    </main>
     <script type="module" src="/js/goal/components/goal-app.js?v=goal-wheel-1"></script>
 </body>
 </html>
