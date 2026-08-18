@@ -1020,3 +1020,29 @@ html[data-theme="atlas-swiss"] :where(.eyebrow, .kicker, .label) {
     letter-spacing: .14em;
     text-transform: uppercase;
 }
+
+/* 061 液态铬 Liquid Chrome · 数字未来 · dark */
+:root[data-theme="atlas-chrome"] {
+    --c1: #080B10;
+    --c2: #222935;
+    --c3: #667589;
+    --c4: #B9D1E6;
+    --c5: #7B5CFF;
+    --ink: var(--c4);
+    --accent: var(--c5);
+    --primary-color-rgb: 34, 41, 53;
+    --ui-font-display: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-body: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-sans: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-radius: 18px;
+    --ui-radius-sm: 12px;
+    --ui-card-shadow: 0 0 24px color-mix(in srgb, var(--c5) 22%, transparent);
+}
+
+html[data-theme="atlas-chrome"] { color-scheme: dark; }
+
+html[data-theme="atlas-chrome"] body::before {
+    background-image:
+        radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--c5) 16%, transparent), transparent 42%),
+        radial-gradient(ellipse at 84% 78%, color-mix(in srgb, var(--c4) 8%, transparent), transparent 46%);
+}
