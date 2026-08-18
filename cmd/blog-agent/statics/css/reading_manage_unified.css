@@ -1,0 +1,77 @@
+html[data-page="reading-manage"] {
+    --ink: var(--ui-text);
+    --muted: var(--ui-text-muted);
+    --canvas: var(--ui-canvas);
+    --paper: var(--ui-surface);
+    --line: var(--ui-line-soft);
+    --coral: var(--ui-coral);
+    --teal: var(--ui-sky);
+    --navy: var(--ui-text);
+}
+
+html[data-page="reading-manage"] body#body {
+    color: var(--ui-text);
+    background: var(--ui-canvas) !important;
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="reading-manage"] .sidebar {
+    width: min(1180px, calc(100% - 48px)) !important;
+    min-height: 64px;
+    padding-top: 0 !important;
+    border-bottom: 1px solid var(--ui-line-soft);
+}
+
+html[data-page="reading-manage"] .container { width: min(1180px, calc(100% - 48px)) !important; }
+html[data-page="reading-manage"] .manage-heading {
+    display: grid;
+    align-items: center;
+    padding: 76px 0 54px;
+}
+html[data-page="reading-manage"] .manage-heading > a {
+    position: absolute;
+    left: 0;
+    bottom: 18px;
+    color: var(--ui-text);
+    border-color: var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+html[data-page="reading-manage"] .manage-heading .site-page-description { margin-top: 22px; color: var(--ui-text-soft); }
+
+html[data-page="reading-manage"] .top-bar,
+html[data-page="reading-manage"] .filter-panel,
+html[data-page="reading-manage"] .book-card,
+html[data-page="reading-manage"] .modal-content {
+    color: var(--ui-text);
+    border-color: var(--ui-line) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+}
+html[data-page="reading-manage"] .top-bar { box-shadow: 5px 6px 0 var(--ui-shadow-soft) !important; }
+html[data-page="reading-manage"] .search-input,
+html[data-page="reading-manage"] .filter-group select,
+html[data-page="reading-manage"] .form-input,
+html[data-page="reading-manage"] .form-textarea {
+    color: var(--ui-text) !important;
+    border-color: var(--ui-line-soft) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+}
+html[data-page="reading-manage"] .btn-primary { color: var(--ui-canvas) !important; background: var(--ui-coral) !important; }
+html[data-page="reading-manage"] .btn-secondary { color: var(--ui-text) !important; border-color: var(--ui-line) !important; background: var(--ui-surface) !important; }
+html[data-page="reading-manage"] .book-card { box-shadow: 4px 5px 0 var(--ui-shadow-soft) !important; }
+html[data-page="reading-manage"] .book-title { color: var(--ui-text) !important; font-family: var(--ui-font-display); }
+
+:root[data-theme="terminal"][data-page="reading-manage"] .top-bar,
+:root[data-theme="terminal"][data-page="reading-manage"] .book-card { box-shadow: 6px 7px 0 var(--ui-shadow) !important; }
+:root[data-theme="watercolor"][data-page="reading-manage"] .top-bar,
+:root[data-theme="watercolor"][data-page="reading-manage"] .filter-panel,
+:root[data-theme="watercolor"][data-page="reading-manage"] .book-card,
+:root[data-theme="watercolor"][data-page="reading-manage"] .modal-content { border-radius: 18px 12px 20px 14px !important; box-shadow: 0 14px 30px var(--ui-shadow-soft) !important; }
+
+@media (max-width: 720px) {
+    html[data-page="reading-manage"] .sidebar,
+    html[data-page="reading-manage"] .container { width: calc(100% - 28px) !important; }
+    html[data-page="reading-manage"] .manage-heading { grid-template-columns: 1fr; padding: 56px 0 60px; }
+}

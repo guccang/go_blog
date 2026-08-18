@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="reading-manage">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📚 我的读书空间 - GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/reading.css">
     <link rel="stylesheet" href="/css/reading_manage.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/reading_manage_unified.css?v=1">
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
@@ -111,13 +112,14 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container">
-        <section class="manage-heading">
-            <div><p>BOOK LIBRARY</p><h1>书架管理</h1><span>用封面和进度管理每一本书。</span></div>
+    <div class="container site-shell">
+        <section class="manage-heading site-page-hero">
+            <div class="site-page-hero__copy"><p class="site-kicker">BOOK LIBRARY</p><h1 class="site-page-title">书架管理</h1><span class="site-page-description">用封面和进度管理每一本书。</span></div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="reading"></span></div>
             <a href="/reading">返回阅读书架</a>
         </section>
         <!-- 顶部操作栏 -->
-        <div class="top-bar">
+        <div class="top-bar site-paper-panel">
             <div class="search-section">
                 <input type="text" id="search-input" placeholder="搜索书名、作者或内容..." class="search-input">
                 <button id="search-btn" class="btn-primary">🔍 搜索</button>
@@ -135,8 +137,8 @@
         </div>
 
         <!-- 空状态 -->
-        <div id="empty-state" class="empty-state hide">
-            <div class="empty-icon">📚</div>
+        <div id="empty-state" class="empty-state site-empty-state hide">
+            <span class="site-symbol" data-symbol="empty" aria-hidden="true"></span>
             <h3>还没有添加任何书籍</h3>
             <p>点击"添加书籍"开始记录您的阅读之旅</p>
             <button id="add-first-book" class="btn-primary">添加第一本书</button>
