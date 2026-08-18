@@ -1,29 +1,38 @@
 <!DOCTYPE html>
 
-<html lang="en">
+<html lang="zh-CN" data-page="tags">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCANG/TAGS </title>
-		<style>
-		 @import url(/css/link.css);
-		 .right-label{
-			float : right;
-			margin-right:10px;	
-		 }
-		</style>
-	    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>标签索引 - GUCCANG</title>
+	    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
 </head>
 
-	<body class="th_black">
-		<div class="top-fix-div">
-			<img src="/logo/logo.png" width=64></img>
-			<div class="separator"></div>
-		</div>
-		<div style="height:64px;" ></div>
-		{{range .LINKS}}
-			<p><a href="{{.URL}}">{{.DESC}}</a></p>
-		{{end}}
+	<body>
+		<header class="site-shell site-hanging-nav">
+			<a href="/main">GUCCANG</a>
+			<nav><a href="/link">博客档案</a></nav>
+		</header>
+		<main class="site-shell">
+			<section class="site-page-hero" aria-labelledby="tagsPageTitle">
+				<div class="site-page-hero__copy">
+					<p class="site-kicker">INDEX · TAGS</p>
+					<h1 id="tagsPageTitle" class="site-page-title">标签索引</h1>
+					<p class="site-page-description">沿着主题线索回到相关的文章与记录。</p>
+				</div>
+				<div class="site-page-hero__exhibit" aria-hidden="true">
+					<span class="site-page-symbol" data-symbol="search"></span>
+				</div>
+			</section>
+			<section class="site-section" aria-label="标签关联内容">
+				<div class="site-index-list site-paper-panel">
+					{{range .LINKS}}
+					<p><a href="{{.URL}}">{{.DESC}}</a></p>
+					{{end}}
+				</div>
+			</section>
+		</main>
 	</body>
 
 	<script src="/js/utils.js"></script>
