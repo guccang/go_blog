@@ -5,9 +5,9 @@
     var root = document.documentElement;
     var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
     var themes = {
-        classic: { name: '墨纸经典', shortName: '经典', colorScheme: 'light' },
-        terminal: { name: '夜间终端', shortName: '终端', colorScheme: 'dark' },
-        watercolor: { name: '水彩小馆', shortName: '水彩', colorScheme: 'light' }
+        classic: { name: '墨纸经典', shortName: '经典', colorScheme: 'light', colors: ['#F4F1E8', '#C84F35', '#566F76'], tagline: '清晰骨架 · 克制陈列' },
+        terminal: { name: '夜间终端', shortName: '终端', colorScheme: 'dark', colors: ['#211A14', '#F15A29', '#E1A82F'], tagline: '硬边票据 · 点阵' },
+        watercolor: { name: '水彩小馆', shortName: '水彩', colorScheme: 'light', colors: ['#FFFDF6', '#DC5A3C', '#4056B5'], tagline: '纸张晕染 · 手绘' }
     };
     var pageName = root.dataset.page || window.location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || 'index';
 
@@ -72,6 +72,40 @@
         picker.classList.toggle('is-open', open);
     }
 
+    function renderOptions(container) {
+        Object.keys(themes).forEach(function (key) {
+            var meta = themes[key];
+            var option = document.createElement('button');
+            option.className = 'ui-theme-picker__option';
+            option.type = 'button';
+            option.setAttribute('role', 'radio');
+            option.dataset.themeOption = key;
+
+            var preview = document.createElement('span');
+            preview.className = 'ui-theme-picker__preview';
+            preview.style.background = meta.colors[0];
+            preview.style.color = meta.colors[1];
+            preview.setAttribute('aria-hidden', 'true');
+            meta.colors.forEach(function (color) {
+                var bar = document.createElement('i');
+                bar.style.background = color;
+                preview.appendChild(bar);
+            });
+
+            var copy = document.createElement('span');
+            var name = document.createElement('strong');
+            name.textContent = meta.name;
+            var tagline = document.createElement('small');
+            tagline.textContent = meta.tagline;
+            copy.appendChild(name);
+            copy.appendChild(tagline);
+
+            option.appendChild(preview);
+            option.appendChild(copy);
+            container.appendChild(option);
+        });
+    }
+
     function createPicker() {
         if (!document.body || document.querySelector('[data-theme-picker]')) return;
 
@@ -86,21 +120,9 @@
             '</button>' +
             '<div class="ui-theme-picker__panel" id="guccangThemePanel" data-theme-picker-panel hidden>' +
                 '<p class="ui-theme-picker__title">选择画风</p>' +
-                '<div class="ui-theme-picker__options" role="radiogroup" aria-label="网站主题">' +
-                    '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="classic">' +
-                        '<span class="ui-theme-picker__preview ui-theme-picker__preview--classic" aria-hidden="true"><i></i><i></i><i></i></span>' +
-                        '<span><strong>墨纸经典</strong><small>清晰骨架 · 克制陈列</small></span>' +
-                    '</button>' +
-                    '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="terminal">' +
-                        '<span class="ui-theme-picker__preview ui-theme-picker__preview--terminal" aria-hidden="true"><i></i><i></i><i></i></span>' +
-                        '<span><strong>夜间终端</strong><small>硬边票据 · 点阵</small></span>' +
-                    '</button>' +
-                    '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="watercolor">' +
-                        '<span class="ui-theme-picker__preview ui-theme-picker__preview--watercolor" aria-hidden="true"><i></i><i></i><i></i></span>' +
-                        '<span><strong>水彩小馆</strong><small>纸张晕染 · 手绘</small></span>' +
-                    '</button>' +
-                '</div>' +
+                '<div class="ui-theme-picker__options" role="radiogroup" aria-label="网站主题"></div>' +
             '</div>';
+        renderOptions(picker.querySelector('.ui-theme-picker__options'));
 
         var trigger = picker.querySelector('[data-theme-picker-trigger]');
         trigger.addEventListener('click', function () {
