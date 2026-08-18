@@ -1,0 +1,16 @@
+html[data-page="image-paste-demo"] { --ink:var(--ui-text); --muted:var(--ui-text-muted); --paper:var(--ui-surface); --canvas:var(--ui-canvas); --line:var(--ui-line-soft); --coral:var(--ui-coral); --teal:var(--ui-sky); --navy:var(--ui-text); }
+html[data-page="image-paste-demo"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="image-paste-demo"] .demo-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="image-paste-demo"] .demo-header { min-height: 64px; }
+html[data-page="image-paste-demo"] .intro { display: grid; max-width: none; padding: 76px 0 54px; }
+html[data-page="image-paste-demo"] .workspace,
+html[data-page="image-paste-demo"] .markdown-card { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); box-shadow: 5px 6px 0 var(--ui-shadow-soft); }
+html[data-page="image-paste-demo"] .editor-panel,
+html[data-page="image-paste-demo"] .preview-panel { border-color: var(--ui-line-soft); background: var(--ui-surface); }
+html[data-page="image-paste-demo"] textarea { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page="image-paste-demo"] .preview { color: var(--ui-text-muted); border-radius: 2px; background: var(--ui-surface-alt); }
+:root[data-theme="terminal"][data-page="image-paste-demo"] .workspace,
+:root[data-theme="terminal"][data-page="image-paste-demo"] .markdown-card { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="image-paste-demo"] .workspace,
+:root[data-theme="watercolor"][data-page="image-paste-demo"] .markdown-card { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="image-paste-demo"] .demo-shell { width: calc(100% - 28px); } }
