@@ -1,0 +1,34 @@
+html[data-page="account"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="account"] .top-sidebar-cotainer { color: var(--ui-text); border-bottom-color: var(--ui-line-soft); background: var(--ui-canvas); }
+html[data-page="account"] .top-sidebar { width: min(1180px, calc(100% - 48px)); min-height: 64px; margin-inline: auto; }
+html[data-page="account"] .account-container { width: min(1180px, calc(100% - 48px)); max-width: none; }
+html[data-page="account"] .account-header { display: grid; margin: 0; padding: 76px 0 54px; text-align: left; background: transparent; box-shadow: none; }
+html[data-page="account"] .account-identity { display: grid; justify-items: start; }
+html[data-page="account"] .account-avatar { color: var(--ui-canvas); border-color: var(--ui-line); background: var(--ui-coral); box-shadow: 4px 5px 0 var(--ui-shadow-soft); }
+html[data-page="account"] .account-name { color: var(--ui-text); font-family: var(--ui-font-display); font-size: clamp(38px, 6vw, 68px); }
+html[data-page="account"] .account-username { color: var(--ui-text-muted); font-family: var(--ui-font-mono); }
+html[data-page="account"] .account-stats { gap: 14px; padding: 36px 0; }
+html[data-page="account"] .stat-card,
+html[data-page="account"] .info-section,
+html[data-page="account"] .avatar-modal-content {
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+html[data-page="account"] .section-title,
+html[data-page="account"] .stat-value,
+html[data-page="account"] .info-value { color: var(--ui-text); }
+html[data-page="account"] .stat-label,
+html[data-page="account"] .info-label { color: var(--ui-text-muted); }
+html[data-page="account"] .info-input,
+html[data-page="account"] .avatar-input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page="account"] .btn-primary,
+html[data-page="account"] .edit-toggle-btn { color: var(--ui-canvas); border-color: var(--ui-coral); border-radius: 2px; background: var(--ui-coral); }
+:root[data-theme="terminal"][data-page="account"] .stat-card,
+:root[data-theme="terminal"][data-page="account"] .info-section { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="account"] .stat-card,
+:root[data-theme="watercolor"][data-page="account"] .info-section,
+:root[data-theme="watercolor"][data-page="account"] .avatar-modal-content { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="account"] .top-sidebar, html[data-page="account"] .account-container { width: calc(100% - 28px); } }
