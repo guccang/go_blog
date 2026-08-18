@@ -1,5 +1,6 @@
 @import url("/css/visual_language.css?v=1");
 @import url("/css/visual_symbols.css?v=1");
+@import url("/css/visual_symbol_motion.css?v=1");
 
 :root[data-theme] {
     --ui-canvas: #f4f1e8;

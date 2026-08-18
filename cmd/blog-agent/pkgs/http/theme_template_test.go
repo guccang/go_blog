@@ -84,6 +84,7 @@ func TestThemeStylesMatchAllVisualContracts(t *testing.T) {
 	for _, expected := range []string{
 		`@import url("/css/visual_language.css?v=1")`,
 		`@import url("/css/visual_symbols.css?v=1")`,
+		`@import url("/css/visual_symbol_motion.css?v=1")`,
 		`.ui-theme-picker__preview--classic`,
 		`data-theme]`,
 		`#f4f1e8`,
@@ -112,6 +113,46 @@ func TestThemeStylesMatchAllVisualContracts(t *testing.T) {
 		t.Fatalf("水彩主题主视觉资产不可用: %v", err)
 	} else if info.Size() == 0 {
 		t.Fatal("水彩主题主视觉资产为空")
+	}
+}
+
+func TestVisualSymbolMotionDefinesSemanticProfiles(t *testing.T) {
+	staticDir := filepath.Join("..", "..", "statics")
+	motionScript, err := os.ReadFile(filepath.Join(staticDir, "js", "visual_symbol_motion.js"))
+	if err != nil {
+		t.Fatalf("读取视觉符号动效脚本失败: %v", err)
+	}
+	motionStyles, err := os.ReadFile(filepath.Join(staticDir, "css", "visual_symbol_motion.css"))
+	if err != nil {
+		t.Fatalf("读取视觉符号动效样式失败: %v", err)
+	}
+
+	script := string(motionScript)
+	for _, expected := range []string{
+		`portal: ['pendulum', 'foliage-upper', 'foliage-lower', 'falling-leaves']`,
+		`glass: ['glass-sheen']`,
+		`water: ['water-ripple', 'water-ripple-late']`,
+		`metal: ['metal-sheen']`,
+		`IntersectionObserver`,
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("视觉符号动效脚本缺少 %q", expected)
+		}
+	}
+
+	styles := string(motionStyles)
+	for _, expected := range []string{
+		`symbol-motion-host--pendulum`,
+		`symbol-motion__layer--foliage-upper`,
+		`symbol-motion__leaf--1`,
+		`symbol-motion__layer--glass-sheen`,
+		`symbol-motion__layer--water-ripple`,
+		`symbol-motion__layer--metal-sheen`,
+		`prefers-reduced-motion`,
+	} {
+		if !strings.Contains(styles, expected) {
+			t.Errorf("视觉符号动效样式缺少 %q", expected)
+		}
 	}
 }
 

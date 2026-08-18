@@ -146,6 +146,8 @@ button { cursor: pointer; }
     font: 10px/1.5 var(--ui-font-mono);
 }
 
+.site-page-hero__exhibit.symbol-motion-host--portal { overflow: visible; }
+
 .quick-section { padding-top: 48px; }
 
 .section-heading h2 {

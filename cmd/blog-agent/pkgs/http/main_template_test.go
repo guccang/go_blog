@@ -31,7 +31,8 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 	for _, expected := range []string{
 		`id="workspaceQueryForm"`, `id="askPIButton"`, "继续阅读", "快速开始", `href="/link"`,
 		`href="/products"`, "产品库",
-		`data-page="main"`, `class="query-hero site-page-hero"`, `data-symbol="portal"`,
+		`data-page="main"`, `class="query-hero site-page-hero"`, `data-symbol="portal"`, `data-symbol-motion="portal"`,
+		`/js/visual_symbol_motion.js?v=1`,
 		`class="quick-section site-section"`, `class="continue-section site-section"`,
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",

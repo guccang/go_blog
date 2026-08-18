@@ -1,0 +1,183 @@
+/* 视觉符号动效：用透明程序图层表达材质，不修改原始精灵图。 */
+.symbol-motion-host {
+    --symbol-motion-size: 180px;
+    isolation: isolate;
+}
+
+.symbol-motion__stack {
+    position: relative;
+    display: grid;
+    width: max-content;
+    place-items: center;
+}
+
+.symbol-motion__art {
+    position: relative;
+    z-index: 1;
+}
+
+.symbol-motion__layer {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.symbol-motion-host--pendulum {
+    transform-origin: 50% 26px;
+    animation: symbol-pendulum 5.8s cubic-bezier(.42, 0, .58, 1) .72s infinite alternate;
+    will-change: transform;
+}
+
+.symbol-motion__layer--foliage-upper,
+.symbol-motion__layer--foliage-lower {
+    background-image: var(--symbol-sheet);
+    background-repeat: no-repeat;
+    background-position: var(--symbol-x) var(--symbol-y);
+    background-size: 500% 200%;
+    filter: var(--ui-symbol-filter, none);
+    will-change: transform;
+}
+
+.symbol-motion__layer--foliage-upper {
+    clip-path: polygon(72% 12%, 100% 8%, 100% 62%, 78% 57%, 67% 35%);
+    transform-origin: 75% 49%;
+    animation: symbol-foliage-upper 3.9s ease-in-out 1.1s infinite alternate;
+}
+
+.symbol-motion__layer--foliage-lower {
+    clip-path: polygon(67% 45%, 100% 39%, 100% 96%, 66% 96%);
+    transform-origin: 70% 84%;
+    animation: symbol-foliage-lower 4.7s ease-in-out .35s infinite alternate;
+}
+
+.symbol-motion__leaf {
+    position: absolute;
+    z-index: 3;
+    left: 82%;
+    top: 43%;
+    display: block;
+    width: 8px;
+    height: 4px;
+    opacity: 0;
+    border-radius: 90% 12% 90% 12%;
+    background: color-mix(in srgb, var(--ui-success) 78%, var(--ui-amber));
+    box-shadow: 0 1px 1px color-mix(in srgb, var(--ui-text) 18%, transparent);
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+}
+
+.symbol-motion__leaf--1 { animation: symbol-leaf-drift-one 7.4s ease-in-out 1.8s infinite; }
+.symbol-motion__leaf--2 { top: 57%; width: 6px; height: 3px; animation: symbol-leaf-drift-two 8.6s ease-in-out 5.2s infinite; }
+.symbol-motion__leaf--3 { left: 88%; top: 35%; width: 7px; height: 3px; animation: symbol-leaf-drift-three 9.2s ease-in-out 7.1s infinite; }
+
+/* 可复用材质预设：通过 data-symbol-motion="glass|water|metal" 激活。 */
+.symbol-motion__layer--glass-sheen {
+    inset: 8%;
+    opacity: 0;
+    background: linear-gradient(112deg, transparent 28%, rgba(255, 255, 255, .12) 41%, rgba(255, 255, 255, .72) 49%, rgba(188, 226, 236, .22) 56%, transparent 69%);
+    mix-blend-mode: screen;
+    clip-path: var(--symbol-motion-material-clip, inset(0 round 8%));
+    animation: symbol-glass-sheen 5.4s ease-in-out 1.2s infinite;
+}
+
+.symbol-motion__layer--water-ripple,
+.symbol-motion__layer--water-ripple-late {
+    inset: auto 10% 12%;
+    height: 38%;
+    opacity: 0;
+    border: 1px solid color-mix(in srgb, var(--ui-sky) 55%, transparent);
+    border-radius: 50%;
+    transform: scale(.35);
+    animation: symbol-water-ripple 4.8s ease-out infinite;
+}
+
+.symbol-motion__layer--water-ripple-late { animation-delay: 2.4s; }
+
+.symbol-motion__layer--metal-sheen {
+    inset: 5%;
+    opacity: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, .55) 49%, transparent 57%);
+    mix-blend-mode: screen;
+    clip-path: var(--symbol-motion-material-clip, inset(0));
+    animation: symbol-metal-sheen 6.2s ease-in-out 1.6s infinite;
+}
+
+.symbol-motion-host.is-motion-paused,
+.symbol-motion-host.is-motion-paused * {
+    animation-play-state: paused !important;
+}
+
+@keyframes symbol-pendulum {
+    from { transform: rotate(-2.7deg); }
+    to { transform: rotate(2.7deg); }
+}
+
+@keyframes symbol-foliage-upper {
+    from { transform: translate3d(-1px, 1px, 0) rotate(-1.1deg); }
+    to { transform: translate3d(2px, -1px, 0) rotate(1.6deg); }
+}
+
+@keyframes symbol-foliage-lower {
+    from { transform: translate3d(0, 1px, 0) rotate(.7deg); }
+    to { transform: translate3d(2px, -1px, 0) rotate(-1.2deg); }
+}
+
+@keyframes symbol-leaf-drift-one {
+    0%, 16% { opacity: 0; transform: translate3d(0, 0, 0) rotate(12deg); }
+    23% { opacity: .78; }
+    68% { opacity: .62; transform: translate3d(28px, 25px, 0) rotate(210deg); }
+    100% { opacity: 0; transform: translate3d(7px, 58px, 0) rotate(390deg); }
+}
+
+@keyframes symbol-leaf-drift-two {
+    0%, 19% { opacity: 0; transform: translate3d(0, 0, 0) rotate(-18deg); }
+    27% { opacity: .68; }
+    72% { opacity: .52; transform: translate3d(-24px, 28px, 0) rotate(-190deg); }
+    100% { opacity: 0; transform: translate3d(4px, 53px, 0) rotate(-350deg); }
+}
+
+@keyframes symbol-leaf-drift-three {
+    0%, 24% { opacity: 0; transform: translate3d(0, 0, 0) rotate(8deg); }
+    32% { opacity: .64; }
+    74% { opacity: .45; transform: translate3d(19px, 22px, 0) rotate(175deg); }
+    100% { opacity: 0; transform: translate3d(-6px, 49px, 0) rotate(330deg); }
+}
+
+@keyframes symbol-glass-sheen {
+    0%, 18% { opacity: 0; transform: translateX(-92%) skewX(-10deg); }
+    30% { opacity: .78; }
+    52%, 100% { opacity: 0; transform: translateX(92%) skewX(-10deg); }
+}
+
+@keyframes symbol-water-ripple {
+    0% { opacity: 0; transform: scale(.35); }
+    12% { opacity: .58; }
+    72%, 100% { opacity: 0; transform: scale(1); }
+}
+
+@keyframes symbol-metal-sheen {
+    0%, 28% { opacity: 0; transform: translateX(-88%); }
+    38% { opacity: .66; }
+    57%, 100% { opacity: 0; transform: translateX(88%); }
+}
+
+@media (max-width: 720px) {
+    .symbol-motion-host--pendulum { animation-name: symbol-pendulum-mobile; }
+}
+
+@keyframes symbol-pendulum-mobile {
+    from { transform: rotate(-1.8deg); }
+    to { transform: rotate(1.8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .symbol-motion-host,
+    .symbol-motion-host *,
+    .symbol-motion__layer {
+        animation: none !important;
+    }
+
+    .symbol-motion__leaf { display: none; }
+}
