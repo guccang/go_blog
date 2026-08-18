@@ -127,7 +127,6 @@
         ['100', '一页留白', 'A Blank Page', 'quiet', ['#FAFAF7', '#E9E8E2', '#C7C8C3', '#767B78', '#202523'], '以纸白开始，以墨黑结束；为内容保留最大呼吸空间。']
     ];
 
-    var compositions = ['orbit', 'columns', 'arch', 'ripple', 'collage', 'horizon', 'totem', 'window', 'petal', 'signal'];
     var seriesNames = Object.fromEntries(series.map(function (item) { return [item[0], item[1]]; }));
     var themes = themeRows.map(function (row, index) {
         return {
@@ -137,7 +136,9 @@
             series: row[3],
             colors: row[4],
             description: row[5],
-            composition: compositions[index % compositions.length]
+            sheet: Math.floor(index / 10) + 1,
+            cell: index % 10,
+            drift: ((index * 7) % 9) - 4
         };
     });
 
@@ -159,8 +160,18 @@
         }).join(';');
     }
 
-    function artMarkup() {
-        return '<span></span><span></span><span></span><span></span><span></span><b></b><em></em>';
+    function symbolVariables(theme) {
+        var column = theme.cell % 5;
+        var row = Math.floor(theme.cell / 5);
+        var sheet = String(theme.sheet).padStart(2, '0');
+        return '--symbol-sheet:url(/images/visual-symbols/visual-symbols-' + sheet + '.webp);' +
+            '--symbol-x:' + (column * 25) + '%;' +
+            '--symbol-y:' + (row * 100) + '%;' +
+            '--drift:' + theme.drift + 'px;';
+    }
+
+    function symbolMarkup(theme) {
+        return '<span class="symbol-image" style="' + symbolVariables(theme) + '"></span>';
     }
 
     function filterThemes() {
@@ -178,12 +189,12 @@
             var dots = theme.colors.map(function (color) {
                 return '<i style="background:' + color + '" title="' + color + '"></i>';
             }).join('');
-            return '<article class="specimen-card" role="button" tabindex="0" data-theme-id="' + theme.id + '" aria-label="查看 ' + theme.name + ' 配色详情">' +
-                '<div class="specimen-art" data-composition="' + theme.composition + '" style="' + colorVariables(theme.colors) + '" aria-hidden="true">' + artMarkup() + '</div>' +
+            return '<article class="specimen-card" role="button" tabindex="0" data-theme-id="' + theme.id + '" aria-label="查看 ' + theme.name + ' 配色详情" style="--drift:' + theme.drift + 'px">' +
+                '<div class="specimen-art" aria-hidden="true">' + symbolMarkup(theme) + '</div>' +
                 '<div class="specimen-meta">' +
                     '<div class="specimen-heading"><span>' + theme.id + '</span><div><h2>' + theme.name + '</h2><p>' + theme.en + '</p></div></div>' +
                     '<div class="specimen-palette" aria-hidden="true">' + dots + '</div>' +
-                    '<div class="specimen-foot"><span>' + seriesNames[theme.series] + '</span><span>VIEW ↗</span></div>' +
+                    '<div class="specimen-foot"><span>' + seriesNames[theme.series] + '</span><span>细看 ↗</span></div>' +
                 '</div>' +
             '</article>';
         }).join('');
@@ -234,9 +245,8 @@
 
     function openTheme(theme) {
         dialogArt.className = 'dialog-art';
-        dialogArt.dataset.composition = theme.composition;
         dialogArt.style.cssText = colorVariables(theme.colors);
-        dialogArt.innerHTML = artMarkup();
+        dialogArt.innerHTML = symbolMarkup(theme);
         document.getElementById('dialog-theme-number').textContent = 'ARCHIVE NO. ' + theme.id + ' / ' + seriesNames[theme.series];
         document.getElementById('dialog-theme-name').textContent = theme.name;
         document.getElementById('dialog-theme-en').textContent = theme.en;
@@ -284,6 +294,11 @@
             event.preventDefault();
             searchInput.focus();
         }
+    });
+
+    document.querySelectorAll('[data-hero-theme]').forEach(function (node) {
+        var theme = themes.find(function (item) { return item.id === node.dataset.heroTheme; });
+        if (theme) node.innerHTML = symbolMarkup(theme);
     });
 
     renderFilters();
