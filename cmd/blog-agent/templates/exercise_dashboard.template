@@ -1,16 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="exercise-dashboard">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>锻炼 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/exercise_dashboard.css?v=3">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/exercise_dashboard_unified.css?v=1">
 </head>
 <body>
-    <main class="exercise-shell">
-        <header class="page-header">
+    <main class="exercise-shell site-shell">
+        <header class="page-header site-hanging-nav">
             <a class="brand" href="/main"><span>G</span><strong>锻炼</strong></a>
             <div class="date-tools">
                 <a class="professional-link" href="/exercise/pro">专业训练</a>
@@ -19,7 +20,12 @@
             </div>
         </header>
 
-        <section class="rhythm-panel" aria-labelledby="rhythmTitle">
+        <section class="site-page-hero" aria-labelledby="exercisePageTitle">
+            <div class="site-page-hero__copy"><p class="site-kicker">MOVEMENT · DAILY RHYTHM</p><h1 id="exercisePageTitle" class="site-page-title">把每一次运动，连成自己的节奏。</h1><p class="site-page-description">查看近期运动脉搏，并快速记录今天完成的训练。</p></div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="exercise"></span></div>
+        </section>
+
+        <section class="rhythm-panel site-paper-panel" aria-labelledby="rhythmTitle">
             <div class="section-heading">
                 <div>
                     <p class="section-kicker">运动脉搏</p>
@@ -42,7 +48,7 @@
         </section>
 
         <div class="work-grid">
-            <section class="quick-panel" aria-labelledby="quickTitle">
+            <section class="quick-panel site-paper-panel" aria-labelledby="quickTitle">
                 <div class="section-heading compact">
                     <div>
                         <p class="section-kicker">快速记录</p>
@@ -87,7 +93,7 @@
                 <button id="recordButton" class="record-button" type="button">记录完成</button>
             </section>
 
-            <section class="records-panel" aria-labelledby="recordsTitle">
+            <section class="records-panel site-paper-panel" aria-labelledby="recordsTitle">
                 <div class="section-heading compact">
                     <div>
                         <p class="section-kicker">当天记录</p>
@@ -96,8 +102,8 @@
                     <strong id="dayTotal" class="day-total">0 分钟</strong>
                 </div>
                 <div id="exerciseItems" class="exercise-items"></div>
-                <div id="exerciseEmpty" class="empty-state" hidden>
-                    <span>○</span>
+                <div id="exerciseEmpty" class="empty-state site-empty-state" hidden>
+                    <span class="site-symbol" data-symbol="empty" aria-hidden="true"></span>
                     <p>这一天还没有记录。</p>
                 </div>
             </section>
