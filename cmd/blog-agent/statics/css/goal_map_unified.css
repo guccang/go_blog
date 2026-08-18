@@ -1,0 +1,18 @@
+html[data-page="goal-map"] { --ink:var(--ui-text); --muted:var(--ui-text-muted); --canvas:var(--ui-canvas); --paper:var(--ui-surface); --line:var(--ui-line-soft); --coral:var(--ui-coral); --teal:var(--ui-sky); --navy:var(--ui-text); }
+html[data-page="goal-map"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="goal-map"] .goal-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="goal-map"] .goal-header { min-height: 64px; }
+html[data-page="goal-map"] .goal-hero { display: grid; padding: 76px 0 54px; }
+html[data-page="goal-map"] .goal-hero .site-page-description { color: var(--ui-text-soft); }
+html[data-page="goal-map"] .site-page-hero__exhibit { align-content: center; }
+html[data-page="goal-map"] .today-mark { position: absolute; right: 0; bottom: 18px; min-width: 106px; padding: 12px 16px; color: var(--ui-canvas); border: 1px solid var(--ui-line); border-radius: 2px; background: var(--ui-text); }
+html[data-page="goal-map"] .goal-card,
+html[data-page="goal-map"] .focus-section { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); box-shadow: 5px 6px 0 var(--ui-shadow-soft); }
+html[data-page="goal-map"] .goal-card h2 { color: var(--ui-text); font-family: var(--ui-font-display); }
+html[data-page="goal-map"] .progress-ring { color: var(--ui-text); background: radial-gradient(var(--ui-surface) 57%,transparent 59%),conic-gradient(var(--accent,var(--ui-coral)) var(--progress),var(--ui-surface-alt) 0); }
+html[data-page="goal-map"] .next-task { border-bottom-color: var(--ui-line-soft); }
+:root[data-theme="terminal"][data-page="goal-map"] .goal-card,
+:root[data-theme="terminal"][data-page="goal-map"] .focus-section { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="goal-map"] .goal-card,
+:root[data-theme="watercolor"][data-page="goal-map"] .focus-section { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="goal-map"] .goal-shell { width: calc(100% - 28px); } html[data-page="goal-map"] .goal-hero { grid-template-columns: 1fr; padding: 56px 0 42px; } html[data-page="goal-map"] .today-mark { right: 14px; } }

@@ -1,14 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>目标 · GUCCANG</title><link rel="stylesheet" href="/css/goal_map.css?v=1">    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+<html lang="zh-CN" data-page="goal-map">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>目标 · GUCCANG</title><script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/goal_map.css?v=1">
+    <link rel="stylesheet" href="/css/goal_map_unified.css?v=1">
 </head>
 <body>
-    <main class="goal-shell">
-        <header class="goal-header"><a class="brand" href="/main"><span>G</span> GUCCANG</a><a class="manage-link" href="/goal/manage">详细管理</a></header>
-        <section class="goal-hero"><div><p class="eyebrow">GOAL MAP</p><h1>看清方向，然后完成下一步。</h1><p>四层目标在同一张地图上；细节和复盘留在详细管理中。</p></div><div class="today-mark"><span>今天</span><strong id="todayLabel">—</strong></div></section>
+    <main class="goal-shell site-shell">
+        <header class="goal-header site-hanging-nav"><a class="brand" href="/main"><span>G</span> GUCCANG</a><a class="manage-link" href="/goal/manage">详细管理</a></header>
+        <section class="goal-hero site-page-hero"><div class="site-page-hero__copy"><p class="eyebrow site-kicker">GOAL MAP</p><h1 class="site-page-title">看清方向，然后完成下一步。</h1><p class="site-page-description">四层目标在同一张地图上；细节和复盘留在详细管理中。</p></div><div class="site-page-hero__exhibit"><span class="site-page-symbol" data-symbol="goal" aria-hidden="true"></span><div class="today-mark"><span>今天</span><strong id="todayLabel">—</strong></div></div></section>
         <section id="goalMap" class="goal-map" aria-label="当前目标地图"></section>
-        <section class="focus-section"><div><p class="eyebrow">NEXT STEP</p><h2>今天先做什么</h2></div><div id="nextTasks" class="next-tasks"></div></section>
+        <section class="focus-section site-paper-panel"><div><p class="eyebrow">NEXT STEP</p><h2>今天先做什么</h2></div><div id="nextTasks" class="next-tasks"></div></section>
     </main>
     <script src="/js/goal_map.js?v=2"></script>
 </body>
