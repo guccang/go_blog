@@ -278,7 +278,7 @@ html[data-theme] body :where(
     .reading-card, .book-card, .tool-card, .product-card, .exercise-card,
     .clipboard-card, .stat-card, .metric-card
 ) {
-    box-shadow: 4px 4px 0 var(--ui-shadow-soft);
+    box-shadow: var(--ui-card-shadow, 4px 4px 0 var(--ui-shadow-soft));
 }
 
 html[data-theme] :where(.text-muted, .muted, .subtitle, .description, small) {
@@ -623,7 +623,7 @@ html[data-theme] body :where(
     .comment-form-container, .answer-block, .book-detail-container,
     .progress-section, .info-item
 ) {
-    box-shadow: 4px 4px 0 var(--ui-shadow-soft);
+    box-shadow: var(--ui-card-shadow, 4px 4px 0 var(--ui-shadow-soft));
 }
 
 html[data-theme="terminal"] body :where(
@@ -899,4 +899,101 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
 @media print {
     .ui-theme-picker { display: none !important; }
     html[data-theme] body::before { display: none; }
+}
+
+/* ===== 图鉴主题基座：从 --c1~--c5 推导全站语义令牌 ===== */
+:root[data-theme^="atlas-"] {
+    --ui-canvas: var(--c1);
+    --ui-surface: color-mix(in srgb, var(--c1) 92%, var(--c2));
+    --ui-surface-raised: var(--c2);
+    --ui-text: var(--ink, var(--c5));
+    --ui-text-soft: color-mix(in srgb, var(--ui-text) 78%, var(--c1));
+    --ui-text-muted: color-mix(in srgb, var(--ui-text) 56%, var(--c1));
+    --ui-line: var(--ui-text);
+    --ui-line-soft: color-mix(in srgb, var(--ui-text) 26%, var(--c1));
+    --ui-cream: var(--c1);
+    --ui-amber: var(--accent, var(--c4));
+    --ui-amber-soft: color-mix(in srgb, var(--accent, var(--c4)) 24%, var(--c1));
+    --ui-coral: var(--accent, var(--c4));
+    --ui-coral-soft: color-mix(in srgb, var(--accent, var(--c4)) 20%, var(--c1));
+    --ui-sky: var(--c3);
+    --ui-sky-soft: color-mix(in srgb, var(--c3) 26%, var(--c1));
+    --ui-rose: var(--c3);
+    --ui-rose-soft: color-mix(in srgb, var(--c3) 22%, var(--c1));
+    --ui-success: var(--c3);
+    --ui-warning: var(--accent, var(--c4));
+    --ui-danger: var(--accent, var(--c4));
+    --ui-shadow: var(--ui-text);
+    --ui-shadow-soft: color-mix(in srgb, var(--ui-text) 14%, transparent);
+    --ui-dot: color-mix(in srgb, var(--ui-text) 8%, transparent);
+    --ui-font-display: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-body: Georgia, "Noto Serif SC", "Songti SC", serif;
+    --ui-font-sans: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+    --ui-radius: 14px;
+    --ui-radius-sm: 9px;
+
+    --bg: var(--ui-canvas);
+    --surface: var(--ui-surface);
+    --text: var(--ui-text);
+    --secondary: var(--ui-text-soft);
+    --muted: var(--ui-text-muted);
+    --accent-soft: var(--ui-coral-soft);
+    --navy: var(--ui-text);
+    --border: var(--ui-line-soft);
+    --font: var(--ui-font-sans);
+    --paper: var(--ui-surface);
+    --card: var(--ui-surface);
+    --canvas: var(--ui-canvas);
+    --line: var(--ui-line-soft);
+    --soft-line: var(--ui-line-soft);
+    --signal: var(--ui-sky);
+    --signal-soft: var(--ui-sky-soft);
+    --violet: var(--ui-rose);
+    --coral: var(--ui-coral);
+    --coral-dark: color-mix(in srgb, var(--ui-coral) 82%, var(--ui-text));
+    --teal: var(--ui-success);
+    --orange: var(--ui-amber);
+    --orange-soft: var(--ui-amber-soft);
+    --green: var(--ui-success);
+    --green-soft: color-mix(in srgb, var(--c3) 22%, var(--c1));
+    --clay: var(--ui-coral);
+    --clay-dark: var(--coral-dark);
+    --blue-soft: var(--ui-sky-soft);
+    --danger: var(--ui-danger);
+    --danger-soft: var(--ui-coral-soft);
+    --shadow: 4px 4px 0 var(--ui-shadow);
+    --primary-color: var(--ui-surface-raised);
+    --primary-hover: var(--ui-amber-soft);
+    --secondary-color: var(--ui-line-soft);
+    --accent-color: var(--ui-coral);
+    --accent-hover: var(--coral-dark);
+    --text-color: var(--ui-text);
+    --bg-color: var(--ui-canvas);
+    --card-bg: var(--ui-surface);
+    --lighter-bg: var(--ui-surface-raised);
+    --border-color: var(--ui-line-soft);
+    --success-color: var(--ui-success);
+    --warning-color: var(--ui-warning);
+    --danger-color: var(--ui-danger);
+    --code-bg: var(--ui-surface-raised);
+    --shadow-color: var(--ui-shadow-soft);
+    --text-dark: var(--ui-text);
+    --text-light: var(--ui-text-soft);
+    --bg-light: var(--ui-canvas);
+    --bg-white: var(--ui-surface);
+    --goal-bg: var(--ui-canvas);
+    --goal-card: var(--ui-surface);
+    --goal-card-hover: var(--ui-surface-raised);
+    --goal-accent: var(--ui-coral);
+    --goal-accent-hover: var(--coral-dark);
+    --goal-accent-light: var(--ui-coral-soft);
+    --goal-text: var(--ui-text);
+    --goal-text-secondary: var(--ui-text-soft);
+    --goal-text-muted: var(--ui-text-muted);
+    --goal-border: var(--ui-line-soft);
+    --goal-border-light: var(--ui-line-soft);
+    --goal-success: var(--ui-success);
+    --goal-warning: var(--ui-warning);
+    --goal-danger: var(--ui-danger);
 }
