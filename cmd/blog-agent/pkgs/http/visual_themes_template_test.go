@@ -35,10 +35,31 @@ func TestVisualThemeAtlasContainsOneHundredThemes(t *testing.T) {
 	for _, expected := range []string{
 		"oriental", "masters", "nature", "cinema", "material",
 		"editorial", "digital", "subculture", "craft", "quiet",
-		"copyColor", "renderGallery", "openTheme",
+		"copyColor", "renderGallery", "openTheme", "symbolVariables", "symbol-image",
+		"visual-symbols-", "sheet: Math.floor(index / 10) + 1", "cell: index % 10",
 	} {
 		if !strings.Contains(script, expected) {
 			t.Errorf("视觉主题脚本缺少 %q", expected)
+		}
+	}
+	if strings.Contains(script, "var compositions") || strings.Contains(script, "data-composition") {
+		t.Error("视觉主题脚本不应继续使用重复几何图块组合")
+	}
+
+	assets, err := filepath.Glob(filepath.Join("..", "..", "statics", "images", "visual-symbols", "visual-symbols-*.webp"))
+	if err != nil {
+		t.Fatalf("读取视觉符号资源失败: %v", err)
+	}
+	if len(assets) != 10 {
+		t.Fatalf("100 枚视觉符号应由 10 张 image-2 精灵图承载，实际为 %d 张", len(assets))
+	}
+	for _, asset := range assets {
+		info, statErr := os.Stat(asset)
+		if statErr != nil {
+			t.Fatalf("读取视觉符号资源 %s 失败: %v", asset, statErr)
+		}
+		if info.Size() < 100_000 {
+			t.Errorf("视觉符号资源 %s 文件过小，可能未正确生成", asset)
 		}
 	}
 }
@@ -50,10 +71,12 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 	}
 	page := string(templateContent)
 	for _, expected := range []string{
-		`CHROMA 100`,
+		`百象悬廊`,
+		`THE HANGING ARCHIVE`,
 		`id="theme-gallery"`,
-		`/css/visual_themes.css?v=1`,
-		`/js/visual_themes.js?v=1`,
+		`data-hero-theme="006"`,
+		`/css/visual_themes.css?v=2`,
+		`/js/visual_themes.js?v=2`,
 		`/js/theme.js?v=3`,
 		`/css/theme.css?v=3`,
 	} {

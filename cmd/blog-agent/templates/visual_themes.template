@@ -3,42 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="100 款视觉主题与艺术配色图鉴">
-    <title>CHROMA 100 · 色谱档案馆</title>
+    <meta name="description" content="百象悬廊：100 款由 image-2 绘制的视觉符号与艺术配色">
+    <title>百象悬廊 · THE HANGING ARCHIVE</title>
     <script src="/js/theme.js?v=3"></script>
     <link rel="stylesheet" href="/css/theme.css?v=3">
-    <link rel="stylesheet" href="/css/visual_themes.css?v=1">
+    <link rel="stylesheet" href="/css/visual_themes.css?v=2">
 </head>
-<body class="visual-themes-body">
+<body class="visual-themes-body" id="top">
     <a class="atlas-skip-link" href="#theme-gallery">跳到主题图鉴</a>
 
     <header class="atlas-header">
         <nav class="atlas-nav" aria-label="页面导航">
             <a href="/tools" class="atlas-back"><span aria-hidden="true">←</span> 返回工具</a>
-            <span class="atlas-edition">GUCCANG / VISUAL ARCHIVE / 2026</span>
+            <span class="atlas-edition">GUCCANG / HANGING ARCHIVE / 2026</span>
             <a href="/main" class="atlas-home">首页</a>
         </nav>
 
+        <div class="atlas-mobile" aria-hidden="true">
+            <i class="mobile-wire"></i>
+            <div class="hero-charm hero-charm-one" data-hero-theme="006"></div>
+            <div class="hero-charm hero-charm-two" data-hero-theme="025"></div>
+            <div class="hero-charm hero-charm-three" data-hero-theme="064"></div>
+            <div class="hero-charm hero-charm-four" data-hero-theme="081"></div>
+        </div>
+
         <div class="atlas-hero">
             <div class="atlas-title-block">
-                <p class="atlas-kicker">A curated atlas of color &amp; form</p>
-                <h1><span>CHROMA</span><strong>100</strong></h1>
-                <p class="atlas-cn-title">色谱档案馆</p>
+                <p class="atlas-kicker">One hundred signs, suspended in color</p>
+                <h1><span>百象</span><strong>悬廊</strong></h1>
+                <p class="atlas-en-title">THE HANGING ARCHIVE · 001—100</p>
             </div>
             <div class="atlas-intro">
-                <p>一百种视觉气候，一百套可被记住的颜色关系。</p>
-                <p>从东方器物到电影光色，每张卡片都是一幅微型艺术标本。仅供观赏、比较与采色。</p>
+                <p>一百枚手绘视觉符号，一百种可被记住的颜色气候。</p>
+                <p>从东方器物到电影光色，沿一根细线徐徐展开。每一件都可停驻、细看与采色。</p>
             </div>
-            <div class="atlas-mark" aria-hidden="true">
-                <span>色</span><i></i><span>形</span><i></i><span>光</span>
-            </div>
+            <div class="atlas-seal" aria-hidden="true"><span>百</span><span>象</span></div>
         </div>
     </header>
 
     <main class="atlas-main">
         <section class="atlas-controls" aria-label="图鉴筛选">
             <div class="atlas-search-wrap">
-                <label for="theme-search">查找风格</label>
+                <label for="theme-search">查找符号</label>
                 <div class="atlas-search-field">
                     <span aria-hidden="true">⌕</span>
                     <input id="theme-search" type="search" autocomplete="off" placeholder="名称、系列或关键词">
@@ -46,24 +52,24 @@
                 </div>
             </div>
             <div class="atlas-filter-wrap">
-                <span class="atlas-filter-label">系列</span>
+                <span class="atlas-filter-label">沿线索引</span>
                 <div class="atlas-filters" id="theme-filters" role="group" aria-label="按系列筛选"></div>
             </div>
         </section>
 
         <div class="atlas-index-line">
-            <p><span id="visible-count">100</span> / 100 COLLECTIONS</p>
+            <p><span id="visible-count">100</span> / 100 SIGNS</p>
             <p id="active-series">全部馆藏</p>
         </div>
 
         <section class="atlas-gallery" id="theme-gallery" aria-label="视觉主题图鉴"></section>
-        <p class="atlas-empty" id="theme-empty" hidden>没有找到相符的视觉主题，换一个关键词试试。</p>
+        <p class="atlas-empty" id="theme-empty" hidden>没有找到相符的视觉符号，换一个关键词试试。</p>
     </main>
 
     <footer class="atlas-footer">
-        <p>CHROMA 100</p>
-        <p>颜色不是装饰，而是情绪发生的方式。</p>
-        <a href="#top" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;">回到顶部 ↑</a>
+        <p>THE HANGING ARCHIVE</p>
+        <p>颜色不是装饰，而是情绪留下的回声。</p>
+        <a href="#top">回到顶部 ↑</a>
     </footer>
 
     <dialog class="atlas-dialog" id="theme-dialog" aria-labelledby="dialog-theme-name">
@@ -83,6 +89,6 @@
 
     <div class="atlas-toast" id="atlas-toast" role="status" aria-live="polite"></div>
     <noscript><p class="atlas-noscript">需要启用 JavaScript 才能浏览这份图鉴。</p></noscript>
-    <script src="/js/visual_themes.js?v=1" defer></script>
+    <script src="/js/visual_themes.js?v=2" defer></script>
 </body>
 </html>
