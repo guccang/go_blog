@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="reading-shelf">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>读书记录 · GUCCANG</title>
-    <link rel="stylesheet" href="/css/reading_shelf.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/reading_shelf.css?v=unified-1">
 </head>
 <body>
-    <main class="reading-shell">
-        <header class="reading-header"><a class="brand" href="/main"><span>G</span> GUCCANG</a><div><a href="/reading/manage">详细管理</a></div></header>
-        <section class="reading-hero"><div><p class="eyebrow">READING SPACE</p><h1>下一次翻页，从正在读的书开始。</h1><p>点击书籍记录阅读进度；书架只保留你现在真正需要看的信息。</p></div><div class="hero-count"><strong id="readingCount">0</strong><span>本正在读</span></div></section>
-        <section class="reading-metrics"><article><span>我的书架</span><strong id="totalBooks">0</strong><small>本书</small></article><article><span>已经读完</span><strong id="finishedBooks">0</strong><small>本书</small></article><article><span>累计页数</span><strong id="totalPages">0</strong><small>页</small></article></section>
-        <section class="shelf-section"><div class="section-heading"><div><p class="eyebrow">NOW READING</p><h2>正在阅读</h2></div><a href="/reading/manage">管理书架 →</a></div><div id="readingShelf" class="book-shelf"></div><div id="readingEmpty" class="empty-state" hidden><span>📖</span><h3>还没有正在阅读的书</h3><p>从详细管理中添加一本书，然后回到这里专心阅读。</p><a href="/reading/manage">添加书籍</a></div></section>
-        <section class="shelf-section finished-section"><div class="section-heading"><div><p class="eyebrow">RECENTLY FINISHED</p><h2>最近读完</h2></div></div><div id="finishedShelf" class="book-shelf compact"></div><p id="finishedEmpty" class="muted" hidden>完成一本书，它会出现在这里。</p></section>
+    <main class="reading-shell site-shell">
+        <header class="reading-header site-hanging-nav"><a class="brand" href="/main"><span>G</span> GUCCANG</a><div><a href="/reading/manage">详细管理</a></div></header>
+        <section class="reading-hero site-page-hero"><div class="site-page-hero__copy"><p class="eyebrow site-kicker">READING SPACE</p><h1 class="site-page-title">下一次翻页，从正在读的书开始。</h1><p class="site-page-description">点击书籍记录阅读进度；书架只保留你现在真正需要看的信息。</p></div><div class="site-page-hero__exhibit"><span class="site-page-symbol" data-symbol="reading" aria-hidden="true"></span><div class="hero-count"><strong id="readingCount">0</strong><span>本正在读</span></div></div></section>
+        <section class="reading-metrics site-section"><article class="site-paper-panel"><span>我的书架</span><strong id="totalBooks">0</strong><small>本书</small></article><article class="site-paper-panel"><span>已经读完</span><strong id="finishedBooks">0</strong><small>本书</small></article><article class="site-paper-panel"><span>累计页数</span><strong id="totalPages">0</strong><small>页</small></article></section>
+        <section class="shelf-section site-paper-panel"><div class="section-heading"><div><p class="eyebrow">NOW READING</p><h2>正在阅读</h2></div><a class="site-ticket" href="/reading/manage">管理书架 →</a></div><div id="readingShelf" class="book-shelf"></div><div id="readingEmpty" class="empty-state site-empty-state" hidden><span class="site-symbol" data-symbol="empty" aria-hidden="true"></span><h3>还没有正在阅读的书</h3><p>从详细管理中添加一本书，然后回到这里专心阅读。</p><a class="site-ticket" href="/reading/manage">添加书籍</a></div></section>
+        <section class="shelf-section finished-section site-paper-panel"><div class="section-heading"><div><p class="eyebrow">RECENTLY FINISHED</p><h2>最近读完</h2></div></div><div id="finishedShelf" class="book-shelf compact"></div><p id="finishedEmpty" class="muted" hidden>完成一本书，它会出现在这里。</p></section>
     </main>
     <script src="/js/reading_shelf.js?v=1"></script>
 </body>
