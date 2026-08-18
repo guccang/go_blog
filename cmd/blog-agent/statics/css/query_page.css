@@ -264,3 +264,128 @@ html[data-page="search"] .empty-query {
     html[data-page="search"] .search-result { padding-left: 38px; }
     html[data-page="search"] .search-result::before { left: 11px; }
 }
+
+/* 问答页：延续查询骨架，以纸张答案和悬挂编辑符号区分任务语义。 */
+html[data-page="ask"] body {
+    background: var(--ui-canvas);
+    color: var(--ui-text);
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="ask"] .query-header {
+    width: min(1180px, calc(100% - 48px));
+    height: auto;
+    margin-inline: auto;
+    border-bottom-color: var(--ui-line-soft);
+}
+
+html[data-page="ask"] .query-brand span,
+html[data-page="ask"] .query-account {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 50%;
+    background: var(--ui-coral);
+    box-shadow: 2px 2px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="ask"] .query-account { background: var(--ui-sky); }
+html[data-page="ask"] .query-header nav { color: var(--ui-text-soft); }
+
+html[data-page="ask"] .query-shell {
+    width: min(1180px, calc(100% - 48px));
+    margin-inline: auto;
+    padding: 0 0 80px;
+}
+
+html[data-page="ask"] .back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--ui-text-muted);
+    font: 10px/1.2 var(--ui-font-mono);
+    letter-spacing: .08em;
+}
+
+html[data-page="ask"] .query-workspace {
+    width: min(820px, 100%);
+    margin-inline: auto;
+}
+
+html[data-page="ask"] .standalone-query {
+    gap: 12px;
+    margin: 0;
+    padding: 10px;
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+
+html[data-page="ask"] .standalone-query:focus-within {
+    border-color: var(--ui-coral);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="ask"] .standalone-query input {
+    color: var(--ui-text);
+    background: transparent;
+}
+
+html[data-page="ask"] .standalone-query input::placeholder { color: var(--ui-text-muted); }
+
+html[data-page="ask"] .standalone-query button {
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-amber);
+}
+
+html[data-page="ask"] .query-status {
+    color: var(--ui-text-muted);
+    font-family: var(--ui-font-mono);
+}
+
+html[data-page="ask"] .text-button {
+    min-height: 34px;
+    color: var(--ui-coral);
+    background: transparent;
+}
+
+html[data-page="ask"] .pi-answer {
+    margin-top: 14px;
+    padding: 6px 28px 22px;
+    border-color: var(--ui-line-soft);
+    background: var(--ui-surface);
+}
+
+html[data-page="ask"] .answer-block { border-bottom-color: var(--ui-line-soft); }
+html[data-page="ask"] .answer-block h2 {
+    color: var(--ui-coral);
+    font-family: var(--ui-font-mono);
+    letter-spacing: .08em;
+}
+html[data-page="ask"] .answer-block p { color: var(--ui-text-soft); }
+html[data-page="ask"] .answer-sources { color: var(--ui-text-soft); }
+html[data-page="ask"] .answer-sources strong { color: var(--ui-text); }
+html[data-page="ask"] .answer-sources a { color: var(--ui-coral); }
+html[data-page="ask"] .answer-usage {
+    color: var(--ui-text-muted);
+    font-family: var(--ui-font-mono);
+}
+
+:root[data-theme="terminal"][data-page="ask"] .standalone-query,
+:root[data-theme="terminal"][data-page="ask"] .pi-answer {
+    box-shadow: 6px 7px 0 var(--ui-shadow);
+}
+
+:root[data-theme="watercolor"][data-page="ask"] .standalone-query,
+:root[data-theme="watercolor"][data-page="ask"] .pi-answer {
+    border-radius: 18px 12px 20px 14px;
+}
+
+@media (max-width: 720px) {
+    html[data-page="ask"] .query-header,
+    html[data-page="ask"] .query-shell { width: calc(100% - 28px); }
+    html[data-page="ask"] .query-shell { padding-top: 0; }
+    html[data-page="ask"] .standalone-query { display: block; }
+    html[data-page="ask"] .standalone-query button { margin-top: 8px; }
+    html[data-page="ask"] .pi-answer { padding-inline: 18px; }
+}
