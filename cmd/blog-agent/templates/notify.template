@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 
-<html lang="en">
+<html lang="zh-CN" data-page="notify">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCANG/NOTIFY </title>
-	    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>操作结果 - GUCCANG</title>
+	    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
 </head>
 
 	<body>
-		<h1> {{.}} </h1>
+		<main class="site-shell">
+			<section class="site-page-hero" aria-labelledby="notifyTitle">
+				<div class="site-page-hero__copy">
+					<p class="site-kicker">SYSTEM · NOTICE</p>
+					<h1 id="notifyTitle" class="site-page-title">{{.}}</h1>
+					<p class="site-page-description">操作结果已经记录，可以返回主页继续使用。</p>
+					<a class="site-ticket" href="/main">返回主页</a>
+				</div>
+				<div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="success"></span></div>
+			</section>
+		</main>
 	</body>
 </html>
