@@ -5,7 +5,7 @@
     var root = document.documentElement;
     var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
     var themes = {
-        classic: { name: '经典原版', shortName: '原版', colorScheme: '' },
+        classic: { name: '墨纸经典', shortName: '经典', colorScheme: 'light' },
         terminal: { name: '夜间终端', shortName: '终端', colorScheme: 'dark' },
         watercolor: { name: '水彩小馆', shortName: '水彩', colorScheme: 'light' }
     };
@@ -49,13 +49,8 @@
 
     function applyTheme(theme, persist) {
         var normalized = normalizeTheme(theme) || preferredTheme();
-        if (normalized === 'classic') {
-            root.removeAttribute('data-theme');
-            root.style.removeProperty('color-scheme');
-        } else {
-            root.dataset.theme = normalized;
-            root.style.colorScheme = themes[normalized].colorScheme;
-        }
+        root.dataset.theme = normalized;
+        root.style.colorScheme = themes[normalized].colorScheme;
         updatePicker(normalized);
 
         if (persist) {
@@ -94,7 +89,7 @@
                 '<div class="ui-theme-picker__options" role="radiogroup" aria-label="网站主题">' +
                     '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="classic">' +
                         '<span class="ui-theme-picker__preview ui-theme-picker__preview--classic" aria-hidden="true"><i></i><i></i><i></i></span>' +
-                        '<span><strong>经典原版</strong><small>页面原貌 · 熟悉布局</small></span>' +
+                        '<span><strong>墨纸经典</strong><small>清晰骨架 · 克制陈列</small></span>' +
                     '</button>' +
                     '<button class="ui-theme-picker__option" type="button" role="radio" data-theme-option="terminal">' +
                         '<span class="ui-theme-picker__preview ui-theme-picker__preview--terminal" aria-hidden="true"><i></i><i></i><i></i></span>' +
