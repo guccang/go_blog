@@ -1,30 +1,33 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="config">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}}</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/css/config.css">
     <link rel="stylesheet" href="/css/styles.css">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/config_unified.css?v=1">
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <div>
-                <h1>系统配置</h1>
-                <p class="header-subtitle">仅展示日常运行所需的核心参数</p>
+    <div class="container site-shell">
+        <header class="header site-page-hero">
+            <div class="site-page-hero__copy">
+                <p class="site-kicker">SYSTEM · SETTINGS</p>
+                <h1 class="site-page-title">系统配置</h1>
+                <p class="header-subtitle site-page-description">仅展示日常运行所需的核心参数</p>
             </div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="settings"></span></div>
             <div class="header-actions">
                 <button class="btn btn-secondary" onclick="goBack()">返回</button>
                 <button class="btn btn-success" onclick="saveAllConfigs()">保存配置</button>
             </div>
         </header>
 
-        <div class="content">
-            <div class="config-notice">
+        <div class="content site-section">
+            <div class="config-notice site-paper-panel">
                 <span>修改后点击“保存配置”生效；端口与 PI Agent Provider 配置需重启服务。</span>
             </div>
 
