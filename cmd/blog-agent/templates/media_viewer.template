@@ -1,17 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="media-viewer">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Name}} · 文件预览</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/media_viewer.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/media_viewer_unified.css?v=1">
 </head>
 <body class="media-viewer-page" data-view-mode="{{.Mode}}">
-    <main class="viewer-shell">
-        <header class="viewer-header">
+    <main class="viewer-shell site-shell">
+        <header class="viewer-header site-hanging-nav">
             <div class="file-identity">
+                <span class="viewer-symbol site-symbol" data-symbol="article" aria-hidden="true"></span>
                 <span class="file-type" aria-hidden="true">{{.TypeLabel}}</span>
                 <div class="file-heading">
                     <p>附件预览</p>
@@ -25,7 +27,7 @@
             </nav>
         </header>
 
-        <section class="viewer-stage" aria-label="文件内容">
+        <section class="viewer-stage site-paper-panel" aria-label="文件内容">
             <div class="viewer-status" id="viewer-status" role="status">
                 <span></span>正在准备预览
             </div>
