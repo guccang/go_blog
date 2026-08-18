@@ -313,6 +313,8 @@ html[data-theme="watercolor"] body :where(input, textarea, select) {
     box-shadow: inset 0 -2px 0 rgba(64, 86, 181, .06);
 }
 
+/* 首页已迁移到 main.css；保留旧规则一版作为迁移期对照，但不再参与级联。 */
+@media not all {
 /* 首页以“个人工作台票据”为视觉主场，呼应参考图中的点阵信息牌。 */
 html[data-theme="terminal"][data-page="main"] .main-header {
     width: min(850px, calc(100% - 40px));
@@ -597,6 +599,7 @@ html[data-theme="watercolor"][data-page="main"] .daily-quote {
 }
 
 html[data-theme="watercolor"][data-page="main"] .daily-quote blockquote { font-family: var(--ui-font-body); }
+}
 
 /* 内容、表单和数据页面共享的票据式层级。 */
 html[data-theme] body :where(
@@ -835,6 +838,7 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    @media not all {
     html[data-theme="terminal"][data-page="main"] .query-hero { padding: 24px 18px; }
 
     html[data-theme="terminal"][data-page="main"] .query-hero h1 {
@@ -862,6 +866,7 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
 
     html[data-theme="watercolor"][data-page="main"] .query-hero h1 {
         font-size: clamp(31px, 10vw, 40px);
+    }
     }
 
     .ui-theme-picker {

@@ -31,7 +31,7 @@ func TestAllHTMLTemplatesLoadSharedTheme(t *testing.T) {
 		}
 		checked++
 
-		for _, asset := range []string{`/js/theme.js?v=3`, `/css/theme.css?v=3`} {
+		for _, asset := range []string{`/js/theme.js?v=`, `/css/theme.css?v=`} {
 			if count := strings.Count(page, asset); count != 1 {
 				t.Errorf("模板 %s 应恰好加载一次 %s，实际为 %d 次", entry.Name(), asset, count)
 			}
