@@ -1,0 +1,17 @@
+html[data-page="hook-insights"] { --ink:var(--ui-text); --navy:var(--ui-text); --muted:var(--ui-text-muted); --paper:var(--ui-surface); --canvas:var(--ui-canvas); --line:var(--ui-line-soft); --coral:var(--ui-coral); --teal:var(--ui-sky); --danger:var(--ui-coral); }
+html[data-page="hook-insights"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="hook-insights"] .insights-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="hook-insights"] .insights-header { min-height: 64px; }
+html[data-page="hook-insights"] .insights-hero { display: grid; padding: 76px 0 54px; }
+html[data-page="hook-insights"] .insights-period { position: absolute; right: 0; bottom: 18px; color: var(--ui-canvas); border: 1px solid var(--ui-line); border-radius: 2px; background: var(--ui-text); }
+html[data-page="hook-insights"] .insights-filters,
+html[data-page="hook-insights"] .insight-card { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); box-shadow: 5px 6px 0 var(--ui-shadow-soft); }
+html[data-page="hook-insights"] .summary-strip article { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); }
+html[data-page="hook-insights"] select,
+html[data-page="hook-insights"] button { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface); }
+:root[data-theme="terminal"][data-page="hook-insights"] .insights-filters,
+:root[data-theme="terminal"][data-page="hook-insights"] .insight-card { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="hook-insights"] .insights-filters,
+:root[data-theme="watercolor"][data-page="hook-insights"] .insight-card,
+:root[data-theme="watercolor"][data-page="hook-insights"] .summary-strip article { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="hook-insights"] .insights-shell { width: calc(100% - 28px); } html[data-page="hook-insights"] .insights-period { right: 14px; } }
