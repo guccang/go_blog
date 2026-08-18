@@ -1,21 +1,22 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="book-detail-focus">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Book.Title}} · 阅读</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/book_detail_focus.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/book_detail_focus_unified.css?v=1">
 </head>
 <body data-book-id="{{.Book.ID}}" data-current-page="{{.Book.CurrentPage}}" data-total-pages="{{.Book.TotalPages}}" data-status="{{.Book.Status}}">
-    <main class="book-shell">
-        <header class="book-topbar">
+    <main class="book-shell site-shell">
+        <header class="book-topbar site-hanging-nav">
             <a class="back-link" href="/reading">← 书架</a>
             <a class="manage-link" href="/reading/manage">详细管理</a>
         </header>
 
-        <section class="book-hero">
+        <section class="book-hero site-section">
             <div class="book-cover">
                 {{if .Book.CoverUrl}}<img src="{{.Book.CoverUrl}}" alt="{{.Book.Title}}">{{else}}<span>{{slice .Book.Title 0 1}}</span>{{end}}
             </div>
@@ -26,11 +27,12 @@
                 <p class="description">{{.Book.Description}}</p>
                 <div class="book-tags">{{range .Book.Category}}<span>{{.}}</span>{{end}}</div>
             </div>
+            <div class="book-symbol-exhibit" aria-hidden="true"><span class="site-symbol" data-symbol="reading"></span><span class="site-status-mark">READING LOG</span></div>
             <div id="progressRing" class="progress-ring"><strong id="progressPercent">0%</strong><span>阅读进度</span></div>
         </section>
 
-        <section class="reading-board">
-            <div class="progress-card">
+        <section class="reading-board site-section">
+            <div class="progress-card site-paper-panel">
                 <div class="board-title"><div><p class="eyebrow">CURRENT PAGE</p><h2>读到哪里了？</h2></div><span id="pageSummary"></span></div>
                 <div class="page-control">
                     <button class="page-step" data-step="-10" type="button">−10</button>
@@ -42,14 +44,14 @@
                 <div class="progress-track"><i id="progressBar"></i></div>
                 <div class="progress-actions"><button id="saveProgress" type="button">保存进度</button><button id="finishBook" type="button">读完这本书</button></div>
             </div>
-            <aside class="book-facts">
+            <aside class="book-facts site-paper-panel">
                 <div><span>总页数</span><strong>{{.Book.TotalPages}}</strong></div>
                 <div><span>当前状态</span><strong id="statusFact">—</strong></div>
                 <div><span>评分</span><strong>{{.Book.Rating}}</strong></div>
             </aside>
         </section>
 
-        <section class="notes-section">
+        <section class="notes-section site-paper-panel">
             <div class="board-title"><div><p class="eyebrow">READING NOTES</p><h2>随手记下</h2></div></div>
             <form id="noteForm" class="note-form">
                 <input id="noteChapter" placeholder="章节（可选）">
@@ -59,7 +61,7 @@
             <div id="notesList" class="notes-list"></div>
         </section>
 
-        <details class="book-details">
+        <details class="book-details site-paper-panel">
             <summary>更多书籍信息</summary>
             <div class="details-grid">
                 <span>出版社 <strong>{{.Book.Publisher}}</strong></span>
