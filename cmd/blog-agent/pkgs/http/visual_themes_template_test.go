@@ -64,6 +64,34 @@ func TestVisualThemeAtlasContainsOneHundredThemes(t *testing.T) {
 	}
 }
 
+func TestVisualThemeAtlasAppliesImplementedThemes(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "visual_themes.js"))
+	if err != nil {
+		t.Fatalf("读取视觉主题脚本失败: %v", err)
+	}
+	script := string(content)
+	for _, expected := range []string{
+		"implementedThemes",
+		"'001': 'atlas-celadon'",
+		"'051': 'atlas-swiss'",
+		"'061': 'atlas-chrome'",
+		"dialog-apply",
+		"guccang-theme",
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("图鉴应用能力缺少 %q", expected)
+		}
+	}
+
+	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "visual_themes.template"))
+	if err != nil {
+		t.Fatalf("读取视觉主题模板失败: %v", err)
+	}
+	if !strings.Contains(string(templateContent), `id="dialog-apply"`) {
+		t.Error("视觉主题模板缺少应用按钮")
+	}
+}
+
 func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "visual_themes.template"))
 	if err != nil {
@@ -75,8 +103,8 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`THE HANGING ARCHIVE`,
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
-		`/css/visual_themes.css?v=3`,
-		`/js/visual_themes.js?v=2`,
+		`/css/visual_themes.css?v=4`,
+		`/js/visual_themes.js?v=3`,
 		`/js/theme.js?v=4`,
 		`/css/theme.css?v=4`,
 	} {

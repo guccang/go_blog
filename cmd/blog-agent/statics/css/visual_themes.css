@@ -798,3 +798,16 @@ html[data-theme="terminal"] .atlas-title-block h1 span { text-shadow: 3px 3px 0 
     .atlas-gallery { grid-template-columns: repeat(5, 1fr); }
     .specimen-card { break-inside: avoid; }
 }
+
+.dialog-apply {
+    margin-top: 14px;
+    padding: 10px 18px;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: .08em;
+    cursor: pointer;
+}
+
+.dialog-apply:hover { background: rgba(0, 0, 0, .08); }
