@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="link">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BLOG - GUCCANG</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/link.css?v=library-cards-1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/link.css?v=unified-1">
 </head>
 <body class="library-page">
-    <header class="library-header">
+    <header class="library-header site-shell site-hanging-nav">
         <a class="library-brand" href="/main"><span>G</span><strong>BLOG</strong></a>
         <nav>
             <a href="/editor" class="library-write">写博客</a>
@@ -19,16 +19,20 @@
         </nav>
     </header>
 
-    <main class="library-shell">
-        <section class="library-intro">
-            <div>
-                <p>所有内容</p>
-                <h1>BLOG</h1>
+    <main class="library-shell site-shell">
+        <section class="library-intro site-page-hero">
+            <div class="site-page-hero__copy">
+                <p class="site-kicker">PERSONAL WRITING ARCHIVE</p>
+                <h1 class="site-page-title">博客档案</h1>
+                <p class="site-page-description">在写下的文字里搜索、筛选和继续阅读。每一篇记录都是悬廊中的一份长期档案。</p>
             </div>
-            <span>{{.BLOGS_NUMBER}} 篇</span>
+            <div class="site-page-hero__exhibit" aria-hidden="true">
+                <span class="site-page-symbol" data-symbol="archive"></span>
+                <strong class="library-count">{{.BLOGS_NUMBER}} 篇</strong>
+            </div>
         </section>
 
-        <header class="library-toolbar">
+        <header class="library-toolbar site-paper-panel">
             <div class="search-wrapper">
                 <i class="fas fa-search search-icon"></i>
                 <input id="search" type="text" placeholder="搜索博客或输入高级命令…" class="search-input">
@@ -44,7 +48,7 @@
             </button>
         </header>
 
-        <section class="section">
+        <section class="section site-section">
             <div class="blog-filter-bar" id="blogFilterBar" role="group" aria-label="内容分类筛选"></div>
             <div class="blog-filter-empty" id="blogFilterEmpty" hidden>
                 <i class="fas fa-filter-circle-xmark"></i>
@@ -91,8 +95,8 @@
             {{end}}
 
             {{if not .LINKS}}
-            <div class="empty-state">
-                <div class="empty-icon"><i class="fas fa-inbox"></i></div>
+            <div class="empty-state site-empty-state">
+                <span class="site-symbol" data-symbol="empty" aria-hidden="true"></span>
                 <h3>还没有博客</h3>
                 <p><a href="/editor">写下第一篇博客</a></p>
             </div>

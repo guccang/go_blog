@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="book-detail">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1005,8 +1005,9 @@
             .btn { padding: 8px 12px; font-size: 13px; }
         }
     </style>
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/book_detail_unified.css?v=1">
 </head>
 <body>
         <!-- 隐藏的数据容器，用于传递后端数据给JavaScript -->
@@ -1029,9 +1030,9 @@
         </div>
     <button class="back-btn" onclick="window.history.back()">← 返回书库</button>
     
-    <div class="book-detail-container">
+    <div class="book-detail-container site-shell">
         <!-- 书籍头部信息 -->
-        <div class="book-header">
+        <div class="book-header site-paper-panel">
             <div class="book-cover-large" id="book-cover-container">
                 {{if .Book.CoverUrl}}
                     <img src="{{.Book.CoverUrl}}" alt="{{.Book.Title}}" 
@@ -1095,17 +1096,18 @@
                 </div>
                 {{end}}
             </div>
+            <div class="book-detail-symbol" aria-hidden="true"><span class="site-symbol" data-symbol="reading"></span><span class="site-status-mark">BOOK RECORD</span></div>
         </div>
         
         <!-- 标签页 -->
-        <div class="tabs">
+        <div class="tabs site-paper-panel">
             <button class="tab active" onclick="switchTab('progress')">阅读进度</button>
             <button class="tab" onclick="switchTab('notes')">读书笔记</button>
             <button class="tab" onclick="switchTab('insights')">读书心得</button>
         </div>
         
         <!-- 阅读进度标签页 -->
-        <div id="progress-tab" class="tab-content active">
+        <div id="progress-tab" class="tab-content active site-paper-panel">
             <div class="progress-section">
                 <div class="progress-info">
                     <span>阅读进度</span>
@@ -1143,7 +1145,7 @@
         </div>
         
         <!-- 读书笔记标签页 -->
-        <div id="notes-tab" class="tab-content">
+        <div id="notes-tab" class="tab-content site-paper-panel">
             <div class="add-form">
                 <h3>添加笔记</h3>
                 <form id="add-note-form">
@@ -1177,7 +1179,7 @@
         </div>
         
         <!-- 读书心得标签页 -->
-        <div id="insights-tab" class="tab-content">
+        <div id="insights-tab" class="tab-content site-paper-panel">
             <div class="add-form">
                 <h3>添加心得</h3>
                 <form id="add-insight-form">
@@ -2613,4 +2615,4 @@
         
     </script>
 </body>
-</html> 
+</html>

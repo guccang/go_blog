@@ -1,19 +1,37 @@
 <!DOCTYPE html>
 
-<html lang="en">
+<html lang="zh-CN" data-page="list">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCNAG/LIST </title>
-	    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>博客条目 - GUCCANG</title>
+	    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
 </head>
 
 	<body>
-		<h1> List of Items </h1>
-		<ul>
-			{{range .Items}}
-			<li>{{.}}</li>
-			{{end}}
-		</ul>
+		<header class="site-shell site-hanging-nav">
+			<a href="/main">GUCCANG</a>
+			<nav><a href="/link">博客档案</a></nav>
+		</header>
+		<main class="site-shell">
+			<section class="site-page-hero" aria-labelledby="listPageTitle">
+				<div class="site-page-hero__copy">
+					<p class="site-kicker">INDEX · ALL ITEMS</p>
+					<h1 id="listPageTitle" class="site-page-title">博客条目</h1>
+					<p class="site-page-description">按原始顺序陈列当前集合中的全部记录。</p>
+				</div>
+				<div class="site-page-hero__exhibit" aria-hidden="true">
+					<span class="site-page-symbol" data-symbol="archive"></span>
+				</div>
+			</section>
+			<section class="site-section" aria-label="博客条目列表">
+				<ul class="site-index-list site-paper-panel">
+					{{range .Items}}
+					<li>{{.}}</li>
+					{{end}}
+				</ul>
+			</section>
+		</main>
 	</body>
 </html>

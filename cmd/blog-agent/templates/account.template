@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN" data-page="account">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -274,28 +274,33 @@
             }
         }
     </style>
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/account_unified.css?v=1">
 </head>
 <body>
     <div class="top-sidebar-cotainer">
-        <div class="top-sidebar">
+        <div class="top-sidebar site-hanging-nav">
             <div class="search-toggle-container">
                 <h1 class="page-title" style="margin:0;color:var(--text-color);font-size:24px;">👤 账户信息</h1>
             </div>
         </div>
     </div>
 
-    <div class="account-container">
+    <div class="account-container site-shell">
         <!-- 账户头部 -->
-        <div class="account-header">
-            <div class="account-avatar" onclick="openAvatarModal()">{{.AccountInfo.Avatar}}</div>
-            <div class="account-name">{{if .AccountInfo.Name}}{{.AccountInfo.Name}}{{else}}{{.UserAccount}}{{end}}</div>
-            <div class="account-username">@{{.UserAccount}}</div>
+        <div class="account-header site-page-hero">
+            <div class="account-identity site-page-hero__copy">
+                <p class="site-kicker">ACCOUNT · PROFILE</p>
+                <div class="account-avatar" onclick="openAvatarModal()">{{.AccountInfo.Avatar}}</div>
+                <div class="account-name">{{if .AccountInfo.Name}}{{.AccountInfo.Name}}{{else}}{{.UserAccount}}{{end}}</div>
+                <div class="account-username">@{{.UserAccount}}</div>
+            </div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="account"></span></div>
         </div>
 
         <!-- 统计卡片 -->
-        <div class="account-stats">
+        <div class="account-stats site-section">
             {{if and .AccountInfo.Height .AccountInfo.Weight}}
             <div class="stat-card">
                 <div class="stat-value">{{printf "%.1f" .BMI}}</div>

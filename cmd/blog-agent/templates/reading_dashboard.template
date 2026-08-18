@@ -1,23 +1,24 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="reading-dashboard">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>阅读概览 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/reading_dashboard_simple.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/reading_dashboard_unified.css?v=1">
 </head>
 <body>
-    <main class="dashboard-shell">
-        <header class="dashboard-header"><a class="brand" href="/main"><span>G</span> GUCCANG</a><div><a href="/reading">阅读书架</a><a href="/reading/manage">详细管理</a></div></header>
-        <section class="dashboard-hero"><div><p class="eyebrow">READING OVERVIEW</p><h1>阅读留下的，是一条持续向前的线。</h1><p>只看现在真正有用的阅读状态和进度。</p></div><div class="completion-orb"><strong id="completionRate">0%</strong><span>完成率</span></div></section>
-        <section class="metrics"><article><span>我的书架</span><strong id="totalBooks">0</strong><small>本书</small></article><article><span>正在阅读</span><strong id="readingBooks">0</strong><small>本书</small></article><article><span>已经读完</span><strong id="finishedBooks">0</strong><small>本书</small></article><article><span>累计页数</span><strong id="totalPages">0</strong><small>页</small></article></section>
+    <main class="dashboard-shell site-shell">
+        <header class="dashboard-header site-hanging-nav"><a class="brand" href="/main"><span>G</span> GUCCANG</a><div><a href="/reading">阅读书架</a><a href="/reading/manage">详细管理</a></div></header>
+        <section class="dashboard-hero site-page-hero"><div class="site-page-hero__copy"><p class="eyebrow site-kicker">READING OVERVIEW</p><h1 class="site-page-title">阅读留下的，是一条持续向前的线。</h1><p class="site-page-description">只看现在真正有用的阅读状态和进度。</p></div><div class="site-page-hero__exhibit"><span class="site-page-symbol" data-symbol="reading" aria-hidden="true"></span><div class="completion-orb"><strong id="completionRate">0%</strong><span>完成率</span></div></div></section>
+        <section class="metrics site-section"><article class="site-paper-panel"><span>我的书架</span><strong id="totalBooks">0</strong><small>本书</small></article><article class="site-paper-panel"><span>正在阅读</span><strong id="readingBooks">0</strong><small>本书</small></article><article class="site-paper-panel"><span>已经读完</span><strong id="finishedBooks">0</strong><small>本书</small></article><article class="site-paper-panel"><span>累计页数</span><strong id="totalPages">0</strong><small>页</small></article></section>
         <section class="dashboard-grid">
-            <article class="panel progress-panel"><div class="panel-title"><div><p class="eyebrow">IN PROGRESS</p><h2>阅读中的书</h2></div><a href="/reading">打开书架 →</a></div><div id="readingList" class="reading-list"></div></article>
-            <article class="panel chart-panel"><div class="panel-title"><div><p class="eyebrow">LIBRARY MIX</p><h2>书架状态</h2></div></div><div id="statusChart" class="status-chart"></div><p id="chartNote" class="chart-note"></p></article>
+            <article class="panel progress-panel site-paper-panel"><div class="panel-title"><div><p class="eyebrow">IN PROGRESS</p><h2>阅读中的书</h2></div><a class="site-ticket" href="/reading">打开书架 →</a></div><div id="readingList" class="reading-list"></div></article>
+            <article class="panel chart-panel site-paper-panel"><div class="panel-title"><div><p class="eyebrow">LIBRARY MIX</p><h2>书架状态</h2></div></div><div id="statusChart" class="status-chart"></div><p id="chartNote" class="chart-note"></p></article>
         </section>
-        <section class="panel recent-panel"><div class="panel-title"><div><p class="eyebrow">RECENTLY FINISHED</p><h2>最近读完</h2></div></div><div id="finishedList" class="finished-list"></div></section>
+        <section class="panel recent-panel site-paper-panel"><div class="panel-title"><div><p class="eyebrow">RECENTLY FINISHED</p><h2>最近读完</h2></div></div><div id="finishedList" class="finished-list"></div></section>
     </main>
     <script src="/js/reading_dashboard_simple.js?v=1"></script>
 </body>

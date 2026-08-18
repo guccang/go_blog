@@ -1,34 +1,36 @@
-:root[data-theme="terminal"],
-:root[data-theme="watercolor"] {
-    --ui-canvas: #fbf7ec;
-    --ui-surface: #fffdf6;
-    --ui-surface-raised: #f1e7cd;
-    --ui-text: #3b3028;
-    --ui-text-soft: #6f5c4c;
-    --ui-text-muted: #8b7867;
-    --ui-line: #3b3028;
-    --ui-line-soft: rgba(59, 48, 40, .28);
-    --ui-cream: #fffdf6;
-    --ui-amber: #d79a2b;
-    --ui-amber-soft: #f3ddb0;
-    --ui-coral: #dc5a3c;
-    --ui-coral-soft: #f3c7b7;
-    --ui-sky: #4056b5;
-    --ui-sky-soft: #bfd8e8;
-    --ui-rose: #c8738f;
-    --ui-rose-soft: #eed3dc;
-    --ui-success: #688960;
-    --ui-warning: #b97d21;
-    --ui-danger: #bd4938;
-    --ui-shadow: #695749;
-    --ui-shadow-soft: rgba(76, 57, 42, .13);
-    --ui-dot: rgba(64, 86, 181, .08);
-    --ui-font-display: "Segoe Print", "STKaiti", "KaiTi", "Microsoft YaHei", cursive;
+@import url("/css/visual_language.css?v=1");
+@import url("/css/visual_symbols.css?v=1");
+
+:root[data-theme] {
+    --ui-canvas: #f4f1e8;
+    --ui-surface: #fffdf7;
+    --ui-surface-raised: #e8e0d0;
+    --ui-text: #25211d;
+    --ui-text-soft: #564f47;
+    --ui-text-muted: #756c62;
+    --ui-line: #25211d;
+    --ui-line-soft: rgba(37, 33, 29, .23);
+    --ui-cream: #fffdf7;
+    --ui-amber: #b38a48;
+    --ui-amber-soft: #eadbbd;
+    --ui-coral: #c84f35;
+    --ui-coral-soft: #efd2c8;
+    --ui-sky: #566f76;
+    --ui-sky-soft: #cbd9d9;
+    --ui-rose: #9b6678;
+    --ui-rose-soft: #e5d3d9;
+    --ui-success: #697873;
+    --ui-warning: #a97024;
+    --ui-danger: #b54335;
+    --ui-shadow: #61584f;
+    --ui-shadow-soft: rgba(37, 33, 29, .12);
+    --ui-dot: rgba(37, 33, 29, .055);
+    --ui-font-display: "STKaiti", "KaiTi", "Songti SC", Georgia, serif;
     --ui-font-body: Georgia, "Noto Serif SC", "Songti SC", serif;
     --ui-font-sans: Georgia, "Noto Serif SC", "Songti SC", serif;
     --ui-font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
-    --ui-radius: 13px;
-    --ui-radius-sm: 8px;
+    --ui-radius: 3px;
+    --ui-radius-sm: 2px;
 
     /* 兼容各历史页面的变量命名，迁移期间统一由语义令牌供色。 */
     --bg: var(--ui-canvas);
@@ -98,6 +100,44 @@
     --goal-success: var(--ui-success);
     --goal-warning: var(--ui-warning);
     --goal-danger: var(--ui-danger);
+}
+
+:root[data-theme="watercolor"] {
+    --ui-canvas: #fbf7ec;
+    --ui-surface: #fffdf6;
+    --ui-surface-raised: #f1e7cd;
+    --ui-text: #3b3028;
+    --ui-text-soft: #6f5c4c;
+    --ui-text-muted: #8b7867;
+    --ui-line: #3b3028;
+    --ui-line-soft: rgba(59, 48, 40, .28);
+    --ui-cream: #fffdf6;
+    --ui-amber: #d79a2b;
+    --ui-amber-soft: #f3ddb0;
+    --ui-coral: #dc5a3c;
+    --ui-coral-soft: #f3c7b7;
+    --ui-sky: #4056b5;
+    --ui-sky-soft: #bfd8e8;
+    --ui-rose: #c8738f;
+    --ui-rose-soft: #eed3dc;
+    --ui-success: #688960;
+    --ui-warning: #b97d21;
+    --ui-danger: #bd4938;
+    --ui-shadow: #695749;
+    --ui-shadow-soft: rgba(76, 57, 42, .13);
+    --ui-dot: rgba(64, 86, 181, .08);
+    --ui-font-display: "Segoe Print", "STKaiti", "KaiTi", "Microsoft YaHei", cursive;
+    --ui-font-body: Georgia, "Noto Serif SC", "Songti SC", serif;
+    --ui-font-sans: Georgia, "Noto Serif SC", "Songti SC", serif;
+    --ui-font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", monospace;
+    --ui-radius: 13px;
+    --ui-radius-sm: 8px;
+    --coral-dark: #b8452f;
+    --clay-dark: #b8452f;
+    --accent-hover: #d94a20;
+    --goal-accent-hover: #d94a20;
+    --green-soft: #d3e9dc;
+    --primary-color-rgb: 241, 231, 205;
 }
 
 :root[data-theme="terminal"] {
@@ -273,6 +313,8 @@ html[data-theme="watercolor"] body :where(input, textarea, select) {
     box-shadow: inset 0 -2px 0 rgba(64, 86, 181, .06);
 }
 
+/* 首页已迁移到 main.css；保留旧规则一版作为迁移期对照，但不再参与级联。 */
+@media not all {
 /* 首页以“个人工作台票据”为视觉主场，呼应参考图中的点阵信息牌。 */
 html[data-theme="terminal"][data-page="main"] .main-header {
     width: min(850px, calc(100% - 40px));
@@ -557,6 +599,7 @@ html[data-theme="watercolor"][data-page="main"] .daily-quote {
 }
 
 html[data-theme="watercolor"][data-page="main"] .daily-quote blockquote { font-family: var(--ui-font-body); }
+}
 
 /* 内容、表单和数据页面共享的票据式层级。 */
 html[data-theme] body :where(
@@ -795,6 +838,7 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    @media not all {
     html[data-theme="terminal"][data-page="main"] .query-hero { padding: 24px 18px; }
 
     html[data-theme="terminal"][data-page="main"] .query-hero h1 {
@@ -822,6 +866,7 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
 
     html[data-theme="watercolor"][data-page="main"] .query-hero h1 {
         font-size: clamp(31px, 10vw, 40px);
+    }
     }
 
     .ui-theme-picker {

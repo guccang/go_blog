@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-page="get-public">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/GET_PUBLIC</title>
-    <link rel="stylesheet" href="/css/get_public.css">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/get_public.css?v=unified-1">
 </head>
 
 <body id="body" class="th_black">
@@ -17,6 +17,10 @@
                 <div class="img-cycle">G</div>
             </a>
             <a href="/main" style="font-size: 24px;">主页</a>
+			<div class="reader-artifact" aria-hidden="true">
+				<span class="site-symbol" data-symbol="article"></span>
+				<span class="site-status-mark">PUBLIC READING</span>
+			</div>
             <div class="separator"></div>
             <h2 id="title">{{.TITLE}}</h2>
 			<div class="separator"></div>
@@ -31,8 +35,8 @@
 	</div>
 
     <!-- Main Content -->
-	<div class="container">
-		<div class="editor-container">
+	<div class="container reader-workspace">
+		<div class="editor-container site-paper-panel">
 			<textarea id="editor-inner" class="hide th_black" name="content" wrap="hard" data-large-blog="{{.IS_LARGE}}" data-blogname="{{.TITLE}}" data-account="{{.ACCOUNT}}">{{.CONTENT}}</textarea>
 			<div id="md" class="md"></div>
 		</div>

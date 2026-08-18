@@ -1,0 +1,13 @@
+html[data-page="media-viewer"] { --ink:var(--ui-text); --muted:var(--ui-text-muted); --paper:var(--ui-surface); --canvas:var(--ui-canvas); --line:var(--ui-line-soft); --coral:var(--ui-coral); --coral-dark:var(--ui-coral); --teal:var(--ui-sky); --navy:var(--ui-text); }
+html[data-page="media-viewer"] body.media-viewer-page { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="media-viewer"] .viewer-shell { width: min(1520px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="media-viewer"] .viewer-header { min-height: 88px; padding-bottom: 0; }
+html[data-page="media-viewer"] .viewer-symbol { --symbol-size: 64px; }
+html[data-page="media-viewer"] .file-heading h1 { color: var(--ui-text); font-family: var(--ui-font-display); }
+html[data-page="media-viewer"] .file-type { color: var(--ui-canvas); border-radius: 2px; background: var(--ui-text); }
+html[data-page="media-viewer"] .viewer-stage { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); box-shadow: 7px 8px 0 var(--ui-shadow-soft); }
+html[data-page="media-viewer"] .viewer-actions a,
+html[data-page="media-viewer"] .viewer-actions button { border-radius: 2px; }
+:root[data-theme="terminal"][data-page="media-viewer"] .viewer-stage { box-shadow: 7px 8px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="media-viewer"] .viewer-stage { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="media-viewer"] .viewer-shell { width: calc(100% - 28px); } html[data-page="media-viewer"] .viewer-symbol { display: none; } }

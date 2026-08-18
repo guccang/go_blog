@@ -1,0 +1,42 @@
+html[data-page="exercise-professional"] {
+    color-scheme: light dark;
+    --paper: var(--ui-canvas);
+    --surface: var(--ui-surface);
+    --ink: var(--ui-text);
+    --muted: var(--ui-text-muted);
+    --line: var(--ui-line);
+    --soft-line: var(--ui-line-soft);
+    --clay: var(--ui-coral);
+    --clay-dark: var(--ui-coral);
+    --blue-soft: color-mix(in srgb, var(--ui-sky) 14%, transparent);
+    --danger-soft: color-mix(in srgb, var(--ui-coral) 12%, transparent);
+    --shadow: 5px 6px 0 var(--ui-shadow-soft);
+    --radius: 2px;
+}
+html[data-page="exercise-professional"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="exercise-professional"] .pro-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="exercise-professional"] .pro-header { min-height: 64px; }
+html[data-page="exercise-professional"] .pro-hero { display: grid; padding: 76px 0 54px; }
+html[data-page="exercise-professional"] .hero-note { max-width: 650px; color: var(--ui-text-soft); }
+html[data-page="exercise-professional"] .movement-studio,
+html[data-page="exercise-professional"] .level-card,
+html[data-page="exercise-professional"] .plan-builder {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+html[data-page="exercise-professional"] .movement-nav button,
+html[data-page="exercise-professional"] .level-track button,
+html[data-page="exercise-professional"] .frequency-switch button,
+html[data-page="exercise-professional"] input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface); }
+html[data-page="exercise-professional"] .preview-button,
+html[data-page="exercise-professional"] .apply-button { color: var(--ui-canvas); border-color: var(--ui-coral); border-radius: 2px; background: var(--ui-coral); }
+:root[data-theme="terminal"][data-page="exercise-professional"] .movement-studio,
+:root[data-theme="terminal"][data-page="exercise-professional"] .level-card,
+:root[data-theme="terminal"][data-page="exercise-professional"] .plan-builder { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="exercise-professional"] .movement-studio,
+:root[data-theme="watercolor"][data-page="exercise-professional"] .level-card,
+:root[data-theme="watercolor"][data-page="exercise-professional"] .plan-builder { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="exercise-professional"] .pro-shell { width: calc(100% - 28px); } }

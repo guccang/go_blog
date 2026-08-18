@@ -1,0 +1,23 @@
+html[data-page="markdown-editor"] { --ink:var(--ui-text); --muted:var(--ui-text-muted); --paper:var(--ui-surface); --canvas:var(--ui-canvas); --line:var(--ui-line-soft); --coral:var(--ui-coral); --coral-dark:var(--ui-coral); --teal:var(--ui-sky); --navy:var(--ui-text); }
+html[data-page="markdown-editor"] body.workspace-page { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="markdown-editor"] .writing-shell { width: min(1380px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="markdown-editor"] .writing-header { min-height: 64px; }
+html[data-page="markdown-editor"] .article-meta { display: grid; padding: 76px 0 54px; }
+html[data-page="markdown-editor"] .article-meta #title { color: var(--ui-text); font-family: var(--ui-font-display); font-size: clamp(38px, 6vw, 70px); }
+html[data-page="markdown-editor"] .access-panel,
+html[data-page="markdown-editor"] .writing-toolbar,
+html[data-page="markdown-editor"] .editor-content { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); }
+html[data-page="markdown-editor"] .access-panel { box-shadow: 4px 5px 0 var(--ui-shadow-soft); }
+html[data-page="markdown-editor"] .writing-toolbar { border-bottom: 1px solid var(--ui-line-soft); }
+html[data-page="markdown-editor"] .editor-content { box-shadow: 7px 8px 0 var(--ui-shadow-soft); }
+html[data-page="markdown-editor"] .editor-wrapper,
+html[data-page="markdown-editor"] .preview-wrapper { color: var(--ui-text); border-color: var(--ui-line-soft); background: var(--ui-surface); }
+html[data-page="markdown-editor"] .editor,
+html[data-page="markdown-editor"] .password-field input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: transparent; }
+html[data-page="markdown-editor"] .mdEditor { color: var(--ui-text-soft); }
+html[data-page="markdown-editor"] .save-action { color: var(--ui-canvas); border-radius: 2px; background: var(--ui-coral); }
+:root[data-theme="terminal"][data-page="markdown-editor"] .editor-content { box-shadow: 7px 8px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="markdown-editor"] .access-panel,
+:root[data-theme="watercolor"][data-page="markdown-editor"] .writing-toolbar,
+:root[data-theme="watercolor"][data-page="markdown-editor"] .editor-content { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="markdown-editor"] .writing-shell { width: calc(100% - 28px); } }

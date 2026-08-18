@@ -1,53 +1,57 @@
 <!DOCTYPE html>
 
-<html lang="en">
+<html lang="zh-CN" data-page="share">
 	<head>
 		<meta charset="UTF-8">
-		<title> GUCCANG/Shared </title>
-		<style>
-		 @import url(/css/link.css);
-		 .right-label{
-			float : right;
-			margin-right:10px;	
-		 }
-
-
-		.div1 {
-			position :absolute;
-			left:50%;
-			top:50%;
-			transform: translate(-50%,-50%);
-			border: 1px solid #000000;
-		}
-
-		</style>
-	    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>共享博客 - GUCCANG</title>
+	    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/share.css?v=unified-1">
 </head>
 
-	<body class="th_black">
-		<div class="top-fix-div">
-			<img src="/logo/logo.png" width=64></img>
-			<a href="/editor" style="font-size: 32px;">创建博客</a>
-			<div class="separator"></div>
-			<input id="search" type="text" class="custom-wh" list="search_list"></input>
-			<datalist id="search_list">
-				{{range .TAGS}}
-					<option>{{.Name}}</option>
-				{{end}}
-			</datalist>
-		</div>
-		<div style="height:128px;" ></div>
-		<div class="separator"></div>
+	<body>
+		<header class="site-shell site-hanging-nav">
+			<a href="/main">GUCCANG</a>
+			<nav><a href="/editor">创建博客</a></nav>
+		</header>
+		<main class="site-shell">
+			<section class="site-page-hero" aria-labelledby="sharePageTitle">
+				<div class="site-page-hero__copy">
+					<p class="site-kicker">SHARED · COLLECTION</p>
+					<h1 id="sharePageTitle" class="site-page-title">共享博客</h1>
+					<p class="site-page-description">浏览对外开放的记录，或按标签快速定位。</p>
+				</div>
+				<div class="site-page-hero__exhibit" aria-hidden="true">
+					<span class="site-page-symbol" data-symbol="portal"></span>
+				</div>
+			</section>
 
-		{{range .LINKS}}
-			<p><a href="{{.URL}}">{{.DESC}}</a></p>
-		{{end}}
+			<section class="share-search site-section" aria-label="共享博客检索">
+				<div class="share-search__panel site-paper-panel">
+					<label for="search">按标签检索</label>
+					<input id="search" type="text" list="search_list" placeholder="输入标签后按 Enter">
+					<datalist id="search_list">
+						{{range .TAGS}}
+						<option>{{.Name}}</option>
+						{{end}}
+					</datalist>
+				</div>
+			</section>
 
-		<div class="bottom-fix-div">
-		<label class="right-label">{{.BLOGS_NUMBER}}</label>
-		<label class="right-label">{{.VERSION}}</label>
-		</div>
+			<section class="site-section" aria-label="共享文章列表">
+				<div class="site-index-list site-paper-panel">
+					{{range .LINKS}}
+					<p><a href="{{.URL}}">{{.DESC}}</a></p>
+					{{end}}
+				</div>
+			</section>
+		</main>
+
+		<footer class="share-footer site-shell">
+			<span>{{.BLOGS_NUMBER}}</span>
+			<span>{{.VERSION}}</span>
+		</footer>
 
 		<script src="/js/utils.js"></script>
 		<script>
@@ -65,7 +69,5 @@
 
 		</script>
 
-
-		
 	</body>
 </html>

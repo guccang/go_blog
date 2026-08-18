@@ -1,0 +1,38 @@
+html[data-page="exercise-dashboard"] {
+    --ink: var(--ui-text);
+    --ink-soft: var(--ui-text-soft);
+    --paper: var(--ui-surface);
+    --canvas: var(--ui-canvas);
+    --line: var(--ui-line-soft);
+    --orange: var(--ui-coral);
+    --orange-soft: color-mix(in srgb, var(--ui-coral) 14%, transparent);
+    --green: var(--ui-sky);
+    --green-soft: color-mix(in srgb, var(--ui-sky) 14%, transparent);
+    --shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+html[data-page="exercise-dashboard"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="exercise-dashboard"] .exercise-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="exercise-dashboard"] .page-header { min-height: 64px; margin-bottom: 0; }
+html[data-page="exercise-dashboard"] .brand span { color: var(--ui-canvas); border: 1px solid var(--ui-line); border-radius: 50%; background: var(--ui-coral); }
+html[data-page="exercise-dashboard"] .rhythm-panel,
+html[data-page="exercise-dashboard"] .quick-panel,
+html[data-page="exercise-dashboard"] .records-panel {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+html[data-page="exercise-dashboard"] .rhythm-panel { margin-top: 36px; }
+html[data-page="exercise-dashboard"] input,
+html[data-page="exercise-dashboard"] select,
+html[data-page="exercise-dashboard"] button { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; }
+html[data-page="exercise-dashboard"] .record-button { color: var(--ui-canvas); background: var(--ui-coral); }
+html[data-page="exercise-dashboard"] .pulse-chart { border-color: var(--ui-line-soft); }
+:root[data-theme="terminal"][data-page="exercise-dashboard"] .rhythm-panel,
+:root[data-theme="terminal"][data-page="exercise-dashboard"] .quick-panel,
+:root[data-theme="terminal"][data-page="exercise-dashboard"] .records-panel { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="exercise-dashboard"] .rhythm-panel,
+:root[data-theme="watercolor"][data-page="exercise-dashboard"] .quick-panel,
+:root[data-theme="watercolor"][data-page="exercise-dashboard"] .records-panel { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="exercise-dashboard"] .exercise-shell { width: calc(100% - 28px); } }

@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="main">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG</title>
-    <link rel="stylesheet" href="/css/main.css?v=clipboard-1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/main.css?v=unified-1">
 </head>
 <body>
-    <header class="main-header">
+    <header class="main-header site-shell site-hanging-nav">
         <a class="brand" href="/main" aria-label="GUCCANG 主页"><span>G</span><strong>GUCCANG</strong></a>
         <nav class="main-nav" aria-label="主页导航">
             <a href="/link">BLOG</a>
@@ -26,9 +26,30 @@
         </nav>
     </header>
 
-    <main class="main-shell">
-        <section class="quick-section" aria-labelledby="quickTitle">
-            <div class="section-heading"><h2 id="quickTitle">快速开始</h2></div>
+    <main class="main-shell site-shell">
+        <section class="query-hero site-page-hero" aria-labelledby="mainTitle">
+            <div class="site-page-hero__copy">
+                <p class="eyebrow site-kicker">PERSONAL KNOWLEDGE PORTAL</p>
+                <h1 id="mainTitle" class="site-page-title">今天想继续什么？</h1>
+                <p class="site-page-description">从一条搜索、一篇记录或一个正在推进的目标开始，让知识沿着今天继续生长。</p>
+                <form id="workspaceQueryForm" class="query-form site-paper-panel">
+                    <label class="sr-only" for="workspaceQuery">搜索博客或向 PI 提问</label>
+                    <input id="workspaceQuery" type="search" maxlength="120" autocomplete="off"
+                           placeholder="搜索博客，或输入一个想问 PI 的问题">
+                    <div class="query-actions">
+                        <button class="search-button site-ticket" type="submit">搜索博客</button>
+                        <button class="pi-button site-ticket" id="askPIButton" type="button">问 PI</button>
+                    </div>
+                </form>
+                <p id="queryHint" class="query-hint" aria-live="polite">按 Enter 默认搜索本地博客。</p>
+            </div>
+            <div class="site-page-hero__exhibit" aria-hidden="true">
+                <span class="site-page-symbol" data-symbol="portal"></span>
+            </div>
+        </section>
+
+        <section class="quick-section site-section" aria-labelledby="quickTitle">
+            <div class="section-heading site-section-heading"><div><p class="site-kicker">SHORTCUT TICKETS</p><h2 id="quickTitle">快速开始</h2></div><p>选择一张行动签，直接进入今天要处理的事情。</p></div>
             <div class="quick-grid">
                 <a class="quick-item primary" href="/editor"><span>＋</span><strong>写博客</strong><small>记录现在的想法</small></a>
                 <a class="quick-item" href="/goal"><span>⚑</span><strong>目标</strong><small>查看下一步</small></a>
@@ -39,24 +60,9 @@
             </div>
         </section>
 
-        <section class="query-hero" aria-labelledby="mainTitle">
-            <p class="eyebrow">继续你的内容</p>
-            <h1 id="mainTitle">今天想继续什么？</h1>
-            <form id="workspaceQueryForm" class="query-form">
-                <label class="sr-only" for="workspaceQuery">搜索博客或向 PI 提问</label>
-                <input id="workspaceQuery" type="search" maxlength="120" autocomplete="off"
-                       placeholder="搜索博客，或输入一个想问 PI 的问题">
-                <div class="query-actions">
-                    <button class="search-button" type="submit">搜索博客</button>
-                    <button class="pi-button" id="askPIButton" type="button">问 PI</button>
-                </div>
-            </form>
-            <p id="queryHint" class="query-hint" aria-live="polite">按 Enter 默认搜索本地博客。</p>
-        </section>
-
-        <section class="continue-section" aria-labelledby="continueTitle">
-            <div class="section-heading">
-                <h2 id="continueTitle">继续阅读</h2>
+        <section class="continue-section site-section" aria-labelledby="continueTitle">
+            <div class="section-heading site-section-heading">
+                <div><p class="site-kicker">RECENT ARCHIVE</p><h2 id="continueTitle">继续阅读</h2></div>
                 <a href="/link">查看全部</a>
             </div>
             {{if .RECENT_LINKS}}
@@ -75,7 +81,8 @@
                 {{end}}
             </div>
             {{else}}
-            <div class="recent-empty">
+            <div class="recent-empty site-empty-state">
+                <span class="site-symbol" data-symbol="empty" aria-hidden="true"></span>
                 <p>还没有阅读记录。</p>
                 <a href="/link">去 BLOG 看看</a>
             </div>

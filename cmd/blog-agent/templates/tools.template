@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="tools">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实用工具集合 - Go Blog</title>
-    <link rel="stylesheet" href="/css/public.css">
-    <link rel="stylesheet" href="/css/tools.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/public.css">
+    <link rel="stylesheet" href="/css/tools.css?v=unified-1">
 </head>
 <body class="tools-body">
     <!-- 背景装饰 -->
@@ -18,15 +18,15 @@
         <div class="bg-circle circle-3"></div>
     </div>
 
-    <div class="tools-container">
+    <div class="tools-container site-shell">
         <!-- 顶部导航栏 -->
-        <header class="tools-header">
-            <div class="header-left">
+        <header class="tools-header site-page-hero">
+            <div class="header-left site-page-hero__copy">
+                <p class="site-kicker">UTILITY WORKSHOP · 01—09</p>
                 <div class="header-logo">
-                    <i class="fas fa-tools"></i>
-                    <h1>实用工具集合</h1>
+                    <h1 class="site-page-title">实用工具集合</h1>
                 </div>
-                <p class="header-subtitle">清晰、可靠的日常计算与数据处理</p>
+                <p class="header-subtitle site-page-description">清晰、可靠的日常计算与数据处理。选择一张索引签，进入对应工作台。</p>
             </div>
             <nav class="header-nav">
                 <a href="/main" class="nav-link">
@@ -38,10 +38,11 @@
                     <span>管理中心</span>
                 </a>
             </nav>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="tools"></span></div>
         </header>
 
         <!-- 工具导航卡片 -->
-        <div class="tool-nav-grid">
+        <div class="tool-nav-grid site-section" aria-label="工具索引">
             <div class="tool-nav-card active" data-tool="time">
                 <div class="nav-card-icon">⏰</div>
                 <div class="nav-card-content">

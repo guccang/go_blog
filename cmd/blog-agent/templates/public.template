@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="public">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG - 公开博客</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/public.css">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/public.css?v=unified-1">
 </head>
 <body>
     <!-- 顶部导航 -->
     <header class="top-nav">
-        <div class="top-nav-inner">
+        <div class="top-nav-inner site-shell site-hanging-nav">
             <a href="/main" class="nav-brand">
                 <div class="brand-icon">G</div>
                 <span class="brand-text">GUCCANG</span>
@@ -32,10 +32,11 @@
     </header>
 
     <!-- 英雄区域 -->
-    <section class="hero">
-        <div class="hero-content">
-            <h1 class="hero-title">公开博客</h1>
-            <p class="hero-subtitle">探索思考、记录与分享</p>
+    <section class="hero site-shell site-page-hero">
+        <div class="hero-content site-page-hero__copy">
+            <p class="site-kicker">PUBLIC READING ROOM</p>
+            <h1 class="hero-title site-page-title">公开博客</h1>
+            <p class="hero-subtitle site-page-description">探索被分享出来的思考、记录与长期写作。</p>
             <div class="hero-stats">
                 <div class="hero-stat">
                     <span class="hero-stat-value">{{.BLOGS_NUMBER}}</span>
@@ -43,10 +44,11 @@
                 </div>
             </div>
         </div>
+        <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="article"></span></div>
     </section>
 
     <!-- 博客列表 -->
-    <main class="blog-main">
+    <main class="blog-main site-shell site-section">
         <div class="blog-grid" id="blog-container">
             {{range .LINKS}}
             <article class="blog-card">
@@ -74,10 +76,8 @@
         </div>
 
         {{if not .LINKS}}
-        <div class="empty-state">
-            <div class="empty-icon">
-                <i class="fas fa-newspaper"></i>
-            </div>
+        <div class="empty-state site-empty-state">
+            <span class="site-symbol" data-symbol="empty" aria-hidden="true"></span>
             <h2>暂无公开博客</h2>
             <p>这里还没有公开的博客文章，请稍后再来</p>
         </div>

@@ -1,25 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="image-paste-demo">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>截图粘贴试验 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/image_paste_demo.css?v=2">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/image_paste_demo_unified.css?v=1">
 </head>
 <body>
-    <main class="demo-shell">
-        <header class="demo-header">
+    <main class="demo-shell site-shell">
+        <header class="demo-header site-hanging-nav">
             <a class="back-link" href="/editor">← 返回编辑器</a>
             <span class="eyebrow">交互试验</span>
         </header>
-        <section class="intro">
-            <p class="kicker">截图直接进入文章</p>
-            <h1>粘贴一张图片，看看感觉是否自然。</h1>
-            <p>先截屏后按 <kbd>Ctrl</kbd> + <kbd>V</kbd>，或把本地图片直接拖入编辑区。本页不会保存任何图片或博客。</p>
+        <section class="intro site-page-hero">
+            <div class="site-page-hero__copy"><p class="kicker site-kicker">截图直接进入文章</p><h1 class="site-page-title">粘贴一张图片，看看感觉是否自然。</h1><p class="site-page-description">先截屏后按 <kbd>Ctrl</kbd> + <kbd>V</kbd>，或把本地图片直接拖入编辑区。本页不会保存任何图片或博客。</p></div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="editor"></span></div>
         </section>
-        <section class="workspace" aria-label="截图粘贴试验区">
+        <section class="workspace site-paper-panel" aria-label="截图粘贴试验区">
             <div class="editor-panel">
                 <div class="panel-label"><span class="signal"></span> Markdown 编辑区 <span id="paste-state" class="state">等待粘贴</span></div>
                 <textarea id="demo-editor" spellcheck="false" aria-label="Markdown 编辑区"># 我的记录
@@ -32,7 +32,7 @@
                 <div id="preview" class="preview" aria-live="polite">等待截图粘贴</div>
             </div>
         </section>
-        <section class="markdown-card">
+        <section class="markdown-card site-paper-panel">
             <div>
                 <p class="card-title">将来写入文章的内容</p>
                 <p class="card-copy">正式接入后，上传成功会自动把 Markdown 图片引用插入到光标位置。</p>

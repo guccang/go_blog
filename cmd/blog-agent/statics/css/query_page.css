@@ -116,3 +116,276 @@ button:focus-visible, a:focus-visible, input:focus-visible {
     .standalone-query input { width: 100%; }
     .standalone-query button { width: 100%; height: 40px; margin-top: 6px; }
 }
+
+/* 搜索页：统一视觉语言，作用域隔离以便查询类页面渐进迁移。 */
+html[data-page="search"] body {
+    background: var(--ui-canvas);
+    color: var(--ui-text);
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="search"] .query-header {
+    width: min(1180px, calc(100% - 48px));
+    height: auto;
+    margin-inline: auto;
+    border-bottom-color: var(--ui-line-soft);
+}
+
+html[data-page="search"] .query-brand span,
+html[data-page="search"] .query-account {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 50%;
+    background: var(--ui-coral);
+    box-shadow: 2px 2px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="search"] .query-account { background: var(--ui-sky); }
+html[data-page="search"] .query-header nav { color: var(--ui-text-soft); }
+
+html[data-page="search"] .query-shell {
+    width: min(1180px, calc(100% - 48px));
+    margin-inline: auto;
+    padding: 0 0 80px;
+}
+
+html[data-page="search"] .back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--ui-text-muted);
+    font: 10px/1.2 var(--ui-font-mono);
+    letter-spacing: .08em;
+}
+
+html[data-page="search"] .query-workspace {
+    width: min(820px, 100%);
+    margin-inline: auto;
+}
+
+html[data-page="search"] .standalone-query {
+    gap: 12px;
+    margin: 0;
+    padding: 10px;
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+
+html[data-page="search"] .standalone-query:focus-within {
+    border-color: var(--ui-coral);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="search"] .standalone-query input {
+    color: var(--ui-text);
+    background: transparent;
+}
+
+html[data-page="search"] .standalone-query input::placeholder { color: var(--ui-text-muted); }
+
+html[data-page="search"] .standalone-query button {
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-amber);
+}
+
+html[data-page="search"] .query-status {
+    margin: 16px 2px;
+    color: var(--ui-text-muted);
+    font-family: var(--ui-font-mono);
+}
+
+html[data-page="search"] .search-results { border-top-color: var(--ui-line-soft); }
+
+html[data-page="search"] .search-result {
+    position: relative;
+    padding: 24px 20px 24px 46px;
+    border-bottom-color: var(--ui-line-soft);
+    transition: background-color .18s ease, transform .18s ease;
+}
+
+html[data-page="search"] .search-result::before {
+    position: absolute;
+    left: 16px;
+    top: 27px;
+    width: 10px;
+    height: 10px;
+    content: "";
+    border: 1px solid var(--ui-coral);
+    transform: rotate(45deg);
+}
+
+html[data-page="search"] .search-result:hover {
+    background: color-mix(in srgb, var(--ui-surface) 76%, transparent);
+    transform: translateX(3px);
+}
+
+html[data-page="search"] .search-result strong {
+    color: var(--ui-text);
+    font-family: var(--ui-font-display);
+}
+
+html[data-page="search"] .search-result p { color: var(--ui-text-soft); }
+html[data-page="search"] .search-result mark {
+    color: var(--ui-text);
+    background: color-mix(in srgb, var(--ui-amber) 38%, transparent);
+}
+html[data-page="search"] .search-result:hover strong { color: var(--ui-coral); }
+
+html[data-page="search"] .secondary-button {
+    color: var(--ui-text);
+    border-color: var(--ui-line);
+    background: var(--ui-surface);
+}
+
+html[data-page="search"] .empty-query {
+    margin-top: 14px;
+    padding: 46px 24px;
+    color: var(--ui-text-soft);
+    border-color: var(--ui-line-soft);
+    background: color-mix(in srgb, var(--ui-surface) 72%, transparent);
+}
+
+:root[data-theme="terminal"][data-page="search"] .standalone-query {
+    box-shadow: 6px 7px 0 var(--ui-shadow);
+}
+
+:root[data-theme="watercolor"][data-page="search"] .standalone-query {
+    border-radius: 18px 12px 20px 14px;
+}
+
+@media (max-width: 720px) {
+    html[data-page="search"] .query-header,
+    html[data-page="search"] .query-shell { width: calc(100% - 28px); }
+    html[data-page="search"] .query-shell { padding-top: 0; }
+    html[data-page="search"] .standalone-query { display: block; }
+    html[data-page="search"] .standalone-query button { margin-top: 8px; }
+    html[data-page="search"] .search-result { padding-left: 38px; }
+    html[data-page="search"] .search-result::before { left: 11px; }
+}
+
+/* 问答页：延续查询骨架，以纸张答案和悬挂编辑符号区分任务语义。 */
+html[data-page="ask"] body {
+    background: var(--ui-canvas);
+    color: var(--ui-text);
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="ask"] .query-header {
+    width: min(1180px, calc(100% - 48px));
+    height: auto;
+    margin-inline: auto;
+    border-bottom-color: var(--ui-line-soft);
+}
+
+html[data-page="ask"] .query-brand span,
+html[data-page="ask"] .query-account {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 50%;
+    background: var(--ui-coral);
+    box-shadow: 2px 2px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="ask"] .query-account { background: var(--ui-sky); }
+html[data-page="ask"] .query-header nav { color: var(--ui-text-soft); }
+
+html[data-page="ask"] .query-shell {
+    width: min(1180px, calc(100% - 48px));
+    margin-inline: auto;
+    padding: 0 0 80px;
+}
+
+html[data-page="ask"] .back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--ui-text-muted);
+    font: 10px/1.2 var(--ui-font-mono);
+    letter-spacing: .08em;
+}
+
+html[data-page="ask"] .query-workspace {
+    width: min(820px, 100%);
+    margin-inline: auto;
+}
+
+html[data-page="ask"] .standalone-query {
+    gap: 12px;
+    margin: 0;
+    padding: 10px;
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+
+html[data-page="ask"] .standalone-query:focus-within {
+    border-color: var(--ui-coral);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="ask"] .standalone-query input {
+    color: var(--ui-text);
+    background: transparent;
+}
+
+html[data-page="ask"] .standalone-query input::placeholder { color: var(--ui-text-muted); }
+
+html[data-page="ask"] .standalone-query button {
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-amber);
+}
+
+html[data-page="ask"] .query-status {
+    color: var(--ui-text-muted);
+    font-family: var(--ui-font-mono);
+}
+
+html[data-page="ask"] .text-button {
+    min-height: 34px;
+    color: var(--ui-coral);
+    background: transparent;
+}
+
+html[data-page="ask"] .pi-answer {
+    margin-top: 14px;
+    padding: 6px 28px 22px;
+    border-color: var(--ui-line-soft);
+    background: var(--ui-surface);
+}
+
+html[data-page="ask"] .answer-block { border-bottom-color: var(--ui-line-soft); }
+html[data-page="ask"] .answer-block h2 {
+    color: var(--ui-coral);
+    font-family: var(--ui-font-mono);
+    letter-spacing: .08em;
+}
+html[data-page="ask"] .answer-block p { color: var(--ui-text-soft); }
+html[data-page="ask"] .answer-sources { color: var(--ui-text-soft); }
+html[data-page="ask"] .answer-sources strong { color: var(--ui-text); }
+html[data-page="ask"] .answer-sources a { color: var(--ui-coral); }
+html[data-page="ask"] .answer-usage {
+    color: var(--ui-text-muted);
+    font-family: var(--ui-font-mono);
+}
+
+:root[data-theme="terminal"][data-page="ask"] .standalone-query,
+:root[data-theme="terminal"][data-page="ask"] .pi-answer {
+    box-shadow: 6px 7px 0 var(--ui-shadow);
+}
+
+:root[data-theme="watercolor"][data-page="ask"] .standalone-query,
+:root[data-theme="watercolor"][data-page="ask"] .pi-answer {
+    border-radius: 18px 12px 20px 14px;
+}
+
+@media (max-width: 720px) {
+    html[data-page="ask"] .query-header,
+    html[data-page="ask"] .query-shell { width: calc(100% - 28px); }
+    html[data-page="ask"] .query-shell { padding-top: 0; }
+    html[data-page="ask"] .standalone-query { display: block; }
+    html[data-page="ask"] .standalone-query button { margin-top: 8px; }
+    html[data-page="ask"] .pi-answer { padding-inline: 18px; }
+}

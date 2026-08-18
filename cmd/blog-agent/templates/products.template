@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="products">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>产品星图 · GUCCANG</title>
-    <link rel="stylesheet" href="/css/products.css?v=3">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/products.css?v=unified-1">
 </head>
 <body>
-    <header class="product-header">
+    <header class="product-header site-shell site-hanging-nav">
         <a class="brand" href="/main" aria-label="返回 GUCCANG 主页"><span>G</span><strong>GUCCANG</strong></a>
         <nav aria-label="产品库导航">
             <a href="/main">返回主页</a>
@@ -17,17 +17,18 @@
         </nav>
     </header>
 
-    <main class="product-shell">
-        <section class="product-hero" aria-labelledby="pageTitle">
+    <main class="product-shell site-shell">
+        <section class="product-hero site-page-hero" aria-labelledby="pageTitle">
             <div class="hero-copy">
-                <p class="eyebrow">PRODUCT CONSTELLATION</p>
-                <h1 id="pageTitle">把好产品，拆成<br>可以复用的机制。</h1>
-                <p class="hero-description">收藏只是原料。记录它解决什么问题、如何让人惊喜，以及哪些机制能迁移到你的下一个点子。</p>
-                <button id="manualAddButton" class="manual-button" type="button"><span>＋</span> 手动录入产品</button>
+                <p class="eyebrow site-kicker">PRODUCT CONSTELLATION</p>
+                <h1 id="pageTitle" class="site-page-title">把好产品，拆成<br>可以复用的机制。</h1>
+                <p class="hero-description site-page-description">收藏只是原料。记录它解决什么问题、如何让人惊喜，以及哪些机制能迁移到你的下一个点子。</p>
+                <button id="manualAddButton" class="manual-button site-ticket" type="button"><span>＋</span> 手动录入产品</button>
             </div>
 
             <div class="scan-console" id="scanConsole">
                 <div class="constellation" aria-hidden="true">
+                    <span class="site-page-symbol product-symbol" data-symbol="products"></span>
                     <i class="star star-a"></i><i class="star star-b"></i><i class="star star-c"></i><i class="star star-d"></i>
                     <span class="orbit orbit-a"></span><span class="orbit orbit-b"></span><span class="orbit orbit-c"></span>
                 </div>
@@ -49,7 +50,7 @@
             </div>
         </section>
 
-        <section class="library" aria-labelledby="libraryTitle">
+        <section class="library site-section" aria-labelledby="libraryTitle">
             <div class="library-heading">
                 <div>
                     <p class="eyebrow">YOUR LIBRARY</p>
@@ -63,13 +64,13 @@
             </div>
             <div id="tagFilters" class="tag-filters" aria-label="机制标签筛选"></div>
             <div id="productGrid" class="product-grid" aria-live="polite"></div>
-            <div id="productEmpty" class="empty-state" hidden>
+            <div id="productEmpty" class="empty-state site-empty-state" hidden>
                 <span class="empty-star" aria-hidden="true">✦</span>
                 <h3>星图上还没有产品</h3>
                 <p>手动记下一款让你眼前一亮的产品，或让 AI 从网址开始拆解。</p>
                 <button id="emptyAddButton" type="button">录入第一个产品</button>
             </div>
-            <div id="filterEmpty" class="empty-state compact" hidden>
+            <div id="filterEmpty" class="empty-state compact site-empty-state" hidden>
                 <h3>没有找到匹配的产品</h3>
                 <p>换个关键词，或清除当前筛选。</p>
                 <button id="clearFiltersButton" type="button">清除筛选</button>

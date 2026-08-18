@@ -31,6 +31,8 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 	for _, expected := range []string{
 		`id="workspaceQueryForm"`, `id="askPIButton"`, "继续阅读", "快速开始", `href="/link"`,
 		`href="/products"`, "产品库",
+		`data-page="main"`, `class="query-hero site-page-hero"`, `data-symbol="portal"`,
+		`class="quick-section site-section"`, `class="continue-section site-section"`,
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 	} {
@@ -45,11 +47,11 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 			t.Fatalf("main page still contains removed module %q", removed)
 		}
 	}
-	quickIndex := strings.Index(page, `class="quick-section"`)
-	queryIndex := strings.Index(page, `class="query-hero"`)
-	continueIndex := strings.Index(page, `class="continue-section"`)
-	if quickIndex < 0 || queryIndex < 0 || continueIndex < 0 || !(quickIndex < queryIndex && queryIndex < continueIndex) {
-		t.Fatalf("main sections are not ordered quick start, query, continue reading")
+	quickIndex := strings.Index(page, `class="quick-section site-section"`)
+	queryIndex := strings.Index(page, `class="query-hero site-page-hero"`)
+	continueIndex := strings.Index(page, `class="continue-section site-section"`)
+	if quickIndex < 0 || queryIndex < 0 || continueIndex < 0 || !(queryIndex < quickIndex && quickIndex < continueIndex) {
+		t.Fatalf("main sections are not ordered page portal, quick start, continue reading")
 	}
 }
 
@@ -82,6 +84,9 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 	}
 	styles := string(content)
 	for _, expected := range []string{
+		"var(--ui-canvas)",
+		"var(--ui-coral)",
+		".site-page-hero__exhibit",
 		"grid-template-columns: repeat(2, minmax(0, 1fr))",
 		".recent-card-image",
 		"object-fit: cover",

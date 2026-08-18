@@ -1,0 +1,118 @@
+.site-symbol,
+.site-page-symbol {
+    --symbol-sheet: none;
+    --symbol-x: 0%;
+    --symbol-y: 0%;
+    display: block;
+    width: var(--symbol-size, 180px);
+    aspect-ratio: 1;
+    flex: 0 0 auto;
+    background-image: var(--symbol-sheet);
+    background-repeat: no-repeat;
+    background-position: var(--symbol-x) var(--symbol-y);
+    background-size: 500% 200%;
+    filter: var(--ui-symbol-filter, none);
+}
+
+[data-symbol="portal"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-05.webp");
+    --symbol-x: 50%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="tools"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-05.webp");
+    --symbol-x: 75%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="products"],
+[data-symbol="goal"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-07.webp");
+    --symbol-x: 75%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="archive"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-06.webp");
+    --symbol-x: 75%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="article"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-06.webp");
+    --symbol-x: 25%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="search"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-06.webp");
+    --symbol-x: 50%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="editor"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-06.webp");
+    --symbol-x: 0%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="reading"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-10.webp");
+    --symbol-x: 0%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="exercise"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-03.webp");
+    --symbol-x: 100%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="account"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-09.webp");
+    --symbol-x: 75%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="settings"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-05.webp");
+    --symbol-x: 100%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="success"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-02.webp");
+    --symbol-x: 100%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="warning"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-01.webp");
+    --symbol-x: 0%;
+    --symbol-y: 100%;
+}
+
+[data-symbol="error"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-03.webp");
+    --symbol-x: 25%;
+    --symbol-y: 0%;
+}
+
+[data-symbol="empty"] {
+    --symbol-sheet: url("/images/visual-symbols/visual-symbols-10.webp");
+    --symbol-x: 100%;
+    --symbol-y: 100%;
+}
+
+:root[data-theme="classic"] {
+    --ui-symbol-filter: saturate(.78) contrast(1.02) drop-shadow(0 12px 10px rgba(37, 33, 29, .11));
+}
+
+:root[data-theme="terminal"] {
+    --ui-symbol-filter: saturate(1.08) contrast(1.08) drop-shadow(0 0 9px rgba(241, 90, 41, .1));
+}
+
+:root[data-theme="watercolor"] {
+    --ui-symbol-filter: saturate(.96) contrast(.98) drop-shadow(0 11px 9px rgba(76, 57, 42, .09));
+}

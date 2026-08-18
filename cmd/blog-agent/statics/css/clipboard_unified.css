@@ -1,0 +1,11 @@
+html[data-page="clipboard"] { --ink:var(--ui-text); --muted:var(--ui-text-muted); --paper:var(--ui-canvas); --card:var(--ui-surface); --line:var(--ui-line-soft); --signal:var(--ui-coral); --signal-soft:color-mix(in srgb,var(--ui-coral) 14%,transparent); --violet:var(--ui-sky); --danger:var(--ui-coral); --shadow:5px 6px 0 var(--ui-shadow-soft); }
+html[data-page="clipboard"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="clipboard"] .clipboard-header { width: min(1180px, calc(100% - 48px)); height: auto; min-height: 64px; }
+html[data-page="clipboard"] .clipboard-shell { width: min(1180px, calc(100% - 48px)); padding: 0 0 90px; }
+html[data-page="clipboard"] .clipboard-hero { display: grid; max-width: none; margin: 0; padding: 76px 0 54px; }
+html[data-page="clipboard"] .clipboard-composer { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); box-shadow: 5px 6px 0 var(--ui-shadow-soft); }
+html[data-page="clipboard"] textarea, html[data-page="clipboard"] input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page="clipboard"] button, html[data-page="clipboard"] .image-picker { border-radius: 2px; }
+:root[data-theme="terminal"][data-page="clipboard"] .clipboard-composer { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="clipboard"] .clipboard-composer { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="clipboard"] .clipboard-header, html[data-page="clipboard"] .clipboard-shell { width: calc(100% - 28px); } }

@@ -1,0 +1,37 @@
+html[data-page="config"] {
+    --primary-color: var(--ui-surface);
+    --secondary-color: var(--ui-surface-alt);
+    --accent-color: var(--ui-coral);
+    --accent-hover: var(--ui-amber);
+    --text-color: var(--ui-text);
+    --bg-color: var(--ui-canvas);
+    --card-bg: var(--ui-surface);
+    --lighter-bg: var(--ui-surface-alt);
+    --border-color: var(--ui-line-soft);
+    --success-color: var(--ui-sky);
+    --warning-color: var(--ui-amber);
+    --danger-color: var(--ui-coral);
+    --shadow-color: var(--ui-shadow-soft);
+    --border-radius: 2px;
+}
+html[data-page="config"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="config"] .container { width: min(1180px, calc(100% - 48px)); max-width: none; padding: 0 0 70px; background: transparent; }
+html[data-page="config"] .header { display: grid; margin: 0; padding: 76px 0 54px; border: 0; border-bottom: 1px solid var(--ui-line-soft); background: transparent; box-shadow: none; }
+html[data-page="config"] .header h1 { color: var(--ui-text); font: 700 clamp(42px, 7vw, 84px)/.98 var(--ui-font-display); }
+html[data-page="config"] .header h1::before { content: none; }
+html[data-page="config"] .header-actions { position: absolute; left: 0; bottom: 16px; }
+html[data-page="config"] .content { padding: 42px 0; }
+html[data-page="config"] .config-notice,
+html[data-page="config"] .config-section,
+html[data-page="config"] .config-item { color: var(--ui-text); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface); }
+html[data-page="config"] .config-notice { box-shadow: 4px 5px 0 var(--ui-shadow-soft); }
+html[data-page="config"] input,
+html[data-page="config"] select,
+html[data-page="config"] textarea { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page="config"] .btn { border-radius: 2px; }
+html[data-page="config"] .btn-success { color: var(--ui-canvas); background: var(--ui-coral); }
+:root[data-theme="terminal"][data-page="config"] .config-notice,
+:root[data-theme="terminal"][data-page="config"] .config-section { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="config"] .config-notice,
+:root[data-theme="watercolor"][data-page="config"] .config-section { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+@media (max-width: 720px) { html[data-page="config"] .container { width: calc(100% - 28px); } html[data-page="config"] .header { grid-template-columns: 1fr; padding-bottom: 76px; } }
