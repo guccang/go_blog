@@ -801,3 +801,284 @@
 .pi-usage-summary strong,.pi-usage-summary span { display:block; }.pi-usage-summary strong { font-size:1.5rem; color:var(--primary-color,#d96c45); }.pi-usage-summary span { margin-top:5px; color:#7b736b; font-size:.85rem; }
 .pi-usage-row { display:grid; grid-template-columns:1fr auto auto; gap:16px; padding:12px 0; border-bottom:1px solid #eee5dc; font-size:.9rem; }.pi-usage-row time { color:#958b80; }
 @media (max-width:700px) { .pi-usage-summary { grid-template-columns:repeat(2,1fr); }.pi-usage-row { grid-template-columns:1fr; gap:4px; } }
+
+/* 统一视觉迁移：工具中心采用“索引签 + 纸张工作台”，不再使用渐变卡片。 */
+html[data-theme][data-page="tools"] body.tools-body {
+    min-height: 100vh;
+    color: var(--ui-text);
+    background: var(--ui-canvas);
+    font-family: var(--ui-font-sans);
+}
+
+html[data-theme][data-page="tools"] .bg-decoration { display: none; }
+
+html[data-theme][data-page="tools"] .tools-container {
+    max-width: none;
+    margin: 0 auto;
+    padding: 0 0 100px;
+}
+
+html[data-theme][data-page="tools"] .tools-header {
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid var(--ui-line-soft);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+html[data-theme][data-page="tools"] .header-left { max-width: 760px; }
+html[data-theme][data-page="tools"] .header-logo { display: block; }
+html[data-theme][data-page="tools"] .header-logo > i { display: none; }
+
+html[data-theme][data-page="tools"] .header-logo h1 {
+    margin: 0;
+    color: var(--ui-text);
+    background: none;
+    font: 700 clamp(42px, 7vw, 84px)/.98 var(--ui-font-display);
+    letter-spacing: -.045em;
+    -webkit-text-fill-color: currentColor;
+}
+
+html[data-theme][data-page="tools"] .header-subtitle { margin-top: 22px; color: var(--ui-text-soft); }
+
+html[data-theme][data-page="tools"] .header-nav {
+    position: absolute;
+    z-index: 2;
+    top: 42px;
+    right: 0;
+    display: flex;
+    gap: 10px;
+}
+
+html[data-theme][data-page="tools"] .nav-link {
+    display: inline-flex;
+    gap: 7px;
+    align-items: center;
+    min-height: 36px;
+    padding: 7px 12px;
+    color: var(--ui-text-soft);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 2px 3px 0 var(--ui-shadow-soft);
+    font: 10px/1 var(--ui-font-mono);
+}
+
+html[data-theme][data-page="tools"] .nav-link:hover {
+    color: var(--ui-canvas);
+    border-color: var(--ui-coral);
+    background: var(--ui-coral);
+    transform: translateY(-2px);
+}
+
+html[data-theme][data-page="tools"] .tool-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 50px 0;
+}
+
+html[data-theme][data-page="tools"] .tool-nav-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    min-height: 96px;
+    padding: 16px;
+    overflow: hidden;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--ui-surface) 92%, transparent);
+    box-shadow: 3px 4px 0 var(--ui-shadow-soft);
+    cursor: pointer;
+}
+
+html[data-theme][data-page="tools"] .tool-nav-card::before {
+    position: absolute;
+    left: 20px;
+    top: 0;
+    width: 1px;
+    height: 18px;
+    content: "";
+    background: var(--ui-coral);
+}
+
+html[data-theme][data-page="tools"] .tool-nav-card:hover,
+html[data-theme][data-page="tools"] .tool-nav-card.active {
+    color: var(--ui-text);
+    border-color: var(--ui-coral);
+    background: var(--ui-surface-raised);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+    transform: translateY(-3px);
+}
+
+html[data-theme][data-page="tools"] .nav-card-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    color: var(--ui-coral);
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 19px;
+}
+
+html[data-theme][data-page="tools"] .nav-card-content h3 {
+    margin: 0;
+    color: var(--ui-text);
+    font: 700 15px/1.3 var(--ui-font-body);
+}
+
+html[data-theme][data-page="tools"] .nav-card-content p {
+    margin: 5px 0 0;
+    color: var(--ui-text-muted);
+    font-size: 11px;
+}
+
+html[data-theme][data-page="tools"] .nav-card-arrow { color: var(--ui-coral); }
+
+html[data-theme][data-page="tools"] .tools-main {
+    margin-top: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+html[data-theme][data-page="tools"] .tool-section { animation: none; }
+
+html[data-theme][data-page="tools"] .section-header {
+    margin: 0 0 28px;
+    padding: 0 0 18px;
+    border-bottom: 1px solid var(--ui-line-soft);
+}
+
+html[data-theme][data-page="tools"] .section-header h2 {
+    margin: 0;
+    color: var(--ui-text);
+    font: 700 clamp(28px, 4vw, 42px)/1.1 var(--ui-font-display);
+}
+
+html[data-theme][data-page="tools"] .section-header h2 i { color: var(--ui-coral); }
+html[data-theme][data-page="tools"] .section-header p { color: var(--ui-text-muted); }
+
+html[data-theme][data-page="tools"] .tools-grid { gap: 16px; }
+
+html[data-theme][data-page="tools"] .tool-card {
+    overflow: hidden;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
+    box-shadow: 4px 5px 0 var(--ui-shadow-soft);
+}
+
+html[data-theme][data-page="tools"] .tool-card::before,
+html[data-theme][data-page="tools"] .gradient-border::before { display: none; }
+
+html[data-theme][data-page="tools"] .tool-card:hover {
+    border-color: var(--ui-coral);
+    box-shadow: 6px 7px 0 var(--ui-shadow-soft);
+    transform: translateY(-2px);
+}
+
+html[data-theme][data-page="tools"] .card-header {
+    gap: 12px;
+    padding: 20px 22px;
+    color: var(--ui-text);
+    border-bottom: 1px solid var(--ui-line-soft);
+    background: var(--ui-surface-raised);
+}
+
+html[data-theme][data-page="tools"] .card-header h3 { color: var(--ui-text); font-family: var(--ui-font-body); }
+
+html[data-theme][data-page="tools"] .card-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    color: var(--ui-coral);
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 17px;
+}
+
+html[data-theme][data-page="tools"] .card-body { padding: 22px; color: var(--ui-text-soft); }
+
+html[data-theme][data-page="tools"] :where(.form-input, .form-select, .form-textarea, input, textarea, select) {
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-canvas);
+    box-shadow: none;
+}
+
+html[data-theme][data-page="tools"] :where(.form-input, .form-select, .form-textarea, input, textarea, select):focus {
+    border-color: var(--ui-coral);
+    box-shadow: 0 0 0 3px var(--ui-coral-soft);
+}
+
+html[data-theme][data-page="tools"] .btn {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-coral);
+    box-shadow: 2px 3px 0 var(--ui-shadow-soft);
+}
+
+html[data-theme][data-page="tools"] .btn:hover { filter: none; transform: translateY(-2px); }
+
+html[data-theme][data-page="tools"] :where(.result-box, .output-box, .calculator-display) {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 0;
+    background: var(--ui-canvas);
+}
+
+html[data-theme][data-page="tools"] .pi-usage-summary div {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 0;
+    background: var(--ui-surface);
+}
+
+html[data-theme][data-page="tools"] .pi-usage-summary strong { color: var(--ui-coral); }
+html[data-theme][data-page="tools"] .pi-usage-summary span,
+html[data-theme][data-page="tools"] .pi-usage-row time { color: var(--ui-text-muted); }
+html[data-theme][data-page="tools"] .pi-usage-row { border-color: var(--ui-line-soft); }
+
+html[data-theme][data-page="tools"] .back-to-top {
+    color: var(--ui-coral);
+    border: 2px solid currentColor;
+    background: var(--ui-surface);
+    box-shadow: 3px 4px 0 var(--ui-shadow-soft);
+}
+
+:root[data-theme="terminal"][data-page="tools"] .tool-nav-card,
+:root[data-theme="terminal"][data-page="tools"] .tool-card { box-shadow: 5px 6px 0 var(--ui-shadow); }
+
+:root[data-theme="watercolor"][data-page="tools"] .tool-nav-card,
+:root[data-theme="watercolor"][data-page="tools"] .tool-card {
+    border-radius: 17px 11px 19px 13px;
+    box-shadow: 0 12px 28px var(--ui-shadow-soft);
+}
+
+@media (max-width: 900px) {
+    html[data-theme][data-page="tools"] .tool-nav-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+    html[data-theme][data-page="tools"] .tools-container { padding: 0 0 72px; }
+    html[data-theme][data-page="tools"] .tools-header { display: grid; padding: 56px 0 42px; text-align: left; }
+    html[data-theme][data-page="tools"] .header-nav { top: 14px; }
+    html[data-theme][data-page="tools"] .tool-nav-grid { grid-template-columns: 1fr; padding: 38px 0; }
+    html[data-theme][data-page="tools"] .tool-nav-card { min-height: 82px; }
+    html[data-theme][data-page="tools"] .tools-grid { grid-template-columns: 1fr; }
+}
