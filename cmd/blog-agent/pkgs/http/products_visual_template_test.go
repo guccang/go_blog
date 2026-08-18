@@ -32,6 +32,9 @@ func TestProductsPageUsesUnifiedVisualLanguage(t *testing.T) {
 	for _, expected := range []string{
 		`--canvas: var(--ui-canvas)`, `data-page="products"`,
 		`.product-symbol`, `.scan-console`, `.product-card`, `.product-dialog`,
+		`.scan-jobs-heading strong { color: var(--ui-text-soft); }`,
+		`.scan-job div strong { color: var(--ui-text); }`,
+		`.scan-job-status { color: var(--ui-text-muted); }`,
 	} {
 		if !strings.Contains(css, expected) {
 			t.Errorf("产品库统一样式缺少 %q", expected)

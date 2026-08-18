@@ -309,6 +309,31 @@ html[data-theme][data-page="products"] .scan-form button {
     background: var(--ui-coral);
 }
 
+html[data-theme][data-page="products"] .scan-jobs { border-color: var(--ui-line-soft); }
+html[data-theme][data-page="products"] .scan-jobs-heading { color: var(--ui-text-muted); }
+html[data-theme][data-page="products"] .scan-jobs-heading strong { color: var(--ui-text-soft); }
+
+html[data-theme][data-page="products"] .scan-job {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    background: color-mix(in srgb, var(--ui-surface-raised) 78%, transparent);
+}
+
+html[data-theme][data-page="products"] .scan-job div strong { color: var(--ui-text); }
+html[data-theme][data-page="products"] .scan-job div p,
+html[data-theme][data-page="products"] .scan-job-status { color: var(--ui-text-muted); }
+
+html[data-theme][data-page="products"] .scan-job > button {
+    color: var(--ui-coral);
+    border-color: var(--ui-line-soft);
+    background: var(--ui-surface);
+}
+
+html[data-theme][data-page="products"] .scan-job > button:hover {
+    border-color: var(--ui-coral);
+    background: var(--ui-coral-soft);
+}
+
 html[data-theme][data-page="products"] .constellation { opacity: 1; }
 html[data-theme][data-page="products"] .constellation :where(.star, .orbit) { display: none; }
 

@@ -91,6 +91,8 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 		".recent-card-image",
 		"object-fit: cover",
 		".recent-grid { grid-template-columns: 1fr; }",
+		`:root[data-theme="watercolor"] .quick-item.primary { color: var(--ui-text); }`,
+		`:root[data-theme="watercolor"] .quick-item.primary small { color: var(--ui-text-muted); }`,
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Fatalf("main.css missing %q", expected)

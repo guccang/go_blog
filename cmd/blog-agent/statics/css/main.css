@@ -316,6 +316,9 @@ button { cursor: pointer; }
 :root[data-theme="watercolor"] .quick-item:nth-child(3n + 1) { background: color-mix(in srgb, var(--ui-amber-soft) 34%, var(--ui-surface)); }
 :root[data-theme="watercolor"] .quick-item:nth-child(3n + 2) { background: color-mix(in srgb, var(--ui-coral-soft) 30%, var(--ui-surface)); }
 :root[data-theme="watercolor"] .quick-item:nth-child(3n) { background: color-mix(in srgb, var(--ui-sky-soft) 31%, var(--ui-surface)); }
+:root[data-theme="watercolor"] .quick-item.primary { color: var(--ui-text); }
+:root[data-theme="watercolor"] .quick-item.primary > span { color: var(--ui-coral); }
+:root[data-theme="watercolor"] .quick-item.primary small { color: var(--ui-text-muted); }
 :root[data-theme="watercolor"] .recent-card,
 :root[data-theme="watercolor"] .daily-quote { box-shadow: 0 12px 28px var(--ui-shadow-soft); }
 
