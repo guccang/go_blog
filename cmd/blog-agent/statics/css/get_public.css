@@ -1,19 +1,173 @@
         :root {
-            --primary-color: #f8f0e3;
-            --secondary-color: #eadbc8;
-            --accent-color: #e76f51;
-            --accent-hover: #f4a261;
-            --text-color: #433520;
-            --bg-color: #faf6f0;
-            --card-bg: #ffffff;
-            --lighter-bg: #f5efe6;
-            --border-color: #ddd0c0;
-            --success-color: #6b9080;
-            --warning-color: #e9c46a;
-            --danger-color: #e63946;
-            --code-bg: #f0e6d9;
-            --shadow-color: rgba(0, 0, 0, 0.1);
+            --primary-color: var(--ui-surface);
+            --secondary-color: var(--ui-surface-alt);
+            --accent-color: var(--ui-coral);
+            --accent-hover: var(--ui-amber);
+            --text-color: var(--ui-text);
+            --bg-color: var(--ui-canvas);
+            --card-bg: var(--ui-surface);
+            --lighter-bg: var(--ui-surface-alt);
+            --border-color: var(--ui-line-soft);
+            --success-color: var(--ui-sky);
+            --warning-color: var(--ui-amber);
+            --danger-color: var(--ui-coral);
+            --code-bg: var(--ui-surface-alt);
+            --shadow-color: var(--ui-shadow-soft);
         }
+
+/* 公开阅读页：与文章工作台共享悬线展品、纸张正文和语义主题令牌。 */
+html[data-page="get-public"] body {
+    color: var(--ui-text);
+    background: var(--ui-canvas);
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="get-public"] .sidebar-container {
+    top: 22px;
+    left: 24px;
+    width: 254px;
+    height: calc(100vh - 44px);
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--ui-surface) 94%, transparent);
+    box-shadow: 6px 7px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="get-public"] .sidebar { padding: 20px; }
+html[data-page="get-public"] .img-cycle {
+    width: 34px;
+    height: 34px;
+    margin-inline: auto;
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 50%;
+    background: var(--ui-coral);
+    box-shadow: 2px 2px 0 var(--ui-shadow-soft);
+    font: 700 18px/1 var(--ui-font-display);
+}
+
+html[data-page="get-public"] .reader-artifact {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    margin: 6px 0 18px;
+    padding-top: 28px;
+}
+
+html[data-page="get-public"] .reader-artifact::before {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 42px;
+    content: "";
+    background: var(--ui-coral);
+}
+
+html[data-page="get-public"] .reader-artifact .site-symbol { --symbol-size: 92px; }
+html[data-page="get-public"] .reader-artifact .site-status-mark {
+    margin-top: -5px;
+    background: var(--ui-surface);
+}
+
+html[data-page="get-public"] .sidebar h2 {
+    color: var(--ui-text);
+    font-family: var(--ui-font-display);
+}
+html[data-page="get-public"] .sidebar p,
+html[data-page="get-public"] .sidebar label,
+html[data-page="get-public"] .sidebar small { color: var(--ui-text-muted); }
+html[data-page="get-public"] .sidebar .separator { background: var(--ui-line-soft); }
+html[data-page="get-public"] .sidebar input {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+html[data-page="get-public"] .bubble {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 0 2px 2px 0;
+    background: var(--ui-coral);
+}
+
+html[data-page="get-public"] .reader-workspace {
+    margin-left: 330px;
+    padding: 22px 28px 50px;
+}
+
+html[data-page="get-public"] .editor-container {
+    min-height: calc(100vh - 44px);
+    overflow: hidden;
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 7px 8px 0 var(--ui-shadow-soft);
+}
+
+html[data-page="get-public"] .md {
+    max-width: 880px;
+    margin-inline: auto;
+    padding: clamp(28px, 6vw, 72px);
+    color: var(--ui-text);
+    background: transparent;
+    line-height: 1.9;
+}
+
+html[data-page="get-public"] .md h1,
+html[data-page="get-public"] .md h2,
+html[data-page="get-public"] .md h3,
+html[data-page="get-public"] .md h4 {
+    color: var(--ui-text);
+    border-bottom-color: var(--ui-line-soft);
+    font-family: var(--ui-font-display);
+}
+html[data-page="get-public"] .md a { color: var(--ui-coral); }
+html[data-page="get-public"] .md blockquote {
+    color: var(--ui-text-soft);
+    border-left-color: var(--ui-coral);
+    background: var(--ui-surface-alt);
+}
+html[data-page="get-public"] .md pre {
+    color: var(--ui-canvas);
+    border-radius: 2px;
+    background: var(--ui-text);
+}
+html[data-page="get-public"] .bottom-fix-div {
+    margin-top: 26px;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 5px 6px 0 var(--ui-shadow-soft);
+}
+html[data-page="get-public"] .btn-primary {
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    border-radius: 2px;
+    background: var(--ui-coral);
+}
+
+:root[data-theme="terminal"][data-page="get-public"] .sidebar-container,
+:root[data-theme="terminal"][data-page="get-public"] .editor-container,
+:root[data-theme="terminal"][data-page="get-public"] .bottom-fix-div {
+    box-shadow: 7px 8px 0 var(--ui-shadow);
+}
+
+:root[data-theme="watercolor"][data-page="get-public"] .sidebar-container,
+:root[data-theme="watercolor"][data-page="get-public"] .editor-container,
+:root[data-theme="watercolor"][data-page="get-public"] .bottom-fix-div {
+    border-radius: 18px 12px 20px 14px;
+    box-shadow: 0 14px 32px var(--ui-shadow-soft);
+}
+
+@media (max-width: 768px) {
+    html[data-page="get-public"] .reader-workspace {
+        margin-left: 0;
+        padding: 16px 14px 40px;
+    }
+}
         
         * {
             margin: 0;

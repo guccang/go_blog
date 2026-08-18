@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-page="get">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/GET</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/get.css?v=readonly-bottom-load-3">
-    <link rel="stylesheet" href="/css/get_workspace.css?v=3">
+    <link rel="stylesheet" href="/css/get_workspace.css?v=unified-1">
     <link rel="stylesheet" href="/css/article_assistant.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
 </head>
 <body id="body" class="th_black">
     <!-- Sidebar -->
@@ -18,6 +18,10 @@
                 <div class="img-cycle">G</div>
             </a>
             <a href="/main" style="font-size: 24px;">主页</a>
+			<div class="reader-artifact" aria-hidden="true">
+				<span class="site-symbol" data-symbol="article"></span>
+				<span class="site-status-mark">ARTICLE DESK</span>
+			</div>
 			<div class="separator"></div>
             <h2 id="title">{{.TITLE}}</h2>
 			<div class="separator"></div>
@@ -88,8 +92,8 @@
 	</div>
 
 	<!-- Main Content -->
-	<div class="container">
-		<div class="buttons-container">
+	<div class="container reader-workspace">
+		<div class="buttons-container site-paper-panel">
 			<button id="back-button" class="back-button" type="button" onclick="window.history.back()">&larr; 返回</button>
 			{{if .IS_LARGE}}
 			<span class="large-blog-readonly">大文档只读模式</span>
@@ -106,7 +110,7 @@
 			{{end}}
 		</div>
         
-		<div class="editor-container">
+		<div class="editor-container site-paper-panel">
 			<textarea id="editor-inner" class="hide editor editor-inner th_black" name="content" wrap="hard" data-large-blog="{{.IS_LARGE}}" data-blogname="{{.TITLE}}" data-account="{{.ACCOUNT}}">{{.CONTENT}}</textarea>
 			<div id="md" class="md"></div>
 		</div>
