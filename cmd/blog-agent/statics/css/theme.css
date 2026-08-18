@@ -989,3 +989,34 @@ html[data-theme="atlas-celadon"] body::before {
 }
 
 html[data-theme="atlas-celadon"] :where(h1, h2, h3) { letter-spacing: .04em; }
+
+/* 051 瑞士网格 Swiss Grid · 编辑印刷 · light */
+:root[data-theme="atlas-swiss"] {
+    --c1: #F5F4EF;
+    --c2: #1A1C1F;
+    --c3: #D9382A;
+    --c4: #B8BDC2;
+    --c5: #6C7178;
+    --ink: var(--c2);
+    --accent: var(--c3);
+    --primary-color-rgb: 184, 189, 194;
+    --ui-surface: var(--c1);
+    --ui-surface-raised: color-mix(in srgb, var(--c1) 80%, var(--c4));
+    --ui-line-soft: var(--c2);
+    --ui-sky: var(--c5);
+    --ui-rose: var(--c5);
+    --ui-success: var(--c5);
+    --ui-font-display: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-body: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-font-sans: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-radius: 0;
+    --ui-radius-sm: 0;
+    --ui-card-shadow: none;
+}
+
+html[data-theme="atlas-swiss"] :where(h1, h2, h3) { letter-spacing: -.02em; }
+
+html[data-theme="atlas-swiss"] :where(.eyebrow, .kicker, .label) {
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}

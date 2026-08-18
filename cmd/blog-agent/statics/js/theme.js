@@ -8,7 +8,8 @@
         classic: { name: '墨纸经典', shortName: '经典', colorScheme: 'light', colors: ['#F4F1E8', '#C84F35', '#566F76'], tagline: '清晰骨架 · 克制陈列' },
         terminal: { name: '夜间终端', shortName: '终端', colorScheme: 'dark', colors: ['#211A14', '#F15A29', '#E1A82F'], tagline: '硬边票据 · 点阵' },
         watercolor: { name: '水彩小馆', shortName: '水彩', colorScheme: 'light', colors: ['#FFFDF6', '#DC5A3C', '#4056B5'], tagline: '纸张晕染 · 手绘' },
-        'atlas-celadon': { name: '青瓷雨', shortName: '青瓷', colorScheme: 'light', colors: ['#E7EFEA', '#7FA99A', '#3F6F66'], tagline: '雨水洗过青瓷釉面' }
+        'atlas-celadon': { name: '青瓷雨', shortName: '青瓷', colorScheme: 'light', colors: ['#E7EFEA', '#7FA99A', '#3F6F66'], tagline: '雨水洗过青瓷釉面' },
+        'atlas-swiss': { name: '瑞士网格', shortName: '瑞士', colorScheme: 'light', colors: ['#F5F4EF', '#1A1C1F', '#D9382A'], tagline: '严格网格 · 信号红' }
     };
     var pageName = root.dataset.page || window.location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || 'index';
 

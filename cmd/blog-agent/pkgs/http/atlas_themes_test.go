@@ -33,6 +33,7 @@ func TestAtlasThemePalettes(t *testing.T) {
 		colors []string
 	}{
 		{key: "atlas-celadon", colors: []string{"#e7efea", "#b8d2c7", "#7fa99a", "#3f6f66", "#283c39"}},
+		{key: "atlas-swiss", colors: []string{"#f5f4ef", "#1a1c1f", "#d9382a", "#b8bdc2", "#6c7178"}},
 	}
 	for _, c := range cases {
 		if !strings.Contains(styles, `data-theme="`+c.key+`"`) {
