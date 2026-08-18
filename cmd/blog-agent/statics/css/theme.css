@@ -964,3 +964,28 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
     --goal-warning: var(--ui-warning);
     --goal-danger: var(--ui-danger);
 }
+
+/* 001 青瓷雨 Celadon Rain · 东方器韵 · light */
+:root[data-theme="atlas-celadon"] {
+    --c1: #E7EFEA;
+    --c2: #B8D2C7;
+    --c3: #7FA99A;
+    --c4: #3F6F66;
+    --c5: #283C39;
+    --ink: var(--c5);
+    --accent: var(--c4);
+    --primary-color-rgb: 184, 210, 199;
+    --ui-font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+    --ui-font-body: Georgia, "Noto Serif SC", "Songti SC", serif;
+    --ui-font-sans: "Noto Serif SC", "Songti SC", "STSong", serif;
+    --ui-radius: 14px;
+    --ui-radius-sm: 9px;
+    --ui-card-shadow: 0 10px 24px color-mix(in srgb, var(--c4) 16%, transparent);
+}
+
+html[data-theme="atlas-celadon"] body::before {
+    opacity: .5;
+    background-image: repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 4%, transparent) 0 1px, transparent 1px 9px);
+}
+
+html[data-theme="atlas-celadon"] :where(h1, h2, h3) { letter-spacing: .04em; }
