@@ -1,0 +1,27 @@
+html[data-page="login"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+html[data-page="login"] .background-animation { opacity: .18; filter: saturate(.6); }
+html[data-page="login"] .login-container {
+    position: relative;
+    width: min(440px, calc(100% - 32px));
+    margin: 150px auto 60px;
+    padding: 86px 34px 34px;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 7px 8px 0 var(--ui-shadow-soft);
+}
+.login-artifact { position: absolute; top: -118px; left: 50%; display: grid; justify-items: center; padding-top: 52px; transform: translateX(-50%); }
+.login-artifact::before { position: absolute; top: 0; left: 50%; width: 1px; height: 76px; content: ""; background: var(--ui-coral); }
+.login-artifact .site-symbol { --symbol-size: 120px; }
+.login-artifact .site-status-mark { margin-top: -12px; background: var(--ui-surface); }
+html[data-page="login"] .login-logo { display: none; }
+html[data-page="login"] .login-title { color: var(--ui-text); font-family: var(--ui-font-display); }
+html[data-page="login"] .login-tabs { border-color: var(--ui-line-soft); }
+html[data-page="login"] .tab-button { color: var(--ui-text-muted); }
+html[data-page="login"] .tab-button.active { color: var(--ui-coral); border-color: var(--ui-coral); }
+html[data-page="login"] input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page="login"] .login-button,
+html[data-page="login"] .sms-send-button { color: var(--ui-canvas); border-radius: 2px; background: var(--ui-coral); }
+:root[data-theme="terminal"][data-page="login"] .login-container { box-shadow: 7px 8px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="login"] .login-container { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }

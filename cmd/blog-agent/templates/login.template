@@ -1,17 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN" data-page="login">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG/LOGIN</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/login.css">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/login_unified.css?v=1">
 </head>
 <body>
     <div class="background-animation" id="background-animation"></div>
     
-    <div class="login-container">
+    <div class="login-container site-paper-panel">
+        <div class="login-artifact" aria-hidden="true"><span class="site-symbol" data-symbol="account"></span><span class="site-status-mark">PRIVATE ENTRY</span></div>
         <div class="login-logo">
             <a href="/main">
                 <div class="img-cycle">G</div>
