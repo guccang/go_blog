@@ -1,0 +1,56 @@
+html[data-page="reading-dashboard"] {
+    --ink: var(--ui-text);
+    --muted: var(--ui-text-muted);
+    --canvas: var(--ui-canvas);
+    --paper: var(--ui-surface);
+    --line: var(--ui-line-soft);
+    --coral: var(--ui-coral);
+    --teal: var(--ui-sky);
+    --navy: var(--ui-text);
+}
+
+html[data-page="reading-dashboard"] body {
+    color: var(--ui-text);
+    background: var(--ui-canvas);
+    font-family: var(--ui-font-body);
+}
+
+html[data-page="reading-dashboard"] .dashboard-shell { width: min(1180px, calc(100% - 48px)); padding-top: 0; }
+html[data-page="reading-dashboard"] .dashboard-header { min-height: 64px; }
+html[data-page="reading-dashboard"] .dashboard-hero { display: grid; padding: 76px 0 54px; }
+html[data-page="reading-dashboard"] .dashboard-hero .site-page-description { color: var(--ui-text-soft); }
+html[data-page="reading-dashboard"] .site-page-hero__exhibit { align-content: center; }
+html[data-page="reading-dashboard"] .completion-orb {
+    position: absolute;
+    right: 0;
+    bottom: 16px;
+    width: 104px;
+    height: 104px;
+    color: var(--ui-canvas);
+    border: 1px solid var(--ui-line);
+    background: var(--ui-text);
+}
+
+html[data-page="reading-dashboard"] .metrics { padding: 34px 0; border-bottom: 0; }
+html[data-page="reading-dashboard"] .metrics article,
+html[data-page="reading-dashboard"] .panel {
+    color: var(--ui-text);
+    border-color: var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+}
+html[data-page="reading-dashboard"] .panel-title a { color: var(--ui-text); border-color: var(--ui-line); background: var(--ui-surface); }
+html[data-page="reading-dashboard"] .reading-row,
+html[data-page="reading-dashboard"] .status-chart { border-color: var(--ui-line-soft); }
+html[data-page="reading-dashboard"] .row-progress i { background: var(--ui-surface-alt); }
+
+:root[data-theme="terminal"][data-page="reading-dashboard"] .metrics article,
+:root[data-theme="terminal"][data-page="reading-dashboard"] .panel { box-shadow: 6px 7px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page="reading-dashboard"] .metrics article,
+:root[data-theme="watercolor"][data-page="reading-dashboard"] .panel { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
+
+@media (max-width: 720px) {
+    html[data-page="reading-dashboard"] .dashboard-shell { width: calc(100% - 28px); }
+    html[data-page="reading-dashboard"] .dashboard-hero { grid-template-columns: 1fr; padding: 56px 0 42px; }
+    html[data-page="reading-dashboard"] .completion-orb { right: 14px; }
+}
