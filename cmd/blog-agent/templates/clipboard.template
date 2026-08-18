@@ -1,28 +1,28 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="clipboard">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>内贴板 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/clipboard.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/clipboard_unified.css?v=1">
 </head>
 <body>
-    <header class="clipboard-header">
+    <header class="clipboard-header site-shell site-hanging-nav">
         <a class="clipboard-brand" href="/main"><span>G</span><strong>GUCCANG</strong></a>
         <p><i></i>账号内同步</p>
         <a class="clipboard-home" href="/main">返回主页</a>
     </header>
 
-    <main class="clipboard-shell">
-        <section class="clipboard-hero" aria-labelledby="clipboardTitle">
-            <p class="clipboard-kicker">PRIVATE TRANSFER TRAY</p>
-            <h1 id="clipboardTitle">在这里粘贴，<br>在另一台机器带走。</h1>
-            <p class="clipboard-intro">文字和图片可以放在同一条记录里，仅当前账号可见。</p>
+    <main class="clipboard-shell site-shell">
+        <section class="clipboard-hero site-page-hero" aria-labelledby="clipboardTitle">
+            <div class="site-page-hero__copy"><p class="clipboard-kicker site-kicker">PRIVATE TRANSFER TRAY</p><h1 id="clipboardTitle" class="site-page-title">在这里粘贴，<br>在另一台机器带走。</h1><p class="clipboard-intro site-page-description">文字和图片可以放在同一条记录里，仅当前账号可见。</p></div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="tools"></span></div>
         </section>
 
-        <section class="clipboard-composer" aria-labelledby="composerTitle">
+        <section class="clipboard-composer site-paper-panel" aria-labelledby="composerTitle">
             <div class="transfer-line" aria-hidden="true"><span></span><b></b><span></span></div>
             <div class="composer-heading">
                 <div><p>新传输</p><h2 id="composerTitle">粘贴内容</h2></div>
@@ -38,7 +38,7 @@
             </div>
         </section>
 
-        <section class="clipboard-feed" aria-labelledby="feedTitle">
+        <section class="clipboard-feed site-section" aria-labelledby="feedTitle">
             <div class="feed-heading">
                 <div><p>最近传输</p><h2 id="feedTitle">内贴板记录</h2></div>
                 <button id="refreshClipboard" type="button">刷新</button>
