@@ -75,10 +75,10 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`THE HANGING ARCHIVE`,
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
-		`/css/visual_themes.css?v=2`,
+		`/css/visual_themes.css?v=3`,
 		`/js/visual_themes.js?v=2`,
-		`/js/theme.js?v=3`,
-		`/css/theme.css?v=3`,
+		`/js/theme.js?v=4`,
+		`/css/theme.css?v=4`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("视觉主题模板缺少 %q", expected)
