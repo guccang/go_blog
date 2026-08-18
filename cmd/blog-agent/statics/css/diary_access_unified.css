@@ -1,0 +1,29 @@
+html[data-page^="diary-password"] body { color: var(--ui-text); background: var(--ui-canvas); font-family: var(--ui-font-body); }
+.diary-access-card {
+    position: relative;
+    width: min(500px, calc(100% - 32px));
+    margin: 160px auto 60px;
+    padding: 82px 34px 34px;
+    color: var(--ui-text);
+    border: 1px solid var(--ui-line-soft);
+    border-radius: 2px;
+    background: var(--ui-surface);
+    box-shadow: 7px 8px 0 var(--ui-shadow-soft);
+}
+.diary-access-artifact { position: absolute; top: -126px; left: 50%; display: grid; justify-items: center; padding-top: 54px; transform: translateX(-50%); }
+.diary-access-artifact::before { position: absolute; top: 0; left: 50%; width: 1px; height: 78px; content: ""; background: var(--ui-coral); }
+.diary-access-artifact .site-symbol { --symbol-size: 126px; }
+.diary-access-artifact .site-status-mark { margin-top: -12px; background: var(--ui-surface); white-space: nowrap; }
+html[data-page^="diary-password"] .icon { display: none; }
+html[data-page^="diary-password"] .title { color: var(--ui-text); font-family: var(--ui-font-display); }
+html[data-page^="diary-password"] .subtitle { color: var(--ui-text-soft); }
+html[data-page^="diary-password"] .blog-name,
+html[data-page^="diary-password"] .warning,
+html[data-page^="diary-password"] .error-message,
+html[data-page^="diary-password"] .tips { color: var(--ui-text-soft); border-color: var(--ui-line-soft); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page^="diary-password"] input { color: var(--ui-text); border-color: var(--ui-line); border-radius: 2px; background: var(--ui-surface-alt); }
+html[data-page^="diary-password"] .submit-btn,
+html[data-page^="diary-password"] .retry-btn { color: var(--ui-canvas); border-radius: 2px; background: var(--ui-coral); }
+html[data-page^="diary-password"] .back-link { color: var(--ui-text-muted); }
+:root[data-theme="terminal"][data-page^="diary-password"] .diary-access-card { box-shadow: 7px 8px 0 var(--ui-shadow); }
+:root[data-theme="watercolor"][data-page^="diary-password"] .diary-access-card { border-radius: 18px 12px 20px 14px; box-shadow: 0 14px 30px var(--ui-shadow-soft); }
