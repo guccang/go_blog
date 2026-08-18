@@ -1,31 +1,33 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="exercise-professional">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>专业训练 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/exercise_professional.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/exercise_professional_unified.css?v=1">
 </head>
 <body>
-    <main class="pro-shell">
-        <header class="pro-header">
+    <main class="pro-shell site-shell">
+        <header class="pro-header site-hanging-nav">
             <a class="brand" href="/exercise"><span>G</span><strong>专业训练</strong></a>
             <a class="quiet-link" href="/exercise">返回锻炼记录</a>
         </header>
 
-        <section class="pro-hero">
-            <div>
-                <p class="eyebrow">渐进式自重训练</p>
-                <h1>选对当前这一级，<br>再稳稳地向前一级。</h1>
+        <section class="pro-hero site-page-hero">
+            <div class="site-page-hero__copy">
+                <p class="eyebrow site-kicker">渐进式自重训练</p>
+                <h1 class="site-page-title">选对当前这一级，<br>再稳稳地向前一级。</h1>
+                <p class="hero-note site-page-description">六类核心动作，十级渐进。这里负责制定训练，完成情况仍回到每日锻炼中记录。</p>
             </div>
-            <p class="hero-note">六类核心动作，十级渐进。这里负责制定训练，完成情况仍回到每日锻炼中记录。</p>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="exercise"></span></div>
         </section>
 
         <div id="loadingState" class="loading-state">正在整理训练目录…</div>
         <div id="professionalApp" class="professional-app" hidden>
-            <section class="movement-studio" aria-labelledby="movementTitle">
+            <section class="movement-studio site-paper-panel" aria-labelledby="movementTitle">
                 <nav id="movementNav" class="movement-nav" aria-label="动作分类"></nav>
 
                 <div class="movement-heading">
@@ -46,7 +48,7 @@
                     <div id="levelTrack" class="level-track" role="group" aria-label="选择当前动作级别"></div>
                 </div>
 
-                <article id="levelCard" class="level-card">
+                <article id="levelCard" class="level-card site-paper-panel">
                     <div class="level-card-head">
                         <div>
                             <p id="levelDifficulty" class="difficulty"></p>
@@ -76,7 +78,7 @@
                 </article>
             </section>
 
-            <aside class="plan-builder" aria-labelledby="planTitle">
+            <aside class="plan-builder site-paper-panel" aria-labelledby="planTitle">
                 <p class="eyebrow">未来七天</p>
                 <h2 id="planTitle">安排本周训练</h2>
                 <p class="plan-intro">按六类动作当前等级生成计划。计划加入后默认为未完成。</p>
