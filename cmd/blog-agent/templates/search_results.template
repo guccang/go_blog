@@ -1,31 +1,42 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="search">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>搜索博客 - GUCCANG</title>
-    <link rel="stylesheet" href="/css/query_page.css?v=continue-1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
+    <link rel="stylesheet" href="/css/query_page.css?v=unified-1">
 </head>
 <body>
-    <header class="query-header">
+    <header class="query-header site-shell site-hanging-nav">
         <a class="query-brand" href="/main"><span>G</span><strong>搜索博客</strong></a>
         <nav><a href="/link">BLOG</a><a class="query-account" href="/account">{{.USER_AVATAR}}</a></nav>
     </header>
-    <main id="searchPage" class="query-shell" data-query="{{.QUERY}}">
-        <a class="back-link" href="/main">← 返回主页</a>
-        <h1>搜索你的博客</h1>
-        <form id="searchPageForm" class="standalone-query">
-            <input id="searchPageInput" type="search" maxlength="120" value="{{.QUERY}}"
-                   placeholder="输入标题、关键词或一句话" autocomplete="off">
-            <button type="submit">搜索</button>
-        </form>
-        <p id="searchPageStatus" class="query-status" aria-live="polite"></p>
-        <section id="searchResults" class="search-results" aria-label="搜索结果"></section>
-        <div class="load-more-area">
-            <button id="searchLoadMore" class="secondary-button" type="button" hidden>加载更多结果</button>
-        </div>
+    <main id="searchPage" class="query-shell site-shell" data-query="{{.QUERY}}">
+        <section class="site-page-hero" aria-labelledby="searchPageTitle">
+            <div class="site-page-hero__copy">
+                <a class="back-link" href="/main">← 返回主页</a>
+                <p class="site-kicker">ARCHIVE · RETRIEVAL</p>
+                <h1 id="searchPageTitle" class="site-page-title">搜索你的博客</h1>
+                <p class="site-page-description">从个人档案中检索标题、关键词与记忆片段。</p>
+            </div>
+            <div class="site-page-hero__exhibit" aria-hidden="true">
+                <span class="site-page-symbol" data-symbol="search"></span>
+            </div>
+        </section>
+        <section class="query-workspace site-section" aria-label="搜索工作台">
+            <form id="searchPageForm" class="standalone-query site-paper-panel">
+                <input id="searchPageInput" type="search" maxlength="120" value="{{.QUERY}}"
+                       placeholder="输入标题、关键词或一句话" autocomplete="off">
+                <button class="site-ticket" type="submit">搜索</button>
+            </form>
+            <p id="searchPageStatus" class="query-status" aria-live="polite"></p>
+            <section id="searchResults" class="search-results" aria-label="搜索结果"></section>
+            <div class="load-more-area">
+                <button id="searchLoadMore" class="secondary-button site-ticket" type="button" hidden>加载更多结果</button>
+            </div>
+        </section>
     </main>
     <script src="/js/search_results.js?v=continue-1"></script>
 </body>
