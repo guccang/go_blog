@@ -1,0 +1,113 @@
+html[data-page="book-detail"] body {
+    color: var(--ui-text) !important;
+    background: var(--ui-canvas) !important;
+    font-family: var(--ui-font-body) !important;
+}
+
+html[data-page="book-detail"] .book-detail-container {
+    width: min(1180px, calc(100% - 48px)) !important;
+    max-width: none !important;
+    margin: 72px auto 60px !important;
+    padding: 0 !important;
+}
+
+html[data-page="book-detail"] .book-header {
+    position: relative;
+    min-height: 360px;
+    padding: 48px clamp(28px, 5vw, 64px) !important;
+    overflow: hidden;
+    color: var(--ui-text) !important;
+    border: 1px solid var(--ui-line-soft) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+    box-shadow: 7px 8px 0 var(--ui-shadow-soft) !important;
+}
+
+html[data-page="book-detail"] .book-header::before {
+    position: absolute;
+    top: 22px;
+    left: 28px;
+    right: 28px;
+    height: 1px;
+    content: "";
+    background: color-mix(in srgb, var(--ui-coral) 68%, transparent);
+}
+
+html[data-page="book-detail"] .book-title-large {
+    color: var(--ui-text) !important;
+    font-family: var(--ui-font-display) !important;
+}
+html[data-page="book-detail"] .book-author-large,
+html[data-page="book-detail"] .meta-label,
+html[data-page="book-detail"] .book-description { color: var(--ui-text-soft) !important; }
+html[data-page="book-detail"] .meta-value { color: var(--ui-text) !important; }
+
+.book-detail-symbol {
+    position: absolute;
+    top: 36px;
+    right: 28px;
+    display: grid;
+    justify-items: center;
+    padding-top: 52px;
+}
+.book-detail-symbol::before {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 72px;
+    content: "";
+    background: var(--ui-coral);
+}
+.book-detail-symbol .site-symbol { --symbol-size: 120px; }
+.book-detail-symbol .site-status-mark { margin-top: -12px; background: var(--ui-surface); }
+
+html[data-page="book-detail"] .back-btn {
+    color: var(--ui-text) !important;
+    border: 1px solid var(--ui-line) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+    box-shadow: 3px 3px 0 var(--ui-shadow-soft) !important;
+}
+
+html[data-page="book-detail"] .tabs,
+html[data-page="book-detail"] .tab-content,
+html[data-page="book-detail"] .add-form,
+html[data-page="book-detail"] .modal-content {
+    color: var(--ui-text) !important;
+    border-color: var(--ui-line-soft) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+}
+
+html[data-page="book-detail"] .tabs { margin-top: 28px !important; box-shadow: 4px 5px 0 var(--ui-shadow-soft) !important; }
+html[data-page="book-detail"] .tab { color: var(--ui-text-soft) !important; }
+html[data-page="book-detail"] .tab.active { color: var(--ui-coral) !important; border-bottom-color: var(--ui-coral) !important; }
+html[data-page="book-detail"] .tab-content { margin-top: 18px; box-shadow: 6px 7px 0 var(--ui-shadow-soft) !important; }
+html[data-page="book-detail"] .form-input,
+html[data-page="book-detail"] .form-textarea,
+html[data-page="book-detail"] .progress-input {
+    color: var(--ui-text) !important;
+    border-color: var(--ui-line-soft) !important;
+    border-radius: 2px !important;
+    background: var(--ui-surface) !important;
+}
+html[data-page="book-detail"] .btn-primary { color: var(--ui-canvas) !important; background: var(--ui-coral) !important; }
+
+:root[data-theme="terminal"][data-page="book-detail"] .book-header,
+:root[data-theme="terminal"][data-page="book-detail"] .tabs,
+:root[data-theme="terminal"][data-page="book-detail"] .tab-content { box-shadow: 7px 8px 0 var(--ui-shadow) !important; }
+
+:root[data-theme="watercolor"][data-page="book-detail"] .book-header,
+:root[data-theme="watercolor"][data-page="book-detail"] .tabs,
+:root[data-theme="watercolor"][data-page="book-detail"] .tab-content,
+:root[data-theme="watercolor"][data-page="book-detail"] .modal-content {
+    border-radius: 18px 12px 20px 14px !important;
+    box-shadow: 0 14px 30px var(--ui-shadow-soft) !important;
+}
+
+@media (max-width: 760px) {
+    html[data-page="book-detail"] .book-detail-container { width: calc(100% - 28px) !important; }
+    html[data-page="book-detail"] .book-header { padding: 38px 20px !important; }
+    .book-detail-symbol { display: none; }
+}
