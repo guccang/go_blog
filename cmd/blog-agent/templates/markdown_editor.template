@@ -1,17 +1,18 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-page="markdown-editor">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>写博客 · GUCCANG</title>
+    <script src="/js/theme.js?v=4"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/markdown_editor.css?v=workspace-1">
     <link rel="stylesheet" href="/css/editor_workspace.css?v=1">
-    <script src="/js/theme.js?v=3"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=3">
+    <link rel="stylesheet" href="/css/editor_workspace_unified.css?v=1">
 </head>
 <body class="workspace-page">
-    <main class="writing-shell">
-        <header class="writing-header">
+    <main class="writing-shell site-shell">
+        <header class="writing-header site-hanging-nav">
             <a class="brand-back" href="/main"><span>G</span> 内容工作台</a>
             <div class="header-actions">
                 <a class="quiet-action" href="/image-paste-demo">试用图片粘贴</a>
@@ -19,13 +20,12 @@
             </div>
         </header>
 
-        <section class="article-meta">
-            <p class="section-kicker">新建博客</p>
-            <input id="title" name="title" value="{{.TITLE}}" placeholder="给这篇内容起个标题" aria-label="博客标题">
-            <input id="tags" name="tags" value="{{.TAGS}}" placeholder="添加标签，用 | 分隔" aria-label="博客标签">
+        <section class="article-meta site-page-hero">
+            <div class="site-page-hero__copy"><p class="section-kicker site-kicker">新建博客</p><input id="title" name="title" value="{{.TITLE}}" placeholder="给这篇内容起个标题" aria-label="博客标题"><input id="tags" name="tags" value="{{.TAGS}}" placeholder="添加标签，用 | 分隔" aria-label="博客标签"></div>
+            <div class="site-page-hero__exhibit" aria-hidden="true"><span class="site-page-symbol" data-symbol="editor"></span></div>
         </section>
 
-        <details class="access-panel">
+        <details class="access-panel site-paper-panel">
             <summary><span>访问设置</span><small>私有、公开、日记和加密</small></summary>
             <div class="access-grid">
                 <fieldset>
@@ -46,7 +46,7 @@
             </div>
         </details>
 
-        <nav class="writing-toolbar" aria-label="Markdown 工具栏">
+        <nav class="writing-toolbar site-paper-panel" aria-label="Markdown 工具栏">
             <div class="format-tools">
                 <button id="btn-bold" type="button" title="粗体"><b>B</b></button>
                 <button id="btn-italic" type="button" title="斜体"><i>I</i></button>
@@ -66,7 +66,7 @@
             </div>
         </nav>
 
-        <section class="editor-content" id="editor-content">
+        <section class="editor-content site-paper-panel" id="editor-content">
             <div class="editor-wrapper" id="editor-wrapper">
                 <div class="pane-title"><span class="pane-dot"></span> Markdown <span id="word-count"></span></div>
                 <textarea class="editor" id="editor" name="content" spellcheck="false" aria-label="博客正文">{{.CONTENT}}</textarea>
