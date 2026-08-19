@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Book.Title}} · 阅读</title>
-    <script src="/js/theme.js?v=5"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=5">
+    <script src="/js/theme.js?v=6"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=6">
     <link rel="stylesheet" href="/css/book_detail_focus.css?v=1">
     <link rel="stylesheet" href="/css/book_detail_focus_unified.css?v=1">
 </head>

@@ -25,6 +25,36 @@ func readThemeScript(t *testing.T) string {
 	return string(content)
 }
 
+func TestAtlasThemeDynamics(t *testing.T) {
+	styles := readThemeStyles(t)
+	for _, expected := range []string{
+		"@keyframes atlas-celadon-rain",
+		"@keyframes atlas-swiss-tick",
+		"@keyframes atlas-chrome-breathe",
+		`html[data-theme="atlas-celadon"][data-page="main"] :where(.quick-item, .recent-card):hover`,
+		`html[data-theme="atlas-swiss"][data-page="main"] :where(.quick-item, .recent-card):hover`,
+		`html[data-theme="atlas-chrome"][data-page="main"] :where(.quick-item, .recent-card):hover`,
+	} {
+		if !strings.Contains(styles, expected) {
+			t.Errorf("atlas 主题动态效果缺少 %q", expected)
+		}
+	}
+
+	reducedIdx := strings.LastIndex(styles, "@media (prefers-reduced-motion: reduce)")
+	if reducedIdx < 0 {
+		t.Fatal("theme.css 缺少 prefers-reduced-motion 块")
+	}
+	reduced := styles[reducedIdx:]
+	for _, expected := range []string{
+		`html[data-theme^="atlas-"] body::before`,
+		"animation: none",
+	} {
+		if !strings.Contains(reduced, expected) {
+			t.Errorf("reduced-motion 兜底缺少 %q", expected)
+		}
+	}
+}
+
 func TestAtlasThemePalettes(t *testing.T) {
 	styles := strings.ToLower(readThemeStyles(t))
 	script := readThemeScript(t)
