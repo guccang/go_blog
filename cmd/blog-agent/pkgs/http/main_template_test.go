@@ -87,7 +87,6 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 	for _, expected := range []string{
 		"var(--ui-canvas)",
 		"var(--ui-coral)",
-		".site-page-hero__exhibit",
 		"grid-template-columns: repeat(2, minmax(0, 1fr))",
 		".recent-card-image",
 		"object-fit: cover",
@@ -98,6 +97,14 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 		if !strings.Contains(styles, expected) {
 			t.Fatalf("main.css missing %q", expected)
 		}
+	}
+
+	language, err := os.ReadFile(filepath.Join("..", "..", "statics", "css", "visual_language.css"))
+	if err != nil {
+		t.Fatalf("read visual_language.css: %v", err)
+	}
+	if !strings.Contains(string(language), ".site-page-hero__exhibit") {
+		t.Fatal("visual_language.css missing \".site-page-hero__exhibit\"")
 	}
 }
 

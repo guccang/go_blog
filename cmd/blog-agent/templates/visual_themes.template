@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="百象悬廊：100 款由 image-2 绘制的视觉符号与艺术配色">
     <title>百象悬廊 · THE HANGING ARCHIVE</title>
-    <script src="/js/theme.js?v=4"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=4">
-    <link rel="stylesheet" href="/css/visual_themes.css?v=3">
+    <script src="/js/theme.js?v=7"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=7">
+    <link rel="stylesheet" href="/css/visual_themes.css?v=4">
 </head>
 <body class="visual-themes-body" id="top">
     <a class="atlas-skip-link" href="#theme-gallery">跳到主题图鉴</a>
@@ -82,6 +82,7 @@
                 <p class="dialog-en" id="dialog-theme-en"></p>
                 <p class="dialog-description" id="dialog-theme-description"></p>
                 <div class="dialog-palette" id="dialog-palette" aria-label="主题色值"></div>
+                <button class="dialog-apply" id="dialog-apply" type="button" hidden>应用为网站主题</button>
                 <p class="dialog-tip">点击任意色值即可复制</p>
             </div>
         </div>
@@ -89,6 +90,6 @@
 
     <div class="atlas-toast" id="atlas-toast" role="status" aria-live="polite"></div>
     <noscript><p class="atlas-noscript">需要启用 JavaScript 才能浏览这份图鉴。</p></noscript>
-    <script src="/js/visual_themes.js?v=2" defer></script>
+    <script src="/js/visual_themes.js?v=3" defer></script>
 </body>
 </html>

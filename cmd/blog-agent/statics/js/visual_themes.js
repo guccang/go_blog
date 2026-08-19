@@ -154,6 +154,12 @@
     var activeSeries = 'all';
     var toastTimer;
 
+    var implementedThemes = {
+        '001': 'atlas-celadon',
+        '051': 'atlas-swiss',
+        '061': 'atlas-chrome'
+    };
+
     function colorVariables(colors) {
         return colors.map(function (color, index) {
             return '--c' + (index + 1) + ':' + color;
@@ -254,6 +260,10 @@
         document.getElementById('dialog-palette').innerHTML = theme.colors.map(function (color, index) {
             return '<button type="button" data-color="' + color + '" style="--swatch:' + color + '"><span>0' + (index + 1) + '</span><strong>' + color + '</strong></button>';
         }).join('');
+        var applyButton = document.getElementById('dialog-apply');
+        var themeKey = implementedThemes[theme.id];
+        applyButton.hidden = !themeKey;
+        applyButton.dataset.themeKey = themeKey || '';
         dialog.showModal();
     }
 
@@ -299,6 +309,18 @@
     document.querySelectorAll('[data-hero-theme]').forEach(function (node) {
         var theme = themes.find(function (item) { return item.id === node.dataset.heroTheme; });
         if (theme) node.innerHTML = symbolMarkup(theme);
+    });
+
+    document.getElementById('dialog-apply').addEventListener('click', function () {
+        var key = this.dataset.themeKey;
+        if (!key) return;
+        try {
+            window.localStorage.setItem('guccang-theme', key);
+        } catch (error) {
+            // 隐私模式下仅当前页面临时生效。
+        }
+        document.documentElement.dataset.theme = key;
+        showToast('已应用主题，其他页面将同步生效');
     });
 
     renderFilters();
