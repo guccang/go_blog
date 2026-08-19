@@ -54,3 +54,21 @@ func TestArticleWorkspaceStylesUseThemeTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestEditableArticleToolbarReservesThemePickerSpace(t *testing.T) {
+	content, err := os.ReadFile("../../statics/css/get_workspace.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styles := string(content)
+	for _, marker := range []string{
+		`flex-wrap: wrap`,
+		`padding: 7px 118px 7px 7px !important`,
+		`@media (max-width: 640px)`,
+		`padding-right: 7px !important`,
+	} {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("get workspace theme picker safe area missing %q", marker)
+		}
+	}
+}

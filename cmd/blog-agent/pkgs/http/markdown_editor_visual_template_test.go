@@ -18,3 +18,20 @@ func TestMarkdownEditorUsesUnifiedVisualLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownEditorHeaderReservesThemePickerSpace(t *testing.T) {
+	content, err := os.ReadFile("../../statics/css/editor_workspace_unified.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styles := string(content)
+	for _, marker := range []string{
+		`padding-right: 118px`,
+		`@media (max-width: 640px)`,
+		`padding-right: 0`,
+	} {
+		if !strings.Contains(styles, marker) {
+			t.Fatalf("markdown editor theme picker safe area missing %q", marker)
+		}
+	}
+}

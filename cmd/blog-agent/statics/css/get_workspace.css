@@ -117,10 +117,12 @@ html[data-page="get"] .sidebar-container:not(.hide-sidebar) ~ .reader-workspace 
 
 html[data-page="get"] .buttons-container {
     display: flex !important;
+    flex-wrap: wrap;
     align-items: center;
     min-height: 52px;
     margin: 0 0 18px !important;
-    padding: 7px !important;
+    /* 桌面端主题按钮固定在右上角，操作栏为其保留点击安全区。 */
+    padding: 7px 118px 7px 7px !important;
     border: 1px solid var(--ui-line-soft) !important;
     border-radius: 2px;
     background: var(--ui-surface) !important;
@@ -238,4 +240,9 @@ html[data-page="get"] .toast-container { z-index: 9999; }
     html[data-page="get"] .editor-container { grid-template-columns: 1fr; }
     html[data-page="get"] .editor-container #md { border-top: 1px solid var(--ui-line-soft) !important; }
     html[data-page="get"] .get-view-switcher { display: none; }
+}
+
+@media (max-width: 640px) {
+    /* 主题按钮在窄屏移动到底部，不再占用顶部操作栏空间。 */
+    html[data-page="get"] .buttons-container { padding-right: 7px !important; }
 }

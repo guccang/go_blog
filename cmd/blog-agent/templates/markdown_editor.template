@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/css/theme.css?v=4">
     <link rel="stylesheet" href="/css/markdown_editor.css?v=workspace-1">
     <link rel="stylesheet" href="/css/editor_workspace.css?v=1">
-    <link rel="stylesheet" href="/css/editor_workspace_unified.css?v=1">
+    <link rel="stylesheet" href="/css/editor_workspace_unified.css?v=theme-safe-area-1">
 </head>
 <body class="workspace-page">
     <main class="writing-shell site-shell">
