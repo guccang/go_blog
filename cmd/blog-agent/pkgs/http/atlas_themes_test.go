@@ -25,6 +25,13 @@ func readThemeScript(t *testing.T) string {
 	return string(content)
 }
 
+func TestAtlasThemeBackgroundLayerVisible(t *testing.T) {
+	styles := readThemeStyles(t)
+	if !strings.Contains(styles, `html[data-theme^="atlas-"] body { background: transparent; }`) {
+		t.Error("atlas 主题 body 背景应为透明，否则 z-index:-1 的 body::before 纹理层被不透明背景覆盖而不可见")
+	}
+}
+
 func TestAtlasThemeDynamics(t *testing.T) {
 	styles := readThemeStyles(t)
 	for _, expected := range []string{

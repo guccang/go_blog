@@ -1053,8 +1053,8 @@ html[data-theme="atlas-chrome"] body::before {
 html[data-theme="atlas-celadon"] body::before {
     opacity: .5;
     background-image:
-        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 5%, transparent) 0 1px, transparent 1px 9px),
-        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 3%, transparent) 0 1px, transparent 1px 17px);
+        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 10%, transparent) 0 1px, transparent 1px 9px),
+        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 6%, transparent) 0 1px, transparent 1px 17px);
     animation: atlas-celadon-rain 1.6s linear infinite;
 }
 
@@ -1086,8 +1086,8 @@ html[data-theme="atlas-celadon"] :where(p, li) a:hover {
 /* 瑞士网格 · 跳：steps 机械节拍，交互零过渡瞬时切换 */
 html[data-theme="atlas-swiss"] body::before {
     background-image:
-        repeating-linear-gradient(0deg, color-mix(in srgb, var(--c2) 5%, transparent) 0 1px, transparent 1px 56px),
-        repeating-linear-gradient(90deg, color-mix(in srgb, var(--c2) 5%, transparent) 0 1px, transparent 1px 56px);
+        repeating-linear-gradient(0deg, color-mix(in srgb, var(--c2) 9%, transparent) 0 1px, transparent 1px 56px),
+        repeating-linear-gradient(90deg, color-mix(in srgb, var(--c2) 9%, transparent) 0 1px, transparent 1px 56px);
     animation: atlas-swiss-tick 4.8s steps(8) infinite;
 }
 
@@ -1106,8 +1106,8 @@ html[data-theme="atlas-swiss"][data-page="main"] :where(.quick-item, .recent-car
 /* 液态铬 · 流：辉光呼吸漂移，卡片浮起带紫辉 */
 html[data-theme="atlas-chrome"] body::before {
     background-image:
-        radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--c5) 20%, transparent), transparent 46%),
-        radial-gradient(ellipse at 84% 78%, color-mix(in srgb, var(--c4) 10%, transparent), transparent 50%);
+        radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--c5) 26%, transparent), transparent 46%),
+        radial-gradient(ellipse at 84% 78%, color-mix(in srgb, var(--c4) 14%, transparent), transparent 50%);
     animation: atlas-chrome-breathe 7s ease-in-out infinite alternate;
 }
 
@@ -1140,3 +1140,6 @@ html[data-theme="atlas-chrome"] body :where(.site-seal-button, .search-button, .
     html[data-theme^="atlas-"] body::before { animation: none !important; }
     html[data-theme^="atlas-"] body :where(.quick-item, .recent-card, .card, .panel) { transition: none !important; }
 }
+
+/* atlas 纹理层修复：body 不透明背景会盖住 z-index:-1 的 body::before，改为由 html 供底色 */
+html[data-theme^="atlas-"] body { background: transparent; }
