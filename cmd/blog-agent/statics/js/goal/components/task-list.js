@@ -26,15 +26,17 @@ class TaskList extends HTMLElement {
     if (!goal) { this.innerHTML = ''; return; }
 
     const tasks = goal.tasks || [];
-    const supportsTaskGeneration = goal.level !== 'yearly';
     const hasAlignment = Boolean(goal.parent_id);
+    const hasOverview = Boolean((goal.overview || '').trim());
+    const canGenerate = hasAlignment || hasOverview;
+    const generateTitle = canGenerate ? '' : 'disabled title="请先写目标概述或对齐上层目标"';
     this.innerHTML = `
       <div class="goal-card">
         <div class="task-section-heading">
           <h3 class="section-title">任务 (${tasks.length})</h3>
-          ${supportsTaskGeneration ? `<button class="btn-sm ai-task-button" data-action="generate-tasks" ${hasAlignment ? '' : 'disabled title="请先对齐上层目标"'}>${hasAlignment ? 'AI 生成任务草稿' : '先对齐目标，再生成任务'}</button>` : ''}
+          <button class="btn-sm ai-task-button" data-action="generate-tasks" ${generateTitle}>${canGenerate ? 'AI 生成任务草稿' : '先写概述或对齐目标，再生成任务'}</button>
         </div>
-        ${hasAlignment ? `
+        ${canGenerate ? `
           <div class="ai-task-controls">
             <input type="text" class="ai-task-instruction" placeholder="可选：补充限制，例如“今天优先做后端”">
           </div>
@@ -94,7 +96,7 @@ class TaskList extends HTMLElement {
 
   _renderDrafts() {
     if (this.generating) {
-      return '<div class="ai-task-preview"><p class="ai-task-status">正在根据对齐目标生成任务草稿…</p></div>';
+      return '<div class="ai-task-preview"><p class="ai-task-status">正在生成任务草稿…</p></div>';
     }
 	if (!this.drafts) return '';
 	const { goal } = store.state;

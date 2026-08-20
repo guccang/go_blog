@@ -65,10 +65,10 @@ type GoalTaskDraftResult struct {
 	DurationMs int64           `json:"duration_ms"`
 }
 
-// GenerateGoalTasks drafts tasks from an explicitly aligned parent goal.
+// GenerateGoalTasks drafts tasks from the current goal overview or an explicitly aligned parent goal.
 func GenerateGoalTasks(account, provider string, context GoalTaskContext) (GoalTaskDraftResult, error) {
-	if strings.TrimSpace(context.ParentOverview) == "" && len(context.ParentTasks) == 0 {
-		return GoalTaskDraftResult{}, errors.New("aligned goal has no content to break down")
+	if strings.TrimSpace(context.ParentOverview) == "" && len(context.ParentTasks) == 0 && strings.TrimSpace(context.CurrentOverview) == "" {
+		return GoalTaskDraftResult{}, errors.New("目标没有可拆解的内容：请先填写目标概述，或对齐一个有内容的上层目标")
 	}
 	cfg, err := loadProvider(account, provider)
 	if err != nil {
@@ -118,10 +118,23 @@ func buildGoalTaskPrompt(context GoalTaskContext) string {
 	case "weekly":
 		scheduleInstruction += "只生成少量持续推进的任务，不要为每个时段复制任务；系统会依据用户定义的重要性分配多个执行时段。"
 	}
-	return "你是目标页面的任务排期助手。用户已明确选择上层目标，请把上层目标转成当前周期内可以持续执行的任务草稿。" +
-		"不要评价目标，不要主动扩展范围，不要重复已有任务。每项应具体、简短、可执行。" + scheduleInstruction +
-		"每项必须通过 source_task_id 原样填写它所承接的上层任务 id，并通过 source_task_title 原样填写标题。不要判断或修改 importance 和 priority，系统会从上层任务继承。estimate_hours 应为合理的正数。" +
-		"只返回 JSON，不要使用 Markdown。格式：{\"tasks\":[{\"title\":\"\",\"description\":\"\",\"source_task_id\":\"上层任务ID\",\"source_task_title\":\"上层任务标题\",\"estimate_hours\":1}]}。\n\n目标数据：" + string(payload)
+	hasParentTasks := len(context.ParentTasks) > 0
+	hasParent := hasParentTasks || strings.TrimSpace(context.ParentOverview) != ""
+	var prompt string
+	if hasParent {
+		prompt = "你是目标页面的任务排期助手。用户已明确选择上层目标，请把上层目标转成当前周期内可以持续执行的任务草稿。"
+	} else {
+		prompt = "你是目标页面的任务排期助手。当前目标没有对齐上层目标，请把当前目标的概述拆解成当前周期内可以持续执行的任务草稿。"
+	}
+	prompt += "不要评价目标，不要主动扩展范围，不要重复已有任务。每项应具体、简短、可执行。" + scheduleInstruction
+	format := `{"tasks":[{"title":"","description":"","estimate_hours":1}]}`
+	if hasParentTasks {
+		prompt += "每项必须通过 source_task_id 原样填写它所承接的上层任务 id，并通过 source_task_title 原样填写标题。不要判断或修改 importance 和 priority，系统会从上层任务继承。"
+		format = `{"tasks":[{"title":"","description":"","source_task_id":"上层任务ID","source_task_title":"上层任务标题","estimate_hours":1}]}`
+	}
+	prompt += "estimate_hours 应为合理的正数。" +
+		"只返回 JSON，不要使用 Markdown。格式：" + format + "。\n\n目标数据：" + string(payload)
+	return prompt
 }
 
 func parseGoalTaskDrafts(content string, context GoalTaskContext) ([]GoalTaskDraft, error) {
@@ -135,7 +148,7 @@ func parseGoalTaskDrafts(content string, context GoalTaskContext) ([]GoalTaskDra
 		Tasks []GoalTaskDraft `json:"tasks"`
 	}
 	if err := json.Unmarshal([]byte(content), &response); err != nil {
-		return nil, fmt.Errorf("decode generated tasks: %w", err)
+		return nil, fmt.Errorf("模型返回的内容不是有效 JSON：%v；原始返回开头：%.160s", err, content)
 	}
 
 	seen := make(map[string]struct{}, len(context.ExistingTasks)+len(response.Tasks))
@@ -151,6 +164,7 @@ func parseGoalTaskDrafts(content string, context GoalTaskContext) ([]GoalTaskDra
 	maxTasks := maxTasksForLevel(context.CurrentLevel)
 	tasks := make([]GoalTaskDraft, 0, maxTasks)
 	seenSources := make(map[string]struct{}, maxTasks)
+	duplicateCount := 0
 	for _, task := range response.Tasks {
 		task.Title = strings.TrimSpace(task.Title)
 		task.Description = strings.TrimSpace(task.Description)
@@ -159,6 +173,7 @@ func parseGoalTaskDrafts(content string, context GoalTaskContext) ([]GoalTaskDra
 			continue
 		}
 		if _, exists := seen[key]; exists {
+			duplicateCount++
 			continue
 		}
 		task.SourceTaskID = resolveSourceTaskID(task.SourceTaskID, task.SourceTaskTitle, context.ParentTasks)
@@ -203,9 +218,19 @@ func parseGoalTaskDrafts(content string, context GoalTaskContext) ([]GoalTaskDra
 			scheduledTasks = append(scheduledTasks, tasks[i])
 		}
 	}
+	kept := len(tasks)
 	tasks = scheduledTasks
 	if len(tasks) == 0 {
-		return nil, errors.New("model did not return any new tasks")
+		switch {
+		case len(response.Tasks) == 0:
+			return nil, errors.New("模型没有返回任何任务，请补充目标概述或调整指令后重试")
+		case kept == 0 && duplicateCount > 0:
+			return nil, fmt.Errorf("模型返回了 %d 项任务，但都与现有任务重复，没有可添加的新任务", len(response.Tasks))
+		case kept == 0:
+			return nil, fmt.Errorf("模型返回了 %d 项任务，但均被过滤（标题为空或与现有任务重复），没有可添加的新任务", len(response.Tasks))
+		default:
+			return nil, errors.New("模型返回了任务，但当前周期已没有可分配的空闲时段，请先调整现有任务排期")
+		}
 	}
 	return tasks, nil
 }

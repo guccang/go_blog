@@ -23,6 +23,6 @@
         </section>
         <goal-app></goal-app>
     </main>
-    <script type="module" src="/js/goal/components/goal-app.js?v=goal-wheel-1"></script>
+    <script type="module" src="/js/goal/components/goal-app.js?v=goal-ai-overview-1"></script>
 </body>
 </html>

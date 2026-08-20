@@ -1,6 +1,9 @@
 package piagent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseGoalTaskDraftsFiltersAndNormalizes(t *testing.T) {
 	content := "```json\n{\"tasks\":[" +
@@ -26,6 +29,49 @@ func TestParseGoalTaskDraftsFiltersAndNormalizes(t *testing.T) {
 func TestParseGoalTaskDraftsRejectsEmptyResult(t *testing.T) {
 	if _, err := parseGoalTaskDrafts(`{"tasks":[]}`, GoalTaskContext{}); err == nil {
 		t.Fatal("empty generated task list should return an error")
+	}
+}
+
+func TestParseGoalTaskDraftsReportsDuplicateReason(t *testing.T) {
+	_, err := parseGoalTaskDrafts(`{"tasks":[{"title":"已有任务"}]}`, GoalTaskContext{
+		ExistingTasks: []GoalTaskReference{{Title: "已有任务"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "重复") {
+		t.Fatalf("duplicate-only result should explain the reason, got %v", err)
+	}
+}
+
+func TestParseGoalTaskDraftsReportsInvalidJSON(t *testing.T) {
+	_, err := parseGoalTaskDrafts("这不是JSON", GoalTaskContext{})
+	if err == nil || !strings.Contains(err.Error(), "原始返回") {
+		t.Fatalf("invalid JSON should include the raw model output, got %v", err)
+	}
+}
+
+func TestBuildGoalTaskPromptWithoutParentUsesOverview(t *testing.T) {
+	prompt := buildGoalTaskPrompt(GoalTaskContext{
+		CurrentLevel:    "monthly",
+		CurrentPeriod:   "2026-08",
+		CurrentOverview: "读完三本书",
+	})
+	if !strings.Contains(prompt, "当前目标的概述拆解") {
+		t.Fatal("overview-only mode should say the overview is being decomposed")
+	}
+	if strings.Contains(prompt, "source_task_id") {
+		t.Fatal("overview-only mode should not require source_task_id")
+	}
+	if !strings.Contains(prompt, "读完三本书") {
+		t.Fatal("prompt should include the current overview")
+	}
+}
+
+func TestBuildGoalTaskPromptWithParentTasksRequiresSource(t *testing.T) {
+	prompt := buildGoalTaskPrompt(GoalTaskContext{
+		CurrentLevel: "weekly",
+		ParentTasks:  []GoalTaskReference{{ID: "p1", Title: "上层任务"}},
+	})
+	if !strings.Contains(prompt, "source_task_id") {
+		t.Fatal("aligned mode should require source_task_id")
 	}
 }
 

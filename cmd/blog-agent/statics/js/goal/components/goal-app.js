@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { currentPeriod, LEVELS, PARENT_LEVEL } from '../utils.js';
 import './goal-tabs.js';
 import './period-nav.js';
-import './goal-detail.js?v=goal-parent-fix-1';
+import './goal-detail.js?v=goal-ai-overview-1';
 import './goal-list.js';
 import './review-panel.js';
 import './goal-map.js?v=goal-wheel-1';
