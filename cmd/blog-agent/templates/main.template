@@ -6,7 +6,8 @@
     <title>GUCCANG</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
-    <link rel="stylesheet" href="/css/main.css?v=symbol-motion-1">
+    <link rel="stylesheet" href="/css/main.css?v=natural-motion-1">
+    <link rel="stylesheet" href="/css/natural_motion.css?v=1">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -43,8 +44,14 @@
                 </form>
                 <p id="queryHint" class="query-hint" aria-live="polite">按 Enter 默认搜索本地博客。</p>
             </div>
-            <div class="site-page-hero__exhibit" aria-hidden="true">
-                <span class="site-page-symbol" data-symbol="portal" data-symbol-motion="portal"></span>
+            <div class="site-page-hero__exhibit" aria-hidden="true"
+                 data-natural-motion="celadon-rain" data-motion-theme="atlas-celadon">
+                <span class="main-theme-symbol-slot main-theme-symbol-slot--default">
+                    <span class="site-page-symbol main-theme-symbol main-theme-symbol--default" data-symbol="portal" data-symbol-motion="portal"></span>
+                </span>
+                <span class="main-theme-symbol-slot main-theme-symbol-slot--celadon">
+                    <span class="site-page-symbol main-theme-symbol main-theme-symbol--celadon"></span>
+                </span>
             </div>
         </section>
 
@@ -99,6 +106,7 @@
         <span class="daily-quote-mark" aria-hidden="true">“</span>
     </aside>
 
+    <script src="/js/natural_motion.js?v=1"></script>
     <script src="/js/visual_symbol_motion.js?v=1"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>

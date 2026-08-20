@@ -92,6 +92,34 @@ func TestVisualThemeAtlasAppliesImplementedThemes(t *testing.T) {
 	}
 }
 
+func TestVisualThemeAtlasPreviewsCeladonNaturalMotion(t *testing.T) {
+	scriptContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "visual_themes.js"))
+	if err != nil {
+		t.Fatalf("读取视觉主题脚本失败: %v", err)
+	}
+	for _, expected := range []string{
+		"dialogMotionScene", "destroyDialogMotion", "theme.id === '001'",
+		"GuCcangNaturalMotion.mount", "'celadon-rain'", "theme: ''",
+	} {
+		if !strings.Contains(string(scriptContent), expected) {
+			t.Errorf("青瓷雨自然动效预览缺少 %q", expected)
+		}
+	}
+
+	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "visual_themes.template"))
+	if err != nil {
+		t.Fatalf("读取视觉主题模板失败: %v", err)
+	}
+	page := string(templateContent)
+	for _, expected := range []string{
+		`/css/natural_motion.css?v=1`, `/js/natural_motion.js?v=1`, `/js/visual_themes.js?v=4`,
+	} {
+		if !strings.Contains(page, expected) {
+			t.Errorf("视觉主题模板缺少自然动效资产 %q", expected)
+		}
+	}
+}
+
 func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "visual_themes.template"))
 	if err != nil {
@@ -104,7 +132,7 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
 		`/css/visual_themes.css?v=4`,
-		`/js/visual_themes.js?v=3`,
+		`/js/visual_themes.js?v=4`,
 		`/js/theme.js?v=7`,
 		`/css/theme.css?v=7`,
 	} {

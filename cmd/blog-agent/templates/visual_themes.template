@@ -8,6 +8,7 @@
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
     <link rel="stylesheet" href="/css/visual_themes.css?v=4">
+    <link rel="stylesheet" href="/css/natural_motion.css?v=1">
 </head>
 <body class="visual-themes-body" id="top">
     <a class="atlas-skip-link" href="#theme-gallery">跳到主题图鉴</a>
@@ -90,6 +91,7 @@
 
     <div class="atlas-toast" id="atlas-toast" role="status" aria-live="polite"></div>
     <noscript><p class="atlas-noscript">需要启用 JavaScript 才能浏览这份图鉴。</p></noscript>
-    <script src="/js/visual_themes.js?v=3" defer></script>
+    <script src="/js/natural_motion.js?v=1"></script>
+    <script src="/js/visual_themes.js?v=4" defer></script>
 </body>
 </html>
