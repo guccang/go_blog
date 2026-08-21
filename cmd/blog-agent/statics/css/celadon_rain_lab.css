@@ -346,28 +346,46 @@ main { padding-bottom: 88px; }
 }
 
 .wind-compass__dial {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 34px);
-    gap: 3px;
-    width: 174px;
-    margin: 7px auto 4px;
+    grid-template-rows: repeat(3, 48px);
+    gap: 4px;
+    width: 152px;
+    margin: 9px auto 5px;
+}
+
+.wind-compass__dial::before {
+    position: absolute;
+    z-index: 0;
+    inset: 24px;
+    content: "";
+    border: 1px solid rgba(63, 111, 102, .18);
+    border-radius: 50%;
+    background:
+        linear-gradient(0deg, transparent 49.5%, rgba(63, 111, 102, .12) 50%, transparent 50.5%),
+        linear-gradient(90deg, transparent 49.5%, rgba(63, 111, 102, .12) 50%, transparent 50.5%);
+    pointer-events: none;
 }
 
 .wind-direction {
+    position: relative;
+    z-index: 1;
     display: flex;
-    gap: 4px;
+    flex-direction: column;
+    gap: 3px;
     align-items: center;
     justify-content: center;
-    padding: 0 5px;
+    min-width: 0;
+    padding: 2px;
     color: rgba(40, 60, 57, .62);
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
 }
 
-.wind-direction strong { font: 400 14px/1 var(--display); }
-.wind-direction small { font: 7px/1 var(--utility); letter-spacing: .02em; }
+.wind-direction strong { font: 400 13px/1 var(--display); }
+.wind-direction small { font: 6px/1 var(--utility); letter-spacing: -.02em; }
 .wind-direction:hover,
 .wind-direction:focus-visible { color: var(--deep-water); border-color: rgba(63, 111, 102, .35); }
 .wind-direction[aria-pressed="true"] {
@@ -377,11 +395,17 @@ main { padding-bottom: 88px; }
 }
 
 .wind-direction--north { grid-column: 2; grid-row: 1; }
+.wind-direction--northeast { grid-column: 3; grid-row: 1; }
 .wind-direction--west { grid-column: 1; grid-row: 2; }
 .wind-direction--east { grid-column: 3; grid-row: 2; }
+.wind-direction--southwest { grid-column: 1; grid-row: 3; }
 .wind-direction--south { grid-column: 2; grid-row: 3; }
+.wind-direction--southeast { grid-column: 3; grid-row: 3; }
+.wind-direction--northwest { grid-column: 1; grid-row: 1; }
 
 .wind-compass__needle {
+    position: relative;
+    z-index: 2;
     display: grid;
     grid-column: 2;
     grid-row: 2;
@@ -398,13 +422,9 @@ main { padding-bottom: 88px; }
 .wind-compass__needle i {
     display: block;
     font: normal 16px/1 var(--utility);
-    transform: rotate(0deg);
-    transition: transform .36s cubic-bezier(.2, .78, .24, 1);
+    transform: rotate(var(--wind-flow-angle, 0deg));
+    transition: transform .48s cubic-bezier(.2, .78, .24, 1);
 }
-
-.wind-compass[data-direction="east"] .wind-compass__needle i { transform: rotate(180deg); }
-.wind-compass[data-direction="north"] .wind-compass__needle i { transform: rotate(90deg); }
-.wind-compass[data-direction="south"] .wind-compass__needle i { transform: rotate(-90deg); }
 
 .wind-compass > p {
     margin: 7px 0 0;

@@ -22,11 +22,28 @@
     var resetButton = document.getElementById('resetButton');
 
     var windDirections = {
-        west: { flow: [1, 0], label: '西风 W → E', detail: '来自西方，向东方流动。' },
-        east: { flow: [-1, 0], label: '东风 E → W', detail: '来自东方，向西方流动。' },
-        north: { flow: [0, -1], label: '北风 N → S', detail: '来自北方，向南方与近景流动。' },
-        south: { flow: [0, 1], label: '南风 S → N', detail: '来自南方，向北方与远景流动。' }
+        north: { angle: 0, label: '北风 N → S', detail: '来自北方，向南方与近景流动。' },
+        northeast: { angle: 45, label: '东北风 NE → SW', detail: '来自东北，向西南方向流动。' },
+        east: { angle: 90, label: '东风 E → W', detail: '来自东方，向西方流动。' },
+        southeast: { angle: 135, label: '东南风 SE → NW', detail: '来自东南，向西北方向流动。' },
+        south: { angle: 180, label: '南风 S → N', detail: '来自南方，向北方与远景流动。' },
+        southwest: { angle: 225, label: '西南风 SW → NE', detail: '来自西南，向东北方向流动。' },
+        west: { angle: 270, label: '西风 W → E', detail: '来自西方，向东方流动。' },
+        northwest: { angle: 315, label: '西北风 NW → SE', detail: '来自西北，向东南方向流动。' }
     };
+
+    function normalizeWindAngle(angle) {
+        return ((Number(angle) % 360) + 360) % 360;
+    }
+
+    function shortestWindTurn(fromAngle, toAngle) {
+        return normalizeWindAngle(toAngle - fromAngle + 180) - 180;
+    }
+
+    function meteorologicalFlow(angle) {
+        var radians = normalizeWindAngle(angle) * Math.PI / 180;
+        return [-Math.sin(radians), -Math.cos(radians)];
+    }
 
     var vertexSource = [
         '#version 300 es',
@@ -375,6 +392,9 @@
         this.random = seededRandom(1001);
         this.settings = { wind: 1, rain: 1, light: 1 };
         this.windDirectionKey = 'west';
+        this.windAngle = 270;
+        this.targetWindAngle = 270;
+        this.needleAngle = 0;
         this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
         this.impacts = [];
         this.pendingImpulses = [];
@@ -523,16 +543,25 @@
             if (point.y <= self.waterline + 0.035) self.addImpact(point.x, 1.05);
         });
         this.syncPauseButton();
-        this.setWindDirection(this.windDirectionKey);
+        this.setWindDirection(this.windDirectionKey, true);
     };
 
-    CeladonRainLab.prototype.setWindDirection = function (directionKey) {
+    CeladonRainLab.prototype.setWindAngle = function (angle, immediate) {
+        this.targetWindAngle = normalizeWindAngle(angle);
+        if (immediate) this.windAngle = this.targetWindAngle;
+    };
+
+    CeladonRainLab.prototype.setWindDirection = function (directionKey, immediate) {
         var direction = windDirections[directionKey];
         if (!direction) return;
         this.windDirectionKey = directionKey;
+        this.setWindAngle(direction.angle, Boolean(immediate || this.paused));
         windCompass.dataset.direction = directionKey;
-        windDirectionValue.value = direction.label;
-        windDirectionDetail.textContent = direction.detail;
+        windDirectionValue.value = direction.label + ' · ' + direction.angle + '°';
+        windDirectionDetail.textContent = '气象角度 ' + direction.angle + '° · ' + direction.detail;
+        var targetNeedleAngle = direction.angle + 90;
+        this.needleAngle += shortestWindTurn(this.needleAngle, targetNeedleAngle);
+        windCompass.style.setProperty('--wind-flow-angle', this.needleAngle.toFixed(2) + 'deg');
         windDirectionButtons.forEach(function (button) {
             button.setAttribute('aria-pressed', String(button.dataset.windDirection === directionKey));
         });
@@ -540,7 +569,17 @@
     };
 
     CeladonRainLab.prototype.windDirection = function () {
-        return windDirections[this.windDirectionKey];
+        return { angle: this.windAngle, flow: meteorologicalFlow(this.windAngle) };
+    };
+
+    CeladonRainLab.prototype.updateWindDirection = function (dt) {
+        var turn = shortestWindTurn(this.windAngle, this.targetWindAngle);
+        if (Math.abs(turn) < 0.05) {
+            this.windAngle = this.targetWindAngle;
+            return;
+        }
+        var blend = 1 - Math.exp(-dt * 3.4);
+        this.windAngle = normalizeWindAngle(this.windAngle + turn * blend);
     };
 
     CeladonRainLab.prototype.eventPoint = function (event) {
@@ -597,6 +636,7 @@
 
     CeladonRainLab.prototype.update = function (dt) {
         this.elapsed += dt;
+        this.updateWindDirection(dt);
         this.pointer.x += (this.pointer.targetX - this.pointer.x) * Math.min(1, dt * 2.4);
         this.pointer.y += (this.pointer.targetY - this.pointer.y) * Math.min(1, dt * 2.4);
         this.nextImpact -= dt * this.settings.rain;
@@ -695,7 +735,7 @@
 
     CeladonRainLab.prototype.reset = function () {
         this.settings = { wind: 1, rain: 1, light: 1 };
-        this.setWindDirection('west');
+        this.setWindDirection('west', true);
         windControl.value = '1';
         rainControl.value = '1';
         lightControl.value = '1';

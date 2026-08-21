@@ -19,11 +19,16 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-asset=`,
 		`id="windControl"`, `id="rainControl"`, `id="lightControl"`,
 		`id="windCompass"`, `id="windDirectionValue"`, `data-wind-direction="north"`,
-		`data-wind-direction="east"`, `data-wind-direction="south"`, `data-wind-direction="west"`,
+		`data-wind-direction="northeast"`, `data-wind-direction="east"`, `data-wind-direction="southeast"`,
+		`data-wind-direction="south"`, `data-wind-direction="southwest"`, `data-wind-direction="west"`,
+		`data-wind-direction="northwest"`, `data-wind-angle="45"`, `data-wind-angle="135"`,
+		`data-wind-angle="225"`, `data-wind-angle="315"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=2`, `/js/celadon_rain_lab.js?v=2`,
-		"东风 E → W", "西风 W → E", "北风 N → S", "南风 S → N",
+		`/css/celadon_rain_lab.css?v=3`, `/js/celadon_rain_lab.js?v=3`,
+		"北风 0°，N → S", "东风 90°，E → W", "南风 180°，S → N", "西风 270°，W → E",
+		"东北风 45°，NE → SW", "东南风 135°，SE → NW",
+		"西南风 225°，SW → NE", "西北风 315°，NW → SE",
 		"风场", "三层", "水冠", "波面法线",
 	} {
 		if !strings.Contains(page, expected) {
@@ -50,8 +55,11 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 		`wind_field`, `curl_value`, `u_wind_direction`, `u_wind_strength`,
 		`read_wave_state`, `advection_offset`, `far_rain`, `middle_rain`, `near_rain`,
 		`splash_shape`, `wave_normal`, `refraction_shift`, `paper_environment`,
-		`setWindDirection`, `windDirections`, `west: { flow: [1, 0]`,
-		`east: { flow: [-1, 0]`, `north: { flow: [0, -1]`, `south: { flow: [0, 1]`,
+		`setWindDirection`, `setWindAngle`, `updateWindDirection`, `meteorologicalFlow`,
+		`normalizeWindAngle`, `shortestWindTurn`, `windDirections`,
+		`north: { angle: 0`, `northeast: { angle: 45`, `east: { angle: 90`,
+		`southeast: { angle: 135`, `south: { angle: 180`, `southwest: { angle: 225`,
+		`west: { angle: 270`, `northwest: { angle: 315`,
 		`webglcontextlost`, `prefers-reduced-motion`,
 	} {
 		if !strings.Contains(script, expected) {
@@ -77,7 +85,8 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 	for _, expected := range []string{
 		`.celadon-stage`, `min-height: clamp(620px, 78vh, 920px)`, `.lab-controls`,
 		`.wind-compass`, `.wind-compass__dial`, `.wind-compass__needle`,
-		`[data-direction="east"]`, `[data-direction="north"]`, `[data-direction="south"]`,
+		`.wind-direction--northeast`, `.wind-direction--southeast`,
+		`.wind-direction--southwest`, `.wind-direction--northwest`, `--wind-flow-angle`,
 		`--paper: #f4eedf`, `--celadon: #7fa99a`, `--deep-water: #3f6f66`,
 		`@media (max-width: 640px)`, `prefers-reduced-motion`, `:focus-visible`,
 	} {
