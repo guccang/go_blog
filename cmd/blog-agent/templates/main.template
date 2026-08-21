@@ -6,7 +6,7 @@
     <title>GUCCANG</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=8">
-    <link rel="stylesheet" href="/css/main.css?v=natural-motion-2">
+    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-3">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -28,6 +28,16 @@
 
     <main class="main-shell site-shell">
         <section class="query-hero site-page-hero" aria-labelledby="mainTitle">
+            <div class="main-celadon-stage" id="celadonStage" data-render-state="loading"
+                 data-celadon-mode="ambient"
+                 data-celadon-asset="/images/visual-symbols/visual-symbols-01.webp"
+                 aria-hidden="true">
+                <canvas id="celadonCanvas"></canvas>
+                <div class="stage-status">
+                    <strong id="stageStatusTitle">正在初始化青瓷雨</strong>
+                    <small id="stageStatusDetail">准备风场、水面与柔和光场。</small>
+                </div>
+            </div>
             <div class="site-page-hero__copy">
                 <p class="eyebrow site-kicker">PERSONAL KNOWLEDGE PORTAL</p>
                 <h1 id="mainTitle" class="site-page-title">今天想继续什么？</h1>
@@ -100,6 +110,7 @@
     </aside>
 
     <script src="/js/visual_symbol_motion.js?v=1"></script>
+    <script src="/js/celadon_rain_lab.js?v=7"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>
 </html>

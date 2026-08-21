@@ -4,6 +4,7 @@
     var stage = document.getElementById('celadonStage');
     var canvas = document.getElementById('celadonCanvas');
     if (!stage || !canvas) return;
+    var ambientMode = stage.dataset.celadonMode === 'ambient';
 
     var statusTitle = document.getElementById('stageStatusTitle');
     var statusDetail = document.getElementById('stageStatusDetail');
@@ -184,6 +185,8 @@
         'uniform float u_beam_spread;',
         'uniform float u_beam_softness;',
         'uniform float u_waterline;',
+        'uniform vec2 u_vessel_position;',
+        'uniform float u_vessel_scale;',
         'uniform vec4 u_impacts[12];',
         'uniform int u_impact_count;',
         '',
@@ -274,12 +277,12 @@
         '}',
         '',
         'vec4 celadon_sample(vec2 uv_value, float aspect_value, float angle_value, vec2 optical_shift) {',
-        '    vec2 center_value = vec2(0.51, 0.615);',
+        '    vec2 center_value = u_vessel_position;',
         '    vec2 local_value = uv_value + optical_shift - center_value;',
         '    local_value.x *= aspect_value;',
         '    vec2 pivot_value = vec2(0.0, 0.235);',
         '    local_value = rotation(-angle_value) * (local_value - pivot_value) + pivot_value;',
-        '    vec2 texture_uv = local_value / vec2(0.39, 0.53) + 0.5;',
+        '    vec2 texture_uv = local_value / (vec2(0.39, 0.53) * u_vessel_scale) + 0.5;',
         '    float inside_value = step(0.0, texture_uv.x) * step(texture_uv.x, 1.0) * step(0.0, texture_uv.y) * step(texture_uv.y, 1.0);',
         '    vec2 atlas_uv = vec2(texture_uv.x * 0.2, 0.5 + texture_uv.y * 0.5);',
         '    vec4 texture_value = texture(u_celadon_atlas, atlas_uv);',
@@ -446,7 +449,7 @@
         '    vec3 color_value = paper_environment(uv_value, ambient_light, field_value * direct_light);',
         '    vec4 vessel_value = celadon_sample(uv_value, aspect_value, vessel_angle, vec2(0.0));',
         '',
-        '    float thread_x = 0.51 + sin(vessel_angle) * 0.035;',
+        '    float thread_x = u_vessel_position.x + sin(vessel_angle) * 0.035 * u_vessel_scale;',
         '    float thread_mask = (1.0 - smoothstep(0.00035, 0.0012, abs(uv_value.x - thread_x))) * smoothstep(0.77, 0.82, uv_value.y);',
         '    color_value = mix(color_value, vec3(0.17, 0.23, 0.22), thread_mask * 0.72);',
         '',
@@ -571,6 +574,7 @@
     }
 
     function CeladonRainLab() {
+        this.ambient = ambientMode;
         this.gl = canvas.getContext('webgl2', {
             alpha: false,
             antialias: false,
@@ -586,34 +590,36 @@
 
         this.simulationWidth = window.matchMedia('(max-width: 720px)').matches ? 192 : 320;
         this.simulationHeight = window.matchMedia('(max-width: 720px)').matches ? 80 : 128;
-        this.waterline = 0.285;
+        this.waterline = this.ambient ? 0.23 : 0.285;
+        this.vesselPosition = this.ambient ? { x: 0.77, y: 0.64 } : { x: 0.51, y: 0.615 };
+        this.vesselScale = this.ambient ? 1.16 : 1;
         this.random = seededRandom(1001);
         this.settings = {
-            wind: 1,
-            rain: 1,
-            light: 1,
-            sourceIntensity: 0.72,
+            wind: this.ambient ? 0.72 : 1,
+            rain: this.ambient ? 0.68 : 1,
+            light: this.ambient ? 0.96 : 1,
+            sourceIntensity: this.ambient ? 0.48 : 0.72,
             breathingEnabled: true,
-            breathStrength: 0.28,
-            breathPeriod: 6.5,
+            breathStrength: this.ambient ? 0.18 : 0.28,
+            breathPeriod: this.ambient ? 8 : 6.5,
             tyndallEnabled: true,
-            tyndallStrength: 0.75,
-            mediumDensity: 0.72,
-            lightPosition: 0.68,
-            lightVertical: 0.84,
+            tyndallStrength: this.ambient ? 0.46 : 0.75,
+            mediumDensity: this.ambient ? 0.58 : 0.72,
+            lightPosition: this.ambient ? 0.84 : 0.68,
+            lightVertical: this.ambient ? 0.9 : 0.84,
             lightAngle: -28,
-            lightRange: 0.62,
+            lightRange: this.ambient ? 0.76 : 0.62,
             beamEnabled: true,
-            beamCount: 5,
-            beamSpread: 0.32,
-            beamSoftness: 0.52
+            beamCount: this.ambient ? 4 : 5,
+            beamSpread: this.ambient ? 0.26 : 0.32,
+            beamSoftness: this.ambient ? 0.66 : 0.52
         };
         this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
         this.needleAngle = 0;
-        this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
+        this.pointer = { x: this.ambient ? 0.7 : 0.5, y: 0.62, targetX: this.ambient ? 0.7 : 0.5, targetY: 0.62 };
         this.impacts = [];
         this.pendingImpulses = [];
         this.elapsed = 0;
@@ -621,7 +627,10 @@
         this.nextImpact = 0.18;
         this.frameHandle = 0;
         this.destroyed = false;
-        this.paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.assetReady = false;
+        this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.themeActive = !this.ambient || document.documentElement.dataset.theme === 'atlas-celadon';
+        this.paused = this.reducedMotion || !this.themeActive;
 
         var gl = this.gl;
         this.vertexArray = gl.createVertexArray();
@@ -637,6 +646,7 @@
             'u_time', 'u_wind', 'u_wind_direction', 'u_rain', 'u_light', 'u_source_intensity',
             'u_breath_strength', 'u_breath_period', 'u_tyndall_strength', 'u_medium_density',
             'u_light_type', 'u_light_position', 'u_light_angle', 'u_light_range', 'u_waterline',
+            'u_vessel_position', 'u_vessel_scale',
             'u_beam_enabled', 'u_beam_count', 'u_beam_spread', 'u_beam_softness',
             'u_impacts', 'u_impact_count'
         ]);
@@ -723,6 +733,10 @@
     };
 
     CeladonRainLab.prototype.bindControls = function () {
+        if (this.ambient) {
+            this.bindAmbientMode();
+            return;
+        }
         var self = this;
         [
             { input: windControl, output: windValue, key: 'wind', format: function (value) { return value.toFixed(2); } },
@@ -800,6 +814,50 @@
         this.setWindDirection(this.windDirectionKey, true);
     };
 
+    CeladonRainLab.prototype.bindAmbientMode = function () {
+        var self = this;
+        stage.dataset.themeActive = String(this.themeActive);
+        document.addEventListener('pointermove', function (event) {
+            if (!self.themeActive) return;
+            var point = self.eventPoint(event);
+            if (point.inside) {
+                self.pointer.targetX = point.x;
+                self.pointer.targetY = point.y;
+            } else {
+                self.pointer.targetX = 0.7;
+                self.pointer.targetY = 0.62;
+            }
+        }, { passive: true });
+        document.addEventListener('pointerdown', function (event) {
+            if (!self.themeActive) return;
+            var point = self.eventPoint(event);
+            if (point.inside && point.y <= self.waterline + 0.1) self.addImpact(point.x, 0.78);
+        }, { passive: true });
+        window.addEventListener('guccang:themechange', function (event) {
+            self.setAmbientTheme(event.detail && event.detail.theme);
+        });
+    };
+
+    CeladonRainLab.prototype.setAmbientTheme = function (theme) {
+        if (!this.ambient) return;
+        this.themeActive = theme === 'atlas-celadon';
+        stage.dataset.themeActive = String(this.themeActive);
+        if (!this.themeActive || this.reducedMotion) {
+            this.paused = true;
+            if (this.frameHandle) window.cancelAnimationFrame(this.frameHandle);
+            this.frameHandle = 0;
+            if (this.themeActive && this.assetReady) {
+                this.resize();
+                this.render();
+            }
+            return;
+        }
+        this.paused = false;
+        this.lastTimestamp = 0;
+        this.resize();
+        this.requestFrame();
+    };
+
     CeladonRainLab.prototype.setLightSource = function (sourceKey) {
         var source = lightSources[sourceKey];
         if (!source) return;
@@ -857,7 +915,8 @@
         var bounds = canvas.getBoundingClientRect();
         return {
             x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(bounds.width, 1))),
-            y: Math.max(0, Math.min(1, 1 - (event.clientY - bounds.top) / Math.max(bounds.height, 1)))
+            y: Math.max(0, Math.min(1, 1 - (event.clientY - bounds.top) / Math.max(bounds.height, 1))),
+            inside: event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
         };
     };
 
@@ -1009,6 +1068,8 @@
         gl.uniform1f(uniforms.u_beam_spread, this.settings.beamSpread);
         gl.uniform1f(uniforms.u_beam_softness, this.settings.beamSoftness);
         gl.uniform1f(uniforms.u_waterline, this.waterline);
+        gl.uniform2f(uniforms.u_vessel_position, this.vesselPosition.x, this.vesselPosition.y);
+        gl.uniform1f(uniforms.u_vessel_scale, this.vesselScale);
         gl.uniform4fv(uniforms.u_impacts, impactData);
         gl.uniform1i(uniforms.u_impact_count, Math.min(this.impacts.length, 12));
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -1025,7 +1086,7 @@
     };
 
     CeladonRainLab.prototype.requestFrame = function () {
-        if (this.frameHandle || this.destroyed || this.paused || document.hidden) return;
+        if (this.frameHandle || this.destroyed || this.paused || !this.assetReady || document.hidden) return;
         this.frameHandle = window.requestAnimationFrame(this.frame.bind(this));
     };
 
@@ -1107,6 +1168,7 @@
         var self = this;
         this.resize();
         return this.loadAsset().then(function () {
+            self.assetReady = true;
             self.addImpact(0.42, 0.82);
             self.addImpact(0.64, 0.68);
             self.stepSimulation(1 / 60);

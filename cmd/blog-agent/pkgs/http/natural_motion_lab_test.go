@@ -33,7 +33,7 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="mediumDensityControl"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=6`, `/js/celadon_rain_lab.js?v=6`,
+		`/css/celadon_rain_lab.css?v=6`, `/js/celadon_rain_lab.js?v=7`,
 		"北风 0°，N → S", "东风 90°，E → W", "南风 180°，S → N", "西风 270°，W → E",
 		"东北风 45°，NE → SW", "东南风 135°，SE → NW",
 		"西南风 225°，SW → NE", "西北风 315°，NW → SE",
@@ -148,16 +148,6 @@ func TestNaturalMotionLabIsWiredIntoAtlasOnly(t *testing.T) {
 		}
 		if !strings.Contains(string(content), check.expected) {
 			t.Errorf("%s 缺少实验室接入点 %q", check.path, check.expected)
-		}
-	}
-
-	for _, pagePath := range []string{filepath.Join("..", "..", "templates", "main.template")} {
-		content, err := os.ReadFile(pagePath)
-		if err != nil {
-			t.Fatalf("读取 %s 失败: %v", pagePath, err)
-		}
-		if strings.Contains(string(content), "celadon_rain_lab") || strings.Contains(string(content), "natural_motion") {
-			t.Errorf("未验收动效不应接入 %s", pagePath)
 		}
 	}
 

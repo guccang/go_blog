@@ -36,6 +36,8 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="quick-section site-section"`, `class="continue-section site-section"`,
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
+		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
+		`/js/celadon_rain_lab.js?v=7`, `/css/main.css?v=celadon-rain-3`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Fatalf("main page missing %q", expected)
@@ -94,6 +96,8 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 		".recent-grid { grid-template-columns: 1fr; }",
 		`:root[data-theme="watercolor"] .quick-item.primary { color: var(--ui-text); }`,
 		`:root[data-theme="watercolor"] .quick-item.primary small { color: var(--ui-text-muted); }`,
+		`.main-celadon-stage`, `html[data-theme="atlas-celadon"] .main-celadon-stage`,
+		`#celadonCanvas`, `.main-celadon-stage[data-render-state="error"]`,
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Fatalf("main.css missing %q", expected)
@@ -106,6 +110,61 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 	}
 	if !strings.Contains(string(language), ".site-page-hero__exhibit") {
 		t.Fatal("visual_language.css missing \".site-page-hero__exhibit\"")
+	}
+}
+
+func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
+	scriptContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "celadon_rain_lab.js"))
+	if err != nil {
+		t.Fatalf("read celadon renderer: %v", err)
+	}
+	script := string(scriptContent)
+	for _, expected := range []string{
+		`getContext('webgl2'`, `ambientMode`, `stage.dataset.celadonMode`,
+		`this.ambient = ambientMode`, `bindAmbientMode`, `setAmbientTheme`,
+		`guccang:themechange`, `theme === 'atlas-celadon'`, `window.cancelAnimationFrame`,
+		`document.addEventListener('pointermove'`, `document.addEventListener('pointerdown'`,
+		`point.inside && point.y <= self.waterline + 0.1`,
+		`u_vessel_position`, `u_vessel_scale`, `this.assetReady`,
+		`wind: this.ambient ? 0.72 : 1`, `rain: this.ambient ? 0.68 : 1`,
+		`tyndallStrength: this.ambient ? 0.46 : 0.75`,
+		`far_rain`, `middle_rain`, `near_rain`, `stepSimulation`, `refraction_shift`,
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("celadon ambient renderer missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{`getContext('2d')`, "Canvas2DRenderer", "fallback"} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("celadon ambient renderer must hard-stop instead of using %q", forbidden)
+		}
+	}
+
+	templateContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "main.template"))
+	if err != nil {
+		t.Fatalf("read main template: %v", err)
+	}
+	page := string(templateContent)
+	for _, forbidden := range []string{`id="windControl"`, `id="rainControl"`, `id="lightInstrument"`, `id="pauseButton"`} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("main page must not expose lab control %q", forbidden)
+		}
+	}
+
+	stylesContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "css", "main.css"))
+	if err != nil {
+		t.Fatalf("read main styles: %v", err)
+	}
+	styles := string(stylesContent)
+	for _, expected := range []string{
+		`html[data-theme="atlas-celadon"] .query-hero::after`,
+		`linear-gradient(90deg`, `pointer-events: none`,
+		`.main-celadon-stage[data-render-state="ready"] ~ .site-page-hero__exhibit`,
+		`height: 220px`, `@media (prefers-reduced-motion: reduce)`,
+	} {
+		if !strings.Contains(styles, expected) {
+			t.Errorf("main celadon presentation missing %q", expected)
+		}
 	}
 }
 
