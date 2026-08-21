@@ -320,6 +320,100 @@ main { padding-bottom: 88px; }
     accent-color: var(--deep-water);
 }
 
+.wind-compass {
+    min-width: 0;
+    margin: 0 0 14px;
+    padding: 12px 10px 10px;
+    border: 1px solid rgba(40, 60, 57, .16);
+    background: rgba(231, 239, 234, .28);
+}
+
+.wind-compass legend {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+    color: rgba(40, 60, 57, .72);
+    font-size: 10px;
+    letter-spacing: .08em;
+}
+
+.wind-compass legend output {
+    color: var(--deep-water);
+    font: 8px/1 var(--utility);
+    letter-spacing: .04em;
+}
+
+.wind-compass__dial {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 34px);
+    gap: 3px;
+    width: 174px;
+    margin: 7px auto 4px;
+}
+
+.wind-direction {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+    color: rgba(40, 60, 57, .62);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+}
+
+.wind-direction strong { font: 400 14px/1 var(--display); }
+.wind-direction small { font: 7px/1 var(--utility); letter-spacing: .02em; }
+.wind-direction:hover,
+.wind-direction:focus-visible { color: var(--deep-water); border-color: rgba(63, 111, 102, .35); }
+.wind-direction[aria-pressed="true"] {
+    color: var(--paper);
+    border-color: var(--deep-water);
+    background: var(--deep-water);
+}
+
+.wind-direction--north { grid-column: 2; grid-row: 1; }
+.wind-direction--west { grid-column: 1; grid-row: 2; }
+.wind-direction--east { grid-column: 3; grid-row: 2; }
+.wind-direction--south { grid-column: 2; grid-row: 3; }
+
+.wind-compass__needle {
+    display: grid;
+    grid-column: 2;
+    grid-row: 2;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin: auto;
+    color: var(--vermilion);
+    border: 1px solid rgba(207, 90, 59, .42);
+    border-radius: 50%;
+    background: rgba(244, 238, 223, .72);
+}
+
+.wind-compass__needle i {
+    display: block;
+    font: normal 16px/1 var(--utility);
+    transform: rotate(0deg);
+    transition: transform .36s cubic-bezier(.2, .78, .24, 1);
+}
+
+.wind-compass[data-direction="east"] .wind-compass__needle i { transform: rotate(180deg); }
+.wind-compass[data-direction="north"] .wind-compass__needle i { transform: rotate(90deg); }
+.wind-compass[data-direction="south"] .wind-compass__needle i { transform: rotate(-90deg); }
+
+.wind-compass > p {
+    margin: 7px 0 0;
+    color: rgba(40, 60, 57, .48);
+    font-size: 9px;
+    line-height: 1.6;
+    text-align: center;
+}
+
 .control-actions {
     display: grid;
     grid-template-columns: 1.25fr .85fr .85fr;
@@ -428,4 +522,5 @@ a:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
     html { scroll-behavior: auto; }
     .stage-status .status-mark { animation: none; }
     .stage-status { transition: none; }
+    .wind-compass__needle i { transition: none; }
 }

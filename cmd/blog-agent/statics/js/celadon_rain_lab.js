@@ -13,9 +13,20 @@
     var windValue = document.getElementById('windValue');
     var rainValue = document.getElementById('rainValue');
     var lightValue = document.getElementById('lightValue');
+    var windCompass = document.getElementById('windCompass');
+    var windDirectionValue = document.getElementById('windDirectionValue');
+    var windDirectionDetail = document.getElementById('windDirectionDetail');
+    var windDirectionButtons = Array.prototype.slice.call(document.querySelectorAll('[data-wind-direction]'));
     var impactButton = document.getElementById('impactButton');
     var pauseButton = document.getElementById('pauseButton');
     var resetButton = document.getElementById('resetButton');
+
+    var windDirections = {
+        west: { flow: [1, 0], label: '西风 W → E', detail: '来自西方，向东方流动。' },
+        east: { flow: [-1, 0], label: '东风 E → W', detail: '来自东方，向西方流动。' },
+        north: { flow: [0, -1], label: '北风 N → S', detail: '来自北方，向南方与近景流动。' },
+        south: { flow: [0, 1], label: '南风 S → N', detail: '来自南方，向北方与远景流动。' }
+    };
 
     var vertexSource = [
         '#version 300 es',
@@ -39,16 +50,31 @@
         'uniform sampler2D u_state;',
         'uniform vec2 u_texel;',
         'uniform float u_dt;',
+        'uniform vec2 u_wind_direction;',
+        'uniform float u_wind_strength;',
         'uniform vec4 u_impulses[12];',
         'uniform int u_impulse_count;',
+        'vec4 read_wave_state(vec2 uv_value) {',
+        '    vec2 grid_position = clamp(uv_value, u_texel, vec2(1.0) - u_texel) / u_texel - 0.5;',
+        '    vec2 grid_base = floor(grid_position);',
+        '    vec2 interpolation_value = fract(grid_position);',
+        '    vec2 base_uv = (grid_base + 0.5) * u_texel;',
+        '    vec4 state_a = texture(u_state, base_uv);',
+        '    vec4 state_b = texture(u_state, base_uv + vec2(u_texel.x, 0.0));',
+        '    vec4 state_c = texture(u_state, base_uv + vec2(0.0, u_texel.y));',
+        '    vec4 state_d = texture(u_state, base_uv + u_texel);',
+        '    return mix(mix(state_a, state_b, interpolation_value.x), mix(state_c, state_d, interpolation_value.x), interpolation_value.y);',
+        '}',
         'void main() {',
-        '    vec4 center_state = texture(u_state, v_uv);',
+        '    vec2 advection_offset = u_wind_direction * u_wind_strength * u_dt * 0.055;',
+        '    vec2 advected_uv = clamp(v_uv - advection_offset, u_texel, vec2(1.0) - u_texel);',
+        '    vec4 center_state = read_wave_state(advected_uv);',
         '    float height_value = center_state.r;',
         '    float velocity_value = center_state.g;',
-        '    float left_height = texture(u_state, v_uv - vec2(u_texel.x, 0.0)).r;',
-        '    float right_height = texture(u_state, v_uv + vec2(u_texel.x, 0.0)).r;',
-        '    float down_height = texture(u_state, v_uv - vec2(0.0, u_texel.y)).r;',
-        '    float up_height = texture(u_state, v_uv + vec2(0.0, u_texel.y)).r;',
+        '    float left_height = read_wave_state(advected_uv - vec2(u_texel.x, 0.0)).r;',
+        '    float right_height = read_wave_state(advected_uv + vec2(u_texel.x, 0.0)).r;',
+        '    float down_height = read_wave_state(advected_uv - vec2(0.0, u_texel.y)).r;',
+        '    float up_height = read_wave_state(advected_uv + vec2(0.0, u_texel.y)).r;',
         '    float laplacian = left_height + right_height + down_height + up_height - 4.0 * height_value;',
         '    velocity_value += laplacian * 34.0 * u_dt;',
         '    for (int index = 0; index < 12; index++) {',
@@ -79,6 +105,7 @@
         'uniform vec2 u_pointer;',
         'uniform float u_time;',
         'uniform float u_wind;',
+        'uniform vec2 u_wind_direction;',
         'uniform float u_rain;',
         'uniform float u_light;',
         'uniform float u_waterline;',
@@ -133,7 +160,10 @@
         '    gust_value += sin(u_time * 2.37 + uv_value.y * 7.0) * 0.11;',
         '    float pointer_influence = exp(-distance(uv_value, u_pointer) * 3.8);',
         '    vec2 pointer_flow = vec2((u_pointer.x - 0.5) * pointer_influence, (u_pointer.y - uv_value.y) * pointer_influence * 0.12);',
-        '    return (vec2(0.48 + gust_value * 0.2, -0.035) + curl_value * 0.12 + pointer_flow) * u_wind * mix(0.7, 1.18, depth_value);',
+        '    vec2 direction_value = normalize(u_wind_direction);',
+        '    vec2 cross_flow = vec2(-direction_value.y, direction_value.x);',
+        '    vec2 directional_flow = direction_value * (0.48 + gust_value * 0.2) + cross_flow * gust_value * 0.045;',
+        '    return (directional_flow + curl_value * 0.12 + pointer_flow) * u_wind * mix(0.7, 1.18, depth_value);',
         '}',
         '',
         'vec2 rain_layer(vec2 uv_value, vec2 shared_flow, float columns_value, float rows_value, float speed_value, float width_value, float density_value, float seed_value, float depth_value) {',
@@ -141,8 +171,9 @@
         '    vec2 rain_point = uv_value;',
         '    rain_point.x -= (1.0 - rain_point.y) * flow_value.x * (0.16 + depth_value * 0.08);',
         '    rain_point.y -= flow_value.y * 0.04;',
-        '    rain_point *= vec2(columns_value, rows_value);',
-        '    rain_point.y += u_time * speed_value;',
+        '    float perspective_scale = 1.0 + flow_value.y * (rain_point.y - 0.5) * 0.13;',
+        '    rain_point *= vec2(columns_value * perspective_scale, rows_value);',
+        '    rain_point.y += u_time * speed_value * clamp(1.0 + flow_value.y * 0.12, 0.72, 1.28);',
         '    vec2 cell_id = floor(rain_point);',
         '    vec2 cell_value = fract(rain_point) - 0.5;',
         '    float random_value = hash21(cell_id + seed_value);',
@@ -207,7 +238,9 @@
         '    vec2 uv_value = v_uv;',
         '    float aspect_value = u_resolution.x / max(u_resolution.y, 1.0);',
         '    float slow_gust = sin(u_time * 0.39) * 0.018 + sin(u_time * 0.83 + 1.4) * 0.009;',
-        '    float vessel_angle = slow_gust * u_wind;',
+        '    float horizontal_wind = u_wind_direction.x;',
+        '    float vessel_angle = slow_gust * u_wind * (0.28 + abs(horizontal_wind) * 0.72);',
+        '    vessel_angle += horizontal_wind * u_wind * 0.012;',
         '    vec3 color_value = paper_environment(uv_value);',
         '',
         '    float thread_x = 0.51 + sin(vessel_angle) * 0.035;',
@@ -246,10 +279,11 @@
         '    }',
         '',
         '    float rain_amount = clamp(u_rain, 0.0, 1.8);',
+        '    float depth_bias = clamp(u_wind_direction.y * u_wind, -1.5, 1.5);',
         '    vec2 shared_flow = wind_field(uv_value, 0.55);',
-        '    vec2 far_rain = rain_layer(uv_value, shared_flow, 42.0, 7.0, 2.45, 0.016, min(0.66, 0.25 * rain_amount), 4.7, 0.12);',
+        '    vec2 far_rain = rain_layer(uv_value, shared_flow, 42.0, 7.0, 2.45, 0.016, min(0.66, 0.25 * rain_amount), 4.7, 0.12) * (1.0 + depth_bias * 0.12);',
         '    vec2 middle_rain = rain_layer(uv_value, shared_flow, 27.0, 5.4, 3.45, 0.022, min(0.78, 0.34 * rain_amount), 11.2, 0.55);',
-        '    vec2 near_rain = rain_layer(uv_value, shared_flow, 14.0, 3.8, 4.9, 0.032, min(0.88, 0.42 * rain_amount), 23.9, 1.0);',
+        '    vec2 near_rain = rain_layer(uv_value, shared_flow, 14.0, 3.8, 4.9, 0.032, min(0.88, 0.42 * rain_amount), 23.9, 1.0) * (1.0 - depth_bias * 0.16);',
         '    vec3 rain_far_color = vec3(0.66, 0.78, 0.73);',
         '    vec3 rain_mid_color = vec3(0.48, 0.66, 0.6);',
         '    vec3 rain_near_color = vec3(0.82, 0.9, 0.86);',
@@ -340,6 +374,7 @@
         this.waterline = 0.285;
         this.random = seededRandom(1001);
         this.settings = { wind: 1, rain: 1, light: 1 };
+        this.windDirectionKey = 'west';
         this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
         this.impacts = [];
         this.pendingImpulses = [];
@@ -356,11 +391,13 @@
         this.simulationProgram = createProgram(gl, simulationFragmentSource, '\u6c34\u9762\u6a21\u62df');
         this.renderProgram = createProgram(gl, renderFragmentSource, '\u9752\u74f7\u96e8\u6e32\u67d3');
         this.simulationUniforms = uniformMap(gl, this.simulationProgram, [
-            'u_state', 'u_texel', 'u_dt', 'u_impulses', 'u_impulse_count'
+            'u_state', 'u_texel', 'u_dt', 'u_wind_direction', 'u_wind_strength',
+            'u_impulses', 'u_impulse_count'
         ]);
         this.renderUniforms = uniformMap(gl, this.renderProgram, [
             'u_wave_state', 'u_celadon_atlas', 'u_resolution', 'u_wave_texel', 'u_pointer',
-            'u_time', 'u_wind', 'u_rain', 'u_light', 'u_waterline', 'u_impacts', 'u_impact_count'
+            'u_time', 'u_wind', 'u_wind_direction', 'u_rain', 'u_light', 'u_waterline',
+            'u_impacts', 'u_impact_count'
         ]);
         this.createSimulationTargets();
         this.assetTexture = this.createAssetTexture();
@@ -458,6 +495,12 @@
             });
         });
 
+        windDirectionButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                self.setWindDirection(button.dataset.windDirection);
+            });
+        });
+
         impactButton.addEventListener('click', function () { self.addImpact(0.5, 1.0); });
         pauseButton.addEventListener('click', function () {
             self.paused = !self.paused;
@@ -480,6 +523,24 @@
             if (point.y <= self.waterline + 0.035) self.addImpact(point.x, 1.05);
         });
         this.syncPauseButton();
+        this.setWindDirection(this.windDirectionKey);
+    };
+
+    CeladonRainLab.prototype.setWindDirection = function (directionKey) {
+        var direction = windDirections[directionKey];
+        if (!direction) return;
+        this.windDirectionKey = directionKey;
+        windCompass.dataset.direction = directionKey;
+        windDirectionValue.value = direction.label;
+        windDirectionDetail.textContent = direction.detail;
+        windDirectionButtons.forEach(function (button) {
+            button.setAttribute('aria-pressed', String(button.dataset.windDirection === directionKey));
+        });
+        if (this.paused && this.assetTexture) this.render();
+    };
+
+    CeladonRainLab.prototype.windDirection = function () {
+        return windDirections[this.windDirectionKey];
     };
 
     CeladonRainLab.prototype.eventPoint = function (event) {
@@ -512,8 +573,10 @@
     };
 
     CeladonRainLab.prototype.addImpact = function (x, strength) {
+        var direction = this.windDirection().flow;
+        var driftedX = x + direction[0] * this.settings.wind * 0.028;
         var impact = {
-            x: Math.max(0.04, Math.min(0.96, x)),
+            x: Math.max(0.04, Math.min(0.96, driftedX)),
             age: 0,
             strength: strength,
             seed: this.random() * 100
@@ -522,7 +585,7 @@
         if (this.impacts.length > 12) this.impacts.shift();
         this.pendingImpulses.push({
             x: impact.x,
-            y: 0.92,
+            y: Math.max(0.82, Math.min(0.97, 0.9 + direction[1] * 0.04)),
             strength: strength,
             radius: 0.022 + this.random() * 0.014
         });
@@ -566,6 +629,9 @@
         gl.uniform1i(uniforms.u_state, 0);
         gl.uniform2f(uniforms.u_texel, 1 / this.simulationWidth, 1 / this.simulationHeight);
         gl.uniform1f(uniforms.u_dt, Math.min(dt, 1 / 30));
+        var direction = this.windDirection().flow;
+        gl.uniform2f(uniforms.u_wind_direction, direction[0], direction[1]);
+        gl.uniform1f(uniforms.u_wind_strength, this.settings.wind);
         gl.uniform4fv(uniforms.u_impulses, impulseData);
         gl.uniform1i(uniforms.u_impulse_count, Math.min(this.pendingImpulses.length, 12));
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -602,6 +668,8 @@
         gl.uniform2f(uniforms.u_pointer, this.pointer.x, this.pointer.y);
         gl.uniform1f(uniforms.u_time, this.elapsed);
         gl.uniform1f(uniforms.u_wind, this.settings.wind);
+        var direction = this.windDirection().flow;
+        gl.uniform2f(uniforms.u_wind_direction, direction[0], direction[1]);
         gl.uniform1f(uniforms.u_rain, this.settings.rain);
         gl.uniform1f(uniforms.u_light, this.settings.light);
         gl.uniform1f(uniforms.u_waterline, this.waterline);
@@ -627,6 +695,7 @@
 
     CeladonRainLab.prototype.reset = function () {
         this.settings = { wind: 1, rain: 1, light: 1 };
+        this.setWindDirection('west');
         windControl.value = '1';
         rainControl.value = '1';
         lightControl.value = '1';

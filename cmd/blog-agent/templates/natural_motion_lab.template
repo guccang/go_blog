@@ -7,7 +7,7 @@
     <title>001 青瓷雨 · 自然动效实验室</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
-    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=1">
+    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=2">
 </head>
 <body>
     <a class="skip-link" href="#celadonStage">跳到动效舞台</a>
@@ -57,6 +57,33 @@
                     </label>
                     <input id="windControl" type="range" min="0" max="2" value="1" step="0.05">
 
+                    <fieldset class="wind-compass" id="windCompass" data-direction="west">
+                        <legend>
+                            <span>风向</span>
+                            <output id="windDirectionValue">西风 W → E</output>
+                        </legend>
+                        <div class="wind-compass__dial">
+                            <button class="wind-direction wind-direction--north" type="button"
+                                    data-wind-direction="north" aria-label="北风 N → S" aria-pressed="false">
+                                <strong>北</strong><small>N→S</small>
+                            </button>
+                            <button class="wind-direction wind-direction--west" type="button"
+                                    data-wind-direction="west" aria-label="西风 W → E" aria-pressed="true">
+                                <strong>西</strong><small>W→E</small>
+                            </button>
+                            <span class="wind-compass__needle" aria-hidden="true"><i>→</i></span>
+                            <button class="wind-direction wind-direction--east" type="button"
+                                    data-wind-direction="east" aria-label="东风 E → W" aria-pressed="false">
+                                <strong>东</strong><small>E→W</small>
+                            </button>
+                            <button class="wind-direction wind-direction--south" type="button"
+                                    data-wind-direction="south" aria-label="南风 S → N" aria-pressed="false">
+                                <strong>南</strong><small>S→N</small>
+                            </button>
+                        </div>
+                        <p id="windDirectionDetail">来自西方，向东方流动。</p>
+                    </fieldset>
+
                     <label for="rainControl">
                         <span>雨量</span><output id="rainValue">1.00</output>
                     </label>
@@ -90,6 +117,6 @@
         </section>
     </main>
 
-    <script src="/js/celadon_rain_lab.js?v=1" defer></script>
+    <script src="/js/celadon_rain_lab.js?v=2" defer></script>
 </body>
 </html>

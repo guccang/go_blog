@@ -18,9 +18,12 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 	for _, expected := range []string{
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-asset=`,
 		`id="windControl"`, `id="rainControl"`, `id="lightControl"`,
+		`id="windCompass"`, `id="windDirectionValue"`, `data-wind-direction="north"`,
+		`data-wind-direction="east"`, `data-wind-direction="south"`, `data-wind-direction="west"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=1`, `/js/celadon_rain_lab.js?v=1`,
+		`/css/celadon_rain_lab.css?v=2`, `/js/celadon_rain_lab.js?v=2`,
+		"东风 E → W", "西风 W → E", "北风 N → S", "南风 S → N",
 		"风场", "三层", "水冠", "波面法线",
 	} {
 		if !strings.Contains(page, expected) {
@@ -44,8 +47,11 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 	for _, expected := range []string{
 		`getContext('webgl2'`, `EXT_color_buffer_float`, `gl.RGBA16F`,
 		`createFramebuffer`, `laplacian`, `u_impulses`, `stepSimulation`,
-		`wind_field`, `curl_value`, `far_rain`, `middle_rain`, `near_rain`,
+		`wind_field`, `curl_value`, `u_wind_direction`, `u_wind_strength`,
+		`read_wave_state`, `advection_offset`, `far_rain`, `middle_rain`, `near_rain`,
 		`splash_shape`, `wave_normal`, `refraction_shift`, `paper_environment`,
+		`setWindDirection`, `windDirections`, `west: { flow: [1, 0]`,
+		`east: { flow: [-1, 0]`, `north: { flow: [0, -1]`, `south: { flow: [0, 1]`,
 		`webglcontextlost`, `prefers-reduced-motion`,
 	} {
 		if !strings.Contains(script, expected) {
@@ -70,6 +76,8 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 	styles := string(stylesContent)
 	for _, expected := range []string{
 		`.celadon-stage`, `min-height: clamp(620px, 78vh, 920px)`, `.lab-controls`,
+		`.wind-compass`, `.wind-compass__dial`, `.wind-compass__needle`,
+		`[data-direction="east"]`, `[data-direction="north"]`, `[data-direction="south"]`,
 		`--paper: #f4eedf`, `--celadon: #7fa99a`, `--deep-water: #3f6f66`,
 		`@media (max-width: 640px)`, `prefers-reduced-motion`, `:focus-visible`,
 	} {
