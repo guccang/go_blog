@@ -72,7 +72,9 @@
         if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
             var message = gl.getShaderInfoLog(shader);
             gl.deleteShader(shader);
-            throw new Error('自然动效着色器编译失败: ' + message);
+            var error = new Error('自然动效着色器编译失败: ' + message);
+            error.naturalMotionReason = 'shader-compile-failed';
+            throw error;
         }
         return shader;
     }
@@ -134,12 +136,12 @@
         '    vec2 cell_id = floor(point);',
         '    vec2 cell = fract(point) - 0.5;',
         '    float random_value = hash21(cell_id + seed);',
-        '    float active = smoothstep(1.0 - u_rain_density, 1.0, random_value);',
+        '    float drop_visibility = smoothstep(1.0 - u_rain_density, 1.0, random_value);',
         '    float offset = (hash21(cell_id + seed * 2.7) - 0.5) * 0.72;',
         '    float width = mix(0.012, 0.026, scale - 0.65);',
         '    float streak = 1.0 - smoothstep(width, width * 2.5, abs(cell.x - offset));',
         '    float tapered = 1.0 - smoothstep(0.16, 0.5, abs(cell.y + 0.06));',
-        '    return streak * tapered * active;',
+        '    return streak * tapered * drop_visibility;',
         '}',
         '',
         'void main() {',
@@ -182,7 +184,11 @@
             premultipliedAlpha: true,
             powerPreference: 'high-performance'
         });
-        if (!this.gl) throw new Error('WebGL2 unavailable');
+        if (!this.gl) {
+            var contextError = new Error('WebGL2 unavailable');
+            contextError.naturalMotionReason = 'webgl2-unavailable';
+            throw contextError;
+        }
 
         var gl = this.gl;
         this.program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
@@ -260,12 +266,18 @@
         try {
             return new WebGL2Renderer(scene);
         } catch (error) {
-            scene.host.dataset.naturalMotionUnavailable = 'webgl2';
+            var reason = error && error.naturalMotionReason
+                ? error.naturalMotionReason
+                : 'webgl2-initialization-failed';
+            scene.host.dataset.naturalMotionUnavailable = reason;
             scene.host.classList.add('is-natural-motion-unavailable');
             scene.disabled = true;
             scene.canvas.remove();
             if (window.console && window.console.warn) {
-                window.console.warn('自然动效需要 WebGL2，当前场景已停用。', error);
+                var warning = reason === 'webgl2-unavailable'
+                    ? '自然动效需要 WebGL2，当前场景已停用。'
+                    : '自然动效 WebGL2 初始化失败，当前场景已停用。';
+                window.console.warn(warning, error);
             }
             return null;
         }

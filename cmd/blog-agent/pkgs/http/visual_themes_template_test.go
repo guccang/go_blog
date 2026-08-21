@@ -112,7 +112,7 @@ func TestVisualThemeAtlasPreviewsCeladonNaturalMotion(t *testing.T) {
 	}
 	page := string(templateContent)
 	for _, expected := range []string{
-		`/css/natural_motion.css?v=1`, `/js/natural_motion.js?v=1`, `/js/visual_themes.js?v=4`,
+		`/css/natural_motion.css?v=2`, `/js/natural_motion.js?v=2`, `/js/visual_themes.js?v=4`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("视觉主题模板缺少自然动效资产 %q", expected)

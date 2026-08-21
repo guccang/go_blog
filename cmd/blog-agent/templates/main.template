@@ -7,7 +7,7 @@
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
     <link rel="stylesheet" href="/css/main.css?v=natural-motion-1">
-    <link rel="stylesheet" href="/css/natural_motion.css?v=1">
+    <link rel="stylesheet" href="/css/natural_motion.css?v=2">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -106,7 +106,7 @@
         <span class="daily-quote-mark" aria-hidden="true">“</span>
     </aside>
 
-    <script src="/js/natural_motion.js?v=1"></script>
+    <script src="/js/natural_motion.js?v=2"></script>
     <script src="/js/visual_symbol_motion.js?v=1"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>

@@ -34,7 +34,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`data-page="main"`, `class="query-hero site-page-hero"`, `data-symbol="portal"`, `data-symbol-motion="portal"`,
 		`data-natural-motion="celadon-rain"`, `data-motion-theme="atlas-celadon"`,
 		`main-theme-symbol--celadon`,
-		`/css/natural_motion.css?v=1`, `/js/natural_motion.js?v=1`,
+		`/css/natural_motion.css?v=2`, `/js/natural_motion.js?v=2`,
 		`/js/visual_symbol_motion.js?v=1`,
 		`class="quick-section site-section"`, `class="continue-section site-section"`,
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
@@ -75,6 +75,8 @@ func TestNaturalMotionRuntimeDefinesComposablePhysicalEffects(t *testing.T) {
 		"registerEffect", "registerPreset", "celadon-rain",
 		"wind", "rain", "ripple", "light-breathe", "sway",
 		"surface-impact", "webgl2", "naturalMotionUnavailable",
+		"drop_visibility", "shader-compile-failed", "webgl2-unavailable",
+		"webgl2-initialization-failed",
 		"webglcontextlost", "webgl2-context-lost",
 		"IntersectionObserver", "ResizeObserver", "visibilitychange",
 		"prefers-reduced-motion", "guccang:themechange",
@@ -88,6 +90,9 @@ func TestNaturalMotionRuntimeDefinesComposablePhysicalEffects(t *testing.T) {
 	}
 	if strings.Contains(script, "smoothstep(0.5, 0.16") {
 		t.Error("自然动效着色器不应使用边界反转、结果未定义的 smoothstep")
+	}
+	if strings.Contains(script, "float active") {
+		t.Error("自然动效着色器不应使用 GLSL ES 3.00 保留字 active")
 	}
 
 	styles := string(stylesContent)
