@@ -6,7 +6,7 @@
     <title>GUCCANG</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=8">
-    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-5">
+    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-6">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -57,7 +57,7 @@
                 <span class="site-page-symbol" data-symbol="portal" data-symbol-motion="portal"></span>
             </div>
             <details class="main-celadon-controls" id="mainCeladonControls">
-                <summary><span>雨景参数</span><small>AMBIENCE</small></summary>
+                <summary><span><i class="main-celadon-controls__compact-label">调景</i><i class="main-celadon-controls__full-label">雨景参数</i></span><small>AMBIENCE</small></summary>
                 <div class="main-celadon-controls__body">
                     <fieldset>
                         <legend>风雨</legend>
@@ -69,49 +69,62 @@
                                 <option value="west" selected>西风 W → E</option><option value="northwest">西北风 NW → SE</option>
                             </select>
                         </label>
-                        <label for="mainCeladonWind"><span>风力</span><output data-celadon-output="wind">0.72</output></label>
-                        <input id="mainCeladonWind" data-celadon-setting="wind" data-celadon-format="fixed2" type="range" min="0" max="2" value="0.72" step="0.05">
-                        <label for="mainCeladonRain"><span>雨量</span><output data-celadon-output="rain">0.68</output></label>
-                        <input id="mainCeladonRain" data-celadon-setting="rain" data-celadon-format="fixed2" type="range" min="0.15" max="1.8" value="0.68" step="0.05">
+                        <label for="mainCeladonWind"><span>风力</span><output data-celadon-output="wind">1.00</output></label>
+                        <input id="mainCeladonWind" data-celadon-setting="wind" data-celadon-format="fixed2" type="range" min="0" max="2" value="1" step="0.05">
+                        <label for="mainCeladonRain"><span>雨量</span><output data-celadon-output="rain">1.00</output></label>
+                        <input id="mainCeladonRain" data-celadon-setting="rain" data-celadon-format="fixed2" type="range" min="0.15" max="1.8" value="1" step="0.05">
                     </fieldset>
 
                     <fieldset>
                         <legend>光场</legend>
-                        <label for="mainCeladonLight"><span>环境光</span><output data-celadon-output="light">0.96</output></label>
-                        <input id="mainCeladonLight" data-celadon-setting="light" data-celadon-format="fixed2" type="range" min="0.45" max="1.35" value="0.96" step="0.05">
-                        <label for="mainCeladonSourceIntensity"><span>光源强度</span><output data-celadon-output="sourceIntensity">0.48</output></label>
-                        <input id="mainCeladonSourceIntensity" data-celadon-setting="sourceIntensity" data-celadon-format="fixed2" type="range" min="0.15" max="1.25" value="0.48" step="0.01">
-                        <label for="mainCeladonLightPosition"><span>水平位置</span><output data-celadon-output="lightPosition">84%</output></label>
-                        <input id="mainCeladonLightPosition" data-celadon-setting="lightPosition" data-celadon-format="percent" type="range" min="0.12" max="0.88" value="0.84" step="0.01">
-                        <label for="mainCeladonLightVertical"><span>垂直位置</span><output data-celadon-output="lightVertical">90%</output></label>
-                        <input id="mainCeladonLightVertical" data-celadon-setting="lightVertical" data-celadon-format="percent" type="range" min="0.38" max="0.96" value="0.90" step="0.01">
+                        <label for="mainCeladonLight"><span>环境光</span><output data-celadon-output="light">1.00</output></label>
+                        <input id="mainCeladonLight" data-celadon-setting="light" data-celadon-format="fixed2" type="range" min="0.45" max="1.35" value="1" step="0.05">
+                        <label><span>光源形态</span><output data-celadon-light-source-output>点光源</output></label>
+                        <div class="main-celadon-source-picker" role="group" aria-label="选择光源形态">
+                            <button type="button" data-celadon-light-source="point" aria-pressed="true">点光</button>
+                            <button type="button" data-celadon-light-source="spot" aria-pressed="false">聚光</button>
+                            <button type="button" data-celadon-light-source="directional" aria-pressed="false">平行</button>
+                            <button type="button" data-celadon-light-source="area" aria-pressed="false">面光</button>
+                        </div>
+                        <label for="mainCeladonSourceIntensity"><span>光源强度</span><output data-celadon-output="sourceIntensity">0.72</output></label>
+                        <input id="mainCeladonSourceIntensity" data-celadon-setting="sourceIntensity" data-celadon-format="fixed2" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
+                        <label for="mainCeladonLightPosition"><span>水平位置</span><output data-celadon-output="lightPosition">68%</output></label>
+                        <input id="mainCeladonLightPosition" data-celadon-setting="lightPosition" data-celadon-format="percent" type="range" min="0.12" max="0.88" value="0.68" step="0.01">
+                        <label for="mainCeladonLightVertical"><span>垂直位置</span><output data-celadon-output="lightVertical">84%</output></label>
+                        <input id="mainCeladonLightVertical" data-celadon-setting="lightVertical" data-celadon-format="percent" type="range" min="0.38" max="0.96" value="0.84" step="0.01">
+                        <label for="mainCeladonLightAngle"><span>入射方向</span><output data-celadon-output="lightAngle">右上 28°</output></label>
+                        <input id="mainCeladonLightAngle" data-celadon-setting="lightAngle" data-celadon-format="angle" type="range" min="-60" max="60" value="-28" step="1">
+                        <label for="mainCeladonLightRange"><span>作用范围</span><output data-celadon-output="lightRange">0.62</output></label>
+                        <input id="mainCeladonLightRange" data-celadon-setting="lightRange" data-celadon-format="fixed2" type="range" min="0.25" max="1.2" value="0.62" step="0.01">
                     </fieldset>
 
                     <fieldset>
                         <legend>呼吸与散射</legend>
                         <label class="main-celadon-switch"><span>呼吸光</span><input type="checkbox" data-celadon-toggle="breathingEnabled" checked></label>
-                        <label for="mainCeladonBreathStrength"><span>呼吸幅度</span><output data-celadon-output="breathStrength">0.18</output></label>
-                        <input id="mainCeladonBreathStrength" data-celadon-setting="breathStrength" data-celadon-format="fixed2" type="range" min="0" max="0.65" value="0.18" step="0.01">
-                        <label for="mainCeladonBreathPeriod"><span>呼吸周期</span><output data-celadon-output="breathPeriod">8.0 s</output></label>
-                        <input id="mainCeladonBreathPeriod" data-celadon-setting="breathPeriod" data-celadon-format="seconds" type="range" min="3" max="16" value="8" step="0.5">
+                        <label for="mainCeladonBreathStrength"><span>呼吸幅度</span><output data-celadon-output="breathStrength">0.28</output></label>
+                        <input id="mainCeladonBreathStrength" data-celadon-setting="breathStrength" data-celadon-format="fixed2" type="range" min="0" max="0.65" value="0.28" step="0.01">
+                        <label for="mainCeladonBreathPeriod"><span>呼吸周期</span><output data-celadon-output="breathPeriod">6.5 s</output></label>
+                        <input id="mainCeladonBreathPeriod" data-celadon-setting="breathPeriod" data-celadon-format="seconds" type="range" min="3" max="16" value="6.5" step="0.5">
                         <label class="main-celadon-switch"><span>丁达尔</span><input type="checkbox" data-celadon-toggle="tyndallEnabled" checked></label>
-                        <label for="mainCeladonTyndall"><span>散射强度</span><output data-celadon-output="tyndallStrength">0.46</output></label>
-                        <input id="mainCeladonTyndall" data-celadon-setting="tyndallStrength" data-celadon-format="fixed2" type="range" min="0" max="1.5" value="0.46" step="0.05">
-                        <label for="mainCeladonMedium"><span>介质密度</span><output data-celadon-output="mediumDensity">0.58</output></label>
-                        <input id="mainCeladonMedium" data-celadon-setting="mediumDensity" data-celadon-format="fixed2" type="range" min="0.15" max="1.5" value="0.58" step="0.01">
+                        <label for="mainCeladonTyndall"><span>散射强度</span><output data-celadon-output="tyndallStrength">0.75</output></label>
+                        <input id="mainCeladonTyndall" data-celadon-setting="tyndallStrength" data-celadon-format="fixed2" type="range" min="0" max="1.5" value="0.75" step="0.05">
+                        <label for="mainCeladonMedium"><span>介质密度</span><output data-celadon-output="mediumDensity">0.72</output></label>
+                        <input id="mainCeladonMedium" data-celadon-setting="mediumDensity" data-celadon-format="fixed2" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
                     </fieldset>
 
                     <fieldset>
                         <legend>光束簇</legend>
-                        <label for="mainCeladonBeamCount"><span>数量</span><output data-celadon-output="beamCount">4 束</output></label>
-                        <input id="mainCeladonBeamCount" data-celadon-setting="beamCount" data-celadon-format="beams" type="range" min="1" max="7" value="4" step="1">
-                        <label for="mainCeladonBeamSpread"><span>展开范围</span><output data-celadon-output="beamSpread">0.26</output></label>
-                        <input id="mainCeladonBeamSpread" data-celadon-setting="beamSpread" data-celadon-format="fixed2" type="range" min="0.08" max="0.58" value="0.26" step="0.01">
-                        <label for="mainCeladonBeamSoftness"><span>边缘柔和</span><output data-celadon-output="beamSoftness">0.66</output></label>
-                        <input id="mainCeladonBeamSoftness" data-celadon-setting="beamSoftness" data-celadon-format="fixed2" type="range" min="0.12" max="0.88" value="0.66" step="0.01">
+                        <label class="main-celadon-switch"><span>多束光</span><input type="checkbox" data-celadon-toggle="beamEnabled" checked></label>
+                        <label for="mainCeladonBeamCount"><span>数量</span><output data-celadon-output="beamCount">5 束</output></label>
+                        <input id="mainCeladonBeamCount" data-celadon-setting="beamCount" data-celadon-format="beams" type="range" min="1" max="7" value="5" step="1">
+                        <label for="mainCeladonBeamSpread"><span>展开范围</span><output data-celadon-output="beamSpread">0.32</output></label>
+                        <input id="mainCeladonBeamSpread" data-celadon-setting="beamSpread" data-celadon-format="fixed2" type="range" min="0.08" max="0.58" value="0.32" step="0.01">
+                        <label for="mainCeladonBeamSoftness"><span>边缘柔和</span><output data-celadon-output="beamSoftness">0.52</output></label>
+                        <input id="mainCeladonBeamSoftness" data-celadon-setting="beamSoftness" data-celadon-format="fixed2" type="range" min="0.12" max="0.88" value="0.52" step="0.01">
                     </fieldset>
 
                     <div class="main-celadon-actions">
+                        <button type="button" data-celadon-action="impact">单次落滴</button>
                         <button type="button" data-celadon-action="pause" aria-pressed="false">暂停</button>
                         <button type="button" data-celadon-action="reset">重置</button>
                     </div>
@@ -171,7 +184,7 @@
     </aside>
 
     <script src="/js/visual_symbol_motion.js?v=1"></script>
-    <script src="/js/celadon_rain_lab.js?v=9"></script>
+    <script src="/js/celadon_rain_lab.js?v=10"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>
 </html>

@@ -56,7 +56,7 @@
                     <label for="windControl">
                         <span>风场</span><output id="windValue">1.00</output>
                     </label>
-                    <input id="windControl" type="range" min="0" max="2" value="1" step="0.05">
+                    <input id="windControl" data-celadon-setting="wind" type="range" min="0" max="2" value="1" step="0.05">
 
                     <fieldset class="wind-compass" id="windCompass" data-direction="west"
                               style="--wind-flow-angle: 0deg">
@@ -113,7 +113,7 @@
                     <label for="rainControl">
                         <span>雨量</span><output id="rainValue">1.00</output>
                     </label>
-                    <input id="rainControl" type="range" min="0.15" max="1.8" value="1" step="0.05">
+                    <input id="rainControl" data-celadon-setting="rain" type="range" min="0.15" max="1.8" value="1" step="0.05">
 
                     <div class="control-actions">
                         <button id="impactButton" type="button">单次落滴</button>
@@ -131,7 +131,7 @@
                     <label for="lightControl">
                         <span>环境光</span><output id="lightValue" for="lightControl">1.00</output>
                     </label>
-                    <input id="lightControl" type="range" min="0.45" max="1.35" value="1" step="0.05">
+                    <input id="lightControl" data-celadon-setting="light" type="range" min="0.45" max="1.35" value="1" step="0.05">
 
                     <section class="light-source" aria-labelledby="lightSourceTitle">
                         <header>
@@ -157,23 +157,23 @@
                             <label for="sourceIntensityControl">
                                 <span>光源强度</span><output id="sourceIntensityValue" for="sourceIntensityControl">0.72</output>
                             </label>
-                            <input id="sourceIntensityControl" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
+                            <input id="sourceIntensityControl" data-celadon-setting="sourceIntensity" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
                             <label for="lightPositionControl">
                                 <span>水平位置</span><output id="lightPositionValue" for="lightPositionControl">68%</output>
                             </label>
-                            <input id="lightPositionControl" type="range" min="0.12" max="0.88" value="0.68" step="0.01">
+                            <input id="lightPositionControl" data-celadon-setting="lightPosition" type="range" min="0.12" max="0.88" value="0.68" step="0.01">
                             <label for="lightVerticalControl">
                                 <span>垂直位置</span><output id="lightVerticalValue" for="lightVerticalControl">84%</output>
                             </label>
-                            <input id="lightVerticalControl" type="range" min="0.38" max="0.96" value="0.84" step="0.01">
+                            <input id="lightVerticalControl" data-celadon-setting="lightVertical" type="range" min="0.38" max="0.96" value="0.84" step="0.01">
                             <label for="lightAngleControl">
                                 <span>入射方向</span><output id="lightAngleValue" for="lightAngleControl">右上 28°</output>
                             </label>
-                            <input id="lightAngleControl" type="range" min="-60" max="60" value="-28" step="1">
+                            <input id="lightAngleControl" data-celadon-setting="lightAngle" type="range" min="-60" max="60" value="-28" step="1">
                             <label for="lightRangeControl">
                                 <span>作用范围</span><output id="lightRangeValue" for="lightRangeControl">0.62</output>
                             </label>
-                            <input id="lightRangeControl" type="range" min="0.25" max="1.2" value="0.62" step="0.01">
+                            <input id="lightRangeControl" data-celadon-setting="lightRange" type="range" min="0.25" max="1.2" value="0.62" step="0.01">
                         </div>
                     </section>
 
@@ -187,15 +187,15 @@
                             <label for="beamCountControl">
                                 <span>光束数量</span><output id="beamCountValue" for="beamCountControl">5 束</output>
                             </label>
-                            <input id="beamCountControl" type="range" min="1" max="7" value="5" step="1">
+                            <input id="beamCountControl" data-celadon-setting="beamCount" type="range" min="1" max="7" value="5" step="1">
                             <label for="beamSpreadControl">
                                 <span>展开范围</span><output id="beamSpreadValue" for="beamSpreadControl">0.32</output>
                             </label>
-                            <input id="beamSpreadControl" type="range" min="0.08" max="0.58" value="0.32" step="0.01">
+                            <input id="beamSpreadControl" data-celadon-setting="beamSpread" type="range" min="0.08" max="0.58" value="0.32" step="0.01">
                             <label for="beamSoftnessControl">
                                 <span>边缘柔和</span><output id="beamSoftnessValue" for="beamSoftnessControl">0.52</output>
                             </label>
-                            <input id="beamSoftnessControl" type="range" min="0.12" max="0.88" value="0.52" step="0.01">
+                            <input id="beamSoftnessControl" data-celadon-setting="beamSoftness" type="range" min="0.12" max="0.88" value="0.52" step="0.01">
                         </div>
                     </section>
 
@@ -209,11 +209,11 @@
                             <label for="breathStrengthControl">
                                 <span>呼吸幅度</span><output id="breathStrengthValue" for="breathStrengthControl">0.28</output>
                             </label>
-                            <input id="breathStrengthControl" type="range" min="0" max="0.65" value="0.28" step="0.01">
+                            <input id="breathStrengthControl" data-celadon-setting="breathStrength" type="range" min="0" max="0.65" value="0.28" step="0.01">
                             <label for="breathPeriodControl">
                                 <span>呼吸周期</span><output id="breathPeriodValue" for="breathPeriodControl">6.5 s</output>
                             </label>
-                            <input id="breathPeriodControl" type="range" min="3" max="16" value="6.5" step="0.5">
+                            <input id="breathPeriodControl" data-celadon-setting="breathPeriod" type="range" min="3" max="16" value="6.5" step="0.5">
                         </div>
                     </section>
 
@@ -227,11 +227,11 @@
                             <label for="tyndallStrengthControl">
                                 <span>散射强度</span><output id="tyndallStrengthValue" for="tyndallStrengthControl">0.75</output>
                             </label>
-                            <input id="tyndallStrengthControl" type="range" min="0" max="1.5" value="0.75" step="0.05">
+                            <input id="tyndallStrengthControl" data-celadon-setting="tyndallStrength" type="range" min="0" max="1.5" value="0.75" step="0.05">
                             <label for="mediumDensityControl">
                                 <span>介质密度</span><output id="mediumDensityValue" for="mediumDensityControl">0.72</output>
                             </label>
-                            <input id="mediumDensityControl" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
+                            <input id="mediumDensityControl" data-celadon-setting="mediumDensity" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
                         </div>
                     </section>
                 </div>
@@ -252,6 +252,6 @@
         </section>
     </main>
 
-    <script src="/js/celadon_rain_lab.js?v=9" defer></script>
+    <script src="/js/celadon_rain_lab.js?v=10" defer></script>
 </body>
 </html>

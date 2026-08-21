@@ -7,7 +7,8 @@
     var ambientMode = stage.dataset.celadonMode === 'ambient';
     var ambientHero = ambientMode ? stage.closest('.query-hero') : null;
     var ambientControls = ambientMode ? document.getElementById('mainCeladonControls') : null;
-    var ambientStorageKey = 'guccang-celadon-main-settings';
+    var celadonStorageKey = 'guccang-celadon-rain-settings';
+    var legacyAmbientStorageKey = 'guccang-celadon-main-settings';
 
     var statusTitle = document.getElementById('stageStatusTitle');
     var statusDetail = document.getElementById('stageStatusDetail');
@@ -74,30 +75,87 @@
         area: { uniform: 3, label: '面光源', detail: '较大面积发光形成宽阔柔光，阴影和高光更加克制。' }
     };
 
-    var ambientNumericLimits = {
-        wind: [0, 2], rain: [0.15, 1.8], light: [0.45, 1.35], sourceIntensity: [0.15, 1.25],
-        lightPosition: [0.12, 0.88], lightVertical: [0.38, 0.96], breathStrength: [0, 0.65],
-        breathPeriod: [3, 16], tyndallStrength: [0, 1.5], mediumDensity: [0.15, 1.5],
-        beamCount: [1, 7], beamSpread: [0.08, 0.58], beamSoftness: [0.12, 0.88]
+    var celadonNumericSchema = {
+        wind: { min: 0, max: 2, step: 0.05, initial: 1, format: 'fixed2' },
+        rain: { min: 0.15, max: 1.8, step: 0.05, initial: 1, format: 'fixed2' },
+        light: { min: 0.45, max: 1.35, step: 0.05, initial: 1, format: 'fixed2' },
+        sourceIntensity: { min: 0.15, max: 1.25, step: 0.01, initial: 0.72, format: 'fixed2' },
+        lightPosition: { min: 0.12, max: 0.88, step: 0.01, initial: 0.68, format: 'percent' },
+        lightVertical: { min: 0.38, max: 0.96, step: 0.01, initial: 0.84, format: 'percent' },
+        lightAngle: { min: -60, max: 60, step: 1, initial: -28, format: 'angle' },
+        lightRange: { min: 0.25, max: 1.2, step: 0.01, initial: 0.62, format: 'fixed2' },
+        breathStrength: { min: 0, max: 0.65, step: 0.01, initial: 0.28, format: 'fixed2' },
+        breathPeriod: { min: 3, max: 16, step: 0.5, initial: 6.5, format: 'seconds' },
+        tyndallStrength: { min: 0, max: 1.5, step: 0.05, initial: 0.75, format: 'fixed2' },
+        mediumDensity: { min: 0.15, max: 1.25, step: 0.01, initial: 0.72, format: 'fixed2' },
+        beamCount: { min: 1, max: 7, step: 1, initial: 5, format: 'beams' },
+        beamSpread: { min: 0.08, max: 0.58, step: 0.01, initial: 0.32, format: 'fixed2' },
+        beamSoftness: { min: 0.12, max: 0.88, step: 0.01, initial: 0.52, format: 'fixed2' }
     };
+    var celadonBooleanSettings = ['beamEnabled', 'breathingEnabled', 'tyndallEnabled'];
 
-    function ambientSettingsPreset() {
-        return {
-            wind: 0.72, rain: 0.68, light: 0.96, sourceIntensity: 0.48,
-            breathingEnabled: true, breathStrength: 0.18, breathPeriod: 8,
-            tyndallEnabled: true, tyndallStrength: 0.46, mediumDensity: 0.58,
-            lightPosition: 0.84, lightVertical: 0.9, lightAngle: -28, lightRange: 0.76,
-            beamEnabled: true, beamCount: 4, beamSpread: 0.26, beamSoftness: 0.66
-        };
+    function celadonSettingsPreset() {
+        var settings = {};
+        Object.keys(celadonNumericSchema).forEach(function (key) {
+            settings[key] = celadonNumericSchema[key].initial;
+        });
+        celadonBooleanSettings.forEach(function (key) { settings[key] = true; });
+        return settings;
     }
 
-    function readAmbientPreferences() {
+    function readCeladonPreferences() {
         try {
-            var value = JSON.parse(window.localStorage.getItem(ambientStorageKey) || '{}');
+            var stored = window.localStorage.getItem(celadonStorageKey) || window.localStorage.getItem(legacyAmbientStorageKey) || '{}';
+            var value = JSON.parse(stored);
             return value && typeof value === 'object' ? value : {};
         } catch (error) {
             return {};
         }
+    }
+
+    function clearCeladonPreferences() {
+        try {
+            window.localStorage.removeItem(celadonStorageKey);
+            window.localStorage.removeItem(legacyAmbientStorageKey);
+        } catch (error) {
+            // 隐私模式无法写入存储时，当前会话仍可正常重置。
+        }
+    }
+
+    function applyCeladonSchema(input, key) {
+        var definition = celadonNumericSchema[key];
+        if (!input || !definition) return;
+        input.min = String(definition.min);
+        input.max = String(definition.max);
+        input.step = String(definition.step);
+    }
+
+    function formatCeladonValue(format, value) {
+        if (format === 'percent') return Math.round(value * 100) + '%';
+        if (format === 'seconds') return value.toFixed(1) + ' s';
+        if (format === 'beams') return Math.round(value) + ' 束';
+        if (format === 'angle') return formatLightAngle(value);
+        return value.toFixed(2);
+    }
+
+    function labNumericBindings() {
+        return [
+            { input: windControl, output: windValue, key: 'wind' },
+            { input: rainControl, output: rainValue, key: 'rain' },
+            { input: lightControl, output: lightValue, key: 'light' },
+            { input: sourceIntensityControl, output: sourceIntensityValue, key: 'sourceIntensity' },
+            { input: lightPositionControl, output: lightPositionValue, key: 'lightPosition' },
+            { input: lightVerticalControl, output: lightVerticalValue, key: 'lightVertical' },
+            { input: lightAngleControl, output: lightAngleValue, key: 'lightAngle' },
+            { input: lightRangeControl, output: lightRangeValue, key: 'lightRange' },
+            { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength' },
+            { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod' },
+            { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength' },
+            { input: mediumDensityControl, output: mediumDensityValue, key: 'mediumDensity' },
+            { input: beamCountControl, output: beamCountValue, key: 'beamCount' },
+            { input: beamSpreadControl, output: beamSpreadValue, key: 'beamSpread' },
+            { input: beamSoftnessControl, output: beamSoftnessValue, key: 'beamSoftness' }
+        ];
     }
 
     function setAmbientReady(ready) {
@@ -628,20 +686,14 @@
         this.vesselPosition = this.ambient ? { x: 0.77, y: 0.64 } : { x: 0.51, y: 0.615 };
         this.vesselScale = this.ambient ? 1.16 : 1;
         this.random = seededRandom(1001);
-        this.settings = this.ambient ? ambientSettingsPreset() : {
-            wind: 1, rain: 1, light: 1, sourceIntensity: 0.72,
-            breathingEnabled: true, breathStrength: 0.28, breathPeriod: 6.5,
-            tyndallEnabled: true, tyndallStrength: 0.75, mediumDensity: 0.72,
-            lightPosition: 0.68, lightVertical: 0.84, lightAngle: -28, lightRange: 0.62,
-            beamEnabled: true, beamCount: 5, beamSpread: 0.32, beamSoftness: 0.52
-        };
+        this.settings = celadonSettingsPreset();
         this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
         this.needleAngle = 0;
         this.ambientPaused = false;
-        if (this.ambient) this.restoreAmbientPreferences();
+        this.restoreCeladonPreferences();
         this.pointer = { x: this.ambient ? 0.7 : 0.5, y: 0.62, targetX: this.ambient ? 0.7 : 0.5, targetY: 0.62 };
         this.impacts = [];
         this.pendingImpulses = [];
@@ -761,27 +813,13 @@
             return;
         }
         var self = this;
-        [
-            { input: windControl, output: windValue, key: 'wind', format: function (value) { return value.toFixed(2); } },
-            { input: rainControl, output: rainValue, key: 'rain', format: function (value) { return value.toFixed(2); } },
-            { input: lightControl, output: lightValue, key: 'light', format: function (value) { return value.toFixed(2); } },
-            { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength', format: function (value) { return value.toFixed(2); } },
-            { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod', format: function (value) { return value.toFixed(1) + ' s'; } },
-            { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength', format: function (value) { return value.toFixed(2); } },
-            { input: mediumDensityControl, output: mediumDensityValue, key: 'mediumDensity', format: function (value) { return value.toFixed(2); } },
-            { input: sourceIntensityControl, output: sourceIntensityValue, key: 'sourceIntensity', format: function (value) { return value.toFixed(2); } },
-            { input: lightPositionControl, output: lightPositionValue, key: 'lightPosition', format: function (value) { return Math.round(value * 100) + '%'; } },
-            { input: lightVerticalControl, output: lightVerticalValue, key: 'lightVertical', format: function (value) { return Math.round(value * 100) + '%'; } },
-            { input: lightAngleControl, output: lightAngleValue, key: 'lightAngle', format: formatLightAngle },
-            { input: lightRangeControl, output: lightRangeValue, key: 'lightRange', format: function (value) { return value.toFixed(2); } },
-            { input: beamCountControl, output: beamCountValue, key: 'beamCount', format: function (value) { return Math.round(value) + ' 束'; } },
-            { input: beamSpreadControl, output: beamSpreadValue, key: 'beamSpread', format: function (value) { return value.toFixed(2); } },
-            { input: beamSoftnessControl, output: beamSoftnessValue, key: 'beamSoftness', format: function (value) { return value.toFixed(2); } }
-        ].forEach(function (control) {
+        labNumericBindings().forEach(function (control) {
+            applyCeladonSchema(control.input, control.key);
             control.input.addEventListener('input', function () {
                 var value = Number(control.input.value);
                 self.settings[control.key] = value;
-                control.output.value = control.format(value);
+                control.output.value = formatCeladonValue(celadonNumericSchema[control.key].format, value);
+                self.saveCeladonPreferences();
                 if (self.paused) self.render();
             });
         });
@@ -789,6 +827,7 @@
         lightSourceButtons.forEach(function (button) {
             button.addEventListener('click', function () {
                 self.setLightSource(button.dataset.lightSource);
+                self.saveCeladonPreferences();
             });
         });
 
@@ -800,6 +839,7 @@
             effect.button.addEventListener('click', function () {
                 self.settings[effect.key] = !self.settings[effect.key];
                 self.syncLightControls();
+                self.saveCeladonPreferences();
                 if (self.paused) self.render();
             });
         });
@@ -807,6 +847,7 @@
         windDirectionButtons.forEach(function (button) {
             button.addEventListener('click', function () {
                 self.setWindDirection(button.dataset.windDirection);
+                self.saveCeladonPreferences();
             });
         });
 
@@ -831,10 +872,20 @@
             var point = self.eventPoint(event);
             if (point.y <= self.waterline + 0.035) self.addImpact(point.x, 1.05);
         });
+        this.syncLabControls();
         this.syncPauseButton();
         this.syncLightControls();
         this.setLightSource(this.lightSourceKey);
         this.setWindDirection(this.windDirectionKey, true);
+    };
+
+    CeladonRainLab.prototype.syncLabControls = function () {
+        var self = this;
+        labNumericBindings().forEach(function (control) {
+            applyCeladonSchema(control.input, control.key);
+            control.input.value = String(self.settings[control.key]);
+            control.output.value = formatCeladonValue(celadonNumericSchema[control.key].format, Number(self.settings[control.key]));
+        });
     };
 
     CeladonRainLab.prototype.bindAmbientMode = function () {
@@ -864,15 +915,15 @@
         });
     };
 
-    CeladonRainLab.prototype.restoreAmbientPreferences = function () {
-        var preferences = readAmbientPreferences();
+    CeladonRainLab.prototype.restoreCeladonPreferences = function () {
+        var preferences = readCeladonPreferences();
         var self = this;
-        Object.keys(ambientNumericLimits).forEach(function (key) {
+        Object.keys(celadonNumericSchema).forEach(function (key) {
             if (typeof preferences[key] !== 'number' || !Number.isFinite(preferences[key])) return;
-            var limits = ambientNumericLimits[key];
-            self.settings[key] = Math.max(limits[0], Math.min(limits[1], preferences[key]));
+            var definition = celadonNumericSchema[key];
+            self.settings[key] = Math.max(definition.min, Math.min(definition.max, preferences[key]));
         });
-        ['breathingEnabled', 'tyndallEnabled'].forEach(function (key) {
+        celadonBooleanSettings.forEach(function (key) {
             if (typeof preferences[key] === 'boolean') self.settings[key] = preferences[key];
         });
         if (windDirections[preferences.windDirection]) {
@@ -880,27 +931,25 @@
             this.windAngle = windDirections[preferences.windDirection].angle;
             this.targetWindAngle = this.windAngle;
         }
+        if (lightSources[preferences.lightSource]) this.lightSourceKey = preferences.lightSource;
     };
 
-    CeladonRainLab.prototype.saveAmbientPreferences = function () {
-        if (!this.ambient) return;
-        var preferences = { windDirection: this.windDirectionKey };
+    CeladonRainLab.prototype.saveCeladonPreferences = function () {
+        var preferences = { windDirection: this.windDirectionKey, lightSource: this.lightSourceKey };
         var self = this;
-        Object.keys(ambientNumericLimits).forEach(function (key) { preferences[key] = self.settings[key]; });
-        preferences.breathingEnabled = this.settings.breathingEnabled;
-        preferences.tyndallEnabled = this.settings.tyndallEnabled;
+        Object.keys(celadonNumericSchema).forEach(function (key) { preferences[key] = self.settings[key]; });
+        celadonBooleanSettings.forEach(function (key) { preferences[key] = self.settings[key]; });
         try {
-            window.localStorage.setItem(ambientStorageKey, JSON.stringify(preferences));
+            window.localStorage.setItem(celadonStorageKey, JSON.stringify(preferences));
+            window.localStorage.removeItem(legacyAmbientStorageKey);
         } catch (error) {
             // 隐私模式无法持久化时，当前会话内的参数仍保持有效。
         }
     };
 
     CeladonRainLab.prototype.formatAmbientValue = function (input, value) {
-        if (input.dataset.celadonFormat === 'percent') return Math.round(value * 100) + '%';
-        if (input.dataset.celadonFormat === 'seconds') return value.toFixed(1) + ' s';
-        if (input.dataset.celadonFormat === 'beams') return Math.round(value) + ' 束';
-        return value.toFixed(2);
+        var definition = celadonNumericSchema[input.dataset.celadonSetting];
+        return formatCeladonValue(input.dataset.celadonFormat || definition.format, value);
     };
 
     CeladonRainLab.prototype.syncAmbientControls = function () {
@@ -908,6 +957,7 @@
         var self = this;
         ambientControls.querySelectorAll('[data-celadon-setting]').forEach(function (input) {
             var key = input.dataset.celadonSetting;
+            applyCeladonSchema(input, key);
             input.value = String(self.settings[key]);
             var output = ambientControls.querySelector('[data-celadon-output="' + key + '"]');
             if (output) output.value = self.formatAmbientValue(input, Number(self.settings[key]));
@@ -917,6 +967,11 @@
         });
         var directionControl = ambientControls.querySelector('[data-celadon-wind-direction]');
         if (directionControl) directionControl.value = this.windDirectionKey;
+        var sourceOutput = ambientControls.querySelector('[data-celadon-light-source-output]');
+        if (sourceOutput) sourceOutput.value = lightSources[this.lightSourceKey].label;
+        ambientControls.querySelectorAll('[data-celadon-light-source]').forEach(function (button) {
+            button.setAttribute('aria-pressed', String(button.dataset.celadonLightSource === self.lightSourceKey));
+        });
         var pauseControl = ambientControls.querySelector('[data-celadon-action="pause"]');
         if (pauseControl) {
             pauseControl.disabled = this.reducedMotion;
@@ -925,6 +980,7 @@
         }
         ambientControls.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
         ambientControls.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
+        ambientControls.dataset.beams = this.settings.beamEnabled ? 'on' : 'off';
         ambientControls.dataset.paused = String(this.paused);
     };
 
@@ -938,7 +994,7 @@
             input.addEventListener('input', function () {
                 self.settings[input.dataset.celadonSetting] = Number(input.value);
                 self.syncAmbientControls();
-                self.saveAmbientPreferences();
+                self.saveCeladonPreferences();
                 if (self.paused && self.assetReady) self.render();
             });
         });
@@ -946,7 +1002,7 @@
             input.addEventListener('change', function () {
                 self.settings[input.dataset.celadonToggle] = input.checked;
                 self.syncAmbientControls();
-                self.saveAmbientPreferences();
+                self.saveCeladonPreferences();
                 if (self.paused && self.assetReady) self.render();
             });
         });
@@ -956,6 +1012,15 @@
                 self.setAmbientWindDirection(directionControl.value, false);
             });
         }
+        ambientControls.querySelectorAll('[data-celadon-light-source]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                self.setLightSource(button.dataset.celadonLightSource);
+                self.syncAmbientControls();
+                self.saveCeladonPreferences();
+            });
+        });
+        var impactControl = ambientControls.querySelector('[data-celadon-action="impact"]');
+        if (impactControl) impactControl.addEventListener('click', function () { self.addImpact(0.5, 1.0); });
         var pauseControl = ambientControls.querySelector('[data-celadon-action="pause"]');
         if (pauseControl) pauseControl.addEventListener('click', function () { self.setAmbientPaused(!self.ambientPaused); });
         var resetControl = ambientControls.querySelector('[data-celadon-action="reset"]');
@@ -982,7 +1047,7 @@
         this.targetWindAngle = direction.angle;
         if (immediate || this.paused) this.windAngle = direction.angle;
         this.syncAmbientControls();
-        this.saveAmbientPreferences();
+        this.saveCeladonPreferences();
         if (this.paused && this.assetReady) this.render();
     };
 
@@ -1003,8 +1068,9 @@
 
     CeladonRainLab.prototype.resetAmbientSettings = function () {
         if (!this.ambient) return;
-        this.settings = ambientSettingsPreset();
+        this.settings = celadonSettingsPreset();
         this.ambientPaused = false;
+        this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
@@ -1013,7 +1079,8 @@
         this.pendingImpulses = [];
         this.elapsed = 0;
         this.nextImpact = 0.18;
-        try { window.localStorage.removeItem(ambientStorageKey); } catch (error) { /* 当前会话仍可重置。 */ }
+        clearCeladonPreferences();
+        this.setLightSource('point');
         if (this.assetReady) {
             this.clearSimulation();
             this.addImpact(0.5, 0.72);
@@ -1050,12 +1117,20 @@
         var source = lightSources[sourceKey];
         if (!source) return;
         this.lightSourceKey = sourceKey;
-        lightInstrument.dataset.source = sourceKey;
-        lightSourceValue.value = source.label;
-        lightSourceDetail.textContent = source.detail;
+        if (lightInstrument) lightInstrument.dataset.source = sourceKey;
+        if (lightSourceValue) lightSourceValue.value = source.label;
+        if (lightSourceDetail) lightSourceDetail.textContent = source.detail;
         lightSourceButtons.forEach(function (button) {
             button.setAttribute('aria-pressed', String(button.dataset.lightSource === sourceKey));
         });
+        if (ambientControls) {
+            ambientControls.dataset.source = sourceKey;
+            var sourceOutput = ambientControls.querySelector('[data-celadon-light-source-output]');
+            if (sourceOutput) sourceOutput.value = source.label;
+            ambientControls.querySelectorAll('[data-celadon-light-source]').forEach(function (button) {
+                button.setAttribute('aria-pressed', String(button.dataset.celadonLightSource === sourceKey));
+            });
+        }
         if (this.paused && this.assetTexture) this.render();
     };
 
@@ -1279,58 +1354,11 @@
     };
 
     CeladonRainLab.prototype.reset = function () {
-        this.settings = {
-            wind: 1,
-            rain: 1,
-            light: 1,
-            sourceIntensity: 0.72,
-            breathingEnabled: true,
-            breathStrength: 0.28,
-            breathPeriod: 6.5,
-            tyndallEnabled: true,
-            tyndallStrength: 0.75,
-            mediumDensity: 0.72,
-            lightPosition: 0.68,
-            lightVertical: 0.84,
-            lightAngle: -28,
-            lightRange: 0.62,
-            beamEnabled: true,
-            beamCount: 5,
-            beamSpread: 0.32,
-            beamSoftness: 0.52
-        };
+        this.settings = celadonSettingsPreset();
+        clearCeladonPreferences();
         this.setLightSource('point');
         this.setWindDirection('west', true);
-        windControl.value = '1';
-        rainControl.value = '1';
-        lightControl.value = '1';
-        sourceIntensityControl.value = '0.72';
-        breathStrengthControl.value = '0.28';
-        breathPeriodControl.value = '6.5';
-        tyndallStrengthControl.value = '0.75';
-        mediumDensityControl.value = '0.72';
-        lightPositionControl.value = '0.68';
-        lightVerticalControl.value = '0.84';
-        lightAngleControl.value = '-28';
-        lightRangeControl.value = '0.62';
-        beamCountControl.value = '5';
-        beamSpreadControl.value = '0.32';
-        beamSoftnessControl.value = '0.52';
-        windValue.value = '1.00';
-        rainValue.value = '1.00';
-        lightValue.value = '1.00';
-        sourceIntensityValue.value = '0.72';
-        breathStrengthValue.value = '0.28';
-        breathPeriodValue.value = '6.5 s';
-        tyndallStrengthValue.value = '0.75';
-        mediumDensityValue.value = '0.72';
-        lightPositionValue.value = '68%';
-        lightVerticalValue.value = '84%';
-        lightAngleValue.value = formatLightAngle(-28);
-        lightRangeValue.value = '0.62';
-        beamCountValue.value = '5 束';
-        beamSpreadValue.value = '0.32';
-        beamSoftnessValue.value = '0.52';
+        this.syncLabControls();
         this.syncLightControls();
         this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
         this.impacts = [];

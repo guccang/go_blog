@@ -38,12 +38,17 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=9`, `/css/main.css?v=celadon-rain-5`,
+		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=celadon-rain-6`,
 		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
 		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
 		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
+		`data-celadon-setting="lightAngle"`, `data-celadon-setting="lightRange"`,
+		`data-celadon-light-source="point"`, `data-celadon-light-source="spot"`,
+		`data-celadon-light-source="directional"`, `data-celadon-light-source="area"`,
 		`data-celadon-toggle="breathingEnabled"`, `data-celadon-toggle="tyndallEnabled"`,
-		`data-celadon-setting="beamCount"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
+		`data-celadon-toggle="beamEnabled"`, `data-celadon-setting="beamCount"`,
+		`data-celadon-action="impact"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
+		`main-celadon-controls__compact-label`, `main-celadon-controls__full-label`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Fatalf("main page missing %q", expected)
@@ -134,9 +139,12 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`document.addEventListener('pointermove'`, `document.addEventListener('pointerdown'`,
 		`point.inside && point.y <= self.waterline + 0.1`,
 		`u_vessel_position`, `u_vessel_scale`, `this.assetReady`,
-		`ambientSettingsPreset`, `wind: 0.72`, `rain: 0.68`, `tyndallStrength: 0.46`,
-		`ambientStorageKey`, `guccang-celadon-main-settings`, `ambientNumericLimits`,
-		`restoreAmbientPreferences`, `saveAmbientPreferences`, `window.localStorage.setItem`,
+		`celadonSettingsPreset`, `celadonNumericSchema`, `celadonBooleanSettings`,
+		`wind: { min: 0, max: 2, step: 0.05, initial: 1`,
+		`mediumDensity: { min: 0.15, max: 1.25`,
+		`celadonStorageKey`, `guccang-celadon-rain-settings`, `legacyAmbientStorageKey`,
+		`restoreCeladonPreferences`, `saveCeladonPreferences`, `clearCeladonPreferences`,
+		`labNumericBindings`, `applyCeladonSchema`, `window.localStorage.setItem`,
 		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
 		`setAmbientPaused`, `resetAmbientSettings`, `window.localStorage.removeItem`,
 		`setAmbientReady(true)`, `setAmbientReady(false)`, `ambientPaused`,
@@ -161,8 +169,8 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 	}
 	page := string(templateContent)
 	settings := regexp.MustCompile(`data-celadon-setting="([^"]+)"`).FindAllStringSubmatch(page, -1)
-	if len(settings) != 13 {
-		t.Errorf("main celadon controls should expose 13 numeric settings, got %d", len(settings))
+	if len(settings) != 15 {
+		t.Errorf("main celadon controls should expose 15 numeric settings, got %d", len(settings))
 	}
 	for _, setting := range settings {
 		if !strings.Contains(page, `data-celadon-output="`+setting[1]+`"`) {
@@ -171,6 +179,35 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 	}
 	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(page, -1)); directions != 8 {
 		t.Errorf("main celadon wind selector should expose 8 directions, got %d", directions)
+	}
+	if sources := len(regexp.MustCompile(`data-celadon-light-source="(?:point|spot|directional|area)"`).FindAllString(page, -1)); sources != 4 {
+		t.Errorf("main celadon source picker should expose 4 light sources, got %d", sources)
+	}
+	if toggles := len(regexp.MustCompile(`data-celadon-toggle="(?:beamEnabled|breathingEnabled|tyndallEnabled)"`).FindAllString(page, -1)); toggles != 3 {
+		t.Errorf("main celadon controls should expose 3 effect toggles, got %d", toggles)
+	}
+
+	labContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "natural_motion_lab.template"))
+	if err != nil {
+		t.Fatalf("read natural motion lab template: %v", err)
+	}
+	inputPattern := regexp.MustCompile(`<input[^>]*data-celadon-setting="([^"]+)"[^>]*min="([^"]+)"[^>]*max="([^"]+)"[^>]*value="([^"]+)"[^>]*step="([^"]+)"`)
+	parseInputs := func(content string) map[string]string {
+		result := make(map[string]string)
+		for _, match := range inputPattern.FindAllStringSubmatch(content, -1) {
+			result[match[1]] = strings.Join(match[2:], "|")
+		}
+		return result
+	}
+	mainInputs := parseInputs(page)
+	labInputs := parseInputs(string(labContent))
+	if len(mainInputs) != 15 || len(labInputs) != 15 {
+		t.Fatalf("main and lab should each define 15 numeric inputs, got main=%d lab=%d", len(mainInputs), len(labInputs))
+	}
+	for key, mainDefinition := range mainInputs {
+		if labDefinition := labInputs[key]; labDefinition != mainDefinition {
+			t.Errorf("celadon setting %q differs: main=%q lab=%q", key, mainDefinition, labDefinition)
+		}
 	}
 	for _, forbidden := range []string{`id="windControl"`, `id="rainControl"`, `id="lightInstrument"`, `id="pauseButton"`} {
 		if strings.Contains(page, forbidden) {
@@ -191,6 +228,8 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`[data-celadon-inspector="open"]`, `grid-template-columns: minmax(0, 1fr) 292px`,
 		`right: 312px`, `grid-template-rows: 280px auto`, `grid-row: 2`,
 		`max-height: min(42vh, 260px)`, `height: 220px`,
+		`.main-celadon-controls:not([open])`, `width: 128px`,
+		`.main-celadon-controls__compact-label`, `.main-celadon-source-picker`,
 		`@media (prefers-reduced-motion: reduce)`,
 	} {
 		if !strings.Contains(styles, expected) {
@@ -199,6 +238,11 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 	}
 	if regexp.MustCompile(`(?s)\.main-celadon-controls\s*\{\s*position:\s*fixed`).MatchString(styles) {
 		t.Error("main celadon controls must not use the viewport-covering fixed drawer")
+	}
+	for _, forbidden := range []string{"ambientSettingsPreset", "ambientNumericLimits", "restoreAmbientPreferences", "saveAmbientPreferences"} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("celadon renderer still contains divergent ambient configuration %q", forbidden)
+		}
 	}
 }
 

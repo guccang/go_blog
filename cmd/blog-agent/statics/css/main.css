@@ -183,6 +183,12 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .site-
 
 html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .main-celadon-controls { display: block; }
 
+.main-celadon-controls:not([open]) {
+    top: 34px;
+    width: 128px;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--c5) 10%, transparent);
+}
+
 html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] {
     grid-template-columns: minmax(0, 1fr) 292px;
     gap: 20px;
@@ -230,6 +236,12 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
 .main-celadon-controls > summary::-webkit-details-marker { display: none; }
 .main-celadon-controls > summary::before { width: 7px; height: 7px; content: ""; border: 1px solid var(--c4); border-radius: 50%; }
 .main-celadon-controls > summary span { margin-right: auto; margin-left: 8px; }
+.main-celadon-controls > summary i { font-style: normal; }
+.main-celadon-controls__compact-label { display: none; }
+.main-celadon-controls:not([open]) .main-celadon-controls__compact-label { display: inline; }
+.main-celadon-controls:not([open]) .main-celadon-controls__full-label,
+.main-celadon-controls:not([open]) > summary small { display: none; }
+.main-celadon-controls:not([open]) > summary { min-height: 36px; padding-inline: 11px; }
 .main-celadon-controls > summary small { color: var(--c4); font: 7px/1 var(--ui-font-mono); letter-spacing: .12em; }
 .main-celadon-controls[open] > summary { border-bottom: 1px solid color-mix(in srgb, var(--c4) 24%, transparent); }
 
@@ -249,10 +261,13 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
 .main-celadon-controls output { color: var(--c4); font: 8px/1 var(--ui-font-mono); }
 .main-celadon-controls input[type="range"] { width: 100%; height: 14px; margin: 0 0 6px; accent-color: var(--c4); }
 .main-celadon-controls select { min-width: 138px; padding: 5px 7px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 25%, transparent); background: var(--c1); font: 8px/1.2 var(--ui-font-mono); }
+.main-celadon-source-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 3px 0 10px; }
+.main-celadon-source-picker button { min-height: 28px; padding: 3px 2px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 22%, transparent); background: transparent; font-size: 8px; }
+.main-celadon-source-picker button[aria-pressed="true"] { color: var(--c1); border-color: var(--c4); background: var(--c4); }
 .main-celadon-switch { min-height: 26px; }
 .main-celadon-switch input { width: 30px; accent-color: var(--c4); }
 
-.main-celadon-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.main-celadon-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .main-celadon-actions button { min-height: 32px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 28%, transparent); background: color-mix(in srgb, var(--c2) 38%, transparent); font-size: 9px; }
 .main-celadon-actions button:hover,
 .main-celadon-actions button:focus-visible,
@@ -269,6 +284,9 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
 .main-celadon-controls[data-breathing="off"] [data-celadon-setting="breathPeriod"],
 .main-celadon-controls[data-tyndall="off"] [data-celadon-setting="tyndallStrength"],
 .main-celadon-controls[data-tyndall="off"] [data-celadon-setting="mediumDensity"] { opacity: .38; }
+.main-celadon-controls[data-beams="off"] [data-celadon-setting="beamCount"],
+.main-celadon-controls[data-beams="off"] [data-celadon-setting="beamSpread"],
+.main-celadon-controls[data-beams="off"] [data-celadon-setting="beamSoftness"] { opacity: .38; }
 
 .main-celadon-controls[data-paused="true"] > summary::before { border-color: var(--c5); background: transparent; }
 .main-celadon-controls[data-paused="false"] > summary::before { background: var(--c4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c3) 22%, transparent); }
