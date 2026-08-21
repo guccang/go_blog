@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,12 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=7`, `/css/main.css?v=celadon-rain-3`,
+		`/js/celadon_rain_lab.js?v=8`, `/css/main.css?v=celadon-rain-4`,
+		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
+		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
+		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
+		`data-celadon-toggle="breathingEnabled"`, `data-celadon-toggle="tyndallEnabled"`,
+		`data-celadon-setting="beamCount"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Fatalf("main page missing %q", expected)
@@ -98,6 +104,8 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 		`:root[data-theme="watercolor"] .quick-item.primary small { color: var(--ui-text-muted); }`,
 		`.main-celadon-stage`, `html[data-theme="atlas-celadon"] .main-celadon-stage`,
 		`#celadonCanvas`, `.main-celadon-stage[data-render-state="error"]`,
+		`.query-hero[data-celadon-ready="true"] > .site-page-hero__exhibit`,
+		`.main-celadon-controls`, `.main-celadon-controls__body`,
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Fatalf("main.css missing %q", expected)
@@ -126,8 +134,13 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`document.addEventListener('pointermove'`, `document.addEventListener('pointerdown'`,
 		`point.inside && point.y <= self.waterline + 0.1`,
 		`u_vessel_position`, `u_vessel_scale`, `this.assetReady`,
-		`wind: this.ambient ? 0.72 : 1`, `rain: this.ambient ? 0.68 : 1`,
-		`tyndallStrength: this.ambient ? 0.46 : 0.75`,
+		`ambientSettingsPreset`, `wind: 0.72`, `rain: 0.68`, `tyndallStrength: 0.46`,
+		`ambientStorageKey`, `guccang-celadon-main-settings`, `ambientNumericLimits`,
+		`restoreAmbientPreferences`, `saveAmbientPreferences`, `window.localStorage.setItem`,
+		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
+		`setAmbientPaused`, `resetAmbientSettings`, `window.localStorage.removeItem`,
+		`setAmbientReady(true)`, `setAmbientReady(false)`, `ambientPaused`,
+		`ambientControls.contains(event.target)`,
 		`far_rain`, `middle_rain`, `near_rain`, `stepSimulation`, `refraction_shift`,
 	} {
 		if !strings.Contains(script, expected) {
@@ -145,6 +158,18 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		t.Fatalf("read main template: %v", err)
 	}
 	page := string(templateContent)
+	settings := regexp.MustCompile(`data-celadon-setting="([^"]+)"`).FindAllStringSubmatch(page, -1)
+	if len(settings) != 13 {
+		t.Errorf("main celadon controls should expose 13 numeric settings, got %d", len(settings))
+	}
+	for _, setting := range settings {
+		if !strings.Contains(page, `data-celadon-output="`+setting[1]+`"`) {
+			t.Errorf("main celadon setting %q is missing its output", setting[1])
+		}
+	}
+	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(page, -1)); directions != 8 {
+		t.Errorf("main celadon wind selector should expose 8 directions, got %d", directions)
+	}
 	for _, forbidden := range []string{`id="windControl"`, `id="rainControl"`, `id="lightInstrument"`, `id="pauseButton"`} {
 		if strings.Contains(page, forbidden) {
 			t.Errorf("main page must not expose lab control %q", forbidden)
@@ -159,7 +184,8 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 	for _, expected := range []string{
 		`html[data-theme="atlas-celadon"] .query-hero::after`,
 		`linear-gradient(90deg`, `pointer-events: none`,
-		`.main-celadon-stage[data-render-state="ready"] ~ .site-page-hero__exhibit`,
+		`.query-hero[data-celadon-ready="true"] > .site-page-hero__exhibit`,
+		`visibility: hidden`, `.main-celadon-controls`, `position: fixed`,
 		`height: 220px`, `@media (prefers-reduced-motion: reduce)`,
 	} {
 		if !strings.Contains(styles, expected) {

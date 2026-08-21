@@ -33,7 +33,7 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="mediumDensityControl"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=6`, `/js/celadon_rain_lab.js?v=7`,
+		`/css/celadon_rain_lab.css?v=6`, `/js/celadon_rain_lab.js?v=8`,
 		"北风 0°，N → S", "东风 90°，E → W", "南风 180°，S → N", "西风 270°，W → E",
 		"东北风 45°，NE → SW", "东南风 135°，SE → NW",
 		"西南风 225°，SW → NE", "西北风 315°，NW → SE",

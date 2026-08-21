@@ -5,6 +5,9 @@
     var canvas = document.getElementById('celadonCanvas');
     if (!stage || !canvas) return;
     var ambientMode = stage.dataset.celadonMode === 'ambient';
+    var ambientHero = ambientMode ? stage.closest('.query-hero') : null;
+    var ambientControls = ambientMode ? document.getElementById('mainCeladonControls') : null;
+    var ambientStorageKey = 'guccang-celadon-main-settings';
 
     var statusTitle = document.getElementById('stageStatusTitle');
     var statusDetail = document.getElementById('stageStatusDetail');
@@ -70,6 +73,37 @@
         directional: { uniform: 2, label: '平行光', detail: '远距离光源形成近似平行的入射光，适合观察雨雾散射。' },
         area: { uniform: 3, label: '面光源', detail: '较大面积发光形成宽阔柔光，阴影和高光更加克制。' }
     };
+
+    var ambientNumericLimits = {
+        wind: [0, 2], rain: [0.15, 1.8], light: [0.45, 1.35], sourceIntensity: [0.15, 1.25],
+        lightPosition: [0.12, 0.88], lightVertical: [0.38, 0.96], breathStrength: [0, 0.65],
+        breathPeriod: [3, 16], tyndallStrength: [0, 1.5], mediumDensity: [0.15, 1.5],
+        beamCount: [1, 7], beamSpread: [0.08, 0.58], beamSoftness: [0.12, 0.88]
+    };
+
+    function ambientSettingsPreset() {
+        return {
+            wind: 0.72, rain: 0.68, light: 0.96, sourceIntensity: 0.48,
+            breathingEnabled: true, breathStrength: 0.18, breathPeriod: 8,
+            tyndallEnabled: true, tyndallStrength: 0.46, mediumDensity: 0.58,
+            lightPosition: 0.84, lightVertical: 0.9, lightAngle: -28, lightRange: 0.76,
+            beamEnabled: true, beamCount: 4, beamSpread: 0.26, beamSoftness: 0.66
+        };
+    }
+
+    function readAmbientPreferences() {
+        try {
+            var value = JSON.parse(window.localStorage.getItem(ambientStorageKey) || '{}');
+            return value && typeof value === 'object' ? value : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function setAmbientReady(ready) {
+        if (!ambientHero) return;
+        ambientHero.dataset.celadonReady = String(Boolean(ready));
+    }
 
     function normalizeWindAngle(angle) {
         return ((Number(angle) % 360) + 360) % 360;
@@ -594,31 +628,20 @@
         this.vesselPosition = this.ambient ? { x: 0.77, y: 0.64 } : { x: 0.51, y: 0.615 };
         this.vesselScale = this.ambient ? 1.16 : 1;
         this.random = seededRandom(1001);
-        this.settings = {
-            wind: this.ambient ? 0.72 : 1,
-            rain: this.ambient ? 0.68 : 1,
-            light: this.ambient ? 0.96 : 1,
-            sourceIntensity: this.ambient ? 0.48 : 0.72,
-            breathingEnabled: true,
-            breathStrength: this.ambient ? 0.18 : 0.28,
-            breathPeriod: this.ambient ? 8 : 6.5,
-            tyndallEnabled: true,
-            tyndallStrength: this.ambient ? 0.46 : 0.75,
-            mediumDensity: this.ambient ? 0.58 : 0.72,
-            lightPosition: this.ambient ? 0.84 : 0.68,
-            lightVertical: this.ambient ? 0.9 : 0.84,
-            lightAngle: -28,
-            lightRange: this.ambient ? 0.76 : 0.62,
-            beamEnabled: true,
-            beamCount: this.ambient ? 4 : 5,
-            beamSpread: this.ambient ? 0.26 : 0.32,
-            beamSoftness: this.ambient ? 0.66 : 0.52
+        this.settings = this.ambient ? ambientSettingsPreset() : {
+            wind: 1, rain: 1, light: 1, sourceIntensity: 0.72,
+            breathingEnabled: true, breathStrength: 0.28, breathPeriod: 6.5,
+            tyndallEnabled: true, tyndallStrength: 0.75, mediumDensity: 0.72,
+            lightPosition: 0.68, lightVertical: 0.84, lightAngle: -28, lightRange: 0.62,
+            beamEnabled: true, beamCount: 5, beamSpread: 0.32, beamSoftness: 0.52
         };
         this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
         this.needleAngle = 0;
+        this.ambientPaused = false;
+        if (this.ambient) this.restoreAmbientPreferences();
         this.pointer = { x: this.ambient ? 0.7 : 0.5, y: 0.62, targetX: this.ambient ? 0.7 : 0.5, targetY: 0.62 };
         this.impacts = [];
         this.pendingImpulses = [];
@@ -630,7 +653,7 @@
         this.assetReady = false;
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         this.themeActive = !this.ambient || document.documentElement.dataset.theme === 'atlas-celadon';
-        this.paused = this.reducedMotion || !this.themeActive;
+        this.paused = this.reducedMotion || !this.themeActive || this.ambientPaused;
 
         var gl = this.gl;
         this.vertexArray = gl.createVertexArray();
@@ -817,8 +840,10 @@
     CeladonRainLab.prototype.bindAmbientMode = function () {
         var self = this;
         stage.dataset.themeActive = String(this.themeActive);
+        this.bindAmbientControls();
         document.addEventListener('pointermove', function (event) {
             if (!self.themeActive) return;
+            if (ambientControls && ambientControls.contains(event.target)) return;
             var point = self.eventPoint(event);
             if (point.inside) {
                 self.pointer.targetX = point.x;
@@ -830,6 +855,7 @@
         }, { passive: true });
         document.addEventListener('pointerdown', function (event) {
             if (!self.themeActive) return;
+            if (ambientControls && ambientControls.contains(event.target)) return;
             var point = self.eventPoint(event);
             if (point.inside && point.y <= self.waterline + 0.1) self.addImpact(point.x, 0.78);
         }, { passive: true });
@@ -838,11 +864,156 @@
         });
     };
 
+    CeladonRainLab.prototype.restoreAmbientPreferences = function () {
+        var preferences = readAmbientPreferences();
+        var self = this;
+        Object.keys(ambientNumericLimits).forEach(function (key) {
+            if (typeof preferences[key] !== 'number' || !Number.isFinite(preferences[key])) return;
+            var limits = ambientNumericLimits[key];
+            self.settings[key] = Math.max(limits[0], Math.min(limits[1], preferences[key]));
+        });
+        ['breathingEnabled', 'tyndallEnabled'].forEach(function (key) {
+            if (typeof preferences[key] === 'boolean') self.settings[key] = preferences[key];
+        });
+        if (windDirections[preferences.windDirection]) {
+            this.windDirectionKey = preferences.windDirection;
+            this.windAngle = windDirections[preferences.windDirection].angle;
+            this.targetWindAngle = this.windAngle;
+        }
+    };
+
+    CeladonRainLab.prototype.saveAmbientPreferences = function () {
+        if (!this.ambient) return;
+        var preferences = { windDirection: this.windDirectionKey };
+        var self = this;
+        Object.keys(ambientNumericLimits).forEach(function (key) { preferences[key] = self.settings[key]; });
+        preferences.breathingEnabled = this.settings.breathingEnabled;
+        preferences.tyndallEnabled = this.settings.tyndallEnabled;
+        try {
+            window.localStorage.setItem(ambientStorageKey, JSON.stringify(preferences));
+        } catch (error) {
+            // 隐私模式无法持久化时，当前会话内的参数仍保持有效。
+        }
+    };
+
+    CeladonRainLab.prototype.formatAmbientValue = function (input, value) {
+        if (input.dataset.celadonFormat === 'percent') return Math.round(value * 100) + '%';
+        if (input.dataset.celadonFormat === 'seconds') return value.toFixed(1) + ' s';
+        if (input.dataset.celadonFormat === 'beams') return Math.round(value) + ' 束';
+        return value.toFixed(2);
+    };
+
+    CeladonRainLab.prototype.syncAmbientControls = function () {
+        if (!ambientControls) return;
+        var self = this;
+        ambientControls.querySelectorAll('[data-celadon-setting]').forEach(function (input) {
+            var key = input.dataset.celadonSetting;
+            input.value = String(self.settings[key]);
+            var output = ambientControls.querySelector('[data-celadon-output="' + key + '"]');
+            if (output) output.value = self.formatAmbientValue(input, Number(self.settings[key]));
+        });
+        ambientControls.querySelectorAll('[data-celadon-toggle]').forEach(function (input) {
+            input.checked = Boolean(self.settings[input.dataset.celadonToggle]);
+        });
+        var directionControl = ambientControls.querySelector('[data-celadon-wind-direction]');
+        if (directionControl) directionControl.value = this.windDirectionKey;
+        var pauseControl = ambientControls.querySelector('[data-celadon-action="pause"]');
+        if (pauseControl) {
+            pauseControl.disabled = this.reducedMotion;
+            pauseControl.setAttribute('aria-pressed', String(this.ambientPaused));
+            pauseControl.textContent = this.reducedMotion ? '系统已暂停' : (this.ambientPaused ? '继续' : '暂停');
+        }
+        ambientControls.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
+        ambientControls.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
+        ambientControls.dataset.paused = String(this.paused);
+    };
+
+    CeladonRainLab.prototype.bindAmbientControls = function () {
+        if (!ambientControls) return;
+        var self = this;
+        ambientControls.querySelectorAll('[data-celadon-setting]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                self.settings[input.dataset.celadonSetting] = Number(input.value);
+                self.syncAmbientControls();
+                self.saveAmbientPreferences();
+                if (self.paused && self.assetReady) self.render();
+            });
+        });
+        ambientControls.querySelectorAll('[data-celadon-toggle]').forEach(function (input) {
+            input.addEventListener('change', function () {
+                self.settings[input.dataset.celadonToggle] = input.checked;
+                self.syncAmbientControls();
+                self.saveAmbientPreferences();
+                if (self.paused && self.assetReady) self.render();
+            });
+        });
+        var directionControl = ambientControls.querySelector('[data-celadon-wind-direction]');
+        if (directionControl) {
+            directionControl.addEventListener('change', function () {
+                self.setAmbientWindDirection(directionControl.value, false);
+            });
+        }
+        var pauseControl = ambientControls.querySelector('[data-celadon-action="pause"]');
+        if (pauseControl) pauseControl.addEventListener('click', function () { self.setAmbientPaused(!self.ambientPaused); });
+        var resetControl = ambientControls.querySelector('[data-celadon-action="reset"]');
+        if (resetControl) resetControl.addEventListener('click', function () { self.resetAmbientSettings(); });
+        this.syncAmbientControls();
+    };
+
+    CeladonRainLab.prototype.setAmbientWindDirection = function (directionKey, immediate) {
+        var direction = windDirections[directionKey];
+        if (!direction) return;
+        this.windDirectionKey = directionKey;
+        this.targetWindAngle = direction.angle;
+        if (immediate || this.paused) this.windAngle = direction.angle;
+        this.syncAmbientControls();
+        this.saveAmbientPreferences();
+        if (this.paused && this.assetReady) this.render();
+    };
+
+    CeladonRainLab.prototype.setAmbientPaused = function (paused) {
+        if (!this.ambient || this.reducedMotion) return;
+        this.ambientPaused = Boolean(paused);
+        this.paused = this.ambientPaused || !this.themeActive;
+        if (this.paused) {
+            if (this.frameHandle) window.cancelAnimationFrame(this.frameHandle);
+            this.frameHandle = 0;
+            if (this.assetReady) this.render();
+        } else {
+            this.lastTimestamp = 0;
+            this.requestFrame();
+        }
+        this.syncAmbientControls();
+    };
+
+    CeladonRainLab.prototype.resetAmbientSettings = function () {
+        if (!this.ambient) return;
+        this.settings = ambientSettingsPreset();
+        this.ambientPaused = false;
+        this.windDirectionKey = 'west';
+        this.windAngle = 270;
+        this.targetWindAngle = 270;
+        this.pointer = { x: 0.7, y: 0.62, targetX: 0.7, targetY: 0.62 };
+        this.impacts = [];
+        this.pendingImpulses = [];
+        this.elapsed = 0;
+        this.nextImpact = 0.18;
+        try { window.localStorage.removeItem(ambientStorageKey); } catch (error) { /* 当前会话仍可重置。 */ }
+        if (this.assetReady) {
+            this.clearSimulation();
+            this.addImpact(0.5, 0.72);
+            this.render();
+        }
+        this.paused = this.reducedMotion || !this.themeActive;
+        this.syncAmbientControls();
+        if (!this.paused) this.requestFrame();
+    };
+
     CeladonRainLab.prototype.setAmbientTheme = function (theme) {
         if (!this.ambient) return;
         this.themeActive = theme === 'atlas-celadon';
         stage.dataset.themeActive = String(this.themeActive);
-        if (!this.themeActive || this.reducedMotion) {
+        if (!this.themeActive || this.reducedMotion || this.ambientPaused) {
             this.paused = true;
             if (this.frameHandle) window.cancelAnimationFrame(this.frameHandle);
             this.frameHandle = 0;
@@ -850,12 +1021,14 @@
                 this.resize();
                 this.render();
             }
+            this.syncAmbientControls();
             return;
         }
         this.paused = false;
         this.lastTimestamp = 0;
         this.resize();
         this.requestFrame();
+        this.syncAmbientControls();
     };
 
     CeladonRainLab.prototype.setLightSource = function (sourceKey) {
@@ -1174,12 +1347,15 @@
             self.stepSimulation(1 / 60);
             self.render();
             stage.dataset.renderState = 'ready';
+            setAmbientReady(true);
+            self.syncAmbientControls();
             if (!self.paused) self.requestFrame();
         });
     };
 
     function showError(title, detail) {
         stage.dataset.renderState = 'error';
+        setAmbientReady(false);
         statusTitle.textContent = title;
         statusDetail.textContent = detail || '\u4e0d\u4f1a\u542f\u7528 Canvas 2D \u6216\u9759\u6001\u8fd1\u4f3c\u6548\u679c\u3002';
     }

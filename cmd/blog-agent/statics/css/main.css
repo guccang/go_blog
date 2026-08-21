@@ -160,10 +160,87 @@ html[data-theme="atlas-celadon"] .query-hero::after {
     z-index: 2;
 }
 
-html[data-theme="atlas-celadon"] .main-celadon-stage[data-render-state="ready"] ~ .site-page-hero__exhibit .site-page-symbol,
-html[data-theme="atlas-celadon"] .main-celadon-stage[data-render-state="ready"] ~ .site-page-hero__exhibit::before,
-html[data-theme="atlas-celadon"] .main-celadon-stage[data-render-state="ready"] ~ .site-page-hero__exhibit::after {
-    opacity: 0;
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .site-page-hero__exhibit {
+    visibility: hidden;
+    animation: none;
+    pointer-events: none;
+    transform: none;
+}
+
+.main-celadon-controls {
+    position: absolute;
+    z-index: 4;
+    top: 42px;
+    right: 0;
+    display: none;
+    width: 292px;
+    color: var(--c5);
+    border: 1px solid color-mix(in srgb, var(--c4) 32%, transparent);
+    background: color-mix(in srgb, var(--c1) 88%, transparent);
+    box-shadow: 0 16px 42px color-mix(in srgb, var(--c5) 14%, transparent);
+    backdrop-filter: blur(18px) saturate(.86);
+}
+
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .main-celadon-controls { display: block; }
+
+.main-celadon-controls > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 0 13px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 12px;
+    letter-spacing: .08em;
+}
+
+.main-celadon-controls > summary::-webkit-details-marker { display: none; }
+.main-celadon-controls > summary::before { width: 7px; height: 7px; content: ""; border: 1px solid var(--c4); border-radius: 50%; }
+.main-celadon-controls > summary span { margin-right: auto; margin-left: 8px; }
+.main-celadon-controls > summary small { color: var(--c4); font: 7px/1 var(--ui-font-mono); letter-spacing: .12em; }
+.main-celadon-controls[open] > summary { border-bottom: 1px solid color-mix(in srgb, var(--c4) 24%, transparent); }
+
+.main-celadon-controls__body {
+    max-height: 244px;
+    padding: 11px 13px 13px;
+    overflow-y: auto;
+    scrollbar-color: var(--c3) transparent;
+    scrollbar-width: thin;
+}
+
+.main-celadon-controls fieldset { min-width: 0; margin: 0 0 11px; padding: 9px; border: 1px solid color-mix(in srgb, var(--c4) 18%, transparent); }
+.main-celadon-controls legend { padding: 0 5px; color: var(--c4); font: 8px/1 var(--ui-font-mono); letter-spacing: .1em; }
+.main-celadon-controls label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 4px; color: color-mix(in srgb, var(--c5) 78%, transparent); font-size: 9px; }
+.main-celadon-controls output { color: var(--c4); font: 8px/1 var(--ui-font-mono); }
+.main-celadon-controls input[type="range"] { width: 100%; height: 14px; margin: 0 0 6px; accent-color: var(--c4); }
+.main-celadon-controls select { min-width: 138px; padding: 5px 7px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 25%, transparent); background: var(--c1); font: 8px/1.2 var(--ui-font-mono); }
+.main-celadon-switch { min-height: 26px; }
+.main-celadon-switch input { width: 30px; accent-color: var(--c4); }
+
+.main-celadon-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.main-celadon-actions button { min-height: 32px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 28%, transparent); background: color-mix(in srgb, var(--c2) 38%, transparent); font-size: 9px; }
+.main-celadon-actions button:hover,
+.main-celadon-actions button:focus-visible,
+.main-celadon-actions button[aria-pressed="true"] { color: var(--c1); border-color: var(--c4); background: var(--c4); }
+
+.main-celadon-controls summary:focus-visible,
+.main-celadon-controls input:focus-visible,
+.main-celadon-controls select:focus-visible,
+.main-celadon-controls button:focus-visible { outline: 2px solid var(--c4); outline-offset: 2px; }
+
+.main-celadon-controls button:disabled { cursor: not-allowed; opacity: .45; }
+
+.main-celadon-controls[data-breathing="off"] [data-celadon-setting="breathStrength"],
+.main-celadon-controls[data-breathing="off"] [data-celadon-setting="breathPeriod"],
+.main-celadon-controls[data-tyndall="off"] [data-celadon-setting="tyndallStrength"],
+.main-celadon-controls[data-tyndall="off"] [data-celadon-setting="mediumDensity"] { opacity: .38; }
+
+.main-celadon-controls[data-paused="true"] > summary::before { border-color: var(--c5); background: transparent; }
+.main-celadon-controls[data-paused="false"] > summary::before { background: var(--c4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c3) 22%, transparent); }
+
+.main-celadon-controls[data-paused="false"] > summary::before {
+    animation: main-celadon-status 2.8s ease-in-out infinite;
 }
 
 .query-hero .site-page-description { max-width: 610px; }
@@ -212,6 +289,11 @@ html[data-theme="atlas-celadon"] .main-celadon-stage[data-render-state="ready"] 
 }
 
 .site-page-hero__exhibit.symbol-motion-host--portal { overflow: visible; }
+
+@keyframes main-celadon-status {
+    0%, 100% { opacity: .52; }
+    50% { opacity: 1; }
+}
 
 .quick-section { padding-top: 48px; }
 
@@ -436,10 +518,24 @@ html[data-theme="atlas-celadon"] .main-celadon-stage[data-render-state="ready"] 
             color-mix(in srgb, var(--c1) 18%, transparent) 58%,
             var(--c1) 100%);
     }
+
+    .main-celadon-controls {
+        position: fixed;
+        z-index: 9000;
+        top: auto;
+        right: 14px;
+        bottom: max(14px, env(safe-area-inset-bottom));
+        left: 14px;
+        width: auto;
+    }
+
+    .main-celadon-controls__body { max-height: min(62vh, 520px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .quick-item,
     .recent-card,
     .main-celadon-stage .stage-status { transition: none; }
+
+    .main-celadon-controls[data-paused="false"] > summary::before { animation: none; }
 }
