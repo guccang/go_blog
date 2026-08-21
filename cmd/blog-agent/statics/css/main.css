@@ -183,6 +183,38 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .site-
 
 html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .main-celadon-controls { display: block; }
 
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] {
+    grid-template-columns: minmax(0, 1fr) 292px;
+    gap: 20px;
+    align-items: stretch;
+    min-height: 520px;
+}
+
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .main-celadon-stage,
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"]::after {
+    right: 312px;
+}
+
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .site-page-hero__copy {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .main-celadon-controls {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    width: 100%;
+    margin-top: 42px;
+}
+
+html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] .main-celadon-controls__body {
+    max-height: min(420px, calc(100vh - 180px));
+}
+
 .main-celadon-controls > summary {
     display: flex;
     align-items: center;
@@ -205,6 +237,8 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .main-
     max-height: 244px;
     padding: 11px 13px 13px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     scrollbar-color: var(--c3) transparent;
     scrollbar-width: thin;
 }
@@ -520,16 +554,54 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"] > .main-
     }
 
     .main-celadon-controls {
-        position: fixed;
-        z-index: 9000;
-        top: auto;
-        right: 14px;
-        bottom: max(14px, env(safe-area-inset-bottom));
-        left: 14px;
-        width: auto;
+        right: 0;
+        bottom: auto;
+        left: auto;
+        width: min(292px, 100%);
+    }
+}
+
+@media (max-width: 720px) {
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] {
+        grid-template-columns: 1fr;
+        grid-template-rows: 280px auto;
+        gap: 16px;
+        align-items: start;
+        min-height: 0;
+        padding-top: 36px;
     }
 
-    .main-celadon-controls__body { max-height: min(62vh, 520px); }
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .main-celadon-stage,
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"]::after {
+        right: -14px;
+        left: -14px;
+        height: 280px;
+    }
+
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .site-page-hero__copy {
+        display: none;
+    }
+
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .site-page-hero__exhibit {
+        grid-column: 1;
+        grid-row: 1;
+        min-height: 280px;
+    }
+
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] > .main-celadon-controls {
+        position: relative;
+        top: auto;
+        right: auto;
+        left: auto;
+        grid-column: 1;
+        grid-row: 2;
+        width: 100%;
+        margin: 0;
+    }
+
+    html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] .main-celadon-controls__body {
+        max-height: min(42vh, 260px);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

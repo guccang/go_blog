@@ -931,6 +931,9 @@
     CeladonRainLab.prototype.bindAmbientControls = function () {
         if (!ambientControls) return;
         var self = this;
+        ambientControls.addEventListener('toggle', function () {
+            self.syncAmbientInspectorLayout();
+        });
         ambientControls.querySelectorAll('[data-celadon-setting]').forEach(function (input) {
             input.addEventListener('input', function () {
                 self.settings[input.dataset.celadonSetting] = Number(input.value);
@@ -957,7 +960,19 @@
         if (pauseControl) pauseControl.addEventListener('click', function () { self.setAmbientPaused(!self.ambientPaused); });
         var resetControl = ambientControls.querySelector('[data-celadon-action="reset"]');
         if (resetControl) resetControl.addEventListener('click', function () { self.resetAmbientSettings(); });
+        this.syncAmbientInspectorLayout();
         this.syncAmbientControls();
+    };
+
+    CeladonRainLab.prototype.syncAmbientInspectorLayout = function () {
+        if (!this.ambient || !ambientHero || !ambientControls) return;
+        ambientHero.dataset.celadonInspector = ambientControls.open ? 'open' : 'closed';
+        var self = this;
+        window.requestAnimationFrame(function () {
+            if (!self.themeActive) return;
+            self.resize();
+            if (self.assetReady) self.render();
+        });
     };
 
     CeladonRainLab.prototype.setAmbientWindDirection = function (directionKey, immediate) {

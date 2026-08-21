@@ -38,7 +38,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=8`, `/css/main.css?v=celadon-rain-4`,
+		`/js/celadon_rain_lab.js?v=9`, `/css/main.css?v=celadon-rain-5`,
 		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
 		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
 		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
@@ -140,6 +140,8 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
 		`setAmbientPaused`, `resetAmbientSettings`, `window.localStorage.removeItem`,
 		`setAmbientReady(true)`, `setAmbientReady(false)`, `ambientPaused`,
+		`syncAmbientInspectorLayout`, `ambientControls.addEventListener('toggle'`,
+		`ambientHero.dataset.celadonInspector`, `self.resize()`,
 		`ambientControls.contains(event.target)`,
 		`far_rain`, `middle_rain`, `near_rain`, `stepSimulation`, `refraction_shift`,
 	} {
@@ -185,12 +187,18 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`html[data-theme="atlas-celadon"] .query-hero::after`,
 		`linear-gradient(90deg`, `pointer-events: none`,
 		`.query-hero[data-celadon-ready="true"] > .site-page-hero__exhibit`,
-		`visibility: hidden`, `.main-celadon-controls`, `position: fixed`,
-		`height: 220px`, `@media (prefers-reduced-motion: reduce)`,
+		`visibility: hidden`, `.main-celadon-controls`,
+		`[data-celadon-inspector="open"]`, `grid-template-columns: minmax(0, 1fr) 292px`,
+		`right: 312px`, `grid-template-rows: 280px auto`, `grid-row: 2`,
+		`max-height: min(42vh, 260px)`, `height: 220px`,
+		`@media (prefers-reduced-motion: reduce)`,
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Errorf("main celadon presentation missing %q", expected)
 		}
+	}
+	if regexp.MustCompile(`(?s)\.main-celadon-controls\s*\{\s*position:\s*fixed`).MatchString(styles) {
+		t.Error("main celadon controls must not use the viewport-covering fixed drawer")
 	}
 }
 

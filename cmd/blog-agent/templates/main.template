@@ -6,7 +6,7 @@
     <title>GUCCANG</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=8">
-    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-4">
+    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-5">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -171,7 +171,7 @@
     </aside>
 
     <script src="/js/visual_symbol_motion.js?v=1"></script>
-    <script src="/js/celadon_rain_lab.js?v=8"></script>
+    <script src="/js/celadon_rain_lab.js?v=9"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>
 </html>
