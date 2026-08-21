@@ -248,6 +248,14 @@ details[open] > summary { border-bottom: 1px solid var(--line); }
 .control-body input[type="range"] { width: 100%; height: 16px; margin: 0 0 7px; accent-color: var(--gold); }
 .control-body > p { margin: 11px 0 0; color: rgba(231, 210, 161, .48); font-size: 9px; line-height: 1.65; }
 
+.light-source-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 4px 0 7px; }
+.light-source-picker button { min-height: 28px; padding: 3px 2px; color: rgba(231, 210, 161, .7); border: 1px solid rgba(231, 210, 161, .2); background: rgba(102, 80, 107, .12); cursor: pointer; font-size: 8px; }
+.light-source-picker button:hover,
+.light-source-picker button:focus-visible { border-color: rgba(217, 164, 65, .7); outline: none; }
+.light-source-picker button[aria-pressed="true"] { color: var(--ink); border-color: var(--gold); background: var(--gold); }
+.control-body > .light-source-detail { min-height: 30px; margin: 0 0 9px; }
+.light-controls[data-source="point"] #lightAngleControl { cursor: not-allowed; opacity: .38; }
+
 .wind-compass { min-width: 0; margin: 10px 0 13px; padding: 10px; border: 1px solid rgba(217, 164, 65, .2); }
 .wind-compass legend { display: flex; justify-content: space-between; width: 100%; padding: 0; color: rgba(231, 210, 161, .7); font-size: 10px; }
 .wind-compass legend output { color: var(--gold); font: 7px/1 var(--utility); }

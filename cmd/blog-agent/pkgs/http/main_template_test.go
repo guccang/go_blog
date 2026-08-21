@@ -38,7 +38,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=dunhuang-2`,
+		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=dunhuang-3`,
 		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
 		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
 		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
@@ -50,9 +50,12 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`data-celadon-action="impact"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
 		`main-celadon-controls__compact-label`, `main-celadon-controls__full-label`,
 		`id="dunhuangStage"`, `id="dunhuangCanvas"`, `data-dunhuang-mode="ambient"`,
-		`/js/dunhuang_motion_lab.js?v=3`, `id="mainDunhuangControls"`,
+		`/js/dunhuang_motion_lab.js?v=4`, `id="mainDunhuangControls"`,
 		`data-dunhuang-wind-direction`, `data-dunhuang-setting="ribbonAmplitude"`,
-		`data-dunhuang-setting="lightX"`, `data-dunhuang-toggle="breathingEnabled"`,
+		`data-dunhuang-setting="lightX"`, `data-dunhuang-setting="lightAngle"`,
+		`data-dunhuang-light-source="point"`, `data-dunhuang-light-source="spot"`,
+		`data-dunhuang-light-source="directional"`, `data-dunhuang-light-source="area"`,
+		`data-dunhuang-toggle="breathingEnabled"`,
 		`data-dunhuang-toggle="tyndallEnabled"`, `data-dunhuang-action="gust"`,
 		`main-dunhuang-controls__compact-label`, `main-dunhuang-controls__full-label`,
 	} {
@@ -274,7 +277,9 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`guccang:themechange`, `theme === 'atlas-dunhuang'`, `window.cancelAnimationFrame`,
 		`dunhuangSettingsPreset`, `dunhuangNumericSchema`, `dunhuangBooleanSettings`,
 		`windStrength: { min: 0, max: 2, step: 0.05, initial: 0.9`,
-		`beamSpread: { min: 0.08, max: 0.65`,
+		`beamSpread: { min: 0.08, max: 0.65`, `lightAngle: { min: -60, max: 60`,
+		`lightSources`, `this.lightSourceKey = 'spot'`, `u_light_type`, `u_light_angle`,
+		`direct_light_field`, `path_to_light`, `setLightSource`,
 		`guccang-dunhuang-motion-settings`, `restoreDunhuangPreferences`,
 		`saveDunhuangPreferences`, `clearDunhuangPreferences`, `labNumericBindings`,
 		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
@@ -289,7 +294,7 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 			t.Errorf("dunhuang ambient renderer missing %q", expected)
 		}
 	}
-	for _, forbidden := range []string{`getContext('2d')`, "Canvas2DRenderer", "fallback"} {
+	for _, forbidden := range []string{`getContext('2d')`, "Canvas2DRenderer", "fallback", `vec2 target_value = vec2(0.56, 0.12)`} {
 		if strings.Contains(script, forbidden) {
 			t.Errorf("dunhuang ambient renderer must hard-stop instead of using %q", forbidden)
 		}
@@ -315,8 +320,8 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 	}
 	mainInputs := parseInputs(mainPage)
 	labInputs := parseInputs(labPage)
-	if len(mainInputs) != 12 || len(labInputs) != 12 {
-		t.Fatalf("main and dunhuang lab should each define 12 numeric inputs, got main=%d lab=%d", len(mainInputs), len(labInputs))
+	if len(mainInputs) != 13 || len(labInputs) != 13 {
+		t.Fatalf("main and dunhuang lab should each define 13 numeric inputs, got main=%d lab=%d", len(mainInputs), len(labInputs))
 	}
 	for key, mainDefinition := range mainInputs {
 		if labDefinition := labInputs[key]; labDefinition != mainDefinition {
@@ -333,6 +338,9 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 	dunhuangPage := mainPage[dunhuangStart:]
 	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(dunhuangPage, -1)); directions != 8 {
 		t.Errorf("main dunhuang wind selector should expose 8 directions, got %d", directions)
+	}
+	if sources := len(regexp.MustCompile(`data-dunhuang-light-source="(?:point|spot|directional|area)"`).FindAllString(dunhuangPage, -1)); sources != 4 {
+		t.Errorf("main dunhuang light selector should expose 4 source types, got %d", sources)
 	}
 	if toggles := len(regexp.MustCompile(`data-dunhuang-toggle="(?:breathingEnabled|tyndallEnabled)"`).FindAllString(mainPage, -1)); toggles != 2 {
 		t.Errorf("main dunhuang controls should expose 2 effect toggles, got %d", toggles)
@@ -353,6 +361,7 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`grid-template-columns: repeat(2, minmax(0, 1fr))`,
 		`grid-column: 1 / -1`, `grid-row: 2`,
 		`.main-dunhuang-controls:not([open])`, `width: 128px`,
+		`.main-dunhuang-source-picker`,
 		`.main-dunhuang-controls__compact-label`, `@media (prefers-reduced-motion: reduce)`,
 	} {
 		if !strings.Contains(styles, expected) {

@@ -27,6 +27,11 @@
     var lightXValue = document.getElementById('lightXValue');
     var lightYControl = document.getElementById('lightYControl');
     var lightYValue = document.getElementById('lightYValue');
+    var lightAngleControl = document.getElementById('lightAngleControl');
+    var lightAngleValue = document.getElementById('lightAngleValue');
+    var lightSourceValue = document.getElementById('lightSourceValue');
+    var lightSourceDetail = document.getElementById('lightSourceDetail');
+    var lightSourceButtons = Array.prototype.slice.call(stage.querySelectorAll('[data-light-source]'));
     var breathingToggle = document.getElementById('breathingToggle');
     var breathStrengthControl = document.getElementById('breathStrengthControl');
     var breathStrengthValue = document.getElementById('breathStrengthValue');
@@ -57,6 +62,13 @@
         northwest: { angle: 315, label: '西北风 NW → SE', detail: '来自西北，向东南方向流动。' }
     };
 
+    var lightSources = {
+        point: { uniform: 0, label: '点光源', detail: '从月轮位置向四周柔和散射，角度参数不参与点光计算。' },
+        spot: { uniform: 1, label: '聚光源', detail: '从月轮位置沿入射角展开聚光锥，让矿物尘显出成束光路。' },
+        directional: { uniform: 2, label: '平行光', detail: '模拟远处恒定方向的月光，形成方向一致的平行光束。' },
+        area: { uniform: 3, label: '面光源', detail: '以月轮为中心铺开宽阔柔光面，边缘更缓、覆盖范围更大。' }
+    };
+
     var dunhuangNumericSchema = {
         windStrength: { min: 0, max: 2, step: 0.05, initial: 0.9, format: 'fixed2' },
         dustDensity: { min: 0.1, max: 1.4, step: 0.02, initial: 0.72, format: 'fixed2' },
@@ -66,6 +78,7 @@
         lightStrength: { min: 0.15, max: 1.3, step: 0.01, initial: 0.78, format: 'fixed2' },
         lightX: { min: 0.12, max: 0.88, step: 0.01, initial: 0.34, format: 'percent' },
         lightY: { min: 0.3, max: 0.94, step: 0.01, initial: 0.72, format: 'percent' },
+        lightAngle: { min: -60, max: 60, step: 1, initial: 20, format: 'angle' },
         breathStrength: { min: 0, max: 0.6, step: 0.01, initial: 0.24, format: 'fixed2' },
         breathPeriod: { min: 3, max: 16, step: 0.5, initial: 7, format: 'seconds' },
         tyndallStrength: { min: 0, max: 1.5, step: 0.02, initial: 0.82, format: 'fixed2' },
@@ -110,6 +123,11 @@
     function formatDunhuangValue(format, value) {
         if (format === 'percent') return Math.round(value * 100) + '%';
         if (format === 'seconds') return value.toFixed(1) + ' s';
+        if (format === 'angle') {
+            if (value < 0) return '左倾 ' + Math.abs(Math.round(value)) + '°';
+            if (value > 0) return '右倾 ' + Math.round(value) + '°';
+            return '正下 0°';
+        }
         return value.toFixed(2);
     }
 
@@ -123,6 +141,7 @@
             { input: lightStrengthControl, output: lightStrengthValue, key: 'lightStrength' },
             { input: lightXControl, output: lightXValue, key: 'lightX' },
             { input: lightYControl, output: lightYValue, key: 'lightY' },
+            { input: lightAngleControl, output: lightAngleValue, key: 'lightAngle' },
             { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength' },
             { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod' },
             { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength' },
@@ -179,6 +198,8 @@
         'uniform float u_ribbon_response;',
         'uniform float u_light_strength;',
         'uniform vec2 u_light_position;',
+        'uniform int u_light_type;',
+        'uniform float u_light_angle;',
         'uniform float u_breath_strength;',
         'uniform float u_breath_period;',
         'uniform float u_tyndall_strength;',
@@ -242,31 +263,82 @@
         '    return vec2(core_value, halo_value) * visibility_value * u_dust_density;',
         '}',
         '',
-        'float beam_cluster(vec2 uv_value, float aspect_value) {',
-        '    vec2 target_value = vec2(0.56, 0.12);',
-        '    vec2 direction_value = target_value - u_light_position;',
-        '    direction_value.x *= aspect_value;',
-        '    direction_value = normalize(direction_value);',
+        'vec2 light_direction() {',
+        '    return normalize(vec2(sin(u_light_angle), -cos(u_light_angle)));',
+        '}',
+        '',
+        'float direct_light_field(vec2 uv_value, float aspect_value) {',
+        '    vec2 direction_value = light_direction();',
         '    vec2 perpendicular_value = vec2(-direction_value.y, direction_value.x);',
         '    vec2 relative_value = uv_value - u_light_position;',
         '    relative_value.x *= aspect_value;',
         '    float forward_value = dot(relative_value, direction_value);',
         '    float lateral_value = dot(relative_value, perpendicular_value);',
-        '    float travel_value = smoothstep(0.015, 0.11, forward_value) * (1.0 - smoothstep(0.74, 1.28, forward_value));',
+        '    float radial_distance = length(relative_value);',
+        '    if (u_light_type == 0) {',
+        '        return exp(-radial_distance * 3.1);',
+        '    }',
+        '    if (u_light_type == 1) {',
+        '        float cone_width = 0.045 + max(forward_value, 0.0) * mix(0.16, 0.7, u_beam_spread);',
+        '        float cone_value = 1.0 - smoothstep(cone_width * 0.55, cone_width, abs(lateral_value));',
+        '        float travel_value = smoothstep(-0.015, 0.08, forward_value) * (1.0 - smoothstep(0.78, 1.42, forward_value));',
+        '        return max(exp(-radial_distance * 6.2) * 0.42, cone_value * travel_value);',
+        '    }',
+        '    if (u_light_type == 2) {',
+        '        float lane_width = mix(0.2, 0.66, u_beam_spread);',
+        '        float lane_value = 1.0 - smoothstep(lane_width * 0.58, lane_width, abs(lateral_value));',
+        '        return lane_value * mix(0.82, 1.0, smoothstep(-0.35, 0.7, forward_value));',
+        '    }',
+        '    float sheet_width = mix(0.34, 0.92, u_beam_spread);',
+        '    float sheet_value = 1.0 - smoothstep(sheet_width * 0.55, sheet_width, abs(lateral_value));',
+        '    float sheet_depth = exp(-abs(forward_value) * 0.82);',
+        '    return sheet_value * mix(0.72, 1.0, sheet_depth);',
+        '}',
+        '',
+        'vec2 path_to_light(vec2 uv_value, float aspect_value) {',
+        '    if (u_light_type == 2) {',
+        '        vec2 direction_value = light_direction();',
+        '        return vec2(-direction_value.x / aspect_value, -direction_value.y) * 1.25;',
+        '    }',
+        '    return u_light_position - uv_value;',
+        '}',
+        '',
+        'float beam_cluster(vec2 uv_value, float aspect_value) {',
+        '    vec2 direction_value = light_direction();',
+        '    vec2 perpendicular_value = vec2(-direction_value.y, direction_value.x);',
+        '    vec2 relative_value = uv_value - u_light_position;',
+        '    relative_value.x *= aspect_value;',
+        '    float forward_value = dot(relative_value, direction_value);',
+        '    float lateral_value = dot(relative_value, perpendicular_value);',
+        '    if (u_light_type == 0) {',
+        '        float radial_distance = length(relative_value);',
+        '        float mineral_halo = exp(-radial_distance * 3.8);',
+        '        float radial_texture = 0.78 + value_noise(vec2(atan(relative_value.y, relative_value.x) * 3.2, radial_distance * 13.0 - u_time * 0.08)) * 0.22;',
+        '        return mineral_halo * radial_texture;',
+        '    }',
+        '    float travel_value = smoothstep(0.015, 0.11, forward_value) * (1.0 - smoothstep(0.78, 1.36, forward_value));',
+        '    if (u_light_type == 3) {',
+        '        float sheet_width = mix(0.32, 0.86, u_beam_spread);',
+        '        float sheet_value = 1.0 - smoothstep(sheet_width * 0.62, sheet_width, abs(lateral_value));',
+        '        float curtain_texture = mix(0.72, 1.0, value_noise(vec2(lateral_value * 11.0, forward_value * 3.2 - u_time * 0.035)));',
+        '        return sheet_value * curtain_texture * mix(0.68, 1.0, travel_value);',
+        '    }',
         '    float cluster_value = 0.0;',
         '    for (int beam_index = 0; beam_index < 5; beam_index++) {',
         '        float seed_value = hash21(vec2(float(beam_index) + 3.2, 9.7));',
         '        float index_value = float(beam_index) / 4.0 * 2.0 - 1.0;',
-        '        float beam_center = (index_value + (seed_value - 0.5) * 0.2) * u_beam_spread * (0.1 + max(forward_value, 0.0) * 0.72);',
+        '        float fan_value = u_light_type == 1 ? (0.1 + max(forward_value, 0.0) * 0.72) : 0.48;',
+        '        float beam_center = (index_value + (seed_value - 0.5) * 0.2) * u_beam_spread * fan_value;',
         '        float width_value = mix(0.012, 0.027, seed_value) * (0.8 + max(forward_value, 0.0) * 0.48);',
         '        float beam_value = 1.0 - smoothstep(width_value * 0.38, width_value * 2.4, abs(lateral_value - beam_center));',
         '        cluster_value = max(cluster_value, beam_value * mix(0.7, 1.0, seed_value));',
         '    }',
-        '    return mix(0.13, 1.0, cluster_value) * travel_value;',
+        '    float source_field = direct_light_field(uv_value, aspect_value);',
+        '    return mix(0.1, 1.0, cluster_value) * max(travel_value, source_field * 0.78);',
         '}',
         '',
         'float tyndall_scattering(vec2 uv_value, float aspect_value) {',
-        '    vec2 light_path = u_light_position - uv_value;',
+        '    vec2 light_path = path_to_light(uv_value, aspect_value);',
         '    float path_length = max(length(vec2(light_path.x * aspect_value, light_path.y)), 0.05);',
         '    vec2 dust_drift = u_wind_direction * u_time * 0.012 * (u_wind_strength + u_gust);',
         '    float volume_value = 0.0;',
@@ -279,7 +351,8 @@
         '        float transmittance = exp(-path_ratio * path_length * u_dust_density * 0.78);',
         '        volume_value += density_value * transmittance;',
         '    }',
-        '    return volume_value / 6.0 * beam_cluster(uv_value, aspect_value) * u_dust_density;',
+        '    float source_field = direct_light_field(uv_value, aspect_value);',
+        '    return volume_value / 6.0 * beam_cluster(uv_value, aspect_value) * mix(0.45, 1.0, source_field) * u_dust_density;',
         '}',
         '',
         'vec4 dunhuang_sample(vec2 uv_value, float aspect_value) {',
@@ -308,7 +381,7 @@
         '    return mix(anchored_value, flowing_value, ribbon_region * painted_ribbon);',
         '}',
         '',
-        'vec3 fresco_background(vec2 uv_value, float light_energy) {',
+        'vec3 fresco_background(vec2 uv_value, float aspect_value, float light_energy) {',
         '    vec3 night_color = vec3(0.169, 0.145, 0.2);',
         '    vec3 violet_color = vec3(0.4, 0.314, 0.42);',
         '    vec3 clay_color = vec3(0.71, 0.416, 0.298);',
@@ -317,7 +390,7 @@
         '    vec3 color_value = mix(night_color, violet_color, vertical_value * 0.72);',
         '    float horizon_value = exp(-pow((uv_value.y - 0.34) * 4.8, 2.0));',
         '    color_value = mix(color_value, clay_color, horizon_value * 0.2);',
-        '    float light_pool = exp(-distance(uv_value, u_light_position) * 3.4);',
+        '    float light_pool = direct_light_field(uv_value, aspect_value);',
         '    color_value += gold_color * light_pool * light_energy * 0.22;',
         '    float plaster_value = fbm(uv_value * vec2(3.4, 2.1) + vec2(1.3, 4.1));',
         '    float mineral_value = value_noise(uv_value * vec2(24.0, 18.0) + vec2(8.7));',
@@ -331,7 +404,7 @@
         '    float aspect_value = u_resolution.x / max(u_resolution.y, 1.0);',
         '    float breath_value = breathing_light();',
         '    float light_energy = u_light_strength * breath_value;',
-        '    vec3 color_value = fresco_background(uv_value, light_energy);',
+        '    vec3 color_value = fresco_background(uv_value, aspect_value, light_energy);',
         '',
         '    vec2 far_dust = dust_layer(uv_value, 31.0, 18.0, 0.028, 0.105, 3.7, 0.1);',
         '    vec2 middle_dust = dust_layer(uv_value, 20.0, 12.0, 0.052, 0.13, 11.4, 0.55);',
@@ -345,7 +418,7 @@
         '    }',
         '',
         '    vec4 symbol_value = dunhuang_sample(uv_value, aspect_value);',
-        '    float symbol_light = exp(-distance(uv_value, u_light_position) * 2.6) * light_energy;',
+        '    float symbol_light = direct_light_field(uv_value, aspect_value) * light_energy;',
         '    vec3 lit_symbol = symbol_value.rgb * mix(0.78, 1.16, clamp(symbol_light, 0.0, 1.0));',
         '    color_value = mix(color_value, lit_symbol, symbol_value.a);',
         '',
@@ -411,6 +484,7 @@
 
         this.settings = dunhuangSettingsPreset();
         this.windDirectionKey = 'west';
+        this.lightSourceKey = 'spot';
         this.windAngle = 270;
         this.targetWindAngle = 270;
         this.ambientPaused = false;
@@ -438,7 +512,8 @@
             'u_dunhuang_atlas', 'u_resolution', 'u_pointer', 'u_time',
             'u_wind_direction', 'u_wind_strength', 'u_gust', 'u_dust_density',
             'u_ribbon_amplitude', 'u_ribbon_tension', 'u_ribbon_response',
-            'u_light_strength', 'u_light_position', 'u_breath_strength', 'u_breath_period',
+            'u_light_strength', 'u_light_position', 'u_light_type', 'u_light_angle',
+            'u_breath_strength', 'u_breath_period',
             'u_tyndall_strength', 'u_beam_spread', 'u_figure_position', 'u_figure_scale'
         ]);
         this.assetTexture = this.createAssetTexture();
@@ -506,6 +581,11 @@
             button.addEventListener('click', function () {
                 self.setWindDirection(button.dataset.windDirection);
                 self.saveDunhuangPreferences();
+            });
+        });
+        lightSourceButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                self.setLightSource(button.dataset.lightSource);
             });
         });
         [
@@ -588,10 +668,11 @@
             this.windAngle = windDirections[preferences.windDirection].angle;
             this.targetWindAngle = this.windAngle;
         }
+        if (lightSources[preferences.lightSource]) this.lightSourceKey = preferences.lightSource;
     };
 
     DunhuangMotionLab.prototype.saveDunhuangPreferences = function () {
-        var preferences = { windDirection: this.windDirectionKey };
+        var preferences = { windDirection: this.windDirectionKey, lightSource: this.lightSourceKey };
         var self = this;
         Object.keys(dunhuangNumericSchema).forEach(function (key) { preferences[key] = self.settings[key]; });
         dunhuangBooleanSettings.forEach(function (key) { preferences[key] = self.settings[key]; });
@@ -617,6 +698,13 @@
         });
         var directionControl = ambientControls.querySelector('[data-dunhuang-wind-direction]');
         if (directionControl) directionControl.value = this.windDirectionKey;
+        var sourceOutput = ambientControls.querySelector('[data-dunhuang-light-source-output]');
+        if (sourceOutput) sourceOutput.value = lightSources[this.lightSourceKey].label;
+        ambientControls.querySelectorAll('[data-dunhuang-light-source]').forEach(function (button) {
+            button.setAttribute('aria-pressed', String(button.dataset.dunhuangLightSource === self.lightSourceKey));
+        });
+        var ambientAngleControl = ambientControls.querySelector('[data-dunhuang-setting="lightAngle"]');
+        if (ambientAngleControl) ambientAngleControl.disabled = this.lightSourceKey === 'point';
         var pauseControl = ambientControls.querySelector('[data-dunhuang-action="pause"]');
         if (pauseControl) {
             pauseControl.disabled = this.reducedMotion;
@@ -625,6 +713,7 @@
         }
         ambientControls.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
         ambientControls.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
+        ambientControls.dataset.source = this.lightSourceKey;
         ambientControls.dataset.paused = String(this.paused);
     };
 
@@ -654,6 +743,11 @@
                 self.setAmbientWindDirection(directionControl.value, false);
             });
         }
+        ambientControls.querySelectorAll('[data-dunhuang-light-source]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                self.setLightSource(button.dataset.dunhuangLightSource);
+            });
+        });
         var gustControl = ambientControls.querySelector('[data-dunhuang-action="gust"]');
         if (gustControl) gustControl.addEventListener('click', function () { self.addGust(); });
         var pauseControl = ambientControls.querySelector('[data-dunhuang-action="pause"]');
@@ -778,12 +872,28 @@
     };
 
     DunhuangMotionLab.prototype.syncLightControls = function () {
+        var source = lightSources[this.lightSourceKey];
+        lightSourceButtons.forEach(function (button) {
+            button.setAttribute('aria-pressed', String(button.dataset.lightSource === this.lightSourceKey));
+        }, this);
+        if (lightSourceValue) lightSourceValue.value = source.label;
+        if (lightSourceDetail) lightSourceDetail.textContent = source.detail;
+        if (lightAngleControl) lightAngleControl.disabled = this.lightSourceKey === 'point';
         breathingToggle.setAttribute('aria-checked', String(this.settings.breathingEnabled));
         breathingToggle.textContent = this.settings.breathingEnabled ? '已开启' : '已关闭';
         tyndallToggle.setAttribute('aria-checked', String(this.settings.tyndallEnabled));
         tyndallToggle.textContent = this.settings.tyndallEnabled ? '已开启' : '已关闭';
         lightInstrument.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
         lightInstrument.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
+        lightInstrument.dataset.source = this.lightSourceKey;
+    };
+
+    DunhuangMotionLab.prototype.setLightSource = function (sourceKey) {
+        if (!lightSources[sourceKey]) return;
+        this.lightSourceKey = sourceKey;
+        if (this.ambient) this.syncAmbientControls(); else this.syncLightControls();
+        this.saveDunhuangPreferences();
+        if (this.paused && this.assetReady) this.render();
     };
 
     DunhuangMotionLab.prototype.syncPauseButton = function () {
@@ -853,6 +963,8 @@
         gl.uniform1f(uniforms.u_ribbon_response, this.settings.ribbonResponse);
         gl.uniform1f(uniforms.u_light_strength, this.settings.lightStrength);
         gl.uniform2f(uniforms.u_light_position, this.settings.lightX, this.settings.lightY);
+        gl.uniform1i(uniforms.u_light_type, lightSources[this.lightSourceKey].uniform);
+        gl.uniform1f(uniforms.u_light_angle, this.settings.lightAngle * Math.PI / 180);
         gl.uniform1f(uniforms.u_breath_strength, this.settings.breathingEnabled ? this.settings.breathStrength : 0);
         gl.uniform1f(uniforms.u_breath_period, this.settings.breathPeriod);
         gl.uniform1f(uniforms.u_tyndall_strength, this.settings.tyndallEnabled ? this.settings.tyndallStrength : 0);
@@ -879,6 +991,7 @@
 
     DunhuangMotionLab.prototype.reset = function () {
         this.settings = dunhuangSettingsPreset();
+        this.lightSourceKey = 'spot';
         clearDunhuangPreferences();
         this.setWindDirection('west', true);
         this.syncLabControls();
@@ -893,6 +1006,7 @@
         if (!this.ambient) return;
         this.settings = dunhuangSettingsPreset();
         this.windDirectionKey = 'west';
+        this.lightSourceKey = 'spot';
         this.windAngle = 270;
         this.targetWindAngle = 270;
         this.ambientPaused = false;

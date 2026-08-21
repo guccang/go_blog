@@ -19,7 +19,9 @@ func TestDunhuangMotionLabOwnsTheme004Sample(t *testing.T) {
 		`id="dunhuangStage"`, `id="dunhuangCanvas"`, `data-dunhuang-asset="/images/visual-symbols/visual-symbols-01.webp"`,
 		`id="windStrengthControl"`, `id="dustDensityControl"`, `id="gustButton"`,
 		`id="ribbonAmplitudeControl"`, `id="ribbonTensionControl"`, `id="ribbonResponseControl"`,
-		`id="lightStrengthControl"`, `id="lightXControl"`, `id="lightYControl"`,
+		`id="lightStrengthControl"`, `id="lightXControl"`, `id="lightYControl"`, `id="lightAngleControl"`,
+		`id="lightSourceValue"`, `data-light-source="point"`, `data-light-source="spot"`,
+		`data-light-source="directional"`, `data-light-source="area"`,
 		`id="breathingToggle"`, `id="breathStrengthControl"`, `id="breathPeriodControl"`,
 		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="beamSpreadControl"`,
 		`id="pauseButton"`, `id="resetButton"`,
@@ -27,7 +29,7 @@ func TestDunhuangMotionLabOwnsTheme004Sample(t *testing.T) {
 		`data-wind-direction="east"`, `data-wind-direction="southeast"`,
 		`data-wind-direction="south"`, `data-wind-direction="southwest"`,
 		`data-wind-direction="west"`, `data-wind-direction="northwest"`,
-		`/css/dunhuang_motion_lab.css?v=1`, `/js/dunhuang_motion_lab.js?v=3`,
+		`/css/dunhuang_motion_lab.css?v=2`, `/js/dunhuang_motion_lab.js?v=4`,
 		"远、中、近三层", "飘带", "呼吸月光", "丁达尔", "WebGL2",
 	} {
 		if !strings.Contains(page, expected) {
@@ -53,7 +55,9 @@ func TestDunhuangRendererUsesWebGL2NaturalPasses(t *testing.T) {
 		`0.6 + texture_uv.x * 0.2`, `far_dust`, `middle_dust`, `near_dust`,
 		`ribbon_region`, `u_ribbon_amplitude`, `u_ribbon_tension`, `u_ribbon_response`,
 		`anchored_value`, `flowing_value`, `mix(anchored_value, flowing_value, ribbon_region * painted_ribbon)`,
-		`u_dust_density`, `u_light_position`, `u_light_strength`,
+		`u_dust_density`, `u_light_position`, `u_light_strength`, `u_light_type`, `u_light_angle`,
+		`lightSources`, `light_direction`, `direct_light_field`, `path_to_light`,
+		`gl.uniform1i(uniforms.u_light_type`, `this.settings.lightAngle * Math.PI / 180`,
 		`breathing_light`, `u_breath_strength`, `u_breath_period`,
 		`u_tyndall_strength`, `u_beam_spread`, `this.settings.tyndallEnabled ? this.settings.tyndallStrength : 0`,
 		`windDirections`, `meteorologicalFlow`, `webglcontextlost`, `prefers-reduced-motion`,
@@ -63,7 +67,10 @@ func TestDunhuangRendererUsesWebGL2NaturalPasses(t *testing.T) {
 			t.Errorf("敦煌暮色渲染器缺少 %q", expected)
 		}
 	}
-	for _, forbidden := range []string{`getContext('2d')`, "Canvas2D", "fallback", "float active", "repeating-linear-gradient"} {
+	for _, forbidden := range []string{
+		`getContext('2d')`, "Canvas2D", "fallback", "float active", "repeating-linear-gradient",
+		`vec2 target_value = vec2(0.56, 0.12)`,
+	} {
 		if strings.Contains(script, forbidden) {
 			t.Errorf("敦煌暮色样板不应包含 %q", forbidden)
 		}
@@ -87,7 +94,7 @@ func TestDunhuangRendererUsesWebGL2NaturalPasses(t *testing.T) {
 	styles := string(stylesContent)
 	for _, expected := range []string{
 		`.dunhuang-stage`, `#dunhuangCanvas`, `.lab-controls`, `.wind-compass`,
-		`.ribbon-controls`, `.light-controls`, `.effect-toggle`, `[aria-checked="false"]`,
+		`.ribbon-controls`, `.light-controls`, `.light-source-picker`, `.effect-toggle`, `[aria-checked="false"]`,
 		`--night: #2b2533`, `--violet: #66506b`, `--clay: #b56a4c`,
 		`--gold: #d9a441`, `--sand: #e7d2a1`,
 		`@media (max-width: 640px)`, `prefers-reduced-motion`, `:focus-visible`,

@@ -484,6 +484,9 @@ html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-d
 .main-dunhuang-controls output { color: var(--c4); font: 8px/1 var(--ui-font-mono); }
 .main-dunhuang-controls input[type="range"] { width: 100%; height: 14px; margin: 0 0 6px; accent-color: var(--c4); }
 .main-dunhuang-controls select { min-width: 138px; padding: 5px 7px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 28%, transparent); background: var(--c1); font: 8px/1.2 var(--ui-font-mono); }
+.main-dunhuang-source-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 3px 0 10px; }
+.main-dunhuang-source-picker button { min-height: 28px; padding: 3px 2px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 24%, transparent); background: transparent; font-size: 8px; }
+.main-dunhuang-source-picker button[aria-pressed="true"] { color: var(--c1); border-color: var(--c4); background: var(--c4); }
 .main-dunhuang-switch { min-height: 26px; }
 .main-dunhuang-switch input { width: 30px; accent-color: var(--c4); }
 
@@ -498,6 +501,7 @@ html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-d
 .main-dunhuang-controls select:focus-visible,
 .main-dunhuang-controls button:focus-visible { outline: 2px solid var(--c4); outline-offset: 2px; }
 .main-dunhuang-controls button:disabled { cursor: not-allowed; opacity: .45; }
+.main-dunhuang-controls input[type="range"]:disabled { cursor: not-allowed; opacity: .38; }
 
 .main-dunhuang-controls[data-breathing="off"] [data-dunhuang-setting="breathStrength"],
 .main-dunhuang-controls[data-breathing="off"] [data-dunhuang-setting="breathPeriod"],
