@@ -32,9 +32,6 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`id="workspaceQueryForm"`, `id="askPIButton"`, "继续阅读", "快速开始", `href="/link"`,
 		`href="/products"`, "产品库",
 		`data-page="main"`, `class="query-hero site-page-hero"`, `data-symbol="portal"`, `data-symbol-motion="portal"`,
-		`data-natural-motion="celadon-rain"`, `data-motion-theme="atlas-celadon"`,
-		`main-theme-symbol--celadon`,
-		`/css/natural_motion.css?v=2`, `/js/natural_motion.js?v=2`,
 		`/js/visual_symbol_motion.js?v=1`,
 		`class="quick-section site-section"`, `class="continue-section site-section"`,
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
@@ -46,6 +43,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 	}
 	for _, removed := range []string{
 		`class="sidebar"`, `id="blogContainer"`, "博客数量:", "search-command-select",
+		"data-natural-motion", "natural_motion.js", "natural_motion.css", "main-theme-symbol--celadon",
 	} {
 		if strings.Contains(page, removed) {
 			t.Fatalf("main page still contains removed module %q", removed)
@@ -56,55 +54,6 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 	continueIndex := strings.Index(page, `class="continue-section site-section"`)
 	if quickIndex < 0 || queryIndex < 0 || continueIndex < 0 || !(queryIndex < quickIndex && quickIndex < continueIndex) {
 		t.Fatalf("main sections are not ordered page portal, quick start, continue reading")
-	}
-}
-
-func TestNaturalMotionRuntimeDefinesComposablePhysicalEffects(t *testing.T) {
-	staticDir := filepath.Join("..", "..", "statics")
-	scriptContent, err := os.ReadFile(filepath.Join(staticDir, "js", "natural_motion.js"))
-	if err != nil {
-		t.Fatalf("读取自然动效脚本失败: %v", err)
-	}
-	stylesContent, err := os.ReadFile(filepath.Join(staticDir, "css", "natural_motion.css"))
-	if err != nil {
-		t.Fatalf("读取自然动效样式失败: %v", err)
-	}
-
-	script := string(scriptContent)
-	for _, expected := range []string{
-		"registerEffect", "registerPreset", "celadon-rain",
-		"wind", "rain", "ripple", "light-breathe", "sway",
-		"surface-impact", "webgl2", "naturalMotionUnavailable",
-		"drop_visibility", "shader-compile-failed", "webgl2-unavailable",
-		"webgl2-initialization-failed",
-		"webglcontextlost", "webgl2-context-lost",
-		"IntersectionObserver", "ResizeObserver", "visibilitychange",
-		"prefers-reduced-motion", "guccang:themechange",
-	} {
-		if !strings.Contains(script, expected) {
-			t.Errorf("自然动效脚本缺少 %q", expected)
-		}
-	}
-	if strings.Contains(script, `getContext('2d')`) || strings.Contains(script, "Canvas2DRenderer") {
-		t.Error("自然动效不应在 WebGL2 不可用时降级为近似 Canvas 2D 效果")
-	}
-	if strings.Contains(script, "smoothstep(0.5, 0.16") {
-		t.Error("自然动效着色器不应使用边界反转、结果未定义的 smoothstep")
-	}
-	if strings.Contains(script, "float active") {
-		t.Error("自然动效着色器不应使用 GLSL ES 3.00 保留字 active")
-	}
-
-	styles := string(stylesContent)
-	for _, expected := range []string{
-		`.natural-motion__canvas`, `pointer-events: none`,
-		`data-theme="atlas-celadon"`, `.main-theme-symbol--celadon`,
-		`html[data-theme="atlas-celadon"][data-page="main"] body::before`,
-		`prefers-reduced-motion`,
-	} {
-		if !strings.Contains(styles, expected) {
-			t.Errorf("自然动效样式缺少 %q", expected)
-		}
 	}
 }
 

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page="natural-motion-lab" data-theme="atlas-celadon">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>001 青瓷雨 · 自然动效实验室</title>
+    <script src="/js/theme.js?v=7"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=7">
+    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=1">
+</head>
+<body>
+    <a class="skip-link" href="#celadonStage">跳到动效舞台</a>
+
+    <header class="lab-header">
+        <a class="lab-back" href="/tools">← 返回工具</a>
+        <p><span>ARCHIVE NO. 001</span><strong>CELADON RAIN LAB</strong></p>
+        <a class="lab-archive" href="/tools/visual-themes">查看主题图鉴 ↗</a>
+    </header>
+
+    <main>
+        <section class="lab-intro" aria-labelledby="labTitle">
+            <div>
+                <p class="lab-kicker">东方器韵 · 光雨实验</p>
+                <h1 id="labTitle">青瓷雨</h1>
+            </div>
+            <p>先把一场雨做对。风不是单一方向，雨不是平面线条，水面会记住每次碰撞，瓷釉与环境光在波纹中缓慢偏移。</p>
+        </section>
+
+        <section class="celadon-stage" id="celadonStage" data-render-state="loading"
+                 data-celadon-asset="/images/visual-symbols/visual-symbols-01.webp"
+                 aria-label="001 青瓷雨 WebGL2 动效样板">
+            <canvas id="celadonCanvas" aria-hidden="true"></canvas>
+
+            <div class="stage-status" id="stageStatus" role="status" aria-live="polite">
+                <span class="status-mark"></span>
+                <strong id="stageStatusTitle">正在初始化 WebGL2</strong>
+                <small id="stageStatusDetail">准备风场、水面和青瓷纹理。</small>
+            </div>
+
+            <div class="depth-scale" aria-hidden="true">
+                <span>FAR / 雾雨</span>
+                <span>MID / 雨帘</span>
+                <span>NEAR / 溅落</span>
+            </div>
+
+            <div class="stage-title" aria-hidden="true">
+                <span>雨洗青瓷釉面</span>
+                <strong>CELADON<br>AFTER RAIN</strong>
+            </div>
+
+            <details class="lab-controls" open>
+                <summary>环境参数 <span>LIVE</span></summary>
+                <div class="control-body">
+                    <label for="windControl">
+                        <span>风场</span><output id="windValue">1.00</output>
+                    </label>
+                    <input id="windControl" type="range" min="0" max="2" value="1" step="0.05">
+
+                    <label for="rainControl">
+                        <span>雨量</span><output id="rainValue">1.00</output>
+                    </label>
+                    <input id="rainControl" type="range" min="0.15" max="1.8" value="1" step="0.05">
+
+                    <label for="lightControl">
+                        <span>环境光</span><output id="lightValue">1.00</output>
+                    </label>
+                    <input id="lightControl" type="range" min="0.45" max="1.35" value="1" step="0.05">
+
+                    <div class="control-actions">
+                        <button id="impactButton" type="button">单次落滴</button>
+                        <button id="pauseButton" type="button" aria-pressed="false">暂停</button>
+                        <button id="resetButton" type="button">重置</button>
+                    </div>
+                    <p>移动指针改变局部风向；点击水面可直接注入一次碰撞。</p>
+                </div>
+            </details>
+
+            <p class="stage-caption"><span>WATER MEMORY / 01</span>每颗雨滴都向高度场写入一次能量。</p>
+        </section>
+
+        <section class="quality-notes" aria-labelledby="qualityTitle">
+            <header><p>QUALITY SAMPLE</p><h2 id="qualityTitle">当前只验收这四件事</h2></header>
+            <dl>
+                <div><dt>风</dt><dd>多尺度流场与阵风通过空间传播，而非整幅同步倾斜。</dd></div>
+                <div><dt>雨</dt><dd>远、中、近三层拥有独立的视差、速度、线径和虚化。</dd></div>
+                <div><dt>水</dt><dd>碰撞会生成水冠与传播波，波面法线继续扭曲倒影。</dd></div>
+                <div><dt>光</dt><dd>暖纸反射与冷青釉光分层呼吸，不用发光滤镜冒充空气。</dd></div>
+            </dl>
+        </section>
+    </main>
+
+    <script src="/js/celadon_rain_lab.js?v=1" defer></script>
+</body>
+</html>

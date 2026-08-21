@@ -92,17 +92,16 @@ func TestVisualThemeAtlasAppliesImplementedThemes(t *testing.T) {
 	}
 }
 
-func TestVisualThemeAtlasPreviewsCeladonNaturalMotion(t *testing.T) {
+func TestVisualThemeAtlasKeepsUnapprovedMotionOutOfDialog(t *testing.T) {
 	scriptContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "visual_themes.js"))
 	if err != nil {
 		t.Fatalf("读取视觉主题脚本失败: %v", err)
 	}
-	for _, expected := range []string{
-		"dialogMotionScene", "destroyDialogMotion", "theme.id === '001'",
-		"GuCcangNaturalMotion.mount", "'celadon-rain'", "theme: ''",
+	for _, removed := range []string{
+		"dialogMotionScene", "destroyDialogMotion", "GuCcangNaturalMotion", "natural_motion.js",
 	} {
-		if !strings.Contains(string(scriptContent), expected) {
-			t.Errorf("青瓷雨自然动效预览缺少 %q", expected)
+		if strings.Contains(string(scriptContent), removed) {
+			t.Errorf("主题弹窗不应运行未验收动效 %q", removed)
 		}
 	}
 
@@ -111,11 +110,12 @@ func TestVisualThemeAtlasPreviewsCeladonNaturalMotion(t *testing.T) {
 		t.Fatalf("读取视觉主题模板失败: %v", err)
 	}
 	page := string(templateContent)
-	for _, expected := range []string{
-		`/css/natural_motion.css?v=2`, `/js/natural_motion.js?v=2`, `/js/visual_themes.js?v=4`,
-	} {
-		if !strings.Contains(page, expected) {
-			t.Errorf("视觉主题模板缺少自然动效资产 %q", expected)
+	if !strings.Contains(page, `/js/visual_themes.js?v=5`) {
+		t.Error("视觉主题模板未更新脚本缓存版本")
+	}
+	for _, removed := range []string{"natural_motion.js", "natural_motion.css"} {
+		if strings.Contains(page, removed) {
+			t.Errorf("视觉主题模板不应加载未验收动效 %q", removed)
 		}
 	}
 }
@@ -132,7 +132,7 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
 		`/css/visual_themes.css?v=4`,
-		`/js/visual_themes.js?v=4`,
+		`/js/visual_themes.js?v=5`,
 		`/js/theme.js?v=7`,
 		`/css/theme.css?v=7`,
 	} {

@@ -42,6 +42,7 @@ var view = struct {
 	PageTags               func(h.ResponseWriter, string, string)
 	PageTools              func(h.ResponseWriter)
 	PageVisualThemes       func(h.ResponseWriter)
+	PageNaturalMotionLab   func(h.ResponseWriter)
 }{
 	PageBookDetail:         PageBookDetail,
 	PageDiaryPasswordError: PageDiaryPasswordError,
@@ -64,6 +65,7 @@ var view = struct {
 	PageTags:               PageTags,
 	PageTools:              PageTools,
 	PageVisualThemes:       PageVisualThemes,
+	PageNaturalMotionLab:   PageNaturalMotionLab,
 }
 
 func templateInfo() {
@@ -1022,6 +1024,22 @@ func PageVisualThemes(w h.ResponseWriter) {
 	if err := tmpl.Execute(w, nil); err != nil {
 		log.Debug(log.ModuleView, err.Error())
 		h.Error(w, "Failed to render visual themes template", h.StatusInternalServerError)
+	}
+}
+
+// PageNaturalMotionLab renders the isolated 001 Celadon Rain quality sample.
+func PageNaturalMotionLab(w h.ResponseWriter) {
+	tempDir := config.GetHttpTemplatePath()
+	tmpl, err := t.ParseFiles(filepath.Join(tempDir, "natural_motion_lab.template"))
+	if err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to parse natural motion lab template", h.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Debug(log.ModuleView, err.Error())
+		h.Error(w, "Failed to render natural motion lab template", h.StatusInternalServerError)
 	}
 }
 

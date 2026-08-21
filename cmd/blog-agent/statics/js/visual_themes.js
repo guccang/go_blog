@@ -153,7 +153,6 @@
     var toast = document.getElementById('atlas-toast');
     var activeSeries = 'all';
     var toastTimer;
-    var dialogMotionScene;
 
     var implementedThemes = {
         '001': 'atlas-celadon',
@@ -250,14 +249,7 @@
         showToast('已复制 ' + color);
     }
 
-    function destroyDialogMotion() {
-        if (!dialogMotionScene) return;
-        dialogMotionScene.destroy();
-        dialogMotionScene = null;
-    }
-
     function openTheme(theme) {
-        destroyDialogMotion();
         dialogArt.className = 'dialog-art';
         dialogArt.style.cssText = colorVariables(theme.colors);
         dialogArt.innerHTML = symbolMarkup(theme);
@@ -273,9 +265,6 @@
         applyButton.hidden = !themeKey;
         applyButton.dataset.themeKey = themeKey || '';
         dialog.showModal();
-        if (theme.id === '001' && window.GuCcangNaturalMotion) {
-            dialogMotionScene = window.GuCcangNaturalMotion.mount(dialogArt, 'celadon-rain', { theme: '' });
-        }
     }
 
     filterRoot.addEventListener('click', function (event) {
@@ -310,7 +299,6 @@
     dialog.addEventListener('click', function (event) {
         if (event.target === dialog) dialog.close();
     });
-    dialog.addEventListener('close', destroyDialogMotion);
     document.addEventListener('keydown', function (event) {
         if (event.key === '/' && document.activeElement !== searchInput && !dialog.open) {
             event.preventDefault();
