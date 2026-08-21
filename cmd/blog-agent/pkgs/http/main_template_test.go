@@ -38,7 +38,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=dunhuang-1`,
+		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=dunhuang-2`,
 		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
 		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
 		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
@@ -50,7 +50,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`data-celadon-action="impact"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
 		`main-celadon-controls__compact-label`, `main-celadon-controls__full-label`,
 		`id="dunhuangStage"`, `id="dunhuangCanvas"`, `data-dunhuang-mode="ambient"`,
-		`/js/dunhuang_motion_lab.js?v=2`, `id="mainDunhuangControls"`,
+		`/js/dunhuang_motion_lab.js?v=3`, `id="mainDunhuangControls"`,
 		`data-dunhuang-wind-direction`, `data-dunhuang-setting="ribbonAmplitude"`,
 		`data-dunhuang-setting="lightX"`, `data-dunhuang-toggle="breathingEnabled"`,
 		`data-dunhuang-toggle="tyndallEnabled"`, `data-dunhuang-action="gust"`,
@@ -279,6 +279,8 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 		`saveDunhuangPreferences`, `clearDunhuangPreferences`, `labNumericBindings`,
 		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
 		`setAmbientPaused`, `resetAmbientSettings`, `syncAmbientInspectorLayout`,
+		`sceneAspectRatio`, `captureAmbientSceneGeometry`, `syncAmbientSceneGeometry`,
+		`--dunhuang-scene-height`,
 		`ambientHero.dataset.dunhuangInspector`, `setAmbientReady(true)`, `setAmbientReady(false)`,
 		`ambientControls.contains(event.target)`, `this.assetReady`,
 		`dust_layer`, `far_dust`, `middle_dust`, `near_dust`, `ribbon_region`,
@@ -344,8 +346,12 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 	for _, expected := range []string{
 		`html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"]::after`,
 		`.query-hero[data-dunhuang-ready="true"] > .site-page-hero__exhibit`,
-		`[data-dunhuang-inspector="open"]`, `grid-template-columns: minmax(0, 1fr) 292px`,
-		`right: 312px`, `grid-template-rows: 280px auto`, `grid-row: 2`,
+		`[data-dunhuang-inspector="open"]`,
+		`grid-template-rows: calc(var(--dunhuang-scene-height, 320px) + 24px) auto`,
+		`height: var(--dunhuang-scene-height, 320px)`,
+		`grid-template-columns: repeat(4, minmax(0, 1fr))`,
+		`grid-template-columns: repeat(2, minmax(0, 1fr))`,
+		`grid-column: 1 / -1`, `grid-row: 2`,
 		`.main-dunhuang-controls:not([open])`, `width: 128px`,
 		`.main-dunhuang-controls__compact-label`, `@media (prefers-reduced-motion: reduce)`,
 	} {
@@ -355,6 +361,20 @@ func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
 	}
 	if regexp.MustCompile(`(?s)\.main-dunhuang-controls\s*\{\s*position:\s*fixed`).MatchString(styles) {
 		t.Error("main dunhuang controls must not use the viewport-covering fixed drawer")
+	}
+	openHeroRule := regexp.MustCompile(`(?s)html\[data-theme="atlas-dunhuang"\] \.query-hero\[data-dunhuang-ready="true"\]\[data-dunhuang-inspector="open"\] \{([^}]*)\}`).FindStringSubmatch(styles)
+	if len(openHeroRule) != 2 {
+		t.Fatal("main dunhuang open inspector layout rule missing")
+	}
+	if strings.Contains(openHeroRule[1], "min-height: 520px") || strings.Contains(openHeroRule[1], "grid-template-columns: minmax(0, 1fr) 292px") {
+		t.Error("main dunhuang inspector must preserve the closed main scene aspect instead of creating a tall side preview")
+	}
+	openStageRule := regexp.MustCompile(`(?s)html\[data-theme="atlas-dunhuang"\] \.query-hero\[data-dunhuang-ready="true"\]\[data-dunhuang-inspector="open"\] > \.main-dunhuang-stage,\s*html\[data-theme="atlas-dunhuang"\] \.query-hero\[data-dunhuang-ready="true"\]\[data-dunhuang-inspector="open"\]::after \{([^}]*)\}`).FindStringSubmatch(styles)
+	if len(openStageRule) != 2 {
+		t.Fatal("main dunhuang open scene sizing rule missing")
+	}
+	if strings.Contains(openStageRule[1], "right: 312px") || strings.Contains(openStageRule[1], "height: 280px") {
+		t.Error("main dunhuang inspector must not shift or stretch the WebGL scene")
 	}
 }
 

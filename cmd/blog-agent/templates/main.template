@@ -6,7 +6,7 @@
     <title>GUCCANG</title>
     <script src="/js/theme.js?v=8"></script>
     <link rel="stylesheet" href="/css/theme.css?v=9">
-    <link rel="stylesheet" href="/css/main.css?v=dunhuang-1">
+    <link rel="stylesheet" href="/css/main.css?v=dunhuang-2">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -255,7 +255,7 @@
 
     <script src="/js/visual_symbol_motion.js?v=1"></script>
     <script src="/js/celadon_rain_lab.js?v=10"></script>
-    <script src="/js/dunhuang_motion_lab.js?v=2"></script>
+    <script src="/js/dunhuang_motion_lab.js?v=3"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>
 </html>

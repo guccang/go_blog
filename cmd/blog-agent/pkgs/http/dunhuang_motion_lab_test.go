@@ -27,7 +27,7 @@ func TestDunhuangMotionLabOwnsTheme004Sample(t *testing.T) {
 		`data-wind-direction="east"`, `data-wind-direction="southeast"`,
 		`data-wind-direction="south"`, `data-wind-direction="southwest"`,
 		`data-wind-direction="west"`, `data-wind-direction="northwest"`,
-		`/css/dunhuang_motion_lab.css?v=1`, `/js/dunhuang_motion_lab.js?v=2`,
+		`/css/dunhuang_motion_lab.css?v=1`, `/js/dunhuang_motion_lab.js?v=3`,
 		"远、中、近三层", "飘带", "呼吸月光", "丁达尔", "WebGL2",
 	} {
 		if !strings.Contains(page, expected) {

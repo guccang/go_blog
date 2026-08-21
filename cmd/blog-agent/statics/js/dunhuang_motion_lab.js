@@ -417,6 +417,8 @@
         this.restoreDunhuangPreferences();
         this.figurePosition = this.ambient ? { x: 0.71, y: 0.51 } : { x: 0.51, y: 0.5 };
         this.figureScale = this.ambient ? 1.08 : 1;
+        this.sceneAspectRatio = 0;
+        this.sceneHeight = 0;
         this.pointer = { x: 0.5, y: 0.5, targetX: 0.5, targetY: 0.5 };
         this.elapsed = 0;
         this.gust = 0;
@@ -664,13 +666,38 @@
 
     DunhuangMotionLab.prototype.syncAmbientInspectorLayout = function () {
         if (!ambientHero || !ambientControls) return;
-        ambientHero.dataset.dunhuangInspector = ambientControls.open ? 'open' : 'closed';
+        var inspectorOpen = ambientControls.open;
+        if (inspectorOpen) this.captureAmbientSceneGeometry(true);
+        ambientHero.dataset.dunhuangInspector = inspectorOpen ? 'open' : 'closed';
         var self = this;
         window.requestAnimationFrame(function () {
             if (!self.themeActive) return;
+            self.syncAmbientSceneGeometry();
             self.resize();
             if (self.assetReady) self.render();
         });
+    };
+
+    DunhuangMotionLab.prototype.captureAmbientSceneGeometry = function (force) {
+        if (!this.ambient || !ambientHero || !ambientControls || (ambientControls.open && !force) || !this.themeActive) return;
+        var bounds = stage.getBoundingClientRect();
+        if (bounds.width <= 1 || bounds.height <= 1) return;
+        this.sceneAspectRatio = bounds.width / bounds.height;
+        this.sceneHeight = bounds.height;
+        ambientHero.style.setProperty('--dunhuang-scene-height', bounds.height.toFixed(2) + 'px');
+    };
+
+    DunhuangMotionLab.prototype.syncAmbientSceneGeometry = function () {
+        if (!this.ambient || !ambientHero || !ambientControls) return;
+        if (!ambientControls.open) {
+            this.captureAmbientSceneGeometry();
+            return;
+        }
+        if (this.sceneAspectRatio <= 0) return;
+        var stageWidth = stage.getBoundingClientRect().width;
+        if (stageWidth <= 1) return;
+        this.sceneHeight = stageWidth / this.sceneAspectRatio;
+        ambientHero.style.setProperty('--dunhuang-scene-height', this.sceneHeight.toFixed(2) + 'px');
     };
 
     DunhuangMotionLab.prototype.setAmbientWindDirection = function (directionKey, immediate) {
@@ -775,6 +802,7 @@
     };
 
     DunhuangMotionLab.prototype.resize = function () {
+        if (this.ambient) this.syncAmbientSceneGeometry();
         var bounds = stage.getBoundingClientRect();
         var dpr = Math.min(window.devicePixelRatio || 1, window.matchMedia('(max-width: 720px)').matches ? 1.15 : 1.55);
         var pixelBudget = window.matchMedia('(max-width: 720px)').matches ? 850000 : 2100000;
