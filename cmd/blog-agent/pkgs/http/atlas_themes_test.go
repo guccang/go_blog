@@ -35,7 +35,6 @@ func TestAtlasThemeBackgroundLayerVisible(t *testing.T) {
 func TestAtlasThemeDynamics(t *testing.T) {
 	styles := readThemeStyles(t)
 	for _, expected := range []string{
-		"@keyframes atlas-celadon-rain",
 		"@keyframes atlas-swiss-tick",
 		"@keyframes atlas-chrome-breathe",
 		`html[data-theme="atlas-celadon"][data-page="main"] :where(.quick-item, .recent-card):hover`,
@@ -44,6 +43,15 @@ func TestAtlasThemeDynamics(t *testing.T) {
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Errorf("atlas 主题动态效果缺少 %q", expected)
+		}
+	}
+	for _, forbidden := range []string{
+		`html[data-theme="atlas-celadon"] body::before`,
+		"@keyframes atlas-celadon-rain",
+		"animation: atlas-celadon-rain",
+	} {
+		if strings.Contains(styles, forbidden) {
+			t.Errorf("青瓷主题背景不应保留斜线晃动 %q", forbidden)
 		}
 	}
 

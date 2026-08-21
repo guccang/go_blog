@@ -984,11 +984,6 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
     --ui-card-shadow: 0 10px 24px color-mix(in srgb, var(--c4) 16%, transparent);
 }
 
-html[data-theme="atlas-celadon"] body::before {
-    opacity: .5;
-    background-image: repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 4%, transparent) 0 1px, transparent 1px 9px);
-}
-
 html[data-theme="atlas-celadon"] :where(h1, h2, h3) { letter-spacing: .04em; }
 
 /* 051 瑞士网格 Swiss Grid · 编辑印刷 · light */
@@ -1049,19 +1044,6 @@ html[data-theme="atlas-chrome"] body::before {
 }
 
 /* ===== atlas 主题动态气质 ===== */
-
-/* 青瓷雨 · 润：双层雨丝视差下落，交互如晕染 */
-html[data-theme="atlas-celadon"] body::before {
-    opacity: .5;
-    background-image:
-        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 10%, transparent) 0 1px, transparent 1px 9px),
-        repeating-linear-gradient(105deg, color-mix(in srgb, var(--c4) 6%, transparent) 0 1px, transparent 1px 17px);
-    animation: atlas-celadon-rain 1.6s linear infinite;
-}
-
-@keyframes atlas-celadon-rain {
-    to { background-position: 148px 40px; }
-}
 
 html[data-theme="atlas-celadon"] body :where(.quick-item, .recent-card, .card, .panel) {
     transition: transform .3s ease-out, box-shadow .3s ease-out;
