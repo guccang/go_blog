@@ -23,12 +23,16 @@ func TestNaturalMotionLabOwnsCeladonRainSample(t *testing.T) {
 		`data-wind-direction="south"`, `data-wind-direction="southwest"`, `data-wind-direction="west"`,
 		`data-wind-direction="northwest"`, `data-wind-angle="45"`, `data-wind-angle="135"`,
 		`data-wind-angle="225"`, `data-wind-angle="315"`,
+		`id="lightInstrument"`, `data-breathing="on"`, `data-tyndall="on"`,
+		`id="breathingToggle"`, `id="breathStrengthControl"`, `id="breathPeriodControl"`,
+		`id="tyndallToggle"`, `id="tyndallStrengthControl"`, `id="tyndallAngleControl"`,
 		`id="impactButton"`, `id="pauseButton"`, `id="resetButton"`,
 		`/js/theme.js?v=7`, `/css/theme.css?v=7`,
-		`/css/celadon_rain_lab.css?v=3`, `/js/celadon_rain_lab.js?v=3`,
+		`/css/celadon_rain_lab.css?v=4`, `/js/celadon_rain_lab.js?v=4`,
 		"北风 0°，N → S", "东风 90°，E → W", "南风 180°，S → N", "西风 270°，W → E",
 		"东北风 45°，NE → SW", "东南风 135°，SE → NW",
 		"西南风 225°，SW → NE", "西北风 315°，NW → SE",
+		"呼吸光", "丁达尔光", "雨雾中的体积散射", "右上 28°",
 		"风场", "三层", "水冠", "波面法线",
 	} {
 		if !strings.Contains(page, expected) {
@@ -60,6 +64,10 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 		`north: { angle: 0`, `northeast: { angle: 45`, `east: { angle: 90`,
 		`southeast: { angle: 135`, `south: { angle: 180`, `southwest: { angle: 225`,
 		`west: { angle: 270`, `northwest: { angle: 315`,
+		`u_breath_strength`, `u_breath_period`, `breathing_light`, `primary_wave`, `secondary_wave`,
+		`u_tyndall_strength`, `u_tyndall_angle`, `tyndall_scattering`, `volume_density`,
+		`volume_index < 8`, `vessel_shadow`, `shadow_index < 6`, `rain_in_light`,
+		`formatTyndallAngle`, `syncLightControls`, `breathingEnabled`, `tyndallEnabled`,
 		`webglcontextlost`, `prefers-reduced-motion`,
 	} {
 		if !strings.Contains(script, expected) {
@@ -87,6 +95,9 @@ func TestCeladonRainRendererUsesPhysicalWebGL2Passes(t *testing.T) {
 		`.wind-compass`, `.wind-compass__dial`, `.wind-compass__needle`,
 		`.wind-direction--northeast`, `.wind-direction--southeast`,
 		`.wind-direction--southwest`, `.wind-direction--northwest`, `--wind-flow-angle`,
+		`.stage-instruments`, `.light-controls`, `.light-control-body`, `.light-effect`,
+		`.effect-toggle`, `[data-breathing="off"]`, `[data-tyndall="off"]`,
+		`min-height: 1100px`,
 		`--paper: #f4eedf`, `--celadon: #7fa99a`, `--deep-water: #3f6f66`,
 		`@media (max-width: 640px)`, `prefers-reduced-motion`, `:focus-visible`,
 	} {

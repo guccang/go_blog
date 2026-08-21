@@ -273,20 +273,35 @@ main { padding-bottom: 88px; }
     letter-spacing: .06em;
 }
 
-.lab-controls {
+.stage-instruments {
     position: absolute;
     z-index: 6;
     top: 84px;
     right: 28px;
+    bottom: 54px;
+    left: 28px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.lab-controls,
+.light-controls {
     width: min(280px, calc(100% - 56px));
     color: var(--ink);
     border: 1px solid rgba(40, 60, 57, .22);
     background: rgba(244, 238, 223, .74);
     box-shadow: 0 18px 44px rgba(40, 60, 57, .1);
     backdrop-filter: blur(18px) saturate(.8);
+    pointer-events: auto;
 }
 
-.lab-controls summary {
+.lab-controls { order: 2; align-self: flex-start; }
+.light-controls { order: 1; align-self: flex-end; }
+
+.lab-controls summary,
+.light-controls summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -298,9 +313,12 @@ main { padding-bottom: 88px; }
     letter-spacing: .1em;
 }
 
-.lab-controls summary::-webkit-details-marker { display: none; }
-.lab-controls summary span { color: var(--vermilion); font: 8px/1 var(--utility); }
-.lab-controls[open] summary { border-bottom: 1px solid rgba(40, 60, 57, .16); }
+.lab-controls summary::-webkit-details-marker,
+.light-controls summary::-webkit-details-marker { display: none; }
+.lab-controls summary span,
+.light-controls summary span { color: var(--vermilion); font: 8px/1 var(--utility); }
+.lab-controls[open] summary,
+.light-controls[open] summary { border-bottom: 1px solid rgba(40, 60, 57, .16); }
 
 .control-body { padding: 15px 14px 14px; }
 .control-body label {
@@ -465,6 +483,66 @@ main { padding-bottom: 88px; }
     line-height: 1.7;
 }
 
+.light-control-body { padding: 14px; }
+
+.light-control-body > label,
+.effect-sliders label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 5px;
+    color: rgba(40, 60, 57, .76);
+    font-size: 10px;
+}
+
+.light-control-body output { font: 8px/1 var(--utility); }
+
+.light-control-body input[type="range"] {
+    width: 100%;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--deep-water);
+}
+
+.light-effect {
+    margin-top: 11px;
+    padding-top: 11px;
+    border-top: 1px solid rgba(40, 60, 57, .15);
+}
+
+.light-effect header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.light-effect header > span { display: grid; gap: 4px; }
+.light-effect header strong { font-size: 11px; font-weight: 500; letter-spacing: .08em; }
+.light-effect header small { color: rgba(40, 60, 57, .48); font: 7px/1 var(--utility); }
+
+.effect-toggle {
+    min-width: 48px;
+    min-height: 26px;
+    padding: 4px 8px;
+    color: var(--paper);
+    border: 1px solid var(--deep-water);
+    background: var(--deep-water);
+    cursor: pointer;
+    font-size: 9px;
+}
+
+.effect-toggle[aria-pressed="false"] {
+    color: rgba(40, 60, 57, .62);
+    border-color: rgba(40, 60, 57, .24);
+    background: transparent;
+}
+
+.effect-sliders { display: grid; gap: 4px; transition: opacity .22s ease; }
+.effect-sliders input + label { margin-top: 4px; }
+.light-controls[data-breathing="off"] .light-effect--breathing .effect-sliders,
+.light-controls[data-tyndall="off"] .light-effect--tyndall .effect-sliders { opacity: .42; }
+
 .stage-caption {
     position: absolute;
     z-index: 4;
@@ -530,10 +608,22 @@ a:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
     .quality-notes { width: calc(100% - 32px); }
     .lab-intro { padding-top: 54px; }
     .lab-intro h1 { font-size: clamp(58px, 22vw, 92px); }
-    .celadon-stage { width: calc(100% - 16px); min-height: 760px; }
+    .celadon-stage { width: calc(100% - 16px); min-height: 1100px; }
     .stage-title { top: 26px; left: 24px; }
     .depth-scale { display: none; }
-    .lab-controls { top: auto; right: 12px; bottom: 54px; width: calc(100% - 24px); }
+    .stage-instruments {
+        top: 86px;
+        right: 12px;
+        bottom: 54px;
+        left: 12px;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+    .lab-controls,
+    .light-controls { width: 100%; align-self: auto; }
+    .lab-controls { order: 1; }
+    .light-controls { order: 2; }
     .stage-caption { right: 16px; bottom: 18px; left: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .quality-notes dl { grid-template-columns: 1fr; }
 }
@@ -543,4 +633,5 @@ a:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
     .stage-status .status-mark { animation: none; }
     .stage-status { transition: none; }
     .wind-compass__needle i { transition: none; }
+    .effect-sliders { transition: none; }
 }
