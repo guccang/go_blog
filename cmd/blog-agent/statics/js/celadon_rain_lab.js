@@ -21,12 +21,23 @@
     var lightSourceValue = document.getElementById('lightSourceValue');
     var lightSourceDetail = document.getElementById('lightSourceDetail');
     var lightSourceButtons = Array.prototype.slice.call(document.querySelectorAll('[data-light-source]'));
+    var sourceIntensityControl = document.getElementById('sourceIntensityControl');
+    var sourceIntensityValue = document.getElementById('sourceIntensityValue');
     var lightPositionControl = document.getElementById('lightPositionControl');
     var lightPositionValue = document.getElementById('lightPositionValue');
+    var lightVerticalControl = document.getElementById('lightVerticalControl');
+    var lightVerticalValue = document.getElementById('lightVerticalValue');
     var lightAngleControl = document.getElementById('lightAngleControl');
     var lightAngleValue = document.getElementById('lightAngleValue');
     var lightRangeControl = document.getElementById('lightRangeControl');
     var lightRangeValue = document.getElementById('lightRangeValue');
+    var beamToggle = document.getElementById('beamToggle');
+    var beamCountControl = document.getElementById('beamCountControl');
+    var beamCountValue = document.getElementById('beamCountValue');
+    var beamSpreadControl = document.getElementById('beamSpreadControl');
+    var beamSpreadValue = document.getElementById('beamSpreadValue');
+    var beamSoftnessControl = document.getElementById('beamSoftnessControl');
+    var beamSoftnessValue = document.getElementById('beamSoftnessValue');
     var breathingToggle = document.getElementById('breathingToggle');
     var breathStrengthControl = document.getElementById('breathStrengthControl');
     var breathStrengthValue = document.getElementById('breathStrengthValue');
@@ -159,6 +170,7 @@
         'uniform vec2 u_wind_direction;',
         'uniform float u_rain;',
         'uniform float u_light;',
+        'uniform float u_source_intensity;',
         'uniform float u_breath_strength;',
         'uniform float u_breath_period;',
         'uniform float u_tyndall_strength;',
@@ -167,6 +179,10 @@
         'uniform vec2 u_light_position;',
         'uniform float u_light_angle;',
         'uniform float u_light_range;',
+        'uniform float u_beam_enabled;',
+        'uniform int u_beam_count;',
+        'uniform float u_beam_spread;',
+        'uniform float u_beam_softness;',
         'uniform float u_waterline;',
         'uniform vec4 u_impacts[12];',
         'uniform int u_impact_count;',
@@ -314,6 +330,39 @@
         '    return u_light_position - uv_value;',
         '}',
         '',
+        'float beam_cluster_field(vec2 uv_value, float aspect_value) {',
+        '    if (u_beam_enabled < 0.5) return 1.0;',
+        '    vec2 relative_value = uv_value - u_light_position;',
+        '    relative_value.x *= aspect_value;',
+        '    vec2 direction_value = light_direction();',
+        '    vec2 perpendicular_value = vec2(-direction_value.y, direction_value.x);',
+        '    float forward_value = dot(relative_value, direction_value);',
+        '    float lateral_value = dot(relative_value, perpendicular_value);',
+        '    float travel_start = smoothstep(0.005, 0.075, forward_value);',
+        '    float travel_end = 1.0 - smoothstep(u_light_range * 0.82, u_light_range * 1.65, forward_value);',
+        '    float forward_scale = max(forward_value, 0.035);',
+        '    float fan_spread = u_beam_spread * (u_light_type == 2 ? 0.42 : 0.12 + forward_scale * 0.9);',
+        '    float count_span = max(float(u_beam_count - 1), 1.0);',
+        '    float cluster_value = 0.0;',
+        '    for (int beam_index = 0; beam_index < 7; beam_index++) {',
+        '        if (beam_index >= u_beam_count) break;',
+        '        float index_value = float(beam_index) / count_span * 2.0 - 1.0;',
+        '        if (u_beam_count == 1) index_value = 0.0;',
+        '        float seed_value = hash21(vec2(float(beam_index) + 2.1, 13.7));',
+        '        float beam_center = (index_value + (seed_value - 0.5) * 0.16) * fan_spread;',
+        '        float beam_width = mix(0.008, 0.026, u_beam_softness);',
+        '        beam_width *= (0.72 + forward_scale * 0.65) * mix(0.85, 1.15, seed_value);',
+        '        float beam_distance = abs(lateral_value - beam_center);',
+        '        float beam_core = 1.0 - smoothstep(beam_width * 0.28, beam_width, beam_distance);',
+        '        float edge_scale = mix(1.35, 3.2, u_beam_softness);',
+        '        float beam_halo = 1.0 - smoothstep(beam_width, beam_width * edge_scale, beam_distance);',
+        '        float beam_value = (beam_core * 0.72 + beam_halo * 0.28) * mix(0.72, 1.0, seed_value);',
+        '        cluster_value = max(cluster_value, beam_value);',
+        '    }',
+        '    float cluster_contrast = mix(0.14, 1.18, clamp(cluster_value, 0.0, 1.0));',
+        '    return cluster_contrast * travel_start * travel_end;',
+        '}',
+        '',
         'float tyndall_scattering(vec2 uv_value, float aspect_value, float vessel_angle) {',
         '    vec2 fog_drift = u_wind_direction * u_time * 0.009;',
         '    vec2 light_path = path_to_light(uv_value);',
@@ -343,9 +392,10 @@
         '',
         '    float field_value = clamp(direct_light_field(uv_value, aspect_value), 0.0, 1.0);',
         '    float source_geometry = mix(0.2, 1.0, field_value);',
+        '    float beam_geometry = beam_cluster_field(uv_value, aspect_value);',
         '    float air_above_water = smoothstep(u_waterline + 0.005, u_waterline + 0.09, uv_value.y);',
         '    float rain_density = mix(0.82, 1.32, clamp(u_rain / 1.8, 0.0, 1.0));',
-        '    return volume_density * source_geometry * (1.0 - vessel_shadow * 0.5) * air_above_water * rain_density;',
+        '    return volume_density * source_geometry * beam_geometry * (1.0 - vessel_shadow * 0.5) * air_above_water * rain_density;',
         '}',
         '',
         'vec3 paper_environment(vec2 uv_value, float ambient_light, float field_value) {',
@@ -391,9 +441,9 @@
         '    vessel_angle += horizontal_wind * u_wind * 0.012;',
         '    float breath_value = breathing_light();',
         '    float ambient_light = u_light * mix(1.0, breath_value, 0.38);',
-        '    float direct_light = u_light * breath_value;',
+        '    float direct_light = u_source_intensity * breath_value;',
         '    float field_value = direct_light_field(uv_value, aspect_value);',
-        '    vec3 color_value = paper_environment(uv_value, ambient_light, field_value);',
+        '    vec3 color_value = paper_environment(uv_value, ambient_light, field_value * direct_light);',
         '    vec4 vessel_value = celadon_sample(uv_value, aspect_value, vessel_angle, vec2(0.0));',
         '',
         '    float thread_x = 0.51 + sin(vessel_angle) * 0.035;',
@@ -420,7 +470,7 @@
         '        vec3 deep_color = vec3(0.11, 0.25, 0.23);',
         '        vec2 refracted_uv = uv_value + refraction_shift * 0.45;',
         '        float water_light_field = direct_light_field(refracted_uv, aspect_value);',
-        '        vec3 refracted_environment = paper_environment(refracted_uv, ambient_light, water_light_field);',
+        '        vec3 refracted_environment = paper_environment(refracted_uv, ambient_light, water_light_field * direct_light);',
         '        vec3 water_color = mix(shallow_color, deep_color, pow(water_depth, 0.72));',
         '        water_color = mix(water_color, refracted_environment, 0.16 + (1.0 - water_depth) * 0.16);',
         '        float caustic_value = pow(0.5 + 0.5 * sin((uv_value.x + wave_height * 0.08) * 185.0 + u_time * 0.55), 12.0);',
@@ -542,6 +592,7 @@
             wind: 1,
             rain: 1,
             light: 1,
+            sourceIntensity: 0.72,
             breathingEnabled: true,
             breathStrength: 0.28,
             breathPeriod: 6.5,
@@ -549,8 +600,13 @@
             tyndallStrength: 0.75,
             mediumDensity: 0.72,
             lightPosition: 0.68,
+            lightVertical: 0.84,
             lightAngle: -28,
-            lightRange: 0.62
+            lightRange: 0.62,
+            beamEnabled: true,
+            beamCount: 5,
+            beamSpread: 0.32,
+            beamSoftness: 0.52
         };
         this.lightSourceKey = 'point';
         this.windDirectionKey = 'west';
@@ -578,9 +634,10 @@
         ]);
         this.renderUniforms = uniformMap(gl, this.renderProgram, [
             'u_wave_state', 'u_celadon_atlas', 'u_resolution', 'u_wave_texel', 'u_pointer',
-            'u_time', 'u_wind', 'u_wind_direction', 'u_rain', 'u_light',
+            'u_time', 'u_wind', 'u_wind_direction', 'u_rain', 'u_light', 'u_source_intensity',
             'u_breath_strength', 'u_breath_period', 'u_tyndall_strength', 'u_medium_density',
             'u_light_type', 'u_light_position', 'u_light_angle', 'u_light_range', 'u_waterline',
+            'u_beam_enabled', 'u_beam_count', 'u_beam_spread', 'u_beam_softness',
             'u_impacts', 'u_impact_count'
         ]);
         this.createSimulationTargets();
@@ -675,9 +732,14 @@
             { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod', format: function (value) { return value.toFixed(1) + ' s'; } },
             { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength', format: function (value) { return value.toFixed(2); } },
             { input: mediumDensityControl, output: mediumDensityValue, key: 'mediumDensity', format: function (value) { return value.toFixed(2); } },
+            { input: sourceIntensityControl, output: sourceIntensityValue, key: 'sourceIntensity', format: function (value) { return value.toFixed(2); } },
             { input: lightPositionControl, output: lightPositionValue, key: 'lightPosition', format: function (value) { return Math.round(value * 100) + '%'; } },
+            { input: lightVerticalControl, output: lightVerticalValue, key: 'lightVertical', format: function (value) { return Math.round(value * 100) + '%'; } },
             { input: lightAngleControl, output: lightAngleValue, key: 'lightAngle', format: formatLightAngle },
-            { input: lightRangeControl, output: lightRangeValue, key: 'lightRange', format: function (value) { return value.toFixed(2); } }
+            { input: lightRangeControl, output: lightRangeValue, key: 'lightRange', format: function (value) { return value.toFixed(2); } },
+            { input: beamCountControl, output: beamCountValue, key: 'beamCount', format: function (value) { return Math.round(value) + ' 束'; } },
+            { input: beamSpreadControl, output: beamSpreadValue, key: 'beamSpread', format: function (value) { return value.toFixed(2); } },
+            { input: beamSoftnessControl, output: beamSoftnessValue, key: 'beamSoftness', format: function (value) { return value.toFixed(2); } }
         ].forEach(function (control) {
             control.input.addEventListener('input', function () {
                 var value = Number(control.input.value);
@@ -694,6 +756,7 @@
         });
 
         [
+            { button: beamToggle, key: 'beamEnabled' },
             { button: breathingToggle, key: 'breathingEnabled' },
             { button: tyndallToggle, key: 'tyndallEnabled' }
         ].forEach(function (effect) {
@@ -805,10 +868,13 @@
     };
 
     CeladonRainLab.prototype.syncLightControls = function () {
+        beamToggle.setAttribute('aria-checked', String(this.settings.beamEnabled));
+        beamToggle.textContent = this.settings.beamEnabled ? '已开启' : '已关闭';
         breathingToggle.setAttribute('aria-checked', String(this.settings.breathingEnabled));
         breathingToggle.textContent = this.settings.breathingEnabled ? '已开启' : '已关闭';
         tyndallToggle.setAttribute('aria-checked', String(this.settings.tyndallEnabled));
         tyndallToggle.textContent = this.settings.tyndallEnabled ? '已开启' : '已关闭';
+        lightInstrument.dataset.beams = this.settings.beamEnabled ? 'on' : 'off';
         lightInstrument.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
         lightInstrument.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
     };
@@ -929,14 +995,19 @@
         gl.uniform2f(uniforms.u_wind_direction, direction[0], direction[1]);
         gl.uniform1f(uniforms.u_rain, this.settings.rain);
         gl.uniform1f(uniforms.u_light, this.settings.light);
+        gl.uniform1f(uniforms.u_source_intensity, this.settings.sourceIntensity);
         gl.uniform1f(uniforms.u_breath_strength, this.settings.breathingEnabled ? this.settings.breathStrength : 0);
         gl.uniform1f(uniforms.u_breath_period, this.settings.breathPeriod);
         gl.uniform1f(uniforms.u_tyndall_strength, this.settings.tyndallEnabled ? this.settings.tyndallStrength : 0);
         gl.uniform1f(uniforms.u_medium_density, this.settings.mediumDensity);
         gl.uniform1i(uniforms.u_light_type, this.lightSource().uniform);
-        gl.uniform2f(uniforms.u_light_position, this.settings.lightPosition, 0.84);
+        gl.uniform2f(uniforms.u_light_position, this.settings.lightPosition, this.settings.lightVertical);
         gl.uniform1f(uniforms.u_light_angle, this.settings.lightAngle * Math.PI / 180);
         gl.uniform1f(uniforms.u_light_range, this.settings.lightRange);
+        gl.uniform1f(uniforms.u_beam_enabled, this.settings.beamEnabled ? 1 : 0);
+        gl.uniform1i(uniforms.u_beam_count, Math.round(this.settings.beamCount));
+        gl.uniform1f(uniforms.u_beam_spread, this.settings.beamSpread);
+        gl.uniform1f(uniforms.u_beam_softness, this.settings.beamSoftness);
         gl.uniform1f(uniforms.u_waterline, this.waterline);
         gl.uniform4fv(uniforms.u_impacts, impactData);
         gl.uniform1i(uniforms.u_impact_count, Math.min(this.impacts.length, 12));
@@ -963,6 +1034,7 @@
             wind: 1,
             rain: 1,
             light: 1,
+            sourceIntensity: 0.72,
             breathingEnabled: true,
             breathStrength: 0.28,
             breathPeriod: 6.5,
@@ -970,31 +1042,46 @@
             tyndallStrength: 0.75,
             mediumDensity: 0.72,
             lightPosition: 0.68,
+            lightVertical: 0.84,
             lightAngle: -28,
-            lightRange: 0.62
+            lightRange: 0.62,
+            beamEnabled: true,
+            beamCount: 5,
+            beamSpread: 0.32,
+            beamSoftness: 0.52
         };
         this.setLightSource('point');
         this.setWindDirection('west', true);
         windControl.value = '1';
         rainControl.value = '1';
         lightControl.value = '1';
+        sourceIntensityControl.value = '0.72';
         breathStrengthControl.value = '0.28';
         breathPeriodControl.value = '6.5';
         tyndallStrengthControl.value = '0.75';
         mediumDensityControl.value = '0.72';
         lightPositionControl.value = '0.68';
+        lightVerticalControl.value = '0.84';
         lightAngleControl.value = '-28';
         lightRangeControl.value = '0.62';
+        beamCountControl.value = '5';
+        beamSpreadControl.value = '0.32';
+        beamSoftnessControl.value = '0.52';
         windValue.value = '1.00';
         rainValue.value = '1.00';
         lightValue.value = '1.00';
+        sourceIntensityValue.value = '0.72';
         breathStrengthValue.value = '0.28';
         breathPeriodValue.value = '6.5 s';
         tyndallStrengthValue.value = '0.75';
         mediumDensityValue.value = '0.72';
         lightPositionValue.value = '68%';
+        lightVerticalValue.value = '84%';
         lightAngleValue.value = formatLightAngle(-28);
         lightRangeValue.value = '0.62';
+        beamCountValue.value = '5 束';
+        beamSpreadValue.value = '0.32';
+        beamSoftnessValue.value = '0.52';
         this.syncLightControls();
         this.pointer = { x: 0.5, y: 0.62, targetX: 0.5, targetY: 0.62 };
         this.impacts = [];

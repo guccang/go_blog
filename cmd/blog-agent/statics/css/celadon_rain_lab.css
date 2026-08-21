@@ -137,7 +137,7 @@ main { padding-bottom: 88px; }
     position: relative;
     isolation: isolate;
     width: min(1560px, calc(100% - 32px));
-    min-height: clamp(620px, 78vh, 920px);
+    min-height: clamp(960px, 96vh, 1120px);
     margin-inline: auto;
     overflow: hidden;
     border: 1px solid rgba(40, 60, 57, .18);
@@ -597,6 +597,7 @@ main { padding-bottom: 88px; }
 }
 
 .effect-sliders { transition: opacity .22s ease; }
+.light-controls[data-beams="off"] .light-effect--beams .effect-sliders,
 .light-controls[data-breathing="off"] .light-effect--breathing .effect-sliders,
 .light-controls[data-tyndall="off"] .light-effect--tyndall .effect-sliders { opacity: .42; }
 
@@ -654,7 +655,7 @@ a:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
     .lab-header { grid-template-columns: 1fr 1fr; }
     .lab-header p { display: none; }
     .lab-intro { grid-template-columns: 1fr; gap: 24px; }
-    .celadon-stage { min-height: 740px; }
+    .celadon-stage { min-height: 1020px; }
     .quality-notes { grid-template-columns: 1fr; gap: 36px; }
 }
 
@@ -665,7 +666,7 @@ a:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 3px; }
     .quality-notes { width: calc(100% - 32px); }
     .lab-intro { padding-top: 54px; }
     .lab-intro h1 { font-size: clamp(58px, 22vw, 92px); }
-    .celadon-stage { width: calc(100% - 16px); min-height: 1100px; }
+    .celadon-stage { width: calc(100% - 16px); min-height: 1320px; }
     .stage-title { top: 26px; left: 24px; }
     .depth-scale { display: none; }
     .stage-instruments {

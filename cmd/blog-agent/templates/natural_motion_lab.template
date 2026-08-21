@@ -7,7 +7,7 @@
     <title>001 青瓷雨 · 自然动效实验室</title>
     <script src="/js/theme.js?v=7"></script>
     <link rel="stylesheet" href="/css/theme.css?v=7">
-    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=5">
+    <link rel="stylesheet" href="/css/celadon_rain_lab.css?v=6">
 </head>
 <body>
     <a class="skip-link" href="#celadonStage">跳到动效舞台</a>
@@ -125,7 +125,7 @@
             </details>
 
             <details class="light-controls" id="lightInstrument"
-                     data-source="point" data-breathing="on" data-tyndall="on" open>
+                     data-source="point" data-beams="on" data-breathing="on" data-tyndall="on" open>
                 <summary>光场观测 <span>OPTICS</span></summary>
                 <div class="light-control-body">
                     <label for="lightControl">
@@ -154,10 +154,18 @@
                         </div>
                         <p id="lightSourceDetail">一点向四周自然衰减，适合观察局部高光与雾中光晕。</p>
                         <div class="source-sliders">
+                            <label for="sourceIntensityControl">
+                                <span>光源强度</span><output id="sourceIntensityValue" for="sourceIntensityControl">0.72</output>
+                            </label>
+                            <input id="sourceIntensityControl" type="range" min="0.15" max="1.25" value="0.72" step="0.01">
                             <label for="lightPositionControl">
                                 <span>水平位置</span><output id="lightPositionValue" for="lightPositionControl">68%</output>
                             </label>
                             <input id="lightPositionControl" type="range" min="0.12" max="0.88" value="0.68" step="0.01">
+                            <label for="lightVerticalControl">
+                                <span>垂直位置</span><output id="lightVerticalValue" for="lightVerticalControl">84%</output>
+                            </label>
+                            <input id="lightVerticalControl" type="range" min="0.38" max="0.96" value="0.84" step="0.01">
                             <label for="lightAngleControl">
                                 <span>入射方向</span><output id="lightAngleValue" for="lightAngleControl">右上 28°</output>
                             </label>
@@ -166,6 +174,28 @@
                                 <span>作用范围</span><output id="lightRangeValue" for="lightRangeControl">0.62</output>
                             </label>
                             <input id="lightRangeControl" type="range" min="0.25" max="1.2" value="0.62" step="0.01">
+                        </div>
+                    </section>
+
+                    <section class="light-effect light-effect--beams" aria-labelledby="beamTitle">
+                        <header>
+                            <span><strong id="beamTitle">光束簇</strong><small>丁达尔开启后显现多束体积光</small></span>
+                            <button class="effect-toggle" id="beamToggle" type="button"
+                                    role="switch" aria-checked="true">已开启</button>
+                        </header>
+                        <div class="effect-sliders">
+                            <label for="beamCountControl">
+                                <span>光束数量</span><output id="beamCountValue" for="beamCountControl">5 束</output>
+                            </label>
+                            <input id="beamCountControl" type="range" min="1" max="7" value="5" step="1">
+                            <label for="beamSpreadControl">
+                                <span>展开范围</span><output id="beamSpreadValue" for="beamSpreadControl">0.32</output>
+                            </label>
+                            <input id="beamSpreadControl" type="range" min="0.08" max="0.58" value="0.32" step="0.01">
+                            <label for="beamSoftnessControl">
+                                <span>边缘柔和</span><output id="beamSoftnessValue" for="beamSoftnessControl">0.52</output>
+                            </label>
+                            <input id="beamSoftnessControl" type="range" min="0.12" max="0.88" value="0.52" step="0.01">
                         </div>
                     </section>
 
@@ -217,11 +247,11 @@
                 <div><dt>风</dt><dd>多尺度流场与阵风通过空间传播，而非整幅同步倾斜。</dd></div>
                 <div><dt>雨</dt><dd>远、中、近三层拥有独立的视差、速度、线径和虚化。</dd></div>
                 <div><dt>水</dt><dd>碰撞会生成水冠与传播波，波面法线继续扭曲倒影。</dd></div>
-                <div><dt>光</dt><dd>点、聚、平行与面光共享受光模型；丁达尔散射只描述雨雾介质，并被青瓷器物柔和遮挡。</dd></div>
+                <div><dt>光</dt><dd>四类光源共享二维位置与能量控制；可调光束簇经雨雾显形，并被青瓷器物柔和遮挡。</dd></div>
             </dl>
         </section>
     </main>
 
-    <script src="/js/celadon_rain_lab.js?v=5" defer></script>
+    <script src="/js/celadon_rain_lab.js?v=6" defer></script>
 </body>
 </html>
