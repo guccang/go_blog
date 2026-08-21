@@ -4,9 +4,13 @@
     var stage = document.getElementById('dunhuangStage');
     var canvas = document.getElementById('dunhuangCanvas');
     if (!stage || !canvas) return;
+    var ambientMode = stage.dataset.dunhuangMode === 'ambient';
+    var ambientHero = ambientMode ? stage.closest('.query-hero') : null;
+    var ambientControls = ambientMode ? document.getElementById('mainDunhuangControls') : null;
+    var dunhuangStorageKey = 'guccang-dunhuang-motion-settings';
 
-    var statusTitle = document.getElementById('stageStatusTitle');
-    var statusDetail = document.getElementById('stageStatusDetail');
+    var statusTitle = stage.querySelector('[data-dunhuang-status-title]');
+    var statusDetail = stage.querySelector('[data-dunhuang-status-detail]');
     var windStrengthControl = document.getElementById('windStrengthControl');
     var windStrengthValue = document.getElementById('windStrengthValue');
     var dustDensityControl = document.getElementById('dustDensityControl');
@@ -36,7 +40,7 @@
     var windCompass = document.getElementById('windCompass');
     var windDirectionValue = document.getElementById('windDirectionValue');
     var windDirectionDetail = document.getElementById('windDirectionDetail');
-    var windDirectionButtons = Array.prototype.slice.call(document.querySelectorAll('[data-wind-direction]'));
+    var windDirectionButtons = Array.prototype.slice.call(stage.querySelectorAll('[data-wind-direction]'));
     var lightInstrument = document.getElementById('lightInstrument');
     var gustButton = document.getElementById('gustButton');
     var pauseButton = document.getElementById('pauseButton');
@@ -52,6 +56,83 @@
         west: { angle: 270, label: '西风 W → E', detail: '来自西方，向东方流动。' },
         northwest: { angle: 315, label: '西北风 NW → SE', detail: '来自西北，向东南方向流动。' }
     };
+
+    var dunhuangNumericSchema = {
+        windStrength: { min: 0, max: 2, step: 0.05, initial: 0.9, format: 'fixed2' },
+        dustDensity: { min: 0.1, max: 1.4, step: 0.02, initial: 0.72, format: 'fixed2' },
+        ribbonAmplitude: { min: 0, max: 1.4, step: 0.02, initial: 0.72, format: 'fixed2' },
+        ribbonTension: { min: 0.08, max: 0.95, step: 0.01, initial: 0.58, format: 'fixed2' },
+        ribbonResponse: { min: 0.1, max: 1.3, step: 0.02, initial: 0.8, format: 'fixed2' },
+        lightStrength: { min: 0.15, max: 1.3, step: 0.01, initial: 0.78, format: 'fixed2' },
+        lightX: { min: 0.12, max: 0.88, step: 0.01, initial: 0.34, format: 'percent' },
+        lightY: { min: 0.3, max: 0.94, step: 0.01, initial: 0.72, format: 'percent' },
+        breathStrength: { min: 0, max: 0.6, step: 0.01, initial: 0.24, format: 'fixed2' },
+        breathPeriod: { min: 3, max: 16, step: 0.5, initial: 7, format: 'seconds' },
+        tyndallStrength: { min: 0, max: 1.5, step: 0.02, initial: 0.82, format: 'fixed2' },
+        beamSpread: { min: 0.08, max: 0.65, step: 0.01, initial: 0.34, format: 'fixed2' }
+    };
+    var dunhuangBooleanSettings = ['breathingEnabled', 'tyndallEnabled'];
+
+    function dunhuangSettingsPreset() {
+        var settings = {};
+        Object.keys(dunhuangNumericSchema).forEach(function (key) {
+            settings[key] = dunhuangNumericSchema[key].initial;
+        });
+        dunhuangBooleanSettings.forEach(function (key) { settings[key] = true; });
+        return settings;
+    }
+
+    function readDunhuangPreferences() {
+        try {
+            var value = JSON.parse(window.localStorage.getItem(dunhuangStorageKey) || '{}');
+            return value && typeof value === 'object' ? value : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function clearDunhuangPreferences() {
+        try {
+            window.localStorage.removeItem(dunhuangStorageKey);
+        } catch (error) {
+            // 隐私模式无法写入存储时，当前会话仍可正常重置。
+        }
+    }
+
+    function applyDunhuangSchema(input, key) {
+        var definition = dunhuangNumericSchema[key];
+        if (!input || !definition) return;
+        input.min = String(definition.min);
+        input.max = String(definition.max);
+        input.step = String(definition.step);
+    }
+
+    function formatDunhuangValue(format, value) {
+        if (format === 'percent') return Math.round(value * 100) + '%';
+        if (format === 'seconds') return value.toFixed(1) + ' s';
+        return value.toFixed(2);
+    }
+
+    function labNumericBindings() {
+        return [
+            { input: windStrengthControl, output: windStrengthValue, key: 'windStrength' },
+            { input: dustDensityControl, output: dustDensityValue, key: 'dustDensity' },
+            { input: ribbonAmplitudeControl, output: ribbonAmplitudeValue, key: 'ribbonAmplitude' },
+            { input: ribbonTensionControl, output: ribbonTensionValue, key: 'ribbonTension' },
+            { input: ribbonResponseControl, output: ribbonResponseValue, key: 'ribbonResponse' },
+            { input: lightStrengthControl, output: lightStrengthValue, key: 'lightStrength' },
+            { input: lightXControl, output: lightXValue, key: 'lightX' },
+            { input: lightYControl, output: lightYValue, key: 'lightY' },
+            { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength' },
+            { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod' },
+            { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength' },
+            { input: beamSpreadControl, output: beamSpreadValue, key: 'beamSpread' }
+        ];
+    }
+
+    function setAmbientReady(ready) {
+        if (ambientHero) ambientHero.dataset.dunhuangReady = String(Boolean(ready));
+    }
 
     function normalizeAngle(angle) {
         return ((Number(angle) % 360) + 360) % 360;
@@ -102,6 +183,8 @@
         'uniform float u_breath_period;',
         'uniform float u_tyndall_strength;',
         'uniform float u_beam_spread;',
+        'uniform vec2 u_figure_position;',
+        'uniform float u_figure_scale;',
         '',
         'float hash21(vec2 point_value) {',
         '    point_value = fract(point_value * vec2(123.34, 456.21));',
@@ -200,9 +283,9 @@
         '}',
         '',
         'vec4 dunhuang_sample(vec2 uv_value, float aspect_value) {',
-        '    vec2 local_value = uv_value - vec2(0.51, 0.5);',
+        '    vec2 local_value = uv_value - u_figure_position;',
         '    local_value.x *= aspect_value;',
-        '    vec2 texture_uv = local_value / vec2(0.82, 0.78) + 0.5;',
+        '    vec2 texture_uv = local_value / (vec2(0.82, 0.78) * u_figure_scale) + 0.5;',
         '    float ribbon_region = smoothstep(0.52, 0.7, texture_uv.x);',
         '    ribbon_region *= smoothstep(0.06, 0.2, texture_uv.y) * (1.0 - smoothstep(0.9, 0.99, texture_uv.y));',
         '    float frequency_value = mix(7.0, 18.0, u_ribbon_tension);',
@@ -315,6 +398,7 @@
     }
 
     function DunhuangMotionLab() {
+        this.ambient = ambientMode;
         this.gl = canvas.getContext('webgl2', {
             alpha: false,
             antialias: false,
@@ -325,32 +409,24 @@
         });
         if (!this.gl) throw new Error('当前环境不支持 WebGL2，敦煌暮色样板已停用。');
 
-        this.settings = {
-            windStrength: 0.9,
-            dustDensity: 0.72,
-            ribbonAmplitude: 0.72,
-            ribbonTension: 0.58,
-            ribbonResponse: 0.8,
-            lightStrength: 0.78,
-            lightX: 0.34,
-            lightY: 0.72,
-            breathingEnabled: true,
-            breathStrength: 0.24,
-            breathPeriod: 7,
-            tyndallEnabled: true,
-            tyndallStrength: 0.82,
-            beamSpread: 0.34
-        };
+        this.settings = dunhuangSettingsPreset();
         this.windDirectionKey = 'west';
         this.windAngle = 270;
         this.targetWindAngle = 270;
+        this.ambientPaused = false;
+        this.restoreDunhuangPreferences();
+        this.figurePosition = this.ambient ? { x: 0.71, y: 0.51 } : { x: 0.51, y: 0.5 };
+        this.figureScale = this.ambient ? 1.08 : 1;
         this.pointer = { x: 0.5, y: 0.5, targetX: 0.5, targetY: 0.5 };
         this.elapsed = 0;
         this.gust = 0;
         this.lastTimestamp = 0;
         this.frameHandle = 0;
         this.destroyed = false;
-        this.paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.assetReady = false;
+        this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.themeActive = !this.ambient || document.documentElement.dataset.theme === 'atlas-dunhuang';
+        this.paused = this.reducedMotion || !this.themeActive || this.ambientPaused;
 
         var gl = this.gl;
         this.vertexArray = gl.createVertexArray();
@@ -361,7 +437,7 @@
             'u_wind_direction', 'u_wind_strength', 'u_gust', 'u_dust_density',
             'u_ribbon_amplitude', 'u_ribbon_tension', 'u_ribbon_response',
             'u_light_strength', 'u_light_position', 'u_breath_strength', 'u_breath_period',
-            'u_tyndall_strength', 'u_beam_spread'
+            'u_tyndall_strength', 'u_beam_spread', 'u_figure_position', 'u_figure_scale'
         ]);
         this.assetTexture = this.createAssetTexture();
         this.bindControls();
@@ -408,31 +484,27 @@
     };
 
     DunhuangMotionLab.prototype.bindControls = function () {
+        if (this.ambient) {
+            this.bindAmbientMode();
+            return;
+        }
         var self = this;
-        [
-            { input: windStrengthControl, output: windStrengthValue, key: 'windStrength', format: fixedTwo },
-            { input: dustDensityControl, output: dustDensityValue, key: 'dustDensity', format: fixedTwo },
-            { input: ribbonAmplitudeControl, output: ribbonAmplitudeValue, key: 'ribbonAmplitude', format: fixedTwo },
-            { input: ribbonTensionControl, output: ribbonTensionValue, key: 'ribbonTension', format: fixedTwo },
-            { input: ribbonResponseControl, output: ribbonResponseValue, key: 'ribbonResponse', format: fixedTwo },
-            { input: lightStrengthControl, output: lightStrengthValue, key: 'lightStrength', format: fixedTwo },
-            { input: lightXControl, output: lightXValue, key: 'lightX', format: percentValue },
-            { input: lightYControl, output: lightYValue, key: 'lightY', format: percentValue },
-            { input: breathStrengthControl, output: breathStrengthValue, key: 'breathStrength', format: fixedTwo },
-            { input: breathPeriodControl, output: breathPeriodValue, key: 'breathPeriod', format: function (value) { return value.toFixed(1) + ' s'; } },
-            { input: tyndallStrengthControl, output: tyndallStrengthValue, key: 'tyndallStrength', format: fixedTwo },
-            { input: beamSpreadControl, output: beamSpreadValue, key: 'beamSpread', format: fixedTwo }
-        ].forEach(function (control) {
+        labNumericBindings().forEach(function (control) {
+            applyDunhuangSchema(control.input, control.key);
             control.input.addEventListener('input', function () {
                 var value = Number(control.input.value);
                 self.settings[control.key] = value;
-                control.output.value = control.format(value);
+                control.output.value = formatDunhuangValue(dunhuangNumericSchema[control.key].format, value);
+                self.saveDunhuangPreferences();
                 if (self.paused) self.render();
             });
         });
 
         windDirectionButtons.forEach(function (button) {
-            button.addEventListener('click', function () { self.setWindDirection(button.dataset.windDirection); });
+            button.addEventListener('click', function () {
+                self.setWindDirection(button.dataset.windDirection);
+                self.saveDunhuangPreferences();
+            });
         });
         [
             { button: breathingToggle, key: 'breathingEnabled' },
@@ -441,14 +513,12 @@
             effect.button.addEventListener('click', function () {
                 self.settings[effect.key] = !self.settings[effect.key];
                 self.syncLightControls();
+                self.saveDunhuangPreferences();
                 if (self.paused) self.render();
             });
         });
 
-        gustButton.addEventListener('click', function () {
-            self.gust = Math.min(1.4, self.gust + 1);
-            if (self.paused) self.render();
-        });
+        gustButton.addEventListener('click', function () { self.addGust(); });
         pauseButton.addEventListener('click', function () {
             self.paused = !self.paused;
             self.syncPauseButton();
@@ -465,9 +535,190 @@
             self.pointer.targetY = 0.5;
         });
 
-        this.setWindDirection('west', true);
+        this.syncLabControls();
+        this.setWindDirection(this.windDirectionKey, true);
         this.syncLightControls();
         this.syncPauseButton();
+    };
+
+    DunhuangMotionLab.prototype.syncLabControls = function () {
+        var self = this;
+        labNumericBindings().forEach(function (control) {
+            applyDunhuangSchema(control.input, control.key);
+            control.input.value = String(self.settings[control.key]);
+            control.output.value = formatDunhuangValue(dunhuangNumericSchema[control.key].format, Number(self.settings[control.key]));
+        });
+    };
+
+    DunhuangMotionLab.prototype.bindAmbientMode = function () {
+        var self = this;
+        stage.dataset.themeActive = String(this.themeActive);
+        this.bindAmbientControls();
+        document.addEventListener('pointermove', function (event) {
+            if (!self.themeActive || (ambientControls && ambientControls.contains(event.target))) return;
+            var point = self.eventPoint(event);
+            if (point.inside) {
+                self.pointer.targetX = point.x;
+                self.pointer.targetY = point.y;
+            } else {
+                self.pointer.targetX = 0.5;
+                self.pointer.targetY = 0.5;
+            }
+        }, { passive: true });
+        window.addEventListener('guccang:themechange', function (event) {
+            self.setAmbientTheme(event.detail && event.detail.theme);
+        });
+    };
+
+    DunhuangMotionLab.prototype.restoreDunhuangPreferences = function () {
+        var preferences = readDunhuangPreferences();
+        var self = this;
+        Object.keys(dunhuangNumericSchema).forEach(function (key) {
+            if (typeof preferences[key] !== 'number' || !Number.isFinite(preferences[key])) return;
+            var definition = dunhuangNumericSchema[key];
+            self.settings[key] = Math.max(definition.min, Math.min(definition.max, preferences[key]));
+        });
+        dunhuangBooleanSettings.forEach(function (key) {
+            if (typeof preferences[key] === 'boolean') self.settings[key] = preferences[key];
+        });
+        if (windDirections[preferences.windDirection]) {
+            this.windDirectionKey = preferences.windDirection;
+            this.windAngle = windDirections[preferences.windDirection].angle;
+            this.targetWindAngle = this.windAngle;
+        }
+    };
+
+    DunhuangMotionLab.prototype.saveDunhuangPreferences = function () {
+        var preferences = { windDirection: this.windDirectionKey };
+        var self = this;
+        Object.keys(dunhuangNumericSchema).forEach(function (key) { preferences[key] = self.settings[key]; });
+        dunhuangBooleanSettings.forEach(function (key) { preferences[key] = self.settings[key]; });
+        try {
+            window.localStorage.setItem(dunhuangStorageKey, JSON.stringify(preferences));
+        } catch (error) {
+            // 隐私模式无法持久化时，当前会话内的参数仍保持有效。
+        }
+    };
+
+    DunhuangMotionLab.prototype.syncAmbientControls = function () {
+        if (!ambientControls) return;
+        var self = this;
+        ambientControls.querySelectorAll('[data-dunhuang-setting]').forEach(function (input) {
+            var key = input.dataset.dunhuangSetting;
+            applyDunhuangSchema(input, key);
+            input.value = String(self.settings[key]);
+            var output = ambientControls.querySelector('[data-dunhuang-output="' + key + '"]');
+            if (output) output.value = formatDunhuangValue(input.dataset.dunhuangFormat || dunhuangNumericSchema[key].format, Number(self.settings[key]));
+        });
+        ambientControls.querySelectorAll('[data-dunhuang-toggle]').forEach(function (input) {
+            input.checked = Boolean(self.settings[input.dataset.dunhuangToggle]);
+        });
+        var directionControl = ambientControls.querySelector('[data-dunhuang-wind-direction]');
+        if (directionControl) directionControl.value = this.windDirectionKey;
+        var pauseControl = ambientControls.querySelector('[data-dunhuang-action="pause"]');
+        if (pauseControl) {
+            pauseControl.disabled = this.reducedMotion;
+            pauseControl.setAttribute('aria-pressed', String(this.ambientPaused));
+            pauseControl.textContent = this.reducedMotion ? '系统已暂停' : (this.ambientPaused ? '继续' : '暂停');
+        }
+        ambientControls.dataset.breathing = this.settings.breathingEnabled ? 'on' : 'off';
+        ambientControls.dataset.tyndall = this.settings.tyndallEnabled ? 'on' : 'off';
+        ambientControls.dataset.paused = String(this.paused);
+    };
+
+    DunhuangMotionLab.prototype.bindAmbientControls = function () {
+        if (!ambientControls) return;
+        var self = this;
+        ambientControls.addEventListener('toggle', function () { self.syncAmbientInspectorLayout(); });
+        ambientControls.querySelectorAll('[data-dunhuang-setting]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                self.settings[input.dataset.dunhuangSetting] = Number(input.value);
+                self.syncAmbientControls();
+                self.saveDunhuangPreferences();
+                if (self.paused && self.assetReady) self.render();
+            });
+        });
+        ambientControls.querySelectorAll('[data-dunhuang-toggle]').forEach(function (input) {
+            input.addEventListener('change', function () {
+                self.settings[input.dataset.dunhuangToggle] = input.checked;
+                self.syncAmbientControls();
+                self.saveDunhuangPreferences();
+                if (self.paused && self.assetReady) self.render();
+            });
+        });
+        var directionControl = ambientControls.querySelector('[data-dunhuang-wind-direction]');
+        if (directionControl) {
+            directionControl.addEventListener('change', function () {
+                self.setAmbientWindDirection(directionControl.value, false);
+            });
+        }
+        var gustControl = ambientControls.querySelector('[data-dunhuang-action="gust"]');
+        if (gustControl) gustControl.addEventListener('click', function () { self.addGust(); });
+        var pauseControl = ambientControls.querySelector('[data-dunhuang-action="pause"]');
+        if (pauseControl) pauseControl.addEventListener('click', function () { self.setAmbientPaused(!self.ambientPaused); });
+        var resetControl = ambientControls.querySelector('[data-dunhuang-action="reset"]');
+        if (resetControl) resetControl.addEventListener('click', function () { self.resetAmbientSettings(); });
+        this.syncAmbientInspectorLayout();
+        this.syncAmbientControls();
+    };
+
+    DunhuangMotionLab.prototype.syncAmbientInspectorLayout = function () {
+        if (!ambientHero || !ambientControls) return;
+        ambientHero.dataset.dunhuangInspector = ambientControls.open ? 'open' : 'closed';
+        var self = this;
+        window.requestAnimationFrame(function () {
+            if (!self.themeActive) return;
+            self.resize();
+            if (self.assetReady) self.render();
+        });
+    };
+
+    DunhuangMotionLab.prototype.setAmbientWindDirection = function (directionKey, immediate) {
+        var direction = windDirections[directionKey];
+        if (!direction) return;
+        this.windDirectionKey = directionKey;
+        this.targetWindAngle = direction.angle;
+        if (immediate || this.paused) this.windAngle = direction.angle;
+        this.syncAmbientControls();
+        this.saveDunhuangPreferences();
+        if (this.paused && this.assetReady) this.render();
+    };
+
+    DunhuangMotionLab.prototype.setAmbientPaused = function (paused) {
+        if (!this.ambient || this.reducedMotion) return;
+        this.ambientPaused = Boolean(paused);
+        this.paused = this.ambientPaused || !this.themeActive;
+        if (this.paused) {
+            if (this.frameHandle) window.cancelAnimationFrame(this.frameHandle);
+            this.frameHandle = 0;
+            if (this.assetReady) this.render();
+        } else {
+            this.lastTimestamp = 0;
+            this.requestFrame();
+        }
+        this.syncAmbientControls();
+    };
+
+    DunhuangMotionLab.prototype.setAmbientTheme = function (theme) {
+        if (!this.ambient) return;
+        this.themeActive = theme === 'atlas-dunhuang';
+        stage.dataset.themeActive = String(this.themeActive);
+        if (!this.themeActive || this.reducedMotion || this.ambientPaused) {
+            this.paused = true;
+            if (this.frameHandle) window.cancelAnimationFrame(this.frameHandle);
+            this.frameHandle = 0;
+            if (this.themeActive && this.assetReady) {
+                this.resize();
+                this.render();
+            }
+            this.syncAmbientControls();
+            return;
+        }
+        this.paused = false;
+        this.lastTimestamp = 0;
+        this.resize();
+        this.requestFrame();
+        this.syncAmbientControls();
     };
 
     DunhuangMotionLab.prototype.setWindDirection = function (directionKey, immediate) {
@@ -493,6 +744,7 @@
     };
 
     DunhuangMotionLab.prototype.syncWindNeedle = function () {
+        if (!windCompass) return;
         var flow = meteorologicalFlow(this.windAngle);
         var flowAngle = Math.atan2(flow[1], flow[0]) * 180 / Math.PI;
         windCompass.style.setProperty('--wind-flow-angle', flowAngle + 'deg');
@@ -517,7 +769,8 @@
         var bounds = canvas.getBoundingClientRect();
         return {
             x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(bounds.width, 1))),
-            y: Math.max(0, Math.min(1, 1 - (event.clientY - bounds.top) / Math.max(bounds.height, 1)))
+            y: Math.max(0, Math.min(1, 1 - (event.clientY - bounds.top) / Math.max(bounds.height, 1))),
+            inside: event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom
         };
     };
 
@@ -542,6 +795,11 @@
         this.pointer.x += (this.pointer.targetX - this.pointer.x) * Math.min(1, dt * 2.8);
         this.pointer.y += (this.pointer.targetY - this.pointer.y) * Math.min(1, dt * 2.8);
         this.gust = Math.max(0, this.gust - dt * 0.58);
+    };
+
+    DunhuangMotionLab.prototype.addGust = function () {
+        this.gust = Math.min(1.4, this.gust + 1);
+        if (this.paused && this.assetReady) this.render();
     };
 
     DunhuangMotionLab.prototype.render = function () {
@@ -571,6 +829,8 @@
         gl.uniform1f(uniforms.u_breath_period, this.settings.breathPeriod);
         gl.uniform1f(uniforms.u_tyndall_strength, this.settings.tyndallEnabled ? this.settings.tyndallStrength : 0);
         gl.uniform1f(uniforms.u_beam_spread, this.settings.beamSpread);
+        gl.uniform2f(uniforms.u_figure_position, this.figurePosition.x, this.figurePosition.y);
+        gl.uniform1f(uniforms.u_figure_scale, this.figureScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
@@ -585,48 +845,37 @@
     };
 
     DunhuangMotionLab.prototype.requestFrame = function () {
-        if (this.frameHandle || this.destroyed || this.paused || document.hidden) return;
+        if (this.frameHandle || this.destroyed || this.paused || !this.assetReady || document.hidden) return;
         this.frameHandle = window.requestAnimationFrame(this.frame.bind(this));
     };
 
     DunhuangMotionLab.prototype.reset = function () {
-        this.settings = {
-            windStrength: 0.9,
-            dustDensity: 0.72,
-            ribbonAmplitude: 0.72,
-            ribbonTension: 0.58,
-            ribbonResponse: 0.8,
-            lightStrength: 0.78,
-            lightX: 0.34,
-            lightY: 0.72,
-            breathingEnabled: true,
-            breathStrength: 0.24,
-            breathPeriod: 7,
-            tyndallEnabled: true,
-            tyndallStrength: 0.82,
-            beamSpread: 0.34
-        };
-        var resetValues = [
-            [windStrengthControl, windStrengthValue, '0.9', '0.90'],
-            [dustDensityControl, dustDensityValue, '0.72', '0.72'],
-            [ribbonAmplitudeControl, ribbonAmplitudeValue, '0.72', '0.72'],
-            [ribbonTensionControl, ribbonTensionValue, '0.58', '0.58'],
-            [ribbonResponseControl, ribbonResponseValue, '0.8', '0.80'],
-            [lightStrengthControl, lightStrengthValue, '0.78', '0.78'],
-            [lightXControl, lightXValue, '0.34', '34%'],
-            [lightYControl, lightYValue, '0.72', '72%'],
-            [breathStrengthControl, breathStrengthValue, '0.24', '0.24'],
-            [breathPeriodControl, breathPeriodValue, '7', '7.0 s'],
-            [tyndallStrengthControl, tyndallStrengthValue, '0.82', '0.82'],
-            [beamSpreadControl, beamSpreadValue, '0.34', '0.34']
-        ];
-        resetValues.forEach(function (item) { item[0].value = item[2]; item[1].value = item[3]; });
+        this.settings = dunhuangSettingsPreset();
+        clearDunhuangPreferences();
         this.setWindDirection('west', true);
+        this.syncLabControls();
         this.syncLightControls();
         this.pointer = { x: 0.5, y: 0.5, targetX: 0.5, targetY: 0.5 };
         this.elapsed = 0;
         this.gust = 0;
         this.render();
+    };
+
+    DunhuangMotionLab.prototype.resetAmbientSettings = function () {
+        if (!this.ambient) return;
+        this.settings = dunhuangSettingsPreset();
+        this.windDirectionKey = 'west';
+        this.windAngle = 270;
+        this.targetWindAngle = 270;
+        this.ambientPaused = false;
+        this.pointer = { x: 0.5, y: 0.5, targetX: 0.5, targetY: 0.5 };
+        this.elapsed = 0;
+        this.gust = 0;
+        clearDunhuangPreferences();
+        this.paused = this.reducedMotion || !this.themeActive;
+        this.syncAmbientControls();
+        if (this.assetReady) this.render();
+        if (!this.paused) this.requestFrame();
     };
 
     DunhuangMotionLab.prototype.handleVisibility = function () {
@@ -640,30 +889,36 @@
         showError('WebGL2 上下文已丢失，敦煌暮色样板已停用。', '请刷新页面重新创建图形上下文。');
     };
 
-    function fixedTwo(value) { return value.toFixed(2); }
-    function percentValue(value) { return Math.round(value * 100) + '%'; }
+    DunhuangMotionLab.prototype.start = function () {
+        var self = this;
+        this.resize();
+        return this.loadAsset().then(function () {
+            if (self.destroyed) return;
+            self.assetReady = true;
+            self.render();
+            stage.dataset.renderState = 'ready';
+            setAmbientReady(true);
+            self.syncAmbientControls();
+            if (!self.paused) self.requestFrame();
+        });
+    };
 
     function showError(title, detail) {
         stage.dataset.renderState = 'error';
-        statusTitle.textContent = title;
-        statusDetail.textContent = detail || '当前样板不会回退到其他渲染方式。';
+        setAmbientReady(false);
+        if (statusTitle) statusTitle.textContent = title;
+        if (statusDetail) statusDetail.textContent = detail || '当前样板不会回退到其他渲染方式。';
     }
 
     try {
         var lab = new DunhuangMotionLab();
-        lab.resize();
-        lab.loadAsset().then(function () {
-            if (lab.destroyed) return;
-            lab.render();
-            stage.dataset.renderState = 'ready';
-            lab.requestFrame();
-        }).catch(function (error) {
+        lab.start().catch(function (error) {
             lab.destroyed = true;
             showError('敦煌暮色资源加载失败。', error.message);
-            window.console.error(error);
+            if (window.console && window.console.error) window.console.error(error);
         });
     } catch (error) {
         showError('敦煌暮色需要 WebGL2，当前场景已停用。', error.message);
-        window.console.error(error);
+        if (window.console && window.console.error) window.console.error(error);
     }
 })();

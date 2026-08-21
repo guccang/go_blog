@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GUCCANG</title>
-    <script src="/js/theme.js?v=7"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=8">
-    <link rel="stylesheet" href="/css/main.css?v=celadon-rain-6">
+    <script src="/js/theme.js?v=8"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=9">
+    <link rel="stylesheet" href="/css/main.css?v=dunhuang-1">
 </head>
 <body>
     <header class="main-header site-shell site-hanging-nav">
@@ -36,6 +36,16 @@
                 <div class="stage-status">
                     <strong id="stageStatusTitle">正在初始化青瓷雨</strong>
                     <small id="stageStatusDetail">准备风场、水面与柔和光场。</small>
+                </div>
+            </div>
+            <div class="main-dunhuang-stage" id="dunhuangStage" data-render-state="loading"
+                 data-dunhuang-mode="ambient"
+                 data-dunhuang-asset="/images/visual-symbols/visual-symbols-01.webp"
+                 aria-hidden="true">
+                <canvas id="dunhuangCanvas"></canvas>
+                <div class="stage-status">
+                    <strong data-dunhuang-status-title>正在初始化敦煌暮色</strong>
+                    <small data-dunhuang-status-detail>准备飘带、矿物尘与暮色光场。</small>
                 </div>
             </div>
             <div class="site-page-hero__copy">
@@ -130,6 +140,66 @@
                     </div>
                 </div>
             </details>
+            <details class="main-dunhuang-controls" id="mainDunhuangControls">
+                <summary><span><i class="main-dunhuang-controls__compact-label">调景</i><i class="main-dunhuang-controls__full-label">暮色参数</i></span><small>AMBIENCE</small></summary>
+                <div class="main-dunhuang-controls__body">
+                    <fieldset>
+                        <legend>风沙</legend>
+                        <label for="mainDunhuangWindDirection"><span>风向</span>
+                            <select id="mainDunhuangWindDirection" data-dunhuang-wind-direction>
+                                <option value="north">北风 N → S</option><option value="northeast">东北风 NE → SW</option>
+                                <option value="east">东风 E → W</option><option value="southeast">东南风 SE → NW</option>
+                                <option value="south">南风 S → N</option><option value="southwest">西南风 SW → NE</option>
+                                <option value="west" selected>西风 W → E</option><option value="northwest">西北风 NW → SE</option>
+                            </select>
+                        </label>
+                        <label for="mainDunhuangWind"><span>风场强度</span><output data-dunhuang-output="windStrength">0.90</output></label>
+                        <input id="mainDunhuangWind" data-dunhuang-setting="windStrength" data-dunhuang-format="fixed2" type="range" min="0" max="2" value="0.9" step="0.05">
+                        <label for="mainDunhuangDust"><span>沙尘密度</span><output data-dunhuang-output="dustDensity">0.72</output></label>
+                        <input id="mainDunhuangDust" data-dunhuang-setting="dustDensity" data-dunhuang-format="fixed2" type="range" min="0.1" max="1.4" value="0.72" step="0.02">
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>飘带动力</legend>
+                        <label for="mainDunhuangRibbonAmplitude"><span>飘带摆幅</span><output data-dunhuang-output="ribbonAmplitude">0.72</output></label>
+                        <input id="mainDunhuangRibbonAmplitude" data-dunhuang-setting="ribbonAmplitude" data-dunhuang-format="fixed2" type="range" min="0" max="1.4" value="0.72" step="0.02">
+                        <label for="mainDunhuangRibbonTension"><span>织物张力</span><output data-dunhuang-output="ribbonTension">0.58</output></label>
+                        <input id="mainDunhuangRibbonTension" data-dunhuang-setting="ribbonTension" data-dunhuang-format="fixed2" type="range" min="0.08" max="0.95" value="0.58" step="0.01">
+                        <label for="mainDunhuangRibbonResponse"><span>风场响应</span><output data-dunhuang-output="ribbonResponse">0.80</output></label>
+                        <input id="mainDunhuangRibbonResponse" data-dunhuang-setting="ribbonResponse" data-dunhuang-format="fixed2" type="range" min="0.1" max="1.3" value="0.8" step="0.02">
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>暮色光场</legend>
+                        <label for="mainDunhuangLight"><span>月轮光强</span><output data-dunhuang-output="lightStrength">0.78</output></label>
+                        <input id="mainDunhuangLight" data-dunhuang-setting="lightStrength" data-dunhuang-format="fixed2" type="range" min="0.15" max="1.3" value="0.78" step="0.01">
+                        <label for="mainDunhuangLightX"><span>水平位置</span><output data-dunhuang-output="lightX">34%</output></label>
+                        <input id="mainDunhuangLightX" data-dunhuang-setting="lightX" data-dunhuang-format="percent" type="range" min="0.12" max="0.88" value="0.34" step="0.01">
+                        <label for="mainDunhuangLightY"><span>垂直位置</span><output data-dunhuang-output="lightY">72%</output></label>
+                        <input id="mainDunhuangLightY" data-dunhuang-setting="lightY" data-dunhuang-format="percent" type="range" min="0.3" max="0.94" value="0.72" step="0.01">
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>呼吸与散射</legend>
+                        <label class="main-dunhuang-switch"><span>呼吸月光</span><input type="checkbox" data-dunhuang-toggle="breathingEnabled" checked></label>
+                        <label for="mainDunhuangBreathStrength"><span>呼吸幅度</span><output data-dunhuang-output="breathStrength">0.24</output></label>
+                        <input id="mainDunhuangBreathStrength" data-dunhuang-setting="breathStrength" data-dunhuang-format="fixed2" type="range" min="0" max="0.6" value="0.24" step="0.01">
+                        <label for="mainDunhuangBreathPeriod"><span>呼吸周期</span><output data-dunhuang-output="breathPeriod">7.0 s</output></label>
+                        <input id="mainDunhuangBreathPeriod" data-dunhuang-setting="breathPeriod" data-dunhuang-format="seconds" type="range" min="3" max="16" value="7" step="0.5">
+                        <label class="main-dunhuang-switch"><span>丁达尔光</span><input type="checkbox" data-dunhuang-toggle="tyndallEnabled" checked></label>
+                        <label for="mainDunhuangTyndall"><span>散射强度</span><output data-dunhuang-output="tyndallStrength">0.82</output></label>
+                        <input id="mainDunhuangTyndall" data-dunhuang-setting="tyndallStrength" data-dunhuang-format="fixed2" type="range" min="0" max="1.5" value="0.82" step="0.02">
+                        <label for="mainDunhuangBeamSpread"><span>光束展开</span><output data-dunhuang-output="beamSpread">0.34</output></label>
+                        <input id="mainDunhuangBeamSpread" data-dunhuang-setting="beamSpread" data-dunhuang-format="fixed2" type="range" min="0.08" max="0.65" value="0.34" step="0.01">
+                    </fieldset>
+
+                    <div class="main-dunhuang-actions">
+                        <button type="button" data-dunhuang-action="gust">扬起金尘</button>
+                        <button type="button" data-dunhuang-action="pause" aria-pressed="false">暂停</button>
+                        <button type="button" data-dunhuang-action="reset">重置</button>
+                    </div>
+                </div>
+            </details>
         </section>
 
         <section class="quick-section site-section" aria-labelledby="quickTitle">
@@ -185,6 +255,7 @@
 
     <script src="/js/visual_symbol_motion.js?v=1"></script>
     <script src="/js/celadon_rain_lab.js?v=10"></script>
+    <script src="/js/dunhuang_motion_lab.js?v=2"></script>
     <script src="/js/main.js?v=quote-1"></script>
 </body>
 </html>

@@ -73,6 +73,7 @@ func TestVisualThemeAtlasAppliesImplementedThemes(t *testing.T) {
 	for _, expected := range []string{
 		"implementedThemes",
 		"'001': 'atlas-celadon'",
+		"'004': 'atlas-dunhuang'",
 		"'051': 'atlas-swiss'",
 		"'061': 'atlas-chrome'",
 		"dialog-apply",
@@ -110,7 +111,7 @@ func TestVisualThemeAtlasKeepsUnapprovedMotionOutOfDialog(t *testing.T) {
 		t.Fatalf("读取视觉主题模板失败: %v", err)
 	}
 	page := string(templateContent)
-	if !strings.Contains(page, `/js/visual_themes.js?v=6`) {
+	if !strings.Contains(page, `/js/visual_themes.js?v=7`) {
 		t.Error("视觉主题模板未更新脚本缓存版本")
 	}
 	for _, removed := range []string{"natural_motion.js", "natural_motion.css"} {
@@ -165,9 +166,9 @@ func TestVisualThemeAtlasPageIsWiredIntoTools(t *testing.T) {
 		`id="theme-gallery"`,
 		`data-hero-theme="006"`,
 		`/css/visual_themes.css?v=5`,
-		`/js/visual_themes.js?v=6`,
-		`/js/theme.js?v=7`,
-		`/css/theme.css?v=7`,
+		`/js/visual_themes.js?v=7`,
+		`/js/theme.js?v=8`,
+		`/css/theme.css?v=9`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("视觉主题模板缺少 %q", expected)

@@ -38,6 +38,7 @@ func TestAtlasThemeDynamics(t *testing.T) {
 		"@keyframes atlas-swiss-tick",
 		"@keyframes atlas-chrome-breathe",
 		`html[data-theme="atlas-celadon"][data-page="main"] :where(.quick-item, .recent-card):hover`,
+		`html[data-theme="atlas-dunhuang"][data-page="main"] :where(.quick-item, .recent-card):hover`,
 		`html[data-theme="atlas-swiss"][data-page="main"] :where(.quick-item, .recent-card):hover`,
 		`html[data-theme="atlas-chrome"][data-page="main"] :where(.quick-item, .recent-card):hover`,
 	} {
@@ -78,6 +79,7 @@ func TestAtlasThemePalettes(t *testing.T) {
 		colors []string
 	}{
 		{key: "atlas-celadon", colors: []string{"#e7efea", "#b8d2c7", "#7fa99a", "#3f6f66", "#283c39"}},
+		{key: "atlas-dunhuang", colors: []string{"#2b2533", "#66506b", "#b56a4c", "#d9a441", "#e7d2a1"}},
 		{key: "atlas-swiss", colors: []string{"#f5f4ef", "#1a1c1f", "#d9382a", "#b8bdc2", "#6c7178"}},
 		{key: "atlas-chrome", colors: []string{"#080b10", "#222935", "#667589", "#b9d1e6", "#7b5cff"}},
 	}

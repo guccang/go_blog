@@ -295,6 +295,202 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
     animation: main-celadon-status 2.8s ease-in-out infinite;
 }
 
+.main-dunhuang-stage {
+    position: absolute;
+    z-index: 0;
+    inset: 24px 0 0;
+    display: none;
+    overflow: hidden;
+    opacity: .94;
+    pointer-events: none;
+    background: #2b2533;
+}
+
+html[data-theme="atlas-dunhuang"] .main-dunhuang-stage { display: block; }
+html[data-theme="atlas-dunhuang"] .main-dunhuang-stage[data-render-state="error"] { display: none; }
+
+#dunhuangCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.main-dunhuang-stage .stage-status {
+    position: absolute;
+    right: 18px;
+    bottom: 14px;
+    display: grid;
+    gap: 3px;
+    color: color-mix(in srgb, var(--c5) 62%, transparent);
+    text-align: right;
+    transition: opacity .3s ease;
+}
+
+.main-dunhuang-stage .stage-status strong { font: 8px/1 var(--ui-font-mono); letter-spacing: .08em; }
+.main-dunhuang-stage .stage-status small { font: 7px/1.4 var(--ui-font-mono); }
+.main-dunhuang-stage[data-render-state="ready"] .stage-status { opacity: 0; }
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"]::after {
+    position: absolute;
+    z-index: 1;
+    inset: 24px 0 0;
+    content: "";
+    pointer-events: none;
+    background:
+        linear-gradient(90deg,
+            color-mix(in srgb, var(--c1) 97%, transparent) 0%,
+            color-mix(in srgb, var(--c1) 90%, transparent) 38%,
+            color-mix(in srgb, var(--c1) 38%, transparent) 64%,
+            transparent 84%),
+        linear-gradient(0deg, color-mix(in srgb, var(--c1) 38%, transparent), transparent 46%);
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] > .site-page-hero__exhibit {
+    visibility: hidden;
+    animation: none;
+    pointer-events: none;
+    transform: none;
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] .site-page-title {
+    color: var(--c5);
+    text-shadow: 0 2px 24px color-mix(in srgb, #000 52%, transparent);
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] .site-page-description,
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] .query-hint {
+    color: color-mix(in srgb, var(--c5) 76%, transparent);
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] .query-form {
+    border-color: color-mix(in srgb, var(--c4) 26%, transparent);
+    background: color-mix(in srgb, var(--c1) 76%, transparent);
+    box-shadow: 0 16px 38px color-mix(in srgb, #000 25%, transparent);
+    backdrop-filter: blur(16px) saturate(.82);
+}
+
+.main-dunhuang-controls {
+    position: absolute;
+    z-index: 4;
+    top: 42px;
+    right: 0;
+    display: none;
+    width: 292px;
+    color: var(--c5);
+    border: 1px solid color-mix(in srgb, var(--c4) 34%, transparent);
+    background: color-mix(in srgb, var(--c1) 86%, transparent);
+    box-shadow: 0 18px 48px color-mix(in srgb, #000 38%, transparent);
+    backdrop-filter: blur(18px) saturate(.82);
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"] > .main-dunhuang-controls { display: block; }
+
+.main-dunhuang-controls:not([open]) {
+    top: 34px;
+    width: 128px;
+    box-shadow: 0 9px 24px color-mix(in srgb, #000 28%, transparent);
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] {
+    grid-template-columns: minmax(0, 1fr) 292px;
+    gap: 20px;
+    align-items: stretch;
+    min-height: 520px;
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .main-dunhuang-stage,
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"]::after {
+    right: 312px;
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .site-page-hero__copy {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .main-dunhuang-controls {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    width: 100%;
+    margin-top: 42px;
+}
+
+html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] .main-dunhuang-controls__body {
+    max-height: min(420px, calc(100vh - 180px));
+}
+
+.main-dunhuang-controls > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 0 13px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 12px;
+    letter-spacing: .08em;
+}
+
+.main-dunhuang-controls > summary::-webkit-details-marker { display: none; }
+.main-dunhuang-controls > summary::before { width: 7px; height: 7px; content: ""; border: 1px solid var(--c4); border-radius: 50%; }
+.main-dunhuang-controls > summary span { margin-right: auto; margin-left: 8px; }
+.main-dunhuang-controls > summary i { font-style: normal; }
+.main-dunhuang-controls__compact-label { display: none; }
+.main-dunhuang-controls:not([open]) .main-dunhuang-controls__compact-label { display: inline; }
+.main-dunhuang-controls:not([open]) .main-dunhuang-controls__full-label,
+.main-dunhuang-controls:not([open]) > summary small { display: none; }
+.main-dunhuang-controls:not([open]) > summary { min-height: 36px; padding-inline: 11px; }
+.main-dunhuang-controls > summary small { color: var(--c4); font: 7px/1 var(--ui-font-mono); letter-spacing: .12em; }
+.main-dunhuang-controls[open] > summary { border-bottom: 1px solid color-mix(in srgb, var(--c4) 28%, transparent); }
+
+.main-dunhuang-controls__body {
+    max-height: 244px;
+    padding: 11px 13px 13px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-color: var(--c3) transparent;
+    scrollbar-width: thin;
+}
+
+.main-dunhuang-controls fieldset { min-width: 0; margin: 0 0 11px; padding: 9px; border: 1px solid color-mix(in srgb, var(--c5) 16%, transparent); }
+.main-dunhuang-controls legend { padding: 0 5px; color: var(--c4); font: 8px/1 var(--ui-font-mono); letter-spacing: .1em; }
+.main-dunhuang-controls label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 4px; color: color-mix(in srgb, var(--c5) 78%, transparent); font-size: 9px; }
+.main-dunhuang-controls output { color: var(--c4); font: 8px/1 var(--ui-font-mono); }
+.main-dunhuang-controls input[type="range"] { width: 100%; height: 14px; margin: 0 0 6px; accent-color: var(--c4); }
+.main-dunhuang-controls select { min-width: 138px; padding: 5px 7px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 28%, transparent); background: var(--c1); font: 8px/1.2 var(--ui-font-mono); }
+.main-dunhuang-switch { min-height: 26px; }
+.main-dunhuang-switch input { width: 30px; accent-color: var(--c4); }
+
+.main-dunhuang-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.main-dunhuang-actions button { min-height: 32px; padding-inline: 4px; color: var(--c5); border: 1px solid color-mix(in srgb, var(--c4) 30%, transparent); background: color-mix(in srgb, var(--c2) 34%, transparent); font-size: 9px; }
+.main-dunhuang-actions button:hover,
+.main-dunhuang-actions button:focus-visible,
+.main-dunhuang-actions button[aria-pressed="true"] { color: var(--c1); border-color: var(--c4); background: var(--c4); }
+
+.main-dunhuang-controls summary:focus-visible,
+.main-dunhuang-controls input:focus-visible,
+.main-dunhuang-controls select:focus-visible,
+.main-dunhuang-controls button:focus-visible { outline: 2px solid var(--c4); outline-offset: 2px; }
+.main-dunhuang-controls button:disabled { cursor: not-allowed; opacity: .45; }
+
+.main-dunhuang-controls[data-breathing="off"] [data-dunhuang-setting="breathStrength"],
+.main-dunhuang-controls[data-breathing="off"] [data-dunhuang-setting="breathPeriod"],
+.main-dunhuang-controls[data-tyndall="off"] [data-dunhuang-setting="tyndallStrength"],
+.main-dunhuang-controls[data-tyndall="off"] [data-dunhuang-setting="beamSpread"] { opacity: .38; }
+
+.main-dunhuang-controls[data-paused="true"] > summary::before { border-color: var(--c5); background: transparent; }
+.main-dunhuang-controls[data-paused="false"] > summary::before {
+    background: var(--c4);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c3) 24%, transparent);
+    animation: main-dunhuang-status 3.2s ease-in-out infinite;
+}
+
 .query-hero .site-page-description { max-width: 610px; }
 
 .query-form {
@@ -345,6 +541,11 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
 @keyframes main-celadon-status {
     0%, 100% { opacity: .52; }
     50% { opacity: 1; }
+}
+
+@keyframes main-dunhuang-status {
+    0%, 100% { opacity: .48; box-shadow: 0 0 0 2px color-mix(in srgb, var(--c3) 16%, transparent); }
+    50% { opacity: 1; box-shadow: 0 0 0 5px color-mix(in srgb, var(--c4) 12%, transparent); }
 }
 
 .quick-section { padding-top: 48px; }
@@ -577,6 +778,32 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
         left: auto;
         width: min(292px, 100%);
     }
+
+    .main-dunhuang-stage {
+        right: -14px;
+        bottom: auto;
+        left: -14px;
+        height: 220px;
+        opacity: .9;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"]::after {
+        right: -14px;
+        bottom: auto;
+        left: -14px;
+        height: 220px;
+        background: linear-gradient(180deg,
+            transparent 0%,
+            color-mix(in srgb, var(--c1) 24%, transparent) 52%,
+            var(--c1) 100%);
+    }
+
+    .main-dunhuang-controls {
+        right: 0;
+        bottom: auto;
+        left: auto;
+        width: min(292px, 100%);
+    }
 }
 
 @media (max-width: 720px) {
@@ -620,12 +847,55 @@ html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-cel
     html[data-theme="atlas-celadon"] .query-hero[data-celadon-ready="true"][data-celadon-inspector="open"] .main-celadon-controls__body {
         max-height: min(42vh, 260px);
     }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] {
+        grid-template-columns: 1fr;
+        grid-template-rows: 280px auto;
+        gap: 16px;
+        align-items: start;
+        min-height: 0;
+        padding-top: 36px;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .main-dunhuang-stage,
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"]::after {
+        right: -14px;
+        left: -14px;
+        height: 280px;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .site-page-hero__copy {
+        display: none;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .site-page-hero__exhibit {
+        grid-column: 1;
+        grid-row: 1;
+        min-height: 280px;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] > .main-dunhuang-controls {
+        position: relative;
+        top: auto;
+        right: auto;
+        left: auto;
+        grid-column: 1;
+        grid-row: 2;
+        width: 100%;
+        margin: 0;
+    }
+
+    html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"][data-dunhuang-inspector="open"] .main-dunhuang-controls__body {
+        max-height: min(42vh, 260px);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .quick-item,
     .recent-card,
-    .main-celadon-stage .stage-status { transition: none; }
+    .main-celadon-stage .stage-status,
+    .main-dunhuang-stage .stage-status { transition: none; }
 
-    .main-celadon-controls[data-paused="false"] > summary::before { animation: none; }
+    .main-celadon-controls[data-paused="false"] > summary::before,
+    .main-dunhuang-controls[data-paused="false"] > summary::before { animation: none; }
 }

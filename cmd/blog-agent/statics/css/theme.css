@@ -986,6 +986,39 @@ html[data-theme="watercolor"] .ui-theme-picker__panel {
 
 html[data-theme="atlas-celadon"] :where(h1, h2, h3) { letter-spacing: .04em; }
 
+/* 004 敦煌暮色 Dunhuang Dusk · 矿物壁画 · dark */
+:root[data-theme="atlas-dunhuang"] {
+    --c1: #2B2533;
+    --c2: #66506B;
+    --c3: #B56A4C;
+    --c4: #D9A441;
+    --c5: #E7D2A1;
+    --ink: var(--c5);
+    --accent: var(--c4);
+    --primary-color-rgb: 102, 80, 107;
+    --ui-surface: color-mix(in srgb, var(--c1) 86%, var(--c2));
+    --ui-surface-raised: color-mix(in srgb, var(--c1) 70%, var(--c2));
+    --ui-line-soft: color-mix(in srgb, var(--c5) 25%, var(--c1));
+    --ui-sky: var(--c2);
+    --ui-rose: var(--c3);
+    --ui-success: var(--c4);
+    --ui-font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+    --ui-font-body: Georgia, "Noto Serif SC", "Songti SC", serif;
+    --ui-font-sans: "Noto Serif SC", "Songti SC", "STSong", serif;
+    --ui-radius: 8px;
+    --ui-radius-sm: 5px;
+    --ui-card-shadow: 0 14px 34px color-mix(in srgb, #000 38%, transparent);
+}
+
+html[data-theme="atlas-dunhuang"] { color-scheme: dark; }
+html[data-theme="atlas-dunhuang"] :where(h1, h2, h3) { letter-spacing: .055em; }
+
+html[data-theme="atlas-dunhuang"] body::before {
+    background-image:
+        radial-gradient(ellipse at 18% 8%, color-mix(in srgb, var(--c4) 12%, transparent), transparent 38%),
+        radial-gradient(ellipse at 84% 76%, color-mix(in srgb, var(--c3) 11%, transparent), transparent 46%);
+}
+
 /* 051 瑞士网格 Swiss Grid · 编辑印刷 · light */
 :root[data-theme="atlas-swiss"] {
     --c1: #F5F4EF;
@@ -1064,6 +1097,17 @@ html[data-theme="atlas-celadon"] :where(p, li) a {
 html[data-theme="atlas-celadon"] :where(p, li) a:hover {
     text-decoration-color: var(--c4);
     text-underline-offset: 5px;
+}
+
+html[data-theme="atlas-dunhuang"] body :where(.quick-item, .recent-card, .card, .panel) {
+    border-color: color-mix(in srgb, var(--c5) 18%, transparent);
+    transition: transform .34s cubic-bezier(.2, .72, .2, 1), border-color .34s ease, box-shadow .34s ease;
+}
+
+html[data-theme="atlas-dunhuang"][data-page="main"] :where(.quick-item, .recent-card):hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--c4) 54%, transparent);
+    box-shadow: 0 18px 40px color-mix(in srgb, #000 35%, transparent), inset 0 1px 0 color-mix(in srgb, var(--c4) 18%, transparent);
 }
 
 /* 瑞士网格 · 跳：steps 机械节拍，交互零过渡瞬时切换 */

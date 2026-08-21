@@ -163,6 +163,7 @@
 
     var implementedThemes = {
         '001': 'atlas-celadon',
+        '004': 'atlas-dunhuang',
         '051': 'atlas-swiss',
         '061': 'atlas-chrome'
     };

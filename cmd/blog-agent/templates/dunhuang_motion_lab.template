@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <title>004 敦煌暮色 · 自然动效实验室</title>
-    <script src="/js/theme.js?v=7"></script>
-    <link rel="stylesheet" href="/css/theme.css?v=8">
+    <script src="/js/theme.js?v=8"></script>
+    <link rel="stylesheet" href="/css/theme.css?v=9">
     <link rel="stylesheet" href="/css/dunhuang_motion_lab.css?v=1">
 </head>
 <body class="dunhuang-body">
@@ -34,8 +34,8 @@
 
             <div class="stage-status" id="stageStatus" role="status" aria-live="polite">
                 <span></span>
-                <strong id="stageStatusTitle">正在初始化 WebGL2</strong>
-                <small id="stageStatusDetail">准备飘带、沙尘与暮色光场。</small>
+                <strong id="stageStatusTitle" data-dunhuang-status-title>正在初始化 WebGL2</strong>
+                <small id="stageStatusDetail" data-dunhuang-status-detail>准备飘带、沙尘与暮色光场。</small>
             </div>
 
             <div class="stage-title" aria-hidden="true">
@@ -51,8 +51,8 @@
                 <details class="lab-controls" open>
                     <summary>风沙观测 <span>ATMOSPHERE</span></summary>
                     <div class="control-body">
-                        <label for="windStrengthControl"><span>风场强度</span><output id="windStrengthValue">0.90</output></label>
-                        <input id="windStrengthControl" type="range" min="0" max="2" value="0.9" step="0.05">
+                        <label for="windStrengthControl"><span>风场强度</span><output id="windStrengthValue" data-dunhuang-output="windStrength">0.90</output></label>
+                        <input id="windStrengthControl" data-dunhuang-setting="windStrength" data-dunhuang-format="fixed2" type="range" min="0" max="2" value="0.9" step="0.05">
 
                         <fieldset class="wind-compass" id="windCompass" data-direction="west" style="--wind-flow-angle: 0deg">
                             <legend><span>风向</span><output id="windDirectionValue">西风 W → E · 270°</output></legend>
@@ -70,8 +70,8 @@
                             <p id="windDirectionDetail">气象角度 270° · 来自西方，向东方流动。</p>
                         </fieldset>
 
-                        <label for="dustDensityControl"><span>沙尘密度</span><output id="dustDensityValue">0.72</output></label>
-                        <input id="dustDensityControl" type="range" min="0.1" max="1.4" value="0.72" step="0.02">
+                        <label for="dustDensityControl"><span>沙尘密度</span><output id="dustDensityValue" data-dunhuang-output="dustDensity">0.72</output></label>
+                        <input id="dustDensityControl" data-dunhuang-setting="dustDensity" data-dunhuang-format="fixed2" type="range" min="0.1" max="1.4" value="0.72" step="0.02">
 
                         <div class="control-actions">
                             <button id="gustButton" type="button">扬起金尘</button>
@@ -85,42 +85,42 @@
                 <details class="ribbon-controls" open>
                     <summary>飘带动力 <span>RIBBON</span></summary>
                     <div class="control-body">
-                        <label for="ribbonAmplitudeControl"><span>飘带摆幅</span><output id="ribbonAmplitudeValue">0.72</output></label>
-                        <input id="ribbonAmplitudeControl" type="range" min="0" max="1.4" value="0.72" step="0.02">
-                        <label for="ribbonTensionControl"><span>织物张力</span><output id="ribbonTensionValue">0.58</output></label>
-                        <input id="ribbonTensionControl" type="range" min="0.08" max="0.95" value="0.58" step="0.01">
-                        <label for="ribbonResponseControl"><span>风场响应</span><output id="ribbonResponseValue">0.80</output></label>
-                        <input id="ribbonResponseControl" type="range" min="0.1" max="1.3" value="0.8" step="0.02">
+                        <label for="ribbonAmplitudeControl"><span>飘带摆幅</span><output id="ribbonAmplitudeValue" data-dunhuang-output="ribbonAmplitude">0.72</output></label>
+                        <input id="ribbonAmplitudeControl" data-dunhuang-setting="ribbonAmplitude" data-dunhuang-format="fixed2" type="range" min="0" max="1.4" value="0.72" step="0.02">
+                        <label for="ribbonTensionControl"><span>织物张力</span><output id="ribbonTensionValue" data-dunhuang-output="ribbonTension">0.58</output></label>
+                        <input id="ribbonTensionControl" data-dunhuang-setting="ribbonTension" data-dunhuang-format="fixed2" type="range" min="0.08" max="0.95" value="0.58" step="0.01">
+                        <label for="ribbonResponseControl"><span>风场响应</span><output id="ribbonResponseValue" data-dunhuang-output="ribbonResponse">0.80</output></label>
+                        <input id="ribbonResponseControl" data-dunhuang-setting="ribbonResponse" data-dunhuang-format="fixed2" type="range" min="0.1" max="1.3" value="0.8" step="0.02">
                     </div>
                 </details>
 
                 <details class="light-controls" id="lightInstrument" data-breathing="on" data-tyndall="on" open>
                     <summary>暮色光场 <span>OPTICS</span></summary>
                     <div class="control-body">
-                        <label for="lightStrengthControl"><span>月轮光强</span><output id="lightStrengthValue">0.78</output></label>
-                        <input id="lightStrengthControl" type="range" min="0.15" max="1.3" value="0.78" step="0.01">
-                        <label for="lightXControl"><span>水平位置</span><output id="lightXValue">34%</output></label>
-                        <input id="lightXControl" type="range" min="0.12" max="0.88" value="0.34" step="0.01">
-                        <label for="lightYControl"><span>垂直位置</span><output id="lightYValue">72%</output></label>
-                        <input id="lightYControl" type="range" min="0.3" max="0.94" value="0.72" step="0.01">
+                        <label for="lightStrengthControl"><span>月轮光强</span><output id="lightStrengthValue" data-dunhuang-output="lightStrength">0.78</output></label>
+                        <input id="lightStrengthControl" data-dunhuang-setting="lightStrength" data-dunhuang-format="fixed2" type="range" min="0.15" max="1.3" value="0.78" step="0.01">
+                        <label for="lightXControl"><span>水平位置</span><output id="lightXValue" data-dunhuang-output="lightX">34%</output></label>
+                        <input id="lightXControl" data-dunhuang-setting="lightX" data-dunhuang-format="percent" type="range" min="0.12" max="0.88" value="0.34" step="0.01">
+                        <label for="lightYControl"><span>垂直位置</span><output id="lightYValue" data-dunhuang-output="lightY">72%</output></label>
+                        <input id="lightYControl" data-dunhuang-setting="lightY" data-dunhuang-format="percent" type="range" min="0.3" max="0.94" value="0.72" step="0.01">
 
                         <section class="light-effect light-effect--breathing" aria-labelledby="breathingTitle">
-                            <header><span><strong id="breathingTitle">呼吸月光</strong><small>月轮、壁面与金尘共同起伏</small></span><button class="effect-toggle" id="breathingToggle" type="button" role="switch" aria-checked="true">已开启</button></header>
+                            <header><span><strong id="breathingTitle">呼吸月光</strong><small>月轮、壁面与金尘共同起伏</small></span><button class="effect-toggle" id="breathingToggle" data-dunhuang-toggle="breathingEnabled" type="button" role="switch" aria-checked="true">已开启</button></header>
                             <div class="effect-sliders">
-                                <label for="breathStrengthControl"><span>呼吸幅度</span><output id="breathStrengthValue">0.24</output></label>
-                                <input id="breathStrengthControl" type="range" min="0" max="0.6" value="0.24" step="0.01">
-                                <label for="breathPeriodControl"><span>呼吸周期</span><output id="breathPeriodValue">7.0 s</output></label>
-                                <input id="breathPeriodControl" type="range" min="3" max="16" value="7" step="0.5">
+                                <label for="breathStrengthControl"><span>呼吸幅度</span><output id="breathStrengthValue" data-dunhuang-output="breathStrength">0.24</output></label>
+                                <input id="breathStrengthControl" data-dunhuang-setting="breathStrength" data-dunhuang-format="fixed2" type="range" min="0" max="0.6" value="0.24" step="0.01">
+                                <label for="breathPeriodControl"><span>呼吸周期</span><output id="breathPeriodValue" data-dunhuang-output="breathPeriod">7.0 s</output></label>
+                                <input id="breathPeriodControl" data-dunhuang-setting="breathPeriod" data-dunhuang-format="seconds" type="range" min="3" max="16" value="7" step="0.5">
                             </div>
                         </section>
 
                         <section class="light-effect light-effect--tyndall" aria-labelledby="tyndallTitle">
-                            <header><span><strong id="tyndallTitle">沙尘散射</strong><small>矿物微粒中的丁达尔现象</small></span><button class="effect-toggle" id="tyndallToggle" type="button" role="switch" aria-checked="true">已开启</button></header>
+                            <header><span><strong id="tyndallTitle">沙尘散射</strong><small>矿物微粒中的丁达尔现象</small></span><button class="effect-toggle" id="tyndallToggle" data-dunhuang-toggle="tyndallEnabled" type="button" role="switch" aria-checked="true">已开启</button></header>
                             <div class="effect-sliders">
-                                <label for="tyndallStrengthControl"><span>散射强度</span><output id="tyndallStrengthValue">0.82</output></label>
-                                <input id="tyndallStrengthControl" type="range" min="0" max="1.5" value="0.82" step="0.02">
-                                <label for="beamSpreadControl"><span>光束展开</span><output id="beamSpreadValue">0.34</output></label>
-                                <input id="beamSpreadControl" type="range" min="0.08" max="0.65" value="0.34" step="0.01">
+                                <label for="tyndallStrengthControl"><span>散射强度</span><output id="tyndallStrengthValue" data-dunhuang-output="tyndallStrength">0.82</output></label>
+                                <input id="tyndallStrengthControl" data-dunhuang-setting="tyndallStrength" data-dunhuang-format="fixed2" type="range" min="0" max="1.5" value="0.82" step="0.02">
+                                <label for="beamSpreadControl"><span>光束展开</span><output id="beamSpreadValue" data-dunhuang-output="beamSpread">0.34</output></label>
+                                <input id="beamSpreadControl" data-dunhuang-setting="beamSpread" data-dunhuang-format="fixed2" type="range" min="0.08" max="0.65" value="0.34" step="0.01">
                             </div>
                         </section>
                     </div>
@@ -141,6 +141,6 @@
         </section>
     </main>
 
-    <script src="/js/dunhuang_motion_lab.js?v=1" defer></script>
+    <script src="/js/dunhuang_motion_lab.js?v=2" defer></script>
 </body>
 </html>

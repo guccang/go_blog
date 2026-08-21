@@ -38,7 +38,7 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`class="recent-grid"`, `class="recent-card has-media"`, `loading="lazy"`, "迁移过程与关键决定",
 		`class="daily-quote"`, `id="dailyQuote"`, "今日格言",
 		`id="celadonStage"`, `id="celadonCanvas"`, `data-celadon-mode="ambient"`,
-		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=celadon-rain-6`,
+		`/js/celadon_rain_lab.js?v=10`, `/css/main.css?v=dunhuang-1`,
 		`id="mainCeladonControls"`, `data-celadon-wind-direction`,
 		`data-celadon-setting="wind"`, `data-celadon-setting="rain"`,
 		`data-celadon-setting="lightPosition"`, `data-celadon-setting="lightVertical"`,
@@ -49,6 +49,12 @@ func TestMainTemplateKeepsOnlyPrimaryJobs(t *testing.T) {
 		`data-celadon-toggle="beamEnabled"`, `data-celadon-setting="beamCount"`,
 		`data-celadon-action="impact"`, `data-celadon-action="pause"`, `data-celadon-action="reset"`,
 		`main-celadon-controls__compact-label`, `main-celadon-controls__full-label`,
+		`id="dunhuangStage"`, `id="dunhuangCanvas"`, `data-dunhuang-mode="ambient"`,
+		`/js/dunhuang_motion_lab.js?v=2`, `id="mainDunhuangControls"`,
+		`data-dunhuang-wind-direction`, `data-dunhuang-setting="ribbonAmplitude"`,
+		`data-dunhuang-setting="lightX"`, `data-dunhuang-toggle="breathingEnabled"`,
+		`data-dunhuang-toggle="tyndallEnabled"`, `data-dunhuang-action="gust"`,
+		`main-dunhuang-controls__compact-label`, `main-dunhuang-controls__full-label`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Fatalf("main page missing %q", expected)
@@ -111,6 +117,10 @@ func TestMainStylesUseResponsiveReadingCards(t *testing.T) {
 		`#celadonCanvas`, `.main-celadon-stage[data-render-state="error"]`,
 		`.query-hero[data-celadon-ready="true"] > .site-page-hero__exhibit`,
 		`.main-celadon-controls`, `.main-celadon-controls__body`,
+		`.main-dunhuang-stage`, `html[data-theme="atlas-dunhuang"] .main-dunhuang-stage`,
+		`#dunhuangCanvas`, `.main-dunhuang-stage[data-render-state="error"]`,
+		`.query-hero[data-dunhuang-ready="true"] > .site-page-hero__exhibit`,
+		`.main-dunhuang-controls`, `.main-dunhuang-controls__body`,
 	} {
 		if !strings.Contains(styles, expected) {
 			t.Fatalf("main.css missing %q", expected)
@@ -177,7 +187,13 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 			t.Errorf("main celadon setting %q is missing its output", setting[1])
 		}
 	}
-	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(page, -1)); directions != 8 {
+	celadonStart := strings.Index(page, `id="mainCeladonControls"`)
+	dunhuangStart := strings.Index(page, `id="mainDunhuangControls"`)
+	if celadonStart < 0 || dunhuangStart <= celadonStart {
+		t.Fatal("main celadon and dunhuang controls are not ordered")
+	}
+	celadonPage := page[celadonStart:dunhuangStart]
+	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(celadonPage, -1)); directions != 8 {
 		t.Errorf("main celadon wind selector should expose 8 directions, got %d", directions)
 	}
 	if sources := len(regexp.MustCompile(`data-celadon-light-source="(?:point|spot|directional|area)"`).FindAllString(page, -1)); sources != 4 {
@@ -243,6 +259,102 @@ func TestMainCeladonRainUsesSharedWebGL2AmbientMode(t *testing.T) {
 		if strings.Contains(script, forbidden) {
 			t.Errorf("celadon renderer still contains divergent ambient configuration %q", forbidden)
 		}
+	}
+}
+
+func TestMainDunhuangUsesSharedWebGL2AmbientMode(t *testing.T) {
+	scriptContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "js", "dunhuang_motion_lab.js"))
+	if err != nil {
+		t.Fatalf("read dunhuang renderer: %v", err)
+	}
+	script := string(scriptContent)
+	for _, expected := range []string{
+		`getContext('webgl2'`, `ambientMode`, `stage.dataset.dunhuangMode`,
+		`this.ambient = ambientMode`, `bindAmbientMode`, `setAmbientTheme`,
+		`guccang:themechange`, `theme === 'atlas-dunhuang'`, `window.cancelAnimationFrame`,
+		`dunhuangSettingsPreset`, `dunhuangNumericSchema`, `dunhuangBooleanSettings`,
+		`windStrength: { min: 0, max: 2, step: 0.05, initial: 0.9`,
+		`beamSpread: { min: 0.08, max: 0.65`,
+		`guccang-dunhuang-motion-settings`, `restoreDunhuangPreferences`,
+		`saveDunhuangPreferences`, `clearDunhuangPreferences`, `labNumericBindings`,
+		`bindAmbientControls`, `syncAmbientControls`, `setAmbientWindDirection`,
+		`setAmbientPaused`, `resetAmbientSettings`, `syncAmbientInspectorLayout`,
+		`ambientHero.dataset.dunhuangInspector`, `setAmbientReady(true)`, `setAmbientReady(false)`,
+		`ambientControls.contains(event.target)`, `this.assetReady`,
+		`dust_layer`, `far_dust`, `middle_dust`, `near_dust`, `ribbon_region`,
+	} {
+		if !strings.Contains(script, expected) {
+			t.Errorf("dunhuang ambient renderer missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{`getContext('2d')`, "Canvas2DRenderer", "fallback"} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("dunhuang ambient renderer must hard-stop instead of using %q", forbidden)
+		}
+	}
+
+	mainContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "main.template"))
+	if err != nil {
+		t.Fatalf("read main template: %v", err)
+	}
+	labContent, err := os.ReadFile(filepath.Join("..", "..", "templates", "dunhuang_motion_lab.template"))
+	if err != nil {
+		t.Fatalf("read dunhuang lab template: %v", err)
+	}
+	mainPage := string(mainContent)
+	labPage := string(labContent)
+	inputPattern := regexp.MustCompile(`<input[^>]*data-dunhuang-setting="([^"]+)"[^>]*min="([^"]+)"[^>]*max="([^"]+)"[^>]*value="([^"]+)"[^>]*step="([^"]+)"`)
+	parseInputs := func(content string) map[string]string {
+		result := make(map[string]string)
+		for _, match := range inputPattern.FindAllStringSubmatch(content, -1) {
+			result[match[1]] = strings.Join(match[2:], "|")
+		}
+		return result
+	}
+	mainInputs := parseInputs(mainPage)
+	labInputs := parseInputs(labPage)
+	if len(mainInputs) != 12 || len(labInputs) != 12 {
+		t.Fatalf("main and dunhuang lab should each define 12 numeric inputs, got main=%d lab=%d", len(mainInputs), len(labInputs))
+	}
+	for key, mainDefinition := range mainInputs {
+		if labDefinition := labInputs[key]; labDefinition != mainDefinition {
+			t.Errorf("dunhuang setting %q differs: main=%q lab=%q", key, mainDefinition, labDefinition)
+		}
+		if !strings.Contains(mainPage, `data-dunhuang-output="`+key+`"`) {
+			t.Errorf("main dunhuang setting %q is missing its output", key)
+		}
+	}
+	dunhuangStart := strings.Index(mainPage, `id="mainDunhuangControls"`)
+	if dunhuangStart < 0 {
+		t.Fatal("main dunhuang controls missing")
+	}
+	dunhuangPage := mainPage[dunhuangStart:]
+	if directions := len(regexp.MustCompile(`<option value="(?:north|northeast|east|southeast|south|southwest|west|northwest)"`).FindAllString(dunhuangPage, -1)); directions != 8 {
+		t.Errorf("main dunhuang wind selector should expose 8 directions, got %d", directions)
+	}
+	if toggles := len(regexp.MustCompile(`data-dunhuang-toggle="(?:breathingEnabled|tyndallEnabled)"`).FindAllString(mainPage, -1)); toggles != 2 {
+		t.Errorf("main dunhuang controls should expose 2 effect toggles, got %d", toggles)
+	}
+
+	stylesContent, err := os.ReadFile(filepath.Join("..", "..", "statics", "css", "main.css"))
+	if err != nil {
+		t.Fatalf("read main styles: %v", err)
+	}
+	styles := string(stylesContent)
+	for _, expected := range []string{
+		`html[data-theme="atlas-dunhuang"] .query-hero[data-dunhuang-ready="true"]::after`,
+		`.query-hero[data-dunhuang-ready="true"] > .site-page-hero__exhibit`,
+		`[data-dunhuang-inspector="open"]`, `grid-template-columns: minmax(0, 1fr) 292px`,
+		`right: 312px`, `grid-template-rows: 280px auto`, `grid-row: 2`,
+		`.main-dunhuang-controls:not([open])`, `width: 128px`,
+		`.main-dunhuang-controls__compact-label`, `@media (prefers-reduced-motion: reduce)`,
+	} {
+		if !strings.Contains(styles, expected) {
+			t.Errorf("main dunhuang presentation missing %q", expected)
+		}
+	}
+	if regexp.MustCompile(`(?s)\.main-dunhuang-controls\s*\{\s*position:\s*fixed`).MatchString(styles) {
+		t.Error("main dunhuang controls must not use the viewport-covering fixed drawer")
 	}
 }
 
